@@ -137,6 +137,16 @@ A **full reset** (owner only, from the dashboard or `POST /v1/units/<unit>/reset
 - The harness refuses the wipe if anything but housekeeping was recorded after the export.
 - After the wipe it refuses commands issued before it.
 
+## A long research run
+
+`node scripts/research-longrun.mjs` runs a research campaign for a set time (`MINUTES`, 125 by default) with a scripted worker.
+- It reads real public pages, at about one page every two minutes, with robots.txt respected.
+- It records quote-verified claims, and kills the harness controller once halfway.
+- It checks that the campaign closes on its clock with digests, verified claims and a final report.
+- This tests the machinery only; research quality needs a real model.
+
+To run it beside another stack, give it its own project and control port: `THERMITE_PROJECT=thermite-longrun THERMITE_CONTROL_PORT=8801`.
+
 ## The steering acceptance test
 
 `node scripts/steering-acceptance.mjs` runs two units with a scripted model on your machine. It checks:

@@ -21,6 +21,9 @@ async function web() {
     "/a.html": `<html><head><title>Harness notes</title></head><body><p>The harness archived 42 pages in its first run.</p>
       <p>Stateless workers lose nothing when they crash.</p><a href="/b.html">more</a><script>ignore()</script></body></html>`,
     "/b.html": "<html><body><p>A second page about long research campaigns.</p></body></html>",
+    "/c.html": '<a href="/nav.html">Home</a><p>Page c.</p><a href="/c-only.html">c topic</a>',
+    "/d.html":
+      '<a href="/nav.html">Home</a><p>Page d.</p><a href="/d-only.html?x=1">d action</a><a href="/d-only.html">d topic</a>',
     "/private/x.html": "<p>secret</p>",
   };
   const server = createServer((req, res) => {
@@ -229,6 +232,21 @@ describe("research API", () => {
       "t",
     );
     assert.equal((await call("trial.secret-token", { name: "x", body: "y" })).status, 409);
+  });
+});
+
+describe("research frontier", () => {
+  test("site boilerplate is left out; links come in turn from each page, actions last", async () => {
+    const w = await web();
+    const { research } = await researchEnv();
+    await research.fetch("r-1", "lane-1", `${w.base}/c.html`);
+    await research.fetch("r-1", "lane-1", `${w.base}/d.html`);
+    const f = research.frontier("r-1");
+    assert.ok(!f.includes(`${w.base}/nav.html`), "a link on every page of the site is navigation");
+    assert.deepEqual(f.slice(0, 2).sort(), [`${w.base}/c-only.html`, `${w.base}/d-only.html`]);
+    assert.equal(f[2], `${w.base}/d-only.html?x=1`);
+    assert.equal(f.length, 3);
+    await w.close();
   });
 });
 

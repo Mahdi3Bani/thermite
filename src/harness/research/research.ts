@@ -583,14 +583,19 @@ export class Research {
     return r ? String(r.created_at) : undefined;
   }
 
-  /** Links from archived sources that are not archived yet: where to go next without search. */
+  /**
+   * Links from archived sources that are not archived yet: where to go next without search.
+   * Site boilerplate (a link found on two or more archived pages of the same site, such as
+   * navigation) is left out, links are taken in turn from each source rather than all from one,
+   * and links with query strings come last (they are usually actions, not documents).
+   */
   frontier(instance: string, limit = 40): string[] {
     const have = new Set(
       this.all("select url from source where instance = ?", instance).map((r) => String(r.url)),
     );
-    const out: string[] = [];
+    const perSource: { domain: string; links: string[] }[] = [];
     for (const s of this.all(
-      "select raw_path, final_url, sha256 from source where instance = ? order by fetched_at desc limit 30",
+      "select raw_path, final_url, sha256, domain from source where instance = ? order by fetched_at desc limit 30",
       instance,
     )) {
       let hrefs: string[] = [];
@@ -603,20 +608,40 @@ export class Research {
       } catch {
         continue;
       }
+      const links: string[] = [];
       for (const href of hrefs) {
-        let u: string;
         try {
           const x = new URL(href, String(s.final_url));
           x.hash = "";
-          if (!x.protocol.startsWith("http")) continue;
-          u = x.toString();
+          if (x.protocol.startsWith("http") && !links.includes(x.toString()))
+            links.push(x.toString());
         } catch {
-          continue;
+          // not a URL
         }
-        if (!have.has(u) && !out.includes(u)) out.push(u);
-        if (out.length >= limit) return out;
       }
+      perSource.push({ domain: String(s.domain), links });
     }
-    return out;
+    // Boilerplate: links that more than one archived page of the same site carries.
+    const seen = new Map<string, number>();
+    for (const p of perSource)
+      for (const l of p.links)
+        seen.set(`${p.domain} ${l}`, (seen.get(`${p.domain} ${l}`) ?? 0) + 1);
+    const candidates = perSource.map((p) =>
+      p.links.filter((l) => !have.has(l) && (seen.get(`${p.domain} ${l}`) ?? 0) < 2),
+    );
+    const plain: string[] = [];
+    const query: string[] = [];
+    for (let i = 0; plain.length + query.length < limit * 4; i++) {
+      let any = false;
+      for (const list of candidates) {
+        const l = list[i];
+        if (l === undefined) continue;
+        any = true;
+        const bucket = new URL(l).search ? query : plain;
+        if (!plain.includes(l) && !query.includes(l)) bucket.push(l);
+      }
+      if (!any) break;
+    }
+    return [...plain, ...query].slice(0, limit);
   }
 }
