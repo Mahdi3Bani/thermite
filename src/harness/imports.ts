@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
+  chmodSync,
   createReadStream,
   createWriteStream,
   mkdirSync,
@@ -72,6 +73,8 @@ export async function importFile(input: {
     }
     const dest = join(input.storeDir, sha);
     renameSync(tmp, dest);
+    // Read-only for everyone: the run user loads models by exact path (the directory is 0711).
+    chmodSync(dest, 0o444);
     return dest;
   } finally {
     rmSync(tmp, { force: true });

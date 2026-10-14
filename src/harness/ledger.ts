@@ -186,6 +186,16 @@ export class Ledger {
     ).id;
   }
 
+  /** The body of the newest event of a kind about a subject, if any. */
+  latestEventBody(kind: string, subject: string): Record<string, unknown> | undefined {
+    const r = this.get<Row>(
+      "select body from event where kind = ? and subject = ? order by id desc limit 1",
+      kind,
+      subject,
+    );
+    return r ? (JSON.parse(String(r.body)) as Record<string, unknown>) : undefined;
+  }
+
   /** Events strictly after the cursor, in order. The next cursor is the last id returned. */
   eventsAfter(cursor: number, limit = 500): { events: LedgerEvent[]; next: number } {
     const rows = this.all<Row>(
@@ -487,6 +497,7 @@ export class Ledger {
         lifecycle: a.lifecycle,
         commit: a.commitSha,
         parent: a.parentCommit,
+        hypothesis: a.hypothesis?.slice(0, 500) ?? null,
         known_flaws: a.knownFlaws ?? [],
       });
     });
@@ -606,6 +617,11 @@ export class Ledger {
     return job;
   }
 
+  /** Throws unless the caller still holds the job's lease with this fence. */
+  assertLease(jobId: number, fence: number): void {
+    this.assertFence(jobId, fence);
+  }
+
   heartbeat(jobId: number, fence: number, ttlMs: number): void {
     this.tx(() => {
       this.assertFence(jobId, fence);
@@ -681,7 +697,14 @@ export class Ledger {
   recordMeasurement(
     jobId: number,
     fence: number,
-    m: { metric: string; cell: string; rep: number; value: number; unit: string },
+    m: {
+      metric: string;
+      cell: string;
+      rep: number;
+      value: number;
+      unit: string;
+      arm?: string | undefined;
+    },
   ): void {
     if (!Number.isFinite(m.value)) {
       throw new LedgerError("invalid", `non-finite value for ${m.metric}: never a score`);
@@ -689,9 +712,10 @@ export class Ledger {
     this.tx(() => {
       this.assertFence(jobId, fence);
       this.run(
-        "insert into measurement (job, fence, metric, cell, rep, value, unit, created_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
+        "insert into measurement (job, fence, arm, metric, cell, rep, value, unit, created_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         jobId,
         fence,
+        m.arm ?? "candidate",
         m.metric,
         m.cell,
         m.rep,
@@ -705,19 +729,85 @@ export class Ledger {
   /** Measurements from the job's latest lease only; rows from a dead earlier lease never mix in. */
   measurementsFor(
     jobId: number,
-  ): { metric: string; cell: string; rep: number; value: number; unit: string }[] {
+  ): { arm: string; metric: string; cell: string; rep: number; value: number; unit: string }[] {
     return this.all<Row>(
-      `select metric, cell, rep, value, unit from measurement
+      `select arm, metric, cell, rep, value, unit from measurement
          where job = ? and fence = (select fence from job where id = ?) order by id`,
       jobId,
       jobId,
     ).map((r) => ({
+      arm: String(r.arm),
       metric: String(r.metric),
       cell: String(r.cell),
       rep: Number(r.rep),
       value: Number(r.value),
       unit: String(r.unit),
     }));
+  }
+
+  /** Held-out results: for promotion code only, never in events, snapshots or exports. */
+  recordHeldOut(
+    jobId: number,
+    fence: number,
+    attempt: string,
+    pass: boolean,
+    detail: unknown,
+  ): void {
+    this.tx(() => {
+      this.assertFence(jobId, fence);
+      this.run(
+        "insert into held_out (job, fence, attempt, pass, detail, created_at) values (?, ?, ?, ?, ?, ?)",
+        jobId,
+        fence,
+        attempt,
+        pass ? 1 : 0,
+        canonicalJson(detail ?? {}),
+        this.now(),
+      );
+    });
+  }
+
+  heldOutPassed(jobId: number): boolean | undefined {
+    const rows = this.all<Row>(
+      "select pass from held_out where job = ? and fence = (select fence from job where id = ?)",
+      jobId,
+      jobId,
+    );
+    return rows.length ? rows.every((r) => Number(r.pass) === 1) : undefined;
+  }
+
+  recordBuild(b: {
+    key: string;
+    repo: string;
+    commit: string;
+    kitCommit: string;
+    ok: boolean;
+    manifest: unknown;
+    actor: string;
+  }): void {
+    this.tx(() => {
+      this.run(
+        `insert into build (key, repo, commit_sha, kit_commit, ok, manifest, created_at) values (?, ?, ?, ?, ?, ?, ?)
+           on conflict (key) do update set ok = excluded.ok, manifest = excluded.manifest`,
+        b.key,
+        b.repo,
+        b.commit,
+        b.kitCommit,
+        b.ok ? 1 : 0,
+        canonicalJson(b.manifest),
+        this.now(),
+      );
+      this.appendEvent(b.actor, "build_recorded", b.key, {
+        commit: b.commit,
+        kit_commit: b.kitCommit,
+        ok: b.ok,
+      });
+    });
+  }
+
+  getBuild(key: string): { ok: boolean; manifest: unknown } | undefined {
+    const r = this.get<Row>("select ok, manifest from build where key = ?", key);
+    return r ? { ok: Number(r.ok) === 1, manifest: JSON.parse(String(r.manifest)) } : undefined;
   }
 
   recordReceipt(jobId: number, fence: number, body: unknown): string {
@@ -1031,9 +1121,17 @@ export class Ledger {
     });
   }
 
-  lastExport(): { id: number; through_event: number } | undefined {
-    const r = this.get<Row>("select id, through_event from export order by id desc limit 1");
-    return r ? { id: Number(r.id), through_event: Number(r.through_event) } : undefined;
+  lastExport(): { id: number; through_event: number; created_at: string } | undefined {
+    const r = this.get<Row>(
+      "select id, through_event, created_at from export order by id desc limit 1",
+    );
+    return r
+      ? {
+          id: Number(r.id),
+          through_event: Number(r.through_event),
+          created_at: String(r.created_at),
+        }
+      : undefined;
   }
 
   /** A compact current-state summary for the supervisor's report. */

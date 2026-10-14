@@ -1,7 +1,13 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { serve } from "@hono/node-server";
-import { log, parseListen, requireEnv, secretFromFile } from "../common/env.ts";
+import {
+  log,
+  optionalSecretFromFile,
+  parseListen,
+  requireEnv,
+  secretFromFile,
+} from "../common/env.ts";
 import { generateSigningKeys } from "../core/commands.ts";
 import { createControlApi } from "./api.ts";
 import { ControlStore } from "./store.ts";
@@ -28,6 +34,7 @@ async function main(): Promise<void> {
   }
   const tokens = {
     admin: secretFromFile("THERMITE_CONTROL_ADMIN_TOKEN_FILE"),
+    read: optionalSecretFromFile("THERMITE_CONTROL_READ_TOKEN_FILE"),
     units: JSON.parse(
       readFileSync(requireEnv("THERMITE_CONTROL_UNIT_TOKENS_FILE"), "utf8"),
     ) as Record<string, string>,
@@ -35,7 +42,10 @@ async function main(): Promise<void> {
   const store = new ControlStore(join(dir, "control.db"));
   const { host, port } = parseListen(env.THERMITE_CONTROL_LISTEN ?? "0.0.0.0:8800");
   const server = serve({
-    fetch: createControlApi(store, tokens, privateKeyPem).fetch,
+    fetch: createControlApi(store, tokens, privateKeyPem, {
+      // A unit is stale after 3 missed reports (the supervisor reports every 60 s by default).
+      staleAfterMs: Number(env.THERMITE_CONTROL_STALE_SECONDS ?? "180") * 1000,
+    }).fetch,
     hostname: host,
     port,
   });

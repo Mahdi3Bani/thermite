@@ -1,15 +1,22 @@
 import { createHash } from "node:crypto";
 import { cpus, freemem, loadavg, totalmem } from "node:os";
-import type { Readiness, RunResult, RunSpec, TargetDriver, TargetIdentity } from "./driver.ts";
-import { runTimed } from "./run.ts";
+import type { Readiness, TargetDriver, TargetIdentity } from "./driver.ts";
 
 /** CPU target: the unit's CPU set. Used for CPU campaigns and for portable local testing. */
 export class CpuDriver implements TargetDriver {
   readonly type = "cpu";
   private readonly targetClass: string;
+  /** Not ready for timing when the 1-minute load average exceeds this fraction of the cores. */
+  private readonly maxLoadFraction: number;
+  private readonly load: () => number;
 
-  constructor(targetClass = "generic-cpu") {
+  constructor(
+    targetClass = "generic-cpu",
+    opts: { maxLoadFraction?: number; load?: () => number } = {},
+  ) {
     this.targetClass = targetClass;
+    this.maxLoadFraction = opts.maxLoadFraction ?? 0.75;
+    this.load = opts.load ?? (() => loadavg()[0] ?? 0);
   }
 
   async identify(): Promise<TargetIdentity> {
@@ -26,9 +33,13 @@ export class CpuDriver implements TargetDriver {
 
   async readyForTiming(): Promise<Readiness> {
     const cores = cpus().length;
-    const load = loadavg()[0] ?? 0;
+    const load = this.load();
     const reasons: string[] = [];
-    if (load > cores * 0.75) reasons.push(`load ${load.toFixed(2)} above 75% of ${cores} cores`);
+    if (load > cores * this.maxLoadFraction) {
+      reasons.push(
+        `load ${load.toFixed(2)} above ${this.maxLoadFraction * 100}% of ${cores} cores`,
+      );
+    }
     return { ready: reasons.length === 0, reasons, details: { load1: load, cores } };
   }
 
@@ -41,8 +52,8 @@ export class CpuDriver implements TargetDriver {
     };
   }
 
-  run(spec: RunSpec): Promise<RunResult> {
-    return runTimed(spec);
+  async afterBlock(): Promise<string[]> {
+    return [];
   }
 
   plausibility(metrics: Record<string, number>): string[] {

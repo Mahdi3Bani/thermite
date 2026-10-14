@@ -13,14 +13,16 @@
     "typecheck": "tsc -p tsconfig.json",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test \"src/**/*.test.ts\"",
+    "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test --test-concurrency=1 \"src/**/*.test.ts\"",
     "check:public": "node scripts/check-public.mjs",
     "check": "npm run typecheck && npm run lint && npm test && npm run check:public",
     "dev:init": "node scripts/dev-init.mjs",
-    "smoke:compose": "node scripts/compose-smoke.mjs"
+    "smoke:compose": "node scripts/compose-smoke.mjs",
+    "acceptance:judge": "node scripts/judge-acceptance.mjs"
   },
   "dependencies": {
     "@hono/node-server": "2.1.5",
+    "@modelcontextprotocol/sdk": "1.31.0",
     "hono": "4.13.13",
     "zod": "4.6.7"
   },

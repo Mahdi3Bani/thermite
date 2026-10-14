@@ -14,16 +14,29 @@ FROM ${NODE_IMAGE} AS node
 
 FROM ${BASE_IMAGE}
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
+# git for the mirror; a C toolchain for kit builds (CUDA devel bases already have one).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends git tini ca-certificates \
+ && apt-get install -y --no-install-recommends git tini ca-certificates gcc libc6-dev make \
  && rm -rf /var/lib/apt/lists/*
+# One user per role (src/harness/broker/runner.ts has the same ids). The broker runs each kind of
+# work as its own user; `run` and the lanes' development users have the `gpu` group, which owns
+# the device nodes.
+RUN groupadd -g 10500 gpu \
+ && groupadd -g 10010 thermite && useradd -u 10010 -g thermite -M -d /nonexistent -s /usr/sbin/nologin thermite \
+ && groupadd -g 10020 builder && useradd -u 10020 -g builder -M -d /nonexistent -s /usr/sbin/nologin builder \
+ && useradd -u 10030 -g gpu -M -d /nonexistent -s /usr/sbin/nologin run \
+ && for n in $(seq 1 16); do \
+      groupadd -g $((10100 + n)) lane-$n \
+      && useradd -u $((10100 + n)) -g lane-$n -M -d /nonexistent -s /usr/sbin/nologin lane-$n \
+      && useradd -u $((10200 + n)) -g gpu -M -d /nonexistent -s /usr/sbin/nologin lane-$n-dev; \
+    done
 WORKDIR /opt/thermite
 COPY --from=build /src/package.json ./
 COPY --from=build /src/node_modules ./node_modules
 COPY --from=build /src/dist ./dist
 COPY containers/thermite /usr/local/bin/thermite
 ENV NODE_OPTIONS=--disable-warning=ExperimentalWarning
-# The broker runs as root so it can start lane, builder and run processes as separate users;
-# it uses only the container runtime's default capabilities.
+# The broker runs as root so it can start lane, builder and run processes as separate users. It
+# needs only CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETGID and SETUID (compose.yaml drops the rest).
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["node", "/opt/thermite/dist/harness/broker.js"]

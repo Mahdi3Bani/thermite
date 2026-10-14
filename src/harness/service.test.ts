@@ -369,6 +369,11 @@ describe("harness service and API", () => {
     );
     assert.equal(nul.lifecycle, "rejected_v0");
     assert.match(nul.violations.join(), /binary change|forbidden pattern/);
+    const link = await submit(
+      env.patchFrom((d) => symlinkSync("/etc/hosts", join(d, "src", "kernel", "hosts"))),
+    );
+    assert.equal(link.lifecycle, "rejected_v0");
+    assert.match(link.violations.join(), /symlink or submodule/);
     await assert.rejects(submit(Buffer.from("not a patch").toString("base64")));
     const refused = env.service.ledger
       .eventsAfter(0, 1000)

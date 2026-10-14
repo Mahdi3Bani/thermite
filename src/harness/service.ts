@@ -6,7 +6,10 @@ import {
   CommandPayloads,
   type Envelope,
   type ImportSpec,
+  type KeyPairPem,
+  reportBody,
   StructuredDirective,
+  signJson,
   verifyCommand,
 } from "../core/commands.ts";
 import { type Contract, contractSha, parseContract } from "../core/contract.ts";
@@ -63,6 +66,7 @@ export class HarnessService {
   readonly paths: HarnessPaths;
   private readonly controlPublicKeyPem: string;
   private readonly clock: () => Date;
+  private readonly unitKeys: KeyPairPem | undefined;
   /** Commands being applied right now, so a concurrent re-send cannot run one twice. */
   private readonly inFlight = new Set<string>();
 
@@ -72,7 +76,10 @@ export class HarnessService {
     paths: HarnessPaths;
     controlPublicKeyPem: string;
     clock?: (() => Date) | undefined;
+    /** The unit's report-signing key (generated once, kept in the private state). */
+    unitKeys?: KeyPairPem | undefined;
   }) {
+    this.unitKeys = input.unitKeys;
     this.unit = input.unit;
     this.clock = input.clock ?? (() => new Date());
     this.ledger = input.ledger;
@@ -180,6 +187,8 @@ export class HarnessService {
       }
       case "wipe_state":
         throw new Error("wipe_state is not available in this version");
+      case "approve_promotion":
+        return this.approvePromotion(CommandPayloads.approve_promotion.parse(payload), by);
     }
   }
 
@@ -302,6 +311,74 @@ export class HarnessService {
     return { instance: p.instance, contract_sha: parsed.sha, imported };
   }
 
+  /**
+   * Moves the champion to a confirmed attempt by compare-and-swap and points the champion ref
+   * at it. Returns the current seq instead when the champion moved since the attempt was judged.
+   */
+  async promoteAttempt(input: {
+    instance: string;
+    attempt: string;
+    expectedSeq: number;
+    by: string;
+  }): Promise<{ promoted: true; seq: number } | { promoted: false; currentSeq: number }> {
+    const a = this.ledger.getAttempt(input.attempt);
+    if (!a) throw new LedgerError("not_found", `no attempt ${input.attempt}`);
+    const r = this.ledger.promote({
+      instance: input.instance,
+      expectedSeq: input.expectedSeq,
+      attempt: input.attempt,
+      commitSha: String(a.commit_sha),
+      by: input.by,
+    });
+    if (!r.ok) return { promoted: false, currentSeq: r.currentSeq };
+    await this.syncChampionRef(input.instance);
+    this.ledger.setAttemptLifecycle(input.attempt, "promoted", input.by);
+    return { promoted: true, seq: r.seq };
+  }
+
+  /**
+   * Points the instance's champion ref at the effective champion. The ledger is the authority;
+   * the ref is for git consumers, so a failure here is recorded, never fatal.
+   */
+  async syncChampionRef(instance: string): Promise<void> {
+    const inst = this.requireInstance(instance);
+    const champ = this.ledger.currentChampion(instance);
+    try {
+      await updateRef(
+        this.mirrorFor(inst.seed_repo),
+        `refs/thermite/instances/${instance}/champion`,
+        champ.commit_sha,
+      );
+    } catch (err) {
+      this.ledger.appendEvent("judge", "champion_ref_failed", instance, {
+        seq: champ.seq,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  private async approvePromotion(
+    p: z.infer<(typeof CommandPayloads)["approve_promotion"]>,
+    by: string,
+  ): Promise<unknown> {
+    const a = this.ledger.getAttempt(p.attempt);
+    if (!a || String(a.instance) !== p.instance) {
+      throw new Error(`attempt ${p.attempt} is not in ${p.instance}`);
+    }
+    if (String(a.lifecycle) !== "awaiting_approval") {
+      throw new Error(`attempt ${p.attempt} is ${a.lifecycle}, not awaiting approval`);
+    }
+    const pending = this.ledger.latestEventBody("promotion_pending", p.attempt);
+    const expectedSeq = Number(pending?.expected_seq);
+    if (!Number.isInteger(expectedSeq)) throw new Error(`no pending promotion for ${p.attempt}`);
+    const r = await this.promoteAttempt({ ...p, expectedSeq, by });
+    if (r.promoted) return r;
+    // The champion moved after this win was confirmed: it must be screened against the new one.
+    this.ledger.enqueueJob({ attempt: p.attempt, kind: "evaluate", actor: by });
+    this.ledger.setAttemptLifecycle(p.attempt, "queued", by);
+    return { promoted: false, rescreen: true, champion_seq: r.currentSeq };
+  }
+
   /** Low-power steering from the supervisor's teacher pair: structured directives only. */
   addDirectives(instance: string, directives: unknown, author: string): number[] {
     this.requireInstance(instance);
@@ -358,7 +435,13 @@ export class HarnessService {
       }
       throw err;
     }
-    const v0 = checkV0(contract, made.changedFiles, made.addedLines, made.binaryFiles);
+    const v0 = checkV0(
+      contract,
+      made.changedFiles,
+      made.addedLines,
+      made.binaryFiles,
+      made.specialFiles,
+    );
     const duplicateOf = this.ledger.findDuplicate(req.instance, made.normalizedDiffSha);
     const lifecycle = !v0.ok ? "rejected_v0" : duplicateOf ? "duplicate" : "queued";
     // Lineage: the attempt this one was built on, whether or not it is the champion.
@@ -424,9 +507,13 @@ export class HarnessService {
 
   // ------------------------------------------------------------ snapshot and export
 
+  /**
+   * A page of events with the current summary, signed with the unit's own key so that control
+   * can tell the harness's report from anything the supervisor (which relays it) might invent.
+   */
   snapshot(cursor: number, limit: number): unknown {
     const page = this.ledger.eventsAfter(cursor, limit);
-    return {
+    const report = {
       unit: this.unit,
       ledger_id: this.ledger.ledgerId(),
       cursor,
@@ -434,6 +521,13 @@ export class HarnessService {
       events: page.events,
       summary: this.ledger.summary(),
     };
+    return this.unitKeys
+      ? {
+          ...report,
+          unit_pubkey: this.unitKeys.publicKeyPem,
+          signature: signJson(reportBody(report), this.unitKeys.privateKeyPem),
+        }
+      : report;
   }
 
   async export(actor: string) {

@@ -78,6 +78,13 @@ describe("contracts", () => {
     assert.ok(r.ok && r.contract.mode === "research" && r.contract.quality.verbatim_quotes);
   });
 
+  test("a misspelled key anywhere is refused, not dropped", () => {
+    const r = parseContract({ ...hillClimbFixture, acceptance: { look: [3] } });
+    assert.equal(r.ok, false);
+    const g = parseContract({ ...hillClimbFixture, held_out_cell: ["x"] });
+    assert.equal(g.ok, false);
+  });
+
   test("rejects unknown modes and missing edit policy", () => {
     assert.ok(!parseContract({ ...hillClimbFixture, mode: "freestyle" }).ok);
     const { editable_paths: _e, ...noEdit } = hillClimbFixture;

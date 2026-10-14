@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
-import { canonicalJson } from "../core/canonical.ts";
+import { canonicalJson, sha256Hex } from "../core/canonical.ts";
 import type { SignedCommand } from "../core/commands.ts";
 
 /**
@@ -74,12 +74,56 @@ export interface IngestReport {
 
 export class ControlStore {
   readonly db: DatabaseSync;
+  private configuredUnits = new Set<string>();
 
   constructor(path: string) {
     if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
     this.db = new DatabaseSync(path);
     this.db.exec("pragma journal_mode = wal; pragma busy_timeout = 5000;");
     this.db.exec(SCHEMA);
+    const cols = (this.db.prepare("pragma table_info(unit)").all() as Row[]).map((r) => r.name);
+    if (!cols.includes("pubkey")) this.db.exec("alter table unit add column pubkey text");
+    if (!cols.includes("pending_pubkey"))
+      this.db.exec("alter table unit add column pending_pubkey text");
+  }
+
+  /** The unit's pinned report-signing key, if any. */
+  unitKey(unit: string): { pubkey: string | null; pending: string | null } {
+    const r = this.db.prepare("select pubkey, pending_pubkey from unit where id = ?").get(unit) as
+      | Row
+      | undefined;
+    return {
+      pubkey: r?.pubkey ? String(r.pubkey) : null,
+      pending: r?.pending_pubkey ? String(r.pending_pubkey) : null,
+    };
+  }
+
+  /** Pins a unit's key on first contact (trust on first use, shown on the dashboard). */
+  pinKey(unit: string, pubkey: string): void {
+    const now = new Date().toISOString();
+    this.db
+      .prepare(
+        `insert into unit (id, first_seen, last_seen, pubkey) values (?, ?, ?, ?)
+         on conflict (id) do update set pubkey = excluded.pubkey, pending_pubkey = null`,
+      )
+      .run(unit, now, now, pubkey);
+    this.audit(`unit:${unit}`, "unit_key_pinned", { fingerprint: fingerprint(pubkey) });
+  }
+
+  /** A different key arrived: hold it until the owner accepts it. */
+  holdKey(unit: string, pubkey: string): void {
+    this.db.prepare("update unit set pending_pubkey = ? where id = ?").run(pubkey, unit);
+    this.audit(`unit:${unit}`, "unit_key_changed", { fingerprint: fingerprint(pubkey) });
+  }
+
+  acceptPendingKey(unit: string, actor: string): boolean {
+    const { pending } = this.unitKey(unit);
+    if (!pending) return false;
+    this.db
+      .prepare("update unit set pubkey = pending_pubkey, pending_pubkey = null where id = ?")
+      .run(unit);
+    this.audit(actor, "unit_key_accepted", { unit, fingerprint: fingerprint(pending) });
+    return true;
   }
 
   private tx<T>(fn: () => T): T {
@@ -126,7 +170,22 @@ export class ControlStore {
         `insert or ignore into unit_event (unit, ledger_id, event_id, at, actor, kind, subject, body,
            received_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
+      // A harness's own record of a command it applied is authoritative (it is signed with the
+      // unit's key); the supervisor's acknowledgement is only the fast path.
+      const confirm = this.db.prepare(
+        "update command set status = ?, outcome = ?, acked_at = coalesce(acked_at, ?) where id = ? and unit = ?",
+      );
       for (const e of report.events) {
+        if (e.kind === "command" && e.subject) {
+          const b = (e.body ?? {}) as { accepted?: boolean };
+          confirm.run(
+            b.accepted === false ? "failed" : "delivered",
+            canonicalJson({ source: "harness", ...(e.body as object) }),
+            now,
+            e.subject,
+            report.unit,
+          );
+        }
         added += Number(
           insert.run(
             report.unit,
@@ -217,6 +276,56 @@ export class ControlStore {
     return Number(r.changes) > 0;
   }
 
+  /** Units that have a token but have not reported yet still accept commands. */
+  knownUnit(unit: string): boolean {
+    return this.configuredUnits.has(unit);
+  }
+
+  setConfiguredUnits(units: readonly string[]): void {
+    this.configuredUnits = new Set(units);
+  }
+
+  listCommands(limit = 100): {
+    id: string;
+    unit: string;
+    kind: string;
+    issued_by: string;
+    issued_at: string;
+    status: string;
+    acked_at: string | null;
+    outcome: unknown;
+  }[] {
+    return (
+      this.db
+        .prepare(
+          "select id, unit, kind, issued_by, issued_at, status, acked_at, outcome from command order by issued_at desc limit ?",
+        )
+        .all(limit) as Row[]
+    ).map((r) => ({
+      id: String(r.id),
+      unit: String(r.unit),
+      kind: String(r.kind),
+      issued_by: String(r.issued_by),
+      issued_at: String(r.issued_at),
+      status: String(r.status),
+      acked_at: r.acked_at === null ? null : String(r.acked_at),
+      outcome: r.outcome ? JSON.parse(String(r.outcome)) : null,
+    }));
+  }
+
+  listAudit(limit = 200): { at: string; actor: string; action: string; body: unknown }[] {
+    return (
+      this.db
+        .prepare("select at, actor, action, body from audit order by id desc limit ?")
+        .all(limit) as Row[]
+    ).map((r) => ({
+      at: String(r.at),
+      actor: String(r.actor),
+      action: String(r.action),
+      body: JSON.parse(String(r.body)),
+    }));
+  }
+
   command(id: string): { status: string; outcome: unknown } | undefined {
     const r = this.db.prepare("select status, outcome from command where id = ?").get(id) as
       | Row
@@ -225,4 +334,9 @@ export class ControlStore {
       ? { status: String(r.status), outcome: r.outcome ? JSON.parse(String(r.outcome)) : null }
       : undefined;
   }
+}
+
+/** A short fingerprint of a public key, for the dashboard and the audit log. */
+export function fingerprint(pubkeyPem: string): string {
+  return sha256Hex(pubkeyPem.trim()).slice(0, 16);
 }

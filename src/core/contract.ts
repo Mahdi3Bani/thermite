@@ -51,13 +51,13 @@ const Common = {
   target: z.strictObject({ type: z.string().min(1), class: z.string().min(1) }).optional(),
   models: z.array(z.strictObject({ name: z.string().min(1), sha256: Sha256Schema })).default([]),
   lanes: z
-    .object({
+    .strictObject({
       count: z.number().int().min(1).max(64),
       trials_per_epoch: z.number().int().min(1).default(3),
     })
     .default({ count: 2, trials_per_epoch: 3 }),
   budget: z
-    .object({
+    .strictObject({
       wall_hours: z.number().positive().optional(),
       device_hours: z.number().positive().optional(),
       llm_usd: z.number().nonnegative().optional(),
@@ -78,14 +78,19 @@ const EditPolicy = {
 };
 
 const Acceptance = z
-  .object({
+  .strictObject({
     alpha_screen: z.number().gt(0).lt(1).default(0.1),
     alpha_confirm: z.number().gt(0).lt(1).default(0.05),
     equivalence_band: z.number().positive().default(0.005),
     looks: z.array(z.number().int().positive()).min(1).default([3, 6, 9]),
     confirm_blocks: z.number().int().positive().default(5),
+    /**
+     * Runs per arm and cell inside each block; the block uses their median. More than one makes
+     * a single disturbed run (a noisy shared host) unable to swing a block.
+     */
+    runs_per_cell: z.number().int().min(1).max(9).default(1),
     audit: z
-      .object({
+      .strictObject({
         ratio_to_median: z.number().positive().default(3),
         absolute: z.number().positive().default(0.15),
       })
@@ -97,6 +102,7 @@ const Acceptance = z
     equivalence_band: 0.005,
     looks: [3, 6, 9],
     confirm_blocks: 5,
+    runs_per_cell: 1,
     audit: { ratio_to_median: 3, absolute: 0.15 },
   });
 
@@ -161,13 +167,13 @@ const GoalItem = z.strictObject({
 });
 
 export const GoalContract = z
-  .object({
+  .strictObject({
     ...Common,
     ...EditPolicy,
     mode: z.literal("goal"),
     goals: z.array(GoalItem).min(1),
     success: z
-      .object({
+      .strictObject({
         policy: z.enum(["all_required", "k_of_n"]).default("all_required"),
         k: z.number().int().positive().optional(),
       })
@@ -179,7 +185,7 @@ export const GoalContract = z
     /** Failure modes every candidate is checked for by adversarial audit. */
     adversarial_checklist: z.array(z.string().min(1)).default([]),
     infeasibility: z
-      .object({
+      .strictObject({
         allowed: z.boolean(),
         min_refuted_approaches: z.number().int().positive().optional(),
       })
@@ -220,7 +226,7 @@ export const ResearchContract = z.strictObject({
   topic: z.string().min(1),
   questions: z.array(z.string().min(1)).min(1),
   scope: z
-    .object({
+    .strictObject({
       include_domains: z.array(z.string()).default([]),
       exclude_domains: z.array(z.string()).default([]),
       source_types: z.array(z.string()).default([]),
@@ -228,20 +234,20 @@ export const ResearchContract = z.strictObject({
     })
     .default({ include_domains: [], exclude_domains: [], source_types: [], languages: [] }),
   report_cadence: z
-    .object({
+    .strictObject({
       digest_minutes: z.number().int().positive().default(60),
       report_hours: z.number().positive().default(24),
     })
     .default({ digest_minutes: 60, report_hours: 24 }),
   quality: z
-    .object({
+    .strictObject({
       /** Claims count only when every quote is found verbatim in the archived source. */
       verbatim_quotes: z.literal(true).default(true),
       min_independent_sources: z.number().int().min(1).default(2),
     })
     .default({ verbatim_quotes: true, min_independent_sources: 2 }),
   fetch_policy: z
-    .object({
+    .strictObject({
       respect_robots: z.boolean().default(true),
       per_domain_per_minute: z.number().int().positive().default(6),
       max_bytes: z.number().int().positive().default(5_000_000),

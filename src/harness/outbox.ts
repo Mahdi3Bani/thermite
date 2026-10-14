@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { canonicalJson } from "../core/canonical.ts";
 import { patchBetween } from "./git.ts";
 import type { Ledger } from "./ledger.ts";
@@ -59,7 +60,12 @@ export async function writeExport(input: {
       );
     }
 
-    ledger.db.exec(`vacuum into '${join(tmp, "ledger.sqlite").replace(/'/g, "''")}'`);
+    const snapshotPath = join(tmp, "ledger.sqlite");
+    ledger.db.exec(`vacuum into '${snapshotPath.replace(/'/g, "''")}'`);
+    // Held-out results go to promotion code only, never into an export.
+    const snapshot = new DatabaseSync(snapshotPath);
+    snapshot.exec("drop table if exists held_out; vacuum;");
+    snapshot.close();
 
     const files = [
       "events.jsonl",

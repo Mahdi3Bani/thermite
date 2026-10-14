@@ -1,7 +1,8 @@
 /**
  * Target drivers connect the judge to whatever a campaign measures on: a GPU, a CPU set, a board.
- * The executor owns the clock: `run` measures wall time in the executor's process around the
- * child process; nothing the candidate prints is the score of record.
+ * They identify the target, say whether it is ready for timing, and record its state. The work
+ * itself runs through the broker, which owns the clock: nothing the candidate prints is the
+ * score of record.
  */
 
 export interface TargetIdentity {
@@ -18,33 +19,17 @@ export interface Readiness {
   details: Record<string, unknown>;
 }
 
-export interface RunSpec {
-  command: string;
-  args: readonly string[];
-  cwd: string;
-  env?: Record<string, string> | undefined;
-  timeoutMs: number;
-  uid?: number | undefined;
-  gid?: number | undefined;
-}
-
-export interface RunResult {
-  exitCode: number | null;
-  signal: string | null;
-  timedOut: boolean;
-  /** Measured by the executor around the child process. */
-  wallMs: number;
-  stdout: string;
-  stderr: string;
-}
-
 export interface TargetDriver {
   readonly type: string;
   identify(): Promise<TargetIdentity>;
   /** Idle, healthy and at expected settings: required before every timed block. */
   readyForTiming(): Promise<Readiness>;
   envSnapshot(): Promise<Record<string, unknown>>;
-  run(spec: RunSpec): Promise<RunResult>;
+  /**
+   * Problems that make the block just measured invalid (for a GPU: throttling or thermal events,
+   * overheating). Checked after every block; an empty list means the block stands.
+   */
+  afterBlock(): Promise<string[]>;
   /** Physical-limit checks; returns problems (empty when plausible). */
   plausibility(metrics: Record<string, number>): string[];
   recover(): Promise<Readiness>;

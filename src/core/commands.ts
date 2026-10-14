@@ -78,6 +78,8 @@ export const CommandPayloads = {
   }),
   export_now: z.object({}),
   wipe_state: z.object({ confirm: z.literal("wipe") }),
+  /** The owner approves a confirmed win waiting for promotion (promotion policy D8). */
+  approve_promotion: z.object({ instance: IdSchema, attempt: z.string().min(1).max(64) }),
 } as const;
 
 export type CommandKind = keyof typeof CommandPayloads;
@@ -181,4 +183,44 @@ export function verifyCommand(
     };
   }
   return { ok: true, envelope, payload: payload.data };
+}
+
+/** Signs any JSON value (canonical form) with an Ed25519 key. Returns base64. */
+export function signJson(value: unknown, privateKeyPem: string): string {
+  return edSign(null, Buffer.from(canonicalJson(value)), createPrivateKey(privateKeyPem)).toString(
+    "base64",
+  );
+}
+
+/** Verifies a base64 Ed25519 signature over the canonical JSON of a value. */
+export function verifyJson(value: unknown, signature: string, publicKeyPem: string): boolean {
+  try {
+    return edVerify(
+      null,
+      Buffer.from(canonicalJson(value)),
+      createPublicKey(publicKeyPem),
+      Buffer.from(signature, "base64"),
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** The part of a harness snapshot its signature covers. */
+export function reportBody(r: {
+  unit: string;
+  ledger_id: string;
+  cursor: number;
+  next: number;
+  events: unknown[];
+  summary: unknown;
+}): unknown {
+  return {
+    unit: r.unit,
+    ledger_id: r.ledger_id,
+    cursor: r.cursor,
+    next: r.next,
+    events: r.events,
+    summary: r.summary,
+  };
 }

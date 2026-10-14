@@ -57,6 +57,8 @@ export async function relayOnce(cfg: RelayConfig, state: RelayState): Promise<Re
       next: number;
       events: unknown[];
       summary: unknown;
+      unit_pubkey?: string;
+      signature?: string;
     };
     if (ledgerId !== undefined && snap.ledger_id !== ledgerId && cursor !== 0) {
       // The harness ledger was reset or replaced: its events are numbered from 1 again.
@@ -86,6 +88,9 @@ export async function relayOnce(cfg: RelayConfig, state: RelayState): Promise<Re
             next: snap.next,
             events: snap.events,
             summary: snap.summary,
+            // Passed through untouched: the supervisor cannot sign for the harness.
+            unit_pubkey: snap.unit_pubkey,
+            signature: snap.signature,
           }),
         },
       );

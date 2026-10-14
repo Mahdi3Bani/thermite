@@ -298,4 +298,32 @@ export const MIGRATIONS: readonly string[] = [
   create trigger invalidation_no_delete before delete on invalidation begin select raise(abort, 'invalidation is append-only'); end;
   create trigger champion_no_delete before delete on champion begin select raise(abort, 'champion history is append-only'); end;
   `,
+  // 2: the judge (M2). Measurements name the arm they belong to. Held-out results live in their
+  // own table, which never appears in events, snapshots or exports: only promotion reads it.
+  `
+  alter table measurement add column arm text not null default 'candidate';
+  create index measurement_job on measurement (job, fence);
+
+  create table held_out (
+    id integer primary key autoincrement,
+    job integer not null references job (id),
+    fence integer not null,
+    attempt text not null references attempt (id),
+    pass integer not null,
+    detail text not null,
+    created_at text not null
+  );
+  create trigger held_out_no_update before update on held_out begin select raise(abort, 'held_out is append-only'); end;
+  create trigger held_out_no_delete before delete on held_out begin select raise(abort, 'held_out is append-only'); end;
+
+  create table build (
+    key text primary key,
+    repo text not null,
+    commit_sha text not null,
+    kit_commit text not null,
+    ok integer not null,
+    manifest text not null,
+    created_at text not null
+  );
+  `,
 ];

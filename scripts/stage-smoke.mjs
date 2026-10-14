@@ -1,0 +1,131 @@
+#!/usr/bin/env node
+// Stages a smoke campaign for a unit that is not under local compose (for example a GPU unit
+// in a cluster): git bundles of the smoke project and its kit, an assign_campaign payload that
+// pins both by commit and sha256, and one patch per candidate with its expected outcome.
+//
+// usage: node scripts/stage-smoke.mjs --kit smoke-cuda --out DIR [--instance ID] [--target-class C]
+//
+// Copy DIR/repos/* into the unit's inbox under repos/, issue DIR/assign-payload.json through
+// control as an assign_campaign command, then submit DIR/candidates/*.patch from inside the
+// harness (see the M2b runbook).
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { parseArgs } from "node:util";
+
+const { values } = parseArgs({
+  options: {
+    kit: { type: "string", default: "smoke-cuda" },
+    out: { type: "string" },
+    instance: { type: "string", default: "smoke-gpu-1" },
+    "target-class": { type: "string" },
+  },
+});
+if (!values.out) throw new Error("--out DIR is required");
+const kitName = values.kit;
+const projectDir =
+  kitName === "smoke-cuda" ? "examples/smoke-cuda-project" : "examples/smoke-project";
+const out = resolve(values.out);
+mkdirSync(join(out, "repos"), { recursive: true });
+mkdirSync(join(out, "candidates"), { recursive: true });
+
+const git = (cwd, ...args) =>
+  execFileSync(
+    "git",
+    [
+      "-c",
+      "user.name=thermite",
+      "-c",
+      "user.email=thermite@localhost",
+      "-c",
+      "commit.gpgsign=false",
+      ...args,
+    ],
+    { cwd, encoding: "utf8" },
+  ).trim();
+
+function bundle(from, name, exclude = []) {
+  const repo = mkdtempSync(join(tmpdir(), `thermite-${name}-`));
+  cpSync(from, repo, { recursive: true, filter: (src) => !exclude.some((e) => src.includes(e)) });
+  git(repo, "init", "--quiet", "-b", "main");
+  git(repo, "add", "-A");
+  git(repo, "commit", "--quiet", "-m", `${name} seed`);
+  const file = join(out, "repos", `${name}.bundle`);
+  git(repo, "bundle", "create", "--quiet", file, "--all");
+  const sha256 = createHash("sha256").update(readFileSync(file)).digest("hex");
+  return { repo, commit: git(repo, "rev-parse", "HEAD"), path: `repos/${name}.bundle`, sha256 };
+}
+
+const projectName = `${kitName}-project`;
+const project = bundle(projectDir, projectName);
+const kit = bundle(`kits/${kitName}`, `${kitName}-kit`, ["/candidates"]);
+
+const contract = JSON.parse(readFileSync("examples/contracts/smoke-cpu.json", "utf8"));
+contract.campaign = kitName;
+contract.title = `Smoke campaign (${kitName})`;
+contract.project = {
+  repo: projectName,
+  commit: project.commit,
+  kit: { repo: `${kitName}-kit`, commit: kit.commit },
+};
+if (kitName === "smoke-cuda") {
+  contract.target = { type: "cuda-gpu", class: values["target-class"] ?? "p100-pcie-16g" };
+  contract.editable_paths = ["src/kernel/**"];
+  contract.notes = "Smoke campaign for judge acceptance on a GPU unit.";
+}
+const contractFile = join(out, "contract.json");
+writeFileSync(contractFile, `${JSON.stringify(contract, null, 2)}\n`);
+
+const payload = execFileSync(
+  "node",
+  [
+    "dist/cli/thermite.js",
+    "assign-payload",
+    "--contract",
+    contractFile,
+    "--instance",
+    values.instance,
+    "--seed-repo",
+    projectName,
+    "--seed-commit",
+    project.commit,
+    "--bundle",
+    project.path,
+    "--bundle-sha256",
+    project.sha256,
+    "--kit-repo",
+    `${kitName}-kit`,
+    "--kit-commit",
+    kit.commit,
+    "--kit-bundle",
+    kit.path,
+    "--kit-bundle-sha256",
+    kit.sha256,
+  ],
+  { encoding: "utf8" },
+);
+writeFileSync(join(out, "assign-payload.json"), payload);
+
+const candidates = JSON.parse(readFileSync(`kits/${kitName}/candidates/candidates.json`, "utf8"));
+for (const name of Object.keys(candidates)) {
+  const wt = mkdtempSync(join(tmpdir(), "thermite-cand-"));
+  execFileSync("git", ["clone", "--quiet", project.repo, wt]);
+  cpSync(`kits/${kitName}/candidates/${name}`, wt, { recursive: true });
+  execFileSync("git", ["add", "-A"], { cwd: wt });
+  writeFileSync(
+    join(out, "candidates", `${name}.patch`),
+    execFileSync("git", ["diff", "--cached", "--binary"], { cwd: wt }),
+  );
+  rmSync(wt, { recursive: true, force: true });
+}
+writeFileSync(
+  join(out, "candidates", "candidates.json"),
+  `${JSON.stringify(candidates, null, 2)}\n`,
+);
+writeFileSync(
+  join(out, "manifest.json"),
+  `${JSON.stringify({ kit: kitName, instance: values.instance, project, kit_bundle: kit }, null, 2)}\n`,
+);
+console.log(`staged ${kitName} in ${out}`);

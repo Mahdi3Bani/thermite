@@ -15,14 +15,18 @@ const USAGE = `usage: thermite <command> [options]
   contract validate <file>            validate a contract and print its sha256
   keys generate <dir>                 write a new Ed25519 control signing key pair
   assign-payload --contract F --instance ID --seed-repo R --seed-commit C --bundle PATH
-                 [--model NAME=SHA256:PATH ...] [--direction D]
-                                      print an assign_campaign payload
+                 [--bundle-sha256 H] [--kit-repo R --kit-commit C --kit-bundle PATH
+                 [--kit-bundle-sha256 H]] [--model NAME=SHA256:PATH ...] [--direction D]
+                                      print an assign_campaign payload (bundle and model
+                                      paths are relative to the unit's inbox)
   command --control URL --token-file F --unit U --kind K --payload JSON|@file [--ttl MIN]
                                       issue a signed command through control (admin token)
   submit --harness URL --token-file F --instance ID --patch-file P --hypothesis TEXT
          [--known-flaw TEXT ...]      submit a patch as a proposer
   status --harness URL --token-file F --attempt ID
                                       show an attempt's lifecycle and verdict
+  selftest isolation                  inside the harness container, as root: check that role
+                                      users cannot reach the ledger, kits, builds or secrets
 `;
 
 function fail(msg: string): never {
@@ -80,6 +84,11 @@ async function main(argv: string[]): Promise<void> {
           "seed-repo": { type: "string" },
           "seed-commit": { type: "string" },
           bundle: { type: "string" },
+          "bundle-sha256": { type: "string" },
+          "kit-repo": { type: "string" },
+          "kit-commit": { type: "string" },
+          "kit-bundle": { type: "string" },
+          "kit-bundle-sha256": { type: "string" },
           model: { type: "string", multiple: true },
           direction: { type: "string" },
         },
@@ -112,7 +121,19 @@ async function main(argv: string[]): Promise<void> {
             path: values.bundle,
             repo: values["seed-repo"],
             commit: values["seed-commit"],
+            ...(values["bundle-sha256"] ? { sha256: values["bundle-sha256"] } : {}),
           },
+          ...(values["kit-bundle"]
+            ? [
+                {
+                  kind: "kit_bundle",
+                  path: values["kit-bundle"],
+                  repo: values["kit-repo"],
+                  commit: values["kit-commit"],
+                  ...(values["kit-bundle-sha256"] ? { sha256: values["kit-bundle-sha256"] } : {}),
+                },
+              ]
+            : []),
           ...models,
         ],
       };
@@ -200,6 +221,26 @@ async function main(argv: string[]): Promise<void> {
         },
       );
       process.stdout.write(`${await res.text()}\n`);
+      return;
+    }
+    case "selftest": {
+      if (rest[0] !== "isolation") fail(USAGE);
+      const { isolationSelftest } = await import("../harness/selftest.ts");
+      const env = process.env;
+      const secretFiles = [
+        env.THERMITE_SUPERVISOR_TOKEN_FILE,
+        env.THERMITE_PROPOSER_TOKEN_FILE,
+        env.QWEN_API_KEY_FILE,
+      ].filter((f): f is string => Boolean(f));
+      const report = await isolationSelftest({
+        socketPath: join(env.THERMITE_BROKER_DIR ?? "/run/thermite", "broker.sock"),
+        stateDir: env.THERMITE_STATE_DIR ?? "/var/lib/thermite",
+        scratchDir: env.THERMITE_SCRATCH_DIR ?? "/scratch",
+        outboxDir: env.THERMITE_OUTBOX_DIR ?? "/outbox",
+        secretFiles,
+      });
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+      if (!report.ok) process.exit(1);
       return;
     }
     default:

@@ -12,6 +12,7 @@ services:
       THERMITE_CONTROL_ADMIN_TOKEN_FILE: /run/secrets/control-admin-token
       THERMITE_CONTROL_UNIT_TOKENS_FILE: /run/secrets/control-unit-tokens
       THERMITE_CONTROL_PUBKEY_EXPORT: /keys/control-signing.pub
+      THERMITE_CONTROL_STALE_SECONDS: "${THERMITE_CONTROL_STALE_SECONDS:-180}"
     volumes:
       - control-state:/var/lib/thermite-control
       - control-pub:/keys
@@ -30,15 +31,22 @@ services:
       THERMITE_CONTROL_PUBKEY_FILE: /keys/control-signing.pub
       THERMITE_SUPERVISOR_TOKEN_FILE: /run/secrets/harness-supervisor-token
       THERMITE_PROPOSER_TOKEN_FILE: /run/secrets/harness-proposer-token
+      # D8 (promotion policy) is the owner's call; locally the acceptance test sets auto.
+      THERMITE_PROMOTION: "${THERMITE_PROMOTION:-owner_approval}"
+      THERMITE_CALIBRATION_BLOCKS: "${THERMITE_CALIBRATION_BLOCKS:-6}"
     volumes:
       - harness-state:/var/lib/thermite
       - harness-scratch:/scratch
       - ./.dev/inbox:/inbox:ro
-      - ./.dev/outbox:/outbox
+      - outbox:/outbox
       - control-pub:/keys:ro
     secrets: [harness-supervisor-token, harness-proposer-token]
     # No published ports: only the unit's supervisor reaches the harness.
     networks: [unit, egress]
+    # The broker's needs only: separate users for roles, ownership of scratch, killing leftovers.
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETGID, SETUID]
+    security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
 
   supervisor:
@@ -53,7 +61,7 @@ services:
     volumes:
       - supervisor-home:/var/lib/thermite-supervisor
       - ./.dev/inbox:/inbox
-      - ./.dev/outbox:/outbox:ro
+      - outbox:/outbox:ro
     secrets: [harness-supervisor-token, control-unit-token]
     networks: [unit, control, egress]
     depends_on: [harness, control]
@@ -61,8 +69,55 @@ services:
     security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
 
+  # A second unit for multi-unit checks: `docker compose --profile two-units up`.
+  harness-2:
+    profiles: [two-units]
+    build: { context: ., dockerfile: containers/harness/Containerfile }
+    environment:
+      THERMITE_UNIT_ID: local-2
+      THERMITE_TARGET: cpu
+      THERMITE_CONTROL_PUBKEY_FILE: /keys/control-signing.pub
+      THERMITE_SUPERVISOR_TOKEN_FILE: /run/secrets/harness2-supervisor-token
+      THERMITE_PROPOSER_TOKEN_FILE: /run/secrets/harness2-proposer-token
+      THERMITE_PROMOTION: "${THERMITE_PROMOTION:-owner_approval}"
+      THERMITE_CALIBRATION_BLOCKS: "${THERMITE_CALIBRATION_BLOCKS:-6}"
+    volumes:
+      - harness2-state:/var/lib/thermite
+      - harness2-scratch:/scratch
+      - ./.dev/inbox:/inbox:ro
+      - outbox2:/outbox
+      - control-pub:/keys:ro
+    secrets: [harness2-supervisor-token, harness2-proposer-token]
+    networks: [unit2, egress]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETGID, SETUID]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
+  supervisor-2:
+    profiles: [two-units]
+    build: { context: ., dockerfile: containers/supervisor/Containerfile }
+    environment:
+      THERMITE_UNIT_ID: local-2
+      HARNESS_URL: http://harness-2:8700
+      CONTROL_URL: http://control:8800
+      THERMITE_POLL_SECONDS: "${THERMITE_POLL_SECONDS:-60}"
+      THERMITE_HARNESS_TOKEN_FILE: /run/secrets/harness2-supervisor-token
+      THERMITE_CONTROL_TOKEN_FILE: /run/secrets/control-unit-token-2
+    volumes:
+      - supervisor2-home:/var/lib/thermite-supervisor
+      - ./.dev/inbox:/inbox
+      - outbox2:/outbox:ro
+    secrets: [harness2-supervisor-token, control-unit-token-2]
+    networks: [unit2, control, egress]
+    depends_on: [harness-2, control]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
 networks:
   unit: { internal: true }
+  unit2: { internal: true }
   control: {}
   egress: {}
 
@@ -71,7 +126,12 @@ volumes:
   control-pub: {}
   harness-state: {}
   harness-scratch: {}
+  outbox: {}
   supervisor-home: {}
+  harness2-state: {}
+  harness2-scratch: {}
+  outbox2: {}
+  supervisor2-home: {}
 
 secrets:
   control-admin-token: { file: ./.dev/secrets/control-admin-token }
@@ -79,3 +139,6 @@ secrets:
   control-unit-token: { file: ./.dev/secrets/control-unit-token }
   harness-supervisor-token: { file: ./.dev/secrets/harness-supervisor-token }
   harness-proposer-token: { file: ./.dev/secrets/harness-proposer-token }
+  control-unit-token-2: { file: ./.dev/secrets/control-unit-token-2 }
+  harness2-supervisor-token: { file: ./.dev/secrets/harness2-supervisor-token }
+  harness2-proposer-token: { file: ./.dev/secrets/harness2-proposer-token }

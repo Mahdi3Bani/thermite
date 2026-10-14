@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import {
@@ -9,19 +9,31 @@ import {
   secretFromFile,
   waitForFile,
 } from "../common/env.ts";
+import { generateSigningKeys } from "../core/commands.ts";
 import { createHarnessApi } from "./api.ts";
-import { FakeExecutor } from "./executor.ts";
+import { BrokerClient } from "./broker/client.ts";
+import { LocalRunner, type Runner } from "./broker/runner.ts";
+import { Judge, type PromotionPolicy } from "./judge/judge.ts";
 import { Ledger } from "./ledger.ts";
 import { HarnessService } from "./service.ts";
 import { CpuDriver } from "./targets/cpu.ts";
+import { CudaDriver } from "./targets/cuda.ts";
+import type { TargetDriver } from "./targets/driver.ts";
 
 /** The harness controller: owns the ledger, serves the API and drives the executor. */
 async function main(): Promise<void> {
+  // Exports and builds are read by other users (the supervisor, the run user): no group or
+  // world write.
+  process.umask(0o022);
   const env = process.env;
   const unit = requireEnv("THERMITE_UNIT_ID");
   const paths = {
     stateDir: env.THERMITE_STATE_DIR ?? "/var/lib/thermite",
-    scratchDir: env.THERMITE_SCRATCH_DIR ?? "/scratch",
+    // Under the broker the scratch root belongs to root; the controller works in its own area.
+    scratchDir: join(
+      env.THERMITE_SCRATCH_DIR ?? "/scratch",
+      env.THERMITE_BROKER_SOCKET ? "thermite" : "",
+    ),
     inboxDir: env.THERMITE_INBOX_DIR ?? "/inbox",
     outboxDir: env.THERMITE_OUTBOX_DIR ?? "/outbox",
   };
@@ -32,15 +44,45 @@ async function main(): Promise<void> {
     120_000,
   );
   const tokens = {
-    supervisor: secretFromFile("THERMITE_SUPERVISOR_TOKEN_FILE"),
-    proposer: optionalSecretFromFile("THERMITE_PROPOSER_TOKEN_FILE"),
+    // The broker passes secret values in the environment (it alone can read the files).
+    supervisor: env.THERMITE_SUPERVISOR_TOKEN || secretFromFile("THERMITE_SUPERVISOR_TOKEN_FILE"),
+    proposer: env.THERMITE_PROPOSER_TOKEN || optionalSecretFromFile("THERMITE_PROPOSER_TOKEN_FILE"),
   };
   const target = env.THERMITE_TARGET ?? "cpu";
-  if (target !== "cpu") throw new Error(`target driver ${target} is not available in this build`);
-  const driver = new CpuDriver(env.THERMITE_TARGET_CLASS ?? "generic-cpu");
+  let driver: TargetDriver;
+  if (target === "cpu") driver = new CpuDriver(env.THERMITE_TARGET_CLASS ?? "generic-cpu");
+  else if (target === "cuda-gpu") {
+    driver = new CudaDriver({
+      targetClass: env.THERMITE_TARGET_CLASS ?? "cuda-gpu",
+      index: Number(env.THERMITE_GPU_INDEX ?? "0"),
+    });
+  } else throw new Error(`no target driver ${target}; this build has cpu and cuda-gpu`);
 
+  // Private state: only the controller's user may enter. Builds and models are reachable by
+  // exact path only (0711), because the run user executes builds and loads models.
+  for (const [dir, mode] of [
+    ["ledger", 0o700],
+    ["git", 0o700],
+    ["kits", 0o700],
+    ["imports", 0o700],
+    ["models", 0o711],
+  ] as const) {
+    mkdirSync(join(paths.stateDir, dir), { recursive: true });
+    chmodSync(join(paths.stateDir, dir), mode);
+  }
   const ledger = Ledger.open(join(paths.stateDir, "ledger", "ledger.db"));
-  const service = new HarnessService({ unit, ledger, paths, controlPublicKeyPem });
+  // The unit's report-signing key: created once, kept with the ledger (0700).
+  const unitKeyPath = join(paths.stateDir, "ledger", "unit-signing.key");
+  if (!existsSync(unitKeyPath)) {
+    const k = generateSigningKeys();
+    writeFileSync(unitKeyPath, k.privateKeyPem, { mode: 0o600 });
+    writeFileSync(`${unitKeyPath}.pub`, k.publicKeyPem, { mode: 0o644 });
+  }
+  const unitKeys = {
+    privateKeyPem: readFileSync(unitKeyPath, "utf8"),
+    publicKeyPem: readFileSync(`${unitKeyPath}.pub`, "utf8"),
+  };
+  const service = new HarnessService({ unit, ledger, paths, controlPublicKeyPem, unitKeys });
   // Startup reconciliation: anything still leased by this unit's executor belonged to a process
   // that died. Re-queue it now and record it once as crash_infra.
   const executorId = "executor-0";
@@ -51,7 +93,24 @@ async function main(): Promise<void> {
   const server = serve({ fetch: createHarnessApi(service, tokens).fetch, hostname: host, port });
   log("harness", "listening", { unit, host, port, target: (await driver.identify()).id });
 
-  const executor = new FakeExecutor(service, driver, executorId);
+  const runner: Runner = env.THERMITE_BROKER_SOCKET
+    ? new BrokerClient(env.THERMITE_BROKER_SOCKET)
+    : new LocalRunner(paths.scratchDir);
+  // D8 (promotion policy) is the owner's decision; until it is made, promotions wait for approval.
+  const promotion = (env.THERMITE_PROMOTION ?? "owner_approval") as PromotionPolicy;
+  if (promotion !== "auto" && promotion !== "owner_approval") {
+    throw new Error(`THERMITE_PROMOTION must be auto or owner_approval, not ${promotion}`);
+  }
+  const executor = new Judge({
+    service,
+    runner,
+    driver,
+    owner: executorId,
+    promotion,
+    calibrationBlocks: Number(env.THERMITE_CALIBRATION_BLOCKS ?? "6"),
+  });
+  log("harness", "judge ready", { separated: runner.separated, promotion });
+  const exportEveryMs = Number(env.THERMITE_EXPORT_MINUTES ?? "60") * 60_000;
   let stopping = false;
   const loop = async () => {
     while (!stopping) {
@@ -60,6 +119,19 @@ async function main(): Promise<void> {
         worked = await executor.tick();
       } catch (err) {
         log("harness", "executor error", { error: String(err) });
+      }
+      // Hourly export for the supervisor to push (and an export command can force one).
+      const last = ledger.lastExport();
+      const lastAt = last ? Date.parse(last.created_at) : 0;
+      if (
+        ledger.latestEventId() > (last?.through_event ?? 0) &&
+        Date.now() - lastAt >= exportEveryMs
+      ) {
+        try {
+          await service.export("scheduler");
+        } catch (err) {
+          log("harness", "export error", { error: String(err) });
+        }
       }
       if (!worked) await new Promise((r) => setTimeout(r, 1000));
     }

@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { log, optionalSecretFromFile, requireEnv, secretFromFile } from "../common/env.ts";
+import { type ExportState, exportOnce } from "./git-export.ts";
 import { type RelayState, relayOnce } from "./relay.ts";
 
 /** Supervisor entry point (v1 core): the 60-second report and command relay loop. */
@@ -20,6 +21,17 @@ async function main(): Promise<void> {
     controlToken: optionalSecretFromFile("THERMITE_CONTROL_TOKEN_FILE"),
   };
   const intervalMs = Number(env.THERMITE_POLL_SECONDS ?? "60") * 1000;
+  const exportPath = join(home, "export-state.json");
+  let exportState: ExportState = existsSync(exportPath)
+    ? (JSON.parse(readFileSync(exportPath, "utf8")) as ExportState)
+    : { done: [] };
+  const exportCfg = {
+    unit: cfg.unit,
+    outboxDir: env.THERMITE_OUTBOX_DIR ?? "/outbox",
+    workDir: home,
+    remote: env.THERMITE_RESULTS_REMOTE || undefined,
+    sshKeyFile: env.THERMITE_RESULTS_KEY_FILE || undefined,
+  };
   log("supervisor", "starting", {
     unit: cfg.unit,
     interval_ms: intervalMs,
@@ -43,6 +55,22 @@ async function main(): Promise<void> {
       state = next;
     } catch (err) {
       log("supervisor", "relay error", { error: String(err) });
+    }
+    try {
+      const before = exportState.done.length;
+      const next = await exportOnce(exportCfg, exportState);
+      if (next.done.length !== before || next.lastError !== exportState.lastError) {
+        writeFileSync(`${exportPath}.tmp`, JSON.stringify(next));
+        renameSync(`${exportPath}.tmp`, exportPath);
+        log("supervisor", "exported", {
+          exports: next.done.length - before,
+          pushed: Boolean(exportCfg.remote),
+          error: next.lastError ?? null,
+        });
+      }
+      exportState = next;
+    } catch (err) {
+      log("supervisor", "export error", { error: String(err) });
     }
     const until = Date.now() + intervalMs;
     while (!stopping && Date.now() < until) await new Promise((r) => setTimeout(r, 250));

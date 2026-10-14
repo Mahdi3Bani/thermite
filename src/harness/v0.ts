@@ -14,11 +14,14 @@ export function checkV0(
   changedFiles: readonly string[],
   addedLines: readonly string[],
   binaryFiles: readonly string[] = [],
+  specialFiles: readonly string[] = [],
 ): V0Result {
   const violations: string[] = [];
   if (changedFiles.length === 0) violations.push("no files changed");
   // Binary changes cannot be scanned for forbidden patterns, so they are refused.
   for (const f of binaryFiles) violations.push(`binary change: ${f}`);
+  // A symlink could point a build or the judge at private files; a submodule pulls in code.
+  for (const f of specialFiles) violations.push(`symlink or submodule: ${f}`);
   for (const f of changedFiles) {
     if (!matchesAny(f, policy.editable_paths)) violations.push(`path not editable: ${f}`);
   }

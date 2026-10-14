@@ -121,11 +121,55 @@ describe("supervisor relay between control and harness", () => {
     const wiped = makeHarnessEnv("unit-a"); // a fresh ledger: event ids start at 1 again
     harness = createHarnessApi(wiped.service, harnessTokens);
     for (let i = 0; i < 3; i++) wiped.service.ledger.appendEvent("t", "new", null, { i });
+    // A wiped harness also has a new signing key: control holds it until the owner accepts.
+    await assert.rejects(relayOnce(cfg, state), /409/);
+    const accept = await control.request("/v1/units/unit-a/key/accept", {
+      method: "POST",
+      headers: { authorization: `Bearer ${controlTokens.admin}` },
+    });
+    assert.equal(accept.status, 200);
     const after = await relayOnce(cfg, state);
     assert.equal(after.cursor, 3);
     assert.equal(after.ledgerId, wiped.service.ledger.ledgerId());
     const kinds = (store.events("unit-a", 0, 100) as { kind: string }[]).map((e) => e.kind);
     assert.deepEqual(kinds, ["old", "old", "old", "old", "old", "new", "new", "new"]);
+  });
+
+  test("a supervisor cannot forge or alter a harness report", async () => {
+    const env = makeHarnessEnv("unit-a");
+    const store = new ControlStore(":memory:");
+    const tokens = { admin: "admin-token-abcdef", units: { "unit-a": "unit-token-abcdef" } };
+    const control = createControlApi(store, tokens, env.keys.privateKeyPem);
+    env.service.ledger.appendEvent("t", "real", null, {});
+    const snap = env.service.snapshot(0, 100) as Record<string, unknown>;
+    const post = (body: unknown) =>
+      control.request("/v1/units/unit-a/ingest", {
+        method: "POST",
+        headers: { authorization: "Bearer unit-token-abcdef", "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    assert.equal((await post(snap)).status, 200);
+    const events = snap.events as { id: number; kind: string }[];
+    const forged = {
+      ...snap,
+      next: Number(snap.next) + 1,
+      events: [
+        ...events,
+        {
+          id: Number(snap.next) + 1,
+          at: new Date().toISOString(),
+          actor: "judge",
+          kind: "champion_promoted",
+          subject: "smoke-1",
+          body: { seq: 99 },
+        },
+      ],
+    };
+    assert.equal((await post(forged)).status, 403);
+    const { signature: _s, ...unsigned } = snap;
+    assert.equal((await post(unsigned)).status, 400);
+    const kinds = (store.events("unit-a", 0, 100) as { kind: string }[]).map((e) => e.kind);
+    assert.ok(!kinds.includes("champion_promoted"));
   });
 
   test("a unit token cannot report for another unit or read admin views", async () => {

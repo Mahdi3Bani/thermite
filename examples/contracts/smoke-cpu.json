@@ -2,14 +2,51 @@
   "schema_version": 1,
   "campaign": "smoke-cpu",
   "version": 1,
-  "title": "Smoke campaign: a small CPU kernel",
+  "title": "Smoke campaign: speed up a small CPU matrix multiply",
   "mode": "hill_climb",
-  "project": { "repo": "demo-kernels" },
-  "target": { "type": "cpu", "class": "generic-cpu" },
-  "objective": { "primary": { "metric": "ops_per_s", "direction": "max", "min_effect": 0.01 } },
+  "project": {
+    "repo": "smoke-project"
+  },
+  "target": {
+    "type": "cpu",
+    "class": "generic-cpu"
+  },
+  "objective": {
+    "primary": {
+      "metric": "flops_per_s",
+      "direction": "max",
+      "min_effect": 0.1
+    }
+  },
   "guards": [],
-  "hard_constraints": [{ "kind": "check", "check": "correctness" }],
-  "cells": ["small", "large"],
-  "editable_paths": ["src/kernel/**"],
-  "forbidden_patterns": ["clock_gettime", "gettimeofday", "performance\\.now"]
+  "hard_constraints": [
+    {
+      "kind": "check",
+      "check": "correctness"
+    }
+  ],
+  "cells": [
+    "small",
+    "large"
+  ],
+  "held_out_cells": [
+    "held"
+  ],
+  "editable_paths": [
+    "src/kernel/**"
+  ],
+  "forbidden_patterns": [
+    "clock_gettime",
+    "gettimeofday",
+    "\\brdtsc",
+    "\\btimes\\s*\\(",
+    "__real_",
+    "__wrap_",
+    "thermite_ref_calls"
+  ],
+  "acceptance": {
+    "equivalence_band": 0.05,
+    "runs_per_cell": 3
+  },
+  "notes": "CPU timing in a container on a shared development machine varies by 1-3% per block (A/A) and has occasional single-run outliers, far more than a dedicated GPU, so the smoke campaign uses a 5% equivalence band, a 10% minimum effect and the median of 3 runs per cell, instead of the 0.5% default with one run."
 }

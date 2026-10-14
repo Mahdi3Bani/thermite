@@ -73,10 +73,12 @@ Run from the repository root before every commit, and report which ran and which
 - All the fast checks: `npm run check`. It runs, in order:
   - `npm run typecheck`
   - `npm run lint` (Biome; `npm run format` applies fixes)
-  - `npm test` (Node's test runner over `src/**/*.test.ts`)
+  - `npm test` (Node's test runner over `src/**/*.test.ts`, one file at a time: the judge tests time real processes, so they must not share the machine with other test files)
   - `npm run check:public`: the public-content check over tracked and staged files. **Stage new files first**, or check them with `node scripts/check-public.mjs --untracked`. The private denylist it reads lives in `.internal/`.
 - Compose smoke, after changes to containers, compose, the APIs or the relay. It builds the images, starts control and one unit, assigns a campaign through control, submits a patch and checks the events reach control:
   - `COMPOSE="podman compose" npm run smoke:compose`
   - `COMPOSE="podman-compose" npm run smoke:compose` (or `uvx podman-compose` if it isn't installed)
   - `COMPOSE="docker compose" npm run smoke:compose`
+- Judge acceptance (M2a), after changes to the broker, the judge, kits or the harness image. It runs the smoke campaign's whole candidate set under compose, plus isolation, tamper, crash-recovery and A/A checks, and writes a report to `.dev/acceptance/`. Allow about 15–20 minutes:
+  - `COMPOSE="podman compose" npm run acceptance:judge` (the other two compose variants work the same way)
 - Repository hygiene: `git status --short`, `git diff --check` and `git diff --cached`. Read new untracked files directly, and verify relative documentation links and the `CLAUDE.md` import.

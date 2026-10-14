@@ -5,7 +5,7 @@ v1 is being built in milestones. Each milestone ends with checks that must pass 
 | Milestone | Delivers | Status |
 | --- | --- | --- |
 | **M1: core** | Contracts for all three modes, the ledger, the harness API, signed commands and verified imports, container images and a local compose stack | Built |
-| **M2: judge** | Process isolation, target drivers (CUDA GPU and CPU), the build and run pipeline, gates, timing owned by the executor, statistics, verdicts. Acceptance tests with known good, broken, no-op and tampering candidates | Planned |
+| **M2: judge** | Process isolation, target drivers (CUDA GPU and CPU), the build and run pipeline, gates, timing owned by the executor, statistics, verdicts. Acceptance tests with known good, broken, no-op and tampering candidates | Built; accepted on the CPU target, GPU acceptance next |
 | **M3: control** | Supervisor reporting and command relay, git export, the central control service with dashboard, API and MCP | Planned |
 | **M4: agents** | Stateless workers with submit, status and development-run tools; the planner; research mode end to end | Planned |
 | **M5: supervision** | Hourly teacher review, structured directives, audits, propagation of results across units, lifecycle control | Planned |

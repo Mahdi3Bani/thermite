@@ -90,6 +90,7 @@ export interface AttemptCommit {
   changedFiles: string[];
   addedLines: string[];
   binaryFiles: string[];
+  specialFiles: string[];
   diffSha: string;
   normalizedDiffSha: string;
 }
@@ -135,6 +136,7 @@ export async function diffInfo(
   changedFiles: string[];
   addedLines: string[];
   binaryFiles: string[];
+  specialFiles: string[];
   normalizedDiffSha: string;
 }> {
   const names = await git(mirror, ["diff", "--name-only", "-z", "--no-renames", parent, commit]);
@@ -160,10 +162,12 @@ export async function diffInfo(
     commit,
   ]);
   const numstat = await git(mirror, ["diff", "--numstat", "-z", "--no-renames", parent, commit]);
+  const raw = await git(mirror, ["diff", "--raw", "-z", "--no-renames", parent, commit]);
   return {
     changedFiles: names.split("\0").filter(Boolean),
     addedLines: addedLinesOf(unified),
     binaryFiles: binaryFilesOf(numstat),
+    specialFiles: specialFilesOf(raw),
     normalizedDiffSha: sha256Hex(normalized),
   };
 }
@@ -182,6 +186,18 @@ export function addedLinesOf(unified: string): string[] {
     else if (inHunk && line.startsWith("+")) added.push(line.slice(1));
   }
   return added;
+}
+
+/** Paths whose new mode is a symlink (120000) or a submodule (160000), from `diff --raw -z`. */
+export function specialFilesOf(rawZ: string): string[] {
+  const out: string[] = [];
+  const f = rawZ.split("\0");
+  for (let i = 0; i + 1 < f.length; i += 2) {
+    const meta = f[i] ?? "";
+    const newMode = meta.split(" ")[1];
+    if (newMode === "120000" || newMode === "160000") out.push(f[i + 1] as string);
+  }
+  return out;
 }
 
 /** Files git counts as binary (numstat shows "-" for their line counts). */
@@ -211,4 +227,18 @@ export async function patchBetween(
 
 export async function updateRef(mirror: string, ref: string, commit: string): Promise<void> {
   await git(mirror, ["update-ref", ref, commit]);
+}
+
+/** Writes the tree of `commit` into `dest` (which must not exist yet), without .git. */
+export async function exportTree(mirror: string, commit: string, dest: string): Promise<void> {
+  if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(commit))
+    throw new GitError(`not a commit id: ${commit}`);
+  mkdirSync(dest, { recursive: true });
+  const tar = join(dest, ".tree.tar");
+  await git(mirror, ["archive", "--format=tar", `--output=${tar}`, commit]);
+  try {
+    await run("tar", ["-xf", tar, "-C", dest]);
+  } finally {
+    rmSync(tar, { force: true });
+  }
 }

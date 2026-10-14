@@ -77,6 +77,7 @@ export function makeHarnessEnv(unit = "unit-a", clock?: () => Date): HarnessEnv 
     ledger,
     paths,
     controlPublicKeyPem: keys.publicKeyPem,
+    unitKeys: generateSigningKeys(),
     clock,
   });
 
