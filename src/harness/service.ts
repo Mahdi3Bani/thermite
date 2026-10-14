@@ -143,6 +143,11 @@ export class HarnessService {
   private readonly inFlight = new Set<string>();
   /** Trials whose submission is being recorded right now. */
   private readonly submitting = new Set<string>();
+  /**
+   * Each running code trial's workspace (set by the scheduler): the worker's file and shell tools
+   * run there, as the lane's user, through the API with the trial's token.
+   */
+  readonly trialWorkspaces = new Map<string, { lane: string; repo: string; root: string }>();
   /** D8: what happens to a confirmed win (and to one an audit cleared). */
   readonly promotion: "auto" | "owner_approval";
 

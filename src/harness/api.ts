@@ -1,8 +1,10 @@
 import { timingSafeEqual } from "node:crypto";
+import { resolve } from "node:path";
 import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { Registry } from "./agents/registry.ts";
+import { type Role, type Runner, RunRequest } from "./broker/runner.ts";
 import { LedgerError } from "./ledger.ts";
 import type { Research } from "./research/research.ts";
 import { Reviews } from "./reviews.ts";
@@ -61,6 +63,11 @@ function statusFor(err: unknown): 400 | 401 | 404 | 409 | 500 {
 }
 
 export interface HarnessApiExtras {
+  /**
+   * Lane work for worker agents that run as their own users: the runner (the broker) and the
+   * lane tool's argv. The agent names the tool as "lanetool"; the harness substitutes the argv.
+   */
+  lanes?: { runner: Runner; laneTool: string[] } | undefined;
   /** Agents' development runs on the device (judge first), bound to the calling trial. */
   devRuns?: { run(input: unknown, trial: string): Promise<unknown> } | undefined;
   /** Research mode: the harness's fetcher, corpus and claim ledger. */
@@ -212,6 +219,44 @@ export function createHarnessApi(
       throw new Unauthorized("unauthorized");
     const req = SubmitRequest.parse(await c.req.json());
     return c.json(await service.submitAttempt(req, "proposer"), 201);
+  });
+
+  // A worker's lane work: only in its own trial's workspace, as its lane's user, with the lane
+  // tool or a shell command, within the limits of a lane's run.
+  app.post("/v1/lane/run", bodyLimit({ maxSize: 9 * 1024 * 1024 }), async (c) => {
+    const { trial } = trialOf(c.req.header("authorization"));
+    const lanes = extras.lanes;
+    const ws = service.trialWorkspaces.get(trial.id);
+    if (!lanes || !ws) return c.json({ error: "no workspace for this trial" }, 404);
+    const req = RunRequest.parse(await c.req.json());
+    const inside = (p: string) => {
+      const full = resolve(p);
+      return full === ws.root || full.startsWith(`${ws.root}/`);
+    };
+    if (req.role !== trial.lane) throw new Unauthorized("not this trial's lane");
+    if (req.gpu) throw new Unauthorized("device runs go through dev_run");
+    if (!inside(req.cwd) || (req.disk && !inside(req.disk.path)))
+      throw new Unauthorized("outside the trial's workspace");
+    let argv: string[];
+    if (req.argv[0] === "lanetool") argv = [...lanes.laneTool, ...req.argv.slice(1)];
+    else if (req.argv.length === 3 && req.argv[0] === "sh" && req.argv[1] === "-c") argv = req.argv;
+    else throw new Unauthorized("only the lane tool or a shell command");
+    const r = await lanes.runner.run({
+      role: trial.lane as Role,
+      argv,
+      cwd: req.cwd,
+      env: {},
+      timeoutMs: Math.min(req.timeoutMs, 600_000),
+      rssLimitBytes: Math.min(req.rssLimitBytes ?? 2 * 1024 ** 3, 2 * 1024 ** 3),
+      ...(req.disk
+        ? {
+            disk: { path: req.disk.path, limitBytes: Math.min(req.disk.limitBytes, 2 * 1024 ** 3) },
+          }
+        : {}),
+      ...(req.stdin !== undefined ? { stdin: req.stdin } : {}),
+      captureBytes: Math.min(req.captureBytes ?? 64 * 1024, 32 * 1024 * 1024),
+    });
+    return c.json(r as object);
   });
 
   app.post("/v1/dev-runs", bodyLimit({ maxSize: 64 * 1024 }), async (c) => {

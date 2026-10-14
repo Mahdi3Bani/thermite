@@ -18,17 +18,27 @@ export const IDS = {
   gpuGroup: 10500,
   laneBase: 10100,
   laneDevBase: 10200,
+  /** Each lane's worker agent process: its own user, with no access to the lane's files. */
+  agentBase: 10300,
   maxLanes: 16,
 } as const;
 
 export const RoleSchema = z
   .string()
-  .regex(/^(builder|run|lane-([1-9]|1[0-6])|lane-([1-9]|1[0-6])-dev)$/, "unknown role");
+  .regex(
+    /^(builder|run|lane-([1-9]|1[0-6])|lane-([1-9]|1[0-6])-dev|agent-([1-9]|1[0-6]))$/,
+    "unknown role",
+  );
 export type Role = z.infer<typeof RoleSchema>;
 
 export function roleIds(role: Role): { uid: number; gid: number } {
   if (role === "builder") return IDS.builder;
   if (role === "run") return IDS.run;
+  const agent = /^agent-(\d+)$/.exec(role);
+  if (agent) {
+    const n = Number(agent[1]);
+    return { uid: IDS.agentBase + n, gid: IDS.agentBase + n };
+  }
   const m = /^lane-(\d+)(-dev)?$/.exec(role);
   if (!m) throw new Error(`unknown role ${role}`);
   const n = Number(m[1]);

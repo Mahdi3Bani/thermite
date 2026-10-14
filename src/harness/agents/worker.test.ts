@@ -151,6 +151,54 @@ describe("worker trial", () => {
     assert.equal(readFileSync(`${ws.repo}/src/kernel/work.mjs`, "utf8"), FAST_KERNEL);
   });
 
+  test("a worker's lane work goes through the API: its own lane, its own workspace, tool or shell only", async () => {
+    const env = makeJudgeEnv();
+    await env.service.applyCommand(env.assign);
+    const runner = new LocalRunner(env.paths.scratchDir);
+    const ws = await prepareWorkspace({
+      runner,
+      scratchDir: env.paths.scratchDir,
+      mirror: env.service.mirrorFor("proj"),
+      commit: env.seed,
+      lane: "lane-1",
+    });
+    const { Registry } = await import("./registry.ts");
+    const { createHarnessApi } = await import("../api.ts");
+    new Registry(env.ledger).startTrial({
+      id: "t-lane",
+      instance: "js-1",
+      lane: "lane-1",
+      epoch: 1,
+      family: "f",
+      parent: env.seed,
+      token: "lane-token",
+    });
+    env.service.trialWorkspaces.set("t-lane", { lane: "lane-1", repo: ws.repo, root: ws.dir });
+    const api = createHarnessApi(env.service, { supervisor: "s" }, { lanes: { runner, laneTool } });
+    const run = (body: Record<string, unknown>) =>
+      api.request("/v1/lane/run", {
+        method: "POST",
+        headers: { authorization: "Bearer trial.lane-token", "content-type": "application/json" },
+        body: JSON.stringify({ role: "lane-1", cwd: ws.repo, timeoutMs: 20_000, ...body }),
+      });
+    const ok = await run({
+      argv: ["lanetool", "read", JSON.stringify({ path: "src/kernel/work.mjs" })],
+    });
+    assert.equal(ok.status, 200);
+    assert.match(((await ok.json()) as { stdout: string }).stdout, /"ok":true/);
+    const shell = await run({ argv: ["sh", "-c", "echo hi"] });
+    assert.match(((await shell.json()) as { stdout: string }).stdout, /hi/);
+    assert.equal((await run({ argv: ["node", "-e", "1"] })).status, 401, "only tool or shell");
+    assert.equal((await run({ role: "lane-2", argv: ["sh", "-c", "id"] })).status, 401, "own lane");
+    assert.equal(
+      (await run({ cwd: `${ws.dir}/../..`, argv: ["sh", "-c", "ls"] })).status,
+      401,
+      "own workspace",
+    );
+    env.service.trialWorkspaces.delete("t-lane");
+    assert.equal((await run({ argv: ["sh", "-c", "echo"] })).status, 404);
+  });
+
   test("the lane tool never leaves the workspace", async () => {
     const env = makeJudgeEnv();
     await env.service.applyCommand(env.assign);

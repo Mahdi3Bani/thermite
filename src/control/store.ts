@@ -99,7 +99,7 @@ export class ControlStore {
   constructor(path: string) {
     if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
     this.db = new DatabaseSync(path);
-    this.db.exec("pragma journal_mode = wal; pragma busy_timeout = 5000;");
+    this.db.exec("pragma busy_timeout = 5000; pragma journal_mode = wal;");
     this.db.exec(SCHEMA);
     const cols = (this.db.prepare("pragma table_info(unit)").all() as Row[]).map((r) => r.name);
     if (!cols.includes("pubkey")) this.db.exec("alter table unit add column pubkey text");

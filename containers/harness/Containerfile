@@ -28,7 +28,9 @@ RUN groupadd -g 10500 gpu \
  && for n in $(seq 1 16); do \
       groupadd -g $((10100 + n)) lane-$n \
       && useradd -u $((10100 + n)) -g lane-$n -M -d /nonexistent -s /usr/sbin/nologin lane-$n \
-      && useradd -u $((10200 + n)) -g gpu -M -d /nonexistent -s /usr/sbin/nologin lane-$n-dev; \
+      && useradd -u $((10200 + n)) -g gpu -M -d /nonexistent -s /usr/sbin/nologin lane-$n-dev \
+      && groupadd -g $((10300 + n)) agent-$n \
+      && useradd -u $((10300 + n)) -g agent-$n -M -d /nonexistent -s /usr/sbin/nologin agent-$n; \
     done
 # The outbox mount point, as the broker keeps it: thermite writes, the supervisor's group (10001)
 # reads. A new named volume copies this ownership, whichever container mounts it first.

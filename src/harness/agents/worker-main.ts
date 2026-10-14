@@ -1,17 +1,36 @@
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { BrokerClient } from "../broker/client.ts";
+import type { Runner, RunOutcome, RunRequest } from "../broker/runner.ts";
 import { modelConfigFromEnv } from "./model.ts";
 import { runResearchTrial } from "./research-worker.ts";
 import type { AnyTrial } from "./spawn.ts";
 import { runTrial, type TrialSpec } from "./worker.ts";
 
 /**
- * A worker trial in its own process (one per trial), started by the controller. It reaches the
- * harness only through the local API with its trial's own token (which binds every call to the
- * trial's instance and lane, and stops working when the trial ends), and acts in the lane's
- * workspace only through the broker. Prints the trial result as the last line of stdout.
+ * A worker trial in its own process (one per trial), run as its lane's agent user. It reaches
+ * the harness only through the local API with its trial's own token (which binds every call to
+ * the trial's instance and lane, and stops working when the trial ends). Its file and shell
+ * tools run in the lane's workspace, as the lane's user, through that API: the agent itself can
+ * read none of it. Prints the trial result as the last line of stdout.
  */
+
+/** Lane work through the harness API (the harness checks it against the trial). */
+class ApiLaneRunner implements Pick<Runner, "run" | "killRole"> {
+  readonly separated = true;
+  private readonly call: (path: string, body: unknown) => Promise<unknown>;
+
+  constructor(call: (path: string, body: unknown) => Promise<unknown>) {
+    this.call = call;
+  }
+
+  async run(req: RunRequest): Promise<RunOutcome> {
+    return (await this.call("/v1/lane/run", req)) as RunOutcome;
+  }
+
+  async killRole(): Promise<number> {
+    return 0; // the harness kills the lane's processes when the trial ends
+  }
+}
+
 async function main(): Promise<void> {
   const trial = JSON.parse(readFileSync(String(process.argv[2]), "utf8")) as AnyTrial;
   const model = modelConfigFromEnv();
@@ -38,11 +57,11 @@ async function main(): Promise<void> {
     return;
   }
   const spec: TrialSpec = trial.spec;
-  const runner = new BrokerClient(String(process.env.THERMITE_BROKER_SOCKET));
-  const laneTool = [process.execPath, fileURLToPath(new URL("./lanetool.js", import.meta.url))];
+  const runner = new ApiLaneRunner((path, body) => call("POST", path, body));
   const result = await runTrial(spec, {
-    runner,
-    laneTool,
+    runner: runner as unknown as Runner,
+    // The harness substitutes the lane tool's real argv.
+    laneTool: ["lanetool"],
     model,
     submit: (req) =>
       call("POST", "/v1/attempts", {
@@ -59,7 +78,6 @@ async function main(): Promise<void> {
         cwd: spec.workspace,
       }),
   });
-  runner.close();
   process.stdout.write(`\n${JSON.stringify(result)}\n`);
 }
 

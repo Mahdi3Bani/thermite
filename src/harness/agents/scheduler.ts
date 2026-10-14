@@ -747,6 +747,8 @@ export class Scheduler {
           commit: parent,
           lane,
         });
+        // The worker's tools reach this workspace through the API, for this trial only.
+        this.o.service.trialWorkspaces.set(id, { lane: a.lane, repo: ws.repo, root: ws.dir });
         // Reset while the workspace was being prepared: the trial never starts.
         if (abort.signal.aborted) throw new Error("reset before the trial started");
         r = await this.o.runTrial(
@@ -781,6 +783,7 @@ export class Scheduler {
         if (abort.signal.aborted && r.stopped !== "submitted") r = { ...r, stopped: "interrupted" };
         if (r.submitted) this.registry.tagAttempt(r.submitted.attempt, a.family);
         // The trial ends first (its token stops working), then its processes and dev runs.
+        this.o.service.trialWorkspaces.delete(id);
         this.registry.finishTrial(id, { ...r, attempt: r.submitted?.attempt }, this.o.owner);
         await this.o.runner.killRole(lane).catch(() => 0);
         await this.o.devRuns?.settle(lane).catch(() => undefined);

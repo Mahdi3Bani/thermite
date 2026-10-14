@@ -118,7 +118,7 @@ export async function isolationSelftest(opts: {
   }
 
   const client = new BrokerClient(opts.socketPath);
-  const roles = opts.roles ?? (["builder", "run", "lane-1", "lane-1-dev"] as Role[]);
+  const roles = opts.roles ?? (["builder", "run", "lane-1", "lane-1-dev", "agent-1"] as Role[]);
   const report: IsolationReport = { ok: true, roles: {}, skipped };
   try {
     for (const role of roles) {

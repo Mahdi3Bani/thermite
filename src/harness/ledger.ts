@@ -111,7 +111,8 @@ export class Ledger {
   static open(path: string, clock: () => Date = () => new Date()): Ledger {
     if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
     const db = new DatabaseSync(path);
-    db.exec("pragma journal_mode = wal; pragma foreign_keys = on; pragma busy_timeout = 5000;");
+    // The busy timeout first: switching to WAL needs a lock another process may hold briefly.
+    db.exec("pragma busy_timeout = 5000; pragma journal_mode = wal; pragma foreign_keys = on;");
     const ledger = new Ledger(db, clock);
     ledger.migrate();
     // A new ledger gets a fresh id, so readers can tell a reset ledger from the old one.

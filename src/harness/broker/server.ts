@@ -22,6 +22,7 @@ export interface BrokerServerOptions {
 const LANE_ROLES: Role[] = Array.from({ length: IDS.maxLanes }, (_, i) => [
   `lane-${i + 1}`,
   `lane-${i + 1}-dev`,
+  `agent-${i + 1}`,
 ]).flat();
 export const ALL_ROLES: Role[] = ["builder", "run", ...LANE_ROLES];
 

@@ -1,5 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import {
   log,
@@ -149,7 +150,17 @@ async function main(): Promise<void> {
 
   const { host, port } = parseListen(env.THERMITE_LISTEN ?? "0.0.0.0:8700");
   const server = serve({
-    fetch: createHarnessApi(service, tokens, { devRuns, research }).fetch,
+    fetch: createHarnessApi(service, tokens, {
+      devRuns,
+      research,
+      lanes: {
+        runner,
+        laneTool: [
+          process.execPath,
+          fileURLToPath(new URL("./agents/lanetool.js", import.meta.url)),
+        ],
+      },
+    }).fetch,
     hostname: host,
     port,
   });
@@ -178,10 +189,10 @@ async function main(): Promise<void> {
         maxConcurrent: Number(env.THERMITE_MAX_TRIALS ?? "1"),
         trialWallMs: Number(env.THERMITE_TRIAL_MINUTES ?? "20") * 60_000,
         runTrial: (spec, signal) =>
-          spawnTrial({ kind: "code", spec }, paths.scratchDir, port, signal),
+          spawnTrial({ kind: "code", spec }, runner, paths.scratchDir, port, signal),
         research,
         runResearchTrial: (spec, signal) =>
-          spawnTrial({ kind: "research", spec }, paths.scratchDir, port, signal),
+          spawnTrial({ kind: "research", spec }, runner, paths.scratchDir, port, signal),
         devRuns,
         usdPerMTokIn: env.THERMITE_LLM_USD_PER_MTOK_IN
           ? Number(env.THERMITE_LLM_USD_PER_MTOK_IN)

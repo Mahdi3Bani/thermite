@@ -13,6 +13,7 @@ import { join } from "node:path";
 import {
   api,
   assign,
+  command,
   dc,
   events,
   latestVerdicts,
@@ -226,18 +227,31 @@ try {
     agents.epochs >= 1 && agents.planner_valid >= 1 && agents.trials >= 2 && agents.tokens_in > 0,
     agents,
   );
-  const lanes = JSON.parse(
-    dc(
-      composeEnv,
-      "exec",
-      "-T",
-      "harness",
-      "node",
-      "-e",
-      `const fs=require("fs");const n=[];for(const p of fs.readdirSync("/proc")){if(!/^\\d+$/.test(p))continue;try{const u=Number(/^Uid:\\s+(\\d+)/m.exec(fs.readFileSync("/proc/"+p+"/status","utf8"))[1]);if(u>10100&&u<10300)n.push(p)}catch{}}process.stdout.write(JSON.stringify(n))`,
-    ),
-  );
-  check("no lane process outlives its trial", lanes.length === 0, lanes);
+  // Later epochs keep starting trials: pause, then every lane and agent process must end with
+  // its trial.
+  await command("pause_instance", { instance: "smoke-1", reason: "acceptance: drain" });
+  const roleProcesses = () =>
+    JSON.parse(
+      dc(
+        composeEnv,
+        "exec",
+        "-T",
+        "harness",
+        "node",
+        "-e",
+        `const fs=require("fs");const n=[];for(const p of fs.readdirSync("/proc")){if(!/^\\d+$/.test(p))continue;try{const u=Number(/^Uid:\\s+(\\d+)/m.exec(fs.readFileSync("/proc/"+p+"/status","utf8"))[1]);if(u>10100&&u<10317)n.push(p)}catch{}}process.stdout.write(JSON.stringify(n))`,
+      ),
+    );
+  const lanes = await until(
+    "lane and agent processes ended",
+    async () => {
+      const n = roleProcesses();
+      return n.length === 0 ? n : undefined;
+    },
+    300_000,
+    3000,
+  ).catch(() => roleProcesses());
+  check("no lane or agent process outlives its trial", lanes.length === 0, lanes);
   check(
     "a setgid file a lane made lost its bit after the run",
     /^-.....s/.test(setid.BEFORE ?? "") && /^-.....x/.test(setid.AFTER ?? ""),
