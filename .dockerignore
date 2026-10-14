@@ -1,0 +1,9 @@
+.git
+.internal
+.dev
+.agents
+.claude
+node_modules
+dist
+coverage
+*.log

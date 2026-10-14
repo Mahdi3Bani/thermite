@@ -1,0 +1,81 @@
+# Thermite local deployment: one unit (harness + supervisor) and the control service.
+# Run `npm run dev:init` first; it writes local tokens to .dev/secrets/ (git-ignored).
+# Works with `docker compose`, `podman compose` and podman-compose.
+name: thermite
+
+services:
+  control:
+    build: { context: ., dockerfile: containers/control/Containerfile }
+    environment:
+      THERMITE_CONTROL_DIR: /var/lib/thermite-control
+      THERMITE_CONTROL_LISTEN: 0.0.0.0:8800
+      THERMITE_CONTROL_ADMIN_TOKEN_FILE: /run/secrets/control-admin-token
+      THERMITE_CONTROL_UNIT_TOKENS_FILE: /run/secrets/control-unit-tokens
+      THERMITE_CONTROL_PUBKEY_EXPORT: /keys/control-signing.pub
+    volumes:
+      - control-state:/var/lib/thermite-control
+      - control-pub:/keys
+    secrets: [control-admin-token, control-unit-tokens]
+    ports: ["127.0.0.1:8800:8800"]
+    networks: [control]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
+  harness:
+    build: { context: ., dockerfile: containers/harness/Containerfile }
+    environment:
+      THERMITE_UNIT_ID: local-1
+      THERMITE_TARGET: cpu
+      THERMITE_CONTROL_PUBKEY_FILE: /keys/control-signing.pub
+      THERMITE_SUPERVISOR_TOKEN_FILE: /run/secrets/harness-supervisor-token
+      THERMITE_PROPOSER_TOKEN_FILE: /run/secrets/harness-proposer-token
+    volumes:
+      - harness-state:/var/lib/thermite
+      - harness-scratch:/scratch
+      - ./.dev/inbox:/inbox:ro
+      - ./.dev/outbox:/outbox
+      - control-pub:/keys:ro
+    secrets: [harness-supervisor-token, harness-proposer-token]
+    # No published ports: only the unit's supervisor reaches the harness.
+    networks: [unit, egress]
+    restart: unless-stopped
+
+  supervisor:
+    build: { context: ., dockerfile: containers/supervisor/Containerfile }
+    environment:
+      THERMITE_UNIT_ID: local-1
+      HARNESS_URL: http://harness:8700
+      CONTROL_URL: http://control:8800
+      THERMITE_POLL_SECONDS: "${THERMITE_POLL_SECONDS:-60}"
+      THERMITE_HARNESS_TOKEN_FILE: /run/secrets/harness-supervisor-token
+      THERMITE_CONTROL_TOKEN_FILE: /run/secrets/control-unit-token
+    volumes:
+      - supervisor-home:/var/lib/thermite-supervisor
+      - ./.dev/inbox:/inbox
+      - ./.dev/outbox:/outbox:ro
+    secrets: [harness-supervisor-token, control-unit-token]
+    networks: [unit, control, egress]
+    depends_on: [harness, control]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
+networks:
+  unit: { internal: true }
+  control: {}
+  egress: {}
+
+volumes:
+  control-state: {}
+  control-pub: {}
+  harness-state: {}
+  harness-scratch: {}
+  supervisor-home: {}
+
+secrets:
+  control-admin-token: { file: ./.dev/secrets/control-admin-token }
+  control-unit-tokens: { file: ./.dev/secrets/control-unit-tokens.json }
+  control-unit-token: { file: ./.dev/secrets/control-unit-token }
+  harness-supervisor-token: { file: ./.dev/secrets/harness-supervisor-token }
+  harness-proposer-token: { file: ./.dev/secrets/harness-proposer-token }

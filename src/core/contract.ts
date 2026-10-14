@@ -1,0 +1,299 @@
+import { z } from "zod";
+import { canonicalSha } from "./canonical.ts";
+import { DURATION_PATTERN, parseDuration } from "./duration.ts";
+
+/**
+ * Campaign contract, schema version 1.
+ *
+ * A contract is frozen data: changing anything makes a new version. The `mode` field selects
+ * one of three shapes (hill climb, goal, research); the shared fields come first.
+ */
+
+export const IdSchema = z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/, "lowercase id");
+export const Sha256Schema = z.string().regex(/^[0-9a-f]{64}$/, "sha256 hex");
+/** A full commit id (SHA-1 or SHA-256). Abbreviations are refused: they can be ground. */
+export const CommitSchema = z
+  .string()
+  .regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/, "full git commit id (40 or 64 hex)");
+export const DurationSchema = z.string().regex(DURATION_PATTERN, 'duration like "30m" or "8h"');
+const MetricSchema = z.string().min(1);
+const Direction = z.enum(["max", "min"]);
+/** A regular expression that compiles; checked when the contract is validated, not at use. */
+const RegexSchema = z
+  .string()
+  .min(1)
+  .refine((p) => {
+    try {
+      new RegExp(p);
+      return true;
+    } catch {
+      return false;
+    }
+  }, "invalid regular expression");
+
+const SearchPolicy = z.strictObject({
+  /** What public search may be used for, stated for agents and auditors. */
+  allowed_purposes: z.array(z.string().min(1)).default([]),
+  /** Regular expressions; matching queries are refused and logged. */
+  blocked_patterns: z.array(RegexSchema).default([]),
+});
+
+const Common = {
+  schema_version: z.literal(1),
+  campaign: IdSchema,
+  version: z.number().int().positive(),
+  title: z.string().min(1),
+  project: z.strictObject({
+    repo: z.string().min(1),
+    commit: CommitSchema.optional(),
+    kit: z.strictObject({ repo: z.string().min(1), commit: CommitSchema }).optional(),
+  }),
+  target: z.strictObject({ type: z.string().min(1), class: z.string().min(1) }).optional(),
+  models: z.array(z.strictObject({ name: z.string().min(1), sha256: Sha256Schema })).default([]),
+  lanes: z
+    .object({
+      count: z.number().int().min(1).max(64),
+      trials_per_epoch: z.number().int().min(1).default(3),
+    })
+    .default({ count: 2, trials_per_epoch: 3 }),
+  budget: z
+    .object({
+      wall_hours: z.number().positive().optional(),
+      device_hours: z.number().positive().optional(),
+      llm_usd: z.number().nonnegative().optional(),
+      max_open_attempts: z.number().int().positive().default(4),
+    })
+    .default({ max_open_attempts: 4 }),
+  min_duration: DurationSchema.optional(),
+  max_duration: DurationSchema.optional(),
+  search_policy: SearchPolicy.optional(),
+  notes: z.string().optional(),
+};
+
+const EditPolicy = {
+  /** Globs of paths a candidate may change. Anything else is refused at V0. */
+  editable_paths: z.array(z.string().min(1)).min(1),
+  /** Regular expressions; an added line matching one is refused at V0. */
+  forbidden_patterns: z.array(RegexSchema).default([]),
+};
+
+const Acceptance = z
+  .object({
+    alpha_screen: z.number().gt(0).lt(1).default(0.1),
+    alpha_confirm: z.number().gt(0).lt(1).default(0.05),
+    equivalence_band: z.number().positive().default(0.005),
+    looks: z.array(z.number().int().positive()).min(1).default([3, 6, 9]),
+    confirm_blocks: z.number().int().positive().default(5),
+    audit: z
+      .object({
+        ratio_to_median: z.number().positive().default(3),
+        absolute: z.number().positive().default(0.15),
+      })
+      .default({ ratio_to_median: 3, absolute: 0.15 }),
+  })
+  .default({
+    alpha_screen: 0.1,
+    alpha_confirm: 0.05,
+    equivalence_band: 0.005,
+    looks: [3, 6, 9],
+    confirm_blocks: 5,
+    audit: { ratio_to_median: 3, absolute: 0.15 },
+  });
+
+const Guard = z.strictObject({
+  metric: MetricSchema,
+  direction: Direction,
+  /** Allowed regression per promotion step, as a fraction (0.01 = 1%). */
+  max_step_regression: z.number().min(0),
+  /** Allowed regression against the campaign baseline, as a fraction. */
+  max_total_regression: z.number().min(0),
+});
+
+const HardConstraint = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("min"), metric: MetricSchema, value: z.number() }),
+  z.strictObject({ kind: z.literal("max"), metric: MetricSchema, value: z.number() }),
+  /** A named check in the project kit that must pass. */
+  z.strictObject({ kind: z.literal("check"), check: z.string().min(1) }),
+]);
+
+export const HillClimbContract = z.strictObject({
+  ...Common,
+  ...EditPolicy,
+  mode: z.literal("hill_climb"),
+  objective: z.strictObject({
+    policy: z.enum(["single", "lexicographic"]).default("single"),
+    primary: z.strictObject({
+      metric: MetricSchema,
+      direction: Direction,
+      min_effect: z.number().positive(),
+    }),
+    secondary: z.array(z.strictObject({ metric: MetricSchema, direction: Direction })).default([]),
+  }),
+  guards: z.array(Guard).default([]),
+  hard_constraints: z.array(HardConstraint).default([]),
+  monitor_only: z.array(MetricSchema).default([]),
+  cells: z.array(z.string().min(1)).min(1),
+  held_out_cells: z.array(z.string().min(1)).default([]),
+  acceptance: Acceptance,
+});
+
+const Verify = z.discriminatedUnion("type", [
+  /** A verifier script in the project kit; agents see pass/fail and bounded diagnostics. */
+  z.strictObject({ type: z.literal("code"), verifier: z.string().min(1) }),
+  z.strictObject({
+    type: z.literal("metric_threshold"),
+    metric: MetricSchema,
+    op: z.enum([">=", "<=", ">", "<"]),
+    value: z.number(),
+    cells: z.array(z.string().min(1)).optional(),
+  }),
+  /** Subjective goals: a blind model panel reviews, the owner gives final acceptance. */
+  z.strictObject({ type: z.literal("review"), criteria: z.array(z.string().min(1)).min(1) }),
+]);
+
+const GoalItem = z.strictObject({
+  id: IdSchema,
+  description: z.string().min(1),
+  priority: z.number().int().min(1).default(1),
+  required: z.boolean().default(true),
+  parent: IdSchema.optional(),
+  verify: Verify,
+});
+
+export const GoalContract = z
+  .object({
+    ...Common,
+    ...EditPolicy,
+    mode: z.literal("goal"),
+    goals: z.array(GoalItem).min(1),
+    success: z
+      .object({
+        policy: z.enum(["all_required", "k_of_n"]).default("all_required"),
+        k: z.number().int().positive().optional(),
+      })
+      .default({ policy: "all_required" }),
+    /** What a verified solution is (a commit, an artifact, a report). */
+    deliverable: z.string().min(1),
+    /** Outcomes that must never be reported as success (special cases, reductions, ...). */
+    insufficient: z.array(z.string().min(1)).default([]),
+    /** Failure modes every candidate is checked for by adversarial audit. */
+    adversarial_checklist: z.array(z.string().min(1)).default([]),
+    infeasibility: z
+      .object({
+        allowed: z.boolean(),
+        min_refuted_approaches: z.number().int().positive().optional(),
+      })
+      .default({ allowed: false }),
+    /** Epochs during which lanes get no cross-lane evidence. */
+    independence_epochs: z.number().int().min(0).default(2),
+    /** Approach families that must stay alive at once. */
+    min_live_families: z.number().int().min(1).default(2),
+    held_out_cells: z.array(z.string().min(1)).default([]),
+  })
+  .superRefine((c, ctx) => {
+    const ids = new Set<string>();
+    for (const g of c.goals) {
+      if (ids.has(g.id)) ctx.addIssue({ code: "custom", message: `duplicate goal id ${g.id}` });
+      ids.add(g.id);
+    }
+    for (const g of c.goals) {
+      if (g.parent && !ids.has(g.parent)) {
+        ctx.addIssue({ code: "custom", message: `goal ${g.id} has unknown parent ${g.parent}` });
+      }
+    }
+    if (c.success.policy === "k_of_n") {
+      if (c.success.k === undefined || c.success.k > c.goals.length) {
+        ctx.addIssue({ code: "custom", message: "k_of_n needs 1 <= k <= number of goals" });
+      }
+    }
+    if (c.infeasibility.allowed && c.infeasibility.min_refuted_approaches === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: "infeasibility.allowed requires min_refuted_approaches",
+      });
+    }
+  });
+
+export const ResearchContract = z.strictObject({
+  ...Common,
+  mode: z.literal("research"),
+  topic: z.string().min(1),
+  questions: z.array(z.string().min(1)).min(1),
+  scope: z
+    .object({
+      include_domains: z.array(z.string()).default([]),
+      exclude_domains: z.array(z.string()).default([]),
+      source_types: z.array(z.string()).default([]),
+      languages: z.array(z.string()).default([]),
+    })
+    .default({ include_domains: [], exclude_domains: [], source_types: [], languages: [] }),
+  report_cadence: z
+    .object({
+      digest_minutes: z.number().int().positive().default(60),
+      report_hours: z.number().positive().default(24),
+    })
+    .default({ digest_minutes: 60, report_hours: 24 }),
+  quality: z
+    .object({
+      /** Claims count only when every quote is found verbatim in the archived source. */
+      verbatim_quotes: z.literal(true).default(true),
+      min_independent_sources: z.number().int().min(1).default(2),
+    })
+    .default({ verbatim_quotes: true, min_independent_sources: 2 }),
+  fetch_policy: z
+    .object({
+      respect_robots: z.boolean().default(true),
+      per_domain_per_minute: z.number().int().positive().default(6),
+      max_bytes: z.number().int().positive().default(5_000_000),
+      allow_logins: z.literal(false).default(false),
+    })
+    .default({
+      respect_robots: true,
+      per_domain_per_minute: 6,
+      max_bytes: 5_000_000,
+      allow_logins: false,
+    }),
+});
+
+export const ContractSchema = z
+  .discriminatedUnion("mode", [HillClimbContract, GoalContract, ResearchContract])
+  .superRefine((c, ctx) => {
+    if (c.min_duration && c.max_duration) {
+      if (parseDuration(c.max_duration) < parseDuration(c.min_duration)) {
+        ctx.addIssue({ code: "custom", message: "max_duration is shorter than min_duration" });
+      }
+    }
+    if (c.mode === "research" && !c.min_duration) {
+      ctx.addIssue({ code: "custom", message: "research campaigns need min_duration" });
+    }
+    if (c.mode === "hill_climb" && !c.target) {
+      ctx.addIssue({ code: "custom", message: "hill_climb campaigns need a target" });
+    }
+  });
+
+export type Contract = z.infer<typeof ContractSchema>;
+export type HillClimbContract = z.infer<typeof HillClimbContract>;
+export type GoalContract = z.infer<typeof GoalContract>;
+export type ResearchContract = z.infer<typeof ResearchContract>;
+export type Mode = Contract["mode"];
+
+export type ContractParse =
+  | { ok: true; contract: Contract; sha: string }
+  | { ok: false; errors: string[] };
+
+/** Validates a contract and returns it with defaults applied and its content hash. */
+export function parseContract(input: unknown): ContractParse {
+  const r = ContractSchema.safeParse(input);
+  if (!r.success) {
+    return {
+      ok: false,
+      errors: r.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`),
+    };
+  }
+  return { ok: true, contract: r.data, sha: contractSha(r.data) };
+}
+
+/** The content hash of a validated contract: sha256 of its canonical JSON. */
+export function contractSha(contract: Contract): string {
+  return canonicalSha(contract);
+}

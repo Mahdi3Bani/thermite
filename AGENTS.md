@@ -42,7 +42,7 @@ Read [CONVENTIONS.md](CONVENTIONS.md) before changing this repository. Public do
   Write public docs as a showcase of how the system works, never an inventory.
 - Deployment-specific material goes in `.internal/`, which Git ignores.
   - `.internal/` is private. Never put credentials there.
-- Run the public-content check before every commit, once M1 adds it, and record its command under [Checks](#checks).
+- Run the public-content check (`npm run check:public`) before every commit; see [Checks](#checks).
 
 ## Git
 
@@ -67,12 +67,16 @@ Read [CONVENTIONS.md](CONVENTIONS.md) before changing this repository. Public do
 
 ## Checks
 
-Until tooling exists, run from the repository root:
+Run from the repository root before every commit, and report which ran and which didn't.
 
-- `git status --short`
-- `git diff --check`
-- `git diff`
-
-Also read new untracked files directly, since they don't appear in a normal diff, and verify relative documentation links and the `CLAUDE.md` import.
-
-When M1 adds tooling, list the exact commands here (install, typecheck, lint, test, public-content check, compose smoke) and run them before every commit. Report which checks ran and which didn't.
+- Install: `npm ci` (Node.js 22.15 or later).
+- All the fast checks: `npm run check`. It runs, in order:
+  - `npm run typecheck`
+  - `npm run lint` (Biome; `npm run format` applies fixes)
+  - `npm test` (Node's test runner over `src/**/*.test.ts`)
+  - `npm run check:public`: the public-content check over tracked and staged files. **Stage new files first**, or check them with `node scripts/check-public.mjs --untracked`. The private denylist it reads lives in `.internal/`.
+- Compose smoke, after changes to containers, compose, the APIs or the relay. It builds the images, starts control and one unit, assigns a campaign through control, submits a patch and checks the events reach control:
+  - `COMPOSE="podman compose" npm run smoke:compose`
+  - `COMPOSE="podman-compose" npm run smoke:compose` (or `uvx podman-compose` if it isn't installed)
+  - `COMPOSE="docker compose" npm run smoke:compose`
+- Repository hygiene: `git status --short`, `git diff --check` and `git diff --cached`. Read new untracked files directly, and verify relative documentation links and the `CLAUDE.md` import.

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "campaign": "smoke-cpu",
+  "version": 1,
+  "title": "Smoke campaign: a small CPU kernel",
+  "mode": "hill_climb",
+  "project": { "repo": "demo-kernels" },
+  "target": { "type": "cpu", "class": "generic-cpu" },
+  "objective": { "primary": { "metric": "ops_per_s", "direction": "max", "min_effect": 0.01 } },
+  "guards": [],
+  "hard_constraints": [{ "kind": "check", "check": "correctness" }],
+  "cells": ["small", "large"],
+  "editable_paths": ["src/kernel/**"],
+  "forbidden_patterns": ["clock_gettime", "gettimeofday", "performance\\.now"]
+}

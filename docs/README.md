@@ -11,6 +11,7 @@ Thermite is an autoresearch harness. Agents propose changes, and code they canno
 | [Judging and integrity](judging.md) | How results are measured and accepted without trusting the agents that produced them |
 | [Glossary](glossary.md) | The terms these pages use |
 | [Roadmap](roadmap.md) | What v1 delivers, in order |
+| [Running locally](local-development.md) | Checks, the compose stack and the smoke test |
 
 ## The ideas in one minute
 

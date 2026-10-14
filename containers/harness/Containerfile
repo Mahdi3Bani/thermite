@@ -1,0 +1,29 @@
+# Thermite harness image. The default base is the Node image (CPU units). GPU units build with
+# BASE_IMAGE set to a CUDA 12.x devel image (CUDA 13 dropped older architectures).
+ARG NODE_IMAGE=docker.io/library/node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392
+ARG BASE_IMAGE=${NODE_IMAGE}
+
+FROM ${NODE_IMAGE} AS build
+WORKDIR /src
+COPY package.json package-lock.json tsconfig.json tsconfig.build.json ./
+RUN npm ci --no-fund --no-audit
+COPY src ./src
+RUN npm run build && npm prune --omit=dev --no-fund --no-audit
+
+FROM ${NODE_IMAGE} AS node
+
+FROM ${BASE_IMAGE}
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git tini ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /opt/thermite
+COPY --from=build /src/package.json ./
+COPY --from=build /src/node_modules ./node_modules
+COPY --from=build /src/dist ./dist
+COPY containers/thermite /usr/local/bin/thermite
+ENV NODE_OPTIONS=--disable-warning=ExperimentalWarning
+# The broker runs as root so it can start lane, builder and run processes as separate users;
+# it uses only the container runtime's default capabilities.
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["node", "/opt/thermite/dist/harness/broker.js"]

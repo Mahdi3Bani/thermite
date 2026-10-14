@@ -1,0 +1,32 @@
+{
+  "name": "thermite",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Autoresearch harness: agents propose, code they cannot touch judges, one control service steers every campaign.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.15"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test \"src/**/*.test.ts\"",
+    "check:public": "node scripts/check-public.mjs",
+    "check": "npm run typecheck && npm run lint && npm test && npm run check:public",
+    "dev:init": "node scripts/dev-init.mjs",
+    "smoke:compose": "node scripts/compose-smoke.mjs"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.5",
+    "hono": "4.13.13",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@types/node": "22.20.5",
+    "typescript": "5.9.3"
+  }
+}
