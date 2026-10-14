@@ -168,7 +168,8 @@ function foldWhitespace(s: string): string {
   return out.join("\n");
 }
 
-const SKIP = new Set(["script", "style", "noscript", "svg", "template"]);
+// Never page text: code, and a site's navigation and footer (a quote from them is boilerplate).
+const SKIP = new Set(["script", "style", "noscript", "svg", "template", "nav", "footer"]);
 const BLOCK = new Set([
   "br",
   "p",
@@ -192,7 +193,8 @@ const BLOCK = new Set([
 
 /**
  * Text from HTML in one linear pass (no backtracking regular expressions over the page):
- * scripts and styles dropped, tags removed, entities decoded, whitespace folded.
+ * scripts, styles, navigation and footers dropped, tags removed, entities decoded, whitespace
+ * folded.
  */
 export function htmlToText(html: string): { title: string | null; text: string; links: string[] } {
   const lower = html.toLowerCase();

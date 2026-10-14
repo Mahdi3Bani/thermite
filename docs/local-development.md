@@ -118,6 +118,12 @@ Workers and the planner run when the harness has a model route: an OpenAI-compat
   - a panel's pass still needs the owner's acceptance.
 
 **Results repository.** Locally, both units' supervisors push their exports to one repository on a shared volume (`file:///results/results.git`). Set `THERMITE_RESULTS_REMOTE` (and `THERMITE_RESULTS_KEY_FILE` for SSH) to use a real one. Propagation reads published champions from it.
+- Set `THERMITE_RESULTS_KNOWN_HOSTS` to a known_hosts file to pin the git host's key. Without it, the first key the host shows is trusted.
+- The supervisor commits only regular files that the export's manifest lists, and never replaces a file already published. After a push, the harness removes the pushed exports from the outbox.
+
+**Unit keys.** Control pins each unit's report-signing key the first time the unit reports. With `THERMITE_CONTROL_REQUIRE_KEY_ACCEPT=1`, it holds every first key instead. You accept the key on the unit's page, or with `POST /v1/units/<unit>/key/accept?fingerprint=<fingerprint>`, after checking the fingerprint against the unit's deployment. A changed key is always held the same way. A full reset keeps the unit's key.
+
+**Pending commands.** A command still waiting for its unit can be cancelled with `POST /v1/commands/<id>/cancel` (admin token). Commands past their expiry are marked expired and never delivered.
 
 **Lifecycle.** To let control restart containers, add `compose.lifecycle.yaml`, which mounts the container engine's socket into control. This is for development only; on Kubernetes, control deletes a unit's pods through its service account instead.
 

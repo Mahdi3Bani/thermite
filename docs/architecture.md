@@ -60,6 +60,11 @@ The supervisor is the unit's link to everything outside:
   - propagate one unit's best result to another unit, where that unit's own judge re-measures it;
   - export the unit's results to git.
 - **Lifecycle.** Control can restart or fully reset a unit's containers, and the unit exports its results first.
+- **Reports are signed by the harness.** The supervisor relays them but cannot forge, replay or thin them out:
+  - each report carries the harness's time and its latest event;
+  - control takes a report only if it continues the stream it has, is newer than the last one, and comes from the unit's current ledger;
+  - a unit's signing key is pinned at first contact, or held for the owner to accept by its fingerprint when control is configured to require that.
+- **The command queue.** Commands expire, the owner can cancel one that is still pending, and one command that cannot be delivered never holds up the others.
 
 **Units keep researching when control is down.** Reports and commands catch up when it returns.
 

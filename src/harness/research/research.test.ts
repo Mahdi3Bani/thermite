@@ -179,6 +179,11 @@ describe("fetcher safety", () => {
     const t = htmlToText("<title>A &amp; B</title><p>x &#99999999; y &#x41; z</p>");
     assert.equal(t.title, "A & B");
     assert.match(t.text, /x \uFFFD y A z/);
+    const page = htmlToText(
+      '<nav><a href="/home">Home</a> Main menu</nav><p>Body text.</p><footer>Privacy policy</footer>',
+    );
+    assert.equal(page.text, "Body text.");
+    assert.deepEqual(page.links, []);
   });
 
   test("a name that resolves to a private address is refused when the connection is made", async () => {
