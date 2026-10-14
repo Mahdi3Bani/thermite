@@ -259,10 +259,16 @@ try {
       recent: null,
       summary: null,
       jobs: null,
+      // The supervisor's live figures (timestamps, counters) are not part of the event view.
+      supervisor: null,
       instances: v.instances.map((i) => ({
         ...i,
         // The attempt judged while control was down is new; everything else must match.
         attempts: i.attempts.filter((a) => a.id !== attempt),
+        agents: {
+          ...i.agents,
+          attempts: i.agents.attempts - i.attempts.filter((a) => a.id === attempt).length,
+        },
         verdicts: Object.fromEntries(
           Object.entries(i.verdicts)
             .map(([k, n]) => [
@@ -275,9 +281,20 @@ try {
         ),
       })),
     });
+  /** Paths where two JSON values differ (for the report when they do). */
+  const diff = (a, b, path = "") => {
+    if (JSON.stringify(a) === JSON.stringify(b)) return [];
+    if (a && b && typeof a === "object" && typeof b === "object") {
+      return [...new Set([...Object.keys(a), ...Object.keys(b)])].flatMap((k) =>
+        diff(a[k], b[k], `${path}.${k}`),
+      );
+    }
+    return [`${path}: ${JSON.stringify(a)?.slice(0, 120)} -> ${JSON.stringify(b)?.slice(0, 120)}`];
+  };
   check(
     "control's view is the same after its restart (apart from the new attempt)",
     strip(before) === strip(after),
+    diff(JSON.parse(strip(before)), JSON.parse(strip(after))).slice(0, 10),
   );
 
   // Supervisor down: the harness keeps running; the unit goes stale, then recovers.
