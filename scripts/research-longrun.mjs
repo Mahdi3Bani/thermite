@@ -9,7 +9,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join } from "node:path";
-import { api, command, dc, prepare, sleep, until } from "./lib/smoke-env.mjs";
+import { api, command, control, dc, prepare, sleep, until } from "./lib/smoke-env.mjs";
 
 const minutes = Number(process.env.MINUTES ?? "125");
 const SEEDS = (
@@ -174,7 +174,7 @@ const unitEvents = async () => {
   }
 };
 try {
-  await until("control health", async () => (await fetch("http://127.0.0.1:8800/v1/health")).ok);
+  await until("control health", async () => (await fetch(`${control}/v1/health`)).ok);
   await command("assign_campaign", {
     instance: "research-1",
     contract: parsed.contract,
@@ -200,7 +200,7 @@ try {
         "harness",
         "node",
         "-e",
-        `const fs=require("fs");for(const p of fs.readdirSync("/proc")){if(!/^\\d+$/.test(p))continue;try{if(fs.readFileSync("/proc/"+p+"/cmdline","utf8").includes("harness/main.js"))process.kill(Number(p),"SIGKILL")}catch{}}`,
+        `const fs=require("fs");for(const p of fs.readdirSync("/proc")){if(!/^\\d+$/.test(p)||Number(p)===process.pid)continue;try{if(fs.readFileSync("/proc/"+p+"/cmdline","utf8").split("\\0").some(a=>a.endsWith("harness/main.js")))process.kill(Number(p),"SIGKILL")}catch{}}`,
       );
       killed = true;
       console.log("killed the harness controller");

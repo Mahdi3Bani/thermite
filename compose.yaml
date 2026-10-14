@@ -22,7 +22,7 @@ services:
       - control-state:/var/lib/thermite-control
       - control-pub:/keys
     secrets: [control-admin-token, control-unit-tokens]
-    ports: ["127.0.0.1:8800:8800"]
+    ports: ["127.0.0.1:${THERMITE_CONTROL_PORT:-8800}:8800"]
     networks: [control]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]

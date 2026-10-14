@@ -8,14 +8,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 export const compose = (process.env.COMPOSE ?? "podman compose").split(" ");
-export const control = "http://127.0.0.1:8800";
+// THERMITE_PROJECT and THERMITE_CONTROL_PORT let a second stack (a long run) run beside the usual one.
+export const control = `http://127.0.0.1:${process.env.THERMITE_CONTROL_PORT ?? "8800"}`;
+const project = process.env.THERMITE_PROJECT ? ["-p", process.env.THERMITE_PROJECT] : [];
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export const sh = (cmd, args, opts = {}) =>
   execFileSync(cmd, args, { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"], ...opts });
 
 export function dc(env, ...args) {
-  return sh(compose[0], [...compose.slice(1), ...args], { env: { ...process.env, ...env } });
+  return sh(compose[0], [...compose.slice(1), ...project, ...args], {
+    env: { ...process.env, ...env },
+  });
 }
 
 export const secret = (n) => readFileSync(join(".dev", "secrets", n), "utf8").trim();
