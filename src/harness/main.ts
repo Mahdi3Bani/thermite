@@ -24,7 +24,7 @@ import { settlePropagations } from "./propagation.ts";
 import { Research } from "./research/research.ts";
 import { HarnessService, NOT_BEFORE_FILE, wipeIfRequested } from "./service.ts";
 import { CpuDriver } from "./targets/cpu.ts";
-import { CudaDriver } from "./targets/cuda.ts";
+import { CudaDriver, smiAsRun } from "./targets/cuda.ts";
 import type { TargetDriver } from "./targets/driver.ts";
 
 /** The harness controller: owns the ledger, serves the API and drives the executor. */
@@ -55,6 +55,9 @@ async function main(): Promise<void> {
     supervisor: env.THERMITE_SUPERVISOR_TOKEN || secretFromFile("THERMITE_SUPERVISOR_TOKEN_FILE"),
     proposer: env.THERMITE_PROPOSER_TOKEN || optionalSecretFromFile("THERMITE_PROPOSER_TOKEN_FILE"),
   };
+  const runner: Runner = env.THERMITE_BROKER_SOCKET
+    ? new BrokerClient(env.THERMITE_BROKER_SOCKET)
+    : new LocalRunner(paths.scratchDir);
   const target = env.THERMITE_TARGET ?? "cpu";
   let driver: TargetDriver;
   if (target === "cpu") driver = new CpuDriver(env.THERMITE_TARGET_CLASS ?? "generic-cpu");
@@ -62,6 +65,7 @@ async function main(): Promise<void> {
     driver = new CudaDriver({
       targetClass: env.THERMITE_TARGET_CLASS ?? "cuda-gpu",
       index: Number(env.THERMITE_GPU_INDEX ?? "0"),
+      smi: smiAsRun(runner, join(paths.scratchDir, "thermite", "gpu-query")),
     });
   } else throw new Error(`no target driver ${target}; this build has cpu and cuda-gpu`);
 
@@ -134,9 +138,6 @@ async function main(): Promise<void> {
   const reclaimed = ledger.reclaimLeases(executorId, "controller-start");
   if (reclaimed.length) log("harness", "reclaimed leases at start", { jobs: reclaimed });
 
-  const runner: Runner = env.THERMITE_BROKER_SOCKET
-    ? new BrokerClient(env.THERMITE_BROKER_SOCKET)
-    : new LocalRunner(paths.scratchDir);
   const devRuns = new DevRuns({
     runner,
     ledger,

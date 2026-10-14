@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, test } from "node:test";
-import { CudaDriver, decodeReasons, parseGpuRows } from "./cuda.ts";
+import { LocalRunner, type RunRequest } from "../broker/runner.ts";
+import { CudaDriver, decodeReasons, parseGpuRows, smiAsRun } from "./cuda.ts";
 
 // nvidia-smi --format=csv,noheader,nounits output shaped like a 16 GB Pascal card (no real host data).
 const IDLE =
@@ -18,6 +22,41 @@ function fake(row: string, reasons: string, apps = "") {
 }
 
 describe("cuda-gpu driver", () => {
+  test("nvidia-smi runs as the run user, in its own directory, and a failing query is retried", async () => {
+    const root = mkdtempSync(join(tmpdir(), "thermite-smi-"));
+    const bin = join(root, "bin");
+    mkdirSync(bin);
+    // A stand-in nvidia-smi: fails once, then answers with its arguments.
+    writeFileSync(
+      join(bin, "nvidia-smi"),
+      `#!/bin/sh\nif [ ! -f "${root}/failed" ]; then touch "${root}/failed"; exit 9; fi\necho "$@"\n`,
+    );
+    chmodSync(join(bin, "nvidia-smi"), 0o755);
+    const scratch = join(root, "scratch");
+    mkdirSync(scratch);
+    const local = new LocalRunner(scratch);
+    const seen: { role: string; cwd: string }[] = [];
+    const handed: string[] = [];
+    const runner = {
+      ...local,
+      run: (r: RunRequest) => {
+        seen.push({ role: r.role, cwd: r.cwd });
+        return local.run({ ...r, env: { ...r.env, PATH: `${bin}:/usr/bin:/bin` } });
+      },
+      handOver: async (path: string, role: string) => {
+        handed.push(`${role}:${path}`);
+        await local.handOver(path);
+      },
+    } as unknown as LocalRunner;
+    const dir = join(scratch, "thermite", "gpu-query");
+    const smi = smiAsRun(runner, dir);
+    assert.equal((await smi(["-L"])).trim(), "-L");
+    assert.equal((await smi(["-q"])).trim(), "-q");
+    assert.deepEqual(handed, [`run:${dir}`], "handed over once");
+    assert.ok(seen.every((s) => s.role === "run" && s.cwd === dir));
+    assert.equal(seen.length, 3, "the failed query was retried");
+  });
+
   test("parses nvidia-smi rows and clock event reasons", () => {
     const [r] = parseGpuRows(`${IDLE}\n`);
     assert.equal(r?.name, "Tesla P100-PCIE-16GB");

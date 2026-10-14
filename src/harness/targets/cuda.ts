@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
+import { mkdirSync } from "node:fs";
 import { promisify } from "node:util";
+import type { Runner } from "../broker/runner.ts";
 import type { Readiness, TargetDriver, TargetIdentity } from "./driver.ts";
 
 /**
@@ -223,4 +225,34 @@ export class CudaDriver implements TargetDriver {
   async recover(): Promise<Readiness> {
     return this.readyForTiming();
   }
+}
+
+/**
+ * nvidia-smi as the `run` user: the controller's own user may not open the GPU's device nodes
+ * (only `run` and the lanes' development users are in the gpu group). Without the broker (local
+ * development) it runs as the controller.
+ */
+export function smiAsRun(runner: Runner, dir: string): (args: string[]) => Promise<string> {
+  let ready: Promise<void> | undefined;
+  return async (args) => {
+    ready ??= (async () => {
+      mkdirSync(dir, { recursive: true });
+      await runner.handOver(dir, "run");
+    })();
+    await ready;
+    let last = "";
+    // A query can be caught by the judge killing the run user's processes after a timed run.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const r = await runner.run({
+        role: "run",
+        argv: ["nvidia-smi", ...args],
+        cwd: dir,
+        timeoutMs: 30_000,
+        captureBytes: 1024 * 1024,
+      });
+      if (r.exitCode === 0) return r.stdout;
+      last = `nvidia-smi exited ${r.exitCode ?? r.signal}: ${r.stderr.slice(-300)}`;
+    }
+    throw new Error(last);
+  };
 }
