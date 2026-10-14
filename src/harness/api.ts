@@ -192,6 +192,13 @@ export function createHarnessApi(
     });
   });
 
+  app.post("/v1/exports/done", supervisor, bodyLimit({ maxSize: 256 * 1024 }), async (c) => {
+    const body = z
+      .object({ names: z.array(z.string().max(80)).max(5000) })
+      .parse(await c.req.json());
+    return c.json({ removed: service.removeExports(body.names) });
+  });
+
   app.post("/v1/export", supervisor, async (c) => {
     const r = await service.export("supervisor");
     return c.json({

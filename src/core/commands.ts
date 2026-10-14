@@ -274,6 +274,9 @@ export function reportBody(r: {
   next: number;
   events: unknown[];
   summary: unknown;
+  /** When the harness made the report, and its newest event: control refuses stale reports. */
+  generated_at: string;
+  latest_event: number;
 }): unknown {
   return {
     unit: r.unit,
@@ -282,5 +285,7 @@ export function reportBody(r: {
     next: r.next,
     events: r.events,
     summary: r.summary,
+    generated_at: r.generated_at,
+    latest_event: r.latest_event,
   };
 }

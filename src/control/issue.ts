@@ -43,6 +43,9 @@ export function issueCommand(
     },
     privateKeyPem,
   );
+  // The harness takes commands up to 4 MiB: a bigger one could never be delivered.
+  if (Buffer.byteLength(JSON.stringify(signed)) > 3.5 * 1024 * 1024)
+    throw new Error(`the ${input.kind} command is too large to deliver`);
   store.enqueueCommand(signed);
   return { id: signed.envelope.id };
 }

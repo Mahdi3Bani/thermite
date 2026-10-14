@@ -1,8 +1,9 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { z } from "zod";
 
 /**
  * The supervisor's git exporter. The harness writes exports into the outbox (read-only here):
@@ -28,11 +29,15 @@ export interface ExportConfig {
   remote?: string | undefined;
   /** Deploy key for the remote (write access to the results repository only). */
   sshKeyFile?: string | undefined;
+  /** The results host's key (known_hosts); without it the first key seen is trusted. */
+  knownHostsFile?: string | undefined;
   ledgerEveryMs?: number | undefined;
 }
 
 export interface ExportState {
   done: string[];
+  /** Commits made since the last successful push (a push is retried until it succeeds). */
+  pushPending?: boolean | undefined;
   /** Exports committed here but not yet pushed to the remote. */
   unpushed?: string[] | undefined;
   /** The newest exports known to be on the remote (a full reset waits for its export here). */
@@ -70,20 +75,60 @@ function sha256(path: string): string {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
-/** Checks every file of an export against its manifest. Returns the problems. */
-export function verifyExport(dir: string): string[] {
+/** A single-quoted shell word (GIT_SSH_COMMAND is run by a shell). */
+const shq = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
+
+/** The ssh command for the results remote: the deploy key, and the host's key when pinned. */
+export function sshCommand(keyFile?: string, knownHostsFile?: string): Record<string, string> {
+  if (!keyFile) return {};
+  const hostKey = knownHostsFile
+    ? `-o UserKnownHostsFile=${shq(knownHostsFile)} -o StrictHostKeyChecking=yes`
+    : "-o StrictHostKeyChecking=accept-new";
+  return { GIT_SSH_COMMAND: `ssh -i ${shq(keyFile)} -o IdentitiesOnly=yes ${hostKey}` };
+}
+
+const Manifest = z.object({
+  from_event: z.number().int().min(0),
+  through_event: z.number().int().min(0),
+  full: z.boolean().optional(),
+  files: z.record(
+    z.string().regex(/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._()-]+)*$/),
+    z.string().regex(/^[0-9a-f]{64}$/),
+  ),
+});
+export type Manifest = z.infer<typeof Manifest>;
+
+/** A path in the export that is a regular file (never a link, a directory or a device). */
+function regularFile(path: string): boolean {
+  try {
+    return lstatSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Checks an export against its manifest: every listed file is a regular file with the listed
+ * hash, the events and the manifest are there, and nothing unsafe is named. Returns the
+ * problems and the manifest when it is valid.
+ */
+export function verifyExport(dir: string): { problems: string[]; manifest?: Manifest } {
   const manifestPath = join(dir, "manifest.json");
-  if (!existsSync(manifestPath)) return ["no manifest"];
-  const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
-    files: Record<string, string>;
-  };
+  if (!regularFile(manifestPath)) return { problems: ["no manifest (or not a regular file)"] };
+  let manifest: Manifest;
+  try {
+    manifest = Manifest.parse(JSON.parse(readFileSync(manifestPath, "utf8")));
+  } catch (err) {
+    return { problems: [`bad manifest: ${String(err).slice(0, 200)}`] };
+  }
   const bad: string[] = [];
+  if (!manifest.files["events.jsonl"]) bad.push("events.jsonl is not in the manifest");
   for (const [rel, sum] of Object.entries(manifest.files)) {
-    if (rel.includes("..") || rel.startsWith("/")) bad.push(`unsafe path ${rel}`);
-    else if (!existsSync(join(dir, rel))) bad.push(`missing ${rel}`);
+    if (rel.split("/").includes("..")) bad.push(`unsafe path ${rel}`);
+    else if (!regularFile(join(dir, rel))) bad.push(`missing or not a regular file: ${rel}`);
     else if (sha256(join(dir, rel)) !== sum) bad.push(`hash mismatch ${rel}`);
   }
-  return bad;
+  return bad.length ? { problems: bad } : { problems: [], manifest };
 }
 
 /** Adds files (path in tree -> file on disk) on top of a branch and commits. */
@@ -92,6 +137,7 @@ async function commitFiles(
   branch: string,
   files: Record<string, string>,
   message: string,
+  opts: { overwrite?: boolean } = {},
 ): Promise<string> {
   const ref = `refs/heads/${branch}`;
   const tip = await git(repo, ["rev-parse", "--verify", "--quiet", ref]).catch(() => "");
@@ -101,6 +147,14 @@ async function commitFiles(
     if (tip) await git(repo, ["read-tree", tip], { env });
     else await git(repo, ["read-tree", "--empty"], { env });
     for (const [path, file] of Object.entries(files)) {
+      // Published history is kept: an attempt, champion or source already on the branch is
+      // never replaced by a later export.
+      if (tip && !opts.overwrite) {
+        const exists = await git(repo, ["cat-file", "-e", `${tip}:${path}`])
+          .then(() => true)
+          .catch(() => false);
+        if (exists) continue;
+      }
       const blob = await git(repo, ["hash-object", "-w", "--", file]);
       await git(repo, ["update-index", "--add", "--cacheinfo", `100644,${blob},${path}`], { env });
     }
@@ -143,29 +197,18 @@ export async function exportOnce(cfg: ExportConfig, state: ExportState): Promise
       );
       if (have) continue;
       await git(repo, ["fetch", "--quiet", cfg.remote, `+refs/heads/${b}:refs/heads/${b}`], {
-        env: cfg.sshKeyFile
-          ? {
-              GIT_SSH_COMMAND: `ssh -i ${cfg.sshKeyFile} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new`,
-            }
-          : {},
+        env: sshCommand(cfg.sshKeyFile, cfg.knownHostsFile),
       }).catch(() => undefined);
     }
   }
-  let committed = false;
   for (const name of pending) {
     const dir = join(cfg.outboxDir, name);
-    const bad = verifyExport(dir);
-    if (bad.length) {
-      next.lastError = `export ${name} refused: ${bad.join("; ")}`;
+    const { problems, manifest } = verifyExport(dir);
+    if (!manifest) {
+      next.lastError = `export ${name} refused: ${problems.join("; ")}`;
       next.done.push(name); // never retried: a corrupt export is reported, not pushed
       continue;
     }
-    const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8")) as {
-      files: Record<string, string>;
-      from_event: number;
-      through_event: number;
-      full?: boolean;
-    };
     const files: Record<string, string> = {
       [`events/${name}.jsonl`]: join(dir, "events.jsonl"),
       [`exports/${name}.json`]: join(dir, "manifest.json"),
@@ -192,7 +235,7 @@ export async function exportOnce(cfg: ExportConfig, state: ExportState): Promise
       manifest.full === true ||
       !next.lastLedgerAt ||
       Date.now() - Date.parse(next.lastLedgerAt) >= (cfg.ledgerEveryMs ?? 24 * 3_600_000);
-    if (due && existsSync(join(dir, "ledger.sqlite"))) {
+    if (due && manifest.files["ledger.sqlite"]) {
       await commitFiles(
         repo,
         ledgerBranch,
@@ -201,12 +244,13 @@ export async function exportOnce(cfg: ExportConfig, state: ExportState): Promise
           "manifest.json": join(dir, "manifest.json"),
         },
         `${cfg.unit}: ledger snapshot through event ${manifest.through_event}`,
+        { overwrite: true },
       );
       next.lastLedgerAt = new Date().toISOString();
     }
     next.done.push(name);
     next.unpushed = [...(next.unpushed ?? []), name];
-    committed = true;
+    next.pushPending = true;
   }
   next.done = next.done.slice(-5000);
 
@@ -218,7 +262,7 @@ export async function exportOnce(cfg: ExportConfig, state: ExportState): Promise
       await git(path, ["init", "--bare", "--quiet"]);
     }
   }
-  if (cfg.remote && (committed || next.lastError?.startsWith("push"))) {
+  if (cfg.remote && next.pushPending) {
     const branches = [attemptsBranch, ledgerBranch];
     const have: string[] = [];
     for (const b of branches) {
@@ -228,16 +272,13 @@ export async function exportOnce(cfg: ExportConfig, state: ExportState): Promise
         have.push(`refs/heads/${b}:refs/heads/${b}`);
       }
     }
-    const sshEnv: Record<string, string> = cfg.sshKeyFile
-      ? {
-          GIT_SSH_COMMAND: `ssh -i ${cfg.sshKeyFile} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new`,
-        }
-      : {};
+    const sshEnv = sshCommand(cfg.sshKeyFile, cfg.knownHostsFile);
     try {
       if (have.length) await git(repo, ["push", "--quiet", cfg.remote, ...have], { env: sshEnv });
       next.lastPushAt = new Date().toISOString();
       next.pushed = [...(next.pushed ?? []), ...(next.unpushed ?? [])].slice(-50);
       next.unpushed = [];
+      next.pushPending = false;
       // What the remote now has: the owner can check this commit before confirming a wipe.
       next.pushedCommit =
         (await git(repo, [

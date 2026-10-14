@@ -143,7 +143,10 @@ describe("full reset", () => {
     assert.equal(env.ledger.getInstance("js-1")?.status, "paused");
     await step();
     assert.equal(state(), "exporting");
-    rs = await relayOnce(relay, rs); // the full export
+    rs = await relayOnce(relay, rs); // the full export (the supervisor's acknowledgement)
+    await step();
+    assert.equal(state(), "exporting", "waits for the harness's own record of the export");
+    rs = await relayOnce(relay, rs); // the harness's signed report carries it
     await step();
     assert.equal(state(), "verifying");
     const name = String(store.openReset("unit-a")?.export_name);
@@ -160,6 +163,7 @@ describe("full reset", () => {
     assert.equal(state(), "wiping");
     rs = await relayOnce(relay, rs);
     assert.ok(existsSync(join(env.paths.stateDir, WIPE_MARKER)));
+    rs = await relayOnce(relay, rs); // the harness's record of the wipe
     await step();
     assert.equal(state(), "done");
     assert.deepEqual(restarts, ["unit-a:harness,supervisor"]);

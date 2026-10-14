@@ -118,11 +118,15 @@ export interface UnitView {
   recent: StoredEvent[];
 }
 
-export function unitEvents(store: ControlStore, unit: string): StoredEvent[] {
+export function unitEvents(
+  store: ControlStore,
+  unit: string,
+  ledgerId?: string | null,
+): StoredEvent[] {
   const out: StoredEvent[] = [];
   let after = 0;
   for (;;) {
-    const page = store.events(unit, after, 5000) as StoredEvent[];
+    const page = store.events(unit, after, 5000, ledgerId) as StoredEvent[];
     out.push(...page);
     if (page.length < 5000) return out;
     after = (page.at(-1) as StoredEvent).seq;
@@ -137,8 +141,8 @@ export function unitView(
 ): UnitView | undefined {
   const u = store.units().find((x) => x.id === unit);
   if (!u) return undefined;
-  const all = unitEvents(store, unit);
-  const events = u.ledger_id ? all.filter((e) => e.ledger_id === u.ledger_id) : all;
+  // Only the current ledger's events, filtered in the query.
+  const events = unitEvents(store, unit, u.ledger_id);
   const instances = new Map<string, InstanceView>();
   const attempts = new Map<string, AttemptView>();
   const inst = (id: string): InstanceView => {
@@ -231,6 +235,11 @@ export function unitView(
         if (a) {
           a.lifecycle = String(b.lifecycle);
           a.updated_at = e.at;
+          // An attempt that left awaiting_approval (screened again, invalidated) waits no more.
+          if (a.lifecycle !== "awaiting_approval") {
+            const v = inst(a.instance);
+            v.pending_promotions = v.pending_promotions.filter((p) => p !== a.id);
+          }
         }
         break;
       }
@@ -322,10 +331,13 @@ export function unitView(
         });
         break;
       }
-      case "audit_decided": {
+      case "audit_decided":
+      case "audit_overridden": {
         for (const v of instances.values()) {
-          const a = v.audits.find((x) => x.attempt === e.subject);
-          if (a) a.decision = String(b.decision);
+          const a = v.audits.filter((x) => x.attempt === e.subject).at(-1);
+          if (a)
+            a.decision =
+              e.kind === "audit_overridden" ? "overridden by the owner" : String(b.decision);
         }
         break;
       }

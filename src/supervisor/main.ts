@@ -12,7 +12,7 @@ import { log, optionalSecretFromFile, requireEnv, secretFromFile } from "../comm
 import { type AdviseState, adviseOnce, emptyAdviseState } from "./advise.ts";
 import { AdvisorsConfig } from "./advisors.ts";
 import { type ExportState, exportOnce } from "./git-export.ts";
-import { type RelayState, relayOnce } from "./relay.ts";
+import { RelayError, type RelayState, relayOnce } from "./relay.ts";
 import { dailyReport } from "./report.ts";
 import { stageCommand } from "./staging.ts";
 
@@ -43,6 +43,7 @@ async function main(): Promise<void> {
   const controlToken = optionalSecretFromFile("THERMITE_CONTROL_TOKEN_FILE");
   const remote = env.THERMITE_RESULTS_REMOTE || undefined;
   const sshKeyFile = env.THERMITE_RESULTS_KEY_FILE || undefined;
+  const knownHostsFile = env.THERMITE_RESULTS_KNOWN_HOSTS || undefined;
   const inboxDir = env.THERMITE_INBOX_DIR ?? "/inbox";
   let wipeRequested = false;
   const cfg = {
@@ -53,7 +54,14 @@ async function main(): Promise<void> {
     controlToken,
     stage: (cmd: Parameters<typeof stageCommand>[1]) =>
       stageCommand(
-        { unit, inboxDir, resultsRepo: join(home, "results.git"), remote, sshKeyFile },
+        {
+          unit,
+          inboxDir,
+          resultsRepo: join(home, "results.git"),
+          remote,
+          sshKeyFile,
+          knownHostsFile,
+        },
         cmd,
       ),
     onDelivered: (kind: string, accepted: boolean) => {
@@ -69,6 +77,7 @@ async function main(): Promise<void> {
     workDir: home,
     remote,
     sshKeyFile,
+    knownHostsFile,
   };
   const advisorsFile = env.THERMITE_ADVISORS_FILE;
   const advisors = advisorsFile
@@ -134,6 +143,8 @@ async function main(): Promise<void> {
       }
       state = next;
     } catch (err) {
+      // Reporting failed; commands were still relayed. Keep whatever progress the round made.
+      if (err instanceof RelayError) state = err.state;
       log("supervisor", "relay error", { error: String(err) });
     }
     if (wipeRequested) {
@@ -155,7 +166,19 @@ async function main(): Promise<void> {
           error: next.lastError ?? null,
         });
       }
+      // Exports safe in the results repository (or, without a remote, committed here) leave
+      // the harness's outbox.
+      const safe = remote
+        ? (next.pushed ?? []).filter((n) => !(exportState.pushed ?? []).includes(n))
+        : next.done.filter((n) => !exportState.done.includes(n));
       exportState = next;
+      if (safe.length) {
+        await fetch(`${harnessUrl}/v1/exports/done`, {
+          method: "POST",
+          headers: { authorization: `Bearer ${harnessToken}`, "content-type": "application/json" },
+          body: JSON.stringify({ names: safe }),
+        }).catch((err) => log("supervisor", "outbox cleanup error", { error: String(err) }));
+      }
     } catch (err) {
       log("supervisor", "export error", { error: String(err) });
     }

@@ -26,7 +26,9 @@ export function metricsText(store: ControlStore, staleAfterMs: number, now = Dat
   help("thermite_unit_jobs", "gauge", "Judge jobs by state");
   for (const u of views) {
     for (const [state, n] of Object.entries(u.jobs)) {
-      lines.push(`thermite_unit_jobs{unit="${label(u.id)}",state="${label(state)}"} ${n}`);
+      lines.push(
+        `thermite_unit_jobs{unit="${label(u.id)}",state="${label(state)}"} ${Number(n) || 0}`,
+      );
     }
   }
   help("thermite_instance_champion_seq", "gauge", "Current champion sequence number");

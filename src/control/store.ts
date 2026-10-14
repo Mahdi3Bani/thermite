@@ -54,6 +54,14 @@ create table if not exists audit (
   action text not null,
   body text not null
 );
+-- Every ledger a unit has reported from; a ledger it has left is never accepted again.
+create table if not exists unit_ledger (
+  unit text not null,
+  ledger_id text not null,
+  first_seen text not null,
+  superseded_at text,
+  primary key (unit, ledger_id)
+);
 create table if not exists unit_report (
   id integer primary key autoincrement,
   unit text not null,
@@ -77,6 +85,7 @@ create table if not exists reset (
 `;
 
 export interface IngestReport {
+  generated_at?: string | undefined;
   unit: string;
   ledger_id: string;
   cursor: number;
@@ -105,13 +114,17 @@ export class ControlStore {
     if (!cols.includes("pubkey")) this.db.exec("alter table unit add column pubkey text");
     if (!cols.includes("pending_pubkey"))
       this.db.exec("alter table unit add column pending_pubkey text");
+    if (!cols.includes("report_at")) this.db.exec("alter table unit add column report_at text");
     if (!cols.includes("supervisor")) {
       this.db.exec("alter table unit add column supervisor text");
       this.db.exec("alter table unit add column supervisor_at text");
     }
   }
 
-  /** The supervisor's own figures for a unit (unsigned: it reports them about itself). */
+  /**
+   * The supervisor's own figures for a unit (unsigned: it reports them about itself). They never
+   * make a unit look live: only the harness's signed reports move last_seen.
+   */
   setSupervisor(unit: string, stats: unknown): void {
     const now = new Date().toISOString();
     this.db
@@ -119,7 +132,43 @@ export class ControlStore {
         `insert into unit (id, first_seen, last_seen, supervisor, supervisor_at) values (?, ?, ?, ?, ?)
          on conflict (id) do update set supervisor = excluded.supervisor, supervisor_at = excluded.supervisor_at`,
       )
-      .run(unit, now, now, canonicalJson(stats ?? {}), now);
+      .run(unit, now, new Date(0).toISOString(), canonicalJson(stats ?? {}), now);
+  }
+
+  /**
+   * Whether a signed report may be taken: not from a ledger the unit has left, starting no later
+   * than the stream control already has (no gap), and no older than the newest report taken.
+   */
+  reportCheck(
+    unit: string,
+    r: { ledgerId: string; cursor: number; generatedAt: string },
+  ): { ok: true } | { ok: false; reason: string; expectedCursor?: number } {
+    const left = this.db
+      .prepare(
+        "select 1 from unit_ledger where unit = ? and ledger_id = ? and superseded_at is not null",
+      )
+      .get(unit, r.ledgerId);
+    if (left) return { ok: false, reason: "a report from a ledger the unit has left" };
+    const u = this.db
+      .prepare("select ledger_id, last_cursor, report_at from unit where id = ?")
+      .get(unit) as Row | undefined;
+    if (!u || u.ledger_id === null || String(u.ledger_id) !== r.ledgerId) {
+      // A new ledger starts at the beginning.
+      return r.cursor === 0
+        ? { ok: true }
+        : { ok: false, reason: "a new ledger's events start at 0", expectedCursor: 0 };
+    }
+    if (r.cursor > Number(u.last_cursor)) {
+      return {
+        ok: false,
+        reason: "a gap in the event stream",
+        expectedCursor: Number(u.last_cursor),
+      };
+    }
+    if (u.report_at && r.generatedAt < String(u.report_at)) {
+      return { ok: false, reason: "a report older than the newest one taken" };
+    }
+    return { ok: true };
   }
 
   supervisor(unit: string): Record<string, unknown> | null {
@@ -234,13 +283,20 @@ export class ControlStore {
 
   /** A different key arrived: hold it until the owner accepts it. */
   holdKey(unit: string, pubkey: string): void {
-    this.db.prepare("update unit set pending_pubkey = ? where id = ?").run(pubkey, unit);
+    // A first key held for the owner has no unit row yet; the row does not make the unit live.
+    this.db
+      .prepare(
+        `insert into unit (id, first_seen, last_seen, pending_pubkey) values (?, ?, ?, ?)
+         on conflict (id) do update set pending_pubkey = excluded.pending_pubkey`,
+      )
+      .run(unit, new Date().toISOString(), new Date(0).toISOString(), pubkey);
     this.audit(`unit:${unit}`, "unit_key_changed", { fingerprint: fingerprint(pubkey) });
   }
 
-  acceptPendingKey(unit: string, actor: string): boolean {
+  /** Accepts the held key, but only the one with the fingerprint the owner checked. */
+  acceptPendingKey(unit: string, actor: string, fingerprintSeen: string): boolean {
     const { pending } = this.unitKey(unit);
-    if (!pending) return false;
+    if (!pending || fingerprint(pending) !== fingerprintSeen) return false;
     this.db
       .prepare("update unit set pubkey = pending_pubkey, pending_pubkey = null where id = ?")
       .run(unit);
@@ -272,12 +328,13 @@ export class ControlStore {
     return this.tx(() => {
       this.db
         .prepare(
-          `insert into unit (id, first_seen, last_seen, last_cursor, ledger_id, summary)
-           values (?, ?, ?, ?, ?, ?)
+          `insert into unit (id, first_seen, last_seen, last_cursor, ledger_id, summary, report_at)
+           values (?, ?, ?, ?, ?, ?, ?)
            on conflict (id) do update set last_seen = excluded.last_seen,
              last_cursor = case when unit.ledger_id = excluded.ledger_id
                then max(unit.last_cursor, excluded.last_cursor) else excluded.last_cursor end,
-             ledger_id = excluded.ledger_id, summary = excluded.summary`,
+             ledger_id = excluded.ledger_id, summary = excluded.summary,
+             report_at = excluded.report_at`,
         )
         .run(
           report.unit,
@@ -286,7 +343,17 @@ export class ControlStore {
           report.next,
           report.ledger_id,
           canonicalJson(report.summary ?? {}),
+          report.generated_at ?? now,
         );
+      // Ledger history: a new ledger supersedes the ones before it, for good.
+      this.db
+        .prepare(
+          "update unit_ledger set superseded_at = ? where unit = ? and ledger_id != ? and superseded_at is null",
+        )
+        .run(now, report.unit, report.ledger_id);
+      this.db
+        .prepare("insert or ignore into unit_ledger (unit, ledger_id, first_seen) values (?, ?, ?)")
+        .run(report.unit, report.ledger_id, now);
       let added = 0;
       const insert = this.db.prepare(
         `insert or ignore into unit_event (unit, ledger_id, event_id, at, actor, kind, subject, body,
@@ -343,14 +410,15 @@ export class ControlStore {
   }
 
   /** A unit's events in control's arrival order; `after` is a control `seq`, not an event id. */
-  events(unit: string, after: number, limit: number): unknown[] {
+  events(unit: string, after: number, limit: number, ledgerId?: string | null): unknown[] {
+    const byLedger = ledgerId ? " and ledger_id = ?" : "";
     return (
       this.db
         .prepare(
           `select seq, ledger_id, event_id, at, actor, kind, subject, body from unit_event
-             where unit = ? and seq > ? order by seq limit ?`,
+             where unit = ?${byLedger} and seq > ? order by seq limit ?`,
         )
-        .all(unit, after, limit) as Row[]
+        .all(...(ledgerId ? [unit, ledgerId, after, limit] : [unit, after, limit])) as Row[]
     ).map((r) => ({
       seq: Number(r.seq),
       ledger_id: String(r.ledger_id),
@@ -373,14 +441,39 @@ export class ControlStore {
     this.audit(e.issued_by, "command_issued", { id: e.id, unit: e.unit, kind: e.kind });
   }
 
+  /** A unit's pending commands, oldest first. Expired ones are marked expired, not relayed. */
   pendingCommands(unit: string): SignedCommand[] {
-    return (
-      this.db
-        .prepare(
-          "select signed from command where unit = ? and status = 'pending' order by issued_at",
-        )
-        .all(unit) as Row[]
-    ).map((r) => JSON.parse(String(r.signed)) as SignedCommand);
+    const now = Date.now();
+    const out: SignedCommand[] = [];
+    for (const r of this.db
+      .prepare(
+        "select id, signed from command where unit = ? and status = 'pending' order by issued_at",
+      )
+      .all(unit) as Row[]) {
+      const cmd = JSON.parse(String(r.signed)) as SignedCommand;
+      if (Date.parse(cmd.envelope.expires_at) < now) {
+        this.db
+          .prepare(
+            "update command set status = 'expired', acked_at = ? where id = ? and status = 'pending'",
+          )
+          .run(new Date().toISOString(), String(r.id));
+        this.audit("control", "command_expired", { id: String(r.id), unit });
+        continue;
+      }
+      out.push(cmd);
+    }
+    return out;
+  }
+
+  /** The owner withdraws a command that has not been delivered. */
+  cancelCommand(id: string, actor: string): boolean {
+    const r = this.db
+      .prepare(
+        "update command set status = 'failed', outcome = ?, acked_at = ? where id = ? and status = 'pending'",
+      )
+      .run(canonicalJson({ cancelled_by: actor }), new Date().toISOString(), id);
+    if (Number(r.changes)) this.audit(actor, "command_cancelled", { id });
+    return Number(r.changes) > 0;
   }
 
   ackCommand(

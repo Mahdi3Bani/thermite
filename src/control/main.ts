@@ -41,13 +41,22 @@ async function main(): Promise<void> {
       readFileSync(requireEnv("THERMITE_CONTROL_UNIT_TOKENS_FILE"), "utf8"),
     ) as Record<string, string>,
   };
+  // Each credential is distinct: the owner's, an agent's and a reader's must never coincide.
+  const given = [tokens.admin, tokens.agent, tokens.read].filter((t): t is string => Boolean(t));
+  if (new Set(given).size !== given.length)
+    throw new Error("the admin, agent and read tokens must all be different");
   const store = new ControlStore(join(dir, "control.db"));
   const { host, port } = parseListen(env.THERMITE_CONTROL_LISTEN ?? "0.0.0.0:8800");
   // A unit is stale after 3 missed reports (the supervisor reports every 60 s by default).
   const staleAfterMs = Number(env.THERMITE_CONTROL_STALE_SECONDS ?? "180") * 1000;
   const driver = driverFromEnv(env);
   const server = serve({
-    fetch: createControlApi(store, tokens, privateKeyPem, { staleAfterMs, driver }).fetch,
+    fetch: createControlApi(store, tokens, privateKeyPem, {
+      staleAfterMs,
+      driver,
+      // The owner accepts each unit's first report key (no trust on first use).
+      requireKeyAcceptance: env.THERMITE_CONTROL_REQUIRE_KEY_ACCEPT === "1",
+    }).fetch,
     hostname: host,
     port,
   });

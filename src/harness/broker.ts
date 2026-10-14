@@ -192,7 +192,15 @@ function wipeIfMarked(): boolean {
     for (const name of existsSync(dir) ? readdirSync(dir) : []) rm(join(dir, name));
   }
   mkdirSync(join(stateDir, "ledger"), { recursive: true });
-  writeFileSync(join(stateDir, "ledger", NOT_BEFORE_FILE), new Date().toISOString());
+  // The wipe command's issue time (control's clock), recorded in the marker by the controller.
+  let notBefore = new Date().toISOString();
+  try {
+    const at = (JSON.parse(readFileSync(marker, "utf8")) as { not_before?: string }).not_before;
+    if (at && Number.isFinite(Date.parse(at))) notBefore = at;
+  } catch {
+    // an unreadable marker: now
+  }
+  writeFileSync(join(stateDir, "ledger", NOT_BEFORE_FILE), notBefore);
   chownSync(join(stateDir, "ledger", NOT_BEFORE_FILE), TU, TG);
   rmSync(marker, { force: true });
   log("broker", "wiped the unit's state (full reset)");

@@ -23,6 +23,13 @@ export interface RelayState {
   cursor: number;
   /** The harness ledger the cursor belongs to. A new ledger id means start again at 0. */
   ledgerId?: string | undefined;
+  /** Events per report page; halved when control refuses a page as too large. */
+  pageLimit?: number | undefined;
+}
+
+interface Reply {
+  status: number;
+  body: Record<string, unknown>;
 }
 
 async function call(
@@ -30,7 +37,7 @@ async function call(
   url: string,
   token: string,
   init: RequestInit = {},
-): Promise<unknown> {
+): Promise<Reply> {
   const res = await f(url, {
     ...init,
     headers: {
@@ -40,98 +47,150 @@ async function call(
     },
   });
   const text = await res.text();
-  const body = text ? JSON.parse(text) : {};
-  if (!res.ok && res.status !== 403)
-    throw new Error(`${init.method ?? "GET"} ${url} -> ${res.status}: ${text.slice(0, 300)}`);
-  return Object.assign(body as object, { __status: res.status });
+  let body: Record<string, unknown> = {};
+  try {
+    body = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+  } catch {
+    body = { error: text.slice(0, 300) };
+  }
+  return { status: res.status, body };
 }
 
-/** One relay round. Returns the new state; the cursor advances only after control accepted the events. */
+const must = (r: Reply, what: string): Record<string, unknown> => {
+  if (r.status < 200 || r.status >= 300)
+    throw new Error(`${what} -> ${r.status}: ${JSON.stringify(r.body).slice(0, 300)}`);
+  return r.body;
+};
+
+/** A relay round whose reporting failed; its state still carries any progress made. */
+export class RelayError extends Error {
+  readonly state: RelayState;
+
+  constructor(message: string, state: RelayState) {
+    super(message);
+    this.state = state;
+  }
+}
+
+/**
+ * One relay round. The cursor advances only when control took the events. Commands are relayed
+ * even if reporting failed, each on its own: one command's failure never holds up the others.
+ */
 export async function relayOnce(cfg: RelayConfig, state: RelayState): Promise<RelayState> {
   const f = cfg.fetchImpl ?? fetch;
   let cursor = state.cursor;
   let ledgerId = state.ledgerId;
-  for (;;) {
-    let snap = (await call(
-      f,
-      `${cfg.harnessUrl}/v1/snapshot?cursor=${cursor}&limit=1000`,
-      cfg.harnessToken,
-    )) as {
-      ledger_id: string;
-      next: number;
-      events: unknown[];
-      summary: unknown;
-      unit_pubkey?: string;
-      signature?: string;
-    };
-    if (ledgerId !== undefined && snap.ledger_id !== ledgerId && cursor !== 0) {
-      // The harness ledger was reset or replaced: its events are numbered from 1 again.
-      log("supervisor", "harness ledger changed; restarting the cursor", {
-        from: ledgerId,
-        to: snap.ledger_id,
-      });
-      cursor = 0;
-      snap = (await call(
-        f,
-        `${cfg.harnessUrl}/v1/snapshot?cursor=0&limit=1000`,
-        cfg.harnessToken,
-      )) as typeof snap;
-    }
-    ledgerId = snap.ledger_id;
-    if (cfg.controlUrl && cfg.controlToken) {
-      await call(
-        f,
-        `${cfg.controlUrl}/v1/units/${encodeURIComponent(cfg.unit)}/ingest`,
-        cfg.controlToken,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            unit: cfg.unit,
-            ledger_id: snap.ledger_id,
+  let pageLimit = state.pageLimit ?? 1000;
+  let reportError: unknown;
+  try {
+    for (let pages = 0; pages < 10_000; pages++) {
+      let snap = must(
+        await call(
+          f,
+          `${cfg.harnessUrl}/v1/snapshot?cursor=${cursor}&limit=${pageLimit}`,
+          cfg.harnessToken,
+        ),
+        "snapshot",
+      ) as { ledger_id: string; next: number; events: unknown[] } & Record<string, unknown>;
+      if (ledgerId !== undefined && snap.ledger_id !== ledgerId && cursor !== 0) {
+        // The harness ledger was reset or replaced: its events are numbered from 1 again.
+        log("supervisor", "harness ledger changed; restarting the cursor", {
+          from: ledgerId,
+          to: snap.ledger_id,
+        });
+        cursor = 0;
+        snap = must(
+          await call(
+            f,
+            `${cfg.harnessUrl}/v1/snapshot?cursor=0&limit=${pageLimit}`,
+            cfg.harnessToken,
+          ),
+          "snapshot",
+        ) as typeof snap;
+      }
+      ledgerId = snap.ledger_id;
+      // A harness signing as another unit is a deployment mistake: say so, never report it on.
+      if (typeof snap.unit === "string" && snap.unit !== cfg.unit)
+        throw new Error(
+          `the harness reports as unit ${snap.unit}, but this supervisor is ${cfg.unit}`,
+        );
+      if (cfg.controlUrl && cfg.controlToken) {
+        // Passed through untouched: the supervisor cannot sign for the harness.
+        const r = await call(
+          f,
+          `${cfg.controlUrl}/v1/units/${encodeURIComponent(cfg.unit)}/ingest`,
+          cfg.controlToken,
+          { method: "POST", body: JSON.stringify(snap) },
+        );
+        if (r.status === 409 && typeof r.body.expected_cursor === "number") {
+          // Control has a different place in the stream (a gap, or a new ledger): go there.
+          if (r.body.expected_cursor === cursor) must(r, "ingest");
+          cursor = r.body.expected_cursor;
+          log("supervisor", "control asked for events from another cursor", {
             cursor,
-            next: snap.next,
-            events: snap.events,
-            summary: snap.summary,
-            // Passed through untouched: the supervisor cannot sign for the harness.
-            unit_pubkey: snap.unit_pubkey,
-            signature: snap.signature,
-          }),
-        },
-      );
+            reason: r.body.error,
+          });
+          continue;
+        }
+        if (r.status === 413 && pageLimit > 10) {
+          pageLimit = Math.max(10, Math.floor(pageLimit / 2));
+          log("supervisor", "report page too large; halving it", { page: pageLimit });
+          continue;
+        }
+        must(r, "ingest");
+      }
+      cursor = snap.next;
+      if (snap.events.length < pageLimit) break;
     }
-    cursor = snap.next;
-    if (snap.events.length < 1000) break;
+  } catch (err) {
+    reportError = err;
   }
   if (cfg.controlUrl && cfg.controlToken) {
-    const pending = (await call(
-      f,
-      `${cfg.controlUrl}/v1/units/${encodeURIComponent(cfg.unit)}/commands/pending`,
-      cfg.controlToken,
-    )) as { commands: SignedCommand[] };
-    for (const cmd of pending.commands) {
-      if (cfg.stage && (await cfg.stage(cmd)) === "wait") continue;
-      const outcome = (await call(f, `${cfg.harnessUrl}/v1/commands`, cfg.harnessToken, {
-        method: "POST",
-        body: JSON.stringify(cmd),
-      })) as { status?: string; accepted?: boolean; __status: number };
-      // Another request is applying it right now: acknowledge on a later round, from the replay.
-      if (outcome.status === "in_progress") continue;
-      const status =
-        outcome.__status === 403 ? "rejected" : outcome.accepted === false ? "failed" : "delivered";
-      const { __status: _s, ...clean } = outcome;
+    const pending = must(
       await call(
         f,
-        `${cfg.controlUrl}/v1/units/${encodeURIComponent(cfg.unit)}/commands/${cmd.envelope.id}/ack`,
+        `${cfg.controlUrl}/v1/units/${encodeURIComponent(cfg.unit)}/commands/pending`,
         cfg.controlToken,
-        { method: "POST", body: JSON.stringify({ status, outcome: clean }) },
-      );
-      log("supervisor", "relayed command", {
-        id: cmd.envelope.id,
-        kind: cmd.envelope.kind,
-        status,
-      });
-      cfg.onDelivered?.(cmd.envelope.kind, status === "delivered");
+      ),
+      "pending commands",
+    ) as { commands: SignedCommand[] };
+    for (const cmd of pending.commands) {
+      try {
+        if (cfg.stage && (await cfg.stage(cmd)) === "wait") continue;
+        const outcome = await call(f, `${cfg.harnessUrl}/v1/commands`, cfg.harnessToken, {
+          method: "POST",
+          body: JSON.stringify(cmd),
+        });
+        // Another request is applying it right now: acknowledge on a later round, from the replay.
+        if (outcome.body.status === "in_progress") continue;
+        const status =
+          outcome.status === 403
+            ? "rejected"
+            : outcome.status >= 300 || outcome.body.accepted === false
+              ? "failed"
+              : "delivered";
+        const reported =
+          outcome.status >= 300 && outcome.status !== 403
+            ? { http: outcome.status, error: outcome.body.error ?? null }
+            : outcome.body;
+        await call(
+          f,
+          `${cfg.controlUrl}/v1/units/${encodeURIComponent(cfg.unit)}/commands/${cmd.envelope.id}/ack`,
+          cfg.controlToken,
+          { method: "POST", body: JSON.stringify({ status, outcome: reported }) },
+        );
+        log("supervisor", "relayed command", {
+          id: cmd.envelope.id,
+          kind: cmd.envelope.kind,
+          status,
+        });
+        cfg.onDelivered?.(cmd.envelope.kind, status === "delivered");
+      } catch (err) {
+        log("supervisor", "command relay error", { id: cmd.envelope.id, error: String(err) });
+      }
     }
   }
-  return { cursor, ledgerId };
+  const next = { cursor, ledgerId, pageLimit };
+  if (reportError) throw new RelayError(String(reportError), next);
+  return next;
 }

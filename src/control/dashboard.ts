@@ -1,5 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { type Context, Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { getCookie, setCookie } from "hono/cookie";
 import { COMMAND_KINDS, type CommandKind } from "../core/commands.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
@@ -150,7 +151,7 @@ function supervisorLine(u: UnitView): string {
 function verdictPills(v: InstanceView): string {
   return Object.entries(v.verdicts)
     .sort((a, b) => b[1] - a[1])
-    .map(([k, n]) => `<span class="pill">${esc(k)} ${n}</span>`)
+    .map(([k, n]) => `<span class="pill">${esc(k)} ${Number(n) || 0}</span>`)
     .join("");
 }
 
@@ -241,8 +242,11 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
     const until = sid ? sessions.get(sid) : undefined;
     return sid && until && until > Date.now() ? sid : undefined;
   };
-  const sameBytes = (a: string, b: string) =>
-    a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+  const sameBytes = (a: string, b: string) => {
+    const x = Buffer.from(a);
+    const y = Buffer.from(b);
+    return x.length === y.length && timingSafeEqual(x, y);
+  };
 
   app.get("/ui/login", (c) =>
     c.html(
@@ -252,10 +256,20 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
 <button class="primary">Sign in</button></form></main></body></html>`,
     ),
   );
-  app.post("/ui/login", async (c) => {
+  // Failed sign-ins in the last minute: past 20, sign-in waits (the token is random, so this
+  // only slows a guesser and keeps the log readable).
+  let failures: number[] = [];
+  app.post("/ui/login", bodyLimit({ maxSize: 8 * 1024 }), async (c) => {
+    const now = Date.now();
+    failures = failures.filter((t) => t > now - 60_000);
+    if (failures.length >= 20) return c.text("too many failed sign-ins; wait a minute", 429);
     const form = await c.req.parseBody();
     const token = String(form.token ?? "");
-    if (!sameBytes(token, opts.adminToken)) return c.redirect("/ui/login", 303);
+    if (!sameBytes(token, opts.adminToken)) {
+      failures.push(now);
+      if (failures.length === 20) store.audit("control", "login_throttled", {});
+      return c.redirect("/ui/login", 303);
+    }
     const sid = randomBytes(24).toString("base64url");
     sessions.set(sid, Date.now() + SESSION_MS);
     setCookie(c, "thermite_session", sid, {
@@ -263,7 +277,9 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
       sameSite: "Strict",
       path: "/ui",
       maxAge: SESSION_MS / 1000,
-      secure: new URL(c.req.url).protocol === "https:",
+      // Behind a proxy that ends TLS, the proxy's header says the owner's side is HTTPS.
+      secure:
+        new URL(c.req.url).protocol === "https:" || c.req.header("x-forwarded-proto") === "https",
     });
     store.audit("owner:ui", "login", {});
     return c.redirect("/ui", 303);
@@ -274,7 +290,8 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
     if (c.req.path === "/ui/login") return next();
     const sid = sessionOf(c);
     if (!sid) return c.redirect("/ui/login", 303);
-    if (c.req.method === "POST") {
+    // Logging out needs no form token: the worst a forged logout does is sign the owner out.
+    if (c.req.method === "POST" && c.req.path !== "/ui/logout") {
       const form = await c.req.parseBody();
       if (!sameBytes(String(form.csrf ?? ""), csrfOf(sid))) return c.text("bad form token", 403);
     }
@@ -315,7 +332,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
 <td class="${u.stale ? "bad" : "ok"}">${u.stale ? "stale" : "live"}</td><td>${esc(ago(u.last_seen, now))}</td>
 <td>${inst || '<span class="muted">no campaign</span>'}</td>
 <td>${Object.entries(u.jobs)
-          .map(([k, n]) => `<span class="pill">${esc(k)} ${n}</span>`)
+          .map(([k, n]) => `<span class="pill">${esc(k)} ${Number(n) || 0}</span>`)
           .join("")}</td></tr>`;
       })
       .join("");
@@ -438,8 +455,8 @@ ${
 <p class="muted">Last report ${esc(ago(u.last_seen, now))} · ledger <code>${esc(u.ledger_id ?? "")}</code> · report key <code>${esc(key.pubkey ? fingerprint(key.pubkey) : "not pinned")}</code></p>
 ${
   key.pending
-    ? `<div class="card bad">This unit now signs its reports with a different key (<code>${esc(fingerprint(key.pending))}</code>), and its reports are refused until you accept it. Expected after the unit's state was wiped or rebuilt; otherwise, investigate first.
-<form class="inline" method="post" action="/ui/units/${encodeURIComponent(u.id)}/key/accept"><input type="hidden" name="csrf" value="${t}"><button class="primary">Accept the new key</button></form></div>`
+    ? `<div class="card bad">${key.pubkey ? "This unit now signs its reports with a different key" : "This unit's first report key waits for your acceptance"} (<code>${esc(fingerprint(key.pending))}</code>), and its reports are refused until you accept it. A full reset keeps a unit's key: a change is expected only when the unit's identity was rebuilt on purpose. Check the fingerprint with the unit's deployment before accepting.
+<form class="inline" method="post" action="/ui/units/${encodeURIComponent(u.id)}/key/accept"><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="fingerprint" value="${esc(fingerprint(key.pending))}"><button class="primary">Accept this key</button></form></div>`
     : ""
 }
 ${supervisorLine(u)}
@@ -456,8 +473,10 @@ ${instances || '<p class="muted">No campaign assigned.</p>'}<h2>Recent events</h
     );
   });
 
-  app.post("/ui/units/:unit/key/accept", (c) => {
-    store.acceptPendingKey(c.req.param("unit"), "owner:ui");
+  app.post("/ui/units/:unit/key/accept", async (c) => {
+    const f = await c.req.parseBody();
+    // Only the key whose fingerprint the owner saw: a key swapped in meanwhile is not accepted.
+    store.acceptPendingKey(c.req.param("unit"), "owner:ui", String(f.fingerprint ?? ""));
     return c.redirect(`/ui/units/${encodeURIComponent(c.req.param("unit"))}`, 303);
   });
 

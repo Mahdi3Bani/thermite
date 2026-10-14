@@ -219,6 +219,11 @@ const STEP_LIMIT_MS: Record<string, number> = {
 
 let advancing: Promise<void> | undefined;
 
+/** A command outcome that came from the harness's signed report, not from the supervisor. */
+function harnessConfirmed(outcome: unknown): boolean {
+  return (outcome as { source?: string } | null)?.source === "harness";
+}
+
 /**
  * Advances every open full reset by one step. Each step waits for evidence before the next:
  *
@@ -302,7 +307,8 @@ async function advanceOnce(input: {
         }
         case "exporting": {
           const c = store.command(String(r.command));
-          if (!c || c.status === "pending") break;
+          // The harness's own (signed) record of the command, not the supervisor's acknowledgement.
+          if (!c || c.status === "pending" || !harnessConfirmed(c.outcome)) break;
           const out = (c.outcome ?? {}) as {
             result?: { export?: string; through_event?: number };
           };
@@ -347,7 +353,7 @@ async function advanceOnce(input: {
         }
         case "wiping": {
           const c = store.command(String(r.command));
-          if (!c || c.status === "pending") break;
+          if (!c || c.status === "pending" || !harnessConfirmed(c.outcome)) break;
           if (c.status !== "delivered") {
             fail(`the harness refused the wipe: ${JSON.stringify(c.outcome).slice(0, 300)}`);
             break;

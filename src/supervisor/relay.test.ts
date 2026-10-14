@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { describe, test } from "node:test";
 import { createControlApi } from "../control/api.ts";
-import { ControlStore } from "../control/store.ts";
+import { ControlStore, fingerprint } from "../control/store.ts";
 import { generateSigningKeys, signEnvelope } from "../core/commands.ts";
 import { createHarnessApi } from "../harness/api.ts";
 import { makeHarnessEnv } from "../testing/harness-env.ts";
@@ -123,7 +123,9 @@ describe("supervisor relay between control and harness", () => {
     for (let i = 0; i < 3; i++) wiped.service.ledger.appendEvent("t", "new", null, { i });
     // A wiped harness also has a new signing key: control holds it until the owner accepts.
     await assert.rejects(relayOnce(cfg, state), /409/);
-    const accept = await control.request("/v1/units/unit-a/key/accept", {
+    // The owner accepts the key whose fingerprint they checked.
+    const pending = fingerprint(String(store.unitKey("unit-a").pending));
+    const accept = await control.request(`/v1/units/unit-a/key/accept?fingerprint=${pending}`, {
       method: "POST",
       headers: { authorization: `Bearer ${controlTokens.admin}` },
     });
@@ -187,6 +189,8 @@ describe("supervisor relay between control and harness", () => {
       next: 0,
       events: [],
       summary: {},
+      generated_at: new Date().toISOString(),
+      latest_event: 0,
     });
     assert.equal(
       (await control.request("/v1/units/unit-b/ingest", { method: "POST", headers: asA, body }))

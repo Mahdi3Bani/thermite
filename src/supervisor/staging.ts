@@ -5,6 +5,7 @@ import { dirname, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { log } from "../common/env.ts";
 import type { SignedCommand } from "../core/commands.ts";
+import { sshCommand } from "./git-export.ts";
 
 /**
  * Staging for commands that bring content. A `propagate` command names another unit's published
@@ -23,14 +24,11 @@ export interface StagingConfig {
   resultsRepo: string;
   remote?: string | undefined;
   sshKeyFile?: string | undefined;
+  knownHostsFile?: string | undefined;
 }
 
 function sshEnv(cfg: StagingConfig): Record<string, string> {
-  return cfg.sshKeyFile
-    ? {
-        GIT_SSH_COMMAND: `ssh -i ${cfg.sshKeyFile} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new`,
-      }
-    : {};
+  return sshCommand(cfg.sshKeyFile, cfg.knownHostsFile);
 }
 
 async function git(

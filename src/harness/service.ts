@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { sha256Hex } from "../core/canonical.ts";
@@ -83,13 +83,24 @@ export function wipeIfRequested(paths: HarnessPaths, keep: string[]): boolean {
     for (const name of existsSync(dir) ? readdirSync(dir) : []) remove(join(dir, name));
   }
   mkdirSync(join(paths.stateDir, "ledger"), { recursive: true });
-  writeFileSync(join(paths.stateDir, "ledger", NOT_BEFORE_FILE), new Date().toISOString());
+  writeFileSync(join(paths.stateDir, "ledger", NOT_BEFORE_FILE), notBeforeOf(marker));
   rmSync(marker, { force: true });
   return true;
 }
 
 /** Left by a wipe: the new ledger refuses commands issued before this time. */
 export const NOT_BEFORE_FILE = "NOT_BEFORE";
+
+/** The wipe command's issue time from a marker (control's clock), or now if it is missing. */
+export function notBeforeOf(marker: string): string {
+  try {
+    const at = (JSON.parse(readFileSync(marker, "utf8")) as { not_before?: string }).not_before;
+    if (at && Number.isFinite(Date.parse(at))) return at;
+  } catch {
+    // an unreadable marker: fall back to now
+  }
+  return new Date().toISOString();
+}
 
 export interface HarnessPaths {
   stateDir: string;
@@ -291,7 +302,7 @@ export class HarnessService {
         };
       }
       case "wipe_state":
-        return this.requestWipe(CommandPayloads.wipe_state.parse(payload), by);
+        return this.requestWipe(CommandPayloads.wipe_state.parse(payload), by, envelope.issued_at);
       case "approve_promotion":
         return this.approvePromotion(CommandPayloads.approve_promotion.parse(payload), by);
       case "accept_review": {
@@ -496,7 +507,11 @@ export class HarnessService {
    * The broker wipes at the next start (a marker is written and the controller exits), after
    * this command's result is delivered.
    */
-  private requestWipe(p: z.infer<(typeof CommandPayloads)["wipe_state"]>, by: string): unknown {
+  private requestWipe(
+    p: z.infer<(typeof CommandPayloads)["wipe_state"]>,
+    by: string,
+    issuedAt: string,
+  ): unknown {
     const exp = this.ledger.db
       .prepare("select id, through_event, manifest from export where path = ?")
       .get(p.export) as { id: number; through_event: number; manifest: string } | undefined;
@@ -520,7 +535,8 @@ export class HarnessService {
     }
     writeFileSync(
       join(this.paths.stateDir, WIPE_MARKER),
-      `${JSON.stringify({ export: p.export, by, at: new Date().toISOString() })}\n`,
+      // Commands issued before the wipe command (by control's clock) belonged to the old ledger.
+      `${JSON.stringify({ export: p.export, by, at: new Date().toISOString(), not_before: issuedAt })}\n`,
     );
     this.ledger.appendEvent(by, "wipe_requested", null, { export: p.export });
     // Exit after the result is on its way back; the broker restarts the controller, which wipes.
@@ -951,6 +967,8 @@ export class HarnessService {
       next: page.next,
       events: page.events,
       summary: this.ledger.summary(),
+      generated_at: this.clock().toISOString(),
+      latest_event: this.ledger.latestEventId(),
     };
     return this.unitKeys
       ? {
@@ -959,6 +977,23 @@ export class HarnessService {
           signature: signJson(reportBody(report), this.unitKeys.privateKeyPem),
         }
       : report;
+  }
+
+  /**
+   * Exports the supervisor has pushed (or committed, without a remote) leave the outbox, so it
+   * does not grow forever. Only recorded export names are removed.
+   */
+  removeExports(names: string[]): number {
+    let removed = 0;
+    for (const name of names) {
+      if (!/^[0-9TZ]+-[0-9a-f]{8}$/.test(name)) continue;
+      const known = this.ledger.db.prepare("select 1 from export where path = ?").get(name);
+      const dir = join(this.paths.outboxDir, name);
+      if (!known || !existsSync(dir)) continue;
+      rmSync(dir, { recursive: true, force: true });
+      removed++;
+    }
+    return removed;
   }
 
   /**

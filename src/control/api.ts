@@ -36,6 +36,12 @@ function eq(a: string, b: string): boolean {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
+/** A list size from a query string: a whole number from 1 to 5000, or the default. */
+function clampLimit(raw: string | undefined, fallback: number): number {
+  const n = Number(raw ?? fallback);
+  return Number.isInteger(n) ? Math.min(5000, Math.max(1, n)) : fallback;
+}
+
 function bearer(header: string | undefined): string {
   return header?.startsWith("Bearer ") ? header.slice(7) : "";
 }
@@ -48,7 +54,7 @@ const IngestBody = z.object({
   events: z.array(
     z.object({
       id: z.number().int().positive(),
-      at: z.string(),
+      at: z.iso.datetime(),
       actor: z.string(),
       kind: z.string(),
       subject: z.string().nullable(),
@@ -56,6 +62,8 @@ const IngestBody = z.object({
     }),
   ),
   summary: z.unknown(),
+  generated_at: z.iso.datetime(),
+  latest_event: z.number().int().min(0),
   unit_pubkey: z.string().min(1).optional(),
   signature: z.string().min(1).optional(),
 });
@@ -119,6 +127,8 @@ export interface ControlOptions {
   staleAfterMs: number;
   /** Restarts containers (Kubernetes or compose); none configured: restarts are refused. */
   driver?: DeploymentDriver | undefined;
+  /** Hold every unit's first report key for the owner's acceptance (no trust on first use). */
+  requireKeyAcceptance?: boolean | undefined;
 }
 
 export function createControlApi(
@@ -164,15 +174,36 @@ export function createControlApi(
       // Reports are signed by the harness: the supervisor relays them but cannot forge them.
       if (!body.signature || !body.unit_pubkey) return c.json({ error: "unsigned report" }, 400);
       const key = store.unitKey(unit);
-      if (!key.pubkey) store.pinKey(unit, body.unit_pubkey);
-      else if (key.pubkey.trim() !== body.unit_pubkey.trim()) {
-        if (key.pending?.trim() !== body.unit_pubkey.trim()) store.holdKey(unit, body.unit_pubkey);
-        return c.json({ error: "unit key changed: the owner must accept the new key" }, 409);
-      }
-      if (!verifyJson(reportBody(body), body.signature, store.unitKey(unit).pubkey as string)) {
+      const offered = body.unit_pubkey.trim();
+      // A key is pinned or held only if the report it came with verifies under it.
+      if (!verifyJson(reportBody(body), body.signature, offered)) {
         store.audit(`unit:${unit}`, "report_rejected", { reason: "bad signature" });
         return c.json({ error: "bad report signature" }, 403);
       }
+      if (!key.pubkey) {
+        // First contact: pinned, unless the owner must accept every unit's first key.
+        if (opts.requireKeyAcceptance) {
+          if (key.pending?.trim() !== offered) store.holdKey(unit, offered);
+          return c.json({ error: "the unit's key waits for the owner's acceptance" }, 409);
+        }
+        store.pinKey(unit, offered);
+      } else if (key.pubkey.trim() !== offered) {
+        if (key.pending?.trim() !== offered) store.holdKey(unit, offered);
+        return c.json({ error: "unit key changed: the owner must accept the new key" }, 409);
+      }
+      // Freshness and completeness: no report from a ledger this unit has left, no gap in the
+      // event stream, and nothing older than the newest report already taken.
+      const fresh = store.reportCheck(unit, {
+        ledgerId: body.ledger_id,
+        cursor: body.cursor,
+        generatedAt: body.generated_at,
+      });
+      if (!fresh.ok) {
+        store.audit(`unit:${unit}`, "report_refused", { reason: fresh.reason });
+        return c.json({ error: fresh.reason, expected_cursor: fresh.expectedCursor }, 409);
+      }
+      if (Date.parse(body.generated_at) > Date.now() + 5 * 60_000)
+        return c.json({ error: "report from the future" }, 409);
       return c.json({ added: store.ingest(body as IngestReport) });
     },
   );
@@ -181,11 +212,27 @@ export function createControlApi(
     c.json({ commands: store.pendingCommands(c.req.param("unit")) }),
   );
 
-  app.post("/v1/units/:unit/commands/:id/ack", unitAuth, async (c) => {
-    const body = AckBody.parse(await c.req.json());
-    const ok = store.ackCommand(c.req.param("unit"), c.req.param("id"), body.status, body.outcome);
-    return ok ? c.json({ ok }) : c.json({ error: "no such pending command" }, 404);
-  });
+  app.post("/v1/commands/:id/cancel", admin, (c) =>
+    store.cancelCommand(c.req.param("id"), "owner:api")
+      ? c.json({ cancelled: true })
+      : c.json({ error: "no such pending command" }, 404),
+  );
+
+  app.post(
+    "/v1/units/:unit/commands/:id/ack",
+    unitAuth,
+    bodyLimit({ maxSize: 256 * 1024 }),
+    async (c) => {
+      const body = AckBody.parse(await c.req.json());
+      const ok = store.ackCommand(
+        c.req.param("unit"),
+        c.req.param("id"),
+        body.status,
+        body.outcome,
+      );
+      return ok ? c.json({ ok }) : c.json({ error: "no such pending command" }, 404);
+    },
+  );
 
   // The supervisor's own figures and its daily report (unsigned: the supervisor reports itself).
   app.post(
@@ -208,7 +255,7 @@ export function createControlApi(
   app.get("/v1/reports", admin, (c) =>
     c.json({
       reports: store.reports(
-        Number(c.req.query("limit") ?? "20"),
+        clampLimit(c.req.query("limit"), 20),
         c.req.query("unit") || undefined,
       ),
     }),
@@ -289,21 +336,28 @@ export function createControlApi(
 
   app.get("/v1/units", admin, (c) => c.json({ units: store.units() }));
 
-  app.get("/metrics", admin, (c) =>
+  // Metrics: the read token is enough (a scraper should not hold the owner's credential).
+  const reader: MiddlewareHandler = async (c, next) => {
+    const t = bearer(c.req.header("authorization"));
+    if (!eq(t, tokens.admin) && !(tokens.read && eq(t, tokens.read)))
+      return c.json({ error: "unauthorized" }, 401);
+    await next();
+  };
+  app.get("/metrics", reader, (c) =>
     c.text(metricsText(store, opts.staleAfterMs), 200, {
       "content-type": "text/plain; version=0.0.4",
     }),
   );
 
   app.post("/v1/units/:unit/key/accept", admin, (c) =>
-    store.acceptPendingKey(c.req.param("unit"), "owner:api")
+    store.acceptPendingKey(c.req.param("unit"), "owner:api", c.req.query("fingerprint") ?? "")
       ? c.json({ accepted: true })
       : c.json({ error: "no pending key" }, 404),
   );
 
   app.get("/v1/units/:unit/events", admin, (c) => {
-    const after = Number(c.req.query("after") ?? "0");
-    const limit = Math.min(Number(c.req.query("limit") ?? "500"), 5000);
+    const after = Math.max(0, Math.trunc(Number(c.req.query("after") ?? "0")) || 0);
+    const limit = clampLimit(c.req.query("limit"), 500);
     return c.json({ events: store.events(c.req.param("unit"), after, limit) });
   });
 
@@ -324,11 +378,11 @@ export function createControlApi(
   });
 
   app.get("/v1/commands", admin, (c) =>
-    c.json({ commands: store.listCommands(Number(c.req.query("limit") ?? "100")) }),
+    c.json({ commands: store.listCommands(clampLimit(c.req.query("limit"), 100)) }),
   );
 
   app.get("/v1/audit", admin, (c) =>
-    c.json({ audit: store.listAudit(Number(c.req.query("limit") ?? "200")) }),
+    c.json({ audit: store.listAudit(clampLimit(c.req.query("limit"), 200)) }),
   );
 
   app.get("/v1/units/:unit/view", admin, (c) => {
