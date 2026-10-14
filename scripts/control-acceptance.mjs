@@ -261,7 +261,18 @@ try {
       jobs: null,
       instances: v.instances.map((i) => ({
         ...i,
+        // The attempt judged while control was down is new; everything else must match.
         attempts: i.attempts.filter((a) => a.id !== attempt),
+        verdicts: Object.fromEntries(
+          Object.entries(i.verdicts)
+            .map(([k, n]) => [
+              k,
+              n -
+                i.attempts.filter((a) => a.id === attempt && (a.verdict ?? a.lifecycle) === k)
+                  .length,
+            ])
+            .filter(([, n]) => n > 0),
+        ),
       })),
     });
   check(
