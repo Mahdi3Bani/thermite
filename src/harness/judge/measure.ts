@@ -51,6 +51,8 @@ export interface MeasureContext {
   kit: Kit;
   kitDir: string;
   runsDir: string;
+  /** The imported models (`<sha256>` files, read-only): `{models:<sha256>}` in run and check. */
+  modelsDir: string;
 }
 
 /**
@@ -108,6 +110,7 @@ export async function runArm(ctx: MeasureContext, arm: Arm, cell: string): Promi
         params_json: join(work, "params.json"),
         out,
         kit: "/nonexistent",
+        models: ctx.modelsDir,
       }),
       cwd: work,
       env: {},
@@ -138,6 +141,7 @@ export async function runArm(ctx: MeasureContext, arm: Arm, cell: string): Promi
       params_json: join(dir, "params.json"),
       out,
       kit: ctx.kitDir,
+      models: ctx.modelsDir,
     });
     if (!check.pass) {
       return {

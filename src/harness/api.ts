@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
+import { laneLimits } from "../core/contract.ts";
 import { Registry } from "./agents/registry.ts";
 import { type Role, type Runner, RunRequest } from "./broker/runner.ts";
 import { LedgerError } from "./ledger.ts";
@@ -69,7 +70,15 @@ export interface HarnessApiExtras {
    */
   lanes?: { runner: Runner; laneTool: string[] } | undefined;
   /** Agents' development runs on the device (judge first), bound to the calling trial. */
-  devRuns?: { run(input: unknown, trial: string): Promise<unknown> } | undefined;
+  devRuns?:
+    | {
+        run(
+          input: unknown,
+          trial: string,
+          limits?: { rssMib: number; diskMib: number },
+        ): Promise<unknown>;
+      }
+    | undefined;
   /** Research mode: the harness's fetcher, corpus and claim ledger. */
   research?: Research | undefined;
 }
@@ -244,6 +253,10 @@ export function createHarnessApi(
     if (req.gpu) throw new Unauthorized("device runs go through dev_run");
     if (!inside(req.cwd) || (req.disk && !inside(req.disk.path)))
       throw new Unauthorized("outside the trial's workspace");
+    // The contract's lane limits (defaults when it sets none) bound every lane command.
+    const limits = laneLimits(service.contractFor(trial.instance));
+    const rssCap = limits.runRssMib * 1024 ** 2;
+    const diskCap = limits.workspaceMib * 1024 ** 2;
     let argv: string[];
     if (req.argv[0] === "lanetool") argv = [...lanes.laneTool, ...req.argv.slice(1)];
     else if (req.argv.length === 3 && req.argv[0] === "sh" && req.argv[1] === "-c") argv = req.argv;
@@ -253,12 +266,10 @@ export function createHarnessApi(
       argv,
       cwd: req.cwd,
       env: {},
-      timeoutMs: Math.min(req.timeoutMs, 600_000),
-      rssLimitBytes: Math.min(req.rssLimitBytes ?? 2 * 1024 ** 3, 2 * 1024 ** 3),
+      timeoutMs: Math.min(req.timeoutMs, limits.runTimeoutS * 1000),
+      rssLimitBytes: Math.min(req.rssLimitBytes ?? rssCap, rssCap),
       ...(req.disk
-        ? {
-            disk: { path: req.disk.path, limitBytes: Math.min(req.disk.limitBytes, 2 * 1024 ** 3) },
-          }
+        ? { disk: { path: req.disk.path, limitBytes: Math.min(req.disk.limitBytes, diskCap) } }
         : {}),
       ...(req.stdin !== undefined ? { stdin: req.stdin } : {}),
       captureBytes: Math.min(req.captureBytes ?? 64 * 1024, 32 * 1024 * 1024),
@@ -272,7 +283,18 @@ export function createHarnessApi(
     const body = z
       .object({ command: z.string(), timeout_s: z.number().optional(), cwd: z.string() })
       .parse(await c.req.json());
-    return c.json((await extras.devRuns.run({ ...body, lane: trial.lane }, trial.id)) as object);
+    const limits = laneLimits(service.contractFor(trial.instance));
+    return c.json(
+      (await extras.devRuns.run(
+        {
+          ...body,
+          timeout_s: Math.min(Math.trunc(body.timeout_s ?? 120), limits.devRunTimeoutS),
+          lane: trial.lane,
+        },
+        trial.id,
+        { rssMib: limits.devRunRssMib, diskMib: limits.workspaceMib },
+      )) as object,
+    );
   });
 
   app.post("/v1/research/:op", bodyLimit({ maxSize: 1024 * 1024 }), async (c) => {

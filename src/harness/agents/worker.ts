@@ -1,5 +1,6 @@
 import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type TSchema, Type } from "@earendil-works/pi-ai";
+import { type LaneLimitValues, laneLimits } from "../../core/contract.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
 
@@ -27,6 +28,8 @@ export interface TrialSpec {
   brief: string;
   wallMs: number;
   maxTurns: number;
+  /** The contract's lane limits (the server enforces them too). */
+  limits?: LaneLimitValues | undefined;
 }
 
 export interface SubmitOutcome {
@@ -126,6 +129,8 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
     },
   });
 
+  // Without the contract's limits: the defaults (the server enforces the contract's own).
+  const limits = spec.limits ?? laneLimits({ lanes: { count: 1, trials_per_epoch: 1 } });
   const tools: AgentTool[] = [
     tool(
       "list_files",
@@ -182,16 +187,19 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
     ),
     tool(
       "run",
-      "Run a shell command in the repository (build, test, inspect). Output is truncated. Timings from here never count.",
+      `Run a shell command in the repository (build, test, inspect). Output is truncated. Timings from here never count. Limits: ${limits.runTimeoutS} s per command (timeout_s, default 120), ${limits.runRssMib} MiB of memory, ${limits.workspaceMib} MiB of disk for the workspace.`,
       Type.Object({ command: Type.String(), timeout_s: Type.Optional(Type.Number()) }),
       async (p) => {
         const r = await deps.runner.run({
           role: spec.lane,
           argv: ["sh", "-c", String(p.command)],
           cwd: spec.workspace,
-          timeoutMs: Math.min(Number(p.timeout_s ?? 120), 600) * 1000,
-          rssLimitBytes: 2 * 1024 * 1024 * 1024,
-          disk: { path: spec.workspaceRoot ?? spec.workspace, limitBytes: 2 * 1024 * 1024 * 1024 },
+          timeoutMs: Math.min(Number(p.timeout_s ?? 120), limits.runTimeoutS) * 1000,
+          rssLimitBytes: limits.runRssMib * 1024 * 1024,
+          disk: {
+            path: spec.workspaceRoot ?? spec.workspace,
+            limitBytes: limits.workspaceMib * 1024 * 1024,
+          },
           captureBytes: 32 * 1024,
         });
         return text(
@@ -201,14 +209,14 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
     ),
     tool(
       "dev_run",
-      "Run a command on the measurement device (for example a GPU) when the judge is not using it. Use it to check that your change works on the real target. Results are diagnostic only.",
+      `Run a command on the measurement device (for example a GPU) when the judge is not using it. Use it to check that your change works on the real target. Results are diagnostic only. Limit: ${limits.devRunTimeoutS} s (timeout_s, default 120).`,
       Type.Object({ command: Type.String(), timeout_s: Type.Optional(Type.Number()) }),
       async (p) => {
         if (!deps.devRun) return text("dev_run is not available for this campaign; use run.");
         const r = await deps.devRun({
           lane: spec.lane,
           command: String(p.command),
-          timeoutS: Math.min(Number(p.timeout_s ?? 120), 300),
+          timeoutS: Math.min(Number(p.timeout_s ?? 120), limits.devRunTimeoutS),
         });
         return text(JSON.stringify(r).slice(0, 16_000));
       },
@@ -277,9 +285,9 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
     ),
   ];
 
-  const { models, model } = buildModel(deps.model);
+  const { models, model, thinkingLevel } = buildModel(deps.model);
   const agent = new Agent({
-    initialState: { systemPrompt: SYSTEM, model, tools },
+    initialState: { systemPrompt: SYSTEM, model, tools, thinkingLevel },
     streamFn: models.streamSimple.bind(models),
     // One tool call at a time: lane processes are killed by user when a tool finishes, so
     // parallel calls would kill each other, and a submission must end the trial before anything

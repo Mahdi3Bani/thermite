@@ -320,7 +320,14 @@ export class Judge {
     // Reachable by exact (unguessable) path only: no role may list in-flight runs.
     chmodSync(join(this.o.service.paths.scratchDir, "runs"), 0o711);
     chmodSync(runsDir, 0o711);
-    return { runner: this.o.runner, store: this.store, kit: k.kit, kitDir: k.dir, runsDir };
+    return {
+      runner: this.o.runner,
+      store: this.store,
+      kit: k.kit,
+      kitDir: k.dir,
+      runsDir,
+      modelsDir: join(this.o.service.paths.stateDir, "models"),
+    };
   }
 
   private async ready(): Promise<Record<string, unknown>> {

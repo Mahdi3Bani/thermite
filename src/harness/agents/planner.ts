@@ -232,12 +232,13 @@ export async function plan(input: PlannerInput, model?: ModelConfig): Promise<Pl
 }
 
 async function callPlanner(cfg: ModelConfig, context: string): Promise<unknown> {
-  const { models, model } = buildModel(cfg);
+  const { models, model, thinkingLevel } = buildModel(cfg);
   let captured: unknown;
   const agent = new Agent({
     initialState: {
       systemPrompt: SYSTEM,
       model,
+      thinkingLevel,
       tools: [
         {
           name: "submit_plan",

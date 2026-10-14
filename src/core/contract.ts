@@ -38,6 +38,23 @@ const SearchPolicy = z.strictObject({
   blocked_patterns: z.array(RegexSchema).default([]),
 });
 
+/**
+ * What a worker's lane may use. Optional and without schema defaults, so contracts written
+ * before it keep their hash; laneLimits() fills the defaults.
+ */
+const LaneLimits = z.strictObject({
+  /** One shell or lane-tool command (a build, a test). */
+  run_timeout_s: z.number().int().min(10).max(7200).optional(),
+  run_rss_mib: z.number().int().min(256).max(16_384).optional(),
+  /** The trial's workspace, build trees included. */
+  workspace_mib: z.number().int().min(256).max(65_536).optional(),
+  /** One development run on the measurement device. */
+  dev_run_timeout_s: z.number().int().min(10).max(3600).optional(),
+  dev_run_rss_mib: z.number().int().min(256).max(16_384).optional(),
+  /** A worker's whole trial. Unset: the unit's default (THERMITE_TRIAL_MINUTES). */
+  trial_minutes: z.number().int().min(1).max(1440).optional(),
+});
+
 const Common = {
   schema_version: z.literal(1),
   campaign: IdSchema,
@@ -54,6 +71,8 @@ const Common = {
     .strictObject({
       count: z.number().int().min(1).max(64),
       trials_per_epoch: z.number().int().min(1).default(3),
+      /** Raised limits for heavy projects (see laneLimits for the defaults). */
+      limits: LaneLimits.optional(),
     })
     .default({ count: 2, trials_per_epoch: 3 }),
   budget: z
@@ -307,6 +326,28 @@ export function parseContract(input: unknown): ContractParse {
 }
 
 /** The content hash of a validated contract: sha256 of its canonical JSON. */
+export interface LaneLimitValues {
+  runTimeoutS: number;
+  runRssMib: number;
+  workspaceMib: number;
+  devRunTimeoutS: number;
+  devRunRssMib: number;
+  trialMinutes?: number | undefined;
+}
+
+/** A contract's lane limits, with the defaults for anything it leaves out. */
+export function laneLimits(contract: Pick<Contract, "lanes">): LaneLimitValues {
+  const l = contract.lanes.limits ?? {};
+  return {
+    runTimeoutS: l.run_timeout_s ?? 600,
+    runRssMib: l.run_rss_mib ?? 2048,
+    workspaceMib: l.workspace_mib ?? 2048,
+    devRunTimeoutS: l.dev_run_timeout_s ?? 300,
+    devRunRssMib: l.dev_run_rss_mib ?? 4096,
+    trialMinutes: l.trial_minutes,
+  };
+}
+
 export function contractSha(contract: Contract): string {
   return canonicalSha(contract);
 }

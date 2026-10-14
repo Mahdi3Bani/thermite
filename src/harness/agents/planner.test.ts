@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { startFakeModel } from "../../testing/fake-model.ts";
+import { modelConfigFromEnv } from "./model.ts";
 import { fallbackPlan, type PlannerInput, plan, validatePlan } from "./planner.ts";
 
 const base: PlannerInput = {
@@ -107,5 +108,24 @@ describe("planner", () => {
     assert.equal(q.valid, false);
     assert.equal(q.assignments.length, 2);
     await never.close();
+  });
+
+  test("reasoning effort is sent only when configured; off sends none", async () => {
+    const seen: (string | undefined)[] = [];
+    const fake = await startFakeModel(({ reasoning_effort }) => {
+      seen.push(reasoning_effort);
+      return { text: "no plan" };
+    });
+    const env = { QWEN_BASE_URL: fake.url, QWEN_MODEL: "m", QWEN_API_KEY: "k" };
+    for (const effort of [undefined, "none", "high"]) {
+      const cfg = modelConfigFromEnv({ ...env, QWEN_REASONING_EFFORT: effort });
+      assert.ok(cfg);
+      seen.length = 0;
+      await plan(base, cfg);
+      assert.ok(seen.length > 0);
+      assert.deepEqual(new Set(seen), new Set([effort]));
+    }
+    assert.throws(() => modelConfigFromEnv({ ...env, QWEN_REASONING_EFFORT: "max" }), /must be/);
+    await fake.close();
   });
 });

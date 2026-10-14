@@ -140,9 +140,9 @@ export async function runResearchTrial(
     ),
   ];
 
-  const { models, model } = buildModel(deps.model);
+  const { models, model, thinkingLevel } = buildModel(deps.model);
   const agent = new Agent({
-    initialState: { systemPrompt: SYSTEM, model, tools },
+    initialState: { systemPrompt: SYSTEM, model, tools, thinkingLevel },
     streamFn: models.streamSimple.bind(models),
     // One tool call at a time: each is a request to the harness, in the order the model chose.
     toolExecution: "sequential",

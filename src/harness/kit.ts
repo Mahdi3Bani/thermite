@@ -12,6 +12,8 @@ import { z } from "zod";
  *   {build}  the verified build directory of the arm being run (read-only)
  *   {params} a file with the cell's parameters as key=value lines ({params_json}: as JSON)
  *   {out}    the run's output directory
+ *   {models} the imported models, one read-only file per sha256: `{models:<sha256>}` (run and
+ *            check only; the contract's `models` list names them)
  */
 
 const Argv = z.array(z.string().min(1)).min(1);

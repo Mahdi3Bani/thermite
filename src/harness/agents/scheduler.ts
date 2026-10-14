@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { join } from "node:path";
 import type { StructuredDirective } from "../../core/commands.ts";
-import type { Contract, ResearchContract } from "../../core/contract.ts";
+import { type Contract, laneLimits, type ResearchContract } from "../../core/contract.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import type { Ledger } from "../ledger.ts";
 import type { Research } from "../research/research.ts";
@@ -688,7 +689,9 @@ export class Scheduler {
             instance,
             lane: a.lane,
             brief,
-            wallMs: this.o.trialWallMs,
+            wallMs: laneLimits(contract).trialMinutes
+              ? (laneLimits(contract).trialMinutes as number) * 60_000
+              : this.o.trialWallMs,
             maxTurns: this.o.maxTurns,
           },
           abort.signal,
@@ -737,6 +740,7 @@ export class Scheduler {
         parent,
         token,
       });
+      const limits = laneLimits(contract);
       let ws: { dir: string; repo: string } | undefined;
       let r: TrialResult = { stopped: "error", turns: 0, toolCalls: 0, tokensIn: 0, tokensOut: 0 };
       try {
@@ -772,8 +776,9 @@ export class Scheduler {
                 ? `the champion (seq ${champion.seq})`
                 : `your lane's best attempt ${best}`,
             ),
-            wallMs: this.o.trialWallMs,
+            wallMs: limits.trialMinutes ? limits.trialMinutes * 60_000 : this.o.trialWallMs,
             maxTurns: this.o.maxTurns,
+            limits,
           },
           abort.signal,
         );
@@ -841,6 +846,11 @@ export class Scheduler {
         ? `Changes may not add lines matching: ${contract.forbidden_patterns.join(", ")}`
         : "",
       `Starting point: ${start}.`,
+      contract.models.length
+        ? `Models (read-only; open them by these exact paths in run or dev_run): ${contract.models
+            .map((m) => `${m.name} at ${join(this.o.service.paths.stateDir, "models", m.sha256)}`)
+            .join("; ")}`
+        : "",
       `Direction: ${a.family}${fam ? ` (${fam.description})` : ""}`,
       `Focus: ${a.focus}`,
       "",

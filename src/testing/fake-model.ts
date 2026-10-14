@@ -14,6 +14,8 @@ export interface ScriptedTurn {
 export type Script = (req: {
   messages: { role: string; content?: unknown; tool_calls?: unknown; name?: string }[];
   tools: { function: { name: string } }[];
+  /** The request's reasoning_effort, when one was sent. */
+  reasoning_effort?: string | undefined;
 }) => ScriptedTurn;
 
 export interface FakeModel {
@@ -37,7 +39,11 @@ export async function startFakeModel(script: Script): Promise<FakeModel> {
       }
       state.requests++;
       const parsed = JSON.parse(body) as Parameters<Script>[0] & { model: string };
-      const turn = script({ messages: parsed.messages, tools: parsed.tools ?? [] });
+      const turn = script({
+        messages: parsed.messages,
+        tools: parsed.tools ?? [],
+        reasoning_effort: parsed.reasoning_effort,
+      });
       const id = `chatcmpl-${++n}`;
       const chunk = (delta: unknown, finish: string | null) =>
         `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created: 0, model: parsed.model, choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;

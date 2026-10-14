@@ -199,6 +199,88 @@ describe("worker trial", () => {
     assert.equal((await run({ argv: ["sh", "-c", "echo"] })).status, 404);
   });
 
+  test("lane commands and dev runs are held to the contract's lane limits", async () => {
+    const env = makeJudgeEnv({
+      contract: {
+        lanes: {
+          count: 2,
+          trials_per_epoch: 1,
+          limits: {
+            run_timeout_s: 30,
+            run_rss_mib: 512,
+            workspace_mib: 1024,
+            dev_run_timeout_s: 45,
+          },
+        },
+      },
+    });
+    await env.service.applyCommand(env.assign);
+    const inner = new LocalRunner(env.paths.scratchDir);
+    const seen: { timeoutMs: number; rssLimitBytes?: number; disk?: { limitBytes: number } }[] = [];
+    const runner = Object.assign(Object.create(inner), {
+      run: (req: Parameters<LocalRunner["run"]>[0]) => {
+        seen.push(req);
+        return inner.run(req);
+      },
+    }) as LocalRunner;
+    const ws = await prepareWorkspace({
+      runner: inner,
+      scratchDir: env.paths.scratchDir,
+      mirror: env.service.mirrorFor("proj"),
+      commit: env.seed,
+      lane: "lane-1",
+    });
+    const { Registry } = await import("./registry.ts");
+    const { createHarnessApi } = await import("../api.ts");
+    new Registry(env.ledger).startTrial({
+      id: "t-lim",
+      instance: "js-1",
+      lane: "lane-1",
+      epoch: 1,
+      family: "f",
+      parent: env.seed,
+      token: "lim-token",
+    });
+    env.service.trialWorkspaces.set("t-lim", { lane: "lane-1", repo: ws.repo, root: ws.dir });
+    const devRequests: { input: { timeout_s: number }; limits: unknown }[] = [];
+    const devRuns = {
+      run: async (input: unknown, _trial: string, limits?: unknown) => {
+        devRequests.push({ input: input as { timeout_s: number }, limits });
+        return { ran: true };
+      },
+    };
+    const api = createHarnessApi(
+      env.service,
+      { supervisor: "s" },
+      { lanes: { runner, laneTool }, devRuns },
+    );
+    const headers = { authorization: "Bearer trial.lim-token", "content-type": "application/json" };
+    const r = await api.request("/v1/lane/run", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        role: "lane-1",
+        cwd: ws.repo,
+        argv: ["sh", "-c", "true"],
+        timeoutMs: 3_600_000,
+        rssLimitBytes: 64 * 1024 ** 3,
+        disk: { path: ws.dir, limitBytes: 64 * 1024 ** 3 },
+      }),
+    });
+    assert.equal(r.status, 200);
+    assert.equal(seen.at(-1)?.timeoutMs, 30_000);
+    assert.equal(seen.at(-1)?.rssLimitBytes, 512 * 1024 ** 2);
+    assert.equal(seen.at(-1)?.disk?.limitBytes, 1024 * 1024 ** 2);
+    const d = await api.request("/v1/dev-runs", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ command: "true", cwd: ws.repo, timeout_s: 3600 }),
+    });
+    assert.equal(d.status, 200);
+    assert.equal(devRequests.at(-1)?.input.timeout_s, 45);
+    assert.deepEqual(devRequests.at(-1)?.limits, { rssMib: 4096, diskMib: 1024 });
+  });
+
   test("the lane tool never leaves the workspace", async () => {
     const env = makeJudgeEnv();
     await env.service.applyCommand(env.assign);

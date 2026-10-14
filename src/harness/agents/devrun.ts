@@ -14,7 +14,7 @@ export const DevRunRequest = z.object({
   lane: RoleSchema.refine((r) => /^lane-\d+$/.test(r), "a lane"),
   command: z.string().min(1).max(4000),
   cwd: z.string().min(1),
-  timeout_s: z.number().int().min(1).max(300).default(120),
+  timeout_s: z.number().int().min(1).max(3600).default(120),
 });
 
 export class DevRuns {
@@ -65,7 +65,11 @@ export class DevRuns {
   }
 
   /** A dev run for an open trial; one that waited past its trial's end never runs. */
-  run(input: unknown, trial: string): Promise<unknown> {
+  run(
+    input: unknown,
+    trial: string,
+    limits: { rssMib: number; diskMib: number } = { rssMib: 4096, diskMib: 2048 },
+  ): Promise<unknown> {
     const req = DevRunRequest.parse(input);
     const laneRoot = join(this.scratchDir, "lanes", req.lane);
     const cwd = resolve(req.cwd);
@@ -88,8 +92,8 @@ export class DevRuns {
           argv: ["sh", "-c", req.command],
           cwd,
           timeoutMs: req.timeout_s * 1000,
-          rssLimitBytes: 4 * 1024 * 1024 * 1024,
-          disk: { path: cwd, limitBytes: 2 * 1024 * 1024 * 1024 },
+          rssLimitBytes: limits.rssMib * 1024 * 1024,
+          disk: { path: cwd, limitBytes: limits.diskMib * 1024 * 1024 },
           captureBytes: 32 * 1024,
           ...(this.gpu ? { gpu: true } : {}),
         });
