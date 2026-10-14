@@ -110,7 +110,8 @@ export const CommandPayloads = {
     source_seq: z.number().int().positive(),
     import: ImportSpec,
   }),
-  export_now: z.object({}),
+  /** A full export (a full reset's) also carries the research archive and the ledger snapshot. */
+  export_now: z.object({ full: z.boolean().default(false) }),
   /**
    * Owner-only full reset, after control verified that `export` (an export_now's result) was
    * pushed to the results repository. The harness refuses if research was recorded after it.

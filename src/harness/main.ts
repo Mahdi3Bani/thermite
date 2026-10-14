@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import {
@@ -21,7 +21,7 @@ import { Judge, type PromotionPolicy } from "./judge/judge.ts";
 import { Ledger } from "./ledger.ts";
 import { settlePropagations } from "./propagation.ts";
 import { Research } from "./research/research.ts";
-import { HarnessService, wipeIfRequested } from "./service.ts";
+import { HarnessService, NOT_BEFORE_FILE, wipeIfRequested } from "./service.ts";
 import { CpuDriver } from "./targets/cpu.ts";
 import { CudaDriver } from "./targets/cuda.ts";
 import type { TargetDriver } from "./targets/driver.ts";
@@ -91,6 +91,14 @@ async function main(): Promise<void> {
     }
   }
   const ledger = Ledger.open(join(paths.stateDir, "ledger", "ledger.db"));
+  // After a wipe: commands issued before it belonged to the old ledger.
+  const notBefore = join(paths.stateDir, "ledger", NOT_BEFORE_FILE);
+  if (existsSync(notBefore)) {
+    ledger.db
+      .prepare("insert or replace into meta (key, value) values ('not_before', ?)")
+      .run(readFileSync(notBefore, "utf8").trim());
+    rmSync(notBefore, { force: true });
+  }
   // The unit's report-signing key: created once, kept with the ledger (0700).
   const unitKeyPath = join(paths.stateDir, "ledger", "unit-signing.key");
   if (!existsSync(unitKeyPath)) {

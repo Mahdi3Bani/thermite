@@ -49,7 +49,9 @@ The supervisor is the unit's link to everything outside:
 ## The control service
 
 - **Dashboard.** Every campaign, unit, worker and supervisor in one view, including hill-climb charts, goal trees and research progress.
-- **API and MCP.** Every view and command is available to scripts and agents, with scoped tokens and an audit log.
+- **API and MCP.** Every view is available to scripts and agents, with scoped tokens and an audit log.
+  - An agent's token can steer: assign, pause, resume, redirect, reset workers, export, propagate.
+  - Only the owner's credential approves a promotion, accepts a subjective goal or a "not possible" ending, or wipes a unit. Control signs who issued each command, and the harness checks it.
 - **Commands.** Control signs every command it sends:
   - assign a campaign to a unit, with a starting point;
   - redirect it;

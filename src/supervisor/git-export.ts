@@ -37,6 +37,8 @@ export interface ExportState {
   unpushed?: string[] | undefined;
   /** The newest exports known to be on the remote (a full reset waits for its export here). */
   pushed?: string[] | undefined;
+  /** The attempts branch commit the last push left on the remote. */
+  pushedCommit?: string | undefined;
   lastLedgerAt?: string | undefined;
   lastPushAt?: string | undefined;
   lastError?: string | undefined;
@@ -162,6 +164,7 @@ export async function exportOnce(cfg: ExportConfig, state: ExportState): Promise
       files: Record<string, string>;
       from_event: number;
       through_event: number;
+      full?: boolean;
     };
     const files: Record<string, string> = {
       [`events/${name}.jsonl`]: join(dir, "events.jsonl"),
@@ -169,7 +172,13 @@ export async function exportOnce(cfg: ExportConfig, state: ExportState): Promise
     };
     for (const rel of Object.keys(manifest.files)) {
       // Attempts, and published champions (what other units fetch to judge them themselves).
-      if (rel.startsWith("attempts/") || rel.startsWith("champions/")) files[rel] = join(dir, rel);
+      if (
+        rel.startsWith("attempts/") ||
+        rel.startsWith("champions/") ||
+        // A full export's research archive (kept before a full reset).
+        (manifest.full && rel.startsWith("research/"))
+      )
+        files[rel] = join(dir, rel);
     }
     const attempts = Object.keys(files).filter((f) => f.endsWith(".patch")).length;
     await commitFiles(
@@ -178,7 +187,9 @@ export async function exportOnce(cfg: ExportConfig, state: ExportState): Promise
       files,
       `${cfg.unit}: export ${name}, ${attempts} attempts, events ${manifest.from_event + 1}-${manifest.through_event}`,
     );
+    // A full export's ledger snapshot is always kept: a full reset wipes the ledger after it.
     const due =
+      manifest.full === true ||
       !next.lastLedgerAt ||
       Date.now() - Date.parse(next.lastLedgerAt) >= (cfg.ledgerEveryMs ?? 24 * 3_600_000);
     if (due && existsSync(join(dir, "ledger.sqlite"))) {
@@ -227,6 +238,14 @@ export async function exportOnce(cfg: ExportConfig, state: ExportState): Promise
       next.lastPushAt = new Date().toISOString();
       next.pushed = [...(next.pushed ?? []), ...(next.unpushed ?? [])].slice(-50);
       next.unpushed = [];
+      // What the remote now has: the owner can check this commit before confirming a wipe.
+      next.pushedCommit =
+        (await git(repo, [
+          "rev-parse",
+          "--verify",
+          "--quiet",
+          `refs/heads/${attemptsBranch}`,
+        ]).catch(() => "")) || undefined;
       if (next.lastError?.startsWith("push")) next.lastError = undefined;
     } catch (err) {
       next.lastError = `push failed: ${err instanceof Error ? err.message.slice(0, 300) : String(err)}`;

@@ -90,19 +90,28 @@ Workers and the planner run when the harness has a model route: an OpenAI-compat
   "teachers": [
     { "name": "teacher-a", "runtime": "openai", "base_url": "https://gateway.example/v1",
       "model": "a-frontier-model", "api_key_file": "/etc/thermite/advisors/key-a" },
-    { "name": "teacher-b", "runtime": "cli", "argv": ["an-agent-cli", "--print", "--json"] }
+    { "name": "teacher-b", "runtime": "cli", "restricted": true,
+      "argv": ["an-agent-cli", "--print", "--json", "--no-shell", "--no-file-tools"] }
   ],
   "combiner": { "name": "combiner", "runtime": "openai", "base_url": "https://gateway.example/v1",
     "model": "a-frontier-model", "api_key_file": "/etc/thermite/advisors/key-a" },
-  "auditor": { "name": "auditor", "runtime": "cli", "argv": ["an-agent-cli", "--print", "--json"] },
+  "auditor": { "name": "auditor", "runtime": "cli", "restricted": true,
+    "argv": ["an-agent-cli", "--print", "--json", "--no-shell", "--no-file-tools"] },
   "panel": [],
-  "teacher_minutes": 60
+  "teacher_minutes": 60,
+  "fetch_domains": ["arxiv.org", "github.com"],
+  "max_usd_per_day": 20
 }
 ```
 
 - An `openai` runtime runs inside the supervisor, with read-only tools: the campaign brief, a guarded web fetch, and an optional knowledge-base search.
 - A `cli` runtime runs a command-line agent: it gets the prompt on stdin and prints one JSON answer.
-- Neither gets a shell or file tools from Thermite.
+  - It runs as the supervisor's user, so its argv must turn off the agent's own shell and file tools.
+  - `"restricted": true` states that it does. Thermite can't check another program's flags.
+  - It gets an empty home and working directory, and its whole process group is killed at its time limit.
+- Neither runtime gets a shell or file tools from Thermite.
+- Web fetch is off unless `fetch_domains` lists domains. With `"*"` (any public site), the knowledge-base search is left out of the same agent, and the auditor fetches only from listed domains.
+- `max_usd_per_day` caps what all advisors of a unit spend.
 - What they produce is checked twice, by the supervisor and by the harness:
   - directives need citations;
   - an audit can block a promotion, never force one;
@@ -119,12 +128,14 @@ THERMITE_ENGINE_SOCKET_HOST=/path/to/engine.sock \
 
 A **full reset** (owner only, from the dashboard or `POST /v1/units/<unit>/reset`) goes through these steps:
 1. pause the unit's campaigns;
-2. export;
-3. wait until the supervisor reports that export pushed to the results repository;
-4. send the signed wipe;
-5. restart.
+2. wait until its judge is idle;
+3. take a full export (the ledger snapshot and the research archive);
+4. wait until the supervisor reports that export pushed to the results repository;
+5. **you confirm**, after checking the reported commit in the results repository;
+6. the signed wipe, then a restart.
 
-The harness refuses the wipe if research was recorded after the verified export.
+- The harness refuses the wipe if anything but housekeeping was recorded after the export.
+- After the wipe it refuses commands issued before it.
 
 ## The steering acceptance test
 

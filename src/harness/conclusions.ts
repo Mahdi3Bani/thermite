@@ -16,8 +16,20 @@ export const REFUTE_ATTEMPTS = 3;
 
 /** Verdicts that show an approach is getting somewhere (so it is not refuted). */
 const PROMISING = new Set([...PROMOTABLE_VERDICTS, "win_screened", "goal_screened"]);
-/** Verdicts that do not count as evidence either way. */
-const IGNORED = new Set(["crash_infra", "invalidated"]);
+/**
+ * Verdicts that refute an approach: a working change, judged, that did not help. Broken changes
+ * (invalid, crashed) say more about the attempt than the approach, and infrastructure failures
+ * say nothing.
+ */
+const REFUTING = new Set([
+  "no_progress",
+  "regress",
+  "neutral",
+  "not_confirmed",
+  "inconclusive",
+  "tradeoff",
+  "infeasible",
+]);
 
 export interface RefutedApproach {
   family: string;
@@ -45,8 +57,9 @@ export class Conclusions {
         .prepare("select id from attempt where instance = ? and family = ? order by created_at")
         .all(instance, String(f.id)) as Row[]) {
         const v = this.ledger.currentVerdict(String(a.id));
-        if (!v || IGNORED.has(v.verdict)) continue;
+        if (!v) continue;
         if (PROMISING.has(v.verdict)) promising = true;
+        if (!REFUTING.has(v.verdict)) continue;
         const reasons = String(
           (this.ledger.db.prepare("select reasons from verdict where id = ?").get(v.id) as Row)
             .reasons,
@@ -107,11 +120,18 @@ export class Conclusions {
         .run(instance, canonicalJson(evidence), new Date().toISOString());
       const id = Number(r.lastInsertRowid);
       for (const a of refuted) {
-        this.ledger.db
+        const r = this.ledger.db
           .prepare(
             "update family set status = 'exhausted' where instance = ? and id = ? and status = 'live'",
           )
           .run(instance, a.family);
+        if (Number(r.changes)) {
+          this.ledger.appendEvent(by, "family_status", instance, {
+            family: a.family,
+            status: "exhausted",
+            reason: `refuted: evidence for "not possible" proposal ${id}`,
+          });
+        }
       }
       this.ledger.appendEvent(by, "conclusion_proposed", instance, {
         proposal: id,
@@ -157,6 +177,24 @@ export class Conclusions {
           "not possible: the owner accepted the evidence",
           by,
         );
+      } else {
+        // The owner wants the campaign to go on: the families this proposal exhausted reopen.
+        const families = (JSON.parse(String(row.evidence)) as { approaches: { family: string }[] })
+          .approaches;
+        for (const f of families) {
+          const r = this.ledger.db
+            .prepare(
+              "update family set status = 'live' where instance = ? and id = ? and status = 'exhausted'",
+            )
+            .run(instance, f.family);
+          if (Number(r.changes)) {
+            this.ledger.appendEvent(by, "family_status", instance, {
+              family: f.family,
+              status: "live",
+              reason: `the owner rejected "not possible" proposal ${proposal}`,
+            });
+          }
+        }
       }
       return { proposal, decision };
     });

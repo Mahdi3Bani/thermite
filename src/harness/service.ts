@@ -1,5 +1,6 @@
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { sha256Hex } from "../core/canonical.ts";
@@ -32,6 +33,21 @@ import { receivePropagation } from "./propagation.ts";
 import { Reviews } from "./reviews.ts";
 import { checkV0 } from "./v0.ts";
 
+/** A directive set may not both avoid a family and try or mandate it. */
+function conflictCheck(set: { kind: string; family?: string | undefined }[]): void {
+  const avoid = new Set(set.filter((d) => d.kind === "avoid" && d.family).map((d) => d.family));
+  const both = set.filter((d) => (d.kind === "try" || d.kind === "mandate") && avoid.has(d.family));
+  if (both.length) {
+    throw new LedgerError(
+      "invalid",
+      `the set both avoids and asks for ${both.map((d) => d.family).join(", ")}`,
+    );
+  }
+}
+
+/** Command kinds only the owner may issue (control records the issuer in the signed envelope). */
+const OWNER_ONLY = new Set(["approve_promotion", "accept_review", "conclude", "wipe_state"]);
+
 /** Written by an accepted wipe_state; the next controller start wipes the state and removes it. */
 export const WIPE_MARKER = "WIPE_REQUESTED";
 
@@ -43,26 +59,37 @@ export const WIPE_MARKER = "WIPE_REQUESTED";
 export function wipeIfRequested(paths: HarnessPaths, keep: string[]): boolean {
   const marker = join(paths.stateDir, WIPE_MARKER);
   if (!existsSync(marker)) return false;
+  // Build trees are locked read-only: make what this user owns writable before removing it.
+  const remove = (p: string) => {
+    try {
+      execFileSync("chmod", ["-R", "u+rwX", p], { stdio: "ignore" });
+    } catch {
+      // files of other users: removing them needs the broker (root)
+    }
+    rmSync(p, { recursive: true, force: true });
+  };
   for (const name of readdirSync(paths.stateDir)) {
     if (name === WIPE_MARKER) continue;
     if (name === "ledger") {
       for (const f of readdirSync(join(paths.stateDir, name))) {
-        if (!keep.includes(f))
-          rmSync(join(paths.stateDir, name, f), { recursive: true, force: true });
+        if (!keep.includes(f)) remove(join(paths.stateDir, name, f));
       }
       continue;
     }
-    rmSync(join(paths.stateDir, name), { recursive: true, force: true });
+    remove(join(paths.stateDir, name));
   }
   // Scratch, and the outbox: its exports reached the results repository before the wipe.
   for (const dir of [paths.scratchDir, paths.outboxDir]) {
-    for (const name of existsSync(dir) ? readdirSync(dir) : []) {
-      rmSync(join(dir, name), { recursive: true, force: true });
-    }
+    for (const name of existsSync(dir) ? readdirSync(dir) : []) remove(join(dir, name));
   }
+  mkdirSync(join(paths.stateDir, "ledger"), { recursive: true });
+  writeFileSync(join(paths.stateDir, "ledger", NOT_BEFORE_FILE), new Date().toISOString());
   rmSync(marker, { force: true });
   return true;
 }
+
+/** Left by a wipe: the new ledger refuses commands issued before this time. */
+export const NOT_BEFORE_FILE = "NOT_BEFORE";
 
 export interface HarnessPaths {
   stateDir: string;
@@ -162,6 +189,17 @@ export class HarnessService {
     const { envelope, payload } = verified;
     const prior = this.ledger.getCommand(envelope.id);
     if (prior) return { status: "replayed", ...prior };
+    // After a wipe, commands signed for the old ledger are not applied to the new one.
+    const notBefore = this.ledger.db
+      .prepare("select value from meta where key = 'not_before'")
+      .get() as { value: string } | undefined;
+    if (notBefore && Date.parse(envelope.issued_at) < Date.parse(notBefore.value)) {
+      this.ledger.appendEvent(actor, "command_rejected", null, {
+        reason: "issued before this unit's state was wiped",
+        kind: envelope.kind,
+      });
+      return { status: "rejected", reason: "issued before this unit's state was wiped" };
+    }
     if (this.inFlight.has(envelope.id)) return { status: "in_progress" };
 
     this.inFlight.add(envelope.id);
@@ -189,6 +227,15 @@ export class HarnessService {
 
   private async execute(envelope: Envelope, payload: unknown): Promise<unknown> {
     const by = `control:${envelope.issued_by}`;
+    // The owner's gates: control signs who issued a command, and only the owner (not an agent
+    // with an API or MCP token) approves promotions, accepts reviews and endings, and wipes.
+    if (
+      OWNER_ONLY.has(envelope.kind) &&
+      envelope.issued_by !== "owner" &&
+      !envelope.issued_by.startsWith("owner:")
+    ) {
+      throw new Error(`${envelope.kind} is the owner's to issue, not ${envelope.issued_by}'s`);
+    }
     switch (envelope.kind) {
       case "assign_campaign":
         return this.assignCampaign(CommandPayloads.assign_campaign.parse(payload), by);
@@ -211,6 +258,7 @@ export class HarnessService {
       case "redirect": {
         const p = CommandPayloads.redirect.parse(payload);
         this.requireInstance(p.instance);
+        conflictCheck(p.directives);
         const ids = this.ledger.addDirectiveSet(p.instance, by, p.directives, p.replace);
         return { instance: p.instance, directives: ids };
       }
@@ -227,7 +275,8 @@ export class HarnessService {
       case "propagate":
         return receivePropagation(this, CommandPayloads.propagate.parse(payload), by);
       case "export_now": {
-        const r = await this.export(by);
+        const p = CommandPayloads.export_now.parse(payload);
+        const r = await this.export(by, { full: p.full });
         return {
           export: r.dir.split("/").pop(),
           export_id: r.id,
@@ -425,49 +474,40 @@ export class HarnessService {
 
   // ------------------------------------------------------------ full reset
 
-  /** Event kinds that are research: losing any of them in a wipe is refused. */
-  private static readonly RESEARCH_EVENTS = [
-    "attempt_recorded",
-    "verdict",
-    "champion_promoted",
-    "claim_added",
-    "source_fetched",
-    "goal_report",
-    "review_panel",
-    "review_decided",
-    "conclusion_proposed",
-  ];
+  /** Events that may follow the verified export without anything being lost in the wipe. */
+  private static readonly HOUSEKEEPING = new Set([
+    "command",
+    "command_rejected",
+    "instance_status",
+    "export_written",
+    "champion_published",
+    "wipe_requested",
+  ]);
 
   /**
-   * A full reset's wipe. Control has verified that the named export reached the results
-   * repository; the harness checks that it is its own latest export, covers the events control
-   * names, and that no research was recorded since. The wipe itself happens at the next start
-   * (a marker is written and the controller exits), after this command's result is delivered.
+   * A full reset's wipe. Control has verified that the named export (a full one) reached the
+   * results repository, and the owner confirmed it. The harness checks that the export exists,
+   * was full, covers the events control names, and that nothing but housekeeping happened since.
+   * The broker wipes at the next start (a marker is written and the controller exits), after
+   * this command's result is delivered.
    */
   private requestWipe(p: z.infer<(typeof CommandPayloads)["wipe_state"]>, by: string): unknown {
-    const last = this.ledger.lastExport();
-    const name = last
-      ? String(
-          (
-            this.ledger.db.prepare("select path from export where id = ?").get(last.id) as {
-              path: string;
-            }
-          ).path,
-        )
-      : undefined;
-    if (!last || name !== p.export) {
-      throw new Error(`the verified export ${p.export} is not this unit's latest export`);
-    }
-    if (last.through_event < p.through_event)
+    const exp = this.ledger.db
+      .prepare("select id, through_event, manifest from export where path = ?")
+      .get(p.export) as { id: number; through_event: number; manifest: string } | undefined;
+    if (!exp) throw new Error(`no export ${p.export} in this unit`);
+    if (!(JSON.parse(exp.manifest) as { full?: boolean }).full)
+      throw new Error(`export ${p.export} is not a full export`);
+    if (exp.through_event < p.through_event)
       throw new Error("the export does not cover the events");
-    const after = this.ledger.db
-      .prepare(
-        `select count(*) as n from event where id > ? and kind in (${HarnessService.RESEARCH_EVENTS.map(() => "?").join(",")})`,
-      )
-      .get(last.through_event, ...HarnessService.RESEARCH_EVENTS) as { n: number };
-    if (Number(after.n) > 0) {
+    const since = (
+      this.ledger.db
+        .prepare("select kind, count(*) as n from event where id > ? group by kind")
+        .all(exp.through_event) as { kind: string; n: number }[]
+    ).filter((r) => !HarnessService.HOUSEKEEPING.has(r.kind));
+    if (since.length) {
       throw new Error(
-        `${after.n} research events were recorded after the export: pause the instances and export again`,
+        `research was recorded after the export (${since.map((r) => `${r.kind} ${r.n}`).join(", ")}): export again`,
       );
     }
     for (const inst of this.ledger.listInstances()) {
@@ -553,7 +593,9 @@ export class HarnessService {
       return { decision: "block", effect: "blocked" };
     }
     if (input.decision === "needs_owner") return toOwner("the auditor asked for the owner");
-    if (String(audit.reason) === "known_flaws") return toOwner("declared flaws need the owner");
+    if (String(audit.trigger) === "known_flaws") return toOwner("declared flaws need the owner");
+    // D8: a gain above the absolute trigger always needs the owner; a model never decides it.
+    if (String(audit.trigger) === "absolute") return toOwner("a gain this large needs the owner");
     if (this.promotion === "owner_approval") return toOwner("promotion policy: owner approval");
     const r = await this.promoteAttempt({
       instance,
@@ -562,9 +604,10 @@ export class HarnessService {
       by: input.auditor,
     });
     if (r.promoted) return { decision: "clear", effect: "promoted", seq: r.seq };
-    this.ledger.enqueueJob({ attempt: input.attempt, kind: "evaluate", actor: input.auditor });
-    this.ledger.setAttemptLifecycle(input.attempt, "queued", input.auditor);
-    return { decision: "clear", effect: "the champion moved: screened again" };
+    return {
+      decision: "clear",
+      ...(this.rescreen(input.attempt, r.currentSeq, input.auditor) as object),
+    };
   }
 
   /**
@@ -674,23 +717,43 @@ export class HarnessService {
       );
     } else if (lifecycle === "awaiting_audit" || lifecycle === "audit_blocked") {
       expectedSeq = Number(new Audits(this.ledger).get(p.attempt)?.expected_seq);
-      this.ledger.appendEvent(by, "audit_overridden", p.attempt, { lifecycle });
     } else {
       throw new Error(`attempt ${p.attempt} is ${lifecycle}, not awaiting approval`);
     }
     if (!Number.isInteger(expectedSeq)) throw new Error(`no pending promotion for ${p.attempt}`);
-    if ((JSON.parse(String(a.known_flaws)) as unknown[]).length) {
+    const flaws = (JSON.parse(String(a.known_flaws)) as unknown[]).length > 0;
+    const setCleared = (v: string | null) =>
       this.ledger.db
         .prepare("update attempt set flaws_cleared_by = ? where id = ?")
-        .run(by, p.attempt);
-      this.ledger.appendEvent(by, "flaws_accepted", p.attempt, {});
+        .run(v, p.attempt);
+    // The owner's approval accepts declared flaws, but only if the promotion happens.
+    if (flaws) setCleared(by);
+    let r: Awaited<ReturnType<HarnessService["promoteAttempt"]>>;
+    try {
+      r = await this.promoteAttempt({ ...p, expectedSeq, by });
+    } catch (err) {
+      if (flaws) setCleared((a.flaws_cleared_by as string | null) ?? null);
+      throw err;
     }
-    const r = await this.promoteAttempt({ ...p, expectedSeq, by });
-    if (r.promoted) return r;
-    // The champion moved after this win was confirmed: it must be screened against the new one.
-    this.ledger.enqueueJob({ attempt: p.attempt, kind: "evaluate", actor: by });
-    this.ledger.setAttemptLifecycle(p.attempt, "queued", by);
-    return { promoted: false, rescreen: true, champion_seq: r.currentSeq };
+    if (r.promoted) {
+      if (lifecycle !== "awaiting_approval")
+        this.ledger.appendEvent(by, "audit_overridden", p.attempt, { lifecycle });
+      if (flaws) this.ledger.appendEvent(by, "flaws_accepted", p.attempt, {});
+      return r;
+    }
+    if (flaws) setCleared((a.flaws_cleared_by as string | null) ?? null);
+    return this.rescreen(p.attempt, r.currentSeq, by);
+  }
+
+  /** The champion moved after a win was confirmed: it is screened again against the new one. */
+  private rescreen(attempt: string, currentSeq: number, by: string): unknown {
+    // Another path may have promoted it meanwhile (an audit clear and an approval racing).
+    if (String(this.ledger.getAttempt(attempt)?.lifecycle) === "promoted") {
+      return { promoted: true, note: "already promoted" };
+    }
+    this.ledger.enqueueJob({ attempt, kind: "evaluate", actor: by });
+    this.ledger.setAttemptLifecycle(attempt, "queued", by);
+    return { promoted: false, rescreen: true, champion_seq: currentSeq };
   }
 
   /**
@@ -710,6 +773,7 @@ export class HarnessService {
     if (parsed.filter((d) => d.kind === "note").length > 3) {
       throw new LedgerError("invalid", "at most 3 notes per directive set");
     }
+    conflictCheck(parsed);
     return this.ledger.addDirectiveSet(instance, author, parsed, true);
   }
 
@@ -892,13 +956,18 @@ export class HarnessService {
       : report;
   }
 
-  async export(actor: string) {
+  /**
+   * An export for the supervisor to push. A full export (a full reset's) also carries the
+   * research archive, and the supervisor always pushes its ledger snapshot.
+   */
+  async export(actor: string, opts: { full?: boolean } = {}) {
     return writeExport({
       ledger: this.ledger,
       mirrorFor: (repo) => this.mirrorFor(repo),
       outboxDir: this.paths.outboxDir,
       unit: this.unit,
       actor,
+      ...(opts.full ? { full: true, researchDir: join(this.paths.stateDir, "research") } : {}),
     });
   }
 }

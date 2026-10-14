@@ -1,9 +1,17 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { canonicalJson } from "../core/canonical.ts";
-import { patchBetween } from "./git.ts";
+import { patchBytes } from "./git.ts";
 import type { Ledger } from "./ledger.ts";
 import { championFiles } from "./propagation.ts";
 
@@ -28,6 +36,9 @@ export async function writeExport(input: {
   outboxDir: string;
   unit: string;
   actor: string;
+  /** A full export (before a full reset): also the research archive, marked in the manifest. */
+  full?: boolean | undefined;
+  researchDir?: string | undefined;
 }): Promise<ExportResult> {
   const { ledger } = input;
   const since = ledger.lastExport()?.through_event ?? 0;
@@ -54,7 +65,7 @@ export async function writeExport(input: {
       if (!a) continue;
       const instance = ledger.getInstance(String(a.instance));
       const mirror = input.mirrorFor(instance?.seed_repo ?? "");
-      const patch = await patchBetween(mirror, String(a.parent_commit), String(a.commit_sha));
+      const patch = await patchBytes(mirror, String(a.parent_commit), String(a.commit_sha));
       writeFileSync(join(tmp, "attempts", `${id}.patch`), patch);
       writeFileSync(
         join(tmp, "attempts", `${id}.json`),
@@ -73,6 +84,19 @@ export async function writeExport(input: {
       },
     });
 
+    // A full export keeps what a wipe would otherwise destroy: the archived research sources.
+    const researchRel: string[] = [];
+    if (input.full && input.researchDir && existsSync(input.researchDir)) {
+      for (const instance of readdirSync(input.researchDir)) {
+        for (const f of readdirSync(join(input.researchDir, instance))) {
+          const rel = `research/${instance}/${f}`;
+          mkdirSync(join(tmp, "research", instance), { recursive: true });
+          writeFileSync(join(tmp, rel), readFileSync(join(input.researchDir, instance, f)));
+          researchRel.push(rel);
+        }
+      }
+    }
+
     const snapshotPath = join(tmp, "ledger.sqlite");
     ledger.db.exec(`vacuum into '${snapshotPath.replace(/'/g, "''")}'`);
     // Held-out results go to promotion code only, never into an export.
@@ -85,9 +109,11 @@ export async function writeExport(input: {
       "ledger.sqlite",
       ...attemptIds.flatMap((id) => [`attempts/${id}.patch`, `attempts/${id}.json`]),
       ...championRel,
+      ...researchRel,
     ];
     const manifest = {
       unit: input.unit,
+      ...(input.full ? { full: true } : {}),
       from_event: since,
       through_event: through,
       created_at: new Date().toISOString(),

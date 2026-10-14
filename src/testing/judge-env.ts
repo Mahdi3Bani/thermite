@@ -17,7 +17,7 @@ import { CpuDriver } from "../harness/targets/cpu.ts";
  * that removes it is clearly faster.
  */
 
-const SEED_KERNEL = `// The kernel: sum of i % 7 over [0, n). The seed does pointless extra work.
+export const SEED_KERNEL = `// The kernel: sum of i % 7 over [0, n). The seed does pointless extra work.
 export function work(n) {
   let s = 0;
   for (let i = 0; i < n; i++) {

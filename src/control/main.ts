@@ -36,6 +36,7 @@ async function main(): Promise<void> {
   const tokens = {
     admin: secretFromFile("THERMITE_CONTROL_ADMIN_TOKEN_FILE"),
     read: optionalSecretFromFile("THERMITE_CONTROL_READ_TOKEN_FILE"),
+    agent: optionalSecretFromFile("THERMITE_CONTROL_AGENT_TOKEN_FILE"),
     units: JSON.parse(
       readFileSync(requireEnv("THERMITE_CONTROL_UNIT_TOKENS_FILE"), "utf8"),
     ) as Record<string, string>,

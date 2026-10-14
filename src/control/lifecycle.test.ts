@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -14,6 +14,7 @@ import { propagateChampion } from "./issue.ts";
 import {
   advanceResets,
   ComposeDriver,
+  confirmReset,
   type DeploymentDriver,
   KubernetesDriver,
 } from "./lifecycle.ts";
@@ -135,17 +136,26 @@ describe("full reset", () => {
         staleAfterMs: 180_000,
       });
     const state = () => String(store.openReset("unit-a")?.state ?? store.resets(1)[0]?.state);
-    store.createReset("unit-a", "owner:test");
+    const id = store.createReset("unit-a", "owner:test");
+    await step();
+    assert.equal(state(), "quiescing");
+    rs = await relayOnce(relay, rs); // the pause reaches the harness; the unit reports idle
+    assert.equal(env.ledger.getInstance("js-1")?.status, "paused");
     await step();
     assert.equal(state(), "exporting");
-    rs = await relayOnce(relay, rs); // pause and export_now reach the harness
-    assert.equal(env.ledger.getInstance("js-1")?.status, "paused");
+    rs = await relayOnce(relay, rs); // the full export
     await step();
     assert.equal(state(), "verifying");
     const name = String(store.openReset("unit-a")?.export_name);
     await step();
     assert.equal(state(), "verifying", "waits until the supervisor reports the export pushed");
-    store.setSupervisor("unit-a", { export: { remote: true, pushed: [name] } });
+    store.setSupervisor("unit-a", {
+      export: { remote: true, pushed: [name], pushed_commit: "c".repeat(40) },
+    });
+    await step();
+    assert.equal(state(), "awaiting_owner", "the owner checks the pushed commit and confirms");
+    assert.match(String(store.openReset("unit-a")?.detail), /c{40}/);
+    confirmReset(store, id, "owner:test");
     await step();
     assert.equal(state(), "wiping");
     rs = await relayOnce(relay, rs);
@@ -157,7 +167,13 @@ describe("full reset", () => {
     assert.ok(wiped, "the controller is told to exit");
     const before = env.ledger.ledgerId();
     env.ledger.close();
+    // A locked build tree (as the build store leaves them) does not stop the wipe.
+    const locked = join(env.paths.stateDir, "builds", "locked", "sub");
+    mkdirSync(locked, { recursive: true });
+    chmodSync(locked, 0o555);
+    chmodSync(join(env.paths.stateDir, "builds", "locked"), 0o555);
     assert.ok(wipeIfRequested(env.paths, ["unit-signing.key", "unit-signing.key.pub"]));
+    assert.ok(!existsSync(join(env.paths.stateDir, "builds")));
     assert.ok(!existsSync(join(env.paths.stateDir, "ledger", "ledger.db")));
     const { Ledger } = await import("../harness/ledger.ts");
     const fresh = Ledger.open(join(env.paths.stateDir, "ledger", "ledger.db"));
@@ -168,7 +184,17 @@ describe("full reset", () => {
   test("the harness refuses a wipe when research was recorded after the verified export", async () => {
     const env = makeJudgeEnv();
     await env.service.applyCommand(env.assign);
-    const exp = await env.service.export("t");
+    const plain = await env.service.export("t");
+    const notFull = await env.service.applyCommand(
+      env.sign("wipe_state", {
+        confirm: "wipe",
+        export: String(plain.dir.split("/").pop()),
+        through_event: 0,
+      }),
+    );
+    assert.ok(notFull.status === "applied" && !notFull.accepted);
+    assert.match(JSON.stringify(notFull.result), /not a full export/);
+    const exp = await env.service.export("t", { full: true });
     await env.service.submitAttempt(
       {
         instance: "js-1",
@@ -186,7 +212,7 @@ describe("full reset", () => {
       }),
     );
     assert.ok(r.status === "applied" && !r.accepted);
-    assert.match(JSON.stringify(r.result), /research events/);
+    assert.match(JSON.stringify(r.result), /research was recorded after the export/);
     assert.ok(!existsSync(join(env.paths.stateDir, WIPE_MARKER)));
   });
 });
@@ -240,6 +266,7 @@ describe("leaderboard and propagation", () => {
           seed: { repo: "proj", commit: "s" },
         }),
         ev(2, "propagation_received", "c-1", {
+          tree: "b".repeat(40),
           attempt: "p-1",
           source_unit: "unit-a",
           source_instance: "c-1",

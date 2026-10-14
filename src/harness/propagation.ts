@@ -4,14 +4,7 @@ import { join } from "node:path";
 import type { z } from "zod";
 import { sha256Hex } from "../core/canonical.ts";
 import type { CommandPayloads } from "../core/commands.ts";
-import {
-  createAttemptCommit,
-  deleteRef,
-  GitError,
-  hasCommit,
-  patchBetween,
-  treeOf,
-} from "./git.ts";
+import { createAttemptCommit, deleteRef, GitError, hasCommit, patchBytes, treeOf } from "./git.ts";
 import { importFile } from "./imports.ts";
 import { type Ledger, LedgerError } from "./ledger.ts";
 import type { HarnessService, SubmitResult } from "./service.ts";
@@ -110,14 +103,14 @@ export async function receivePropagation(
     });
     return { identical: true, note: "this unit's champion already has the same tree" };
   }
-  const patch = await patchBetween(mirror, champion.commit_sha, rebuilt.commit);
+  const patch = await patchBytes(mirror, champion.commit_sha, rebuilt.commit);
   let r: SubmitResult;
   try {
     r = await svc.submitAttempt(
       {
         instance: p.instance,
         parent: champion.commit_sha,
-        patch_base64: Buffer.from(patch).toString("base64"),
+        patch_base64: patch.toString("base64"),
         hypothesis: `Propagated: ${p.source_unit}'s champion (instance ${p.source_instance}, seq ${p.source_seq}), judged here against this unit's champion`,
         known_flaws: [],
       },
@@ -125,6 +118,12 @@ export async function receivePropagation(
     );
   } finally {
     await deleteRef(mirror, rebuilt.ref).catch(() => undefined);
+  }
+  // The candidate judged here must be exactly the source champion's tree.
+  const got = await treeOf(mirror, r.commit);
+  if (got !== tree) {
+    svc.ledger.setAttemptLifecycle(r.attempt, "errored", by);
+    throw new Error(`the propagated attempt has tree ${got}, not ${tree}`);
   }
   svc.ledger.tx(() => {
     svc.ledger.db
@@ -156,10 +155,15 @@ export async function receivePropagation(
  * here, so the source champion is cross-verified) or rejected, with the verdict.
  */
 export function settlePropagations(ledger: Ledger, by: string): number {
-  const open = ledger.db.prepare("select * from propagation where result is null").all() as Record<
-    string,
-    unknown
-  >[];
+  // Open ones, and rejected ones whose attempt the owner promoted later (an audit override).
+  const open = (
+    ledger.db
+      .prepare("select * from propagation where result is null or result like 'rejected:%'")
+      .all() as Record<string, unknown>[]
+  ).filter(
+    (r) =>
+      r.result === null || String(ledger.getAttempt(String(r.attempt))?.lifecycle) === "promoted",
+  );
   let settled = 0;
   for (const row of open) {
     const attempt = String(row.attempt);
@@ -228,7 +232,7 @@ export async function championFiles(input: {
       .get(inst.id, champ.seq);
     if (published) continue;
     const mirror = input.mirrorFor(inst.seed_repo);
-    const patch = Buffer.from(await patchBetween(mirror, inst.seed_commit, champ.commit_sha));
+    const patch = await patchBytes(mirror, inst.seed_commit, champ.commit_sha);
     const tree = await treeOf(mirror, champ.commit_sha);
     const sha256 = sha256Hex(patch);
     const path = `champions/${inst.id}/${champ.seq}.patch`;

@@ -272,11 +272,29 @@ export class Scheduler {
     return SETTLED.has(String(this.ledger.getAttempt(attempt)?.lifecycle));
   }
 
+  /**
+   * The directives in force. The owner's (issued through control) come first: a supervisor
+   * directive about a family the owner has a directive for, or a supervisor lane count when the
+   * owner set one, does not apply.
+   */
   private directives(instance: string): { id: number; body: StructuredDirective }[] {
-    return this.ledger.activeDirectives(instance).map((d) => ({
+    const all = this.ledger.activeDirectives(instance).map((d) => ({
       id: d.id,
+      owner: d.author.startsWith("control:"),
       body: d.body as StructuredDirective,
     }));
+    const ownerFamilies = new Set(
+      all.filter((d) => d.owner && d.body.family).map((d) => d.body.family),
+    );
+    const ownerLanes = all.some((d) => d.owner && d.body.kind === "lane_count");
+    return all
+      .filter(
+        (d) =>
+          d.owner ||
+          ((!d.body.family || !ownerFamilies.has(d.body.family)) &&
+            !(d.body.kind === "lane_count" && ownerLanes)),
+      )
+      .map((d) => ({ id: d.id, body: d.body }));
   }
 
   private laneCount(instance: string, contract: Contract): number {
@@ -623,7 +641,7 @@ export class Scheduler {
     const research = this.o.research as Research;
     const id = `t-${randomUUID().replace(/-/g, "").slice(0, 16)}`;
     const stats = research.stats(instance);
-    const frontier = research.frontier(instance, 15);
+    const frontier = research.frontier(instance, 30);
     const brief = [
       `# Research assignment (epoch ${epoch}, ${a.lane})`,
       `Campaign: ${contract.title}`,

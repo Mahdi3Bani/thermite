@@ -78,7 +78,8 @@ function call(
 export interface KubernetesOptions {
   /** API server; in a pod, https://kubernetes.default.svc. */
   apiUrl: string;
-  token: string;
+  /** The token, or a function that reads it (service-account tokens are rotated on disk). */
+  token: string | (() => string);
   ca?: string | undefined;
   /** Namespace per unit, with {unit} replaced (default ar-{unit}). */
   namespaceTemplate: string;
@@ -99,7 +100,7 @@ export class KubernetesDriver implements DeploymentDriver {
     const sa = "/var/run/secrets/kubernetes.io/serviceaccount";
     return new KubernetesDriver({
       apiUrl: env.THERMITE_K8S_API ?? "https://kubernetes.default.svc",
-      token: readFileSync(env.THERMITE_K8S_TOKEN_FILE ?? `${sa}/token`, "utf8").trim(),
+      token: () => readFileSync(env.THERMITE_K8S_TOKEN_FILE ?? `${sa}/token`, "utf8").trim(),
       ca: readFileSync(env.THERMITE_K8S_CA_FILE ?? `${sa}/ca.crt`, "utf8"),
       namespaceTemplate: env.THERMITE_K8S_NAMESPACE ?? "ar-{unit}",
       selectors: {
@@ -113,7 +114,8 @@ export class KubernetesDriver implements DeploymentDriver {
   async restart(unit: string, components: Component[]): Promise<string[]> {
     if (!/^[a-z0-9-]{1,40}$/.test(unit)) throw new Error(`not a unit name: ${unit}`);
     const ns = this.o.namespaceTemplate.replace("{unit}", unit);
-    const headers = { authorization: `Bearer ${this.o.token}` };
+    const token = typeof this.o.token === "function" ? this.o.token() : this.o.token;
+    const headers = { authorization: `Bearer ${token}` };
     const deleted: string[] = [];
     for (const c of components) {
       const list = await call(
@@ -206,10 +208,29 @@ export function driverFromEnv(env: NodeJS.ProcessEnv = process.env): DeploymentD
   return undefined;
 }
 
+/** How long each reset step may take before the reset fails (the owner's confirmation: a day). */
+const STEP_LIMIT_MS: Record<string, number> = {
+  quiescing: 60 * 60_000,
+  exporting: 30 * 60_000,
+  verifying: 60 * 60_000,
+  awaiting_owner: 24 * 3_600_000,
+  wiping: 30 * 60_000,
+};
+
+let advancing: Promise<void> | undefined;
+
 /**
  * Advances every open full reset by one step. Each step waits for evidence before the next:
- * the export's command result, the supervisor's report of that export pushed, the harness's
- * acceptance of the wipe and its new ledger.
+ *
+ *  start          pause the unit's running instances;
+ *  quiescing      until the unit reports no queued or running judge jobs (an hour at most);
+ *  exporting      a full export (research archive and ledger snapshot), until its result arrives;
+ *  verifying      until the supervisor reports that export pushed to the results repository;
+ *  awaiting_owner the owner checks the pushed commit and confirms (the supervisor's report is
+ *                 unsigned: the owner, not control, is the last check before data goes);
+ *  wiping         the signed wipe_state; then the restart through the driver.
+ *
+ * Runs are serialized: a timer and an API call can't advance the same reset twice.
  */
 export async function advanceResets(input: {
   store: ControlStore;
@@ -217,30 +238,66 @@ export async function advanceResets(input: {
   driver: DeploymentDriver | undefined;
   staleAfterMs: number;
 }): Promise<void> {
+  while (advancing) await advancing;
+  advancing = advanceOnce(input).finally(() => {
+    advancing = undefined;
+  });
+  return advancing;
+}
+
+async function advanceOnce(input: {
+  store: ControlStore;
+  privateKeyPem: string;
+  driver: DeploymentDriver | undefined;
+  staleAfterMs: number;
+}): Promise<void> {
   const { store } = input;
-  for (const r of store.resets(50).filter((x) => !["done", "failed"].includes(String(x.state)))) {
+  for (const r of store
+    .resets(50)
+    .filter((x) => !["done", "failed", "cancelled"].includes(String(x.state)))) {
     const id = Number(r.id);
     const unit = String(r.unit);
+    const state = String(r.state);
     const issue = (kind: "pause_instance" | "export_now" | "wipe_state", payload: unknown) =>
       issueCommand(store, input.privateKeyPem, {
         unit,
         kind,
         payload,
         ttlMinutes: 30,
-        issuedBy: `reset:${String(r.requested_by)}`,
+        // The owner who asked for the reset: the harness accepts wipe_state only from the owner.
+        issuedBy: String(r.requested_by),
       }).id;
     const fail = (detail: string) => {
-      store.updateReset(id, { state: "failed", detail });
+      store.updateReset(id, {
+        state: "failed",
+        detail: `${detail} (the unit's campaigns stay paused: resume them when it is safe)`,
+      });
       log("control", "reset failed", { unit, detail });
     };
+    const limit = STEP_LIMIT_MS[state];
+    if (limit && Date.now() - Date.parse(String(r.updated_at)) > limit) {
+      fail(`timed out while ${state}`);
+      continue;
+    }
     try {
-      switch (String(r.state)) {
+      switch (state) {
         case "start": {
           const v = unitView(store, unit, { staleAfterMs: input.staleAfterMs });
           for (const i of v?.instances.filter((x) => x.status === "running") ?? []) {
             issue("pause_instance", { instance: i.id, reason: "full reset" });
           }
-          store.updateReset(id, { state: "exporting", command: issue("export_now", {}) });
+          store.updateReset(id, { state: "quiescing" });
+          break;
+        }
+        case "quiescing": {
+          const v = unitView(store, unit, { staleAfterMs: input.staleAfterMs });
+          const busy = Number(v?.jobs.queued ?? 0) + Number(v?.jobs.leased ?? 0);
+          const pending = store.pendingCommands(unit).length;
+          if (busy > 0 || pending > 0) break;
+          store.updateReset(id, {
+            state: "exporting",
+            command: issue("export_now", { full: true }),
+          });
           break;
         }
         case "exporting": {
@@ -248,9 +305,8 @@ export async function advanceResets(input: {
           if (!c || c.status === "pending") break;
           const out = (c.outcome ?? {}) as {
             result?: { export?: string; through_event?: number };
-            accepted?: boolean;
           };
-          const result = out.result ?? (c.outcome as { export?: string; through_event?: number });
+          const result = out.result;
           if (c.status !== "delivered" || !result?.export) {
             fail(`the export did not complete (${c.status})`);
             break;
@@ -265,13 +321,20 @@ export async function advanceResets(input: {
         case "verifying": {
           // The supervisor reports what reached the results repository.
           const sup = store.supervisor(unit) as {
-            export?: { remote?: boolean; pushed?: string[] };
+            export?: { remote?: boolean; pushed?: string[]; pushed_commit?: string | null };
           } | null;
           if (sup?.export && sup.export.remote === false) {
             fail("the unit has no results repository: its export cannot be verified (D24)");
             break;
           }
           if (!sup?.export?.pushed?.includes(String(r.export_name))) break;
+          store.updateReset(id, {
+            state: "awaiting_owner",
+            detail: `export ${String(r.export_name)} reported pushed${sup.export.pushed_commit ? ` (results repository commit ${sup.export.pushed_commit})` : ""}; check it there, then confirm the wipe`,
+          });
+          break;
+        }
+        case "confirmed": {
           store.updateReset(id, {
             state: "wiping",
             command: issue("wipe_state", {
@@ -289,14 +352,16 @@ export async function advanceResets(input: {
             fail(`the harness refused the wipe: ${JSON.stringify(c.outcome).slice(0, 300)}`);
             break;
           }
-          let restarted: string[] = [];
-          if (input.driver) restarted = await input.driver.restart(unit, ["harness", "supervisor"]);
-          store.updateReset(id, {
-            state: "done",
-            detail: input.driver
-              ? `wiped; restarted ${restarted.join(", ")}`
-              : "wiped; the unit restarted itself (no deployment driver configured)",
-          });
+          let restart = "the unit restarted itself (no deployment driver configured)";
+          if (input.driver) {
+            try {
+              restart = `restarted ${(await input.driver.restart(unit, ["harness", "supervisor"])).join(", ")}`;
+            } catch (err) {
+              // The wipe happened; the containers restart themselves after it anyway.
+              restart = `the restart through the driver failed (${err instanceof Error ? err.message : String(err)}); the unit restarts itself`;
+            }
+          }
+          store.updateReset(id, { state: "done", detail: `wiped; ${restart}` });
           break;
         }
       }
@@ -304,4 +369,25 @@ export async function advanceResets(input: {
       fail(err instanceof Error ? err.message : String(err));
     }
   }
+}
+
+/** The owner's confirmation of a reset waiting for it. */
+export function confirmReset(store: ControlStore, id: number, by: string): void {
+  const r = store.resets(200).find((x) => Number(x.id) === id);
+  if (!r) throw new Error(`no reset ${id}`);
+  if (String(r.state) !== "awaiting_owner")
+    throw new Error(`reset ${id} is ${String(r.state)}, not waiting for confirmation`);
+  store.updateReset(id, { state: "confirmed", detail: `confirmed by ${by}` });
+}
+
+/** The owner cancels a reset that has not wiped yet. */
+export function cancelReset(store: ControlStore, id: number, by: string): void {
+  const r = store.resets(200).find((x) => Number(x.id) === id);
+  if (!r) throw new Error(`no reset ${id}`);
+  if (["wiping", "done", "failed", "cancelled"].includes(String(r.state)))
+    throw new Error(`reset ${id} is ${String(r.state)}`);
+  store.updateReset(id, {
+    state: "cancelled",
+    detail: `cancelled by ${by}; the unit's campaigns stay paused until resumed`,
+  });
 }

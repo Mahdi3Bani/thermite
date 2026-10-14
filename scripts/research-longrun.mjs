@@ -46,9 +46,11 @@ function script(messages) {
     const fresh = brief.includes("not fetched yet")
       ? links.filter((u) => brief.indexOf(u) > brief.indexOf("not fetched yet"))
       : [];
+    // A random new article from the frontier (pages start with navigation links); else a seed.
     const pick =
-      fresh[(Number(lane) - 1) % Math.max(1, fresh.length)] ??
-      SEEDS[(Number(lane) - 1) % SEEDS.length];
+      fresh.length > 0
+        ? fresh[Math.floor(Math.random() * fresh.length)]
+        : SEEDS[(Number(lane) - 1) % SEEDS.length];
     return call("fetch", { url: pick });
   }
   const fetched = JSON.parse(

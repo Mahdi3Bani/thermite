@@ -5,7 +5,7 @@ import { z } from "zod";
 import { COMMAND_KINDS, type CommandKind, reportBody, verifyJson } from "../core/commands.ts";
 import { createDashboard } from "./dashboard.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
-import { advanceResets, type DeploymentDriver } from "./lifecycle.ts";
+import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
 import { mountMcp } from "./mcp.ts";
 import { metricsText } from "./metrics.ts";
 import type { ControlStore, IngestReport } from "./store.ts";
@@ -20,6 +20,12 @@ export interface ControlTokens {
   admin: string;
   /** Optional read-only token (MCP and API reads for observers). */
   read?: string | undefined;
+  /**
+   * Optional token for agents on MCP (for example a coordinating agent): it may read and steer
+   * (assign, pause, resume, redirect, reset workers, export, propagate), never approve, accept or
+   * wipe. The admin token is the owner's.
+   */
+  agent?: string | undefined;
   /** unit id -> token */
   units: Record<string, string>;
 }
@@ -64,7 +70,43 @@ const IssueBody = z.object({
     .positive()
     .max(7 * 24 * 60)
     .default(60),
-  issued_by: z.string().min(1).default("owner"),
+});
+
+/** What a supervisor may say about itself: numbers and short strings only (it is unsigned). */
+const Count = z.number().finite().min(0).max(1e12);
+const Short = z.string().max(1000);
+const SupervisorStats = z.strictObject({
+  at: Short,
+  relay: z.strictObject({ cursor: Count }).optional(),
+  export: z
+    .strictObject({
+      remote: z.boolean(),
+      exports: Count,
+      pushed: z.array(z.string().regex(/^[0-9A-Za-z-]{1,80}$/)).max(50),
+      pushed_commit: z
+        .string()
+        .regex(/^[0-9a-f]{40,64}$/)
+        .nullable()
+        .optional(),
+      last_push_at: Short.nullable(),
+      last_error: Short.nullable(),
+    })
+    .optional(),
+  advisors: z
+    .strictObject({
+      teacher_runs: Count,
+      directive_sets: Count,
+      directives: Count,
+      audits: Count,
+      reviews: Count,
+      errors: Count,
+      tokens_in: Count,
+      tokens_out: Count,
+      usd: Count,
+      last_error: Short.optional(),
+    })
+    .nullable()
+    .optional(),
 });
 
 const AckBody = z.object({
@@ -151,10 +193,7 @@ export function createControlApi(
     unitAuth,
     bodyLimit({ maxSize: 256 * 1024 }),
     async (c) => {
-      store.setSupervisor(
-        c.req.param("unit"),
-        z.record(z.string(), z.unknown()).parse(await c.req.json()),
-      );
+      store.setSupervisor(c.req.param("unit"), SupervisorStats.parse(await c.req.json()));
       return c.json({ ok: true });
     },
   );
@@ -186,7 +225,6 @@ export function createControlApi(
         instance: z.string().min(1),
         to_unit: z.string().min(1),
         to_instance: z.string().min(1),
-        issued_by: z.string().min(1).default("owner"),
       })
       .parse(await c.req.json());
     const r = propagateChampion(store, privateKeyPem, {
@@ -194,7 +232,7 @@ export function createControlApi(
       instance: body.instance,
       toUnit: body.to_unit,
       toInstance: body.to_instance,
-      issuedBy: body.issued_by,
+      issuedBy: "owner:api",
       staleAfterMs: opts.staleAfterMs,
     });
     return c.json(r, 201);
@@ -233,6 +271,22 @@ export function createControlApi(
 
   app.get("/v1/resets", admin, (c) => c.json({ resets: store.resets() }));
 
+  app.post("/v1/resets/:id/confirm", admin, async (c) => {
+    confirmReset(store, Number(c.req.param("id")), "owner:api");
+    await advanceResets({
+      store,
+      privateKeyPem,
+      driver: opts.driver,
+      staleAfterMs: opts.staleAfterMs,
+    });
+    return c.json({ ok: true });
+  });
+
+  app.post("/v1/resets/:id/cancel", admin, (c) => {
+    cancelReset(store, Number(c.req.param("id")), "owner:api");
+    return c.json({ ok: true });
+  });
+
   app.get("/v1/units", admin, (c) => c.json({ units: store.units() }));
 
   app.get("/metrics", admin, (c) =>
@@ -255,12 +309,16 @@ export function createControlApi(
 
   app.post("/v1/commands", admin, async (c) => {
     const body = IssueBody.parse(await c.req.json());
+    // A wipe goes only through the full reset (export, verified push, the owner's confirmation).
+    if (body.kind === "wipe_state")
+      return c.json({ error: "wipe_state is issued only by a full reset" }, 400);
     const { id } = issueCommand(store, privateKeyPem, {
       unit: body.unit,
       kind: body.kind,
       payload: body.payload,
       ttlMinutes: body.ttl_minutes,
-      issuedBy: body.issued_by,
+      // The admin token is the owner's; who issued a command is control's to say, not the client's.
+      issuedBy: "owner:api",
     });
     return c.json({ id, status: "pending" }, 201);
   });
@@ -295,6 +353,7 @@ export function createControlApi(
   app.get("/", (c) => c.redirect("/ui", 302));
   mountMcp(app, store, {
     adminToken: tokens.admin,
+    agentToken: tokens.agent,
     readToken: tokens.read,
     privateKeyPem,
     staleAfterMs: opts.staleAfterMs,

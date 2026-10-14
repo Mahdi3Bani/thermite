@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, test } from "node:test";
-import { FAST_KERNEL, makeJudgeEnv, WRONG_KERNEL } from "../testing/judge-env.ts";
+import { type CommandKind, signEnvelope } from "../core/commands.ts";
+import { FAST_KERNEL, makeJudgeEnv, SEED_KERNEL, WRONG_KERNEL } from "../testing/judge-env.ts";
 import { Scheduler } from "./agents/scheduler.ts";
 import { createHarnessApi } from "./api.ts";
+import { Audits } from "./audits.ts";
 import { LocalRunner } from "./broker/runner.ts";
 import { Conclusions } from "./conclusions.ts";
 import { Reviews } from "./reviews.ts";
@@ -24,6 +27,28 @@ async function submit(env: ReturnType<typeof makeJudgeEnv>, kernel: string, flaw
       "test",
     )
   ).attempt;
+}
+
+/** A command as control would sign it for a given issuer (agents are not the owner). */
+function signAs(
+  env: ReturnType<typeof makeJudgeEnv>,
+  issuer: string,
+  kind: CommandKind,
+  payload: unknown,
+) {
+  return signEnvelope(
+    {
+      v: 1,
+      id: randomUUID(),
+      unit: "unit-a",
+      kind,
+      issued_by: issuer,
+      issued_at: new Date(Date.now() - 1000).toISOString(),
+      expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+      payload,
+    },
+    env.keys.privateKeyPem,
+  );
 }
 
 const lowAudit = {
@@ -145,11 +170,59 @@ describe("audits", () => {
     assert.equal(env.ledger.currentChampion("js-1").attempt, id);
   });
 
-  test("a cleared audit follows the promotion policy, but declared flaws always go to the owner", async () => {
-    const env = makeJudgeEnv({ contract: lowAudit });
+  test("a cleared audit follows the promotion policy, but large gains and declared flaws go to the owner", async () => {
+    // Above the absolute trigger: a clear still needs the owner (D8), whatever the policy.
+    const big = makeJudgeEnv({ contract: lowAudit });
+    await big.service.applyCommand(big.assign);
+    const large = await submit(big, FAST_KERNEL);
+    await big.drain();
+    await big.service.decideAudit({
+      attempt: large,
+      decision: "clear",
+      reasons: "ok",
+      citations: [],
+      auditor: "a",
+    });
+    assert.equal(String(big.ledger.getAttempt(large)?.lifecycle), "awaiting_approval");
+    // An agent's MCP or API credential cannot approve: control records who issued a command.
+    const byAgent = signAs(big, "agent:mcp", "approve_promotion", {
+      instance: "js-1",
+      attempt: large,
+    });
+    const refused = await big.service.applyCommand(byAgent);
+    assert.ok(refused.status === "applied" && !refused.accepted, JSON.stringify(refused));
+    const ok = await big.service.applyCommand(
+      big.sign("approve_promotion", { instance: "js-1", attempt: large }),
+    );
+    assert.ok(ok.status === "applied" && ok.accepted, JSON.stringify(ok));
+
+    // The ratio trigger (far above earlier confirmed gains): a clear follows the policy (auto).
+    const env = makeJudgeEnv({
+      contract: {
+        acceptance: {
+          looks: [3, 6],
+          confirm_blocks: 4,
+          audit: { ratio_to_median: 3, absolute: 1000 },
+        },
+      },
+    });
     await env.service.applyCommand(env.assign);
+    for (const tag of ["x", "y", "z"]) {
+      const earlier = await submit(env, `${FAST_KERNEL}// ${tag}\n`);
+      env.ledger.recordVerdict({
+        attempt: earlier,
+        verdict: "win_confirmed",
+        delta: 0.01,
+        reasons: "t",
+        judgedBy: "t",
+      });
+      env.ledger.setAttemptLifecycle(earlier, "judged", "t");
+    }
+    env.ledger.db.prepare("update job set state = 'cancelled' where state = 'queued'").run();
     const clean = await submit(env, FAST_KERNEL);
     await env.drain();
+    assert.equal(String(env.ledger.getAttempt(clean)?.lifecycle), "awaiting_audit");
+    assert.equal(String(new Audits(env.ledger).get(clean)?.trigger), "ratio");
     await env.service.decideAudit({
       attempt: clean,
       decision: "clear",
@@ -178,6 +251,42 @@ describe("audits", () => {
     );
     assert.ok(r.status === "applied" && r.accepted, JSON.stringify(r));
     assert.equal(env2.ledger.currentChampion("js-1").attempt, flawed);
+  });
+});
+
+describe("audits when the champion moves", () => {
+  test("a held win confirmed again against a new champion gets a new audit the auditor sees", async () => {
+    const env = makeJudgeEnv({ contract: lowAudit });
+    await env.service.applyCommand(env.assign);
+    const x = await submit(env, FAST_KERNEL);
+    await env.drain();
+    assert.equal(String(env.ledger.getAttempt(x)?.lifecycle), "awaiting_audit");
+    const first = Number(new Audits(env.ledger).get(x)?.id);
+    // Meanwhile another change becomes the champion.
+    const y = await submit(env, `${SEED_KERNEL}// a restated seed\n`);
+    env.ledger.db.prepare("update job set state = 'cancelled' where state = 'queued'").run();
+    env.ledger.recordVerdict({ attempt: y, verdict: "win_confirmed", reasons: "t", judgedBy: "t" });
+    env.ledger.promote({
+      instance: "js-1",
+      expectedSeq: 1,
+      attempt: y,
+      commitSha: String(env.ledger.getAttempt(y)?.commit_sha),
+      by: "t",
+    });
+    // The owner overrides the hold: the champion moved, so it is screened again...
+    const r = await env.service.applyCommand(
+      env.sign("approve_promotion", { instance: "js-1", attempt: x }),
+    );
+    assert.ok(r.status === "applied" && r.accepted, JSON.stringify(r));
+    assert.equal((r.result as { rescreen?: boolean }).rescreen, true);
+    await env.drain();
+    // ...and as it still wins, it waits for a new audit against the new champion.
+    const audits = new Audits(env.ledger);
+    assert.equal(String(env.ledger.getAttempt(x)?.lifecycle), "awaiting_audit");
+    const second = audits.get(x);
+    assert.notEqual(Number(second?.id), first);
+    assert.equal(Number(second?.expected_seq), 2);
+    assert.ok(audits.pending().includes(Number(second?.id)));
   });
 });
 

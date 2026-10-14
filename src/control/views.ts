@@ -91,12 +91,15 @@ export interface InstanceView {
     sha256: string;
     path: string;
   } | null;
+  /** Every champion tree this instance published, by seq (cross-verification checks it). */
+  published_trees: Record<number, string>;
   /** Champions received from other units, and how this unit's judge decided them. */
   propagations: {
     attempt: string | null;
     source_unit: string;
     source_instance: string;
     source_seq: number;
+    tree: string | null;
     result: string;
   }[];
   directives: number;
@@ -171,6 +174,7 @@ export function unitView(
         reviews: [],
         conclusions: [],
         published: null,
+        published_trees: {},
         propagations: [],
         directives: 0,
       };
@@ -360,6 +364,7 @@ export function unitView(
         break;
       }
       case "champion_published": {
+        inst(String(e.subject)).published_trees[Number(b.seq)] = String(b.tree);
         inst(String(e.subject)).published = {
           seq: Number(b.seq),
           repo: (b.repo as string | null) ?? null,
@@ -376,6 +381,7 @@ export function unitView(
           source_unit: String(b.source_unit),
           source_instance: String(b.source_instance),
           source_seq: Number(b.source_seq),
+          tree: (b.tree as string | undefined) ?? null,
           result: String(b.result ?? "judging"),
         });
         break;
@@ -448,12 +454,14 @@ export function leaderboard(
     .units()
     .map((u) => unitView(store, u.id, opts))
     .filter((v): v is UnitView => v !== undefined);
+  // An acceptance counts only for the tree it accepted: the key includes the tree, which must be
+  // the one the source unit itself published (signed) for that seq.
   const verified = new Map<string, Set<string>>();
   for (const v of views) {
     for (const i of v.instances) {
       for (const p of i.propagations) {
-        if (p.result !== "accepted") continue;
-        const key = `${p.source_unit}/${p.source_instance}/${p.source_seq}`;
+        if (p.result !== "accepted" || !p.tree) continue;
+        const key = `${p.source_unit}/${p.source_instance}/${p.source_seq}/${p.tree}`;
         if (!verified.has(key)) verified.set(key, new Set());
         verified.get(key)?.add(v.id);
       }
@@ -462,9 +470,11 @@ export function leaderboard(
   const out: Record<string, LeaderEntry[]> = {};
   for (const v of views) {
     for (const i of v.instances) {
-      if (i.mode === "research" || !i.campaign) continue;
+      // Hill climbs: a gain over the baseline is what is compared.
+      if (i.mode !== "hill_climb" || !i.campaign) continue;
       const champ = i.champion.filter((c) => !c.reopened).at(-1);
       const seq = champ?.seq ?? 1;
+      const tree = i.published_trees[seq];
       if (!out[i.campaign]) out[i.campaign] = [];
       out[i.campaign]?.push({
         unit: v.id,
@@ -473,7 +483,7 @@ export function leaderboard(
         status: i.status,
         champion_seq: seq,
         gain: (champ?.cumulative ?? 1) - 1,
-        verified_by: [...(verified.get(`${v.id}/${i.id}/${seq}`) ?? [])].sort(),
+        verified_by: tree ? [...(verified.get(`${v.id}/${i.id}/${seq}/${tree}`) ?? [])].sort() : [],
       });
     }
   }

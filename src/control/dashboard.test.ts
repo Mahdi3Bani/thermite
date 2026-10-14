@@ -55,6 +55,45 @@ async function stack(promotion: "auto" | "owner_approval" = "owner_approval") {
 }
 
 describe("control dashboard", () => {
+  test("a supervisor's self-report cannot carry markup, and pages forbid scripts", async () => {
+    const s = await stack();
+    await s.env.service.applyCommand(s.env.assign);
+    await s.relay();
+    const post = (body: unknown) =>
+      s.control.request("/v1/units/unit-a/supervisor", {
+        method: "POST",
+        headers: { authorization: "Bearer unit-token-abcdef", "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    const evil = await post({
+      at: "now",
+      export: {
+        remote: true,
+        exports: "<img src=x onerror=alert(1)>",
+        pushed: [],
+        last_push_at: null,
+        last_error: null,
+      },
+    });
+    assert.equal(evil.status, 400);
+    const ok = await post({
+      at: "now",
+      export: {
+        remote: true,
+        exports: 3,
+        pushed: [],
+        last_push_at: "<script>x</script>",
+        last_error: null,
+      },
+    });
+    assert.equal(ok.status, 200);
+    const page = await s.get("/ui/units/unit-a");
+    const html = await page.text();
+    assert.ok(!html.includes("<script>x</script>"));
+    assert.match(html, /&lt;script&gt;x&lt;\/script&gt;/);
+    assert.match(page.headers.get("content-security-policy") ?? "", /default-src 'none'/);
+  });
+
   test("sign-in is required, and a wrong token gets nowhere", async () => {
     const s = await stack();
     assert.equal(s.login.status, 303);

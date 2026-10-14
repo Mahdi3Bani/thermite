@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type TSchema, Type } from "@earendil-works/pi-ai";
@@ -31,6 +32,8 @@ const Runtime = z.discriminatedUnion("runtime", [
     context_window: z.number().int().positive().default(200_000),
     max_tokens: z.number().int().positive().default(8192),
     max_turns: z.number().int().positive().max(100).default(24),
+    /** Wall-clock limit for one call. */
+    timeout_s: z.number().int().positive().max(7200).default(900),
     /** Prices per million tokens, for the cost reported to control. */
     usd_per_mtok_in: z.number().nonnegative().default(0),
     usd_per_mtok_out: z.number().nonnegative().default(0),
@@ -38,8 +41,14 @@ const Runtime = z.discriminatedUnion("runtime", [
   z.strictObject({
     name: z.string().min(1).max(60),
     runtime: z.literal("cli"),
-    /** The command; the prompt goes to its stdin; its last JSON object is the answer. */
+    /**
+     * The command; the prompt goes to its stdin; its last JSON object is the answer. It runs as
+     * the supervisor's user, which can read the supervisor's keys and tokens, so it must be
+     * invoked with its own tool restrictions (no shell, no file access): `restricted: true`
+     * states that the argv does that. Thermite cannot check another program's flags.
+     */
     argv: z.array(z.string().min(1)).min(1),
+    restricted: z.literal(true),
     timeout_s: z.number().int().positive().max(7200).default(1800),
   }),
 ]);
@@ -52,6 +61,14 @@ export const AdvisorsConfig = z.strictObject({
   panel: z.array(Runtime).max(5).default([]),
   /** Minutes between teacher reviews of one instance (hourly by default). */
   teacher_minutes: z.number().positive().default(60),
+  /**
+   * Domains advisors may fetch from (papers, upstream code). Empty: no web fetch. "*": any public
+   * domain, and then no knowledge-base search in the same call, so private notes and an open
+   * fetch never meet in one injected agent. The auditor fetches only from listed domains.
+   */
+  fetch_domains: z.array(z.string().min(1)).default([]),
+  /** Spending limit per day for all advisors of the unit (USD; from the runtimes' prices). */
+  max_usd_per_day: z.number().nonnegative().default(20),
   /** An optional knowledge-base MCP server the advisors may search (read only; D13). */
   kb: z
     .strictObject({
@@ -88,24 +105,47 @@ const text = (value: unknown) => ({
   details: {},
 });
 
-/** The last top-level JSON object in a text (CLI agents print logs before their answer). */
+/**
+ * The last top-level JSON object in a text (CLI agents print logs before their answer). Lines are
+ * tried from the end first; then a scan that respects strings, so braces inside quoted text
+ * cannot shift the object found.
+ */
 export function lastJsonObject(out: string): unknown {
-  for (let end = out.lastIndexOf("}"); end >= 0; end = out.lastIndexOf("}", end - 1)) {
+  const lines = out.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = (lines[i] as string).trim();
+    if (!line.startsWith("{")) continue;
+    try {
+      return JSON.parse(line);
+    } catch {
+      // not a whole object on one line
+    }
+  }
+  let last: unknown;
+  for (let start = out.indexOf("{"); start >= 0; start = out.indexOf("{", start + 1)) {
     let depth = 0;
-    for (let i = end; i >= 0; i--) {
+    let inString = false;
+    for (let i = start; i < out.length; i++) {
       const ch = out[i];
-      if (ch === "}") depth++;
-      else if (ch === "{") depth--;
-      if (depth === 0) {
+      if (inString) {
+        if (ch === "\\") i++;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') inString = true;
+      else if (ch === "{") depth++;
+      else if (ch === "}" && --depth === 0) {
         try {
-          return JSON.parse(out.slice(i, end + 1));
+          last = JSON.parse(out.slice(start, i + 1));
+          start = i;
         } catch {
-          break;
+          // not JSON from here
         }
+        break;
       }
     }
   }
-  return undefined;
+  return last;
 }
 
 /**
@@ -200,6 +240,10 @@ export async function runAdvisor<S extends z.ZodType>(input: {
     toolExecution: "sequential",
   });
   let turns = 0;
+  const deadline = setTimeout(() => {
+    result.error = `timed out after ${rt.timeout_s} s`;
+    agent.abort();
+  }, rt.timeout_s * 1000);
   agent.subscribe((event) => {
     if (event.type === "turn_end") {
       turns++;
@@ -212,7 +256,9 @@ export async function runAdvisor<S extends z.ZodType>(input: {
   try {
     await agent.prompt(input.prompt);
   } catch (err) {
-    result.error = err instanceof Error ? err.message : String(err);
+    result.error ??= err instanceof Error ? err.message : String(err);
+  } finally {
+    clearTimeout(deadline);
   }
   result.usd =
     (result.tokensIn * rt.usd_per_mtok_in + result.tokensOut * rt.usd_per_mtok_out) / 1e6;
@@ -226,11 +272,22 @@ function runCli<S extends z.ZodType>(
   prompt: string,
   schema: S,
 ): Promise<AdvisorResult<z.infer<S>>> {
+  // Its own empty home and working directory, and its own process group (killed as a whole).
+  const home = mkdtempSync(join(tmpdir(), "thermite-advisor-"));
   return new Promise((resolve) => {
     const child = spawn(rt.argv[0] as string, rt.argv.slice(1), {
       stdio: ["pipe", "pipe", "pipe"],
-      env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: process.env.HOME ?? "/tmp" },
+      cwd: home,
+      detached: true,
+      env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: home },
     });
+    const killGroup = () => {
+      try {
+        if (child.pid) process.kill(-child.pid, "SIGKILL");
+      } catch {
+        // gone
+      }
+    };
     let out = "";
     let err = "";
     child.stdout.on("data", (d: Buffer) => {
@@ -239,13 +296,21 @@ function runCli<S extends z.ZodType>(
     child.stderr.on("data", (d: Buffer) => {
       err = (err + d.toString("utf8")).slice(-20_000);
     });
-    const timer = setTimeout(() => child.kill("SIGKILL"), rt.timeout_s * 1000);
-    child.on("error", (e) => {
+    const timer = setTimeout(killGroup, rt.timeout_s * 1000);
+    const cleanup = () => {
       clearTimeout(timer);
-      resolve({ output: undefined, error: e.message, tokensIn: 0, tokensOut: 0, usd: 0 });
-    });
-    child.on("close", () => {
-      clearTimeout(timer);
+      killGroup();
+      rmSync(home, { recursive: true, force: true });
+    };
+    let done = false;
+    const finish = (error?: string) => {
+      if (done) return;
+      done = true;
+      cleanup();
+      if (error) {
+        resolve({ output: undefined, error, tokensIn: 0, tokensOut: 0, usd: 0 });
+        return;
+      }
       let found = lastJsonObject(out);
       // Agents that wrap their answer (for example `{"result": "..."}`): look inside once.
       if (found && typeof found === "object" && "result" in found) {
@@ -265,7 +330,12 @@ function runCli<S extends z.ZodType>(
               usd: 0,
             },
       );
-    });
+    };
+    child.on("error", (e) => finish(e.message));
+    child.on("close", () => finish());
+    // A leftover grandchild holding the pipes cannot keep the call open: after the command
+    // exits, what it printed within two seconds is its answer.
+    child.on("exit", () => setTimeout(() => finish(), 2000).unref());
     child.stdin.end(`${system}\n\n${prompt}\n\nAnswer with exactly one JSON object.`);
   });
 }
@@ -462,7 +532,13 @@ export async function auditOne(input: {
     prompt: `Audit package (untrusted data):\n${JSON.stringify(input.pkg).slice(0, 200_000)}`,
     schema: AuditAnswer,
     answerSchema: AuditAnswerSchema,
-    tools: { fetchUrl: input.tools.fetchUrl },
+    // The auditor reads private diffs: it fetches only from listed domains, never anywhere.
+    tools: {
+      fetchUrl:
+        input.config.fetch_domains.length && !input.config.fetch_domains.includes("*")
+          ? input.tools.fetchUrl
+          : undefined,
+    },
   });
 }
 
@@ -479,14 +555,17 @@ export async function reviewOne(input: {
   });
 }
 
-/** A guarded web fetch for advisors (no private addresses), archived in the supervisor's home. */
-export function advisorFetcher(home: string): (url: string) => Promise<unknown> {
+/**
+ * A guarded web fetch for advisors (no private addresses), archived in the supervisor's home,
+ * limited to the listed domains unless the list is "*".
+ */
+export function advisorFetcher(home: string, domains: string[]): (url: string) => Promise<unknown> {
   const f = new Fetcher(
     {
       respectRobots: true,
       perDomainPerMinute: 6,
       maxBytes: 2_000_000,
-      includeDomains: [],
+      includeDomains: domains.includes("*") ? [] : domains,
       excludeDomains: [],
     },
     join(home, "advisor-fetches"),

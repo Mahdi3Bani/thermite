@@ -450,7 +450,7 @@ export class Fetcher {
           })
           .filter((l): l is string => l !== null),
       ),
-    ].slice(0, 100);
+    ].slice(0, 300);
     const rawPath = join(this.archiveDir, `${sha256}.raw`);
     const textPath = join(this.archiveDir, `${sha256}.txt`);
     writeFileSync(rawPath, r.body, { mode: 0o600 });

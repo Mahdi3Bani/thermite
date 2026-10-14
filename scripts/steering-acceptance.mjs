@@ -271,18 +271,35 @@ try {
       afterBlock.attempts.find((a) => a.id === blocked.attempt)?.lifecycle === "audit_blocked",
     afterBlock.audits,
   );
+  // A win far above the absolute trigger: a clear still sends it to the owner, who approves.
+  const approveWhenCleared = async (unit, attempt) => {
+    await until(
+      `${attempt} cleared and waiting for the owner`,
+      async () => {
+        const i = await instanceOf(unit);
+        return i?.audits?.some((a) => a.attempt === attempt && a.decision === "clear") &&
+          i.pending_promotions.includes(attempt)
+          ? i
+          : undefined;
+      },
+      1_200_000,
+      3000,
+    );
+    await command("approve_promotion", { instance: "smoke-1", attempt }, unit);
+    return until(
+      `${attempt} promoted`,
+      async () => {
+        const i = await instanceOf(unit);
+        return i?.champion.some((c) => c.attempt === attempt) ? i : undefined;
+      },
+      300_000,
+      3000,
+    );
+  };
   const clean = submitTo("harness", candidatePatch(env, good), "good kernel");
-  const promoted = await until(
-    "the cleared win promoted",
-    async () => {
-      const i = await instanceOf("local-1");
-      return i?.champion.some((c) => c.attempt === clean.attempt) ? i : undefined;
-    },
-    900_000,
-    3000,
-  );
+  const promoted = await approveWhenCleared("local-1", clean.attempt);
   check(
-    "a cleared audit lets the win promote (auto policy)",
+    "a cleared audit of a large gain goes to the owner, whose approval promotes it",
     promoted.audits.some((a) => a.attempt === clean.attempt && a.decision === "clear"),
     promoted.audits,
   );
@@ -311,6 +328,14 @@ try {
     60_000,
     2000,
   );
+  const received = await until(
+    "local-2 received the champion",
+    async () =>
+      (await instanceOf("local-2"))?.propagations?.find((p) => p.source_seq === 2 && p.attempt),
+    600_000,
+    3000,
+  );
+  await approveWhenCleared("local-2", received.attempt);
   const accepted = await until(
     "local-2 judged the propagated champion",
     async () =>
@@ -407,6 +432,21 @@ try {
     body: JSON.stringify({ confirm: "reset local-2" }),
   });
   if (reset.status !== 201) throw new Error(`reset refused: ${JSON.stringify(reset.body)}`);
+  const waiting = await until(
+    "the reset waits for the owner",
+    async () => {
+      const r = (await api("/v1/resets")).body.resets.find((x) => x.id === reset.body.reset);
+      return ["awaiting_owner", "failed"].includes(r?.state) ? r : undefined;
+    },
+    600_000,
+    3000,
+  );
+  check(
+    "the reset verified the push and waits for the owner",
+    waiting.state === "awaiting_owner",
+    waiting,
+  );
+  await api(`/v1/resets/${reset.body.reset}/confirm`, { method: "POST", body: "{}" });
   const done = await until(
     "the reset finished",
     async () => {
@@ -416,7 +456,11 @@ try {
     600_000,
     3000,
   );
-  check("the full reset ran: pause, export, verified push, wipe", done.state === "done", done);
+  check(
+    "the full reset ran: pause, quiesce, full export, verified push, confirmed wipe",
+    done.state === "done",
+    done,
+  );
   const after = await until(
     "unit 2 reports a fresh ledger",
     async () => {

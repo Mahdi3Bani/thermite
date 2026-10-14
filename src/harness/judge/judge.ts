@@ -71,7 +71,14 @@ interface Finish {
   /** Close an instance (a goal campaign whose success rule holds). */
   close?: { instance: string; reason: string } | undefined;
   /** Hold the attempt for an audit (written in the same transaction). */
-  audit?: { instance: string; reason: string; expectedSeq: number } | undefined;
+  audit?:
+    | {
+        instance: string;
+        trigger: "absolute" | "ratio" | "known_flaws" | "adversarial_checklist";
+        reason: string;
+        expectedSeq: number;
+      }
+    | undefined;
 }
 
 /**
@@ -197,7 +204,12 @@ export class Judge {
       }
       if (enqueue) this.ledger.enqueueJob(enqueue);
       if (fin.audit && job.attempt) {
-        new Audits(this.ledger).request({ ...fin.audit, attempt: job.attempt, by: this.o.owner });
+        new Audits(this.ledger).request({
+          ...fin.audit,
+          attempt: job.attempt,
+          job: job.id,
+          by: this.o.owner,
+        });
       }
       if (fin.close)
         this.ledger.setInstanceStatus(fin.close.instance, "closed", fin.close.reason, this.o.owner);
@@ -670,14 +682,17 @@ export class Judge {
         reasons = "confirmation failed"; // held-out detail stays with promotion code
         d = { ...d, reasons };
       }
+      // With held-out cells, a failed confirmation shows no figures at all: otherwise a positive
+      // delta on a failed confirmation would reveal that a held-out cell failed.
+      const opaque = verdict !== "win_confirmed" && contract.held_out_cells.length > 0;
       const fin: Finish = {
         result: { verdict },
         verdict: {
           attempt: attemptId,
           verdict,
-          ...this.verdictFields(d),
+          ...(opaque ? {} : this.verdictFields(d)),
           dependsOnJobs: [job.id, Number(this.spec(job).screen_job ?? job.id)],
-          reasons: `${reasons}; vs champion seq ${champion.seq}`,
+          reasons: `${opaque ? "confirmation failed" : reasons}; vs champion seq ${champion.seq}`,
           judgedBy: this.o.owner,
         },
         lifecycle: "judged",
@@ -768,10 +783,10 @@ export class Judge {
           {
             kind: "promotion_blocked",
             subject: attemptId,
-            body: { reason: `audit required: ${trigger}` },
+            body: { reason: `audit required: ${trigger.reason}` },
           },
         ],
-        audit: { instance, reason: trigger, expectedSeq },
+        audit: { instance, trigger: trigger.kind, reason: trigger.reason, expectedSeq },
         lifecycle: "awaiting_audit",
       };
     }

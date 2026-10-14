@@ -210,7 +210,36 @@ function binaryFilesOf(numstatZ: string): string[] {
     .map((r) => r.slice(4));
 }
 
-/** The patch from parent to commit, for export. */
+/** The patch from parent to commit as bytes (exports and propagation: never decoded as text). */
+export async function patchBytes(mirror: string, parent: string, commit: string): Promise<Buffer> {
+  try {
+    const { stdout } = await run(
+      "git",
+      [
+        ...IDENTITY,
+        "diff",
+        "--binary",
+        "--full-index",
+        "--no-color",
+        "--no-ext-diff",
+        parent,
+        commit,
+      ],
+      {
+        cwd: mirror,
+        maxBuffer: 256 * 1024 * 1024,
+        encoding: "buffer",
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_CONFIG_NOSYSTEM: "1" },
+      },
+    );
+    return stdout;
+  } catch (err) {
+    const e = err as { stderr?: Buffer; message: string };
+    throw new GitError(`git diff failed: ${e.stderr?.toString("utf8").trim() || e.message}`);
+  }
+}
+
+/** The patch from parent to commit, as text (for people and models to read). */
 export async function patchBetween(
   mirror: string,
   parent: string,

@@ -6,13 +6,15 @@ import { type Ledger, LedgerError } from "./ledger.ts";
  * Audits. The judge flags a promotable result for audit (open known flaws, a gain above the
  * contract's audit trigger, or a goal campaign's adversarial checklist) and holds it. The
  * supervisor's auditor answers clear, block or needs_owner. An audit can block, never pass:
- * clear only returns the attempt to the path it was on (the promotion policy), and a cleared
- * known flaw still needs the owner.
+ * clear only returns the attempt to the path it was on (the promotion policy), and a gain above
+ * the absolute trigger or a declared flaw still needs the owner. Each confirmation of an attempt
+ * gets its own audit, against the champion it was confirmed against.
  */
 
 type Row = Record<string, unknown>;
 
 export type AuditDecision = "clear" | "block" | "needs_owner";
+export type AuditTriggerKind = "absolute" | "ratio" | "known_flaws" | "adversarial_checklist";
 
 export interface AuditPackage {
   id: number;
@@ -40,21 +42,29 @@ export function auditTrigger(input: {
   knownFlaws: unknown[];
   delta: number | null | undefined;
   priorDeltas: number[];
-}): string | undefined {
+}): { kind: AuditTriggerKind; reason: string } | undefined {
   const { contract } = input;
-  if (input.knownFlaws.length) return "known_flaws";
+  if (input.knownFlaws.length) return { kind: "known_flaws", reason: "declared flaws" };
   if (contract.mode === "goal") {
-    return contract.adversarial_checklist.length ? "adversarial_checklist" : undefined;
+    return contract.adversarial_checklist.length
+      ? { kind: "adversarial_checklist", reason: "the contract's adversarial checklist" }
+      : undefined;
   }
   if (contract.mode !== "hill_climb" || typeof input.delta !== "number") return undefined;
   const { ratio_to_median, absolute } = contract.acceptance.audit;
   if (input.delta > absolute)
-    return `gain ${(input.delta * 100).toFixed(1)}% above ${absolute * 100}%`;
+    return {
+      kind: "absolute",
+      reason: `gain ${(input.delta * 100).toFixed(1)}% above ${absolute * 100}%`,
+    };
   const prior = [...input.priorDeltas].filter((d) => d > 0).sort((a, b) => a - b);
   if (prior.length >= 3) {
     const median = prior[Math.floor(prior.length / 2)] as number;
     if (input.delta > ratio_to_median * median) {
-      return `gain ${(input.delta * 100).toFixed(1)}% above ${ratio_to_median}x the median confirmed gain`;
+      return {
+        kind: "ratio",
+        reason: `gain ${(input.delta * 100).toFixed(1)}% above ${ratio_to_median}x the median confirmed gain`,
+      };
     }
   }
   return undefined;
@@ -83,7 +93,10 @@ export class Audits {
   /** Records an audit request; the caller holds the attempt in awaiting_audit (same transaction). */
   request(input: {
     attempt: string;
+    /** The confirmation job that held the attempt: one audit per confirmation. */
+    job: number;
     instance: string;
+    trigger: AuditTriggerKind;
     reason: string;
     expectedSeq: number;
     by: string;
@@ -91,12 +104,14 @@ export class Audits {
     return this.ledger.tx(() => {
       const r = this.ledger.db
         .prepare(
-          `insert into audit (attempt, instance, reason, expected_seq, requested_at) values (?, ?, ?, ?, ?)
-           on conflict (attempt) do nothing`,
+          `insert into audit (attempt, confirm_job, instance, trigger, reason, expected_seq, requested_at)
+           values (?, ?, ?, ?, ?, ?, ?) on conflict (attempt, confirm_job) do nothing`,
         )
         .run(
           input.attempt,
+          input.job,
           input.instance,
+          input.trigger,
           input.reason,
           input.expectedSeq,
           new Date().toISOString(),
@@ -106,8 +121,8 @@ export class Audits {
         : Number(
             (
               this.ledger.db
-                .prepare("select id from audit where attempt = ?")
-                .get(input.attempt) as Row
+                .prepare("select id from audit where attempt = ? and confirm_job = ?")
+                .get(input.attempt, input.job) as Row
             ).id,
           );
       this.ledger.appendEvent(input.by, "audit_requested", input.attempt, {
@@ -120,19 +135,22 @@ export class Audits {
     });
   }
 
+  /** The attempt's current audit: the one for its latest confirmation. */
   get(attempt: string): Row | undefined {
-    return this.ledger.db.prepare("select * from audit where attempt = ?").get(attempt) as
-      | Row
-      | undefined;
+    return this.ledger.db
+      .prepare("select * from audit where attempt = ? order by id desc limit 1")
+      .get(attempt) as Row | undefined;
   }
 
-  /** Open audits whose attempt is still held for one. */
+  /** Open audits (the current one of each attempt still held for one). */
   pending(): number[] {
     return (
       this.ledger.db
         .prepare(
           `select au.id as id from audit au join attempt a on a.id = au.attempt
-           where au.decision is null and a.lifecycle = 'awaiting_audit' order by au.id`,
+           where au.decision is null and a.lifecycle = 'awaiting_audit'
+             and au.id = (select max(id) from audit x where x.attempt = au.attempt)
+           order by au.id`,
         )
         .all() as { id: number }[]
     ).map((r) => r.id);

@@ -3,7 +3,7 @@ import { type Context, Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import { COMMAND_KINDS, type CommandKind } from "../core/commands.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
-import { advanceResets, type DeploymentDriver } from "./lifecycle.ts";
+import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
 import { type ControlStore, fingerprint } from "./store.ts";
 import { type InstanceView, leaderboard, type UnitView, unitView } from "./views.ts";
 
@@ -129,31 +129,22 @@ function researchBlock(v: InstanceView): string {
 <details><summary>Latest report</summary><pre style="white-space:pre-wrap">${esc(String(r.report ?? ""))}</pre></details>`;
 }
 
+/** The supervisor's own figures. They are unsigned (the supervisor reports itself): every value
+ * is coerced or escaped here, never trusted as markup. */
 function supervisorLine(u: UnitView): string {
-  const s = u.supervisor as {
-    export?: {
-      remote?: boolean;
-      exports?: number;
-      last_push_at?: string | null;
-      last_error?: string | null;
-    };
-    advisors?: {
-      teacher_runs: number;
-      directive_sets: number;
-      audits: number;
-      reviews: number;
-      errors: number;
-      usd: number;
-    } | null;
-  } | null;
+  const s = u.supervisor as Record<string, unknown> | null;
   if (!s) return "";
-  const e = s.export;
-  const a = s.advisors;
-  return `<p class="muted">Supervisor: ${e ? `${e.exports ?? 0} exports, ${e.remote ? `last push ${esc(e.last_push_at ?? "never")}` : "no results repository"}${e.last_error ? `, <span class="bad">${esc(e.last_error)}</span>` : ""}` : ""}${
-    a
-      ? `; advisors: ${a.teacher_runs} teacher rounds, ${a.directive_sets} directive sets, ${a.audits} audits, ${a.reviews} reviews, ${a.errors} errors, $${a.usd.toFixed(2)}`
-      : "; no advisors configured"
-  }</p>`;
+  const obj = (x: unknown) => (x && typeof x === "object" ? (x as Record<string, unknown>) : {});
+  const n = (x: unknown) => (Number.isFinite(Number(x)) ? Number(x) : 0);
+  const e = obj(s.export);
+  const a = s.advisors ? obj(s.advisors) : null;
+  const exportPart = s.export
+    ? `${n(e.exports)} exports, ${e.remote === true ? `last push ${esc(e.last_push_at ?? "never")}` : "no results repository"}${e.last_error ? `, <span class="bad">${esc(e.last_error)}</span>` : ""}`
+    : "";
+  const advisorPart = a
+    ? `; advisors: ${n(a.teacher_runs)} teacher rounds, ${n(a.directive_sets)} directive sets, ${n(a.audits)} audits, ${n(a.reviews)} reviews, ${n(a.errors)} errors, $${n(a.usd).toFixed(2)}`
+    : "; no advisors configured";
+  return `<p class="muted">Supervisor (self-reported): ${exportPart}${advisorPart}</p>`;
 }
 
 function verdictPills(v: InstanceView): string {
@@ -224,6 +215,23 @@ ${form("conclude", { proposal: String(c.proposal), accept: "true" }, "Accept: no
 
 export function createDashboard(store: ControlStore, opts: DashboardOptions): Hono {
   const app = new Hono();
+  // No script ever runs in the dashboard: even an escaping mistake cannot become code.
+  app.use("/ui/*", async (c, next) => {
+    await next();
+    c.header(
+      "content-security-policy",
+      "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+    );
+    c.header("x-content-type-options", "nosniff");
+    c.header("referrer-policy", "no-referrer");
+  });
+  app.use("/ui", async (c, next) => {
+    await next();
+    c.header(
+      "content-security-policy",
+      "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+    );
+  });
   const secret = randomBytes(32);
   const sessions = new Map<string, number>();
   const csrfOf = (sid: string) => createHmac("sha256", secret).update(sid).digest("hex");
@@ -521,11 +529,15 @@ ${instances || '<p class="muted">No campaign assigned.</p>'}<h2>Recent events</h
           `<div class="card"><h2>${esc(r.unit)} <span class="muted">${esc(r.kind)} · ${esc(r.at.slice(0, 16))}</span></h2><pre style="white-space:pre-wrap">${esc(r.body)}</pre></div>`,
       )
       .join("");
+    const t = csrf(c);
+    const act = (id: unknown, what: string, label: string, primary = false) =>
+      `<form class="inline" method="post" action="/ui/resets/${esc(id)}/${what}"><input type="hidden" name="csrf" value="${t}"><button${primary ? ' class="primary"' : ""}>${label}</button></form>`;
     const resets = store
       .resets(20)
       .map(
         (r) =>
-          `<tr><td>${esc(r.unit)}</td><td>${esc(r.state)}</td><td>${esc(r.detail ?? "")}</td><td class="muted">${esc(String(r.updated_at).slice(0, 16))}</td></tr>`,
+          `<tr><td>${esc(r.unit)}</td><td>${esc(r.state)}</td><td>${esc(r.detail ?? "")}</td><td class="muted">${esc(String(r.updated_at).slice(0, 16))}</td>
+<td>${String(r.state) === "awaiting_owner" ? act(r.id, "confirm", "Confirm the wipe", true) : ""}${["start", "quiescing", "exporting", "verifying", "awaiting_owner"].includes(String(r.state)) ? act(r.id, "cancel", "Cancel") : ""}</td></tr>`,
       )
       .join("");
     return c.html(
@@ -533,11 +545,35 @@ ${instances || '<p class="muted">No campaign assigned.</p>'}<h2>Recent events</h
         "Reports",
         `<h1>Reports</h1>${rows || '<p class="muted">No daily report yet.</p>'}${
           resets
-            ? `<h2>Full resets</h2><div class="card"><table><tr><th>Unit</th><th>State</th><th>Detail</th><th>Updated</th></tr>${resets}</table></div>`
+            ? `<h2>Full resets</h2><div class="card"><table><tr><th>Unit</th><th>State</th><th>Detail</th><th>Updated</th><th></th></tr>${resets}</table></div>`
             : ""
         }`,
       ),
     );
+  });
+
+  app.post("/ui/resets/:id/confirm", async (c) => {
+    try {
+      confirmReset(store, Number(c.req.param("id")), "owner:ui");
+      await advanceResets({
+        store,
+        privateKeyPem: opts.privateKeyPem,
+        driver: opts.driver,
+        staleAfterMs: opts.staleAfterMs,
+      });
+    } catch (err) {
+      return c.text(`refused: ${err instanceof Error ? err.message : String(err)}`, 400);
+    }
+    return c.redirect("/ui/reports", 303);
+  });
+
+  app.post("/ui/resets/:id/cancel", (c) => {
+    try {
+      cancelReset(store, Number(c.req.param("id")), "owner:ui");
+    } catch (err) {
+      return c.text(`refused: ${err instanceof Error ? err.message : String(err)}`, 400);
+    }
+    return c.redirect("/ui/reports", 303);
   });
 
   app.post("/ui/propagate", async (c) => {

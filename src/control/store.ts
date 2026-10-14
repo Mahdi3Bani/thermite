@@ -161,7 +161,7 @@ export class ControlStore {
   openReset(unit: string): Row | undefined {
     return this.db
       .prepare(
-        "select * from reset where unit = ? and state not in ('done', 'failed') order by id desc",
+        "select * from reset where unit = ? and state not in ('done', 'failed', 'cancelled') order by id desc",
       )
       .get(unit) as Row | undefined;
   }

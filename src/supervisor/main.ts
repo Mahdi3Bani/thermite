@@ -168,8 +168,9 @@ async function main(): Promise<void> {
           remote: Boolean(remote),
           exports: exportState.done.length,
           pushed: exportState.pushed ?? [],
+          pushed_commit: exportState.pushedCommit ?? null,
           last_push_at: exportState.lastPushAt ?? null,
-          last_error: exportState.lastError ?? null,
+          last_error: exportState.lastError?.slice(0, 900) ?? null,
         },
         advisors: advisors ? adviseState.stats : null,
       });

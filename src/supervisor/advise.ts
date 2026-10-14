@@ -32,6 +32,8 @@ export interface AdviseConfig {
 export interface AdviseState {
   lastTeacherAt: Record<string, string>;
   tried: Record<string, string>;
+  tries: Record<string, number>;
+  spend?: { day: string; usd: number } | undefined;
   stats: {
     teacher_runs: number;
     directive_sets: number;
@@ -46,10 +48,14 @@ export interface AdviseState {
   };
 }
 
+/** An audit or review is tried at most this often before it is left to the owner. */
+const MAX_TRIES = 5;
+
 export function emptyAdviseState(): AdviseState {
   return {
     lastTeacherAt: {},
     tried: {},
+    tries: {},
     stats: {
       teacher_runs: 0,
       directive_sets: 0,
@@ -97,16 +103,37 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
     return JSON.parse(text) as unknown;
   };
   const next: AdviseState = structuredClone(state);
+  next.tries ??= {};
   const s = next.stats;
   const now = Date.now();
   const retryMs = cfg.retryMs ?? 30 * 60_000;
+  /** Retried every retryMs, at most MAX_TRIES times (then the owner decides). */
   const due = (key: string) => {
     const t = next.tried[key];
+    if ((next.tries[key] ?? 0) >= MAX_TRIES) return false;
     return !t || now - Date.parse(t) >= retryMs;
   };
+  const mark = (key: string) => {
+    next.tried[key] = new Date().toISOString();
+    next.tries[key] = (next.tries[key] ?? 0) + 1;
+  };
+  // Web fetch only for listed domains; with an open fetch ("*"), no knowledge-base search in the
+  // same agent, so private notes and the open web never meet in one injectable context.
+  const domains = cfg.advisors.fetch_domains;
   const tools: AdvisorTools = {
-    fetchUrl: advisorFetcher(cfg.home),
-    kbSearch: kbTool(cfg.advisors),
+    ...(domains.length ? { fetchUrl: advisorFetcher(cfg.home, domains) } : {}),
+    ...(domains.includes("*") ? {} : { kbSearch: kbTool(cfg.advisors) }),
+  };
+  // A daily spending limit for all advisors of the unit.
+  const day = new Date().toISOString().slice(0, 10);
+  if (next.spend?.day !== day) next.spend = { day, usd: 0 };
+  const spend = next.spend as { day: string; usd: number };
+  const overBudget = () => spend.usd >= cfg.advisors.max_usd_per_day;
+  const count = (r: { tokensIn: number; tokensOut: number; usd: number }) => {
+    s.tokens_in += r.tokensIn;
+    s.tokens_out += r.tokensOut;
+    s.usd += r.usd;
+    spend.usd += r.usd;
   };
   const record = (kind: string, data: unknown) => {
     const dir = join(cfg.home, "advisors");
@@ -123,7 +150,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
   };
 
   // The teacher pair, per running instance, on its cadence.
-  if (cfg.advisors.teachers.length) {
+  if (cfg.advisors.teachers.length && !overBudget()) {
     const { instances } = (await api("GET", "/v1/instances")) as {
       instances: { id: string; status: string }[];
     };
@@ -143,9 +170,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           },
         });
         s.teacher_runs++;
-        s.tokens_in += run.tokens.in;
-        s.tokens_out += run.tokens.out;
-        s.usd += run.usd;
+        count({ tokensIn: run.tokens.in, tokensOut: run.tokens.out, usd: run.usd });
         let posted: unknown;
         if (run.directives?.length) {
           posted = await api("POST", "/v1/directives", {
@@ -165,19 +190,17 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
   }
 
   // The auditor: open audits. An audit can block, never pass; the harness enforces that too.
-  if (cfg.advisors.auditor) {
+  if (cfg.advisors.auditor && !overBudget()) {
     const { audits } = (await api("GET", "/v1/audits/pending")) as {
       audits: { attempt: string }[];
     };
     for (const pkg of audits) {
       const key = `audit:${pkg.attempt}`;
       if (!due(key)) continue;
-      next.tried[key] = new Date().toISOString();
+      mark(key);
       try {
         const r = await auditOne({ config: cfg.advisors, pkg, tools });
-        s.tokens_in += r.tokensIn;
-        s.tokens_out += r.tokensOut;
-        s.usd += r.usd;
+        count(r);
         if (!r.output) {
           fail(`audit of ${pkg.attempt}`, r.error);
           continue;
@@ -196,25 +219,27 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
   }
 
   // The review panel: every panelist reviews blind; the harness needs at least two.
-  if (cfg.advisors.panel.length) {
+  if (cfg.advisors.panel.length && !overBudget()) {
     const { reviews } = (await api("GET", "/v1/reviews/pending")) as {
       reviews: { id: number }[];
     };
     for (const pkg of reviews) {
       const key = `review:${pkg.id}`;
       if (!due(key)) continue;
-      next.tried[key] = new Date().toISOString();
+      mark(key);
       try {
         const results: { reviewer: string; pass: boolean; reasons: string }[] = [];
         for (const runtime of cfg.advisors.panel) {
           const r = await reviewOne({ runtime, pkg });
-          s.tokens_in += r.tokensIn;
-          s.tokens_out += r.tokensOut;
-          s.usd += r.usd;
+          count(r);
           if (r.output) results.push({ reviewer: runtime.name, ...r.output });
         }
-        if (results.length < 2) {
-          fail(`review ${pkg.id}`, `only ${results.length} panelists answered`);
+        // Every panelist must answer: a crashed dissenter must not lose its veto.
+        if (results.length < cfg.advisors.panel.length) {
+          fail(
+            `review ${pkg.id}`,
+            `${results.length} of ${cfg.advisors.panel.length} panelists answered`,
+          );
           continue;
         }
         const posted = await api("POST", `/v1/reviews/${pkg.id}`, { results });
@@ -225,9 +250,12 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
       }
     }
   }
-  // Old retry markers go once their audit or review is no longer pending.
+  // Old retry markers go after a week.
   for (const [k, t] of Object.entries(next.tried)) {
-    if (now - Date.parse(t) > 7 * 24 * 3_600_000) delete next.tried[k];
+    if (now - Date.parse(t) > 7 * 24 * 3_600_000) {
+      delete next.tried[k];
+      delete next.tries[k];
+    }
   }
   return next;
 }

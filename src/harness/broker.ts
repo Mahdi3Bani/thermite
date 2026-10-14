@@ -9,6 +9,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -40,6 +41,8 @@ const outboxDir = env.THERMITE_OUTBOX_DIR ?? "/outbox";
 const socketDir = env.THERMITE_BROKER_DIR ?? "/run/thermite";
 const socketPath = join(socketDir, "broker.sock");
 const isRoot = process.getuid?.() === 0;
+const WIPE_MARKER = "WIPE_REQUESTED";
+const NOT_BEFORE_FILE = "NOT_BEFORE";
 const { uid: TU, gid: TG } = IDS.thermite;
 
 /** Secret files whose values the controller needs. The *_FILE variables never reach it. */
@@ -159,7 +162,46 @@ let child: ChildProcess | undefined;
 let stopping = false;
 let restarts = 0;
 
+/**
+ * A full reset's wipe, requested by the controller (a marker in the state directory): done here,
+ * as root, before the controller starts, so files other users own or locked build trees cannot
+ * stop it. The unit's identity key stays; the wipe time is left for the new ledger, which then
+ * refuses commands issued before it (they belonged to the wiped ledger).
+ */
+function wipeIfMarked(): void {
+  const marker = join(stateDir, WIPE_MARKER);
+  if (!existsSync(marker)) return;
+  const keep = new Set(["unit-signing.key", "unit-signing.key.pub"]);
+  const rm = (p: string) =>
+    execFileSync("rm", ["-rf", "--one-file-system", "--", p], { stdio: "ignore" });
+  for (const name of readdirSync(stateDir)) {
+    if (name === WIPE_MARKER) continue;
+    if (name === "ledger") {
+      for (const f of readdirSync(join(stateDir, name)))
+        if (!keep.has(f)) rm(join(stateDir, name, f));
+      continue;
+    }
+    rm(join(stateDir, name));
+  }
+  for (const dir of [scratchDir, outboxDir]) {
+    for (const name of existsSync(dir) ? readdirSync(dir) : []) rm(join(dir, name));
+  }
+  mkdirSync(join(stateDir, "ledger"), { recursive: true });
+  writeFileSync(join(stateDir, "ledger", NOT_BEFORE_FILE), new Date().toISOString());
+  chownSync(join(stateDir, "ledger", NOT_BEFORE_FILE), TU, TG);
+  rmSync(marker, { force: true });
+  log("broker", "wiped the unit's state (full reset)");
+}
+
 function startController(extraEnv: Record<string, string>): void {
+  if (isRoot) {
+    try {
+      wipeIfMarked();
+      prepareDirectories();
+    } catch (err) {
+      log("broker", "wipe failed; will retry at the next start", { error: String(err) });
+    }
+  }
   const startedAt = Date.now();
   const childEnv: Record<string, string> = {};
   for (const [k, v] of Object.entries(env)) {

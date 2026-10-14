@@ -154,7 +154,12 @@ describe("advisors", () => {
       `let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{console.log("thinking...");console.log(JSON.stringify({decision:s.includes("work.mjs")?"block":"clear",reasons:"the inner loop was removed; check the work is still done",citations:["diff"]}));});`,
     );
     const advisors = AdvisorsConfig.parse({
-      auditor: { name: "cli-auditor", runtime: "cli", argv: [process.execPath, script] },
+      auditor: {
+        name: "cli-auditor",
+        runtime: "cli",
+        argv: [process.execPath, script],
+        restricted: true,
+      },
     });
     const state = await adviseOnce(
       {

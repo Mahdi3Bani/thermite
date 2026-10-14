@@ -139,7 +139,11 @@ export function fallbackPlan(input: PlannerInput): {
   for (const m of mandate) {
     if (!live.some((f) => f.id === m)) {
       const d = input.directives.find((x) => x.body.kind === "mandate" && x.body.family === m);
-      newFamilies.push({ id: m, description: d?.body.rationale.slice(0, 300) ?? m });
+      // A fixed description: a directive's rationale is for the planner, never for workers.
+      newFamilies.push({
+        id: m,
+        description: `the "${m}" direction${d ? ` (named by directive ${d.id})` : ""}`,
+      });
     }
   }
   const pool = [

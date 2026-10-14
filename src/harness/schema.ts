@@ -485,10 +485,14 @@ export const MIGRATIONS: readonly string[] = [
   alter table epoch add column directives text not null default '[]';
   alter table attempt add column flaws_cleared_by text;
 
+  -- One audit per confirmation of an attempt: if the champion moves while a result waits and the
+  -- attempt is confirmed again, it gets a new audit against the new champion.
   create table audit (
     id integer primary key autoincrement,
     attempt text not null references attempt (id),
+    confirm_job integer not null,
     instance text not null,
+    trigger text not null check (trigger in ('absolute', 'ratio', 'known_flaws', 'adversarial_checklist')),
     reason text not null,
     expected_seq integer,
     requested_at text not null,
@@ -498,7 +502,7 @@ export const MIGRATIONS: readonly string[] = [
     auditor text,
     decided_at text
   );
-  create unique index audit_attempt on audit (attempt);
+  create unique index audit_attempt_job on audit (attempt, confirm_job);
   create trigger audit_decided_once before update on audit
     when old.decision is not null begin select raise(abort, 'audit decision is final'); end;
   create trigger audit_no_delete before delete on audit begin select raise(abort, 'audit is append-only'); end;
