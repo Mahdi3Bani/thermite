@@ -96,6 +96,11 @@ function prepareDirectories(): void {
     });
   }
   prepareOutbox();
+}
+
+/** The broker's socket directory, and a clean socket path to listen on (at broker start only). */
+function prepareSocket(): void {
+  mkdirSync(socketDir, { recursive: true });
   chownSync(socketDir, 0, TG);
   chmodSync(socketDir, 0o750);
   rmSync(socketPath, { force: true });
@@ -168,9 +173,9 @@ let restarts = 0;
  * stop it. The unit's identity key stays; the wipe time is left for the new ledger, which then
  * refuses commands issued before it (they belonged to the wiped ledger).
  */
-function wipeIfMarked(): void {
+function wipeIfMarked(): boolean {
   const marker = join(stateDir, WIPE_MARKER);
-  if (!existsSync(marker)) return;
+  if (!existsSync(marker)) return false;
   const keep = new Set(["unit-signing.key", "unit-signing.key.pub"]);
   const rm = (p: string) =>
     execFileSync("rm", ["-rf", "--one-file-system", "--", p], { stdio: "ignore" });
@@ -191,13 +196,14 @@ function wipeIfMarked(): void {
   chownSync(join(stateDir, "ledger", NOT_BEFORE_FILE), TU, TG);
   rmSync(marker, { force: true });
   log("broker", "wiped the unit's state (full reset)");
+  return true;
 }
 
 function startController(extraEnv: Record<string, string>): void {
   if (isRoot) {
     try {
-      wipeIfMarked();
-      prepareDirectories();
+      // Directories are prepared again only after a wipe (never the socket: it is in use).
+      if (wipeIfMarked()) prepareDirectories();
     } catch (err) {
       log("broker", "wipe failed; will retry at the next start", { error: String(err) });
     }
@@ -249,6 +255,7 @@ for (const sig of ["SIGTERM", "SIGINT"] as const) {
 
 if (isRoot) {
   prepareDirectories();
+  prepareSocket();
   setInterval(prepareOutbox, 60_000).unref();
   const secrets = readSecrets();
   prepareDevices();
