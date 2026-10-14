@@ -477,4 +477,70 @@ export const MIGRATIONS: readonly string[] = [
   create index trial_token on trial (token_sha);
   alter table job add column leased_at text;
   `,
+  // 7: M5. Directive sets replace their author's previous set; epochs record the directives in
+  // force. Audits (an audit can block, never pass), propagated candidates, the subjective-goal
+  // review panel and "not possible" proposals. Decisions are written once.
+  `
+  alter table directive add column superseded_at text;
+  alter table epoch add column directives text not null default '[]';
+  alter table attempt add column flaws_cleared_by text;
+
+  create table audit (
+    id integer primary key autoincrement,
+    attempt text not null references attempt (id),
+    instance text not null,
+    reason text not null,
+    expected_seq integer,
+    requested_at text not null,
+    decision text check (decision in ('clear', 'block', 'needs_owner')),
+    reasons text,
+    citations text,
+    auditor text,
+    decided_at text
+  );
+  create unique index audit_attempt on audit (attempt);
+  create trigger audit_decided_once before update on audit
+    when old.decision is not null begin select raise(abort, 'audit decision is final'); end;
+  create trigger audit_no_delete before delete on audit begin select raise(abort, 'audit is append-only'); end;
+
+  create table propagation (
+    attempt text primary key references attempt (id),
+    instance text not null,
+    source_unit text not null,
+    source_instance text not null,
+    source_seq integer not null,
+    tree text not null,
+    created_at text not null,
+    result text,
+    decided_at text
+  );
+
+  create table review (
+    id integer primary key autoincrement,
+    instance text not null,
+    goal text not null,
+    attempt text,
+    commit_sha text not null,
+    package text not null,
+    requested_at text not null,
+    panel text,
+    panel_result text check (panel_result in ('review_passed', 'review_failed')),
+    panel_at text,
+    owner_decision text check (owner_decision in ('accepted', 'rejected')),
+    owner_note text,
+    owner_at text
+  );
+  create unique index review_goal_commit on review (instance, goal, commit_sha);
+
+  create table conclusion (
+    id integer primary key autoincrement,
+    instance text not null,
+    kind text not null check (kind in ('not_possible')),
+    evidence text not null,
+    proposed_at text not null,
+    decision text check (decision in ('accepted', 'rejected')),
+    note text,
+    decided_at text
+  );
+  `,
 ];

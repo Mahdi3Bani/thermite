@@ -19,8 +19,9 @@ import { BrokerClient } from "./broker/client.ts";
 import { LocalRunner, type Runner } from "./broker/runner.ts";
 import { Judge, type PromotionPolicy } from "./judge/judge.ts";
 import { Ledger } from "./ledger.ts";
+import { settlePropagations } from "./propagation.ts";
 import { Research } from "./research/research.ts";
-import { HarnessService } from "./service.ts";
+import { HarnessService, wipeIfRequested } from "./service.ts";
 import { CpuDriver } from "./targets/cpu.ts";
 import { CudaDriver } from "./targets/cuda.ts";
 import type { TargetDriver } from "./targets/driver.ts";
@@ -75,6 +76,20 @@ async function main(): Promise<void> {
     mkdirSync(join(paths.stateDir, dir), { recursive: true });
     chmodSync(join(paths.stateDir, dir), mode);
   }
+  // A full reset's wipe, requested by the last controller run: done before anything opens.
+  if (wipeIfRequested(paths, ["unit-signing.key", "unit-signing.key.pub"])) {
+    log("harness", "state wiped (full reset); starting with a fresh ledger");
+    for (const [dir, mode] of [
+      ["ledger", 0o700],
+      ["git", 0o700],
+      ["kits", 0o700],
+      ["imports", 0o700],
+      ["models", 0o711],
+    ] as const) {
+      mkdirSync(join(paths.stateDir, dir), { recursive: true });
+      chmodSync(join(paths.stateDir, dir), mode);
+    }
+  }
   const ledger = Ledger.open(join(paths.stateDir, "ledger", "ledger.db"));
   // The unit's report-signing key: created once, kept with the ledger (0700).
   const unitKeyPath = join(paths.stateDir, "ledger", "unit-signing.key");
@@ -87,7 +102,23 @@ async function main(): Promise<void> {
     privateKeyPem: readFileSync(unitKeyPath, "utf8"),
     publicKeyPem: readFileSync(`${unitKeyPath}.pub`, "utf8"),
   };
-  const service = new HarnessService({ unit, ledger, paths, controlPublicKeyPem, unitKeys });
+  // D8 (promotion policy) is the owner's decision; until it is made, promotions wait for approval.
+  const promotion = (env.THERMITE_PROMOTION ?? "owner_approval") as PromotionPolicy;
+  if (promotion !== "auto" && promotion !== "owner_approval") {
+    throw new Error(`THERMITE_PROMOTION must be auto or owner_approval, not ${promotion}`);
+  }
+  const service = new HarnessService({
+    unit,
+    ledger,
+    paths,
+    controlPublicKeyPem,
+    unitKeys,
+    promotion,
+  });
+  service.onWipe = () => {
+    log("harness", "wipe requested: exiting so the next start wipes the state");
+    process.exit(0);
+  };
   // Startup reconciliation: anything still leased by this unit's executor belonged to a process
   // that died. Re-queue it now and record it once as crash_infra.
   const executorId = "executor-0";
@@ -116,11 +147,6 @@ async function main(): Promise<void> {
   });
   log("harness", "listening", { unit, host, port, target: (await driver.identify()).id });
 
-  // D8 (promotion policy) is the owner's decision; until it is made, promotions wait for approval.
-  const promotion = (env.THERMITE_PROMOTION ?? "owner_approval") as PromotionPolicy;
-  if (promotion !== "auto" && promotion !== "owner_approval") {
-    throw new Error(`THERMITE_PROMOTION must be auto or owner_approval, not ${promotion}`);
-  }
   const executor = new Judge({
     service,
     runner,
@@ -188,6 +214,11 @@ async function main(): Promise<void> {
   };
   const exporting = async () => {
     while (!stopping) {
+      try {
+        settlePropagations(ledger, "harness");
+      } catch (err) {
+        log("harness", "propagation settle error", { error: String(err) });
+      }
       // Hourly export for the supervisor to push (and an export command can force one).
       const last = ledger.lastExport();
       const lastAt = last ? Date.parse(last.created_at) : 0;

@@ -3,10 +3,13 @@ import { join } from "node:path";
 import { log } from "../../common/env.ts";
 import type { Contract, GoalContract, HillClimbContract } from "../../core/contract.ts";
 import { meanInterval, toFraction, toLog } from "../../core/stats.ts";
+import { Audits, auditTrigger } from "../audits.ts";
 import type { Runner } from "../broker/runner.ts";
-import { exportTree } from "../git.ts";
+import { Conclusions } from "../conclusions.ts";
+import { exportTree, patchBetween } from "../git.ts";
 import { type Kit, loadKit } from "../kit.ts";
 import type { JobRow, Ledger } from "../ledger.ts";
+import { Reviews } from "../reviews.ts";
 import type { HarnessService } from "../service.ts";
 import { readThrottle, throttledFraction } from "../targets/cgroup.ts";
 import type { TargetDriver } from "../targets/driver.ts";
@@ -67,6 +70,8 @@ interface Finish {
   lifecycle?: string | undefined;
   /** Close an instance (a goal campaign whose success rule holds). */
   close?: { instance: string; reason: string } | undefined;
+  /** Hold the attempt for an audit (written in the same transaction). */
+  audit?: { instance: string; reason: string; expectedSeq: number } | undefined;
 }
 
 /**
@@ -191,6 +196,9 @@ export class Judge {
         }
       }
       if (enqueue) this.ledger.enqueueJob(enqueue);
+      if (fin.audit && job.attempt) {
+        new Audits(this.ledger).request({ ...fin.audit, attempt: job.attempt, by: this.o.owner });
+      }
       if (fin.close)
         this.ledger.setInstanceStatus(fin.close.instance, "closed", fin.close.reason, this.o.owner);
       if (lifecycle && job.attempt)
@@ -733,7 +741,11 @@ export class Judge {
     return pass;
   }
 
-  /** What happens to a confirmed win: audit first if flawed, then the promotion policy (D8). */
+  /**
+   * What happens to a promotable result: an audit first when one is triggered (open known flaws,
+   * a gain above the contract's audit trigger, a goal campaign's adversarial checklist), then
+   * the promotion policy (D8).
+   */
   private promotion(
     fin: Finish,
     attemptId: string,
@@ -741,7 +753,14 @@ export class Judge {
     expectedSeq: number,
     attempt: Record<string, unknown>,
   ): Finish {
-    if ((JSON.parse(String(attempt.known_flaws)) as unknown[]).length > 0) {
+    const audits = new Audits(this.ledger);
+    const trigger = auditTrigger({
+      contract: this.o.service.contractFor(instance),
+      knownFlaws: JSON.parse(String(attempt.known_flaws)) as unknown[],
+      delta: fin.verdict?.delta,
+      priorDeltas: audits.priorDeltas(instance, attemptId),
+    });
+    if (trigger) {
       return {
         ...fin,
         result: { ...(fin.result as object), promoted: false, waiting: "audit" },
@@ -749,9 +768,10 @@ export class Judge {
           {
             kind: "promotion_blocked",
             subject: attemptId,
-            body: { reason: "open known flaws: an audit must clear them" },
+            body: { reason: `audit required: ${trigger}` },
           },
         ],
+        audit: { instance, reason: trigger, expectedSeq },
         lifecycle: "awaiting_audit",
       };
     }
@@ -797,7 +817,12 @@ export class Judge {
     contract: GoalContract,
     ctx: MeasureContext,
     arm: Arm,
-    opts: { heldOut?: boolean; goals?: string[] } = {},
+    opts: {
+      heldOut?: boolean;
+      goals?: string[];
+      /** Validating the champion: review goals take the panel and owner's word for this commit. */
+      champion?: { instance: string; attempt: string | null; commit: string };
+    } = {},
   ): Promise<{ goal: string; required: boolean; status: GoalStatus; reasons: string }[]> {
     const out: { goal: string; required: boolean; status: GoalStatus; reasons: string }[] = [];
     // Held-out cells run only at confirmation, and their results go to promotion code alone:
@@ -810,12 +835,34 @@ export class Judge {
       this.ledger.heartbeat(job.id, job.fence, this.o.leaseMs);
       const v = g.verify;
       if (v.type === "review") {
-        out.push({
-          goal: g.id,
-          required: g.required,
-          status: "not_runnable",
-          reasons: "subjective review needs the review panel (M5)",
-        });
+        if (!opts.champion || opts.heldOut) {
+          out.push({
+            goal: g.id,
+            required: g.required,
+            status: "not_runnable",
+            reasons: "subjective goals are reviewed for champions only",
+          });
+          continue;
+        }
+        const reviews = new Reviews(this.ledger);
+        const { instance, attempt, commit } = opts.champion;
+        if (!reviews.get(instance, g.id, commit)) {
+          const inst = this.ledger.getInstance(instance);
+          const diff = inst
+            ? await patchBetween(this.o.service.mirrorFor(inst.seed_repo), inst.seed_commit, commit)
+            : "";
+          reviews.request({
+            instance,
+            goal: g.id,
+            attempt,
+            commit,
+            contract,
+            diff,
+            by: this.o.owner,
+          });
+        }
+        const r = reviews.status(instance, g.id, commit);
+        out.push({ goal: g.id, required: g.required, status: r.status, reasons: r.reasons });
         continue;
       }
       if (v.type === "code") {
@@ -979,7 +1026,9 @@ export class Judge {
     const champion = this.ledger.currentChampion(instance);
     const k = await this.kitFor(contract);
     const arm = await this.armFor("champion", instance, champion.commit_sha, k);
-    const results = await this.verifyGoals(job, contract, this.context(k, job), arm);
+    const results = await this.verifyGoals(job, contract, this.context(k, job), arm, {
+      champion: { instance, attempt: champion.attempt, commit: champion.commit_sha },
+    });
     this.recordGoals(job, instance, null, champion.commit_sha, results, true);
     const done = this.complete(contract, results);
     // Completion is final, so one validation is not enough: a second, independent validation
@@ -1041,7 +1090,14 @@ export class Judge {
             .all(instance) as { id: string; status: string }[]
         ).map((g) => [g.id, g.status]),
       );
-      const { gained, lost, unsure } = goalDelta(results, champ);
+      const reviewed = new Set(
+        contract.goals.filter((g) => g.verify.type === "review").map((g) => g.id),
+      );
+      // Subjective goals are reviewed per champion, so they do not decide a candidate.
+      const { gained, lost, unsure } = goalDelta(
+        results.filter((r) => !reviewed.has(r.goal)),
+        champ,
+      );
       // A goal the champion meets that the candidate fails is lost; one it could not check
       // (inconclusive, not runnable) is unknown, which is not a regression and not progress.
       const verdict = lost.length
@@ -1115,7 +1171,14 @@ export class Judge {
             .all(instance) as { id: string; status: string }[]
         ).map((g) => [g.id, g.status]),
       );
-      const { gained, lost, unsure } = goalDelta(results, champ);
+      const reviewed = new Set(
+        contract.goals.filter((g) => g.verify.type === "review").map((g) => g.id),
+      );
+      // Subjective goals are reviewed per champion, so they do not decide a candidate.
+      const { gained, lost, unsure } = goalDelta(
+        results.filter((r) => !reviewed.has(r.goal)),
+        champ,
+      );
       const screened = (this.spec(job).gained as string[] | undefined) ?? [];
       const held = screened.filter((g) => !gained.includes(g));
       let heldOutPass: boolean | undefined;
@@ -1177,6 +1240,7 @@ export class Judge {
   private maybeScheduleValidation(): void {
     for (const inst of this.ledger.listInstances()) {
       if (inst.status !== "running" || inst.mode !== "goal") continue;
+      new Conclusions(this.ledger).maybePropose(inst.id, this.goalContract(inst.id), this.o.owner);
       const seq = this.ledger.currentChampion(inst.id).seq;
       const jobs = this.ledger.db
         .prepare(

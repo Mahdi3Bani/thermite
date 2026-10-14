@@ -11,6 +11,8 @@ for (const d of [
   join(root, "inbox", "repos"),
   join(root, "inbox", "models"),
   join(root, "outbox"),
+  // Advisor configuration and keys for local runs (mounted read-only into the supervisors).
+  join(root, "advisors"),
 ]) {
   mkdirSync(d, { recursive: true, mode: 0o755 });
 }

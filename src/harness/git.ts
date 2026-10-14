@@ -106,6 +106,8 @@ export async function createAttemptCommit(input: {
   patch: Buffer;
   id: string;
   message: string;
+  /** Where the commit is preserved; attempts by default. */
+  refPrefix?: string | undefined;
 }): Promise<AttemptCommit> {
   if (input.patch.length === 0) throw new GitError("empty change");
   mkdirSync(input.scratchDir, { recursive: true });
@@ -117,7 +119,7 @@ export async function createAttemptCommit(input: {
     await git(worktree, ["apply", "--index", "--binary", "--whitespace=nowarn", patchFile]);
     await git(worktree, ["commit", "--quiet", "--no-verify", "-m", input.message]);
     const commit = (await git(worktree, ["rev-parse", "HEAD"])).trim();
-    const ref = `refs/thermite/attempts/${input.id}`;
+    const ref = `${input.refPrefix ?? "refs/thermite/attempts"}/${input.id}`;
     await git(input.mirror, ["update-ref", ref, commit]);
     const info = await diffInfo(input.mirror, input.parent, commit);
     return { commit, ref, ...info, diffSha: sha256Hex(input.patch) };
@@ -227,6 +229,15 @@ export async function patchBetween(
 
 export async function updateRef(mirror: string, ref: string, commit: string): Promise<void> {
   await git(mirror, ["update-ref", ref, commit]);
+}
+
+export async function deleteRef(mirror: string, ref: string): Promise<void> {
+  await git(mirror, ["update-ref", "-d", ref]);
+}
+
+/** The id of a commit's tree: the same content gives the same tree in any repository. */
+export async function treeOf(mirror: string, commit: string): Promise<string> {
+  return (await git(mirror, ["rev-parse", "--verify", `${commit}^{tree}`])).trim();
 }
 
 /** Writes the tree of `commit` into `dest` (which must not exist yet), without .git. */

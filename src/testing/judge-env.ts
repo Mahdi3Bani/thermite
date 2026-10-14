@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type CommandKind, generateSigningKeys, signEnvelope } from "../core/commands.ts";
@@ -119,6 +119,11 @@ export function makeJudgeEnv(
     lanes?: { count: number; trials_per_epoch: number };
     /** A goal-mode campaign instead of a hill climb. */
     goal?: { opsPerSecond: number } | undefined;
+    /** Fields merged over the contract (for example acceptance.audit or infeasibility). */
+    contract?: Record<string, unknown> | undefined;
+    /** Another unit: its own harness on the same project, seed and kit as `share`. */
+    unit?: string | undefined;
+    share?: { root: string; seed: string; kitCommit: string } | undefined;
   } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), "thermite-judge-"));
@@ -131,25 +136,36 @@ export function makeJudgeEnv(
   for (const d of Object.values(paths)) mkdirSync(d, { recursive: true });
   mkdirSync(join(paths.inboxDir, "repos"), { recursive: true });
 
-  const project = join(root, "project");
-  const seed = repo(project, { "src/kernel/work.mjs": SEED_KERNEL, "README.md": "test\n" });
-  git(project, "bundle", "create", "--quiet", join(paths.inboxDir, "repos", "p.bundle"), "--all");
-  const kitRepo = join(root, "kit");
-  const kitCommit = repo(kitRepo, {
-    "kit.json": JSON.stringify(KIT, null, 2),
-    "bench/run.mjs": RUN,
-    "check.mjs": CHECK,
-  });
-  git(kitRepo, "bundle", "create", "--quiet", join(paths.inboxDir, "repos", "k.bundle"), "--all");
+  const project = join(opts.share?.root ?? root, "project");
+  let seed: string;
+  let kitCommit: string;
+  if (opts.share) {
+    seed = opts.share.seed;
+    kitCommit = opts.share.kitCommit;
+    for (const b of ["p.bundle", "k.bundle"])
+      copyFileSync(join(opts.share.root, "inbox", "repos", b), join(paths.inboxDir, "repos", b));
+  } else {
+    seed = repo(project, { "src/kernel/work.mjs": SEED_KERNEL, "README.md": "test\n" });
+    git(project, "bundle", "create", "--quiet", join(paths.inboxDir, "repos", "p.bundle"), "--all");
+    const kitRepo = join(root, "kit");
+    kitCommit = repo(kitRepo, {
+      "kit.json": JSON.stringify(KIT, null, 2),
+      "bench/run.mjs": RUN,
+      "check.mjs": CHECK,
+    });
+    git(kitRepo, "bundle", "create", "--quiet", join(paths.inboxDir, "repos", "k.bundle"), "--all");
+  }
 
   const keys = generateSigningKeys();
   const ledger = Ledger.open(join(paths.stateDir, "ledger", "ledger.db"));
+  const unit = opts.unit ?? "unit-a";
   const service = new HarnessService({
-    unit: "unit-a",
+    unit,
     ledger,
     paths,
     controlPublicKeyPem: keys.publicKeyPem,
     unitKeys: generateSigningKeys(),
+    promotion: opts.promotion ?? "auto",
   });
   const goalContract = opts.goal
     ? {
@@ -186,6 +202,7 @@ export function makeJudgeEnv(
         ],
         deliverable: "a commit meeting every required goal",
         editable_paths: ["src/kernel/**"],
+        ...opts.contract,
       }
     : undefined;
   const parsed = parseContract(
@@ -201,8 +218,15 @@ export function makeJudgeEnv(
       cells: ["small"],
       held_out_cells: opts.heldOut ? ["held"] : [],
       editable_paths: ["src/kernel/**"],
-      acceptance: { looks: [3, 6], confirm_blocks: 4 },
+      // The test kernel's win is far above the default audit trigger; tests of audits set
+      // their own thresholds.
+      acceptance: {
+        looks: [3, 6],
+        confirm_blocks: 4,
+        audit: { ratio_to_median: 1000, absolute: 1000 },
+      },
       ...(opts.lanes ? { lanes: opts.lanes } : {}),
+      ...opts.contract,
     },
   );
   if (!parsed.ok) throw new Error(parsed.errors.join("; "));
@@ -210,7 +234,7 @@ export function makeJudgeEnv(
     {
       v: 1,
       id: randomUUID(),
-      unit: "unit-a",
+      unit,
       kind: "assign_campaign",
       issued_by: "owner",
       issued_at: new Date(Date.now() - 1000).toISOString(),
@@ -262,7 +286,7 @@ export function makeJudgeEnv(
       {
         v: 1,
         id: randomUUID(),
-        unit: "unit-a",
+        unit,
         kind,
         issued_by: "owner",
         issued_at: new Date(Date.now() - 1000).toISOString(),

@@ -92,15 +92,23 @@ function prepareDirectories(): void {
       chmodSync(d, 0o1770);
     });
   }
-  // Exports: written by thermite, readable by the supervisor's group only (setgid keeps the
-  // group on new files and directories).
-  tryDo("prepare the outbox", () => {
-    chownSync(outboxDir, TU, outboxGid);
-    chmodSync(outboxDir, 0o2750);
-  });
+  prepareOutbox();
   chownSync(socketDir, 0, TG);
   chmodSync(socketDir, 0o750);
   rmSync(socketPath, { force: true });
+}
+
+/**
+ * Exports: written by thermite, readable by the supervisor's group only (setgid keeps the group
+ * on new files and directories). Re-asserted every minute too: a container engine may hand a
+ * shared, still-empty volume to the user of whichever container mounted it first.
+ */
+function prepareOutbox(): void {
+  tryDo("prepare the outbox", () => {
+    const st = statSync(outboxDir);
+    if (st.uid !== TU || st.gid !== outboxGid) chownSync(outboxDir, TU, outboxGid);
+    if ((st.mode & 0o7777) !== 0o2750) chmodSync(outboxDir, 0o2750);
+  });
 }
 
 function readSecrets(): Record<string, string> {
@@ -199,6 +207,7 @@ for (const sig of ["SIGTERM", "SIGINT"] as const) {
 
 if (isRoot) {
   prepareDirectories();
+  setInterval(prepareOutbox, 60_000).unref();
   const secrets = readSecrets();
   prepareDevices();
   const killed = killRoles();

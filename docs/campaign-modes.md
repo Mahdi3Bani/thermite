@@ -38,12 +38,15 @@ Workers research a topic for a set duration: hours or days. Their tools are rese
 
 ## What v1 does so far
 
-- **Hill climb:** built as described, with screening, confirmation, held-out checks and promotion. Promotion waits for an owner's approval unless the unit is configured to promote automatically.
+- **Hill climb:** built as described, with screening, confirmation, held-out checks and promotion.
+  - Promotion waits for an owner's approval unless the unit is configured to promote automatically.
+  - Gains above the contract's audit trigger (by default 15%, or three times the median confirmed gain) wait for the supervisor's auditor. An audit can block a promotion but never force one, and declared flaws always go to the owner.
 - **Goal:** the goal tree, metric-threshold goals judged on intervals over repeated runs, and code verifiers from the project kit.
   - Progress means "meets more goals and loses none". A goal the candidate could not check is unknown, not lost.
   - Progress is screened, then confirmed in fresh runs before promotion. Held-out cells run only at confirmation.
   - Completion needs two validations of the champion that agree.
-  - Subjective goals wait for the review panel; "not possible" endings are not implemented yet.
+  - Subjective goals are reviewed per champion by the supervisor's model panel. The panel is blind to who wrote the change, and needs at least two reviewers who all pass it. The goal is met only when the owner accepts it.
+  - "Not possible" is proposed by the harness, never by an agent, and only where the contract allows it. It needs the contract's number of refuted approach families, each with several judged attempts and no progress. Only the owner can accept it and end the campaign.
 - **Research:**
   - The archiving fetcher checks robots.txt (on every redirect too), rate and size limits. It checks addresses when it connects, so a name can't be pointed at a private address in between.
   - A claim is verified only if its quotes are in the archive and every number it states is in its quotes. Only claims quoted from enough independent domains are reported as findings. Duplicate claims are folded together.

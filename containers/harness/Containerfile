@@ -30,6 +30,9 @@ RUN groupadd -g 10500 gpu \
       && useradd -u $((10100 + n)) -g lane-$n -M -d /nonexistent -s /usr/sbin/nologin lane-$n \
       && useradd -u $((10200 + n)) -g gpu -M -d /nonexistent -s /usr/sbin/nologin lane-$n-dev; \
     done
+# The outbox mount point, as the broker keeps it: thermite writes, the supervisor's group (10001)
+# reads. A new named volume copies this ownership, whichever container mounts it first.
+RUN mkdir -p /outbox && chown 10010:10001 /outbox && chmod 2750 /outbox
 WORKDIR /opt/thermite
 COPY --from=build /src/package.json ./
 COPY --from=build /src/node_modules ./node_modules

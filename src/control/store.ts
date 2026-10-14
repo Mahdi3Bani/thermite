@@ -54,6 +54,26 @@ create table if not exists audit (
   action text not null,
   body text not null
 );
+create table if not exists unit_report (
+  id integer primary key autoincrement,
+  unit text not null,
+  kind text not null,
+  body text not null,
+  at text not null
+);
+-- Full resets (owner only): pause, export, verify the push, wipe, restart. One open per unit.
+create table if not exists reset (
+  id integer primary key autoincrement,
+  unit text not null,
+  state text not null,
+  requested_by text not null,
+  command text,
+  export_name text,
+  through_event integer,
+  detail text,
+  created_at text not null,
+  updated_at text not null
+);
 `;
 
 export interface IngestReport {
@@ -85,6 +105,108 @@ export class ControlStore {
     if (!cols.includes("pubkey")) this.db.exec("alter table unit add column pubkey text");
     if (!cols.includes("pending_pubkey"))
       this.db.exec("alter table unit add column pending_pubkey text");
+    if (!cols.includes("supervisor")) {
+      this.db.exec("alter table unit add column supervisor text");
+      this.db.exec("alter table unit add column supervisor_at text");
+    }
+  }
+
+  /** The supervisor's own figures for a unit (unsigned: it reports them about itself). */
+  setSupervisor(unit: string, stats: unknown): void {
+    const now = new Date().toISOString();
+    this.db
+      .prepare(
+        `insert into unit (id, first_seen, last_seen, supervisor, supervisor_at) values (?, ?, ?, ?, ?)
+         on conflict (id) do update set supervisor = excluded.supervisor, supervisor_at = excluded.supervisor_at`,
+      )
+      .run(unit, now, now, canonicalJson(stats ?? {}), now);
+  }
+
+  supervisor(unit: string): Record<string, unknown> | null {
+    const r = this.db
+      .prepare("select supervisor, supervisor_at from unit where id = ?")
+      .get(unit) as Row | undefined;
+    return r?.supervisor
+      ? { ...(JSON.parse(String(r.supervisor)) as object), received_at: String(r.supervisor_at) }
+      : null;
+  }
+
+  addReport(unit: string, kind: string, body: string): number {
+    const r = this.db
+      .prepare("insert into unit_report (unit, kind, body, at) values (?, ?, ?, ?)")
+      .run(unit, kind, body.slice(0, 200_000), new Date().toISOString());
+    return Number(r.lastInsertRowid);
+  }
+
+  reports(
+    limit = 20,
+    unit?: string,
+  ): { id: number; unit: string; kind: string; body: string; at: string }[] {
+    const rows = (
+      unit
+        ? this.db
+            .prepare("select * from unit_report where unit = ? order by id desc limit ?")
+            .all(unit, limit)
+        : this.db.prepare("select * from unit_report order by id desc limit ?").all(limit)
+    ) as Row[];
+    return rows.map((r) => ({
+      id: Number(r.id),
+      unit: String(r.unit),
+      kind: String(r.kind),
+      body: String(r.body),
+      at: String(r.at),
+    }));
+  }
+
+  openReset(unit: string): Row | undefined {
+    return this.db
+      .prepare(
+        "select * from reset where unit = ? and state not in ('done', 'failed') order by id desc",
+      )
+      .get(unit) as Row | undefined;
+  }
+
+  resets(limit = 20): Row[] {
+    return this.db.prepare("select * from reset order by id desc limit ?").all(limit) as Row[];
+  }
+
+  createReset(unit: string, by: string): number {
+    if (this.openReset(unit)) throw new Error(`a reset of ${unit} is already in progress`);
+    const now = new Date().toISOString();
+    const r = this.db
+      .prepare(
+        "insert into reset (unit, state, requested_by, created_at, updated_at) values (?, 'start', ?, ?, ?)",
+      )
+      .run(unit, by, now, now);
+    this.audit(by, "reset_requested", { unit });
+    return Number(r.lastInsertRowid);
+  }
+
+  updateReset(
+    id: number,
+    fields: {
+      state: string;
+      command?: string;
+      export_name?: string;
+      through_event?: number;
+      detail?: string;
+    },
+  ): void {
+    this.db
+      .prepare(
+        `update reset set state = ?, command = coalesce(?, command), export_name = coalesce(?, export_name),
+           through_event = coalesce(?, through_event), detail = coalesce(?, detail), updated_at = ? where id = ?`,
+      )
+      .run(
+        fields.state,
+        fields.command ?? null,
+        fields.export_name ?? null,
+        fields.through_event ?? null,
+        fields.detail ?? null,
+        new Date().toISOString(),
+        id,
+      );
+    this.audit("control", "reset_step", { id, ...fields });
   }
 
   /** The unit's pinned report-signing key, if any. */

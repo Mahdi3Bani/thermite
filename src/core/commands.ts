@@ -43,17 +43,39 @@ export const ImportSpec = z.discriminatedUnion("kind", [
     commit: CommitSchema,
     sha256: Sha256Schema.optional(),
   }),
+  /**
+   * Another unit's champion as a binary patch against a base commit both units have (the
+   * campaign seed). The harness applies it to the base and accepts it only if the file's sha256
+   * and the resulting git tree match: the supervisor transports bytes, it cannot change them.
+   */
+  z.object({
+    kind: z.literal("champion_patch"),
+    path: InboxPath,
+    repo: IdSchema,
+    base_commit: CommitSchema,
+    tree: CommitSchema,
+    sha256: Sha256Schema,
+  }),
 ]);
 export type ImportSpec = z.infer<typeof ImportSpec>;
 
-export const StructuredDirective = z.object({
-  kind: z.enum(["avoid", "try", "mandate", "priority", "lane_count"]),
+/**
+ * Low-power steering. Strict: a directive cannot carry anything but these fields, so it cannot
+ * set a verdict, a contract or text for workers. AVOID, TRY and MANDATE name a direction-registry
+ * family; PRIORITY ranks one; LANE_COUNT sets the lanes (up to the contract's count); NOTE is
+ * free text for the planner only. The planner sees rationales and notes; workers never do.
+ */
+export const StructuredDirective = z.strictObject({
+  kind: z.enum(["avoid", "try", "mandate", "priority", "lane_count", "note"]),
   /** Direction-registry family id the directive refers to (when applicable). */
-  family: z.string().min(1).optional(),
-  value: z.union([z.string(), z.number()]).optional(),
+  family: z
+    .string()
+    .regex(/^[a-z0-9][a-z0-9-]{1,40}$/)
+    .optional(),
+  value: z.union([z.string().max(1000), z.number()]).optional(),
   /** Why, with citations; shown to the planner, never to workers. */
-  rationale: z.string().min(1),
-  citations: z.array(z.string().min(1)).default([]),
+  rationale: z.string().min(1).max(2000),
+  citations: z.array(z.string().min(1).max(500)).max(20).default([]),
 });
 export type StructuredDirective = z.infer<typeof StructuredDirective>;
 
@@ -70,17 +92,53 @@ export const CommandPayloads = {
   }),
   pause_instance: z.object({ instance: IdSchema, reason: z.string().min(1) }),
   resume_instance: z.object({ instance: IdSchema }),
-  redirect: z.object({ instance: IdSchema, directives: z.array(StructuredDirective).min(1) }),
+  /** A directive set; by default it replaces this author's previous set. */
+  redirect: z.object({
+    instance: IdSchema,
+    directives: z.array(StructuredDirective).min(1).max(40),
+    replace: z.boolean().default(true),
+  }),
   reset_workers: z.object({ instance: IdSchema, reseed_commit: CommitSchema.optional() }),
+  /**
+   * Another unit's champion as a candidate here: this unit's judge screens and confirms it
+   * against its own champion. The supervisor stages the file from the results repository.
+   */
   propagate: z.object({
     instance: IdSchema,
     source_unit: z.string().min(1),
+    source_instance: IdSchema,
+    source_seq: z.number().int().positive(),
     import: ImportSpec,
   }),
   export_now: z.object({}),
-  wipe_state: z.object({ confirm: z.literal("wipe") }),
-  /** The owner approves a confirmed win waiting for promotion (promotion policy D8). */
+  /**
+   * Owner-only full reset, after control verified that `export` (an export_now's result) was
+   * pushed to the results repository. The harness refuses if research was recorded after it.
+   */
+  wipe_state: z.object({
+    confirm: z.literal("wipe"),
+    export: z.string().min(1).max(100),
+    through_event: z.number().int().min(0),
+  }),
+  /**
+   * The owner approves a confirmed win waiting for promotion (promotion policy D8), or overrides
+   * an audit that is pending or blocked. The judge's verdict must still be promotable.
+   */
   approve_promotion: z.object({ instance: IdSchema, attempt: z.string().min(1).max(64) }),
+  /** The owner's final acceptance (or rejection) of a goal the review panel passed. */
+  accept_review: z.object({
+    instance: IdSchema,
+    review: z.number().int().positive(),
+    accept: z.boolean(),
+    note: z.string().max(2000).optional(),
+  }),
+  /** The owner accepts or rejects the harness's "not possible" conclusion for a goal campaign. */
+  conclude: z.object({
+    instance: IdSchema,
+    proposal: z.number().int().positive(),
+    accept: z.boolean(),
+    note: z.string().max(2000).optional(),
+  }),
 } as const;
 
 export type CommandKind = keyof typeof CommandPayloads;

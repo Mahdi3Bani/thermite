@@ -45,6 +45,8 @@ export interface InstanceView {
   id: string;
   campaign: string | null;
   mode: string | null;
+  /** The project repository the instance works on (from its assignment). */
+  seed_repo: string | null;
   status: string;
   pause_reason: string | null;
   champion: ChampionStep[];
@@ -68,6 +70,36 @@ export interface InstanceView {
   /** Research mode: the newest digest's figures and report. */
   research: Record<string, unknown> | null;
   goals: { goal: string; status: string; reasons: string }[];
+  /** Audits (M5): what is held for one, and how each ended. */
+  audits: { attempt: string; reason: string; decision: string | null; at: string }[];
+  /** Subjective-goal reviews: the panel's result, then the owner's. */
+  reviews: {
+    review: number;
+    goal: string;
+    commit: string;
+    panel: string | null;
+    owner: string | null;
+  }[];
+  /** "Not possible" proposals and the owner's decisions. */
+  conclusions: { proposal: number; decision: string | null; approaches: number; at: string }[];
+  /** The newest champion published for propagation (what another unit can import). */
+  published: {
+    seq: number;
+    repo: string | null;
+    base_commit: string;
+    tree: string;
+    sha256: string;
+    path: string;
+  } | null;
+  /** Champions received from other units, and how this unit's judge decided them. */
+  propagations: {
+    attempt: string | null;
+    source_unit: string;
+    source_instance: string;
+    source_seq: number;
+    result: string;
+  }[];
+  directives: number;
 }
 
 export interface UnitView {
@@ -76,6 +108,8 @@ export interface UnitView {
   stale: boolean;
   ledger_id: string | null;
   summary: unknown;
+  /** The supervisor's own figures (git sync, advisors); reported by the supervisor, unsigned. */
+  supervisor: Record<string, unknown> | null;
   jobs: Record<string, number>;
   instances: InstanceView[];
   recent: StoredEvent[];
@@ -111,6 +145,7 @@ export function unitView(
         id,
         campaign: null,
         mode: null,
+        seed_repo: null,
         status: "unknown",
         pause_reason: null,
         champion: [],
@@ -132,6 +167,12 @@ export function unitView(
         },
         research: null,
         goals: [],
+        audits: [],
+        reviews: [],
+        conclusions: [],
+        published: null,
+        propagations: [],
+        directives: 0,
       };
       instances.set(id, v);
     }
@@ -145,6 +186,8 @@ export function unitView(
         const v = inst(String(e.subject));
         v.campaign = String(b.campaign ?? "");
         v.mode = String(b.mode ?? "");
+        v.seed_repo =
+          ((b.seed as { repo?: string } | undefined)?.repo as string | undefined) ?? null;
         v.status = "running";
         v.champion.push({
           seq: 1,
@@ -266,6 +309,94 @@ export function unitView(
         );
         break;
       }
+      case "audit_requested": {
+        inst(String(b.instance)).audits.push({
+          attempt: String(e.subject),
+          reason: String(b.reason ?? ""),
+          decision: null,
+          at: e.at,
+        });
+        break;
+      }
+      case "audit_decided": {
+        for (const v of instances.values()) {
+          const a = v.audits.find((x) => x.attempt === e.subject);
+          if (a) a.decision = String(b.decision);
+        }
+        break;
+      }
+      case "review_requested": {
+        inst(String(e.subject)).reviews.push({
+          review: Number(b.review),
+          goal: String(b.goal),
+          commit: String(b.commit),
+          panel: null,
+          owner: null,
+        });
+        break;
+      }
+      case "review_panel":
+      case "review_decided": {
+        const r = inst(String(e.subject)).reviews.find((x) => x.review === Number(b.review));
+        if (r && e.kind === "review_panel") r.panel = String(b.result);
+        if (r && e.kind === "review_decided") r.owner = String(b.decision);
+        break;
+      }
+      case "conclusion_proposed": {
+        inst(String(e.subject)).conclusions.push({
+          proposal: Number(b.proposal),
+          decision: null,
+          approaches: Array.isArray(b.approaches) ? b.approaches.length : 0,
+          at: e.at,
+        });
+        break;
+      }
+      case "conclusion_accepted":
+      case "conclusion_rejected": {
+        const c = inst(String(e.subject)).conclusions.find(
+          (x) => x.proposal === Number(b.proposal),
+        );
+        if (c) c.decision = e.kind === "conclusion_accepted" ? "accepted" : "rejected";
+        break;
+      }
+      case "champion_published": {
+        inst(String(e.subject)).published = {
+          seq: Number(b.seq),
+          repo: (b.repo as string | null) ?? null,
+          base_commit: String(b.base_commit),
+          tree: String(b.tree),
+          sha256: String(b.sha256),
+          path: String(b.path),
+        };
+        break;
+      }
+      case "propagation_received": {
+        inst(String(e.subject)).propagations.push({
+          attempt: (b.attempt as string | null) ?? null,
+          source_unit: String(b.source_unit),
+          source_instance: String(b.source_instance),
+          source_seq: Number(b.source_seq),
+          result: String(b.result ?? "judging"),
+        });
+        break;
+      }
+      case "propagation_accepted":
+      case "propagation_rejected": {
+        const p = inst(String(e.subject)).propagations.find((x) => x.attempt === b.attempt);
+        if (p)
+          p.result =
+            e.kind === "propagation_accepted" ? "accepted" : `rejected (${String(b.verdict)})`;
+        break;
+      }
+      case "directive": {
+        inst(String(e.subject)).directives++;
+        break;
+      }
+      case "directives_superseded": {
+        const v = inst(String(e.subject));
+        v.directives = Math.max(0, v.directives - (Array.isArray(b.ids) ? b.ids.length : 0));
+        break;
+      }
     }
   }
   for (const v of instances.values()) {
@@ -285,8 +416,67 @@ export function unitView(
     stale: now - Date.parse(u.last_seen) > opts.staleAfterMs,
     ledger_id: u.ledger_id,
     summary: u.summary,
+    supervisor: store.supervisor(u.id),
     jobs: summary?.jobs ?? {},
     instances: [...instances.values()],
     recent: events.slice(-50).reverse(),
   };
+}
+
+export interface LeaderEntry {
+  unit: string;
+  instance: string;
+  mode: string | null;
+  status: string;
+  champion_seq: number;
+  /** Relative gain of the champion over the instance's seed, measured on its own unit. */
+  gain: number;
+  /** Units whose own judge accepted this exact champion (propagation): cross-verified. */
+  verified_by: string[];
+}
+
+/**
+ * The campaign leaderboard: each instance's champion and its gain over its baseline, measured
+ * on its own unit (never absolute numbers across devices), marked cross-verified once another
+ * unit's judge accepted it.
+ */
+export function leaderboard(
+  store: ControlStore,
+  opts: { staleAfterMs: number },
+): Record<string, LeaderEntry[]> {
+  const views = store
+    .units()
+    .map((u) => unitView(store, u.id, opts))
+    .filter((v): v is UnitView => v !== undefined);
+  const verified = new Map<string, Set<string>>();
+  for (const v of views) {
+    for (const i of v.instances) {
+      for (const p of i.propagations) {
+        if (p.result !== "accepted") continue;
+        const key = `${p.source_unit}/${p.source_instance}/${p.source_seq}`;
+        if (!verified.has(key)) verified.set(key, new Set());
+        verified.get(key)?.add(v.id);
+      }
+    }
+  }
+  const out: Record<string, LeaderEntry[]> = {};
+  for (const v of views) {
+    for (const i of v.instances) {
+      if (i.mode === "research" || !i.campaign) continue;
+      const champ = i.champion.filter((c) => !c.reopened).at(-1);
+      const seq = champ?.seq ?? 1;
+      if (!out[i.campaign]) out[i.campaign] = [];
+      out[i.campaign]?.push({
+        unit: v.id,
+        instance: i.id,
+        mode: i.mode,
+        status: i.status,
+        champion_seq: seq,
+        gain: (champ?.cumulative ?? 1) - 1,
+        verified_by: [...(verified.get(`${v.id}/${i.id}/${seq}`) ?? [])].sort(),
+      });
+    }
+  }
+  for (const list of Object.values(out)) list.sort((a, b) => b.gain - a.gain);
+  return out;
 }

@@ -13,6 +13,10 @@ export interface RelayConfig {
   controlUrl?: string | undefined;
   controlToken?: string | undefined;
   fetchImpl?: typeof fetch | undefined;
+  /** Makes a command's content available first (propagation); "wait" holds it for a later round. */
+  stage?: ((cmd: SignedCommand) => Promise<"ready" | "wait">) | undefined;
+  /** Told about each relayed command's outcome (a full reset's wipe acts on it). */
+  onDelivered?: ((kind: string, accepted: boolean) => void) | undefined;
 }
 
 export interface RelayState {
@@ -105,6 +109,7 @@ export async function relayOnce(cfg: RelayConfig, state: RelayState): Promise<Re
       cfg.controlToken,
     )) as { commands: SignedCommand[] };
     for (const cmd of pending.commands) {
+      if (cfg.stage && (await cfg.stage(cmd)) === "wait") continue;
       const outcome = (await call(f, `${cfg.harnessUrl}/v1/commands`, cfg.harnessToken, {
         method: "POST",
         body: JSON.stringify(cmd),
@@ -125,6 +130,7 @@ export async function relayOnce(cfg: RelayConfig, state: RelayState): Promise<Re
         kind: cmd.envelope.kind,
         status,
       });
+      cfg.onDelivered?.(cmd.envelope.kind, status === "delivered");
     }
   }
   return { cursor, ledgerId };

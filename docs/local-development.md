@@ -2,7 +2,13 @@
 
 Thermite runs the same images under docker-compose, podman-compose and Kubernetes. Locally, one compose stack starts the control service and one unit (a harness and a supervisor), with the CPU target.
 
-**Status:** the stack runs the judge on the CPU target. It builds candidates, gates and times them, and records verdicts, which reach control through the supervisor. Agents (M4) and the dashboard (M3) come later; a "proposer" here is you, submitting patches.
+**Status:** the stack runs everything on the CPU target:
+- the judge;
+- control's dashboard (`http://127.0.0.1:8800/ui`), API and MCP;
+- agents, when a model route is configured;
+- the supervisor's advisors, when a config file is given.
+
+Without a model route, a "proposer" is you, submitting patches.
 
 ## Requirements
 
@@ -74,6 +80,62 @@ The default promotion policy waits for approval (`THERMITE_PROMOTION=owner_appro
 Workers and the planner run when the harness has a model route: an OpenAI-compatible endpoint given by `QWEN_BASE_URL` and `QWEN_MODEL`, with its key in `.dev/secrets/qwen-api-key` (git-ignored; `dev:init` writes a placeholder). Without a route, the judge still runs and you submit patches yourself.
 
 `node scripts/agents-acceptance.mjs` checks the agent machinery without a real model: a scripted model on your machine plans one epoch and plays two workers, which edit, build, use the device and submit through the real harness image.
+
+## Supervision: advisors, results and lifecycle
+
+**Advisors.** The supervisor runs the teacher pair, the combiner, the auditor and the review panel when `THERMITE_ADVISORS_FILE` names a JSON config. Locally, put it in `.dev/advisors/`, which is mounted at `/etc/thermite/advisors`:
+
+```json
+{
+  "teachers": [
+    { "name": "teacher-a", "runtime": "openai", "base_url": "https://gateway.example/v1",
+      "model": "a-frontier-model", "api_key_file": "/etc/thermite/advisors/key-a" },
+    { "name": "teacher-b", "runtime": "cli", "argv": ["an-agent-cli", "--print", "--json"] }
+  ],
+  "combiner": { "name": "combiner", "runtime": "openai", "base_url": "https://gateway.example/v1",
+    "model": "a-frontier-model", "api_key_file": "/etc/thermite/advisors/key-a" },
+  "auditor": { "name": "auditor", "runtime": "cli", "argv": ["an-agent-cli", "--print", "--json"] },
+  "panel": [],
+  "teacher_minutes": 60
+}
+```
+
+- An `openai` runtime runs inside the supervisor, with read-only tools: the campaign brief, a guarded web fetch, and an optional knowledge-base search.
+- A `cli` runtime runs a command-line agent: it gets the prompt on stdin and prints one JSON answer.
+- Neither gets a shell or file tools from Thermite.
+- What they produce is checked twice, by the supervisor and by the harness:
+  - directives need citations;
+  - an audit can block a promotion, never force one;
+  - a panel's pass still needs the owner's acceptance.
+
+**Results repository.** Locally, both units' supervisors push their exports to one repository on a shared volume (`file:///results/results.git`). Set `THERMITE_RESULTS_REMOTE` (and `THERMITE_RESULTS_KEY_FILE` for SSH) to use a real one. Propagation reads published champions from it.
+
+**Lifecycle.** To let control restart containers, add `compose.lifecycle.yaml`, which mounts the container engine's socket into control. This is for development only; on Kubernetes, control deletes a unit's pods through its service account instead.
+
+```sh
+THERMITE_ENGINE_SOCKET_HOST=/path/to/engine.sock \
+  podman compose -f compose.yaml -f compose.lifecycle.yaml up -d
+```
+
+A **full reset** (owner only, from the dashboard or `POST /v1/units/<unit>/reset`) goes through these steps:
+1. pause the unit's campaigns;
+2. export;
+3. wait until the supervisor reports that export pushed to the results repository;
+4. send the signed wipe;
+5. restart.
+
+The harness refuses the wipe if research was recorded after the verified export.
+
+## The steering acceptance test
+
+`node scripts/steering-acceptance.mjs` runs two units with a scripted model on your machine. It checks:
+- directives from the teacher pair and their attribution in the next epoch;
+- an audit block holding a confirmed win, and a cleared audit letting the next one promote;
+- propagation of a champion to the second unit, judged there and shown cross-verified;
+- the supervisor's limits (it cannot submit, and it cannot forge a command);
+- daily reports;
+- a restart, when an engine socket is available;
+- a full reset.
 
 ## The command line
 

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { existsSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { sha256Hex } from "../core/canonical.ts";
@@ -14,11 +15,54 @@ import {
 } from "../core/commands.ts";
 import { type Contract, contractSha, parseContract } from "../core/contract.ts";
 import { Registry } from "./agents/registry.ts";
-import { createAttemptCommit, GitError, hasCommit, initMirror, updateRef } from "./git.ts";
+import { type AuditDecision, type AuditPackage, Audits } from "./audits.ts";
+import { Conclusions } from "./conclusions.ts";
+import {
+  createAttemptCommit,
+  GitError,
+  hasCommit,
+  initMirror,
+  patchBetween,
+  updateRef,
+} from "./git.ts";
 import { importBundle, importFile } from "./imports.ts";
 import { type Ledger, LedgerError } from "./ledger.ts";
 import { writeExport } from "./outbox.ts";
+import { receivePropagation } from "./propagation.ts";
+import { Reviews } from "./reviews.ts";
 import { checkV0 } from "./v0.ts";
+
+/** Written by an accepted wipe_state; the next controller start wipes the state and removes it. */
+export const WIPE_MARKER = "WIPE_REQUESTED";
+
+/**
+ * Carries out a requested wipe at start: everything in the state directory goes except the
+ * unit's signing key (its identity stays), and the scratch directory is emptied. Returns
+ * whether a wipe happened.
+ */
+export function wipeIfRequested(paths: HarnessPaths, keep: string[]): boolean {
+  const marker = join(paths.stateDir, WIPE_MARKER);
+  if (!existsSync(marker)) return false;
+  for (const name of readdirSync(paths.stateDir)) {
+    if (name === WIPE_MARKER) continue;
+    if (name === "ledger") {
+      for (const f of readdirSync(join(paths.stateDir, name))) {
+        if (!keep.includes(f))
+          rmSync(join(paths.stateDir, name, f), { recursive: true, force: true });
+      }
+      continue;
+    }
+    rmSync(join(paths.stateDir, name), { recursive: true, force: true });
+  }
+  // Scratch, and the outbox: its exports reached the results repository before the wipe.
+  for (const dir of [paths.scratchDir, paths.outboxDir]) {
+    for (const name of existsSync(dir) ? readdirSync(dir) : []) {
+      rmSync(join(dir, name), { recursive: true, force: true });
+    }
+  }
+  rmSync(marker, { force: true });
+  return true;
+}
 
 export interface HarnessPaths {
   stateDir: string;
@@ -72,6 +116,8 @@ export class HarnessService {
   private readonly inFlight = new Set<string>();
   /** Trials whose submission is being recorded right now. */
   private readonly submitting = new Set<string>();
+  /** D8: what happens to a confirmed win (and to one an audit cleared). */
+  readonly promotion: "auto" | "owner_approval";
 
   constructor(input: {
     unit: string;
@@ -81,8 +127,10 @@ export class HarnessService {
     clock?: (() => Date) | undefined;
     /** The unit's report-signing key (generated once, kept in the private state). */
     unitKeys?: KeyPairPem | undefined;
+    promotion?: "auto" | "owner_approval" | undefined;
   }) {
     this.unitKeys = input.unitKeys;
+    this.promotion = input.promotion ?? "owner_approval";
     this.unit = input.unit;
     this.clock = input.clock ?? (() => new Date());
     this.ledger = input.ledger;
@@ -163,7 +211,7 @@ export class HarnessService {
       case "redirect": {
         const p = CommandPayloads.redirect.parse(payload);
         this.requireInstance(p.instance);
-        const ids = p.directives.map((d) => this.ledger.addDirective(p.instance, by, d));
+        const ids = this.ledger.addDirectiveSet(p.instance, by, p.directives, p.replace);
         return { instance: p.instance, directives: ids };
       }
       case "reset_workers": {
@@ -176,24 +224,40 @@ export class HarnessService {
         this.ledger.appendEvent(by, "workers_reset", p.instance, {});
         return { instance: p.instance, reset: true };
       }
-      case "propagate": {
-        const p = CommandPayloads.propagate.parse(payload);
-        const inst = this.requireInstance(p.instance);
-        const imported = await this.runImport(p.import, inst.seed_repo, by);
-        this.ledger.appendEvent(by, "propagation_received", p.instance, {
-          source_unit: p.source_unit,
-          ...imported,
-        });
-        return { instance: p.instance, imported };
-      }
+      case "propagate":
+        return receivePropagation(this, CommandPayloads.propagate.parse(payload), by);
       case "export_now": {
         const r = await this.export(by);
-        return { export: r.id, attempts: r.attempts, events: r.events };
+        return {
+          export: r.dir.split("/").pop(),
+          export_id: r.id,
+          through_event: this.ledger.lastExport()?.through_event ?? 0,
+          attempts: r.attempts,
+          events: r.events,
+        };
       }
       case "wipe_state":
-        throw new Error("wipe_state is not available in this version");
+        return this.requestWipe(CommandPayloads.wipe_state.parse(payload), by);
       case "approve_promotion":
         return this.approvePromotion(CommandPayloads.approve_promotion.parse(payload), by);
+      case "accept_review": {
+        const p = CommandPayloads.accept_review.parse(payload);
+        this.requireInstance(p.instance);
+        new Reviews(this.ledger).ownerDecision(p.review, p.instance, p.accept, p.note, by);
+        // The goal tree is checked again with the owner's word.
+        this.ledger.enqueueJob({
+          kind: "validate",
+          priority: 40,
+          spec: { instance: p.instance },
+          actor: by,
+        });
+        return { review: p.review, decision: p.accept ? "accepted" : "rejected" };
+      }
+      case "conclude": {
+        const p = CommandPayloads.conclude.parse(payload);
+        this.requireInstance(p.instance);
+        return new Conclusions(this.ledger).decide(p.instance, p.proposal, p.accept, p.note, by);
+      }
     }
   }
 
@@ -260,6 +324,8 @@ export class HarnessService {
         });
         return { kind: "model", name: spec.name, sha256: spec.sha256 };
       }
+      case "champion_patch":
+        throw new Error("a champion patch comes only with a propagate command");
     }
   }
 
@@ -345,7 +411,225 @@ export class HarnessService {
     if (!r.ok) return { promoted: false, currentSeq: r.currentSeq };
     await this.syncChampionRef(input.instance);
     this.ledger.setAttemptLifecycle(input.attempt, "promoted", input.by);
+    // A new goal-campaign champion is validated afresh, so the goal tree reflects it.
+    if (this.contractFor(input.instance).mode === "goal") {
+      this.ledger.enqueueJob({
+        kind: "validate",
+        priority: 60,
+        spec: { instance: input.instance },
+        actor: input.by,
+      });
+    }
     return { promoted: true, seq: r.seq };
+  }
+
+  // ------------------------------------------------------------ full reset
+
+  /** Event kinds that are research: losing any of them in a wipe is refused. */
+  private static readonly RESEARCH_EVENTS = [
+    "attempt_recorded",
+    "verdict",
+    "champion_promoted",
+    "claim_added",
+    "source_fetched",
+    "goal_report",
+    "review_panel",
+    "review_decided",
+    "conclusion_proposed",
+  ];
+
+  /**
+   * A full reset's wipe. Control has verified that the named export reached the results
+   * repository; the harness checks that it is its own latest export, covers the events control
+   * names, and that no research was recorded since. The wipe itself happens at the next start
+   * (a marker is written and the controller exits), after this command's result is delivered.
+   */
+  private requestWipe(p: z.infer<(typeof CommandPayloads)["wipe_state"]>, by: string): unknown {
+    const last = this.ledger.lastExport();
+    const name = last
+      ? String(
+          (
+            this.ledger.db.prepare("select path from export where id = ?").get(last.id) as {
+              path: string;
+            }
+          ).path,
+        )
+      : undefined;
+    if (!last || name !== p.export) {
+      throw new Error(`the verified export ${p.export} is not this unit's latest export`);
+    }
+    if (last.through_event < p.through_event)
+      throw new Error("the export does not cover the events");
+    const after = this.ledger.db
+      .prepare(
+        `select count(*) as n from event where id > ? and kind in (${HarnessService.RESEARCH_EVENTS.map(() => "?").join(",")})`,
+      )
+      .get(last.through_event, ...HarnessService.RESEARCH_EVENTS) as { n: number };
+    if (Number(after.n) > 0) {
+      throw new Error(
+        `${after.n} research events were recorded after the export: pause the instances and export again`,
+      );
+    }
+    for (const inst of this.ledger.listInstances()) {
+      if (inst.status === "running") this.ledger.setInstanceStatus(inst.id, "paused", "wiping", by);
+    }
+    writeFileSync(
+      join(this.paths.stateDir, WIPE_MARKER),
+      `${JSON.stringify({ export: p.export, by, at: new Date().toISOString() })}\n`,
+    );
+    this.ledger.appendEvent(by, "wipe_requested", null, { export: p.export });
+    // Exit after the result is on its way back; the broker restarts the controller, which wipes.
+    setTimeout(() => this.onWipe?.(), 2000).unref();
+    return { wiping: true, export: p.export };
+  }
+
+  /** Called when a wipe was requested (the controller exits; tests observe it). */
+  onWipe?: () => void;
+
+  // ------------------------------------------------------------ audits, reviews, briefs
+
+  /** What the supervisor's auditor sees for each open audit: the package and the diff. */
+  async auditPackages(): Promise<(AuditPackage & { diff: string })[]> {
+    const audits = new Audits(this.ledger);
+    const out: (AuditPackage & { diff: string })[] = [];
+    for (const id of audits.pending()) {
+      const row = this.ledger.db
+        .prepare("select attempt, instance from audit where id = ?")
+        .get(id) as {
+        attempt: string;
+        instance: string;
+      };
+      const pkg = audits.package(id, this.contractFor(row.instance));
+      const a = this.ledger.getAttempt(row.attempt) as Record<string, unknown>;
+      const inst = this.requireInstance(row.instance);
+      const diff = await patchBetween(
+        this.mirrorFor(inst.seed_repo),
+        String(a.parent_commit),
+        String(a.commit_sha),
+      );
+      out.push({ ...pkg, diff: diff.slice(0, 200_000) });
+    }
+    return out;
+  }
+
+  /**
+   * The auditor's decision. Block holds the attempt for good (only the owner can override);
+   * needs_owner sends it to the owner; clear returns it to the promotion policy, except that
+   * declared flaws always go to the owner: an audit can block, never pass.
+   */
+  async decideAudit(input: {
+    attempt: string;
+    decision: AuditDecision;
+    reasons: string;
+    citations: string[];
+    auditor: string;
+  }): Promise<unknown> {
+    const audit = new Audits(this.ledger).decide(input);
+    const a = this.ledger.getAttempt(input.attempt) as Record<string, unknown>;
+    const instance = String(a.instance);
+    const expectedSeq = Number(audit.expected_seq);
+    if (String(a.lifecycle) !== "awaiting_audit") {
+      return { decision: input.decision, effect: `none: the attempt is ${a.lifecycle}` };
+    }
+    const toOwner = (why: string) => {
+      this.ledger.tx(() => {
+        this.ledger.appendEvent(input.auditor, "promotion_pending", input.attempt, {
+          instance,
+          expected_seq: expectedSeq,
+          commit: a.commit_sha,
+          reason: why,
+        });
+        this.ledger.setAttemptLifecycle(input.attempt, "awaiting_approval", input.auditor);
+      });
+      return { decision: input.decision, effect: "waiting for the owner" };
+    };
+    if (input.decision === "block") {
+      this.ledger.tx(() => {
+        this.ledger.appendEvent(input.auditor, "promotion_blocked", input.attempt, {
+          reason: "blocked by the audit",
+        });
+        this.ledger.setAttemptLifecycle(input.attempt, "audit_blocked", input.auditor);
+      });
+      return { decision: "block", effect: "blocked" };
+    }
+    if (input.decision === "needs_owner") return toOwner("the auditor asked for the owner");
+    if (String(audit.reason) === "known_flaws") return toOwner("declared flaws need the owner");
+    if (this.promotion === "owner_approval") return toOwner("promotion policy: owner approval");
+    const r = await this.promoteAttempt({
+      instance,
+      attempt: input.attempt,
+      expectedSeq,
+      by: input.auditor,
+    });
+    if (r.promoted) return { decision: "clear", effect: "promoted", seq: r.seq };
+    this.ledger.enqueueJob({ attempt: input.attempt, kind: "evaluate", actor: input.auditor });
+    this.ledger.setAttemptLifecycle(input.attempt, "queued", input.auditor);
+    return { decision: "clear", effect: "the champion moved: screened again" };
+  }
+
+  /**
+   * The deterministic snapshot the supervisor's teacher pair reviews: the campaign, the champion,
+   * the direction registry, recent evidence, epochs and the directives in force. Nothing from
+   * held-out cells, and no worker text beyond hypotheses.
+   */
+  brief(instance: string): unknown {
+    const inst = this.requireInstance(instance);
+    const contract = this.contractFor(instance);
+    const registry = new Registry(this.ledger);
+    const champion = this.ledger.currentChampion(instance);
+    const epochs = (
+      this.ledger.db
+        .prepare("select * from epoch where instance = ? order by n desc limit 5")
+        .all(instance) as Record<string, unknown>[]
+    ).map((e) => ({
+      n: Number(e.n),
+      source: String(e.source),
+      planner_valid: Number(e.planner_valid) === 1,
+      violations: (JSON.parse(String(e.raw_violations)) as unknown[]).length,
+      directives: JSON.parse(String(e.directives ?? "[]")) as number[],
+      assignments: (
+        JSON.parse(String(e.assignments)) as { lane: string; family: string; directive?: number }[]
+      ).map((a) => ({ lane: a.lane, family: a.family, directive: a.directive ?? null })),
+    }));
+    const goals =
+      contract.mode === "goal"
+        ? (this.ledger.db
+            .prepare("select id, status from goal where instance = ?")
+            .all(instance) as {
+            id: string;
+            status: string;
+          }[])
+        : undefined;
+    return {
+      unit: this.unit,
+      instance,
+      campaign: inst.campaign,
+      status: inst.status,
+      mode: contract.mode,
+      title: contract.title,
+      objective:
+        contract.mode === "hill_climb"
+          ? contract.objective
+          : contract.mode === "goal"
+            ? contract.goals.map((g) => ({
+                id: g.id,
+                description: g.description,
+                required: g.required,
+              }))
+            : { topic: contract.topic, questions: contract.questions },
+      editable_paths: "editable_paths" in contract ? contract.editable_paths : [],
+      champion: { seq: champion.seq, attempt: champion.attempt },
+      families: registry.families(instance),
+      evidence: registry.evidence(instance, 40),
+      epochs,
+      directives: this.ledger.activeDirectives(instance),
+      ...(goals ? { goals } : {}),
+      budget: {
+        ...contract.budget,
+        device_hours_used: this.ledger.deviceHours(instance),
+        tokens: registry.tokensUsed(instance),
+      },
+    };
   }
 
   /**
@@ -369,6 +653,11 @@ export class HarnessService {
     }
   }
 
+  /**
+   * The owner approves a promotion: one waiting for approval, or one held or blocked by an audit
+   * (the owner is above the auditor). Approving an attempt with declared flaws accepts them.
+   * The judge's verdict must still be promotable; the ledger checks that.
+   */
   private async approvePromotion(
     p: z.infer<(typeof CommandPayloads)["approve_promotion"]>,
     by: string,
@@ -377,12 +666,25 @@ export class HarnessService {
     if (!a || String(a.instance) !== p.instance) {
       throw new Error(`attempt ${p.attempt} is not in ${p.instance}`);
     }
-    if (String(a.lifecycle) !== "awaiting_approval") {
-      throw new Error(`attempt ${p.attempt} is ${a.lifecycle}, not awaiting approval`);
+    const lifecycle = String(a.lifecycle);
+    let expectedSeq: number;
+    if (lifecycle === "awaiting_approval") {
+      expectedSeq = Number(
+        this.ledger.latestEventBody("promotion_pending", p.attempt)?.expected_seq,
+      );
+    } else if (lifecycle === "awaiting_audit" || lifecycle === "audit_blocked") {
+      expectedSeq = Number(new Audits(this.ledger).get(p.attempt)?.expected_seq);
+      this.ledger.appendEvent(by, "audit_overridden", p.attempt, { lifecycle });
+    } else {
+      throw new Error(`attempt ${p.attempt} is ${lifecycle}, not awaiting approval`);
     }
-    const pending = this.ledger.latestEventBody("promotion_pending", p.attempt);
-    const expectedSeq = Number(pending?.expected_seq);
     if (!Number.isInteger(expectedSeq)) throw new Error(`no pending promotion for ${p.attempt}`);
+    if ((JSON.parse(String(a.known_flaws)) as unknown[]).length) {
+      this.ledger.db
+        .prepare("update attempt set flaws_cleared_by = ? where id = ?")
+        .run(by, p.attempt);
+      this.ledger.appendEvent(by, "flaws_accepted", p.attempt, {});
+    }
     const r = await this.promoteAttempt({ ...p, expectedSeq, by });
     if (r.promoted) return r;
     // The champion moved after this win was confirmed: it must be screened against the new one.
@@ -391,11 +693,24 @@ export class HarnessService {
     return { promoted: false, rescreen: true, champion_seq: r.currentSeq };
   }
 
-  /** Low-power steering from the supervisor's teacher pair: structured directives only. */
+  /**
+   * Low-power steering from the supervisor's teacher pair: one structured directive set, which
+   * replaces the supervisor's previous set. Every directive needs a citation, and free-text notes
+   * (planner only) are limited. Nothing here can touch a verdict, a contract or a worker's brief.
+   */
   addDirectives(instance: string, directives: unknown, author: string): number[] {
-    this.requireInstance(instance);
-    const parsed = z.array(StructuredDirective).min(1).parse(directives);
-    return parsed.map((d) => this.ledger.addDirective(instance, author, d));
+    const inst = this.requireInstance(instance);
+    if (inst.status === "closed")
+      throw new LedgerError("invalid", `instance ${instance} is closed`);
+    const parsed = z.array(StructuredDirective).min(1).max(20).parse(directives);
+    const uncited = parsed.filter((d) => !d.citations.length);
+    if (uncited.length) {
+      throw new LedgerError("invalid", `${uncited.length} directive(s) without a citation`);
+    }
+    if (parsed.filter((d) => d.kind === "note").length > 3) {
+      throw new LedgerError("invalid", "at most 3 notes per directive set");
+    }
+    return this.ledger.addDirectiveSet(instance, author, parsed, true);
   }
 
   // ------------------------------------------------------------ attempts

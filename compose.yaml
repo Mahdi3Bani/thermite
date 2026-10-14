@@ -13,6 +13,11 @@ services:
       THERMITE_CONTROL_UNIT_TOKENS_FILE: /run/secrets/control-unit-tokens
       THERMITE_CONTROL_PUBKEY_EXPORT: /keys/control-signing.pub
       THERMITE_CONTROL_STALE_SECONDS: "${THERMITE_CONTROL_STALE_SECONDS:-180}"
+      # Restarts through the container engine: see compose.lifecycle.yaml (off by default).
+      THERMITE_LIFECYCLE: "${THERMITE_LIFECYCLE:-}"
+      THERMITE_COMPOSE_PROJECT: thermite
+      THERMITE_COMPOSE_SERVICES: '{"local-1":{"harness":"harness","supervisor":"supervisor"},"local-2":{"harness":"harness-2","supervisor":"supervisor-2"}}'
+
     volumes:
       - control-state:/var/lib/thermite-control
       - control-pub:/keys
@@ -40,6 +45,7 @@ services:
       QWEN_API_KEY_FILE: /run/secrets/qwen-api-key
       THERMITE_MAX_TRIALS: "${THERMITE_MAX_TRIALS:-1}"
       THERMITE_TRIAL_MINUTES: "${THERMITE_TRIAL_MINUTES:-20}"
+      THERMITE_EXPORT_MINUTES: "${THERMITE_EXPORT_MINUTES:-60}"
     volumes:
       - harness-state:/var/lib/thermite
       - harness-scratch:/scratch
@@ -64,10 +70,16 @@ services:
       THERMITE_POLL_SECONDS: "${THERMITE_POLL_SECONDS:-60}"
       THERMITE_HARNESS_TOKEN_FILE: /run/secrets/harness-supervisor-token
       THERMITE_CONTROL_TOKEN_FILE: /run/secrets/control-unit-token
+      # Locally, both units' supervisors push to one results repository on a shared volume.
+      THERMITE_RESULTS_REMOTE: "${THERMITE_RESULTS_REMOTE:-file:///results/results.git}"
+      # Teacher pair, combiner, auditor and review panel (off unless a config file is given).
+      THERMITE_ADVISORS_FILE: "${THERMITE_ADVISORS_FILE:-}"
     volumes:
       - supervisor-home:/var/lib/thermite-supervisor
       - ./.dev/inbox:/inbox
       - outbox:/outbox:ro
+      - results:/results
+      - ./.dev/advisors:/etc/thermite/advisors:ro
     secrets: [harness-supervisor-token, control-unit-token]
     networks: [unit, control, egress]
     depends_on: [harness, control]
@@ -87,6 +99,7 @@ services:
       THERMITE_PROPOSER_TOKEN_FILE: /run/secrets/harness2-proposer-token
       THERMITE_PROMOTION: "${THERMITE_PROMOTION:-owner_approval}"
       THERMITE_CALIBRATION_BLOCKS: "${THERMITE_CALIBRATION_BLOCKS:-6}"
+      THERMITE_EXPORT_MINUTES: "${THERMITE_EXPORT_MINUTES:-60}"
     volumes:
       - harness2-state:/var/lib/thermite
       - harness2-scratch:/scratch
@@ -110,10 +123,14 @@ services:
       THERMITE_POLL_SECONDS: "${THERMITE_POLL_SECONDS:-60}"
       THERMITE_HARNESS_TOKEN_FILE: /run/secrets/harness2-supervisor-token
       THERMITE_CONTROL_TOKEN_FILE: /run/secrets/control-unit-token-2
+      THERMITE_RESULTS_REMOTE: "${THERMITE_RESULTS_REMOTE:-file:///results/results.git}"
+      THERMITE_ADVISORS_FILE: "${THERMITE_ADVISORS_FILE:-}"
     volumes:
       - supervisor2-home:/var/lib/thermite-supervisor
       - ./.dev/inbox:/inbox
       - outbox2:/outbox:ro
+      - results:/results
+      - ./.dev/advisors:/etc/thermite/advisors:ro
     secrets: [harness2-supervisor-token, control-unit-token-2]
     networks: [unit2, control, egress]
     depends_on: [harness-2, control]
@@ -138,6 +155,7 @@ volumes:
   harness2-scratch: {}
   outbox2: {}
   supervisor2-home: {}
+  results: {}
 
 secrets:
   control-admin-token: { file: ./.dev/secrets/control-admin-token }

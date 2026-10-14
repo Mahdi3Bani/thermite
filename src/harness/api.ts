@@ -5,6 +5,7 @@ import { z } from "zod";
 import { Registry } from "./agents/registry.ts";
 import { LedgerError } from "./ledger.ts";
 import type { Research } from "./research/research.ts";
+import { Reviews } from "./reviews.ts";
 import { type HarnessService, SubmitRequest } from "./service.ts";
 
 /**
@@ -122,6 +123,66 @@ export function createHarnessApi(
       .object({ instance: z.string().min(1), directives: z.unknown() })
       .parse(await c.req.json());
     return c.json({ ids: service.addDirectives(body.instance, body.directives, "supervisor") });
+  });
+
+  // The supervisor's deterministic inputs for its teacher pair, auditor and review panel, and
+  // where their outputs go. None of these can set a verdict, a contract or a champion.
+  app.get("/v1/instances", supervisor, (c) =>
+    c.json({
+      instances: service.ledger
+        .listInstances()
+        .map((i) => ({ id: i.id, campaign: i.campaign, mode: i.mode, status: i.status })),
+    }),
+  );
+
+  app.get("/v1/brief", supervisor, (c) => {
+    const instance = z.string().min(1).parse(c.req.query("instance"));
+    return c.json(service.brief(instance) as object);
+  });
+
+  app.get("/v1/audits/pending", supervisor, async (c) =>
+    c.json({ audits: await service.auditPackages() }),
+  );
+
+  app.post("/v1/audits", supervisor, bodyLimit({ maxSize: 256 * 1024 }), async (c) => {
+    const body = z
+      .strictObject({
+        attempt: z.string().min(1).max(64),
+        decision: z.enum(["clear", "block", "needs_owner"]),
+        reasons: z.string().min(1).max(8000),
+        citations: z.array(z.string().min(1).max(500)).max(20).default([]),
+        auditor: z.string().min(1).max(100),
+      })
+      .parse(await c.req.json());
+    return c.json(
+      (await service.decideAudit({ ...body, auditor: `supervisor:${body.auditor}` })) as object,
+    );
+  });
+
+  app.get("/v1/reviews/pending", supervisor, (c) =>
+    c.json({ reviews: new Reviews(service.ledger).pending() }),
+  );
+
+  app.post("/v1/reviews/:id", supervisor, bodyLimit({ maxSize: 256 * 1024 }), async (c) => {
+    const id = z.coerce.number().int().positive().parse(c.req.param("id"));
+    const body = z
+      .strictObject({
+        results: z
+          .array(
+            z.strictObject({
+              reviewer: z.string().min(1).max(100),
+              pass: z.boolean(),
+              reasons: z.string().min(1).max(8000),
+            }),
+          )
+          .min(1)
+          .max(8),
+      })
+      .parse(await c.req.json());
+    return c.json({
+      review: id,
+      result: new Reviews(service.ledger).recordPanel(id, body.results, "supervisor"),
+    });
   });
 
   app.post("/v1/export", supervisor, async (c) => {

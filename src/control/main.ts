@@ -10,6 +10,7 @@ import {
 } from "../common/env.ts";
 import { generateSigningKeys } from "../core/commands.ts";
 import { createControlApi } from "./api.ts";
+import { advanceResets, driverFromEnv } from "./lifecycle.ts";
 import { ControlStore } from "./store.ts";
 
 /** Control service entry point. Generates its signing key on first start. */
@@ -41,16 +42,28 @@ async function main(): Promise<void> {
   };
   const store = new ControlStore(join(dir, "control.db"));
   const { host, port } = parseListen(env.THERMITE_CONTROL_LISTEN ?? "0.0.0.0:8800");
+  // A unit is stale after 3 missed reports (the supervisor reports every 60 s by default).
+  const staleAfterMs = Number(env.THERMITE_CONTROL_STALE_SECONDS ?? "180") * 1000;
+  const driver = driverFromEnv(env);
   const server = serve({
-    fetch: createControlApi(store, tokens, privateKeyPem, {
-      // A unit is stale after 3 missed reports (the supervisor reports every 60 s by default).
-      staleAfterMs: Number(env.THERMITE_CONTROL_STALE_SECONDS ?? "180") * 1000,
-    }).fetch,
+    fetch: createControlApi(store, tokens, privateKeyPem, { staleAfterMs, driver }).fetch,
     hostname: host,
     port,
   });
-  log("control", "listening", { host, port, units: Object.keys(tokens.units) });
+  log("control", "listening", {
+    host,
+    port,
+    units: Object.keys(tokens.units),
+    lifecycle: driver?.kind ?? null,
+  });
+  // Full resets advance as their evidence arrives.
+  const resets = setInterval(() => {
+    advanceResets({ store, privateKeyPem, driver, staleAfterMs }).catch((err) =>
+      log("control", "reset step error", { error: String(err) }),
+    );
+  }, 10_000);
   const stop = () => {
+    clearInterval(resets);
     server.close();
     process.exit(0);
   };

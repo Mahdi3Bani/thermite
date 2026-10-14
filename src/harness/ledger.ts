@@ -438,7 +438,7 @@ export class Ledger {
           `attempt ${input.attempt} has verdict ${verdict ?? "none"}`,
         );
       }
-      if ((JSON.parse(String(a.known_flaws)) as unknown[]).length > 0) {
+      if ((JSON.parse(String(a.known_flaws)) as unknown[]).length > 0 && !a.flaws_cleared_by) {
         throw new LedgerError("invalid", `attempt ${input.attempt} has open known flaws`);
       }
       const current = this.currentChampion(input.instance).seq;
@@ -1063,6 +1063,32 @@ export class Ledger {
       ).id;
       this.appendEvent(author, "directive", instance, { id, body });
       return id;
+    });
+  }
+
+  /**
+   * A directive set. With `replace`, the author's active directives for the instance are
+   * superseded first: each author steers with one current set, not an ever-growing pile.
+   */
+  addDirectiveSet(instance: string, author: string, bodies: unknown[], replace: boolean): number[] {
+    return this.tx(() => {
+      if (replace) {
+        const old = this.all<Row>(
+          "select id from directive where instance = ? and author = ? and status = 'active'",
+          instance,
+          author,
+        ).map((r) => Number(r.id));
+        if (old.length) {
+          this.run(
+            "update directive set status = 'superseded', superseded_at = ? where instance = ? and author = ? and status = 'active'",
+            this.now(),
+            instance,
+            author,
+          );
+          this.appendEvent(author, "directives_superseded", instance, { ids: old });
+        }
+      }
+      return bodies.map((b) => this.addDirective(instance, author, b));
     });
   }
 

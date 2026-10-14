@@ -10,7 +10,8 @@ import { promisify } from "node:util";
  * snapshot. This turns each verified export into packed commits on a few branches of the
  * results repository, without a checkout:
  *
- *   thermite/<unit>/attempts  attempts/<id>.patch, attempts/<id>.json, events/<export>.jsonl
+ *   thermite/<unit>/attempts  attempts/<id>.patch, attempts/<id>.json, events/<export>.jsonl,
+ *                            champions/<instance>/<seq>.patch and .json
  *   thermite/<unit>/ledger    ledger.sqlite and its manifest (at most once per ledgerEveryMs)
  *
  * and pushes them with the unit's deploy key. Git work is deterministic code only; no model
@@ -32,6 +33,10 @@ export interface ExportConfig {
 
 export interface ExportState {
   done: string[];
+  /** Exports committed here but not yet pushed to the remote. */
+  unpushed?: string[] | undefined;
+  /** The newest exports known to be on the remote (a full reset waits for its export here). */
+  pushed?: string[] | undefined;
   lastLedgerAt?: string | undefined;
   lastPushAt?: string | undefined;
   lastError?: string | undefined;
@@ -127,6 +132,23 @@ export async function exportOnce(cfg: ExportConfig, state: ExportState): Promise
   const next: ExportState = { ...state, done: [...state.done] };
   const attemptsBranch = `thermite/${cfg.unit}/attempts`;
   const ledgerBranch = `thermite/${cfg.unit}/ledger`;
+  // A new or wiped supervisor home continues the results repository's history, so its pushes
+  // stay fast-forwards.
+  if (cfg.remote && pending.length) {
+    for (const b of [attemptsBranch, ledgerBranch]) {
+      const have = await git(repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${b}`]).catch(
+        () => "",
+      );
+      if (have) continue;
+      await git(repo, ["fetch", "--quiet", cfg.remote, `+refs/heads/${b}:refs/heads/${b}`], {
+        env: cfg.sshKeyFile
+          ? {
+              GIT_SSH_COMMAND: `ssh -i ${cfg.sshKeyFile} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new`,
+            }
+          : {},
+      }).catch(() => undefined);
+    }
+  }
   let committed = false;
   for (const name of pending) {
     const dir = join(cfg.outboxDir, name);
@@ -146,7 +168,8 @@ export async function exportOnce(cfg: ExportConfig, state: ExportState): Promise
       [`exports/${name}.json`]: join(dir, "manifest.json"),
     };
     for (const rel of Object.keys(manifest.files)) {
-      if (rel.startsWith("attempts/")) files[rel] = join(dir, rel);
+      // Attempts, and published champions (what other units fetch to judge them themselves).
+      if (rel.startsWith("attempts/") || rel.startsWith("champions/")) files[rel] = join(dir, rel);
     }
     const attempts = Object.keys(files).filter((f) => f.endsWith(".patch")).length;
     await commitFiles(
@@ -171,10 +194,19 @@ export async function exportOnce(cfg: ExportConfig, state: ExportState): Promise
       next.lastLedgerAt = new Date().toISOString();
     }
     next.done.push(name);
+    next.unpushed = [...(next.unpushed ?? []), name];
     committed = true;
   }
   next.done = next.done.slice(-5000);
 
+  // A local results repository (compose): created on first use.
+  if (cfg.remote?.startsWith("file://")) {
+    const path = new URL(cfg.remote).pathname;
+    if (!existsSync(join(path, "HEAD"))) {
+      mkdirSync(path, { recursive: true });
+      await git(path, ["init", "--bare", "--quiet"]);
+    }
+  }
   if (cfg.remote && (committed || next.lastError?.startsWith("push"))) {
     const branches = [attemptsBranch, ledgerBranch];
     const have: string[] = [];
@@ -193,6 +225,8 @@ export async function exportOnce(cfg: ExportConfig, state: ExportState): Promise
     try {
       if (have.length) await git(repo, ["push", "--quiet", cfg.remote, ...have], { env: sshEnv });
       next.lastPushAt = new Date().toISOString();
+      next.pushed = [...(next.pushed ?? []), ...(next.unpushed ?? [])].slice(-50);
+      next.unpushed = [];
       if (next.lastError?.startsWith("push")) next.lastError = undefined;
     } catch (err) {
       next.lastError = `push failed: ${err instanceof Error ? err.message.slice(0, 300) : String(err)}`;

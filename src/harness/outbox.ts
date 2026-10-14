@@ -1,16 +1,18 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { canonicalJson } from "../core/canonical.ts";
 import { patchBetween } from "./git.ts";
 import type { Ledger } from "./ledger.ts";
+import { championFiles } from "./propagation.ts";
 
 /**
  * Outbox export. The harness has no git credentials and no remote access: it writes exports
  * into the shared outbox, and the supervisor pushes them to the results repository as packed
  * commits. An export holds patches and manifests for attempts recorded since the last export,
- * the events since then, and a consistent ledger snapshot.
+ * the events since then, a consistent ledger snapshot, and each new instance champion as a patch
+ * against its seed (what other units need to judge it themselves).
  */
 
 export interface ExportResult {
@@ -60,6 +62,17 @@ export async function writeExport(input: {
       );
     }
 
+    const championRel: string[] = [];
+    const published = await championFiles({
+      ledger,
+      mirrorFor: input.mirrorFor,
+      write: (rel, data) => {
+        mkdirSync(dirname(join(tmp, rel)), { recursive: true });
+        writeFileSync(join(tmp, rel), data);
+        championRel.push(rel);
+      },
+    });
+
     const snapshotPath = join(tmp, "ledger.sqlite");
     ledger.db.exec(`vacuum into '${snapshotPath.replace(/'/g, "''")}'`);
     // Held-out results go to promotion code only, never into an export.
@@ -71,6 +84,7 @@ export async function writeExport(input: {
       "events.jsonl",
       "ledger.sqlite",
       ...attemptIds.flatMap((id) => [`attempts/${id}.patch`, `attempts/${id}.json`]),
+      ...championRel,
     ];
     const manifest = {
       unit: input.unit,
@@ -94,6 +108,20 @@ export async function writeExport(input: {
       manifest,
       actor: input.actor,
     });
+    // Announced after the export exists: control can then offer it for propagation, and the
+    // receiving supervisor finds the patch in the results repository once this export is pushed.
+    for (const c of published) {
+      const inst = ledger.getInstance(c.instance);
+      ledger.appendEvent(input.actor, "champion_published", c.instance, {
+        seq: c.seq,
+        repo: inst?.seed_repo ?? null,
+        base_commit: c.base_commit,
+        tree: c.tree,
+        sha256: c.sha256,
+        path: c.path,
+        export: name,
+      });
+    }
     return { id, dir: final, attempts: attemptIds.length, events: events.length };
   } catch (err) {
     rmSync(tmp, { recursive: true, force: true });

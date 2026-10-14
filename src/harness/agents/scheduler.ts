@@ -6,7 +6,7 @@ import type { Ledger } from "../ledger.ts";
 import type { Research } from "../research/research.ts";
 import type { HarnessService } from "../service.ts";
 import type { ModelConfig } from "./model.ts";
-import { lanesOf, type PlannerInput, plan } from "./planner.ts";
+import { attribute, lanesOf, type PlannerInput, plan } from "./planner.ts";
 import { type Assignment, Registry } from "./registry.ts";
 import type { ResearchTrialSpec } from "./research-worker.ts";
 import type { TrialResult, TrialSpec } from "./worker.ts";
@@ -28,6 +28,7 @@ const SETTLED = new Set([
   "errored",
   "awaiting_approval",
   "awaiting_audit",
+  "audit_blocked",
 ]);
 const KEEP = new Set(["win_screened", "win_confirmed"]);
 
@@ -178,6 +179,56 @@ export class Scheduler {
     return true;
   }
 
+  /**
+   * The epoch cap: about 6% of the wall budget (Fork-and-Flush's per-branch exploration budget),
+   * between 30 minutes and 3 hours; the configured cap without a wall budget.
+   */
+  private epochCap(contract: Contract): number {
+    const w = contract.budget.wall_hours;
+    if (w === undefined) return this.o.epochCapMs;
+    return Math.min(3 * 3_600_000, Math.max(30 * 60_000, 0.06 * w * 3_600_000));
+  }
+
+  /**
+   * Fork rounds (Fork-and-Flush): on a fixed schedule, never on a plateau, every lane starts again
+   * from the champion. With a wall budget, at 33% and 66% of it; without one, every 20 epochs.
+   */
+  private maybeForkRound(instance: string, contract: Contract, n: number): void {
+    const rounds = Number(
+      (
+        this.ledger.db
+          .prepare("select count(*) as k from event where kind = 'fork_round' and subject = ?")
+          .get(instance) as { k: number }
+      ).k,
+    );
+    const w = contract.budget.wall_hours;
+    let due = false;
+    if (w !== undefined) {
+      const created = this.ledger.db
+        .prepare("select created_at from instance where id = ?")
+        .get(instance) as { created_at: string };
+      const used = (Date.now() - Date.parse(created.created_at)) / (w * 3_600_000);
+      due = (rounds < 1 && used >= 1 / 3) || (rounds < 2 && used >= 2 / 3);
+    } else {
+      due = n > 1 && (n - 1) % 20 === 0;
+    }
+    if (!due) return;
+    const lanes = this.ledger.db
+      .prepare("select id from lane where instance = ?")
+      .all(instance) as {
+      id: string;
+    }[];
+    for (const lane of lanes) {
+      this.registry.clearLaneBest(
+        instance,
+        lane.id.slice(instance.length + 1),
+        this.o.owner,
+        "fork round: every lane starts from the champion",
+      );
+    }
+    this.ledger.appendEvent(this.o.owner, "fork_round", instance, { epoch: n, round: rounds + 1 });
+  }
+
   /** The contract's budgets that end agent work, other than wall time: the first one spent. */
   private budgetSpent(instance: string, contract: Contract): string | undefined {
     const b = contract.budget;
@@ -283,8 +334,19 @@ export class Scheduler {
           best = null;
         }
       }
-      const current = (id: string) =>
-        Number(this.ledger.getAttempt(id)?.baseline_champion_seq) === champion.seq;
+      // After a fork round, only work done since the round may become a lane's best again.
+      const round = this.ledger.db
+        .prepare(
+          "select at from event where kind = 'fork_round' and subject = ? order by id desc limit 1",
+        )
+        .get(instance) as { at: string } | undefined;
+      const current = (id: string) => {
+        const a = this.ledger.getAttempt(id);
+        return (
+          Number(a?.baseline_champion_seq) === champion.seq &&
+          (!round || String(a?.created_at) > round.at)
+        );
+      };
       const bestDelta = best
         ? (this.registry.evidence(instance, 500, lane).find((e) => e.attempt === best)?.delta ??
           null)
@@ -326,7 +388,8 @@ export class Scheduler {
       tries: p.tries,
       valid: p.valid,
       rawViolations: p.rawViolations,
-      assignments: p.assignments,
+      assignments: attribute(p.assignments, input.directives),
+      directives: input.directives.map((d) => d.id),
       notes: p.notes,
       by: this.o.owner,
     });
@@ -368,6 +431,7 @@ export class Scheduler {
     const perEpoch = contract.lanes.trials_per_epoch;
     let epoch = this.registry.currentEpoch(id);
     if (!epoch || epoch.ended_at) {
+      this.maybeForkRound(id, contract, (epoch?.n ?? 0) + 1);
       await this.planEpoch(id, contract, (epoch?.n ?? 0) + 1);
       epoch = this.registry.currentEpoch(id);
       if (!epoch) return false;
@@ -395,7 +459,7 @@ export class Scheduler {
       this.startTrial(id, contract, epoch.n, a, trials.length + 1, perEpoch);
       started = true;
     }
-    const capped = Date.now() - Date.parse(epoch.started_at) > this.o.epochCapMs;
+    const capped = Date.now() - Date.parse(epoch.started_at) > this.epochCap(contract);
     if ((complete || capped) && !this.running.size)
       this.registry.endEpoch(id, epoch.n, this.o.owner);
     return started;
@@ -460,29 +524,37 @@ export class Scheduler {
     { id: "consolidate", description: "Fold verified claims and notes into the report sections" },
   ];
 
-  /** Deterministic research plan: least-covered questions first, task kinds rotating by epoch. */
+  /**
+   * Deterministic research plan: least-covered questions first, task kinds rotating by epoch.
+   * Directives steer it by structure only (redirects in research mode): MANDATE and TRY name
+   * task kinds to put first, AVOID removes a task kind, and a numeric TRY or MANDATE value puts
+   * that question first. Directive text never reaches a worker's brief.
+   */
   private planResearchEpoch(instance: string, contract: ResearchContract, n: number): void {
     const research = this.o.research as Research;
     for (const t of Scheduler.RESEARCH_TASKS)
       this.registry.addFamily(instance, t.id, t.description, "research-plan");
-    const coverage = research
-      .stats(instance)
-      .questions.map((q, i) => ({ i, verified: q.verified }))
-      .sort((x, y) => x.verified - y.verified || x.i - y.i);
-    const lanes = lanesOf(this.laneCount(instance, contract));
+    const directives = this.directives(instance);
+    const avoid = new Set(
+      directives.filter((d) => d.body.kind === "avoid" && d.body.family).map((d) => d.body.family),
+    );
+    const rank = (id: string) =>
+      directives.some((d) => d.body.kind === "mandate" && d.body.family === id)
+        ? 0
+        : directives.some((d) => d.body.kind === "try" && d.body.family === id)
+          ? 1
+          : 2;
     // When novelty falls (an hour with no new source and no newly verified claim), lanes go
-    // deeper instead of wider: primary sources and contradictions first.
+    // deeper instead of wider: primary sources and contradictions first. Otherwise task kinds
+    // rotate by epoch. Directives then reorder or remove task kinds.
     const stats = research.stats(instance);
     const stalled =
       research.clock(instance).elapsed_ms > 3_600_000 &&
       stats.last_hour.sources === 0 &&
       stats.last_hour.verified === 0;
-    const tasks = stalled
-      ? [...Scheduler.RESEARCH_TASKS].sort(
-          (x, y) =>
-            Number(!["primary", "contradict"].includes(x.id)) -
-            Number(!["primary", "contradict"].includes(y.id)),
-        )
+    const deep = (id: string) => Number(!["primary", "contradict"].includes(id));
+    const rotated = stalled
+      ? [...Scheduler.RESEARCH_TASKS].sort((x, y) => deep(x.id) - deep(y.id))
       : Scheduler.RESEARCH_TASKS.map(
           (_, k) =>
             Scheduler.RESEARCH_TASKS[(n + k - 1) % Scheduler.RESEARCH_TASKS.length] as {
@@ -490,6 +562,31 @@ export class Scheduler {
               description: string;
             },
         );
+    const tasks = rotated
+      .filter((t) => !avoid.has(t.id))
+      .map((t, k) => ({ t, k }))
+      .sort((a, b) => rank(a.t.id) - rank(b.t.id) || a.k - b.k)
+      .map((x) => x.t);
+    if (!tasks.length) tasks.push(rotated[0] as { id: string; description: string });
+    const firstQuestions = directives
+      .filter(
+        (d) =>
+          (d.body.kind === "mandate" || d.body.kind === "try") &&
+          typeof d.body.value === "number" &&
+          Number.isInteger(d.body.value) &&
+          d.body.value >= 0 &&
+          d.body.value < contract.questions.length,
+      )
+      .map((d) => Number(d.body.value));
+    const coverage = stats.questions
+      .map((q, i) => ({ i, verified: q.verified }))
+      .sort(
+        (x, y) =>
+          Number(!firstQuestions.includes(x.i)) - Number(!firstQuestions.includes(y.i)) ||
+          x.verified - y.verified ||
+          x.i - y.i,
+      );
+    const lanes = lanesOf(this.laneCount(instance, contract));
     const assignments: Assignment[] = lanes.map((lane, k) => {
       const q = coverage[k % coverage.length] as { i: number };
       const task = tasks[k % tasks.length] as { id: string; description: string };
@@ -507,7 +604,8 @@ export class Scheduler {
       tries: 0,
       valid: false,
       rawViolations: [],
-      assignments,
+      assignments: attribute(assignments, directives),
+      directives: directives.map((d) => d.id),
       notes: stalled
         ? "research plan (deterministic in v1); novelty fell, so primary sources and contradictions first"
         : "research plan (deterministic in v1)",

@@ -337,6 +337,62 @@ describe("agent scheduler", () => {
     await dev.settle("lane-1");
   });
 
+  test("a fork round at a third of the wall budget sends every lane back to the champion", async () => {
+    const env = makeJudgeEnv({
+      lanes: { count: 1, trials_per_epoch: 1 },
+      contract: { budget: { wall_hours: 1, max_open_attempts: 4 } },
+    });
+    await env.service.applyCommand(env.assign);
+    const a = (
+      await env.service.submitAttempt(
+        {
+          instance: "js-1",
+          lane: "lane-1",
+          patch_base64: env.patch(FAST_KERNEL),
+          hypothesis: "a",
+          known_flaws: [],
+        },
+        "t",
+      )
+    ).attempt;
+    env.ledger.recordVerdict({
+      attempt: a,
+      verdict: "win_screened",
+      delta: 0.1,
+      reasons: "t",
+      judgedBy: "t",
+    });
+    const scheduler = new Scheduler({
+      service: env.service,
+      runner: new LocalRunner(env.paths.scratchDir),
+      model: {
+        baseUrl: "http://127.0.0.1:9",
+        model: "m",
+        apiKey: "k",
+        contextWindow: 1,
+        maxTokens: 1,
+      },
+      owner: "s",
+      runTrial: async () => ({
+        stopped: "error",
+        turns: 0,
+        toolCalls: 0,
+        tokensIn: 0,
+        tokensOut: 0,
+      }),
+    });
+    scheduler.registry.setLaneBest("js-1", "lane-1", a, "t");
+    // 40% of the hour has passed.
+    env.ledger.db
+      .prepare("update instance set created_at = ? where id = 'js-1'")
+      .run(new Date(Date.now() - 0.4 * 3_600_000).toISOString());
+    await scheduler.tick();
+    await scheduler.idle();
+    const rounds = env.ledger.eventsAfter(0, 10_000).events.filter((e) => e.kind === "fork_round");
+    assert.equal(rounds.length, 1);
+    assert.equal(scheduler.registry.laneBest("js-1", "lane-1"), null);
+  });
+
   test("lanes back off after unproductive trials", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 5 } });
     await env.service.applyCommand(env.assign);

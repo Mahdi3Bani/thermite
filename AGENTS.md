@@ -85,4 +85,6 @@ Run from the repository root before every commit, and report which ran and which
   - `COMPOSE="podman compose" node scripts/control-acceptance.mjs`
 - Agents acceptance (M4), after changes to the workers, planner, scheduler, dev runs or the harness image. A scripted model on the host stands in for a real model route:
   - `COMPOSE="podman compose" node scripts/agents-acceptance.mjs`
+- Steering acceptance (M5), after changes to the supervisor's advisors, audits, propagation, reviews, the lifecycle drivers or full reset. It uses two units and a scripted host model; with Podman it also mounts the engine socket (`compose.lifecycle.yaml`) to test restarts. Allow about 20–30 minutes:
+  - `COMPOSE="podman compose" node scripts/steering-acceptance.mjs`
 - Repository hygiene: `git status --short`, `git diff --check` and `git diff --cached`. Read new untracked files directly, and verify relative documentation links and the `CLAUDE.md` import.

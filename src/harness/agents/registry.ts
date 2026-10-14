@@ -23,12 +23,16 @@ export interface Assignment {
   family: string;
   focus: string;
   parent: "champion" | "lane_best";
+  /** The MANDATE or TRY directive this assignment follows, when it follows one. */
+  directive?: number | undefined;
 }
 
 export interface EpochRecord {
   n: number;
   source: "planner" | "fallback";
   assignments: Assignment[];
+  /** Directive ids in force when the epoch was planned. */
+  directives: number[];
   started_at: string;
   ended_at: string | null;
 }
@@ -159,6 +163,7 @@ export class Registry {
           n: Number(r.n),
           source: String(r.source) as EpochRecord["source"],
           assignments: JSON.parse(String(r.assignments)) as Assignment[],
+          directives: JSON.parse(String(r.directives ?? "[]")) as number[],
           started_at: String(r.started_at),
           ended_at: r.ended_at === null ? null : String(r.ended_at),
         }
@@ -173,14 +178,15 @@ export class Registry {
     valid: boolean;
     rawViolations: string[];
     assignments: Assignment[];
+    directives?: number[] | undefined;
     notes?: string | undefined;
     by: string;
   }): void {
     this.ledger.tx(() => {
       this.ledger.db
         .prepare(
-          `insert into epoch (instance, n, source, planner_tries, planner_valid, raw_violations, assignments, notes, started_at)
-           values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `insert into epoch (instance, n, source, planner_tries, planner_valid, raw_violations, assignments, directives, notes, started_at)
+           values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           input.instance,
@@ -190,6 +196,7 @@ export class Registry {
           input.valid ? 1 : 0,
           canonicalJson(input.rawViolations),
           canonicalJson(input.assignments),
+          canonicalJson(input.directives ?? []),
           input.notes?.slice(0, 2000) ?? null,
           this.now(),
         );
@@ -199,10 +206,12 @@ export class Registry {
         planner_tries: input.tries,
         planner_valid: input.valid,
         raw_violations: input.rawViolations.length,
+        directives: input.directives ?? [],
         assignments: input.assignments.map((a) => ({
           lane: a.lane,
           family: a.family,
           parent: a.parent,
+          ...(a.directive === undefined ? {} : { directive: a.directive }),
         })),
       });
     });

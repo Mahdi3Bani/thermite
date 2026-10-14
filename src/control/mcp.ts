@@ -4,9 +4,9 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import type { Hono } from "hono";
 import { z } from "zod";
 import type { CommandKind } from "../core/commands.ts";
-import { issueCommand } from "./issue.ts";
+import { issueCommand, propagateChampion } from "./issue.ts";
 import type { ControlStore } from "./store.ts";
-import { unitView } from "./views.ts";
+import { leaderboard, unitView } from "./views.ts";
 
 /**
  * Control over MCP (streamable HTTP at /mcp, stateless). The admin token may read and issue
@@ -14,7 +14,11 @@ import { unitView } from "./views.ts";
  * The same views and the same signed-command path as the dashboard and the REST API.
  */
 
-/** Commands agents may issue through MCP. Wiping state stays with the owner. */
+/**
+ * Commands agents may issue through MCP. Wiping state, full resets, accepting a subjective goal
+ * and accepting a "not possible" ending stay with the owner (dashboard or REST): no model is the
+ * final gate.
+ */
 const MCP_COMMANDS = [
   "assign_campaign",
   "pause_instance",
@@ -135,6 +139,33 @@ function buildServer(
   );
 
   server.registerTool(
+    "leaderboard",
+    {
+      title: "Campaign leaderboard",
+      description:
+        "Per campaign: each instance's champion and its gain over its own baseline (measured on its own unit), and which other units' judges cross-verified it.",
+      inputSchema: {},
+    },
+    audited("leaderboard", () => leaderboard(store, { staleAfterMs: opts.staleAfterMs })),
+  );
+
+  server.registerTool(
+    "unit_reports",
+    {
+      title: "Daily unit reports",
+      description:
+        "The newest daily reports units' supervisors sent (Markdown, built from the ledger).",
+      inputSchema: {
+        unit: z.string().min(1).optional(),
+        limit: z.number().int().min(1).max(50).default(5),
+      },
+    },
+    audited("unit_reports", (a: { unit?: string; limit: number }) =>
+      store.reports(a.limit, a.unit),
+    ),
+  );
+
+  server.registerTool(
     "list_commands",
     {
       title: "Commands",
@@ -166,6 +197,35 @@ function buildServer(
             payload: a.payload,
             ttlMinutes: a.ttl_minutes,
             issuedBy: actor,
+          }),
+      ),
+    );
+  }
+
+  if (canCommand) {
+    server.registerTool(
+      "propagate_champion",
+      {
+        title: "Propagate a champion to another unit",
+        description:
+          "Send one unit's published champion to another unit's instance of the same campaign. The receiving unit's own judge screens and confirms it; if it wins there, the source result becomes cross-verified.",
+        inputSchema: {
+          from_unit: z.string().min(1),
+          instance: z.string().min(1),
+          to_unit: z.string().min(1),
+          to_instance: z.string().min(1),
+        },
+      },
+      audited(
+        "propagate_champion",
+        (a: { from_unit: string; instance: string; to_unit: string; to_instance: string }) =>
+          propagateChampion(store, opts.privateKeyPem, {
+            fromUnit: a.from_unit,
+            instance: a.instance,
+            toUnit: a.to_unit,
+            toInstance: a.to_instance,
+            issuedBy: actor,
+            staleAfterMs: opts.staleAfterMs,
           }),
       ),
     );

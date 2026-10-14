@@ -20,7 +20,9 @@ COPY --from=build /src/node_modules ./node_modules
 COPY --from=build /src/dist ./dist
 COPY containers/thermite /usr/local/bin/thermite
 # Mount points owned by the runtime user, so new named volumes inherit the ownership.
-RUN mkdir -p /var/lib/thermite-supervisor && chown 10001:10001 /var/lib/thermite-supervisor
+RUN mkdir -p /var/lib/thermite-supervisor /results /outbox \
+ && chown 10001:10001 /var/lib/thermite-supervisor /results \
+ && chown 10010:10001 /outbox && chmod 2750 /outbox
 ENV NODE_OPTIONS=--disable-warning=ExperimentalWarning
 USER 10001:10001
 ENTRYPOINT ["/usr/bin/tini", "--"]

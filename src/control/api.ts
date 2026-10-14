@@ -4,11 +4,12 @@ import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { COMMAND_KINDS, type CommandKind, reportBody, verifyJson } from "../core/commands.ts";
 import { createDashboard } from "./dashboard.ts";
-import { issueCommand } from "./issue.ts";
+import { issueCommand, propagateChampion } from "./issue.ts";
+import { advanceResets, type DeploymentDriver } from "./lifecycle.ts";
 import { mountMcp } from "./mcp.ts";
 import { metricsText } from "./metrics.ts";
 import type { ControlStore, IngestReport } from "./store.ts";
-import { unitView } from "./views.ts";
+import { leaderboard, unitView } from "./views.ts";
 
 /**
  * Control HTTP API (v1 core). Admin tokens issue commands and read everything; each unit's token
@@ -72,8 +73,10 @@ const AckBody = z.object({
 });
 
 export interface ControlOptions {
-  /** A unit is shown stale after this long without a report (3 missed 60 s polls). */
+  /** A unit is stale after this long without a report (3 missed 60 s polls). */
   staleAfterMs: number;
+  /** Restarts containers (Kubernetes or compose); none configured: restarts are refused. */
+  driver?: DeploymentDriver | undefined;
 }
 
 export function createControlApi(
@@ -142,6 +145,94 @@ export function createControlApi(
     return ok ? c.json({ ok }) : c.json({ error: "no such pending command" }, 404);
   });
 
+  // The supervisor's own figures and its daily report (unsigned: the supervisor reports itself).
+  app.post(
+    "/v1/units/:unit/supervisor",
+    unitAuth,
+    bodyLimit({ maxSize: 256 * 1024 }),
+    async (c) => {
+      store.setSupervisor(
+        c.req.param("unit"),
+        z.record(z.string(), z.unknown()).parse(await c.req.json()),
+      );
+      return c.json({ ok: true });
+    },
+  );
+
+  app.post("/v1/units/:unit/reports", unitAuth, bodyLimit({ maxSize: 1024 * 1024 }), async (c) => {
+    const body = z
+      .object({ kind: z.enum(["daily"]), body: z.string().min(1).max(200_000) })
+      .parse(await c.req.json());
+    return c.json({ id: store.addReport(c.req.param("unit"), body.kind, body.body) }, 201);
+  });
+
+  app.get("/v1/reports", admin, (c) =>
+    c.json({
+      reports: store.reports(
+        Number(c.req.query("limit") ?? "20"),
+        c.req.query("unit") || undefined,
+      ),
+    }),
+  );
+
+  app.get("/v1/leaderboard", admin, (c) =>
+    c.json({ campaigns: leaderboard(store, { staleAfterMs: opts.staleAfterMs }) }),
+  );
+
+  app.post("/v1/propagate", admin, async (c) => {
+    const body = z
+      .object({
+        from_unit: z.string().min(1),
+        instance: z.string().min(1),
+        to_unit: z.string().min(1),
+        to_instance: z.string().min(1),
+        issued_by: z.string().min(1).default("owner"),
+      })
+      .parse(await c.req.json());
+    const r = propagateChampion(store, privateKeyPem, {
+      fromUnit: body.from_unit,
+      instance: body.instance,
+      toUnit: body.to_unit,
+      toInstance: body.to_instance,
+      issuedBy: body.issued_by,
+      staleAfterMs: opts.staleAfterMs,
+    });
+    return c.json(r, 201);
+  });
+
+  // Lifecycle (owner): restart through the deployment driver; the full reset with state wipe.
+  app.post("/v1/units/:unit/restart", admin, async (c) => {
+    if (!opts.driver) return c.json({ error: "no deployment driver is configured" }, 409);
+    const body = z
+      .object({
+        components: z
+          .array(z.enum(["harness", "supervisor"]))
+          .min(1)
+          .default(["harness", "supervisor"]),
+      })
+      .parse(await c.req.json().catch(() => ({})));
+    const unit = c.req.param("unit");
+    store.audit("owner:api", "restart", { unit, components: body.components });
+    return c.json({ restarted: await opts.driver.restart(unit, body.components) });
+  });
+
+  app.post("/v1/units/:unit/reset", admin, async (c) => {
+    const unit = c.req.param("unit");
+    const body = z.object({ confirm: z.string() }).parse(await c.req.json());
+    if (body.confirm !== `reset ${unit}`)
+      return c.json({ error: `confirm with "reset ${unit}"` }, 400);
+    const id = store.createReset(unit, "owner:api");
+    await advanceResets({
+      store,
+      privateKeyPem,
+      driver: opts.driver,
+      staleAfterMs: opts.staleAfterMs,
+    });
+    return c.json({ reset: id }, 201);
+  });
+
+  app.get("/v1/resets", admin, (c) => c.json({ resets: store.resets() }));
+
   app.get("/v1/units", admin, (c) => c.json({ units: store.units() }));
 
   app.get("/metrics", admin, (c) =>
@@ -198,6 +289,7 @@ export function createControlApi(
       adminToken: tokens.admin,
       privateKeyPem,
       staleAfterMs: opts.staleAfterMs,
+      driver: opts.driver,
     }),
   );
   app.get("/", (c) => c.redirect("/ui", 302));

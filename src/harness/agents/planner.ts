@@ -112,6 +112,22 @@ export function validatePlan(
   return { errors, plan };
 }
 
+/**
+ * Attribution: each assignment whose family a MANDATE (first) or TRY directive names records that
+ * directive, so a directive's effect on an epoch can be traced to the lanes it steered.
+ */
+export function attribute(
+  assignments: Assignment[],
+  directives: { id: number; body: StructuredDirective }[],
+): Assignment[] {
+  const find = (kind: string, family: string) =>
+    directives.filter((d) => d.body.kind === kind && d.body.family === family).at(-1)?.id;
+  return assignments.map((a) => {
+    const directive = find("mandate", a.family) ?? find("try", a.family);
+    return directive === undefined ? a : { ...a, directive };
+  });
+}
+
 /** The deterministic plan: mandated families first, then tried, then the least explored. */
 export function fallbackPlan(input: PlannerInput): {
   assignments: Assignment[];
