@@ -1,0 +1,48 @@
+import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { promisify } from "node:util";
+import type { Role, Runner } from "../broker/runner.ts";
+import { exportTree } from "../git.ts";
+
+const run = promisify(execFile);
+
+/**
+ * A lane's workspace for one trial: the parent commit's tree as a fresh git repository (one
+ * commit, so `git diff` gives exactly the candidate's change), owned by the lane's user. The
+ * lane never sees the harness's mirror, other lanes or the parent's history.
+ */
+export async function prepareWorkspace(input: {
+  runner: Runner;
+  scratchDir: string;
+  mirror: string;
+  commit: string;
+  lane: Role;
+}): Promise<{ dir: string; repo: string }> {
+  const dir = join(input.scratchDir, "lanes", input.lane, randomUUID());
+  const repo = join(dir, "repo");
+  mkdirSync(dir, { recursive: true });
+  await exportTree(input.mirror, input.commit, repo);
+  const git = (...args: string[]) =>
+    run(
+      "git",
+      [
+        "-c",
+        "user.name=thermite",
+        "-c",
+        "user.email=thermite@localhost",
+        "-c",
+        "commit.gpgsign=false",
+        "-c",
+        "core.hooksPath=/dev/null",
+        ...args,
+      ],
+      { cwd: repo, env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1" } },
+    );
+  await git("init", "--quiet", "-b", "work");
+  await git("add", "-A");
+  await git("commit", "--quiet", "--allow-empty", "-m", `parent ${input.commit}`);
+  await input.runner.handOver(dir, input.lane);
+  return { dir, repo };
+}

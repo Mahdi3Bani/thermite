@@ -10,6 +10,10 @@ import {
   waitForFile,
 } from "../common/env.ts";
 import { generateSigningKeys } from "../core/commands.ts";
+import { DevRuns } from "./agents/devrun.ts";
+import { modelConfigFromEnv } from "./agents/model.ts";
+import { Scheduler } from "./agents/scheduler.ts";
+import { spawnTrial } from "./agents/spawn.ts";
 import { createHarnessApi } from "./api.ts";
 import { BrokerClient } from "./broker/client.ts";
 import { LocalRunner, type Runner } from "./broker/runner.ts";
@@ -89,13 +93,24 @@ async function main(): Promise<void> {
   const reclaimed = ledger.reclaimLeases(executorId, "controller-start");
   if (reclaimed.length) log("harness", "reclaimed leases at start", { jobs: reclaimed });
 
-  const { host, port } = parseListen(env.THERMITE_LISTEN ?? "0.0.0.0:8700");
-  const server = serve({ fetch: createHarnessApi(service, tokens).fetch, hostname: host, port });
-  log("harness", "listening", { unit, host, port, target: (await driver.identify()).id });
-
   const runner: Runner = env.THERMITE_BROKER_SOCKET
     ? new BrokerClient(env.THERMITE_BROKER_SOCKET)
     : new LocalRunner(paths.scratchDir);
+  const devRuns = new DevRuns({
+    runner,
+    ledger,
+    scratchDir: paths.scratchDir,
+    gpu: driver.type === "cuda-gpu",
+  });
+
+  const { host, port } = parseListen(env.THERMITE_LISTEN ?? "0.0.0.0:8700");
+  const server = serve({
+    fetch: createHarnessApi(service, tokens, { devRuns }).fetch,
+    hostname: host,
+    port,
+  });
+  log("harness", "listening", { unit, host, port, target: (await driver.identify()).id });
+
   // D8 (promotion policy) is the owner's decision; until it is made, promotions wait for approval.
   const promotion = (env.THERMITE_PROMOTION ?? "owner_approval") as PromotionPolicy;
   if (promotion !== "auto" && promotion !== "owner_approval") {
@@ -108,8 +123,28 @@ async function main(): Promise<void> {
     owner: executorId,
     promotion,
     calibrationBlocks: Number(env.THERMITE_CALIBRATION_BLOCKS ?? "6"),
+    deviceGate: devRuns,
   });
   log("harness", "judge ready", { separated: runner.separated, promotion });
+
+  // Agents run only with a model route (QWEN_* from the unit's configuration; the key from the
+  // broker). Each trial is its own worker process.
+  const model = modelConfigFromEnv(env);
+  const scheduler = model
+    ? new Scheduler({
+        service,
+        runner,
+        model,
+        owner: "scheduler",
+        maxConcurrent: Number(env.THERMITE_MAX_TRIALS ?? "1"),
+        trialWallMs: Number(env.THERMITE_TRIAL_MINUTES ?? "20") * 60_000,
+        runTrial: (spec) => spawnTrial(spec, paths.scratchDir, port),
+      })
+    : undefined;
+  log("harness", scheduler ? "agents ready" : "no model route: agents off", {
+    model: model?.model ?? null,
+  });
+  let lastSchedule = 0;
   const exportEveryMs = Number(env.THERMITE_EXPORT_MINUTES ?? "60") * 60_000;
   let stopping = false;
   const loop = async () => {
@@ -119,6 +154,14 @@ async function main(): Promise<void> {
         worked = await executor.tick();
       } catch (err) {
         log("harness", "executor error", { error: String(err) });
+      }
+      if (scheduler && Date.now() - lastSchedule > 2000) {
+        lastSchedule = Date.now();
+        try {
+          await scheduler.tick();
+        } catch (err) {
+          log("harness", "scheduler error", { error: String(err) });
+        }
       }
       // Hourly export for the supervisor to push (and an export command can force one).
       const last = ledger.lastExport();

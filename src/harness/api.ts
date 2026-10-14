@@ -50,7 +50,16 @@ function statusFor(err: unknown): 400 | 404 | 409 | 500 {
   return 500;
 }
 
-export function createHarnessApi(service: HarnessService, tokens: ApiTokens): Hono {
+export interface HarnessApiExtras {
+  /** Agents' development runs on the device (judge first). */
+  devRuns?: { run(input: unknown): Promise<unknown> } | undefined;
+}
+
+export function createHarnessApi(
+  service: HarnessService,
+  tokens: ApiTokens,
+  extras: HarnessApiExtras = {},
+): Hono {
   const app = new Hono();
   const supervisor = requireScope(tokens, ["supervisor"]);
   const proposer = requireScope(tokens, ["proposer"]);
@@ -98,6 +107,11 @@ export function createHarnessApi(service: HarnessService, tokens: ApiTokens): Ho
   app.post("/v1/attempts", proposer, bodyLimit({ maxSize: 32 * 1024 * 1024 }), async (c) => {
     const req = SubmitRequest.parse(await c.req.json());
     return c.json(await service.submitAttempt(req, "proposer"), 201);
+  });
+
+  app.post("/v1/dev-runs", proposer, async (c) => {
+    if (!extras.devRuns) return c.json({ error: "dev runs are not available" }, 404);
+    return c.json((await extras.devRuns.run(await c.req.json())) as object);
   });
 
   app.get("/v1/attempts/:id", either, (c) =>

@@ -45,7 +45,11 @@ export async function handle(req: Req, opts: BrokerServerOptions): Promise<unkno
       const r = RunRequest.parse(req.req);
       insideRoot(opts.scratchDir, r.cwd);
       if (r.disk) insideRoot(opts.scratchDir, r.disk.path);
-      const { uid, gid } = roleIds(r.role);
+      const ids = roleIds(r.role);
+      if (r.gpu && !/^lane-\d+$/.test(r.role))
+        throw new Error(`role ${r.role} may not ask for the gpu group`);
+      const { uid } = ids;
+      const gid = r.gpu ? IDS.gpuGroup : ids.gid;
       return runSupervised({
         argv: r.argv,
         cwd: r.cwd,
@@ -57,6 +61,8 @@ export async function handle(req: Req, opts: BrokerServerOptions): Promise<unkno
         rssLimitBytes: r.rssLimitBytes,
         disk: r.disk,
         nproc: NPROC[r.role] ?? 256,
+        stdin: r.stdin,
+        captureBytes: r.captureBytes,
       });
     }
     case "handOver": {

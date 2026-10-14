@@ -1,7 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { log } from "../../common/env.ts";
-import type { HillClimbContract } from "../../core/contract.ts";
+import type { Contract, GoalContract, HillClimbContract } from "../../core/contract.ts";
 import { meanInterval, toFraction, toLog } from "../../core/stats.ts";
 import type { Runner } from "../broker/runner.ts";
 import { exportTree } from "../git.ts";
@@ -11,7 +11,14 @@ import type { HarnessService } from "../service.ts";
 import { readThrottle, throttledFraction } from "../targets/cgroup.ts";
 import type { TargetDriver } from "../targets/driver.ts";
 import { BuildStore } from "./builds.ts";
-import { type Block, type Decision, decideConfirm, decideScreen } from "./decide.ts";
+import {
+  type Block,
+  type Decision,
+  decideConfirm,
+  decideScreen,
+  decideThresholdGoal,
+  type GoalStatus,
+} from "./decide.ts";
 import { type Arm, type ArmRun, type MeasureContext, runArm } from "./measure.ts";
 
 /**
@@ -41,6 +48,8 @@ export interface JudgeOptions {
   readyDelayMs?: number | undefined;
   calibrationBlocks?: number | undefined;
   calibrationEveryMs?: number | undefined;
+  /** An agent's development run holds the device: the judge waits for it to end. */
+  deviceGate?: { active: boolean } | undefined;
 }
 
 class InfraError extends Error {}
@@ -55,6 +64,8 @@ interface Finish {
   events?: { kind: string; subject: string; body: unknown }[] | undefined;
   enqueue?: Parameters<Ledger["enqueueJob"]>[0] | undefined;
   lifecycle?: string | undefined;
+  /** Close an instance (a goal campaign whose success rule holds). */
+  close?: { instance: string; reason: string } | undefined;
 }
 
 /**
@@ -102,6 +113,7 @@ export class Judge {
       readyDelayMs: 2000,
       calibrationBlocks: 6,
       calibrationEveryMs: 24 * 3_600_000,
+      deviceGate: undefined,
       ...opts,
     } as Required<JudgeOptions>;
     this.ledger = opts.service.ledger;
@@ -111,12 +123,15 @@ export class Judge {
 
   /** One scheduling step. Returns true when a job was processed. */
   async tick(): Promise<boolean> {
+    if (this.o.deviceGate?.active) return false;
     this.ledger.expireLeases(this.o.owner);
     this.maybeScheduleCalibration();
+    this.maybeScheduleValidation();
     const job = this.ledger.leaseJob(this.o.owner, this.o.leaseMs, [
       "evaluate",
       "confirm",
       "calibrate",
+      "validate",
     ]);
     if (!job) return false;
     let fin: Finish;
@@ -126,7 +141,9 @@ export class Judge {
           ? await this.evaluate(job)
           : job.kind === "confirm"
             ? await this.confirm(job)
-            : await this.calibrate(job);
+            : job.kind === "validate"
+              ? await this.validate(job)
+              : await this.calibrate(job);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       log("judge", "job failed", { job: job.id, kind: job.kind, error: reason });
@@ -173,6 +190,8 @@ export class Judge {
         }
       }
       if (enqueue) this.ledger.enqueueJob(enqueue);
+      if (fin.close)
+        this.ledger.setInstanceStatus(fin.close.instance, "closed", fin.close.reason, this.o.owner);
       if (lifecycle && job.attempt)
         this.ledger.setAttemptLifecycle(job.attempt, lifecycle, this.o.owner);
       this.ledger.completeJob(job.id, job.fence, "done", result);
@@ -217,9 +236,7 @@ export class Judge {
     }
   }
 
-  private async kitFor(
-    contract: HillClimbContract,
-  ): Promise<{ kit: Kit; dir: string; commit: string }> {
+  private async kitFor(contract: Contract): Promise<{ kit: Kit; dir: string; commit: string }> {
     const ref = contract.project.kit;
     if (!ref) throw new InfraError(`contract ${contract.campaign} names no kit`);
     const dir = join(this.o.service.paths.stateDir, "kits", ref.commit);
@@ -511,6 +528,7 @@ export class Judge {
     const attempt = this.ledger.getAttempt(attemptId);
     if (!attempt) throw new InfraError(`no attempt ${attemptId}`);
     const instance = String(attempt.instance);
+    if (this.o.service.contractFor(instance).mode === "goal") return this.evaluateGoal(job);
     const contract = this.hillClimb(instance);
     const champion = this.ledger.currentChampion(instance);
     const step = (l: string) => {
@@ -758,6 +776,277 @@ export class Judge {
         commitSha: String(attempt.commit_sha),
       },
     };
+  }
+
+  // ------------------------------------------------------------------ goal mode
+
+  private goalContract(instance: string): GoalContract {
+    const c = this.o.service.contractFor(instance);
+    if (c.mode !== "goal") throw new InfraError(`${instance} is not a goal campaign`);
+    return c;
+  }
+
+  /**
+   * Checks every goal on one build: metric thresholds from repeated runs (per-cell intervals),
+   * code verifiers from the kit's named cell sets, subjective reviews not runnable here (M5).
+   */
+  private async verifyGoals(
+    job: JobRow,
+    contract: GoalContract,
+    ctx: MeasureContext,
+    arm: Arm,
+  ): Promise<{ goal: string; required: boolean; status: GoalStatus; reasons: string }[]> {
+    const out: { goal: string; required: boolean; status: GoalStatus; reasons: string }[] = [];
+    for (const g of contract.goals) {
+      this.ledger.heartbeat(job.id, job.fence, this.o.leaseMs);
+      const v = g.verify;
+      if (v.type === "review") {
+        out.push({
+          goal: g.id,
+          required: g.required,
+          status: "not_runnable",
+          reasons: "subjective review needs the review panel (M5)",
+        });
+        continue;
+      }
+      if (v.type === "code") {
+        const ver = ctx.kit.verifiers[v.verifier];
+        if (!ver) {
+          out.push({
+            goal: g.id,
+            required: g.required,
+            status: "not_runnable",
+            reasons: `the kit has no verifier ${v.verifier}`,
+          });
+          continue;
+        }
+        const failures: string[] = [];
+        for (const cell of ver.cells) {
+          if (!ctx.kit.cells[cell]) {
+            failures.push(`no cell ${cell}`);
+            continue;
+          }
+          const r = await runArm(ctx, arm, cell);
+          if (r.kind !== "ok") failures.push(`${cell}: ${r.kind}: ${r.reason.slice(0, 300)}`);
+        }
+        out.push({
+          goal: g.id,
+          required: g.required,
+          status: failures.length ? "unmet" : "met",
+          reasons: failures.length
+            ? failures.join("; ")
+            : `verifier ${v.verifier} passed on ${ver.cells.join(", ")}`,
+        });
+        continue;
+      }
+      // metric_threshold: threshold_reps runs per cell; the value is a kit metric or a number the kit's
+      // check reports (for example memory headroom measured by the judge's client).
+      const cells = v.cells ?? Object.keys(ctx.kit.cells);
+      const values: Record<string, number[]> = {};
+      const failures: string[] = [];
+      for (const cell of cells) {
+        if (!ctx.kit.cells[cell]) {
+          failures.push(`no cell ${cell}`);
+          continue;
+        }
+        for (let rep = 1; rep <= contract.threshold_reps; rep++) {
+          const r = await runArm(ctx, arm, cell);
+          if (r.kind !== "ok") {
+            failures.push(`${cell}: ${r.kind}: ${r.reason.slice(0, 200)}`);
+            break;
+          }
+          const value = r.metrics[v.metric] ?? r.check.details[v.metric];
+          if (typeof value !== "number" || !Number.isFinite(value)) {
+            failures.push(`${cell}: no ${v.metric}`);
+            break;
+          }
+          values[cell] = [...(values[cell] ?? []), value];
+          this.ledger.recordMeasurement(job.id, job.fence, {
+            arm: arm.name,
+            metric: v.metric,
+            cell,
+            rep,
+            value,
+            unit: ctx.kit.metrics[v.metric]?.unit ?? "",
+          });
+        }
+      }
+      if (failures.length && !Object.keys(values).length) {
+        out.push({
+          goal: g.id,
+          required: g.required,
+          status: "not_runnable",
+          reasons: failures.join("; "),
+        });
+        continue;
+      }
+      const d = decideThresholdGoal(g, values, 0.05);
+      const status: GoalStatus = failures.length && d.status === "met" ? "unmet" : d.status;
+      out.push({
+        goal: g.id,
+        required: g.required,
+        status,
+        reasons: failures.length ? `${d.reasons}; ${failures.join("; ")}` : d.reasons,
+      });
+    }
+    return out;
+  }
+
+  private recordGoals(
+    job: JobRow,
+    instance: string,
+    attempt: string | null,
+    commit: string,
+    results: { goal: string; status: GoalStatus; reasons: string }[],
+    updateStatus: boolean,
+  ): void {
+    this.ledger.tx(() => {
+      this.ledger.assertLease(job.id, job.fence);
+      for (const r of results) {
+        this.ledger.db
+          .prepare(
+            "insert into goal_check (instance, goal, attempt, job, commit_sha, result, detail, created_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
+          )
+          .run(
+            instance,
+            r.goal,
+            attempt,
+            job.id,
+            commit,
+            r.status,
+            r.reasons.slice(0, 4000),
+            new Date().toISOString(),
+          );
+        if (updateStatus) {
+          const status = {
+            met: "verified",
+            unmet: "unmet",
+            inconclusive: "attempted",
+            not_runnable: "not_runnable",
+          }[r.status];
+          this.ledger.db
+            .prepare("update goal set status = ? where instance = ? and id = ?")
+            .run(status, instance, r.goal);
+        }
+      }
+    });
+  }
+
+  private complete(
+    contract: GoalContract,
+    results: { required: boolean; status: GoalStatus }[],
+  ): boolean {
+    const met = results.filter((r) => r.status === "met");
+    if (contract.success.policy === "k_of_n")
+      return met.length >= (contract.success.k ?? results.length);
+    return results.filter((r) => r.required).every((r) => r.status === "met");
+  }
+
+  /** Measures every goal on the champion: the judge-only validation and the goal tree's state. */
+  private async validate(job: JobRow): Promise<Finish> {
+    const instance = String(this.spec(job).instance);
+    const contract = this.goalContract(instance);
+    const champion = this.ledger.currentChampion(instance);
+    const k = await this.kitFor(contract);
+    const arm = await this.armFor("champion", instance, champion.commit_sha, k);
+    const results = await this.verifyGoals(job, contract, this.context(k, job), arm);
+    this.recordGoals(job, instance, null, champion.commit_sha, results, true);
+    const done = this.complete(contract, results);
+    const summary = {
+      instance,
+      champion_seq: champion.seq,
+      goals: results.map((r) => ({ goal: r.goal, status: r.status, reasons: r.reasons })),
+      complete: done,
+    };
+    return {
+      result: summary,
+      events: [
+        { kind: "goal_report", subject: instance, body: summary },
+        ...(done
+          ? [{ kind: "goal_complete", subject: instance, body: { champion_seq: champion.seq } }]
+          : []),
+      ],
+      ...(done ? { close: { instance, reason: "every required goal is met" } } : {}),
+    };
+  }
+
+  /**
+   * A goal-mode attempt: progress means it meets at least one goal the champion does not, and
+   * loses none the champion meets. The champion's statuses come from the latest validation.
+   */
+  private async evaluateGoal(job: JobRow): Promise<Finish> {
+    const attemptId = job.attempt as string;
+    const attempt = this.ledger.getAttempt(attemptId);
+    if (!attempt) throw new InfraError(`no attempt ${attemptId}`);
+    const instance = String(attempt.instance);
+    const contract = this.goalContract(instance);
+    const champion = this.ledger.currentChampion(instance);
+    try {
+      const k = await this.kitFor(contract);
+      this.ledger.setAttemptLifecycle(attemptId, "building", this.o.owner);
+      const cand = await this.armFor("candidate", instance, String(attempt.commit_sha), k);
+      this.ledger.setAttemptLifecycle(attemptId, "verifying", this.o.owner);
+      const results = await this.verifyGoals(job, contract, this.context(k, job), cand);
+      this.recordGoals(job, instance, attemptId, String(attempt.commit_sha), results, false);
+      const champ = new Map(
+        (
+          this.ledger.db
+            .prepare("select id, status from goal where instance = ?")
+            .all(instance) as { id: string; status: string }[]
+        ).map((g) => [g.id, g.status]),
+      );
+      const gained = results
+        .filter((r) => r.status === "met" && champ.get(r.goal) !== "verified")
+        .map((r) => r.goal);
+      const lost = results
+        .filter((r) => r.status !== "met" && champ.get(r.goal) === "verified")
+        .map((r) => r.goal);
+      const verdict = lost.length ? "regress" : gained.length ? "goal_progress" : "no_progress";
+      const reasons = `${gained.length ? `newly met: ${gained.join(", ")}` : "no new goal met"}${lost.length ? `; lost: ${lost.join(", ")}` : ""}; vs champion seq ${champion.seq}`;
+      const fin: Finish = {
+        result: { verdict, gained, lost },
+        verdict: {
+          attempt: attemptId,
+          verdict,
+          dependsOnJobs: [job.id],
+          reasons,
+          judgedBy: this.o.owner,
+          guards: results.map((r) => ({ goal: r.goal, status: r.status })),
+        },
+        lifecycle: "judged",
+      };
+      if (verdict !== "goal_progress") return fin;
+      const promoted = this.promotion(fin, attemptId, instance, champion.seq, attempt);
+      // A new champion is validated afresh, so the goal tree reflects it.
+      return promoted.promote
+        ? {
+            ...promoted,
+            enqueue: { kind: "validate", priority: 60, spec: { instance }, actor: this.o.owner },
+          }
+        : promoted;
+    } catch (err) {
+      if (!(err instanceof Stop)) throw err;
+      return this.stopped(job, err);
+    }
+  }
+
+  private maybeScheduleValidation(): void {
+    for (const inst of this.ledger.listInstances()) {
+      if (inst.status !== "running" || inst.mode !== "goal") continue;
+      const any = this.ledger.db
+        .prepare(
+          "select 1 from job where kind = 'validate' and json_extract(spec, '$.instance') = ? limit 1",
+        )
+        .get(inst.id);
+      if (!any) {
+        this.ledger.enqueueJob({
+          kind: "validate",
+          priority: 40,
+          spec: { instance: inst.id },
+          actor: this.o.owner,
+        });
+      }
+    }
   }
 
   // ------------------------------------------------------------------ A/A calibration

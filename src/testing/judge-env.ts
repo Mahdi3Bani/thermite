@@ -80,6 +80,7 @@ const KIT = {
   cells: {
     small: { n: 20000000, work: 20000000 },
     held: { n: 15000000, work: 15000000 },
+    big: { n: 100000000, work: 100000000 },
   },
   run: {
     command: ["node", "{build:out/run.mjs}", "{params_json}", "{out}"],
@@ -87,6 +88,7 @@ const KIT = {
     rss_mib: 512,
   },
   metrics: { ops_per_s: { unit: "op/s", work: "work" } },
+  verifiers: { correctness: { cells: ["small"] } },
   check: { command: ["node", "{kit:check.mjs}", "{params_json}", "{out}"], timeout_s: 30 },
 };
 
@@ -110,7 +112,14 @@ function repo(dir: string, files: Record<string, string>): string {
 }
 
 export function makeJudgeEnv(
-  opts: { promotion?: PromotionPolicy; heldOut?: boolean; neverReady?: boolean } = {},
+  opts: {
+    promotion?: PromotionPolicy;
+    heldOut?: boolean;
+    neverReady?: boolean;
+    lanes?: { count: number; trials_per_epoch: number };
+    /** A goal-mode campaign instead of a hill climb. */
+    goal?: { opsPerSecond: number } | undefined;
+  } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), "thermite-judge-"));
   const paths = {
@@ -142,20 +151,60 @@ export function makeJudgeEnv(
     controlPublicKeyPem: keys.publicKeyPem,
     unitKeys: generateSigningKeys(),
   });
-  const parsed = parseContract({
-    schema_version: 1,
-    campaign: "js-sum",
-    version: 1,
-    title: "Speed up the sum",
-    mode: "hill_climb",
-    project: { repo: "proj", commit: seed, kit: { repo: "js-kit", commit: kitCommit } },
-    target: { type: "cpu", class: "test" },
-    objective: { primary: { metric: "ops_per_s", direction: "max", min_effect: 0.05 } },
-    cells: ["small"],
-    held_out_cells: opts.heldOut ? ["held"] : [],
-    editable_paths: ["src/kernel/**"],
-    acceptance: { looks: [3, 6], confirm_blocks: 4 },
-  });
+  const goalContract = opts.goal
+    ? {
+        schema_version: 1,
+        campaign: "js-goal",
+        version: 1,
+        title: "Reach the sum goals",
+        mode: "goal",
+        project: { repo: "proj", commit: seed, kit: { repo: "js-kit", commit: kitCommit } },
+        target: { type: "cpu", class: "test" },
+        goals: [
+          {
+            id: "fast",
+            description: "fast enough",
+            verify: {
+              type: "metric_threshold",
+              metric: "ops_per_s",
+              op: ">=",
+              value: opts.goal.opsPerSecond,
+              cells: ["big"],
+            },
+          },
+          {
+            id: "correct",
+            description: "still correct",
+            verify: { type: "code", verifier: "correctness" },
+          },
+          {
+            id: "readable",
+            description: "readable code",
+            required: false,
+            verify: { type: "review", criteria: ["clear"] },
+          },
+        ],
+        deliverable: "a commit meeting every required goal",
+        editable_paths: ["src/kernel/**"],
+      }
+    : undefined;
+  const parsed = parseContract(
+    goalContract ?? {
+      schema_version: 1,
+      campaign: "js-sum",
+      version: 1,
+      title: "Speed up the sum",
+      mode: "hill_climb",
+      project: { repo: "proj", commit: seed, kit: { repo: "js-kit", commit: kitCommit } },
+      target: { type: "cpu", class: "test" },
+      objective: { primary: { metric: "ops_per_s", direction: "max", min_effect: 0.05 } },
+      cells: ["small"],
+      held_out_cells: opts.heldOut ? ["held"] : [],
+      editable_paths: ["src/kernel/**"],
+      acceptance: { looks: [3, 6], confirm_blocks: 4 },
+      ...(opts.lanes ? { lanes: opts.lanes } : {}),
+    },
+  );
   if (!parsed.ok) throw new Error(parsed.errors.join("; "));
   const assign = signEnvelope(
     {

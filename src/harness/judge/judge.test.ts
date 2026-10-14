@@ -128,6 +128,35 @@ describe("judge pipeline (local runner, Node test kit)", () => {
     assert.equal(Number(queued?.n), 1);
   });
 
+  test("goal mode: the seed is validated; an attempt that meets a new goal completes the campaign", async () => {
+    const env = await setup({ goal: { opsPerSecond: 150e6 }, promotion: "auto" });
+    await env.drain(); // validates the seed
+    const status = () =>
+      Object.fromEntries(
+        env.ledger.db
+          .prepare("select id, status from goal where instance = 'js-1'")
+          .all()
+          .map((g) => [g.id, g.status]),
+      );
+    assert.deepEqual(status(), { correct: "verified", fast: "unmet", readable: "not_runnable" });
+    const id = await env.submit(FAST_KERNEL, "drop the wasted inner loop");
+    await env.drain();
+    assert.equal(
+      env.ledger.currentVerdict(id)?.verdict,
+      "goal_progress",
+      JSON.stringify(
+        env.ledger.db.prepare("select goal, attempt, result, detail from goal_check").all(),
+      ),
+    );
+    assert.equal(env.ledger.currentChampion("js-1").seq, 2);
+    assert.equal(status().fast, "verified");
+    assert.equal(env.ledger.getInstance("js-1")?.status, "closed");
+    const report = env.ledger
+      .eventsAfter(0, 10_000)
+      .events.filter((e) => e.kind === "goal_complete");
+    assert.equal(report.length, 1);
+  });
+
   test("held-out results stay out of events and exports", async () => {
     const env = await setup({ heldOut: true });
     const id = await env.submit(FAST_KERNEL, "drop the wasted inner loop");

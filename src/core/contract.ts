@@ -194,6 +194,8 @@ export const GoalContract = z
     independence_epochs: z.number().int().min(0).default(2),
     /** Approach families that must stay alive at once. */
     min_live_families: z.number().int().min(1).default(2),
+    /** Runs per cell when a metric threshold is checked; its interval needs several. */
+    threshold_reps: z.number().int().min(2).max(20).default(5),
     held_out_cells: z.array(z.string().min(1)).default([]),
   })
   .superRefine((c, ctx) => {

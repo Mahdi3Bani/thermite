@@ -326,4 +326,67 @@ export const MIGRATIONS: readonly string[] = [
     created_at text not null
   );
   `,
+  // 3: agents (M4). The direction registry, planner epochs and worker trials.
+  `
+  create table family (
+    instance text not null,
+    id text not null,
+    description text not null,
+    status text not null default 'live' check (status in ('live', 'blocked', 'exhausted')),
+    created_by text not null,
+    created_at text not null,
+    primary key (instance, id)
+  );
+  create table epoch (
+    instance text not null,
+    n integer not null,
+    source text not null check (source in ('planner', 'fallback')),
+    planner_tries integer not null,
+    planner_valid integer not null,
+    raw_violations text not null default '[]',
+    assignments text not null,
+    notes text,
+    started_at text not null,
+    ended_at text,
+    primary key (instance, n)
+  );
+  create table trial (
+    id text primary key,
+    instance text not null,
+    lane text not null,
+    epoch integer not null,
+    family text,
+    parent_commit text not null,
+    attempt text,
+    stopped text,
+    turns integer,
+    tool_calls integer,
+    tokens_in integer,
+    tokens_out integer,
+    error text,
+    started_at text not null,
+    ended_at text
+  );
+  create index trial_lane on trial (instance, lane, epoch);
+  alter table attempt add column family text;
+  `,
+  // 4: goal checks record "inconclusive" (a threshold whose interval straddles the bar) honestly.
+  // goal_check never held rows before this version, so it is recreated.
+  `
+  drop table goal_check;
+  create table goal_check (
+    id integer primary key autoincrement,
+    instance text not null,
+    goal text not null,
+    attempt text,
+    job integer not null,
+    commit_sha text not null,
+    result text not null check (result in ('met', 'unmet', 'inconclusive', 'not_runnable')),
+    detail text not null,
+    created_at text not null
+  );
+  create index goal_check_instance on goal_check (instance, goal);
+  create trigger goal_check_no_update before update on goal_check begin select raise(abort, 'goal_check is append-only'); end;
+  create trigger goal_check_no_delete before delete on goal_check begin select raise(abort, 'goal_check is append-only'); end;
+  `,
 ];

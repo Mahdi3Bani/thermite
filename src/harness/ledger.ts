@@ -80,7 +80,12 @@ export interface AttemptInput {
 export type PromoteResult = { ok: true; seq: number } | { ok: false; currentSeq: number };
 
 /** Verdicts that may move a champion. */
-export const PROMOTABLE_VERDICTS: readonly string[] = ["win_confirmed", "neutral_simplify"];
+export const PROMOTABLE_VERDICTS: readonly string[] = [
+  "win_confirmed",
+  "neutral_simplify",
+  // Goal mode: meets more goals than the champion and loses none.
+  "goal_progress",
+];
 
 export interface InvalidationResult {
   attempts: string[];

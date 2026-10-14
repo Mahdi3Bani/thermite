@@ -24,6 +24,8 @@ export interface SupervisedRun {
   disk?: { path: string; limitBytes: number; maxEntries?: number | undefined } | undefined;
   /** RLIMIT_NPROC for the role (only with uid; needs prlimit). */
   nproc?: number | undefined;
+  /** Written to the child's stdin, then closed. */
+  stdin?: string | undefined;
   /** Bytes of stdout and stderr kept (the tail). */
   captureBytes?: number | undefined;
 }
@@ -232,11 +234,15 @@ export function runSupervised(spec: SupervisedRun): Promise<SupervisedResult> {
       cwd: spec.cwd,
       env: spec.env,
       detached: true,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: [spec.stdin !== undefined ? "pipe" : "ignore", "pipe", "pipe"],
       ...(spec.uid !== undefined ? { uid: spec.uid } : {}),
       ...(spec.gid !== undefined ? { gid: spec.gid } : {}),
     });
     const pgid = child.pid ?? -1;
+    if (spec.stdin !== undefined && child.stdin) {
+      child.stdin.on("error", () => undefined); // the child may exit without reading
+      child.stdin.end(spec.stdin);
+    }
     let stdout = "";
     let stderr = "";
     const keep = (prev: string, d: Buffer) => {

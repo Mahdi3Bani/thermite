@@ -50,6 +50,23 @@ export const RunRequest = z.object({
     .max(24 * 3_600_000),
   rssLimitBytes: z.number().int().positive().optional(),
   disk: z.object({ path: z.string().min(1), limitBytes: z.number().int().positive() }).optional(),
+  /** Written to the child's stdin (file contents for workers' file tools). */
+  stdin: z
+    .string()
+    .max(8 * 1024 * 1024)
+    .optional(),
+  /** Bytes of stdout and stderr kept (the tail); default 64 KiB. */
+  captureBytes: z
+    .number()
+    .int()
+    .positive()
+    .max(64 * 1024 * 1024)
+    .optional(),
+  /**
+   * Run a lane's command with the gpu group (an agent's development run on the device, §6.2a).
+   * Only lane roles may ask; the broker refuses it for any other role.
+   */
+  gpu: z.boolean().optional(),
 });
 export type RunRequest = z.input<typeof RunRequest>;
 
@@ -109,6 +126,8 @@ export class LocalRunner implements Runner {
       timeoutMs: req.timeoutMs,
       rssLimitBytes: req.rssLimitBytes,
       disk: req.disk,
+      stdin: req.stdin,
+      captureBytes: req.captureBytes,
     });
   }
 

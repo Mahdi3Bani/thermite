@@ -61,6 +61,13 @@ export const KitSchema = z.strictObject({
     command: Argv,
     timeout_s: z.number().int().positive().default(120),
   }),
+  /**
+   * Named verifiers for goal-mode contracts (`verify: {type: "code", verifier: name}`): a goal
+   * is met when every listed cell's run passes the check.
+   */
+  verifiers: z
+    .record(z.string().min(1), z.strictObject({ cells: z.array(z.string().min(1)).min(1) }))
+    .default({}),
 });
 export type Kit = z.infer<typeof KitSchema>;
 
