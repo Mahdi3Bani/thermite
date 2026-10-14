@@ -83,6 +83,74 @@ describe("worker trial", () => {
     assert.equal(env.ledger.currentVerdict(String(a?.id))?.verdict, "win_confirmed");
   });
 
+  test("tool calls run one at a time, and nothing runs after a submission in the same turn", async () => {
+    const env = makeJudgeEnv();
+    await env.service.applyCommand(env.assign);
+    const runner = new LocalRunner(env.paths.scratchDir);
+    const champion = env.ledger.currentChampion("js-1");
+    const ws = await prepareWorkspace({
+      runner,
+      scratchDir: env.paths.scratchDir,
+      mirror: env.service.mirrorFor("proj"),
+      commit: champion.commit_sha,
+      lane: "lane-1",
+    });
+    // Turn 1 writes and checks in one batch; turn 2 submits and then tries to write again.
+    const fake = await startFakeModel(({ messages }) => {
+      const done = messages.filter((m) => m.role === "tool").length;
+      if (done === 0) {
+        return {
+          toolCalls: [
+            { name: "write_file", args: { path: "src/kernel/work.mjs", content: FAST_KERNEL } },
+            { name: "run", args: { command: "grep -c . src/kernel/work.mjs" } },
+          ],
+        };
+      }
+      if (done === 2) {
+        return {
+          toolCalls: [
+            { name: "submit", args: { hypothesis: "faster" } },
+            { name: "submit", args: { hypothesis: "again" } },
+            { name: "write_file", args: { path: "src/kernel/work.mjs", content: "late" } },
+          ],
+        };
+      }
+      return { text: "done" };
+    });
+    const r = await runTrial(
+      {
+        trialId: "t2",
+        instance: "js-1",
+        lane: "lane-1",
+        workspace: ws.repo,
+        parentCommit: champion.commit_sha,
+        editablePaths: ["src/kernel/**"],
+        brief: "b",
+        wallMs: 60_000,
+        maxTurns: 20,
+      },
+      {
+        runner,
+        laneTool,
+        model: {
+          baseUrl: fake.url,
+          model: "t",
+          apiKey: "k",
+          contextWindow: 32000,
+          maxTokens: 2000,
+        },
+        submit: (req) => env.service.submitAttempt({ ...req, lane: req.lane }, "proposer") as never,
+        status: async (id) => env.service.attemptStatus(id),
+      },
+    );
+    await fake.close();
+    assert.equal(r.stopped, "submitted", JSON.stringify(r));
+    const n = env.ledger.db.prepare("select count(*) as n from attempt").get();
+    assert.equal(Number(n?.n), 1, "one submission");
+    const { readFileSync } = await import("node:fs");
+    assert.equal(readFileSync(`${ws.repo}/src/kernel/work.mjs`, "utf8"), FAST_KERNEL);
+  });
+
   test("the lane tool never leaves the workspace", async () => {
     const env = makeJudgeEnv();
     await env.service.applyCommand(env.assign);

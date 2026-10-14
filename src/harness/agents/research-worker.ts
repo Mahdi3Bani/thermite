@@ -11,6 +11,8 @@ import type { TrialResult } from "./worker.ts";
 
 export interface ResearchTrialSpec {
   trialId: string;
+  /** The trial's own token (see TrialSpec). */
+  token?: string | undefined;
   instance: string;
   lane: string;
   brief: string;
@@ -65,7 +67,9 @@ export async function runResearchTrial(
     parameters,
     execute: async (_id, params) => {
       result.toolCalls++;
-      return out(await deps.call(op, { ...base, ...(params as Record<string, unknown>) }));
+      // The trial's own instance and lane always win over anything in the model's arguments
+      // (the harness binds them again from the trial token).
+      return out(await deps.call(op, { ...(params as Record<string, unknown>), ...base }));
     },
   });
   const tools: AgentTool[] = [
@@ -93,8 +97,8 @@ export async function runResearchTrial(
     ),
     tool(
       "search_corpus",
-      "Search the archived sources for a regular expression.",
-      Type.Object({ pattern: Type.String() }),
+      "Search the archived sources for a piece of text (case-insensitive, plain text).",
+      Type.Object({ text: Type.String() }),
       "search-corpus",
     ),
     tool(
@@ -140,6 +144,8 @@ export async function runResearchTrial(
   const agent = new Agent({
     initialState: { systemPrompt: SYSTEM, model, tools },
     streamFn: models.streamSimple.bind(models),
+    // One tool call at a time: each is a request to the harness, in the order the model chose.
+    toolExecution: "sequential",
   });
   agent.subscribe((event) => {
     if (event.type === "turn_end") {

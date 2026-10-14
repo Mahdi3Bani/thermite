@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { generateSigningKeys, signEnvelope } from "../core/commands.ts";
+import { type CommandKind, generateSigningKeys, signEnvelope } from "../core/commands.ts";
 import { parseContract } from "../core/contract.ts";
 import { LocalRunner } from "../harness/broker/runner.ts";
 import { Judge, type PromotionPolicy } from "../harness/judge/judge.ts";
@@ -256,5 +256,21 @@ export function makeJudgeEnv(
     throw new Error("judge did not drain");
   };
 
-  return { root, paths, service, ledger, judge, assign, patch, drain, seed, kitCommit, keys };
+  /** Signs any command for this unit with control's test key. */
+  const sign = (kind: CommandKind, payload: unknown) =>
+    signEnvelope(
+      {
+        v: 1,
+        id: randomUUID(),
+        unit: "unit-a",
+        kind,
+        issued_by: "owner",
+        issued_at: new Date(Date.now() - 1000).toISOString(),
+        expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+        payload,
+      },
+      keys.privateKeyPem,
+    );
+
+  return { root, paths, service, ledger, judge, assign, sign, patch, drain, seed, kitCommit, keys };
 }

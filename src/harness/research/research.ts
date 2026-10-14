@@ -1,22 +1,25 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { canonicalJson } from "../../core/canonical.ts";
 import type { ResearchContract } from "../../core/contract.ts";
 import { parseDuration } from "../../core/duration.ts";
-import type { Ledger } from "../ledger.ts";
+import { type Ledger, LedgerError } from "../ledger.ts";
 import { Fetcher, FetchRefused, htmlToText } from "./fetcher.ts";
 
 /**
  * Research mode's integrity rules, enforced by code (the research form of "agents never judge"):
  *
  * - a claim is verified only when every quote appears verbatim in the archived text of a source
- *   the harness itself fetched; anything else stays a draft;
- * - sources are deduplicated by URL and by content hash;
- * - reports show verified claims as findings, drafts never, and flag numbers that appear in no
- *   source or claim;
- * - the harness owns the clock: workers cannot end a campaign.
+ *   the harness itself fetched, and every number in the claim appears in its quotes; anything
+ *   else stays a draft;
+ * - a verified claim is corroborated when its quotes come from at least the contract's number of
+ *   independent domains; only corroborated claims are reported as findings;
+ * - sources are deduplicated by URL and by content hash, claims by their text;
+ * - reports show worker-written sections as notes, never as findings, and flag numbers in them
+ *   that no verified claim supports;
+ * - the harness owns the clock (running time only): workers cannot end a campaign.
  */
 
 type Row = Record<string, unknown>;
@@ -32,10 +35,23 @@ export function normalizeQuote(s: string): string {
     .trim();
 }
 
+/** Numbers as written (1,200 and 3.5 and 42), for checking claims and sections. */
+function numbersIn(s: string): string[] {
+  return [...s.matchAll(/\d[\d,.]*\d|\d/g)].map((m) => m[0]);
+}
+
+/** A claim's identity for deduplication: its words, case and punctuation folded. */
+function claimKey(s: string): string {
+  return normalizeQuote(s)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N} ]/gu, "")
+    .trim();
+}
+
 export const ClaimInput = z.object({
   text: z.string().min(5).max(4000),
   quotes: z
-    .array(z.object({ source: z.string().min(1), quote: z.string().min(8).max(2000) }))
+    .array(z.object({ source: z.string().min(1), quote: z.string().min(20).max(2000) }))
     .min(1)
     .max(10),
   question: z.number().int().min(0).optional(),
@@ -47,11 +63,26 @@ export class Research {
   private readonly stateDir: string;
   private readonly fetchers = new Map<string, Fetcher>();
   private readonly allowPrivate: boolean;
+  private readonly maxCorpusBytes: number;
 
-  constructor(ledger: Ledger, stateDir: string, opts: { allowPrivate?: boolean } = {}) {
+  constructor(
+    ledger: Ledger,
+    stateDir: string,
+    opts: { allowPrivate?: boolean; maxCorpusBytes?: number } = {},
+  ) {
     this.ledger = ledger;
     this.stateDir = stateDir;
     this.allowPrivate = opts.allowPrivate ?? false;
+    this.maxCorpusBytes = opts.maxCorpusBytes ?? 2 * 1024 ** 3;
+  }
+
+  /** Workers may act only on a running research campaign. */
+  requireRunning(instance: string): void {
+    const inst = this.ledger.getInstance(instance);
+    if (!inst) throw new LedgerError("not_found", `no instance ${instance}`);
+    if (inst.mode !== "research") throw new LedgerError("invalid", `${instance} is not research`);
+    if (inst.status !== "running")
+      throw new LedgerError("invalid", `instance ${instance} is ${inst.status}`);
   }
 
   private contract(instance: string): ResearchContract {
@@ -95,8 +126,23 @@ export class Research {
   }
 
   async fetch(instance: string, lane: string | null, url: string) {
-    const existing = this.get("select * from source where instance = ? and url = ?", instance, url);
+    // Look up the URL in the form it is stored in (no fragment, normalized by URL).
+    let key = url;
+    try {
+      const u = new URL(url);
+      u.hash = "";
+      key = u.toString();
+    } catch {
+      // not a URL: the fetcher refuses it below
+    }
+    const existing = this.get("select * from source where instance = ? and url = ?", instance, key);
     if (existing) return this.view(existing, "already archived");
+    const used = Number(
+      this.get("select coalesce(sum(bytes), 0) as n from source where instance = ?", instance)?.n,
+    );
+    if (used >= this.maxCorpusBytes) {
+      return { refused: `the corpus is full (${Math.round(used / 1024 ** 2)} MiB archived)` };
+    }
     let f: Awaited<ReturnType<Fetcher["fetch"]>>;
     try {
       f = await this.fetcher(instance).fetch(url);
@@ -178,20 +224,22 @@ export class Research {
     };
   }
 
-  searchCorpus(instance: string, pattern: string) {
-    const re = new RegExp(pattern, "i");
+  /** Case-insensitive plain-text search over the archived texts (no regular expressions). */
+  searchCorpus(instance: string, text: string) {
+    const needle = text.trim().toLowerCase().slice(0, 200);
+    if (needle.length < 2) return { matches: [] };
     const out: { source: string; url: string; excerpt: string }[] = [];
     for (const s of this.all(
       "select * from source where instance = ? order by fetched_at",
       instance,
     )) {
-      const text = this.text(s);
-      const m = re.exec(text);
-      if (m) {
+      const body = this.text(s);
+      const at = body.toLowerCase().indexOf(needle);
+      if (at >= 0) {
         out.push({
           source: String(s.id),
           url: String(s.url),
-          excerpt: text.slice(Math.max(0, m.index - 200), m.index + 300),
+          excerpt: body.slice(Math.max(0, at - 200), at + 300),
         });
         if (out.length >= 30) break;
       }
@@ -202,8 +250,9 @@ export class Research {
   /** Web search: every query is checked against the contract's search policy and logged. */
   search(instance: string, lane: string | null, query: string) {
     const c = this.contract(instance);
+    const q = query.slice(0, 500);
     const blocked = (c.search_policy?.blocked_patterns ?? []).find((p) =>
-      new RegExp(p, "i").test(query),
+      new RegExp(p, "i").test(q),
     );
     const reason = blocked
       ? `blocked by the search policy (${blocked})`
@@ -212,12 +261,25 @@ export class Research {
       .prepare(
         "insert into research_query (instance, lane, query, allowed, reason, created_at) values (?, ?, ?, ?, ?, ?)",
       )
-      .run(instance, lane, query.slice(0, 500), 0, reason, new Date().toISOString());
+      .run(instance, lane, q, 0, reason, new Date().toISOString());
     return { results: [], note: reason };
   }
 
   addClaim(instance: string, lane: string | null, input: unknown) {
     const c = ClaimInput.parse(input);
+    const key = claimKey(c.text);
+    const same = this.all(
+      "select id, text, verified from claim where instance = ? order by verified desc, created_at",
+      instance,
+    ).find((r) => claimKey(String(r.text)) === key);
+    if (same && Number(same.verified) === 1) {
+      return {
+        claim: String(same.id),
+        verified: true,
+        problems: [],
+        note: "this claim is already recorded and verified",
+      };
+    }
     const problems: string[] = [];
     for (const q of c.quotes) {
       const s = this.get("select * from source where instance = ? and id = ?", instance, q.source);
@@ -228,6 +290,11 @@ export class Research {
       if (!normalizeQuote(this.text(s)).includes(normalizeQuote(q.quote))) {
         problems.push(`quote not found verbatim in ${q.source}: "${q.quote.slice(0, 80)}"`);
       }
+    }
+    // A claim may not state numbers its own quotes do not contain.
+    const quoted = c.quotes.map((q) => normalizeQuote(q.quote)).join(" ");
+    for (const num of numbersIn(c.text)) {
+      if (!quoted.includes(num)) problems.push(`the number ${num} is not in the claim's quotes`);
     }
     const id = `c-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
     const verified = problems.length === 0;
@@ -293,7 +360,7 @@ export class Research {
     return { hypothesis: id, supporting: ok, ignored: supporting.filter((c) => !known.has(c)) };
   }
 
-  updateSection(instance: string, by: string, name: string, body: string) {
+  updateSection(instance: string, by: string | null, name: string, body: string) {
     if (!/^[a-z0-9][a-z0-9 _-]{0,59}$/i.test(name))
       throw new Error("section names are short words");
     this.ledger.db
@@ -301,17 +368,31 @@ export class Research {
         `insert into report_section (instance, name, body, updated_by, updated_at) values (?, ?, ?, ?, ?)
          on conflict (instance, name) do update set body = excluded.body, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
       )
-      .run(instance, name, body.slice(0, 20_000), by, new Date().toISOString());
+      .run(instance, name, body.slice(0, 20_000), by ?? "worker", new Date().toISOString());
     return { section: name };
   }
 
-  /** Elapsed time against the contract's durations. */
+  /** Running time (paused time does not count) against the contract's durations. */
   clock(instance: string) {
     const c = this.contract(instance);
     const created = String(
       this.get("select created_at from instance where id = ?", instance)?.created_at,
     );
-    const elapsedMs = Date.now() - Date.parse(created);
+    let elapsedMs = 0;
+    let since: number | null = Date.parse(created);
+    for (const e of this.all(
+      "select at, body from event where kind = 'instance_status' and subject = ? order by id",
+      instance,
+    )) {
+      const status = (JSON.parse(String(e.body)) as { status?: string }).status;
+      const at = Date.parse(String(e.at));
+      if (status === "running") since ??= at;
+      else if (since !== null) {
+        elapsedMs += at - since;
+        since = null;
+      }
+    }
+    if (since !== null) elapsedMs += Date.now() - since;
     const minMs = parseDuration(c.min_duration as string);
     const maxMs = c.max_duration ? parseDuration(c.max_duration) : minMs;
     return {
@@ -323,14 +404,41 @@ export class Research {
     };
   }
 
+  /** Distinct domains a verified claim's quotes come from. */
+  private claimDomains(instance: string, quotesJson: string): number {
+    const ids = (JSON.parse(quotesJson) as { source: string }[]).map((q) => q.source);
+    const domains = new Set(
+      ids.map(
+        (id) =>
+          this.get("select domain from source where instance = ? and id = ?", instance, id)?.domain,
+      ),
+    );
+    domains.delete(undefined);
+    return domains.size;
+  }
+
   stats(instance: string) {
     const c = this.contract(instance);
     const n = (sql: string, ...p: (string | number)[]) => Number(this.get(sql, ...p)?.n ?? 0);
     const hourAgo = new Date(Date.now() - 3_600_000).toISOString();
+    const verifiedRows = this.all(
+      "select quotes from claim where instance = ? and verified = 1",
+      instance,
+    );
+    const corroborated = verifiedRows.filter(
+      (r) => this.claimDomains(instance, String(r.quotes)) >= c.quality.min_independent_sources,
+    ).length;
+    const firstVerified = (i: number) =>
+      this.get(
+        "select min(created_at) as t from claim where instance = ? and question = ? and verified = 1",
+        instance,
+        i,
+      )?.t;
     return {
       sources: n("select count(*) as n from source where instance = ?", instance),
       domains: n("select count(distinct domain) as n from source where instance = ?", instance),
       verified: n("select count(*) as n from claim where instance = ? and verified = 1", instance),
+      corroborated,
       drafts: n("select count(*) as n from claim where instance = ? and verified = 0", instance),
       hypotheses: n("select count(*) as n from hypothesis where instance = ?", instance),
       questions: c.questions.map((q, i) => ({
@@ -341,6 +449,7 @@ export class Research {
           i,
         ),
       })),
+      // Novelty in the last hour: new sources, newly verified claims, newly covered questions.
       last_hour: {
         sources: n(
           "select count(*) as n from source where instance = ? and fetched_at > ?",
@@ -352,6 +461,10 @@ export class Research {
           instance,
           hourAgo,
         ),
+        questions_covered: c.questions.filter((_, i) => {
+          const t = firstVerified(i);
+          return typeof t === "string" && t > hourAgo;
+        }).length,
       },
     };
   }
@@ -378,32 +491,48 @@ export class Research {
       "select name, body from report_section where instance = ? order by name",
       instance,
     );
-    const evidence = [
-      ...claims.map((cl) => `${cl.text} ${cl.quotes}`),
-      ...[...sources.values()].map((s) => this.text(s)),
-    ].join("\n");
+    // A number in a section is supported only by a verified claim (its text or its quotes).
+    const supported = new Set(
+      claims.flatMap((cl) => [
+        ...numbersIn(String(cl.text)),
+        ...(JSON.parse(String(cl.quotes)) as { quote: string }[]).flatMap((q) =>
+          numbersIn(q.quote),
+        ),
+      ]),
+    );
     const unsupported: string[] = [];
     for (const s of sections) {
-      for (const m of String(s.body).matchAll(/\b\d[\d,.]*\d\b|\b\d\b/g)) {
-        if (!evidence.includes(m[0]) && !unsupported.includes(m[0])) unsupported.push(m[0]);
+      for (const num of numbersIn(String(s.body))) {
+        if (!supported.has(num) && !unsupported.includes(num)) unsupported.push(num);
       }
     }
+    const min = c.quality.min_independent_sources;
+    const corroborated = claims.filter(
+      (cl) => this.claimDomains(instance, String(cl.quotes)) >= min,
+    );
+    const single = claims.filter((cl) => this.claimDomains(instance, String(cl.quotes)) < min);
+    const cite = (cl: Row) => {
+      const quotes = JSON.parse(String(cl.quotes)) as { source: string; quote: string }[];
+      return `- ${cl.text} ${[...new Set(quotes.map((q) => sources.get(q.source)?.url).filter(Boolean))].map((u) => `[${u}]`).join(" ")}`;
+    };
+    // Worker-written text cannot make its own headings: a line starting with # is shown as text.
+    const fence = (body: string) => body.replace(/^(\s*)#/gm, "$1\\#");
     const lines = [
       `# ${c.title}`,
       "",
       `Topic: ${c.topic}`,
       `Report: ${kind}, ${new Date().toISOString()}. Elapsed ${(clock.elapsed_ms / 3_600_000).toFixed(2)} h of at least ${(clock.min_ms / 3_600_000).toFixed(2)} h.`,
-      `Corpus: ${stats.sources} sources from ${stats.domains} domains; ${stats.verified} verified claims, ${stats.drafts} drafts (drafts are not findings).`,
+      `Corpus: ${stats.sources} sources from ${stats.domains} domains; ${stats.verified} verified claims (${stats.corroborated} from at least ${min} independent domains), ${stats.drafts} drafts (drafts are not findings).`,
+      `Last hour: ${stats.last_hour.sources} new sources, ${stats.last_hour.verified} newly verified claims, ${stats.last_hour.questions_covered} questions newly covered.`,
       "",
       "## Questions",
       ...stats.questions.map((q, i) => `${i + 1}. ${q.question} (${q.verified} verified claims)`),
       "",
-      ...sections.flatMap((s) => [`## ${s.name}`, String(s.body), ""]),
-      "## Verified claims",
-      ...claims.map((cl) => {
-        const quotes = JSON.parse(String(cl.quotes)) as { source: string; quote: string }[];
-        return `- ${cl.text} ${[...new Set(quotes.map((q) => sources.get(q.source)?.url).filter(Boolean))].map((u) => `[${u}]`).join(" ")}`;
-      }),
+      `## Findings (verified, from at least ${min} independent domains)`,
+      ...corroborated.map(cite),
+      "",
+      "## Verified claims from a single domain",
+      ...single.map(cite),
       "",
       "## Hypotheses",
       ...this.all("select text, supporting from hypothesis where instance = ?", instance).map(
@@ -413,6 +542,9 @@ export class Research {
       "",
       "## Open questions",
       ...stats.questions.filter((q) => q.verified === 0).map((q) => `- ${q.question}`),
+      "",
+      "## Worker notes (not verified; claims above are the findings)",
+      ...sections.flatMap((s) => [`### ${s.name}`, fence(String(s.body)), ""]),
       ...(unsupported.length
         ? [
             "",
@@ -458,16 +590,20 @@ export class Research {
     );
     const out: string[] = [];
     for (const s of this.all(
-      "select raw_path, final_url from source where instance = ? order by fetched_at desc limit 30",
+      "select raw_path, final_url, sha256 from source where instance = ? order by fetched_at desc limit 30",
       instance,
     )) {
-      let raw = "";
+      let hrefs: string[] = [];
       try {
-        raw = readFileSync(String(s.raw_path), "utf8");
+        // Links were saved at fetch time; older archives are parsed once more (linear time).
+        const saved = join(String(s.raw_path), "..", `${String(s.sha256)}.links.json`);
+        hrefs = existsSync(saved)
+          ? (JSON.parse(readFileSync(saved, "utf8")) as string[])
+          : htmlToText(readFileSync(String(s.raw_path), "utf8")).links;
       } catch {
         continue;
       }
-      for (const href of htmlToText(raw).links) {
+      for (const href of hrefs) {
         let u: string;
         try {
           const x = new URL(href, String(s.final_url));

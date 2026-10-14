@@ -13,6 +13,7 @@ import {
   verifyCommand,
 } from "../core/commands.ts";
 import { type Contract, contractSha, parseContract } from "../core/contract.ts";
+import { Registry } from "./agents/registry.ts";
 import { createAttemptCommit, GitError, hasCommit, initMirror, updateRef } from "./git.ts";
 import { importBundle, importFile } from "./imports.ts";
 import { type Ledger, LedgerError } from "./ledger.ts";
@@ -69,6 +70,8 @@ export class HarnessService {
   private readonly unitKeys: KeyPairPem | undefined;
   /** Commands being applied right now, so a concurrent re-send cannot run one twice. */
   private readonly inFlight = new Set<string>();
+  /** Trials whose submission is being recorded right now. */
+  private readonly submitting = new Set<string>();
 
   constructor(input: {
     unit: string;
@@ -164,11 +167,13 @@ export class HarnessService {
         return { instance: p.instance, directives: ids };
       }
       case "reset_workers": {
+        // The scheduler acts on the event: it kills the instance's running trials, clears the
+        // lane bests and ends the epoch, so lanes start again from the champion.
         const p = CommandPayloads.reset_workers.parse(payload);
         this.requireInstance(p.instance);
-        this.ledger.appendEvent(by, "workers_reset", p.instance, {
-          reseed_commit: p.reseed_commit ?? null,
-        });
+        if (p.reseed_commit)
+          throw new Error("re-seeding lanes is not available in this version; reset without it");
+        this.ledger.appendEvent(by, "workers_reset", p.instance, {});
         return { instance: p.instance, reset: true };
       }
       case "propagate": {
@@ -495,6 +500,41 @@ export class HarnessService {
       violations: v0.violations,
       ...(duplicateOf ? { duplicate_of: duplicateOf } : {}),
     };
+  }
+
+  /**
+   * A worker's submission. The trial (found by its token) decides the instance, lane and parent;
+   * the request cannot. A trial submits at most once, and never after it has ended, so a worker
+   * that outlives its trial cannot add attempts.
+   */
+  async submitForTrial(
+    token: string,
+    req: Pick<SubmitRequest, "patch_base64" | "hypothesis" | "claim" | "known_flaws">,
+  ): Promise<SubmitResult> {
+    const registry = new Registry(this.ledger);
+    const t = registry.openTrial(token);
+    if (t.attempt || this.submitting.has(t.id)) {
+      throw new LedgerError("conflict", `trial ${t.id} has already submitted`);
+    }
+    this.submitting.add(t.id);
+    try {
+      const r = await this.submitAttempt(
+        SubmitRequest.parse({
+          instance: t.instance,
+          lane: t.lane,
+          parent: t.parent,
+          patch_base64: req.patch_base64,
+          hypothesis: req.hypothesis,
+          claim: req.claim,
+          known_flaws: req.known_flaws ?? [],
+        }),
+        `trial:${t.id}`,
+      );
+      registry.linkAttempt(t.id, r.attempt);
+      return r;
+    } finally {
+      this.submitting.delete(t.id);
+    }
   }
 
   /** What a proposer may see about its own attempt: lifecycle, verdict and V0 findings. */

@@ -18,6 +18,7 @@ import {
   decideScreen,
   decideThresholdGoal,
   type GoalStatus,
+  goalDelta,
 } from "./decide.ts";
 import { type Arm, type ArmRun, type MeasureContext, runArm } from "./measure.ts";
 
@@ -625,6 +626,7 @@ export class Judge {
     const attempt = this.ledger.getAttempt(attemptId);
     if (!attempt) throw new InfraError(`no attempt ${attemptId}`);
     const instance = String(attempt.instance);
+    if (this.o.service.contractFor(instance).mode === "goal") return this.confirmGoal(job);
     const contract = this.hillClimb(instance);
     const baselineSeq = Number(this.spec(job).baseline_seq);
     const champion = this.ledger.currentChampion(instance);
@@ -795,9 +797,16 @@ export class Judge {
     contract: GoalContract,
     ctx: MeasureContext,
     arm: Arm,
+    opts: { heldOut?: boolean; goals?: string[] } = {},
   ): Promise<{ goal: string; required: boolean; status: GoalStatus; reasons: string }[]> {
     const out: { goal: string; required: boolean; status: GoalStatus; reasons: string }[] = [];
+    // Held-out cells run only at confirmation, and their results go to promotion code alone:
+    // never into measurements, goal checks, reports or events.
+    const held = new Set(contract.held_out_cells);
+    const pick = (cells: string[]) =>
+      cells.filter((c) => (opts.heldOut ? held.has(c) : !held.has(c)));
     for (const g of contract.goals) {
+      if (opts.goals && !opts.goals.includes(g.id)) continue;
       this.ledger.heartbeat(job.id, job.fence, this.o.leaseMs);
       const v = g.verify;
       if (v.type === "review") {
@@ -821,7 +830,17 @@ export class Judge {
           continue;
         }
         const failures: string[] = [];
-        for (const cell of ver.cells) {
+        const cells = pick(ver.cells);
+        if (!cells.length) {
+          out.push({
+            goal: g.id,
+            required: g.required,
+            status: "not_runnable",
+            reasons: opts.heldOut ? "no held-out cells" : "every cell of this verifier is held out",
+          });
+          continue;
+        }
+        for (const cell of cells) {
           if (!ctx.kit.cells[cell]) {
             failures.push(`no cell ${cell}`);
             continue;
@@ -835,13 +854,22 @@ export class Judge {
           status: failures.length ? "unmet" : "met",
           reasons: failures.length
             ? failures.join("; ")
-            : `verifier ${v.verifier} passed on ${ver.cells.join(", ")}`,
+            : `verifier ${v.verifier} passed on ${cells.join(", ")}`,
         });
         continue;
       }
       // metric_threshold: threshold_reps runs per cell; the value is a kit metric or a number the kit's
       // check reports (for example memory headroom measured by the judge's client).
-      const cells = v.cells ?? Object.keys(ctx.kit.cells);
+      const cells = pick(v.cells ?? Object.keys(ctx.kit.cells));
+      if (!cells.length) {
+        out.push({
+          goal: g.id,
+          required: g.required,
+          status: "not_runnable",
+          reasons: opts.heldOut ? "no held-out cells" : "every cell of this goal is held out",
+        });
+        continue;
+      }
       const values: Record<string, number[]> = {};
       const failures: string[] = [];
       for (const cell of cells) {
@@ -861,6 +889,7 @@ export class Judge {
             break;
           }
           values[cell] = [...(values[cell] ?? []), value];
+          if (opts.heldOut) continue;
           this.ledger.recordMeasurement(job.id, job.fence, {
             arm: arm.name,
             metric: v.metric,
@@ -939,7 +968,8 @@ export class Judge {
     const met = results.filter((r) => r.status === "met");
     if (contract.success.policy === "k_of_n")
       return met.length >= (contract.success.k ?? results.length);
-    return results.filter((r) => r.required).every((r) => r.status === "met");
+    const required = results.filter((r) => r.required);
+    return required.length > 0 && required.every((r) => r.status === "met");
   }
 
   /** Measures every goal on the champion: the judge-only validation and the goal tree's state. */
@@ -952,12 +982,28 @@ export class Judge {
     const results = await this.verifyGoals(job, contract, this.context(k, job), arm);
     this.recordGoals(job, instance, null, champion.commit_sha, results, true);
     const done = this.complete(contract, results);
+    // Completion is final, so one validation is not enough: a second, independent validation
+    // of the same champion must agree before the campaign closes.
+    const confirming = this.spec(job).confirm === true;
     const summary = {
       instance,
       champion_seq: champion.seq,
       goals: results.map((r) => ({ goal: r.goal, status: r.status, reasons: r.reasons })),
       complete: done,
+      ...(done && !confirming ? { confirming: true } : {}),
     };
+    if (done && !confirming) {
+      return {
+        result: summary,
+        events: [{ kind: "goal_report", subject: instance, body: summary }],
+        enqueue: {
+          kind: "validate",
+          priority: 40,
+          spec: { instance, champion_seq: champion.seq, confirm: true },
+          actor: this.o.owner,
+        },
+      };
+    }
     return {
       result: summary,
       events: [
@@ -995,16 +1041,20 @@ export class Judge {
             .all(instance) as { id: string; status: string }[]
         ).map((g) => [g.id, g.status]),
       );
-      const gained = results
-        .filter((r) => r.status === "met" && champ.get(r.goal) !== "verified")
-        .map((r) => r.goal);
-      const lost = results
-        .filter((r) => r.status !== "met" && champ.get(r.goal) === "verified")
-        .map((r) => r.goal);
-      const verdict = lost.length ? "regress" : gained.length ? "goal_progress" : "no_progress";
-      const reasons = `${gained.length ? `newly met: ${gained.join(", ")}` : "no new goal met"}${lost.length ? `; lost: ${lost.join(", ")}` : ""}; vs champion seq ${champion.seq}`;
-      const fin: Finish = {
-        result: { verdict, gained, lost },
+      const { gained, lost, unsure } = goalDelta(results, champ);
+      // A goal the champion meets that the candidate fails is lost; one it could not check
+      // (inconclusive, not runnable) is unknown, which is not a regression and not progress.
+      const verdict = lost.length
+        ? "regress"
+        : unsure.length
+          ? "inconclusive"
+          : gained.length
+            ? "goal_screened"
+            : "no_progress";
+      const reasons = `${gained.length ? `newly met: ${gained.join(", ")}` : "no new goal met"}${lost.length ? `; lost: ${lost.join(", ")}` : ""}${unsure.length ? `; could not check: ${unsure.join(", ")}` : ""}; vs champion seq ${champion.seq}`;
+      const screened = verdict === "goal_screened";
+      return {
+        result: { verdict, gained, lost, unsure },
         verdict: {
           attempt: attemptId,
           verdict,
@@ -1013,9 +1063,99 @@ export class Judge {
           judgedBy: this.o.owner,
           guards: results.map((r) => ({ goal: r.goal, status: r.status })),
         },
+        ...(screened
+          ? {
+              enqueue: {
+                attempt: attemptId,
+                kind: "confirm",
+                priority: 50,
+                spec: { baseline_seq: champion.seq, screen_job: job.id, gained },
+                actor: this.o.owner,
+              },
+            }
+          : {}),
+        lifecycle: screened ? "confirming" : "judged",
+      };
+    } catch (err) {
+      if (!(err instanceof Stop)) throw err;
+      return this.stopped(job, err);
+    }
+  }
+
+  /**
+   * Confirms a screened goal attempt: the goals are checked again in fresh runs (and on the
+   * held-out cells, whose result only promotion code sees). It is promoted only if the goals it
+   * gained at screening still hold and it loses or blurs none the champion meets.
+   */
+  private async confirmGoal(job: JobRow): Promise<Finish> {
+    const attemptId = job.attempt as string;
+    const attempt = this.ledger.getAttempt(attemptId) as Record<string, unknown>;
+    const instance = String(attempt.instance);
+    const contract = this.goalContract(instance);
+    const baselineSeq = Number(this.spec(job).baseline_seq);
+    const champion = this.ledger.currentChampion(instance);
+    if (champion.seq !== baselineSeq) {
+      return {
+        result: { rescreen: true, baseline_seq: baselineSeq, champion_seq: champion.seq },
+        enqueue: { attempt: attemptId, kind: "evaluate", actor: this.o.owner },
+        lifecycle: "queued",
+      };
+    }
+    try {
+      const k = await this.kitFor(contract);
+      this.ledger.setAttemptLifecycle(attemptId, "verifying", this.o.owner);
+      const cand = await this.armFor("candidate", instance, String(attempt.commit_sha), k);
+      const ctx = this.context(k, job);
+      const results = await this.verifyGoals(job, contract, ctx, cand);
+      this.recordGoals(job, instance, attemptId, String(attempt.commit_sha), results, false);
+      const champ = new Map(
+        (
+          this.ledger.db
+            .prepare("select id, status from goal where instance = ?")
+            .all(instance) as { id: string; status: string }[]
+        ).map((g) => [g.id, g.status]),
+      );
+      const { gained, lost, unsure } = goalDelta(results, champ);
+      const screened = (this.spec(job).gained as string[] | undefined) ?? [];
+      const held = screened.filter((g) => !gained.includes(g));
+      let heldOutPass: boolean | undefined;
+      if (contract.held_out_cells.length && gained.length) {
+        const ho = await this.verifyGoals(job, contract, ctx, cand, {
+          heldOut: true,
+          goals: gained,
+        });
+        heldOutPass = ho.every((r) => r.status === "met" || r.reasons === "no held-out cells");
+        this.ledger.recordHeldOut(
+          job.id,
+          job.fence,
+          attemptId,
+          heldOutPass,
+          Object.fromEntries(ho.map((r) => [r.goal, r.status])),
+        );
+      }
+      const ok =
+        gained.length > 0 &&
+        !lost.length &&
+        !unsure.length &&
+        !held.length &&
+        heldOutPass !== false;
+      const verdict = ok ? "goal_progress" : "not_confirmed";
+      const reasons = ok
+        ? `confirmed: newly met ${gained.join(", ")}; vs champion seq ${champion.seq}`
+        : `confirmation failed${held.length ? `: no longer met: ${held.join(", ")}` : ""}${lost.length ? `; lost: ${lost.join(", ")}` : ""}${unsure.length ? `; could not check: ${unsure.join(", ")}` : ""}; vs champion seq ${champion.seq}`;
+      const fin: Finish = {
+        result: { verdict, gained },
+        verdict: {
+          attempt: attemptId,
+          verdict,
+          dependsOnJobs: [job.id, Number(this.spec(job).screen_job ?? job.id)],
+          reasons,
+          judgedBy: this.o.owner,
+          guards: results.map((r) => ({ goal: r.goal, status: r.status })),
+        },
         lifecycle: "judged",
       };
-      if (verdict !== "goal_progress") return fin;
+      if (!ok) return fin;
       const promoted = this.promotion(fin, attemptId, instance, champion.seq, attempt);
       // A new champion is validated afresh, so the goal tree reflects it.
       return promoted.promote
@@ -1030,22 +1170,44 @@ export class Judge {
     }
   }
 
+  /**
+   * Each running goal campaign's champion is validated: once per champion, again after a failure
+   * (up to three times, ten minutes apart), and never while a validation is queued or running.
+   */
   private maybeScheduleValidation(): void {
     for (const inst of this.ledger.listInstances()) {
       if (inst.status !== "running" || inst.mode !== "goal") continue;
-      const any = this.ledger.db
+      const seq = this.ledger.currentChampion(inst.id).seq;
+      const jobs = this.ledger.db
         .prepare(
-          "select 1 from job where kind = 'validate' and json_extract(spec, '$.instance') = ? limit 1",
+          `select state, updated_at, json_extract(result, '$.champion_seq') as done_seq,
+             json_extract(result, '$.confirming') as confirming,
+             json_extract(spec, '$.champion_seq') as spec_seq
+           from job where kind = 'validate' and json_extract(spec, '$.instance') = ? order by id`,
         )
-        .get(inst.id);
-      if (!any) {
-        this.ledger.enqueueJob({
-          kind: "validate",
-          priority: 40,
-          spec: { instance: inst.id },
-          actor: this.o.owner,
-        });
-      }
+        .all(inst.id) as {
+        state: string;
+        updated_at: string;
+        done_seq: number | null;
+        confirming: number | null;
+        spec_seq: number | null;
+      }[];
+      if (jobs.some((j) => j.state === "queued" || j.state === "leased")) continue;
+      // Settled: a validation of this champion that did not leave a completion to confirm.
+      if (jobs.some((j) => j.state === "done" && Number(j.done_seq) === seq && !j.confirming))
+        continue;
+      const failed = jobs.filter(
+        (j) => j.state === "failed" && (j.spec_seq === null || Number(j.spec_seq) === seq),
+      );
+      if (failed.length >= 3) continue;
+      const lastFail = failed.at(-1);
+      if (lastFail && Date.now() - Date.parse(lastFail.updated_at) < 10 * 60_000) continue;
+      this.ledger.enqueueJob({
+        kind: "validate",
+        priority: 40,
+        spec: { instance: inst.id, champion_seq: seq },
+        actor: this.o.owner,
+      });
     }
   }
 

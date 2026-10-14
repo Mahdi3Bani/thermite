@@ -36,6 +36,18 @@ function chownTree(path: string, uid: number, gid: number): void {
   chmodSync(path, 0o700);
 }
 
+function clearSetIdBits(dir: string): void {
+  try {
+    execFileSync(
+      "find",
+      [dir, "-xdev", "-type", "f", "-perm", "/6000", "-exec", "chmod", "ug-s", "{}", "+"],
+      { stdio: "ignore" },
+    );
+  } catch (err) {
+    log("broker", "could not clear set-id bits", { dir, error: String(err) });
+  }
+}
+
 /** Per-role process limits (RLIMIT_NPROC): builds may run parallel compilers. */
 const NPROC: Record<string, number> = { builder: 512, run: 256 };
 
@@ -50,7 +62,7 @@ export async function handle(req: Req, opts: BrokerServerOptions): Promise<unkno
         throw new Error(`role ${r.role} may not ask for the gpu group`);
       const { uid } = ids;
       const gid = r.gpu ? IDS.gpuGroup : ids.gid;
-      return runSupervised({
+      const outcome = await runSupervised({
         argv: r.argv,
         cwd: r.cwd,
         // The role's own directory is its home and its TMPDIR: /tmp is closed to roles.
@@ -64,6 +76,11 @@ export async function handle(req: Req, opts: BrokerServerOptions): Promise<unkno
         stdin: r.stdin,
         captureBytes: r.captureBytes,
       });
+      // A lane's dev runs have the gpu group: a setgid file left behind would let its plain
+      // runs reach the device outside the judge's gate. Such bits are cleared after every lane
+      // run (no_new_privs also makes the kernel ignore them; this does not rely on it).
+      if (/^lane-\d+(-dev)?$/.test(r.role)) clearSetIdBits(r.disk?.path ?? r.cwd);
+      return outcome;
     }
     case "handOver": {
       const { uid, gid } = roleIds(req.role);

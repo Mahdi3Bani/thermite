@@ -165,8 +165,17 @@ function startController(extraEnv: Record<string, string>): void {
       ...extraEnv,
     },
     ...(isRoot ? { uid: TU, gid: TG } : {}),
+    // Its own process group: worker processes it starts join it, so they end with it.
+    detached: true,
   });
   child.on("exit", (code, signal) => {
+    // Worker processes of a dead controller must not live on (they would keep calling the model
+    // and the API while new trials run): kill the controller's whole process group.
+    try {
+      if (child?.pid) process.kill(-child.pid, "SIGKILL");
+    } catch {
+      // the group is already gone
+    }
     if (stopping) process.exit(code ?? 0);
     if (isRoot) {
       const killed = killRoles();

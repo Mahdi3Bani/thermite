@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
-import { lookup } from "node:dns/promises";
+import { lookup as dnsLookup } from "node:dns";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { isIP } from "node:net";
+import { request as httpRequest, type IncomingMessage } from "node:http";
+import { request as httpsRequest } from "node:https";
+import { isIP, type LookupFunction } from "node:net";
 import { join } from "node:path";
 
 /**
@@ -9,6 +11,9 @@ import { join } from "node:path";
  * ask, and this code checks the URL, the robots.txt rules, the per-domain rate and the size cap,
  * archives the raw response and its extracted text under their hash, and returns the text.
  * Fetched pages are untrusted data; they can produce bad notes, never actions.
+ *
+ * Addresses are checked when the connection is made, on the address actually used, so a name
+ * that resolves differently the second time (DNS rebinding) cannot reach a private address.
  */
 
 export interface FetchPolicy {
@@ -40,56 +45,221 @@ export class FetchRefused extends Error {}
 
 const USER_AGENT = "thermite-research/1.0";
 
-function privateAddress(ip: string): boolean {
-  if (isIP(ip) === 4) {
-    const [a, b] = ip.split(".").map(Number) as [number, number];
-    return (
-      a === 10 ||
-      a === 127 ||
-      a === 0 ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) ||
-      (a === 100 && b >= 64 && b <= 127) ||
-      a >= 224
-    );
+function v4Bytes(ip: string): number[] {
+  return ip.split(".").map(Number);
+}
+
+/** An IPv6 address as 16 bytes (handles `::` and a trailing dotted IPv4 part). */
+function v6Bytes(ip: string): number[] {
+  let s = ip.toLowerCase();
+  const pct = s.indexOf("%");
+  if (pct >= 0) s = s.slice(0, pct);
+  let tail: number[] = [];
+  const lastColon = s.lastIndexOf(":");
+  if (s.slice(lastColon + 1).includes(".")) {
+    tail = v4Bytes(s.slice(lastColon + 1));
+    s = `${s.slice(0, lastColon + 1)}0:0`;
   }
-  const v = ip.toLowerCase();
-  return (
-    v === "::1" ||
-    v === "::" ||
-    v.startsWith("fc") ||
-    v.startsWith("fd") ||
-    v.startsWith("fe80") ||
-    v.startsWith("::ffff:")
-  );
+  const [head, rest] = s.split("::") as [string, string | undefined];
+  const parse = (x: string) => (x ? x.split(":").map((h) => Number.parseInt(h || "0", 16)) : []);
+  const a = parse(head);
+  const b = rest === undefined ? [] : parse(rest);
+  const groups = rest === undefined ? a : [...a, ...Array(8 - a.length - b.length).fill(0), ...b];
+  const bytes = groups.flatMap((g) => [(g >> 8) & 0xff, g & 0xff]);
+  if (tail.length === 4) bytes.splice(12, 4, ...tail);
+  return bytes;
+}
+
+function inV4(b: number[], net: [number, number, number, number], bits: number): boolean {
+  for (let i = 0; i < 4; i++) {
+    const take = Math.max(0, Math.min(8, bits - i * 8));
+    if (take === 0) return true;
+    const mask = (0xff << (8 - take)) & 0xff;
+    if (((b[i] as number) & mask) !== ((net[i] as number) & mask)) return false;
+  }
+  return true;
+}
+
+const V4_BLOCKED: [[number, number, number, number], number][] = [
+  [[0, 0, 0, 0], 8], // "this" network
+  [[10, 0, 0, 0], 8],
+  [[100, 64, 0, 0], 10], // carrier-grade NAT
+  [[127, 0, 0, 0], 8],
+  [[169, 254, 0, 0], 16], // link-local (cloud metadata)
+  [[172, 16, 0, 0], 12],
+  [[192, 0, 0, 0], 24], // IETF protocol assignments
+  [[192, 0, 2, 0], 24], // documentation
+  [[192, 88, 99, 0], 24], // 6to4 relay anycast
+  [[192, 168, 0, 0], 16],
+  [[198, 18, 0, 0], 15], // benchmarking
+  [[198, 51, 100, 0], 24],
+  [[203, 0, 113, 0], 24],
+  [[224, 0, 0, 0], 4], // multicast
+  [[240, 0, 0, 0], 4], // reserved and broadcast
+];
+
+/** True for any address the fetcher must not reach: loopback, private, link-local, special. */
+export function blockedAddress(ip: string): boolean {
+  const kind = isIP(ip);
+  if (kind === 4) {
+    const b = v4Bytes(ip);
+    return V4_BLOCKED.some(([net, bits]) => inV4(b, net, bits));
+  }
+  if (kind !== 6) return true;
+  const b = v6Bytes(ip);
+  if (b.length !== 16) return true;
+  const zero = (from: number, to: number) => b.slice(from, to).every((x) => x === 0);
+  // ::/128, ::1, IPv4-compatible and IPv4-mapped: refuse (embedded IPv4 is never needed here).
+  if (zero(0, 10) && ((b[10] === 0 && b[11] === 0) || (b[10] === 0xff && b[11] === 0xff)))
+    return true;
+  const w0 = ((b[0] as number) << 8) | (b[1] as number);
+  const w1 = ((b[2] as number) << 8) | (b[3] as number);
+  if (w0 === 0x64 && w1 === 0xff9b) return true; // NAT64 64:ff9b::/96 and 64:ff9b:1::/48
+  if (w0 === 0x100 && zero(2, 8)) return true; // discard-only 100::/64
+  if (w0 === 0x2001 && w1 < 0x200) return true; // Teredo, benchmarking, ORCHID and others
+  if (w0 === 0x2001 && w1 === 0xdb8) return true; // documentation
+  if (w0 === 0x2002) return true; // 6to4
+  if ((w0 & 0xfe00) === 0xfc00) return true; // unique local fc00::/7
+  if ((w0 & 0xffc0) === 0xfe80) return true; // link-local fe80::/10
+  if ((w0 & 0xffc0) === 0xfec0) return true; // site-local fec0::/10
+  if ((w0 & 0xff00) === 0xff00) return true; // multicast
+  return (w0 & 0xe000) !== 0x2000; // only global unicast 2000::/3 remains
 }
 
 function domainMatches(host: string, domain: string): boolean {
   return host === domain || host.endsWith(`.${domain}`);
 }
 
-/** Text from HTML: scripts and styles dropped, tags removed, entities decoded, whitespace folded. */
+const ENTITIES: Record<string, string> = {
+  nbsp: " ",
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+};
+
+function decodeEntities(s: string): string {
+  return s.replace(/&(#x[0-9a-f]{1,8}|#\d{1,9}|[a-z]{2,6});/gi, (all, e: string) => {
+    if (e[0] === "#") {
+      const n = e[1] === "x" || e[1] === "X" ? Number.parseInt(e.slice(2), 16) : Number(e.slice(1));
+      return Number.isInteger(n) && n > 0 && n <= 0x10ffff && (n < 0xd800 || n > 0xdfff)
+        ? String.fromCodePoint(n)
+        : "�";
+    }
+    return ENTITIES[e.toLowerCase()] ?? all;
+  });
+}
+
+/** Folds spaces and tabs, trims lines and keeps at most one empty line between paragraphs. */
+function foldWhitespace(s: string): string {
+  const out: string[] = [];
+  let blank = 0;
+  for (const raw of s.split("\n")) {
+    const line = raw.replace(/[ \t\f\v\r ]+/g, " ").trim();
+    if (!line) {
+      blank++;
+      continue;
+    }
+    if (out.length && blank) out.push("");
+    blank = 0;
+    out.push(line);
+  }
+  return out.join("\n");
+}
+
+const SKIP = new Set(["script", "style", "noscript", "svg", "template"]);
+const BLOCK = new Set([
+  "br",
+  "p",
+  "div",
+  "li",
+  "tr",
+  "section",
+  "article",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "pre",
+  "blockquote",
+  "table",
+  "ul",
+  "ol",
+]);
+
+/**
+ * Text from HTML in one linear pass (no backtracking regular expressions over the page):
+ * scripts and styles dropped, tags removed, entities decoded, whitespace folded.
+ */
 export function htmlToText(html: string): { title: string | null; text: string; links: string[] } {
-  const title = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1]?.trim() ?? null;
-  const links = [...html.matchAll(/<a\s[^>]*href\s*=\s*["']([^"']+)["']/gi)].map(
-    (m) => m[1] as string,
-  );
-  const text = html
-    .replace(/<(script|style|noscript|svg)[\s\S]*?<\/\1>/gi, " ")
-    .replace(/<br\s*\/?>|<\/(p|div|li|h[1-6]|tr|section|article)>/gi, "\n")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_, n: string) => String.fromCodePoint(Number(n)))
-    .replace(/[ \t\f\v\r]+/g, " ")
-    .replace(/\n\s*\n+/g, "\n\n")
-    .trim();
-  return { title: title ? htmlToText(title).text : null, text, links };
+  const lower = html.toLowerCase();
+  const n = html.length;
+  const out: string[] = [];
+  const links: string[] = [];
+  let title: string | null = null;
+  let i = 0;
+  while (i < n) {
+    const lt = html.indexOf("<", i);
+    if (lt < 0) {
+      out.push(html.slice(i));
+      break;
+    }
+    out.push(html.slice(i, lt));
+    if (html.startsWith("<!--", lt)) {
+      const end = html.indexOf("-->", lt + 4);
+      i = end < 0 ? n : end + 3;
+      continue;
+    }
+    const gt = html.indexOf(">", lt + 1);
+    if (gt < 0) break; // an unterminated tag: the rest is not text
+    const closing = html[lt + 1] === "/";
+    let j = lt + (closing ? 2 : 1);
+    while (j < gt && /[a-zA-Z0-9]/.test(html[j] as string)) j++;
+    const name = lower.slice(lt + (closing ? 2 : 1), j);
+    i = gt + 1;
+    if (!closing && SKIP.has(name)) {
+      const end = lower.indexOf(`</${name}`, i);
+      const close = end < 0 ? -1 : html.indexOf(">", end);
+      i = close < 0 ? n : close + 1;
+      continue;
+    }
+    if (!closing && name === "title" && title === null) {
+      const end = lower.indexOf("</title", i);
+      title = foldWhitespace(decodeEntities(html.slice(i, end < 0 ? n : end))) || null;
+      i = end < 0 ? n : end;
+      continue;
+    }
+    if (!closing && name === "a" && links.length < 1000) {
+      const attrs = html.slice(j, gt);
+      const m = /\shref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i.exec(attrs);
+      const href = m?.[1] ?? m?.[2] ?? m?.[3];
+      if (href) links.push(decodeEntities(href));
+    }
+    out.push(BLOCK.has(name) ? "\n" : " ");
+  }
+  return { title, text: foldWhitespace(decodeEntities(out.join(""))), links };
+}
+
+/** Resolves a name, refusing it if any of its addresses is private (checked at connect time). */
+function safeLookup(allowPrivate: boolean): LookupFunction {
+  return (hostname, options, callback) => {
+    dnsLookup(hostname, { all: true, family: options.family ?? 0 }, (err, addresses) => {
+      if (err) return callback(err, "", 0);
+      const list = addresses as { address: string; family: number }[];
+      if (!list.length || (!allowPrivate && list.some((a) => blockedAddress(a.address)))) {
+        const e = new FetchRefused(`refusing a private or local address for ${hostname}`);
+        return callback(e as NodeJS.ErrnoException, "", 0);
+      }
+      if ((options as { all?: boolean }).all) {
+        return (callback as unknown as (e: null, a: typeof list) => void)(null, list);
+      }
+      const first = list[0] as { address: string; family: number };
+      callback(null, first.address, first.family);
+    });
+  };
 }
 
 export class Fetcher {
@@ -117,15 +287,9 @@ export class Fetcher {
     ) {
       throw new FetchRefused(`outside the campaign's domains: ${host}`);
     }
-  }
-
-  private async checkAddress(u: URL): Promise<void> {
-    if (this.policy.allowPrivate) return;
-    const host = u.hostname.replace(/^\[|\]$/g, "");
-    const addrs = isIP(host) ? [{ address: host }] : await lookup(host, { all: true });
-    if (!addrs.length || addrs.some((a) => privateAddress(a.address))) {
+    const literal = host.replace(/^\[|\]$/g, "");
+    if (isIP(literal) && !this.policy.allowPrivate && blockedAddress(literal))
       throw new FetchRefused(`refusing a private or local address for ${u.hostname}`);
-    }
   }
 
   private async rate(domain: string): Promise<void> {
@@ -151,10 +315,10 @@ export class Fetcher {
     if (!rules) {
       rules = { disallow: [], allow: [] };
       try {
-        const r = await this.get(new URL("/robots.txt", key), 200_000, 0);
+        const r = await this.get(new URL("/robots.txt", key), 200_000, 0, false);
         if (r.status === 200) {
           let applies = false;
-          for (const raw of r.body.toString("utf8").split("\n")) {
+          for (const raw of r.body.toString("utf8").split("\n").slice(0, 5000)) {
             const line = raw.replace(/#.*/, "").trim();
             const [k, ...rest] = line.split(":");
             const v = rest.join(":").trim();
@@ -174,39 +338,78 @@ export class Fetcher {
     return longest(rules.allow) >= longest(rules.disallow);
   }
 
-  /** One HTTP GET with manual redirects (each hop re-checked) and a size cap. */
+  /** One HTTP request, with the address checked at connect time, a size cap and a timeout. */
+  private request(
+    u: URL,
+    maxBytes: number,
+  ): Promise<{ status: number; type: string | null; location: string | null; body: Buffer }> {
+    const send = u.protocol === "https:" ? httpsRequest : httpRequest;
+    return new Promise((resolve, reject) => {
+      const req = send(
+        u,
+        {
+          method: "GET",
+          headers: {
+            "user-agent": USER_AGENT,
+            accept: "text/html,text/plain,application/json;q=0.9,*/*;q=0.5",
+          },
+          lookup: safeLookup(this.policy.allowPrivate === true),
+          timeout: 30_000,
+        },
+        (res: IncomingMessage) => {
+          const status = res.statusCode ?? 0;
+          const location = typeof res.headers.location === "string" ? res.headers.location : null;
+          const type = res.headers["content-type"] ?? null;
+          if (status >= 300 && status < 400 && location) {
+            res.resume();
+            return resolve({ status, type, location, body: Buffer.alloc(0) });
+          }
+          const chunks: Buffer[] = [];
+          let size = 0;
+          res.on("data", (chunk: Buffer) => {
+            size += chunk.byteLength;
+            if (size > maxBytes) {
+              req.destroy(new FetchRefused(`larger than ${maxBytes} bytes`));
+              return;
+            }
+            chunks.push(chunk);
+          });
+          res.on("end", () => resolve({ status, type, location, body: Buffer.concat(chunks) }));
+          res.on("error", reject);
+        },
+      );
+      const deadline = setTimeout(() => req.destroy(new Error("timed out after 30 s")), 30_000);
+      req.on("timeout", () => req.destroy(new Error("timed out")));
+      req.on("error", (err) => {
+        clearTimeout(deadline);
+        reject(err);
+      });
+      req.on("close", () => clearTimeout(deadline));
+      req.end();
+    });
+  }
+
+  /** A GET with manual redirects: every hop is checked for scope, robots.txt and rate. */
   private async get(
     u: URL,
     maxBytes: number,
     depth: number,
+    checkRobots = true,
   ): Promise<{ url: URL; status: number; type: string | null; body: Buffer }> {
     this.checkScope(u);
-    await this.checkAddress(u);
-    const res = await fetch(u, {
-      redirect: "manual",
-      headers: {
-        "user-agent": USER_AGENT,
-        accept: "text/html,text/plain,application/json;q=0.9,*/*;q=0.5",
-      },
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (res.status >= 300 && res.status < 400 && res.headers.get("location")) {
+    if (depth > 0 && checkRobots) {
+      if (!(await this.allowedByRobots(u)))
+        throw new FetchRefused(`robots.txt disallows ${u.pathname} (after a redirect)`);
+      await this.rate(u.hostname);
+    }
+    const r = await this.request(u, maxBytes);
+    if (r.location) {
       if (depth >= 5) throw new FetchRefused("too many redirects");
-      return this.get(new URL(res.headers.get("location") as string, u), maxBytes, depth + 1);
+      const next = new URL(r.location, u);
+      next.hash = "";
+      return this.get(next, maxBytes, depth + 1, checkRobots);
     }
-    const chunks: Buffer[] = [];
-    let size = 0;
-    for await (const chunk of res.body ?? []) {
-      size += (chunk as Uint8Array).byteLength;
-      if (size > maxBytes) throw new FetchRefused(`larger than ${maxBytes} bytes`);
-      chunks.push(Buffer.from(chunk as Uint8Array));
-    }
-    return {
-      url: u,
-      status: res.status,
-      type: res.headers.get("content-type"),
-      body: Buffer.concat(chunks),
-    };
+    return { url: u, status: r.status, type: r.type, body: r.body };
   }
 
   async fetch(url: string): Promise<Fetched> {
@@ -214,7 +417,7 @@ export class Fetcher {
     try {
       u = new URL(url);
     } catch {
-      throw new FetchRefused(`not a URL: ${url}`);
+      throw new FetchRefused(`not a URL: ${url.slice(0, 200)}`);
     }
     u.hash = "";
     this.checkScope(u);
@@ -233,10 +436,6 @@ export class Fetcher {
         : type?.startsWith("text/") || type === "application/json" || type === "application/xml"
           ? { title: null, text: raw, links: [] }
           : { title: null, text: "", links: [] };
-    const rawPath = join(this.archiveDir, `${sha256}.raw`);
-    const textPath = join(this.archiveDir, `${sha256}.txt`);
-    writeFileSync(rawPath, r.body, { mode: 0o600 });
-    writeFileSync(textPath, parsed.text, { mode: 0o600 });
     const links = [
       ...new Set(
         parsed.links
@@ -252,6 +451,14 @@ export class Fetcher {
           .filter((l): l is string => l !== null),
       ),
     ].slice(0, 100);
+    const rawPath = join(this.archiveDir, `${sha256}.raw`);
+    const textPath = join(this.archiveDir, `${sha256}.txt`);
+    writeFileSync(rawPath, r.body, { mode: 0o600 });
+    writeFileSync(textPath, parsed.text, { mode: 0o600 });
+    // The links are kept beside the text, so nothing has to parse the page again later.
+    writeFileSync(join(this.archiveDir, `${sha256}.links.json`), JSON.stringify(links), {
+      mode: 0o600,
+    });
     return {
       url: u.toString(),
       finalUrl: r.url.toString(),

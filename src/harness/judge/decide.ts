@@ -250,3 +250,24 @@ export function decideThresholdGoal(
     reasons: `${metric} ${op} ${value}: ${notes.join("; ")}`,
   };
 }
+
+/**
+ * A goal candidate against the champion's goal statuses: goals it newly meets, goals the
+ * champion meets that it fails (lost), and goals the champion meets that it could not check
+ * (inconclusive or not runnable: unknown, which is neither a regression nor progress).
+ */
+export function goalDelta(
+  results: { goal: string; status: GoalStatus }[],
+  champion: Map<string, string>,
+): { gained: string[]; lost: string[]; unsure: string[] } {
+  const verified = (g: string) => champion.get(g) === "verified";
+  return {
+    gained: results.filter((r) => r.status === "met" && !verified(r.goal)).map((r) => r.goal),
+    lost: results.filter((r) => r.status === "unmet" && verified(r.goal)).map((r) => r.goal),
+    unsure: results
+      .filter(
+        (r) => (r.status === "inconclusive" || r.status === "not_runnable") && verified(r.goal),
+      )
+      .map((r) => r.goal),
+  };
+}

@@ -469,4 +469,12 @@ export const MIGRATIONS: readonly string[] = [
     created_at text not null
   );
   `,
+  // 6: M4 review fixes. Each trial gets its own token (stored hashed), which binds API calls to
+  // the trial's instance and lane and stops working when the trial ends. Jobs record when they
+  // were leased, for the device-hours budget.
+  `
+  alter table trial add column token_sha text;
+  create index trial_token on trial (token_sha);
+  alter table job add column leased_at text;
+  `,
 ];

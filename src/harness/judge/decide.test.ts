@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { type GoalContract, type HillClimbContract, parseContract } from "../../core/contract.ts";
 import { goalFixture, hillClimbFixture } from "../../testing/fixtures.ts";
-import { type Block, decideConfirm, decideScreen, decideThresholdGoal } from "./decide.ts";
+import {
+  type Block,
+  decideConfirm,
+  decideScreen,
+  decideThresholdGoal,
+  goalDelta,
+} from "./decide.ts";
 
 function hillClimb(overrides: Record<string, unknown> = {}): HillClimbContract {
   const r = parseContract({ ...hillClimbFixture, ...overrides });
@@ -185,5 +191,39 @@ describe("goal thresholds", () => {
     assert.equal(decideThresholdGoal(goal, {}, 0.05).status, "not_runnable");
     const single = Object.fromEntries(cells.map((c) => [c, [target + passSide * 10]]));
     assert.equal(decideThresholdGoal(goal, single, 0.05).status, "inconclusive");
+  });
+});
+
+describe("goal candidates against the champion", () => {
+  test("a goal the champion meets that the candidate could not check is unknown, not lost", () => {
+    const champion = new Map([
+      ["a", "verified"],
+      ["b", "verified"],
+      ["c", "unmet"],
+    ]);
+    assert.deepEqual(
+      goalDelta(
+        [
+          { goal: "a", status: "inconclusive" },
+          { goal: "b", status: "unmet" },
+          { goal: "c", status: "met" },
+        ],
+        champion,
+      ),
+      { gained: ["c"], lost: ["b"], unsure: ["a"] },
+    );
+    assert.deepEqual(goalDelta([{ goal: "a", status: "not_runnable" }], champion), {
+      gained: [],
+      lost: [],
+      unsure: ["a"],
+    });
+  });
+
+  test("all_required needs at least one required goal", () => {
+    const r = parseContract({
+      ...goalFixture,
+      goals: goalFixture.goals.map((g) => ({ ...g, required: false })),
+    });
+    assert.equal(r.ok, false);
   });
 });

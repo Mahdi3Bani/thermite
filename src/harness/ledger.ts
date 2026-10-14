@@ -596,9 +596,10 @@ export class Ledger {
       if (!r) return undefined;
       const until = new Date(this.clock().getTime() + ttlMs).toISOString();
       this.run(
-        "update job set state = 'leased', lease_owner = ?, lease_until = ?, fence = fence + 1, updated_at = ? where id = ?",
+        "update job set state = 'leased', lease_owner = ?, lease_until = ?, fence = fence + 1, updated_at = ?, leased_at = ? where id = ?",
         owner,
         until,
+        this.now(),
         this.now(),
         Number(r.id),
       );
@@ -606,6 +607,22 @@ export class Ledger {
       this.appendEvent(owner, "job_leased", String(job.id), { fence: job.fence, until });
       return job;
     });
+  }
+
+  /**
+   * Device time an instance's judging has used, in hours: from each finished job's last lease to
+   * its completion (jobs for its attempts, and its validation and calibration jobs).
+   */
+  deviceHours(instance: string): number {
+    const r = this.get<Row>(
+      `select sum((julianday(j.updated_at) - julianday(j.leased_at)) * 24) as h from job j
+       left join attempt a on a.id = j.attempt
+       where j.state in ('done', 'failed') and j.leased_at is not null
+         and (a.instance = ? or json_extract(j.spec, '$.instance') = ?)`,
+      instance,
+      instance,
+    );
+    return Number(r?.h ?? 0);
   }
 
   jobById(id: number): JobRow | undefined {

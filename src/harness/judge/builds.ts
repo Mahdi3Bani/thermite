@@ -57,8 +57,9 @@ export class BuildStore {
     this.workDir = join(scratchDir, "builds");
     mkdirSync(this.storeDir, { recursive: true });
     mkdirSync(this.workDir, { recursive: true });
-    // Others may reach a build by its exact path, but not list the store.
+    // Others may reach a build by its exact path, but not list the store or the work area.
     chmodSync(this.storeDir, 0o711);
+    chmodSync(this.workDir, 0o711);
   }
 
   /** The build key: the sources, the kit's recipe and the toolchain that compiles them. */
@@ -124,6 +125,8 @@ export class BuildStore {
 
     const work = join(this.workDir, `${key.slice(0, 16)}-${randomUUID().slice(0, 8)}`);
     const src = join(work, "src");
+    // Private from the start: the tree and the kit's files are copied in before the hand-over.
+    mkdirSync(work, { mode: 0o700 });
     try {
       await exportTree(input.mirror, input.commit, src);
       for (const rel of input.kit.build.copy) {

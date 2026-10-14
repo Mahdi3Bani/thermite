@@ -1,5 +1,5 @@
-import { canonicalJson } from "../../core/canonical.ts";
-import type { Ledger } from "../ledger.ts";
+import { canonicalJson, sha256Hex } from "../../core/canonical.ts";
+import { type Ledger, LedgerError } from "../ledger.ts";
 
 /**
  * Agent state in the ledger: the direction registry (approach families and how they fared),
@@ -217,6 +217,11 @@ export class Registry {
     });
   }
 
+  /**
+   * Starts a trial with its own token (only its hash is stored). The worker presents the token
+   * to the API; the harness binds every call to this trial's instance and lane, and the token
+   * stops working when the trial ends.
+   */
   startTrial(t: {
     id: string;
     instance: string;
@@ -224,12 +229,97 @@ export class Registry {
     epoch: number;
     family: string;
     parent: string;
+    token?: string | undefined;
   }): void {
     this.ledger.db
       .prepare(
-        "insert into trial (id, instance, lane, epoch, family, parent_commit, started_at) values (?, ?, ?, ?, ?, ?, ?)",
+        "insert into trial (id, instance, lane, epoch, family, parent_commit, token_sha, started_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
       )
-      .run(t.id, t.instance, t.lane, t.epoch, t.family, t.parent, this.now());
+      .run(
+        t.id,
+        t.instance,
+        t.lane,
+        t.epoch,
+        t.family,
+        t.parent,
+        t.token ? sha256Hex(t.token) : null,
+        this.now(),
+      );
+  }
+
+  /** The open trial a token belongs to; throws when the token is unknown or the trial ended. */
+  openTrial(token: string): {
+    id: string;
+    instance: string;
+    lane: string;
+    family: string | null;
+    parent: string;
+    attempt: string | null;
+  } {
+    const r = token
+      ? this.get(
+          "select id, instance, lane, family, parent_commit, attempt, ended_at from trial where token_sha = ?",
+          sha256Hex(token),
+        )
+      : undefined;
+    if (!r) throw new LedgerError("not_found", "unknown trial");
+    if (r.ended_at !== null) throw new LedgerError("stale", `trial ${String(r.id)} has ended`);
+    return {
+      id: String(r.id),
+      instance: String(r.instance),
+      lane: String(r.lane),
+      family: r.family === null ? null : String(r.family),
+      parent: String(r.parent_commit),
+      attempt: r.attempt === null ? null : String(r.attempt),
+    };
+  }
+
+  /** Links a submission to its trial as it is recorded (one per trial). */
+  linkAttempt(trial: string, attempt: string): void {
+    this.ledger.tx(() => {
+      const r = this.ledger.db
+        .prepare("update trial set attempt = ? where id = ? and attempt is null")
+        .run(attempt, trial);
+      if (Number(r.changes) === 0)
+        throw new LedgerError("conflict", `trial ${trial} already has an attempt`);
+      const t = this.get("select family from trial where id = ?", trial);
+      if (t?.family) this.tagAttempt(attempt, String(t.family));
+    });
+  }
+
+  /** The lane's newest finished trials, newest first (for backoff). */
+  recentTrials(
+    instance: string,
+    lane: string | null,
+    n: number,
+  ): { stopped: string; attempt: string | null; ended_at: string; error: string | null }[] {
+    const rows = lane
+      ? this.all(
+          "select stopped, attempt, ended_at, error from trial where instance = ? and lane = ? and ended_at is not null order by ended_at desc limit ?",
+          instance,
+          lane,
+          n,
+        )
+      : this.all(
+          "select stopped, attempt, ended_at, error from trial where instance = ? and ended_at is not null order by ended_at desc limit ?",
+          instance,
+          n,
+        );
+    return rows.map((r) => ({
+      stopped: String(r.stopped),
+      attempt: r.attempt === null ? null : String(r.attempt),
+      ended_at: String(r.ended_at),
+      error: r.error === null ? null : String(r.error),
+    }));
+  }
+
+  /** Tokens the instance's agents have used (trials; the planner's calls are not counted yet). */
+  tokensUsed(instance: string): { in: number; out: number } {
+    const r = this.get(
+      "select coalesce(sum(tokens_in), 0) as i, coalesce(sum(tokens_out), 0) as o from trial where instance = ?",
+      instance,
+    );
+    return { in: Number(r?.i ?? 0), out: Number(r?.o ?? 0) };
   }
 
   finishTrial(
@@ -248,8 +338,8 @@ export class Registry {
     this.ledger.tx(() => {
       this.ledger.db
         .prepare(
-          `update trial set attempt = ?, stopped = ?, turns = ?, tool_calls = ?, tokens_in = ?, tokens_out = ?,
-             error = ?, ended_at = ? where id = ?`,
+          `update trial set attempt = coalesce(attempt, ?), stopped = ?, turns = ?, tool_calls = ?, tokens_in = ?,
+             tokens_out = ?, error = ?, ended_at = ? where id = ?`,
         )
         .run(
           r.attempt ?? null,
@@ -262,13 +352,16 @@ export class Registry {
           this.now(),
           id,
         );
-      const t = this.get("select instance, lane, epoch, family from trial where id = ?", id);
+      const t = this.get(
+        "select instance, lane, epoch, family, attempt from trial where id = ?",
+        id,
+      );
       this.ledger.appendEvent(by, "trial_finished", String(t?.instance ?? ""), {
         trial: id,
         lane: t?.lane ?? null,
         epoch: t?.epoch ?? null,
         family: t?.family ?? null,
-        attempt: r.attempt ?? null,
+        attempt: t?.attempt ?? null,
         stopped: r.stopped,
         turns: r.turns,
         tokens_in: r.tokensIn,
@@ -314,6 +407,18 @@ export class Registry {
   laneBest(instance: string, lane: string): string | null {
     const r = this.get("select lane_best_attempt from lane where id = ?", `${instance}:${lane}`);
     return r?.lane_best_attempt ? String(r.lane_best_attempt) : null;
+  }
+
+  clearLaneBest(instance: string, lane: string, by: string, reason: string): void {
+    this.ledger.tx(() => {
+      const r = this.ledger.db
+        .prepare(
+          "update lane set lane_best_attempt = null where id = ? and lane_best_attempt is not null",
+        )
+        .run(`${instance}:${lane}`);
+      if (Number(r.changes) > 0)
+        this.ledger.appendEvent(by, "lane_best", instance, { lane, attempt: null, reason });
+    });
   }
 
   setLaneBest(instance: string, lane: string, attempt: string, by: string): void {

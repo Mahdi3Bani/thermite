@@ -39,5 +39,15 @@ Workers research a topic for a set duration: hours or days. Their tools are rese
 ## What v1 does so far
 
 - **Hill climb:** built as described, with screening, confirmation, held-out checks and promotion. Promotion waits for an owner's approval unless the unit is configured to promote automatically.
-- **Goal:** the goal tree, metric-threshold goals judged on intervals over repeated runs, code verifiers from the project kit, progress judged as "meets more goals, loses none", and completion. Subjective goals wait for the review panel; "not possible" endings are not implemented yet.
-- **Research:** the archiving fetcher (robots.txt, rate and size limits, no private addresses), quote-verified claims, notes, hypotheses, report sections, hourly digests, a final report from the claim ledger, and a clock only the harness controls. Web search needs a configured search provider; without one, workers follow the campaign's seed URLs and the links of archived pages. Research planning is deterministic in v1: lanes go to the least-covered questions, rotating between exploring, finding primary sources, checking contradictions and consolidating.
+- **Goal:** the goal tree, metric-threshold goals judged on intervals over repeated runs, and code verifiers from the project kit.
+  - Progress means "meets more goals and loses none". A goal the candidate could not check is unknown, not lost.
+  - Progress is screened, then confirmed in fresh runs before promotion. Held-out cells run only at confirmation.
+  - Completion needs two validations of the champion that agree.
+  - Subjective goals wait for the review panel; "not possible" endings are not implemented yet.
+- **Research:**
+  - The archiving fetcher checks robots.txt (on every redirect too), rate and size limits. It checks addresses when it connects, so a name can't be pointed at a private address in between.
+  - A claim is verified only if its quotes are in the archive and every number it states is in its quotes. Only claims quoted from enough independent domains are reported as findings. Duplicate claims are folded together.
+  - Also: notes, hypotheses, report sections (shown as worker notes, never as findings), hourly digests with novelty figures, and a final report from the claim ledger.
+  - The clock is controlled only by the harness and counts running time only.
+  - Web search needs a configured search provider. Without one, workers follow the campaign's seed URLs and the links of archived pages.
+  - Research planning is deterministic in v1. Lanes go to the least-covered questions, rotating between exploring, finding primary sources, checking contradictions and consolidating. When novelty falls, primary sources and contradictions come first.

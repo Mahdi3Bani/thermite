@@ -25,6 +25,7 @@ import {
 const GOOD = readFileSync("kits/smoke-cpu/candidates/good/src/kernel/matmul.c", "utf8");
 const NOOP = readFileSync("kits/smoke-cpu/candidates/noop/src/kernel/matmul.c", "utf8");
 let requests = 0;
+const setid = {};
 
 /** The scripted model: plans with submit_plan; lane-1 improves the kernel, lane-2 restates it. */
 function script(messages, tools) {
@@ -69,6 +70,15 @@ function script(messages, tools) {
               "cc -O2 -std=c11 -Iinclude -c src/kernel/matmul.c -o /tmp/k.o || cc -O2 -std=c11 -Iinclude -c src/kernel/matmul.c -o k.o",
           },
         },
+        // A setgid file left in the workspace must lose its bit once the run ends (the broker
+        // clears set-id bits after every lane run).
+        {
+          name: "run",
+          args: {
+            command: 'cp /bin/true sg && chmod g+s sg && echo "SETID-BEFORE $(stat -c %A sg)"',
+          },
+        },
+        { name: "run", args: { command: 'echo "SETID-AFTER $(stat -c %A sg)"; rm -f sg' } },
         { name: "dev_run", args: { command: "cc --version | head -1" } },
         {
           name: "submit",
@@ -90,13 +100,17 @@ const model = createServer((req, res) => {
   req.on("end", () => {
     requests++;
     const p = JSON.parse(body);
+    for (const m of p.messages ?? []) {
+      for (const hit of JSON.stringify(m.content ?? "").matchAll(/SETID-(BEFORE|AFTER) (\S+)/g))
+        setid[hit[1]] = hit[2];
+    }
     const turn = script(p.messages ?? [], p.tools ?? []);
     const id = `c${requests}`;
     const chunk = (delta, finish) =>
       `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created: 0, model: p.model, choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
     res.writeHead(200, { "content-type": "text/event-stream" });
     res.write(chunk({ role: "assistant", content: turn.text ?? "" }, null));
-    (turn.toolCalls ?? []).forEach((t, i) =>
+    for (const [i, t] of (turn.toolCalls ?? []).entries()) {
       res.write(
         chunk(
           {
@@ -111,8 +125,8 @@ const model = createServer((req, res) => {
           },
           null,
         ),
-      ),
-    );
+      );
+    }
     res.write(chunk({}, turn.toolCalls?.length ? "tool_calls" : "stop"));
     res.write(
       `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created: 0, model: p.model, choices: [], usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 } })}\n\n`,
@@ -224,7 +238,12 @@ try {
     ),
   );
   check("no lane process outlives its trial", lanes.length === 0, lanes);
-  check("the model was asked (planner and workers)", requests >= 9, requests);
+  check(
+    "a setgid file a lane made lost its bit after the run",
+    /^-.....s/.test(setid.BEFORE ?? "") && /^-.....x/.test(setid.AFTER ?? ""),
+    setid,
+  );
+  check("the model was asked (planner and workers)", requests >= 11, requests);
 } catch (err) {
   failed = true;
   check("acceptance run", false, String(err?.stack ?? err));

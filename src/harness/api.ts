@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
+import { Registry } from "./agents/registry.ts";
 import { LedgerError } from "./ledger.ts";
 import type { Research } from "./research/research.ts";
 import { type HarnessService, SubmitRequest } from "./service.ts";
@@ -26,20 +27,27 @@ function tokenMatches(given: string, expected: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+function allows(tokens: ApiTokens, scopes: Scope[], header: string | undefined): boolean {
+  const h = header ?? "";
+  const token = h.startsWith("Bearer ") ? h.slice(7) : "";
+  return scopes.some((s) => {
+    const expected = tokens[s];
+    return expected !== undefined && expected.length > 0 && tokenMatches(token, expected);
+  });
+}
+
 function requireScope(tokens: ApiTokens, scopes: Scope[]): MiddlewareHandler {
   return async (c, next) => {
-    const header = c.req.header("authorization") ?? "";
-    const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-    const allowed = scopes.some((s) => {
-      const expected = tokens[s];
-      return expected !== undefined && expected.length > 0 && tokenMatches(token, expected);
-    });
-    if (!allowed) return c.json({ error: "unauthorized" }, 401);
+    if (!allows(tokens, scopes, c.req.header("authorization")))
+      return c.json({ error: "unauthorized" }, 401);
     await next();
   };
 }
 
-function statusFor(err: unknown): 400 | 404 | 409 | 500 {
+class Unauthorized extends Error {}
+
+function statusFor(err: unknown): 400 | 401 | 404 | 409 | 500 {
+  if (err instanceof Unauthorized) return 401;
   if (err instanceof LedgerError) {
     return err.code === "not_found"
       ? 404
@@ -52,16 +60,19 @@ function statusFor(err: unknown): 400 | 404 | 409 | 500 {
 }
 
 export interface HarnessApiExtras {
-  /** Agents' development runs on the device (judge first). */
-  devRuns?: { run(input: unknown): Promise<unknown> } | undefined;
+  /** Agents' development runs on the device (judge first), bound to the calling trial. */
+  devRuns?: { run(input: unknown, trial: string): Promise<unknown> } | undefined;
   /** Research mode: the harness's fetcher, corpus and claim ledger. */
   research?: Research | undefined;
 }
 
-const ResearchCall = z.object({
-  instance: z.string().min(1),
-  lane: z.string().min(1).nullable().default(null),
-});
+/** A worker's own trial token: `Authorization: Bearer trial.<token>`. */
+function trialToken(header: string | undefined): string | undefined {
+  const h = header ?? "";
+  return h.startsWith("Bearer trial.") ? h.slice("Bearer trial.".length) : undefined;
+}
+
+const Strings = z.array(z.string().max(500)).max(50).default([]);
 
 export function createHarnessApi(
   service: HarnessService,
@@ -70,8 +81,19 @@ export function createHarnessApi(
 ): Hono {
   const app = new Hono();
   const supervisor = requireScope(tokens, ["supervisor"]);
-  const proposer = requireScope(tokens, ["proposer"]);
-  const either = requireScope(tokens, ["supervisor", "proposer"]);
+  const registry = new Registry(service.ledger);
+  /** The caller's open trial (its token binds the instance and lane). */
+  const trialOf = (header: string | undefined) => {
+    const token = trialToken(header);
+    if (!token) throw new Unauthorized("unauthorized");
+    try {
+      return { token, trial: registry.openTrial(token) };
+    } catch (err) {
+      if (err instanceof LedgerError && err.code === "not_found")
+        throw new Unauthorized("unauthorized");
+      throw err;
+    }
+  };
 
   app.onError((err, c) => {
     const status = statusFor(err);
@@ -112,21 +134,42 @@ export function createHarnessApi(
     });
   });
 
-  app.post("/v1/attempts", proposer, bodyLimit({ maxSize: 32 * 1024 * 1024 }), async (c) => {
+  // Workers submit with their trial token (the trial decides instance, lane and parent); the
+  // proposer token is for the CLI and scripted proposers in development.
+  app.post("/v1/attempts", bodyLimit({ maxSize: 32 * 1024 * 1024 }), async (c) => {
+    if (trialToken(c.req.header("authorization"))) {
+      const { token } = trialOf(c.req.header("authorization"));
+      const body = SubmitRequest.pick({
+        patch_base64: true,
+        hypothesis: true,
+        claim: true,
+        known_flaws: true,
+      }).parse(await c.req.json());
+      return c.json(await service.submitForTrial(token, body), 201);
+    }
+    if (!allows(tokens, ["proposer"], c.req.header("authorization")))
+      throw new Unauthorized("unauthorized");
     const req = SubmitRequest.parse(await c.req.json());
     return c.json(await service.submitAttempt(req, "proposer"), 201);
   });
 
-  app.post("/v1/dev-runs", proposer, async (c) => {
+  app.post("/v1/dev-runs", bodyLimit({ maxSize: 64 * 1024 }), async (c) => {
+    const { trial } = trialOf(c.req.header("authorization"));
     if (!extras.devRuns) return c.json({ error: "dev runs are not available" }, 404);
-    return c.json((await extras.devRuns.run(await c.req.json())) as object);
+    const body = z
+      .object({ command: z.string(), timeout_s: z.number().optional(), cwd: z.string() })
+      .parse(await c.req.json());
+    return c.json((await extras.devRuns.run({ ...body, lane: trial.lane }, trial.id)) as object);
   });
 
-  app.post("/v1/research/:op", proposer, bodyLimit({ maxSize: 1024 * 1024 }), async (c) => {
+  app.post("/v1/research/:op", bodyLimit({ maxSize: 1024 * 1024 }), async (c) => {
+    const { trial } = trialOf(c.req.header("authorization"));
     const r = extras.research;
     if (!r) return c.json({ error: "research is not available" }, 404);
     const body = (await c.req.json()) as Record<string, unknown>;
-    const { instance, lane } = ResearchCall.parse(body);
+    // The trial decides where its work goes; instance and lane in the body are ignored.
+    const { instance, lane } = trial;
+    r.requireRunning(instance);
     const s = (k: string) => String(body[k] ?? "");
     switch (c.req.param("op")) {
       case "fetch":
@@ -138,24 +181,17 @@ export function createHarnessApi(
       case "search":
         return c.json(r.search(instance, lane, s("query")));
       case "search-corpus":
-        return c.json(r.searchCorpus(instance, s("pattern")));
+        return c.json(r.searchCorpus(instance, s("text")));
       case "claim":
         return c.json(r.addClaim(instance, lane, body));
       case "note":
-        return c.json(
-          r.addNote(instance, lane, s("text"), (body.sources as string[] | undefined) ?? []),
-        );
+        return c.json(r.addNote(instance, lane, s("text"), Strings.parse(body.sources)));
       case "hypothesis":
         return c.json(
-          r.proposeHypothesis(
-            instance,
-            lane,
-            s("text"),
-            (body.supporting as string[] | undefined) ?? [],
-          ),
+          r.proposeHypothesis(instance, lane, s("text"), Strings.parse(body.supporting)),
         );
       case "section":
-        return c.json(r.updateSection(instance, lane ?? "worker", s("name"), s("body")));
+        return c.json(r.updateSection(instance, lane, s("name"), s("body")));
       case "stats":
         return c.json({ ...r.stats(instance), clock: r.clock(instance) });
       default:
@@ -163,9 +199,20 @@ export function createHarnessApi(
     }
   });
 
-  app.get("/v1/attempts/:id", either, (c) =>
-    c.json(service.attemptStatus(c.req.param("id")) as object),
-  );
+  app.get("/v1/attempts/:id", async (c) => {
+    const id = c.req.param("id");
+    if (trialToken(c.req.header("authorization"))) {
+      // A worker sees only its own lane's attempts.
+      const { trial } = trialOf(c.req.header("authorization"));
+      const a = service.ledger.getAttempt(id);
+      if (!a || String(a.instance) !== trial.instance || String(a.lane) !== trial.lane)
+        throw new LedgerError("not_found", `no attempt ${id} in this lane`);
+      return c.json(service.attemptStatus(id) as object);
+    }
+    if (!allows(tokens, ["supervisor", "proposer"], c.req.header("authorization")))
+      throw new Unauthorized("unauthorized");
+    return c.json(service.attemptStatus(id) as object);
+  });
 
   return app;
 }

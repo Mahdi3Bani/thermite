@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import type { StructuredDirective } from "../../core/commands.ts";
 import type { Contract, ResearchContract } from "../../core/contract.ts";
 import type { Role, Runner } from "../broker/runner.ts";
@@ -35,24 +35,59 @@ export interface SchedulerOptions {
   service: HarnessService;
   runner: Runner;
   model?: ModelConfig | undefined;
-  /** Runs one trial (in a child process in the harness; in-process in tests). */
-  runTrial: (spec: TrialSpec) => Promise<TrialResult>;
+  /** Runs one trial (in a child process in the harness; in-process in tests); abortable. */
+  runTrial: (spec: TrialSpec, signal: AbortSignal) => Promise<TrialResult>;
   /** Research mode: the research service and its trial runner. */
   research?: Research | undefined;
-  runResearchTrial?: ((spec: ResearchTrialSpec) => Promise<TrialResult>) | undefined;
+  runResearchTrial?:
+    | ((spec: ResearchTrialSpec, signal: AbortSignal) => Promise<TrialResult>)
+    | undefined;
+  /** Development runs: a lane's queued or running dev run is settled before its next trial. */
+  devRuns?: { settle(lane: string): Promise<void> } | undefined;
   owner: string;
   maxConcurrent?: number | undefined;
   trialWallMs?: number | undefined;
   maxTurns?: number | undefined;
   epochCapMs?: number | undefined;
+  /** Model price per million tokens, for the contract's llm_usd budget (unset: not enforced). */
+  usdPerMTokIn?: number | undefined;
+  usdPerMTokOut?: number | undefined;
+  /** Backoff after unproductive trials: base delay and cap. */
+  backoffBaseMs?: number | undefined;
+  backoffMaxMs?: number | undefined;
 }
+
+/** Lifecycles of attempts the judge has not finished with. */
+const OPEN_LIFECYCLES = [
+  "queued",
+  "building",
+  "screening",
+  "confirming",
+  "verifying",
+  "awaiting_audit",
+  "awaiting_approval",
+];
+/** After this many trials in a row end in errors, agents cool down (a model outage, usually). */
+const ERROR_STREAK = 6;
+const COOLDOWN_MS = 30 * 60_000;
+
+type Optional =
+  | "model"
+  | "research"
+  | "runResearchTrial"
+  | "devRuns"
+  | "usdPerMTokIn"
+  | "usdPerMTokOut";
 
 export class Scheduler {
   readonly registry: Registry;
-  private readonly o: Required<Omit<SchedulerOptions, "model" | "research" | "runResearchTrial">> &
-    Pick<SchedulerOptions, "model" | "research" | "runResearchTrial">;
+  private readonly o: Required<Omit<SchedulerOptions, Optional>> & Pick<SchedulerOptions, Optional>;
   private readonly ledger: Ledger;
   private readonly running = new Map<string, Promise<void>>();
+  private readonly aborts = new Map<string, AbortController>();
+  /** The newest workers_reset event acted on. */
+  private resetSeen: number;
+  private cooldownNoted = "";
 
   constructor(opts: SchedulerOptions) {
     this.o = {
@@ -60,12 +95,113 @@ export class Scheduler {
       trialWallMs: 20 * 60_000,
       maxTurns: 60,
       epochCapMs: 3 * 3_600_000,
+      backoffBaseMs: 15_000,
+      backoffMaxMs: 10 * 60_000,
       ...opts,
     } as typeof this.o;
     this.ledger = opts.service.ledger;
     this.registry = new Registry(this.ledger);
     // Resume after a restart: nothing of an earlier process is running any more.
     this.registry.interruptUnfinished(opts.owner);
+    this.resetSeen = this.lastReset();
+  }
+
+  private lastReset(): number {
+    const r = this.ledger.db
+      .prepare("select max(id) as id from event where kind = 'workers_reset'")
+      .get() as { id: number | null };
+    return Number(r.id ?? 0);
+  }
+
+  /**
+   * reset_workers: running trials of the instance are killed, lane bests cleared and the
+   * epoch ended, so the next tick plans afresh.
+   */
+  private async applyResets(): Promise<void> {
+    const resets = this.ledger.db
+      .prepare("select id, subject from event where kind = 'workers_reset' and id > ? order by id")
+      .all(this.resetSeen) as { id: number; subject: string }[];
+    for (const r of resets) {
+      this.resetSeen = r.id;
+      for (const a of this.aborts.values()) a.abort();
+      await this.idle();
+      for (const lane of this.ledger.db
+        .prepare("select id from lane where instance = ?")
+        .all(r.subject) as { id: string }[]) {
+        this.registry.clearLaneBest(
+          r.subject,
+          lane.id.slice(r.subject.length + 1),
+          this.o.owner,
+          "workers reset",
+        );
+      }
+      const epoch = this.registry.currentEpoch(r.subject);
+      if (epoch && !epoch.ended_at) this.registry.endEpoch(r.subject, epoch.n, this.o.owner);
+    }
+  }
+
+  /** Why a lane must wait before its next trial (backoff after unproductive trials), if it must. */
+  private laneWaitMs(instance: string, lane: string, research: boolean): number {
+    const recent = this.registry.recentTrials(instance, lane, 8);
+    let k = 0;
+    for (const t of recent) {
+      const lifecycle = t.attempt ? String(this.ledger.getAttempt(t.attempt)?.lifecycle) : null;
+      const unproductive = research
+        ? t.stopped === "error"
+        : t.stopped === "error" ||
+          (!t.attempt && t.stopped !== "interrupted") ||
+          lifecycle === "rejected_v0" ||
+          lifecycle === "duplicate";
+      if (!unproductive) break;
+      k++;
+    }
+    if (!k || !recent[0]) return 0;
+    const delay = Math.min(this.o.backoffBaseMs * 2 ** (k - 1), this.o.backoffMaxMs);
+    return Math.max(0, Date.parse(recent[0].ended_at) + delay - Date.now());
+  }
+
+  /** A run of errors across the instance (a model outage): no new trials for a while. */
+  private coolingDown(instance: string): boolean {
+    const recent = this.registry.recentTrials(instance, null, ERROR_STREAK);
+    if (recent.length < ERROR_STREAK || !recent.every((t) => t.stopped === "error")) return false;
+    const last = recent[0] as { ended_at: string; error: string | null };
+    const until = Date.parse(last.ended_at) + COOLDOWN_MS;
+    if (Date.now() >= until) return false;
+    if (this.cooldownNoted !== last.ended_at) {
+      this.cooldownNoted = last.ended_at;
+      this.ledger.appendEvent(this.o.owner, "agents_cooldown", instance, {
+        until: new Date(until).toISOString(),
+        trials: ERROR_STREAK,
+        last_error: last.error?.slice(0, 300) ?? null,
+      });
+    }
+    return true;
+  }
+
+  /** The contract's budgets that end agent work, other than wall time: the first one spent. */
+  private budgetSpent(instance: string, contract: Contract): string | undefined {
+    const b = contract.budget;
+    if (b.device_hours !== undefined && this.ledger.deviceHours(instance) >= b.device_hours)
+      return "the device-hours budget is spent";
+    if (
+      b.llm_usd !== undefined &&
+      this.o.usdPerMTokIn !== undefined &&
+      this.o.usdPerMTokOut !== undefined
+    ) {
+      const t = this.registry.tokensUsed(instance);
+      const usd = (t.in * this.o.usdPerMTokIn + t.out * this.o.usdPerMTokOut) / 1e6;
+      if (usd >= b.llm_usd) return `the model budget is spent ($${usd.toFixed(2)})`;
+    }
+    return undefined;
+  }
+
+  private openAttempts(instance: string): number {
+    const r = this.ledger.db
+      .prepare(
+        `select count(*) as n from attempt where instance = ? and lifecycle in (${OPEN_LIFECYCLES.map(() => "?").join(",")})`,
+      )
+      .get(instance, ...OPEN_LIFECYCLES) as { n: number };
+    return Number(r.n);
   }
 
   /** Trials still running (awaited by tests and on shutdown). */
@@ -119,16 +255,43 @@ export class Scheduler {
     return gain - 1;
   }
 
-  /** Keeps each lane's best: a judged win of the lane that beats its previous best (SLA keep rule). */
+  /**
+   * Keeps each lane's best (SLA keep rule): a judged win of the lane, measured against the
+   * current champion, that beats its previous best. Deltas measured against different champions
+   * are never compared: when the champion moves, an older best is dropped. A best whose win did
+   * not hold (failed confirmation, invalidation) or that became the champion is dropped too.
+   */
   private updateLaneBests(instance: string, lanes: string[]): void {
+    const champion = this.ledger.currentChampion(instance);
     for (const lane of lanes) {
-      const best = this.registry.laneBest(instance, lane);
+      let best = this.registry.laneBest(instance, lane);
+      if (best) {
+        const a = this.ledger.getAttempt(best);
+        const verdict = this.ledger.currentVerdict(best)?.verdict;
+        const why =
+          !a || a.invalidated_by !== null
+            ? "invalidated"
+            : !verdict || !KEEP.has(verdict)
+              ? `its verdict is now ${verdict ?? "none"}`
+              : best === champion.attempt
+                ? "it is the champion"
+                : Number(a.baseline_champion_seq) !== champion.seq
+                  ? "the champion has moved since it was measured"
+                  : undefined;
+        if (why) {
+          this.registry.clearLaneBest(instance, lane, this.o.owner, why);
+          best = null;
+        }
+      }
+      const current = (id: string) =>
+        Number(this.ledger.getAttempt(id)?.baseline_champion_seq) === champion.seq;
       const bestDelta = best
         ? (this.registry.evidence(instance, 500, lane).find((e) => e.attempt === best)?.delta ??
           null)
         : null;
       for (const e of this.registry.evidence(instance, 20, lane)) {
         if (!e.verdict || !KEEP.has(e.verdict) || e.delta === null || e.attempt === best) continue;
+        if (e.attempt === champion.attempt || !current(e.attempt)) continue;
         if (bestDelta === null || e.delta > bestDelta) {
           this.registry.setLaneBest(instance, lane, e.attempt, this.o.owner);
           break;
@@ -171,6 +334,7 @@ export class Scheduler {
 
   /** One scheduling step: plan when needed, start trials that may start. */
   async tick(): Promise<boolean> {
+    await this.applyResets();
     const inst = this.instance();
     if (!inst || !this.o.model) return false;
     // The contract's wall-time budget ends agent work (the judge still finishes what is queued).
@@ -193,6 +357,12 @@ export class Scheduler {
       }
       return false;
     }
+    const spent = this.budgetSpent(inst.id, inst.contract);
+    if (spent) {
+      if (!this.running.size) this.ledger.setInstanceStatus(inst.id, "paused", spent, this.o.owner);
+      return false;
+    }
+    if (this.coolingDown(inst.id)) return false;
     if (inst.contract.mode === "research") return this.researchTick(inst.id, inst.contract);
     const { id, contract } = inst;
     const perEpoch = contract.lanes.trials_per_epoch;
@@ -220,6 +390,8 @@ export class Scheduler {
       if (trials.length >= perEpoch || this.running.has(a.lane)) continue;
       if (last && (!last.ended || !this.settled(last.attempt))) continue;
       if (this.running.size >= this.o.maxConcurrent) continue;
+      if (this.openAttempts(id) >= contract.budget.max_open_attempts) continue;
+      if (this.laneWaitMs(id, a.lane, false) > 0) continue;
       this.startTrial(id, contract, epoch.n, a, trials.length + 1, perEpoch);
       started = true;
     }
@@ -267,6 +439,7 @@ export class Scheduler {
         complete = false;
       if (trials.length >= contract.lanes.trials_per_epoch || this.running.has(a.lane)) continue;
       if (this.running.size >= this.o.maxConcurrent) continue;
+      if (this.laneWaitMs(instance, a.lane, true) > 0) continue;
       this.startResearchTrial(instance, contract, epoch.n, a, clock);
       started = true;
     }
@@ -297,12 +470,29 @@ export class Scheduler {
       .questions.map((q, i) => ({ i, verified: q.verified }))
       .sort((x, y) => x.verified - y.verified || x.i - y.i);
     const lanes = lanesOf(this.laneCount(instance, contract));
+    // When novelty falls (an hour with no new source and no newly verified claim), lanes go
+    // deeper instead of wider: primary sources and contradictions first.
+    const stats = research.stats(instance);
+    const stalled =
+      research.clock(instance).elapsed_ms > 3_600_000 &&
+      stats.last_hour.sources === 0 &&
+      stats.last_hour.verified === 0;
+    const tasks = stalled
+      ? [...Scheduler.RESEARCH_TASKS].sort(
+          (x, y) =>
+            Number(!["primary", "contradict"].includes(x.id)) -
+            Number(!["primary", "contradict"].includes(y.id)),
+        )
+      : Scheduler.RESEARCH_TASKS.map(
+          (_, k) =>
+            Scheduler.RESEARCH_TASKS[(n + k - 1) % Scheduler.RESEARCH_TASKS.length] as {
+              id: string;
+              description: string;
+            },
+        );
     const assignments: Assignment[] = lanes.map((lane, k) => {
       const q = coverage[k % coverage.length] as { i: number };
-      const task = Scheduler.RESEARCH_TASKS[(n + k - 1) % Scheduler.RESEARCH_TASKS.length] as {
-        id: string;
-        description: string;
-      };
+      const task = tasks[k % tasks.length] as { id: string; description: string };
       return {
         lane,
         family: task.id,
@@ -318,7 +508,9 @@ export class Scheduler {
       valid: false,
       rawViolations: [],
       assignments,
-      notes: "research plan (deterministic in v1)",
+      notes: stalled
+        ? "research plan (deterministic in v1); novelty fell, so primary sources and contradictions first"
+        : "research plan (deterministic in v1)",
       by: this.o.owner,
     });
   }
@@ -353,6 +545,7 @@ export class Scheduler {
     ]
       .filter((l) => l !== "")
       .join("\n");
+    const token = randomBytes(32).toString("hex");
     this.registry.startTrial({
       id,
       instance,
@@ -360,24 +553,40 @@ export class Scheduler {
       epoch,
       family: a.family,
       parent: "research",
+      token,
     });
+    const abort = new AbortController();
+    this.aborts.set(a.lane, abort);
     const work = (async () => {
       let r: TrialResult = { stopped: "error", turns: 0, toolCalls: 0, tokensIn: 0, tokensOut: 0 };
       try {
-        r = await (this.o.runResearchTrial as (s: ResearchTrialSpec) => Promise<TrialResult>)({
-          trialId: id,
-          instance,
-          lane: a.lane,
-          brief,
-          wallMs: this.o.trialWallMs,
-          maxTurns: this.o.maxTurns,
-        });
+        r = await (
+          this.o.runResearchTrial as (
+            s: ResearchTrialSpec,
+            signal: AbortSignal,
+          ) => Promise<TrialResult>
+        )(
+          {
+            trialId: id,
+            token,
+            instance,
+            lane: a.lane,
+            brief,
+            wallMs: this.o.trialWallMs,
+            maxTurns: this.o.maxTurns,
+          },
+          abort.signal,
+        );
       } catch (err) {
         r = { ...r, error: err instanceof Error ? err.message : String(err) };
       } finally {
+        if (abort.signal.aborted) r = { ...r, stopped: "interrupted" };
         this.registry.finishTrial(id, r, this.o.owner);
       }
-    })().finally(() => this.running.delete(a.lane));
+    })().finally(() => {
+      this.running.delete(a.lane);
+      this.aborts.delete(a.lane);
+    });
     this.running.set(a.lane, work);
   }
 
@@ -391,6 +600,9 @@ export class Scheduler {
   ): void {
     const lane = a.lane as Role;
     const id = `t-${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+    const token = randomBytes(32).toString("hex");
+    const abort = new AbortController();
+    this.aborts.set(a.lane, abort);
     const work = (async () => {
       const inst = this.ledger.getInstance(instance);
       if (!inst) return;
@@ -400,7 +612,15 @@ export class Scheduler {
         a.parent === "lane_best" && best
           ? String(this.ledger.getAttempt(best)?.commit_sha)
           : champion.commit_sha;
-      this.registry.startTrial({ id, instance, lane: a.lane, epoch, family: a.family, parent });
+      this.registry.startTrial({
+        id,
+        instance,
+        lane: a.lane,
+        epoch,
+        family: a.family,
+        parent,
+        token,
+      });
       let ws: { dir: string; repo: string } | undefined;
       let r: TrialResult = { stopped: "error", turns: 0, toolCalls: 0, tokensIn: 0, tokensOut: 0 };
       try {
@@ -411,36 +631,50 @@ export class Scheduler {
           commit: parent,
           lane,
         });
-        r = await this.o.runTrial({
-          trialId: id,
-          instance,
-          lane,
-          workspace: ws.repo,
-          parentCommit: parent,
-          editablePaths: "editable_paths" in contract ? contract.editable_paths : [],
-          brief: this.brief(
+        // Reset while the workspace was being prepared: the trial never starts.
+        if (abort.signal.aborted) throw new Error("reset before the trial started");
+        r = await this.o.runTrial(
+          {
+            trialId: id,
+            token,
             instance,
-            contract,
-            epoch,
-            a,
-            k,
-            perEpoch,
-            parent === champion.commit_sha
-              ? `the champion (seq ${champion.seq})`
-              : `your lane's best attempt ${best}`,
-          ),
-          wallMs: this.o.trialWallMs,
-          maxTurns: this.o.maxTurns,
-        });
+            lane,
+            workspace: ws.repo,
+            workspaceRoot: ws.dir,
+            parentCommit: parent,
+            editablePaths: "editable_paths" in contract ? contract.editable_paths : [],
+            brief: this.brief(
+              instance,
+              contract,
+              epoch,
+              a,
+              k,
+              perEpoch,
+              parent === champion.commit_sha
+                ? `the champion (seq ${champion.seq})`
+                : `your lane's best attempt ${best}`,
+            ),
+            wallMs: this.o.trialWallMs,
+            maxTurns: this.o.maxTurns,
+          },
+          abort.signal,
+        );
       } catch (err) {
         r = { ...r, stopped: "error", error: err instanceof Error ? err.message : String(err) };
       } finally {
+        if (abort.signal.aborted && r.stopped !== "submitted") r = { ...r, stopped: "interrupted" };
         if (r.submitted) this.registry.tagAttempt(r.submitted.attempt, a.family);
+        // The trial ends first (its token stops working), then its processes and dev runs.
         this.registry.finishTrial(id, { ...r, attempt: r.submitted?.attempt }, this.o.owner);
+        await this.o.runner.killRole(lane).catch(() => 0);
+        await this.o.devRuns?.settle(lane).catch(() => undefined);
         await this.o.runner.killRole(lane).catch(() => 0);
         if (ws) await this.o.runner.remove(ws.dir).catch(() => undefined);
       }
-    })().finally(() => this.running.delete(a.lane));
+    })().finally(() => {
+      this.running.delete(a.lane);
+      this.aborts.delete(a.lane);
+    });
     this.running.set(a.lane, work);
   }
 

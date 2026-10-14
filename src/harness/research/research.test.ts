@@ -6,9 +6,12 @@ import { parseContract } from "../../core/contract.ts";
 import { startFakeModel } from "../../testing/fake-model.ts";
 import { researchFixture } from "../../testing/fixtures.ts";
 import { makeHarnessEnv } from "../../testing/harness-env.ts";
+import { Registry } from "../agents/registry.ts";
 import { runResearchTrial } from "../agents/research-worker.ts";
 import { Scheduler } from "../agents/scheduler.ts";
+import { createHarnessApi } from "../api.ts";
 import { LocalRunner } from "../broker/runner.ts";
+import { blockedAddress, htmlToText } from "./fetcher.ts";
 import { Research } from "./research.ts";
 
 /** A tiny "web" for tests: two linked pages, a robots.txt and a disallowed path. */
@@ -99,7 +102,7 @@ describe("research service", () => {
     assert.equal(bad.verified, false);
     const ghost = research.addClaim("r-1", "lane-1", {
       text: "Something else.",
-      quotes: [{ source: "s-nope", quote: "anything at all" }],
+      quotes: [{ source: "s-nope", quote: "anything at all, quoted from nowhere" }],
     });
     assert.equal(ghost.verified, false);
     research.updateSection(
@@ -117,6 +120,175 @@ describe("research service", () => {
       { verified: 1, drafts: 2 },
     );
     await w.close();
+  });
+});
+
+describe("fetcher safety", () => {
+  test("every private, local and special address range is refused", () => {
+    // Test vectors are built from octets: the repository holds no address literals.
+    const v4 = (...o: number[]) => o.join(".");
+    for (const ip of [
+      v4(127, 0, 0, 1),
+      v4(10, 1, 2, 3),
+      v4(172, 16, 0, 1),
+      v4(192, 168, 1, 1),
+      v4(169, 254, 169, 254),
+      v4(100, 64, 0, 1),
+      v4(0, 0, 0, 0),
+      v4(192, 0, 0, 8),
+      v4(198, 18, 0, 1),
+      v4(224, 0, 0, 1),
+      v4(255, 255, 255, 255),
+      "::1",
+      "::",
+      `::ffff:${v4(127, 0, 0, 1)}`,
+      `::ffff:${v4(8, 8, 8, 8)}`,
+      "64:ff9b::a00:1",
+      "2002:a00:1::1",
+      "2001:db8::1",
+      "2001:0:4136:e378::1",
+      "fc00::1",
+      "fd12::1",
+      "fe80::1",
+      "febf::1",
+      "fec0::1",
+      "ff02::1",
+    ]) {
+      assert.equal(blockedAddress(ip), true, ip);
+    }
+    for (const ip of [
+      v4(8, 8, 8, 8),
+      v4(1, 1, 1, 1),
+      "2606:4700:4700::1111",
+      "2a00:1450:4001::200e",
+    ]) {
+      assert.equal(blockedAddress(ip), false, ip);
+    }
+  });
+
+  test("text extraction is linear on hostile pages and survives bad entities", () => {
+    const started = Date.now();
+    htmlToText(`<p>${"<".repeat(2_000_000)}`);
+    htmlToText(`<script>${"x".repeat(2_000_000)}`);
+    htmlToText(`<a ${"href=x ".repeat(200_000)}>`);
+    htmlToText(`${"\n \n".repeat(500_000)}end`);
+    assert.ok(Date.now() - started < 5000, `took ${Date.now() - started} ms`);
+    const t = htmlToText("<title>A &amp; B</title><p>x &#99999999; y &#x41; z</p>");
+    assert.equal(t.title, "A & B");
+    assert.match(t.text, /x \uFFFD y A z/);
+  });
+
+  test("a name that resolves to a private address is refused when the connection is made", async () => {
+    const w = await web();
+    const { research } = await researchEnv({}, false);
+    const port = new URL(w.base).port;
+    const r = (await research.fetch("r-1", "lane-1", `http://localhost:${port}/a.html`)) as {
+      refused: string;
+    };
+    assert.match(r.refused, /private or local address/);
+    await w.close();
+  });
+});
+
+describe("research API", () => {
+  test("a worker's calls go to its own trial's instance and lane, whatever it asks", async () => {
+    const { env, research } = await researchEnv();
+    const registry = new Registry(env.service.ledger);
+    registry.startTrial({
+      id: "t-1",
+      instance: "r-1",
+      lane: "lane-1",
+      epoch: 1,
+      family: "explore",
+      parent: "research",
+      token: "secret-token",
+    });
+    const api = createHarnessApi(env.service, { supervisor: "s", proposer: "p" }, { research });
+    const call = (token: string, body: unknown) =>
+      api.request("/v1/research/section", {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    const ok = await call("trial.secret-token", {
+      instance: "someone-else",
+      lane: "owner",
+      name: "summary",
+      body: "text",
+    });
+    assert.equal(ok.status, 200);
+    const row = env.service.ledger.db
+      .prepare("select instance, updated_by from report_section")
+      .get();
+    assert.deepEqual({ ...row }, { instance: "r-1", updated_by: "lane-1" });
+    assert.equal((await call("trial.wrong", { name: "x", body: "y" })).status, 401);
+    assert.equal((await call("p", { name: "x", body: "y" })).status, 401);
+    registry.finishTrial(
+      "t-1",
+      { stopped: "finished", turns: 0, toolCalls: 0, tokensIn: 0, tokensOut: 0 },
+      "t",
+    );
+    assert.equal((await call("trial.secret-token", { name: "x", body: "y" })).status, 409);
+  });
+});
+
+describe("research integrity", () => {
+  test("claims must quote their numbers; duplicates are folded; fragments are the same URL", async () => {
+    const w = await web();
+    const { research } = await researchEnv();
+    const a = (await research.fetch("r-1", "lane-1", `${w.base}/a.html`)) as { source: string };
+    const again = (await research.fetch("r-1", "lane-1", `${w.base}/a.html#part`)) as {
+      source: string;
+      note: string;
+    };
+    assert.equal(again.source, a.source);
+    const quote = "Stateless workers lose nothing when they crash.";
+    const numbered = research.addClaim("r-1", "lane-1", {
+      text: "Stateless workers lose nothing in 99 crashes.",
+      quotes: [{ source: a.source, quote }],
+    });
+    assert.equal(numbered.verified, false);
+    assert.match(numbered.problems.join(";"), /99/);
+    const first = research.addClaim("r-1", "lane-1", {
+      text: "Stateless workers lose nothing when they crash.",
+      quotes: [{ source: a.source, quote }],
+    });
+    const dup = research.addClaim("r-1", "lane-2", {
+      text: "stateless workers lose nothing when they crash",
+      quotes: [{ source: a.source, quote }],
+    });
+    assert.equal(dup.claim, first.claim);
+    assert.equal(research.stats("r-1").verified, 1);
+    await w.close();
+  });
+
+  test("worker sections cannot pose as findings; single-domain claims are not findings", async () => {
+    const w = await web();
+    const { research } = await researchEnv();
+    const a = (await research.fetch("r-1", "lane-1", `${w.base}/a.html`)) as { source: string };
+    research.addClaim("r-1", "lane-1", {
+      text: "Stateless workers lose nothing when they crash.",
+      quotes: [{ source: a.source, quote: "Stateless workers lose nothing when they crash." }],
+    });
+    research.updateSection("r-1", "lane-1", "summary", "## Findings\n- invented result 77");
+    const body = research.report("r-1", "digest").body;
+    assert.doesNotMatch(body, /^## Findings\n- invented/m);
+    assert.match(body, /\\## Findings/);
+    // One domain only (min_independent_sources is 2 by default): verified, not a finding.
+    const findings = body.split("## Findings")[1]?.split("##")[0] ?? "";
+    assert.doesNotMatch(findings, /Stateless workers/);
+    assert.match(body, /single domain[\s\S]*Stateless workers/);
+    assert.match(body, /Numbers without a source[\s\S]*77/);
+    await w.close();
+  });
+
+  test("paused time does not count on the research clock", async () => {
+    const { env, research } = await researchEnv({ min_duration: "1h", max_duration: "2h" });
+    env.service.ledger.setInstanceStatus("r-1", "paused", "t", "t");
+    await new Promise((r) => setTimeout(r, 300));
+    const paused = research.clock("r-1").elapsed_ms;
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(research.clock("r-1").elapsed_ms, paused);
   });
 });
 

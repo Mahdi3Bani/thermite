@@ -21,6 +21,8 @@ export class DevRuns {
   /** True while a dev run holds the device; the judge checks it before leasing a job. */
   active = false;
   private queue: Promise<unknown> = Promise.resolve();
+  /** Each lane's newest dev run (queued or running), so its trial can wait for it to end. */
+  private readonly perLane = new Map<string, Promise<unknown>>();
   private readonly runner: Runner;
   private readonly ledger: Ledger;
   private readonly scratchDir: string;
@@ -50,7 +52,20 @@ export class DevRuns {
     return Number(r.n) > 0;
   }
 
-  run(input: unknown): Promise<unknown> {
+  /** Waits until the lane's dev runs have ended (a trial's end waits for this). */
+  async settle(lane: string): Promise<void> {
+    await this.perLane.get(lane)?.catch(() => undefined);
+  }
+
+  private trialOpen(trial: string): boolean {
+    const r = this.ledger.db.prepare("select ended_at from trial where id = ?").get(trial) as
+      | { ended_at: string | null }
+      | undefined;
+    return r !== undefined && r.ended_at === null;
+  }
+
+  /** A dev run for an open trial; one that waited past its trial's end never runs. */
+  run(input: unknown, trial: string): Promise<unknown> {
     const req = DevRunRequest.parse(input);
     const laneRoot = join(this.scratchDir, "lanes", req.lane);
     const cwd = resolve(req.cwd);
@@ -62,8 +77,10 @@ export class DevRuns {
       while (this.judgeBusy()) {
         if (Date.now() > deadline)
           return { ran: false, reason: "the judge kept the device busy; try again later" };
+        if (!this.trialOpen(trial)) return { ran: false, reason: "the trial has ended" };
         await new Promise((r) => setTimeout(r, 1000));
       }
+      if (!this.trialOpen(trial)) return { ran: false, reason: "the trial has ended" };
       this.active = true;
       try {
         const r = await this.runner.run({
@@ -96,6 +113,7 @@ export class DevRuns {
       }
     });
     this.queue = next.catch(() => undefined);
+    this.perLane.set(req.lane, next);
     return next;
   }
 }

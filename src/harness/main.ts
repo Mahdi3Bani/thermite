@@ -104,7 +104,9 @@ async function main(): Promise<void> {
     gpu: driver.type === "cuda-gpu",
   });
 
-  const research = new Research(ledger, paths.stateDir);
+  const research = new Research(ledger, paths.stateDir, {
+    maxCorpusBytes: Number(env.THERMITE_RESEARCH_MAX_MB ?? "2048") * 1024 * 1024,
+  });
 
   const { host, port } = parseListen(env.THERMITE_LISTEN ?? "0.0.0.0:8700");
   const server = serve({
@@ -141,18 +143,29 @@ async function main(): Promise<void> {
         owner: "scheduler",
         maxConcurrent: Number(env.THERMITE_MAX_TRIALS ?? "1"),
         trialWallMs: Number(env.THERMITE_TRIAL_MINUTES ?? "20") * 60_000,
-        runTrial: (spec) => spawnTrial({ kind: "code", spec }, paths.scratchDir, port),
+        runTrial: (spec, signal) =>
+          spawnTrial({ kind: "code", spec }, paths.scratchDir, port, signal),
         research,
-        runResearchTrial: (spec) => spawnTrial({ kind: "research", spec }, paths.scratchDir, port),
+        runResearchTrial: (spec, signal) =>
+          spawnTrial({ kind: "research", spec }, paths.scratchDir, port, signal),
+        devRuns,
+        usdPerMTokIn: env.THERMITE_LLM_USD_PER_MTOK_IN
+          ? Number(env.THERMITE_LLM_USD_PER_MTOK_IN)
+          : undefined,
+        usdPerMTokOut: env.THERMITE_LLM_USD_PER_MTOK_OUT
+          ? Number(env.THERMITE_LLM_USD_PER_MTOK_OUT)
+          : undefined,
       })
     : undefined;
   log("harness", scheduler ? "agents ready" : "no model route: agents off", {
     model: model?.model ?? null,
   });
-  let lastSchedule = 0;
   const exportEveryMs = Number(env.THERMITE_EXPORT_MINUTES ?? "60") * 60_000;
   let stopping = false;
-  const loop = async () => {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  // Three independent loops: a judging job never holds up the scheduler (trials, epochs) or the
+  // exports, and a slow planner call never holds up the judge.
+  const judging = async () => {
     while (!stopping) {
       let worked = false;
       try {
@@ -160,14 +173,21 @@ async function main(): Promise<void> {
       } catch (err) {
         log("harness", "executor error", { error: String(err) });
       }
-      if (scheduler && Date.now() - lastSchedule > 2000) {
-        lastSchedule = Date.now();
-        try {
-          await scheduler.tick();
-        } catch (err) {
-          log("harness", "scheduler error", { error: String(err) });
-        }
+      if (!worked) await sleep(1000);
+    }
+  };
+  const scheduling = async () => {
+    while (!stopping && scheduler) {
+      try {
+        await scheduler.tick();
+      } catch (err) {
+        log("harness", "scheduler error", { error: String(err) });
       }
+      await sleep(2000);
+    }
+  };
+  const exporting = async () => {
+    while (!stopping) {
       // Hourly export for the supervisor to push (and an export command can force one).
       const last = ledger.lastExport();
       const lastAt = last ? Date.parse(last.created_at) : 0;
@@ -181,10 +201,10 @@ async function main(): Promise<void> {
           log("harness", "export error", { error: String(err) });
         }
       }
-      if (!worked) await new Promise((r) => setTimeout(r, 1000));
+      await sleep(5000);
     }
   };
-  const running = loop();
+  const running = Promise.all([judging(), scheduling(), exporting()]);
 
   const shutdown = async (signal: string) => {
     if (stopping) return;

@@ -9,11 +9,35 @@ export type AnyTrial =
   | { kind: "code"; spec: TrialSpec }
   | { kind: "research"; spec: ResearchTrialSpec };
 
-/** Runs one trial in its own worker process (the controller's user), with a hard wall limit. */
+/**
+ * What a worker process inherits: the model route and the broker socket, never the controller's
+ * API tokens or other secrets (its trial token comes in the spec file).
+ */
+const WORKER_ENV = [
+  "PATH",
+  "HOME",
+  "LANG",
+  "TZ",
+  "TMPDIR",
+  "NODE_OPTIONS",
+  "THERMITE_BROKER_SOCKET",
+  "QWEN_BASE_URL",
+  "QWEN_MODEL",
+  "QWEN_API_KEY",
+  "QWEN_CONTEXT_WINDOW",
+  "QWEN_MAX_TOKENS",
+];
+
+/**
+ * Runs one trial in its own worker process (the controller's user), with a hard wall limit. The
+ * worker shares the controller's process group, so the broker's kill of that group after a
+ * controller crash ends it too.
+ */
 export function spawnTrial(
   trial: AnyTrial,
   scratchDir: string,
   apiPort: number,
+  signal?: AbortSignal,
 ): Promise<TrialResult> {
   const spec = trial.spec;
   const dir = join(scratchDir, "trials");
@@ -23,7 +47,12 @@ export function spawnTrial(
   const main = fileURLToPath(new URL("./worker-main.js", import.meta.url));
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [...process.execArgv, main, specFile], {
-      env: { ...process.env, THERMITE_HARNESS_URL: `http://127.0.0.1:${apiPort}` },
+      env: {
+        ...Object.fromEntries(
+          WORKER_ENV.filter((k) => process.env[k] !== undefined).map((k) => [k, process.env[k]]),
+        ),
+        THERMITE_HARNESS_URL: `http://127.0.0.1:${apiPort}`,
+      },
       stdio: ["ignore", "pipe", "pipe"],
     });
     let out = "";
@@ -35,8 +64,12 @@ export function spawnTrial(
       err = (err + d.toString("utf8")).slice(-20_000);
     });
     const timer = setTimeout(() => child.kill("SIGKILL"), spec.wallMs + 120_000);
+    const abort = () => child.kill("SIGKILL");
+    if (signal?.aborted) abort();
+    signal?.addEventListener("abort", abort, { once: true });
     child.on("close", () => {
       clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
       rmSync(specFile, { force: true });
       const last = out.trim().split("\n").pop() ?? "";
       try {

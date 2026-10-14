@@ -12,10 +12,14 @@ import { buildModel, type ModelConfig } from "./model.ts";
 
 export interface TrialSpec {
   trialId: string;
+  /** The trial's own token: it binds API calls to this trial and stops working when it ends. */
+  token?: string | undefined;
   instance: string;
   lane: Role;
   /** The lane's workspace: a git repository at the parent commit, owned by the lane user. */
   workspace: string;
+  /** The directory the lane owns for this trial (the workspace's parent); the disk cap's scope. */
+  workspaceRoot?: string | undefined;
   parentCommit: string;
   /** The contract's editable paths (globs): only changes there are submitted. */
   editablePaths: string[];
@@ -115,6 +119,9 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
     parameters,
     execute: async (_id, params) => {
       result.toolCalls++;
+      // A submission ends the trial: nothing runs after it, even later calls of the same turn.
+      if (result.submitted)
+        return { ...text("the trial ended with your submission"), terminate: true };
       return run(params as Record<string, unknown>);
     },
   });
@@ -184,7 +191,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
           cwd: spec.workspace,
           timeoutMs: Math.min(Number(p.timeout_s ?? 120), 600) * 1000,
           rssLimitBytes: 2 * 1024 * 1024 * 1024,
-          disk: { path: spec.workspace, limitBytes: 2 * 1024 * 1024 * 1024 },
+          disk: { path: spec.workspaceRoot ?? spec.workspace, limitBytes: 2 * 1024 * 1024 * 1024 },
           captureBytes: 32 * 1024,
         });
         return text(
@@ -274,6 +281,10 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
   const agent = new Agent({
     initialState: { systemPrompt: SYSTEM, model, tools },
     streamFn: models.streamSimple.bind(models),
+    // One tool call at a time: lane processes are killed by user when a tool finishes, so
+    // parallel calls would kill each other, and a submission must end the trial before anything
+    // else runs.
+    toolExecution: "sequential",
   });
   agent.subscribe((event) => {
     if (event.type === "turn_end") {

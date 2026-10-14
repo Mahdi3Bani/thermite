@@ -209,6 +209,9 @@ export const GoalContract = z
         ctx.addIssue({ code: "custom", message: `goal ${g.id} has unknown parent ${g.parent}` });
       }
     }
+    if (c.success.policy === "all_required" && !c.goals.some((g) => g.required)) {
+      ctx.addIssue({ code: "custom", message: "all_required needs at least one required goal" });
+    }
     if (c.success.policy === "k_of_n") {
       if (c.success.k === undefined || c.success.k > c.goals.length) {
         ctx.addIssue({ code: "custom", message: "k_of_n needs 1 <= k <= number of goals" });

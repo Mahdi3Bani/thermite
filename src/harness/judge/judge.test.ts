@@ -155,6 +155,44 @@ describe("judge pipeline (local runner, Node test kit)", () => {
       .eventsAfter(0, 10_000)
       .events.filter((e) => e.kind === "goal_complete");
     assert.equal(report.length, 1);
+    // Screened, then confirmed in fresh runs; completion needed two agreeing validations.
+    const verdicts = env.ledger.db
+      .prepare("select verdict from verdict where attempt = ? order by id")
+      .all(id)
+      .map((v) => v.verdict);
+    assert.deepEqual(verdicts, ["goal_screened", "goal_progress"]);
+    const complete = env.ledger.db
+      .prepare(
+        "select count(*) as n from job where kind = 'validate' and state = 'done' and json_extract(result, '$.complete') = 1",
+      )
+      .get();
+    assert.equal(Number(complete?.n), 2);
+  });
+
+  test("goal mode: a failed validation is tried again, a few times, spaced out", async () => {
+    const env = await setup({ goal: { opsPerSecond: 150e6 }, promotion: "auto" });
+    // A validation that failed for an infrastructure reason.
+    const jobId = env.ledger.enqueueJob({
+      kind: "validate",
+      spec: { instance: "js-1", champion_seq: 1 },
+      actor: "t",
+    });
+    env.ledger.db.prepare("update job set state = 'failed', result = '{}' where id = ?").run(jobId);
+    const queued = () =>
+      Number(
+        env.ledger.db
+          .prepare("select count(*) as n from job where kind = 'validate' and state = 'queued'")
+          .get()?.n,
+      );
+    env.judge.tick = env.judge.tick.bind(env.judge);
+    // Too soon after the failure: nothing new.
+    (env.judge as unknown as { maybeScheduleValidation(): void }).maybeScheduleValidation();
+    assert.equal(queued(), 0);
+    env.ledger.db
+      .prepare("update job set updated_at = ? where id = ?")
+      .run(new Date(Date.now() - 11 * 60_000).toISOString(), jobId);
+    (env.judge as unknown as { maybeScheduleValidation(): void }).maybeScheduleValidation();
+    assert.equal(queued(), 1);
   });
 
   test("held-out results stay out of events and exports", async () => {
