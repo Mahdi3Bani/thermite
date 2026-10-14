@@ -28,6 +28,8 @@ write("harness-supervisor-token", token());
 write("harness-proposer-token", token());
 write("harness2-supervisor-token", token());
 write("harness2-proposer-token", token());
+// Placeholder for a local model route's key; replace it to use a real OpenAI-compatible endpoint.
+write("qwen-api-key", "local-placeholder");
 const read = (name) => readFileSync(join(secrets, name), "utf8").trim();
 writeFileSync(
   join(secrets, "control-unit-tokens.json"),

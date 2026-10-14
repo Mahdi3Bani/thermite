@@ -19,6 +19,7 @@ import { BrokerClient } from "./broker/client.ts";
 import { LocalRunner, type Runner } from "./broker/runner.ts";
 import { Judge, type PromotionPolicy } from "./judge/judge.ts";
 import { Ledger } from "./ledger.ts";
+import { Research } from "./research/research.ts";
 import { HarnessService } from "./service.ts";
 import { CpuDriver } from "./targets/cpu.ts";
 import { CudaDriver } from "./targets/cuda.ts";
@@ -103,9 +104,11 @@ async function main(): Promise<void> {
     gpu: driver.type === "cuda-gpu",
   });
 
+  const research = new Research(ledger, paths.stateDir);
+
   const { host, port } = parseListen(env.THERMITE_LISTEN ?? "0.0.0.0:8700");
   const server = serve({
-    fetch: createHarnessApi(service, tokens, { devRuns }).fetch,
+    fetch: createHarnessApi(service, tokens, { devRuns, research }).fetch,
     hostname: host,
     port,
   });
@@ -138,7 +141,9 @@ async function main(): Promise<void> {
         owner: "scheduler",
         maxConcurrent: Number(env.THERMITE_MAX_TRIALS ?? "1"),
         trialWallMs: Number(env.THERMITE_TRIAL_MINUTES ?? "20") * 60_000,
-        runTrial: (spec) => spawnTrial(spec, paths.scratchDir, port),
+        runTrial: (spec) => spawnTrial({ kind: "code", spec }, paths.scratchDir, port),
+        research,
+        runResearchTrial: (spec) => spawnTrial({ kind: "research", spec }, paths.scratchDir, port),
       })
     : undefined;
   log("harness", scheduler ? "agents ready" : "no model route: agents off", {

@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { BrokerClient } from "../broker/client.ts";
 import { modelConfigFromEnv } from "./model.ts";
+import { runResearchTrial } from "./research-worker.ts";
+import type { AnyTrial } from "./spawn.ts";
 import { runTrial, type TrialSpec } from "./worker.ts";
 
 /**
@@ -10,7 +12,7 @@ import { runTrial, type TrialSpec } from "./worker.ts";
  * only through the broker. Prints the trial result as the last line of stdout.
  */
 async function main(): Promise<void> {
-  const spec = JSON.parse(readFileSync(String(process.argv[2]), "utf8")) as TrialSpec;
+  const trial = JSON.parse(readFileSync(String(process.argv[2]), "utf8")) as AnyTrial;
   const model = modelConfigFromEnv();
   if (!model)
     throw new Error("no model route configured (QWEN_BASE_URL, QWEN_MODEL, QWEN_API_KEY)");
@@ -26,6 +28,15 @@ async function main(): Promise<void> {
     if (!res.ok) throw new Error(`${method} ${path} -> ${res.status}: ${text.slice(0, 500)}`);
     return JSON.parse(text);
   };
+  if (trial.kind === "research") {
+    const result = await runResearchTrial(trial.spec, {
+      model,
+      call: (op, args) => call("POST", `/v1/research/${op}`, args),
+    });
+    process.stdout.write(`\n${JSON.stringify(result)}\n`);
+    return;
+  }
+  const spec: TrialSpec = trial.spec;
   const runner = new BrokerClient(String(process.env.THERMITE_BROKER_SOCKET));
   const laneTool = [process.execPath, fileURLToPath(new URL("./lanetool.js", import.meta.url))];
   const result = await runTrial(spec, {

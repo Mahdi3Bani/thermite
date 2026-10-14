@@ -277,6 +277,22 @@ export class Registry {
     });
   }
 
+  /**
+   * Trials a dead controller left unfinished. Their worker processes died with it; the trials
+   * are closed as interrupted (any submission they made stands), so their lanes can go on.
+   */
+  interruptUnfinished(by: string): string[] {
+    const open = this.all("select id from trial where ended_at is null").map((r) => String(r.id));
+    for (const id of open) {
+      this.finishTrial(
+        id,
+        { stopped: "interrupted", turns: 0, toolCalls: 0, tokensIn: 0, tokensOut: 0 },
+        by,
+      );
+    }
+    return open;
+  }
+
   /** Trials of a lane in an epoch (finished or running). */
   trials(
     instance: string,

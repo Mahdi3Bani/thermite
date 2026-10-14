@@ -53,6 +53,7 @@ describe("worker trial", () => {
         lane: "lane-1",
         workspace: ws.repo,
         parentCommit: champion.commit_sha,
+        editablePaths: ["src/kernel/**"],
         brief: "Make work() faster without changing its result.",
         wallMs: 60_000,
         maxTurns: 20,

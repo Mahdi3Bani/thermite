@@ -389,4 +389,84 @@ export const MIGRATIONS: readonly string[] = [
   create trigger goal_check_no_update before update on goal_check begin select raise(abort, 'goal_check is append-only'); end;
   create trigger goal_check_no_delete before delete on goal_check begin select raise(abort, 'goal_check is append-only'); end;
   `,
+  // 5: research mode (M4). The tables from version 1 were never used; they are rebuilt with what
+  // the fetcher, the claim check and the report need.
+  `
+  drop table source;
+  drop table claim;
+  drop table hypothesis;
+  drop table report_version;
+  drop table research_task;
+  create table source (
+    id text primary key,
+    instance text not null,
+    url text not null,
+    final_url text not null,
+    domain text not null,
+    fetched_at text not null,
+    http_status integer not null,
+    content_type text,
+    bytes integer not null,
+    sha256 text not null,
+    title text,
+    raw_path text not null,
+    text_path text not null,
+    fetched_by text not null
+  );
+  create unique index source_url on source (instance, url);
+  create index source_sha on source (instance, sha256);
+  create table claim (
+    id text primary key,
+    instance text not null,
+    lane text,
+    question integer,
+    text text not null,
+    quotes text not null,
+    verified integer not null,
+    problems text not null default '[]',
+    confidence real,
+    created_at text not null
+  );
+  create table note (
+    id integer primary key autoincrement,
+    instance text not null,
+    lane text,
+    text text not null,
+    sources text not null default '[]',
+    created_at text not null
+  );
+  create table hypothesis (
+    id text primary key,
+    instance text not null,
+    lane text,
+    text text not null,
+    supporting text not null default '[]',
+    contradicting text not null default '[]',
+    created_at text not null
+  );
+  create table report_section (
+    instance text not null,
+    name text not null,
+    body text not null,
+    updated_by text not null,
+    updated_at text not null,
+    primary key (instance, name)
+  );
+  create table report_version (
+    id integer primary key autoincrement,
+    instance text not null,
+    kind text not null check (kind in ('digest', 'final')),
+    body text not null,
+    created_at text not null
+  );
+  create table research_query (
+    id integer primary key autoincrement,
+    instance text not null,
+    lane text,
+    query text not null,
+    allowed integer not null,
+    reason text,
+    created_at text not null
+  );
+  `,
 ];

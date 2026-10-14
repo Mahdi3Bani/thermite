@@ -47,6 +47,26 @@ export function metricsText(store: ControlStore, staleAfterMs: number, now = Dat
       for (const [verdict, n] of Object.entries(i.verdicts)) {
         lines.push(`thermite_instance_attempts{${l},verdict="${label(verdict)}"} ${n}`);
       }
+      const ag = i.agents;
+      if (ag.epochs) {
+        lines.push(
+          `thermite_planner_valid_ratio{${l}} ${(ag.planner_valid / ag.epochs).toFixed(4)}`,
+        );
+        lines.push(
+          `thermite_planner_fallback_ratio{${l}} ${(ag.fallbacks / ag.epochs).toFixed(4)}`,
+        );
+      }
+      if (ag.attempts) {
+        lines.push(`thermite_duplicate_ratio{${l}} ${(ag.duplicates / ag.attempts).toFixed(4)}`);
+      }
+      lines.push(`thermite_trials_total{${l}} ${ag.trials}`);
+      lines.push(`thermite_tokens_total{${l},direction="in"} ${ag.tokens_in}`);
+      lines.push(`thermite_tokens_total{${l},direction="out"} ${ag.tokens_out}`);
+      if (i.research) {
+        for (const k of ["sources", "domains", "verified", "drafts", "hypotheses"]) {
+          lines.push(`thermite_research_${k}{${l}} ${Number(i.research[k] ?? 0)}`);
+        }
+      }
     }
   }
   return `${lines.join("\n")}\n`;

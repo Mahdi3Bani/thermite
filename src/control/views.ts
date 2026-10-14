@@ -52,6 +52,22 @@ export interface InstanceView {
   verdicts: Record<string, number>;
   pending_promotions: string[];
   calibration: { at: string; sigma: number; summary: string } | null;
+  /** Agents (M4): planner quality, duplicates, effort. */
+  agents: {
+    epochs: number;
+    planner_valid: number;
+    fallbacks: number;
+    epochs_with_violations: number;
+    trials: number;
+    submitted: number;
+    tokens_in: number;
+    tokens_out: number;
+    duplicates: number;
+    attempts: number;
+  };
+  /** Research mode: the newest digest's figures and report. */
+  research: Record<string, unknown> | null;
+  goals: { goal: string; status: string; reasons: string }[];
 }
 
 export interface UnitView {
@@ -102,6 +118,20 @@ export function unitView(
         verdicts: {},
         pending_promotions: [],
         calibration: null,
+        agents: {
+          epochs: 0,
+          planner_valid: 0,
+          fallbacks: 0,
+          epochs_with_violations: 0,
+          trials: 0,
+          submitted: 0,
+          tokens_in: 0,
+          tokens_out: 0,
+          duplicates: 0,
+          attempts: 0,
+        },
+        research: null,
+        goals: [],
       };
       instances.set(id, v);
     }
@@ -204,6 +234,38 @@ export function unitView(
         v.calibration = { at: e.at, sigma: Number(b.sigma), summary: String(b.summary ?? "") };
         break;
       }
+      case "epoch_started": {
+        const a = inst(String(e.subject)).agents;
+        a.epochs++;
+        if (b.planner_valid === true) a.planner_valid++;
+        if (b.source === "fallback") a.fallbacks++;
+        if (Number(b.raw_violations ?? 0) > 0) a.epochs_with_violations++;
+        break;
+      }
+      case "trial_finished": {
+        const a = inst(String(e.subject)).agents;
+        a.trials++;
+        if (b.attempt) a.submitted++;
+        a.tokens_in += Number(b.tokens_in ?? 0);
+        a.tokens_out += Number(b.tokens_out ?? 0);
+        break;
+      }
+      case "research_digest":
+      case "research_final": {
+        inst(String(e.subject)).research = {
+          ...b,
+          kind: e.kind === "research_final" ? "final" : "digest",
+          at: e.at,
+        };
+        break;
+      }
+      case "goal_report": {
+        const v = inst(String(e.subject));
+        v.goals = ((b.goals as { goal: string; status: string; reasons: string }[]) ?? []).map(
+          (g) => ({ goal: g.goal, status: g.status, reasons: g.reasons }),
+        );
+        break;
+      }
     }
   }
   for (const v of instances.values()) {
@@ -212,6 +274,8 @@ export function unitView(
       const k = a.verdict ?? a.lifecycle;
       v.verdicts[k] = (v.verdicts[k] ?? 0) + 1;
     }
+    v.agents.attempts = v.attempts.length;
+    v.agents.duplicates = v.attempts.filter((a) => a.lifecycle === "duplicate").length;
   }
   const summary = u.summary as { jobs?: Record<string, number> } | undefined;
   const now = opts.now ?? Date.now();

@@ -110,4 +110,48 @@ describe("agent scheduler", () => {
     await scheduler.idle();
     await fake.close();
   });
+
+  test("after a restart, trials a dead controller left open are closed and their lanes go on", async () => {
+    const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 2 } });
+    await env.service.applyCommand(env.assign);
+    const runner = new LocalRunner(env.paths.scratchDir);
+    const model = {
+      baseUrl: "http://127.0.0.1:9",
+      model: "m",
+      apiKey: "k",
+      contextWindow: 32000,
+      maxTokens: 2000,
+    };
+    const first = new Scheduler({
+      service: env.service,
+      runner,
+      model,
+      owner: "s1",
+      runTrial: () => new Promise(() => {}),
+    });
+    await first.tick(); // plans (fallback: no reachable model) and starts a trial that never ends
+    const open = env.ledger.db
+      .prepare("select count(*) as n from trial where ended_at is null")
+      .get();
+    assert.equal(Number(open?.n), 1);
+    let started = 0;
+    const second = new Scheduler({
+      service: env.service,
+      runner,
+      model,
+      owner: "s2",
+      runTrial: async () => {
+        started++;
+        return { stopped: "no_submission", turns: 1, toolCalls: 0, tokensIn: 0, tokensOut: 0 };
+      },
+    });
+    const stopped = env.ledger.db
+      .prepare("select stopped from trial order by started_at")
+      .all()
+      .map((t) => t.stopped);
+    assert.deepEqual(stopped, ["interrupted"]);
+    assert.ok(await second.tick()); // the lane's next trial starts
+    await second.idle();
+    assert.equal(started, 1);
+  });
 });

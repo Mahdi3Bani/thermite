@@ -280,21 +280,28 @@ export class HarnessService {
         throw new Error(`model ${spec.name} is not listed in the contract`);
       }
     }
+    // Research campaigns work on a corpus, not a repository: they have no seed commit.
+    const seed =
+      p.seed ??
+      (contract.mode === "research" ? { repo: "research", commit: "0".repeat(40) } : undefined);
+    if (!seed) throw new Error(`a ${contract.mode} campaign needs a seed commit`);
     const imported = [];
-    for (const spec of p.imports) imported.push(await this.runImport(spec, p.seed.repo, by));
+    for (const spec of p.imports) imported.push(await this.runImport(spec, seed.repo, by));
     for (const m of contract.models) {
       if (!this.ledger.findImport("model", { sha256: m.sha256 })) {
         throw new Error(`model ${m.name} (${m.sha256}) has not been imported`);
       }
     }
-    const mirror = this.mirrorFor(p.seed.repo);
-    if (!(await hasCommit(mirror, p.seed.commit))) {
-      throw new Error(
-        `seed commit ${p.seed.commit} is not in ${p.seed.repo}; import its bundle first`,
-      );
+    if (contract.mode !== "research") {
+      const mirror = this.mirrorFor(seed.repo);
+      if (!(await hasCommit(mirror, seed.commit))) {
+        throw new Error(
+          `seed commit ${seed.commit} is not in ${seed.repo}; import its bundle first`,
+        );
+      }
+      // The ref first: if the ledger write below fails, a retry simply overwrites it.
+      await updateRef(mirror, `refs/thermite/instances/${p.instance}/champion`, seed.commit);
     }
-    // The ref first: if the ledger write below fails, a retry simply overwrites it.
-    await updateRef(mirror, `refs/thermite/instances/${p.instance}/champion`, p.seed.commit);
     this.ledger.tx(() => {
       this.ledger.storeContract(contract, parsed.sha, by);
       this.pauseOthers(p.instance, by);
@@ -302,8 +309,8 @@ export class HarnessService {
         id: p.instance,
         contract,
         contractSha: parsed.sha,
-        seedRepo: p.seed.repo,
-        seedCommit: p.seed.commit,
+        seedRepo: seed.repo,
+        seedCommit: seed.commit,
         direction: p.direction,
         actor: by,
       });

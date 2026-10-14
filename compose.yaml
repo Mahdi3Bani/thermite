@@ -34,13 +34,19 @@ services:
       # D8 (promotion policy) is the owner's call; locally the acceptance test sets auto.
       THERMITE_PROMOTION: "${THERMITE_PROMOTION:-owner_approval}"
       THERMITE_CALIBRATION_BLOCKS: "${THERMITE_CALIBRATION_BLOCKS:-6}"
+      # The model route for agents (empty: agents off). The key comes from a secret file.
+      QWEN_BASE_URL: "${QWEN_BASE_URL:-}"
+      QWEN_MODEL: "${QWEN_MODEL:-}"
+      QWEN_API_KEY_FILE: /run/secrets/qwen-api-key
+      THERMITE_MAX_TRIALS: "${THERMITE_MAX_TRIALS:-1}"
+      THERMITE_TRIAL_MINUTES: "${THERMITE_TRIAL_MINUTES:-20}"
     volumes:
       - harness-state:/var/lib/thermite
       - harness-scratch:/scratch
       - ./.dev/inbox:/inbox:ro
       - outbox:/outbox
       - control-pub:/keys:ro
-    secrets: [harness-supervisor-token, harness-proposer-token]
+    secrets: [harness-supervisor-token, harness-proposer-token, qwen-api-key]
     # No published ports: only the unit's supervisor reaches the harness.
     networks: [unit, egress]
     # The broker's needs only: separate users for roles, ownership of scratch, killing leftovers.
@@ -139,6 +145,8 @@ secrets:
   control-unit-token: { file: ./.dev/secrets/control-unit-token }
   harness-supervisor-token: { file: ./.dev/secrets/harness-supervisor-token }
   harness-proposer-token: { file: ./.dev/secrets/harness-proposer-token }
+  # A local model route's key (git-ignored; dev-init writes a placeholder).
+  qwen-api-key: { file: ./.dev/secrets/qwen-api-key }
   control-unit-token-2: { file: ./.dev/secrets/control-unit-token-2 }
   harness2-supervisor-token: { file: ./.dev/secrets/harness2-supervisor-token }
   harness2-proposer-token: { file: ./.dev/secrets/harness2-proposer-token }

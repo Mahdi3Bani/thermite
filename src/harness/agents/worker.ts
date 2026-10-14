@@ -17,6 +17,8 @@ export interface TrialSpec {
   /** The lane's workspace: a git repository at the parent commit, owned by the lane user. */
   workspace: string;
   parentCommit: string;
+  /** The contract's editable paths (globs): only changes there are submitted. */
+  editablePaths: string[];
   /** The assignment and context, as the planner and the ledger give them. */
   brief: string;
   wallMs: number;
@@ -50,7 +52,7 @@ export interface TrialDeps {
 
 export interface TrialResult {
   submitted?: SubmitOutcome | undefined;
-  stopped: "submitted" | "no_submission" | "turns" | "wall" | "error";
+  stopped: "submitted" | "no_submission" | "finished" | "interrupted" | "turns" | "wall" | "error";
   turns: number;
   toolCalls: number;
   tokensIn: number;
@@ -227,16 +229,24 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
       async (p) => {
         if (result.submitted)
           return { ...text("already submitted in this trial"), terminate: true };
+        // Only the editable paths are staged, so build outputs and scratch files never enter a patch.
+        const pathspecs = spec.editablePaths
+          .map((p) => `':(glob)${p.replace(/'/g, "")}'`)
+          .join(" ");
         const diff = await deps.runner.run({
           role: spec.lane,
-          argv: ["sh", "-c", "git add -A && git diff --cached --binary"],
+          argv: ["sh", "-c", `git add -A -- ${pathspecs} && git diff --cached --binary`],
           cwd: spec.workspace,
           timeoutMs: 60_000,
           captureBytes: 32 * 1024 * 1024,
         });
         if (diff.exitCode !== 0)
           return text(`could not prepare the patch: ${diff.stderr.slice(-500)}`);
-        if (!diff.stdout.trim()) return text("there are no changes to submit");
+        if (!diff.stdout.trim()) {
+          return text(
+            `there are no changes inside the editable paths (${spec.editablePaths.join(", ")})`,
+          );
+        }
         const out = await deps.submit({
           instance: spec.instance,
           lane: spec.lane,

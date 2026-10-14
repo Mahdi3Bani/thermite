@@ -63,7 +63,8 @@ export const CommandPayloads = {
     /** The full contract; the harness validates it and checks contract_sha. */
     contract: z.unknown(),
     contract_sha: Sha256Schema,
-    seed: z.object({ repo: IdSchema, commit: CommitSchema }),
+    /** The starting commit; research campaigns have none. */
+    seed: z.object({ repo: IdSchema, commit: CommitSchema }).optional(),
     direction: z.string().min(1).optional(),
     imports: z.array(ImportSpec).default([]),
   }),

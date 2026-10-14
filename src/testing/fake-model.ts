@@ -74,6 +74,10 @@ export async function startFakeModel(script: Script): Promise<FakeModel> {
     get requests() {
       return state.requests;
     },
-    close: () => new Promise<void>((r) => server.close(() => r())),
+    close: () =>
+      new Promise<void>((r) => {
+        server.closeAllConnections();
+        server.close(() => r());
+      }),
   };
 }

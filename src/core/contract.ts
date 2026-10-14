@@ -227,6 +227,8 @@ export const ResearchContract = z.strictObject({
   mode: z.literal("research"),
   topic: z.string().min(1),
   questions: z.array(z.string().min(1)).min(1),
+  /** Starting URLs (without a search provider, research follows links from these). */
+  seeds: z.array(z.url()).default([]),
   scope: z
     .strictObject({
       include_domains: z.array(z.string()).default([]),

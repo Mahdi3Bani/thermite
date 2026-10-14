@@ -1,12 +1,14 @@
 import { randomUUID } from "node:crypto";
 import type { StructuredDirective } from "../../core/commands.ts";
-import type { Contract } from "../../core/contract.ts";
+import type { Contract, ResearchContract } from "../../core/contract.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import type { Ledger } from "../ledger.ts";
+import type { Research } from "../research/research.ts";
 import type { HarnessService } from "../service.ts";
 import type { ModelConfig } from "./model.ts";
 import { lanesOf, type PlannerInput, plan } from "./planner.ts";
 import { type Assignment, Registry } from "./registry.ts";
+import type { ResearchTrialSpec } from "./research-worker.ts";
 import type { TrialResult, TrialSpec } from "./worker.ts";
 import { prepareWorkspace } from "./workspace.ts";
 
@@ -35,6 +37,9 @@ export interface SchedulerOptions {
   model?: ModelConfig | undefined;
   /** Runs one trial (in a child process in the harness; in-process in tests). */
   runTrial: (spec: TrialSpec) => Promise<TrialResult>;
+  /** Research mode: the research service and its trial runner. */
+  research?: Research | undefined;
+  runResearchTrial?: ((spec: ResearchTrialSpec) => Promise<TrialResult>) | undefined;
   owner: string;
   maxConcurrent?: number | undefined;
   trialWallMs?: number | undefined;
@@ -44,9 +49,8 @@ export interface SchedulerOptions {
 
 export class Scheduler {
   readonly registry: Registry;
-  private readonly o: Required<Omit<SchedulerOptions, "model">> & {
-    model?: ModelConfig | undefined;
-  };
+  private readonly o: Required<Omit<SchedulerOptions, "model" | "research" | "runResearchTrial">> &
+    Pick<SchedulerOptions, "model" | "research" | "runResearchTrial">;
   private readonly ledger: Ledger;
   private readonly running = new Map<string, Promise<void>>();
 
@@ -60,6 +64,8 @@ export class Scheduler {
     } as typeof this.o;
     this.ledger = opts.service.ledger;
     this.registry = new Registry(this.ledger);
+    // Resume after a restart: nothing of an earlier process is running any more.
+    this.registry.interruptUnfinished(opts.owner);
   }
 
   /** Trials still running (awaited by tests and on shutdown). */
@@ -69,7 +75,8 @@ export class Scheduler {
 
   private instance(): { id: string; contract: Contract } | undefined {
     const inst = this.ledger.listInstances().find((i) => i.status === "running");
-    if (!inst || (inst.mode !== "hill_climb" && inst.mode !== "goal")) return undefined;
+    if (!inst) return undefined;
+    if (inst.mode === "research" && !(this.o.research && this.o.runResearchTrial)) return undefined;
     return { id: inst.id, contract: this.o.service.contractFor(inst.id) };
   }
 
@@ -166,6 +173,27 @@ export class Scheduler {
   async tick(): Promise<boolean> {
     const inst = this.instance();
     if (!inst || !this.o.model) return false;
+    // The contract's wall-time budget ends agent work (the judge still finishes what is queued).
+    const wallHours = inst.contract.budget.wall_hours;
+    const created = this.ledger.db
+      .prepare("select created_at from instance where id = ?")
+      .get(inst.id) as { created_at: string } | undefined;
+    if (
+      wallHours !== undefined &&
+      created &&
+      Date.now() - Date.parse(created.created_at) > wallHours * 3_600_000
+    ) {
+      if (!this.running.size) {
+        this.ledger.setInstanceStatus(
+          inst.id,
+          "paused",
+          "the wall-time budget is spent",
+          this.o.owner,
+        );
+      }
+      return false;
+    }
+    if (inst.contract.mode === "research") return this.researchTick(inst.id, inst.contract);
     const { id, contract } = inst;
     const perEpoch = contract.lanes.trials_per_epoch;
     let epoch = this.registry.currentEpoch(id);
@@ -199,6 +227,158 @@ export class Scheduler {
     if ((complete || capped) && !this.running.size)
       this.registry.endEpoch(id, epoch.n, this.o.owner);
     return started;
+  }
+
+  // ------------------------------------------------------------------ research mode
+
+  /**
+   * Research: the harness owns the clock. Lanes run trial after trial (no judge to wait for)
+   * until max_duration; an hourly digest and a final report come from the ledger.
+   */
+  private async researchTick(instance: string, contract: ResearchContract): Promise<boolean> {
+    const research = this.o.research as Research;
+    const clock = research.clock(instance);
+    if (clock.done) {
+      if (this.running.size) return false; // let the last trials finish first
+      research.report(instance, "final");
+      this.ledger.setInstanceStatus(
+        instance,
+        "closed",
+        "the research window is over",
+        this.o.owner,
+      );
+      return false;
+    }
+    const last = research.lastReportAt(instance);
+    if (!last || Date.now() - Date.parse(last) >= contract.report_cadence.digest_minutes * 60_000) {
+      research.report(instance, "digest");
+    }
+    let epoch = this.registry.currentEpoch(instance);
+    if (!epoch || epoch.ended_at) {
+      this.planResearchEpoch(instance, contract, (epoch?.n ?? 0) + 1);
+      epoch = this.registry.currentEpoch(instance);
+      if (!epoch) return false;
+    }
+    let started = false;
+    let complete = true;
+    for (const a of epoch.assignments) {
+      const trials = this.registry.trials(instance, a.lane, epoch.n);
+      if (trials.length < contract.lanes.trials_per_epoch || this.running.has(a.lane))
+        complete = false;
+      if (trials.length >= contract.lanes.trials_per_epoch || this.running.has(a.lane)) continue;
+      if (this.running.size >= this.o.maxConcurrent) continue;
+      this.startResearchTrial(instance, contract, epoch.n, a, clock);
+      started = true;
+    }
+    if (complete && !this.running.size) this.registry.endEpoch(instance, epoch.n, this.o.owner);
+    return started;
+  }
+
+  private static readonly RESEARCH_TASKS: { id: string; description: string }[] = [
+    { id: "explore", description: "Find and read new relevant sources; record verified claims" },
+    {
+      id: "primary",
+      description: "Trace existing claims to primary sources (papers, specifications, data)",
+    },
+    {
+      id: "contradict",
+      description: "Look for sources that disagree with recorded claims; record both sides",
+    },
+    { id: "consolidate", description: "Fold verified claims and notes into the report sections" },
+  ];
+
+  /** Deterministic research plan: least-covered questions first, task kinds rotating by epoch. */
+  private planResearchEpoch(instance: string, contract: ResearchContract, n: number): void {
+    const research = this.o.research as Research;
+    for (const t of Scheduler.RESEARCH_TASKS)
+      this.registry.addFamily(instance, t.id, t.description, "research-plan");
+    const coverage = research
+      .stats(instance)
+      .questions.map((q, i) => ({ i, verified: q.verified }))
+      .sort((x, y) => x.verified - y.verified || x.i - y.i);
+    const lanes = lanesOf(this.laneCount(instance, contract));
+    const assignments: Assignment[] = lanes.map((lane, k) => {
+      const q = coverage[k % coverage.length] as { i: number };
+      const task = Scheduler.RESEARCH_TASKS[(n + k - 1) % Scheduler.RESEARCH_TASKS.length] as {
+        id: string;
+        description: string;
+      };
+      return {
+        lane,
+        family: task.id,
+        focus: `Question ${q.i}: ${contract.questions[q.i]}. Task: ${task.description}.`,
+        parent: "champion",
+      };
+    });
+    this.registry.startEpoch({
+      instance,
+      n,
+      source: "fallback",
+      tries: 0,
+      valid: false,
+      rawViolations: [],
+      assignments,
+      notes: "research plan (deterministic in v1)",
+      by: this.o.owner,
+    });
+  }
+
+  private startResearchTrial(
+    instance: string,
+    contract: ResearchContract,
+    epoch: number,
+    a: Assignment,
+    clock: { elapsed_ms: number; min_ms: number; max_ms: number },
+  ): void {
+    const research = this.o.research as Research;
+    const id = `t-${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+    const stats = research.stats(instance);
+    const frontier = research.frontier(instance, 15);
+    const brief = [
+      `# Research assignment (epoch ${epoch}, ${a.lane})`,
+      `Campaign: ${contract.title}`,
+      `Topic: ${contract.topic}`,
+      "Questions:",
+      ...contract.questions.map(
+        (q, i) => `${i}. ${q} (${stats.questions[i]?.verified ?? 0} verified claims so far)`,
+      ),
+      "",
+      `Your focus: ${a.focus}`,
+      `Time: ${(clock.elapsed_ms / 3_600_000).toFixed(2)} h elapsed of at least ${(clock.min_ms / 3_600_000).toFixed(2)} h (the campaign continues after your trial).`,
+      `Corpus: ${stats.sources} sources, ${stats.verified} verified claims, ${stats.drafts} drafts.`,
+      contract.seeds.length ? `Starting URLs: ${contract.seeds.join(" ")}` : "",
+      frontier.length ? `Links from archived sources not fetched yet: ${frontier.join(" ")}` : "",
+      "",
+      "Record claims only with exact quotes from archived sources, and say which question each answers.",
+    ]
+      .filter((l) => l !== "")
+      .join("\n");
+    this.registry.startTrial({
+      id,
+      instance,
+      lane: a.lane,
+      epoch,
+      family: a.family,
+      parent: "research",
+    });
+    const work = (async () => {
+      let r: TrialResult = { stopped: "error", turns: 0, toolCalls: 0, tokensIn: 0, tokensOut: 0 };
+      try {
+        r = await (this.o.runResearchTrial as (s: ResearchTrialSpec) => Promise<TrialResult>)({
+          trialId: id,
+          instance,
+          lane: a.lane,
+          brief,
+          wallMs: this.o.trialWallMs,
+          maxTurns: this.o.maxTurns,
+        });
+      } catch (err) {
+        r = { ...r, error: err instanceof Error ? err.message : String(err) };
+      } finally {
+        this.registry.finishTrial(id, r, this.o.owner);
+      }
+    })().finally(() => this.running.delete(a.lane));
+    this.running.set(a.lane, work);
   }
 
   private startTrial(
@@ -237,6 +417,7 @@ export class Scheduler {
           lane,
           workspace: ws.repo,
           parentCommit: parent,
+          editablePaths: "editable_paths" in contract ? contract.editable_paths : [],
           brief: this.brief(
             instance,
             contract,

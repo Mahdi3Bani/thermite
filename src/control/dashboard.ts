@@ -99,6 +99,34 @@ function chart(v: InstanceView): string {
 <text x="4" y="${Y(y1) + 4}">${pct(y1)}</text><text x="4" y="${Y(0) + 4}">0%</text></svg>`;
 }
 
+/** Agents' figures for M4: planner quality, duplicates, effort. */
+function agentsLine(v: InstanceView): string {
+  const a = v.agents;
+  if (!a.epochs && !a.trials) return "";
+  const ratio = (x: number, n: number) => (n ? `${Math.round((100 * x) / n)}%` : "n/a");
+  return `<p class="muted">Agents: ${a.epochs} epochs, planner valid ${ratio(a.planner_valid, a.epochs)}, fallbacks ${a.fallbacks}, epochs with directive violations ${a.epochs_with_violations}; ${a.trials} trials, ${a.submitted} submissions, duplicates ${ratio(a.duplicates, a.attempts)}; tokens ${a.tokens_in.toLocaleString()} in / ${a.tokens_out.toLocaleString()} out</p>`;
+}
+
+function goalsTable(v: InstanceView): string {
+  if (!v.goals.length) return "";
+  const cls = (s: string) => (s === "met" ? "ok" : s === "unmet" ? "bad" : "warn");
+  return `<table><tr><th>Goal</th><th>Status</th><th>Why</th></tr>${v.goals
+    .map(
+      (g) =>
+        `<tr><td>${esc(g.goal)}</td><td class="${cls(g.status)}">${esc(g.status)}</td><td>${esc(g.reasons.slice(0, 300))}</td></tr>`,
+    )
+    .join("")}</table>`;
+}
+
+function researchBlock(v: InstanceView): string {
+  const r = v.research;
+  if (!r) return "";
+  const n = (k: string) => Number(r[k] ?? 0);
+  const elapsed = (n("elapsed_ms") / 3_600_000).toFixed(2);
+  return `<p class="muted">Research (${esc(r.kind)}, ${esc(String(r.at ?? "").slice(0, 16))}): ${elapsed} h elapsed; ${n("sources")} sources from ${n("domains")} domains; ${n("verified")} verified claims, ${n("drafts")} drafts; ${n("hypotheses")} hypotheses${n("unsupported_numbers") ? `; <span class="warn">${n("unsupported_numbers")} numbers without a source</span>` : ""}</p>
+<details><summary>Latest report</summary><pre style="white-space:pre-wrap">${esc(String(r.report ?? ""))}</pre></details>`;
+}
+
 function verdictPills(v: InstanceView): string {
   return Object.entries(v.verdicts)
     .sort((a, b) => b[1] - a[1])
@@ -253,6 +281,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
           i.pause_reason ? ` (${esc(i.pause_reason)})` : ""
         }</span></h2>${chart(i)}
 <p>${verdictPills(i)}${i.calibration ? `<span class="pill">A/A block σ ${(i.calibration.sigma * 100).toFixed(2)}%</span>` : ""}</p>
+${agentsLine(i)}${goalsTable(i)}${researchBlock(i)}
 <form class="inline" method="post" action="/ui/commands">${hidden(i.id)}<input type="hidden" name="kind" value="${i.status === "paused" ? "resume_instance" : "pause_instance"}">
 <input name="reason" placeholder="reason" ${i.status === "paused" ? 'type="hidden"' : ""}><button>${i.status === "paused" ? "Resume" : "Pause"}</button></form>
 <form class="inline" method="post" action="/ui/commands">${hidden(i.id)}<input type="hidden" name="kind" value="reset_workers"><button>Reset workers</button></form>

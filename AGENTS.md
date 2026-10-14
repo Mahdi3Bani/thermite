@@ -81,4 +81,8 @@ Run from the repository root before every commit, and report which ran and which
   - `COMPOSE="docker compose" npm run smoke:compose`
 - Judge acceptance (M2a), after changes to the broker, the judge, kits or the harness image. It runs the smoke campaign's whole candidate set under compose, plus isolation, tamper, crash-recovery and A/A checks, and writes a report to `.dev/acceptance/`. Allow about 15–20 minutes:
   - `COMPOSE="podman compose" npm run acceptance:judge` (the other two compose variants work the same way)
+- Control acceptance (M3), after changes to control, the dashboard, MCP, the relay or the compose units. It uses two units under the `two-units` profile:
+  - `COMPOSE="podman compose" node scripts/control-acceptance.mjs`
+- Agents acceptance (M4), after changes to the workers, planner, scheduler, dev runs or the harness image. A scripted model on the host stands in for a real model route:
+  - `COMPOSE="podman compose" node scripts/agents-acceptance.mjs`
 - Repository hygiene: `git status --short`, `git diff --check` and `git diff --cached`. Read new untracked files directly, and verify relative documentation links and the `CLAUDE.md` import.

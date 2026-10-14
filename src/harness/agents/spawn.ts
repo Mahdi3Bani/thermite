@@ -2,18 +2,24 @@ import { spawn } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { ResearchTrialSpec } from "./research-worker.ts";
 import type { TrialResult, TrialSpec } from "./worker.ts";
+
+export type AnyTrial =
+  | { kind: "code"; spec: TrialSpec }
+  | { kind: "research"; spec: ResearchTrialSpec };
 
 /** Runs one trial in its own worker process (the controller's user), with a hard wall limit. */
 export function spawnTrial(
-  spec: TrialSpec,
+  trial: AnyTrial,
   scratchDir: string,
   apiPort: number,
 ): Promise<TrialResult> {
+  const spec = trial.spec;
   const dir = join(scratchDir, "trials");
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const specFile = join(dir, `${spec.trialId}.json`);
-  writeFileSync(specFile, JSON.stringify(spec), { mode: 0o600 });
+  writeFileSync(specFile, JSON.stringify(trial), { mode: 0o600 });
   const main = fileURLToPath(new URL("./worker-main.js", import.meta.url));
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [...process.execArgv, main, specFile], {
