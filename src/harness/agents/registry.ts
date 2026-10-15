@@ -375,6 +375,8 @@ export class Registry {
         turns: r.turns,
         tokens_in: r.tokensIn,
         tokens_out: r.tokensOut,
+        // Why a trial failed reaches control too (the ledger keeps the longer text).
+        error: r.error?.slice(0, 300) ?? null,
       });
     });
   }

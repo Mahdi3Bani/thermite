@@ -312,6 +312,16 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
   }, spec.wallMs);
   try {
     await agent.prompt(spec.brief);
+    // A model that stops calling tools before submitting (thinking aloud, or out of output
+    // tokens) is told to go on, twice at most; a provider error ends the trial.
+    for (
+      let nudge = 0;
+      nudge < 2 && !result.submitted && result.stopped === "no_submission";
+      nudge++
+    ) {
+      if (lastAssistant(agent)?.stopReason === "error") break;
+      await agent.prompt(NUDGE);
+    }
   } catch (err) {
     if (result.stopped === "no_submission") {
       result.stopped = "error";
@@ -320,5 +330,31 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
   } finally {
     clearTimeout(wall);
   }
+  // Why the model stopped, for a trial that ended without a submission.
+  const last = lastAssistant(agent);
+  if (!result.submitted && !result.error && last && last.stopReason !== "toolUse") {
+    result.error = `the model stopped (${last.stopReason})${last.errorMessage ? `: ${last.errorMessage.slice(0, 300)}` : ""}`;
+    if (last.stopReason === "error" && result.stopped === "no_submission") result.stopped = "error";
+  }
   return result;
+}
+
+const NUDGE =
+  "You have not called submit yet. Keep working with your tools: make your change, build and test it, then call submit once. If you find no change worth judging, say why in one sentence.";
+
+function lastAssistant(agent: Agent): { stopReason: string; errorMessage?: string } | undefined {
+  const messages = agent.state.messages as {
+    role?: string;
+    stopReason?: string;
+    errorMessage?: string;
+  }[];
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m?.role === "assistant" && m.stopReason)
+      return {
+        stopReason: m.stopReason,
+        ...(m.errorMessage ? { errorMessage: m.errorMessage } : {}),
+      };
+  }
+  return undefined;
 }

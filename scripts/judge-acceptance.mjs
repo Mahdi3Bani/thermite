@@ -75,13 +75,18 @@ try {
     calibration.body.summary,
   );
 
-  const isolation = (() => {
+  // The selftest refuses a busy unit (its probes kill each role's processes): wait for the
+  // calibration job to finish.
+  let isolation;
+  for (let i = 0; i < 20; i++) {
     try {
-      return { ok: true, out: JSON.parse(harnessExec("thermite", "selftest", "isolation")) };
+      isolation = { ok: true, out: JSON.parse(harnessExec("thermite", "selftest", "isolation")) };
     } catch (err) {
-      return { ok: false, out: String(err.stdout ?? err) };
+      isolation = { ok: false, out: String(err.stdout ?? "") + String(err.stderr ?? err) };
     }
-  })();
+    if (isolation.ok || !String(isolation.out).includes("the unit is busy")) break;
+    await sleep(3000);
+  }
   check(
     "isolation: role users are refused everywhere",
     isolation.ok && isolation.out.ok,

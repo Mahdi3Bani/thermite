@@ -25,7 +25,7 @@ const USAGE = `usage: thermite <command> [options]
          [--known-flaw TEXT ...]      submit a patch as a proposer
   status --harness URL --token-file F --attempt ID
                                       show an attempt's lifecycle and verdict
-  selftest isolation                  inside the harness container, as root: check that role
+  selftest isolation [--force]        inside the harness container, as root, with the unit idle: check that role
                                       users cannot reach the ledger, kits, builds or secrets
 `;
 
@@ -238,6 +238,7 @@ async function main(argv: string[]): Promise<void> {
         scratchDir: env.THERMITE_SCRATCH_DIR ?? "/scratch",
         outboxDir: env.THERMITE_OUTBOX_DIR ?? "/outbox",
         secretFiles,
+        force: rest.includes("--force"),
       });
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
       if (!report.ok) process.exit(1);

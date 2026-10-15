@@ -84,6 +84,81 @@ describe("worker trial", () => {
     assert.equal(env.ledger.currentVerdict(String(a?.id))?.verdict, "win_confirmed");
   });
 
+  test("a model that stops early is told to go on, twice at most; why it stopped is recorded", async () => {
+    const env = makeJudgeEnv();
+    await env.service.applyCommand(env.assign);
+    const runner = new LocalRunner(env.paths.scratchDir);
+    const champion = env.ledger.currentChampion("js-1");
+    const ws = await prepareWorkspace({
+      runner,
+      scratchDir: env.paths.scratchDir,
+      mirror: env.service.mirrorFor("proj"),
+      commit: champion.commit_sha,
+      lane: "lane-1",
+    });
+    const trial = (url: string) =>
+      runTrial(
+        {
+          trialId: "t-nudge",
+          instance: "js-1",
+          lane: "lane-1",
+          workspace: ws.repo,
+          parentCommit: champion.commit_sha,
+          editablePaths: ["src/kernel/**"],
+          brief: "Make work() faster without changing its result.",
+          wallMs: 60_000,
+          maxTurns: 20,
+        },
+        {
+          runner,
+          laneTool,
+          model: {
+            baseUrl: url,
+            model: "test",
+            apiKey: "k",
+            contextWindow: 32000,
+            maxTokens: 2000,
+          },
+          submit: (req) =>
+            env.service.submitAttempt({ ...req, lane: req.lane }, "proposer") as never,
+          status: async (id) => env.service.attemptStatus(id),
+        },
+      );
+    // Thinks aloud first; after the nudge it writes the change and submits.
+    const late = await startFakeModel(({ messages }) => {
+      const nudged = messages.some(
+        (m) => m.role === "user" && String(JSON.stringify(m.content)).includes("not called submit"),
+      );
+      if (!nudged) return { text: "I would start by reading the kernel." };
+      const done = messages.filter((m) => m.role === "tool").length;
+      if (done === 0)
+        return {
+          toolCalls: [
+            { name: "write_file", args: { path: "src/kernel/work.mjs", content: FAST_KERNEL } },
+          ],
+        };
+      if (done === 1)
+        return {
+          toolCalls: [{ name: "submit", args: { hypothesis: "less work", known_flaws: [] } }],
+        };
+      return { text: "done" };
+    });
+    const r = await trial(late.url);
+    await late.close();
+    assert.equal(r.stopped, "submitted", JSON.stringify(r));
+    // Never uses a tool: two nudges, then no submission, with the reason.
+    let requests = 0;
+    const idle = await startFakeModel(() => {
+      requests++;
+      return { text: "Nothing to do." };
+    });
+    const r2 = await trial(idle.url);
+    await idle.close();
+    assert.equal(r2.stopped, "no_submission");
+    assert.equal(requests, 3);
+    assert.match(String(r2.error), /the model stopped \(stop\)/);
+  });
+
   test("tool calls run one at a time, and nothing runs after a submission in the same turn", async () => {
     const env = makeJudgeEnv();
     await env.service.applyCommand(env.assign);
@@ -290,6 +365,31 @@ describe("worker trial", () => {
     assert.equal(d.status, 200);
     assert.equal(devRequests.at(-1)?.input.timeout_s, 45);
     assert.deepEqual(devRequests.at(-1)?.limits, { rssMib: 4096, diskMib: 1024 });
+  });
+
+  test("the isolation selftest refuses a unit with open trials or judge jobs", async () => {
+    const env = makeJudgeEnv();
+    await env.service.applyCommand(env.assign);
+    const { busyReason } = await import("../selftest.ts");
+    const { Registry } = await import("./registry.ts");
+    const jobs = Number(
+      (
+        env.ledger.db
+          .prepare("select count(*) as n from job where state in ('queued','leased')")
+          .get() as { n: number }
+      ).n,
+    );
+    if (!jobs) assert.equal(busyReason(env.paths.stateDir), undefined);
+    new Registry(env.ledger).startTrial({
+      id: "t-busy",
+      instance: "js-1",
+      lane: "lane-1",
+      epoch: 1,
+      family: "f",
+      parent: env.seed,
+      token: "busy-token",
+    });
+    assert.match(String(busyReason(env.paths.stateDir)), /1 open trial/);
   });
 
   test("the lane tool never leaves the workspace", async () => {
