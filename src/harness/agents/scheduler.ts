@@ -306,7 +306,7 @@ export class Scheduler {
   private instance(): { id: string; contract: Contract } | undefined {
     const inst = this.ledger.listInstances().find((i) => i.status === "running");
     // A judge-only instance: no planning, no trials.
-    if (!inst || !inst.agents) return undefined;
+    if (!inst?.agents) return undefined;
     if (inst.mode === "research" && !(this.o.research && this.o.runResearchTrial)) return undefined;
     return { id: inst.id, contract: this.o.service.contractFor(inst.id) };
   }
