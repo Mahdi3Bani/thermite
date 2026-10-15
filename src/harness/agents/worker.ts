@@ -341,14 +341,16 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
     await agent.prompt(
       `${spec.brief}\n\nThis trial lasts ${minutes} minutes${maxTurns !== undefined ? ` and at most ${maxTurns} turns (each model reply is one)` : ""}. Submit before it ends.`,
     );
-    // A model that stops calling tools before submitting (thinking aloud, or out of output
-    // tokens) is told to go on, twice at most; a provider error ends the trial.
-    for (
-      let nudge = 0;
-      nudge < 2 && !result.submitted && result.stopped === "no_submission";
-      nudge++
-    ) {
-      if (lastAssistant(agent)?.stopReason === "error") break;
+    // A model that stops of its own accord without submitting is told to go on, twice at most;
+    // then this trial ends and the lane's next one starts afresh. Cut-off replies and failed
+    // calls never end it (keepGoing).
+    let nudges = 0;
+    for (;;) {
+      await keepGoing(
+        agent,
+        () => result.submitted !== undefined || result.stopped !== "no_submission",
+      );
+      if (result.submitted || result.stopped !== "no_submission" || nudges++ >= 2) break;
       await agent.prompt(NUDGE);
     }
   } catch (err) {
@@ -376,6 +378,42 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
 
 const NUDGE =
   "You have not called submit yet. Keep working with your tools: make your change, build and test it, then call submit once. If you find no change worth judging, say why in one sentence.";
+
+const CUT_OFF =
+  "Your last reply was cut off at the output limit before it made a tool call. Think briefly, then make one tool call; keep each reply short.";
+
+/**
+ * Until `done()`, a reply cut off at the output limit is told to think less and act, and a
+ * failed model call is retried after a growing pause (5 s to 60 s). Returns when the model
+ * stops of its own accord, or once `done()` (a submission, or the trial's time ran out).
+ */
+export async function keepGoing(agent: Agent, done: () => boolean): Promise<void> {
+  let failures = 0;
+  while (!done()) {
+    const last = lastAssistant(agent);
+    if (last?.stopReason === "length") {
+      failures = 0;
+      await agent.prompt(CUT_OFF);
+    } else if (last?.stopReason === "error") {
+      failures++;
+      await sleepUnlessDone(Math.min(60_000, 5_000 * 2 ** Math.min(failures - 1, 4)), done);
+      if (done()) return;
+      await agent.prompt(
+        `The model call failed (${(last.errorMessage ?? "no detail").slice(0, 200)}). Continue where you left off.`,
+      );
+    } else {
+      return;
+    }
+  }
+}
+
+/** Waits `ms`, or less once `done()` turns true (the trial's time ran out meanwhile). */
+async function sleepUnlessDone(ms: number, done: () => boolean): Promise<void> {
+  const until = Date.now() + ms;
+  while (Date.now() < until && !done()) {
+    await new Promise((r) => setTimeout(r, Math.min(500, until - Date.now())));
+  }
+}
 
 function lastAssistant(agent: Agent): { stopReason: string; errorMessage?: string } | undefined {
   const messages = agent.state.messages as {

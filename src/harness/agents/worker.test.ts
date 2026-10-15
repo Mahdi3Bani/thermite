@@ -278,6 +278,78 @@ describe("worker trial", () => {
     assert.doesNotMatch(first, /turns/);
   });
 
+  test("a reply cut off at the output limit or a failed call never ends a trial", async () => {
+    const env = makeJudgeEnv();
+    await env.service.applyCommand(env.assign);
+    const runner = new LocalRunner(env.paths.scratchDir);
+    const champion = env.ledger.currentChampion("js-1");
+    const ws = await prepareWorkspace({
+      runner,
+      scratchDir: env.paths.scratchDir,
+      mirror: env.service.mirrorFor("proj"),
+      commit: champion.commit_sha,
+      lane: "lane-1",
+    });
+    let calls = 0;
+    const said: string[] = [];
+    // Four replies cut off while thinking, then two failed calls, then the change and a submission.
+    const flaky = await startFakeModel(({ messages }) => {
+      calls++;
+      const lastUser = [...messages].reverse().find((m) => m.role === "user");
+      said.push(JSON.stringify(lastUser?.content ?? ""));
+      if (calls <= 4)
+        return { text: "Let me think about the loop structure in depth", cutOff: true };
+      if (calls <= 6) return { fail: 503 };
+      const done = messages.filter((m) => m.role === "tool").length;
+      if (done === 0)
+        return {
+          toolCalls: [
+            { name: "write_file", args: { path: "src/kernel/work.mjs", content: FAST_KERNEL } },
+          ],
+        };
+      if (done === 1)
+        return {
+          toolCalls: [{ name: "submit", args: { hypothesis: "less work", known_flaws: [] } }],
+        };
+      return { text: "done" };
+    });
+    const r = await runTrial(
+      {
+        trialId: "t-flaky",
+        run: "js-1",
+        lane: "lane-1",
+        workspace: ws.repo,
+        parentCommit: champion.commit_sha,
+        editablePaths: ["src/kernel/**"],
+        brief: "Make work() faster without changing its result.",
+        wallMs: 600_000,
+      },
+      {
+        runner,
+        laneTool,
+        model: {
+          baseUrl: flaky.url,
+          model: "test",
+          apiKey: "k",
+          contextWindow: 32000,
+          maxTokens: 2000,
+        },
+        submit: (req) => env.service.submitAttempt({ ...req, lane: req.lane }, "proposer") as never,
+        status: async (id) => env.service.attemptStatus(id),
+      },
+    );
+    await flaky.close();
+    assert.equal(r.stopped, "submitted", JSON.stringify(r));
+    assert.ok(
+      said.some((u) => u.includes("cut off at the output limit")),
+      said.join("\n"),
+    );
+    assert.ok(
+      said.some((u) => u.includes("The model call failed")),
+      said.join("\n"),
+    );
+  });
+
   test("the live view: a worker's turns stream out, and the owner's message arrives as a user turn", async () => {
     const env = makeJudgeEnv();
     await env.service.applyCommand(env.assign);

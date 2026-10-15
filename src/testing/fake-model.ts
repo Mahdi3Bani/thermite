@@ -9,6 +9,10 @@ import type { AddressInfo } from "node:net";
 export interface ScriptedTurn {
   text?: string;
   toolCalls?: { name: string; args: unknown }[];
+  /** Ends the reply as cut off at the output limit (finish_reason "length"). */
+  cutOff?: boolean;
+  /** Fails the request with this HTTP status instead of answering. */
+  fail?: number;
 }
 
 export type Script = (req: {
@@ -44,6 +48,11 @@ export async function startFakeModel(script: Script): Promise<FakeModel> {
         tools: parsed.tools ?? [],
         reasoning_effort: parsed.reasoning_effort,
       });
+      if (turn.fail) {
+        res.writeHead(turn.fail, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: { message: `scripted failure ${turn.fail}` } }));
+        return;
+      }
       const id = `chatcmpl-${++n}`;
       const chunk = (delta: unknown, finish: string | null) =>
         `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created: 0, model: parsed.model, choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
@@ -66,7 +75,7 @@ export async function startFakeModel(script: Script): Promise<FakeModel> {
           ),
         );
       });
-      res.write(chunk({}, turn.toolCalls?.length ? "tool_calls" : "stop"));
+      res.write(chunk({}, turn.cutOff ? "length" : turn.toolCalls?.length ? "tool_calls" : "stop"));
       res.write(
         `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created: 0, model: parsed.model, choices: [], usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } })}\n\n`,
       );

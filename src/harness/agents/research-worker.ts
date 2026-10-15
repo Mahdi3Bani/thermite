@@ -3,6 +3,7 @@ import { type TSchema, Type } from "@earendil-works/pi-ai";
 import { linkSession, type SessionLink } from "./live-session.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
 import type { TrialResult } from "./worker.ts";
+import { keepGoing } from "./worker.ts";
 
 /**
  * A research trial: a fresh agent session with research tools only, no shell and no files. Every
@@ -170,6 +171,8 @@ export async function runResearchTrial(
   }, spec.wallMs);
   try {
     await agent.prompt(spec.brief);
+    // A cut-off reply or a failed call does not end a research trial before its time.
+    await keepGoing(agent, () => result.stopped !== "no_submission");
     if (result.stopped === "no_submission") result.stopped = "finished";
   } catch (err) {
     if (result.stopped === "no_submission") {
