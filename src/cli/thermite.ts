@@ -16,7 +16,7 @@ const USAGE = `usage: thermite <command> [options]
   keys generate <dir>                 write a new Ed25519 control signing key pair
   assign-payload --contract F --instance ID --seed-repo R --seed-commit C --bundle PATH
                  [--bundle-sha256 H] [--kit-repo R --kit-commit C --kit-bundle PATH
-                 [--kit-bundle-sha256 H]] [--model NAME=SHA256:PATH ...] [--direction D]
+                 [--kit-bundle-sha256 H]] [--model NAME=SHA256:PATH ...] [--direction D] [--agents off]
                                       print an assign_campaign payload (bundle and model
                                       paths are relative to the unit's inbox)
   command --control URL --token-file F --unit U --kind K --payload JSON|@file [--ttl MIN]
@@ -91,8 +91,11 @@ async function main(argv: string[]): Promise<void> {
           "kit-bundle-sha256": { type: "string" },
           model: { type: "string", multiple: true },
           direction: { type: "string" },
+          agents: { type: "string" },
         },
       });
+      if (values.agents !== undefined && values.agents !== "on" && values.agents !== "off")
+        fail("--agents is on or off");
       if (
         !values.contract ||
         !values.instance ||
@@ -115,6 +118,7 @@ async function main(argv: string[]): Promise<void> {
         contract_sha: r.sha,
         seed: { repo: values["seed-repo"], commit: values["seed-commit"] },
         ...(values.direction ? { direction: values.direction } : {}),
+        ...(values.agents === "off" ? { agents: false } : {}),
         imports: [
           {
             kind: "repo_bundle",

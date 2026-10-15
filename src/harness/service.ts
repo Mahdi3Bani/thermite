@@ -448,10 +448,11 @@ export class HarnessService {
         seedRepo: seed.repo,
         seedCommit: seed.commit,
         direction: p.direction,
+        agents: p.agents,
         actor: by,
       });
     });
-    return { instance: p.instance, contract_sha: parsed.sha, imported };
+    return { instance: p.instance, contract_sha: parsed.sha, imported, agents: p.agents !== false };
   }
 
   /**

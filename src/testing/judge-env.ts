@@ -119,6 +119,8 @@ export function makeJudgeEnv(
     lanes?: { count: number; trials_per_epoch: number };
     /** A goal-mode campaign instead of a hill climb. */
     goal?: { opsPerSecond: number } | undefined;
+    /** False: assign as a judge-only instance (no worker agents). */
+    agents?: boolean | undefined;
     /** Fields merged over the contract (for example acceptance.audit or infeasibility). */
     contract?: Record<string, unknown> | undefined;
     /** Another unit: its own harness on the same project, seed and kit as `share`. */
@@ -244,6 +246,7 @@ export function makeJudgeEnv(
         contract: parsed.contract,
         contract_sha: parsed.sha,
         seed: { repo: "proj", commit: seed },
+        ...(opts.agents === false ? { agents: false } : {}),
         imports: [
           { kind: "repo_bundle", path: "repos/p.bundle", repo: "proj", commit: seed },
           { kind: "kit_bundle", path: "repos/k.bundle", repo: "js-kit", commit: kitCommit },

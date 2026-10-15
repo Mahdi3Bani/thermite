@@ -388,6 +388,47 @@ describe("agent scheduler", () => {
     await fake.close();
   });
 
+  test("a judge-only instance plans no epoch and starts no trial", async () => {
+    const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 }, agents: false });
+    const r = await env.service.applyCommand(env.assign);
+    assert.ok(r.status === "applied" && r.accepted, JSON.stringify(r));
+    assert.equal(env.ledger.getInstance("js-1")?.agents, false);
+    let asked = 0;
+    const fake = await startFakeModel(() => {
+      asked++;
+      return { text: "no" };
+    });
+    const s = new Scheduler({
+      service: env.service,
+      runner: new LocalRunner(env.paths.scratchDir),
+      model: { baseUrl: fake.url, model: "m", apiKey: "k", contextWindow: 1000, maxTokens: 10 },
+      owner: "s",
+      runTrial: async () => ({
+        stopped: "error",
+        turns: 0,
+        toolCalls: 0,
+        tokensIn: 0,
+        tokensOut: 0,
+      }),
+    });
+    assert.equal(await s.tick(), false);
+    await fake.close();
+    assert.equal(asked, 0);
+    assert.equal(env.ledger.db.prepare("select count(*) as n from epoch").get()?.n, 0);
+    // The judge still works on it: a submitted attempt is judged.
+    const sub = (await env.service.submitAttempt(
+      {
+        instance: "js-1",
+        patch_base64: env.patch(FAST_KERNEL),
+        hypothesis: "less work",
+        known_flaws: [],
+      },
+      "proposer",
+    )) as { attempt: string };
+    await env.drain();
+    assert.ok(env.ledger.currentVerdict(sub.attempt), "the judge gave the attempt a verdict");
+  });
+
   test("a dev run that waited past its trial's end never runs", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
     await env.service.applyCommand(env.assign);

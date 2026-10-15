@@ -42,6 +42,8 @@ export interface InstanceRow {
   direction: string | null;
   status: "running" | "paused" | "closed";
   pause_reason: string | null;
+  /** False: no worker agents run for this instance (the judge still works). */
+  agents: boolean;
 }
 
 export interface JobRow {
@@ -300,6 +302,8 @@ export class Ledger {
     seedRepo: string;
     seedCommit: string;
     direction?: string | undefined;
+    /** False: a judge-only instance (no worker agents). */
+    agents?: boolean | undefined;
     actor: string;
   }): void {
     this.tx(() => {
@@ -317,7 +321,7 @@ export class Ledger {
       const at = this.now();
       this.run(
         `insert into instance (id, campaign, version, contract_sha, mode, seed_repo, seed_commit,
-           direction, status, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)`,
+           direction, status, agents, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?)`,
         input.id,
         input.contract.campaign,
         input.contract.version,
@@ -326,6 +330,7 @@ export class Ledger {
         input.seedRepo,
         input.seedCommit,
         input.direction ?? null,
+        input.agents === false ? 0 : 1,
         at,
         at,
       );
@@ -355,6 +360,7 @@ export class Ledger {
         mode: input.contract.mode,
         seed: { repo: input.seedRepo, commit: input.seedCommit },
         direction: input.direction ?? null,
+        agents: input.agents !== false,
       });
     });
   }
@@ -1231,6 +1237,7 @@ function toInstance(r: Row): InstanceRow {
     direction: r.direction === null ? null : String(r.direction),
     status: String(r.status) as InstanceRow["status"],
     pause_reason: r.pause_reason === null ? null : String(r.pause_reason),
+    agents: r.agents === undefined || Number(r.agents) !== 0,
   };
 }
 

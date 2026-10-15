@@ -547,4 +547,9 @@ export const MIGRATIONS: readonly string[] = [
     decided_at text
   );
   `,
+  // 8: an instance may run with its worker agents off (a judge-only run, such as a kit's dry
+  // run on the unmodified project): the judge calibrates, validates and judges submissions.
+  `
+  alter table instance add column agents integer not null default 1;
+  `,
 ];

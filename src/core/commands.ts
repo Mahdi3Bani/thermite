@@ -89,6 +89,8 @@ export const CommandPayloads = {
     seed: z.object({ repo: IdSchema, commit: CommitSchema }).optional(),
     direction: z.string().min(1).optional(),
     imports: z.array(ImportSpec).default([]),
+    /** False: a judge-only instance. No worker agents run; the judge still works. */
+    agents: z.boolean().optional(),
   }),
   pause_instance: z.object({ instance: IdSchema, reason: z.string().min(1) }),
   resume_instance: z.object({ instance: IdSchema }),
