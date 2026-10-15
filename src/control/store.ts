@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { canonicalJson, sha256Hex } from "../core/canonical.ts";
 import type { SignedCommand } from "../core/commands.ts";
+import type { LiveEntry } from "../core/live.ts";
 
 /**
  * Control's store: units, the events they report, and command queues. A single control process
@@ -82,6 +83,23 @@ create table if not exists reset (
   created_at text not null,
   updated_at text not null
 );
+-- The live view: recent live-log lines per unit (harness lines signed; supervisor lines not).
+create table if not exists unit_live (
+  id integer primary key autoincrement,
+  unit text not null,
+  log_id text not null,
+  seq integer not null,
+  at text not null,
+  source text not null,
+  kind text not null,
+  text text not null,
+  lane text,
+  instance text,
+  signed integer not null,
+  received_at text not null
+);
+create unique index if not exists unit_live_seq on unit_live (unit, log_id, seq);
+create index if not exists unit_live_unit on unit_live (unit, id);
 `;
 
 export interface IngestReport {
@@ -178,6 +196,124 @@ export class ControlStore {
     return r?.supervisor
       ? { ...(JSON.parse(String(r.supervisor)) as object), received_at: String(r.supervisor_at) }
       : null;
+  }
+
+  /**
+   * Stores live-log lines (duplicates by log id and sequence are ignored) and keeps only the
+   * newest `keep` lines of the unit.
+   */
+  addLive(
+    unit: string,
+    logId: string,
+    entries: LiveEntry[],
+    signed: boolean,
+    keep = 20_000,
+  ): number {
+    const now = new Date().toISOString();
+    return this.tx(() => {
+      const insert = this.db.prepare(
+        `insert or ignore into unit_live (unit, log_id, seq, at, source, kind, text, lane, instance, signed, received_at)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      );
+      let added = 0;
+      for (const e of entries) {
+        added += Number(
+          insert.run(
+            unit,
+            logId,
+            e.seq,
+            e.at,
+            e.source,
+            e.kind,
+            e.text,
+            e.lane ?? null,
+            e.instance ?? null,
+            signed ? 1 : 0,
+            now,
+          ).changes,
+        );
+      }
+      const cut = this.db
+        .prepare("select id from unit_live where unit = ? order by id desc limit 1 offset ?")
+        .get(unit, keep) as { id: number } | undefined;
+      if (cut)
+        this.db.prepare("delete from unit_live where unit = ? and id <= ?").run(unit, cut.id);
+      return added;
+    });
+  }
+
+  /** Live lines of a unit after `after` (control's own ids), oldest first; one source if given. */
+  live(
+    unit: string,
+    after: number,
+    limit: number,
+    source?: string,
+  ): (LiveEntry & { id: number; signed: boolean })[] {
+    const rows = (
+      source
+        ? this.db
+            .prepare(
+              "select * from unit_live where unit = ? and id > ? and source = ? order by id limit ?",
+            )
+            .all(unit, after, source, limit)
+        : this.db
+            .prepare("select * from unit_live where unit = ? and id > ? order by id limit ?")
+            .all(unit, after, limit)
+    ) as Row[];
+    return rows.map((r) => ({
+      id: Number(r.id),
+      seq: Number(r.seq),
+      at: String(r.at),
+      source: String(r.source),
+      kind: String(r.kind) as LiveEntry["kind"],
+      text: String(r.text),
+      ...(r.lane ? { lane: String(r.lane) } : {}),
+      ...(r.instance ? { instance: String(r.instance) } : {}),
+      signed: Number(r.signed) === 1,
+    }));
+  }
+
+  /** The newest live lines of a unit, newest last (for a page's first view). */
+  liveTail(
+    unit: string,
+    limit: number,
+    source?: string,
+  ): (LiveEntry & { id: number; signed: boolean })[] {
+    const top = this.db
+      .prepare(
+        source
+          ? "select id from unit_live where unit = ? and source = ? order by id desc limit 1 offset ?"
+          : "select id from unit_live where unit = ? order by id desc limit 1 offset ?",
+      )
+      .get(...(source ? [unit, source, limit] : [unit, limit])) as { id: number } | undefined;
+    return this.live(unit, top?.id ?? 0, limit, source);
+  }
+
+  /** Each live source of a unit with its newest line (sessions to pick from). */
+  liveSources(unit: string): {
+    source: string;
+    lane: string | null;
+    instance: string | null;
+    last_at: string;
+    lines: number;
+    ended: boolean;
+  }[] {
+    return (
+      this.db
+        .prepare(
+          `select source, max(lane) as lane, max(instance) as instance, max(at) as last_at, count(*) as lines,
+             max(case when kind = 'status' and text like 'trial ended%' then 1 else 0 end) as ended
+           from unit_live where unit = ? group by source order by max(id) desc`,
+        )
+        .all(unit) as Row[]
+    ).map((r) => ({
+      source: String(r.source),
+      lane: r.lane ? String(r.lane) : null,
+      instance: r.instance ? String(r.instance) : null,
+      last_at: String(r.last_at),
+      lines: Number(r.lines),
+      ended: Number(r.ended) === 1,
+    }));
   }
 
   addReport(unit: string, kind: string, body: string): number {

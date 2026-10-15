@@ -3,6 +3,7 @@ import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { COMMAND_KINDS, type CommandKind, reportBody, verifyJson } from "../core/commands.ts";
+import { LiveBatch, LiveEntry, liveBody } from "../core/live.ts";
 import { createDashboard } from "./dashboard.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
 import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
@@ -245,6 +246,34 @@ export function createControlApi(
     },
   );
 
+  // The live view: the harness's lines, signed with the unit's pinned key (the supervisor relays
+  // them but cannot forge them), and the supervisor's own lines, stored as unsigned.
+  app.post("/v1/units/:unit/live", unitAuth, bodyLimit({ maxSize: 4 * 1024 * 1024 }), async (c) => {
+    const unit = c.req.param("unit");
+    const body = z
+      .object({
+        batch: LiveBatch,
+        supervisor: z
+          .object({ log_id: z.string().min(1).max(64), entries: z.array(LiveEntry).max(500) })
+          .optional(),
+      })
+      .parse(await c.req.json());
+    const b = body.batch;
+    if (b.unit !== unit) return c.json({ error: "unit mismatch" }, 403);
+    const pinned = store.unitKey(unit).pubkey;
+    if (!pinned) return c.json({ error: "the unit's report key is not accepted yet" }, 409);
+    if (!b.signature || !b.unit_pubkey || b.unit_pubkey.trim() !== pinned.trim())
+      return c.json({ error: "live lines must be signed with the unit's pinned key" }, 409);
+    if (!verifyJson(liveBody(b), b.signature, pinned))
+      return c.json({ error: "bad live signature" }, 403);
+    let added = store.addLive(unit, b.log_id, b.entries, true);
+    if (body.supervisor) {
+      const own = body.supervisor.entries.filter((e) => e.source === "supervisor");
+      added += store.addLive(unit, `supervisor:${body.supervisor.log_id}`, own, false);
+    }
+    return c.json({ added });
+  });
+
   app.post("/v1/units/:unit/reports", unitAuth, bodyLimit({ maxSize: 1024 * 1024 }), async (c) => {
     const body = z
       .object({ kind: z.enum(["daily"]), body: z.string().min(1).max(200_000) })
@@ -348,6 +377,18 @@ export function createControlApi(
       "content-type": "text/plain; version=0.0.4",
     }),
   );
+
+  app.get("/v1/units/:unit/live", reader, (c) => {
+    const after = Math.max(0, Math.trunc(Number(c.req.query("after") ?? "0")) || 0);
+    const source = c.req.query("source") || undefined;
+    const limit = clampLimit(c.req.query("limit"), 500);
+    return c.json({
+      sources: store.liveSources(c.req.param("unit")),
+      entries: after
+        ? store.live(c.req.param("unit"), after, limit, source)
+        : store.liveTail(c.req.param("unit"), limit, source),
+    });
+  });
 
   app.post("/v1/units/:unit/key/accept", admin, (c) =>
     store.acceptPendingKey(c.req.param("unit"), "owner:api", c.req.query("fingerprint") ?? "")

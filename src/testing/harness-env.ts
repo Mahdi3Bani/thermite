@@ -25,7 +25,7 @@ export interface HarnessEnv {
   sign(
     kind: CommandKind,
     payload: unknown,
-    over?: { unit?: string; expiresInMs?: number },
+    over?: { unit?: string; expiresInMs?: number; issuedBy?: string },
   ): SignedCommand;
   assignPayload(over?: Record<string, unknown>): Record<string, unknown>;
   patchFrom(edit: (dir: string) => void): string;
@@ -84,7 +84,7 @@ export function makeHarnessEnv(unit = "unit-a", clock?: () => Date): HarnessEnv 
   const sign = (
     kind: CommandKind,
     payload: unknown,
-    over: { unit?: string; expiresInMs?: number } = {},
+    over: { unit?: string; expiresInMs?: number; issuedBy?: string } = {},
   ) =>
     signEnvelope(
       {
@@ -92,7 +92,7 @@ export function makeHarnessEnv(unit = "unit-a", clock?: () => Date): HarnessEnv 
         id: randomUUID(),
         unit: over.unit ?? unit,
         kind,
-        issued_by: "owner",
+        issued_by: over.issuedBy ?? "owner",
         issued_at: new Date(Date.now() - 1000).toISOString(),
         expires_at: new Date(Date.now() + (over.expiresInMs ?? 3_600_000)).toISOString(),
         payload,

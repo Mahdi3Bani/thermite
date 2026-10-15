@@ -1,5 +1,6 @@
 import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type TSchema, Type } from "@earendil-works/pi-ai";
+import { linkSession, type SessionLink } from "./live-session.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
 import type { TrialResult } from "./worker.ts";
 
@@ -23,6 +24,8 @@ export interface ResearchTrialSpec {
 export interface ResearchDeps {
   model: ModelConfig;
   call(op: string, args: Record<string, unknown>): Promise<unknown>;
+  /** The live view: the session's turns out, the owner's messages in. */
+  link?: SessionLink | undefined;
 }
 
 const SYSTEM = `You are a research worker in an automated research campaign. Work on your assignment
@@ -147,6 +150,7 @@ export async function runResearchTrial(
     // One tool call at a time: each is a request to the harness, in the order the model chose.
     toolExecution: "sequential",
   });
+  if (deps.link) linkSession(agent, deps.link);
   agent.subscribe((event) => {
     if (event.type === "turn_end") {
       result.turns++;

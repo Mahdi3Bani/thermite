@@ -53,6 +53,8 @@ export interface MeasureContext {
   runsDir: string;
   /** The imported models (`<sha256>` files, read-only): `{models:<sha256>}` in run and check. */
   modelsDir: string;
+  /** Tells the live view how a run went (never a measurement; held-out cells are not named). */
+  note?: ((arm: string, cell: string, outcome: string) => void) | undefined;
 }
 
 /**
@@ -81,6 +83,12 @@ export function outputProblems(dir: string, maxEntries = 10_000, maxDepth = 32):
 }
 
 export async function runArm(ctx: MeasureContext, arm: Arm, cell: string): Promise<ArmRun> {
+  const r = await runArmInner(ctx, arm, cell);
+  ctx.note?.(arm.name, cell, r.kind === "ok" ? "ok" : `${r.kind}: ${r.reason.slice(0, 300)}`);
+  return r;
+}
+
+async function runArmInner(ctx: MeasureContext, arm: Arm, cell: string): Promise<ArmRun> {
   const params = ctx.kit.cells[cell];
   if (!params) throw new Error(`kit ${ctx.kit.name} has no cell ${cell}`);
   // The build must be exactly what was verified at build time.

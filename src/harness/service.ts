@@ -15,6 +15,7 @@ import {
   verifyCommand,
 } from "../core/commands.ts";
 import { type Contract, contractSha, parseContract } from "../core/contract.ts";
+import { LiveLog, liveBody } from "../core/live.ts";
 import { Registry } from "./agents/registry.ts";
 import { type AuditDecision, type AuditPackage, Audits } from "./audits.ts";
 import { Conclusions } from "./conclusions.ts";
@@ -46,7 +47,13 @@ function conflictCheck(set: { kind: string; family?: string | undefined }[]): vo
 }
 
 /** Command kinds only the owner may issue (control records the issuer in the signed envelope). */
-const OWNER_ONLY = new Set(["approve_promotion", "accept_review", "conclude", "wipe_state"]);
+const OWNER_ONLY = new Set([
+  "approve_promotion",
+  "accept_review",
+  "conclude",
+  "wipe_state",
+  "message_agent",
+]);
 
 /** Written by an accepted wipe_state; the next controller start wipes the state and removes it. */
 export const WIPE_MARKER = "WIPE_REQUESTED";
@@ -147,6 +154,8 @@ export class HarnessService {
   readonly unit: string;
   readonly ledger: Ledger;
   readonly paths: HarnessPaths;
+  /** What the agents and the judge are doing now, for control's live view (never judged). */
+  readonly live = new LiveLog();
   private readonly controlPublicKeyPem: string;
   private readonly clock: () => Date;
   private readonly unitKeys: KeyPairPem | undefined;
@@ -277,6 +286,27 @@ export class HarnessService {
         conflictCheck(p.directives);
         const ids = this.ledger.addDirectiveSet(p.instance, by, p.directives, p.replace);
         return { instance: p.instance, directives: ids };
+      }
+      case "message_agent": {
+        const p = CommandPayloads.message_agent.parse(payload);
+        this.requireInstance(p.instance);
+        const r = this.ledger.db
+          .prepare(
+            "insert into agent_message (instance, target, text, issued_by, created_at) values (?, ?, ?, ?, ?)",
+          )
+          .run(p.instance, p.to, p.text, by, this.clock().toISOString());
+        this.ledger.appendEvent(by, "agent_message", p.instance, {
+          to: p.to,
+          chars: p.text.length,
+        });
+        this.live.append({
+          source: p.to.startsWith("trial:") ? p.to : p.to === "planner" ? "planner" : "supervisor",
+          kind: "message",
+          text: `Owner to ${p.to}: ${p.text}`,
+          instance: p.instance,
+          ...(p.to.startsWith("lane-") ? { lane: p.to } : {}),
+        });
+        return { message: Number(r.lastInsertRowid), to: p.to };
       }
       case "reset_workers": {
         // The scheduler acts on the event: it kills the instance's running trials, clears the
@@ -694,6 +724,8 @@ export class HarnessService {
         device_hours_used: this.ledger.deviceHours(instance),
         tokens: registry.tokensUsed(instance),
       },
+      // The owner's recent messages to the advisors (message_agent to "advisors").
+      owner_messages: this.advisorMessages(instance),
     };
   }
 
@@ -951,6 +983,68 @@ export class HarnessService {
       v0: a.v0 ? JSON.parse(String(a.v0)) : null,
       verdict: verdict ? { verdict: verdict.verdict } : null,
     };
+  }
+
+  // ------------------------------------------------------------ live log and messages
+
+  /** Lines of the live log after `after`, signed with the unit's key like a report. */
+  liveBatch(after: number, limit: number): unknown {
+    const { entries, next } = this.live.since(after, limit);
+    const batch = { unit: this.unit, log_id: this.live.id, from: after, next, entries };
+    return this.unitKeys
+      ? {
+          ...batch,
+          unit_pubkey: this.unitKeys.publicKeyPem,
+          signature: signJson(liveBody(batch), this.unitKeys.privateKeyPem),
+        }
+      : batch;
+  }
+
+  /**
+   * The owner's messages for a running trial: those sent to the trial itself or to its lane.
+   * Each is delivered once and marked with the trial that took it.
+   */
+  takeMessages(trial: { id: string; instance: string; lane: string }): string[] {
+    return this.ledger.tx(() => {
+      const rows = this.ledger.db
+        .prepare(
+          "select id, text from agent_message where instance = ? and delivered_at is null and (target = ? or target = ?) order by id",
+        )
+        .all(trial.instance, `trial:${trial.id}`, trial.lane) as { id: number; text: string }[];
+      const mark = this.ledger.db.prepare(
+        "update agent_message set delivered_at = ?, delivered_to = ? where id = ?",
+      );
+      for (const r of rows) mark.run(this.clock().toISOString(), `trial:${trial.id}`, r.id);
+      return rows.map((r) => r.text);
+    });
+  }
+
+  /** The owner's messages for the planner (delivered with the next plan). */
+  takePlannerMessages(instance: string): string[] {
+    return this.ledger.tx(() => {
+      const rows = this.ledger.db
+        .prepare(
+          "select id, text from agent_message where instance = ? and target = 'planner' and delivered_at is null order by id",
+        )
+        .all(instance) as { id: number; text: string }[];
+      const mark = this.ledger.db.prepare(
+        "update agent_message set delivered_at = ?, delivered_to = 'planner' where id = ?",
+      );
+      for (const r of rows) mark.run(this.clock().toISOString(), r.id);
+      return rows.map((r) => r.text);
+    });
+  }
+
+  /** The owner's recent messages for the advisors (shown in their brief for a day). */
+  advisorMessages(instance: string): { at: string; text: string }[] {
+    const since = new Date(this.clock().getTime() - 24 * 3_600_000).toISOString();
+    return (
+      this.ledger.db
+        .prepare(
+          "select created_at as at, text from agent_message where instance = ? and target = 'advisors' and created_at >= ? order by id desc limit 5",
+        )
+        .all(instance, since) as { at: string; text: string }[]
+    ).reverse();
   }
 
   // ------------------------------------------------------------ snapshot and export

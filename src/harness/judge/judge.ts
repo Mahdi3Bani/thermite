@@ -147,6 +147,8 @@ export class Judge {
       "validate",
     ]);
     if (!job) return false;
+    const subject = job.attempt ?? this.jobInstance(job) ?? "";
+    this.note(`${job.kind} ${subject}: started`, this.jobInstance(job));
     let fin: Finish;
     try {
       fin =
@@ -160,9 +162,14 @@ export class Judge {
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       log("judge", "job failed", { job: job.id, kind: job.kind, error: reason });
+      this.note(`${job.kind} ${subject}: failed (${reason.slice(0, 300)})`, this.jobInstance(job));
       this.infraFailure(job, reason);
       return true;
     }
+    this.note(
+      `${job.kind} ${subject}: ${fin.verdict ? `${fin.verdict.verdict}${typeof fin.verdict.delta === "number" ? ` ${(fin.verdict.delta * 100).toFixed(2)}%` : ""}` : (fin.lifecycle ?? "done")}`,
+      this.jobInstance(job),
+    );
     try {
       const promoted = this.finish(job, fin);
       if (promoted) await this.o.service.syncChampionRef(promoted);
@@ -221,6 +228,21 @@ export class Judge {
   }
 
   // ------------------------------------------------------------------ shared steps
+
+  /** A line for control's live view of the judge. */
+  private note(text: string, instance?: string | undefined): void {
+    this.o.service.live.append({ source: "judge", kind: "log", text, instance });
+  }
+
+  /** The instance a job works for. */
+  private jobInstance(job: JobRow): string | undefined {
+    if (job.attempt) {
+      const i = this.ledger.getAttempt(job.attempt)?.instance;
+      return i === undefined || i === null ? undefined : String(i);
+    }
+    const i = (JSON.parse(job.spec) as { instance?: unknown }).instance;
+    return typeof i === "string" ? i : undefined;
+  }
 
   private spec(job: JobRow): Record<string, unknown> {
     return JSON.parse(job.spec) as Record<string, unknown>;
@@ -284,7 +306,9 @@ export class Judge {
   ) {
     const inst = this.ledger.getInstance(instance);
     if (!inst) throw new InfraError(`no instance ${instance}`);
-    return this.store.ensure({
+    const started = Date.now();
+    this.note(`build ${commit.slice(0, 12)}: started`, instance);
+    const b = await this.store.ensure({
       repo: inst.seed_repo,
       mirror: this.o.service.mirrorFor(inst.seed_repo),
       commit,
@@ -293,6 +317,11 @@ export class Judge {
       kitCommit: k.commit,
       actor: this.o.owner,
     });
+    this.note(
+      `build ${commit.slice(0, 12)}: ${b.ok ? "ok" : `failed (${b.reason.slice(0, 200)})`} in ${Math.round((Date.now() - started) / 1000)} s`,
+      instance,
+    );
+    return b;
   }
 
   private async armFor(
@@ -320,6 +349,15 @@ export class Judge {
     // Reachable by exact (unguessable) path only: no role may list in-flight runs.
     chmodSync(join(this.o.service.paths.scratchDir, "runs"), 0o711);
     chmodSync(runsDir, 0o711);
+    const instance = this.jobInstance(job);
+    let contract: Contract | undefined;
+    try {
+      contract = instance ? this.o.service.contractFor(instance) : undefined;
+    } catch {
+      contract = undefined;
+    }
+    const held = new Set(contract && "held_out_cells" in contract ? contract.held_out_cells : []);
+    let heldRuns = 0;
     return {
       runner: this.o.runner,
       store: this.store,
@@ -327,6 +365,10 @@ export class Judge {
       kitDir: k.dir,
       runsDir,
       modelsDir: join(this.o.service.paths.stateDir, "models"),
+      note: (arm, cell, outcome) =>
+        held.has(cell)
+          ? this.note(`held-out run ${++heldRuns} done`, instance)
+          : this.note(`${arm} · ${cell}: ${outcome}`, instance),
     };
   }
 

@@ -2,6 +2,7 @@ import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type TSchema, Type } from "@earendil-works/pi-ai";
 import { type LaneLimitValues, laneLimits } from "../../core/contract.ts";
 import type { Role, Runner } from "../broker/runner.ts";
+import { linkSession, type SessionLink } from "./live-session.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
 
 /**
@@ -55,6 +56,8 @@ export interface TrialDeps {
   }): Promise<SubmitOutcome>;
   status(attempt: string): Promise<unknown>;
   devRun?(req: { lane: string; command: string; timeoutS: number }): Promise<unknown>;
+  /** The live view: the session's turns out, the owner's messages in. */
+  link?: SessionLink | undefined;
 }
 
 export interface TrialResult {
@@ -294,6 +297,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
     // else runs.
     toolExecution: "sequential",
   });
+  if (deps.link) linkSession(agent, deps.link);
   agent.subscribe((event) => {
     if (event.type === "turn_end") {
       result.turns++;

@@ -159,6 +159,86 @@ describe("worker trial", () => {
     assert.match(String(r2.error), /the model stopped \(stop\)/);
   });
 
+  test("the live view: a worker's turns stream out, and the owner's message arrives as a user turn", async () => {
+    const env = makeJudgeEnv();
+    await env.service.applyCommand(env.assign);
+    const runner = new LocalRunner(env.paths.scratchDir);
+    const champion = env.ledger.currentChampion("js-1");
+    const ws = await prepareWorkspace({
+      runner,
+      scratchDir: env.paths.scratchDir,
+      mirror: env.service.mirrorFor("proj"),
+      commit: champion.commit_sha,
+      lane: "lane-1",
+    });
+    let sawOwner = false;
+    const fake = await startFakeModel(({ messages }) => {
+      sawOwner ||= messages.some(
+        (m) => m.role === "user" && JSON.stringify(m.content).includes("use the fast kernel"),
+      );
+      const done = messages.filter((m) => m.role === "tool").length;
+      if (done === 0)
+        return {
+          text: "Reading first.",
+          toolCalls: [{ name: "read_file", args: { path: "src/kernel/work.mjs" } }],
+        };
+      if (!sawOwner) return { text: "Still thinking." };
+      if (done === 1)
+        return {
+          toolCalls: [
+            { name: "write_file", args: { path: "src/kernel/work.mjs", content: FAST_KERNEL } },
+          ],
+        };
+      return {
+        toolCalls: [{ name: "submit", args: { hypothesis: "as the owner said", known_flaws: [] } }],
+      };
+    });
+    const lines: { kind: string; text: string }[] = [];
+    let pending = ["use the fast kernel"];
+    const r = await runTrial(
+      {
+        trialId: "t-live",
+        instance: "js-1",
+        lane: "lane-1",
+        workspace: ws.repo,
+        parentCommit: champion.commit_sha,
+        editablePaths: ["src/kernel/**"],
+        brief: "Make work() faster without changing its result.",
+        wallMs: 60_000,
+        maxTurns: 20,
+      },
+      {
+        runner,
+        laneTool,
+        model: {
+          baseUrl: fake.url,
+          model: "test",
+          apiKey: "k",
+          contextWindow: 32000,
+          maxTokens: 2000,
+        },
+        submit: (req) => env.service.submitAttempt({ ...req, lane: req.lane }, "proposer") as never,
+        status: async (id) => env.service.attemptStatus(id),
+        link: {
+          live: async (entries) => {
+            lines.push(...entries);
+          },
+          messages: async () => {
+            const m = pending;
+            pending = [];
+            return m;
+          },
+        },
+      },
+    );
+    await fake.close();
+    assert.ok(sawOwner, "the model saw the owner's message");
+    assert.equal(r.stopped, "submitted", JSON.stringify(r));
+    const kinds = new Set(lines.map((l) => l.kind));
+    for (const k of ["text", "tool", "result", "message"]) assert.ok(kinds.has(k), `a ${k} line`);
+    assert.ok(lines.some((l) => l.kind === "tool" && l.text.startsWith("read_file")));
+  });
+
   test("tool calls run one at a time, and nothing runs after a submission in the same turn", async () => {
     const env = makeJudgeEnv();
     await env.service.applyCommand(env.assign);

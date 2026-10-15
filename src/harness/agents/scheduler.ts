@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { log } from "../../common/env.ts";
 import type { StructuredDirective } from "../../core/commands.ts";
 import { type Contract, laneLimits, type ResearchContract } from "../../core/contract.ts";
+import type { LiveKind } from "../../core/live.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import type { Ledger } from "../ledger.ts";
 import type { Research } from "../research/research.ts";
@@ -440,7 +441,17 @@ export class Scheduler {
       directives: this.directives(instance),
       laneBests: Object.fromEntries(lanes.map((l) => [l, this.registry.laneBest(instance, l)])),
       campaignNotes: contract.notes,
+      ownerMessages: this.o.service.takePlannerMessages(instance),
     };
+    const live = this.o.service.live;
+    live.append({
+      source: "planner",
+      kind: "status",
+      text: `planning epoch ${n} (${laneCount} lanes)`,
+      instance,
+    });
+    for (const m of input.ownerMessages ?? [])
+      live.append({ source: "planner", kind: "message", text: `Owner: ${m}`, instance });
     const ctrl = new AbortController();
     this.planning = { instance, ctrl };
     this.watch();
@@ -451,7 +462,26 @@ export class Scheduler {
       this.planning = undefined;
     }
     // Paused or closed while planning: no epoch starts.
-    if (ctrl.signal.aborted) return;
+    if (ctrl.signal.aborted) {
+      live.append({ source: "planner", kind: "status", text: "planning cancelled", instance });
+      return;
+    }
+    live.append({
+      source: "planner",
+      kind: "text",
+      text: [
+        `epoch ${n}: ${p.source === "planner" ? `planned by the model${p.tries > 1 ? ` (try ${p.tries})` : ""}` : "the fallback plan"}`,
+        ...p.assignments.map(
+          (a) =>
+            `${a.lane}: ${a.family}, ${a.focus}${a.parent === "lane_best" ? " (from the lane's best)" : ""}`,
+        ),
+        ...(p.newFamilies.length
+          ? [`new families: ${p.newFamilies.map((f) => f.id).join(", ")}`]
+          : []),
+        ...(p.rawViolations.length ? [`refused: ${p.rawViolations.slice(0, 3).join("; ")}`] : []),
+      ].join("\n"),
+      instance,
+    });
     for (const f of p.newFamilies)
       this.registry.addFamily(instance, f.id, f.description, `planner:${p.source}`);
     this.registry.startEpoch({
@@ -727,6 +757,14 @@ export class Scheduler {
       parent: "research",
       token,
     });
+    this.trialLine(
+      id,
+      instance,
+      a.lane,
+      "status",
+      `research trial on ${a.lane}: ${a.family}, ${a.focus}`,
+    );
+    const fullBrief = this.withOwnerMessages(id, instance, a.lane, brief);
     const abort = new AbortController();
     this.aborts.set(a.lane, abort);
     this.laneInstance.set(a.lane, instance);
@@ -745,7 +783,7 @@ export class Scheduler {
             token,
             instance,
             lane: a.lane,
-            brief,
+            brief: fullBrief,
             wallMs: laneLimits(contract).trialMinutes
               ? (laneLimits(contract).trialMinutes as number) * 60_000
               : this.o.trialWallMs,
@@ -758,6 +796,13 @@ export class Scheduler {
       } finally {
         if (abort.signal.aborted) r = { ...r, stopped: "interrupted" };
         this.registry.finishTrial(id, r, this.o.owner);
+        this.trialLine(
+          id,
+          instance,
+          a.lane,
+          "status",
+          `trial ended: ${r.stopped}${r.error ? ` (${r.error.slice(0, 200)})` : ""}`,
+        );
       }
     })().finally(() => {
       this.running.delete(a.lane);
@@ -800,6 +845,13 @@ export class Scheduler {
         parent,
         token,
       });
+      this.trialLine(
+        id,
+        instance,
+        a.lane,
+        "status",
+        `trial on ${a.lane}: ${a.family}, ${a.focus} (from ${parent === champion.commit_sha ? `the champion, seq ${champion.seq}` : `the lane's best, ${best}`})`,
+      );
       const limits = laneLimits(contract);
       let ws: { dir: string; repo: string } | undefined;
       let r: TrialResult = { stopped: "error", turns: 0, toolCalls: 0, tokensIn: 0, tokensOut: 0 };
@@ -825,16 +877,21 @@ export class Scheduler {
             workspaceRoot: ws.dir,
             parentCommit: parent,
             editablePaths: "editable_paths" in contract ? contract.editable_paths : [],
-            brief: this.brief(
+            brief: this.withOwnerMessages(
+              id,
               instance,
-              contract,
-              epoch,
-              a,
-              k,
-              perEpoch,
-              parent === champion.commit_sha
-                ? `the champion (seq ${champion.seq})`
-                : `your lane's best attempt ${best}`,
+              a.lane,
+              this.brief(
+                instance,
+                contract,
+                epoch,
+                a,
+                k,
+                perEpoch,
+                parent === champion.commit_sha
+                  ? `the champion (seq ${champion.seq})`
+                  : `your lane's best attempt ${best}`,
+              ),
             ),
             wallMs: limits.trialMinutes ? limits.trialMinutes * 60_000 : this.o.trialWallMs,
             maxTurns: this.o.maxTurns,
@@ -850,6 +907,13 @@ export class Scheduler {
         // The trial ends first (its token stops working), then its processes and dev runs.
         this.o.service.trialWorkspaces.delete(id);
         this.registry.finishTrial(id, { ...r, attempt: r.submitted?.attempt }, this.o.owner);
+        this.trialLine(
+          id,
+          instance,
+          a.lane,
+          "status",
+          `trial ended: ${r.submitted ? `submitted ${r.submitted.attempt}` : r.stopped}${r.error ? ` (${r.error.slice(0, 200)})` : ""}`,
+        );
         await this.o.runner.killRole(lane).catch(() => 0);
         await this.o.devRuns?.settle(lane).catch(() => undefined);
         await this.o.runner.killRole(lane).catch(() => 0);
@@ -861,6 +925,25 @@ export class Scheduler {
       this.laneInstance.delete(a.lane);
     });
     this.running.set(a.lane, work);
+  }
+
+  /** A line in a trial's live session (control's live view). */
+  private trialLine(
+    id: string,
+    instance: string,
+    lane: string,
+    kind: LiveKind,
+    text: string,
+  ): void {
+    this.o.service.live.append({ source: `trial:${id}`, kind, text, lane, instance });
+  }
+
+  /** The brief with the owner's messages for this lane, if any (each delivered once). */
+  private withOwnerMessages(id: string, instance: string, lane: string, brief: string): string {
+    const msgs = this.o.service.takeMessages({ id, instance, lane });
+    if (!msgs.length) return brief;
+    for (const m of msgs) this.trialLine(id, instance, lane, "message", `Owner: ${m}`);
+    return `${brief}\n\n# Messages from the campaign's owner\n${msgs.map((m) => `- ${m}`).join("\n")}`;
   }
 
   /** The worker's brief: built only from the ledger, and only from this lane's own history. */

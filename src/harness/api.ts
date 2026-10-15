@@ -4,6 +4,7 @@ import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { laneLimits } from "../core/contract.ts";
+import { LIVE_KINDS } from "../core/live.ts";
 import { Registry } from "./agents/registry.ts";
 import { laneCacheEnv } from "./agents/workspace.ts";
 import { type Role, type Runner, RunRequest } from "./broker/runner.ts";
@@ -199,6 +200,46 @@ export function createHarnessApi(
     return c.json({
       review: id,
       result: new Reviews(service.ledger).recordPanel(id, body.results, "supervisor"),
+    });
+  });
+
+  // The live log, signed, for the supervisor to relay to control.
+  app.get("/v1/live", supervisor, (c) => {
+    const after = Number(c.req.query("after") ?? "0");
+    const limit = Math.min(Number(c.req.query("limit") ?? "500"), 2000);
+    if (!Number.isInteger(after) || after < 0 || !Number.isInteger(limit) || limit < 1) {
+      return c.json({ error: "bad after or limit" }, 400);
+    }
+    return c.json(service.liveBatch(after, limit) as object);
+  });
+
+  // A worker's own lines for the live log: its trial decides the source, lane and instance.
+  app.post("/v1/trial/live", bodyLimit({ maxSize: 256 * 1024 }), async (c) => {
+    const { trial } = trialOf(c.req.header("authorization"));
+    const body = z
+      .object({
+        entries: z
+          .array(z.object({ kind: z.enum(LIVE_KINDS), text: z.string().max(8000) }))
+          .max(200),
+      })
+      .parse(await c.req.json());
+    for (const e of body.entries) {
+      service.live.append({
+        source: `trial:${trial.id}`,
+        kind: e.kind,
+        text: e.text,
+        lane: trial.lane,
+        instance: trial.instance,
+      });
+    }
+    return c.json({ ok: true });
+  });
+
+  // The owner's messages for this trial (sent to it or to its lane), each delivered once.
+  app.get("/v1/trial/messages", (c) => {
+    const { trial } = trialOf(c.req.header("authorization"));
+    return c.json({
+      messages: service.takeMessages({ id: trial.id, instance: trial.instance, lane: trial.lane }),
     });
   });
 

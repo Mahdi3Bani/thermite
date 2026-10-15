@@ -12,6 +12,7 @@ import { log, optionalSecretFromFile, requireEnv, secretFromFile } from "../comm
 import { type AdviseState, adviseOnce, emptyAdviseState } from "./advise.ts";
 import { AdvisorsConfig } from "./advisors.ts";
 import { type ExportState, exportOnce } from "./git-export.ts";
+import { type LiveRelayState, relayLiveOnce, supervisorLive } from "./live.ts";
 import { RelayError, type RelayState, relayOnce } from "./relay.ts";
 import { dailyReport } from "./report.ts";
 import { stageCommand } from "./staging.ts";
@@ -122,17 +123,57 @@ async function main(): Promise<void> {
   // Advisors run on their own: a teacher round can take many minutes.
   const advising = async () => {
     while (!stopping && advisors) {
+      const before = { ...adviseState.stats };
+      supervisorLive.append({
+        source: "supervisor",
+        kind: "status",
+        text: "advisor round started",
+      });
       try {
         adviseState = await adviseOnce({ harnessUrl, harnessToken, home, advisors }, adviseState);
         save(advisePath, adviseState);
+        const a = adviseState.stats;
+        supervisorLive.append({
+          source: "supervisor",
+          kind: "status",
+          text: `advisor round done: ${a.teacher_runs - before.teacher_runs} teacher runs, ${a.directive_sets - before.directive_sets} directive sets, ${a.audits - before.audits} audits, ${a.reviews - before.reviews} reviews, ${a.errors - before.errors} errors`,
+        });
       } catch (err) {
         log("supervisor", "advisor loop error", { error: String(err) });
+        supervisorLive.append({
+          source: "supervisor",
+          kind: "status",
+          text: `advisor round failed: ${String(err).slice(0, 300)}`,
+        });
       }
       const until = Date.now() + Math.max(intervalMs, 30_000);
       while (!stopping && Date.now() < until) await new Promise((r) => setTimeout(r, 250));
     }
   };
   const advisingDone = advising();
+
+  // The live view: the harness's live log (signed) and the supervisor's own lines, every few
+  // seconds. Independent of the 60 s report relay.
+  const liveMs = Number(env.THERMITE_LIVE_INTERVAL_MS ?? "3000");
+  const living = async () => {
+    let liveState: LiveRelayState = { cursor: 0, ownCursor: 0 };
+    let failing = false;
+    while (!stopping && controlUrl && liveMs > 0) {
+      try {
+        liveState = await relayLiveOnce(
+          { unit, harnessUrl, harnessToken, controlUrl, controlToken },
+          liveState,
+        );
+        failing = false;
+      } catch (err) {
+        if (!failing) log("supervisor", "live relay error", { error: String(err) });
+        failing = true;
+      }
+      const until = Date.now() + liveMs;
+      while (!stopping && Date.now() < until) await new Promise((r) => setTimeout(r, 250));
+    }
+  };
+  const livingDone = living();
 
   while (!stopping) {
     try {
@@ -217,6 +258,7 @@ async function main(): Promise<void> {
     while (!stopping && Date.now() < until) await new Promise((r) => setTimeout(r, 250));
   }
   await advisingDone;
+  await livingDone;
   process.exit(0);
 }
 

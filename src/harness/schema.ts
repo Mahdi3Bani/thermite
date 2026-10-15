@@ -552,4 +552,18 @@ export const MIGRATIONS: readonly string[] = [
   `
   alter table instance add column agents integer not null default 1;
   `,
+  // 9: the owner's messages to agent sessions (message_agent), kept until delivered.
+  `
+  create table agent_message (
+    id integer primary key autoincrement,
+    instance text not null,
+    target text not null,
+    text text not null,
+    issued_by text not null,
+    created_at text not null,
+    delivered_at text,
+    delivered_to text
+  );
+  create index agent_message_pending on agent_message (instance, target) where delivered_at is null;
+  `,
 ];

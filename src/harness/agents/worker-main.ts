@@ -48,10 +48,17 @@ async function main(): Promise<void> {
     if (!res.ok) throw new Error(`${method} ${path} -> ${res.status}: ${text.slice(0, 500)}`);
     return JSON.parse(text);
   };
+  // The live view: this session's turns to the live log, the owner's messages back in.
+  const link = {
+    live: (entries: unknown[]) => call("POST", "/v1/trial/live", { entries }),
+    messages: async () =>
+      ((await call("GET", "/v1/trial/messages")) as { messages: string[] }).messages,
+  };
   if (trial.kind === "research") {
     const result = await runResearchTrial(trial.spec, {
       model,
       call: (op, args) => call("POST", `/v1/research/${op}`, args),
+      link,
     });
     process.stdout.write(`\n${JSON.stringify(result)}\n`);
     return;
@@ -77,6 +84,7 @@ async function main(): Promise<void> {
         timeout_s: req.timeoutS,
         cwd: spec.workspace,
       }),
+    link,
   });
   process.stdout.write(`\n${JSON.stringify(result)}\n`);
 }

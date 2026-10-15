@@ -102,6 +102,16 @@ export const CommandPayloads = {
   }),
   reset_workers: z.object({ instance: IdSchema, reseed_commit: CommitSchema.optional() }),
   /**
+   * The owner's message to an agent session (owner only): a running worker's trial, a lane (its
+   * running trial, else its next one), the planner (its next plan) or the advisors (their next
+   * brief). The judge is code and takes no messages.
+   */
+  message_agent: z.object({
+    instance: IdSchema,
+    to: z.string().regex(/^(planner|advisors|lane-([1-9]|1[0-6])|trial:t-[0-9a-f]{8,32})$/),
+    text: z.string().min(1).max(4000),
+  }),
+  /**
    * Another unit's champion as a candidate here: this unit's judge screens and confirms it
    * against its own champion. The supervisor stages the file from the results repository.
    */

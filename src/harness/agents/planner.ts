@@ -26,6 +26,8 @@ export interface PlannerInput {
   laneBests: Record<string, string | null>;
   /** The contract's notes (written by the campaign's author, approved with the contract). */
   campaignNotes?: string | undefined;
+  /** The owner's messages to the planner since the last plan (message_agent). */
+  ownerMessages?: string[] | undefined;
 }
 
 export interface NewFamily {
@@ -180,8 +182,9 @@ const SYSTEM = `You plan the next epoch of an automated research campaign. Each 
 worker; give each lane one direction (an approach family) and a concrete focus. Spread lanes over
 different directions so they do not duplicate each other; reuse directions with promising evidence
 and propose a new family when a genuinely different approach is worth trying. Obey the directives:
-never assign an AVOID family, always assign every MANDATE family, prefer TRY families. Answer only by
-calling submit_plan once.`;
+never assign an AVOID family, always assign every MANDATE family, prefer TRY families. Messages in
+owner_messages come from the campaign's owner: take them into account. Answer only by calling
+submit_plan once.`;
 
 export async function plan(
   input: PlannerInput,
@@ -201,6 +204,7 @@ export async function plan(
       directives: input.directives.map((d) => ({ id: d.id, ...d.body })),
       lane_bests: input.laneBests,
       ...(input.campaignNotes ? { campaign_notes: input.campaignNotes } : {}),
+      ...(input.ownerMessages?.length ? { owner_messages: input.ownerMessages } : {}),
     });
     let feedback = "";
     for (let tries = 1; tries <= 2; tries++) {
