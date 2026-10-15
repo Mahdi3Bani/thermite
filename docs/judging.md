@@ -31,7 +31,7 @@ Thermite's central rule is that **an agent never grades its own work.** Agents t
 5. **Confirm.** A promising result is re-run independently, decided on fresh data only. Held-out checks run at this point. Surprisingly large gains are audited first.
 6. **Promote.** The champion moves through a compare-and-swap, so two workers can't both replace the same champion.
 
-The score that counts is always measured by the executor itself, from outside the candidate's process. Anything the candidate prints is only a cross-check.
+The score that counts is always measured by the executor itself, from outside the candidate's process. Anything the candidate prints is only a cross-check. The build, run and check steps come from the project's [kit](kits.md).
 
 **Every attempt gets two labels: how far it got, and what the verdict was.** "The idea failed" and "the infrastructure failed" are never confused, and infrastructure failures don't count against the research.
 

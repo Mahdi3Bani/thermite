@@ -1,0 +1,148 @@
+# Kit reference
+
+The manifest, placeholders, processes, limits and outcomes of a project kit. For what a kit is, see [Kits](kits.md). For building one, see [Write a kit](write-a-kit.md).
+
+## Layout
+
+A kit is a git repository with `kit.json` at its root. Every other file is the kit's own: build scripts, run drivers, the check, references. Scripts may be in any language the rig's image can run.
+
+## `kit.json`
+
+Unknown fields are rejected at every level.
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `schema_version` | `1` | required | Manifest version |
+| `name` | string | required | `^[a-z0-9][a-z0-9._-]{0,63}$` |
+| `target` | string | required | Driver type the kit measures on: `cpu`, `cuda-gpu` |
+| `build.copy` | string[] | `[]` | Kit paths copied into the source tree under `.kit/` before the build |
+| `build.command` | string[] | required | Build argv, run in the source tree. Placeholders are not expanded |
+| `build.outputs` | string[] | required, at least 1 | Paths, relative to the source tree, that make up the build |
+| `build.timeout_s` | integer | `600` | Build wall-time limit, seconds |
+| `build.rss_mib` | integer | `4096` | Build memory limit, MiB |
+| `build.disk_mib` | integer | `4096` | Build disk limit, MiB |
+| `cells` | object | required | Cell name → parameters. Values are numbers, strings or booleans |
+| `run.command` | string[] | required | Run argv for one build on one cell |
+| `run.timeout_s` | integer | `300` | Run wall-time limit, seconds |
+| `run.rss_mib` | integer | `1024` | Run memory limit, MiB |
+| `run.disk_mib` | integer | `256` | Run disk limit, MiB |
+| `metrics` | object | required | Metric name → `{unit, work}` |
+| `metrics.<name>.unit` | string | required | Unit shown with the value, such as `FLOP/s` |
+| `metrics.<name>.work` | string | required | Name of the cell parameter holding the work done by one run |
+| `check.command` | string[] | required | Check argv |
+| `check.timeout_s` | integer | `120` | Check wall-time limit, seconds |
+| `verifiers` | object | `{}` | Verifier name → `{cells}`, for goal contracts |
+| `verifiers.<name>.cells` | string[] | required, at least 1 | Cells whose runs must all pass the check |
+
+## Placeholders
+
+Placeholders appear inside `run.command` and `check.command` arguments. `{name:sub/path}` expands to the path joined with `sub/path`. An unknown placeholder is an error.
+
+| Placeholder | Expands to | Run | Check |
+| --- | --- | --- | --- |
+| `{build}` | The stored build directory (read-only) | yes | yes |
+| `{params}` | The cell's parameters as `key=value` lines | yes, the run's copy | yes, the judge's copy |
+| `{params_json}` | The cell's parameters as a JSON object | yes, the run's copy | yes, the judge's copy |
+| `{out}` | The run's output directory | yes, writable | yes, to read |
+| `{kit}` | The kit directory | `/nonexistent` | yes |
+| `{models}` | The imported models directory; a model is `{models:<sha256>}` | yes | yes |
+
+## Processes
+
+| Stage | User | Working directory | Environment |
+| --- | --- | --- | --- |
+| Build | `builder` | A fresh export of the candidate's commit, without `.git` | `PATH`, `LANG=C.UTF-8`; `HOME`, `TMPDIR` = the working directory; `USER` |
+| Run | `run`, with the GPU device group | The run's directory: `params.txt`, `params.json`, `out/` | `PATH`, `LANG=C.UTF-8`; `HOME`, `TMPDIR` = the working directory; `USER` |
+| Check | The judge's own user | The kit directory | `PATH` only |
+
+The run user cannot read the kit directory. Kit files a run needs must be in `build.copy` and `build.outputs`.
+
+## Limits
+
+| Limit | Build | Run | Check |
+| --- | --- | --- | --- |
+| Wall time | `build.timeout_s` | `run.timeout_s` | `check.timeout_s` |
+| Memory: summed RSS of the user's processes, sampled every 100 ms | `build.rss_mib` | `run.rss_mib` | none |
+| Disk: the working directory, sampled every 500 ms | `build.disk_mib` | `run.disk_mib` | none |
+| Tasks, threads included (`RLIMIT_NPROC`) | 512 | 256 | none |
+
+When a build or run goes over a limit, every process of its user is killed. Processes still alive when the main process exits are killed too.
+
+## Outputs
+
+| Rule | Build outputs | Run outputs (`{out}`) |
+| --- | --- | --- |
+| Allowed entries | Regular files and directories | Regular files and directories |
+| Refused | Symlinks, hard links, devices, sockets, FIFOs | Symlinks, hard links, devices, sockets, FIFOs |
+| Most entries | 20,000 | 10,000 |
+| Deepest nesting | 32 levels | 32 levels |
+| After acceptance | Hashed, read-only, re-verified before every run | Read by the check, then removed |
+
+## Check output
+
+The check prints one JSON object as the **last line** of standard output.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `pass` | boolean | The run is valid only if this is exactly `true` |
+| `reasons` | string[] | Why it failed. Joined into the verdict's reason |
+| any other field | any | Details. A numeric field can be a goal's `metric_threshold` value |
+
+If the last line is not JSON, the run fails with `check produced no result (exit <code>): <end of stderr>`.
+
+## Metrics
+
+For each metric, the value of a run is `cells[<cell>][<work>]` divided by the run process's wall time in seconds, measured by the judge. A `work` value that is missing, zero or not a number is an infrastructure error. The driver rejects implausible values; the CPU driver rejects values that are not finite.
+
+## Outcomes
+
+| What happened | Candidate | Champion or other arm |
+| --- | --- | --- |
+| Build exits non-zero, or an output is missing | `invalid`; the failure is cached | Infrastructure error |
+| Build outputs refused | `invalid`; the failure is cached | Infrastructure error |
+| Build killed for time, memory or disk | `crash_candidate`; not cached | Infrastructure error |
+| Run killed for a limit, or exits non-zero | `crash_candidate` | Infrastructure error |
+| Run outputs refused | `invalid` | Infrastructure error |
+| Check fails | `invalid` | Infrastructure error |
+| Metric implausible | `invalid` | Infrastructure error |
+
+In goal verification, a failed run on a verifier's cell makes that goal `unmet`, with the run's failure as its reason, for any arm.
+
+Reason lengths kept downstream:
+
+| Where | Characters |
+| --- | --- |
+| A failed cell in a goal report (code verifier) | 300 |
+| A failed cell in a goal report (metric threshold) | 200 |
+| A verdict's reasons in a worker's brief | 600 |
+| A build failure's log in the verdict | the last 1,500 |
+
+## Build cache
+
+The build key is a hash of the candidate's commit, the kit's commit, the `build` section and the toolchain: the image identity and the `cc` and `nvcc` versions. A build is made once per key. A failed build is cached as failed, unless it was killed for a limit.
+
+## Import
+
+A kit reaches a rig as an import of the `assign_campaign` command:
+
+| Field | Value |
+| --- | --- |
+| `kind` | `kit_bundle` |
+| `path` | The git bundle's path, relative to the rig's inbox |
+| `repo` | The kit's repository name, matching the contract's `project.kit.repo` |
+| `commit` | The kit commit, matching `project.kit.commit` |
+| `sha256` | Optional. The bundle file's hash; checked when given |
+
+The harness keeps the kit as the repository `kit-<repo>` and exports each commit into its private state. A kit whose `target` differs from the rig's driver type is an infrastructure error: `kit <name> measures <target>, this rig has <type>`.
+
+## Contract fields that use a kit
+
+| Contract field | Refers to |
+| --- | --- |
+| `project.kit` | `{repo, commit}` of the kit |
+| `cells`, `held_out_cells` (hill climb) | Cell names |
+| `objective.primary.metric`, `objective.secondary[].metric`, `guards[].metric`, `monitor_only` | Metric names |
+| `held_out_cells` (goal) | Cell names |
+| `goals[].verify` `{type: "code", verifier}` | A verifier name |
+| `goals[].verify` `{type: "metric_threshold", metric, cells}` | A metric name or a numeric check field, and cell names |
+| `models` | `{name, sha256}` of imported models, reached as `{models:<sha256>}` |
