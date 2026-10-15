@@ -24,6 +24,8 @@ export interface PlannerInput {
   evidence: Evidence[];
   directives: { id: number; body: StructuredDirective }[];
   laneBests: Record<string, string | null>;
+  /** The contract's notes (written by the campaign's author, approved with the contract). */
+  campaignNotes?: string | undefined;
 }
 
 export interface NewFamily {
@@ -198,6 +200,7 @@ export async function plan(
       evidence: input.evidence,
       directives: input.directives.map((d) => ({ id: d.id, ...d.body })),
       lane_bests: input.laneBests,
+      ...(input.campaignNotes ? { campaign_notes: input.campaignNotes } : {}),
     });
     let feedback = "";
     for (let tries = 1; tries <= 2; tries++) {

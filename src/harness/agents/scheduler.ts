@@ -439,6 +439,7 @@ export class Scheduler {
       evidence: this.registry.evidence(instance, 30),
       directives: this.directives(instance),
       laneBests: Object.fromEntries(lanes.map((l) => [l, this.registry.laneBest(instance, l)])),
+      campaignNotes: contract.notes,
     };
     const ctrl = new AbortController();
     this.planning = { instance, ctrl };
@@ -917,6 +918,7 @@ export class Scheduler {
       "# Your lane's recent attempts and the judge's findings",
       feedback,
       "",
+      contract.notes ? `# Notes from the campaign's author\n${contract.notes}\n` : "",
       "# How to work",
       "Read the relevant code, make one focused change in the editable paths, build and test it with run, then call submit once. The judge measures it on the real target; your own timings never count.",
       "Your lane keeps a cache directory between trials, $THERMITE_LANE_CACHE (ccache uses it as CCACHE_DIR): use it for build caches so a fresh workspace does not rebuild everything.",
