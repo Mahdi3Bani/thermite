@@ -209,8 +209,16 @@ describe("control dashboard", () => {
     await s.env.drain();
     await s.relay();
     const home = await (await s.get("/ui")).text();
-    assert.match(home, /Promotion waiting for approval/);
-    assert.match(home, new RegExp(id));
+    // On failure, say what the judge decided rather than dumping the page.
+    const judged = JSON.stringify({
+      lifecycle: s.env.ledger.getAttempt(id)?.lifecycle,
+      verdicts: s.env.ledger.db
+        .prepare("select verdict, reasons from verdict where attempt = ? order by id")
+        .all(id),
+      jobs: s.env.ledger.db.prepare("select kind, state, result from job order by id").all(),
+    });
+    assert.ok(home.includes("Promotion waiting for approval"), judged);
+    assert.ok(home.includes(id), judged);
     // A form without the session's token is refused.
     const forged = await s.post("/ui/commands", {
       rig: "rig-a",

@@ -20,6 +20,8 @@ export interface BrokerServerOptions {
   baseEnv: Record<string, string>;
   /** A rig with a dedicated development card: who may open which card. */
   gpuLayout?: GpuLayout | undefined;
+  /** Puts the device nodes' groups and modes back if anything changed them (before each run). */
+  assertDevices?: (() => void) | undefined;
 }
 
 const LANE_ROLES: Role[] = Array.from({ length: IDS.maxLanes }, (_, i) => [
@@ -64,6 +66,8 @@ export async function handle(req: Req, opts: BrokerServerOptions): Promise<unkno
       if (r.gpu && !/^lane-\d+$/.test(r.role))
         throw new Error(`role ${r.role} may not ask for the gpu group`);
       const { uid, gid, groups, cuda } = identityFor(r.role, r.gpu === true, opts.gpuLayout);
+      // A root process using CUDA (an operator's exec, say) can reset a node to 0666.
+      opts.assertDevices?.();
       const outcome = await runSupervised({
         argv: r.argv,
         cwd: r.cwd,

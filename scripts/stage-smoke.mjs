@@ -5,6 +5,9 @@
 //
 // usage: node scripts/stage-smoke.mjs --kit smoke-cuda --out DIR [--run ID] [--target-class C] [--version N]
 //
+// The run is judge-only (--agents off): an acceptance measures the judge, and workers on a rig
+// with a model route would otherwise start, use the device and add noise to the calibration.
+//
 // Copy DIR/repos/* into the rig's inbox under repos/, issue DIR/assign-payload.json through
 // control as an assign_campaign command, then submit DIR/candidates/*.patch from inside the
 // harness (see the M2b runbook).
@@ -106,6 +109,8 @@ const payload = execFileSync(
     kit.path,
     "--kit-bundle-sha256",
     kit.sha256,
+    "--agents",
+    "off",
   ],
   { encoding: "utf8" },
 );

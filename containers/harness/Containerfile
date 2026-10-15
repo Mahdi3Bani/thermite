@@ -24,9 +24,11 @@ RUN apt-get update \
  && command -v setpriv && command -v prlimit \
  && rm -rf /var/lib/apt/lists/*
 # One user per role (src/harness/broker/runner.ts has the same ids). The broker runs each kind of
-# work as its own user; `run` and the lanes' development users have the `gpu` group, which owns
+# work as its own user; `run` and the lanes' development runs get the `gpu` group, which owns
 # the device nodes. With a dedicated development card, `gpudev` owns that card and `gpuctl` the
-# nodes both sides need (src/harness/broker/devices.ts).
+# nodes both sides need (src/harness/broker/devices.ts). The broker sets every role's groups by
+# number; the development users' entry here is `gpudev`, so a plain `runuser` never reaches the
+# judge's card.
 RUN groupadd -g 10500 gpu && groupadd -g 10501 gpudev && groupadd -g 10502 gpuctl \
  && groupadd -g 10010 thermite && useradd -u 10010 -g thermite -M -d /nonexistent -s /usr/sbin/nologin thermite \
  && groupadd -g 10020 builder && useradd -u 10020 -g builder -M -d /nonexistent -s /usr/sbin/nologin builder \
@@ -34,7 +36,7 @@ RUN groupadd -g 10500 gpu && groupadd -g 10501 gpudev && groupadd -g 10502 gpuct
  && for n in $(seq 1 16); do \
       groupadd -g $((10100 + n)) lane-$n \
       && useradd -u $((10100 + n)) -g lane-$n -M -d /nonexistent -s /usr/sbin/nologin lane-$n \
-      && useradd -u $((10200 + n)) -g gpu -M -d /nonexistent -s /usr/sbin/nologin lane-$n-dev \
+      && useradd -u $((10200 + n)) -g gpudev -M -d /nonexistent -s /usr/sbin/nologin lane-$n-dev \
       && groupadd -g $((10300 + n)) agent-$n \
       && useradd -u $((10300 + n)) -g agent-$n -M -d /nonexistent -s /usr/sbin/nologin agent-$n; \
     done

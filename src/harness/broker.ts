@@ -15,6 +15,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { log } from "../common/env.ts";
 import {
+  expectedNodeGroups,
   type GpuLayout,
   LAYOUT_FILE,
   type LayoutRecord,
@@ -158,6 +159,27 @@ function deviceNodes(): string[] {
     .filter((name) => name.startsWith("nvidia"))
     .map((name) => join("/dev", name))
     .filter((p) => !lstatSync(p).isDirectory());
+}
+
+/**
+ * Puts every device node back to root, its expected group and 0660 if anything changed it. The
+ * NVIDIA driver resets a node it opens for root (nvidia-uvm to 0666, for example), so any CUDA
+ * process run as root in this container would otherwise open it to every role.
+ */
+function assertDevices(layout: GpuLayout | undefined): void {
+  for (const { node, gid } of expectedNodeGroups(deviceNodes(), layout)) {
+    tryDo(`keep the group of ${node}`, () => {
+      const st = statSync(node);
+      if (st.uid === 0 && st.gid === gid && (st.mode & 0o777) === 0o660) return;
+      chownSync(node, 0, gid);
+      chmodSync(node, 0o660);
+      log("broker", "a device node had changed; restored it", {
+        node,
+        was: `${st.uid}:${st.gid} ${(st.mode & 0o777).toString(8)}`,
+        now: `0:${gid} 660`,
+      });
+    });
+  }
 }
 
 function prepareDevices(): GpuLayout | undefined {
@@ -334,6 +356,7 @@ if (isRoot) {
   setInterval(prepareOutbox, 60_000).unref();
   const secrets = readSecrets();
   const gpuLayout = prepareDevices();
+  setInterval(() => assertDevices(gpuLayout), 60_000).unref();
   const killed = killRoles();
   if (killed) log("broker", "killed leftover role processes at start", { killed });
   const server = startBrokerServer({
@@ -341,6 +364,7 @@ if (isRoot) {
     scratchDir,
     baseEnv: { PATH: env.PATH ?? "/usr/local/bin:/usr/bin:/bin", LANG: "C.UTF-8" },
     gpuLayout,
+    assertDevices: () => assertDevices(gpuLayout),
   });
   server.on("listening", () => {
     chownSync(socketPath, 0, TG);

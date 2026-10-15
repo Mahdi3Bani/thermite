@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { deviceProbes } from "../selftest.ts";
 import {
+  expectedNodeGroups,
   type GpuLayout,
   identityFor,
   LAYOUT_FILE,
@@ -59,6 +60,21 @@ describe("a dedicated development card", () => {
       { node: "/dev/nvidiactl", gid: IDS.gpuCtlGroup },
       { node: "/dev/nvidia-uvm", gid: IDS.gpuCtlGroup },
     ]);
+  });
+
+  test("every node present has an expected group, including ones that appear later", () => {
+    const l = plan();
+    const later = [...NODES, "/dev/nvidia-uvm-tools", "/dev/nvidia9"];
+    assert.deepEqual(expectedNodeGroups(later, l), [
+      { node: "/dev/nvidia6", gid: IDS.gpuGroup },
+      { node: "/dev/nvidia7", gid: IDS.gpuDevGroup },
+      { node: "/dev/nvidiactl", gid: IDS.gpuCtlGroup },
+      { node: "/dev/nvidia-uvm", gid: IDS.gpuCtlGroup },
+      { node: "/dev/nvidia-uvm-tools", gid: IDS.gpuCtlGroup },
+      // A card the layout does not know reaches no role.
+      { node: "/dev/nvidia9", gid: 0 },
+    ]);
+    assert.ok(expectedNodeGroups(later).every((x) => x.gid === IDS.gpuGroup));
   });
 
   test("anything unexpected stops the layout", () => {

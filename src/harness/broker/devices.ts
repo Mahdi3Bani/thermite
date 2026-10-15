@@ -96,6 +96,23 @@ export function planDedicated(opts: {
   };
 }
 
+/**
+ * The group every /dev/nvidia* node present should have: `gpu` for all of them in shared mode;
+ * with a dedicated layout, its plan, the shared group for any other non-card node, and root's
+ * group (no role) for a card the layout does not know.
+ */
+export function expectedNodeGroups(
+  nodes: string[],
+  layout?: GpuLayout | undefined,
+): { node: string; gid: number }[] {
+  if (!layout) return nodes.map((node) => ({ node, gid: IDS.gpuGroup }));
+  const planned = new Map(nodeGroups(layout).map((x) => [x.node, x.gid]));
+  return nodes.map((node) => ({
+    node,
+    gid: planned.get(node) ?? (/^\/dev\/nvidia\d+$/.test(node) ? 0 : IDS.gpuCtlGroup),
+  }));
+}
+
 /** Owner group and mode for each node of a layout. */
 export function nodeGroups(layout: GpuLayout): { node: string; gid: number }[] {
   return [
