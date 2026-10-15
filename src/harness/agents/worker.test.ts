@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { startFakeModel } from "../../testing/fake-model.ts";
@@ -216,7 +217,12 @@ describe("worker trial", () => {
     });
     await env.service.applyCommand(env.assign);
     const inner = new LocalRunner(env.paths.scratchDir);
-    const seen: { timeoutMs: number; rssLimitBytes?: number; disk?: { limitBytes: number } }[] = [];
+    const seen: {
+      timeoutMs: number;
+      rssLimitBytes?: number;
+      disk?: { limitBytes: number };
+      env?: Record<string, string>;
+    }[] = [];
     const runner = Object.assign(Object.create(inner), {
       run: (req: Parameters<LocalRunner["run"]>[0]) => {
         seen.push(req);
@@ -271,6 +277,11 @@ describe("worker trial", () => {
     assert.equal(seen.at(-1)?.timeoutMs, 30_000);
     assert.equal(seen.at(-1)?.rssLimitBytes, 512 * 1024 ** 2);
     assert.equal(seen.at(-1)?.disk?.limitBytes, 1024 * 1024 ** 2);
+    // The lane's cache: created with its first workspace, kept across trials, named to its commands.
+    const cache = `${env.paths.scratchDir}/lanes/lane-1/cache`;
+    assert.ok(existsSync(cache));
+    assert.equal(seen.at(-1)?.env?.CCACHE_DIR, cache);
+    assert.equal(seen.at(-1)?.env?.THERMITE_LANE_CACHE, cache);
     const d = await api.request("/v1/dev-runs", {
       method: "POST",
       headers,

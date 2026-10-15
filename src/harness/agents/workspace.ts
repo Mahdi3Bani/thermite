@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { Role, Runner } from "../broker/runner.ts";
@@ -13,6 +13,21 @@ const run = promisify(execFile);
  * commit, so `git diff` gives exactly the candidate's change), owned by the lane's user. The
  * lane never sees the harness's mirror, other lanes or the parent's history.
  */
+/**
+ * A lane's cache directory: owned by the lane's user and kept across its trials (compiler caches
+ * such as ccache), so a fresh workspace need not rebuild a large project from nothing. Only the
+ * lane itself uses it; the judge builds without it.
+ */
+export function laneCacheDir(scratchDir: string, lane: string): string {
+  return join(scratchDir, "lanes", lane, "cache");
+}
+
+/** The environment that points a lane's commands at its cache. */
+export function laneCacheEnv(scratchDir: string, lane: string): Record<string, string> {
+  const dir = laneCacheDir(scratchDir, lane);
+  return { THERMITE_LANE_CACHE: dir, CCACHE_DIR: dir, CCACHE_MAXSIZE: "8G" };
+}
+
 export async function prepareWorkspace(input: {
   runner: Runner;
   scratchDir: string;
@@ -23,6 +38,11 @@ export async function prepareWorkspace(input: {
   const dir = join(input.scratchDir, "lanes", input.lane, randomUUID());
   const repo = join(dir, "repo");
   mkdirSync(dir, { recursive: true });
+  const cache = laneCacheDir(input.scratchDir, input.lane);
+  if (!existsSync(cache)) {
+    mkdirSync(cache, { recursive: true });
+    await input.runner.handOver(cache, input.lane);
+  }
   await exportTree(input.mirror, input.commit, repo);
   const git = (...args: string[]) =>
     run(

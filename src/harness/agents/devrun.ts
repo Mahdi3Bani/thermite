@@ -2,6 +2,7 @@ import { join, resolve, sep } from "node:path";
 import { z } from "zod";
 import { type Role, RoleSchema, type Runner } from "../broker/runner.ts";
 import type { Ledger } from "../ledger.ts";
+import { laneCacheEnv } from "./workspace.ts";
 
 /**
  * Agents' development runs on the measurement device (§6.2a). The judge goes first: a dev run
@@ -91,6 +92,7 @@ export class DevRuns {
           role: req.lane as Role,
           argv: ["sh", "-c", req.command],
           cwd,
+          env: laneCacheEnv(this.scratchDir, req.lane),
           timeoutMs: req.timeout_s * 1000,
           rssLimitBytes: limits.rssMib * 1024 * 1024,
           disk: { path: cwd, limitBytes: limits.diskMib * 1024 * 1024 },

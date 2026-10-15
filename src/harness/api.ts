@@ -5,6 +5,7 @@ import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { laneLimits } from "../core/contract.ts";
 import { Registry } from "./agents/registry.ts";
+import { laneCacheEnv } from "./agents/workspace.ts";
 import { type Role, type Runner, RunRequest } from "./broker/runner.ts";
 import { LedgerError } from "./ledger.ts";
 import type { Research } from "./research/research.ts";
@@ -265,7 +266,7 @@ export function createHarnessApi(
       role: trial.lane as Role,
       argv,
       cwd: req.cwd,
-      env: {},
+      env: laneCacheEnv(service.paths.scratchDir, trial.lane),
       timeoutMs: Math.min(req.timeoutMs, limits.runTimeoutS * 1000),
       rssLimitBytes: Math.min(req.rssLimitBytes ?? rssCap, rssCap),
       ...(req.disk

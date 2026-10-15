@@ -859,6 +859,7 @@ export class Scheduler {
       "",
       "# How to work",
       "Read the relevant code, make one focused change in the editable paths, build and test it with run, then call submit once. The judge measures it on the real target; your own timings never count.",
+      "Your lane keeps a cache directory between trials, $THERMITE_LANE_CACHE (ccache uses it as CCACHE_DIR): use it for build caches so a fresh workspace does not rebuild everything.",
     ]
       .filter((l) => l !== "")
       .join("\n");
