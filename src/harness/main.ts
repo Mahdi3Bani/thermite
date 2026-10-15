@@ -27,13 +27,14 @@ import { createHarnessApi } from "./api.ts";
 import { BrokerClient } from "./broker/client.ts";
 import { type GpuLayout, readLayout } from "./broker/devices.ts";
 import { LocalRunner, type Runner } from "./broker/runner.ts";
+import { collectHardware } from "./hardware.ts";
 import { Judge, type PromotionPolicy } from "./judge/judge.ts";
 import { Ledger } from "./ledger.ts";
 import { settlePropagations } from "./propagation.ts";
 import { Research } from "./research/research.ts";
 import { HarnessService, NOT_BEFORE_FILE, wipeIfRequested } from "./service.ts";
 import { CpuDriver } from "./targets/cpu.ts";
-import { CudaDriver, smiAsRun } from "./targets/cuda.ts";
+import { CudaDriver, smiAs, smiAsRun } from "./targets/cuda.ts";
 import type { TargetDriver } from "./targets/driver.ts";
 
 /** The harness controller: owns the ledger, serves the API and drives the executor. */
@@ -172,6 +173,44 @@ async function main(): Promise<void> {
   };
   // Startup reconciliation: anything still leased by this rig's executor belonged to a process
   // that died. Re-queue it now and record it once as crash_infra.
+  // What the rig runs on, for the dashboard: collected once, before the judge starts timing.
+  const gpuQuery = join(paths.scratchDir, "thermite", "gpu-query");
+  const layout = devCard?.layout;
+  service.hardware = await collectHardware({
+    driver,
+    cards:
+      driver.type !== "cuda-gpu" || devCard?.error
+        ? []
+        : layout
+          ? [
+              { role: "judge", select: layout.judge.uuid, smi: smiAsRun(runner, gpuQuery) },
+              {
+                role: "dev",
+                select: layout.dev.uuid,
+                smi: smiAs(
+                  runner,
+                  "lane-1-dev",
+                  join(paths.scratchDir, "thermite", "gpu-query-dev"),
+                ),
+              },
+            ]
+          : [
+              {
+                role: "shared",
+                select: env.THERMITE_GPU_INDEX ?? "0",
+                smi: smiAsRun(runner, gpuQuery),
+              },
+            ],
+    deviceMode: driver.type !== "cuda-gpu" ? "none" : devCard ? "dedicated" : "shared",
+    stateDir: paths.stateDir,
+    scratchDir: paths.scratchDir,
+  });
+  if (devCard?.error) service.hardware.errors.push(devCard.error);
+  log("harness", "hardware", {
+    devices: service.hardware.devices.map((d) => `${d.role}: ${d.name} ${d.uuid}`),
+    errors: service.hardware.errors,
+  });
+
   const executorId = "executor-0";
   const reclaimed = ledger.reclaimLeases(executorId, "controller-start");
   if (reclaimed.length) log("harness", "reclaimed leases at start", { jobs: reclaimed });

@@ -1,3 +1,4 @@
+import type { Hardware } from "../../core/hardware.ts";
 import { type CampaignView, campaignViews, type RigView, type RunView } from "../views.ts";
 import { STYLE } from "./style.ts";
 
@@ -360,4 +361,76 @@ export function shell(s: Shell, body: string): string {
   <span class="item">${jobs.leased} judging · ${jobs.queued} queued <span class="sub">judge</span></span>
   <span class="item" id="live-state"><span class="dot ok pulse"></span><span class="sub">updated ${esc(new Date(s.now).toISOString().slice(11, 19))} UTC</span></span>
 </footer></div></body></html>`;
+}
+
+const gib = (mib: number | null | undefined) =>
+  typeof mib === "number"
+    ? `${mib >= 10_240 ? Math.round(mib / 1024) : (mib / 1024).toFixed(1)} GiB`
+    : "?";
+
+/** One line for a rig's card: its devices, CPUs and memory. */
+export function hardwareLine(h: Hardware | null): string {
+  if (!h) return "";
+  const byName = new Map<string, number>();
+  for (const d of h.devices) byName.set(d.name, (byName.get(d.name) ?? 0) + 1);
+  const devices = [...byName].map(([name, n]) => `${n > 1 ? `${n}× ` : ""}${esc(name)}`);
+  const cpus = h.cpu.quota ?? h.cpu.usable;
+  return [
+    ...devices,
+    `${esc(String(cpus))} CPU`,
+    `${esc(gib(h.memory.limit_mib ?? h.memory.host_mib))} RAM`,
+  ].join(" · ");
+}
+
+const DEVICE_MODES: Record<Hardware["device_mode"], string> = {
+  shared: "one, shared by the judge and agents' dev runs",
+  dedicated: "one for the judge, one for agents' dev runs",
+  none: "none: the judge measures on the CPU",
+};
+const ROLES: Record<string, string> = {
+  judge: "Judge",
+  dev: "Dev runs",
+  shared: "Judge + dev runs",
+};
+
+/** A rig's hardware, in full: devices, CPU, memory, disks, system and toolchain. */
+export function hardwareCard(h: Hardware | null, now: number): string {
+  if (!h) {
+    return `<div class="card"><div class="empty">This rig's harness does not report its hardware yet (it needs a newer image).</div></div>`;
+  }
+  const n = (v: number | null | undefined, unit: string) =>
+    typeof v === "number" ? `${esc(String(v))}${unit}` : `<span class="muted">?</span>`;
+  const rows = h.devices
+    .map(
+      (d) =>
+        `<tr><td class="nowrap">${esc(ROLES[d.role] ?? d.role)}</td><td><b>${esc(d.name)}</b><div class="muted xs"><code>${esc(d.uuid)}</code></div></td><td class="num nowrap">${esc(gib(d.memory_mib))}</td><td class="nowrap"><code>${esc(d.bus)}</code></td><td class="nowrap">${esc(d.driver ?? "?")}${d.cuda ? ` <span class="muted">· CUDA ${esc(d.cuda)}</span>` : ""}</td><td class="num nowrap">${n(d.power_limit_w, " W")}</td><td class="num nowrap">${n(d.max_sm_mhz, "")} / ${n(d.max_mem_mhz, " MHz")}</td><td class="nowrap">${esc(d.pcie ?? "?")}</td></tr>`,
+    )
+    .join("");
+  const devices = h.devices.length
+    ? `<div style="overflow-x:auto"><table><thead><tr><th>Used by</th><th>Device</th><th class="num">Memory</th><th>Bus</th><th>Driver</th><th class="num">Power limit</th><th class="num">Max SM / mem clock</th><th>PCIe</th></tr></thead><tbody>${rows}</tbody></table></div>`
+    : "";
+  const kv = (k: string, v: string) =>
+    `<div class="small"><span class="muted">${esc(k)}</span> ${v}</div>`;
+  const cpu = `${esc(h.cpu.model || "?")} · ${h.cpu.quota !== null ? `quota ${esc(String(h.cpu.quota))} CPU` : `${esc(String(h.cpu.usable))} CPU`} of the host's ${esc(String(h.cpu.host))}`;
+  const mem =
+    h.memory.limit_mib !== null
+      ? `${esc(gib(h.memory.limit_mib))} limit, of the host's ${esc(gib(h.memory.host_mib))}`
+      : `no limit; the host has ${esc(gib(h.memory.host_mib))}`;
+  const disks = h.disks
+    .map((d) => `${esc(d.name)} ${esc(String(d.free_gib))} of ${esc(String(d.total_gib))} GiB free`)
+    .join(" · ");
+  return `<div class="card"><div class="stack" style="gap:10px">
+<div class="small"><span class="muted">Devices</span> ${esc(DEVICE_MODES[h.device_mode] ?? h.device_mode)}</div>
+${devices}
+<div class="grid2" style="gap:8px 16px">
+${kv("CPU", cpu)}
+${kv("Memory", mem)}
+${kv("Disks", disks || "?")}
+${kv("System", `${esc(h.os.kernel)} · ${esc(h.os.arch)} · Node ${esc(h.os.node)}${h.os.image ? ` · image <code>${esc(h.os.image.slice(0, 24))}</code>` : ""}`)}
+${kv("Compilers", `${esc(h.toolchain.cc ?? "no cc")}${h.toolchain.nvcc ? ` · ${esc(h.toolchain.nvcc)}` : ""}`)}
+${kv("Target", `${esc(h.target.type)} · ${esc(h.target.class)}`)}
+</div>
+${h.errors.length ? `<div class="bad xs">${h.errors.map((e) => esc(e.slice(0, 300))).join("<br>")}</div>` : ""}
+<div class="muted xs">Reported by the rig's harness when it started, ${esc(ago(h.collected_at, now))} ago.</div>
+</div></div>`;
 }

@@ -304,22 +304,61 @@ c1.ev(0.4, "research_digest", "noise-survey", {
 
 const g4 = new Rig("gpu-4");
 
-const report = (u: Rig, jobs: Record<string, number>, lastSeenHoursAgo = 0) => {
+// Synthetic hardware, shaped like what a harness reports (no real host data).
+const card = (role: "judge" | "dev" | "shared", n: number) => ({
+  role,
+  name: "Tesla P100-PCIE-16GB",
+  uuid: `GPU-${String(n).repeat(8)}-0000-0000-0000-000000000000`,
+  bus: `00000000:${(0x80 + n).toString(16).toUpperCase()}:00.0`,
+  memory_mib: 16384,
+  driver: "550.00.00",
+  cuda: "12.4",
+  power_limit_w: 250,
+  max_sm_mhz: 1328,
+  max_mem_mhz: 715,
+  pcie: "gen3 x16",
+  vbios: "86.00.00.00.01",
+});
+const hardware = (devices: ReturnType<typeof card>[], cpus: number, mib: number) => ({
+  collected_at: iso(6),
+  target: devices.length
+    ? { type: "cuda-gpu", class: "p100-pcie-16g", id: devices[0]?.uuid ?? "" }
+    : { type: "cpu", class: "generic-cpu", id: "cpu" },
+  device_mode: devices.length > 1 ? "dedicated" : devices.length ? "shared" : "none",
+  devices,
+  cpu: { model: "Example Xeon CPU @ 2.20GHz", host: 56, usable: 56, quota: cpus },
+  memory: { host_mib: 257_000, limit_mib: mib },
+  disks: [
+    { name: "state", total_gib: 200, free_gib: 143.5 },
+    { name: "scratch", total_gib: 100, free_gib: 81.2 },
+  ],
+  os: { kernel: "6.8.0-generic", arch: "x64", node: "v22.15.0", image: "sha256:0123456789abcdef" },
+  toolchain: {
+    cc: "cc (Debian 12.2.0) 12.2.0",
+    nvcc: devices.length ? "Build cuda_12.4.r12.4" : null,
+  },
+  errors: [],
+});
+const report = (u: Rig, jobs: Record<string, number>, hw: unknown, lastSeenHoursAgo = 0) => {
   store.ingest({
     rig: u.id,
     ledger_id: `ledger-${u.id}`,
     cursor: 0,
     next: u.events.length,
     events: u.events,
-    summary: { jobs },
+    summary: { jobs, hardware: hw },
     generated_at: iso(lastSeenHoursAgo),
   });
 };
-report(g1, { queued: 1, leased: 1, done: 214 });
-report(g2, { queued: 0, leased: 1, done: 162 });
-report(g3, { queued: 2, leased: 1, done: 88 });
-report(c1, { done: 0 });
-report(g4, {});
+report(g1, { queued: 1, leased: 1, done: 214 }, hardware([card("shared", 1)], 4, 10_240));
+report(g2, { queued: 0, leased: 1, done: 162 }, hardware([card("shared", 2)], 4, 10_240));
+report(
+  g3,
+  { queued: 2, leased: 1, done: 88 },
+  hardware([card("judge", 3), card("dev", 4)], 4, 10_240),
+);
+report(c1, { done: 0 }, hardware([], 8, 16_384));
+report(g4, {}, undefined);
 store.db.prepare("update rig set last_seen = ? where id = ?").run(iso(2.3), "gpu-4");
 for (const [u, usd] of [
   ["gpu-1", 4.2],

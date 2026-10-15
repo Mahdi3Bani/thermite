@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { promisify } from "node:util";
-import type { Runner } from "../broker/runner.ts";
+import type { Role, Runner } from "../broker/runner.ts";
 import type { Readiness, TargetDriver, TargetIdentity } from "./driver.ts";
 
 /**
@@ -264,18 +264,27 @@ export class CudaDriver implements TargetDriver {
  * development) it runs as the controller.
  */
 export function smiAsRun(runner: Runner, dir: string): (args: string[]) => Promise<string> {
+  return smiAs(runner, "run", dir);
+}
+
+/** nvidia-smi as a role that may open the device (`run`, or a lane's development user). */
+export function smiAs(
+  runner: Runner,
+  role: Role,
+  dir: string,
+): (args: string[]) => Promise<string> {
   let ready: Promise<void> | undefined;
   return async (args) => {
     ready ??= (async () => {
       mkdirSync(dir, { recursive: true });
-      await runner.handOver(dir, "run");
+      await runner.handOver(dir, role);
     })();
     await ready;
     let last = "";
     // A query can be caught by the judge killing the run user's processes after a timed run.
     for (let attempt = 0; attempt < 3; attempt++) {
       const r = await runner.run({
-        role: "run",
+        role,
         argv: ["nvidia-smi", ...args],
         cwd: dir,
         timeoutMs: 30_000,

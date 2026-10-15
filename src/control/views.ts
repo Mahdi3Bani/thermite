@@ -1,3 +1,4 @@
+import { type Hardware, readHardware } from "../core/hardware.ts";
 import type { ControlStore } from "./store.ts";
 
 /**
@@ -113,6 +114,8 @@ export interface RigView {
   summary: unknown;
   /** The supervisor's own figures (git sync, advisors); reported by the supervisor, unsigned. */
   supervisor: Record<string, unknown> | null;
+  /** What the rig runs on, from its signed report (harnesses before it was added send none). */
+  hardware: Hardware | null;
   jobs: Record<string, number>;
   runs: RunView[];
   recent: StoredEvent[];
@@ -426,7 +429,7 @@ export function rigView(
     v.agents.attempts = v.attempts.length;
     v.agents.duplicates = v.attempts.filter((a) => a.lifecycle === "duplicate").length;
   }
-  const summary = u.summary as { jobs?: Record<string, number> } | undefined;
+  const summary = u.summary as { jobs?: Record<string, number>; hardware?: unknown } | undefined;
   const now = opts.now ?? Date.now();
   return {
     id: u.id,
@@ -435,6 +438,7 @@ export function rigView(
     ledger_id: u.ledger_id,
     summary: u.summary,
     supervisor: store.supervisor(u.id),
+    hardware: readHardware(summary?.hardware),
     jobs: summary?.jobs ?? {},
     runs: [...runs.values()],
     recent: events.slice(-50).reverse(),

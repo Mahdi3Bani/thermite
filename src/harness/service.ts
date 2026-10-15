@@ -15,6 +15,7 @@ import {
   verifyCommand,
 } from "../core/commands.ts";
 import { type Contract, contractSha, parseContract } from "../core/contract.ts";
+import type { Hardware } from "../core/hardware.ts";
 import { LiveLog, liveBody } from "../core/live.ts";
 import { Registry } from "./agents/registry.ts";
 import { type AuditDecision, type AuditPackage, Audits } from "./audits.ts";
@@ -159,6 +160,8 @@ export class HarnessService {
   private readonly controlPublicKeyPem: string;
   private readonly clock: () => Date;
   private readonly rigKeys: KeyPairPem | undefined;
+  /** What the rig runs on, collected at start; it rides in every report's summary. */
+  hardware: Hardware | undefined;
   /** Commands being applied right now, so a concurrent re-send cannot run one twice. */
   private readonly inFlight = new Set<string>();
   /** Trials whose submission is being recorded right now. */
@@ -1055,7 +1058,10 @@ export class HarnessService {
       cursor,
       next: page.next,
       events: page.events,
-      summary: this.ledger.summary(),
+      summary: {
+        ...(this.ledger.summary() as Record<string, unknown>),
+        ...(this.hardware ? { hardware: this.hardware } : {}),
+      },
       generated_at: this.clock().toISOString(),
       latest_event: this.ledger.latestEventId(),
     };

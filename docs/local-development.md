@@ -36,11 +36,11 @@ docker compose up -d --build     # or: podman compose up -d --build
 
 ## The dashboard
 
-Sign in at `http://127.0.0.1:8800/ui` with the admin token from `.dev/secrets/control-admin-token`. The pages follow the work's hierarchy, Campaign ▸ Run ▸ Lane ▸ Trial ▸ Attempt:
+Sign in at `http://127.0.0.1:8800/ui` with the admin token from `.dev/secrets/control-admin-token`. A sign-in survives restarts of control and renews while you use it. A session left unused for 30 days ends (`THERMITE_CONTROL_SESSION_DAYS`), and so does every session when the admin token changes. The pages follow the work's hierarchy, Campaign ▸ Run ▸ Lane ▸ Trial ▸ Attempt:
 
 - **Overview** lists what waits for you first, then campaigns and rigs.
 - **Campaigns** shows each campaign with its runs on every rig. A campaign's page sums up its runs at the top, then shows one run at a time in tabs, with its overview, attempts and steering.
-- **Rigs** shows each rig's judge, results export, advisors and key.
+- **Rigs** shows each rig's hardware, judge, results export, advisors and key. A rig's harness reports its hardware when it starts: each device and who uses it, the driver, CPU and memory limits, disks and compilers.
 - **Live** shows a rig's agent sessions and its judge as they work. The supervisor relays new lines every `THERMITE_LIVE_INTERVAL_MS` milliseconds (3000 by default). From a session you can message a worker's trial, a lane, the planner or the advisors. The message is a signed `message_agent` command, which only the owner's credential can issue. A worker reads it after its current turn.
 
 To work on the dashboard without a stack, run a demo with synthetic campaigns and rigs:

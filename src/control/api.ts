@@ -130,6 +130,8 @@ export interface ControlOptions {
   driver?: DeploymentDriver | undefined;
   /** Hold every rig's first report key for the owner's acceptance (no trust on first use). */
   requireKeyAcceptance?: boolean | undefined;
+  /** Days a dashboard session lasts without use. */
+  sessionDays?: number | undefined;
 }
 
 export function createControlApi(
@@ -425,6 +427,7 @@ export function createControlApi(
       privateKeyPem,
       staleAfterMs: opts.staleAfterMs,
       driver: opts.driver,
+      sessionDays: opts.sessionDays,
     }),
   );
   app.get("/", (c) => c.redirect("/ui", 302));

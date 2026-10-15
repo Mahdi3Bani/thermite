@@ -71,6 +71,15 @@ create table if not exists rig_report (
   body text not null,
   at text not null
 );
+-- Dashboard sign-ins, kept across restarts. Only a hash of each session id is stored, with a
+-- fingerprint of the admin token it was made with (a new token ends every session).
+create table if not exists ui_session (
+  id_hash text primary key,
+  token_fp text not null,
+  created_at text not null,
+  expires_at integer not null
+);
+
 -- Full resets (owner only): pause, export, verify the push, wipe, restart. One open per rig.
 create table if not exists reset (
   id integer primary key autoincrement,
@@ -485,6 +494,33 @@ export class ControlStore {
       this.db.exec("rollback");
       throw err;
     }
+  }
+
+  createUiSession(idHash: string, tokenFp: string, expiresAt: number): void {
+    const now = Date.now();
+    this.db.prepare("delete from ui_session where expires_at <= ?").run(now);
+    this.db
+      .prepare(
+        "insert into ui_session (id_hash, token_fp, created_at, expires_at) values (?, ?, ?, ?)",
+      )
+      .run(idHash, tokenFp, new Date(now).toISOString(), expiresAt);
+  }
+
+  uiSession(idHash: string): { tokenFp: string; expiresAt: number } | undefined {
+    const r = this.db
+      .prepare("select token_fp, expires_at from ui_session where id_hash = ?")
+      .get(idHash) as Row | undefined;
+    return r ? { tokenFp: String(r.token_fp), expiresAt: Number(r.expires_at) } : undefined;
+  }
+
+  extendUiSession(idHash: string, expiresAt: number): void {
+    this.db
+      .prepare("update ui_session set expires_at = ? where id_hash = ?")
+      .run(expiresAt, idHash);
+  }
+
+  deleteUiSession(idHash: string): void {
+    this.db.prepare("delete from ui_session where id_hash = ?").run(idHash);
   }
 
   audit(actor: string, action: string, body: unknown): void {

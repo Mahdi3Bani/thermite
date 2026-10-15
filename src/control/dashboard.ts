@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { getCookie, setCookie } from "hono/cookie";
@@ -16,6 +16,8 @@ import {
   esc,
   fmtInt,
   gainChart,
+  hardwareCard,
+  hardwareLine,
   icon,
   kpi,
   meter,
@@ -45,12 +47,16 @@ import {
 /**
  * The control dashboard: server-rendered pages over control's store, with forms that issue
  * signed commands. Login takes the admin token once and keeps a random session in an HttpOnly,
- * SameSite=Strict cookie; every form carries a token derived from the session (CSRF). The only
+ * SameSite=Strict cookie. Sessions are kept in control's store (hashed), so a restart does not
+ * sign the owner out; each use renews one, and a new admin token ends them all. Every form
+ * carries a token derived from the session and the admin token (CSRF). The only
  * script is control's own (/ui/assets/app.js): it refreshes pages and streams the live view.
  * The look follows Magnesium's design.
  */
 
-const SESSION_MS = 12 * 3_600_000;
+/** How long a dashboard session lasts without use; each day of use renews it. */
+const SESSION_DAYS = 30;
+const DAY_MS = 24 * 3_600_000;
 const CSP =
   "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
 // biome-ignore lint/suspicious/noExplicitAny: any route's context
@@ -62,6 +68,8 @@ export interface DashboardOptions {
   privateKeyPem: string;
   staleAfterMs: number;
   driver?: DeploymentDriver | undefined;
+  /** Days a dashboard session lasts without use (default 30). */
+  sessionDays?: number | undefined;
 }
 
 /** Something on a rig that waits for the owner. */
@@ -86,18 +94,40 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
     await next();
     c.header("content-security-policy", CSP);
   });
-  const secret = randomBytes(32);
-  const sessions = new Map<string, number>();
-  const csrfOf = (sid: string) => createHmac("sha256", secret).update(sid).digest("hex");
-  const sessionOf = (c: Ctx) => {
-    const sid = getCookie(c, "thermite_session");
-    const until = sid ? sessions.get(sid) : undefined;
-    return sid && until && until > Date.now() ? sid : undefined;
-  };
   const sameBytes = (a: string, b: string) => {
     const x = Buffer.from(a);
     const y = Buffer.from(b);
     return x.length === y.length && timingSafeEqual(x, y);
+  };
+  // Keyed by the admin token: stable across restarts, and void once the token changes.
+  const tokenKey = createHash("sha256").update(`thermite-ui\0${opts.adminToken}`).digest();
+  const tokenFp = createHmac("sha256", tokenKey).update("session-fingerprint").digest("hex");
+  const csrfOf = (sid: string) =>
+    createHmac("sha256", tokenKey).update(`csrf\0${sid}`).digest("hex");
+  const hashOf = (sid: string) => createHash("sha256").update(sid).digest("hex");
+  const sessionMs = (opts.sessionDays ?? SESSION_DAYS) * DAY_MS;
+  const cookie = (c: Ctx, sid: string) =>
+    setCookie(c, "thermite_session", sid, {
+      httpOnly: true,
+      sameSite: "Strict",
+      path: "/ui",
+      maxAge: Math.floor(sessionMs / 1000),
+      // Behind a proxy that ends TLS, the proxy's header says the owner's side is HTTPS.
+      secure:
+        new URL(c.req.url).protocol === "https:" || c.req.header("x-forwarded-proto") === "https",
+    });
+  const sessionOf = (c: Ctx) => {
+    const sid = getCookie(c, "thermite_session");
+    if (!sid) return undefined;
+    const s = store.uiSession(hashOf(sid));
+    const now = Date.now();
+    if (!s || s.expiresAt <= now || !sameBytes(s.tokenFp, tokenFp)) return undefined;
+    // Renewed at most once a day, so a session in use does not run out.
+    if (s.expiresAt - now < sessionMs - DAY_MS) {
+      store.extendUiSession(hashOf(sid), now + sessionMs);
+      cookie(c, sid);
+    }
+    return sid;
   };
 
   app.get("/ui/login", (c) =>
@@ -109,7 +139,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
 .login .brand { padding: 0; } .login input { width: 100%; height: 36px; } .login button { height: 36px; justify-content: center; }
 </style></head><body><main class="login"><form class="card" method="post" action="/ui/login">
 <div class="brand"><span class="mark">Th</span>Thermite control</div>
-<div class="muted small">Sign in with the admin token. The session lasts 12 hours.</div>
+<div class="muted small">Sign in with the admin token. This browser stays signed in while you use it, and a session left unused for ${opts.sessionDays ?? SESSION_DAYS} days ends.</div>
 <label class="small">Admin token<input type="password" name="token" autocomplete="current-password" autofocus style="margin-top:6px"></label>
 <button class="primary">Sign in</button></form></main></body></html>`,
     ),
@@ -129,16 +159,8 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
       return c.redirect("/ui/login", 303);
     }
     const sid = randomBytes(24).toString("base64url");
-    sessions.set(sid, Date.now() + SESSION_MS);
-    setCookie(c, "thermite_session", sid, {
-      httpOnly: true,
-      sameSite: "Strict",
-      path: "/ui",
-      maxAge: SESSION_MS / 1000,
-      // Behind a proxy that ends TLS, the proxy's header says the owner's side is HTTPS.
-      secure:
-        new URL(c.req.url).protocol === "https:" || c.req.header("x-forwarded-proto") === "https",
-    });
+    store.createUiSession(hashOf(sid), tokenFp, Date.now() + sessionMs);
+    cookie(c, sid);
     store.audit("owner:ui", "login", {});
     return c.redirect("/ui", 303);
   });
@@ -162,7 +184,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
 
   app.post("/ui/logout", (c) => {
     const sid = sessionOf(c);
-    if (sid) sessions.delete(sid);
+    if (sid) store.deleteUiSession(hashOf(sid));
     return c.redirect("/ui/login", 303);
   });
 
@@ -800,6 +822,7 @@ ${pending}${body}
           })
           .join("");
         return `<div class="card"><div class="card-head"><span class="iconbox">${icon.cpu}</span><div class="grow"><a class="title" href="/ui/rigs/${encodeURIComponent(u.id)}">${esc(u.id)}</a><div class="sub">${u.stale ? `last report ${esc(ago(u.last_seen, now))} ago` : `reported ${esc(ago(u.last_seen, now))} ago`}</div></div><div class="right">${status}</div></div>
+${u.hardware ? `<div class="muted xs" style="margin-top:8px">${hardwareLine(u.hardware)}</div>` : ""}
 <div class="grid2" style="margin-top:12px;gap:14px">${meter("Judge", `${leased} running · ${queued} queued`, (leased + queued) / Math.max(4, leased + queued), "primary")}${meter("Judged", fmtInt(done), done ? 1 : 0)}</div>
 <div class="divider"></div>${rows || `<div class="muted small">Idle. No campaign assigned.</div>`}
 ${ex ? `<div class="divider"></div><div class="muted xs">Results: ${num(ex.exports)} exports${ex.remote === true ? ` · pushed ${esc(ago(String(ex.last_push_at ?? ""), now) || "never")} ago` : " · no results repository"}${ex.last_error ? ` · <span class="bad">${esc(String(ex.last_error).slice(0, 120))}</span>` : ""}</div>` : ""}</div>`;
@@ -881,7 +904,8 @@ ${opts.driver ? `<form method="post" action="/ui/rigs/${encodeURIComponent(u.id)
         actions,
         active: "rigs",
       },
-      `${keyCard}<div class="cols"><div><div class="head"><h2>Runs on this rig</h2><span class="right muted small">each belongs to a campaign</span></div>${runs || `<div class="card"><div class="empty">No campaign assigned.</div></div>`}</div>
+      `${keyCard}<div class="block"><div class="head"><h2>Hardware</h2><span class="right muted small">${hardwareLine(u.hardware)}</span></div>${hardwareCard(u.hardware, now)}</div>
+<div class="cols"><div><div class="head"><h2>Runs on this rig</h2><span class="right muted small">each belongs to a campaign</span></div>${runs || `<div class="card"><div class="empty">No campaign assigned.</div></div>`}</div>
 <div><div class="block"><div class="head"><h2>Rig</h2></div><div class="card"><div class="stack" style="gap:10px">
 ${meter("Judge", `${num(u.jobs.leased)} running · ${num(u.jobs.queued)} queued`, (num(u.jobs.leased) + num(u.jobs.queued)) / Math.max(4, num(u.jobs.leased) + num(u.jobs.queued)), "primary")}
 <div class="small"><span class="muted">Ledger</span> <code>${esc(u.ledger_id ?? "")}</code></div>

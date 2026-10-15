@@ -108,6 +108,90 @@ describe("control dashboard", () => {
     assert.equal(bad.headers.get("set-cookie"), null);
   });
 
+  test("a rig's hardware shows on its page and in the rigs list, escaped", async () => {
+    const s = await stack();
+    await s.env.service.applyCommand(s.env.assign);
+    s.env.service.hardware = {
+      collected_at: new Date().toISOString(),
+      target: { type: "cuda-gpu", class: "p100-pcie-16g", id: "GPU-a" },
+      device_mode: "dedicated",
+      devices: ["judge", "dev"].map((role, i) => ({
+        role: role as "judge" | "dev",
+        name: i ? "<b>Evil card</b>" : "Tesla P100-PCIE-16GB",
+        uuid: `GPU-${i}`,
+        bus: `00000000:0${1 + i}:00.0`,
+        memory_mib: 16384,
+        driver: "550.00.00",
+        cuda: "12.4",
+        power_limit_w: 250,
+        max_sm_mhz: 1328,
+        max_mem_mhz: 715,
+        pcie: "gen3 x16",
+        vbios: null,
+      })),
+      cpu: { model: "Example CPU", host: 56, usable: 56, quota: 4 },
+      memory: { host_mib: 257_000, limit_mib: 10_240 },
+      disks: [{ name: "state", total_gib: 200, free_gib: 150 }],
+      os: { kernel: "6.8", arch: "x64", node: "v22", image: null },
+      toolchain: { cc: "cc 12", nvcc: null },
+      errors: [],
+    };
+    await s.relay();
+    const page = await (await s.get("/ui/rigs/rig-a")).text();
+    assert.match(page, /Tesla P100-PCIE-16GB/);
+    assert.match(page, /one for the judge, one for agents' dev runs/);
+    assert.match(page, /quota 4 CPU of the host's 56/);
+    assert.match(page, /10 GiB limit/);
+    assert.ok(!page.includes("<b>Evil card</b>"));
+    assert.match(page, /&lt;b&gt;Evil card/);
+    const list = await (await s.get("/ui/rigs")).text();
+    assert.match(list, /Tesla P100-PCIE-16GB · &lt;b&gt;Evil card&lt;\/b&gt; · 4 CPU · 10 GiB RAM/);
+  });
+
+  test("a session survives a restart of control, renews in use, and ends with a new token", async () => {
+    const store = new ControlStore(":memory:");
+    const keys = makeJudgeEnv().keys;
+    const control = (admin: string) =>
+      createControlApi(store, { admin, rigs: { "rig-a": "rig-token-abcdef" } }, keys.privateKeyPem);
+    const first = control("admin-token-abcdef");
+    const login = await first.request("/ui/login", {
+      method: "POST",
+      body: new URLSearchParams({ token: "admin-token-abcdef" }),
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+    });
+    const set = login.headers.get("set-cookie") ?? "";
+    assert.match(set, /Max-Age=2592000/);
+    const cookie = set.split(";")[0] ?? "";
+    // Only a hash of the session id is stored.
+    const rows = store.db.prepare("select id_hash from ui_session").all() as { id_hash: string }[];
+    assert.equal(rows.length, 1);
+    assert.ok(!cookie.includes(rows[0]?.id_hash ?? "x"));
+    // A new control process over the same store: still signed in, with the same form token.
+    const formToken = async (app: ReturnType<typeof control>) => {
+      const r = await app.request("/ui", { headers: { cookie } });
+      assert.equal(r.status, 200);
+      return /name="csrf" value="([0-9a-f]+)"/.exec(await r.text())?.[1];
+    };
+    const before = await formToken(first);
+    const restarted = control("admin-token-abcdef");
+    assert.equal(await formToken(restarted), before);
+    // A session older than a day is renewed when used.
+    store.db.prepare("update ui_session set expires_at = ?").run(Date.now() + 3_600_000);
+    const used = await restarted.request("/ui", { headers: { cookie } });
+    assert.match(used.headers.get("set-cookie") ?? "", /Max-Age=2592000/);
+    const row = store.db.prepare("select expires_at from ui_session").get() as {
+      expires_at: number;
+    };
+    assert.ok(row.expires_at > Date.now() + 29 * 24 * 3_600_000);
+    // A new admin token ends every session.
+    const rotated = control("another-admin-token-0123");
+    const out = await rotated.request("/ui", { headers: { cookie } });
+    assert.equal(out.status, 303);
+    // Signing out removes it.
+    await restarted.request("/ui/logout", { method: "POST", headers: { cookie } });
+    assert.equal((await restarted.request("/ui", { headers: { cookie } })).status, 303);
+  });
+
   test("a confirmed win waits for approval, shows on the dashboard and is promoted from it", async () => {
     const s = await stack("owner_approval");
     await s.env.service.applyCommand(s.env.assign);
