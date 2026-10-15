@@ -125,7 +125,7 @@ describe("control dashboard", () => {
     await s.env.drain();
     await s.relay();
     const home = await (await s.get("/ui")).text();
-    assert.match(home, /Promotions waiting for approval/);
+    assert.match(home, /Promotion waiting for approval/);
     assert.match(home, new RegExp(id));
     // A form without the session's token is refused.
     const forged = await s.post("/ui/commands", {
@@ -150,7 +150,7 @@ describe("control dashboard", () => {
     const unit = await (await s.get("/ui/units/unit-a")).text();
     assert.match(unit, /<svg/);
     assert.match(unit, /drop the waste/);
-    assert.doesNotMatch(await (await s.get("/ui")).text(), /Promotions waiting for approval/);
+    assert.doesNotMatch(await (await s.get("/ui")).text(), /Promotion waiting for approval/);
     const audit = await (await s.get("/ui/audit")).text();
     assert.match(audit, /command_issued/);
   });
@@ -170,5 +170,67 @@ describe("control dashboard", () => {
     assert.equal(r.status, 303);
     await s.relay();
     assert.equal(s.env.ledger.getInstance("js-1")?.status, "paused");
+  });
+
+  test("the live view: lines are escaped, only control's own script runs, and the composer messages an agent", async () => {
+    const s = await stack();
+    await s.env.service.applyCommand(s.env.assign);
+    await s.relay();
+    s.store.addLive(
+      "unit-a",
+      "log-1",
+      [
+        {
+          seq: 1,
+          at: new Date().toISOString(),
+          source: "trial:t-0123456789abcdef",
+          kind: "text",
+          text: "<img src=x onerror=alert(1)> plan",
+          lane: "lane-1",
+          instance: "js-1",
+        },
+        {
+          seq: 2,
+          at: new Date().toISOString(),
+          source: "judge",
+          kind: "log",
+          text: "evaluate a-1: started",
+          instance: "js-1",
+        },
+      ],
+      true,
+    );
+    const page = await s.get("/ui/units/unit-a/live?source=trial%3At-0123456789abcdef");
+    const html = await page.text();
+    assert.ok(!html.includes("<img src=x"));
+    assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt; plan/);
+    assert.match(page.headers.get("content-security-policy") ?? "", /script-src 'self'/);
+    assert.doesNotMatch(html, /<script>/);
+    const js = await s.get("/ui/assets/app.js");
+    assert.match(js.headers.get("content-type") ?? "", /javascript/);
+    const json = (await (await s.get("/ui/units/unit-a/live.json?after=0")).json()) as {
+      entries: unknown[];
+    };
+    assert.equal(json.entries.length, 2);
+    // The judge takes no messages; a worker does, through a signed owner command.
+    assert.match(
+      await (await s.get("/ui/units/unit-a/live?source=judge")).text(),
+      /takes no messages/,
+    );
+    const sent = await s.post("/ui/units/unit-a/message", {
+      csrf: s.csrfFrom(html),
+      instance: "js-1",
+      to: "lane-1",
+      text: "try the closed form",
+      source: "trial:t-0123456789abcdef",
+    });
+    assert.equal(sent.status, 303);
+    await s.relay();
+    assert.deepEqual(
+      s.env.service.takeMessages({ id: "t-0123456789abcdef", instance: "js-1", lane: "lane-1" }),
+      ["try the closed form"],
+    );
+    const cmd = s.store.listCommands(5).find((c) => c.kind === "message_agent");
+    assert.equal(cmd?.issued_by, "owner:ui");
   });
 });
