@@ -106,12 +106,21 @@ const describe = (i: Interval) => `${pct(i.estimate)} [${pct(i.low)}, ${pct(i.hi
  * Screening against the champion at one of the contract's looks. The screen's alpha is split
  * evenly across the looks (Bonferroni), so stopping early does not inflate false wins.
  */
-export function decideScreen(policy: Policy, blocks: readonly Block[]): Decision<ScreenVerdict> {
+export function decideScreen(
+  policy: Policy,
+  blocks: readonly Block[],
+  /** The rig's calibrated A/A block spread for the primary metric (log ratio), if known. */
+  noiseFloor = 0,
+): Decision<ScreenVerdict> {
   const { acceptance } = policy;
   const final = blocks.length >= Math.max(...acceptance.looks);
   const alpha = acceptance.alpha_screen / acceptance.looks.length;
   const { metric, direction, min_effect } = policy.objective.primary;
-  const primary = meanInterval(blockEffects(blocks, metric, direction, policy.cells), alpha);
+  const primary = meanInterval(
+    blockEffects(blocks, metric, direction, policy.cells),
+    alpha,
+    noiseFloor,
+  );
   const guards = guardResults(policy, blocks, alpha);
   const result = (verdict: ScreenVerdict | undefined, reasons: string) => ({
     verdict,
@@ -152,10 +161,16 @@ export function decideConfirm(
   policy: Policy,
   blocks: readonly Block[],
   priorGuardTotals: Readonly<Record<string, number>> = {},
+  /** The rig's calibrated A/A block spread for the primary metric (log ratio), if known. */
+  noiseFloor = 0,
 ): Decision<ConfirmVerdict> {
   const alpha = policy.acceptance.alpha_confirm;
   const { metric, direction } = policy.objective.primary;
-  const primary = meanInterval(blockEffects(blocks, metric, direction, policy.cells), alpha);
+  const primary = meanInterval(
+    blockEffects(blocks, metric, direction, policy.cells),
+    alpha,
+    noiseFloor,
+  );
   const guards = guardResults(policy, blocks, alpha);
   const result = (verdict: ConfirmVerdict, reasons: string) => ({
     verdict,

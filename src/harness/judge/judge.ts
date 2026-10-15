@@ -625,7 +625,7 @@ export class Judge {
         runsPerCell: contract.acceptance.runs_per_cell,
         onBlock: (bs) => {
           if (!looks.includes(bs.length)) return false;
-          decision = decideScreen(contract, bs);
+          decision = decideScreen(contract, bs, this.noiseFloor(run));
           return decision.verdict !== undefined;
         },
       });
@@ -717,7 +717,7 @@ export class Judge {
         runsPerCell: contract.acceptance.runs_per_cell,
       });
       const heldOutPass = await this.heldOut(job, ctx, cand, champ, contract);
-      let d = decideConfirm(contract, blocks, this.guardTotals(run));
+      let d = decideConfirm(contract, blocks, this.guardTotals(run), this.noiseFloor(run));
       let verdict: string = d.verdict ?? "not_confirmed";
       let reasons = d.reasons;
       if (verdict === "win_confirmed" && heldOutPass === false) {
@@ -1336,6 +1336,20 @@ export class Judge {
   }
 
   // ------------------------------------------------------------------ A/A calibration
+
+  /**
+   * The run's latest calibrated A/A block spread (log ratio): the least spread a verdict's
+   * interval assumes, so a few blocks that happen to agree on a noisy rig do not decide.
+   */
+  private noiseFloor(run: string): number {
+    const r = this.ledger.db
+      .prepare(
+        "select body from event where kind = 'calibration' and subject = ? order by id desc limit 1",
+      )
+      .get(run) as { body: string } | undefined;
+    const sigma = r ? Number((JSON.parse(r.body) as { sigma?: unknown }).sigma) : 0;
+    return Number.isFinite(sigma) && sigma > 0 ? sigma : 0;
+  }
 
   private maybeScheduleCalibration(): void {
     if (this.o.calibrationBlocks < 2) return;

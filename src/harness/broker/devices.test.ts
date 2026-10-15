@@ -6,14 +6,17 @@ import { describe, test } from "node:test";
 import { deviceProbes } from "../selftest.ts";
 import {
   expectedNodeGroups,
+  formatCpuList,
   type GpuLayout,
   identityFor,
   LAYOUT_FILE,
   nodeGroups,
+  parseCpuList,
   parseMinor,
   planDedicated,
   procBusDir,
   readLayout,
+  runCpus,
 } from "./devices.ts";
 import { launch } from "./process.ts";
 import { IDS } from "./runner.ts";
@@ -111,6 +114,28 @@ describe("a dedicated development card", () => {
     // Shared mode is unchanged: the gpu group for run and dev runs, nothing else.
     assert.deepEqual(identityFor("run", false), { uid: IDS.run.uid, gid: IDS.gpuGroup });
     assert.deepEqual(identityFor("lane-2", true), { uid: 10102, gid: IDS.gpuGroup });
+  });
+
+  test("timed runs are pinned to the judge card's local CPUs that the container may use", () => {
+    assert.deepEqual(parseCpuList("10-12,30"), [10, 11, 12, 30]);
+    assert.equal(formatCpuList([31, 10, 11, 12, 30, 39]), "10-12,30-31,39");
+    assert.equal(runCpus("10-19,30-39", "0-39"), "10-19,30-39");
+    assert.equal(runCpus("10-19,30-39", "8-15"), "10-15");
+    assert.equal(runCpus("10-19,30-39", "0-9,20-29"), "");
+    assert.throws(() => parseCpuList("ten"), /not a CPU list/);
+    assert.deepEqual(
+      launch(
+        { argv: ["bench"], uid: 10030, gid: 10500, cpus: "10-19" },
+        undefined,
+        undefined,
+        "/usr/bin/taskset",
+      ),
+      { argv: ["/usr/bin/taskset", "-c", "10-19", "bench"], uid: 10030, gid: 10500 },
+    );
+    assert.throws(
+      () => launch({ argv: ["bench"], cpus: "1" }, undefined, undefined, undefined),
+      /taskset/,
+    );
   });
 
   test("supplementary groups go through setpriv; without them nothing changes", () => {

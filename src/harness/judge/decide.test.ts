@@ -83,6 +83,25 @@ describe("screening", () => {
     );
   });
 
+  test("on a rig whose calibration showed more noise, a few agreeing blocks do not decide", () => {
+    // Three blocks that agree on -5%, as a no-op change once did on a rig whose A/A showed
+    // a 6% block spread: without the floor that is a regression; with it, keep measuring.
+    const agreeing = blocks(3, cells, { gflops: 0.95, mem_mib: 1 });
+    assert.equal(decideScreen(policy, agreeing).verdict, "regress");
+    const floored = decideScreen(policy, agreeing, 0.06);
+    assert.equal(floored.verdict, undefined, floored.reasons);
+    assert.ok(floored.primary.low < 0 && floored.primary.high > 0);
+    // A large real gain still wins through the same floor, at screening and confirmation.
+    assert.equal(
+      decideScreen(policy, blocks(3, cells, { gflops: 1.4, mem_mib: 1 }), 0.06).verdict,
+      "win_screened",
+    );
+    assert.equal(
+      decideConfirm(policy, blocks(5, cells, { gflops: 1.4, mem_mib: 1 }), {}, 0.06).verdict,
+      "win_confirmed",
+    );
+  });
+
   test("a gain bought with a guard regression is a tradeoff", () => {
     // Memory is minimized, so 5% more memory is a 5% regression against a 1% step margin.
     const d = decideScreen(policy, blocks(3, cells, { gflops: 1.05, mem_mib: 1.05 }));

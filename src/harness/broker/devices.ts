@@ -171,3 +171,39 @@ export function readLayout(socketPath: string | undefined): {
     return { error: `no device layout from the broker (${String(err)})` };
   }
 }
+
+/** Parses a kernel CPU list ("10-19,30-39") into CPU numbers. */
+export function parseCpuList(list: string): number[] {
+  const out: number[] = [];
+  for (const part of list.trim().split(",").filter(Boolean)) {
+    const [a, b] = part.split("-").map((x) => Number(x));
+    if (!Number.isInteger(a) || (b !== undefined && !Number.isInteger(b))) {
+      throw new Error(`not a CPU list: ${list}`);
+    }
+    for (let c = a as number; c <= (b ?? (a as number)); c++) out.push(c);
+  }
+  return out;
+}
+
+/** Formats CPU numbers as a kernel CPU list. */
+export function formatCpuList(cpus: number[]): string {
+  const sorted = [...new Set(cpus)].sort((x, y) => x - y);
+  const parts: string[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    const start = sorted[i] as number;
+    let end = start;
+    while (sorted[i + 1] === end + 1) end = sorted[++i] as number;
+    parts.push(start === end ? String(start) : `${start}-${end}`);
+  }
+  return parts.join(",");
+}
+
+/**
+ * The CPUs judge runs are pinned to: the ones local to the judge's card (its PCI device's
+ * local_cpulist) that this container may use. Kernel launches from a far socket, or moved
+ * between sockets, add noise to timings. Empty when they do not overlap.
+ */
+export function runCpus(localList: string, allowedList: string): string {
+  const allowed = new Set(parseCpuList(allowedList));
+  return formatCpuList(parseCpuList(localList).filter((c) => allowed.has(c)));
+}

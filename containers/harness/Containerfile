@@ -16,12 +16,13 @@ FROM ${BASE_IMAGE}
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 # git for the mirror; a C/C++ toolchain, CMake, Ninja and ccache for kit and lane builds of real
 # projects (an inference engine, for example); Python 3 with numpy for kit run and check scripts.
-# The broker needs prlimit (process limits) and setpriv (a dedicated development card's groups).
+# The broker needs prlimit (process limits), setpriv (a dedicated development card's groups) and
+# taskset (timed runs on the judge card's local CPUs).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git tini ca-certificates gcc g++ libc6-dev make \
       cmake ninja-build ccache python3 python3-numpy \
  && (command -v setpriv >/dev/null || apt-get install -y --no-install-recommends setpriv) \
- && command -v setpriv && command -v prlimit \
+ && command -v setpriv && command -v prlimit && command -v taskset \
  && rm -rf /var/lib/apt/lists/*
 # One user per role (src/harness/broker/runner.ts has the same ids). The broker runs each kind of
 # work as its own user; `run` and the lanes' development runs get the `gpu` group, which owns

@@ -225,7 +225,9 @@ async function main(): Promise<void> {
   });
 
   const research = new Research(ledger, paths.stateDir, {
-    maxCorpusBytes: Number(env.THERMITE_RESEARCH_MAX_MB ?? "2048") * 1024 * 1024,
+    maxCorpusBytes: env.THERMITE_RESEARCH_MAX_MB
+      ? Number(env.THERMITE_RESEARCH_MAX_MB) * 1024 * 1024
+      : undefined,
   });
 
   const { host, port } = parseListen(env.THERMITE_LISTEN ?? "0.0.0.0:8700");

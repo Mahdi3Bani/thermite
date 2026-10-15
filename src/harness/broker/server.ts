@@ -22,6 +22,8 @@ export interface BrokerServerOptions {
   gpuLayout?: GpuLayout | undefined;
   /** Puts the device nodes' groups and modes back if anything changed them (before each run). */
   assertDevices?: (() => void) | undefined;
+  /** The CPUs the `run` user's processes (timed runs) are pinned to; none when unset. */
+  runCpus?: string | undefined;
 }
 
 const LANE_ROLES: Role[] = Array.from({ length: IDS.maxLanes }, (_, i) => [
@@ -86,6 +88,7 @@ export async function handle(req: Req, opts: BrokerServerOptions): Promise<unkno
         uid,
         gid,
         groups,
+        cpus: r.role === "run" ? opts.runCpus : undefined,
         rssLimitBytes: r.rssLimitBytes,
         disk: r.disk,
         nproc: NPROC[r.role] ?? 256,

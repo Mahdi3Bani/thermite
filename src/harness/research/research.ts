@@ -73,7 +73,8 @@ export class Research {
     this.ledger = ledger;
     this.stateDir = stateDir;
     this.allowPrivate = opts.allowPrivate ?? false;
-    this.maxCorpusBytes = opts.maxCorpusBytes ?? 2 * 1024 ** 3;
+    // No cap on the corpus unless one is configured (the owner's direction, 2026-10-15).
+    this.maxCorpusBytes = opts.maxCorpusBytes ?? Number.POSITIVE_INFINITY;
   }
 
   /** Workers may act only on a running research campaign. */

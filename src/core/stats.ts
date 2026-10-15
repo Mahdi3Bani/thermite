@@ -98,12 +98,17 @@ export interface Interval {
   high: number;
 }
 
-/** Two-sided 1 - alpha Student-t interval for the mean. */
-export function meanInterval(xs: readonly number[], alpha: number): Interval {
+/**
+ * Two-sided 1 - alpha Student-t interval for the mean. `sdFloor` is the least spread to assume:
+ * a few values that happen to agree on a noisy target must not look more precise than the
+ * target's own A/A calibration showed it to be.
+ */
+export function meanInterval(xs: readonly number[], alpha: number, sdFloor = 0): Interval {
   if (!(alpha > 0 && alpha < 1)) throw new RangeError(`alpha must be in (0, 1), got ${alpha}`);
   const n = xs.length;
   const m = mean(xs);
-  const half = (studentTQuantile(1 - alpha / 2, n - 1) * sampleSd(xs)) / Math.sqrt(n);
+  const sd = Math.max(sampleSd(xs), sdFloor);
+  const half = (studentTQuantile(1 - alpha / 2, n - 1) * sd) / Math.sqrt(n);
   return { n, estimate: m, low: m - half, high: m + half };
 }
 

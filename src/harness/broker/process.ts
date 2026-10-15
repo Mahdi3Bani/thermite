@@ -20,6 +20,8 @@ export interface SupervisedRun {
   gid?: number | undefined;
   /** Supplementary groups (with uid and gid; set by setpriv, since spawn drops them). */
   groups?: number[] | undefined;
+  /** A CPU list the run is pinned to (taskset), for timing on a GPU's local CPUs. */
+  cpus?: string | undefined;
   /** Kill when the role's resident memory exceeds this. */
   rssLimitBytes?: number | undefined;
   /** Kill when this directory grows beyond this many bytes or entries (inodes) on disk. */
@@ -222,21 +224,26 @@ export function sweepRole(uid: number): string[] {
 
 const PRLIMIT = ["/usr/bin/prlimit", "/bin/prlimit"].find((p) => existsSync(p));
 const SETPRIV = ["/usr/bin/setpriv", "/bin/setpriv"].find((p) => existsSync(p));
+const TASKSET = ["/usr/bin/taskset", "/bin/taskset"].find((p) => existsSync(p));
 
 /**
  * The argv and spawn identity for a run. Supplementary groups need setpriv, which drops from
  * root to the role's user, groups and all, before anything of the role runs.
  */
 export function launch(
-  spec: Pick<SupervisedRun, "argv" | "uid" | "gid" | "groups" | "nproc">,
+  spec: Pick<SupervisedRun, "argv" | "uid" | "gid" | "groups" | "nproc" | "cpus">,
   setpriv = SETPRIV,
   prlimit = PRLIMIT,
+  taskset = TASKSET,
 ): { argv: string[]; uid?: number; gid?: number } {
+  if (spec.cpus && !taskset)
+    throw new Error("pinning a run to CPUs needs taskset, which this image lacks");
+  const pinned = spec.cpus && taskset ? [taskset, "-c", spec.cpus, ...spec.argv] : [...spec.argv];
   // A process limit for the role (a fork bomb stays small), set by prlimit before exec.
   const argv =
     spec.uid !== undefined && spec.nproc !== undefined && prlimit
-      ? [prlimit, `--nproc=${spec.nproc}`, "--", ...spec.argv]
-      : [...spec.argv];
+      ? [prlimit, `--nproc=${spec.nproc}`, "--", ...pinned]
+      : pinned;
   if (!spec.groups?.length) {
     return {
       argv,

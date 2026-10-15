@@ -21,6 +21,8 @@ import {
   type LayoutRecord,
   nodeGroups,
   planDedicated,
+  procBusDir,
+  runCpus,
 } from "./broker/devices.ts";
 import { killScope } from "./broker/process.ts";
 import { IDS, roleIds } from "./broker/runner.ts";
@@ -179,6 +181,44 @@ function assertDevices(layout: GpuLayout | undefined): void {
         now: `0:${gid} 660`,
       });
     });
+  }
+}
+
+/**
+ * The CPUs timed runs are pinned to. THERMITE_RUN_CPUS is "auto" (the default on a GPU rig: the
+ * judge's card's local CPUs this container may use), "off", or an explicit CPU list.
+ */
+function chooseRunCpus(layout: GpuLayout | undefined): string | undefined {
+  const want = env.THERMITE_RUN_CPUS ?? (env.THERMITE_TARGET === "cuda-gpu" ? "auto" : "off");
+  if (want === "off") return undefined;
+  if (want !== "auto") return want;
+  try {
+    const bus =
+      layout?.judge.bus ??
+      execFileSync(
+        "nvidia-smi",
+        ["--query-gpu=pci.bus_id", "--format=csv,noheader", "-i", env.THERMITE_GPU_INDEX ?? "0"],
+        { encoding: "utf8" },
+      ).trim();
+    const local = readFileSync(`/sys/bus/pci/devices/${procBusDir(bus)}/local_cpulist`, "utf8");
+    const allowed = /^Cpus_allowed_list:\s*(\S+)$/m.exec(
+      readFileSync("/proc/self/status", "utf8"),
+    )?.[1];
+    const cpus = allowed ? runCpus(local, allowed) : "";
+    if (!cpus) {
+      log("broker", "timed runs are not pinned: the card's local CPUs are not in this container", {
+        local: local.trim(),
+        allowed,
+      });
+      return undefined;
+    }
+    log("broker", "timed runs pinned to the judge card's local CPUs", { bus, cpus });
+    return cpus;
+  } catch (err) {
+    log("broker", "timed runs are not pinned", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return undefined;
   }
 }
 
@@ -356,6 +396,7 @@ if (isRoot) {
   setInterval(prepareOutbox, 60_000).unref();
   const secrets = readSecrets();
   const gpuLayout = prepareDevices();
+  const pinnedCpus = chooseRunCpus(gpuLayout);
   setInterval(() => assertDevices(gpuLayout), 60_000).unref();
   const killed = killRoles();
   if (killed) log("broker", "killed leftover role processes at start", { killed });
@@ -365,6 +406,7 @@ if (isRoot) {
     baseEnv: { PATH: env.PATH ?? "/usr/local/bin:/usr/bin:/bin", LANG: "C.UTF-8" },
     gpuLayout,
     assertDevices: () => assertDevices(gpuLayout),
+    runCpus: pinnedCpus,
   });
   server.on("listening", () => {
     chownSync(socketPath, 0, TG);
