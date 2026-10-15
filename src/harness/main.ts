@@ -262,11 +262,12 @@ async function main(): Promise<void> {
       } catch (err) {
         log("harness", "propagation settle error", { error: String(err) });
       }
-      // Hourly export for the supervisor to push (and an export command can force one).
+      // Hourly export for the supervisor to push (and an export command can force one). An
+      // export's own event is not news, or an idle rig would export every hour forever.
       const last = ledger.lastExport();
       const lastAt = last ? Date.parse(last.created_at) : 0;
       if (
-        ledger.latestEventId() > (last?.through_event ?? 0) &&
+        ledger.recordedAfter(last?.through_event ?? 0, ["export_written"]) &&
         Date.now() - lastAt >= exportEveryMs
       ) {
         try {
