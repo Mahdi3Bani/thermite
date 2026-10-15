@@ -90,7 +90,7 @@ It also checks that every role user is refused access to the ledger, kits, build
 COMPOSE="podman compose" npm run acceptance:judge
 ```
 
-The default promotion policy waits for approval (`THERMITE_PROMOTION=owner_approval`); the acceptance test sets it to `auto` for its local stack.
+Confirmed wins promote automatically by default (`THERMITE_PROMOTION=auto`). Gains above the contract's audit trigger are still held for an audit, and a gain above the absolute trigger still waits for the owner. Set `THERMITE_PROMOTION=owner_approval` to approve every promotion yourself.
 
 ## Agents
 

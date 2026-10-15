@@ -37,7 +37,7 @@ services:
       THERMITE_SUPERVISOR_TOKEN_FILE: /run/secrets/harness-supervisor-token
       THERMITE_PROPOSER_TOKEN_FILE: /run/secrets/harness-proposer-token
       # D8 (promotion policy) is the owner's call; locally the acceptance test sets auto.
-      THERMITE_PROMOTION: "${THERMITE_PROMOTION:-owner_approval}"
+      THERMITE_PROMOTION: "${THERMITE_PROMOTION:-auto}"
       THERMITE_CALIBRATION_BLOCKS: "${THERMITE_CALIBRATION_BLOCKS:-6}"
       # The model route for agents (empty: agents off). The key comes from a secret file.
       QWEN_BASE_URL: "${QWEN_BASE_URL:-}"
@@ -97,7 +97,7 @@ services:
       THERMITE_CONTROL_PUBKEY_FILE: /keys/control-signing.pub
       THERMITE_SUPERVISOR_TOKEN_FILE: /run/secrets/harness2-supervisor-token
       THERMITE_PROPOSER_TOKEN_FILE: /run/secrets/harness2-proposer-token
-      THERMITE_PROMOTION: "${THERMITE_PROMOTION:-owner_approval}"
+      THERMITE_PROMOTION: "${THERMITE_PROMOTION:-auto}"
       THERMITE_CALIBRATION_BLOCKS: "${THERMITE_CALIBRATION_BLOCKS:-6}"
       THERMITE_EXPORT_MINUTES: "${THERMITE_EXPORT_MINUTES:-60}"
     volumes:
