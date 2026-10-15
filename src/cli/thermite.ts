@@ -14,18 +14,18 @@ const USAGE = `usage: thermite <command> [options]
 
   contract validate <file>            validate a contract and print its sha256
   keys generate <dir>                 write a new Ed25519 control signing key pair
-  assign-payload --contract F --instance ID --seed-repo R --seed-commit C --bundle PATH
+  assign-payload --contract F --run ID --seed-repo R --seed-commit C --bundle PATH
                  [--bundle-sha256 H] [--kit-repo R --kit-commit C --kit-bundle PATH
                  [--kit-bundle-sha256 H]] [--model NAME=SHA256:PATH ...] [--direction D] [--agents off]
                                       print an assign_campaign payload (bundle and model
-                                      paths are relative to the unit's inbox)
-  command --control URL --token-file F --unit U --kind K --payload JSON|@file [--ttl MIN]
+                                      paths are relative to the rig's inbox)
+  command --control URL --token-file F --rig U --kind K --payload JSON|@file [--ttl MIN]
                                       issue a signed command through control (admin token)
-  submit --harness URL --token-file F --instance ID --patch-file P --hypothesis TEXT
+  submit --harness URL --token-file F --run ID --patch-file P --hypothesis TEXT
          [--known-flaw TEXT ...]      submit a patch as a proposer
   status --harness URL --token-file F --attempt ID
                                       show an attempt's lifecycle and verdict
-  selftest isolation [--force]        inside the harness container, as root, with the unit idle: check that role
+  selftest isolation [--force]        inside the harness container, as root, with the rig idle: check that role
                                       users cannot reach the ledger, kits, builds or secrets
 `;
 
@@ -50,7 +50,10 @@ async function post(url: string, token: string, body: unknown): Promise<unknown>
 }
 
 async function main(argv: string[]): Promise<void> {
-  const [cmd, ...rest] = argv;
+  // --instance and --unit are the flags' names before the 2026-10-15 rename: still read.
+  const [cmd, ...rest] = argv.map((a) =>
+    a.replace(/^--instance(?==|$)/, "--run").replace(/^--unit(?==|$)/, "--rig"),
+  );
   switch (cmd) {
     case "contract": {
       const [sub, file] = rest;
@@ -80,7 +83,7 @@ async function main(argv: string[]): Promise<void> {
         args: rest,
         options: {
           contract: { type: "string" },
-          instance: { type: "string" },
+          run: { type: "string" },
           "seed-repo": { type: "string" },
           "seed-commit": { type: "string" },
           bundle: { type: "string" },
@@ -98,7 +101,7 @@ async function main(argv: string[]): Promise<void> {
         fail("--agents is on or off");
       if (
         !values.contract ||
-        !values.instance ||
+        !values.run ||
         !values["seed-repo"] ||
         !values["seed-commit"] ||
         !values.bundle
@@ -113,7 +116,7 @@ async function main(argv: string[]): Promise<void> {
         return { kind: "model", name: match[1], sha256: match[2], path: match[3] };
       });
       const payload = {
-        instance: values.instance,
+        run: values.run,
         contract: r.contract,
         contract_sha: r.sha,
         seed: { repo: values["seed-repo"], commit: values["seed-commit"] },
@@ -150,7 +153,7 @@ async function main(argv: string[]): Promise<void> {
         options: {
           control: { type: "string" },
           "token-file": { type: "string" },
-          unit: { type: "string" },
+          rig: { type: "string" },
           kind: { type: "string" },
           payload: { type: "string" },
           ttl: { type: "string" },
@@ -160,14 +163,14 @@ async function main(argv: string[]): Promise<void> {
       if (
         !values.control ||
         !values["token-file"] ||
-        !values.unit ||
+        !values.rig ||
         !values.kind ||
         !values.payload
       )
         fail(USAGE);
       const token = readFileSync(values["token-file"], "utf8").trim();
       const out = await post(`${values.control.replace(/\/$/, "")}/v1/commands`, token, {
-        unit: values.unit,
+        rig: values.rig,
         kind: values.kind,
         payload: readJsonArg(values.payload),
         ...(values.ttl ? { ttl_minutes: Number(values.ttl) } : {}),
@@ -182,7 +185,7 @@ async function main(argv: string[]): Promise<void> {
         options: {
           harness: { type: "string" },
           "token-file": { type: "string" },
-          instance: { type: "string" },
+          run: { type: "string" },
           "patch-file": { type: "string" },
           hypothesis: { type: "string" },
           "known-flaw": { type: "string", multiple: true },
@@ -191,7 +194,7 @@ async function main(argv: string[]): Promise<void> {
       if (
         !values.harness ||
         !values["token-file"] ||
-        !values.instance ||
+        !values.run ||
         !values["patch-file"] ||
         !values.hypothesis
       ) {
@@ -199,7 +202,7 @@ async function main(argv: string[]): Promise<void> {
       }
       const token = readFileSync(values["token-file"], "utf8").trim();
       const out = await post(`${values.harness.replace(/\/$/, "")}/v1/attempts`, token, {
-        instance: values.instance,
+        run: values.run,
         patch_base64: readFileSync(values["patch-file"]).toString("base64"),
         hypothesis: values.hypothesis,
         known_flaws: values["known-flaw"] ?? [],

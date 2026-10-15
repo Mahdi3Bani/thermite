@@ -1,4 +1,12 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
@@ -33,7 +41,7 @@ async function main(): Promise<void> {
   // world write.
   process.umask(0o022);
   const env = process.env;
-  const unit = requireEnv("THERMITE_UNIT_ID");
+  const rig = requireEnv("THERMITE_RIG_ID");
   const paths = {
     stateDir: env.THERMITE_STATE_DIR ?? "/var/lib/thermite",
     // Under the broker the scratch root belongs to root; the controller works in its own area.
@@ -82,7 +90,14 @@ async function main(): Promise<void> {
     chmodSync(join(paths.stateDir, dir), mode);
   }
   // A full reset's wipe, requested by the last controller run: done before anything opens.
-  if (wipeIfRequested(paths, ["unit-signing.key", "unit-signing.key.pub"])) {
+  if (
+    wipeIfRequested(paths, [
+      "rig-signing.key",
+      "rig-signing.key.pub",
+      "unit-signing.key",
+      "unit-signing.key.pub",
+    ])
+  ) {
     log("harness", "state wiped (full reset); starting with a fresh ledger");
     for (const [dir, mode] of [
       ["ledger", 0o700],
@@ -104,16 +119,22 @@ async function main(): Promise<void> {
       .run(readFileSync(notBefore, "utf8").trim());
     rmSync(notBefore, { force: true });
   }
-  // The unit's report-signing key: created once, kept with the ledger (0700).
-  const unitKeyPath = join(paths.stateDir, "ledger", "unit-signing.key");
-  if (!existsSync(unitKeyPath)) {
-    const k = generateSigningKeys();
-    writeFileSync(unitKeyPath, k.privateKeyPem, { mode: 0o600 });
-    writeFileSync(`${unitKeyPath}.pub`, k.publicKeyPem, { mode: 0o644 });
+  // The rig's report-signing key: created once, kept with the ledger (0700).
+  const rigKeyPath = join(paths.stateDir, "ledger", "rig-signing.key");
+  // Before the 2026-10-15 rename the key was the "unit" key: kept, so control's pin still holds.
+  const oldKeyPath = join(paths.stateDir, "ledger", "unit-signing.key");
+  if (!existsSync(rigKeyPath) && existsSync(oldKeyPath) && existsSync(`${oldKeyPath}.pub`)) {
+    renameSync(`${oldKeyPath}.pub`, `${rigKeyPath}.pub`);
+    renameSync(oldKeyPath, rigKeyPath);
   }
-  const unitKeys = {
-    privateKeyPem: readFileSync(unitKeyPath, "utf8"),
-    publicKeyPem: readFileSync(`${unitKeyPath}.pub`, "utf8"),
+  if (!existsSync(rigKeyPath)) {
+    const k = generateSigningKeys();
+    writeFileSync(rigKeyPath, k.privateKeyPem, { mode: 0o600 });
+    writeFileSync(`${rigKeyPath}.pub`, k.publicKeyPem, { mode: 0o644 });
+  }
+  const rigKeys = {
+    privateKeyPem: readFileSync(rigKeyPath, "utf8"),
+    publicKeyPem: readFileSync(`${rigKeyPath}.pub`, "utf8"),
   };
   // D8 (promotion policy) is the owner's decision; until it is made, promotions wait for approval.
   const promotion = (env.THERMITE_PROMOTION ?? "owner_approval") as PromotionPolicy;
@@ -121,18 +142,18 @@ async function main(): Promise<void> {
     throw new Error(`THERMITE_PROMOTION must be auto or owner_approval, not ${promotion}`);
   }
   const service = new HarnessService({
-    unit,
+    rig,
     ledger,
     paths,
     controlPublicKeyPem,
-    unitKeys,
+    rigKeys,
     promotion,
   });
   service.onWipe = () => {
     log("harness", "wipe requested: exiting so the next start wipes the state");
     process.exit(0);
   };
-  // Startup reconciliation: anything still leased by this unit's executor belonged to a process
+  // Startup reconciliation: anything still leased by this rig's executor belonged to a process
   // that died. Re-queue it now and record it once as crash_infra.
   const executorId = "executor-0";
   const reclaimed = ledger.reclaimLeases(executorId, "controller-start");
@@ -165,7 +186,7 @@ async function main(): Promise<void> {
     hostname: host,
     port,
   });
-  log("harness", "listening", { unit, host, port, target: (await driver.identify()).id });
+  log("harness", "listening", { rig, host, port, target: (await driver.identify()).id });
 
   const executor = new Judge({
     service,
@@ -178,7 +199,7 @@ async function main(): Promise<void> {
   });
   log("harness", "judge ready", { separated: runner.separated, promotion });
 
-  // Agents run only with a model route (QWEN_* from the unit's configuration; the key from the
+  // Agents run only with a model route (QWEN_* from the rig's configuration; the key from the
   // broker). Each trial is its own worker process.
   const model = modelConfigFromEnv(env);
   const scheduler = model

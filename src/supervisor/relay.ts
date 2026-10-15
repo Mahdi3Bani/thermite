@@ -7,7 +7,7 @@ import type { SignedCommand } from "../core/commands.ts";
  * creates or alters commands; it has no signing key.
  */
 export interface RelayConfig {
-  unit: string;
+  rig: string;
   harnessUrl: string;
   harnessToken: string;
   controlUrl?: string | undefined;
@@ -109,16 +109,16 @@ export async function relayOnce(cfg: RelayConfig, state: RelayState): Promise<Re
         ) as typeof snap;
       }
       ledgerId = snap.ledger_id;
-      // A harness signing as another unit is a deployment mistake: say so, never report it on.
-      if (typeof snap.unit === "string" && snap.unit !== cfg.unit)
+      // A harness signing as another rig is a deployment mistake: say so, never report it on.
+      if (typeof snap.rig === "string" && snap.rig !== cfg.rig)
         throw new Error(
-          `the harness reports as unit ${snap.unit}, but this supervisor is ${cfg.unit}`,
+          `the harness reports as rig ${snap.rig}, but this supervisor is ${cfg.rig}`,
         );
       if (cfg.controlUrl && cfg.controlToken) {
         // Passed through untouched: the supervisor cannot sign for the harness.
         const r = await call(
           f,
-          `${cfg.controlUrl}/v1/units/${encodeURIComponent(cfg.unit)}/ingest`,
+          `${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/ingest`,
           cfg.controlToken,
           { method: "POST", body: JSON.stringify(snap) },
         );
@@ -149,7 +149,7 @@ export async function relayOnce(cfg: RelayConfig, state: RelayState): Promise<Re
     const pending = must(
       await call(
         f,
-        `${cfg.controlUrl}/v1/units/${encodeURIComponent(cfg.unit)}/commands/pending`,
+        `${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/commands/pending`,
         cfg.controlToken,
       ),
       "pending commands",
@@ -175,7 +175,7 @@ export async function relayOnce(cfg: RelayConfig, state: RelayState): Promise<Re
             : outcome.body;
         await call(
           f,
-          `${cfg.controlUrl}/v1/units/${encodeURIComponent(cfg.unit)}/commands/${cmd.envelope.id}/ack`,
+          `${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/commands/${cmd.envelope.id}/ack`,
           cfg.controlToken,
           { method: "POST", body: JSON.stringify({ status, outcome: reported }) },
         );

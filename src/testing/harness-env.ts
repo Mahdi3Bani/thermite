@@ -25,7 +25,7 @@ export interface HarnessEnv {
   sign(
     kind: CommandKind,
     payload: unknown,
-    over?: { unit?: string; expiresInMs?: number; issuedBy?: string },
+    over?: { rig?: string; expiresInMs?: number; issuedBy?: string },
   ): SignedCommand;
   assignPayload(over?: Record<string, unknown>): Record<string, unknown>;
   patchFrom(edit: (dir: string) => void): string;
@@ -39,7 +39,7 @@ function sh(cwd: string, cmd: string, args: string[]): string {
   });
 }
 
-export function makeHarnessEnv(unit = "unit-a", clock?: () => Date): HarnessEnv {
+export function makeHarnessEnv(rig = "rig-a", clock?: () => Date): HarnessEnv {
   const root = mkdtempSync(join(tmpdir(), "thermite-harness-"));
   const paths = {
     stateDir: join(root, "state"),
@@ -73,24 +73,24 @@ export function makeHarnessEnv(unit = "unit-a", clock?: () => Date): HarnessEnv 
   const keys = generateSigningKeys();
   const ledger = Ledger.open(join(paths.stateDir, "ledger", "ledger.db"));
   const service = new HarnessService({
-    unit,
+    rig,
     ledger,
     paths,
     controlPublicKeyPem: keys.publicKeyPem,
-    unitKeys: generateSigningKeys(),
+    rigKeys: generateSigningKeys(),
     clock,
   });
 
   const sign = (
     kind: CommandKind,
     payload: unknown,
-    over: { unit?: string; expiresInMs?: number; issuedBy?: string } = {},
+    over: { rig?: string; expiresInMs?: number; issuedBy?: string } = {},
   ) =>
     signEnvelope(
       {
         v: 1,
         id: randomUUID(),
-        unit: over.unit ?? unit,
+        rig: over.rig ?? rig,
         kind,
         issued_by: over.issuedBy ?? "owner",
         issued_at: new Date(Date.now() - 1000).toISOString(),
@@ -108,7 +108,7 @@ export function makeHarnessEnv(unit = "unit-a", clock?: () => Date): HarnessEnv 
     const parsed = parseContract(contractInput);
     if (!parsed.ok) throw new Error(parsed.errors.join("; "));
     return {
-      instance: "smoke-1",
+      run: "smoke-1",
       contract: parsed.contract,
       contract_sha: parsed.sha,
       seed: { repo: "smoke-kernels", commit: seedCommit },

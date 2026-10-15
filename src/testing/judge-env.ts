@@ -119,12 +119,12 @@ export function makeJudgeEnv(
     lanes?: { count: number; trials_per_epoch: number };
     /** A goal-mode campaign instead of a hill climb. */
     goal?: { opsPerSecond: number } | undefined;
-    /** False: assign as a judge-only instance (no worker agents). */
+    /** False: assign as a judge-only run (no worker agents). */
     agents?: boolean | undefined;
     /** Fields merged over the contract (for example acceptance.audit or infeasibility). */
     contract?: Record<string, unknown> | undefined;
-    /** Another unit: its own harness on the same project, seed and kit as `share`. */
-    unit?: string | undefined;
+    /** Another rig: its own harness on the same project, seed and kit as `share`. */
+    rig?: string | undefined;
     share?: { root: string; seed: string; kitCommit: string } | undefined;
   } = {},
 ) {
@@ -160,13 +160,13 @@ export function makeJudgeEnv(
 
   const keys = generateSigningKeys();
   const ledger = Ledger.open(join(paths.stateDir, "ledger", "ledger.db"));
-  const unit = opts.unit ?? "unit-a";
+  const rig = opts.rig ?? "rig-a";
   const service = new HarnessService({
-    unit,
+    rig,
     ledger,
     paths,
     controlPublicKeyPem: keys.publicKeyPem,
-    unitKeys: generateSigningKeys(),
+    rigKeys: generateSigningKeys(),
     promotion: opts.promotion ?? "auto",
   });
   const goalContract = opts.goal
@@ -236,13 +236,13 @@ export function makeJudgeEnv(
     {
       v: 1,
       id: randomUUID(),
-      unit,
+      rig,
       kind: "assign_campaign",
       issued_by: "owner",
       issued_at: new Date(Date.now() - 1000).toISOString(),
       expires_at: new Date(Date.now() + 3_600_000).toISOString(),
       payload: {
-        instance: "js-1",
+        run: "js-1",
         contract: parsed.contract,
         contract_sha: parsed.sha,
         seed: { repo: "proj", commit: seed },
@@ -283,13 +283,13 @@ export function makeJudgeEnv(
     throw new Error("judge did not drain");
   };
 
-  /** Signs any command for this unit with control's test key. */
+  /** Signs any command for this rig with control's test key. */
   const sign = (kind: CommandKind, payload: unknown) =>
     signEnvelope(
       {
         v: 1,
         id: randomUUID(),
-        unit,
+        rig,
         kind,
         issued_by: "owner",
         issued_at: new Date(Date.now() - 1000).toISOString(),

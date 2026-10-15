@@ -136,7 +136,7 @@ describe("advisors", () => {
     const id = (
       await env.service.submitAttempt(
         {
-          instance: "js-1",
+          run: "js-1",
           patch_base64: env.patch(FAST_KERNEL),
           hypothesis: "h",
           known_flaws: [],
@@ -223,7 +223,7 @@ describe("staging a propagation", () => {
         encoding: "utf8",
         env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1" },
       }).trim();
-    // The results repository as unit-a's supervisor pushed it.
+    // The results repository as rig-a's supervisor pushed it.
     const remote = join(root, "results-remote.git");
     mkdirSync(remote);
     git(remote, "init", "--bare", "--quiet");
@@ -231,12 +231,12 @@ describe("staging a propagation", () => {
     mkdirSync(join(work, "champions", "js-1"), { recursive: true });
     const patch = "diff --git a/x b/x\n";
     writeFileSync(join(work, "champions", "js-1", "2.patch"), patch);
-    git(work, "init", "--quiet", "-b", "thermite/unit-a/attempts");
+    git(work, "init", "--quiet", "-b", "thermite/rig-a/attempts");
     git(work, "add", "-A");
     git(work, "commit", "--quiet", "-m", "export");
-    git(work, "push", "--quiet", remote, "thermite/unit-a/attempts");
-    // unit-b's supervisor.
-    const resultsRepo = join(root, "unit-b-results.git");
+    git(work, "push", "--quiet", remote, "thermite/rig-a/attempts");
+    // rig-b's supervisor.
+    const resultsRepo = join(root, "rig-b-results.git");
     mkdirSync(resultsRepo);
     git(resultsRepo, "init", "--bare", "--quiet");
     const inboxDir = join(root, "inbox");
@@ -247,19 +247,19 @@ describe("staging a propagation", () => {
         {
           v: 1,
           id: randomUUID(),
-          unit: "unit-b",
+          rig: "rig-b",
           kind: "propagate",
           issued_by: "owner",
           issued_at: new Date().toISOString(),
           expires_at: new Date(Date.now() + 3_600_000).toISOString(),
           payload: {
-            instance: "js-1",
-            source_unit: "unit-a",
-            source_instance: "js-1",
+            run: "js-1",
+            source_rig: "rig-a",
+            source_run: "js-1",
             source_seq: 2,
             import: {
               kind: "champion_patch",
-              path: "propagate/unit-a/js-1/2.patch",
+              path: "propagate/rig-a/js-1/2.patch",
               repo: "proj",
               base_commit: "a".repeat(40),
               tree: "b".repeat(40),
@@ -269,12 +269,12 @@ describe("staging a propagation", () => {
         },
         keys.privateKeyPem,
       );
-    const cfg = { unit: "unit-b", inboxDir, resultsRepo, remote: `file://${remote}` };
+    const cfg = { rig: "rig-b", inboxDir, resultsRepo, remote: `file://${remote}` };
     assert.equal(await stageCommand(cfg, cmd("0".repeat(64))), "wait");
     const sha = createHash("sha256").update(patch).digest("hex");
     assert.equal(await stageCommand(cfg, cmd(sha)), "ready");
     assert.equal(
-      readFileSync(join(inboxDir, "propagate", "unit-a", "js-1", "2.patch"), "utf8"),
+      readFileSync(join(inboxDir, "propagate", "rig-a", "js-1", "2.patch"), "utf8"),
       patch,
     );
   });

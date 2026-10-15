@@ -6,14 +6,14 @@ import { FAST_KERNEL, makeJudgeEnv } from "../testing/judge-env.ts";
 import { createControlApi } from "./api.ts";
 import { ControlStore } from "./store.ts";
 
-/** Control with one unit whose harness runs the Node test kit; the relay is called directly. */
+/** Control with one rig whose harness runs the Node test kit; the relay is called directly. */
 async function stack(promotion: "auto" | "owner_approval" = "owner_approval") {
   const env = makeJudgeEnv({ promotion });
   const store = new ControlStore(":memory:");
   const admin = "admin-token-abcdef";
   const control = createControlApi(
     store,
-    { admin, units: { "unit-a": "unit-token-abcdef" } },
+    { admin, rigs: { "rig-a": "rig-token-abcdef" } },
     env.keys.privateKeyPem,
   );
   const harness = createHarnessApi(env.service, { supervisor: "sup-token-abcdef" });
@@ -25,11 +25,11 @@ async function stack(promotion: "auto" | "owner_approval" = "owner_approval") {
     );
   };
   const cfg = {
-    unit: "unit-a",
+    rig: "rig-a",
     harnessUrl: "http://harness",
     harnessToken: "sup-token-abcdef",
     controlUrl: "http://control",
-    controlToken: "unit-token-abcdef",
+    controlToken: "rig-token-abcdef",
     fetchImpl,
   };
   let state = { cursor: 0 } as Awaited<ReturnType<typeof relayOnce>>;
@@ -60,9 +60,9 @@ describe("control dashboard", () => {
     await s.env.service.applyCommand(s.env.assign);
     await s.relay();
     const post = (body: unknown) =>
-      s.control.request("/v1/units/unit-a/supervisor", {
+      s.control.request("/v1/rigs/rig-a/supervisor", {
         method: "POST",
-        headers: { authorization: "Bearer unit-token-abcdef", "content-type": "application/json" },
+        headers: { authorization: "Bearer rig-token-abcdef", "content-type": "application/json" },
         body: JSON.stringify(body),
       });
     const evil = await post({
@@ -87,7 +87,7 @@ describe("control dashboard", () => {
       },
     });
     assert.equal(ok.status, 200);
-    const page = await s.get("/ui/units/unit-a");
+    const page = await s.get("/ui/rigs/rig-a");
     const html = await page.text();
     assert.ok(!html.includes("<script>x</script>"));
     assert.match(html, /&lt;script&gt;x&lt;\/script&gt;/);
@@ -114,7 +114,7 @@ describe("control dashboard", () => {
     const id = (
       await s.env.service.submitAttempt(
         {
-          instance: "js-1",
+          run: "js-1",
           patch_base64: s.env.patch(FAST_KERNEL),
           hypothesis: "drop the waste",
           known_flaws: [],
@@ -129,17 +129,17 @@ describe("control dashboard", () => {
     assert.match(home, new RegExp(id));
     // A form without the session's token is refused.
     const forged = await s.post("/ui/commands", {
-      unit: "unit-a",
+      rig: "rig-a",
       kind: "approve_promotion",
-      instance: "js-1",
+      run: "js-1",
       attempt: id,
       csrf: "0".repeat(64),
     });
     assert.equal(forged.status, 403);
     const ok = await s.post("/ui/commands", {
-      unit: "unit-a",
+      rig: "rig-a",
       kind: "approve_promotion",
-      instance: "js-1",
+      run: "js-1",
       attempt: id,
       csrf: s.csrfFrom(home),
     });
@@ -147,9 +147,14 @@ describe("control dashboard", () => {
     await s.relay(); // delivers the signed command to the harness
     assert.equal(s.env.ledger.currentChampion("js-1").seq, 2);
     await s.relay(); // reports the promotion back
-    const unit = await (await s.get("/ui/units/unit-a")).text();
-    assert.match(unit, /<svg/);
-    assert.match(unit, /drop the waste/);
+    // Campaigns first: the run's chart and attempts are on its campaign's page, linked from the rig.
+    const rig = await (await s.get("/ui/rigs/rig-a")).text();
+    assert.match(rig, /href="\/ui\/campaigns\/js-sum#run-rig-a-js-1"/);
+    const campaign = await (await s.get("/ui/campaigns/js-sum")).text();
+    assert.match(campaign, /<svg class="chart"/);
+    assert.match(campaign, /drop the waste/);
+    assert.match(campaign, /id="run-rig-a-js-1"/);
+    assert.match(await (await s.get("/ui/campaigns")).text(), /js-sum/);
     assert.doesNotMatch(await (await s.get("/ui")).text(), /Promotion waiting for approval/);
     const audit = await (await s.get("/ui/audit")).text();
     assert.match(audit, /command_issued/);
@@ -159,17 +164,17 @@ describe("control dashboard", () => {
     const s = await stack();
     await s.env.service.applyCommand(s.env.assign);
     await s.relay();
-    const page = await (await s.get("/ui/units/unit-a")).text();
+    const page = await (await s.get("/ui/rigs/rig-a")).text();
     const r = await s.post("/ui/commands", {
-      unit: "unit-a",
-      kind: "pause_instance",
-      instance: "js-1",
+      rig: "rig-a",
+      kind: "pause_run",
+      run: "js-1",
       reason: "owner looked",
       csrf: s.csrfFrom(page),
     });
     assert.equal(r.status, 303);
     await s.relay();
-    assert.equal(s.env.ledger.getInstance("js-1")?.status, "paused");
+    assert.equal(s.env.ledger.getRun("js-1")?.status, "paused");
   });
 
   test("the live view: lines are escaped, only control's own script runs, and the composer messages an agent", async () => {
@@ -177,7 +182,7 @@ describe("control dashboard", () => {
     await s.env.service.applyCommand(s.env.assign);
     await s.relay();
     s.store.addLive(
-      "unit-a",
+      "rig-a",
       "log-1",
       [
         {
@@ -187,7 +192,7 @@ describe("control dashboard", () => {
           kind: "text",
           text: "<img src=x onerror=alert(1)> plan",
           lane: "lane-1",
-          instance: "js-1",
+          run: "js-1",
         },
         {
           seq: 2,
@@ -195,12 +200,12 @@ describe("control dashboard", () => {
           source: "judge",
           kind: "log",
           text: "evaluate a-1: started",
-          instance: "js-1",
+          run: "js-1",
         },
       ],
       true,
     );
-    const page = await s.get("/ui/units/unit-a/live?source=trial%3At-0123456789abcdef");
+    const page = await s.get("/ui/rigs/rig-a/live?source=trial%3At-0123456789abcdef");
     const html = await page.text();
     assert.ok(!html.includes("<img src=x"));
     assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt; plan/);
@@ -208,18 +213,18 @@ describe("control dashboard", () => {
     assert.doesNotMatch(html, /<script>/);
     const js = await s.get("/ui/assets/app.js");
     assert.match(js.headers.get("content-type") ?? "", /javascript/);
-    const json = (await (await s.get("/ui/units/unit-a/live.json?after=0")).json()) as {
+    const json = (await (await s.get("/ui/rigs/rig-a/live.json?after=0")).json()) as {
       entries: unknown[];
     };
     assert.equal(json.entries.length, 2);
     // The judge takes no messages; a worker does, through a signed owner command.
     assert.match(
-      await (await s.get("/ui/units/unit-a/live?source=judge")).text(),
+      await (await s.get("/ui/rigs/rig-a/live?source=judge")).text(),
       /takes no messages/,
     );
-    const sent = await s.post("/ui/units/unit-a/message", {
+    const sent = await s.post("/ui/rigs/rig-a/message", {
       csrf: s.csrfFrom(html),
-      instance: "js-1",
+      run: "js-1",
       to: "lane-1",
       text: "try the closed form",
       source: "trial:t-0123456789abcdef",
@@ -227,7 +232,7 @@ describe("control dashboard", () => {
     assert.equal(sent.status, 303);
     await s.relay();
     assert.deepEqual(
-      s.env.service.takeMessages({ id: "t-0123456789abcdef", instance: "js-1", lane: "lane-1" }),
+      s.env.service.takeMessages({ id: "t-0123456789abcdef", run: "js-1", lane: "lane-1" }),
       ["try the closed form"],
     );
     const cmd = s.store.listCommands(5).find((c) => c.kind === "message_agent");

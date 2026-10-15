@@ -3,11 +3,13 @@ import { spawn } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { describe, test } from "node:test";
 import { sha256Hex } from "../core/canonical.ts";
 import { type Contract, parseContract } from "../core/contract.ts";
 import { goalFixture, hillClimbFixture } from "../testing/fixtures.ts";
 import { Ledger, LedgerError, MAX_LEASE_EXPIRIES } from "./ledger.ts";
+import { MIGRATIONS } from "./schema.ts";
 
 function contractOf(input: unknown): { contract: Contract; sha: string } {
   const r = parseContract(input);
@@ -20,7 +22,7 @@ function setup(clock?: () => Date): { ledger: Ledger; path: string } {
   const ledger = Ledger.open(path, clock);
   const { contract, sha } = contractOf(hillClimbFixture);
   ledger.storeContract(contract, sha, "test");
-  ledger.createInstance({
+  ledger.createRun({
     id: "race-1",
     contract,
     contractSha: sha,
@@ -41,7 +43,7 @@ function attempt(
   ledger.recordAttempt(
     {
       id,
-      instance: "race-1",
+      run: "race-1",
       parentRef: opts.parentAttempt ? `refs/thermite/attempts/${opts.parentAttempt}` : "seed",
       parentCommit: opts.parentAttempt ? commitOf(opts.parentAttempt) : "a".repeat(40),
       parentAttempt: opts.parentAttempt,
@@ -64,7 +66,7 @@ function confirmed(ledger: Ledger, id: string, opts: { parentAttempt?: string } 
 }
 
 const promoteArgs = (id: string, expectedSeq = 1) => ({
-  instance: "race-1",
+  run: "race-1",
   expectedSeq,
   attempt: id,
   commitSha: commitOf(id),
@@ -76,8 +78,53 @@ describe("ledger", () => {
     const { ledger, path } = setup();
     ledger.close();
     const again = Ledger.open(path);
-    assert.equal(again.getInstance("race-1")?.status, "running");
+    assert.equal(again.getRun("race-1")?.status, "running");
     again.close();
+  });
+
+  test("a ledger from before the 2026-10-15 rename opens under the new names", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "thermite-ledger-")), "ledger.db");
+    const db = new DatabaseSync(path);
+    db.exec("create table schema_migrations (version integer primary key)");
+    MIGRATIONS.slice(0, 9).forEach((m, i) => {
+      if (typeof m === "string") db.exec(m);
+      else m(db);
+      db.prepare("insert into schema_migrations (version) values (?)").run(i + 1);
+    });
+    const at = "2026-10-14T00:00:00.000Z";
+    db.prepare(
+      "insert into event (at, actor, kind, subject, body) values (?, 'control', 'instance_created', 'old-1', ?)",
+    ).run(at, JSON.stringify({ campaign: "c", mode: "hill_climb", instance: "old-1" }));
+    db.prepare(
+      "insert into job (kind, state, spec, created_at, updated_at) values ('calibrate', 'queued', ?, ?, ?)",
+    ).run(JSON.stringify({ instance: "old-1" }), at, at);
+    db.close();
+    const ledger = Ledger.open(path);
+    const cols = (t: string) =>
+      (ledger.db.prepare(`pragma table_info(${t})`).all() as { name: string }[]).map((c) => c.name);
+    const tables = (
+      ledger.db.prepare("select name from sqlite_master where type = 'table'").all() as {
+        name: string;
+      }[]
+    ).map((t) => t.name);
+    assert.ok(tables.includes("run") && !tables.includes("instance"));
+    for (const t of tables)
+      for (const c of cols(t))
+        assert.ok(!["instance", "source_instance", "source_unit"].includes(c), `${t}.${c}`);
+    assert.ok(cols("propagation").includes("source_rig"));
+    assert.ok(cols("measurement").includes("unit"), "a metric's unit keeps its name");
+    // Events keep what was recorded; readers see the new names.
+    const e = ledger.eventsAfter(0).events[0];
+    assert.ok(e);
+    assert.equal(e.kind, "run_created");
+    assert.equal((e.body as { run?: string }).run, "old-1");
+    assert.equal(
+      String((ledger.db.prepare("select kind from event").get() as { kind: string }).kind),
+      "instance_created",
+    );
+    const spec = ledger.db.prepare("select spec from job").get() as { spec: string };
+    assert.deepEqual(JSON.parse(spec.spec), { run: "old-1" });
+    ledger.close();
   });
 
   test("a contract edit must become a new version", () => {
@@ -98,12 +145,12 @@ describe("ledger", () => {
     assert.throws(() => ledger.db.exec("update contract set mode = 'goal'"), /immutable/);
   });
 
-  test("the seed is champion seq 1 and goal instances get their goal tree", () => {
+  test("the seed is champion seq 1 and goal runs get their goal tree", () => {
     const { ledger } = setup();
     assert.equal(ledger.currentChampion("race-1").seq, 1);
     const g = contractOf(goalFixture);
     ledger.storeContract(g.contract, g.sha, "t");
-    ledger.createInstance({
+    ledger.createRun({
       id: "goal-1",
       contract: g.contract,
       contractSha: g.sha,
@@ -112,7 +159,7 @@ describe("ledger", () => {
       actor: "t",
     });
     const goals = ledger.db
-      .prepare("select id, status from goal where instance = 'goal-1' order by id")
+      .prepare("select id, status from goal where run = 'goal-1' order by id")
       .all();
     assert.deepEqual(
       goals.map((r) => r.id),
@@ -128,7 +175,7 @@ describe("ledger", () => {
     assert.deepEqual(ledger.promote(promoteArgs("a2")), { ok: false, currentSeq: 2 });
   });
 
-  test("only a promotable, unflawed attempt of this instance with its own commit is promoted", () => {
+  test("only a promotable, unflawed attempt of this run with its own commit is promoted", () => {
     const { ledger } = setup();
     const refused = (args: Parameters<Ledger["promote"]>[0], why: RegExp) =>
       assert.throws(
@@ -155,7 +202,7 @@ describe("ledger", () => {
     refused(promoteArgs("flawed"), /open known flaws/);
     confirmed(ledger, "ok");
     refused({ ...promoteArgs("ok"), commitSha: "f".repeat(40) }, /is not attempt/);
-    refused({ ...promoteArgs("ok"), instance: "other" }, /is not in other/);
+    refused({ ...promoteArgs("ok"), run: "other" }, /is not in other/);
     assert.equal(ledger.currentChampion("race-1").seq, 1);
   });
 
@@ -371,7 +418,7 @@ describe("ledger", () => {
     assert.equal(ledger.currentVerdict("base")?.verdict, "invalidated");
     assert.equal(ledger.currentVerdict("child")?.verdict, "invalidated");
     assert.equal(ledger.currentVerdict("unrelated")?.verdict, "neutral");
-    assert.deepEqual(r.championsReopened, [{ instance: "race-1", seq: 2 }]);
+    assert.deepEqual(r.championsReopened, [{ run: "race-1", seq: 2 }]);
     const history = ledger.db
       .prepare("select verdict from verdict where attempt = 'base' order by id")
       .all();
@@ -381,8 +428,8 @@ describe("ledger", () => {
     );
     // The reopened champion no longer counts: the effective champion falls back to the seed.
     assert.equal(ledger.currentChampion("race-1").seq, 1);
-    const summary = ledger.summary() as { instances: { champion: { reopened: number[] } }[] };
-    assert.deepEqual(summary.instances[0]?.champion.reopened, [2]);
+    const summary = ledger.summary() as { runs: { champion: { reopened: number[] } }[] };
+    assert.deepEqual(summary.runs[0]?.champion.reopened, [2]);
     // Evidence invalidation allows re-measurement; a new verdict may follow.
     ledger.recordVerdict({
       attempt: "base",

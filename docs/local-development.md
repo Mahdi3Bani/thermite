@@ -1,6 +1,6 @@
 # Running Thermite locally
 
-Thermite runs the same images under docker-compose, podman-compose and Kubernetes. Locally, one compose stack starts the control service and one unit (a harness and a supervisor), with the CPU target.
+Thermite runs the same images under docker-compose, podman-compose and Kubernetes. Locally, one compose stack starts the control service and one rig (a harness and a supervisor), with the CPU target.
 
 **Status:** the stack runs everything on the CPU target:
 - the judge;
@@ -31,8 +31,25 @@ docker compose up -d --build     # or: podman compose up -d --build
 ```
 
 - **control** listens on `127.0.0.1:8800`. It generates its command-signing key on first start and shares only the public key with the harness.
-- **harness** has no published port. Only its supervisor reaches it, over the unit's internal network. It reads imports from `.dev/inbox` (read-only) and writes exports to `.dev/outbox`.
+- **harness** has no published port. Only its supervisor reaches it, over the rig's internal network. It reads imports from `.dev/inbox` (read-only) and writes exports to `.dev/outbox`.
 - **supervisor** polls the harness, sends new events to control and relays control's commands. The interval is `THERMITE_POLL_SECONDS` (60 by default).
+
+## The dashboard
+
+Sign in at `http://127.0.0.1:8800/ui` with the admin token from `.dev/secrets/control-admin-token`. The pages follow the work's hierarchy, Campaign ▸ Run ▸ Lane ▸ Trial ▸ Attempt:
+
+- **Overview** lists what waits for you first, then campaigns and rigs.
+- **Campaigns** shows each campaign with its runs on every rig. A campaign's page has a section per run, with its lanes, attempts and steering.
+- **Rigs** shows each rig's judge, results export, advisors and key.
+- **Live** shows a rig's agent sessions and its judge as they work. The supervisor relays new lines every `THERMITE_LIVE_INTERVAL_MS` milliseconds (3000 by default). From a session you can message a worker's trial, a lane, the planner or the advisors. The message is a signed `message_agent` command, which only the owner's credential can issue. A worker reads it after its current turn.
+
+To work on the dashboard without a stack, run a demo with synthetic campaigns and rigs:
+
+```sh
+node --experimental-strip-types scripts/dashboard-demo.ts   # http://127.0.0.1:8810/ui
+```
+
+It prints the token to sign in with.
 
 ## The smoke test
 
@@ -111,29 +128,29 @@ Workers and the planner run when the harness has a model route: an OpenAI-compat
   - It gets an empty home and working directory, and its whole process group is killed at its time limit.
 - Neither runtime gets a shell or file tools from Thermite.
 - Web fetch is off unless `fetch_domains` lists domains. With `"*"` (any public site), the knowledge-base search is left out of the same agent, and the auditor fetches only from listed domains.
-- `max_usd_per_day` caps what all advisors of a unit spend.
+- `max_usd_per_day` caps what all advisors of a rig spend.
 - What they produce is checked twice, by the supervisor and by the harness:
   - directives need citations;
   - an audit can block a promotion, never force one;
   - a panel's pass still needs the owner's acceptance.
 
-**Results repository.** Locally, both units' supervisors push their exports to one repository on a shared volume (`file:///results/results.git`). Set `THERMITE_RESULTS_REMOTE` (and `THERMITE_RESULTS_KEY_FILE` for SSH) to use a real one. Propagation reads published champions from it.
+**Results repository.** Locally, both rigs' supervisors push their exports to one repository on a shared volume (`file:///results/results.git`). Set `THERMITE_RESULTS_REMOTE` (and `THERMITE_RESULTS_KEY_FILE` for SSH) to use a real one. Propagation reads published champions from it.
 - Set `THERMITE_RESULTS_KNOWN_HOSTS` to a known_hosts file to pin the git host's key. Without it, the first key the host shows is trusted.
 - The supervisor commits only regular files that the export's manifest lists, and never replaces a file already published. After a push, the harness removes the pushed exports from the outbox.
 
-**Unit keys.** Control pins each unit's report-signing key the first time the unit reports. With `THERMITE_CONTROL_REQUIRE_KEY_ACCEPT=1`, it holds every first key instead. You accept the key on the unit's page, or with `POST /v1/units/<unit>/key/accept?fingerprint=<fingerprint>`, after checking the fingerprint against the unit's deployment. A changed key is always held the same way. A full reset keeps the unit's key.
+**Rig keys.** Control pins each rig's report-signing key the first time the rig reports. With `THERMITE_CONTROL_REQUIRE_KEY_ACCEPT=1`, it holds every first key instead. You accept the key on the rig's page, or with `POST /v1/rigs/<rig>/key/accept?fingerprint=<fingerprint>`, after checking the fingerprint against the rig's deployment. A changed key is always held the same way. A full reset keeps the rig's key.
 
-**Pending commands.** A command still waiting for its unit can be cancelled with `POST /v1/commands/<id>/cancel` (admin token). Commands past their expiry are marked expired and never delivered.
+**Pending commands.** A command still waiting for its rig can be cancelled with `POST /v1/commands/<id>/cancel` (admin token). Commands past their expiry are marked expired and never delivered.
 
-**Lifecycle.** To let control restart containers, add `compose.lifecycle.yaml`, which mounts the container engine's socket into control. This is for development only; on Kubernetes, control deletes a unit's pods through its service account instead.
+**Lifecycle.** To let control restart containers, add `compose.lifecycle.yaml`, which mounts the container engine's socket into control. This is for development only; on Kubernetes, control deletes a rig's pods through its service account instead.
 
 ```sh
 THERMITE_ENGINE_SOCKET_HOST=/path/to/engine.sock \
   podman compose -f compose.yaml -f compose.lifecycle.yaml up -d
 ```
 
-A **full reset** (owner only, from the dashboard or `POST /v1/units/<unit>/reset`) goes through these steps:
-1. pause the unit's campaigns;
+A **full reset** (owner only, from the dashboard or `POST /v1/rigs/<rig>/reset`) goes through these steps:
+1. pause the rig's campaigns;
 2. wait until its judge is idle;
 3. take a full export (the ledger snapshot and the research archive);
 4. wait until the supervisor reports that export pushed to the results repository;
@@ -155,10 +172,10 @@ To run it beside another stack, give it its own project and control port: `THERM
 
 ## The steering acceptance test
 
-`node scripts/steering-acceptance.mjs` runs two units with a scripted model on your machine. It checks:
+`node scripts/steering-acceptance.mjs` runs two rigs with a scripted model on your machine. It checks:
 - directives from the teacher pair and their attribution in the next epoch;
 - an audit block holding a confirmed win, and a cleared audit letting the next one promote;
-- propagation of a champion to the second unit, judged there and shown cross-verified;
+- propagation of a champion to the second rig, judged there and shown cross-verified;
 - the supervisor's limits (it cannot submit, and it cannot forge a command);
 - daily reports;
 - a restart, when an engine socket is available;

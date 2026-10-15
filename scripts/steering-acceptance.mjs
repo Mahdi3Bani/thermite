@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-// M5 acceptance under compose with two units and a scripted model on the host (planner and
+// M5 acceptance under compose with two rigs and a scripted model on the host (planner and
 // advisors; frontier keys are not needed to check the machinery):
 //   - the teacher pair and combiner post a cited directive set; after a reset, the next epoch
 //     records it and the assignments it steered;
 //   - an audit block holds a confirmed win; a cleared audit lets the next one promote;
-//   - unit 1's champion is propagated to unit 2, judged there, and shown cross-verified;
+//   - rig 1's champion is propagated to rig 2, judged there, and shown cross-verified;
 //   - the supervisor's token cannot submit attempts, and a forged command is refused;
 //   - daily reports and supervisor figures reach control;
-//   - with the engine socket (compose.lifecycle.yaml): control restarts a unit's supervisor;
-//   - a full reset of unit 2: pause, export, verified push, wipe, fresh ledger.
+//   - with the engine socket (compose.lifecycle.yaml): control restarts a rig's supervisor;
+//   - a full reset of rig 2: pause, export, verified push, wipe, fresh ledger.
 // Usage: COMPOSE="podman compose" node scripts/steering-acceptance.mjs
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -142,7 +142,7 @@ const composeEnv = {
   ...(socket ? { THERMITE_ENGINE_SOCKET_HOST: socket } : {}),
 };
 const dc = (...args) =>
-  sh(compose[0], [...compose.slice(1), ...files, "--profile", "two-units", ...args], {
+  sh(compose[0], [...compose.slice(1), ...files, "--profile", "two-rigs", ...args], {
     env: { ...process.env, ...composeEnv },
   });
 
@@ -158,18 +158,18 @@ const check = (name, ok, detail) => {
     `${ok ? "PASS" : "FAIL"} ${name}${detail === undefined ? "" : `: ${JSON.stringify(detail).slice(0, 300)}`}`,
   );
 };
-const unitEvents = async (unit) => {
+const rigEvents = async (rig) => {
   const all = [];
   let after = 0;
   for (;;) {
-    const page = await api(`/v1/units/${unit}/events?after=${after}&limit=5000`);
+    const page = await api(`/v1/rigs/${rig}/events?after=${after}&limit=5000`);
     all.push(...page.body.events);
     if (page.body.events.length < 5000) return all;
     after = page.body.events.at(-1).seq;
   }
 };
-const view = async (unit) => (await api(`/v1/units/${unit}/view`)).body;
-const instanceOf = async (unit) => (await view(unit)).instances?.find((i) => i.id === "smoke-1");
+const view = async (rig) => (await api(`/v1/rigs/${rig}/view`)).body;
+const runOf = async (rig) => (await view(rig)).runs?.find((i) => i.id === "smoke-1");
 
 const env = prepare();
 // Audits for any win above 1% (the smoke kernel's win is far larger).
@@ -207,7 +207,7 @@ try {
   await until(
     "the supervisor's directive set",
     async () =>
-      (await unitEvents("local-1")).some((e) => e.kind === "directive" && e.actor === "supervisor"),
+      (await rigEvents("local-1")).some((e) => e.kind === "directive" && e.actor === "supervisor"),
     300_000,
     3000,
   );
@@ -216,11 +216,11 @@ try {
     seen.teacher >= 2 && seen.combiner >= 1,
     seen,
   );
-  await command("reset_workers", { instance: "smoke-1" }, "local-1");
+  await command("reset_workers", { run: "smoke-1" }, "local-1");
   const epoch = await until(
     "an epoch planned with the directive",
     async () =>
-      (await unitEvents("local-1"))
+      (await rigEvents("local-1"))
         .filter((e) => e.kind === "epoch_started")
         .find((e) => e.body.directives?.length && e.body.assignments.some((a) => a.directive)),
     120_000,
@@ -247,7 +247,7 @@ try {
         service,
         "sh",
         "-c",
-        `echo ${b64} | base64 -d > /tmp/p.patch && thermite submit --harness http://127.0.0.1:8700 --token-file /run/secrets/${service === "harness" ? "harness" : "harness2"}-proposer-token --instance smoke-1 --patch-file /tmp/p.patch --hypothesis "${hypothesis}"`,
+        `echo ${b64} | base64 -d > /tmp/p.patch && thermite submit --harness http://127.0.0.1:8700 --token-file /run/secrets/${service === "harness" ? "harness" : "harness2"}-proposer-token --run smoke-1 --patch-file /tmp/p.patch --hypothesis "${hypothesis}"`,
       )
         .trim()
         .split("\n")
@@ -258,13 +258,13 @@ try {
   await until(
     "the audit block",
     async () =>
-      (await instanceOf("local-1"))?.audits?.some(
+      (await runOf("local-1"))?.audits?.some(
         (a) => a.attempt === blocked.attempt && a.decision === "block",
       ),
     900_000,
     3000,
   );
-  const afterBlock = await instanceOf("local-1");
+  const afterBlock = await runOf("local-1");
   check(
     "an audit block holds a confirmed win",
     afterBlock.champion.filter((c) => !c.reopened).at(-1).seq === 1 &&
@@ -272,11 +272,11 @@ try {
     afterBlock.audits,
   );
   // A win far above the absolute trigger: a clear still sends it to the owner, who approves.
-  const approveWhenCleared = async (unit, attempt) => {
+  const approveWhenCleared = async (rig, attempt) => {
     await until(
       `${attempt} cleared and waiting for the owner`,
       async () => {
-        const i = await instanceOf(unit);
+        const i = await runOf(rig);
         return i?.audits?.some((a) => a.attempt === attempt && a.decision === "clear") &&
           i.pending_promotions.includes(attempt)
           ? i
@@ -285,11 +285,11 @@ try {
       1_200_000,
       3000,
     );
-    await command("approve_promotion", { instance: "smoke-1", attempt }, unit);
+    await command("approve_promotion", { run: "smoke-1", attempt }, rig);
     return until(
       `${attempt} promoted`,
       async () => {
-        const i = await instanceOf(unit);
+        const i = await runOf(rig);
         return i?.champion.some((c) => c.attempt === attempt) ? i : undefined;
       },
       300_000,
@@ -307,7 +307,7 @@ try {
   // 3. Propagation and cross-verification.
   await until(
     "the champion published",
-    async () => (await instanceOf("local-1"))?.published?.seq === 2,
+    async () => (await runOf("local-1"))?.published?.seq === 2,
     120_000,
     2000,
   );
@@ -317,10 +317,10 @@ try {
       const r = await api("/v1/propagate", {
         method: "POST",
         body: JSON.stringify({
-          from_unit: "local-1",
-          instance: "smoke-1",
-          to_unit: "local-2",
-          to_instance: "smoke-1",
+          from_rig: "local-1",
+          run: "smoke-1",
+          to_rig: "local-2",
+          to_run: "smoke-1",
         }),
       });
       return r.status === 201 ? r.body : undefined;
@@ -331,7 +331,7 @@ try {
   const received = await until(
     "local-2 received the champion",
     async () =>
-      (await instanceOf("local-2"))?.propagations?.find((p) => p.source_seq === 2 && p.attempt),
+      (await runOf("local-2"))?.propagations?.find((p) => p.source_seq === 2 && p.attempt),
     600_000,
     3000,
   );
@@ -339,20 +339,20 @@ try {
   const accepted = await until(
     "local-2 judged the propagated champion",
     async () =>
-      (await instanceOf("local-2"))?.propagations?.find(
+      (await runOf("local-2"))?.propagations?.find(
         (p) => p.result !== "judging" && p.source_seq === 2,
       ),
     1_200_000,
     3000,
   );
-  check("unit 2's own judge accepted unit 1's champion", accepted.result === "accepted", {
+  check("rig 2's own judge accepted rig 1's champion", accepted.result === "accepted", {
     prop,
     accepted,
   });
   const board = (await api("/v1/leaderboard")).body.campaigns["smoke-cpu"] ?? [];
-  const leader = board.find((r) => r.unit === "local-1");
+  const leader = board.find((r) => r.rig === "local-1");
   check(
-    "the leaderboard shows unit 1's champion cross-verified by unit 2",
+    "the leaderboard shows rig 1's champion cross-verified by rig 2",
     leader?.verified_by?.includes("local-2"),
     board,
   );
@@ -364,7 +364,7 @@ try {
     "supervisor",
     "node",
     "-e",
-    `const t=require("fs").readFileSync("/run/secrets/harness-supervisor-token","utf8").trim();fetch("http://harness:8700/v1/attempts",{method:"POST",headers:{authorization:"Bearer "+t,"content-type":"application/json"},body:JSON.stringify({instance:"smoke-1",patch_base64:"eA==",hypothesis:"x"})}).then(r=>console.log(r.status))`,
+    `const t=require("fs").readFileSync("/run/secrets/harness-supervisor-token","utf8").trim();fetch("http://harness:8700/v1/attempts",{method:"POST",headers:{authorization:"Bearer "+t,"content-type":"application/json"},body:JSON.stringify({run:"smoke-1",patch_base64:"eA==",hypothesis:"x"})}).then(r=>console.log(r.status))`,
   ).trim();
   check("the supervisor's token cannot submit attempts", probe.endsWith("401"), probe);
   const cmds = (await api("/v1/commands?limit=50")).body.commands;
@@ -374,7 +374,7 @@ try {
     "supervisor",
     "node",
     "-e",
-    `const t=require("fs").readFileSync("/run/secrets/harness-supervisor-token","utf8").trim();const c={envelope:{v:1,id:"${crypto.randomUUID()}",unit:"local-1",kind:"approve_promotion",issued_by:"owner",issued_at:new Date().toISOString(),expires_at:new Date(Date.now()+60000).toISOString(),payload:{instance:"smoke-1",attempt:"${blocked.attempt}"}},signature:"AAAA"};fetch("http://harness:8700/v1/commands",{method:"POST",headers:{authorization:"Bearer "+t,"content-type":"application/json"},body:JSON.stringify(c)}).then(r=>console.log(r.status))`,
+    `const t=require("fs").readFileSync("/run/secrets/harness-supervisor-token","utf8").trim();const c={envelope:{v:1,id:"${crypto.randomUUID()}",rig:"local-1",kind:"approve_promotion",issued_by:"owner",issued_at:new Date().toISOString(),expires_at:new Date(Date.now()+60000).toISOString(),payload:{run:"smoke-1",attempt:"${blocked.attempt}"}},signature:"AAAA"};fetch("http://harness:8700/v1/commands",{method:"POST",headers:{authorization:"Bearer "+t,"content-type":"application/json"},body:JSON.stringify(c)}).then(r=>console.log(r.status))`,
   ).trim();
   check("a command forged by the supervisor is refused", forgedProbe.endsWith("403"), {
     forgedProbe,
@@ -386,7 +386,7 @@ try {
     "daily reports",
     async () => {
       const r = (await api("/v1/reports?limit=10")).body.reports;
-      return new Set(r.map((x) => x.unit)).size >= 2 ? r : undefined;
+      return new Set(r.map((x) => x.rig)).size >= 2 ? r : undefined;
     },
     120_000,
     2000,
@@ -397,23 +397,23 @@ try {
     reports.length >= 2 &&
       sup?.export?.remote === true &&
       (sup?.advisors?.directive_sets ?? 0) >= 1,
-    { units: reports.map((r) => r.unit), sup },
+    { rigs: reports.map((r) => r.rig), sup },
   );
 
   // 6. Lifecycle: restart through the compose driver.
   if (socket) {
-    const r = await api("/v1/units/local-2/restart", {
+    const r = await api("/v1/rigs/local-2/restart", {
       method: "POST",
       body: JSON.stringify({ components: ["supervisor"] }),
     });
     check(
-      "control restarted unit 2's supervisor through the engine",
+      "control restarted rig 2's supervisor through the engine",
       r.status === 200 && r.body.restarted?.includes("supervisor-2"),
       r.body,
     );
     const t0 = Date.now();
     await until(
-      "unit 2 reports again",
+      "rig 2 reports again",
       async () => {
         const v = await view("local-2");
         return Date.parse(v.last_seen) > t0 ? v : undefined;
@@ -425,9 +425,9 @@ try {
     check("lifecycle restart (no engine socket here: skipped)", true, "skipped");
   }
 
-  // 7. Full reset of unit 2.
+  // 7. Full reset of rig 2.
   const before = (await view("local-2")).ledger_id;
-  const reset = await api("/v1/units/local-2/reset", {
+  const reset = await api("/v1/rigs/local-2/reset", {
     method: "POST",
     body: JSON.stringify({ confirm: "reset local-2" }),
   });
@@ -462,7 +462,7 @@ try {
     done,
   );
   const after = await until(
-    "unit 2 reports a fresh ledger",
+    "rig 2 reports a fresh ledger",
     async () => {
       const v = await view("local-2");
       return v.ledger_id && v.ledger_id !== before ? v : undefined;
@@ -470,7 +470,7 @@ try {
     300_000,
     3000,
   );
-  check("unit 2 came back with a fresh ledger and no instances", after.instances.length === 0, {
+  check("rig 2 came back with a fresh ledger and no runs", after.runs.length === 0, {
     before,
     after: after.ledger_id,
   });

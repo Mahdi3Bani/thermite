@@ -30,13 +30,13 @@ These are review rules for Thermite's code and records. [AGENTS.md](AGENTS.md) i
 6. **Objectives are versioned contracts in data.** A changed objective is a new contract version. Guards and hard constraints are checked by the judge, not requested in a prompt.
 7. **Control commands are signed.**
    - Imported code, kits and models are accepted only when their hashes match a signed command.
-   - A unit accepts other units' results only after its own judge has re-measured them.
+   - A rig accepts other rigs' results only after its own judge has re-measured them.
 8. **Targets go through drivers.** Never assume a GPU, one provider or one model.
 9. **Steering is traceable.** Every directive and command records who issued it, why, and which runs it affected.
 
 ## Experiment integrity
 
-- Define objectives, units, directions, guards, quality checks and acceptance rules before evaluating anything. Keep improvement and constraint satisfaction separately visible.
+- Define objectives, rigs, directions, guards, quality checks and acceptance rules before evaluating anything. Keep improvement and constraint satisfaction separately visible.
 - Preserve enough provenance to explain and reproduce a result:
   - code revision;
   - configuration and prompts;
@@ -58,7 +58,7 @@ These are review rules for Thermite's code and records. [AGENTS.md](AGENTS.md) i
 ## Testing
 
 - Test observable behaviour and important failure transitions. Tests must be able to fail.
-- **Statistics and state machines:** unit and property tests against reference values. Cover verdicts, compare-and-swap promotion, fencing and invalidation.
+- **Statistics and state machines:** rig and property tests against reference values. Cover verdicts, compare-and-swap promotion, fencing and invalidation.
 - **Isolation:** tests that prove agent users cannot reach judge files, credentials or devices outside their grants.
 - **Adversarial cases:**
   - timer tampering;

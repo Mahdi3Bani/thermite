@@ -5,7 +5,7 @@ import { modelConfigFromEnv } from "./model.ts";
 import { fallbackPlan, type PlannerInput, plan, validatePlan } from "./planner.ts";
 
 const base: PlannerInput = {
-  instance: "i",
+  run: "i",
   epoch: 2,
   laneCount: 2,
   objective: "increase x",

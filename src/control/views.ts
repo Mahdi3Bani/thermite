@@ -2,7 +2,7 @@ import type { ControlStore } from "./store.ts";
 
 /**
  * Control's read model: what the dashboard, the API and MCP show. It is computed from the
- * events units reported (the harness ledger is the source of truth; control only mirrors it),
+ * events rigs reported (the harness ledger is the source of truth; control only mirrors it),
  * so it is the same after any restart of control, a supervisor or a harness.
  */
 
@@ -19,7 +19,7 @@ export interface StoredEvent {
 
 export interface AttemptView {
   id: string;
-  instance: string;
+  run: string;
   lane: string | null;
   lifecycle: string;
   verdict: string | null;
@@ -41,11 +41,11 @@ export interface ChampionStep {
   reopened: boolean;
 }
 
-export interface InstanceView {
+export interface RunView {
   id: string;
   campaign: string | null;
   mode: string | null;
-  /** The project repository the instance works on (from its assignment). */
+  /** The project repository the run works on (from its assignment). */
   seed_repo: string | null;
   status: string;
   pause_reason: string | null;
@@ -82,7 +82,7 @@ export interface InstanceView {
   }[];
   /** "Not possible" proposals and the owner's decisions. */
   conclusions: { proposal: number; decision: string | null; approaches: number; at: string }[];
-  /** The newest champion published for propagation (what another unit can import). */
+  /** The newest champion published for propagation (what another rig can import). */
   published: {
     seq: number;
     repo: string | null;
@@ -91,13 +91,13 @@ export interface InstanceView {
     sha256: string;
     path: string;
   } | null;
-  /** Every champion tree this instance published, by seq (cross-verification checks it). */
+  /** Every champion tree this run published, by seq (cross-verification checks it). */
   published_trees: Record<number, string>;
-  /** Champions received from other units, and how this unit's judge decided them. */
+  /** Champions received from other rigs, and how this rig's judge decided them. */
   propagations: {
     attempt: string | null;
-    source_unit: string;
-    source_instance: string;
+    source_rig: string;
+    source_run: string;
     source_seq: number;
     tree: string | null;
     result: string;
@@ -105,7 +105,7 @@ export interface InstanceView {
   directives: number;
 }
 
-export interface UnitView {
+export interface RigView {
   id: string;
   last_seen: string;
   stale: boolean;
@@ -114,39 +114,39 @@ export interface UnitView {
   /** The supervisor's own figures (git sync, advisors); reported by the supervisor, unsigned. */
   supervisor: Record<string, unknown> | null;
   jobs: Record<string, number>;
-  instances: InstanceView[];
+  runs: RunView[];
   recent: StoredEvent[];
 }
 
-export function unitEvents(
+export function rigEvents(
   store: ControlStore,
-  unit: string,
+  rig: string,
   ledgerId?: string | null,
 ): StoredEvent[] {
   const out: StoredEvent[] = [];
   let after = 0;
   for (;;) {
-    const page = store.events(unit, after, 5000, ledgerId) as StoredEvent[];
+    const page = store.events(rig, after, 5000, ledgerId) as StoredEvent[];
     out.push(...page);
     if (page.length < 5000) return out;
     after = (page.at(-1) as StoredEvent).seq;
   }
 }
 
-/** Builds a unit's view from its events (only the current ledger's, after a reset). */
-export function unitView(
+/** Builds a rig's view from its events (only the current ledger's, after a reset). */
+export function rigView(
   store: ControlStore,
-  unit: string,
+  rig: string,
   opts: { staleAfterMs: number; now?: number } = { staleAfterMs: 180_000 },
-): UnitView | undefined {
-  const u = store.units().find((x) => x.id === unit);
+): RigView | undefined {
+  const u = store.rigs().find((x) => x.id === rig);
   if (!u) return undefined;
   // Only the current ledger's events, filtered in the query.
-  const events = unitEvents(store, unit, u.ledger_id);
-  const instances = new Map<string, InstanceView>();
+  const events = rigEvents(store, rig, u.ledger_id);
+  const runs = new Map<string, RunView>();
   const attempts = new Map<string, AttemptView>();
-  const inst = (id: string): InstanceView => {
-    let v = instances.get(id);
+  const inst = (id: string): RunView => {
+    let v = runs.get(id);
     if (!v) {
       v = {
         id,
@@ -182,7 +182,7 @@ export function unitView(
         propagations: [],
         directives: 0,
       };
-      instances.set(id, v);
+      runs.set(id, v);
     }
     return v;
   };
@@ -190,7 +190,7 @@ export function unitView(
   for (const e of events) {
     const b = e.body ?? {};
     switch (e.kind) {
-      case "instance_created": {
+      case "run_created": {
         const v = inst(String(e.subject));
         v.campaign = String(b.campaign ?? "");
         v.mode = String(b.mode ?? "");
@@ -208,7 +208,7 @@ export function unitView(
         });
         break;
       }
-      case "instance_status": {
+      case "run_status": {
         const v = inst(String(e.subject));
         v.status = String(b.status);
         v.pause_reason = (b.reason as string | null) ?? null;
@@ -217,7 +217,7 @@ export function unitView(
       case "attempt_recorded": {
         const a: AttemptView = {
           id: String(e.subject),
-          instance: String(b.instance),
+          run: String(b.run),
           lane: (b.lane as string | null) ?? null,
           lifecycle: String(b.lifecycle),
           verdict: null,
@@ -227,7 +227,7 @@ export function unitView(
           updated_at: e.at,
         };
         attempts.set(a.id, a);
-        inst(a.instance).attempts.push(a);
+        inst(a.run).attempts.push(a);
         break;
       }
       case "attempt_lifecycle": {
@@ -237,7 +237,7 @@ export function unitView(
           a.updated_at = e.at;
           // An attempt that left awaiting_approval (screened again, invalidated) waits no more.
           if (a.lifecycle !== "awaiting_approval") {
-            const v = inst(a.instance);
+            const v = inst(a.run);
             v.pending_promotions = v.pending_promotions.filter((p) => p !== a.id);
           }
         }
@@ -279,7 +279,7 @@ export function unitView(
         break;
       }
       case "promotion_pending": {
-        const v = inst(String(b.instance));
+        const v = inst(String(b.run));
         if (!v.pending_promotions.includes(String(e.subject))) {
           v.pending_promotions.push(String(e.subject));
         }
@@ -323,7 +323,7 @@ export function unitView(
         break;
       }
       case "audit_requested": {
-        inst(String(b.instance)).audits.push({
+        inst(String(b.run)).audits.push({
           attempt: String(e.subject),
           reason: String(b.reason ?? ""),
           decision: null,
@@ -333,7 +333,7 @@ export function unitView(
       }
       case "audit_decided":
       case "audit_overridden": {
-        for (const v of instances.values()) {
+        for (const v of runs.values()) {
           const a = v.audits.filter((x) => x.attempt === e.subject).at(-1);
           if (a)
             a.decision =
@@ -390,8 +390,8 @@ export function unitView(
       case "propagation_received": {
         inst(String(e.subject)).propagations.push({
           attempt: (b.attempt as string | null) ?? null,
-          source_unit: String(b.source_unit),
-          source_instance: String(b.source_instance),
+          source_rig: String(b.source_rig),
+          source_run: String(b.source_run),
           source_seq: Number(b.source_seq),
           tree: (b.tree as string | undefined) ?? null,
           result: String(b.result ?? "judging"),
@@ -417,7 +417,7 @@ export function unitView(
       }
     }
   }
-  for (const v of instances.values()) {
+  for (const v of runs.values()) {
     v.verdicts = {};
     for (const a of v.attempts) {
       const k = a.verdict ?? a.lifecycle;
@@ -436,44 +436,44 @@ export function unitView(
     summary: u.summary,
     supervisor: store.supervisor(u.id),
     jobs: summary?.jobs ?? {},
-    instances: [...instances.values()],
+    runs: [...runs.values()],
     recent: events.slice(-50).reverse(),
   };
 }
 
 export interface LeaderEntry {
-  unit: string;
-  instance: string;
+  rig: string;
+  run: string;
   mode: string | null;
   status: string;
   champion_seq: number;
-  /** Relative gain of the champion over the instance's seed, measured on its own unit. */
+  /** Relative gain of the champion over the run's seed, measured on its own rig. */
   gain: number;
-  /** Units whose own judge accepted this exact champion (propagation): cross-verified. */
+  /** Rigs whose own judge accepted this exact champion (propagation): cross-verified. */
   verified_by: string[];
 }
 
 /**
- * The campaign leaderboard: each instance's champion and its gain over its baseline, measured
- * on its own unit (never absolute numbers across devices), marked cross-verified once another
- * unit's judge accepted it.
+ * The campaign leaderboard: each run's champion and its gain over its baseline, measured
+ * on its own rig (never absolute numbers across devices), marked cross-verified once another
+ * rig's judge accepted it.
  */
 export function leaderboard(
   store: ControlStore,
   opts: { staleAfterMs: number },
 ): Record<string, LeaderEntry[]> {
   const views = store
-    .units()
-    .map((u) => unitView(store, u.id, opts))
-    .filter((v): v is UnitView => v !== undefined);
+    .rigs()
+    .map((u) => rigView(store, u.id, opts))
+    .filter((v): v is RigView => v !== undefined);
   // An acceptance counts only for the tree it accepted: the key includes the tree, which must be
-  // the one the source unit itself published (signed) for that seq.
+  // the one the source rig itself published (signed) for that seq.
   const verified = new Map<string, Set<string>>();
   for (const v of views) {
-    for (const i of v.instances) {
+    for (const i of v.runs) {
       for (const p of i.propagations) {
         if (p.result !== "accepted" || !p.tree) continue;
-        const key = `${p.source_unit}/${p.source_instance}/${p.source_seq}/${p.tree}`;
+        const key = `${p.source_rig}/${p.source_run}/${p.source_seq}/${p.tree}`;
         if (!verified.has(key)) verified.set(key, new Set());
         verified.get(key)?.add(v.id);
       }
@@ -481,7 +481,7 @@ export function leaderboard(
   }
   const out: Record<string, LeaderEntry[]> = {};
   for (const v of views) {
-    for (const i of v.instances) {
+    for (const i of v.runs) {
       // Hill climbs: a gain over the baseline is what is compared.
       if (i.mode !== "hill_climb" || !i.campaign) continue;
       const champ = i.champion.filter((c) => !c.reopened).at(-1);
@@ -489,8 +489,8 @@ export function leaderboard(
       const tree = i.published_trees[seq];
       if (!out[i.campaign]) out[i.campaign] = [];
       out[i.campaign]?.push({
-        unit: v.id,
-        instance: i.id,
+        rig: v.id,
+        run: i.id,
         mode: i.mode,
         status: i.status,
         champion_seq: seq,
@@ -501,4 +501,34 @@ export function leaderboard(
   }
   for (const list of Object.values(out)) list.sort((a, b) => b.gain - a.gain);
   return out;
+}
+
+/** A campaign and its runs on every rig: the dashboard's first level. */
+export interface CampaignView {
+  name: string;
+  mode: string | null;
+  runs: { rig: RigView; run: RunView }[];
+}
+
+/**
+ * Groups runs by campaign: Campaign ▸ Run (on a rig) ▸ Lane ▸ Trial ▸ Attempt. Campaigns with a
+ * live run come first.
+ */
+export function campaignViews(vs: RigView[]): CampaignView[] {
+  const by = new Map<string, CampaignView>();
+  for (const rig of vs) {
+    for (const run of rig.runs) {
+      const name = run.campaign || run.id;
+      const c = by.get(name) ?? { name, mode: run.mode, runs: [] };
+      c.runs.push({ rig, run });
+      by.set(name, c);
+    }
+  }
+  const rank = (c: CampaignView) =>
+    c.runs.some((x) => x.run.status === "running")
+      ? 0
+      : c.runs.some((x) => x.run.status === "paused")
+        ? 1
+        : 2;
+  return [...by.values()].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
 }

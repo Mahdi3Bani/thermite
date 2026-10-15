@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 /**
- * The live log: what the unit's agents and judge are doing right now, for people watching from
+ * The live log: what the rig's agents and judge are doing right now, for people watching from
  * control. It is a view, never a record: nothing in it is judged, it is not in the ledger, and it
  * starts empty when the harness controller restarts (a new log id).
  *
@@ -29,27 +29,27 @@ export const LiveEntry = z.object({
   kind: z.enum(LIVE_KINDS),
   text: z.string().max(8000),
   lane: z.string().max(32).optional(),
-  instance: z.string().max(80).optional(),
+  run: z.string().max(80).optional(),
 });
 export type LiveEntry = z.infer<typeof LiveEntry>;
 
 export const LiveBatch = z.object({
-  unit: z.string().min(1),
+  rig: z.string().min(1),
   /** Changes when the controller restarts; sequence numbers start again under a new id. */
   log_id: z.string().min(1).max(64),
   from: z.number().int().min(0),
   next: z.number().int().min(0),
   entries: z.array(LiveEntry).max(2000),
-  unit_pubkey: z.string().min(1).optional(),
+  rig_pubkey: z.string().min(1).optional(),
   signature: z.string().min(1).optional(),
 });
 export type LiveBatch = z.infer<typeof LiveBatch>;
 
 /** The part of a live batch its signature covers. */
 export function liveBody(
-  b: Pick<LiveBatch, "unit" | "log_id" | "from" | "next" | "entries">,
+  b: Pick<LiveBatch, "rig" | "log_id" | "from" | "next" | "entries">,
 ): unknown {
-  return { unit: b.unit, log_id: b.log_id, from: b.from, next: b.next, entries: b.entries };
+  return { rig: b.rig, log_id: b.log_id, from: b.from, next: b.next, entries: b.entries };
 }
 
 /** What a writer appends (the log numbers and times it). */
@@ -58,7 +58,7 @@ export interface LiveLine {
   kind: LiveKind;
   text: string;
   lane?: string | undefined;
-  instance?: string | undefined;
+  run?: string | undefined;
 }
 
 /** A bounded in-memory live log. */
@@ -82,7 +82,7 @@ export class LiveLog {
       kind: line.kind,
       text: line.text.length > 8000 ? `${line.text.slice(0, 7990)} [cut]` : line.text,
       ...(line.lane ? { lane: line.lane } : {}),
-      ...(line.instance ? { instance: line.instance } : {}),
+      ...(line.run ? { run: line.run } : {}),
     };
     // Only well-formed lines: a bad source name is dropped, never relayed.
     if (!LiveEntry.safeParse(e).success) return;

@@ -6,7 +6,7 @@ Thermite is an autoresearch harness. Agents propose changes, and code they canno
 
 | Page | What it covers |
 | --- | --- |
-| [Architecture](architecture.md) | Units (a harness and a supervisor), the central control service, how they talk, and where they run |
+| [Architecture](architecture.md) | Rigs (a harness and a supervisor), the central control service, how they talk, and where they run |
 | [Campaign modes](campaign-modes.md) | Hill climbing, goal-seeking and time-boxed research |
 | [Judging and integrity](judging.md) | How results are measured and accepted without trusting the agents that produced them |
 | [Glossary](glossary.md) | The terms these pages use |
@@ -20,7 +20,7 @@ Thermite is an autoresearch harness. Agents propose changes, and code they canno
 - **Many parallel workers, one planner.** Workers search in parallel without seeing each other's work. A stateless planner assigns each one a distinct direction and keeps a registry of approaches, so the fleet explores widely instead of converging early.
 - **Keep the best, and keep everything else too.** Each campaign keeps its best confirmed result and builds on it. Every attempt that loses is also preserved with its code and the reason it lost, because a useful idea can lose on the headline metric.
 - **Different kinds of research.** Push a metric up without breaking guard rails; work until a goal is reached or shown impossible; or keep researching a topic for a set time and build a sourced corpus.
-- **Watch and steer everything from one place.** One dashboard, with an API and MCP, shows every campaign and lets people and agents pause, redirect, reset and reassign units.
+- **Watch and steer everything from one place.** One dashboard, with an API and MCP, shows every campaign and lets people and agents pause, redirect, reset and reassign rigs.
 
 ## Where Thermite came from
 

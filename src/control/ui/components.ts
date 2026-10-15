@@ -1,7 +1,7 @@
-import type { InstanceView, UnitView } from "../views.ts";
+import { type CampaignView, campaignViews, type RigView, type RunView } from "../views.ts";
 import { STYLE } from "./style.ts";
 
-/** Everything the dashboard writes into HTML goes through esc (unit data is never markup). */
+/** Everything the dashboard writes into HTML goes through esc (rig data is never markup). */
 export function esc(v: unknown): string {
   return String(v ?? "")
     .replace(/&/g, "&amp;")
@@ -41,7 +41,7 @@ const svg = (d: string, size = 16) =>
   `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 export const icon = {
   home: svg('<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/>'),
-  units: svg(
+  rigs: svg(
     '<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>',
   ),
   trophy: svg(
@@ -74,7 +74,7 @@ export const icon = {
 };
 
 // ---------------------------------------------------------------- small parts
-/** A stable colour per name (the same unit or campaign always gets the same chip). */
+/** A stable colour per name (the same rig or campaign always gets the same chip). */
 export function hue(name: string): number {
   let h = 0;
   for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
@@ -98,8 +98,8 @@ export function modeAvatar(mode: string | null): string {
 }
 export const modeName = (mode: string | null) => MODE[mode ?? ""]?.[1] ?? mode ?? "";
 
-/** What an instance needs, or is doing, as one coloured label (Magnesium's status words). */
-export function instanceState(i: InstanceView): { text: string; cls: string; icon: string } {
+/** What a run needs, or is doing, as one coloured label (Magnesium's status words). */
+export function runState(i: RunView): { text: string; cls: string; icon: string } {
   const heldAudit = i.audits.some((a) => a.decision === null || a.decision === "block");
   if (i.status === "closed") return { text: "Closed", cls: "muted", icon: icon.check };
   if (i.pending_promotions.length) return { text: "Approval", cls: "warn", icon: icon.warn };
@@ -111,6 +111,25 @@ export function instanceState(i: InstanceView): { text: string; cls: string; ico
   if (i.status === "paused") return { text: "Paused", cls: "muted", icon: icon.pause };
   return { text: "Running", cls: "info", icon: icon.live };
 }
+
+/** A campaign's state: its most urgent run's. */
+export function campaignState(k: CampaignView): { text: string; cls: string; icon: string } {
+  const order = ["Approval", "Decision", "Review", "Audit", "Running", "Paused", "Closed"];
+  const states = k.runs.map((x) => runState(x.run));
+  return (
+    states.sort((a, b) => order.indexOf(a.text) - order.indexOf(b.text))[0] ?? {
+      text: "Idle",
+      cls: "muted",
+      icon: "",
+    }
+  );
+}
+
+export const campaignHref = (name: string) => `/ui/campaigns/${encodeURIComponent(name)}`;
+/** A run's anchor on its campaign's page. */
+export const runAnchor = (rig: string, run: string) => `run-${rig}-${run}`;
+export const runHref = (rig: string, i: Pick<RunView, "id" | "campaign">) =>
+  `${campaignHref(i.campaign || i.id)}#${encodeURIComponent(runAnchor(rig, i.id))}`;
 
 export function label(text: string, cls: string, ic = ""): string {
   return `<span class="label ${cls}">${ic}${esc(text)}</span>`;
@@ -182,7 +201,7 @@ export function deltaCell(d: number | null): string {
 }
 
 /** The champion's gain over time: a stepped line with an area, promotions marked. */
-export function gainChart(v: InstanceView, w = 760, h = 200): string {
+export function gainChart(v: RunView, w = 760, h = 200): string {
   const steps = v.champion.filter((c) => !c.reopened);
   if (steps.length < 2)
     return `<div class="empty">No promotion yet: the champion is the seed.</div>`;
@@ -233,7 +252,7 @@ export function gainChart(v: InstanceView, w = 760, h = 200): string {
 }
 
 /** A small sparkline of the champion's gain, for tiles and lists. */
-export function sparkline(v: InstanceView, w = 120, h = 28): string {
+export function sparkline(v: RunView, w = 120, h = 28): string {
   const steps = v.champion.filter((c) => !c.reopened);
   if (steps.length < 2) return "";
   const ts = steps.map((s) => Date.parse(s.at));
@@ -262,8 +281,8 @@ export interface Shell {
   /** Breadcrumb links before the title. */
   crumbs?: { href: string; text: string }[] | undefined;
   actions?: string | undefined;
-  active: "overview" | "units" | "leaderboard" | "live" | "commands" | "reports" | "audit" | "";
-  units: UnitView[];
+  active: "overview" | "campaigns" | "rigs" | "live" | "commands" | "reports" | "audit" | "";
+  rigs: RigView[];
   needs: number;
   now: number;
   /** A full-height content area without padding (the live view). */
@@ -273,11 +292,11 @@ export interface Shell {
 }
 
 export function shell(s: Shell, body: string): string {
-  const live = s.units.filter((u) => !u.stale).length;
-  const stale = s.units.length - live;
-  const instances = s.units.flatMap((u) => u.instances.map((i) => ({ u, i })));
-  const running = instances.filter(({ i }) => i.status === "running").length;
-  const jobs = s.units.reduce(
+  const live = s.rigs.filter((u) => !u.stale).length;
+  const stale = s.rigs.length - live;
+  const runs = s.rigs.flatMap((u) => u.runs.map((i) => ({ u, i })));
+  const running = runs.filter(({ i }) => i.status === "running").length;
+  const jobs = s.rigs.reduce(
     (acc, u) => ({
       queued: acc.queued + num(u.jobs.queued),
       leased: acc.leased + num(u.jobs.leased),
@@ -286,18 +305,19 @@ export function shell(s: Shell, body: string): string {
   );
   const nav = (href: string, key: Shell["active"], ic: string, text: string, right = "") =>
     `<a href="${href}" class="${s.active === key ? "on" : ""}">${ic}<span>${esc(text)}</span>${right}</a>`;
-  const unitRows = s.units
+  const rigRows = s.rigs
     .map(
       (u) =>
-        `<a class="side-row" href="/ui/units/${encodeURIComponent(u.id)}"><span class="dot ${u.stale ? "bad" : "ok"}"></span><span class="name">${esc(u.id)}</span><span class="right">${u.stale ? "stale" : u.instances.filter((i) => i.status === "running").length || ""}</span></a>`,
+        `<a class="side-row" href="/ui/rigs/${encodeURIComponent(u.id)}"><span class="dot ${u.stale ? "bad" : "ok"}"></span><span class="name">${esc(u.id)}</span><span class="right">${u.stale ? "stale" : u.runs.filter((i) => i.status === "running").length || ""}</span></a>`,
     )
     .join("");
-  const campRows = instances
-    .filter(({ i }) => i.status !== "closed")
+  const camps = campaignViews(s.rigs);
+  const campRows = camps
+    .filter((k) => k.runs.some((x) => x.run.status !== "closed"))
     .slice(0, 12)
-    .map(({ u, i }) => {
-      const st = instanceState(i);
-      return `<a class="side-row" href="/ui/units/${encodeURIComponent(u.id)}#${encodeURIComponent(i.id)}">${modeAvatar(i.mode)}<span class="name">${esc(i.id)}</span><span class="right label ${st.cls}">${esc(st.text)}</span></a>`;
+    .map((k) => {
+      const st = campaignState(k);
+      return `<a class="side-row" href="${campaignHref(k.name)}">${modeAvatar(k.mode)}<span class="name">${esc(k.name)}</span><span class="right label ${st.cls}">${esc(st.text)}</span></a>`;
     })
     .join("");
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -308,15 +328,15 @@ export function shell(s: Shell, body: string): string {
   <a class="brand" href="/ui"><span class="mark">Th</span>Thermite</a>
   <nav class="nav">
     ${nav("/ui", "overview", icon.home, "Overview", s.needs ? `<span class="badge">${s.needs}</span>` : "")}
-    ${nav("/ui/units", "units", icon.units, "Units", `<span class="count">${s.units.length}</span>`)}
-    ${nav("/ui/leaderboard", "leaderboard", icon.trophy, "Leaderboard")}
+    ${nav("/ui/campaigns", "campaigns", icon.trophy, "Campaigns", `<span class="count">${camps.length}</span>`)}
+    ${nav("/ui/rigs", "rigs", icon.rigs, "Rigs", `<span class="count">${s.rigs.length}</span>`)}
     ${nav("/ui/live", "live", icon.terminal, "Live")}
     ${nav("/ui/commands", "commands", icon.list, "Commands")}
     ${nav("/ui/reports", "reports", icon.file, "Reports")}
     ${nav("/ui/audit", "audit", icon.shield, "Audit log")}
   </nav>
-  ${s.units.length ? `<div class="section">Units</div>${unitRows}` : ""}
   ${campRows ? `<div class="section">Campaigns</div>${campRows}` : ""}
+  ${s.rigs.length ? `<div class="section">Rigs</div>${rigRows}` : ""}
   <div class="side-foot"><form method="post" action="/ui/logout"><button class="ghost sm">${icon.logout}Sign out</button></form></div>
 </aside>
 <div class="main">
@@ -328,10 +348,10 @@ export function shell(s: Shell, body: string): string {
   <div class="content${s.flush ? " flush" : ""}" id="content">${body}</div>
 </div>
 <footer class="statusbar">
-  <span class="item ${stale ? "warn" : ""}"><span class="dot ${stale ? "warn" : "ok"}"></span>${s.units.length} units${stale ? ` · ${stale} stale` : ""}</span>
+  <span class="item ${stale ? "warn" : ""}"><span class="dot ${stale ? "warn" : "ok"}"></span>${s.rigs.length} rigs${stale ? ` · ${stale} stale` : ""}</span>
   ${s.needs ? `<a class="item warn" href="/ui">${icon.warn}Needs you ${s.needs}</a>` : ""}
   <span class="spacer"></span>
-  <span class="item">${running} running <span class="sub">campaigns</span></span>
+  <span class="item">${running} running <span class="sub">runs</span></span>
   <span class="item">${jobs.leased} judging · ${jobs.queued} queued <span class="sub">judge</span></span>
   <span class="item" id="live-state"><span class="dot ok pulse"></span><span class="sub">updated ${esc(new Date(s.now).toISOString().slice(11, 19))} UTC</span></span>
 </footer></div></body></html>`;

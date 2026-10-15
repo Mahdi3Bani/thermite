@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds the CUDA smoke benchmark for the unit's GPU architecture (CUDA_ARCH, default sm_60).
+# Builds the CUDA smoke benchmark for the rig's GPU architecture (CUDA_ARCH, default sm_60).
 set -eu
 mkdir -p out
 nvcc -O2 -arch="${CUDA_ARCH:-sm_60}" -Iinclude \

@@ -44,7 +44,7 @@ export const ImportSpec = z.discriminatedUnion("kind", [
     sha256: Sha256Schema.optional(),
   }),
   /**
-   * Another unit's champion as a binary patch against a base commit both units have (the
+   * Another rig's champion as a binary patch against a base commit both rigs have (the
    * campaign seed). The harness applies it to the base and accepts it only if the file's sha256
    * and the resulting git tree match: the supervisor transports bytes, it cannot change them.
    */
@@ -81,7 +81,7 @@ export type StructuredDirective = z.infer<typeof StructuredDirective>;
 
 export const CommandPayloads = {
   assign_campaign: z.object({
-    instance: IdSchema,
+    run: IdSchema,
     /** The full contract; the harness validates it and checks contract_sha. */
     contract: z.unknown(),
     contract_sha: Sha256Schema,
@@ -89,36 +89,36 @@ export const CommandPayloads = {
     seed: z.object({ repo: IdSchema, commit: CommitSchema }).optional(),
     direction: z.string().min(1).optional(),
     imports: z.array(ImportSpec).default([]),
-    /** False: a judge-only instance. No worker agents run; the judge still works. */
+    /** False: a judge-only run. No worker agents run; the judge still works. */
     agents: z.boolean().optional(),
   }),
-  pause_instance: z.object({ instance: IdSchema, reason: z.string().min(1) }),
-  resume_instance: z.object({ instance: IdSchema }),
+  pause_run: z.object({ run: IdSchema, reason: z.string().min(1) }),
+  resume_run: z.object({ run: IdSchema }),
   /** A directive set; by default it replaces this author's previous set. */
   redirect: z.object({
-    instance: IdSchema,
+    run: IdSchema,
     directives: z.array(StructuredDirective).min(1).max(40),
     replace: z.boolean().default(true),
   }),
-  reset_workers: z.object({ instance: IdSchema, reseed_commit: CommitSchema.optional() }),
+  reset_workers: z.object({ run: IdSchema, reseed_commit: CommitSchema.optional() }),
   /**
    * The owner's message to an agent session (owner only): a running worker's trial, a lane (its
    * running trial, else its next one), the planner (its next plan) or the advisors (their next
    * brief). The judge is code and takes no messages.
    */
   message_agent: z.object({
-    instance: IdSchema,
+    run: IdSchema,
     to: z.string().regex(/^(planner|advisors|lane-([1-9]|1[0-6])|trial:t-[0-9a-f]{8,32})$/),
     text: z.string().min(1).max(4000),
   }),
   /**
-   * Another unit's champion as a candidate here: this unit's judge screens and confirms it
+   * Another rig's champion as a candidate here: this rig's judge screens and confirms it
    * against its own champion. The supervisor stages the file from the results repository.
    */
   propagate: z.object({
-    instance: IdSchema,
-    source_unit: z.string().min(1),
-    source_instance: IdSchema,
+    run: IdSchema,
+    source_rig: z.string().min(1),
+    source_run: IdSchema,
     source_seq: z.number().int().positive(),
     import: ImportSpec,
   }),
@@ -137,17 +137,17 @@ export const CommandPayloads = {
    * The owner approves a confirmed win waiting for promotion (promotion policy D8), or overrides
    * an audit that is pending or blocked. The judge's verdict must still be promotable.
    */
-  approve_promotion: z.object({ instance: IdSchema, attempt: z.string().min(1).max(64) }),
+  approve_promotion: z.object({ run: IdSchema, attempt: z.string().min(1).max(64) }),
   /** The owner's final acceptance (or rejection) of a goal the review panel passed. */
   accept_review: z.object({
-    instance: IdSchema,
+    run: IdSchema,
     review: z.number().int().positive(),
     accept: z.boolean(),
     note: z.string().max(2000).optional(),
   }),
   /** The owner accepts or rejects the harness's "not possible" conclusion for a goal campaign. */
   conclude: z.object({
-    instance: IdSchema,
+    run: IdSchema,
     proposal: z.number().int().positive(),
     accept: z.boolean(),
     note: z.string().max(2000).optional(),
@@ -160,7 +160,7 @@ export const COMMAND_KINDS = Object.keys(CommandPayloads) as CommandKind[];
 export const Envelope = z.object({
   v: z.literal(1),
   id: z.uuid(),
-  unit: z.string().min(1),
+  rig: z.string().min(1),
   kind: z.enum(COMMAND_KINDS as [CommandKind, ...CommandKind[]]),
   issued_by: z.string().min(1),
   issued_at: z.iso.datetime(),
@@ -198,28 +198,32 @@ export function signEnvelope(envelope: Envelope, privateKeyPem: string): SignedC
 export type VerifyResult =
   | { ok: true; envelope: Envelope; payload: unknown }
   /**
-   * `authenticId` is set when the signature and unit binding are valid and only a later check
+   * `authenticId` is set when the signature and rig binding are valid and only a later check
    * failed (for example expiry), so a replay of an already-applied command can be recognised.
    */
   | { ok: false; reason: string; authenticId?: string };
 
-/** Maximum allowed clock skew between control and the unit. */
+/** Maximum allowed clock skew between control and the rig. */
 const SKEW_MS = 5 * 60_000;
 
 /**
- * Verifies a signed command for this unit: shape, signature, unit binding, validity window
+ * Verifies a signed command for this rig: shape, signature, rig binding, validity window
  * and the per-kind payload schema. Replay protection (command ids already seen) is the
  * ledger's job.
  */
 export function verifyCommand(
   input: unknown,
   publicKeyPem: string,
-  unit: string,
+  rig: string,
   now: Date = new Date(),
 ): VerifyResult {
-  const parsed = SignedCommand.safeParse(input);
+  // A command signed before the 2026-10-15 rename names its "unit" and "instance": its
+  // signature is checked over the envelope as it was signed, then it is read under the new names.
+  const legacy = legacyEnvelope(input);
+  const parsed = SignedCommand.safeParse(legacy ? legacy.normalized : input);
   if (!parsed.success) return { ok: false, reason: "malformed command" };
   const { envelope, signature } = parsed.data;
+  const signedForm = legacy ? legacy.signed : envelope;
   let key: KeyObject;
   try {
     key = createPublicKey(publicKeyPem);
@@ -230,7 +234,7 @@ export function verifyCommand(
   try {
     valid = edVerify(
       null,
-      Buffer.from(canonicalJson(envelope)),
+      Buffer.from(canonicalJson(signedForm)),
       key,
       Buffer.from(signature, "base64"),
     );
@@ -238,7 +242,7 @@ export function verifyCommand(
     valid = false;
   }
   if (!valid) return { ok: false, reason: "bad signature" };
-  if (envelope.unit !== unit) return { ok: false, reason: `command is for unit ${envelope.unit}` };
+  if (envelope.rig !== rig) return { ok: false, reason: `command is for rig ${envelope.rig}` };
   const issued = Date.parse(envelope.issued_at);
   const expires = Date.parse(envelope.expires_at);
   const authenticId = envelope.id;
@@ -255,6 +259,38 @@ export function verifyCommand(
     };
   }
   return { ok: true, envelope, payload: payload.data };
+}
+
+const LEGACY_KINDS: Record<string, string> = {
+  pause_instance: "pause_run",
+  resume_instance: "resume_run",
+};
+const LEGACY_KEYS: Record<string, string> = {
+  instance: "run",
+  source_instance: "source_run",
+  source_unit: "source_rig",
+};
+
+/** An envelope from before the rename: as signed, and read under the new names. */
+function legacyEnvelope(input: unknown): { signed: unknown; normalized: unknown } | undefined {
+  const cmd = input as { envelope?: Record<string, unknown>; signature?: unknown } | undefined;
+  const env = cmd?.envelope;
+  if (!env || typeof env !== "object" || "rig" in env || !("unit" in env)) return undefined;
+  const { unit, kind, payload, ...rest } = env;
+  const p =
+    payload && typeof payload === "object" && !Array.isArray(payload)
+      ? Object.fromEntries(
+          Object.entries(payload as Record<string, unknown>).map(([k, v]) => [
+            LEGACY_KEYS[k] ?? k,
+            v,
+          ]),
+        )
+      : payload;
+  const k = typeof kind === "string" ? (LEGACY_KINDS[kind] ?? kind) : kind;
+  return {
+    signed: env,
+    normalized: { ...cmd, envelope: { ...rest, rig: unit, kind: k, payload: p } },
+  };
 }
 
 /** Signs any JSON value (canonical form) with an Ed25519 key. Returns base64. */
@@ -280,7 +316,7 @@ export function verifyJson(value: unknown, signature: string, publicKeyPem: stri
 
 /** The part of a harness snapshot its signature covers. */
 export function reportBody(r: {
-  unit: string;
+  rig: string;
   ledger_id: string;
   cursor: number;
   next: number;
@@ -291,7 +327,7 @@ export function reportBody(r: {
   latest_event: number;
 }): unknown {
   return {
-    unit: r.unit,
+    rig: r.rig,
     ledger_id: r.ledger_id,
     cursor: r.cursor,
     next: r.next,

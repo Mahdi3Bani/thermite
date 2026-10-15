@@ -39,7 +39,7 @@ Workers research a topic for a set duration: hours or days. Their tools are rese
 ## What v1 does so far
 
 - **Hill climb:** built as described, with screening, confirmation, held-out checks and promotion.
-  - Promotion waits for an owner's approval unless the unit is configured to promote automatically.
+  - Promotion waits for an owner's approval unless the rig is configured to promote automatically.
   - Gains above the contract's audit trigger (by default 15%, or three times the median confirmed gain) wait for the supervisor's auditor.
     - An audit can block a promotion but never force one.
     - A gain above the absolute trigger, and a change with declared flaws, always go to the owner after the audit.

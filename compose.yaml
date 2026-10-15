@@ -1,4 +1,4 @@
-# Thermite local deployment: one unit (harness + supervisor) and the control service.
+# Thermite local deployment: one rig (harness + supervisor) and the control service.
 # Run `npm run dev:init` first; it writes local tokens to .dev/secrets/ (git-ignored).
 # Works with `docker compose`, `podman compose` and podman-compose.
 name: thermite
@@ -10,7 +10,7 @@ services:
       THERMITE_CONTROL_DIR: /var/lib/thermite-control
       THERMITE_CONTROL_LISTEN: 0.0.0.0:8800
       THERMITE_CONTROL_ADMIN_TOKEN_FILE: /run/secrets/control-admin-token
-      THERMITE_CONTROL_UNIT_TOKENS_FILE: /run/secrets/control-unit-tokens
+      THERMITE_CONTROL_RIG_TOKENS_FILE: /run/secrets/control-rig-tokens
       THERMITE_CONTROL_PUBKEY_EXPORT: /keys/control-signing.pub
       THERMITE_CONTROL_STALE_SECONDS: "${THERMITE_CONTROL_STALE_SECONDS:-180}"
       # Restarts through the container engine: see compose.lifecycle.yaml (off by default).
@@ -21,7 +21,7 @@ services:
     volumes:
       - control-state:/var/lib/thermite-control
       - control-pub:/keys
-    secrets: [control-admin-token, control-unit-tokens]
+    secrets: [control-admin-token, control-rig-tokens]
     ports: ["127.0.0.1:${THERMITE_CONTROL_PORT:-8800}:8800"]
     networks: [control]
     cap_drop: [ALL]
@@ -31,7 +31,7 @@ services:
   harness:
     build: { context: ., dockerfile: containers/harness/Containerfile }
     environment:
-      THERMITE_UNIT_ID: local-1
+      THERMITE_RIG_ID: local-1
       THERMITE_TARGET: cpu
       THERMITE_CONTROL_PUBKEY_FILE: /keys/control-signing.pub
       THERMITE_SUPERVISOR_TOKEN_FILE: /run/secrets/harness-supervisor-token
@@ -53,8 +53,8 @@ services:
       - outbox:/outbox
       - control-pub:/keys:ro
     secrets: [harness-supervisor-token, harness-proposer-token, qwen-api-key]
-    # No published ports: only the unit's supervisor reaches the harness.
-    networks: [unit, egress]
+    # No published ports: only the rig's supervisor reaches the harness.
+    networks: [rig, egress]
     # The broker's needs only: separate users for roles, ownership of scratch, killing leftovers.
     cap_drop: [ALL]
     cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETGID, SETUID]
@@ -64,13 +64,13 @@ services:
   supervisor:
     build: { context: ., dockerfile: containers/supervisor/Containerfile }
     environment:
-      THERMITE_UNIT_ID: local-1
+      THERMITE_RIG_ID: local-1
       HARNESS_URL: http://harness:8700
       CONTROL_URL: http://control:8800
       THERMITE_POLL_SECONDS: "${THERMITE_POLL_SECONDS:-60}"
       THERMITE_HARNESS_TOKEN_FILE: /run/secrets/harness-supervisor-token
-      THERMITE_CONTROL_TOKEN_FILE: /run/secrets/control-unit-token
-      # Locally, both units' supervisors push to one results repository on a shared volume.
+      THERMITE_CONTROL_TOKEN_FILE: /run/secrets/control-rig-token
+      # Locally, both rigs' supervisors push to one results repository on a shared volume.
       THERMITE_RESULTS_REMOTE: "${THERMITE_RESULTS_REMOTE:-file:///results/results.git}"
       # Teacher pair, combiner, auditor and review panel (off unless a config file is given).
       THERMITE_ADVISORS_FILE: "${THERMITE_ADVISORS_FILE:-}"
@@ -80,19 +80,19 @@ services:
       - outbox:/outbox:ro
       - results:/results
       - ./.dev/advisors:/etc/thermite/advisors:ro
-    secrets: [harness-supervisor-token, control-unit-token]
-    networks: [unit, control, egress]
+    secrets: [harness-supervisor-token, control-rig-token]
+    networks: [rig, control, egress]
     depends_on: [harness, control]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
 
-  # A second unit for multi-unit checks: `docker compose --profile two-units up`.
+  # A second rig for multi-rig checks: `docker compose --profile two-rigs up`.
   harness-2:
-    profiles: [two-units]
+    profiles: [two-rigs]
     build: { context: ., dockerfile: containers/harness/Containerfile }
     environment:
-      THERMITE_UNIT_ID: local-2
+      THERMITE_RIG_ID: local-2
       THERMITE_TARGET: cpu
       THERMITE_CONTROL_PUBKEY_FILE: /keys/control-signing.pub
       THERMITE_SUPERVISOR_TOKEN_FILE: /run/secrets/harness2-supervisor-token
@@ -107,22 +107,22 @@ services:
       - outbox2:/outbox
       - control-pub:/keys:ro
     secrets: [harness2-supervisor-token, harness2-proposer-token]
-    networks: [unit2, egress]
+    networks: [rig2, egress]
     cap_drop: [ALL]
     cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETGID, SETUID]
     security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
 
   supervisor-2:
-    profiles: [two-units]
+    profiles: [two-rigs]
     build: { context: ., dockerfile: containers/supervisor/Containerfile }
     environment:
-      THERMITE_UNIT_ID: local-2
+      THERMITE_RIG_ID: local-2
       HARNESS_URL: http://harness-2:8700
       CONTROL_URL: http://control:8800
       THERMITE_POLL_SECONDS: "${THERMITE_POLL_SECONDS:-60}"
       THERMITE_HARNESS_TOKEN_FILE: /run/secrets/harness2-supervisor-token
-      THERMITE_CONTROL_TOKEN_FILE: /run/secrets/control-unit-token-2
+      THERMITE_CONTROL_TOKEN_FILE: /run/secrets/control-rig-token-2
       THERMITE_RESULTS_REMOTE: "${THERMITE_RESULTS_REMOTE:-file:///results/results.git}"
       THERMITE_ADVISORS_FILE: "${THERMITE_ADVISORS_FILE:-}"
     volumes:
@@ -131,16 +131,16 @@ services:
       - outbox2:/outbox:ro
       - results:/results
       - ./.dev/advisors:/etc/thermite/advisors:ro
-    secrets: [harness2-supervisor-token, control-unit-token-2]
-    networks: [unit2, control, egress]
+    secrets: [harness2-supervisor-token, control-rig-token-2]
+    networks: [rig2, control, egress]
     depends_on: [harness-2, control]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
 
 networks:
-  unit: { internal: true }
-  unit2: { internal: true }
+  rig: { internal: true }
+  rig2: { internal: true }
   control: {}
   egress: {}
 
@@ -159,12 +159,12 @@ volumes:
 
 secrets:
   control-admin-token: { file: ./.dev/secrets/control-admin-token }
-  control-unit-tokens: { file: ./.dev/secrets/control-unit-tokens.json }
-  control-unit-token: { file: ./.dev/secrets/control-unit-token }
+  control-rig-tokens: { file: ./.dev/secrets/control-rig-tokens.json }
+  control-rig-token: { file: ./.dev/secrets/control-rig-token }
   harness-supervisor-token: { file: ./.dev/secrets/harness-supervisor-token }
   harness-proposer-token: { file: ./.dev/secrets/harness-proposer-token }
   # A local model route's key (git-ignored; dev-init writes a placeholder).
   qwen-api-key: { file: ./.dev/secrets/qwen-api-key }
-  control-unit-token-2: { file: ./.dev/secrets/control-unit-token-2 }
+  control-rig-token-2: { file: ./.dev/secrets/control-rig-token-2 }
   harness2-supervisor-token: { file: ./.dev/secrets/harness2-supervisor-token }
   harness2-proposer-token: { file: ./.dev/secrets/harness2-proposer-token }

@@ -4,15 +4,16 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { canonicalJson, sha256Hex } from "../core/canonical.ts";
 import type { SignedCommand } from "../core/commands.ts";
 import type { LiveEntry } from "../core/live.ts";
+import { currentEvent } from "../core/names.ts";
 
 /**
- * Control's store: units, the events they report, and command queues. A single control process
- * owns it. Ingest is idempotent: re-sent events (same unit and event id) are ignored.
+ * Control's store: rigs, the events they report, and command queues. A single control process
+ * owns it. Ingest is idempotent: re-sent events (same rig and event id) are ignored.
  */
 type Row = Record<string, SQLInputValue>;
 
 const SCHEMA = `
-create table if not exists unit (
+create table if not exists rig (
   id text primary key,
   first_seen text not null,
   last_seen text not null,
@@ -21,10 +22,10 @@ create table if not exists unit (
   summary text not null default '{}'
 );
 -- Event ids are unique only within one harness ledger, and a wiped or lost ledger starts again
--- at 1, so events are keyed by (unit, ledger_id, event_id). seq is control's own order.
-create table if not exists unit_event (
+-- at 1, so events are keyed by (rig, ledger_id, event_id). seq is control's own order.
+create table if not exists rig_event (
   seq integer primary key autoincrement,
-  unit text not null,
+  rig text not null,
   ledger_id text not null,
   event_id integer not null,
   at text not null,
@@ -33,12 +34,12 @@ create table if not exists unit_event (
   subject text,
   body text not null,
   received_at text not null,
-  unique (unit, ledger_id, event_id)
+  unique (rig, ledger_id, event_id)
 );
-create index if not exists unit_event_kind on unit_event (unit, kind);
+create index if not exists rig_event_kind on rig_event (rig, kind);
 create table if not exists command (
   id text primary key,
-  unit text not null,
+  rig text not null,
   kind text not null,
   signed text not null,
   issued_by text not null,
@@ -47,7 +48,7 @@ create table if not exists command (
   outcome text,
   acked_at text
 );
-create index if not exists command_pending on command (unit, status);
+create index if not exists command_pending on command (rig, status);
 create table if not exists audit (
   id integer primary key autoincrement,
   at text not null,
@@ -55,25 +56,25 @@ create table if not exists audit (
   action text not null,
   body text not null
 );
--- Every ledger a unit has reported from; a ledger it has left is never accepted again.
-create table if not exists unit_ledger (
-  unit text not null,
+-- Every ledger a rig has reported from; a ledger it has left is never accepted again.
+create table if not exists rig_ledger (
+  rig text not null,
   ledger_id text not null,
   first_seen text not null,
   superseded_at text,
-  primary key (unit, ledger_id)
+  primary key (rig, ledger_id)
 );
-create table if not exists unit_report (
+create table if not exists rig_report (
   id integer primary key autoincrement,
-  unit text not null,
+  rig text not null,
   kind text not null,
   body text not null,
   at text not null
 );
--- Full resets (owner only): pause, export, verify the push, wipe, restart. One open per unit.
+-- Full resets (owner only): pause, export, verify the push, wipe, restart. One open per rig.
 create table if not exists reset (
   id integer primary key autoincrement,
-  unit text not null,
+  rig text not null,
   state text not null,
   requested_by text not null,
   command text,
@@ -83,10 +84,10 @@ create table if not exists reset (
   created_at text not null,
   updated_at text not null
 );
--- The live view: recent live-log lines per unit (harness lines signed; supervisor lines not).
-create table if not exists unit_live (
+-- The live view: recent live-log lines per rig (harness lines signed; supervisor lines not).
+create table if not exists rig_live (
   id integer primary key autoincrement,
-  unit text not null,
+  rig text not null,
   log_id text not null,
   seq integer not null,
   at text not null,
@@ -94,17 +95,51 @@ create table if not exists unit_live (
   kind text not null,
   text text not null,
   lane text,
-  instance text,
+  run text,
   signed integer not null,
   received_at text not null
 );
-create unique index if not exists unit_live_seq on unit_live (unit, log_id, seq);
-create index if not exists unit_live_unit on unit_live (unit, id);
+create unique index if not exists rig_live_seq on rig_live (rig, log_id, seq);
+create index if not exists rig_live_rig on rig_live (rig, id);
 `;
+
+/**
+ * A store written before the 2026-10-15 rename (unit -> rig): its tables and columns are
+ * renamed in place, and the old indexes dropped (the schema creates them under the new names).
+ */
+function renameUnitsToRigs(db: DatabaseSync): void {
+  const tables = () =>
+    (
+      db.prepare("select name from sqlite_master where type = 'table'").all() as { name: string }[]
+    ).map((t) => t.name);
+  if (!tables().includes("unit")) return;
+  db.exec("begin immediate");
+  try {
+    for (const name of ["unit", "unit_event", "unit_ledger", "unit_report", "unit_live"]) {
+      if (tables().includes(name))
+        db.exec(`alter table ${name} rename to ${name.replace(/^unit/, "rig")}`);
+    }
+    for (const name of tables()) {
+      const cols = db.prepare(`pragma table_info(${name})`).all() as { name: string }[];
+      if (cols.some((c) => c.name === "unit"))
+        db.exec(`alter table ${name} rename column unit to rig`);
+      if (cols.some((c) => c.name === "instance"))
+        db.exec(`alter table ${name} rename column instance to run`);
+    }
+    const indexes = db
+      .prepare("select name from sqlite_master where type = 'index' and name like 'unit%'")
+      .all() as { name: string }[];
+    for (const i of indexes) db.exec(`drop index if exists ${i.name}`);
+    db.exec("commit");
+  } catch (err) {
+    db.exec("rollback");
+    throw err;
+  }
+}
 
 export interface IngestReport {
   generated_at?: string | undefined;
-  unit: string;
+  rig: string;
   ledger_id: string;
   cursor: number;
   next: number;
@@ -121,55 +156,56 @@ export interface IngestReport {
 
 export class ControlStore {
   readonly db: DatabaseSync;
-  private configuredUnits = new Set<string>();
+  private configuredRigs = new Set<string>();
 
   constructor(path: string) {
     if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
     this.db = new DatabaseSync(path);
     this.db.exec("pragma busy_timeout = 5000; pragma journal_mode = wal;");
+    renameUnitsToRigs(this.db);
     this.db.exec(SCHEMA);
-    const cols = (this.db.prepare("pragma table_info(unit)").all() as Row[]).map((r) => r.name);
-    if (!cols.includes("pubkey")) this.db.exec("alter table unit add column pubkey text");
+    const cols = (this.db.prepare("pragma table_info(rig)").all() as Row[]).map((r) => r.name);
+    if (!cols.includes("pubkey")) this.db.exec("alter table rig add column pubkey text");
     if (!cols.includes("pending_pubkey"))
-      this.db.exec("alter table unit add column pending_pubkey text");
-    if (!cols.includes("report_at")) this.db.exec("alter table unit add column report_at text");
+      this.db.exec("alter table rig add column pending_pubkey text");
+    if (!cols.includes("report_at")) this.db.exec("alter table rig add column report_at text");
     if (!cols.includes("supervisor")) {
-      this.db.exec("alter table unit add column supervisor text");
-      this.db.exec("alter table unit add column supervisor_at text");
+      this.db.exec("alter table rig add column supervisor text");
+      this.db.exec("alter table rig add column supervisor_at text");
     }
   }
 
   /**
-   * The supervisor's own figures for a unit (unsigned: it reports them about itself). They never
-   * make a unit look live: only the harness's signed reports move last_seen.
+   * The supervisor's own figures for a rig (unsigned: it reports them about itself). They never
+   * make a rig look live: only the harness's signed reports move last_seen.
    */
-  setSupervisor(unit: string, stats: unknown): void {
+  setSupervisor(rig: string, stats: unknown): void {
     const now = new Date().toISOString();
     this.db
       .prepare(
-        `insert into unit (id, first_seen, last_seen, supervisor, supervisor_at) values (?, ?, ?, ?, ?)
+        `insert into rig (id, first_seen, last_seen, supervisor, supervisor_at) values (?, ?, ?, ?, ?)
          on conflict (id) do update set supervisor = excluded.supervisor, supervisor_at = excluded.supervisor_at`,
       )
-      .run(unit, now, new Date(0).toISOString(), canonicalJson(stats ?? {}), now);
+      .run(rig, now, new Date(0).toISOString(), canonicalJson(stats ?? {}), now);
   }
 
   /**
-   * Whether a signed report may be taken: not from a ledger the unit has left, starting no later
+   * Whether a signed report may be taken: not from a ledger the rig has left, starting no later
    * than the stream control already has (no gap), and no older than the newest report taken.
    */
   reportCheck(
-    unit: string,
+    rig: string,
     r: { ledgerId: string; cursor: number; generatedAt: string },
   ): { ok: true } | { ok: false; reason: string; expectedCursor?: number } {
     const left = this.db
       .prepare(
-        "select 1 from unit_ledger where unit = ? and ledger_id = ? and superseded_at is not null",
+        "select 1 from rig_ledger where rig = ? and ledger_id = ? and superseded_at is not null",
       )
-      .get(unit, r.ledgerId);
-    if (left) return { ok: false, reason: "a report from a ledger the unit has left" };
+      .get(rig, r.ledgerId);
+    if (left) return { ok: false, reason: "a report from a ledger the rig has left" };
     const u = this.db
-      .prepare("select ledger_id, last_cursor, report_at from unit where id = ?")
-      .get(unit) as Row | undefined;
+      .prepare("select ledger_id, last_cursor, report_at from rig where id = ?")
+      .get(rig) as Row | undefined;
     if (!u || u.ledger_id === null || String(u.ledger_id) !== r.ledgerId) {
       // A new ledger starts at the beginning.
       return r.cursor === 0
@@ -189,10 +225,10 @@ export class ControlStore {
     return { ok: true };
   }
 
-  supervisor(unit: string): Record<string, unknown> | null {
-    const r = this.db
-      .prepare("select supervisor, supervisor_at from unit where id = ?")
-      .get(unit) as Row | undefined;
+  supervisor(rig: string): Record<string, unknown> | null {
+    const r = this.db.prepare("select supervisor, supervisor_at from rig where id = ?").get(rig) as
+      | Row
+      | undefined;
     return r?.supervisor
       ? { ...(JSON.parse(String(r.supervisor)) as object), received_at: String(r.supervisor_at) }
       : null;
@@ -200,10 +236,10 @@ export class ControlStore {
 
   /**
    * Stores live-log lines (duplicates by log id and sequence are ignored) and keeps only the
-   * newest `keep` lines of the unit.
+   * newest `keep` lines of the rig.
    */
   addLive(
-    unit: string,
+    rig: string,
     logId: string,
     entries: LiveEntry[],
     signed: boolean,
@@ -212,14 +248,14 @@ export class ControlStore {
     const now = new Date().toISOString();
     return this.tx(() => {
       const insert = this.db.prepare(
-        `insert or ignore into unit_live (unit, log_id, seq, at, source, kind, text, lane, instance, signed, received_at)
+        `insert or ignore into rig_live (rig, log_id, seq, at, source, kind, text, lane, run, signed, received_at)
          values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       let added = 0;
       for (const e of entries) {
         added += Number(
           insert.run(
-            unit,
+            rig,
             logId,
             e.seq,
             e.at,
@@ -227,24 +263,23 @@ export class ControlStore {
             e.kind,
             e.text,
             e.lane ?? null,
-            e.instance ?? null,
+            e.run ?? null,
             signed ? 1 : 0,
             now,
           ).changes,
         );
       }
       const cut = this.db
-        .prepare("select id from unit_live where unit = ? order by id desc limit 1 offset ?")
-        .get(unit, keep) as { id: number } | undefined;
-      if (cut)
-        this.db.prepare("delete from unit_live where unit = ? and id <= ?").run(unit, cut.id);
+        .prepare("select id from rig_live where rig = ? order by id desc limit 1 offset ?")
+        .get(rig, keep) as { id: number } | undefined;
+      if (cut) this.db.prepare("delete from rig_live where rig = ? and id <= ?").run(rig, cut.id);
       return added;
     });
   }
 
-  /** Live lines of a unit after `after` (control's own ids), oldest first; one source if given. */
+  /** Live lines of a rig after `after` (control's own ids), oldest first; one source if given. */
   live(
-    unit: string,
+    rig: string,
     after: number,
     limit: number,
     source?: string,
@@ -253,12 +288,12 @@ export class ControlStore {
       source
         ? this.db
             .prepare(
-              "select * from unit_live where unit = ? and id > ? and source = ? order by id limit ?",
+              "select * from rig_live where rig = ? and id > ? and source = ? order by id limit ?",
             )
-            .all(unit, after, source, limit)
+            .all(rig, after, source, limit)
         : this.db
-            .prepare("select * from unit_live where unit = ? and id > ? order by id limit ?")
-            .all(unit, after, limit)
+            .prepare("select * from rig_live where rig = ? and id > ? order by id limit ?")
+            .all(rig, after, limit)
     ) as Row[];
     return rows.map((r) => ({
       id: Number(r.id),
@@ -268,32 +303,32 @@ export class ControlStore {
       kind: String(r.kind) as LiveEntry["kind"],
       text: String(r.text),
       ...(r.lane ? { lane: String(r.lane) } : {}),
-      ...(r.instance ? { instance: String(r.instance) } : {}),
+      ...(r.run ? { run: String(r.run) } : {}),
       signed: Number(r.signed) === 1,
     }));
   }
 
-  /** The newest live lines of a unit, newest last (for a page's first view). */
+  /** The newest live lines of a rig, newest last (for a page's first view). */
   liveTail(
-    unit: string,
+    rig: string,
     limit: number,
     source?: string,
   ): (LiveEntry & { id: number; signed: boolean })[] {
     const top = this.db
       .prepare(
         source
-          ? "select id from unit_live where unit = ? and source = ? order by id desc limit 1 offset ?"
-          : "select id from unit_live where unit = ? order by id desc limit 1 offset ?",
+          ? "select id from rig_live where rig = ? and source = ? order by id desc limit 1 offset ?"
+          : "select id from rig_live where rig = ? order by id desc limit 1 offset ?",
       )
-      .get(...(source ? [unit, source, limit] : [unit, limit])) as { id: number } | undefined;
-    return this.live(unit, top?.id ?? 0, limit, source);
+      .get(...(source ? [rig, source, limit] : [rig, limit])) as { id: number } | undefined;
+    return this.live(rig, top?.id ?? 0, limit, source);
   }
 
-  /** Each live source of a unit with its newest line (sessions to pick from). */
-  liveSources(unit: string): {
+  /** Each live source of a rig with its newest line (sessions to pick from). */
+  liveSources(rig: string): {
     source: string;
     lane: string | null;
-    instance: string | null;
+    run: string | null;
     last_at: string;
     lines: number;
     ended: boolean;
@@ -301,69 +336,69 @@ export class ControlStore {
     return (
       this.db
         .prepare(
-          `select source, max(lane) as lane, max(instance) as instance, max(at) as last_at, count(*) as lines,
+          `select source, max(lane) as lane, max(run) as run, max(at) as last_at, count(*) as lines,
              max(case when kind = 'status' and text like 'trial ended%' then 1 else 0 end) as ended
-           from unit_live where unit = ? group by source order by max(id) desc`,
+           from rig_live where rig = ? group by source order by max(id) desc`,
         )
-        .all(unit) as Row[]
+        .all(rig) as Row[]
     ).map((r) => ({
       source: String(r.source),
       lane: r.lane ? String(r.lane) : null,
-      instance: r.instance ? String(r.instance) : null,
+      run: r.run ? String(r.run) : null,
       last_at: String(r.last_at),
       lines: Number(r.lines),
       ended: Number(r.ended) === 1,
     }));
   }
 
-  addReport(unit: string, kind: string, body: string): number {
+  addReport(rig: string, kind: string, body: string): number {
     const r = this.db
-      .prepare("insert into unit_report (unit, kind, body, at) values (?, ?, ?, ?)")
-      .run(unit, kind, body.slice(0, 200_000), new Date().toISOString());
+      .prepare("insert into rig_report (rig, kind, body, at) values (?, ?, ?, ?)")
+      .run(rig, kind, body.slice(0, 200_000), new Date().toISOString());
     return Number(r.lastInsertRowid);
   }
 
   reports(
     limit = 20,
-    unit?: string,
-  ): { id: number; unit: string; kind: string; body: string; at: string }[] {
+    rig?: string,
+  ): { id: number; rig: string; kind: string; body: string; at: string }[] {
     const rows = (
-      unit
+      rig
         ? this.db
-            .prepare("select * from unit_report where unit = ? order by id desc limit ?")
-            .all(unit, limit)
-        : this.db.prepare("select * from unit_report order by id desc limit ?").all(limit)
+            .prepare("select * from rig_report where rig = ? order by id desc limit ?")
+            .all(rig, limit)
+        : this.db.prepare("select * from rig_report order by id desc limit ?").all(limit)
     ) as Row[];
     return rows.map((r) => ({
       id: Number(r.id),
-      unit: String(r.unit),
+      rig: String(r.rig),
       kind: String(r.kind),
       body: String(r.body),
       at: String(r.at),
     }));
   }
 
-  openReset(unit: string): Row | undefined {
+  openReset(rig: string): Row | undefined {
     return this.db
       .prepare(
-        "select * from reset where unit = ? and state not in ('done', 'failed', 'cancelled') order by id desc",
+        "select * from reset where rig = ? and state not in ('done', 'failed', 'cancelled') order by id desc",
       )
-      .get(unit) as Row | undefined;
+      .get(rig) as Row | undefined;
   }
 
   resets(limit = 20): Row[] {
     return this.db.prepare("select * from reset order by id desc limit ?").all(limit) as Row[];
   }
 
-  createReset(unit: string, by: string): number {
-    if (this.openReset(unit)) throw new Error(`a reset of ${unit} is already in progress`);
+  createReset(rig: string, by: string): number {
+    if (this.openReset(rig)) throw new Error(`a reset of ${rig} is already in progress`);
     const now = new Date().toISOString();
     const r = this.db
       .prepare(
-        "insert into reset (unit, state, requested_by, created_at, updated_at) values (?, 'start', ?, ?, ?)",
+        "insert into reset (rig, state, requested_by, created_at, updated_at) values (?, 'start', ?, ?, ?)",
       )
-      .run(unit, by, now, now);
-    this.audit(by, "reset_requested", { unit });
+      .run(rig, by, now, now);
+    this.audit(by, "reset_requested", { rig });
     return Number(r.lastInsertRowid);
   }
 
@@ -394,9 +429,9 @@ export class ControlStore {
     this.audit("control", "reset_step", { id, ...fields });
   }
 
-  /** The unit's pinned report-signing key, if any. */
-  unitKey(unit: string): { pubkey: string | null; pending: string | null } {
-    const r = this.db.prepare("select pubkey, pending_pubkey from unit where id = ?").get(unit) as
+  /** The rig's pinned report-signing key, if any. */
+  rigKey(rig: string): { pubkey: string | null; pending: string | null } {
+    const r = this.db.prepare("select pubkey, pending_pubkey from rig where id = ?").get(rig) as
       | Row
       | undefined;
     return {
@@ -405,38 +440,38 @@ export class ControlStore {
     };
   }
 
-  /** Pins a unit's key on first contact (trust on first use, shown on the dashboard). */
-  pinKey(unit: string, pubkey: string): void {
+  /** Pins a rig's key on first contact (trust on first use, shown on the dashboard). */
+  pinKey(rig: string, pubkey: string): void {
     const now = new Date().toISOString();
     this.db
       .prepare(
-        `insert into unit (id, first_seen, last_seen, pubkey) values (?, ?, ?, ?)
+        `insert into rig (id, first_seen, last_seen, pubkey) values (?, ?, ?, ?)
          on conflict (id) do update set pubkey = excluded.pubkey, pending_pubkey = null`,
       )
-      .run(unit, now, now, pubkey);
-    this.audit(`unit:${unit}`, "unit_key_pinned", { fingerprint: fingerprint(pubkey) });
+      .run(rig, now, now, pubkey);
+    this.audit(`rig:${rig}`, "rig_key_pinned", { fingerprint: fingerprint(pubkey) });
   }
 
   /** A different key arrived: hold it until the owner accepts it. */
-  holdKey(unit: string, pubkey: string): void {
-    // A first key held for the owner has no unit row yet; the row does not make the unit live.
+  holdKey(rig: string, pubkey: string): void {
+    // A first key held for the owner has no rig row yet; the row does not make the rig live.
     this.db
       .prepare(
-        `insert into unit (id, first_seen, last_seen, pending_pubkey) values (?, ?, ?, ?)
+        `insert into rig (id, first_seen, last_seen, pending_pubkey) values (?, ?, ?, ?)
          on conflict (id) do update set pending_pubkey = excluded.pending_pubkey`,
       )
-      .run(unit, new Date().toISOString(), new Date(0).toISOString(), pubkey);
-    this.audit(`unit:${unit}`, "unit_key_changed", { fingerprint: fingerprint(pubkey) });
+      .run(rig, new Date().toISOString(), new Date(0).toISOString(), pubkey);
+    this.audit(`rig:${rig}`, "rig_key_changed", { fingerprint: fingerprint(pubkey) });
   }
 
   /** Accepts the held key, but only the one with the fingerprint the owner checked. */
-  acceptPendingKey(unit: string, actor: string, fingerprintSeen: string): boolean {
-    const { pending } = this.unitKey(unit);
+  acceptPendingKey(rig: string, actor: string, fingerprintSeen: string): boolean {
+    const { pending } = this.rigKey(rig);
     if (!pending || fingerprint(pending) !== fingerprintSeen) return false;
     this.db
-      .prepare("update unit set pubkey = pending_pubkey, pending_pubkey = null where id = ?")
-      .run(unit);
-    this.audit(actor, "unit_key_accepted", { unit, fingerprint: fingerprint(pending) });
+      .prepare("update rig set pubkey = pending_pubkey, pending_pubkey = null where id = ?")
+      .run(rig);
+    this.audit(actor, "rig_key_accepted", { rig, fingerprint: fingerprint(pending) });
     return true;
   }
 
@@ -458,22 +493,22 @@ export class ControlStore {
       .run(new Date().toISOString(), actor, action, canonicalJson(body ?? {}));
   }
 
-  /** Stores a unit's report. Returns how many events were new. */
+  /** Stores a rig's report. Returns how many events were new. */
   ingest(report: IngestReport): number {
     const now = new Date().toISOString();
     return this.tx(() => {
       this.db
         .prepare(
-          `insert into unit (id, first_seen, last_seen, last_cursor, ledger_id, summary, report_at)
+          `insert into rig (id, first_seen, last_seen, last_cursor, ledger_id, summary, report_at)
            values (?, ?, ?, ?, ?, ?, ?)
            on conflict (id) do update set last_seen = excluded.last_seen,
-             last_cursor = case when unit.ledger_id = excluded.ledger_id
-               then max(unit.last_cursor, excluded.last_cursor) else excluded.last_cursor end,
+             last_cursor = case when rig.ledger_id = excluded.ledger_id
+               then max(rig.last_cursor, excluded.last_cursor) else excluded.last_cursor end,
              ledger_id = excluded.ledger_id, summary = excluded.summary,
              report_at = excluded.report_at`,
         )
         .run(
-          report.unit,
+          report.rig,
           now,
           now,
           report.next,
@@ -484,21 +519,21 @@ export class ControlStore {
       // Ledger history: a new ledger supersedes the ones before it, for good.
       this.db
         .prepare(
-          "update unit_ledger set superseded_at = ? where unit = ? and ledger_id != ? and superseded_at is null",
+          "update rig_ledger set superseded_at = ? where rig = ? and ledger_id != ? and superseded_at is null",
         )
-        .run(now, report.unit, report.ledger_id);
+        .run(now, report.rig, report.ledger_id);
       this.db
-        .prepare("insert or ignore into unit_ledger (unit, ledger_id, first_seen) values (?, ?, ?)")
-        .run(report.unit, report.ledger_id, now);
+        .prepare("insert or ignore into rig_ledger (rig, ledger_id, first_seen) values (?, ?, ?)")
+        .run(report.rig, report.ledger_id, now);
       let added = 0;
       const insert = this.db.prepare(
-        `insert or ignore into unit_event (unit, ledger_id, event_id, at, actor, kind, subject, body,
+        `insert or ignore into rig_event (rig, ledger_id, event_id, at, actor, kind, subject, body,
            received_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       // A harness's own record of a command it applied is authoritative (it is signed with the
-      // unit's key); the supervisor's acknowledgement is only the fast path.
+      // rig's key); the supervisor's acknowledgement is only the fast path.
       const confirm = this.db.prepare(
-        "update command set status = ?, outcome = ?, acked_at = coalesce(acked_at, ?) where id = ? and unit = ?",
+        "update command set status = ?, outcome = ?, acked_at = coalesce(acked_at, ?) where id = ? and rig = ?",
       );
       for (const e of report.events) {
         if (e.kind === "command" && e.subject) {
@@ -508,12 +543,12 @@ export class ControlStore {
             canonicalJson({ source: "harness", ...(e.body as object) }),
             now,
             e.subject,
-            report.unit,
+            report.rig,
           );
         }
         added += Number(
           insert.run(
-            report.unit,
+            report.rig,
             report.ledger_id,
             e.id,
             e.at,
@@ -529,14 +564,14 @@ export class ControlStore {
     });
   }
 
-  units(): {
+  rigs(): {
     id: string;
     last_seen: string;
     last_cursor: number;
     ledger_id: string | null;
     summary: unknown;
   }[] {
-    return (this.db.prepare("select * from unit order by id").all() as Row[]).map((r) => ({
+    return (this.db.prepare("select * from rig order by id").all() as Row[]).map((r) => ({
       id: String(r.id),
       last_seen: String(r.last_seen),
       last_cursor: Number(r.last_cursor),
@@ -545,47 +580,50 @@ export class ControlStore {
     }));
   }
 
-  /** A unit's events in control's arrival order; `after` is a control `seq`, not an event id. */
-  events(unit: string, after: number, limit: number, ledgerId?: string | null): unknown[] {
+  /** A rig's events in control's arrival order; `after` is a control `seq`, not an event id. */
+  events(rig: string, after: number, limit: number, ledgerId?: string | null): unknown[] {
     const byLedger = ledgerId ? " and ledger_id = ?" : "";
     return (
       this.db
         .prepare(
-          `select seq, ledger_id, event_id, at, actor, kind, subject, body from unit_event
-             where unit = ?${byLedger} and seq > ? order by seq limit ?`,
+          `select seq, ledger_id, event_id, at, actor, kind, subject, body from rig_event
+             where rig = ?${byLedger} and seq > ? order by seq limit ?`,
         )
-        .all(...(ledgerId ? [unit, ledgerId, after, limit] : [unit, after, limit])) as Row[]
-    ).map((r) => ({
-      seq: Number(r.seq),
-      ledger_id: String(r.ledger_id),
-      id: Number(r.event_id),
-      at: String(r.at),
-      actor: String(r.actor),
-      kind: String(r.kind),
-      subject: r.subject === null ? null : String(r.subject),
-      body: JSON.parse(String(r.body)),
-    }));
+        .all(...(ledgerId ? [rig, ledgerId, after, limit] : [rig, after, limit])) as Row[]
+    ).map((r) =>
+      // Events a harness reported before the 2026-10-15 rename are read under the new names.
+      currentEvent({
+        seq: Number(r.seq),
+        ledger_id: String(r.ledger_id),
+        id: Number(r.event_id),
+        at: String(r.at),
+        actor: String(r.actor),
+        kind: String(r.kind),
+        subject: r.subject === null ? null : String(r.subject),
+        body: JSON.parse(String(r.body)),
+      }),
+    );
   }
 
   enqueueCommand(signed: SignedCommand): void {
     const e = signed.envelope;
     this.db
       .prepare(
-        "insert into command (id, unit, kind, signed, issued_by, issued_at, status) values (?, ?, ?, ?, ?, ?, 'pending')",
+        "insert into command (id, rig, kind, signed, issued_by, issued_at, status) values (?, ?, ?, ?, ?, ?, 'pending')",
       )
-      .run(e.id, e.unit, e.kind, canonicalJson(signed), e.issued_by, e.issued_at);
-    this.audit(e.issued_by, "command_issued", { id: e.id, unit: e.unit, kind: e.kind });
+      .run(e.id, e.rig, e.kind, canonicalJson(signed), e.issued_by, e.issued_at);
+    this.audit(e.issued_by, "command_issued", { id: e.id, rig: e.rig, kind: e.kind });
   }
 
-  /** A unit's pending commands, oldest first. Expired ones are marked expired, not relayed. */
-  pendingCommands(unit: string): SignedCommand[] {
+  /** A rig's pending commands, oldest first. Expired ones are marked expired, not relayed. */
+  pendingCommands(rig: string): SignedCommand[] {
     const now = Date.now();
     const out: SignedCommand[] = [];
     for (const r of this.db
       .prepare(
-        "select id, signed from command where unit = ? and status = 'pending' order by issued_at",
+        "select id, signed from command where rig = ? and status = 'pending' order by issued_at",
       )
-      .all(unit) as Row[]) {
+      .all(rig) as Row[]) {
       const cmd = JSON.parse(String(r.signed)) as SignedCommand;
       if (Date.parse(cmd.envelope.expires_at) < now) {
         this.db
@@ -593,7 +631,7 @@ export class ControlStore {
             "update command set status = 'expired', acked_at = ? where id = ? and status = 'pending'",
           )
           .run(new Date().toISOString(), String(r.id));
-        this.audit("control", "command_expired", { id: String(r.id), unit });
+        this.audit("control", "command_expired", { id: String(r.id), rig });
         continue;
       }
       out.push(cmd);
@@ -613,32 +651,32 @@ export class ControlStore {
   }
 
   ackCommand(
-    unit: string,
+    rig: string,
     id: string,
     status: "delivered" | "rejected" | "failed",
     outcome: unknown,
   ): boolean {
     const r = this.db
       .prepare(
-        "update command set status = ?, outcome = ?, acked_at = ? where id = ? and unit = ? and status = 'pending'",
+        "update command set status = ?, outcome = ?, acked_at = ? where id = ? and rig = ? and status = 'pending'",
       )
-      .run(status, canonicalJson(outcome ?? {}), new Date().toISOString(), id, unit);
-    if (Number(r.changes) > 0) this.audit(`unit:${unit}`, "command_acked", { id, status });
+      .run(status, canonicalJson(outcome ?? {}), new Date().toISOString(), id, rig);
+    if (Number(r.changes) > 0) this.audit(`rig:${rig}`, "command_acked", { id, status });
     return Number(r.changes) > 0;
   }
 
-  /** Units that have a token but have not reported yet still accept commands. */
-  knownUnit(unit: string): boolean {
-    return this.configuredUnits.has(unit);
+  /** Rigs that have a token but have not reported yet still accept commands. */
+  knownRig(rig: string): boolean {
+    return this.configuredRigs.has(rig);
   }
 
-  setConfiguredUnits(units: readonly string[]): void {
-    this.configuredUnits = new Set(units);
+  setConfiguredRigs(rigs: readonly string[]): void {
+    this.configuredRigs = new Set(rigs);
   }
 
   listCommands(limit = 100): {
     id: string;
-    unit: string;
+    rig: string;
     kind: string;
     issued_by: string;
     issued_at: string;
@@ -649,12 +687,12 @@ export class ControlStore {
     return (
       this.db
         .prepare(
-          "select id, unit, kind, issued_by, issued_at, status, acked_at, outcome from command order by issued_at desc limit ?",
+          "select id, rig, kind, issued_by, issued_at, status, acked_at, outcome from command order by issued_at desc limit ?",
         )
         .all(limit) as Row[]
     ).map((r) => ({
       id: String(r.id),
-      unit: String(r.unit),
+      rig: String(r.rig),
       kind: String(r.kind),
       issued_by: String(r.issued_by),
       issued_at: String(r.issued_at),

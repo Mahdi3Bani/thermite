@@ -1,26 +1,26 @@
 import { randomUUID } from "node:crypto";
 import { type CommandKind, CommandPayloads, signEnvelope } from "../core/commands.ts";
 import type { ControlStore } from "./store.ts";
-import { unitView } from "./views.ts";
+import { rigView } from "./views.ts";
 
 /**
- * Issues a signed command for a unit: the one path the API, the dashboard and MCP all use.
- * The payload is validated against its kind's schema before signing; the unit's harness
+ * Issues a signed command for a rig: the one path the API, the dashboard and MCP all use.
+ * The payload is validated against its kind's schema before signing; the rig's harness
  * validates and verifies it again on arrival.
  */
 export function issueCommand(
   store: ControlStore,
   privateKeyPem: string,
   input: {
-    unit: string;
+    rig: string;
     kind: CommandKind;
     payload: unknown;
     ttlMinutes?: number | undefined;
     issuedBy: string;
   },
 ): { id: string } {
-  if (!store.units().some((u) => u.id === input.unit) && !store.knownUnit(input.unit)) {
-    throw new Error(`unknown unit ${input.unit}`);
+  if (!store.rigs().some((u) => u.id === input.rig) && !store.knownRig(input.rig)) {
+    throw new Error(`unknown rig ${input.rig}`);
   }
   const parsed = CommandPayloads[input.kind].safeParse(input.payload);
   if (!parsed.success) {
@@ -34,7 +34,7 @@ export function issueCommand(
     {
       v: 1,
       id: randomUUID(),
-      unit: input.unit,
+      rig: input.rig,
       kind: input.kind,
       issued_by: input.issuedBy,
       issued_at: new Date(now).toISOString(),
@@ -51,56 +51,55 @@ export function issueCommand(
 }
 
 /**
- * Propagates one unit's published champion to another unit's instance of the same campaign.
+ * Propagates one rig's published champion to another rig's run of the same campaign.
  * The command carries the patch's sha256 and the tree, from the source's own signed report, so
- * the receiving harness can check what the supervisors transport. The receiving unit's judge
+ * the receiving harness can check what the supervisors transport. The receiving rig's judge
  * decides; a win there marks the source champion cross-verified.
  */
 export function propagateChampion(
   store: ControlStore,
   privateKeyPem: string,
   input: {
-    fromUnit: string;
-    instance: string;
-    toUnit: string;
-    toInstance: string;
+    fromRig: string;
+    run: string;
+    toRig: string;
+    toRun: string;
     issuedBy: string;
     staleAfterMs: number;
   },
 ): { id: string; seq: number } {
-  if (input.fromUnit === input.toUnit) throw new Error("propagate between two different units");
-  const from = unitView(store, input.fromUnit, { staleAfterMs: input.staleAfterMs });
-  const src = from?.instances.find((i) => i.id === input.instance);
-  if (!src) throw new Error(`no instance ${input.instance} on ${input.fromUnit}`);
+  if (input.fromRig === input.toRig) throw new Error("propagate between two different rigs");
+  const from = rigView(store, input.fromRig, { staleAfterMs: input.staleAfterMs });
+  const src = from?.runs.find((i) => i.id === input.run);
+  if (!src) throw new Error(`no run ${input.run} on ${input.fromRig}`);
   const champ = src.champion.filter((c) => !c.reopened).at(-1);
   const pub = src.published;
-  if (!champ || champ.seq <= 1)
-    throw new Error("the source instance has no champion beyond its seed");
+  if (!champ || champ.seq <= 1) throw new Error("the source run has no champion beyond its seed");
   if (!pub || pub.seq !== champ.seq) {
     throw new Error(
-      `champion seq ${champ.seq} is not published yet (it is published with the unit's next export)`,
+      `champion seq ${champ.seq} is not published yet (it is published with the rig's next export)`,
     );
   }
-  const to = unitView(store, input.toUnit, { staleAfterMs: input.staleAfterMs });
-  const dst = to?.instances.find((i) => i.id === input.toInstance);
-  if (!dst) throw new Error(`no instance ${input.toInstance} on ${input.toUnit}`);
+  const to = rigView(store, input.toRig, { staleAfterMs: input.staleAfterMs });
+  const dst = to?.runs.find((i) => i.id === input.toRun);
+  if (!dst) throw new Error(`no run ${input.toRun} on ${input.toRig}`);
   if (dst.campaign !== src.campaign) {
-    throw new Error(`${input.toInstance} runs ${dst.campaign}, not ${src.campaign}`);
+    throw new Error(`${input.toRun} runs ${dst.campaign}, not ${src.campaign}`);
   }
   if (!pub.repo || dst.seed_repo !== pub.repo) {
     throw new Error(`the target works on ${dst.seed_repo}, the champion is in ${pub.repo}`);
   }
   const { id } = issueCommand(store, privateKeyPem, {
-    unit: input.toUnit,
+    rig: input.toRig,
     kind: "propagate",
     payload: {
-      instance: input.toInstance,
-      source_unit: input.fromUnit,
-      source_instance: input.instance,
+      run: input.toRun,
+      source_rig: input.fromRig,
+      source_run: input.run,
       source_seq: pub.seq,
       import: {
         kind: "champion_patch",
-        path: `propagate/${input.fromUnit}/${input.instance}/${pub.seq}.patch`,
+        path: `propagate/${input.fromRig}/${input.run}/${pub.seq}.patch`,
         repo: pub.repo,
         base_commit: pub.base_commit,
         tree: pub.tree,

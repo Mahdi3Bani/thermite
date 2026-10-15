@@ -1,7 +1,7 @@
 /**
  * The dashboard's only script, served from control itself (CSP script-src 'self'; nothing inline
  * runs). It refreshes pages in place and streams the live view. Live lines are built with DOM
- * text nodes only: unit data never becomes markup here either.
+ * text nodes only: rig data never becomes markup here either.
  */
 export const CLIENT_JS = `
 (() => {
@@ -35,7 +35,7 @@ export const CLIENT_JS = `
   // ------------------------------------------------ the live view
   const tr = $("#transcript");
   if (tr) {
-    const unit = tr.dataset.unit, source = tr.dataset.source || "";
+    const rig = tr.dataset.rig, source = tr.dataset.source || "";
     let after = Number(tr.dataset.after || "0");
     const near = () => tr.scrollHeight - tr.scrollTop - tr.clientHeight < 120;
     tr.scrollTop = tr.scrollHeight;
@@ -94,7 +94,7 @@ export const CLIENT_JS = `
       try {
         const q = new URLSearchParams({ after: String(after) });
         if (source) q.set("source", source);
-        const res = await fetch("/ui/units/" + encodeURIComponent(unit) + "/live.json?" + q, { credentials: "same-origin" });
+        const res = await fetch("/ui/rigs/" + encodeURIComponent(rig) + "/live.json?" + q, { credentials: "same-origin" });
         if (!res.ok) return;
         const body = await res.json();
         const stick = near();

@@ -19,8 +19,8 @@ import { championFiles } from "./propagation.ts";
  * Outbox export. The harness has no git credentials and no remote access: it writes exports
  * into the shared outbox, and the supervisor pushes them to the results repository as packed
  * commits. An export holds patches and manifests for attempts recorded since the last export,
- * the events since then, a consistent ledger snapshot, and each new instance champion as a patch
- * against its seed (what other units need to judge it themselves).
+ * the events since then, a consistent ledger snapshot, and each new run champion as a patch
+ * against its seed (what other rigs need to judge it themselves).
  */
 
 export interface ExportResult {
@@ -34,7 +34,7 @@ export async function writeExport(input: {
   ledger: Ledger;
   mirrorFor: (repo: string) => string;
   outboxDir: string;
-  unit: string;
+  rig: string;
   actor: string;
   /** A full export (before a full reset): also the research archive, marked in the manifest. */
   full?: boolean | undefined;
@@ -63,8 +63,8 @@ export async function writeExport(input: {
     for (const id of attemptIds) {
       const a = ledger.getAttempt(id);
       if (!a) continue;
-      const instance = ledger.getInstance(String(a.instance));
-      const mirror = input.mirrorFor(instance?.seed_repo ?? "");
+      const run = ledger.getRun(String(a.run));
+      const mirror = input.mirrorFor(run?.seed_repo ?? "");
       const patch = await patchBytes(mirror, String(a.parent_commit), String(a.commit_sha));
       writeFileSync(join(tmp, "attempts", `${id}.patch`), patch);
       writeFileSync(
@@ -87,11 +87,11 @@ export async function writeExport(input: {
     // A full export keeps what a wipe would otherwise destroy: the archived research sources.
     const researchRel: string[] = [];
     if (input.full && input.researchDir && existsSync(input.researchDir)) {
-      for (const instance of readdirSync(input.researchDir)) {
-        for (const f of readdirSync(join(input.researchDir, instance))) {
-          const rel = `research/${instance}/${f}`;
-          mkdirSync(join(tmp, "research", instance), { recursive: true });
-          writeFileSync(join(tmp, rel), readFileSync(join(input.researchDir, instance, f)));
+      for (const run of readdirSync(input.researchDir)) {
+        for (const f of readdirSync(join(input.researchDir, run))) {
+          const rel = `research/${run}/${f}`;
+          mkdirSync(join(tmp, "research", run), { recursive: true });
+          writeFileSync(join(tmp, rel), readFileSync(join(input.researchDir, run, f)));
           researchRel.push(rel);
         }
       }
@@ -112,7 +112,7 @@ export async function writeExport(input: {
       ...researchRel,
     ];
     const manifest = {
-      unit: input.unit,
+      rig: input.rig,
       ...(input.full ? { full: true } : {}),
       from_event: since,
       through_event: through,
@@ -137,8 +137,8 @@ export async function writeExport(input: {
     // Announced after the export exists: control can then offer it for propagation, and the
     // receiving supervisor finds the patch in the results repository once this export is pushed.
     for (const c of published) {
-      const inst = ledger.getInstance(c.instance);
-      ledger.appendEvent(input.actor, "champion_published", c.instance, {
+      const inst = ledger.getRun(c.run);
+      ledger.appendEvent(input.actor, "champion_published", c.run, {
         seq: c.seq,
         repo: inst?.seed_repo ?? null,
         base_commit: c.base_commit,

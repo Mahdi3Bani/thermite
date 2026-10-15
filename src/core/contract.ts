@@ -51,7 +51,7 @@ const LaneLimits = z.strictObject({
   /** One development run on the measurement device. */
   dev_run_timeout_s: z.number().int().min(10).max(3600).optional(),
   dev_run_rss_mib: z.number().int().min(256).max(16_384).optional(),
-  /** A worker's whole trial. Unset: the unit's default (THERMITE_TRIAL_MINUTES). */
+  /** A worker's whole trial. Unset: the rig's default (THERMITE_TRIAL_MINUTES). */
   trial_minutes: z.number().int().min(1).max(1440).optional(),
 });
 

@@ -50,7 +50,7 @@ describe("worker trial", () => {
     const r = await runTrial(
       {
         trialId: "t1",
-        instance: "js-1",
+        run: "js-1",
         lane: "lane-1",
         workspace: ws.repo,
         parentCommit: champion.commit_sha,
@@ -100,7 +100,7 @@ describe("worker trial", () => {
       runTrial(
         {
           trialId: "t-nudge",
-          instance: "js-1",
+          run: "js-1",
           lane: "lane-1",
           workspace: ws.repo,
           parentCommit: champion.commit_sha,
@@ -198,7 +198,7 @@ describe("worker trial", () => {
     const r = await runTrial(
       {
         trialId: "t-live",
-        instance: "js-1",
+        run: "js-1",
         lane: "lane-1",
         workspace: ws.repo,
         parentCommit: champion.commit_sha,
@@ -276,7 +276,7 @@ describe("worker trial", () => {
     const r = await runTrial(
       {
         trialId: "t2",
-        instance: "js-1",
+        run: "js-1",
         lane: "lane-1",
         workspace: ws.repo,
         parentCommit: champion.commit_sha,
@@ -322,7 +322,7 @@ describe("worker trial", () => {
     const { createHarnessApi } = await import("../api.ts");
     new Registry(env.ledger).startTrial({
       id: "t-lane",
-      instance: "js-1",
+      run: "js-1",
       lane: "lane-1",
       epoch: 1,
       family: "f",
@@ -395,7 +395,7 @@ describe("worker trial", () => {
     const { createHarnessApi } = await import("../api.ts");
     new Registry(env.ledger).startTrial({
       id: "t-lim",
-      instance: "js-1",
+      run: "js-1",
       lane: "lane-1",
       epoch: 1,
       family: "f",
@@ -447,7 +447,7 @@ describe("worker trial", () => {
     assert.deepEqual(devRequests.at(-1)?.limits, { rssMib: 4096, diskMib: 1024 });
   });
 
-  test("the isolation selftest refuses a unit with open trials or judge jobs", async () => {
+  test("the isolation selftest refuses a rig with open trials or judge jobs", async () => {
     const env = makeJudgeEnv();
     await env.service.applyCommand(env.assign);
     const { busyReason } = await import("../selftest.ts");
@@ -462,7 +462,7 @@ describe("worker trial", () => {
     if (!jobs) assert.equal(busyReason(env.paths.stateDir), undefined);
     new Registry(env.ledger).startTrial({
       id: "t-busy",
-      instance: "js-1",
+      run: "js-1",
       lane: "lane-1",
       epoch: 1,
       family: "f",

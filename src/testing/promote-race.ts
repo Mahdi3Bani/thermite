@@ -7,7 +7,7 @@ while (Date.now() < Number(startAt)) {
   // spin until both racers are ready
 }
 const r = ledger.promote({
-  instance: "race-1",
+  run: "race-1",
   expectedSeq: 1,
   attempt,
   commitSha: String(ledger.getAttempt(attempt)?.commit_sha),

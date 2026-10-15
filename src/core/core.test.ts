@@ -98,20 +98,20 @@ describe("signed commands", () => {
   const envelope = (over: Partial<Envelope> = {}): Envelope => ({
     v: 1,
     id: randomUUID(),
-    unit: "unit-a",
-    kind: "pause_instance",
+    rig: "rig-a",
+    kind: "pause_run",
     issued_by: "owner",
     issued_at: "2026-10-14T11:59:00Z",
     expires_at: "2026-10-14T13:00:00Z",
-    payload: { instance: "smoke-1", reason: "maintenance" },
+    payload: { run: "smoke-1", reason: "maintenance" },
     ...over,
   });
 
-  test("accepts a correctly signed command for this unit", () => {
+  test("accepts a correctly signed command for this rig", () => {
     const r = verifyCommand(
       signEnvelope(envelope(), keys.privateKeyPem),
       keys.publicKeyPem,
-      "unit-a",
+      "rig-a",
       now,
     );
     assert.ok(r.ok);
@@ -119,43 +119,43 @@ describe("signed commands", () => {
   test("rejects unsigned, tampered and wrongly signed commands", () => {
     const signed = signEnvelope(envelope(), keys.privateKeyPem);
     assert.equal(
-      verifyCommand({ envelope: signed.envelope }, keys.publicKeyPem, "unit-a", now).ok,
+      verifyCommand({ envelope: signed.envelope }, keys.publicKeyPem, "rig-a", now).ok,
       false,
     );
     const tampered = {
       ...signed,
-      envelope: { ...signed.envelope, payload: { instance: "other", reason: "x" } },
+      envelope: { ...signed.envelope, payload: { run: "other", reason: "x" } },
     };
-    const t = verifyCommand(tampered, keys.publicKeyPem, "unit-a", now);
+    const t = verifyCommand(tampered, keys.publicKeyPem, "rig-a", now);
     assert.ok(!t.ok && t.reason === "bad signature");
     const other = generateSigningKeys();
     const w = verifyCommand(
       signEnvelope(envelope(), other.privateKeyPem),
       keys.publicKeyPem,
-      "unit-a",
+      "rig-a",
       now,
     );
     assert.ok(!w.ok && w.reason === "bad signature");
   });
-  test("rejects another unit's command, expired commands and bad payloads", () => {
-    const wrongUnit = verifyCommand(
-      signEnvelope(envelope({ unit: "unit-b" }), keys.privateKeyPem),
+  test("rejects another rig's command, expired commands and bad payloads", () => {
+    const wrongRig = verifyCommand(
+      signEnvelope(envelope({ rig: "rig-b" }), keys.privateKeyPem),
       keys.publicKeyPem,
-      "unit-a",
+      "rig-a",
       now,
     );
-    assert.ok(!wrongUnit.ok && wrongUnit.reason.includes("unit-b"));
+    assert.ok(!wrongRig.ok && wrongRig.reason.includes("rig-b"));
     const expired = verifyCommand(
       signEnvelope(envelope({ expires_at: "2026-10-14T11:00:00Z" }), keys.privateKeyPem),
       keys.publicKeyPem,
-      "unit-a",
+      "rig-a",
       now,
     );
     assert.ok(!expired.ok && expired.reason === "expired");
     const badPayload = verifyCommand(
-      signEnvelope(envelope({ payload: { instance: "Bad Id" } }), keys.privateKeyPem),
+      signEnvelope(envelope({ payload: { run: "Bad Id" } }), keys.privateKeyPem),
       keys.publicKeyPem,
-      "unit-a",
+      "rig-a",
       now,
     );
     assert.ok(!badPayload.ok && badPayload.reason.startsWith("bad payload"));
@@ -174,5 +174,39 @@ describe("helpers", () => {
     assert.ok(globToRegExp("src/*.cu").test("src/a.cu"));
     assert.ok(!globToRegExp("src/*.cu").test("src/x/a.cu"));
     assert.ok(globToRegExp("**/*.md").test("README.md"));
+  });
+});
+
+describe("commands signed before the rename", () => {
+  test("a command naming its unit and instance is verified as signed and read as rig and run", async () => {
+    const { createPrivateKey, sign } = await import("node:crypto");
+    const keys = generateSigningKeys();
+    const old = {
+      v: 1,
+      id: randomUUID(),
+      unit: "gpu-1",
+      kind: "pause_instance",
+      issued_by: "owner:ui",
+      issued_at: new Date(Date.now() - 1000).toISOString(),
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      payload: { instance: "smoke-1", reason: "owner check" },
+    };
+    const signature = sign(
+      null,
+      Buffer.from(canonicalJson(old)),
+      createPrivateKey(keys.privateKeyPem),
+    ).toString("base64");
+    const r = verifyCommand({ envelope: old, signature }, keys.publicKeyPem, "gpu-1");
+    assert.ok(r.ok, JSON.stringify(r));
+    assert.equal(r.ok && r.envelope.kind, "pause_run");
+    assert.equal(r.ok && r.envelope.rig, "gpu-1");
+    assert.deepEqual(r.ok && r.payload, { run: "smoke-1", reason: "owner check" });
+    // Changed after signing: refused, as any other command.
+    const tampered = {
+      envelope: { ...old, payload: { instance: "other-1", reason: "x" } },
+      signature,
+    };
+    assert.equal(verifyCommand(tampered, keys.publicKeyPem, "gpu-1").ok, false);
+    assert.equal(verifyCommand({ envelope: old, signature }, keys.publicKeyPem, "gpu-2").ok, false);
   });
 });

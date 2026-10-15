@@ -9,7 +9,7 @@
 //   - tampering with the build store fails and leaves the builds intact;
 //   - nothing a run starts outlives it;
 //   - a killed controller is recorded as crash_infra exactly once, and the job completes;
-//   - an A/A calibration measures the unit's noise.
+//   - an A/A calibration measures the rig's noise.
 // It writes a JSON report to .dev/acceptance/. Usage: COMPOSE="podman compose" node scripts/judge-acceptance.mjs
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -62,7 +62,7 @@ try {
   await assign(env, "smoke-1");
   check("assign_campaign with pinned project and kit bundles", true);
 
-  // Calibration runs first (the judge schedules it when the instance starts).
+  // Calibration runs first (the judge schedules it when the run starts).
   const calibration = await until(
     "A/A calibration",
     async () => (await events()).find((e) => e.kind === "calibration"),
@@ -75,7 +75,7 @@ try {
     calibration.body.summary,
   );
 
-  // The selftest refuses a busy unit (its probes kill each role's processes): wait for the
+  // The selftest refuses a busy rig (its probes kill each role's processes): wait for the
   // calibration job to finish.
   let isolation;
   for (let i = 0; i < 20; i++) {
@@ -84,7 +84,7 @@ try {
     } catch (err) {
       isolation = { ok: false, out: String(err.stdout ?? "") + String(err.stderr ?? err) };
     }
-    if (isolation.ok || !String(isolation.out).includes("the unit is busy")) break;
+    if (isolation.ok || !String(isolation.out).includes("the rig is busy")) break;
     await sleep(3000);
   }
   check(

@@ -37,8 +37,9 @@ async function main(): Promise<void> {
     admin: secretFromFile("THERMITE_CONTROL_ADMIN_TOKEN_FILE"),
     read: optionalSecretFromFile("THERMITE_CONTROL_READ_TOKEN_FILE"),
     agent: optionalSecretFromFile("THERMITE_CONTROL_AGENT_TOKEN_FILE"),
-    units: JSON.parse(
-      readFileSync(requireEnv("THERMITE_CONTROL_UNIT_TOKENS_FILE"), "utf8"),
+    // One token per rig ({"<rig>": "<token>"}).
+    rigs: JSON.parse(
+      readFileSync(requireEnv("THERMITE_CONTROL_RIG_TOKENS_FILE"), "utf8"),
     ) as Record<string, string>,
   };
   // Each credential is distinct: the owner's, an agent's and a reader's must never coincide.
@@ -47,14 +48,14 @@ async function main(): Promise<void> {
     throw new Error("the admin, agent and read tokens must all be different");
   const store = new ControlStore(join(dir, "control.db"));
   const { host, port } = parseListen(env.THERMITE_CONTROL_LISTEN ?? "0.0.0.0:8800");
-  // A unit is stale after 3 missed reports (the supervisor reports every 60 s by default).
+  // A rig is stale after 3 missed reports (the supervisor reports every 60 s by default).
   const staleAfterMs = Number(env.THERMITE_CONTROL_STALE_SECONDS ?? "180") * 1000;
   const driver = driverFromEnv(env);
   const server = serve({
     fetch: createControlApi(store, tokens, privateKeyPem, {
       staleAfterMs,
       driver,
-      // The owner accepts each unit's first report key (no trust on first use).
+      // The owner accepts each rig's first report key (no trust on first use).
       requireKeyAcceptance: env.THERMITE_CONTROL_REQUIRE_KEY_ACCEPT === "1",
     }).fetch,
     hostname: host,
@@ -63,7 +64,7 @@ async function main(): Promise<void> {
   log("control", "listening", {
     host,
     port,
-    units: Object.keys(tokens.units),
+    rigs: Object.keys(tokens.rigs),
     lifecycle: driver?.kind ?? null,
   });
   // Full resets advance as their evidence arrives.

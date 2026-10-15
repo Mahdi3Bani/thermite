@@ -39,12 +39,12 @@ async function web() {
 }
 
 async function researchEnv(over: Record<string, unknown> = {}, allowPrivate = true) {
-  const env = makeHarnessEnv("unit-r");
+  const env = makeHarnessEnv("rig-r");
   const parsed = parseContract({ ...researchFixture, ...over });
   if (!parsed.ok) throw new Error(parsed.errors.join("; "));
   const out = await env.service.applyCommand(
     env.sign("assign_campaign", {
-      instance: "r-1",
+      run: "r-1",
       contract: parsed.contract,
       contract_sha: parsed.sha,
       imports: [],
@@ -199,12 +199,12 @@ describe("fetcher safety", () => {
 });
 
 describe("research API", () => {
-  test("a worker's calls go to its own trial's instance and lane, whatever it asks", async () => {
+  test("a worker's calls go to its own trial's run and lane, whatever it asks", async () => {
     const { env, research } = await researchEnv();
     const registry = new Registry(env.service.ledger);
     registry.startTrial({
       id: "t-1",
-      instance: "r-1",
+      run: "r-1",
       lane: "lane-1",
       epoch: 1,
       family: "explore",
@@ -219,16 +219,14 @@ describe("research API", () => {
         body: JSON.stringify(body),
       });
     const ok = await call("trial.secret-token", {
-      instance: "someone-else",
+      run: "someone-else",
       lane: "owner",
       name: "summary",
       body: "text",
     });
     assert.equal(ok.status, 200);
-    const row = env.service.ledger.db
-      .prepare("select instance, updated_by from report_section")
-      .get();
-    assert.deepEqual({ ...row }, { instance: "r-1", updated_by: "lane-1" });
+    const row = env.service.ledger.db.prepare("select run, updated_by from report_section").get();
+    assert.deepEqual({ ...row }, { run: "r-1", updated_by: "lane-1" });
     assert.equal((await call("trial.wrong", { name: "x", body: "y" })).status, 401);
     assert.equal((await call("p", { name: "x", body: "y" })).status, 401);
     registry.finishTrial(
@@ -307,7 +305,7 @@ describe("research integrity", () => {
 
   test("paused time does not count on the research clock", async () => {
     const { env, research } = await researchEnv({ min_duration: "1h", max_duration: "2h" });
-    env.service.ledger.setInstanceStatus("r-1", "paused", "t", "t");
+    env.service.ledger.setRunStatus("r-1", "paused", "t", "t");
     await new Promise((r) => setTimeout(r, 300));
     const paused = research.clock("r-1").elapsed_ms;
     await new Promise((r) => setTimeout(r, 300));
@@ -364,24 +362,24 @@ describe("research campaign", () => {
       maxTokens: 2000,
     };
     const call = async (op: string, args: Record<string, unknown>) => {
-      const { instance, lane, ...rest } = args as { instance: string; lane: string } & Record<
+      const { run, lane, ...rest } = args as { run: string; lane: string } & Record<
         string,
         unknown
       >;
       switch (op) {
         case "fetch":
-          return research.fetch(instance, lane, String(rest.url));
+          return research.fetch(run, lane, String(rest.url));
         case "claim":
-          return research.addClaim(instance, lane, rest);
+          return research.addClaim(run, lane, rest);
         case "section":
           return research.updateSection(
-            instance,
+            run,
             lane,
             String((rest as { name: string }).name),
             String((rest as { body: string }).body),
           );
         default:
-          return research.stats(instance);
+          return research.stats(run);
       }
     };
     const scheduler = new Scheduler({
@@ -400,7 +398,7 @@ describe("research campaign", () => {
       runResearchTrial: (spec) => runResearchTrial(spec, { model, call }),
     });
     const deadline = Date.now() + 30_000;
-    while (env.service.ledger.getInstance("r-1")?.status === "running" && Date.now() < deadline) {
+    while (env.service.ledger.getRun("r-1")?.status === "running" && Date.now() < deadline) {
       await scheduler.tick();
       await new Promise((r) => setTimeout(r, 100));
     }
@@ -412,7 +410,7 @@ describe("research campaign", () => {
       trials.length >= 2,
       `the campaign kept assigning work after a worker finished (${trials.length} trials)`,
     );
-    assert.equal(env.service.ledger.getInstance("r-1")?.status, "closed");
+    assert.equal(env.service.ledger.getRun("r-1")?.status, "closed");
     const final = env.service.ledger.db
       .prepare("select body from report_version where kind = 'final'")
       .get();

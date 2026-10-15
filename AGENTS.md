@@ -24,7 +24,7 @@ Read [CONVENTIONS.md](CONVENTIONS.md) before changing this repository. Public do
 - **State and agents:** the harness owns all research state. Every agent invocation starts fresh from context the harness builds. Parallel workers are isolated, and a central stateless planner assigns their experiments.
 - **Agents never judge.** Measurement, verdicts, completion and promotion live in code the agents cannot write.
 - **Deployment:**
-  - A unit is one harness container plus one supervisor container. A central control service has a dashboard, an API and MCP.
+  - A rig is one harness container plus one supervisor container. A central control service has a dashboard, an API and MCP.
   - Everything runs on Kubernetes or under docker-compose / podman-compose.
   - The harness reaches only DNS, the internet and its model endpoint.
   - The supervisor reaches the internet, its harness, control and, optionally, a knowledge base. It handles all git operations.
@@ -75,16 +75,16 @@ Run from the repository root before every commit, and report which ran and which
   - `npm run lint` (Biome; `npm run format` applies fixes)
   - `npm test` (Node's test runner over `src/**/*.test.ts`, one file at a time: the judge tests time real processes, so they must not share the machine with other test files)
   - `npm run check:public`: the public-content check over tracked and staged files. **Stage new files first**, or check them with `node scripts/check-public.mjs --untracked`. The private denylist it reads lives in `.internal/`.
-- Compose smoke, after changes to containers, compose, the APIs or the relay. It builds the images, starts control and one unit, assigns a campaign through control, submits a patch and checks the events reach control:
+- Compose smoke, after changes to containers, compose, the APIs or the relay. It builds the images, starts control and one rig, assigns a campaign through control, submits a patch and checks the events reach control:
   - `COMPOSE="podman compose" npm run smoke:compose`
   - `COMPOSE="podman-compose" npm run smoke:compose` (or `uvx podman-compose` if it isn't installed)
   - `COMPOSE="docker compose" npm run smoke:compose`
 - Judge acceptance (M2a), after changes to the broker, the judge, kits or the harness image. It runs the smoke campaign's whole candidate set under compose, plus isolation, tamper, crash-recovery and A/A checks, and writes a report to `.dev/acceptance/`. Allow about 15–20 minutes:
   - `COMPOSE="podman compose" npm run acceptance:judge` (the other two compose variants work the same way)
-- Control acceptance (M3), after changes to control, the dashboard, MCP, the relay or the compose units. It uses two units under the `two-units` profile:
+- Control acceptance (M3), after changes to control, the dashboard, MCP, the relay or the compose rigs. It uses two rigs under the `two-rigs` profile:
   - `COMPOSE="podman compose" node scripts/control-acceptance.mjs`
 - Agents acceptance (M4), after changes to the workers, planner, scheduler, dev runs or the harness image. A scripted model on the host stands in for a real model route:
   - `COMPOSE="podman compose" node scripts/agents-acceptance.mjs`
-- Steering acceptance (M5), after changes to the supervisor's advisors, audits, propagation, reviews, the lifecycle drivers or full reset. It uses two units and a scripted host model; with Podman it also mounts the engine socket (`compose.lifecycle.yaml`) to test restarts. Allow about 20–30 minutes:
+- Steering acceptance (M5), after changes to the supervisor's advisors, audits, propagation, reviews, the lifecycle drivers or full reset. It uses two rigs and a scripted host model; with Podman it also mounts the engine socket (`compose.lifecycle.yaml`) to test restarts. Allow about 20–30 minutes:
   - `COMPOSE="podman compose" node scripts/steering-acceptance.mjs`
 - Repository hygiene: `git status --short`, `git diff --check` and `git diff --cached`. Read new untracked files directly, and verify relative documentation links and the `CLAUDE.md` import.

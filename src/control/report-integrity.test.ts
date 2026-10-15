@@ -12,21 +12,21 @@ import { createControlApi } from "./api.ts";
 import { issueCommand } from "./issue.ts";
 import { ControlStore, fingerprint } from "./store.ts";
 
-const tokens = { admin: "admin-token-abcdef", units: { "unit-a": "unit-token-abcdef" } };
-const unitHeaders = {
-  authorization: "Bearer unit-token-abcdef",
+const tokens = { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } };
+const rigHeaders = {
+  authorization: "Bearer rig-token-abcdef",
   "content-type": "application/json",
 };
 
 describe("signed reports at control", () => {
-  test("stale reports, gaps and reports from a ledger the unit left are refused", async () => {
-    const env = makeHarnessEnv("unit-a");
+  test("stale reports, gaps and reports from a ledger the rig left are refused", async () => {
+    const env = makeHarnessEnv("rig-a");
     const store = new ControlStore(":memory:");
     const control = createControlApi(store, tokens, env.keys.privateKeyPem);
     const post = (body: unknown) =>
-      control.request("/v1/units/unit-a/ingest", {
+      control.request("/v1/rigs/rig-a/ingest", {
         method: "POST",
-        headers: unitHeaders,
+        headers: rigHeaders,
         body: JSON.stringify(body),
       });
     env.service.ledger.appendEvent("t", "one", null, {});
@@ -35,7 +35,7 @@ describe("signed reports at control", () => {
     env.service.ledger.appendEvent("t", "two", null, {});
     const fresh = env.service.snapshot(0, 100) as Record<string, unknown>;
     assert.equal((await post(fresh)).status, 200);
-    // An older report (a replay) is refused: the unit cannot be frozen in an old state.
+    // An older report (a replay) is refused: the rig cannot be frozen in an old state.
     const replay = await post(old);
     assert.equal(replay.status, 409);
     // A page that starts past what control has is a gap.
@@ -45,12 +45,12 @@ describe("signed reports at control", () => {
     const gap = await post(ahead);
     assert.equal(gap.status, 409);
     assert.equal(((await gap.json()) as { expected_cursor: number }).expected_cursor, fresh.next);
-    const kinds = (store.events("unit-a", 0, 100) as { kind: string }[]).map((e) => e.kind);
+    const kinds = (store.events("rig-a", 0, 100) as { kind: string }[]).map((e) => e.kind);
     assert.deepEqual(kinds, ["one", "two"]);
-    // A unit that moved to a new ledger never goes back to the one it left.
-    const base = { unit: "unit-a", cursor: 0, next: 0, events: [], summary: {} };
+    // A rig that moved to a new ledger never goes back to the one it left.
+    const base = { rig: "rig-a", cursor: 0, next: 0, events: [], summary: {} };
     store.ingest({ ...base, ledger_id: "ledger-new", generated_at: new Date().toISOString() });
-    const back = store.reportCheck("unit-a", {
+    const back = store.reportCheck("rig-a", {
       ledgerId: String(fresh.ledger_id),
       cursor: 0,
       generatedAt: new Date(Date.now() + 1000).toISOString(),
@@ -58,8 +58,8 @@ describe("signed reports at control", () => {
     assert.equal(back.ok, false);
   });
 
-  test("with owner acceptance required, a unit's first key is held, and only the checked one is accepted", async () => {
-    const env = makeHarnessEnv("unit-a");
+  test("with owner acceptance required, a rig's first key is held, and only the checked one is accepted", async () => {
+    const env = makeHarnessEnv("rig-a");
     const store = new ControlStore(":memory:");
     const control = createControlApi(store, tokens, env.keys.privateKeyPem, {
       staleAfterMs: 180_000,
@@ -67,20 +67,20 @@ describe("signed reports at control", () => {
     });
     const snap = env.service.snapshot(0, 100);
     const post = () =>
-      control.request("/v1/units/unit-a/ingest", {
+      control.request("/v1/rigs/rig-a/ingest", {
         method: "POST",
-        headers: unitHeaders,
+        headers: rigHeaders,
         body: JSON.stringify(snap),
       });
     assert.equal((await post()).status, 409);
-    assert.equal(store.unitKey("unit-a").pubkey, null);
-    const wrong = await control.request("/v1/units/unit-a/key/accept?fingerprint=0000", {
+    assert.equal(store.rigKey("rig-a").pubkey, null);
+    const wrong = await control.request("/v1/rigs/rig-a/key/accept?fingerprint=0000", {
       method: "POST",
       headers: { authorization: `Bearer ${tokens.admin}` },
     });
     assert.equal(wrong.status, 404);
-    const fp = fingerprint(String(store.unitKey("unit-a").pending));
-    const ok = await control.request(`/v1/units/unit-a/key/accept?fingerprint=${fp}`, {
+    const fp = fingerprint(String(store.rigKey("rig-a").pending));
+    const ok = await control.request(`/v1/rigs/rig-a/key/accept?fingerprint=${fp}`, {
       method: "POST",
       headers: { authorization: `Bearer ${tokens.admin}` },
     });
@@ -91,12 +91,12 @@ describe("signed reports at control", () => {
 
 describe("the command queue", () => {
   test("expired commands are not relayed; the owner can cancel one; commands go through when reporting fails", async () => {
-    const env = makeHarnessEnv("unit-a");
+    const env = makeHarnessEnv("rig-a");
     const store = new ControlStore(":memory:");
-    store.setConfiguredUnits(["unit-a"]);
+    store.setConfiguredRigs(["rig-a"]);
     const control = createControlApi(store, tokens, env.keys.privateKeyPem);
     const expired = issueCommand(store, env.keys.privateKeyPem, {
-      unit: "unit-a",
+      rig: "rig-a",
       kind: "export_now",
       payload: {},
       ttlMinutes: 1,
@@ -108,7 +108,7 @@ describe("the command queue", () => {
       )
       .run(new Date(Date.now() - 60_000).toISOString(), expired.id);
     const cancel = issueCommand(store, env.keys.privateKeyPem, {
-      unit: "unit-a",
+      rig: "rig-a",
       kind: "export_now",
       payload: {},
       issuedBy: "owner:test",
@@ -119,13 +119,13 @@ describe("the command queue", () => {
     });
     assert.equal(r.status, 200);
     const keep = issueCommand(store, env.keys.privateKeyPem, {
-      unit: "unit-a",
+      rig: "rig-a",
       kind: "export_now",
       payload: {},
       issuedBy: "owner:test",
     });
     assert.deepEqual(
-      store.pendingCommands("unit-a").map((c) => c.envelope.id),
+      store.pendingCommands("rig-a").map((c) => c.envelope.id),
       [keep.id],
     );
     assert.equal(store.command(expired.id)?.status, "expired");
@@ -140,11 +140,11 @@ describe("the command queue", () => {
     await assert.rejects(
       relayOnce(
         {
-          unit: "unit-a",
+          rig: "rig-a",
           harnessUrl: "http://harness",
           harnessToken: "sup",
           controlUrl: "http://control",
-          controlToken: "unit-token-abcdef",
+          controlToken: "rig-token-abcdef",
           fetchImpl,
         },
         { cursor: 0 },
@@ -155,13 +155,13 @@ describe("the command queue", () => {
 
   test("a command too large to deliver is refused when it is issued", () => {
     const store = new ControlStore(":memory:");
-    store.setConfiguredUnits(["unit-a"]);
+    store.setConfiguredRigs(["rig-a"]);
     assert.throws(
       () =>
         issueCommand(store, generateSigningKeys().privateKeyPem, {
-          unit: "unit-a",
-          kind: "pause_instance",
-          payload: { instance: "i-1", reason: "x".repeat(4 * 1024 * 1024) },
+          rig: "rig-a",
+          kind: "pause_run",
+          payload: { run: "i-1", reason: "x".repeat(4 * 1024 * 1024) },
           issuedBy: "owner:test",
         }),
       /too large/,

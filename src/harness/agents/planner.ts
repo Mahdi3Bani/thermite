@@ -14,7 +14,7 @@ import type { Assignment, Evidence, FamilyView } from "./registry.ts";
  */
 
 export interface PlannerInput {
-  instance: string;
+  run: string;
   epoch: number;
   laneCount: number;
   objective: string;

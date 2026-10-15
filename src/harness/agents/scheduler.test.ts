@@ -89,7 +89,7 @@ describe("agent scheduler", () => {
           runner,
           laneTool,
           model,
-          // As over the API: the trial's token decides instance, lane and parent.
+          // As over the API: the trial's token decides run, lane and parent.
           submit: (req) => env.service.submitForTrial(String(spec.token), req) as never,
           status: async (id) => env.service.attemptStatus(id),
         }),
@@ -151,7 +151,7 @@ describe("agent scheduler", () => {
     const a = (
       await env.service.submitAttempt(
         {
-          instance: "js-1",
+          run: "js-1",
           lane: "lane-1",
           patch_base64: env.patch(FAST_KERNEL),
           hypothesis: "a",
@@ -173,7 +173,7 @@ describe("agent scheduler", () => {
     const b = (
       await env.service.submitAttempt(
         {
-          instance: "js-1",
+          run: "js-1",
           patch_base64: env.patch(`${FAST_KERNEL}// b\n`),
           hypothesis: "b",
           known_flaws: [],
@@ -189,7 +189,7 @@ describe("agent scheduler", () => {
       judgedBy: "t",
     });
     env.ledger.promote({
-      instance: "js-1",
+      run: "js-1",
       expectedSeq: 1,
       attempt: b,
       commitSha: String(env.ledger.getAttempt(b)?.commit_sha),
@@ -281,10 +281,10 @@ describe("agent scheduler", () => {
     });
     await scheduler.tick(); // epoch 1, a trial that runs until it is killed
     await running;
-    const r = await env.service.applyCommand(env.sign("reset_workers", { instance: "js-1" }));
+    const r = await env.service.applyCommand(env.sign("reset_workers", { run: "js-1" }));
     assert.ok(r.status === "applied" && r.accepted, JSON.stringify(r));
     const refused = await env.service.applyCommand(
-      env.sign("reset_workers", { instance: "js-1", reseed_commit: "a".repeat(40) }),
+      env.sign("reset_workers", { run: "js-1", reseed_commit: "a".repeat(40) }),
     );
     assert.ok(refused.status === "applied" && !refused.accepted);
     await scheduler.tick(); // applies the reset, then plans epoch 2
@@ -301,7 +301,7 @@ describe("agent scheduler", () => {
     await scheduler.idle();
   });
 
-  test("a pause stops the instance's planner call and running trials at once", async () => {
+  test("a pause stops the run's planner call and running trials at once", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 3 } });
     await env.service.applyCommand(env.assign);
     // A model route that never answers: the planner call hangs until it is cancelled.
@@ -336,7 +336,7 @@ describe("agent scheduler", () => {
     const tick = planning.tick();
     while (requests === 0) await new Promise((r) => setTimeout(r, 50));
     const paused = await env.service.applyCommand(
-      env.sign("pause_instance", { instance: "js-1", reason: "test" }),
+      env.sign("pause_run", { run: "js-1", reason: "test" }),
     );
     assert.ok(paused.status === "applied" && paused.accepted, JSON.stringify(paused));
     const t0 = Date.now();
@@ -351,9 +351,7 @@ describe("agent scheduler", () => {
     hang.close();
 
     // A running trial: the pause kills it without waiting for the next tick.
-    const resumed = await env.service.applyCommand(
-      env.sign("resume_instance", { instance: "js-1" }),
-    );
+    const resumed = await env.service.applyCommand(env.sign("resume_run", { run: "js-1" }));
     assert.ok(resumed.status === "applied" && resumed.accepted, JSON.stringify(resumed));
     const fake = await startFakeModel(() => ({
       toolCalls: [
@@ -378,9 +376,7 @@ describe("agent scheduler", () => {
       env.ledger.db.prepare("select count(*) as n from trial where ended_at is null").get()?.n,
       1,
     );
-    await env.service.applyCommand(
-      env.sign("pause_instance", { instance: "js-1", reason: "test" }),
-    );
+    await env.service.applyCommand(env.sign("pause_run", { run: "js-1", reason: "test" }));
     const t1 = Date.now();
     await s2.idle();
     assert.ok(Date.now() - t1 < 5000);
@@ -388,11 +384,11 @@ describe("agent scheduler", () => {
     await fake.close();
   });
 
-  test("a judge-only instance plans no epoch and starts no trial", async () => {
+  test("a judge-only run plans no epoch and starts no trial", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 }, agents: false });
     const r = await env.service.applyCommand(env.assign);
     assert.ok(r.status === "applied" && r.accepted, JSON.stringify(r));
-    assert.equal(env.ledger.getInstance("js-1")?.agents, false);
+    assert.equal(env.ledger.getRun("js-1")?.agents, false);
     let asked = 0;
     const fake = await startFakeModel(() => {
       asked++;
@@ -418,7 +414,7 @@ describe("agent scheduler", () => {
     // The judge still works on it: a submitted attempt is judged.
     const sub = (await env.service.submitAttempt(
       {
-        instance: "js-1",
+        run: "js-1",
         patch_base64: env.patch(FAST_KERNEL),
         hypothesis: "less work",
         known_flaws: [],
@@ -443,7 +439,7 @@ describe("agent scheduler", () => {
     const registry = scheduler0(env).registry;
     registry.startTrial({
       id: "t-x",
-      instance: "js-1",
+      run: "js-1",
       lane: "lane-1",
       epoch: 1,
       family: "f",
@@ -476,7 +472,7 @@ describe("agent scheduler", () => {
     const a = (
       await env.service.submitAttempt(
         {
-          instance: "js-1",
+          run: "js-1",
           lane: "lane-1",
           patch_base64: env.patch(FAST_KERNEL),
           hypothesis: "a",
@@ -514,7 +510,7 @@ describe("agent scheduler", () => {
     scheduler.registry.setLaneBest("js-1", "lane-1", a, "t");
     // 40% of the hour has passed.
     env.ledger.db
-      .prepare("update instance set created_at = ? where id = 'js-1'")
+      .prepare("update run set created_at = ? where id = 'js-1'")
       .run(new Date(Date.now() - 0.4 * 3_600_000).toISOString());
     await scheduler.tick();
     await scheduler.idle();

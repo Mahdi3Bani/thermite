@@ -19,7 +19,7 @@ async function submit(env: ReturnType<typeof makeJudgeEnv>, kernel: string, flaw
   return (
     await env.service.submitAttempt(
       {
-        instance: "js-1",
+        run: "js-1",
         patch_base64: env.patch(kernel),
         hypothesis: "h",
         known_flaws: flaws,
@@ -40,7 +40,7 @@ function signAs(
     {
       v: 1,
       id: randomUUID(),
-      unit: "unit-a",
+      rig: "rig-a",
       kind,
       issued_by: issuer,
       issued_at: new Date(Date.now() - 1000).toISOString(),
@@ -164,7 +164,7 @@ describe("audits", () => {
     assert.equal(again.status, 409);
     assert.equal(env.ledger.currentChampion("js-1").seq, 1);
     const approved = await env.service.applyCommand(
-      env.sign("approve_promotion", { instance: "js-1", attempt: id }),
+      env.sign("approve_promotion", { run: "js-1", attempt: id }),
     );
     assert.ok(approved.status === "applied" && approved.accepted, JSON.stringify(approved));
     assert.equal(env.ledger.currentChampion("js-1").attempt, id);
@@ -186,13 +186,13 @@ describe("audits", () => {
     assert.equal(String(big.ledger.getAttempt(large)?.lifecycle), "awaiting_approval");
     // An agent's MCP or API credential cannot approve: control records who issued a command.
     const byAgent = signAs(big, "agent:mcp", "approve_promotion", {
-      instance: "js-1",
+      run: "js-1",
       attempt: large,
     });
     const refused = await big.service.applyCommand(byAgent);
     assert.ok(refused.status === "applied" && !refused.accepted, JSON.stringify(refused));
     const ok = await big.service.applyCommand(
-      big.sign("approve_promotion", { instance: "js-1", attempt: large }),
+      big.sign("approve_promotion", { run: "js-1", attempt: large }),
     );
     assert.ok(ok.status === "applied" && ok.accepted, JSON.stringify(ok));
 
@@ -247,7 +247,7 @@ describe("audits", () => {
     assert.equal(String(env2.ledger.getAttempt(flawed)?.lifecycle), "awaiting_approval");
     assert.equal(env2.ledger.currentChampion("js-1").seq, 1);
     const r = await env2.service.applyCommand(
-      env2.sign("approve_promotion", { instance: "js-1", attempt: flawed }),
+      env2.sign("approve_promotion", { run: "js-1", attempt: flawed }),
     );
     assert.ok(r.status === "applied" && r.accepted, JSON.stringify(r));
     assert.equal(env2.ledger.currentChampion("js-1").attempt, flawed);
@@ -267,7 +267,7 @@ describe("audits when the champion moves", () => {
     env.ledger.db.prepare("update job set state = 'cancelled' where state = 'queued'").run();
     env.ledger.recordVerdict({ attempt: y, verdict: "win_confirmed", reasons: "t", judgedBy: "t" });
     env.ledger.promote({
-      instance: "js-1",
+      run: "js-1",
       expectedSeq: 1,
       attempt: y,
       commitSha: String(env.ledger.getAttempt(y)?.commit_sha),
@@ -275,7 +275,7 @@ describe("audits when the champion moves", () => {
     });
     // The owner overrides the hold: the champion moved, so it is screened again...
     const r = await env.service.applyCommand(
-      env.sign("approve_promotion", { instance: "js-1", attempt: x }),
+      env.sign("approve_promotion", { run: "js-1", attempt: x }),
     );
     assert.ok(r.status === "applied" && r.accepted, JSON.stringify(r));
     assert.equal((r.result as { rescreen?: boolean }).rescreen, true);
@@ -291,7 +291,7 @@ describe("audits when the champion moves", () => {
 });
 
 describe("propagation", () => {
-  test("another unit's champion is judged by the receiving unit and accepted there", async () => {
+  test("another rig's champion is judged by the receiving rig and accepted there", async () => {
     const a = makeJudgeEnv();
     await a.service.applyCommand(a.assign);
     const win = await submit(a, FAST_KERNEL);
@@ -311,23 +311,23 @@ describe("propagation", () => {
     assert.equal(published.seq, 2);
 
     const b = makeJudgeEnv({
-      unit: "unit-b",
+      rig: "rig-b",
       share: { root: a.root, seed: a.seed, kitCommit: a.kitCommit },
     });
     await b.service.applyCommand(b.assign);
     // What B's supervisor does: fetch the patch from the results repository into B's inbox.
-    const staged = join(b.paths.inboxDir, "propagate", "unit-a", "js-1", "2.patch");
+    const staged = join(b.paths.inboxDir, "propagate", "rig-a", "js-1", "2.patch");
     mkdirSync(dirname(staged), { recursive: true });
     copyFileSync(join(exp.dir, published.path), staged);
     const command = (over: Record<string, unknown> = {}) =>
       b.sign("propagate", {
-        instance: "js-1",
-        source_unit: "unit-a",
-        source_instance: "js-1",
+        run: "js-1",
+        source_rig: "rig-a",
+        source_run: "js-1",
         source_seq: 2,
         import: {
           kind: "champion_patch",
-          path: "propagate/unit-a/js-1/2.patch",
+          path: "propagate/rig-a/js-1/2.patch",
           repo: published.repo,
           base_commit: published.base_commit,
           tree: published.tree,
@@ -353,8 +353,8 @@ describe("propagation", () => {
       .eventsAfter(0, 10_000)
       .events.find((e) => e.kind === "propagation_accepted")?.body as Record<string, unknown>;
     assert.deepEqual(
-      { unit: accepted.source_unit, instance: accepted.source_instance, seq: accepted.source_seq },
-      { unit: "unit-a", instance: "js-1", seq: 2 },
+      { rig: accepted.source_rig, run: accepted.source_run, seq: accepted.source_seq },
+      { rig: "rig-a", run: "js-1", seq: 2 },
     );
     // The same tree as B's champion now: a second propagation is recognised as identical.
     const again = await b.service.applyCommand(command());
@@ -393,13 +393,13 @@ describe("goal reviews and conclusions", () => {
     const goalStatus = () =>
       String(
         env.ledger.db
-          .prepare("select status from goal where instance = 'js-1' and id = 'readable'")
+          .prepare("select status from goal where run = 'js-1' and id = 'readable'")
           .get()?.status,
       );
     await env.drain();
     assert.equal(goalStatus(), "not_runnable", "panel pass alone is not enough");
     const r = await env.service.applyCommand(
-      env.sign("accept_review", { instance: "js-1", review: id, accept: true }),
+      env.sign("accept_review", { run: "js-1", review: id, accept: true }),
     );
     assert.ok(r.status === "applied" && r.accepted, JSON.stringify(r));
     await env.drain();
@@ -418,7 +418,7 @@ describe("goal reviews and conclusions", () => {
       env.ledger.db.prepare("update attempt set family = 'closed-form' where id = ?").run(id);
       env.ledger.db
         .prepare(
-          "insert or ignore into family (instance, id, description, created_by, created_at) values ('js-1', 'closed-form', 'd', 't', ?)",
+          "insert or ignore into family (run, id, description, created_by, created_at) values ('js-1', 'closed-form', 'd', 't', ?)",
         )
         .run(new Date().toISOString());
     }
@@ -426,12 +426,12 @@ describe("goal reviews and conclusions", () => {
     const c = new Conclusions(env.ledger);
     const open = c.open("js-1");
     assert.ok(open, "a proposal exists");
-    assert.equal(env.ledger.getInstance("js-1")?.status, "running");
+    assert.equal(env.ledger.getRun("js-1")?.status, "running");
     const r = await env.service.applyCommand(
-      env.sign("conclude", { instance: "js-1", proposal: Number(open?.id), accept: true }),
+      env.sign("conclude", { run: "js-1", proposal: Number(open?.id), accept: true }),
     );
     assert.ok(r.status === "applied" && r.accepted, JSON.stringify(r));
-    assert.equal(env.ledger.getInstance("js-1")?.status, "closed");
+    assert.equal(env.ledger.getRun("js-1")?.status, "closed");
   });
 });
 
@@ -440,7 +440,7 @@ describe("supervisor limits", () => {
     const env = makeJudgeEnv({ heldOut: true });
     await env.service.applyCommand(env.assign);
     const api = createHarnessApi(env.service, tokens);
-    const brief = await api.request("/v1/brief?instance=js-1", {
+    const brief = await api.request("/v1/brief?run=js-1", {
       headers: auth(tokens.supervisor),
     });
     assert.equal(brief.status, 200);
@@ -450,13 +450,13 @@ describe("supervisor limits", () => {
       method: "POST",
       headers: auth(tokens.supervisor),
       body: JSON.stringify({
-        instance: "js-1",
+        run: "js-1",
         patch_base64: env.patch(FAST_KERNEL),
         hypothesis: "h",
       }),
     });
     assert.equal(attempt.status, 401);
-    const noBrief = await api.request("/v1/brief?instance=js-1", {
+    const noBrief = await api.request("/v1/brief?run=js-1", {
       headers: auth(tokens.proposer),
     });
     assert.equal(noBrief.status, 401);

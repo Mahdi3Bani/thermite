@@ -19,7 +19,7 @@ export type AuditTriggerKind = "absolute" | "ratio" | "known_flaws" | "adversari
 export interface AuditPackage {
   id: number;
   attempt: string;
-  instance: string;
+  run: string;
   reason: string;
   requested_at: string;
   hypothesis: string | null;
@@ -77,16 +77,16 @@ export class Audits {
     this.ledger = ledger;
   }
 
-  /** Confirmed gains of earlier wins in the instance (for the ratio-to-median trigger). */
-  priorDeltas(instance: string, except: string): number[] {
+  /** Confirmed gains of earlier wins in the run (for the ratio-to-median trigger). */
+  priorDeltas(run: string, except: string): number[] {
     return (
       this.ledger.db
         .prepare(
           `select v.delta as delta from verdict v join attempt a on a.id = v.attempt
-           where a.instance = ? and a.id != ? and v.verdict = 'win_confirmed' and v.delta is not null
+           where a.run = ? and a.id != ? and v.verdict = 'win_confirmed' and v.delta is not null
              and not exists (select 1 from verdict s where s.supersedes = v.id)`,
         )
-        .all(instance, except) as { delta: number }[]
+        .all(run, except) as { delta: number }[]
     ).map((r) => r.delta);
   }
 
@@ -95,7 +95,7 @@ export class Audits {
     attempt: string;
     /** The confirmation job that held the attempt: one audit per confirmation. */
     job: number;
-    instance: string;
+    run: string;
     trigger: AuditTriggerKind;
     reason: string;
     expectedSeq: number;
@@ -104,13 +104,13 @@ export class Audits {
     return this.ledger.tx(() => {
       const r = this.ledger.db
         .prepare(
-          `insert into audit (attempt, confirm_job, instance, trigger, reason, expected_seq, requested_at)
+          `insert into audit (attempt, confirm_job, run, trigger, reason, expected_seq, requested_at)
            values (?, ?, ?, ?, ?, ?, ?) on conflict (attempt, confirm_job) do nothing`,
         )
         .run(
           input.attempt,
           input.job,
-          input.instance,
+          input.run,
           input.trigger,
           input.reason,
           input.expectedSeq,
@@ -127,7 +127,7 @@ export class Audits {
           );
       this.ledger.appendEvent(input.by, "audit_requested", input.attempt, {
         audit: id,
-        instance: input.instance,
+        run: input.run,
         reason: input.reason,
         expected_seq: input.expectedSeq,
       });
@@ -174,7 +174,7 @@ export class Audits {
     return {
       id,
       attempt: String(au.attempt),
-      instance: String(au.instance),
+      run: String(au.run),
       reason: String(au.reason),
       requested_at: String(au.requested_at),
       hypothesis: a.hypothesis === null ? null : String(a.hypothesis),

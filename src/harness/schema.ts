@@ -1,8 +1,10 @@
+import type { DatabaseSync } from "node:sqlite";
+
 /**
  * Ledger migrations. Each entry runs once, in order, inside a transaction.
  * Append-only tables are enforced with triggers, not by convention.
  */
-export const MIGRATIONS: readonly string[] = [
+export const MIGRATIONS: readonly (string | ((db: DatabaseSync) => void))[] = [
   `
   create table meta (key text primary key, value text not null);
 
@@ -566,4 +568,29 @@ export const MIGRATIONS: readonly string[] = [
   );
   create index agent_message_pending on agent_message (instance, target) where delivered_at is null;
   `,
+  // 10: the owner's names (2026-10-15): an instance is a run, a unit is a rig. Every column
+  // named instance (or source_instance) becomes run (source_run), source_unit becomes
+  // source_rig, the instance table becomes run (indexes, triggers and references follow), and
+  // job specs name their run. Events are append-only and keep the names they were recorded
+  // with; readers see them under the new names (core/names.ts).
+  (db) => {
+    const tables = db
+      .prepare("select name from sqlite_master where type = 'table' and name not like 'sqlite_%'")
+      .all() as { name: string }[];
+    for (const { name } of tables) {
+      const cols = db.prepare(`pragma table_info(${name})`).all() as { name: string }[];
+      for (const c of cols) {
+        if (c.name === "instance") db.exec(`alter table ${name} rename column instance to run`);
+        if (c.name === "source_instance")
+          db.exec(`alter table ${name} rename column source_instance to source_run`);
+        // measurement.unit is a metric's unit and keeps its name.
+        if (c.name === "source_unit")
+          db.exec(`alter table ${name} rename column source_unit to source_rig`);
+      }
+    }
+    if (tables.some((t) => t.name === "instance")) db.exec("alter table instance rename to run");
+    db.exec(
+      "update job set spec = json_set(json_remove(spec, '$.instance'), '$.run', json_extract(spec, '$.instance')) where json_extract(spec, '$.instance') is not null",
+    );
+  },
 ];

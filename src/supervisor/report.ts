@@ -2,11 +2,11 @@ import type { AdviseState } from "./advise.ts";
 import type { ExportState } from "./git-export.ts";
 
 /**
- * The daily unit report to control: a short Markdown summary built from the harness's briefs
+ * The daily rig report to control: a short Markdown summary built from the harness's briefs
  * (deterministic, ledger-derived) and the supervisor's own records. No model writes it.
  */
 export async function dailyReport(input: {
-  unit: string;
+  rig: string;
   harnessUrl: string;
   harnessToken: string;
   exportState: ExportState;
@@ -21,12 +21,12 @@ export async function dailyReport(input: {
     if (!res.ok) throw new Error(`GET ${path} -> ${res.status}`);
     return res.json() as Promise<unknown>;
   };
-  const { instances } = (await get("/v1/instances")) as {
-    instances: { id: string; campaign: string; mode: string; status: string }[];
+  const { runs } = (await get("/v1/runs")) as {
+    runs: { id: string; campaign: string; mode: string; status: string }[];
   };
-  const lines = [`# Daily report: ${input.unit}`, "", `Generated ${new Date().toISOString()}.`, ""];
-  for (const inst of instances.filter((i) => i.status !== "closed")) {
-    const b = (await get(`/v1/brief?instance=${encodeURIComponent(inst.id)}`)) as {
+  const lines = [`# Daily report: ${input.rig}`, "", `Generated ${new Date().toISOString()}.`, ""];
+  for (const inst of runs.filter((i) => i.status !== "closed")) {
+    const b = (await get(`/v1/brief?run=${encodeURIComponent(inst.id)}`)) as {
       champion: { seq: number };
       families: { id: string; status: string; attempts: number; best_delta: number | null }[];
       evidence: { verdict: string | null; lifecycle: string }[];

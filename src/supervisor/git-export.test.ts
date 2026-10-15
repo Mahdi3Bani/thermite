@@ -13,14 +13,14 @@ const lsTree = (repo: string, branch: string) =>
     .split("\n");
 
 describe("supervisor git export", () => {
-  test("verified exports become packed commits on the unit's branches and are pushed", async () => {
-    const env = makeHarnessEnv("unit-a");
+  test("verified exports become packed commits on the rig's branches and are pushed", async () => {
+    const env = makeHarnessEnv("rig-a");
     await env.service.applyCommand(env.sign("assign_campaign", env.assignPayload()));
     const patch = env.patchFrom((d) =>
       appendFileSync(join(d, "src", "kernel", "k.c"), "/* a change */\n"),
     );
     const a = await env.service.submitAttempt(
-      { instance: "smoke-1", patch_base64: patch, hypothesis: "h", known_flaws: [] },
+      { run: "smoke-1", patch_base64: patch, hypothesis: "h", known_flaws: [] },
       "proposer",
     );
     await env.service.export("test");
@@ -30,7 +30,7 @@ describe("supervisor git export", () => {
     mkdirSync(remote);
     execFileSync("git", ["-C", remote, "init", "--bare", "--quiet"]);
     const cfg = {
-      unit: "unit-a",
+      rig: "rig-a",
       outboxDir: env.service.paths.outboxDir,
       workDir: join(root, "work"),
       remote: `file://${remote}`,
@@ -38,9 +38,9 @@ describe("supervisor git export", () => {
     const s1 = await exportOnce(cfg, { done: [] });
     assert.equal(s1.lastError, undefined);
     assert.equal(s1.done.length, 1);
-    const files = lsTree(remote, "thermite/unit-a/attempts");
+    const files = lsTree(remote, "thermite/rig-a/attempts");
     assert.ok(files.includes(`attempts/${a.attempt}.patch`), files.join(","));
-    assert.ok(lsTree(remote, "thermite/unit-a/ledger").includes("ledger.sqlite"));
+    assert.ok(lsTree(remote, "thermite/rig-a/ledger").includes("ledger.sqlite"));
 
     // Nothing new: nothing committed. A later export adds a commit on top.
     const s2 = await exportOnce(cfg, s1);
@@ -50,7 +50,7 @@ describe("supervisor git export", () => {
     assert.equal(s3.done.length, 2);
     const count = execFileSync(
       "git",
-      ["-C", remote, "rev-list", "--count", "thermite/unit-a/attempts"],
+      ["-C", remote, "rev-list", "--count", "thermite/rig-a/attempts"],
       {
         encoding: "utf8",
       },
@@ -59,20 +59,20 @@ describe("supervisor git export", () => {
   });
 
   test("a tampered export is refused and never pushed", async () => {
-    const env = makeHarnessEnv("unit-a");
+    const env = makeHarnessEnv("rig-a");
     await env.service.applyCommand(env.sign("assign_campaign", env.assignPayload()));
     const exp = await env.service.export("test");
     appendFileSync(join(exp.dir, "events.jsonl"), '{"forged":true}\n');
     const root = mkdtempSync(join(tmpdir(), "thermite-results-"));
     const s = await exportOnce(
-      { unit: "unit-a", outboxDir: env.service.paths.outboxDir, workDir: join(root, "work") },
+      { rig: "rig-a", outboxDir: env.service.paths.outboxDir, workDir: join(root, "work") },
       { done: [] },
     );
     assert.match(String(s.lastError), /hash mismatch events.jsonl/);
     assert.throws(() =>
       execFileSync(
         "git",
-        ["-C", join(root, "work", "results.git"), "rev-parse", "thermite/unit-a/attempts"],
+        ["-C", join(root, "work", "results.git"), "rev-parse", "thermite/rig-a/attempts"],
         {
           stdio: "ignore",
         },

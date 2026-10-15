@@ -60,7 +60,7 @@ export const WIPE_MARKER = "WIPE_REQUESTED";
 
 /**
  * Carries out a requested wipe at start: everything in the state directory goes except the
- * unit's signing key (its identity stays), and the scratch directory is emptied. Returns
+ * rig's signing key (its identity stays), and the scratch directory is emptied. Returns
  * whether a wipe happened.
  */
 export function wipeIfRequested(paths: HarnessPaths, keep: string[]): boolean {
@@ -123,7 +123,7 @@ export type CommandOutcome =
   | { status: "in_progress" };
 
 export const SubmitRequest = z.object({
-  instance: z.string().min(1),
+  run: z.string().min(1),
   lane: z.string().min(1).optional(),
   /** Base64 of `git add -A && git diff --cached --binary` against the parent. */
   patch_base64: z.string().min(1),
@@ -151,14 +151,14 @@ export interface SubmitResult {
  * layer authenticates callers and delegates here.
  */
 export class HarnessService {
-  readonly unit: string;
+  readonly rig: string;
   readonly ledger: Ledger;
   readonly paths: HarnessPaths;
   /** What the agents and the judge are doing now, for control's live view (never judged). */
   readonly live = new LiveLog();
   private readonly controlPublicKeyPem: string;
   private readonly clock: () => Date;
-  private readonly unitKeys: KeyPairPem | undefined;
+  private readonly rigKeys: KeyPairPem | undefined;
   /** Commands being applied right now, so a concurrent re-send cannot run one twice. */
   private readonly inFlight = new Set<string>();
   /** Trials whose submission is being recorded right now. */
@@ -172,18 +172,18 @@ export class HarnessService {
   readonly promotion: "auto" | "owner_approval";
 
   constructor(input: {
-    unit: string;
+    rig: string;
     ledger: Ledger;
     paths: HarnessPaths;
     controlPublicKeyPem: string;
     clock?: (() => Date) | undefined;
-    /** The unit's report-signing key (generated once, kept in the private state). */
-    unitKeys?: KeyPairPem | undefined;
+    /** The rig's report-signing key (generated once, kept in the private state). */
+    rigKeys?: KeyPairPem | undefined;
     promotion?: "auto" | "owner_approval" | undefined;
   }) {
-    this.unitKeys = input.unitKeys;
+    this.rigKeys = input.rigKeys;
     this.promotion = input.promotion ?? "owner_approval";
-    this.unit = input.unit;
+    this.rig = input.rig;
     this.clock = input.clock ?? (() => new Date());
     this.ledger = input.ledger;
     this.paths = input.paths;
@@ -197,7 +197,7 @@ export class HarnessService {
   // ------------------------------------------------------------ commands
 
   async applyCommand(input: unknown, actor = "supervisor"): Promise<CommandOutcome> {
-    const verified = verifyCommand(input, this.controlPublicKeyPem, this.unit, this.clock());
+    const verified = verifyCommand(input, this.controlPublicKeyPem, this.rig, this.clock());
     if (!verified.ok && verified.authenticId) {
       // Authentic but expired (or otherwise late): if it was applied before, report that.
       const prior = this.ledger.getCommand(verified.authenticId);
@@ -220,10 +220,10 @@ export class HarnessService {
       .get() as { value: string } | undefined;
     if (notBefore && Date.parse(envelope.issued_at) < Date.parse(notBefore.value)) {
       this.ledger.appendEvent(actor, "command_rejected", null, {
-        reason: "issued before this unit's state was wiped",
+        reason: "issued before this rig's state was wiped",
         kind: envelope.kind,
       });
-      return { status: "rejected", reason: "issued before this unit's state was wiped" };
+      return { status: "rejected", reason: "issued before this rig's state was wiped" };
     }
     if (this.inFlight.has(envelope.id)) return { status: "in_progress" };
 
@@ -264,38 +264,38 @@ export class HarnessService {
     switch (envelope.kind) {
       case "assign_campaign":
         return this.assignCampaign(CommandPayloads.assign_campaign.parse(payload), by);
-      case "pause_instance": {
-        const p = CommandPayloads.pause_instance.parse(payload);
-        this.ledger.setInstanceStatus(p.instance, "paused", p.reason, by);
-        return { instance: p.instance, status: "paused" };
+      case "pause_run": {
+        const p = CommandPayloads.pause_run.parse(payload);
+        this.ledger.setRunStatus(p.run, "paused", p.reason, by);
+        return { run: p.run, status: "paused" };
       }
-      case "resume_instance": {
-        const p = CommandPayloads.resume_instance.parse(payload);
-        const inst = this.requireInstance(p.instance);
-        if (inst.status === "closed") throw new Error(`instance ${p.instance} is closed`);
-        // One running instance per unit: resuming one pauses the others.
+      case "resume_run": {
+        const p = CommandPayloads.resume_run.parse(payload);
+        const inst = this.requireRun(p.run);
+        if (inst.status === "closed") throw new Error(`run ${p.run} is closed`);
+        // One running run per rig: resuming one pauses the others.
         this.ledger.tx(() => {
-          this.pauseOthers(p.instance, by);
-          this.ledger.setInstanceStatus(p.instance, "running", null, by);
+          this.pauseOthers(p.run, by);
+          this.ledger.setRunStatus(p.run, "running", null, by);
         });
-        return { instance: p.instance, status: "running" };
+        return { run: p.run, status: "running" };
       }
       case "redirect": {
         const p = CommandPayloads.redirect.parse(payload);
-        this.requireInstance(p.instance);
+        this.requireRun(p.run);
         conflictCheck(p.directives);
-        const ids = this.ledger.addDirectiveSet(p.instance, by, p.directives, p.replace);
-        return { instance: p.instance, directives: ids };
+        const ids = this.ledger.addDirectiveSet(p.run, by, p.directives, p.replace);
+        return { run: p.run, directives: ids };
       }
       case "message_agent": {
         const p = CommandPayloads.message_agent.parse(payload);
-        this.requireInstance(p.instance);
+        this.requireRun(p.run);
         const r = this.ledger.db
           .prepare(
-            "insert into agent_message (instance, target, text, issued_by, created_at) values (?, ?, ?, ?, ?)",
+            "insert into agent_message (run, target, text, issued_by, created_at) values (?, ?, ?, ?, ?)",
           )
-          .run(p.instance, p.to, p.text, by, this.clock().toISOString());
-        this.ledger.appendEvent(by, "agent_message", p.instance, {
+          .run(p.run, p.to, p.text, by, this.clock().toISOString());
+        this.ledger.appendEvent(by, "agent_message", p.run, {
           to: p.to,
           chars: p.text.length,
         });
@@ -303,20 +303,20 @@ export class HarnessService {
           source: p.to.startsWith("trial:") ? p.to : p.to === "planner" ? "planner" : "supervisor",
           kind: "message",
           text: `Owner to ${p.to}: ${p.text}`,
-          instance: p.instance,
+          run: p.run,
           ...(p.to.startsWith("lane-") ? { lane: p.to } : {}),
         });
         return { message: Number(r.lastInsertRowid), to: p.to };
       }
       case "reset_workers": {
-        // The scheduler acts on the event: it kills the instance's running trials, clears the
+        // The scheduler acts on the event: it kills the run's running trials, clears the
         // lane bests and ends the epoch, so lanes start again from the champion.
         const p = CommandPayloads.reset_workers.parse(payload);
-        this.requireInstance(p.instance);
+        this.requireRun(p.run);
         if (p.reseed_commit)
           throw new Error("re-seeding lanes is not available in this version; reset without it");
-        this.ledger.appendEvent(by, "workers_reset", p.instance, {});
-        return { instance: p.instance, reset: true };
+        this.ledger.appendEvent(by, "workers_reset", p.run, {});
+        return { run: p.run, reset: true };
       }
       case "propagate":
         return receivePropagation(this, CommandPayloads.propagate.parse(payload), by);
@@ -337,36 +337,36 @@ export class HarnessService {
         return this.approvePromotion(CommandPayloads.approve_promotion.parse(payload), by);
       case "accept_review": {
         const p = CommandPayloads.accept_review.parse(payload);
-        this.requireInstance(p.instance);
-        new Reviews(this.ledger).ownerDecision(p.review, p.instance, p.accept, p.note, by);
+        this.requireRun(p.run);
+        new Reviews(this.ledger).ownerDecision(p.review, p.run, p.accept, p.note, by);
         // The goal tree is checked again with the owner's word.
         this.ledger.enqueueJob({
           kind: "validate",
           priority: 40,
-          spec: { instance: p.instance },
+          spec: { run: p.run },
           actor: by,
         });
         return { review: p.review, decision: p.accept ? "accepted" : "rejected" };
       }
       case "conclude": {
         const p = CommandPayloads.conclude.parse(payload);
-        this.requireInstance(p.instance);
-        return new Conclusions(this.ledger).decide(p.instance, p.proposal, p.accept, p.note, by);
+        this.requireRun(p.run);
+        return new Conclusions(this.ledger).decide(p.run, p.proposal, p.accept, p.note, by);
       }
     }
   }
 
-  private pauseOthers(instance: string, by: string): void {
-    for (const other of this.ledger.listInstances()) {
-      if (other.status === "running" && other.id !== instance) {
-        this.ledger.setInstanceStatus(other.id, "paused", `replaced by ${instance}`, by);
+  private pauseOthers(run: string, by: string): void {
+    for (const other of this.ledger.listRuns()) {
+      if (other.status === "running" && other.id !== run) {
+        this.ledger.setRunStatus(other.id, "paused", `replaced by ${run}`, by);
       }
     }
   }
 
-  private requireInstance(id: string) {
-    const inst = this.ledger.getInstance(id);
-    if (!inst) throw new LedgerError("not_found", `no instance ${id}`);
+  private requireRun(id: string) {
+    const inst = this.ledger.getRun(id);
+    if (!inst) throw new LedgerError("not_found", `no run ${id}`);
     return inst;
   }
 
@@ -433,8 +433,7 @@ export class HarnessService {
     if (parsed.sha !== p.contract_sha) throw new Error("contract hash does not match contract_sha");
     const contract = parsed.contract;
     // Validate everything before changing anything: a refused assign leaves no trace but events.
-    if (this.ledger.getInstance(p.instance))
-      throw new Error(`instance ${p.instance} already exists`);
+    if (this.ledger.getRun(p.run)) throw new Error(`run ${p.run} already exists`);
     const existing = this.ledger.getContract(contract.campaign, contract.version);
     if (existing && contractSha(existing) !== parsed.sha) {
       throw new Error(
@@ -466,13 +465,13 @@ export class HarnessService {
         );
       }
       // The ref first: if the ledger write below fails, a retry simply overwrites it.
-      await updateRef(mirror, `refs/thermite/instances/${p.instance}/champion`, seed.commit);
+      await updateRef(mirror, `refs/thermite/runs/${p.run}/champion`, seed.commit);
     }
     this.ledger.tx(() => {
       this.ledger.storeContract(contract, parsed.sha, by);
-      this.pauseOthers(p.instance, by);
-      this.ledger.createInstance({
-        id: p.instance,
+      this.pauseOthers(p.run, by);
+      this.ledger.createRun({
+        id: p.run,
         contract,
         contractSha: parsed.sha,
         seedRepo: seed.repo,
@@ -482,7 +481,7 @@ export class HarnessService {
         actor: by,
       });
     });
-    return { instance: p.instance, contract_sha: parsed.sha, imported, agents: p.agents !== false };
+    return { run: p.run, contract_sha: parsed.sha, imported, agents: p.agents !== false };
   }
 
   /**
@@ -490,7 +489,7 @@ export class HarnessService {
    * at it. Returns the current seq instead when the champion moved since the attempt was judged.
    */
   async promoteAttempt(input: {
-    instance: string;
+    run: string;
     attempt: string;
     expectedSeq: number;
     by: string;
@@ -498,21 +497,21 @@ export class HarnessService {
     const a = this.ledger.getAttempt(input.attempt);
     if (!a) throw new LedgerError("not_found", `no attempt ${input.attempt}`);
     const r = this.ledger.promote({
-      instance: input.instance,
+      run: input.run,
       expectedSeq: input.expectedSeq,
       attempt: input.attempt,
       commitSha: String(a.commit_sha),
       by: input.by,
     });
     if (!r.ok) return { promoted: false, currentSeq: r.currentSeq };
-    await this.syncChampionRef(input.instance);
+    await this.syncChampionRef(input.run);
     this.ledger.setAttemptLifecycle(input.attempt, "promoted", input.by);
     // A new goal-campaign champion is validated afresh, so the goal tree reflects it.
-    if (this.contractFor(input.instance).mode === "goal") {
+    if (this.contractFor(input.run).mode === "goal") {
       this.ledger.enqueueJob({
         kind: "validate",
         priority: 60,
-        spec: { instance: input.instance },
+        spec: { run: input.run },
         actor: input.by,
       });
     }
@@ -525,7 +524,7 @@ export class HarnessService {
   private static readonly HOUSEKEEPING = new Set([
     "command",
     "command_rejected",
-    "instance_status",
+    "run_status",
     "export_written",
     "champion_published",
     "wipe_requested",
@@ -546,7 +545,7 @@ export class HarnessService {
     const exp = this.ledger.db
       .prepare("select id, through_event, manifest from export where path = ?")
       .get(p.export) as { id: number; through_event: number; manifest: string } | undefined;
-    if (!exp) throw new Error(`no export ${p.export} in this unit`);
+    if (!exp) throw new Error(`no export ${p.export} in this rig`);
     if (!(JSON.parse(exp.manifest) as { full?: boolean }).full)
       throw new Error(`export ${p.export} is not a full export`);
     if (exp.through_event < p.through_event)
@@ -561,8 +560,8 @@ export class HarnessService {
         `research was recorded after the export (${since.map((r) => `${r.kind} ${r.n}`).join(", ")}): export again`,
       );
     }
-    for (const inst of this.ledger.listInstances()) {
-      if (inst.status === "running") this.ledger.setInstanceStatus(inst.id, "paused", "wiping", by);
+    for (const inst of this.ledger.listRuns()) {
+      if (inst.status === "running") this.ledger.setRunStatus(inst.id, "paused", "wiping", by);
     }
     writeFileSync(
       join(this.paths.stateDir, WIPE_MARKER),
@@ -585,15 +584,13 @@ export class HarnessService {
     const audits = new Audits(this.ledger);
     const out: (AuditPackage & { diff: string })[] = [];
     for (const id of audits.pending()) {
-      const row = this.ledger.db
-        .prepare("select attempt, instance from audit where id = ?")
-        .get(id) as {
+      const row = this.ledger.db.prepare("select attempt, run from audit where id = ?").get(id) as {
         attempt: string;
-        instance: string;
+        run: string;
       };
-      const pkg = audits.package(id, this.contractFor(row.instance));
+      const pkg = audits.package(id, this.contractFor(row.run));
       const a = this.ledger.getAttempt(row.attempt) as Record<string, unknown>;
-      const inst = this.requireInstance(row.instance);
+      const inst = this.requireRun(row.run);
       const diff = await patchBetween(
         this.mirrorFor(inst.seed_repo),
         String(a.parent_commit),
@@ -618,7 +615,7 @@ export class HarnessService {
   }): Promise<unknown> {
     const audit = new Audits(this.ledger).decide(input);
     const a = this.ledger.getAttempt(input.attempt) as Record<string, unknown>;
-    const instance = String(a.instance);
+    const run = String(a.run);
     const expectedSeq = Number(audit.expected_seq);
     if (String(a.lifecycle) !== "awaiting_audit") {
       return { decision: input.decision, effect: `none: the attempt is ${a.lifecycle}` };
@@ -626,7 +623,7 @@ export class HarnessService {
     const toOwner = (why: string) => {
       this.ledger.tx(() => {
         this.ledger.appendEvent(input.auditor, "promotion_pending", input.attempt, {
-          instance,
+          run,
           expected_seq: expectedSeq,
           commit: a.commit_sha,
           reason: why,
@@ -650,7 +647,7 @@ export class HarnessService {
     if (String(audit.trigger) === "absolute") return toOwner("a gain this large needs the owner");
     if (this.promotion === "owner_approval") return toOwner("promotion policy: owner approval");
     const r = await this.promoteAttempt({
-      instance,
+      run,
       attempt: input.attempt,
       expectedSeq,
       by: input.auditor,
@@ -667,15 +664,15 @@ export class HarnessService {
    * the direction registry, recent evidence, epochs and the directives in force. Nothing from
    * held-out cells, and no worker text beyond hypotheses.
    */
-  brief(instance: string): unknown {
-    const inst = this.requireInstance(instance);
-    const contract = this.contractFor(instance);
+  brief(run: string): unknown {
+    const inst = this.requireRun(run);
+    const contract = this.contractFor(run);
     const registry = new Registry(this.ledger);
-    const champion = this.ledger.currentChampion(instance);
+    const champion = this.ledger.currentChampion(run);
     const epochs = (
       this.ledger.db
-        .prepare("select * from epoch where instance = ? order by n desc limit 5")
-        .all(instance) as Record<string, unknown>[]
+        .prepare("select * from epoch where run = ? order by n desc limit 5")
+        .all(run) as Record<string, unknown>[]
     ).map((e) => ({
       n: Number(e.n),
       source: String(e.source),
@@ -688,16 +685,14 @@ export class HarnessService {
     }));
     const goals =
       contract.mode === "goal"
-        ? (this.ledger.db
-            .prepare("select id, status from goal where instance = ?")
-            .all(instance) as {
+        ? (this.ledger.db.prepare("select id, status from goal where run = ?").all(run) as {
             id: string;
             status: string;
           }[])
         : undefined;
     return {
-      unit: this.unit,
-      instance,
+      rig: this.rig,
+      run,
       campaign: inst.campaign,
       status: inst.status,
       mode: contract.mode,
@@ -714,36 +709,36 @@ export class HarnessService {
             : { topic: contract.topic, questions: contract.questions },
       editable_paths: "editable_paths" in contract ? contract.editable_paths : [],
       champion: { seq: champion.seq, attempt: champion.attempt },
-      families: registry.families(instance),
-      evidence: registry.evidence(instance, 40),
+      families: registry.families(run),
+      evidence: registry.evidence(run, 40),
       epochs,
-      directives: this.ledger.activeDirectives(instance),
+      directives: this.ledger.activeDirectives(run),
       ...(goals ? { goals } : {}),
       budget: {
         ...contract.budget,
-        device_hours_used: this.ledger.deviceHours(instance),
-        tokens: registry.tokensUsed(instance),
+        device_hours_used: this.ledger.deviceHours(run),
+        tokens: registry.tokensUsed(run),
       },
       // The owner's recent messages to the advisors (message_agent to "advisors").
-      owner_messages: this.advisorMessages(instance),
+      owner_messages: this.advisorMessages(run),
     };
   }
 
   /**
-   * Points the instance's champion ref at the effective champion. The ledger is the authority;
+   * Points the run's champion ref at the effective champion. The ledger is the authority;
    * the ref is for git consumers, so a failure here is recorded, never fatal.
    */
-  async syncChampionRef(instance: string): Promise<void> {
-    const inst = this.requireInstance(instance);
-    const champ = this.ledger.currentChampion(instance);
+  async syncChampionRef(run: string): Promise<void> {
+    const inst = this.requireRun(run);
+    const champ = this.ledger.currentChampion(run);
     try {
       await updateRef(
         this.mirrorFor(inst.seed_repo),
-        `refs/thermite/instances/${instance}/champion`,
+        `refs/thermite/runs/${run}/champion`,
         champ.commit_sha,
       );
     } catch (err) {
-      this.ledger.appendEvent("judge", "champion_ref_failed", instance, {
+      this.ledger.appendEvent("judge", "champion_ref_failed", run, {
         seq: champ.seq,
         error: err instanceof Error ? err.message : String(err),
       });
@@ -760,8 +755,8 @@ export class HarnessService {
     by: string,
   ): Promise<unknown> {
     const a = this.ledger.getAttempt(p.attempt);
-    if (!a || String(a.instance) !== p.instance) {
-      throw new Error(`attempt ${p.attempt} is not in ${p.instance}`);
+    if (!a || String(a.run) !== p.run) {
+      throw new Error(`attempt ${p.attempt} is not in ${p.run}`);
     }
     const lifecycle = String(a.lifecycle);
     let expectedSeq: number;
@@ -815,10 +810,9 @@ export class HarnessService {
    * replaces the supervisor's previous set. Every directive needs a citation, and free-text notes
    * (planner only) are limited. Nothing here can touch a verdict, a contract or a worker's brief.
    */
-  addDirectives(instance: string, directives: unknown, author: string): number[] {
-    const inst = this.requireInstance(instance);
-    if (inst.status === "closed")
-      throw new LedgerError("invalid", `instance ${instance} is closed`);
+  addDirectives(run: string, directives: unknown, author: string): number[] {
+    const inst = this.requireRun(run);
+    if (inst.status === "closed") throw new LedgerError("invalid", `run ${run} is closed`);
     const parsed = z.array(StructuredDirective).min(1).max(20).parse(directives);
     const uncited = parsed.filter((d) => !d.citations.length);
     if (uncited.length) {
@@ -828,15 +822,15 @@ export class HarnessService {
       throw new LedgerError("invalid", "at most 3 notes per directive set");
     }
     conflictCheck(parsed);
-    return this.ledger.addDirectiveSet(instance, author, parsed, true);
+    return this.ledger.addDirectiveSet(run, author, parsed, true);
   }
 
   // ------------------------------------------------------------ attempts
 
-  contractFor(instance: string): Contract {
-    const inst = this.requireInstance(instance);
+  contractFor(run: string): Contract {
+    const inst = this.requireRun(run);
     const c = this.ledger.getContract(inst.campaign, inst.version);
-    if (!c) throw new LedgerError("not_found", `contract for ${instance} missing`);
+    if (!c) throw new LedgerError("not_found", `contract for ${run} missing`);
     return c;
   }
 
@@ -845,13 +839,13 @@ export class HarnessService {
    * Rejected and duplicate attempts are still recorded: nothing submitted is destroyed.
    */
   async submitAttempt(req: SubmitRequest, actor: string): Promise<SubmitResult> {
-    const inst = this.requireInstance(req.instance);
+    const inst = this.requireRun(req.run);
     if (inst.status !== "running")
-      throw new LedgerError("invalid", `instance ${req.instance} is ${inst.status}`);
-    const contract = this.contractFor(req.instance);
+      throw new LedgerError("invalid", `run ${req.run} is ${inst.status}`);
+    const contract = this.contractFor(req.run);
     if (contract.mode === "research")
       throw new LedgerError("invalid", "research campaigns take claims, not patches");
-    const champion = this.ledger.currentChampion(req.instance);
+    const champion = this.ledger.currentChampion(req.run);
     const parent = req.parent ?? champion.commit_sha;
     const mirror = this.mirrorFor(inst.seed_repo);
     if (!(await hasCommit(mirror, parent)))
@@ -870,7 +864,7 @@ export class HarnessService {
     } catch (err) {
       if (err instanceof GitError) {
         // Nothing to preserve (the patch did not apply), but the submission is still counted.
-        this.ledger.appendEvent(actor, "submission_refused", req.instance, {
+        this.ledger.appendEvent(actor, "submission_refused", req.run, {
           lane: req.lane ?? null,
           parent,
           diff_sha: sha256Hex(Buffer.from(req.patch_base64, "base64")),
@@ -887,20 +881,20 @@ export class HarnessService {
       made.binaryFiles,
       made.specialFiles,
     );
-    const duplicateOf = this.ledger.findDuplicate(req.instance, made.normalizedDiffSha);
+    const duplicateOf = this.ledger.findDuplicate(req.run, made.normalizedDiffSha);
     const lifecycle = !v0.ok ? "rejected_v0" : duplicateOf ? "duplicate" : "queued";
     // Lineage: the attempt this one was built on, whether or not it is the champion.
     const parentAttempt =
       parent === champion.commit_sha && champion.attempt
         ? champion.attempt
-        : this.ledger.attemptByCommit(req.instance, parent);
+        : this.ledger.attemptByCommit(req.run, parent);
     const parentRef = parentAttempt
       ? `refs/thermite/attempts/${parentAttempt}`
       : `commit:${parent}`;
     this.ledger.recordAttempt(
       {
         id,
-        instance: req.instance,
+        run: req.run,
         lane: req.lane,
         parentRef,
         parentCommit: parent,
@@ -922,7 +916,7 @@ export class HarnessService {
       this.ledger.enqueueJob({
         attempt: id,
         kind: "evaluate",
-        spec: { instance: req.instance },
+        spec: { run: req.run },
         actor,
       });
     }
@@ -936,7 +930,7 @@ export class HarnessService {
   }
 
   /**
-   * A worker's submission. The trial (found by its token) decides the instance, lane and parent;
+   * A worker's submission. The trial (found by its token) decides the run, lane and parent;
    * the request cannot. A trial submits at most once, and never after it has ended, so a worker
    * that outlives its trial cannot add attempts.
    */
@@ -953,7 +947,7 @@ export class HarnessService {
     try {
       const r = await this.submitAttempt(
         SubmitRequest.parse({
-          instance: t.instance,
+          run: t.run,
           lane: t.lane,
           parent: t.parent,
           patch_base64: req.patch_base64,
@@ -977,7 +971,7 @@ export class HarnessService {
     const verdict = this.ledger.currentVerdict(id);
     return {
       attempt: id,
-      instance: a.instance,
+      run: a.run,
       lifecycle: a.lifecycle,
       commit: a.commit_sha,
       v0: a.v0 ? JSON.parse(String(a.v0)) : null,
@@ -987,15 +981,15 @@ export class HarnessService {
 
   // ------------------------------------------------------------ live log and messages
 
-  /** Lines of the live log after `after`, signed with the unit's key like a report. */
+  /** Lines of the live log after `after`, signed with the rig's key like a report. */
   liveBatch(after: number, limit: number): unknown {
     const { entries, next } = this.live.since(after, limit);
-    const batch = { unit: this.unit, log_id: this.live.id, from: after, next, entries };
-    return this.unitKeys
+    const batch = { rig: this.rig, log_id: this.live.id, from: after, next, entries };
+    return this.rigKeys
       ? {
           ...batch,
-          unit_pubkey: this.unitKeys.publicKeyPem,
-          signature: signJson(liveBody(batch), this.unitKeys.privateKeyPem),
+          rig_pubkey: this.rigKeys.publicKeyPem,
+          signature: signJson(liveBody(batch), this.rigKeys.privateKeyPem),
         }
       : batch;
   }
@@ -1004,13 +998,13 @@ export class HarnessService {
    * The owner's messages for a running trial: those sent to the trial itself or to its lane.
    * Each is delivered once and marked with the trial that took it.
    */
-  takeMessages(trial: { id: string; instance: string; lane: string }): string[] {
+  takeMessages(trial: { id: string; run: string; lane: string }): string[] {
     return this.ledger.tx(() => {
       const rows = this.ledger.db
         .prepare(
-          "select id, text from agent_message where instance = ? and delivered_at is null and (target = ? or target = ?) order by id",
+          "select id, text from agent_message where run = ? and delivered_at is null and (target = ? or target = ?) order by id",
         )
-        .all(trial.instance, `trial:${trial.id}`, trial.lane) as { id: number; text: string }[];
+        .all(trial.run, `trial:${trial.id}`, trial.lane) as { id: number; text: string }[];
       const mark = this.ledger.db.prepare(
         "update agent_message set delivered_at = ?, delivered_to = ? where id = ?",
       );
@@ -1020,13 +1014,13 @@ export class HarnessService {
   }
 
   /** The owner's messages for the planner (delivered with the next plan). */
-  takePlannerMessages(instance: string): string[] {
+  takePlannerMessages(run: string): string[] {
     return this.ledger.tx(() => {
       const rows = this.ledger.db
         .prepare(
-          "select id, text from agent_message where instance = ? and target = 'planner' and delivered_at is null order by id",
+          "select id, text from agent_message where run = ? and target = 'planner' and delivered_at is null order by id",
         )
-        .all(instance) as { id: number; text: string }[];
+        .all(run) as { id: number; text: string }[];
       const mark = this.ledger.db.prepare(
         "update agent_message set delivered_at = ?, delivered_to = 'planner' where id = ?",
       );
@@ -1036,27 +1030,27 @@ export class HarnessService {
   }
 
   /** The owner's recent messages for the advisors (shown in their brief for a day). */
-  advisorMessages(instance: string): { at: string; text: string }[] {
+  advisorMessages(run: string): { at: string; text: string }[] {
     const since = new Date(this.clock().getTime() - 24 * 3_600_000).toISOString();
     return (
       this.ledger.db
         .prepare(
-          "select created_at as at, text from agent_message where instance = ? and target = 'advisors' and created_at >= ? order by id desc limit 5",
+          "select created_at as at, text from agent_message where run = ? and target = 'advisors' and created_at >= ? order by id desc limit 5",
         )
-        .all(instance, since) as { at: string; text: string }[]
+        .all(run, since) as { at: string; text: string }[]
     ).reverse();
   }
 
   // ------------------------------------------------------------ snapshot and export
 
   /**
-   * A page of events with the current summary, signed with the unit's own key so that control
+   * A page of events with the current summary, signed with the rig's own key so that control
    * can tell the harness's report from anything the supervisor (which relays it) might invent.
    */
   snapshot(cursor: number, limit: number): unknown {
     const page = this.ledger.eventsAfter(cursor, limit);
     const report = {
-      unit: this.unit,
+      rig: this.rig,
       ledger_id: this.ledger.ledgerId(),
       cursor,
       next: page.next,
@@ -1065,11 +1059,11 @@ export class HarnessService {
       generated_at: this.clock().toISOString(),
       latest_event: this.ledger.latestEventId(),
     };
-    return this.unitKeys
+    return this.rigKeys
       ? {
           ...report,
-          unit_pubkey: this.unitKeys.publicKeyPem,
-          signature: signJson(reportBody(report), this.unitKeys.privateKeyPem),
+          rig_pubkey: this.rigKeys.publicKeyPem,
+          signature: signJson(reportBody(report), this.rigKeys.privateKeyPem),
         }
       : report;
   }
@@ -1100,7 +1094,7 @@ export class HarnessService {
       ledger: this.ledger,
       mirrorFor: (repo) => this.mirrorFor(repo),
       outboxDir: this.paths.outboxDir,
-      unit: this.unit,
+      rig: this.rig,
       actor,
       ...(opts.full ? { full: true, researchDir: join(this.paths.stateDir, "research") } : {}),
     });

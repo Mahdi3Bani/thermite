@@ -1,4 +1,4 @@
-# Thermite harness image. The default base is the Node image (CPU units). GPU units build with
+# Thermite harness image. The default base is the Node image (CPU rigs). GPU rigs build with
 # BASE_IMAGE set to a CUDA 12.x devel image (CUDA 13 dropped older architectures).
 ARG NODE_IMAGE=docker.io/library/node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392
 ARG BASE_IMAGE=${NODE_IMAGE}

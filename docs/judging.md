@@ -37,11 +37,11 @@ The score that counts is always measured by the executor itself, from outside th
 
 ## Across the fleet
 
-Units measure on their own devices, and two devices of the same model can differ by several percent. So:
+Rigs measure on their own devices, and two devices of the same model can differ by several percent. So:
 
-- Leaderboards compare improvement over a common baseline measured on each unit, never raw numbers from different devices.
-- A unit's best becomes the campaign's best only after a **different** unit's own judge has re-measured it.
-- Code and data moving between units are checked against hashes in signed control commands, so nothing in between can swap them.
+- Leaderboards compare improvement over a common baseline measured on each rig, never raw numbers from different devices.
+- A rig's best becomes the campaign's best only after a **different** rig's own judge has re-measured it.
+- Code and data moving between rigs are checked against hashes in signed control commands, so nothing in between can swap them.
 
 ## Steering without judging
 

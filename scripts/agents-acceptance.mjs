@@ -220,8 +220,8 @@ try {
     evs.some((e) => e.kind === "dev_run"),
     evs.filter((e) => e.kind === "dev_run").map((e) => e.body),
   );
-  const view = (await api("/v1/units/local-1/view")).body;
-  const agents = view.instances[0].agents;
+  const view = (await api("/v1/rigs/local-1/view")).body;
+  const agents = view.runs[0].agents;
   check(
     "control reports the agents' figures",
     agents.epochs >= 1 && agents.planner_valid >= 1 && agents.trials >= 2 && agents.tokens_in > 0,
@@ -229,7 +229,7 @@ try {
   );
   // Later epochs keep starting trials: pause, then every lane and agent process must end with
   // its trial.
-  await command("pause_instance", { instance: "smoke-1", reason: "acceptance: drain" });
+  await command("pause_run", { run: "smoke-1", reason: "acceptance: drain" });
   const roleProcesses = () =>
     JSON.parse(
       dc(

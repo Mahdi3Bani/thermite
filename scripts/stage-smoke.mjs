@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// Stages a smoke campaign for a unit that is not under local compose (for example a GPU unit
+// Stages a smoke campaign for a rig that is not under local compose (for example a GPU rig
 // in a cluster): git bundles of the smoke project and its kit, an assign_campaign payload that
 // pins both by commit and sha256, and one patch per candidate with its expected outcome.
 //
-// usage: node scripts/stage-smoke.mjs --kit smoke-cuda --out DIR [--instance ID] [--target-class C] [--version N]
+// usage: node scripts/stage-smoke.mjs --kit smoke-cuda --out DIR [--run ID] [--target-class C] [--version N]
 //
-// Copy DIR/repos/* into the unit's inbox under repos/, issue DIR/assign-payload.json through
+// Copy DIR/repos/* into the rig's inbox under repos/, issue DIR/assign-payload.json through
 // control as an assign_campaign command, then submit DIR/candidates/*.patch from inside the
 // harness (see the M2b runbook).
 import { execFileSync } from "node:child_process";
@@ -19,9 +19,9 @@ const { values } = parseArgs({
   options: {
     kit: { type: "string", default: "smoke-cuda" },
     out: { type: "string" },
-    instance: { type: "string", default: "smoke-gpu-1" },
+    run: { type: "string", default: "smoke-gpu-1" },
     "target-class": { type: "string" },
-    // A unit's ledger keeps every contract version: restaging a changed smoke needs a new one.
+    // A rig's ledger keeps every contract version: restaging a changed smoke needs a new one.
     version: { type: "string", default: "1" },
   },
 });
@@ -76,7 +76,7 @@ contract.project = {
 if (kitName === "smoke-cuda") {
   contract.target = { type: "cuda-gpu", class: values["target-class"] ?? "p100-pcie-16g" };
   contract.editable_paths = ["src/kernel/**"];
-  contract.notes = "Smoke campaign for judge acceptance on a GPU unit.";
+  contract.notes = "Smoke campaign for judge acceptance on a GPU rig.";
 }
 const contractFile = join(out, "contract.json");
 writeFileSync(contractFile, `${JSON.stringify(contract, null, 2)}\n`);
@@ -88,8 +88,8 @@ const payload = execFileSync(
     "assign-payload",
     "--contract",
     contractFile,
-    "--instance",
-    values.instance,
+    "--run",
+    values.run,
     "--seed-repo",
     projectName,
     "--seed-commit",
@@ -129,6 +129,6 @@ writeFileSync(
 );
 writeFileSync(
   join(out, "manifest.json"),
-  `${JSON.stringify({ kit: kitName, instance: values.instance, project, kit_bundle: kit }, null, 2)}\n`,
+  `${JSON.stringify({ kit: kitName, run: values.run, project, kit_bundle: kit }, null, 2)}\n`,
 );
 console.log(`staged ${kitName} in ${out}`);

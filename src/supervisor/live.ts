@@ -6,7 +6,7 @@ import { LiveLog } from "../core/live.ts";
  * supervisor passes the harness's batch through untouched: it cannot sign for the harness.
  */
 export interface LiveRelayConfig {
-  unit: string;
+  rig: string;
   harnessUrl: string;
   harnessToken: string;
   controlUrl?: string | undefined;
@@ -46,7 +46,7 @@ export async function relayLiveOnce(
   }
   const own = supervisorLive.since(state.ownCursor, 200);
   if (!batch.entries.length && !own.entries.length && batch.log_id === state.logId) return state;
-  const res = await f(`${cfg.controlUrl}/v1/units/${encodeURIComponent(cfg.unit)}/live`, {
+  const res = await f(`${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/live`, {
     method: "POST",
     headers: { authorization: `Bearer ${cfg.controlToken}`, "content-type": "application/json" },
     body: JSON.stringify({

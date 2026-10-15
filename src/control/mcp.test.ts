@@ -27,7 +27,7 @@ const text = (r: unknown) =>
   JSON.parse(((r as { content: { text: string }[] }).content[0] as { text: string }).text);
 
 describe("control over MCP", () => {
-  test("an agent lists units and pauses an instance; a reader can only read", async () => {
+  test("an agent lists rigs and pauses a run; a reader can only read", async () => {
     const env = makeJudgeEnv();
     const store = new ControlStore(":memory:");
     const control = createControlApi(
@@ -35,7 +35,7 @@ describe("control over MCP", () => {
       {
         admin: "admin-token-abcdef",
         read: "read-token-abcdef",
-        units: { "unit-a": "unit-token-abcdef" },
+        rigs: { "rig-a": "rig-token-abcdef" },
       },
       env.keys.privateKeyPem,
     );
@@ -48,11 +48,11 @@ describe("control over MCP", () => {
       );
     };
     const cfg = {
-      unit: "unit-a",
+      rig: "rig-a",
       harnessUrl: "http://harness",
       harnessToken: "s-token-abcdef",
       controlUrl: "http://control",
-      controlToken: "unit-token-abcdef",
+      controlToken: "rig-token-abcdef",
       fetchImpl,
     };
     await env.service.applyCommand(env.assign);
@@ -61,21 +61,21 @@ describe("control over MCP", () => {
     const agent = await connect(control, "admin-token-abcdef");
     const tools = (await agent.listTools()).tools.map((t) => t.name).sort();
     assert.ok(tools.includes("issue_command"));
-    const units = text(await agent.callTool({ name: "list_units", arguments: {} }));
-    assert.equal(units[0].unit, "unit-a");
-    assert.equal(units[0].instances[0].instance, "js-1");
+    const rigs = text(await agent.callTool({ name: "list_rigs", arguments: {} }));
+    assert.equal(rigs[0].rig, "rig-a");
+    assert.equal(rigs[0].runs[0].run, "js-1");
     const issued = text(
       await agent.callTool({
         name: "issue_command",
         arguments: {
-          unit: "unit-a",
-          kind: "pause_instance",
-          payload: { instance: "js-1", reason: "an agent paused it" },
+          rig: "rig-a",
+          kind: "pause_run",
+          payload: { run: "js-1", reason: "an agent paused it" },
         },
       }),
     );
     state = await relayOnce(cfg, state);
-    assert.equal(env.ledger.getInstance("js-1")?.status, "paused");
+    assert.equal(env.ledger.getRun("js-1")?.status, "paused");
     const status = text(
       await agent.callTool({ name: "command_status", arguments: { id: issued.id } }),
     );
@@ -84,7 +84,7 @@ describe("control over MCP", () => {
     const reader = await connect(control, "read-token-abcdef");
     const readerTools = (await reader.listTools()).tools.map((t) => t.name);
     assert.ok(!readerTools.includes("issue_command"));
-    assert.ok(readerTools.includes("list_units"));
+    assert.ok(readerTools.includes("list_rigs"));
     const audit = store.listAudit(100).map((a) => a.action);
     assert.ok(audit.includes("mcp:issue_command"));
     const denied = await control.request("/mcp", { method: "POST", body: "{}" });
@@ -98,7 +98,7 @@ describe("control over MCP", () => {
     const store = new ControlStore(":memory:");
     const control = createControlApi(
       store,
-      { admin: "admin-token-abcdef", units: {} },
+      { admin: "admin-token-abcdef", rigs: {} },
       env.keys.privateKeyPem,
     );
     assert.equal((await control.request("/metrics")).status, 401);
@@ -106,6 +106,6 @@ describe("control over MCP", () => {
       headers: { authorization: "Bearer admin-token-abcdef" },
     });
     assert.equal(r.status, 200);
-    assert.match(await r.text(), /# TYPE thermite_unit_up gauge/);
+    assert.match(await r.text(), /# TYPE thermite_rig_up gauge/);
   });
 });

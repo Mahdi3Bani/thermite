@@ -7,10 +7,10 @@ import { makeHarnessEnv } from "../testing/harness-env.ts";
 import { createControlApi } from "./api.ts";
 import { ControlStore } from "./store.ts";
 
-const tokens = { admin: "admin-token-abcdef", units: { "unit-a": "unit-token-abcdef" } };
+const tokens = { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } };
 
 function setup() {
-  const env = makeHarnessEnv("unit-a");
+  const env = makeHarnessEnv("rig-a");
   const harness = createHarnessApi(env.service, { supervisor: "sup-token-abcdef" });
   const store = new ControlStore(":memory:");
   const control = createControlApi(store, tokens, env.keys.privateKeyPem);
@@ -28,11 +28,11 @@ function setup() {
     } as RequestInit);
   };
   const cfg = {
-    unit: "unit-a",
+    rig: "rig-a",
     harnessUrl: "http://harness",
     harnessToken: "sup-token-abcdef",
     controlUrl: "http://control",
-    controlToken: tokens.units["unit-a"],
+    controlToken: tokens.rigs["rig-a"],
     fetchImpl,
   };
   return { env, store, control, cfg, setTamper: (t: typeof tamper) => (tamper = t) };
@@ -41,14 +41,14 @@ function setup() {
 describe("the live view", () => {
   test("the harness's lines reach control signed; the supervisor's are kept as unsigned; a tampered batch is refused", async () => {
     const s = setup();
-    // The unit's key is pinned by its first report.
+    // The rig's key is pinned by its first report.
     await relayOnce(s.cfg, { cursor: 0 });
     s.env.service.live.append({ source: "planner", kind: "status", text: "planning epoch 1" });
     s.env.service.live.append({ source: "judge", kind: "log", text: "evaluate a-1: started" });
     supervisorLive.append({ source: "supervisor", kind: "status", text: "advisor round started" });
     const st = await relayLiveOnce(s.cfg, { cursor: 0, ownCursor: 0 });
     assert.equal(st.cursor, 2);
-    const r = await s.control.request("/v1/units/unit-a/live", {
+    const r = await s.control.request("/v1/rigs/rig-a/live", {
       headers: { authorization: `Bearer ${tokens.admin}` },
     });
     const body = (await r.json()) as {
@@ -71,10 +71,10 @@ describe("the live view", () => {
     await assert.rejects(relayLiveOnce(s.cfg, st), /403/);
     s.setTamper(undefined);
     await relayLiveOnce(s.cfg, st);
-    assert.equal(s.store.liveTail("unit-a", 10).at(-1)?.text, "lane-1: tiling");
+    assert.equal(s.store.liveTail("rig-a", 10).at(-1)?.text, "lane-1: tiling");
   });
 
-  test("before the unit's key is accepted, live lines are refused", async () => {
+  test("before the rig's key is accepted, live lines are refused", async () => {
     const s = setup();
     s.env.service.live.append({ source: "judge", kind: "log", text: "x" });
     await assert.rejects(relayLiveOnce(s.cfg, { cursor: 0, ownCursor: 0 }), /409/);
@@ -91,36 +91,36 @@ describe("the owner's messages to agents", () => {
         body: JSON.stringify(body),
       });
     const assigned = await issue({
-      unit: "unit-a",
+      rig: "rig-a",
       kind: "assign_campaign",
       payload: s.env.assignPayload(),
     });
     assert.equal(assigned.status, 201);
     await relayOnce(s.cfg, { cursor: 0 });
     const toLane = await issue({
-      unit: "unit-a",
+      rig: "rig-a",
       kind: "message_agent",
-      payload: { instance: "smoke-1", to: "lane-1", text: "try the tiled kernel first" },
+      payload: { run: "smoke-1", to: "lane-1", text: "try the tiled kernel first" },
     });
     const toPlanner = await issue({
-      unit: "unit-a",
+      rig: "rig-a",
       kind: "message_agent",
-      payload: { instance: "smoke-1", to: "planner", text: "spread the lanes wider" },
+      payload: { run: "smoke-1", to: "planner", text: "spread the lanes wider" },
     });
     assert.equal(toLane.status, 201);
     assert.equal(toPlanner.status, 201);
     await relayOnce(s.cfg, { cursor: 0 });
     const svc = s.env.service;
     assert.deepEqual(
-      svc.takeMessages({ id: "t-0123456789abcdef", instance: "smoke-1", lane: "lane-2" }),
+      svc.takeMessages({ id: "t-0123456789abcdef", run: "smoke-1", lane: "lane-2" }),
       [],
     );
     assert.deepEqual(
-      svc.takeMessages({ id: "t-0123456789abcdef", instance: "smoke-1", lane: "lane-1" }),
+      svc.takeMessages({ id: "t-0123456789abcdef", run: "smoke-1", lane: "lane-1" }),
       ["try the tiled kernel first"],
     );
     assert.deepEqual(
-      svc.takeMessages({ id: "t-0123456789abcdef", instance: "smoke-1", lane: "lane-1" }),
+      svc.takeMessages({ id: "t-0123456789abcdef", run: "smoke-1", lane: "lane-1" }),
       [],
     );
     assert.deepEqual(svc.takePlannerMessages("smoke-1"), ["spread the lanes wider"]);
@@ -135,7 +135,7 @@ describe("the owner's messages to agents", () => {
     const r = await svc.applyCommand(
       s.env.sign(
         "message_agent",
-        { instance: "smoke-1", to: "planner", text: "x" },
+        { run: "smoke-1", to: "planner", text: "x" },
         { issuedBy: "agent:mcp" },
       ),
     );

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { cpus, freemem, loadavg, totalmem } from "node:os";
 import type { Readiness, TargetDriver, TargetIdentity } from "./driver.ts";
 
-/** CPU target: the unit's CPU set. Used for CPU campaigns and for portable local testing. */
+/** CPU target: the rig's CPU set. Used for CPU campaigns and for portable local testing. */
 export class CpuDriver implements TargetDriver {
   readonly type = "cpu";
   private readonly targetClass: string;

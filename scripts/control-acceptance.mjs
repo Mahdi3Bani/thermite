@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// M3 control acceptance under compose, with two local units (the "two-units" profile). It checks
+// M3 control acceptance under compose, with two local rigs (the "two-rigs" profile). It checks
 // the plan's M3 verify list:
-//   - assign a campaign to each unit; pause, resume, reset workers and redirect from the dashboard
+//   - assign a campaign to each rig; pause, resume, reset workers and redirect from the dashboard
 //     and from MCP, each taking effect in the harness and logged in control's audit;
-//   - with control stopped, units keep researching, and their reports catch up when it returns;
-//   - with a supervisor stopped, its harness keeps running, the unit shows stale, then recovers;
-//   - control's view of a unit is the same before and after a control restart.
+//   - with control stopped, rigs keep researching, and their reports catch up when it returns;
+//   - with a supervisor stopped, its harness keeps running, the rig shows stale, then recovers;
+//   - control's view of a rig is the same before and after a control restart.
 // Usage: COMPOSE="podman compose" node scripts/control-acceptance.mjs
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -29,7 +29,7 @@ const composeEnv = {
   THERMITE_CONTROL_STALE_SECONDS: "10",
   THERMITE_CALIBRATION_BLOCKS: "0",
 };
-const profile = ["--profile", "two-units"];
+const profile = ["--profile", "two-rigs"];
 const report = {
   started_at: new Date().toISOString(),
   compose: process.env.COMPOSE ?? "podman compose",
@@ -42,9 +42,8 @@ const check = (name, ok, detail) => {
   );
 };
 const dcp = (...args) => dc(composeEnv, ...profile, ...args);
-const view = async (unit) => (await api(`/v1/units/${unit}/view`)).body;
-const instanceStatus = async (unit, id) =>
-  (await view(unit)).instances?.find((i) => i.id === id)?.status;
+const view = async (rig) => (await api(`/v1/rigs/${rig}/view`)).body;
+const runStatus = async (rig, id) => (await view(rig)).runs?.find((i) => i.id === id)?.status;
 const harnessEvents = (service, kind) =>
   JSON.parse(
     dc(
@@ -95,7 +94,7 @@ async function mcp() {
 }
 
 const env = prepare();
-console.log("compose: build and start two units");
+console.log("compose: build and start two rigs");
 dcp("up", "-d", "--build");
 let failed = false;
 try {
@@ -103,41 +102,40 @@ try {
   await assign(env, "smoke-1", "local-1");
   await assign(env, "smoke-2", "local-2");
   await until(
-    "both units reporting",
-    async () =>
-      (await view("local-1")).instances?.length && (await view("local-2")).instances?.length,
+    "both rigs reporting",
+    async () => (await view("local-1")).runs?.length && (await view("local-2")).runs?.length,
   );
-  check("a campaign assigned to each of two units", true);
+  check("a campaign assigned to each of two rigs", true);
 
-  // Dashboard commands on unit 1.
+  // Dashboard commands on rig 1.
   const ui = await dashboard();
   check(
     "dashboard pause accepted",
     (await ui.post({
-      unit: "local-1",
-      kind: "pause_instance",
-      instance: "smoke-1",
+      rig: "local-1",
+      kind: "pause_run",
+      run: "smoke-1",
       reason: "acceptance",
     })) === 303,
   );
   await until(
     "pause took effect",
-    async () => (await instanceStatus("local-1", "smoke-1")) === "paused",
+    async () => (await runStatus("local-1", "smoke-1")) === "paused",
     60_000,
   );
   check("pause from the dashboard took effect in the harness", true);
-  await ui.post({ unit: "local-1", kind: "resume_instance", instance: "smoke-1" });
+  await ui.post({ rig: "local-1", kind: "resume_run", run: "smoke-1" });
   await until(
     "resume took effect",
-    async () => (await instanceStatus("local-1", "smoke-1")) === "running",
+    async () => (await runStatus("local-1", "smoke-1")) === "running",
     60_000,
   );
   check("resume from the dashboard took effect", true);
-  await ui.post({ unit: "local-1", kind: "reset_workers", instance: "smoke-1" });
+  await ui.post({ rig: "local-1", kind: "reset_workers", run: "smoke-1" });
   await ui.post({
-    unit: "local-1",
+    rig: "local-1",
     kind: "redirect",
-    instance: "smoke-1",
+    run: "smoke-1",
     directive: "avoid",
     family: "loop-unrolling",
     rationale: "acceptance test",
@@ -145,7 +143,7 @@ try {
   await until(
     "reset and redirect reached the harness",
     async () => {
-      const kinds = (await api("/v1/units/local-1/events?after=0&limit=5000")).body.events.map(
+      const kinds = (await api("/v1/rigs/local-1/events?after=0&limit=5000")).body.events.map(
         (e) => e.kind,
       );
       return kinds.includes("workers_reset") && kinds.includes("directive");
@@ -154,54 +152,54 @@ try {
   );
   check("reset workers and redirect from the dashboard took effect", true);
 
-  // MCP commands on unit 2.
+  // MCP commands on rig 2.
   const agent = await mcp();
-  const units = await agent.call("list_units", {});
+  const rigs = await agent.call("list_rigs", {});
   check(
-    "MCP lists both units",
-    units
-      .map((u) => u.unit)
+    "MCP lists both rigs",
+    rigs
+      .map((u) => u.rig)
       .sort()
       .join() === "local-1,local-2",
-    units.map((u) => u.unit),
+    rigs.map((u) => u.rig),
   );
   await agent.call("issue_command", {
-    unit: "local-2",
-    kind: "pause_instance",
-    payload: { instance: "smoke-2", reason: "an agent paused it" },
+    rig: "local-2",
+    kind: "pause_run",
+    payload: { run: "smoke-2", reason: "an agent paused it" },
   });
   await until(
     "MCP pause took effect",
-    async () => (await instanceStatus("local-2", "smoke-2")) === "paused",
+    async () => (await runStatus("local-2", "smoke-2")) === "paused",
     60_000,
   );
   await agent.call("issue_command", {
-    unit: "local-2",
-    kind: "resume_instance",
-    payload: { instance: "smoke-2" },
+    rig: "local-2",
+    kind: "resume_run",
+    payload: { run: "smoke-2" },
   });
   await until(
     "MCP resume took effect",
-    async () => (await instanceStatus("local-2", "smoke-2")) === "running",
+    async () => (await runStatus("local-2", "smoke-2")) === "running",
     60_000,
   );
   await agent.call("issue_command", {
-    unit: "local-2",
+    rig: "local-2",
     kind: "redirect",
     payload: {
-      instance: "smoke-2",
+      run: "smoke-2",
       directives: [{ kind: "try", family: "tiling", rationale: "acceptance", citations: [] }],
     },
   });
   await agent.call("issue_command", {
-    unit: "local-2",
+    rig: "local-2",
     kind: "reset_workers",
-    payload: { instance: "smoke-2" },
+    payload: { run: "smoke-2" },
   });
   await until(
     "MCP reset and redirect reached the harness",
     async () => {
-      const kinds = (await api("/v1/units/local-2/events?after=0&limit=5000")).body.events.map(
+      const kinds = (await api("/v1/rigs/local-2/events?after=0&limit=5000")).body.events.map(
         (e) => e.kind,
       );
       return kinds.includes("workers_reset") && kinds.includes("directive");
@@ -225,7 +223,7 @@ try {
     commands.map((c) => `${c.kind}:${c.status}`),
   );
 
-  // Control down: units keep researching; reports catch up afterwards.
+  // Control down: rigs keep researching; reports catch up afterwards.
   const before = await view("local-1");
   dcp("stop", "control");
   const attempt = submit(
@@ -240,13 +238,13 @@ try {
     600_000,
     3000,
   );
-  check("with control stopped, the unit kept researching", true);
+  check("with control stopped, the rig kept researching", true);
   dcp("start", "control");
   await until("control back", async () => (await fetch(`${control}/v1/health`)).ok);
   await until(
     "reports caught up",
     async () =>
-      (await view("local-1")).instances?.[0]?.attempts?.some((a) => a.id === attempt && a.verdict),
+      (await view("local-1")).runs?.[0]?.attempts?.some((a) => a.id === attempt && a.verdict),
     120_000,
   );
   check("after control returned, the reports caught up", true);
@@ -261,7 +259,7 @@ try {
       jobs: null,
       // The supervisor's live figures (timestamps, counters) are not part of the event view.
       supervisor: null,
-      instances: v.instances.map((i) => ({
+      runs: v.runs.map((i) => ({
         ...i,
         // The attempt judged while control was down is new; everything else must match.
         attempts: i.attempts.filter((a) => a.id !== attempt),
@@ -297,9 +295,9 @@ try {
     diff(JSON.parse(strip(before)), JSON.parse(strip(after))).slice(0, 10),
   );
 
-  // Supervisor down: the harness keeps running; the unit goes stale, then recovers.
+  // Supervisor down: the harness keeps running; the rig goes stale, then recovers.
   dcp("stop", "supervisor-2");
-  await until("unit 2 stale", async () => (await view("local-2")).stale === true, 60_000);
+  await until("rig 2 stale", async () => (await view("local-2")).stale === true, 60_000);
   const health = dc(
     composeEnv,
     ...profile,
@@ -311,13 +309,13 @@ try {
     "fetch('http://127.0.0.1:8700/v1/health').then(r=>r.json()).then(j=>process.stdout.write(JSON.stringify(j)))",
   );
   check(
-    "with its supervisor stopped, the harness keeps running and the unit shows stale",
+    "with its supervisor stopped, the harness keeps running and the rig shows stale",
     JSON.parse(health).ok === true,
     JSON.parse(health),
   );
   dcp("start", "supervisor-2");
-  await until("unit 2 fresh again", async () => (await view("local-2")).stale === false, 60_000);
-  check("the unit recovers when its supervisor returns", true);
+  await until("rig 2 fresh again", async () => (await view("local-2")).stale === false, 60_000);
+  check("the rig recovers when its supervisor returns", true);
 } catch (err) {
   failed = true;
   check("acceptance run", false, String(err?.stack ?? err));

@@ -22,10 +22,10 @@ const write = (name, value) => {
   if (!existsSync(p)) writeFileSync(p, value, { mode: 0o644 });
 };
 write("control-admin-token", token());
-// Unit 1 (always) and unit 2 (the compose "two-units" profile). Each has a control token, a
+// Rig 1 (always) and rig 2 (the compose "two-rigs" profile). Each has a control token, a
 // harness<->supervisor token and a proposer token.
-write("control-unit-token", token());
-write("control-unit-token-2", token());
+write("control-rig-token", token());
+write("control-rig-token-2", token());
 write("harness-supervisor-token", token());
 write("harness-proposer-token", token());
 write("harness2-supervisor-token", token());
@@ -34,10 +34,10 @@ write("harness2-proposer-token", token());
 write("qwen-api-key", "local-placeholder");
 const read = (name) => readFileSync(join(secrets, name), "utf8").trim();
 writeFileSync(
-  join(secrets, "control-unit-tokens.json"),
+  join(secrets, "control-rig-tokens.json"),
   JSON.stringify({
-    "local-1": read("control-unit-token"),
-    "local-2": read("control-unit-token-2"),
+    "local-1": read("control-rig-token"),
+    "local-2": read("control-rig-token-2"),
   }),
   { mode: 0o644 },
 );

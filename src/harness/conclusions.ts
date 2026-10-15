@@ -45,17 +45,17 @@ export class Conclusions {
   }
 
   /** Approach families with enough judged attempts and no progress, with their receipts. */
-  refuted(instance: string): RefutedApproach[] {
+  refuted(run: string): RefutedApproach[] {
     const out: RefutedApproach[] = [];
     const families = this.ledger.db
-      .prepare("select id, description from family where instance = ?")
-      .all(instance) as Row[];
+      .prepare("select id, description from family where run = ?")
+      .all(run) as Row[];
     for (const f of families) {
       const attempts: RefutedApproach["attempts"] = [];
       let promising = false;
       for (const a of this.ledger.db
-        .prepare("select id from attempt where instance = ? and family = ? order by created_at")
-        .all(instance, String(f.id)) as Row[]) {
+        .prepare("select id from attempt where run = ? and family = ? order by created_at")
+        .all(run, String(f.id)) as Row[]) {
         const v = this.ledger.currentVerdict(String(a.id));
         if (!v) continue;
         if (PROMISING.has(v.verdict)) promising = true;
@@ -78,35 +78,35 @@ export class Conclusions {
     return out;
   }
 
-  open(instance: string): Row | undefined {
+  open(run: string): Row | undefined {
     return this.ledger.db
-      .prepare("select * from conclusion where instance = ? and decision is null")
-      .get(instance) as Row | undefined;
+      .prepare("select * from conclusion where run = ? and decision is null")
+      .get(run) as Row | undefined;
   }
 
   /**
    * Proposes "not possible" when the contract allows it and the evidence is there, unless a
    * proposal is open, or the owner rejected one and there is no new refuted approach since.
    */
-  maybePropose(instance: string, contract: GoalContract, by: string): number | undefined {
+  maybePropose(run: string, contract: GoalContract, by: string): number | undefined {
     if (!contract.infeasibility.allowed) return undefined;
-    if (this.open(instance)) return undefined;
-    const refuted = this.refuted(instance);
+    if (this.open(run)) return undefined;
+    const refuted = this.refuted(run);
     const need = contract.infeasibility.min_refuted_approaches ?? Number.POSITIVE_INFINITY;
     if (refuted.length < need) return undefined;
     const last = this.ledger.db
       .prepare(
-        "select evidence from conclusion where instance = ? and decision = 'rejected' order by id desc limit 1",
+        "select evidence from conclusion where run = ? and decision = 'rejected' order by id desc limit 1",
       )
-      .get(instance) as Row | undefined;
+      .get(run) as Row | undefined;
     if (last) {
       const before = (JSON.parse(String(last.evidence)) as { approaches: RefutedApproach[] })
         .approaches.length;
       if (refuted.length <= before) return undefined;
     }
     const goals = this.ledger.db
-      .prepare("select id, status from goal where instance = ?")
-      .all(instance) as Row[];
+      .prepare("select id, status from goal where run = ?")
+      .all(run) as Row[];
     const evidence = {
       approaches: refuted,
       goals: goals.map((g) => ({ goal: String(g.id), status: String(g.status) })),
@@ -115,25 +115,25 @@ export class Conclusions {
     return this.ledger.tx(() => {
       const r = this.ledger.db
         .prepare(
-          "insert into conclusion (instance, kind, evidence, proposed_at) values (?, 'not_possible', ?, ?)",
+          "insert into conclusion (run, kind, evidence, proposed_at) values (?, 'not_possible', ?, ?)",
         )
-        .run(instance, canonicalJson(evidence), new Date().toISOString());
+        .run(run, canonicalJson(evidence), new Date().toISOString());
       const id = Number(r.lastInsertRowid);
       for (const a of refuted) {
         const r = this.ledger.db
           .prepare(
-            "update family set status = 'exhausted' where instance = ? and id = ? and status = 'live'",
+            "update family set status = 'exhausted' where run = ? and id = ? and status = 'live'",
           )
-          .run(instance, a.family);
+          .run(run, a.family);
         if (Number(r.changes)) {
-          this.ledger.appendEvent(by, "family_status", instance, {
+          this.ledger.appendEvent(by, "family_status", run, {
             family: a.family,
             status: "exhausted",
             reason: `refuted: evidence for "not possible" proposal ${id}`,
           });
         }
       }
-      this.ledger.appendEvent(by, "conclusion_proposed", instance, {
+      this.ledger.appendEvent(by, "conclusion_proposed", run, {
         proposal: id,
         kind: "not_possible",
         approaches: refuted.map((a) => ({ family: a.family, attempts: a.attempts.length })),
@@ -142,37 +142,26 @@ export class Conclusions {
     });
   }
 
-  /** The owner's decision. Accepting closes the instance; rejecting lets the campaign go on. */
-  decide(
-    instance: string,
-    proposal: number,
-    accept: boolean,
-    note: string | undefined,
-    by: string,
-  ) {
+  /** The owner's decision. Accepting closes the run; rejecting lets the campaign go on. */
+  decide(run: string, proposal: number, accept: boolean, note: string | undefined, by: string) {
     return this.ledger.tx(() => {
       const row = this.ledger.db
-        .prepare("select * from conclusion where id = ? and instance = ?")
-        .get(proposal, instance) as Row | undefined;
-      if (!row) throw new LedgerError("not_found", `no proposal ${proposal} in ${instance}`);
+        .prepare("select * from conclusion where id = ? and run = ?")
+        .get(proposal, run) as Row | undefined;
+      if (!row) throw new LedgerError("not_found", `no proposal ${proposal} in ${run}`);
       if (row.decision !== null)
         throw new LedgerError("conflict", `proposal ${proposal} is decided`);
       const decision = accept ? "accepted" : "rejected";
       this.ledger.db
         .prepare("update conclusion set decision = ?, note = ?, decided_at = ? where id = ?")
         .run(decision, note?.slice(0, 2000) ?? null, new Date().toISOString(), proposal);
-      this.ledger.appendEvent(
-        by,
-        accept ? "conclusion_accepted" : "conclusion_rejected",
-        instance,
-        {
-          proposal,
-          kind: String(row.kind),
-        },
-      );
+      this.ledger.appendEvent(by, accept ? "conclusion_accepted" : "conclusion_rejected", run, {
+        proposal,
+        kind: String(row.kind),
+      });
       if (accept) {
-        this.ledger.setInstanceStatus(
-          instance,
+        this.ledger.setRunStatus(
+          run,
           "closed",
           "not possible: the owner accepted the evidence",
           by,
@@ -184,11 +173,11 @@ export class Conclusions {
         for (const f of families) {
           const r = this.ledger.db
             .prepare(
-              "update family set status = 'live' where instance = ? and id = ? and status = 'exhausted'",
+              "update family set status = 'live' where run = ? and id = ? and status = 'exhausted'",
             )
-            .run(instance, f.family);
+            .run(run, f.family);
           if (Number(r.changes)) {
-            this.ledger.appendEvent(by, "family_status", instance, {
+            this.ledger.appendEvent(by, "family_status", run, {
               family: f.family,
               status: "live",
               reason: `the owner rejected "not possible" proposal ${proposal}`,

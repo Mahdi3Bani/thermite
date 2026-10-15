@@ -163,11 +163,11 @@ if (!parsed.ok) throw new Error(parsed.errors.join("; "));
 
 dc(composeEnv, "up", "-d", "--build");
 let failed = false;
-const unitEvents = async () => {
+const rigEvents = async () => {
   const all = [];
   let after = 0;
   for (;;) {
-    const page = await api(`/v1/units/local-1/events?after=${after}&limit=5000`);
+    const page = await api(`/v1/rigs/local-1/events?after=${after}&limit=5000`);
     all.push(...page.body.events);
     if (page.body.events.length < 5000) return all;
     after = page.body.events.at(-1).seq;
@@ -176,7 +176,7 @@ const unitEvents = async () => {
 try {
   await until("control health", async () => (await fetch(`${control}/v1/health`)).ok);
   await command("assign_campaign", {
-    instance: "research-1",
+    run: "research-1",
     contract: parsed.contract,
     contract_sha: parsed.sha,
     imports: [],
@@ -185,8 +185,8 @@ try {
   let killed = false;
   for (;;) {
     await sleep(60_000);
-    const v = (await api("/v1/units/local-1/view")).body;
-    const inst = v.instances?.find((i) => i.id === "research-1");
+    const v = (await api("/v1/rigs/local-1/view")).body;
+    const inst = v.runs?.find((i) => i.id === "research-1");
     const r = inst?.research ?? {};
     console.log(
       `${Math.round((Date.now() - started) / 60000)} min: ${inst?.status} sources ${r.sources ?? 0} verified ${r.verified ?? 0} trials ${inst?.agents?.trials ?? 0} model requests ${requests}`,
@@ -209,7 +209,7 @@ try {
     if (Date.now() - started > (minutes + 30) * 60_000)
       throw new Error("the campaign did not close");
   }
-  const evs = await unitEvents();
+  const evs = await rigEvents();
   const final = evs.filter((e) => e.kind === "research_final").at(-1)?.body;
   const digests = evs.filter((e) => e.kind === "research_digest").length;
   const interrupted = evs.filter(
@@ -217,7 +217,7 @@ try {
   ).length;
   const trials = evs.filter((e) => e.kind === "trial_finished").length;
   const closed = evs.find(
-    (e) => e.kind === "instance_status" && e.subject === "research-1" && e.body.status === "closed",
+    (e) => e.kind === "run_status" && e.subject === "research-1" && e.body.status === "closed",
   );
   const elapsedMin = (Date.parse(closed?.at ?? new Date().toISOString()) - started) / 60000;
   check("the campaign ran its minimum time and closed itself", elapsedMin >= minutes, {

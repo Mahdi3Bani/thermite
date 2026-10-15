@@ -16,7 +16,7 @@ export interface TrialSpec {
   trialId: string;
   /** The trial's own token: it binds API calls to this trial and stops working when it ends. */
   token?: string | undefined;
-  instance: string;
+  run: string;
   lane: Role;
   /** The lane's workspace: a git repository at the parent commit, owned by the lane user. */
   workspace: string;
@@ -46,7 +46,7 @@ export interface TrialDeps {
   laneTool: string[];
   model: ModelConfig;
   submit(req: {
-    instance: string;
+    run: string;
     lane: string;
     parent: string;
     patch_base64: string;
@@ -266,7 +266,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
           );
         }
         const out = await deps.submit({
-          instance: spec.instance,
+          run: spec.run,
           lane: spec.lane,
           parent: spec.parentCommit,
           patch_base64: Buffer.from(diff.stdout).toString("base64"),

@@ -21,7 +21,7 @@ async function setup(opts: Parameters<typeof makeJudgeEnv>[0] = {}) {
   const submit = async (kernel: string, hypothesis: string) =>
     (
       await env.service.submitAttempt(
-        { instance: "js-1", patch_base64: env.patch(kernel), hypothesis, known_flaws: [] },
+        { run: "js-1", patch_base64: env.patch(kernel), hypothesis, known_flaws: [] },
         "proposer",
       )
     ).attempt;
@@ -110,7 +110,7 @@ describe("judge pipeline (local runner, Node test kit)", () => {
     const commit = String(env.ledger.getAttempt(b)?.commit_sha);
     assert.deepEqual(
       env.ledger.promote({
-        instance: "js-1",
+        run: "js-1",
         expectedSeq: 1,
         attempt: b,
         commitSha: commit,
@@ -134,7 +134,7 @@ describe("judge pipeline (local runner, Node test kit)", () => {
     const status = () =>
       Object.fromEntries(
         env.ledger.db
-          .prepare("select id, status from goal where instance = 'js-1'")
+          .prepare("select id, status from goal where run = 'js-1'")
           .all()
           .map((g) => [g.id, g.status]),
       );
@@ -150,7 +150,7 @@ describe("judge pipeline (local runner, Node test kit)", () => {
     );
     assert.equal(env.ledger.currentChampion("js-1").seq, 2);
     assert.equal(status().fast, "verified");
-    assert.equal(env.ledger.getInstance("js-1")?.status, "closed");
+    assert.equal(env.ledger.getRun("js-1")?.status, "closed");
     const report = env.ledger
       .eventsAfter(0, 10_000)
       .events.filter((e) => e.kind === "goal_complete");
@@ -174,7 +174,7 @@ describe("judge pipeline (local runner, Node test kit)", () => {
     // A validation that failed for an infrastructure reason.
     const jobId = env.ledger.enqueueJob({
       kind: "validate",
-      spec: { instance: "js-1", champion_seq: 1 },
+      spec: { run: "js-1", champion_seq: 1 },
       actor: "t",
     });
     env.ledger.db.prepare("update job set state = 'failed', result = '{}' where id = ?").run(jobId);

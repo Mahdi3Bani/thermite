@@ -94,10 +94,10 @@ export function prepare() {
 }
 
 /** Issues a signed command through control and waits until the supervisor delivered it. */
-export async function command(kind, payload, unit = "local-1") {
+export async function command(kind, payload, rig = "local-1") {
   const issued = await api("/v1/commands", {
     method: "POST",
-    body: JSON.stringify({ unit, kind, payload }),
+    body: JSON.stringify({ rig, kind, payload }),
   });
   if (issued.status !== 201) throw new Error(`issue failed: ${JSON.stringify(issued)}`);
   const done = await until(`${kind} delivered`, async () => {
@@ -110,14 +110,14 @@ export async function command(kind, payload, unit = "local-1") {
   return done;
 }
 
-export async function assign(env, instance, unit = "local-1") {
+export async function assign(env, run, rig = "local-1") {
   const payload = sh("node", [
     "dist/cli/thermite.js",
     "assign-payload",
     "--contract",
     env.contractFile,
-    "--instance",
-    instance,
+    "--run",
+    run,
     "--seed-repo",
     "smoke-project",
     "--seed-commit",
@@ -135,7 +135,7 @@ export async function assign(env, instance, unit = "local-1") {
     "--kit-bundle",
     env.kit.path,
   ]).trim();
-  return command("assign_campaign", JSON.parse(payload), unit);
+  return command("assign_campaign", JSON.parse(payload), rig);
 }
 
 /**
@@ -158,7 +158,7 @@ export function candidatePatch(env, dir, base) {
 }
 
 /** Submits a patch as a proposer from inside the harness container (as workers will). */
-export function submit(composeEnv, instance, patch, hypothesis) {
+export function submit(composeEnv, run, patch, hypothesis) {
   const b64 = Buffer.from(patch).toString("base64");
   const out = dc(
     composeEnv,
@@ -167,17 +167,17 @@ export function submit(composeEnv, instance, patch, hypothesis) {
     "harness",
     "sh",
     "-c",
-    `echo ${b64} | base64 -d > /tmp/p.patch && thermite submit --harness http://127.0.0.1:8700 --token-file /run/secrets/harness-proposer-token --instance ${instance} --patch-file /tmp/p.patch --hypothesis "${hypothesis.replace(/"/g, "'")}"`,
+    `echo ${b64} | base64 -d > /tmp/p.patch && thermite submit --harness http://127.0.0.1:8700 --token-file /run/secrets/harness-proposer-token --run ${run} --patch-file /tmp/p.patch --hypothesis "${hypothesis.replace(/"/g, "'")}"`,
   );
   return JSON.parse(out.trim().split("\n").pop());
 }
 
-/** Every event control has for the unit, in arrival order. */
+/** Every event control has for the rig, in arrival order. */
 export async function events() {
   const all = [];
   let after = 0;
   for (;;) {
-    const page = await api(`/v1/units/local-1/events?after=${after}&limit=5000`);
+    const page = await api(`/v1/rigs/local-1/events?after=${after}&limit=5000`);
     all.push(...page.body.events);
     if (page.body.events.length < 5000) return all;
     after = page.body.events.at(-1).seq;

@@ -11,18 +11,18 @@ import { z } from "zod";
  * snapshot. This turns each verified export into packed commits on a few branches of the
  * results repository, without a checkout:
  *
- *   thermite/<unit>/attempts  attempts/<id>.patch, attempts/<id>.json, events/<export>.jsonl,
- *                            champions/<instance>/<seq>.patch and .json
- *   thermite/<unit>/ledger    ledger.sqlite and its manifest (at most once per ledgerEveryMs)
+ *   thermite/<rig>/attempts  attempts/<id>.patch, attempts/<id>.json, events/<export>.jsonl,
+ *                            champions/<run>/<seq>.patch and .json
+ *   thermite/<rig>/ledger    ledger.sqlite and its manifest (at most once per ledgerEveryMs)
  *
- * and pushes them with the unit's deploy key. Git work is deterministic code only; no model
+ * and pushes them with the rig's deploy key. Git work is deterministic code only; no model
  * ever runs git here.
  */
 
 const run = promisify(execFile);
 
 export interface ExportConfig {
-  unit: string;
+  rig: string;
   outboxDir: string;
   workDir: string;
   /** The results repository (an SSH URL in production, a file URL in tests). Unset: commit only. */
@@ -186,8 +186,8 @@ export async function exportOnce(cfg: ExportConfig, state: ExportState): Promise
         .sort()
     : [];
   const next: ExportState = { ...state, done: [...state.done] };
-  const attemptsBranch = `thermite/${cfg.unit}/attempts`;
-  const ledgerBranch = `thermite/${cfg.unit}/ledger`;
+  const attemptsBranch = `thermite/${cfg.rig}/attempts`;
+  const ledgerBranch = `thermite/${cfg.rig}/ledger`;
   // A new or wiped supervisor home continues the results repository's history, so its pushes
   // stay fast-forwards.
   if (cfg.remote && pending.length) {
@@ -214,7 +214,7 @@ export async function exportOnce(cfg: ExportConfig, state: ExportState): Promise
       [`exports/${name}.json`]: join(dir, "manifest.json"),
     };
     for (const rel of Object.keys(manifest.files)) {
-      // Attempts, and published champions (what other units fetch to judge them themselves).
+      // Attempts, and published champions (what other rigs fetch to judge them themselves).
       if (
         rel.startsWith("attempts/") ||
         rel.startsWith("champions/") ||
@@ -228,7 +228,7 @@ export async function exportOnce(cfg: ExportConfig, state: ExportState): Promise
       repo,
       attemptsBranch,
       files,
-      `${cfg.unit}: export ${name}, ${attempts} attempts, events ${manifest.from_event + 1}-${manifest.through_event}`,
+      `${cfg.rig}: export ${name}, ${attempts} attempts, events ${manifest.from_event + 1}-${manifest.through_event}`,
     );
     // A full export's ledger snapshot is always kept: a full reset wipes the ledger after it.
     const due =
@@ -243,7 +243,7 @@ export async function exportOnce(cfg: ExportConfig, state: ExportState): Promise
           "ledger.sqlite": join(dir, "ledger.sqlite"),
           "manifest.json": join(dir, "manifest.json"),
         },
-        `${cfg.unit}: ledger snapshot through event ${manifest.through_event}`,
+        `${cfg.rig}: ledger snapshot through event ${manifest.through_event}`,
         { overwrite: true },
       );
       next.lastLedgerAt = new Date().toISOString();

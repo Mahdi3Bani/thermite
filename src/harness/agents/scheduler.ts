@@ -89,10 +89,10 @@ export class Scheduler {
   private readonly ledger: Ledger;
   private readonly running = new Map<string, Promise<void>>();
   private readonly aborts = new Map<string, AbortController>();
-  /** The instance each running trial (by lane) works for. */
-  private readonly laneInstance = new Map<string, string>();
+  /** The run each running trial (by lane) works for. */
+  private readonly laneRun = new Map<string, string>();
   /** The planner call in flight, if any. */
-  private planning: { instance: string; ctrl: AbortController } | undefined;
+  private planning: { run: string; ctrl: AbortController } | undefined;
   private watcher: ReturnType<typeof setInterval> | undefined;
   /** The newest workers_reset event acted on. */
   private resetSeen: number;
@@ -123,22 +123,22 @@ export class Scheduler {
   }
 
   /**
-   * Work in flight for an instance that is no longer running (paused, closed) stops at once: its
+   * Work in flight for a run that is no longer running (paused, closed) stops at once: its
    * trials are killed and its planner call is cancelled, instead of running to their end.
    */
   private stopIfNotRunning(): void {
-    const running = (id: string) => this.ledger.getInstance(id)?.status === "running";
+    const running = (id: string) => this.ledger.getRun(id)?.status === "running";
     for (const [lane, ctrl] of this.aborts) {
-      const instance = this.laneInstance.get(lane);
-      if (instance && !running(instance) && !ctrl.signal.aborted) {
-        this.ledger.appendEvent(this.o.owner, "trial_stopped", instance, {
+      const run = this.laneRun.get(lane);
+      if (run && !running(run) && !ctrl.signal.aborted) {
+        this.ledger.appendEvent(this.o.owner, "trial_stopped", run, {
           lane,
-          reason: "instance not running",
+          reason: "run not running",
         });
         ctrl.abort();
       }
     }
-    if (this.planning && !running(this.planning.instance)) this.planning.ctrl.abort();
+    if (this.planning && !running(this.planning.run)) this.planning.ctrl.abort();
   }
 
   /** Checks every second while trials or a planner call are in flight (the tick may be waiting). */
@@ -159,7 +159,7 @@ export class Scheduler {
   }
 
   /**
-   * reset_workers: running trials of the instance are killed, lane bests cleared and the
+   * reset_workers: running trials of the run are killed, lane bests cleared and the
    * epoch ended, so the next tick plans afresh.
    */
   private async applyResets(): Promise<void> {
@@ -171,7 +171,7 @@ export class Scheduler {
       for (const a of this.aborts.values()) a.abort();
       await this.idle();
       for (const lane of this.ledger.db
-        .prepare("select id from lane where instance = ?")
+        .prepare("select id from lane where run = ?")
         .all(r.subject) as { id: string }[]) {
         this.registry.clearLaneBest(
           r.subject,
@@ -186,8 +186,8 @@ export class Scheduler {
   }
 
   /** Why a lane must wait before its next trial (backoff after unproductive trials), if it must. */
-  private laneWaitMs(instance: string, lane: string, research: boolean): number {
-    const recent = this.registry.recentTrials(instance, lane, 8);
+  private laneWaitMs(run: string, lane: string, research: boolean): number {
+    const recent = this.registry.recentTrials(run, lane, 8);
     let k = 0;
     for (const t of recent) {
       const lifecycle = t.attempt ? String(this.ledger.getAttempt(t.attempt)?.lifecycle) : null;
@@ -205,16 +205,16 @@ export class Scheduler {
     return Math.max(0, Date.parse(recent[0].ended_at) + delay - Date.now());
   }
 
-  /** A run of errors across the instance (a model outage): no new trials for a while. */
-  private coolingDown(instance: string): boolean {
-    const recent = this.registry.recentTrials(instance, null, ERROR_STREAK);
+  /** A run of errors across the run (a model outage): no new trials for a while. */
+  private coolingDown(run: string): boolean {
+    const recent = this.registry.recentTrials(run, null, ERROR_STREAK);
     if (recent.length < ERROR_STREAK || !recent.every((t) => t.stopped === "error")) return false;
     const last = recent[0] as { ended_at: string; error: string | null };
     const until = Date.parse(last.ended_at) + COOLDOWN_MS;
     if (Date.now() >= until) return false;
     if (this.cooldownNoted !== last.ended_at) {
       this.cooldownNoted = last.ended_at;
-      this.ledger.appendEvent(this.o.owner, "agents_cooldown", instance, {
+      this.ledger.appendEvent(this.o.owner, "agents_cooldown", run, {
         until: new Date(until).toISOString(),
         trials: ERROR_STREAK,
         last_error: last.error?.slice(0, 300) ?? null,
@@ -237,65 +237,63 @@ export class Scheduler {
    * Fork rounds (Fork-and-Flush): on a fixed schedule, never on a plateau, every lane starts again
    * from the champion. With a wall budget, at 33% and 66% of it; without one, every 20 epochs.
    */
-  private maybeForkRound(instance: string, contract: Contract, n: number): void {
+  private maybeForkRound(run: string, contract: Contract, n: number): void {
     const rounds = Number(
       (
         this.ledger.db
           .prepare("select count(*) as k from event where kind = 'fork_round' and subject = ?")
-          .get(instance) as { k: number }
+          .get(run) as { k: number }
       ).k,
     );
     const w = contract.budget.wall_hours;
     let due = false;
     if (w !== undefined) {
       const created = this.ledger.db
-        .prepare("select created_at from instance where id = ?")
-        .get(instance) as { created_at: string };
+        .prepare("select created_at from run where id = ?")
+        .get(run) as { created_at: string };
       const used = (Date.now() - Date.parse(created.created_at)) / (w * 3_600_000);
       due = (rounds < 1 && used >= 1 / 3) || (rounds < 2 && used >= 2 / 3);
     } else {
       due = n > 1 && (n - 1) % 20 === 0;
     }
     if (!due) return;
-    const lanes = this.ledger.db
-      .prepare("select id from lane where instance = ?")
-      .all(instance) as {
+    const lanes = this.ledger.db.prepare("select id from lane where run = ?").all(run) as {
       id: string;
     }[];
     for (const lane of lanes) {
       this.registry.clearLaneBest(
-        instance,
-        lane.id.slice(instance.length + 1),
+        run,
+        lane.id.slice(run.length + 1),
         this.o.owner,
         "fork round: every lane starts from the champion",
       );
     }
-    this.ledger.appendEvent(this.o.owner, "fork_round", instance, { epoch: n, round: rounds + 1 });
+    this.ledger.appendEvent(this.o.owner, "fork_round", run, { epoch: n, round: rounds + 1 });
   }
 
   /** The contract's budgets that end agent work, other than wall time: the first one spent. */
-  private budgetSpent(instance: string, contract: Contract): string | undefined {
+  private budgetSpent(run: string, contract: Contract): string | undefined {
     const b = contract.budget;
-    if (b.device_hours !== undefined && this.ledger.deviceHours(instance) >= b.device_hours)
+    if (b.device_hours !== undefined && this.ledger.deviceHours(run) >= b.device_hours)
       return "the device-hours budget is spent";
     if (
       b.llm_usd !== undefined &&
       this.o.usdPerMTokIn !== undefined &&
       this.o.usdPerMTokOut !== undefined
     ) {
-      const t = this.registry.tokensUsed(instance);
+      const t = this.registry.tokensUsed(run);
       const usd = (t.in * this.o.usdPerMTokIn + t.out * this.o.usdPerMTokOut) / 1e6;
       if (usd >= b.llm_usd) return `the model budget is spent ($${usd.toFixed(2)})`;
     }
     return undefined;
   }
 
-  private openAttempts(instance: string): number {
+  private openAttempts(run: string): number {
     const r = this.ledger.db
       .prepare(
-        `select count(*) as n from attempt where instance = ? and lifecycle in (${OPEN_LIFECYCLES.map(() => "?").join(",")})`,
+        `select count(*) as n from attempt where run = ? and lifecycle in (${OPEN_LIFECYCLES.map(() => "?").join(",")})`,
       )
-      .get(instance, ...OPEN_LIFECYCLES) as { n: number };
+      .get(run, ...OPEN_LIFECYCLES) as { n: number };
     return Number(r.n);
   }
 
@@ -304,9 +302,9 @@ export class Scheduler {
     await Promise.all([...this.running.values()]);
   }
 
-  private instance(): { id: string; contract: Contract } | undefined {
-    const inst = this.ledger.listInstances().find((i) => i.status === "running");
-    // A judge-only instance: no planning, no trials.
+  private run(): { id: string; contract: Contract } | undefined {
+    const inst = this.ledger.listRuns().find((i) => i.status === "running");
+    // A judge-only run: no planning, no trials.
     if (!inst?.agents) return undefined;
     if (inst.mode === "research" && !(this.o.research && this.o.runResearchTrial)) return undefined;
     return { id: inst.id, contract: this.o.service.contractFor(inst.id) };
@@ -322,8 +320,8 @@ export class Scheduler {
    * directive about a family the owner has a directive for, or a supervisor lane count when the
    * owner set one, does not apply.
    */
-  private directives(instance: string): { id: number; body: StructuredDirective }[] {
-    const all = this.ledger.activeDirectives(instance).map((d) => ({
+  private directives(run: string): { id: number; body: StructuredDirective }[] {
+    const all = this.ledger.activeDirectives(run).map((d) => ({
       id: d.id,
       owner: d.author.startsWith("control:"),
       body: d.body as StructuredDirective,
@@ -342,22 +340,22 @@ export class Scheduler {
       .map((d) => ({ id: d.id, body: d.body }));
   }
 
-  private laneCount(instance: string, contract: Contract): number {
+  private laneCount(run: string, contract: Contract): number {
     const cap = contract.lanes.count;
-    const d = this.directives(instance)
+    const d = this.directives(run)
       .filter((x) => x.body.kind === "lane_count" && typeof x.body.value === "number")
       .at(-1);
     return Math.max(1, Math.min(cap, Number(d?.body.value ?? cap)));
   }
 
   /** Relative gain of the current champion over the seed, from the confirmed steps. */
-  private championGain(instance: string): number {
+  private championGain(run: string): number {
     let gain = 1;
     const rows = this.ledger.db
       .prepare(
-        "select attempt from champion where instance = ? and reopened = 0 and attempt is not null",
+        "select attempt from champion where run = ? and reopened = 0 and attempt is not null",
       )
-      .all(instance) as { attempt: string }[];
+      .all(run) as { attempt: string }[];
     for (const r of rows) {
       const v = this.ledger.db
         .prepare(
@@ -375,10 +373,10 @@ export class Scheduler {
    * are never compared: when the champion moves, an older best is dropped. A best whose win did
    * not hold (failed confirmation, invalidation) or that became the champion is dropped too.
    */
-  private updateLaneBests(instance: string, lanes: string[]): void {
-    const champion = this.ledger.currentChampion(instance);
+  private updateLaneBests(run: string, lanes: string[]): void {
+    const champion = this.ledger.currentChampion(run);
     for (const lane of lanes) {
-      let best = this.registry.laneBest(instance, lane);
+      let best = this.registry.laneBest(run, lane);
       if (best) {
         const a = this.ledger.getAttempt(best);
         const verdict = this.ledger.currentVerdict(best)?.verdict;
@@ -393,7 +391,7 @@ export class Scheduler {
                   ? "the champion has moved since it was measured"
                   : undefined;
         if (why) {
-          this.registry.clearLaneBest(instance, lane, this.o.owner, why);
+          this.registry.clearLaneBest(run, lane, this.o.owner, why);
           best = null;
         }
       }
@@ -402,7 +400,7 @@ export class Scheduler {
         .prepare(
           "select at from event where kind = 'fork_round' and subject = ? order by id desc limit 1",
         )
-        .get(instance) as { at: string } | undefined;
+        .get(run) as { at: string } | undefined;
       const current = (id: string) => {
         const a = this.ledger.getAttempt(id);
         return (
@@ -411,49 +409,48 @@ export class Scheduler {
         );
       };
       const bestDelta = best
-        ? (this.registry.evidence(instance, 500, lane).find((e) => e.attempt === best)?.delta ??
-          null)
+        ? (this.registry.evidence(run, 500, lane).find((e) => e.attempt === best)?.delta ?? null)
         : null;
-      for (const e of this.registry.evidence(instance, 20, lane)) {
+      for (const e of this.registry.evidence(run, 20, lane)) {
         if (!e.verdict || !KEEP.has(e.verdict) || e.delta === null || e.attempt === best) continue;
         if (e.attempt === champion.attempt || !current(e.attempt)) continue;
         if (bestDelta === null || e.delta > bestDelta) {
-          this.registry.setLaneBest(instance, lane, e.attempt, this.o.owner);
+          this.registry.setLaneBest(run, lane, e.attempt, this.o.owner);
           break;
         }
       }
     }
   }
 
-  private async planEpoch(instance: string, contract: Contract, n: number): Promise<void> {
-    const laneCount = this.laneCount(instance, contract);
+  private async planEpoch(run: string, contract: Contract, n: number): Promise<void> {
+    const laneCount = this.laneCount(run, contract);
     const lanes = lanesOf(laneCount);
-    const champion = this.ledger.currentChampion(instance);
+    const champion = this.ledger.currentChampion(run);
     const input: PlannerInput = {
-      instance,
+      run,
       epoch: n,
       laneCount,
       objective: objectiveOf(contract),
       editablePaths: "editable_paths" in contract ? contract.editable_paths : [],
-      champion: { seq: champion.seq, gain: this.championGain(instance) },
-      families: this.registry.families(instance),
-      evidence: this.registry.evidence(instance, 30),
-      directives: this.directives(instance),
-      laneBests: Object.fromEntries(lanes.map((l) => [l, this.registry.laneBest(instance, l)])),
+      champion: { seq: champion.seq, gain: this.championGain(run) },
+      families: this.registry.families(run),
+      evidence: this.registry.evidence(run, 30),
+      directives: this.directives(run),
+      laneBests: Object.fromEntries(lanes.map((l) => [l, this.registry.laneBest(run, l)])),
       campaignNotes: contract.notes,
-      ownerMessages: this.o.service.takePlannerMessages(instance),
+      ownerMessages: this.o.service.takePlannerMessages(run),
     };
     const live = this.o.service.live;
     live.append({
       source: "planner",
       kind: "status",
       text: `planning epoch ${n} (${laneCount} lanes)`,
-      instance,
+      run,
     });
     for (const m of input.ownerMessages ?? [])
-      live.append({ source: "planner", kind: "message", text: `Owner: ${m}`, instance });
+      live.append({ source: "planner", kind: "message", text: `Owner: ${m}`, run });
     const ctrl = new AbortController();
-    this.planning = { instance, ctrl };
+    this.planning = { run, ctrl };
     this.watch();
     let p: Awaited<ReturnType<typeof plan>>;
     try {
@@ -463,7 +460,7 @@ export class Scheduler {
     }
     // Paused or closed while planning: no epoch starts.
     if (ctrl.signal.aborted) {
-      live.append({ source: "planner", kind: "status", text: "planning cancelled", instance });
+      live.append({ source: "planner", kind: "status", text: "planning cancelled", run });
       return;
     }
     live.append({
@@ -480,12 +477,12 @@ export class Scheduler {
           : []),
         ...(p.rawViolations.length ? [`refused: ${p.rawViolations.slice(0, 3).join("; ")}`] : []),
       ].join("\n"),
-      instance,
+      run,
     });
     for (const f of p.newFamilies)
-      this.registry.addFamily(instance, f.id, f.description, `planner:${p.source}`);
+      this.registry.addFamily(run, f.id, f.description, `planner:${p.source}`);
     this.registry.startEpoch({
-      instance,
+      run,
       n,
       source: p.source,
       tries: p.tries,
@@ -502,12 +499,12 @@ export class Scheduler {
   async tick(): Promise<boolean> {
     this.stopIfNotRunning();
     await this.applyResets();
-    const inst = this.instance();
+    const inst = this.run();
     if (!inst || !this.o.model) return false;
     // The contract's wall-time budget ends agent work (the judge still finishes what is queued).
     const wallHours = inst.contract.budget.wall_hours;
     const created = this.ledger.db
-      .prepare("select created_at from instance where id = ?")
+      .prepare("select created_at from run where id = ?")
       .get(inst.id) as { created_at: string } | undefined;
     if (
       wallHours !== undefined &&
@@ -515,18 +512,13 @@ export class Scheduler {
       Date.now() - Date.parse(created.created_at) > wallHours * 3_600_000
     ) {
       if (!this.running.size) {
-        this.ledger.setInstanceStatus(
-          inst.id,
-          "paused",
-          "the wall-time budget is spent",
-          this.o.owner,
-        );
+        this.ledger.setRunStatus(inst.id, "paused", "the wall-time budget is spent", this.o.owner);
       }
       return false;
     }
     const spent = this.budgetSpent(inst.id, inst.contract);
     if (spent) {
-      if (!this.running.size) this.ledger.setInstanceStatus(inst.id, "paused", spent, this.o.owner);
+      if (!this.running.size) this.ledger.setRunStatus(inst.id, "paused", spent, this.o.owner);
       return false;
     }
     if (this.coolingDown(inst.id)) return false;
@@ -575,43 +567,38 @@ export class Scheduler {
    * Research: the harness owns the clock. Lanes run trial after trial (no judge to wait for)
    * until max_duration; an hourly digest and a final report come from the ledger.
    */
-  private async researchTick(instance: string, contract: ResearchContract): Promise<boolean> {
+  private async researchTick(run: string, contract: ResearchContract): Promise<boolean> {
     const research = this.o.research as Research;
-    const clock = research.clock(instance);
+    const clock = research.clock(run);
     if (clock.done) {
       if (this.running.size) return false; // let the last trials finish first
-      research.report(instance, "final");
-      this.ledger.setInstanceStatus(
-        instance,
-        "closed",
-        "the research window is over",
-        this.o.owner,
-      );
+      research.report(run, "final");
+      this.ledger.setRunStatus(run, "closed", "the research window is over", this.o.owner);
       return false;
     }
-    const last = research.lastReportAt(instance);
+    const last = research.lastReportAt(run);
     if (!last || Date.now() - Date.parse(last) >= contract.report_cadence.digest_minutes * 60_000) {
-      research.report(instance, "digest");
+      research.report(run, "digest");
     }
-    let epoch = this.registry.currentEpoch(instance);
+    let epoch = this.registry.currentEpoch(run);
     if (!epoch || epoch.ended_at) {
-      this.planResearchEpoch(instance, contract, (epoch?.n ?? 0) + 1);
-      epoch = this.registry.currentEpoch(instance);
+      this.planResearchEpoch(run, contract, (epoch?.n ?? 0) + 1);
+      epoch = this.registry.currentEpoch(run);
       if (!epoch) return false;
     }
     let started = false;
     let complete = true;
     for (const a of epoch.assignments) {
-      const trials = this.registry.trials(instance, a.lane, epoch.n);
+      const trials = this.registry.trials(run, a.lane, epoch.n);
       if (trials.length < contract.lanes.trials_per_epoch || this.running.has(a.lane))
         complete = false;
       if (trials.length >= contract.lanes.trials_per_epoch || this.running.has(a.lane)) continue;
       if (this.running.size >= this.o.maxConcurrent) continue;
-      if (this.laneWaitMs(instance, a.lane, true) > 0) continue;
-      this.startResearchTrial(instance, contract, epoch.n, a, clock);
+      if (this.laneWaitMs(run, a.lane, true) > 0) continue;
+      this.startResearchTrial(run, contract, epoch.n, a, clock);
       started = true;
     }
-    if (complete && !this.running.size) this.registry.endEpoch(instance, epoch.n, this.o.owner);
+    if (complete && !this.running.size) this.registry.endEpoch(run, epoch.n, this.o.owner);
     return started;
   }
 
@@ -634,11 +621,11 @@ export class Scheduler {
    * task kinds to put first, AVOID removes a task kind, and a numeric TRY or MANDATE value puts
    * that question first. Directive text never reaches a worker's brief.
    */
-  private planResearchEpoch(instance: string, contract: ResearchContract, n: number): void {
+  private planResearchEpoch(run: string, contract: ResearchContract, n: number): void {
     const research = this.o.research as Research;
     for (const t of Scheduler.RESEARCH_TASKS)
-      this.registry.addFamily(instance, t.id, t.description, "research-plan");
-    const directives = this.directives(instance);
+      this.registry.addFamily(run, t.id, t.description, "research-plan");
+    const directives = this.directives(run);
     const avoid = new Set(
       directives.filter((d) => d.body.kind === "avoid" && d.body.family).map((d) => d.body.family),
     );
@@ -651,9 +638,9 @@ export class Scheduler {
     // When novelty falls (an hour with no new source and no newly verified claim), lanes go
     // deeper instead of wider: primary sources and contradictions first. Otherwise task kinds
     // rotate by epoch. Directives then reorder or remove task kinds.
-    const stats = research.stats(instance);
+    const stats = research.stats(run);
     const stalled =
-      research.clock(instance).elapsed_ms > 3_600_000 &&
+      research.clock(run).elapsed_ms > 3_600_000 &&
       stats.last_hour.sources === 0 &&
       stats.last_hour.verified === 0;
     const deep = (id: string) => Number(!["primary", "contradict"].includes(id));
@@ -690,7 +677,7 @@ export class Scheduler {
           x.verified - y.verified ||
           x.i - y.i,
       );
-    const lanes = lanesOf(this.laneCount(instance, contract));
+    const lanes = lanesOf(this.laneCount(run, contract));
     const assignments: Assignment[] = lanes.map((lane, k) => {
       const q = coverage[k % coverage.length] as { i: number };
       const task = tasks[k % tasks.length] as { id: string; description: string };
@@ -702,7 +689,7 @@ export class Scheduler {
       };
     });
     this.registry.startEpoch({
-      instance,
+      run,
       n,
       source: "fallback",
       tries: 0,
@@ -718,7 +705,7 @@ export class Scheduler {
   }
 
   private startResearchTrial(
-    instance: string,
+    run: string,
     contract: ResearchContract,
     epoch: number,
     a: Assignment,
@@ -726,8 +713,8 @@ export class Scheduler {
   ): void {
     const research = this.o.research as Research;
     const id = `t-${randomUUID().replace(/-/g, "").slice(0, 16)}`;
-    const stats = research.stats(instance);
-    const frontier = research.frontier(instance, 30);
+    const stats = research.stats(run);
+    const frontier = research.frontier(run, 30);
     const brief = [
       `# Research assignment (epoch ${epoch}, ${a.lane})`,
       `Campaign: ${contract.title}`,
@@ -750,7 +737,7 @@ export class Scheduler {
     const token = randomBytes(32).toString("hex");
     this.registry.startTrial({
       id,
-      instance,
+      run,
       lane: a.lane,
       epoch,
       family: a.family,
@@ -759,15 +746,15 @@ export class Scheduler {
     });
     this.trialLine(
       id,
-      instance,
+      run,
       a.lane,
       "status",
       `research trial on ${a.lane}: ${a.family}, ${a.focus}`,
     );
-    const fullBrief = this.withOwnerMessages(id, instance, a.lane, brief);
+    const fullBrief = this.withOwnerMessages(id, run, a.lane, brief);
     const abort = new AbortController();
     this.aborts.set(a.lane, abort);
-    this.laneInstance.set(a.lane, instance);
+    this.laneRun.set(a.lane, run);
     this.watch();
     const work = (async () => {
       let r: TrialResult = { stopped: "error", turns: 0, toolCalls: 0, tokensIn: 0, tokensOut: 0 };
@@ -781,7 +768,7 @@ export class Scheduler {
           {
             trialId: id,
             token,
-            instance,
+            run,
             lane: a.lane,
             brief: fullBrief,
             wallMs: laneLimits(contract).trialMinutes
@@ -798,7 +785,7 @@ export class Scheduler {
         this.registry.finishTrial(id, r, this.o.owner);
         this.trialLine(
           id,
-          instance,
+          run,
           a.lane,
           "status",
           `trial ended: ${r.stopped}${r.error ? ` (${r.error.slice(0, 200)})` : ""}`,
@@ -807,13 +794,13 @@ export class Scheduler {
     })().finally(() => {
       this.running.delete(a.lane);
       this.aborts.delete(a.lane);
-      this.laneInstance.delete(a.lane);
+      this.laneRun.delete(a.lane);
     });
     this.running.set(a.lane, work);
   }
 
   private startTrial(
-    instance: string,
+    run: string,
     contract: Contract,
     epoch: number,
     a: Assignment,
@@ -825,20 +812,20 @@ export class Scheduler {
     const token = randomBytes(32).toString("hex");
     const abort = new AbortController();
     this.aborts.set(a.lane, abort);
-    this.laneInstance.set(a.lane, instance);
+    this.laneRun.set(a.lane, run);
     this.watch();
     const work = (async () => {
-      const inst = this.ledger.getInstance(instance);
+      const inst = this.ledger.getRun(run);
       if (!inst) return;
-      const champion = this.ledger.currentChampion(instance);
-      const best = this.registry.laneBest(instance, a.lane);
+      const champion = this.ledger.currentChampion(run);
+      const best = this.registry.laneBest(run, a.lane);
       const parent =
         a.parent === "lane_best" && best
           ? String(this.ledger.getAttempt(best)?.commit_sha)
           : champion.commit_sha;
       this.registry.startTrial({
         id,
-        instance,
+        run,
         lane: a.lane,
         epoch,
         family: a.family,
@@ -847,7 +834,7 @@ export class Scheduler {
       });
       this.trialLine(
         id,
-        instance,
+        run,
         a.lane,
         "status",
         `trial on ${a.lane}: ${a.family}, ${a.focus} (from ${parent === champion.commit_sha ? `the champion, seq ${champion.seq}` : `the lane's best, ${best}`})`,
@@ -871,7 +858,7 @@ export class Scheduler {
           {
             trialId: id,
             token,
-            instance,
+            run,
             lane,
             workspace: ws.repo,
             workspaceRoot: ws.dir,
@@ -879,10 +866,10 @@ export class Scheduler {
             editablePaths: "editable_paths" in contract ? contract.editable_paths : [],
             brief: this.withOwnerMessages(
               id,
-              instance,
+              run,
               a.lane,
               this.brief(
-                instance,
+                run,
                 contract,
                 epoch,
                 a,
@@ -909,7 +896,7 @@ export class Scheduler {
         this.registry.finishTrial(id, { ...r, attempt: r.submitted?.attempt }, this.o.owner);
         this.trialLine(
           id,
-          instance,
+          run,
           a.lane,
           "status",
           `trial ended: ${r.submitted ? `submitted ${r.submitted.attempt}` : r.stopped}${r.error ? ` (${r.error.slice(0, 200)})` : ""}`,
@@ -922,33 +909,27 @@ export class Scheduler {
     })().finally(() => {
       this.running.delete(a.lane);
       this.aborts.delete(a.lane);
-      this.laneInstance.delete(a.lane);
+      this.laneRun.delete(a.lane);
     });
     this.running.set(a.lane, work);
   }
 
   /** A line in a trial's live session (control's live view). */
-  private trialLine(
-    id: string,
-    instance: string,
-    lane: string,
-    kind: LiveKind,
-    text: string,
-  ): void {
-    this.o.service.live.append({ source: `trial:${id}`, kind, text, lane, instance });
+  private trialLine(id: string, run: string, lane: string, kind: LiveKind, text: string): void {
+    this.o.service.live.append({ source: `trial:${id}`, kind, text, lane, run });
   }
 
   /** The brief with the owner's messages for this lane, if any (each delivered once). */
-  private withOwnerMessages(id: string, instance: string, lane: string, brief: string): string {
-    const msgs = this.o.service.takeMessages({ id, instance, lane });
+  private withOwnerMessages(id: string, run: string, lane: string, brief: string): string {
+    const msgs = this.o.service.takeMessages({ id, run, lane });
     if (!msgs.length) return brief;
-    for (const m of msgs) this.trialLine(id, instance, lane, "message", `Owner: ${m}`);
+    for (const m of msgs) this.trialLine(id, run, lane, "message", `Owner: ${m}`);
     return `${brief}\n\n# Messages from the campaign's owner\n${msgs.map((m) => `- ${m}`).join("\n")}`;
   }
 
   /** The worker's brief: built only from the ledger, and only from this lane's own history. */
   private brief(
-    instance: string,
+    run: string,
     contract: Contract,
     epoch: number,
     a: Assignment,
@@ -956,8 +937,8 @@ export class Scheduler {
     perEpoch: number,
     start: string,
   ): string {
-    const fam = this.registry.families(instance).find((f) => f.id === a.family);
-    const mine = this.registry.evidence(instance, 3, a.lane);
+    const fam = this.registry.families(run).find((f) => f.id === a.family);
+    const mine = this.registry.evidence(run, 3, a.lane);
     const feedback = mine.length
       ? mine
           .map((e) => {

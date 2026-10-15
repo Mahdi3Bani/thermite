@@ -66,20 +66,20 @@ export class Registry {
     return new Date().toISOString();
   }
 
-  addFamily(instance: string, id: string, description: string, by: string): void {
+  addFamily(run: string, id: string, description: string, by: string): void {
     this.ledger.tx(() => {
       const r = this.ledger.db
         .prepare(
-          "insert or ignore into family (instance, id, description, created_by, created_at) values (?, ?, ?, ?, ?)",
+          "insert or ignore into family (run, id, description, created_by, created_at) values (?, ?, ?, ?, ?)",
         )
-        .run(instance, id, description.slice(0, 500), by, this.now());
+        .run(run, id, description.slice(0, 500), by, this.now());
       if (Number(r.changes) > 0)
-        this.ledger.appendEvent(by, "family_added", instance, { family: id, description });
+        this.ledger.appendEvent(by, "family_added", run, { family: id, description });
     });
   }
 
   setFamilyStatus(
-    instance: string,
+    run: string,
     id: string,
     status: FamilyView["status"],
     by: string,
@@ -87,20 +87,20 @@ export class Registry {
   ): void {
     this.ledger.tx(() => {
       this.ledger.db
-        .prepare("update family set status = ? where instance = ? and id = ?")
-        .run(status, instance, id);
-      this.ledger.appendEvent(by, "family_status", instance, { family: id, status, reason });
+        .prepare("update family set status = ? where run = ? and id = ?")
+        .run(status, run, id);
+      this.ledger.appendEvent(by, "family_status", run, { family: id, status, reason });
     });
   }
 
-  families(instance: string): FamilyView[] {
+  families(run: string): FamilyView[] {
     return this.all(
-      "select id, description, status from family where instance = ? order by created_at",
-      instance,
+      "select id, description, status from family where run = ? order by created_at",
+      run,
     ).map((f) => {
       const attempts = this.all(
-        "select id from attempt where instance = ? and family = ?",
-        instance,
+        "select id from attempt where run = ? and family = ?",
+        run,
         String(f.id),
       ).map((a) => String(a.id));
       const verdicts: Record<string, number> = {};
@@ -128,17 +128,17 @@ export class Registry {
   }
 
   /** The newest judged evidence, for the planner and for briefs. */
-  evidence(instance: string, limit = 30, lane?: string): Evidence[] {
+  evidence(run: string, limit = 30, lane?: string): Evidence[] {
     const rows = lane
       ? this.all(
-          "select id, lane, family, hypothesis, lifecycle from attempt where instance = ? and lane = ? order by created_at desc limit ?",
-          instance,
+          "select id, lane, family, hypothesis, lifecycle from attempt where run = ? and lane = ? order by created_at desc limit ?",
+          run,
           lane,
           limit,
         )
       : this.all(
-          "select id, lane, family, hypothesis, lifecycle from attempt where instance = ? order by created_at desc limit ?",
-          instance,
+          "select id, lane, family, hypothesis, lifecycle from attempt where run = ? order by created_at desc limit ?",
+          run,
           limit,
         );
     return rows.map((r) => {
@@ -156,8 +156,8 @@ export class Registry {
     });
   }
 
-  currentEpoch(instance: string): EpochRecord | undefined {
-    const r = this.get("select * from epoch where instance = ? order by n desc limit 1", instance);
+  currentEpoch(run: string): EpochRecord | undefined {
+    const r = this.get("select * from epoch where run = ? order by n desc limit 1", run);
     return r
       ? {
           n: Number(r.n),
@@ -171,7 +171,7 @@ export class Registry {
   }
 
   startEpoch(input: {
-    instance: string;
+    run: string;
     n: number;
     source: "planner" | "fallback";
     tries: number;
@@ -185,11 +185,11 @@ export class Registry {
     this.ledger.tx(() => {
       this.ledger.db
         .prepare(
-          `insert into epoch (instance, n, source, planner_tries, planner_valid, raw_violations, assignments, directives, notes, started_at)
+          `insert into epoch (run, n, source, planner_tries, planner_valid, raw_violations, assignments, directives, notes, started_at)
            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
-          input.instance,
+          input.run,
           input.n,
           input.source,
           input.tries,
@@ -200,7 +200,7 @@ export class Registry {
           input.notes?.slice(0, 2000) ?? null,
           this.now(),
         );
-      this.ledger.appendEvent(input.by, "epoch_started", input.instance, {
+      this.ledger.appendEvent(input.by, "epoch_started", input.run, {
         n: input.n,
         source: input.source,
         planner_tries: input.tries,
@@ -217,23 +217,23 @@ export class Registry {
     });
   }
 
-  endEpoch(instance: string, n: number, by: string): void {
+  endEpoch(run: string, n: number, by: string): void {
     this.ledger.tx(() => {
       this.ledger.db
-        .prepare("update epoch set ended_at = ? where instance = ? and n = ? and ended_at is null")
-        .run(this.now(), instance, n);
-      this.ledger.appendEvent(by, "epoch_ended", instance, { n });
+        .prepare("update epoch set ended_at = ? where run = ? and n = ? and ended_at is null")
+        .run(this.now(), run, n);
+      this.ledger.appendEvent(by, "epoch_ended", run, { n });
     });
   }
 
   /**
    * Starts a trial with its own token (only its hash is stored). The worker presents the token
-   * to the API; the harness binds every call to this trial's instance and lane, and the token
+   * to the API; the harness binds every call to this trial's run and lane, and the token
    * stops working when the trial ends.
    */
   startTrial(t: {
     id: string;
-    instance: string;
+    run: string;
     lane: string;
     epoch: number;
     family: string;
@@ -242,11 +242,11 @@ export class Registry {
   }): void {
     this.ledger.db
       .prepare(
-        "insert into trial (id, instance, lane, epoch, family, parent_commit, token_sha, started_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
+        "insert into trial (id, run, lane, epoch, family, parent_commit, token_sha, started_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
       )
       .run(
         t.id,
-        t.instance,
+        t.run,
         t.lane,
         t.epoch,
         t.family,
@@ -259,7 +259,7 @@ export class Registry {
   /** The open trial a token belongs to; throws when the token is unknown or the trial ended. */
   openTrial(token: string): {
     id: string;
-    instance: string;
+    run: string;
     lane: string;
     family: string | null;
     parent: string;
@@ -267,7 +267,7 @@ export class Registry {
   } {
     const r = token
       ? this.get(
-          "select id, instance, lane, family, parent_commit, attempt, ended_at from trial where token_sha = ?",
+          "select id, run, lane, family, parent_commit, attempt, ended_at from trial where token_sha = ?",
           sha256Hex(token),
         )
       : undefined;
@@ -275,7 +275,7 @@ export class Registry {
     if (r.ended_at !== null) throw new LedgerError("stale", `trial ${String(r.id)} has ended`);
     return {
       id: String(r.id),
-      instance: String(r.instance),
+      run: String(r.run),
       lane: String(r.lane),
       family: r.family === null ? null : String(r.family),
       parent: String(r.parent_commit),
@@ -298,20 +298,20 @@ export class Registry {
 
   /** The lane's newest finished trials, newest first (for backoff). */
   recentTrials(
-    instance: string,
+    run: string,
     lane: string | null,
     n: number,
   ): { stopped: string; attempt: string | null; ended_at: string; error: string | null }[] {
     const rows = lane
       ? this.all(
-          "select stopped, attempt, ended_at, error from trial where instance = ? and lane = ? and ended_at is not null order by ended_at desc limit ?",
-          instance,
+          "select stopped, attempt, ended_at, error from trial where run = ? and lane = ? and ended_at is not null order by ended_at desc limit ?",
+          run,
           lane,
           n,
         )
       : this.all(
-          "select stopped, attempt, ended_at, error from trial where instance = ? and ended_at is not null order by ended_at desc limit ?",
-          instance,
+          "select stopped, attempt, ended_at, error from trial where run = ? and ended_at is not null order by ended_at desc limit ?",
+          run,
           n,
         );
     return rows.map((r) => ({
@@ -322,11 +322,11 @@ export class Registry {
     }));
   }
 
-  /** Tokens the instance's agents have used (trials; the planner's calls are not counted yet). */
-  tokensUsed(instance: string): { in: number; out: number } {
+  /** Tokens the run's agents have used (trials; the planner's calls are not counted yet). */
+  tokensUsed(run: string): { in: number; out: number } {
     const r = this.get(
-      "select coalesce(sum(tokens_in), 0) as i, coalesce(sum(tokens_out), 0) as o from trial where instance = ?",
-      instance,
+      "select coalesce(sum(tokens_in), 0) as i, coalesce(sum(tokens_out), 0) as o from trial where run = ?",
+      run,
     );
     return { in: Number(r?.i ?? 0), out: Number(r?.o ?? 0) };
   }
@@ -361,11 +361,8 @@ export class Registry {
           this.now(),
           id,
         );
-      const t = this.get(
-        "select instance, lane, epoch, family, attempt from trial where id = ?",
-        id,
-      );
-      this.ledger.appendEvent(by, "trial_finished", String(t?.instance ?? ""), {
+      const t = this.get("select run, lane, epoch, family, attempt from trial where id = ?", id);
+      this.ledger.appendEvent(by, "trial_finished", String(t?.run ?? ""), {
         trial: id,
         lane: t?.lane ?? null,
         epoch: t?.epoch ?? null,
@@ -399,13 +396,13 @@ export class Registry {
 
   /** Trials of a lane in an epoch (finished or running). */
   trials(
-    instance: string,
+    run: string,
     lane: string,
     epoch: number,
   ): { id: string; attempt: string | null; ended: boolean }[] {
     return this.all(
-      "select id, attempt, ended_at from trial where instance = ? and lane = ? and epoch = ? order by started_at",
-      instance,
+      "select id, attempt, ended_at from trial where run = ? and lane = ? and epoch = ? order by started_at",
+      run,
       lane,
       epoch,
     ).map((r) => ({
@@ -415,40 +412,40 @@ export class Registry {
     }));
   }
 
-  laneBest(instance: string, lane: string): string | null {
-    const r = this.get("select lane_best_attempt from lane where id = ?", `${instance}:${lane}`);
+  laneBest(run: string, lane: string): string | null {
+    const r = this.get("select lane_best_attempt from lane where id = ?", `${run}:${lane}`);
     return r?.lane_best_attempt ? String(r.lane_best_attempt) : null;
   }
 
-  clearLaneBest(instance: string, lane: string, by: string, reason: string): void {
+  clearLaneBest(run: string, lane: string, by: string, reason: string): void {
     this.ledger.tx(() => {
       const r = this.ledger.db
         .prepare(
           "update lane set lane_best_attempt = null where id = ? and lane_best_attempt is not null",
         )
-        .run(`${instance}:${lane}`);
+        .run(`${run}:${lane}`);
       if (Number(r.changes) > 0)
-        this.ledger.appendEvent(by, "lane_best", instance, { lane, attempt: null, reason });
+        this.ledger.appendEvent(by, "lane_best", run, { lane, attempt: null, reason });
     });
   }
 
-  setLaneBest(instance: string, lane: string, attempt: string, by: string): void {
+  setLaneBest(run: string, lane: string, attempt: string, by: string): void {
     this.ledger.tx(() => {
       this.ledger.db
         .prepare(
-          `insert into lane (id, instance, lane_best_attempt, created_at) values (?, ?, ?, ?)
+          `insert into lane (id, run, lane_best_attempt, created_at) values (?, ?, ?, ?)
            on conflict (id) do update set lane_best_attempt = excluded.lane_best_attempt`,
         )
-        .run(`${instance}:${lane}`, instance, attempt, this.now());
-      this.ledger.appendEvent(by, "lane_best", instance, { lane, attempt });
+        .run(`${run}:${lane}`, run, attempt, this.now());
+      this.ledger.appendEvent(by, "lane_best", run, { lane, attempt });
     });
   }
 
   /** Duplicate rate: attempts recorded as duplicates over all recorded attempts. */
-  duplicateRate(instance: string): { duplicates: number; attempts: number } {
+  duplicateRate(run: string): { duplicates: number; attempts: number } {
     const r = this.get(
-      "select sum(lifecycle = 'duplicate') as d, count(*) as n from attempt where instance = ?",
-      instance,
+      "select sum(lifecycle = 'duplicate') as d, count(*) as n from attempt where run = ?",
+      run,
     );
     return { duplicates: Number(r?.d ?? 0), attempts: Number(r?.n ?? 0) };
   }

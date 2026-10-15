@@ -13,7 +13,7 @@ import {
 } from "./advisors.ts";
 
 /**
- * The supervisor's advisor loop: the teacher pair reviews each running instance on its cadence,
+ * The supervisor's advisor loop: the teacher pair reviews each running run on its cadence,
  * the auditor answers open audits, and the review panel answers open reviews. Everything goes
  * through the harness API with the supervisor's token, which cannot write verdicts, champions
  * or contracts. Each run is kept in the supervisor's home, and the figures go to control.
@@ -124,7 +124,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
     ...(domains.length ? { fetchUrl: advisorFetcher(cfg.home, domains) } : {}),
     ...(domains.includes("*") ? {} : { kbSearch: kbTool(cfg.advisors) }),
   };
-  // A daily spending limit for all advisors of the unit.
+  // A daily spending limit for all advisors of the rig.
   const day = new Date().toISOString().slice(0, 10);
   if (next.spend?.day !== day) next.spend = { day, usd: 0 };
   const spend = next.spend as { day: string; usd: number };
@@ -149,24 +149,24 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
     log("supervisor", "advisor error", { error: s.last_error });
   };
 
-  // The teacher pair, per running instance, on its cadence.
+  // The teacher pair, per running run, on its cadence.
   if (cfg.advisors.teachers.length && !overBudget()) {
-    const { instances } = (await api("GET", "/v1/instances")) as {
-      instances: { id: string; status: string }[];
+    const { runs } = (await api("GET", "/v1/runs")) as {
+      runs: { id: string; status: string }[];
     };
-    for (const inst of instances.filter((i) => i.status === "running")) {
+    for (const inst of runs.filter((i) => i.status === "running")) {
       const last = next.lastTeacherAt[inst.id];
       if (last && now - Date.parse(last) < cfg.advisors.teacher_minutes * 60_000) continue;
       next.lastTeacherAt[inst.id] = new Date().toISOString();
       try {
-        const brief = await api("GET", `/v1/brief?instance=${encodeURIComponent(inst.id)}`);
+        const brief = await api("GET", `/v1/brief?run=${encodeURIComponent(inst.id)}`);
         const run = await teacherRound({
           config: cfg.advisors,
-          instance: inst.id,
+          run: inst.id,
           brief,
           tools: {
             ...tools,
-            brief: () => api("GET", `/v1/brief?instance=${encodeURIComponent(inst.id)}`),
+            brief: () => api("GET", `/v1/brief?run=${encodeURIComponent(inst.id)}`),
           },
         });
         s.teacher_runs++;
@@ -174,7 +174,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         let posted: unknown;
         if (run.directives?.length) {
           posted = await api("POST", "/v1/directives", {
-            instance: inst.id,
+            run: inst.id,
             directives: run.directives,
           });
           s.directive_sets++;

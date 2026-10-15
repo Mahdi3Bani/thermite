@@ -14,7 +14,7 @@ import { Reviews } from "./reviews.ts";
 import { type HarnessService, SubmitRequest } from "./service.ts";
 
 /**
- * Harness HTTP API. Only the unit's own supervisor reaches it over the network; proposers
+ * Harness HTTP API. Only the rig's own supervisor reaches it over the network; proposers
  * (workers) reach it locally. Every route except /v1/health needs a bearer token whose scope
  * allows it.
  */
@@ -101,7 +101,7 @@ export function createHarnessApi(
   const app = new Hono();
   const supervisor = requireScope(tokens, ["supervisor"]);
   const registry = new Registry(service.ledger);
-  /** The caller's open trial (its token binds the instance and lane). */
+  /** The caller's open trial (its token binds the run and lane). */
   const trialOf = (header: string | undefined) => {
     const token = trialToken(header);
     if (!token) throw new Unauthorized("unauthorized");
@@ -119,7 +119,7 @@ export function createHarnessApi(
     return c.json({ error: err instanceof z.ZodError ? "invalid request" : err.message }, status);
   });
 
-  app.get("/v1/health", (c) => c.json({ ok: true, unit: service.unit }));
+  app.get("/v1/health", (c) => c.json({ ok: true, rig: service.rig }));
 
   app.get("/v1/snapshot", supervisor, (c) => {
     const cursor = Number(c.req.query("cursor") ?? "0");
@@ -138,24 +138,24 @@ export function createHarnessApi(
 
   app.post("/v1/directives", supervisor, async (c) => {
     const body = z
-      .object({ instance: z.string().min(1), directives: z.unknown() })
+      .object({ run: z.string().min(1), directives: z.unknown() })
       .parse(await c.req.json());
-    return c.json({ ids: service.addDirectives(body.instance, body.directives, "supervisor") });
+    return c.json({ ids: service.addDirectives(body.run, body.directives, "supervisor") });
   });
 
   // The supervisor's deterministic inputs for its teacher pair, auditor and review panel, and
   // where their outputs go. None of these can set a verdict, a contract or a champion.
-  app.get("/v1/instances", supervisor, (c) =>
+  app.get("/v1/runs", supervisor, (c) =>
     c.json({
-      instances: service.ledger
-        .listInstances()
+      runs: service.ledger
+        .listRuns()
         .map((i) => ({ id: i.id, campaign: i.campaign, mode: i.mode, status: i.status })),
     }),
   );
 
   app.get("/v1/brief", supervisor, (c) => {
-    const instance = z.string().min(1).parse(c.req.query("instance"));
-    return c.json(service.brief(instance) as object);
+    const run = z.string().min(1).parse(c.req.query("run"));
+    return c.json(service.brief(run) as object);
   });
 
   app.get("/v1/audits/pending", supervisor, async (c) =>
@@ -213,7 +213,7 @@ export function createHarnessApi(
     return c.json(service.liveBatch(after, limit) as object);
   });
 
-  // A worker's own lines for the live log: its trial decides the source, lane and instance.
+  // A worker's own lines for the live log: its trial decides the source, lane and run.
   app.post("/v1/trial/live", bodyLimit({ maxSize: 256 * 1024 }), async (c) => {
     const { trial } = trialOf(c.req.header("authorization"));
     const body = z
@@ -229,7 +229,7 @@ export function createHarnessApi(
         kind: e.kind,
         text: e.text,
         lane: trial.lane,
-        instance: trial.instance,
+        run: trial.run,
       });
     }
     return c.json({ ok: true });
@@ -239,7 +239,7 @@ export function createHarnessApi(
   app.get("/v1/trial/messages", (c) => {
     const { trial } = trialOf(c.req.header("authorization"));
     return c.json({
-      messages: service.takeMessages({ id: trial.id, instance: trial.instance, lane: trial.lane }),
+      messages: service.takeMessages({ id: trial.id, run: trial.run, lane: trial.lane }),
     });
   });
 
@@ -260,7 +260,7 @@ export function createHarnessApi(
     });
   });
 
-  // Workers submit with their trial token (the trial decides instance, lane and parent); the
+  // Workers submit with their trial token (the trial decides run, lane and parent); the
   // proposer token is for the CLI and scripted proposers in development.
   app.post("/v1/attempts", bodyLimit({ maxSize: 32 * 1024 * 1024 }), async (c) => {
     if (trialToken(c.req.header("authorization"))) {
@@ -296,7 +296,7 @@ export function createHarnessApi(
     if (!inside(req.cwd) || (req.disk && !inside(req.disk.path)))
       throw new Unauthorized("outside the trial's workspace");
     // The contract's lane limits (defaults when it sets none) bound every lane command.
-    const limits = laneLimits(service.contractFor(trial.instance));
+    const limits = laneLimits(service.contractFor(trial.run));
     const rssCap = limits.runRssMib * 1024 ** 2;
     const diskCap = limits.workspaceMib * 1024 ** 2;
     let argv: string[];
@@ -325,7 +325,7 @@ export function createHarnessApi(
     const body = z
       .object({ command: z.string(), timeout_s: z.number().optional(), cwd: z.string() })
       .parse(await c.req.json());
-    const limits = laneLimits(service.contractFor(trial.instance));
+    const limits = laneLimits(service.contractFor(trial.run));
     return c.json(
       (await extras.devRuns.run(
         {
@@ -344,33 +344,31 @@ export function createHarnessApi(
     const r = extras.research;
     if (!r) return c.json({ error: "research is not available" }, 404);
     const body = (await c.req.json()) as Record<string, unknown>;
-    // The trial decides where its work goes; instance and lane in the body are ignored.
-    const { instance, lane } = trial;
-    r.requireRunning(instance);
+    // The trial decides where its work goes; run and lane in the body are ignored.
+    const { run, lane } = trial;
+    r.requireRunning(run);
     const s = (k: string) => String(body[k] ?? "");
     switch (c.req.param("op")) {
       case "fetch":
-        return c.json(await r.fetch(instance, lane, s("url")));
+        return c.json(await r.fetch(run, lane, s("url")));
       case "read":
         return c.json(
-          r.read(instance, s("source"), Number(body.offset ?? 0), Number(body.length ?? 6000)),
+          r.read(run, s("source"), Number(body.offset ?? 0), Number(body.length ?? 6000)),
         );
       case "search":
-        return c.json(r.search(instance, lane, s("query")));
+        return c.json(r.search(run, lane, s("query")));
       case "search-corpus":
-        return c.json(r.searchCorpus(instance, s("text")));
+        return c.json(r.searchCorpus(run, s("text")));
       case "claim":
-        return c.json(r.addClaim(instance, lane, body));
+        return c.json(r.addClaim(run, lane, body));
       case "note":
-        return c.json(r.addNote(instance, lane, s("text"), Strings.parse(body.sources)));
+        return c.json(r.addNote(run, lane, s("text"), Strings.parse(body.sources)));
       case "hypothesis":
-        return c.json(
-          r.proposeHypothesis(instance, lane, s("text"), Strings.parse(body.supporting)),
-        );
+        return c.json(r.proposeHypothesis(run, lane, s("text"), Strings.parse(body.supporting)));
       case "section":
-        return c.json(r.updateSection(instance, lane, s("name"), s("body")));
+        return c.json(r.updateSection(run, lane, s("name"), s("body")));
       case "stats":
-        return c.json({ ...r.stats(instance), clock: r.clock(instance) });
+        return c.json({ ...r.stats(run), clock: r.clock(run) });
       default:
         return c.json({ error: "unknown research operation" }, 404);
     }
@@ -382,7 +380,7 @@ export function createHarnessApi(
       // A worker sees only its own lane's attempts.
       const { trial } = trialOf(c.req.header("authorization"));
       const a = service.ledger.getAttempt(id);
-      if (!a || String(a.instance) !== trial.instance || String(a.lane) !== trial.lane)
+      if (!a || String(a.run) !== trial.run || String(a.lane) !== trial.lane)
         throw new LedgerError("not_found", `no attempt ${id} in this lane`);
       return c.json(service.attemptStatus(id) as object);
     }

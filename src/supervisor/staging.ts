@@ -8,7 +8,7 @@ import type { SignedCommand } from "../core/commands.ts";
 import { sshCommand } from "./git-export.ts";
 
 /**
- * Staging for commands that bring content. A `propagate` command names another unit's published
+ * Staging for commands that bring content. A `propagate` command names another rig's published
  * champion (a patch in the results repository) and the inbox path the harness will read it from.
  * Before relaying the command, the supervisor fetches that file from the results repository into
  * the inbox. It cannot change it: the harness checks the sha256 and the tree the command signs.
@@ -18,7 +18,7 @@ import { sshCommand } from "./git-export.ts";
 const run = promisify(execFile);
 
 export interface StagingConfig {
-  unit: string;
+  rig: string;
   inboxDir: string;
   /** The supervisor's results repository (bare), the same one the exporter commits to. */
   resultsRepo: string;
@@ -48,7 +48,7 @@ const sha256 = (b: Buffer) => createHash("sha256").update(b).digest("hex");
 
 /**
  * Makes a command's content available in the inbox. "ready": relay it now. "wait": the content
- * is not available yet (for example the source unit's export is not pushed), try again later.
+ * is not available yet (for example the source rig's export is not pushed), try again later.
  */
 export async function stageCommand(
   cfg: StagingConfig,
@@ -58,8 +58,8 @@ export async function stageCommand(
   // Past its expiry the harness refuses it anyway: relay it so the refusal is acknowledged.
   if (Date.parse(cmd.envelope.expires_at) < Date.now()) return "ready";
   const p = cmd.envelope.payload as {
-    source_unit?: string;
-    source_instance?: string;
+    source_rig?: string;
+    source_run?: string;
     source_seq?: number;
     import?: { kind?: string; path?: string; sha256?: string };
   };
@@ -69,12 +69,12 @@ export async function stageCommand(
   const target = resolve(root, imp.path);
   if (!target.startsWith(root + sep)) return "ready"; // the harness refuses such a path
   if (existsSync(target) && sha256(readFileSync(target)) === imp.sha256) return "ready";
-  const branch = `thermite/${p.source_unit}/attempts`;
-  const file = `champions/${p.source_instance}/${p.source_seq}.patch`;
+  const branch = `thermite/${p.source_rig}/attempts`;
+  const file = `champions/${p.source_run}/${p.source_seq}.patch`;
   let rev = `refs/heads/${branch}`;
   try {
-    if (cfg.remote && p.source_unit !== cfg.unit) {
-      rev = `refs/remotes/results/${p.source_unit}/attempts`;
+    if (cfg.remote && p.source_rig !== cfg.rig) {
+      rev = `refs/remotes/results/${p.source_rig}/attempts`;
       await git(
         cfg.resultsRepo,
         ["fetch", "--quiet", cfg.remote, `+refs/heads/${branch}:${rev}`],

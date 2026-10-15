@@ -37,7 +37,7 @@ async function main(): Promise<void> {
   mkdirSync(home, { recursive: true });
   const statePath = join(home, "relay-state.json");
   let state: RelayState = load(statePath, { cursor: 0 });
-  const unit = requireEnv("THERMITE_UNIT_ID");
+  const rig = requireEnv("THERMITE_RIG_ID");
   const harnessUrl = requireEnv("HARNESS_URL").replace(/\/$/, "");
   const harnessToken = secretFromFile("THERMITE_HARNESS_TOKEN_FILE");
   const controlUrl = env.CONTROL_URL?.replace(/\/$/, "");
@@ -48,7 +48,7 @@ async function main(): Promise<void> {
   const inboxDir = env.THERMITE_INBOX_DIR ?? "/inbox";
   let wipeRequested = false;
   const cfg = {
-    unit,
+    rig,
     harnessUrl,
     harnessToken,
     controlUrl,
@@ -56,7 +56,7 @@ async function main(): Promise<void> {
     stage: (cmd: Parameters<typeof stageCommand>[1]) =>
       stageCommand(
         {
-          unit,
+          rig,
           inboxDir,
           resultsRepo: join(home, "results.git"),
           remote,
@@ -73,7 +73,7 @@ async function main(): Promise<void> {
   const exportPath = join(home, "export-state.json");
   let exportState: ExportState = load(exportPath, { done: [] });
   const exportCfg = {
-    unit,
+    rig,
     outboxDir: env.THERMITE_OUTBOX_DIR ?? "/outbox",
     workDir: home,
     remote,
@@ -89,7 +89,7 @@ async function main(): Promise<void> {
   const reportPath = join(home, "report-state.json");
   let reportState = load<{ lastDailyAt?: string }>(reportPath, {});
   log("supervisor", "starting", {
-    unit,
+    rig,
     interval_ms: intervalMs,
     control: Boolean(controlUrl),
     results_remote: Boolean(remote),
@@ -112,7 +112,7 @@ async function main(): Promise<void> {
 
   const toControl = async (path: string, body: unknown) => {
     if (!controlUrl || !controlToken) return;
-    const res = await fetch(`${controlUrl}/v1/units/${encodeURIComponent(unit)}${path}`, {
+    const res = await fetch(`${controlUrl}/v1/rigs/${encodeURIComponent(rig)}${path}`, {
       method: "POST",
       headers: { authorization: `Bearer ${controlToken}`, "content-type": "application/json" },
       body: JSON.stringify(body),
@@ -161,7 +161,7 @@ async function main(): Promise<void> {
     while (!stopping && controlUrl && liveMs > 0) {
       try {
         liveState = await relayLiveOnce(
-          { unit, harnessUrl, harnessToken, controlUrl, controlToken },
+          { rig, harnessUrl, harnessToken, controlUrl, controlToken },
           liveState,
         );
         failing = false;
@@ -241,7 +241,7 @@ async function main(): Promise<void> {
       const lastDaily = reportState.lastDailyAt ? Date.parse(reportState.lastDailyAt) : 0;
       if (Date.now() - lastDaily >= 24 * 3_600_000) {
         const body = await dailyReport({
-          unit,
+          rig,
           harnessUrl,
           harnessToken,
           exportState,

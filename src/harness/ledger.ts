@@ -4,10 +4,11 @@ import { dirname } from "node:path";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { canonicalJson, sha256Hex } from "../core/canonical.ts";
 import type { Contract } from "../core/contract.ts";
+import { currentBody, currentEvent, eventKinds } from "../core/names.ts";
 import { MIGRATIONS } from "./schema.ts";
 
 /**
- * The harness ledger: the authoritative research record for one unit.
+ * The harness ledger: the authoritative research record for one rig.
  *
  * One process (the controller) owns the database and is its only writer. Every state change
  * also appends an event, so the supervisor can stream changes with a cursor.
@@ -31,7 +32,7 @@ export interface LedgerEvent {
   body: unknown;
 }
 
-export interface InstanceRow {
+export interface RunRow {
   id: string;
   campaign: string;
   version: number;
@@ -42,7 +43,7 @@ export interface InstanceRow {
   direction: string | null;
   status: "running" | "paused" | "closed";
   pause_reason: string | null;
-  /** False: no worker agents run for this instance (the judge still works). */
+  /** False: no worker agents run for this run (the judge still works). */
   agents: boolean;
 }
 
@@ -61,7 +62,7 @@ export interface JobRow {
 
 export interface AttemptInput {
   id: string;
-  instance: string;
+  run: string;
   lane?: string | undefined;
   origin?: "local" | "imported" | undefined;
   parentRef: string;
@@ -92,7 +93,7 @@ export const PROMOTABLE_VERDICTS: readonly string[] = [
 export interface InvalidationResult {
   attempts: string[];
   verdictsSuperseded: number[];
-  championsReopened: { instance: string; seq: number }[];
+  championsReopened: { run: string; seq: number }[];
 }
 
 /** After this many lease expiries a job is blocked instead of re-queued (poison-pill guard). */
@@ -145,7 +146,8 @@ export class Ledger {
       const version = i + 1;
       if (version <= current) return;
       this.tx(() => {
-        this.db.exec(sql);
+        if (typeof sql === "string") this.db.exec(sql);
+        else sql(this.db);
         this.db.prepare("insert into schema_migrations (version) values (?)").run(version);
       });
     });
@@ -196,12 +198,13 @@ export class Ledger {
 
   /** The body of the newest event of a kind about a subject, if any. */
   latestEventBody(kind: string, subject: string): Record<string, unknown> | undefined {
+    const kinds = eventKinds(kind);
     const r = this.get<Row>(
-      "select body from event where kind = ? and subject = ? order by id desc limit 1",
-      kind,
+      `select body from event where kind in (${kinds.map(() => "?").join(", ")}) and subject = ? order by id desc limit 1`,
+      ...kinds,
       subject,
     );
-    return r ? (JSON.parse(String(r.body)) as Record<string, unknown>) : undefined;
+    return r ? currentBody(JSON.parse(String(r.body)) as Record<string, unknown>) : undefined;
   }
 
   /** Events strictly after the cursor, in order. The next cursor is the last id returned. */
@@ -211,14 +214,17 @@ export class Ledger {
       cursor,
       limit,
     );
-    const events = rows.map((r) => ({
-      id: Number(r.id),
-      at: String(r.at),
-      actor: String(r.actor),
-      kind: String(r.kind),
-      subject: r.subject === null ? null : String(r.subject),
-      body: JSON.parse(String(r.body)),
-    }));
+    // Events recorded before the 2026-10-15 rename are read under the new names.
+    const events = rows.map((r) =>
+      currentEvent({
+        id: Number(r.id),
+        at: String(r.at),
+        actor: String(r.actor),
+        kind: String(r.kind),
+        subject: r.subject === null ? null : String(r.subject),
+        body: JSON.parse(String(r.body)),
+      }),
+    );
     return { events, next: events.length ? (events[events.length - 1] as LedgerEvent).id : cursor };
   }
 
@@ -226,7 +232,7 @@ export class Ledger {
     return Number(this.get<Row>("select coalesce(max(id), 0) as id from event")?.id ?? 0);
   }
 
-  // ---------------------------------------------------------------- contracts and instances
+  // ---------------------------------------------------------------- contracts and runs
 
   /**
    * Stores a contract version. Re-storing the same content is a no-op. A different content for an
@@ -292,23 +298,23 @@ export class Ledger {
   }
 
   /**
-   * Creates a campaign instance from a stored contract. The seed commit becomes champion seq 1
-   * (the baseline). Goal-mode instances also get their goal tree.
+   * Creates a campaign run from a stored contract. The seed commit becomes champion seq 1
+   * (the baseline). Goal-mode runs also get their goal tree.
    */
-  createInstance(input: {
+  createRun(input: {
     id: string;
     contract: Contract;
     contractSha: string;
     seedRepo: string;
     seedCommit: string;
     direction?: string | undefined;
-    /** False: a judge-only instance (no worker agents). */
+    /** False: a judge-only run (no worker agents). */
     agents?: boolean | undefined;
     actor: string;
   }): void {
     this.tx(() => {
-      if (this.get<Row>("select id from instance where id = ?", input.id)) {
-        throw new LedgerError("conflict", `instance ${input.id} already exists`);
+      if (this.get<Row>("select id from run where id = ?", input.id)) {
+        throw new LedgerError("conflict", `run ${input.id} already exists`);
       }
       const stored = this.get<Row>(
         "select sha from contract where campaign = ? and version = ?",
@@ -316,11 +322,11 @@ export class Ledger {
         input.contract.version,
       );
       if (!stored || stored.sha !== input.contractSha) {
-        throw new LedgerError("invalid", "instance must reference a stored contract version");
+        throw new LedgerError("invalid", "run must reference a stored contract version");
       }
       const at = this.now();
       this.run(
-        `insert into instance (id, campaign, version, contract_sha, mode, seed_repo, seed_commit,
+        `insert into run (id, campaign, version, contract_sha, mode, seed_repo, seed_commit,
            direction, status, agents, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?)`,
         input.id,
         input.contract.campaign,
@@ -335,7 +341,7 @@ export class Ledger {
         at,
       );
       this.run(
-        "insert into champion (instance, seq, attempt, commit_sha, promoted_by, promoted_at) values (?, 1, null, ?, ?, ?)",
+        "insert into champion (run, seq, attempt, commit_sha, promoted_by, promoted_at) values (?, 1, null, ?, ?, ?)",
         input.id,
         input.seedCommit,
         `${input.actor}:seed`,
@@ -344,7 +350,7 @@ export class Ledger {
       if (input.contract.mode === "goal") {
         for (const g of input.contract.goals) {
           this.run(
-            "insert into goal (instance, id, parent, priority, required, verify) values (?, ?, ?, ?, ?, ?)",
+            "insert into goal (run, id, parent, priority, required, verify) values (?, ?, ?, ?, ?, ?)",
             input.id,
             g.id,
             g.parent ?? null,
@@ -354,7 +360,7 @@ export class Ledger {
           );
         }
       }
-      this.appendEvent(input.actor, "instance_created", input.id, {
+      this.appendEvent(input.actor, "run_created", input.id, {
         campaign: input.contract.campaign,
         version: input.contract.version,
         mode: input.contract.mode,
@@ -365,31 +371,26 @@ export class Ledger {
     });
   }
 
-  getInstance(id: string): InstanceRow | undefined {
-    const r = this.get<Row>("select * from instance where id = ?", id);
-    return r ? toInstance(r) : undefined;
+  getRun(id: string): RunRow | undefined {
+    const r = this.get<Row>("select * from run where id = ?", id);
+    return r ? toRun(r) : undefined;
   }
 
-  listInstances(): InstanceRow[] {
-    return this.all<Row>("select * from instance order by created_at").map(toInstance);
+  listRuns(): RunRow[] {
+    return this.all<Row>("select * from run order by created_at").map(toRun);
   }
 
-  setInstanceStatus(
-    id: string,
-    status: InstanceRow["status"],
-    reason: string | null,
-    actor: string,
-  ): void {
+  setRunStatus(id: string, status: RunRow["status"], reason: string | null, actor: string): void {
     this.tx(() => {
       const r = this.run(
-        "update instance set status = ?, pause_reason = ?, updated_at = ? where id = ?",
+        "update run set status = ?, pause_reason = ?, updated_at = ? where id = ?",
         status,
         reason,
         this.now(),
         id,
       );
-      if (r.changes === 0) throw new LedgerError("not_found", `no instance ${id}`);
-      this.appendEvent(actor, "instance_status", id, { status, reason });
+      if (r.changes === 0) throw new LedgerError("not_found", `no run ${id}`);
+      this.appendEvent(actor, "run_status", id, { status, reason });
     });
   }
 
@@ -399,12 +400,12 @@ export class Ledger {
    * The effective champion: the newest one not reopened by invalidation. The seed (seq 1) has
    * no attempt and is never reopened, so there always is one.
    */
-  currentChampion(instance: string): { seq: number; commit_sha: string; attempt: string | null } {
+  currentChampion(run: string): { seq: number; commit_sha: string; attempt: string | null } {
     const r = this.get<Row>(
-      "select seq, commit_sha, attempt from champion where instance = ? and reopened = 0 order by seq desc limit 1",
-      instance,
+      "select seq, commit_sha, attempt from champion where run = ? and reopened = 0 order by seq desc limit 1",
+      run,
     );
-    if (!r) throw new LedgerError("not_found", `no champion for ${instance}`);
+    if (!r) throw new LedgerError("not_found", `no champion for ${run}`);
     return {
       seq: Number(r.seq),
       commit_sha: String(r.commit_sha),
@@ -418,7 +419,7 @@ export class Ledger {
    * re-evaluate. The attempt itself must be promotable, or a LedgerError is thrown.
    */
   promote(input: {
-    instance: string;
+    run: string;
     expectedSeq: number;
     attempt: string;
     commitSha: string;
@@ -426,8 +427,8 @@ export class Ledger {
   }): PromoteResult {
     return this.tx(() => {
       const a = this.getAttempt(input.attempt);
-      if (!a || String(a.instance) !== input.instance) {
-        throw new LedgerError("invalid", `attempt ${input.attempt} is not in ${input.instance}`);
+      if (!a || String(a.run) !== input.run) {
+        throw new LedgerError("invalid", `attempt ${input.attempt} is not in ${input.run}`);
       }
       if (String(a.commit_sha) !== input.commitSha) {
         throw new LedgerError(
@@ -448,23 +449,20 @@ export class Ledger {
       if ((JSON.parse(String(a.known_flaws)) as unknown[]).length > 0 && !a.flaws_cleared_by) {
         throw new LedgerError("invalid", `attempt ${input.attempt} has open known flaws`);
       }
-      const current = this.currentChampion(input.instance).seq;
+      const current = this.currentChampion(input.run).seq;
       if (current !== input.expectedSeq) return { ok: false, currentSeq: current };
-      const top = this.get<Row>(
-        "select max(seq) as m from champion where instance = ?",
-        input.instance,
-      );
+      const top = this.get<Row>("select max(seq) as m from champion where run = ?", input.run);
       const seq = Number(top?.m) + 1;
       this.run(
-        "insert into champion (instance, seq, attempt, commit_sha, promoted_by, promoted_at) values (?, ?, ?, ?, ?, ?)",
-        input.instance,
+        "insert into champion (run, seq, attempt, commit_sha, promoted_by, promoted_at) values (?, ?, ?, ?, ?, ?)",
+        input.run,
         seq,
         input.attempt,
         input.commitSha,
         input.by,
         this.now(),
       );
-      this.appendEvent(input.by, "champion_promoted", input.instance, {
+      this.appendEvent(input.by, "champion_promoted", input.run, {
         seq,
         attempt: input.attempt,
         commit: input.commitSha,
@@ -479,12 +477,12 @@ export class Ledger {
     this.tx(() => {
       const at = this.now();
       this.run(
-        `insert into attempt (id, instance, lane, origin, parent_ref, parent_commit, parent_attempt,
+        `insert into attempt (id, run, lane, origin, parent_ref, parent_commit, parent_attempt,
            baseline_champion_seq, commit_sha, ref, diff_sha, normalized_diff_sha, lifecycle, hypothesis,
            claim, known_flaws, v0, created_at, updated_at)
          values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         a.id,
-        a.instance,
+        a.run,
         a.lane ?? null,
         a.origin ?? "local",
         a.parentRef,
@@ -504,7 +502,7 @@ export class Ledger {
         at,
       );
       this.appendEvent(actor, "attempt_recorded", a.id, {
-        instance: a.instance,
+        run: a.run,
         lane: a.lane ?? null,
         lifecycle: a.lifecycle,
         commit: a.commitSha,
@@ -520,15 +518,15 @@ export class Ledger {
   }
 
   /**
-   * An earlier attempt in the same instance with an identical normalized change, if any.
+   * An earlier attempt in the same run with an identical normalized change, if any.
    * Attempts lost to infrastructure (errored, crash_infra) or invalidated do not count, so the
    * same change can be measured again.
    */
-  findDuplicate(instance: string, normalizedDiffSha: string): string | undefined {
+  findDuplicate(run: string, normalizedDiffSha: string): string | undefined {
     const rows = this.all<Row>(
-      `select id from attempt where instance = ? and normalized_diff_sha = ? and lifecycle != 'errored'
+      `select id from attempt where run = ? and normalized_diff_sha = ? and lifecycle != 'errored'
          and invalidated_by is null order by created_at`,
-      instance,
+      run,
       normalizedDiffSha,
     );
     for (const r of rows) {
@@ -538,11 +536,11 @@ export class Ledger {
     return undefined;
   }
 
-  /** The newest attempt in an instance whose commit is `commit`, if any (for lineage). */
-  attemptByCommit(instance: string, commit: string): string | undefined {
+  /** The newest attempt in a run whose commit is `commit`, if any (for lineage). */
+  attemptByCommit(run: string, commit: string): string | undefined {
     const r = this.get<Row>(
-      "select id from attempt where instance = ? and commit_sha = ? order by created_at desc limit 1",
-      instance,
+      "select id from attempt where run = ? and commit_sha = ? order by created_at desc limit 1",
+      run,
       commit,
     );
     return r ? String(r.id) : undefined;
@@ -617,17 +615,17 @@ export class Ledger {
   }
 
   /**
-   * Device time an instance's judging has used, in hours: from each finished job's last lease to
+   * Device time a run's judging has used, in hours: from each finished job's last lease to
    * its completion (jobs for its attempts, and its validation and calibration jobs).
    */
-  deviceHours(instance: string): number {
+  deviceHours(run: string): number {
     const r = this.get<Row>(
       `select sum((julianday(j.updated_at) - julianday(j.leased_at)) * 24) as h from job j
        left join attempt a on a.id = j.attempt
        where j.state in ('done', 'failed') and j.leased_at is not null
-         and (a.instance = ? or json_extract(j.spec, '$.instance') = ?)`,
-      instance,
-      instance,
+         and (a.run = ? or json_extract(j.spec, '$.run') = ?)`,
+      run,
+      run,
     );
     return Number(r?.h ?? 0);
   }
@@ -731,6 +729,7 @@ export class Ledger {
       cell: string;
       rep: number;
       value: number;
+      /** The metric's unit (for example FLOP/s). */
       unit: string;
       arm?: string | undefined;
     },
@@ -991,16 +990,16 @@ export class Ledger {
           result.verdictsSuperseded.push(id);
         }
         for (const c of this.all<Row>(
-          "select instance, seq from champion where attempt = ? and reopened = 0",
+          "select run, seq from champion where attempt = ? and reopened = 0",
           attempt,
         )) {
           this.run(
-            "update champion set reopened = 1 where instance = ? and seq = ?",
-            String(c.instance),
+            "update champion set reopened = 1 where run = ? and seq = ?",
+            String(c.run),
             Number(c.seq),
           );
-          result.championsReopened.push({ instance: String(c.instance), seq: Number(c.seq) });
-          this.appendEvent(input.actor, "champion_reopened", String(c.instance), {
+          result.championsReopened.push({ run: String(c.run), seq: Number(c.seq) });
+          this.appendEvent(input.actor, "champion_reopened", String(c.run), {
             seq: Number(c.seq),
             attempt,
             reason: input.reason,
@@ -1059,50 +1058,50 @@ export class Ledger {
     });
   }
 
-  addDirective(instance: string, author: string, body: unknown): number {
+  addDirective(run: string, author: string, body: unknown): number {
     return this.tx(() => {
       const id = this.run(
-        "insert into directive (instance, author, body, created_at) values (?, ?, ?, ?)",
-        instance,
+        "insert into directive (run, author, body, created_at) values (?, ?, ?, ?)",
+        run,
         author,
         canonicalJson(body),
         this.now(),
       ).id;
-      this.appendEvent(author, "directive", instance, { id, body });
+      this.appendEvent(author, "directive", run, { id, body });
       return id;
     });
   }
 
   /**
-   * A directive set. With `replace`, the author's active directives for the instance are
+   * A directive set. With `replace`, the author's active directives for the run are
    * superseded first: each author steers with one current set, not an ever-growing pile.
    */
-  addDirectiveSet(instance: string, author: string, bodies: unknown[], replace: boolean): number[] {
+  addDirectiveSet(run: string, author: string, bodies: unknown[], replace: boolean): number[] {
     return this.tx(() => {
       if (replace) {
         const old = this.all<Row>(
-          "select id from directive where instance = ? and author = ? and status = 'active'",
-          instance,
+          "select id from directive where run = ? and author = ? and status = 'active'",
+          run,
           author,
         ).map((r) => Number(r.id));
         if (old.length) {
           this.run(
-            "update directive set status = 'superseded', superseded_at = ? where instance = ? and author = ? and status = 'active'",
+            "update directive set status = 'superseded', superseded_at = ? where run = ? and author = ? and status = 'active'",
             this.now(),
-            instance,
+            run,
             author,
           );
-          this.appendEvent(author, "directives_superseded", instance, { ids: old });
+          this.appendEvent(author, "directives_superseded", run, { ids: old });
         }
       }
-      return bodies.map((b) => this.addDirective(instance, author, b));
+      return bodies.map((b) => this.addDirective(run, author, b));
     });
   }
 
-  activeDirectives(instance: string): { id: number; author: string; body: unknown }[] {
+  activeDirectives(run: string): { id: number; author: string; body: unknown }[] {
     return this.all<Row>(
-      "select id, author, body from directive where instance = ? and status = 'active' order by id",
-      instance,
+      "select id, author, body from directive where run = ? and status = 'active' order by id",
+      run,
     ).map((r) => ({
       id: Number(r.id),
       author: String(r.author),
@@ -1193,14 +1192,14 @@ export class Ledger {
   summary(): unknown {
     return {
       ledger_id: this.ledgerId(),
-      instances: this.listInstances().map((i) => {
+      runs: this.listRuns().map((i) => {
         const champ = this.currentChampion(i.id);
         const reopened = this.all<Row>(
-          "select seq from champion where instance = ? and reopened = 1 order by seq",
+          "select seq from champion where run = ? and reopened = 1 order by seq",
           i.id,
         ).map((r) => Number(r.seq));
         const lifecycles = this.all<Row>(
-          "select lifecycle, count(*) as n from attempt where instance = ? group by lifecycle",
+          "select lifecycle, count(*) as n from attempt where run = ? group by lifecycle",
           i.id,
         );
         return {
@@ -1225,7 +1224,7 @@ export class Ledger {
   }
 }
 
-function toInstance(r: Row): InstanceRow {
+function toRun(r: Row): RunRow {
   return {
     id: String(r.id),
     campaign: String(r.campaign),
@@ -1235,7 +1234,7 @@ function toInstance(r: Row): InstanceRow {
     seed_repo: String(r.seed_repo),
     seed_commit: String(r.seed_commit),
     direction: r.direction === null ? null : String(r.direction),
-    status: String(r.status) as InstanceRow["status"],
+    status: String(r.status) as RunRow["status"],
     pause_reason: r.pause_reason === null ? null : String(r.pause_reason),
     agents: r.agents === undefined || Number(r.agents) !== 0,
   };

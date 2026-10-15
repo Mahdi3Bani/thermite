@@ -14,7 +14,7 @@ export interface ResearchTrialSpec {
   trialId: string;
   /** The trial's own token (see TrialSpec). */
   token?: string | undefined;
-  instance: string;
+  run: string;
   lane: string;
   brief: string;
   wallMs: number;
@@ -57,7 +57,7 @@ export async function runResearchTrial(
     tokensIn: 0,
     tokensOut: 0,
   };
-  const base = { instance: spec.instance, lane: spec.lane };
+  const base = { run: spec.run, lane: spec.lane };
   const tool = <P extends TSchema>(
     name: string,
     description: string,
@@ -70,7 +70,7 @@ export async function runResearchTrial(
     parameters,
     execute: async (_id, params) => {
       result.toolCalls++;
-      // The trial's own instance and lane always win over anything in the model's arguments
+      // The trial's own run and lane always win over anything in the model's arguments
       // (the harness binds them again from the trial token).
       return out(await deps.call(op, { ...(params as Record<string, unknown>), ...base }));
     },

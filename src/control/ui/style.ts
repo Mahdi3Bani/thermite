@@ -99,7 +99,8 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .cols { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 24px; align-items: start; }
 .stack { display: flex; flex-direction: column; gap: 12px; }
 .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+.grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; align-items: start; }
+.grid-cards > .card, .grid2 > .card { margin-top: 0; }
 .kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 @media (min-width: 1700px) { .kpis { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
 .head { display: flex; align-items: baseline; gap: 8px; margin: 4px 0 10px; }
@@ -231,7 +232,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .list .li .t { font-family: var(--font-mono); font-size: 12px; color: var(--muted-foreground); width: 52px; flex: none; }
 .list .li .right { margin-left: auto; font-size: 12px; white-space: nowrap; }
 
-/* unit tiles (Magnesium's fleet tiles) */
+/* rig tiles (Magnesium's fleet tiles) */
 .tile { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .tile:hover { border-color: color-mix(in srgb, var(--foreground) 25%, transparent); text-decoration: none; }
 .tile .name { display: flex; align-items: center; gap: 7px; font-weight: 600; font-size: 13px; }

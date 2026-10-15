@@ -18,7 +18,7 @@ export const MIN_PANEL = 2;
 
 export interface ReviewPackage {
   id: number;
-  instance: string;
+  run: string;
   goal: string;
   description: string;
   criteria: string[];
@@ -36,15 +36,15 @@ export class Reviews {
     this.ledger = ledger;
   }
 
-  get(instance: string, goal: string, commit: string): Row | undefined {
+  get(run: string, goal: string, commit: string): Row | undefined {
     return this.ledger.db
-      .prepare("select * from review where instance = ? and goal = ? and commit_sha = ?")
-      .get(instance, goal, commit) as Row | undefined;
+      .prepare("select * from review where run = ? and goal = ? and commit_sha = ?")
+      .get(run, goal, commit) as Row | undefined;
   }
 
   /** Requests a review of a champion for a goal (once per commit). Returns its id. */
   request(input: {
-    instance: string;
+    run: string;
     goal: string;
     attempt: string | null;
     commit: string;
@@ -52,7 +52,7 @@ export class Reviews {
     diff: string;
     by: string;
   }): number {
-    const existing = this.get(input.instance, input.goal, input.commit);
+    const existing = this.get(input.run, input.goal, input.commit);
     if (existing) return Number(existing.id);
     const g = input.contract.goals.find((x) => x.id === input.goal);
     if (g?.verify.type !== "review")
@@ -69,10 +69,10 @@ export class Reviews {
     return this.ledger.tx(() => {
       const r = this.ledger.db
         .prepare(
-          "insert into review (instance, goal, attempt, commit_sha, package, requested_at) values (?, ?, ?, ?, ?, ?)",
+          "insert into review (run, goal, attempt, commit_sha, package, requested_at) values (?, ?, ?, ?, ?, ?)",
         )
         .run(
-          input.instance,
+          input.run,
           input.goal,
           input.attempt,
           input.commit,
@@ -80,7 +80,7 @@ export class Reviews {
           new Date().toISOString(),
         );
       const id = Number(r.lastInsertRowid);
-      this.ledger.appendEvent(input.by, "review_requested", input.instance, {
+      this.ledger.appendEvent(input.by, "review_requested", input.run, {
         review: id,
         goal: input.goal,
         commit: input.commit,
@@ -94,19 +94,19 @@ export class Reviews {
     return (
       this.ledger.db
         .prepare(
-          `select r.* from review r join instance i on i.id = r.instance
+          `select r.* from review r join run i on i.id = r.run
            where r.panel_result is null and i.status = 'running' order by r.id`,
         )
         .all() as Row[]
     ).map((r) => {
       const pkg = JSON.parse(String(r.package)) as Omit<
         ReviewPackage,
-        "id" | "instance" | "commit" | "requested_at"
+        "id" | "run" | "commit" | "requested_at"
       >;
       return {
         ...pkg,
         id: Number(r.id),
-        instance: String(r.instance),
+        run: String(r.run),
         commit: String(r.commit_sha),
         requested_at: String(r.requested_at),
       };
@@ -134,10 +134,10 @@ export class Reviews {
       if (row.panel_result !== null)
         throw new LedgerError("conflict", `review ${id} is already decided`);
       // Only for a running campaign's current champion: a stale review is not recorded.
-      const inst = this.ledger.getInstance(String(row.instance));
+      const inst = this.ledger.getRun(String(row.run));
       if (inst?.status !== "running")
-        throw new LedgerError("invalid", `instance ${String(row.instance)} is not running`);
-      if (this.ledger.currentChampion(String(row.instance)).commit_sha !== String(row.commit_sha))
+        throw new LedgerError("invalid", `run ${String(row.run)} is not running`);
+      if (this.ledger.currentChampion(String(row.run)).commit_sha !== String(row.commit_sha))
         throw new LedgerError(
           "stale",
           `review ${id} is of a commit that is no longer the champion`,
@@ -150,7 +150,7 @@ export class Reviews {
           new Date().toISOString(),
           id,
         );
-      this.ledger.appendEvent(by, "review_panel", String(row.instance), {
+      this.ledger.appendEvent(by, "review_panel", String(row.run), {
         review: id,
         goal: row.goal,
         result: outcome,
@@ -163,7 +163,7 @@ export class Reviews {
   /** The owner's final word on a goal the panel passed. */
   ownerDecision(
     id: number,
-    instance: string,
+    run: string,
     accept: boolean,
     note: string | undefined,
     by: string,
@@ -172,8 +172,8 @@ export class Reviews {
       const row = this.ledger.db.prepare("select * from review where id = ?").get(id) as
         | Row
         | undefined;
-      if (!row || String(row.instance) !== instance)
-        throw new LedgerError("not_found", `no review ${id} in ${instance}`);
+      if (!row || String(row.run) !== run)
+        throw new LedgerError("not_found", `no review ${id} in ${run}`);
       if (row.panel_result !== "review_passed")
         throw new LedgerError("invalid", `review ${id} has not passed the panel`);
       if (row.owner_decision !== null)
@@ -182,7 +182,7 @@ export class Reviews {
       this.ledger.db
         .prepare("update review set owner_decision = ?, owner_note = ?, owner_at = ? where id = ?")
         .run(decision, note?.slice(0, 2000) ?? null, new Date().toISOString(), id);
-      this.ledger.appendEvent(by, "review_decided", instance, {
+      this.ledger.appendEvent(by, "review_decided", run, {
         review: id,
         goal: row.goal,
         decision,
@@ -193,11 +193,11 @@ export class Reviews {
 
   /** A review goal's status for a commit: met only with the owner's acceptance. */
   status(
-    instance: string,
+    run: string,
     goal: string,
     commit: string,
   ): { status: "met" | "unmet" | "not_runnable"; reasons: string } {
-    const r = this.get(instance, goal, commit);
+    const r = this.get(run, goal, commit);
     if (!r) return { status: "not_runnable", reasons: "no review requested for this commit" };
     if (r.owner_decision === "accepted")
       return { status: "met", reasons: "the panel passed it and the owner accepted it" };

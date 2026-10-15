@@ -1,6 +1,6 @@
-// A local demo of the control dashboard with synthetic data: four units, a hill climb on two of
+// A local demo of the control dashboard with synthetic data: four rigs, a hill climb on two of
 // them (promotions, a pending approval, an audit hold, a cross-verified champion), a goal
-// campaign part way, a research campaign, and a stale unit. For working on the dashboard only.
+// campaign part way, a research campaign, and a stale rig. For working on the dashboard only.
 //
 //   node --experimental-strip-types scripts/dashboard-demo.ts [--port 8810]
 //   then open http://127.0.0.1:8810/ui and sign in with the token it prints.
@@ -26,7 +26,7 @@ const pick = <T>(xs: readonly T[]): T => xs[Math.floor(rnd() * xs.length)] as T;
 const iso = (hoursAgo: number) => new Date(now - hoursAgo * 3_600_000).toISOString();
 
 type Ev = IngestReport["events"][number];
-class Unit {
+class Rig {
   events: Ev[] = [];
   readonly id: string;
   constructor(id: string) {
@@ -67,19 +67,19 @@ const VERDICTS = [
 ];
 
 function hillClimb(
-  u: Unit,
-  instance: string,
+  u: Rig,
+  run: string,
   hours: number,
   wins: number[],
   opts: { pending?: boolean; held?: boolean } = {},
 ) {
-  u.ev(hours, "instance_created", instance, {
+  u.ev(hours, "run_created", run, {
     campaign: "decode-speed",
     version: 1,
     mode: "hill_climb",
     seed: { repo: "inference-engine", commit: "a1b2c3d4e5f6" },
   });
-  u.ev(hours - 0.2, "calibration", instance, {
+  u.ev(hours - 0.2, "calibration", run, {
     sigma: 0.0042 + rnd() * 0.004,
     summary: "A/A over 6 blocks",
   });
@@ -88,22 +88,22 @@ function hillClimb(
   const total = 48;
   for (let i = 0; i < total; i++) {
     const t = hours - 0.5 - (i * (hours - 1)) / total;
-    const id = `a-${instance}-${(i + 1).toString().padStart(3, "0")}`;
+    const id = `a-${run}-${(i + 1).toString().padStart(3, "0")}`;
     const lane = `lane-${(i % 2) + 1}`;
     u.ev(
       t,
       "attempt_recorded",
       id,
-      { instance, lane, lifecycle: "queued", hypothesis: pick(HYPOTHESES) },
+      { run, lane, lifecycle: "queued", hypothesis: pick(HYPOTHESES) },
       "agent",
     );
     if (i % 3 === 0)
-      u.ev(t + 0.05, "epoch_started", instance, {
+      u.ev(t + 0.05, "epoch_started", run, {
         planner_valid: rnd() > 0.1,
         source: rnd() > 0.92 ? "fallback" : "planner",
         raw_violations: rnd() > 0.85 ? 1 : 0,
       });
-    u.ev(t - 0.02, "trial_finished", instance, {
+    u.ev(t - 0.02, "trial_finished", run, {
       attempt: id,
       tokens_in: 9000 + Math.floor(rnd() * 20000),
       tokens_out: 2000 + Math.floor(rnd() * 6000),
@@ -116,30 +116,30 @@ function hillClimb(
       if (opts.held && n === wins.length) {
         u.ev(t - 0.31, "attempt_lifecycle", id, { lifecycle: "awaiting_audit" });
         u.ev(t - 0.31, "audit_requested", id, {
-          instance,
+          run,
           reason: `gain ${(win * 100).toFixed(1)}% above the 15% trigger`,
         });
         continue;
       }
       if (opts.pending && n === wins.length) {
         u.ev(t - 0.31, "attempt_lifecycle", id, { lifecycle: "awaiting_approval" });
-        u.ev(t - 0.31, "promotion_pending", id, { instance });
+        u.ev(t - 0.31, "promotion_pending", id, { run });
         continue;
       }
       seq++;
       u.ev(t - 0.32, "attempt_lifecycle", id, { lifecycle: "promoted" });
-      u.ev(t - 0.32, "champion_promoted", instance, {
+      u.ev(t - 0.32, "champion_promoted", run, {
         seq,
         attempt: id,
         commit: `c${seq}${"0".repeat(10)}`,
       });
-      u.ev(t - 0.33, "champion_published", instance, {
+      u.ev(t - 0.33, "champion_published", run, {
         seq,
         repo: "inference-engine",
         base_commit: "a1b2c3d4e5f6",
-        tree: `tree-${instance}-${seq}`,
+        tree: `tree-${run}-${seq}`,
         sha256: "0".repeat(64),
-        path: `champions/${instance}/${seq}.patch`,
+        path: `champions/${run}/${seq}.patch`,
       });
       continue;
     }
@@ -154,46 +154,46 @@ function hillClimb(
   u.ev(
     0.3,
     "attempt_recorded",
-    `a-${instance}-live1`,
-    { instance, lane: "lane-1", lifecycle: "queued", hypothesis: "tile the scale reads per warp" },
+    `a-${run}-live1`,
+    { run, lane: "lane-1", lifecycle: "queued", hypothesis: "tile the scale reads per warp" },
     "agent",
   );
   u.ev(
     0.1,
     "attempt_recorded",
-    `a-${instance}-live2`,
+    `a-${run}-live2`,
     {
-      instance,
+      run,
       lane: "lane-2",
       lifecycle: "queued",
       hypothesis: "use the read-only cache for the codes",
     },
     "agent",
   );
-  u.ev(hours - 1, "directive", instance, { kind: "try" }, "supervisor");
-  u.ev(hours - 3, "directive", instance, { kind: "avoid" }, "supervisor");
+  u.ev(hours - 1, "directive", run, { kind: "try" }, "supervisor");
+  u.ev(hours - 3, "directive", run, { kind: "avoid" }, "supervisor");
 }
 
 const store = new ControlStore(join(mkdtempSync(join(tmpdir(), "thermite-demo-")), "control.db"));
-const units = ["gpu-1", "gpu-2", "gpu-3", "cpu-1", "gpu-4"];
-store.setConfiguredUnits(units);
+const rigs = ["gpu-1", "gpu-2", "gpu-3", "cpu-1", "gpu-4"];
+store.setConfiguredRigs(rigs);
 
-const g1 = new Unit("gpu-1");
+const g1 = new Rig("gpu-1");
 hillClimb(g1, "decode-a", 30, [0.061, 0.043, 0.038, 0.052, 0.024, 0.19], { held: true });
-const g2 = new Unit("gpu-2");
+const g2 = new Rig("gpu-2");
 hillClimb(g2, "decode-b", 26, [0.048, 0.031, 0.027, 0.036], { pending: true });
 g2.ev(5, "propagation_received", "decode-b", {
   attempt: "a-prop-1",
-  source_unit: "gpu-1",
-  source_instance: "decode-a",
+  source_rig: "gpu-1",
+  source_run: "decode-a",
   source_seq: 5,
   tree: "tree-decode-a-5",
   result: "judging",
 });
 g2.ev(4.5, "propagation_accepted", "decode-b", { attempt: "a-prop-1", verdict: "win_confirmed" });
 
-const g3 = new Unit("gpu-3");
-g3.ev(20, "instance_created", "format-port-1", {
+const g3 = new Rig("gpu-3");
+g3.ev(20, "run_created", "format-port-1", {
   campaign: "format-port",
   version: 1,
   mode: "goal",
@@ -207,7 +207,7 @@ for (let i = 0; i < 22; i++) {
     "attempt_recorded",
     id,
     {
-      instance: "format-port-1",
+      run: "format-port-1",
       lane: `lane-${(i % 2) + 1}`,
       lifecycle: "queued",
       hypothesis: pick([
@@ -262,12 +262,16 @@ g3.ev(1.2, "goal_report", "format-port-1", {
       status: "unmet",
       reasons: "native: invalid: throughput 3.4 items/s is below 15.0",
     },
-    { goal: "reference-unchanged", status: "met", reasons: "verifier reference-unchanged passed on reference" },
+    {
+      goal: "reference-unchanged",
+      status: "met",
+      reasons: "verifier reference-unchanged passed on reference",
+    },
   ],
 });
 
-const c1 = new Unit("cpu-1");
-c1.ev(11, "instance_created", "noise-survey", {
+const c1 = new Rig("cpu-1");
+c1.ev(11, "run_created", "noise-survey", {
   campaign: "benchmark-noise",
   version: 1,
   mode: "research",
@@ -298,11 +302,11 @@ c1.ev(0.4, "research_digest", "noise-survey", {
     "# Benchmark noise: digest 9\n\nFindings (verified, two or more independent domains):\n- Interleaving arms (ABAB) removes most slow drift between runs.\n- Clock and thermal state must be recorded with each result.\n- Bootstrap intervals over blocks are robust to outliers.\n",
 });
 
-const g4 = new Unit("gpu-4");
+const g4 = new Rig("gpu-4");
 
-const report = (u: Unit, jobs: Record<string, number>, lastSeenHoursAgo = 0) => {
+const report = (u: Rig, jobs: Record<string, number>, lastSeenHoursAgo = 0) => {
   store.ingest({
-    unit: u.id,
+    rig: u.id,
     ledger_id: `ledger-${u.id}`,
     cursor: 0,
     next: u.events.length,
@@ -316,7 +320,7 @@ report(g2, { queued: 0, leased: 1, done: 162 });
 report(g3, { queued: 2, leased: 1, done: 88 });
 report(c1, { done: 0 });
 report(g4, {});
-store.db.prepare("update unit set last_seen = ? where id = ?").run(iso(2.3), "gpu-4");
+store.db.prepare("update rig set last_seen = ? where id = ?").run(iso(2.3), "gpu-4");
 for (const [u, usd] of [
   ["gpu-1", 4.2],
   ["gpu-2", 3.1],
@@ -335,12 +339,12 @@ type Line = {
   kind: "text" | "thinking" | "tool" | "result" | "message" | "status" | "log";
   text: string;
   lane?: string;
-  instance?: string;
+  run?: string;
 };
-const lines = (unit: string, items: Line[], minutesAgo: number) => {
+const lines = (rig: string, items: Line[], minutesAgo: number) => {
   let seq = 0;
   store.addLive(
-    unit,
+    rig,
     "demo-log",
     items.map((l, n) => ({
       seq: ++seq,
@@ -359,143 +363,143 @@ lines(
       source: "planner",
       kind: "status",
       text: "planning epoch 17 (2 lanes)",
-      instance: "decode-a",
+      run: "decode-a",
     },
     {
       source: "planner",
       kind: "text",
       text: "epoch 17: planned by the model\nlane-1: smem-activations, keep the activation vector in shared memory\nlane-2: split-k, split K across two warps to hide load latency",
-      instance: "decode-a",
+      run: "decode-a",
     },
     {
       source: T1,
       kind: "status",
       text: "trial on lane-1: smem-activations, keep the activation vector in shared memory (from the champion, seq 6)",
       lane: "lane-1",
-      instance: "decode-a",
+      run: "decode-a",
     },
     {
       source: T1,
       kind: "thinking",
       text: "The GEMV reads the activation vector once per row tile. Staging it in shared memory should cut global loads; I need to check the tile size against the 48 KB static limit first.",
       lane: "lane-1",
-      instance: "decode-a",
+      run: "decode-a",
     },
     {
       source: T1,
       kind: "text",
       text: "I'll read the decode GEMV kernel first, then stage the activation vector in shared memory for each row tile.",
       lane: "lane-1",
-      instance: "decode-a",
+      run: "decode-a",
     },
     {
       source: T1,
       kind: "tool",
       text: 'read_file {"path":"src/kernels/gemv.cu"}',
       lane: "lane-1",
-      instance: "decode-a",
+      run: "decode-a",
     },
     {
       source: T1,
       kind: "result",
       text: "read_file (4 ms): __global__ void gemv_rows(const block_q4 * w, const float * x, float * y, int k) {\n  const int row = blockIdx.x * ROWS + threadIdx.y;\n  ...",
       lane: "lane-1",
-      instance: "decode-a",
+      run: "decode-a",
     },
     {
       source: T1,
       kind: "tool",
       text: 'write_file {"path":"src/kernels/gemv.cu","content":"…"}',
       lane: "lane-1",
-      instance: "decode-a",
+      run: "decode-a",
     },
     {
       source: T1,
       kind: "result",
       text: "write_file (2 ms): ok, 214 lines",
       lane: "lane-1",
-      instance: "decode-a",
+      run: "decode-a",
     },
     {
       source: T1,
       kind: "tool",
       text: 'run {"command":"cmake --build build -j4 --target bench && ./build/bench --check"}',
       lane: "lane-1",
-      instance: "decode-a",
+      run: "decode-a",
     },
     {
       source: T1,
       kind: "result",
       text: "run (48210 ms): exit 0\n[100%] Built target bench\ncheck: 4096 rows, max abs error 0.0000, ok",
       lane: "lane-1",
-      instance: "decode-a",
+      run: "decode-a",
     },
     {
       source: T1,
       kind: "message",
       text: "Owner: Keep the tile at 128 rows; 256 spilled registers last time.",
       lane: "lane-1",
-      instance: "decode-a",
+      run: "decode-a",
     },
     {
       source: T1,
       kind: "text",
       text: "Understood: keeping the tile at 128 rows. I'll time it on the device before submitting.",
       lane: "lane-1",
-      instance: "decode-a",
+      run: "decode-a",
     },
     {
       source: T1,
       kind: "tool",
       text: 'dev_run {"command":"./build/bench --cells small,large"}',
       lane: "lane-1",
-      instance: "decode-a",
+      run: "decode-a",
     },
     {
       source: T1,
       kind: "result",
       text: "dev_run (9120 ms): small 1.21 ms, large 3.87 ms (diagnostic only)",
       lane: "lane-1",
-      instance: "decode-a",
+      run: "decode-a",
     },
     {
       source: T2,
       kind: "status",
       text: "trial on lane-2: split-k, split K across two warps to hide load latency (from the champion, seq 6)",
       lane: "lane-2",
-      instance: "decode-a",
+      run: "decode-a",
     },
     {
       source: T2,
       kind: "text",
       text: "Splitting K across two warps per row; the partial sums reduce through shuffles.",
       lane: "lane-2",
-      instance: "decode-a",
+      run: "decode-a",
     },
     {
       source: T2,
       kind: "tool",
       text: 'search {"pattern":"__shfl_down_sync"}',
       lane: "lane-2",
-      instance: "decode-a",
+      run: "decode-a",
     },
     {
       source: T2,
       kind: "result",
       text: "search (11 ms): src/kernels/reduce.cuh:14",
       lane: "lane-2",
-      instance: "decode-a",
+      run: "decode-a",
     },
     {
       source: "judge",
       kind: "log",
       text: "evaluate a-decode-a-live1: started",
-      instance: "decode-a",
+      run: "decode-a",
     },
-    { source: "judge", kind: "log", text: "build c6000000000: ok in 41 s", instance: "decode-a" },
-    { source: "judge", kind: "log", text: "candidate · small: ok", instance: "decode-a" },
-    { source: "judge", kind: "log", text: "champion · small: ok", instance: "decode-a" },
-    { source: "judge", kind: "log", text: "candidate · large: ok", instance: "decode-a" },
+    { source: "judge", kind: "log", text: "build c6000000000: ok in 41 s", run: "decode-a" },
+    { source: "judge", kind: "log", text: "candidate · small: ok", run: "decode-a" },
+    { source: "judge", kind: "log", text: "champion · small: ok", run: "decode-a" },
+    { source: "judge", kind: "log", text: "candidate · large: ok", run: "decode-a" },
     {
       source: "supervisor",
       kind: "status",
@@ -508,17 +512,17 @@ lines(
 const keys = generateSigningKeys();
 const tokens = {
   admin: "demo-admin-token-0123456789",
-  units: Object.fromEntries(units.map((u) => [u, `unit-${u}-token-abcdef`])),
+  rigs: Object.fromEntries(rigs.map((u) => [u, `rig-${u}-token-abcdef`])),
 };
-for (const [unit, kind, payload] of [
-  ["gpu-1", "pause_instance", { instance: "decode-a", reason: "owner check" }],
-  ["gpu-1", "resume_instance", { instance: "decode-a" }],
+for (const [rig, kind, payload] of [
+  ["gpu-1", "pause_run", { run: "decode-a", reason: "owner check" }],
+  ["gpu-1", "resume_run", { run: "decode-a" }],
   ["gpu-2", "export_now", {}],
   [
     "gpu-3",
     "redirect",
     {
-      instance: "format-port-1",
+      run: "format-port-1",
       directives: [
         {
           kind: "try",
@@ -531,7 +535,7 @@ for (const [unit, kind, payload] of [
     },
   ],
 ] as const) {
-  issueCommand(store, keys.privateKeyPem, { unit, kind, payload, issuedBy: "owner:ui" });
+  issueCommand(store, keys.privateKeyPem, { rig, kind, payload, issuedBy: "owner:ui" });
 }
 store.addReport(
   "gpu-1",

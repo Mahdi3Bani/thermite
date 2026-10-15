@@ -79,7 +79,7 @@ function firstBuildFile(buildsDir: string): string | undefined {
 }
 
 /**
- * Why the unit is too busy for the selftest, if it is. Each probe ends by killing every process
+ * Why the rig is too busy for the selftest, if it is. Each probe ends by killing every process
  * of its role's user (as every run does), so probing while a worker, a dev run or a timed run is
  * live would kill it.
  */
@@ -92,7 +92,7 @@ export function busyReason(stateDir: string): string | undefined {
     const trials = n("select count(*) as n from trial where ended_at is null");
     const jobs = n("select count(*) as n from job where state in ('queued', 'leased')");
     if (trials || jobs) {
-      return `${trials} open trial(s) and ${jobs} judge job(s): pause the unit's instances and let the judge finish first (each probe kills its role's processes)`;
+      return `${trials} open trial(s) and ${jobs} judge job(s): pause the rig's runs and let the judge finish first (each probe kills its role's processes)`;
     }
     return undefined;
   } finally {
@@ -111,7 +111,7 @@ export async function isolationSelftest(opts: {
   force?: boolean;
 }): Promise<IsolationReport> {
   const busy = opts.force ? undefined : busyReason(opts.stateDir);
-  if (busy) throw new Error(`the unit is busy: ${busy}; rerun with --force to probe anyway`);
+  if (busy) throw new Error(`the rig is busy: ${busy}; rerun with --force to probe anyway`);
   const skipped: string[] = [];
   const probes: Probe[] = [
     { name: "ledger", op: "read", path: join(opts.stateDir, "ledger", "ledger.db") },

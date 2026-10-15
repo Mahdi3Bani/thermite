@@ -4,17 +4,17 @@ import { request as httpsRequest } from "node:https";
 import { log } from "../common/env.ts";
 import { issueCommand } from "./issue.ts";
 import type { ControlStore } from "./store.ts";
-import { unitView } from "./views.ts";
+import { rigView } from "./views.ts";
 
 /**
- * Lifecycle: restarting a unit's containers, and the owner's full reset. Pause and resume are
+ * Lifecycle: restarting a rig's containers, and the owner's full reset. Pause and resume are
  * app commands; restarts go through a deployment driver:
  *
- * - Kubernetes: control's service account deletes the unit's pods (its Role allows pods get,
- *   list and delete in the unit's namespace, nothing else); the Deployment recreates them.
- * - Compose: the container engine's API (Docker or Podman) restarts the unit's containers.
+ * - Kubernetes: control's service account deletes the rig's pods (its Role allows pods get,
+ *   list and delete in the rig's namespace, nothing else); the Deployment recreates them.
+ * - Compose: the container engine's API (Docker or Podman) restarts the rig's containers.
  *
- * A full reset: pause the unit's running instances, export, wait until the supervisor reports
+ * A full reset: pause the rig's running runs, export, wait until the supervisor reports
  * that export pushed to the results repository, then the signed wipe_state (the harness and the
  * supervisor wipe their own state and restart), then a restart through the driver.
  */
@@ -23,7 +23,7 @@ export type Component = "harness" | "supervisor";
 
 export interface DeploymentDriver {
   readonly kind: string;
-  restart(unit: string, components: Component[]): Promise<string[]>;
+  restart(rig: string, components: Component[]): Promise<string[]>;
 }
 
 /** One HTTP(S) request with a JSON body, over TCP or a Unix socket. */
@@ -81,7 +81,7 @@ export interface KubernetesOptions {
   /** The token, or a function that reads it (service-account tokens are rotated on disk). */
   token: string | (() => string);
   ca?: string | undefined;
-  /** Namespace per unit, with {unit} replaced (default ar-{unit}). */
+  /** Namespace per rig, with {rig} replaced (default ar-{rig}). */
   namespaceTemplate: string;
   /** Label selector per component (default app.kubernetes.io/component=<component>). */
   selectors: Record<Component, string>;
@@ -102,7 +102,7 @@ export class KubernetesDriver implements DeploymentDriver {
       apiUrl: env.THERMITE_K8S_API ?? inClusterApi(env),
       token: () => readFileSync(env.THERMITE_K8S_TOKEN_FILE ?? `${sa}/token`, "utf8").trim(),
       ca: readFileSync(env.THERMITE_K8S_CA_FILE ?? `${sa}/ca.crt`, "utf8"),
-      namespaceTemplate: env.THERMITE_K8S_NAMESPACE ?? "ar-{unit}",
+      namespaceTemplate: env.THERMITE_K8S_NAMESPACE ?? "ar-{rig}",
       selectors: {
         harness: env.THERMITE_K8S_SELECTOR_HARNESS ?? "app.kubernetes.io/component=harness",
         supervisor:
@@ -111,9 +111,10 @@ export class KubernetesDriver implements DeploymentDriver {
     });
   }
 
-  async restart(unit: string, components: Component[]): Promise<string[]> {
-    if (!/^[a-z0-9-]{1,40}$/.test(unit)) throw new Error(`not a unit name: ${unit}`);
-    const ns = this.o.namespaceTemplate.replace("{unit}", unit);
+  async restart(rig: string, components: Component[]): Promise<string[]> {
+    if (!/^[a-z0-9-]{1,40}$/.test(rig)) throw new Error(`not a rig name: ${rig}`);
+    // {unit} is the placeholder's name before the 2026-10-15 rename.
+    const ns = this.o.namespaceTemplate.replace("{rig}", rig).replace("{unit}", rig);
     const token = typeof this.o.token === "function" ? this.o.token() : this.o.token;
     const headers = { authorization: `Bearer ${token}` };
     const deleted: string[] = [];
@@ -150,7 +151,7 @@ export interface ComposeOptions {
   /** The engine's API socket (Docker or Podman's Docker-compatible API). */
   socketPath: string;
   project: string;
-  /** unit -> component -> compose service name. */
+  /** rig -> component -> compose service name. */
   services: Record<string, Partial<Record<Component, string>>>;
 }
 
@@ -162,12 +163,12 @@ export class ComposeDriver implements DeploymentDriver {
     this.o = o;
   }
 
-  async restart(unit: string, components: Component[]): Promise<string[]> {
+  async restart(rig: string, components: Component[]): Promise<string[]> {
     const base = new URL("http://engine");
     const restarted: string[] = [];
     for (const c of components) {
-      const service = this.o.services[unit]?.[c];
-      if (!service) throw new Error(`no ${c} service configured for ${unit}`);
+      const service = this.o.services[rig]?.[c];
+      if (!service) throw new Error(`no ${c} service configured for ${rig}`);
       const filters = JSON.stringify({
         label: [
           `com.docker.compose.project=${this.o.project}`,
@@ -227,8 +228,8 @@ function harnessConfirmed(outcome: unknown): boolean {
 /**
  * Advances every open full reset by one step. Each step waits for evidence before the next:
  *
- *  start          pause the unit's running instances;
- *  quiescing      until the unit reports no queued or running judge jobs (an hour at most);
+ *  start          pause the rig's running runs;
+ *  quiescing      until the rig reports no queued or running judge jobs (an hour at most);
  *  exporting      a full export (research archive and ledger snapshot), until its result arrives;
  *  verifying      until the supervisor reports that export pushed to the results repository;
  *  awaiting_owner the owner checks the pushed commit and confirms (the supervisor's report is
@@ -261,11 +262,11 @@ async function advanceOnce(input: {
     .resets(50)
     .filter((x) => !["done", "failed", "cancelled"].includes(String(x.state)))) {
     const id = Number(r.id);
-    const unit = String(r.unit);
+    const rig = String(r.rig);
     const state = String(r.state);
-    const issue = (kind: "pause_instance" | "export_now" | "wipe_state", payload: unknown) =>
+    const issue = (kind: "pause_run" | "export_now" | "wipe_state", payload: unknown) =>
       issueCommand(store, input.privateKeyPem, {
-        unit,
+        rig,
         kind,
         payload,
         ttlMinutes: 30,
@@ -275,9 +276,9 @@ async function advanceOnce(input: {
     const fail = (detail: string) => {
       store.updateReset(id, {
         state: "failed",
-        detail: `${detail} (the unit's campaigns stay paused: resume them when it is safe)`,
+        detail: `${detail} (the rig's campaigns stay paused: resume them when it is safe)`,
       });
-      log("control", "reset failed", { unit, detail });
+      log("control", "reset failed", { rig, detail });
     };
     const limit = STEP_LIMIT_MS[state];
     if (limit && Date.now() - Date.parse(String(r.updated_at)) > limit) {
@@ -287,17 +288,17 @@ async function advanceOnce(input: {
     try {
       switch (state) {
         case "start": {
-          const v = unitView(store, unit, { staleAfterMs: input.staleAfterMs });
-          for (const i of v?.instances.filter((x) => x.status === "running") ?? []) {
-            issue("pause_instance", { instance: i.id, reason: "full reset" });
+          const v = rigView(store, rig, { staleAfterMs: input.staleAfterMs });
+          for (const i of v?.runs.filter((x) => x.status === "running") ?? []) {
+            issue("pause_run", { run: i.id, reason: "full reset" });
           }
           store.updateReset(id, { state: "quiescing" });
           break;
         }
         case "quiescing": {
-          const v = unitView(store, unit, { staleAfterMs: input.staleAfterMs });
+          const v = rigView(store, rig, { staleAfterMs: input.staleAfterMs });
           const busy = Number(v?.jobs.queued ?? 0) + Number(v?.jobs.leased ?? 0);
-          const pending = store.pendingCommands(unit).length;
+          const pending = store.pendingCommands(rig).length;
           if (busy > 0 || pending > 0) break;
           store.updateReset(id, {
             state: "exporting",
@@ -326,11 +327,11 @@ async function advanceOnce(input: {
         }
         case "verifying": {
           // The supervisor reports what reached the results repository.
-          const sup = store.supervisor(unit) as {
+          const sup = store.supervisor(rig) as {
             export?: { remote?: boolean; pushed?: string[]; pushed_commit?: string | null };
           } | null;
           if (sup?.export && sup.export.remote === false) {
-            fail("the unit has no results repository: its export cannot be verified (D24)");
+            fail("the rig has no results repository: its export cannot be verified (D24)");
             break;
           }
           if (!sup?.export?.pushed?.includes(String(r.export_name))) break;
@@ -358,13 +359,13 @@ async function advanceOnce(input: {
             fail(`the harness refused the wipe: ${JSON.stringify(c.outcome).slice(0, 300)}`);
             break;
           }
-          let restart = "the unit restarted itself (no deployment driver configured)";
+          let restart = "the rig restarted itself (no deployment driver configured)";
           if (input.driver) {
             try {
-              restart = `restarted ${(await input.driver.restart(unit, ["harness", "supervisor"])).join(", ")}`;
+              restart = `restarted ${(await input.driver.restart(rig, ["harness", "supervisor"])).join(", ")}`;
             } catch (err) {
               // The wipe happened; the containers restart themselves after it anyway.
-              restart = `the restart through the driver failed (${err instanceof Error ? err.message : String(err)}); the unit restarts itself`;
+              restart = `the restart through the driver failed (${err instanceof Error ? err.message : String(err)}); the rig restarts itself`;
             }
           }
           store.updateReset(id, { state: "done", detail: `wiped; ${restart}` });
@@ -394,7 +395,7 @@ export function cancelReset(store: ControlStore, id: number, by: string): void {
     throw new Error(`reset ${id} is ${String(r.state)}`);
   store.updateReset(id, {
     state: "cancelled",
-    detail: `cancelled by ${by}; the unit's campaigns stay paused until resumed`,
+    detail: `cancelled by ${by}; the rig's campaigns stay paused until resumed`,
   });
 }
 

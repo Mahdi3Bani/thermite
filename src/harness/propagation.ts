@@ -10,8 +10,8 @@ import { type Ledger, LedgerError } from "./ledger.ts";
 import type { HarnessService, SubmitResult } from "./service.ts";
 
 /**
- * Propagation across units. A unit's champion is published in its exports as a binary patch
- * against the campaign seed, with the resulting git tree. Another unit receives it through a
+ * Propagation across rigs. A rig's champion is published in its exports as a binary patch
+ * against the campaign seed, with the resulting git tree. Another rig receives it through a
  * signed `propagate` command that names the patch's sha256 and the tree: the supervisor only
  * transports the bytes. The receiving harness rebuilds the source champion on the seed, checks
  * the tree, and submits the difference from its own champion as an ordinary attempt, which its
@@ -36,19 +36,19 @@ export async function receivePropagation(
   p: Propagate,
   by: string,
 ): Promise<unknown> {
-  const inst = svc.ledger.getInstance(p.instance);
-  if (!inst) throw new LedgerError("not_found", `no instance ${p.instance}`);
+  const inst = svc.ledger.getRun(p.run);
+  if (!inst) throw new LedgerError("not_found", `no run ${p.run}`);
   if (inst.mode === "research") throw new Error("research campaigns do not take propagations");
   const spec = p.import;
   if (spec.kind !== "champion_patch") {
     throw new Error("propagate takes a champion_patch import (a published champion)");
   }
   if (spec.repo !== inst.seed_repo) {
-    throw new Error(`the champion is in ${spec.repo}; this instance works on ${inst.seed_repo}`);
+    throw new Error(`the champion is in ${spec.repo}; this run works on ${inst.seed_repo}`);
   }
   const mirror = svc.mirrorFor(inst.seed_repo);
   if (!(await hasCommit(mirror, spec.base_commit))) {
-    throw new Error(`base commit ${spec.base_commit} is not in this unit's repository`);
+    throw new Error(`base commit ${spec.base_commit} is not in this rig's repository`);
   }
   // Copied into the harness's own store and hashed as copied; the sha256 is the signed one.
   const stored = await importFile({
@@ -66,7 +66,7 @@ export async function receivePropagation(
       parent: spec.base_commit,
       patch: readFileSync(stored),
       id,
-      message: `thermite propagation ${id} from ${p.source_unit} ${p.source_instance} seq ${p.source_seq}`,
+      message: `thermite propagation ${id} from ${p.source_rig} ${p.source_run} seq ${p.source_seq}`,
       refPrefix: "refs/thermite/propagations",
     });
   } catch (err) {
@@ -81,37 +81,37 @@ export async function receivePropagation(
   }
   svc.ledger.recordImport({
     kind: "champion_patch",
-    name: `${p.source_unit}/${p.source_instance}/${p.source_seq}`,
+    name: `${p.source_rig}/${p.source_run}/${p.source_seq}`,
     sha256: spec.sha256,
     commitSha: rebuilt.commit,
     sourcePath: spec.path,
     storedPath: stored,
     actor: by,
   });
-  const champion = svc.ledger.currentChampion(p.instance);
+  const champion = svc.ledger.currentChampion(p.run);
   const source = {
-    source_unit: p.source_unit,
-    source_instance: p.source_instance,
+    source_rig: p.source_rig,
+    source_run: p.source_run,
     source_seq: p.source_seq,
     tree,
   };
   if ((await treeOf(mirror, champion.commit_sha)) === tree) {
-    svc.ledger.appendEvent(by, "propagation_received", p.instance, {
+    svc.ledger.appendEvent(by, "propagation_received", p.run, {
       ...source,
       attempt: null,
       result: "identical",
     });
-    return { identical: true, note: "this unit's champion already has the same tree" };
+    return { identical: true, note: "this rig's champion already has the same tree" };
   }
   const patch = await patchBytes(mirror, champion.commit_sha, rebuilt.commit);
   let r: SubmitResult;
   try {
     r = await svc.submitAttempt(
       {
-        instance: p.instance,
+        run: p.run,
         parent: champion.commit_sha,
         patch_base64: patch.toString("base64"),
-        hypothesis: `Propagated: ${p.source_unit}'s champion (instance ${p.source_instance}, seq ${p.source_seq}), judged here against this unit's champion`,
+        hypothesis: `Propagated: ${p.source_rig}'s champion (run ${p.source_run}, seq ${p.source_seq}), judged here against this rig's champion`,
         known_flaws: [],
       },
       by,
@@ -128,19 +128,19 @@ export async function receivePropagation(
   svc.ledger.tx(() => {
     svc.ledger.db
       .prepare(
-        `insert into propagation (attempt, instance, source_unit, source_instance, source_seq, tree, created_at)
+        `insert into propagation (attempt, run, source_rig, source_run, source_seq, tree, created_at)
          values (?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         r.attempt,
-        p.instance,
-        p.source_unit,
-        p.source_instance,
+        p.run,
+        p.source_rig,
+        p.source_run,
         p.source_seq,
         tree,
         new Date().toISOString(),
       );
-    svc.ledger.appendEvent(by, "propagation_received", p.instance, {
+    svc.ledger.appendEvent(by, "propagation_received", p.run, {
       ...source,
       attempt: r.attempt,
       lifecycle: r.lifecycle,
@@ -178,11 +178,11 @@ export function settlePropagations(ledger: Ledger, by: string): number {
       ledger.appendEvent(
         by,
         accepted ? "propagation_accepted" : "propagation_rejected",
-        String(row.instance),
+        String(row.run),
         {
           attempt,
-          source_unit: row.source_unit,
-          source_instance: row.source_instance,
+          source_rig: row.source_rig,
+          source_run: row.source_run,
           source_seq: row.source_seq,
           tree: row.tree,
           verdict,
@@ -195,7 +195,7 @@ export function settlePropagations(ledger: Ledger, by: string): number {
 }
 
 /**
- * The champion files an export publishes: for each instance's current champion (beyond the
+ * The champion files an export publishes: for each run's current champion (beyond the
  * seed), the binary patch from the seed and a manifest with the tree and the patch's sha256.
  * Returns the files written (relative paths) and the publications to announce.
  */
@@ -205,7 +205,7 @@ export async function championFiles(input: {
   write: (rel: string, data: string | Buffer) => void;
 }): Promise<
   {
-    instance: string;
+    run: string;
     seq: number;
     base_commit: string;
     tree: string;
@@ -214,14 +214,14 @@ export async function championFiles(input: {
   }[]
 > {
   const out: {
-    instance: string;
+    run: string;
     seq: number;
     base_commit: string;
     tree: string;
     sha256: string;
     path: string;
   }[] = [];
-  for (const inst of input.ledger.listInstances()) {
+  for (const inst of input.ledger.listRuns()) {
     if (inst.mode === "research") continue;
     const champ = input.ledger.currentChampion(inst.id);
     if (champ.seq <= 1 || !champ.attempt) continue;
@@ -238,7 +238,7 @@ export async function championFiles(input: {
     const path = `champions/${inst.id}/${champ.seq}.patch`;
     input.write(path, patch);
     const manifest = {
-      unit_instance: inst.id,
+      rig_run: inst.id,
       seq: champ.seq,
       repo: inst.seed_repo,
       base_commit: inst.seed_commit,
@@ -249,7 +249,7 @@ export async function championFiles(input: {
     };
     input.write(`champions/${inst.id}/${champ.seq}.json`, `${JSON.stringify(manifest)}\n`);
     out.push({
-      instance: inst.id,
+      run: inst.id,
       seq: champ.seq,
       base_commit: inst.seed_commit,
       tree,

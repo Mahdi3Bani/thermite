@@ -34,7 +34,7 @@ import { type Arm, type ArmRun, type MeasureContext, runArm } from "./measure.ts
  *            contract's looks.
  * confirm:   fresh blocks decided on their own data, plus held-out cells (pass or fail only,
  *            seen by promotion alone), then promotion by compare-and-swap if policy allows.
- * calibrate: A/A blocks (champion against itself) to measure the unit's noise.
+ * calibrate: A/A blocks (champion against itself) to measure the rig's noise.
  */
 
 export type PromotionPolicy = "auto" | "owner_approval";
@@ -62,18 +62,16 @@ class InfraError extends Error {}
 interface Finish {
   result: unknown;
   verdict?: Parameters<Ledger["recordVerdict"]>[0] | undefined;
-  promote?:
-    | { instance: string; expectedSeq: number; attempt: string; commitSha: string }
-    | undefined;
+  promote?: { run: string; expectedSeq: number; attempt: string; commitSha: string } | undefined;
   events?: { kind: string; subject: string; body: unknown }[] | undefined;
   enqueue?: Parameters<Ledger["enqueueJob"]>[0] | undefined;
   lifecycle?: string | undefined;
-  /** Close an instance (a goal campaign whose success rule holds). */
-  close?: { instance: string; reason: string } | undefined;
+  /** Close a run (a goal campaign whose success rule holds). */
+  close?: { run: string; reason: string } | undefined;
   /** Hold the attempt for an audit (written in the same transaction). */
   audit?:
     | {
-        instance: string;
+        run: string;
         trigger: "absolute" | "ratio" | "known_flaws" | "adversarial_checklist";
         reason: string;
         expectedSeq: number;
@@ -147,8 +145,8 @@ export class Judge {
       "validate",
     ]);
     if (!job) return false;
-    const subject = job.attempt ?? this.jobInstance(job) ?? "";
-    this.note(`${job.kind} ${subject}: started`, this.jobInstance(job));
+    const subject = job.attempt ?? this.jobRun(job) ?? "";
+    this.note(`${job.kind} ${subject}: started`, this.jobRun(job));
     let fin: Finish;
     try {
       fin =
@@ -162,13 +160,13 @@ export class Judge {
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       log("judge", "job failed", { job: job.id, kind: job.kind, error: reason });
-      this.note(`${job.kind} ${subject}: failed (${reason.slice(0, 300)})`, this.jobInstance(job));
+      this.note(`${job.kind} ${subject}: failed (${reason.slice(0, 300)})`, this.jobRun(job));
       this.infraFailure(job, reason);
       return true;
     }
     this.note(
       `${job.kind} ${subject}: ${fin.verdict ? `${fin.verdict.verdict}${typeof fin.verdict.delta === "number" ? ` ${(fin.verdict.delta * 100).toFixed(2)}%` : ""}` : (fin.lifecycle ?? "done")}`,
-      this.jobInstance(job),
+      this.jobRun(job),
     );
     try {
       const promoted = this.finish(job, fin);
@@ -184,10 +182,10 @@ export class Judge {
    * Writes a job's outcome in one transaction under its lease: the verdict, a promotion, events,
    * the follow-up job, the attempt's lifecycle and the job's completion. Either all of it is
    * recorded or none, so a crash cannot leave a verdict without its follow-up (or twice).
-   * Returns the instance whose champion moved, if one did.
+   * Returns the run whose champion moved, if one did.
    */
   private finish(job: JobRow, fin: Finish): string | undefined {
-    let movedInstance: string | undefined;
+    let movedRun: string | undefined;
     this.ledger.tx(() => {
       this.ledger.assertLease(job.id, job.fence);
       const result = { ...(fin.result as object) } as Record<string, unknown>;
@@ -200,7 +198,7 @@ export class Judge {
         const r = this.ledger.promote({ ...fin.promote, by: this.o.owner });
         if (r.ok) {
           lifecycle = "promoted";
-          movedInstance = fin.promote.instance;
+          movedRun = fin.promote.run;
           result.promoted = { seq: r.seq };
         } else {
           // Lost the compare-and-swap: screen again against the new champion.
@@ -219,28 +217,28 @@ export class Judge {
         });
       }
       if (fin.close)
-        this.ledger.setInstanceStatus(fin.close.instance, "closed", fin.close.reason, this.o.owner);
+        this.ledger.setRunStatus(fin.close.run, "closed", fin.close.reason, this.o.owner);
       if (lifecycle && job.attempt)
         this.ledger.setAttemptLifecycle(job.attempt, lifecycle, this.o.owner);
       this.ledger.completeJob(job.id, job.fence, "done", result);
     });
-    return movedInstance;
+    return movedRun;
   }
 
   // ------------------------------------------------------------------ shared steps
 
   /** A line for control's live view of the judge. */
-  private note(text: string, instance?: string | undefined): void {
-    this.o.service.live.append({ source: "judge", kind: "log", text, instance });
+  private note(text: string, run?: string | undefined): void {
+    this.o.service.live.append({ source: "judge", kind: "log", text, run });
   }
 
-  /** The instance a job works for. */
-  private jobInstance(job: JobRow): string | undefined {
+  /** The run a job works for. */
+  private jobRun(job: JobRow): string | undefined {
     if (job.attempt) {
-      const i = this.ledger.getAttempt(job.attempt)?.instance;
+      const i = this.ledger.getAttempt(job.attempt)?.run;
       return i === undefined || i === null ? undefined : String(i);
     }
-    const i = (JSON.parse(job.spec) as { instance?: unknown }).instance;
+    const i = (JSON.parse(job.spec) as { run?: unknown }).run;
     return typeof i === "string" ? i : undefined;
   }
 
@@ -293,21 +291,17 @@ export class Judge {
     const kit = loadKit(dir);
     if (kit.target !== this.o.driver.type) {
       throw new InfraError(
-        `kit ${kit.name} measures ${kit.target}, this unit has ${this.o.driver.type}`,
+        `kit ${kit.name} measures ${kit.target}, this rig has ${this.o.driver.type}`,
       );
     }
     return { kit, dir, commit: ref.commit };
   }
 
-  private async build(
-    instance: string,
-    commit: string,
-    k: { kit: Kit; dir: string; commit: string },
-  ) {
-    const inst = this.ledger.getInstance(instance);
-    if (!inst) throw new InfraError(`no instance ${instance}`);
+  private async build(run: string, commit: string, k: { kit: Kit; dir: string; commit: string }) {
+    const inst = this.ledger.getRun(run);
+    if (!inst) throw new InfraError(`no run ${run}`);
     const started = Date.now();
-    this.note(`build ${commit.slice(0, 12)}: started`, instance);
+    this.note(`build ${commit.slice(0, 12)}: started`, run);
     const b = await this.store.ensure({
       repo: inst.seed_repo,
       mirror: this.o.service.mirrorFor(inst.seed_repo),
@@ -319,18 +313,18 @@ export class Judge {
     });
     this.note(
       `build ${commit.slice(0, 12)}: ${b.ok ? "ok" : `failed (${b.reason.slice(0, 200)})`} in ${Math.round((Date.now() - started) / 1000)} s`,
-      instance,
+      run,
     );
     return b;
   }
 
   private async armFor(
     name: Arm["name"],
-    instance: string,
+    run: string,
     commit: string,
     k: { kit: Kit; dir: string; commit: string },
   ): Promise<Arm> {
-    const b = await this.build(instance, commit, k);
+    const b = await this.build(run, commit, k);
     if (!b.ok) {
       if (name !== "candidate") throw new InfraError(`${name} build failed: ${b.reason}`);
       // A build killed for time or memory is the candidate's crash (not cached: it may have been
@@ -349,10 +343,10 @@ export class Judge {
     // Reachable by exact (unguessable) path only: no role may list in-flight runs.
     chmodSync(join(this.o.service.paths.scratchDir, "runs"), 0o711);
     chmodSync(runsDir, 0o711);
-    const instance = this.jobInstance(job);
+    const run = this.jobRun(job);
     let contract: Contract | undefined;
     try {
-      contract = instance ? this.o.service.contractFor(instance) : undefined;
+      contract = run ? this.o.service.contractFor(run) : undefined;
     } catch {
       contract = undefined;
     }
@@ -367,8 +361,8 @@ export class Judge {
       modelsDir: join(this.o.service.paths.stateDir, "models"),
       note: (arm, cell, outcome) =>
         held.has(cell)
-          ? this.note(`held-out run ${++heldRuns} done`, instance)
-          : this.note(`${arm} · ${cell}: ${outcome}`, instance),
+          ? this.note(`held-out run ${++heldRuns} done`, run)
+          : this.note(`${arm} · ${cell}: ${outcome}`, run),
     };
   }
 
@@ -569,10 +563,10 @@ export class Judge {
     };
   }
 
-  private hillClimb(instance: string): HillClimbContract {
-    const c = this.o.service.contractFor(instance);
+  private hillClimb(run: string): HillClimbContract {
+    const c = this.o.service.contractFor(run);
     if (c.mode !== "hill_climb") {
-      throw new InfraError(`the judge handles hill_climb attempts; ${instance} is ${c.mode}`);
+      throw new InfraError(`the judge handles hill_climb attempts; ${run} is ${c.mode}`);
     }
     return c;
   }
@@ -597,10 +591,10 @@ export class Judge {
     const attemptId = job.attempt as string;
     const attempt = this.ledger.getAttempt(attemptId);
     if (!attempt) throw new InfraError(`no attempt ${attemptId}`);
-    const instance = String(attempt.instance);
-    if (this.o.service.contractFor(instance).mode === "goal") return this.evaluateGoal(job);
-    const contract = this.hillClimb(instance);
-    const champion = this.ledger.currentChampion(instance);
+    const run = String(attempt.run);
+    if (this.o.service.contractFor(run).mode === "goal") return this.evaluateGoal(job);
+    const contract = this.hillClimb(run);
+    const champion = this.ledger.currentChampion(run);
     const step = (l: string) => {
       this.ledger.heartbeat(job.id, job.fence, this.o.leaseMs);
       this.ledger.setAttemptLifecycle(attemptId, l, this.o.owner);
@@ -609,8 +603,8 @@ export class Judge {
     try {
       const k = await this.kitFor(contract);
       step("building");
-      const champ = await this.armFor("champion", instance, champion.commit_sha, k);
-      const cand = await this.armFor("candidate", instance, String(attempt.commit_sha), k);
+      const champ = await this.armFor("champion", run, champion.commit_sha, k);
+      const cand = await this.armFor("candidate", run, String(attempt.commit_sha), k);
       const ctx = this.context(k, job);
 
       step("gating");
@@ -670,13 +664,13 @@ export class Judge {
   // ------------------------------------------------------------------ confirm and promote
 
   /** Sum of guard effects (log ratios) of the promoted steps since the seed. */
-  private guardTotals(instance: string): Record<string, number> {
+  private guardTotals(run: string): Record<string, number> {
     const totals: Record<string, number> = {};
     const rows = this.ledger.db
       .prepare(
-        "select attempt from champion where instance = ? and reopened = 0 and attempt is not null",
+        "select attempt from champion where run = ? and reopened = 0 and attempt is not null",
       )
-      .all(instance) as { attempt: string }[];
+      .all(run) as { attempt: string }[];
     for (const r of rows) {
       const v = this.ledger.db
         .prepare(
@@ -694,11 +688,11 @@ export class Judge {
     const attemptId = job.attempt as string;
     const attempt = this.ledger.getAttempt(attemptId);
     if (!attempt) throw new InfraError(`no attempt ${attemptId}`);
-    const instance = String(attempt.instance);
-    if (this.o.service.contractFor(instance).mode === "goal") return this.confirmGoal(job);
-    const contract = this.hillClimb(instance);
+    const run = String(attempt.run);
+    if (this.o.service.contractFor(run).mode === "goal") return this.confirmGoal(job);
+    const contract = this.hillClimb(run);
     const baselineSeq = Number(this.spec(job).baseline_seq);
-    const champion = this.ledger.currentChampion(instance);
+    const champion = this.ledger.currentChampion(run);
     if (champion.seq !== baselineSeq) {
       // The champion moved since screening: screen again against the new one.
       return {
@@ -711,8 +705,8 @@ export class Judge {
     try {
       const k = await this.kitFor(contract);
       this.ledger.heartbeat(job.id, job.fence, this.o.leaseMs);
-      const champ = await this.armFor("champion", instance, champion.commit_sha, k);
-      const cand = await this.armFor("candidate", instance, String(attempt.commit_sha), k);
+      const champ = await this.armFor("champion", run, champion.commit_sha, k);
+      const cand = await this.armFor("candidate", run, String(attempt.commit_sha), k);
       const ctx = this.context(k, job);
       const blocks = await this.blocks({
         job,
@@ -723,7 +717,7 @@ export class Judge {
         runsPerCell: contract.acceptance.runs_per_cell,
       });
       const heldOutPass = await this.heldOut(job, ctx, cand, champ, contract);
-      let d = decideConfirm(contract, blocks, this.guardTotals(instance));
+      let d = decideConfirm(contract, blocks, this.guardTotals(run));
       let verdict: string = d.verdict ?? "not_confirmed";
       let reasons = d.reasons;
       if (verdict === "win_confirmed" && heldOutPass === false) {
@@ -747,7 +741,7 @@ export class Judge {
         lifecycle: "judged",
       };
       if (verdict !== "win_confirmed") return fin;
-      return this.promotion(fin, attemptId, instance, champion.seq, attempt);
+      return this.promotion(fin, attemptId, run, champion.seq, attempt);
     } catch (err) {
       if (!(err instanceof Stop)) throw err;
       return this.stopped(job, err);
@@ -813,16 +807,16 @@ export class Judge {
   private promotion(
     fin: Finish,
     attemptId: string,
-    instance: string,
+    run: string,
     expectedSeq: number,
     attempt: Record<string, unknown>,
   ): Finish {
     const audits = new Audits(this.ledger);
     const trigger = auditTrigger({
-      contract: this.o.service.contractFor(instance),
+      contract: this.o.service.contractFor(run),
       knownFlaws: JSON.parse(String(attempt.known_flaws)) as unknown[],
       delta: fin.verdict?.delta,
-      priorDeltas: audits.priorDeltas(instance, attemptId),
+      priorDeltas: audits.priorDeltas(run, attemptId),
     });
     if (trigger) {
       return {
@@ -835,7 +829,7 @@ export class Judge {
             body: { reason: `audit required: ${trigger.reason}` },
           },
         ],
-        audit: { instance, trigger: trigger.kind, reason: trigger.reason, expectedSeq },
+        audit: { run, trigger: trigger.kind, reason: trigger.reason, expectedSeq },
         lifecycle: "awaiting_audit",
       };
     }
@@ -847,7 +841,7 @@ export class Judge {
           {
             kind: "promotion_pending",
             subject: attemptId,
-            body: { instance, expected_seq: expectedSeq, commit: attempt.commit_sha },
+            body: { run, expected_seq: expectedSeq, commit: attempt.commit_sha },
           },
         ],
         lifecycle: "awaiting_approval",
@@ -856,7 +850,7 @@ export class Judge {
     return {
       ...fin,
       promote: {
-        instance,
+        run,
         expectedSeq,
         attempt: attemptId,
         commitSha: String(attempt.commit_sha),
@@ -866,9 +860,9 @@ export class Judge {
 
   // ------------------------------------------------------------------ goal mode
 
-  private goalContract(instance: string): GoalContract {
-    const c = this.o.service.contractFor(instance);
-    if (c.mode !== "goal") throw new InfraError(`${instance} is not a goal campaign`);
+  private goalContract(run: string): GoalContract {
+    const c = this.o.service.contractFor(run);
+    if (c.mode !== "goal") throw new InfraError(`${run} is not a goal campaign`);
     return c;
   }
 
@@ -885,7 +879,7 @@ export class Judge {
       heldOut?: boolean;
       goals?: string[];
       /** Validating the champion: review goals take the panel and owner's word for this commit. */
-      champion?: { instance: string; attempt: string | null; commit: string };
+      champion?: { run: string; attempt: string | null; commit: string };
     } = {},
   ): Promise<{ goal: string; required: boolean; status: GoalStatus; reasons: string }[]> {
     const out: { goal: string; required: boolean; status: GoalStatus; reasons: string }[] = [];
@@ -909,14 +903,14 @@ export class Judge {
           continue;
         }
         const reviews = new Reviews(this.ledger);
-        const { instance, attempt, commit } = opts.champion;
-        if (!reviews.get(instance, g.id, commit)) {
-          const inst = this.ledger.getInstance(instance);
+        const { run, attempt, commit } = opts.champion;
+        if (!reviews.get(run, g.id, commit)) {
+          const inst = this.ledger.getRun(run);
           const diff = inst
             ? await patchBetween(this.o.service.mirrorFor(inst.seed_repo), inst.seed_commit, commit)
             : "";
           reviews.request({
-            instance,
+            run,
             goal: g.id,
             attempt,
             commit,
@@ -925,7 +919,7 @@ export class Judge {
             by: this.o.owner,
           });
         }
-        const r = reviews.status(instance, g.id, commit);
+        const r = reviews.status(run, g.id, commit);
         out.push({ goal: g.id, required: g.required, status: r.status, reasons: r.reasons });
         continue;
       }
@@ -1034,7 +1028,7 @@ export class Judge {
 
   private recordGoals(
     job: JobRow,
-    instance: string,
+    run: string,
     attempt: string | null,
     commit: string,
     results: { goal: string; status: GoalStatus; reasons: string }[],
@@ -1045,10 +1039,10 @@ export class Judge {
       for (const r of results) {
         this.ledger.db
           .prepare(
-            "insert into goal_check (instance, goal, attempt, job, commit_sha, result, detail, created_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
+            "insert into goal_check (run, goal, attempt, job, commit_sha, result, detail, created_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
           )
           .run(
-            instance,
+            run,
             r.goal,
             attempt,
             job.id,
@@ -1065,8 +1059,8 @@ export class Judge {
             not_runnable: "not_runnable",
           }[r.status];
           this.ledger.db
-            .prepare("update goal set status = ? where instance = ? and id = ?")
-            .run(status, instance, r.goal);
+            .prepare("update goal set status = ? where run = ? and id = ?")
+            .run(status, run, r.goal);
         }
       }
     });
@@ -1085,21 +1079,21 @@ export class Judge {
 
   /** Measures every goal on the champion: the judge-only validation and the goal tree's state. */
   private async validate(job: JobRow): Promise<Finish> {
-    const instance = String(this.spec(job).instance);
-    const contract = this.goalContract(instance);
-    const champion = this.ledger.currentChampion(instance);
+    const run = String(this.spec(job).run);
+    const contract = this.goalContract(run);
+    const champion = this.ledger.currentChampion(run);
     const k = await this.kitFor(contract);
-    const arm = await this.armFor("champion", instance, champion.commit_sha, k);
+    const arm = await this.armFor("champion", run, champion.commit_sha, k);
     const results = await this.verifyGoals(job, contract, this.context(k, job), arm, {
-      champion: { instance, attempt: champion.attempt, commit: champion.commit_sha },
+      champion: { run, attempt: champion.attempt, commit: champion.commit_sha },
     });
-    this.recordGoals(job, instance, null, champion.commit_sha, results, true);
+    this.recordGoals(job, run, null, champion.commit_sha, results, true);
     const done = this.complete(contract, results);
     // Completion is final, so one validation is not enough: a second, independent validation
     // of the same champion must agree before the campaign closes.
     const confirming = this.spec(job).confirm === true;
     const summary = {
-      instance,
+      run,
       champion_seq: champion.seq,
       goals: results.map((r) => ({ goal: r.goal, status: r.status, reasons: r.reasons })),
       complete: done,
@@ -1108,11 +1102,11 @@ export class Judge {
     if (done && !confirming) {
       return {
         result: summary,
-        events: [{ kind: "goal_report", subject: instance, body: summary }],
+        events: [{ kind: "goal_report", subject: run, body: summary }],
         enqueue: {
           kind: "validate",
           priority: 40,
-          spec: { instance, champion_seq: champion.seq, confirm: true },
+          spec: { run, champion_seq: champion.seq, confirm: true },
           actor: this.o.owner,
         },
       };
@@ -1120,12 +1114,12 @@ export class Judge {
     return {
       result: summary,
       events: [
-        { kind: "goal_report", subject: instance, body: summary },
+        { kind: "goal_report", subject: run, body: summary },
         ...(done
-          ? [{ kind: "goal_complete", subject: instance, body: { champion_seq: champion.seq } }]
+          ? [{ kind: "goal_complete", subject: run, body: { champion_seq: champion.seq } }]
           : []),
       ],
-      ...(done ? { close: { instance, reason: "every required goal is met" } } : {}),
+      ...(done ? { close: { run, reason: "every required goal is met" } } : {}),
     };
   }
 
@@ -1137,21 +1131,22 @@ export class Judge {
     const attemptId = job.attempt as string;
     const attempt = this.ledger.getAttempt(attemptId);
     if (!attempt) throw new InfraError(`no attempt ${attemptId}`);
-    const instance = String(attempt.instance);
-    const contract = this.goalContract(instance);
-    const champion = this.ledger.currentChampion(instance);
+    const run = String(attempt.run);
+    const contract = this.goalContract(run);
+    const champion = this.ledger.currentChampion(run);
     try {
       const k = await this.kitFor(contract);
       this.ledger.setAttemptLifecycle(attemptId, "building", this.o.owner);
-      const cand = await this.armFor("candidate", instance, String(attempt.commit_sha), k);
+      const cand = await this.armFor("candidate", run, String(attempt.commit_sha), k);
       this.ledger.setAttemptLifecycle(attemptId, "verifying", this.o.owner);
       const results = await this.verifyGoals(job, contract, this.context(k, job), cand);
-      this.recordGoals(job, instance, attemptId, String(attempt.commit_sha), results, false);
+      this.recordGoals(job, run, attemptId, String(attempt.commit_sha), results, false);
       const champ = new Map(
         (
-          this.ledger.db
-            .prepare("select id, status from goal where instance = ?")
-            .all(instance) as { id: string; status: string }[]
+          this.ledger.db.prepare("select id, status from goal where run = ?").all(run) as {
+            id: string;
+            status: string;
+          }[]
         ).map((g) => [g.id, g.status]),
       );
       const reviewed = new Set(
@@ -1210,10 +1205,10 @@ export class Judge {
   private async confirmGoal(job: JobRow): Promise<Finish> {
     const attemptId = job.attempt as string;
     const attempt = this.ledger.getAttempt(attemptId) as Record<string, unknown>;
-    const instance = String(attempt.instance);
-    const contract = this.goalContract(instance);
+    const run = String(attempt.run);
+    const contract = this.goalContract(run);
     const baselineSeq = Number(this.spec(job).baseline_seq);
-    const champion = this.ledger.currentChampion(instance);
+    const champion = this.ledger.currentChampion(run);
     if (champion.seq !== baselineSeq) {
       return {
         result: { rescreen: true, baseline_seq: baselineSeq, champion_seq: champion.seq },
@@ -1224,15 +1219,16 @@ export class Judge {
     try {
       const k = await this.kitFor(contract);
       this.ledger.setAttemptLifecycle(attemptId, "verifying", this.o.owner);
-      const cand = await this.armFor("candidate", instance, String(attempt.commit_sha), k);
+      const cand = await this.armFor("candidate", run, String(attempt.commit_sha), k);
       const ctx = this.context(k, job);
       const results = await this.verifyGoals(job, contract, ctx, cand);
-      this.recordGoals(job, instance, attemptId, String(attempt.commit_sha), results, false);
+      this.recordGoals(job, run, attemptId, String(attempt.commit_sha), results, false);
       const champ = new Map(
         (
-          this.ledger.db
-            .prepare("select id, status from goal where instance = ?")
-            .all(instance) as { id: string; status: string }[]
+          this.ledger.db.prepare("select id, status from goal where run = ?").all(run) as {
+            id: string;
+            status: string;
+          }[]
         ).map((g) => [g.id, g.status]),
       );
       const reviewed = new Set(
@@ -1283,12 +1279,12 @@ export class Judge {
         lifecycle: "judged",
       };
       if (!ok) return fin;
-      const promoted = this.promotion(fin, attemptId, instance, champion.seq, attempt);
+      const promoted = this.promotion(fin, attemptId, run, champion.seq, attempt);
       // A new champion is validated afresh, so the goal tree reflects it.
       return promoted.promote
         ? {
             ...promoted,
-            enqueue: { kind: "validate", priority: 60, spec: { instance }, actor: this.o.owner },
+            enqueue: { kind: "validate", priority: 60, spec: { run }, actor: this.o.owner },
           }
         : promoted;
     } catch (err) {
@@ -1302,7 +1298,7 @@ export class Judge {
    * (up to three times, ten minutes apart), and never while a validation is queued or running.
    */
   private maybeScheduleValidation(): void {
-    for (const inst of this.ledger.listInstances()) {
+    for (const inst of this.ledger.listRuns()) {
       if (inst.status !== "running" || inst.mode !== "goal") continue;
       new Conclusions(this.ledger).maybePropose(inst.id, this.goalContract(inst.id), this.o.owner);
       const seq = this.ledger.currentChampion(inst.id).seq;
@@ -1311,7 +1307,7 @@ export class Judge {
           `select state, updated_at, json_extract(result, '$.champion_seq') as done_seq,
              json_extract(result, '$.confirming') as confirming,
              json_extract(spec, '$.champion_seq') as spec_seq
-           from job where kind = 'validate' and json_extract(spec, '$.instance') = ? order by id`,
+           from job where kind = 'validate' and json_extract(spec, '$.run') = ? order by id`,
         )
         .all(inst.id) as {
         state: string;
@@ -1333,7 +1329,7 @@ export class Judge {
       this.ledger.enqueueJob({
         kind: "validate",
         priority: 40,
-        spec: { instance: inst.id, champion_seq: seq },
+        spec: { run: inst.id, champion_seq: seq },
         actor: this.o.owner,
       });
     }
@@ -1343,11 +1339,11 @@ export class Judge {
 
   private maybeScheduleCalibration(): void {
     if (this.o.calibrationBlocks < 2) return;
-    for (const inst of this.ledger.listInstances()) {
+    for (const inst of this.ledger.listRuns()) {
       if (inst.status !== "running" || inst.mode !== "hill_climb") continue;
       const last = this.ledger.db
         .prepare(
-          `select created_at from job where kind = 'calibrate' and json_extract(spec, '$.instance') = ?
+          `select created_at from job where kind = 'calibrate' and json_extract(spec, '$.run') = ?
              order by id desc limit 1`,
         )
         .get(inst.id) as { created_at: string } | undefined;
@@ -1355,18 +1351,18 @@ export class Judge {
       this.ledger.enqueueJob({
         kind: "calibrate",
         priority: 200,
-        spec: { instance: inst.id },
+        spec: { run: inst.id },
         actor: this.o.owner,
       });
     }
   }
 
   private async calibrate(job: JobRow): Promise<Finish> {
-    const instance = String(this.spec(job).instance);
-    const contract = this.hillClimb(instance);
-    const champion = this.ledger.currentChampion(instance);
+    const run = String(this.spec(job).run);
+    const contract = this.hillClimb(run);
+    const champion = this.ledger.currentChampion(run);
     const k = await this.kitFor(contract);
-    const champ = await this.armFor("champion", instance, champion.commit_sha, k);
+    const champ = await this.armFor("champion", run, champion.commit_sha, k);
     const ctx = this.context(k, job);
     const twin: Arm = { ...champ, name: "twin" };
     const blocks = await this.blocks({
@@ -1391,7 +1387,7 @@ export class Judge {
       effects.reduce((s, e) => s + (e - i.estimate) ** 2, 0) / (effects.length - 1),
     );
     const result = {
-      instance,
+      run,
       champion_seq: champion.seq,
       blocks: effects.length,
       sigma: sd,
@@ -1399,6 +1395,6 @@ export class Judge {
       ci: [i.low, i.high],
       summary: `A/A ${pct(i.estimate)} [${pct(i.low)}, ${pct(i.high)}], block sigma ${(sd * 100).toFixed(3)}%`,
     };
-    return { result, events: [{ kind: "calibration", subject: instance, body: result }] };
+    return { result, events: [{ kind: "calibration", subject: run, body: result }] };
   }
 }

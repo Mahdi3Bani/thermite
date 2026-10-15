@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Local compose smoke test: build and start control and one unit, assign the smoke campaign
+// Local compose smoke test: build and start control and one rig, assign the smoke campaign
 // through control, submit one candidate as a proposer, and wait until its verdict reaches
 // control. Usage: COMPOSE="podman compose" node scripts/compose-smoke.mjs (or "docker compose").
 import {

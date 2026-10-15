@@ -8,7 +8,7 @@ import { runTrial, type TrialSpec } from "./worker.ts";
 /**
  * A worker trial in its own process (one per trial), run as its lane's agent user. It reaches
  * the harness only through the local API with its trial's own token (which binds every call to
- * the trial's instance and lane, and stops working when the trial ends). Its file and shell
+ * the trial's run and lane, and stops working when the trial ends). Its file and shell
  * tools run in the lane's workspace, as the lane's user, through that API: the agent itself can
  * read none of it. Prints the trial result as the last line of stdout.
  */

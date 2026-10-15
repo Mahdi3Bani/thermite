@@ -18,7 +18,7 @@ const tokens = { supervisor: "sup-token-123456", proposer: "prop-token-123456" }
 const auth = (t: string) => ({ authorization: `Bearer ${t}`, "content-type": "application/json" });
 
 describe("harness service and API", () => {
-  test("assign_campaign imports the repo bundle, verifies the seed and creates the instance", async () => {
+  test("assign_campaign imports the repo bundle, verifies the seed and creates the run", async () => {
     const env = makeHarnessEnv();
     const out = await env.service.applyCommand(env.sign("assign_campaign", env.assignPayload()));
     assert.equal(out.status, "applied");
@@ -43,7 +43,7 @@ describe("harness service and API", () => {
     const out = await env.service.applyCommand(env.sign("assign_campaign", bad));
     assert.ok(out.status === "applied" && !out.accepted);
     assert.match(JSON.stringify(out.result), /does not contain commit/);
-    assert.equal(env.service.ledger.getInstance("smoke-1"), undefined);
+    assert.equal(env.service.ledger.getRun("smoke-1"), undefined);
   });
 
   test("a model whose sha256 differs from the signed command is refused", async () => {
@@ -93,7 +93,7 @@ describe("harness service and API", () => {
     const env = makeHarnessEnv();
     const api = createHarnessApi(env.service, tokens);
     const forged = env.sign("assign_campaign", env.assignPayload());
-    forged.envelope.payload = { ...(forged.envelope.payload as object), instance: "evil" };
+    forged.envelope.payload = { ...(forged.envelope.payload as object), run: "evil" };
     const r1 = await api.request("/v1/commands", {
       method: "POST",
       headers: auth(tokens.supervisor),
@@ -106,7 +106,7 @@ describe("harness service and API", () => {
       body: JSON.stringify({ envelope: forged.envelope }),
     });
     assert.equal(r2.status, 403);
-    const other = await env.service.applyCommand(env.sign("export_now", {}, { unit: "unit-b" }));
+    const other = await env.service.applyCommand(env.sign("export_now", {}, { rig: "rig-b" }));
     assert.equal(other.status, "rejected");
     const rejected = env.service.ledger
       .eventsAfter(0, 1000)
@@ -128,7 +128,7 @@ describe("harness service and API", () => {
       api.request("/v1/attempts", {
         method: "POST",
         headers: auth(tokens.proposer),
-        body: JSON.stringify({ instance: "smoke-1", patch_base64: patch, hypothesis }),
+        body: JSON.stringify({ run: "smoke-1", patch_base64: patch, hypothesis }),
       });
     const good = env.patchFrom((d) =>
       writeFileSync(join(d, "src", "kernel", "k.c"), "int k(int x) { return x << 1; }\n"),
@@ -209,7 +209,7 @@ describe("harness service and API", () => {
     await api.request("/v1/attempts", {
       method: "POST",
       headers: auth(tokens.proposer),
-      body: JSON.stringify({ instance: "smoke-1", patch_base64: patch, hypothesis: "add" }),
+      body: JSON.stringify({ run: "smoke-1", patch_base64: patch, hypothesis: "add" }),
     });
     let cursor = 0;
     const ids: number[] = [];
@@ -252,7 +252,7 @@ describe("harness service and API", () => {
 
   test("an applied command re-sent after it expired is still reported as replayed", async () => {
     let now = new Date();
-    const env = makeHarnessEnv("unit-a", () => now);
+    const env = makeHarnessEnv("rig-a", () => now);
     const cmd = env.sign("assign_campaign", env.assignPayload(), { expiresInMs: 60_000 });
     assert.equal((await env.service.applyCommand(cmd)).status, "applied");
     now = new Date(now.getTime() + 3_600_000);
@@ -269,7 +269,7 @@ describe("harness service and API", () => {
     const env = makeHarnessEnv();
     await env.service.applyCommand(env.sign("assign_campaign", env.assignPayload()));
     const redirect = env.sign("redirect", {
-      instance: "smoke-1",
+      run: "smoke-1",
       directives: [{ kind: "avoid", family: "loop-unrolling", rationale: "tried", citations: [] }],
     });
     const outcomes = await Promise.all([
@@ -281,21 +281,21 @@ describe("harness service and API", () => {
     assert.equal(env.service.ledger.activeDirectives("smoke-1").length, 1);
   });
 
-  test("a refused assign changes nothing, and resume keeps one instance running", async () => {
+  test("a refused assign changes nothing, and resume keeps one run running", async () => {
     const env = makeHarnessEnv();
     const ledger = env.service.ledger;
     await env.service.applyCommand(env.sign("assign_campaign", env.assignPayload()));
     const reuse = await env.service.applyCommand(env.sign("assign_campaign", env.assignPayload()));
     assert.ok(reuse.status === "applied" && !reuse.accepted);
     assert.match(JSON.stringify(reuse.result), /already exists/);
-    assert.equal(ledger.getInstance("smoke-1")?.status, "running");
+    assert.equal(ledger.getRun("smoke-1")?.status, "running");
 
     await env.service.applyCommand(
-      env.sign("assign_campaign", env.assignPayload({ instance: "smoke-2" })),
+      env.sign("assign_campaign", env.assignPayload({ run: "smoke-2" })),
     );
-    assert.equal(ledger.getInstance("smoke-1")?.status, "paused");
-    await env.service.applyCommand(env.sign("resume_instance", { instance: "smoke-1" }));
-    const running = ledger.listInstances().filter((i) => i.status === "running");
+    assert.equal(ledger.getRun("smoke-1")?.status, "paused");
+    await env.service.applyCommand(env.sign("resume_run", { run: "smoke-1" }));
+    const running = ledger.listRuns().filter((i) => i.status === "running");
     assert.deepEqual(
       running.map((i) => i.id),
       ["smoke-1"],
@@ -347,7 +347,7 @@ describe("harness service and API", () => {
     await env.service.applyCommand(env.sign("assign_campaign", env.assignPayload()));
     const submit = (patch: string) =>
       env.service.submitAttempt(
-        { instance: "smoke-1", patch_base64: patch, hypothesis: "h", known_flaws: [] },
+        { run: "smoke-1", patch_base64: patch, hypothesis: "h", known_flaws: [] },
         "proposer",
       );
     const plusPlus = await submit(

@@ -170,13 +170,18 @@ let restarts = 0;
 /**
  * A full reset's wipe, requested by the controller (a marker in the state directory): done here,
  * as root, before the controller starts, so files other users own or locked build trees cannot
- * stop it. The unit's identity key stays; the wipe time is left for the new ledger, which then
+ * stop it. The rig's identity key stays; the wipe time is left for the new ledger, which then
  * refuses commands issued before it (they belonged to the wiped ledger).
  */
 function wipeIfMarked(): boolean {
   const marker = join(stateDir, WIPE_MARKER);
   if (!existsSync(marker)) return false;
-  const keep = new Set(["unit-signing.key", "unit-signing.key.pub"]);
+  const keep = new Set([
+    "rig-signing.key",
+    "rig-signing.key.pub",
+    "unit-signing.key",
+    "unit-signing.key.pub",
+  ]);
   const rm = (p: string) =>
     execFileSync("rm", ["-rf", "--one-file-system", "--", p], { stdio: "ignore" });
   for (const name of readdirSync(stateDir)) {
@@ -203,7 +208,7 @@ function wipeIfMarked(): boolean {
   writeFileSync(join(stateDir, "ledger", NOT_BEFORE_FILE), notBefore);
   chownSync(join(stateDir, "ledger", NOT_BEFORE_FILE), TU, TG);
   rmSync(marker, { force: true });
-  log("broker", "wiped the unit's state (full reset)");
+  log("broker", "wiped the rig's state (full reset)");
   return true;
 }
 
