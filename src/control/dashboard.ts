@@ -23,8 +23,8 @@ import {
   modeName,
   num,
   pct,
-  runAnchor,
   runHref,
+  runKey,
   runState,
   type Shell,
   shell,
@@ -55,6 +55,7 @@ const CSP =
   "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
 // biome-ignore lint/suspicious/noExplicitAny: any route's context
 type Ctx = Context<any, any, any>;
+type RunViewName = "overview" | "attempts" | "steering";
 
 export interface DashboardOptions {
   adminToken: string;
@@ -308,11 +309,20 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
   };
 
   /**
-   * One run's section on its campaign's page: KPIs, chart, goals, verdicts, steering and its
-   * attempts by lane. `back` is where command forms return.
+   * One run on its campaign's page, one view at a time: its overview (KPIs, chart, goals,
+   * verdicts, lanes, latest attempts), all its attempts, or its steering. Command forms return
+   * to the same view.
    */
-  const runSection = (c: Ctx, u: RigView, i: RunView, vs: RigView[], now: number, back: string) => {
+  const runSection = (
+    c: Ctx,
+    u: RigView,
+    i: RunView,
+    vs: RigView[],
+    now: number,
+    view: RunViewName,
+  ) => {
     const t = csrf(c);
+    const back = runHref(u.id, i, view);
     const others = vs.filter((x) => x.id !== u.id);
     const st = runState(i);
     const champ = i.champion.filter((s) => !s.reopened).at(-1);
@@ -490,7 +500,7 @@ ${propagate}</div>
 <label class="muted small row"><input type="checkbox" name="add" value="1" style="height:auto"> add to my directives</label><button>Redirect</button></form></div>`;
     const attempts = [...i.attempts]
       .reverse()
-      .slice(0, 100)
+      .slice(0, view === "attempts" ? 300 : 8)
       .map(
         (x) =>
           `<tr><td><code>${esc(x.id)}</code></td><td>${x.lane ? `<span class="chip">${esc(x.lane)}</span>` : ""}</td><td class="clip">${esc(x.hypothesis ?? "")}</td><td>${verdictChip(x.verdict, x.lifecycle)}</td><td class="num">${deltaCell(x.delta)}</td><td class="num muted">${esc(ago(x.updated_at, now))}</td></tr>`,
@@ -512,16 +522,32 @@ ${propagate}</div>
     const laneCard = laneRows
       ? `<div class="card flat" style="margin-top:12px"><table><thead><tr><th>Lane</th><th class="num">Attempts</th><th class="num">${i.mode === "goal" ? "Progress" : "Wins"}</th><th class="num">Best Δ</th><th>Latest hypothesis <a class="muted xs" href="/ui/rigs/${encodeURIComponent(u.id)}/live">· live sessions</a></th></tr></thead><tbody>${laneRows}</tbody></table></div>`
       : "";
-    return `<section class="block" id="${esc(runAnchor(u.id, i.id))}">
-<div class="card-head" style="margin-bottom:12px">${modeAvatar(i.mode)}<div class="grow"><span class="title" style="font-size:15px">${esc(i.id)}</span> <span class="muted small">on rig <a href="/ui/rigs/${encodeURIComponent(u.id)}">${esc(u.id)}</a>${u.stale ? ` <span class="bad">(stale)</span>` : ""} · ${esc(modeName(i.mode))}${i.seed_repo ? ` · ${esc(i.seed_repo)}` : ""}</span>${i.pause_reason ? `<div class="muted xs">${esc(i.pause_reason)}</div>` : ""}</div><span class="right label ${st.cls}">${st.icon}${esc(st.text)}</span></div>
-${pending}<div class="kpis" style="margin-bottom:12px">${kpis}</div>
+    // Owner decisions waiting on this run, in any view.
+    const waiting =
+      i.audits.filter((x) => x.decision === null || x.decision === "block").length +
+      i.reviews.filter((r) => r.panel === "review_passed" && !r.owner).length +
+      i.conclusions.filter((x) => x.decision === null).length;
+    const sub = (v: RunViewName, label: string, extra = "") =>
+      `<a class="${view === v ? "on" : ""}" href="${runHref(u.id, i, v)}">${label}${extra}</a>`;
+    const attemptTable = attempts
+      ? `<div class="card flat" style="margin-top:12px"><table><thead><tr><th>Attempt</th><th>Lane</th><th>Hypothesis</th><th>Verdict</th><th class="num">Δ</th><th class="num">Updated</th></tr></thead><tbody>${attempts}</tbody></table></div>`
+      : `<div class="card"><div class="empty">No attempt yet.</div></div>`;
+    const body =
+      view === "attempts"
+        ? `${laneCard}${attemptTable}${i.attempts.length > 300 ? `<div class="muted small" style="margin-top:8px">The newest 300 of ${i.attempts.length}.</div>` : ""}`
+        : view === "steering"
+          ? `<div>${steer}</div>${steering ? `<div class="stack" style="margin-top:12px">${steering}</div>` : `<div class="muted small" style="margin-top:12px">No audits, reviews or propagations yet.</div>`}`
+          : `<div class="kpis" style="margin-bottom:12px">${kpis}</div>
 ${i.mode === "hill_climb" ? `<div class="card"><div class="card-head"><span class="title">Champion gain</span><span class="right muted small">over the baseline, measured on this rig</span></div><div style="margin-top:8px">${gainChart(i)}</div></div>` : ""}
 ${goals}${research}
 ${i.attempts.length ? `<div class="card"><div class="card-head"><span class="title">Verdicts</span><span class="right muted small">${i.attempts.length} attempts</span></div><div style="margin-top:10px">${stackBar(i.verdicts)}</div></div>` : ""}
-${steering ? `<div class="stack" style="margin-top:12px">${steering}</div>` : ""}
-<div style="margin-top:12px">${steer}</div>
 ${laneCard}
-${attempts ? `<div class="card flat" style="margin-top:12px"><table><thead><tr><th>Attempt</th><th>Lane</th><th>Hypothesis</th><th>Verdict</th><th class="num">Δ</th><th class="num">Updated</th></tr></thead><tbody>${attempts}</tbody></table></div>` : ""}
+${attempts ? `<div class="card flat" style="margin-top:12px"><div class="card-head" style="padding:10px 12px 0"><span class="title">Latest attempts</span><span class="right small"><a href="${runHref(u.id, i, "attempts")}">All ${i.attempts.length} attempts</a></span></div><table><thead><tr><th>Attempt</th><th>Lane</th><th>Hypothesis</th><th>Verdict</th><th class="num">Δ</th><th class="num">Updated</th></tr></thead><tbody>${attempts}</tbody></table></div>` : ""}`;
+    return `<section class="block" id="${esc(runKey(u.id, i.id))}">
+<div class="card-head" style="margin-bottom:12px">${modeAvatar(i.mode)}<div class="grow"><span class="title" style="font-size:15px">${esc(i.id)}</span> <span class="muted small">on rig <a href="/ui/rigs/${encodeURIComponent(u.id)}">${esc(u.id)}</a>${u.stale ? ` <span class="bad">(stale)</span>` : ""} · ${esc(modeName(i.mode))}${i.seed_repo ? ` · ${esc(i.seed_repo)}` : ""}</span>${i.pause_reason ? `<div class="muted xs">${esc(i.pause_reason)}</div>` : ""}</div>
+<div class="seg">${sub("overview", "Overview")}${sub("attempts", "Attempts", ` <span class="muted">${i.attempts.length}</span>`)}${sub("steering", "Steering", waiting ? ` <span class="dot warn"></span>` : "")}</div>
+<span class="label ${st.cls}">${st.icon}${esc(st.text)}</span></div>
+${pending}${body}
 </section>`;
   };
 
@@ -574,13 +600,6 @@ ${attempts ? `<div class="card flat" style="margin-top:12px"><table><thead><tr><
         }</a>`;
       })
       .join("");
-    const rigRows = vs
-      .map((u) => {
-        const running = u.runs.filter((i) => i.status === "running");
-        const q = num(u.jobs.queued) + num(u.jobs.leased);
-        return `<a class="side-row" style="padding:9px 12px" href="/ui/rigs/${encodeURIComponent(u.id)}"><span class="dot ${u.stale ? "bad" : "ok"}"></span><span class="two" style="display:flex;flex-direction:column;min-width:0"><span class="name"><b>${esc(u.id)}</b></span><span class="muted xs">${u.stale ? `not reporting for ${esc(ago(u.last_seen, now))}` : running.length ? esc(running.map((i) => `${i.campaign || i.id} › ${i.id}`).join(", ")) : "idle"}</span></span><span class="right muted xs">${q ? `judge ${q} job${q > 1 ? "s" : ""}` : ""}</span></a>`;
-      })
-      .join("");
     const activity = vs
       .flatMap((u) => u.recent.slice(0, 12).map((e) => ({ u: u.id, e })))
       .sort((a, b) => b.e.at.localeCompare(a.e.at))
@@ -603,7 +622,6 @@ ${attempts ? `<div class="card flat" style="margin-top:12px"><table><thead><tr><
   ${feed.length ? `<div class="feed">${feed.map((n) => n.html).join("")}</div>` : `<div class="card"><div class="empty">Nothing waits for you. Campaigns are running on their own.</div></div>`}
 </div><div>
   <div class="block"><div class="head"><h2>Campaigns</h2><span class="right"><a href="/ui/campaigns">All campaigns</a></span></div>${tiles ? `<div class="stack" style="gap:10px">${tiles}</div>` : `<div class="card"><div class="empty">No campaign yet. Assign one to a rig through control's API or MCP.</div></div>`}</div>
-  <div class="block"><div class="head"><h2>Rigs</h2><span class="right"><a href="/ui/rigs">All rigs</a></span></div>${rigRows ? `<div class="card flat" style="padding:4px">${rigRows}</div>` : `<div class="card"><div class="empty">No rig has reported yet.</div></div>`}</div>
   ${activity ? `<div class="block"><div class="head"><h2>Activity</h2></div><div class="card flat"><div class="list">${activity}</div></div></div>` : ""}
 </div></div>`,
       vs,
@@ -669,30 +687,70 @@ ${attempts ? `<div class="card flat" style="margin-top:12px"><table><thead><tr><
     const st = campaignState(k);
     const rigs = rigList(k);
     const h = headline(k);
-    const back = campaignHref(k.name);
+    // The selected run: from the link, else the one that needs the owner, else a running one.
+    const urgent = ["Approval", "Decision", "Review", "Audit"];
+    const sel =
+      k.runs.find((x) => runKey(x.rig.id, x.run.id) === c.req.query("run")) ??
+      urgent
+        .map((u) => k.runs.find((x) => runState(x.run).text === u))
+        .find((x) => x !== undefined) ??
+      k.runs.find((x) => x.run.status === "running") ??
+      (k.runs[0] as CampaignView["runs"][number]);
+    const qv = c.req.query("view");
+    const view: RunViewName = qv === "attempts" || qv === "steering" ? qv : "overview";
+    // Across runs: one row per run, then (goal campaigns) the goals by run.
     const board = leaderboard(store, { staleAfterMs: opts.staleAfterMs })[k.name] ?? [];
-    const best = Math.max(0.0001, ...board.map((r) => r.gain));
-    const boardCard =
-      board.length > 1
-        ? `<div class="block"><div class="head"><h2>Leaderboard</h2><span class="right muted small">gain over each run's own baseline, measured on its own rig</span></div><div class="card flat"><table><thead><tr><th style="width:40px">#</th><th>Run</th><th>Champion</th><th style="width:40%">Gain</th><th>Cross-verified</th></tr></thead><tbody>${board
-            .map(
-              (r, n) =>
-                `<tr><td class="muted">${n + 1}</td><td><a href="#${encodeURIComponent(runAnchor(r.rig, r.run))}"><b>${esc(r.run)}</b></a> <span class="muted small">on ${esc(r.rig)}</span></td><td class="muted">seq ${r.champion_seq}</td><td>${meter("", pct(r.gain, 2), r.gain / best, "primary")}</td><td>${r.verified_by.length ? `<span class="pill ok">${icon.check}by ${esc(r.verified_by.join(", "))}</span>` : `<span class="muted small">not yet</span>`}</td></tr>`,
-            )
-            .join("")}</tbody></table></div></div>`
-        : "";
-    const jump =
+    const verified = new Map(board.map((r) => [runKey(r.rig, r.run), r.verified_by]));
+    const gainOf = (i: RunView) =>
+      (i.champion.filter((s) => !s.reopened).at(-1)?.cumulative ?? 1) - 1;
+    const best = Math.max(0.0001, ...k.runs.map((x) => gainOf(x.run)));
+    const winKind = k.mode === "goal" ? "goal_progress" : "win_confirmed";
+    const summaryRows = k.runs
+      .map(({ rig, run }) => {
+        const rs = runState(run);
+        const on = rig.id === sel.rig.id && run.id === sel.run.id;
+        const last = run.attempts.at(-1)?.updated_at;
+        const v = verified.get(runKey(rig.id, run.id)) ?? [];
+        const head =
+          k.mode === "hill_climb"
+            ? meter("", pct(gainOf(run), 1), gainOf(run) / best, "primary")
+            : esc(runMetric(run));
+        return `<tr${on ? ` class="on"` : ""}><td><a href="${runHref(rig.id, run)}"><b>${esc(run.id)}</b></a></td><td>${avatar(rig.id)} ${esc(rig.id)}${rig.stale ? ` <span class="bad xs">stale</span>` : ""}</td><td><span class="label ${rs.cls}">${rs.icon}${esc(rs.text)}</span></td><td style="width:30%">${head}</td><td class="num">${run.attempts.length}</td><td class="num">${run.attempts.filter((a) => a.verdict === winKind).length}</td><td class="num muted">${last ? `${esc(ago(last, now))} ago` : ""}</td>${k.mode === "hill_climb" ? `<td>${v.length ? `<span class="pill ok">${icon.check}${esc(v.join(", "))}</span>` : `<span class="muted small">not yet</span>`}</td>` : ""}</tr>`;
+      })
+      .join("");
+    const summary =
       k.runs.length > 1
-        ? `<div class="row wrap" style="gap:6px;margin-bottom:14px">${k.runs
+        ? `<div class="card flat"><table><thead><tr><th>Run</th><th>Rig</th><th>State</th><th>${esc(h.sub.replace(" (best run)", ""))}</th><th class="num">Attempts</th><th class="num">${k.mode === "goal" ? "Progress" : "Wins"}</th><th class="num">Last attempt</th>${k.mode === "hill_climb" ? "<th>Cross-verified</th>" : ""}</tr></thead><tbody>${summaryRows}</tbody></table></div>`
+        : "";
+    const goalNames = [...new Set(k.runs.flatMap((x) => x.run.goals.map((g) => g.goal)))];
+    const goalMatrix =
+      k.mode === "goal" && k.runs.length > 1 && goalNames.length
+        ? `<div class="card flat" style="margin-top:12px"><table><thead><tr><th>Goal</th>${k.runs.map((x) => `<th class="goalcell">${esc(x.run.id)}</th>`).join("")}</tr></thead><tbody>${goalNames
+            .map(
+              (g) =>
+                `<tr><td>${esc(g)}</td>${k.runs
+                  .map((x) => {
+                    const s2 = x.run.goals.find((y) => y.goal === g)?.status;
+                    return s2 === "met"
+                      ? `<td class="goalcell ok" title="met">✓</td>`
+                      : s2 === "unmet"
+                        ? `<td class="goalcell bad" title="unmet">✕</td>`
+                        : `<td class="goalcell muted" title="${esc(s2 ?? "not validated")}">·</td>`;
+                  })
+                  .join("")}</tr>`,
+            )
+            .join("")}</tbody></table></div>`
+        : "";
+    const tabs =
+      k.runs.length > 1
+        ? `<nav class="tabs">${k.runs
             .map(({ rig, run }) => {
               const rs = runState(run);
-              return `<a class="chip" href="#${encodeURIComponent(runAnchor(rig.id, run.id))}"><span class="dot ${rs.cls === "info" ? "ok" : rs.cls === "muted" ? "" : rs.cls}"></span>${esc(run.id)} · ${esc(rig.id)}</a>`;
+              const on = rig.id === sel.rig.id && run.id === sel.run.id;
+              return `<a class="${on ? "on" : ""}" href="${runHref(rig.id, run, view)}"><span class="dot ${rs.cls === "info" ? "ok" : rs.cls === "muted" ? "" : rs.cls}"></span>${esc(run.id)}<span class="sub">${esc(rig.id)}</span></a>`;
             })
-            .join("")}</div>`
+            .join("")}</nav>`
         : "";
-    const sections = k.runs
-      .map(({ rig, run }) => runSection(c, rig, run, vs, now, back))
-      .join(`<div class="divider" style="margin:20px 0"></div>`);
     return page(
       c,
       {
@@ -701,7 +759,7 @@ ${attempts ? `<div class="card flat" style="margin-top:12px"><table><thead><tr><
         summary: `${esc(modeName(k.mode))} · ${k.runs.length} run${k.runs.length > 1 ? "s" : ""} on ${esc(rigs.join(", "))} · <span class="${st.cls}">${esc(st.text)}</span> · ${esc(h.value)} ${esc(h.sub)}`,
         active: "campaigns",
       },
-      `${boardCard}${jump}${sections}`,
+      `${summary ? `<div class="block" style="margin-bottom:8px">${summary}${goalMatrix}</div>` : ""}${tabs}${runSection(c, sel.rig, sel.run, vs, now, view)}`,
       vs,
     );
   });

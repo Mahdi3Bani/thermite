@@ -149,11 +149,19 @@ describe("control dashboard", () => {
     await s.relay(); // reports the promotion back
     // Campaigns first: the run's chart and attempts are on its campaign's page, linked from the rig.
     const rig = await (await s.get("/ui/rigs/rig-a")).text();
-    assert.match(rig, /href="\/ui\/campaigns\/js-sum#run-rig-a-js-1"/);
-    const campaign = await (await s.get("/ui/campaigns/js-sum")).text();
+    assert.match(rig, /href="\/ui\/campaigns\/js-sum\?run=rig-a%2Fjs-1"/);
+    const campaign = await (await s.get("/ui/campaigns/js-sum?run=rig-a%2Fjs-1")).text();
     assert.match(campaign, /<svg class="chart"/);
     assert.match(campaign, /drop the waste/);
-    assert.match(campaign, /id="run-rig-a-js-1"/);
+    assert.match(campaign, /id="rig-a\/js-1"/);
+    // One run's views: its attempts, and its steering.
+    const all = await (await s.get("/ui/campaigns/js-sum?run=rig-a%2Fjs-1&view=attempts")).text();
+    assert.match(all, /drop the waste/);
+    assert.doesNotMatch(all, /<svg class="chart"/);
+    assert.match(
+      await (await s.get("/ui/campaigns/js-sum?run=rig-a%2Fjs-1&view=steering")).text(),
+      /Reset workers/,
+    );
     assert.match(await (await s.get("/ui/campaigns")).text(), /js-sum/);
     assert.doesNotMatch(await (await s.get("/ui")).text(), /Promotion waiting for approval/);
     const audit = await (await s.get("/ui/audit")).text();

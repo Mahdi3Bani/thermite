@@ -126,10 +126,15 @@ export function campaignState(k: CampaignView): { text: string; cls: string; ico
 }
 
 export const campaignHref = (name: string) => `/ui/campaigns/${encodeURIComponent(name)}`;
-/** A run's anchor on its campaign's page. */
-export const runAnchor = (rig: string, run: string) => `run-${rig}-${run}`;
-export const runHref = (rig: string, i: Pick<RunView, "id" | "campaign">) =>
-  `${campaignHref(i.campaign || i.id)}#${encodeURIComponent(runAnchor(rig, i.id))}`;
+/** A run's key on its campaign's page (run ids are unique per rig only). */
+export const runKey = (rig: string, run: string) => `${rig}/${run}`;
+/** A run's tab on its campaign's page, and one of its views. */
+export const runHref = (
+  rig: string,
+  i: Pick<RunView, "id" | "campaign">,
+  view: "overview" | "attempts" | "steering" = "overview",
+) =>
+  `${campaignHref(i.campaign || i.id)}?run=${encodeURIComponent(runKey(rig, i.id))}${view === "overview" ? "" : `&view=${view}`}`;
 
 export function label(text: string, cls: string, ic = ""): string {
   return `<span class="label ${cls}">${ic}${esc(text)}</span>`;

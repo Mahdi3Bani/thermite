@@ -175,6 +175,15 @@ input, select, textarea { height: 32px; padding: 0 10px; border-radius: var(--co
 textarea { height: auto; padding: 8px 10px; resize: vertical; line-height: 1.45; }
 input:focus, select:focus, textarea:focus, button:focus-visible, .btn:focus-visible { outline: 2px solid color-mix(in srgb, var(--primary) 45%, transparent); outline-offset: 1px; }
 form.inline { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 0; }
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin: 4px 0 16px; overflow-x: auto; }
+.tabs a { display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; font-size: 13px; font-weight: 500; color: var(--muted-foreground); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+.tabs a:hover { color: var(--foreground); text-decoration: none; }
+.tabs a.on { color: var(--foreground); border-bottom-color: var(--primary); }
+.tabs a .sub { font-weight: 400; font-size: 12px; color: var(--muted-foreground); }
+.goalcell { text-align: center; font-weight: 600; }
+tr.on td { background: var(--primary-surface); }
+.seg a span { padding: 0; }
+.seg a .dot { display: inline-block; margin-left: 4px; vertical-align: middle; }
 .seg { display: inline-flex; padding: 2px; border-radius: var(--control-radius); background: var(--accent); gap: 2px; }
 .seg a, .seg span { padding: 3px 10px; border-radius: 6px; font-size: 12px; font-weight: 500; color: var(--muted-foreground); }
 .seg .on { background: #18181b; color: #fff; }

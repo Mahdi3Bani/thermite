@@ -50,7 +50,7 @@ The supervisor is the rig's link to everything outside:
 
 - **Dashboard.** It is organized campaigns first, following Campaign ▸ Run ▸ Lane ▸ Trial ▸ Attempt:
   - **Overview:** what needs the owner (promotions to approve, audits, reviews, "not possible" proposals, keys to accept, resets to confirm), then campaigns, rigs and recent activity.
-  - **Campaigns:** each campaign with its runs on every rig. A campaign's page has its leaderboard and one section per run: KPIs, the champion chart, goals, verdicts, steering, its lanes and its attempts.
+  - **Campaigns:** each campaign with its runs on every rig. A campaign's page starts with a summary across its runs: state, gain or goals met, attempts, wins and cross-verification, plus a goals-by-run grid for goal campaigns. Below it, one tab per run shows that run alone, in three views: an overview (KPIs, the champion chart, goals, verdicts, lanes and the latest attempts), all its attempts, and its steering.
   - **Rigs:** each rig's judge queue, results export, advisors and signing key, and the runs it holds.
   - **Live:** each rig's agent sessions and judge as they work. The harness signs the lines its workers, planner and judge write, and the supervisor relays them every few seconds with its own lines, which are unsigned. The owner can message a worker's trial, a lane, the planner or the advisors from here, as a signed command. The judge is code and takes no messages.
 - **API and MCP.** Every view is available to scripts and agents, with scoped tokens and an audit log.

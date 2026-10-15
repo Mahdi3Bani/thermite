@@ -68,7 +68,7 @@ async function dashboard() {
   const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0];
   const page = async (path) => (await fetch(`${control}${path}`, { headers: { cookie } })).text();
   const post = async (form) => {
-    const html = await page(`/ui/units/${form.unit}`);
+    const html = await page(`/ui/rigs/${form.rig}`);
     const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(html)?.[1] ?? "";
     const r = await fetch(`${control}/ui/commands`, {
       method: "POST",
