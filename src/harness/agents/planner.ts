@@ -181,7 +181,11 @@ and propose a new family when a genuinely different approach is worth trying. Ob
 never assign an AVOID family, always assign every MANDATE family, prefer TRY families. Answer only by
 calling submit_plan once.`;
 
-export async function plan(input: PlannerInput, model?: ModelConfig): Promise<PlanResult> {
+export async function plan(
+  input: PlannerInput,
+  model?: ModelConfig,
+  signal?: AbortSignal,
+): Promise<PlanResult> {
   const rawViolations: string[] = [];
   if (model) {
     const context = canonicalJson({
@@ -197,9 +201,10 @@ export async function plan(input: PlannerInput, model?: ModelConfig): Promise<Pl
     });
     let feedback = "";
     for (let tries = 1; tries <= 2; tries++) {
+      if (signal?.aborted) break;
       let raw: unknown;
       try {
-        raw = await callPlanner(model, `${context}${feedback}`);
+        raw = await callPlanner(model, `${context}${feedback}`, signal);
       } catch (err) {
         rawViolations.push(`try ${tries}: ${err instanceof Error ? err.message : String(err)}`);
         continue;
@@ -231,7 +236,11 @@ export async function plan(input: PlannerInput, model?: ModelConfig): Promise<Pl
   };
 }
 
-async function callPlanner(cfg: ModelConfig, context: string): Promise<unknown> {
+async function callPlanner(
+  cfg: ModelConfig,
+  context: string,
+  signal?: AbortSignal,
+): Promise<unknown> {
   const { models, model, thinkingLevel } = buildModel(cfg);
   let captured: unknown;
   const agent = new Agent({
@@ -272,10 +281,13 @@ async function callPlanner(cfg: ModelConfig, context: string): Promise<unknown> 
     streamFn: models.streamSimple.bind(models),
   });
   const timer = setTimeout(() => agent.abort(), 180_000);
+  const cancel = () => agent.abort();
+  signal?.addEventListener("abort", cancel, { once: true });
   try {
-    await agent.prompt(context);
+    if (!signal?.aborted) await agent.prompt(context);
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", cancel);
   }
   if (captured === undefined) throw new Error("the planner did not call submit_plan");
   return captured;

@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { join } from "node:path";
+import { log } from "../../common/env.ts";
 import type { StructuredDirective } from "../../core/commands.ts";
 import { type Contract, laneLimits, type ResearchContract } from "../../core/contract.ts";
 import type { Role, Runner } from "../broker/runner.ts";
@@ -87,6 +88,11 @@ export class Scheduler {
   private readonly ledger: Ledger;
   private readonly running = new Map<string, Promise<void>>();
   private readonly aborts = new Map<string, AbortController>();
+  /** The instance each running trial (by lane) works for. */
+  private readonly laneInstance = new Map<string, string>();
+  /** The planner call in flight, if any. */
+  private planning: { instance: string; ctrl: AbortController } | undefined;
+  private watcher: ReturnType<typeof setInterval> | undefined;
   /** The newest workers_reset event acted on. */
   private resetSeen: number;
   private cooldownNoted = "";
@@ -113,6 +119,42 @@ export class Scheduler {
       .prepare("select max(id) as id from event where kind = 'workers_reset'")
       .get() as { id: number | null };
     return Number(r.id ?? 0);
+  }
+
+  /**
+   * Work in flight for an instance that is no longer running (paused, closed) stops at once: its
+   * trials are killed and its planner call is cancelled, instead of running to their end.
+   */
+  private stopIfNotRunning(): void {
+    const running = (id: string) => this.ledger.getInstance(id)?.status === "running";
+    for (const [lane, ctrl] of this.aborts) {
+      const instance = this.laneInstance.get(lane);
+      if (instance && !running(instance) && !ctrl.signal.aborted) {
+        this.ledger.appendEvent(this.o.owner, "trial_stopped", instance, {
+          lane,
+          reason: "instance not running",
+        });
+        ctrl.abort();
+      }
+    }
+    if (this.planning && !running(this.planning.instance)) this.planning.ctrl.abort();
+  }
+
+  /** Checks every second while trials or a planner call are in flight (the tick may be waiting). */
+  private watch(): void {
+    if (this.watcher) return;
+    this.watcher = setInterval(() => {
+      try {
+        this.stopIfNotRunning();
+      } catch (err) {
+        log("scheduler", "stop check failed", { error: String(err) });
+      }
+      if (!this.aborts.size && !this.planning && this.watcher) {
+        clearInterval(this.watcher);
+        this.watcher = undefined;
+      }
+    }, 1000);
+    this.watcher.unref?.();
   }
 
   /**
@@ -397,7 +439,17 @@ export class Scheduler {
       directives: this.directives(instance),
       laneBests: Object.fromEntries(lanes.map((l) => [l, this.registry.laneBest(instance, l)])),
     };
-    const p = await plan(input, this.o.model);
+    const ctrl = new AbortController();
+    this.planning = { instance, ctrl };
+    this.watch();
+    let p: Awaited<ReturnType<typeof plan>>;
+    try {
+      p = await plan(input, this.o.model, ctrl.signal);
+    } finally {
+      this.planning = undefined;
+    }
+    // Paused or closed while planning: no epoch starts.
+    if (ctrl.signal.aborted) return;
     for (const f of p.newFamilies)
       this.registry.addFamily(instance, f.id, f.description, `planner:${p.source}`);
     this.registry.startEpoch({
@@ -416,6 +468,7 @@ export class Scheduler {
 
   /** One scheduling step: plan when needed, start trials that may start. */
   async tick(): Promise<boolean> {
+    this.stopIfNotRunning();
     await this.applyResets();
     const inst = this.instance();
     if (!inst || !this.o.model) return false;
@@ -674,6 +727,8 @@ export class Scheduler {
     });
     const abort = new AbortController();
     this.aborts.set(a.lane, abort);
+    this.laneInstance.set(a.lane, instance);
+    this.watch();
     const work = (async () => {
       let r: TrialResult = { stopped: "error", turns: 0, toolCalls: 0, tokensIn: 0, tokensOut: 0 };
       try {
@@ -705,6 +760,7 @@ export class Scheduler {
     })().finally(() => {
       this.running.delete(a.lane);
       this.aborts.delete(a.lane);
+      this.laneInstance.delete(a.lane);
     });
     this.running.set(a.lane, work);
   }
@@ -722,6 +778,8 @@ export class Scheduler {
     const token = randomBytes(32).toString("hex");
     const abort = new AbortController();
     this.aborts.set(a.lane, abort);
+    this.laneInstance.set(a.lane, instance);
+    this.watch();
     const work = (async () => {
       const inst = this.ledger.getInstance(instance);
       if (!inst) return;
@@ -798,6 +856,7 @@ export class Scheduler {
     })().finally(() => {
       this.running.delete(a.lane);
       this.aborts.delete(a.lane);
+      this.laneInstance.delete(a.lane);
     });
     this.running.set(a.lane, work);
   }

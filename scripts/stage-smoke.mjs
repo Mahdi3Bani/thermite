@@ -3,7 +3,7 @@
 // in a cluster): git bundles of the smoke project and its kit, an assign_campaign payload that
 // pins both by commit and sha256, and one patch per candidate with its expected outcome.
 //
-// usage: node scripts/stage-smoke.mjs --kit smoke-cuda --out DIR [--instance ID] [--target-class C]
+// usage: node scripts/stage-smoke.mjs --kit smoke-cuda --out DIR [--instance ID] [--target-class C] [--version N]
 //
 // Copy DIR/repos/* into the unit's inbox under repos/, issue DIR/assign-payload.json through
 // control as an assign_campaign command, then submit DIR/candidates/*.patch from inside the
@@ -21,6 +21,8 @@ const { values } = parseArgs({
     out: { type: "string" },
     instance: { type: "string", default: "smoke-gpu-1" },
     "target-class": { type: "string" },
+    // A unit's ledger keeps every contract version: restaging a changed smoke needs a new one.
+    version: { type: "string", default: "1" },
   },
 });
 if (!values.out) throw new Error("--out DIR is required");
@@ -64,6 +66,7 @@ const kit = bundle(`kits/${kitName}`, `${kitName}-kit`, ["/candidates"]);
 
 const contract = JSON.parse(readFileSync("examples/contracts/smoke-cpu.json", "utf8"));
 contract.campaign = kitName;
+contract.version = Number(values.version);
 contract.title = `Smoke campaign (${kitName})`;
 contract.project = {
   repo: projectName,

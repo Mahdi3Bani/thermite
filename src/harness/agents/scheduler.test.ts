@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { startFakeModel } from "../../testing/fake-model.ts";
@@ -297,6 +299,93 @@ describe("agent scheduler", () => {
     ).aborts.values())
       a.abort();
     await scheduler.idle();
+  });
+
+  test("a pause stops the instance's planner call and running trials at once", async () => {
+    const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 3 } });
+    await env.service.applyCommand(env.assign);
+    // A model route that never answers: the planner call hangs until it is cancelled.
+    let requests = 0;
+    const hang = createServer(() => {
+      requests++;
+    });
+    await new Promise<void>((r) => hang.listen(0, "127.0.0.1", r));
+    const port = (hang.address() as AddressInfo).port;
+    const model = {
+      baseUrl: `http://127.0.0.1:${port}`,
+      model: "m",
+      apiKey: "k",
+      contextWindow: 1000,
+      maxTokens: 10,
+    };
+    const runTrial = (_spec: unknown, signal: AbortSignal) =>
+      new Promise<{ stopped: "error"; turns: 0; toolCalls: 0; tokensIn: 0; tokensOut: 0 }>(
+        (resolve) => {
+          signal.addEventListener("abort", () =>
+            resolve({ stopped: "error", turns: 0, toolCalls: 0, tokensIn: 0, tokensOut: 0 }),
+          );
+        },
+      );
+    const planning = new Scheduler({
+      service: env.service,
+      runner: new LocalRunner(env.paths.scratchDir),
+      model,
+      owner: "s",
+      runTrial,
+    });
+    const tick = planning.tick();
+    while (requests === 0) await new Promise((r) => setTimeout(r, 50));
+    const paused = await env.service.applyCommand(
+      env.sign("pause_instance", { instance: "js-1", reason: "test" }),
+    );
+    assert.ok(paused.status === "applied" && paused.accepted, JSON.stringify(paused));
+    const t0 = Date.now();
+    await tick;
+    assert.ok(Date.now() - t0 < 5000, `the planner call took ${Date.now() - t0} ms to stop`);
+    assert.equal(
+      env.ledger.db.prepare("select count(*) as n from epoch").get()?.n,
+      0,
+      "no epoch after a pause",
+    );
+    hang.closeAllConnections();
+    hang.close();
+
+    // A running trial: the pause kills it without waiting for the next tick.
+    const resumed = await env.service.applyCommand(
+      env.sign("resume_instance", { instance: "js-1" }),
+    );
+    assert.ok(resumed.status === "applied" && resumed.accepted, JSON.stringify(resumed));
+    const fake = await startFakeModel(() => ({
+      toolCalls: [
+        {
+          name: "submit_plan",
+          args: {
+            assignments: [{ lane: "lane-1", family: "loops", focus: "f", parent: "champion" }],
+            new_families: [{ id: "loops", description: "d" }],
+          },
+        },
+      ],
+    }));
+    const s2 = new Scheduler({
+      service: env.service,
+      runner: new LocalRunner(env.paths.scratchDir),
+      model: { ...model, baseUrl: fake.url },
+      owner: "s",
+      runTrial,
+    });
+    await s2.tick();
+    assert.equal(
+      env.ledger.db.prepare("select count(*) as n from trial where ended_at is null").get()?.n,
+      1,
+    );
+    await env.service.applyCommand(
+      env.sign("pause_instance", { instance: "js-1", reason: "test" }),
+    );
+    const t1 = Date.now();
+    await s2.idle();
+    assert.ok(Date.now() - t1 < 5000);
+    assert.equal(env.ledger.db.prepare("select stopped from trial").get()?.stopped, "interrupted");
+    await fake.close();
   });
 
   test("a dev run that waited past its trial's end never runs", async () => {
