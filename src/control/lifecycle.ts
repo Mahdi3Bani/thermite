@@ -76,7 +76,7 @@ function call(
 }
 
 export interface KubernetesOptions {
-  /** API server; in a pod, https://kubernetes.default.svc. */
+  /** API server; in a pod, the address Kubernetes gives every pod (no DNS needed). */
   apiUrl: string;
   /** The token, or a function that reads it (service-account tokens are rotated on disk). */
   token: string | (() => string);
@@ -99,7 +99,7 @@ export class KubernetesDriver implements DeploymentDriver {
   static inCluster(env: NodeJS.ProcessEnv = process.env): KubernetesDriver {
     const sa = "/var/run/secrets/kubernetes.io/serviceaccount";
     return new KubernetesDriver({
-      apiUrl: env.THERMITE_K8S_API ?? "https://kubernetes.default.svc",
+      apiUrl: env.THERMITE_K8S_API ?? inClusterApi(env),
       token: () => readFileSync(env.THERMITE_K8S_TOKEN_FILE ?? `${sa}/token`, "utf8").trim(),
       ca: readFileSync(env.THERMITE_K8S_CA_FILE ?? `${sa}/ca.crt`, "utf8"),
       namespaceTemplate: env.THERMITE_K8S_NAMESPACE ?? "ar-{unit}",
@@ -396,4 +396,15 @@ export function cancelReset(store: ControlStore, id: number, by: string): void {
     state: "cancelled",
     detail: `cancelled by ${by}; the unit's campaigns stay paused until resumed`,
   });
+}
+
+/**
+ * The API server as every pod sees it: KUBERNETES_SERVICE_HOST and _PORT (an address, so control
+ * needs no DNS egress); the service name only when they are missing.
+ */
+export function inClusterApi(env: NodeJS.ProcessEnv): string {
+  const host = env.KUBERNETES_SERVICE_HOST;
+  if (!host) return "https://kubernetes.default.svc";
+  const port = env.KUBERNETES_SERVICE_PORT ?? "443";
+  return `https://${host.includes(":") ? `[${host}]` : host}:${port}`;
 }

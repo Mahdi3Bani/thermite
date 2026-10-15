@@ -16,6 +16,7 @@ import {
   ComposeDriver,
   confirmReset,
   type DeploymentDriver,
+  inClusterApi,
   KubernetesDriver,
 } from "./lifecycle.ts";
 import { ControlStore } from "./store.ts";
@@ -322,5 +323,22 @@ describe("leaderboard and propagation", () => {
         }),
       /no champion beyond its seed/,
     );
+  });
+});
+
+describe("the in-cluster API address", () => {
+  test("comes from the pod's service variables, so control needs no DNS", () => {
+    assert.equal(
+      inClusterApi({
+        KUBERNETES_SERVICE_HOST: "apiserver.example",
+        KUBERNETES_SERVICE_PORT: "443",
+      }),
+      "https://apiserver.example:443",
+    );
+    assert.equal(
+      inClusterApi({ KUBERNETES_SERVICE_HOST: "2001:db8::1" }),
+      "https://[2001:db8::1]:443",
+    );
+    assert.equal(inClusterApi({}), "https://kubernetes.default.svc");
   });
 });
