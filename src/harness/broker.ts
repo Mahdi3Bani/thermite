@@ -14,6 +14,13 @@ import {
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { log } from "../common/env.ts";
+import {
+  type GpuLayout,
+  LAYOUT_FILE,
+  type LayoutRecord,
+  nodeGroups,
+  planDedicated,
+} from "./broker/devices.ts";
 import { killScope } from "./broker/process.ts";
 import { IDS, roleIds } from "./broker/runner.ts";
 import { ALL_ROLES, startBrokerServer } from "./broker/server.ts";
@@ -25,7 +32,8 @@ import { ALL_ROLES, startBrokerServer } from "./broker/server.ts";
  * - reads the harness's secret files and passes their values only to the controller, then
  *   closes the secrets directory to every other user;
  * - gives the device nodes to the `gpu` group (mode 0660), so only roles in that group reach
- *   the device;
+ *   the device; with a dedicated development card (THERMITE_DEV_GPU_INDEX), gives each card
+ *   and the shared nodes their own groups instead (broker/devices.ts);
  * - serves the broker socket, through which the controller runs work as separate users;
  * - runs the controller as `thermite` and restarts it if it exits, after killing anything a
  *   role left running.
@@ -144,17 +152,71 @@ function readSecrets(): Record<string, string> {
   return values;
 }
 
-function prepareDevices(): void {
-  if (!existsSync("/dev")) return;
-  for (const name of readdirSync("/dev")) {
-    if (!name.startsWith("nvidia")) continue;
-    const p = join("/dev", name);
-    if (lstatSync(p).isDirectory()) continue;
+function deviceNodes(): string[] {
+  if (!existsSync("/dev")) return [];
+  return readdirSync("/dev")
+    .filter((name) => name.startsWith("nvidia"))
+    .map((name) => join("/dev", name))
+    .filter((p) => !lstatSync(p).isDirectory());
+}
+
+function prepareDevices(): GpuLayout | undefined {
+  const nodes = deviceNodes();
+  for (const p of nodes) {
     tryDo(`set the gpu group on ${p}`, () => {
       chownSync(p, 0, IDS.gpuGroup);
       chmodSync(p, 0o660);
     });
   }
+  const layoutPath = join(socketDir, LAYOUT_FILE);
+  rmSync(layoutPath, { force: true });
+  if (env.THERMITE_DEV_GPU_INDEX === undefined) return undefined;
+  // A dedicated development card. Anything that fails leaves the record saying why, and the
+  // controller then neither times nor allows development runs (it does not fall back to
+  // sharing, since both cards are visible).
+  let record: LayoutRecord;
+  let layout: GpuLayout | undefined;
+  try {
+    layout = planDedicated({
+      smiCsv: execFileSync(
+        "nvidia-smi",
+        ["--query-gpu=index,uuid,pci.bus_id", "--format=csv,noheader"],
+        { encoding: "utf8" },
+      ),
+      information: (bus, index) => {
+        try {
+          return readFileSync(`/proc/driver/nvidia/gpus/${bus}/information`, "utf8");
+        } catch {
+          return execFileSync("nvidia-smi", ["-q", "-i", String(index)], { encoding: "utf8" });
+        }
+      },
+      nodes,
+      judgeIndex: Number(env.THERMITE_GPU_INDEX ?? "0"),
+      devIndex: Number(env.THERMITE_DEV_GPU_INDEX),
+    });
+    for (const { node, gid } of nodeGroups(layout)) {
+      chownSync(node, 0, gid);
+      chmodSync(node, 0o660);
+      const st = statSync(node);
+      if (st.gid !== gid || (st.mode & 0o777) !== 0o660) {
+        throw new Error(`${node} kept group ${st.gid}, mode ${(st.mode & 0o777).toString(8)}`);
+      }
+    }
+    record = { ok: true, ...layout };
+    log("broker", "dedicated development card", {
+      judge: layout.judge.node,
+      dev: layout.dev.node,
+      control: layout.control,
+    });
+  } catch (err) {
+    layout = undefined;
+    const error = err instanceof Error ? err.message : String(err);
+    record = { ok: false, mode: "dedicated", error };
+    log("broker", "could not set up the dedicated development card", { error });
+  }
+  writeFileSync(layoutPath, `${JSON.stringify(record)}\n`, { mode: 0o644 });
+  chmodSync(layoutPath, 0o644);
+  return layout;
 }
 
 function killRoles(): number {
@@ -271,13 +333,14 @@ if (isRoot) {
   prepareSocket();
   setInterval(prepareOutbox, 60_000).unref();
   const secrets = readSecrets();
-  prepareDevices();
+  const gpuLayout = prepareDevices();
   const killed = killRoles();
   if (killed) log("broker", "killed leftover role processes at start", { killed });
   const server = startBrokerServer({
     socketPath,
     scratchDir,
     baseEnv: { PATH: env.PATH ?? "/usr/local/bin:/usr/bin:/bin", LANG: "C.UTF-8" },
+    gpuLayout,
   });
   server.on("listening", () => {
     chownSync(socketPath, 0, TG);

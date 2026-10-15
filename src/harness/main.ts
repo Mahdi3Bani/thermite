@@ -25,6 +25,7 @@ import { Scheduler } from "./agents/scheduler.ts";
 import { spawnTrial } from "./agents/spawn.ts";
 import { createHarnessApi } from "./api.ts";
 import { BrokerClient } from "./broker/client.ts";
+import { type GpuLayout, readLayout } from "./broker/devices.ts";
 import { LocalRunner, type Runner } from "./broker/runner.ts";
 import { Judge, type PromotionPolicy } from "./judge/judge.ts";
 import { Ledger } from "./ledger.ts";
@@ -67,13 +68,27 @@ async function main(): Promise<void> {
     ? new BrokerClient(env.THERMITE_BROKER_SOCKET)
     : new LocalRunner(paths.scratchDir);
   const target = env.THERMITE_TARGET ?? "cpu";
+  // A dedicated development card: the broker sets it up; without its layout nothing times.
+  let devCard: { layout?: GpuLayout; error?: string } | undefined;
+  if (env.THERMITE_DEV_GPU_INDEX !== undefined) {
+    if (target !== "cuda-gpu")
+      throw new Error("THERMITE_DEV_GPU_INDEX needs THERMITE_TARGET=cuda-gpu");
+    devCard = readLayout(env.THERMITE_BROKER_SOCKET);
+    log(
+      "harness",
+      devCard.error ? "dedicated development card unavailable" : "dedicated development card",
+      devCard,
+    );
+  }
   let driver: TargetDriver;
   if (target === "cpu") driver = new CpuDriver(env.THERMITE_TARGET_CLASS ?? "generic-cpu");
   else if (target === "cuda-gpu") {
     driver = new CudaDriver({
       targetClass: env.THERMITE_TARGET_CLASS ?? "cuda-gpu",
       index: Number(env.THERMITE_GPU_INDEX ?? "0"),
+      uuid: devCard?.layout?.judge.uuid,
       smi: smiAsRun(runner, join(paths.scratchDir, "thermite", "gpu-query")),
+      unusable: devCard?.error,
     });
   } else throw new Error(`no target driver ${target}; this build has cpu and cuda-gpu`);
 
@@ -166,6 +181,8 @@ async function main(): Promise<void> {
     ledger,
     scratchDir: paths.scratchDir,
     gpu: driver.type === "cuda-gpu",
+    dedicated: devCard?.layout !== undefined,
+    unavailable: devCard?.error,
   });
 
   const research = new Research(ledger, paths.stateDir, {

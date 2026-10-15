@@ -15,7 +15,12 @@ export const IDS = {
   builder: { uid: 10020, gid: 10020 },
   /** Candidate execution: primary group `gpu`, the group that owns the device nodes. */
   run: { uid: 10030, gid: 10500 },
+  /** The device nodes (shared mode), or the judge's card (dedicated mode). */
   gpuGroup: 10500,
+  /** Dedicated mode: the development card. */
+  gpuDevGroup: 10501,
+  /** Dedicated mode: the nodes every CUDA process needs (nvidiactl, nvidia-uvm, ...). */
+  gpuCtlGroup: 10502,
   laneBase: 10100,
   laneDevBase: 10200,
   /** Each lane's worker agent process: its own user, with no access to the lane's files. */

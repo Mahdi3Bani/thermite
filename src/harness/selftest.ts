@@ -11,6 +11,7 @@ import {
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { BrokerClient } from "./broker/client.ts";
+import { type GpuLayout, readLayout } from "./broker/devices.ts";
 import { IDS, type Role, walk } from "./broker/runner.ts";
 import { copyForRun } from "./judge/measure.ts";
 
@@ -18,39 +19,90 @@ import { copyForRun } from "./judge/measure.ts";
  * Isolation self-test, run as root inside the harness container (`thermite selftest
  * isolation`). For each role it asks the broker to run a probe as that role's user, which tries
  * to read, list or write what the role must not reach. Every probe must be refused, except a
- * `readable` probe, which must succeed.
+ * `readable` or `reachable` probe, which must succeed.
  */
 
 export interface Probe {
   name: string;
-  op: "read" | "list" | "write" | "access" | "create" | "readable";
+  op: "read" | "list" | "write" | "access" | "create" | "readable" | "reachable" | "gpus";
   path: string;
+  /** For `gpus`: the only card UUIDs nvidia-smi may list, comma-separated. */
+  expect?: string;
 }
 
 export interface IsolationReport {
   ok: boolean;
+  /** "shared", or "dedicated" with the judge's and the development card's nodes. */
+  devices: string;
   roles: Record<string, Record<string, string>>;
   skipped: string[];
 }
 
 const PROBE = `
 const fs = require("node:fs");
+const { execFileSync } = require("node:child_process");
 const probes = JSON.parse(process.argv[1]);
 const out = {};
 for (const p of probes) {
+  if (p.op === "gpus") {
+    // A card whose node is refused is silently left out, so check exactly which cards show.
+    let ids = "";
+    try {
+      const listed = execFileSync("nvidia-smi", ["-L"], { encoding: "utf8" });
+      ids = [...listed.matchAll(/UUID: (GPU-[0-9a-fA-F-]+)/g)].map((m) => m[1]).join(",");
+    } catch (e) {
+      ids = "none (" + (e.code || e.status) + ")";
+    }
+    out[p.name] = ids === p.expect ? "sees " + ids : "WRONG GPUS " + ids;
+    continue;
+  }
   try {
     if (p.op === "read" || p.op === "readable") fs.readFileSync(p.path);
     else if (p.op === "list") fs.readdirSync(p.path);
     else if (p.op === "write") fs.writeFileSync(p.path, "tampered", { flag: "r+" });
     else if (p.op === "create") fs.writeFileSync(p.path + "/probe-" + process.getuid(), "x");
+    else if (p.op === "reachable") fs.accessSync(p.path, fs.constants.R_OK | fs.constants.W_OK);
     else fs.accessSync(p.path, fs.constants.W_OK);
-    out[p.name] = p.op === "readable" ? "readable" : "ALLOWED";
+    out[p.name] = p.op === "readable" || p.op === "reachable" ? p.op : "ALLOWED";
   } catch (e) {
-    out[p.name] = (p.op === "readable" ? "UNREADABLE " : "") + (e.code || String(e));
+    const must = { readable: "UNREADABLE ", reachable: "UNREACHABLE " }[p.op] || "";
+    out[p.name] = must + (e.code || String(e));
   }
 }
 process.stdout.write(JSON.stringify(out));
 `;
+
+/** Who a role is to the device: the run user, a development run, or neither. */
+function deviceSide(role: Role, gpu: boolean): "judge" | "dev" | "other" {
+  if (role === "run") return "judge";
+  return gpu || role.endsWith("-dev") ? "dev" : "other";
+}
+
+/**
+ * The device-node probes for one side. In shared mode the run user and development runs reach
+ * every node and are not probed; everyone else is refused every node. With a dedicated
+ * development card each side must reach its own card and the shared nodes, and be refused the
+ * other side's card, and nvidia-smi must list exactly its own card.
+ */
+export function deviceProbes(
+  nodes: string[],
+  side: "judge" | "dev" | "other",
+  layout?: GpuLayout | undefined,
+): Probe[] {
+  const refuse = (p: string): Probe => ({ name: `device:${p.slice(5)}`, op: "access", path: p });
+  const reach = (p: string): Probe => ({ name: `device:${p.slice(5)}`, op: "reachable", path: p });
+  if (side === "other") return nodes.map(refuse);
+  if (!layout) return [];
+  const [mine, theirs] =
+    side === "judge" ? [layout.judge.node, layout.dev.node] : [layout.dev.node, layout.judge.node];
+  const uuid = side === "judge" ? layout.judge.uuid : layout.dev.uuid;
+  return [
+    reach(mine),
+    ...layout.control.map(reach),
+    refuse(theirs),
+    { name: "visible-gpus", op: "gpus", path: "nvidia-smi", expect: uuid },
+  ];
+}
 
 function controllerPid(): number | undefined {
   for (const name of readdirSync("/proc")) {
@@ -118,6 +170,8 @@ export async function isolationSelftest(opts: {
   outboxDir: string;
   secretFiles: string[];
   roles?: Role[];
+  /** The rig is configured for a dedicated development card (THERMITE_DEV_GPU_INDEX). */
+  dedicated?: boolean;
   /** Probe even while trials or judge jobs are live (they may be killed). */
   force?: boolean;
 }): Promise<IsolationReport> {
@@ -162,30 +216,42 @@ export async function isolationSelftest(opts: {
   const pid = controllerPid();
   if (pid) probes.push({ name: "controller-environ", op: "read", path: `/proc/${pid}/environ` });
   else skipped.push("controller-environ (controller not found)");
-  for (const dev of existsSync("/dev") ? readdirSync("/dev") : []) {
-    if (dev.startsWith("nvidia") && !statSync(join("/dev", dev)).isDirectory()) {
-      probes.push({ name: `device:${dev}`, op: "access", path: join("/dev", dev) });
-    }
-  }
+  const nodes = (existsSync("/dev") ? readdirSync("/dev") : [])
+    .filter((d) => d.startsWith("nvidia") && !statSync(join("/dev", d)).isDirectory())
+    .map((d) => join("/dev", d));
+  // A dedicated development card is probed as the broker set it up; a failed setup fails here.
+  const card = opts.dedicated ? readLayout(opts.socketPath) : {};
+  const devices = card.layout
+    ? `dedicated: judge ${card.layout.judge.node}, development ${card.layout.dev.node}`
+    : card.error
+      ? `dedicated, NOT SET UP: ${card.error}`
+      : "shared";
 
   const client = new BrokerClient(opts.socketPath);
   const roles = opts.roles ?? (["builder", "run", "lane-1", "lane-1-dev", "agent-1"] as Role[]);
-  const report: IsolationReport = { ok: true, roles: {}, skipped };
+  // A lane's development run is the lane's user with the device group: probed as itself too.
+  const subjects = roles.flatMap((role) =>
+    role === "lane-1"
+      ? [
+          { key: role, role, gpu: false },
+          { key: "lane-1+gpu", role, gpu: true },
+        ]
+      : [{ key: role as string, role, gpu: false }],
+  );
+  const report: IsolationReport = { ok: card.error === undefined, devices, roles: {}, skipped };
   try {
-    for (const role of roles) {
-      const cwd = join(opts.scratchDir, "thermite", `selftest-${role}`);
+    for (const { key, role, gpu } of subjects) {
+      const cwd = join(opts.scratchDir, "thermite", `selftest-${key}`);
       mkdirSync(cwd, { recursive: true });
       await client.handOver(cwd, role);
-      // `run` and the development users legitimately reach the device: skip those probes there.
-      const mine = probes.filter(
-        (p) => !(p.name.startsWith("device:") && (role === "run" || role.endsWith("-dev"))),
-      );
+      const mine = [...probes, ...deviceProbes(nodes, deviceSide(role, gpu), card.layout)];
       if (role === "run") mine.push({ name: "run-kit-read", op: "readable", path: driver });
       const r = await client.run({
         role,
         argv: [process.execPath, "-e", PROBE, JSON.stringify(mine)],
         cwd,
         timeoutMs: 30_000,
+        ...(gpu ? { gpu: true } : {}),
       });
       await client.remove(cwd);
       let results: Record<string, string>;
@@ -194,10 +260,15 @@ export async function isolationSelftest(opts: {
       } catch {
         results = { probe: `failed: exit ${r.exitCode} ${r.stderr.slice(-200)}` };
       }
-      report.roles[role] = results;
+      report.roles[key] = results;
       if (
         Object.values(results).some(
-          (v) => v === "ALLOWED" || v.startsWith("UNREADABLE") || v.startsWith("failed"),
+          (v) =>
+            v === "ALLOWED" ||
+            v.startsWith("UNREADABLE") ||
+            v.startsWith("UNREACHABLE") ||
+            v.startsWith("WRONG GPUS") ||
+            v.startsWith("failed"),
         )
       ) {
         report.ok = false;

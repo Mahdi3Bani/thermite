@@ -13,7 +13,7 @@ Thermite's central rule is that **an agent never grades its own work.** Agents t
 | Agents can | Agents cannot |
 | --- | --- |
 | Read and edit their own workspace, and build and test their own changes | Read or modify the judge, its measurement kit or its hidden checks |
-| Use the device for their own test runs when the judge is idle | Run anything on the device while the judge is timing |
+| Use the device for their own test runs when the judge is idle, or their own device on a rig that has one | Run anything on the judge's device while it is timing |
 | Submit a change with a claim and any known flaws | Submit a number that counts |
 | See the verdict and diagnostics for their own attempts | See held-out results, other workers' workspaces or credentials |
 | Be steered by the planner's assignments | Decide that the campaign is finished |

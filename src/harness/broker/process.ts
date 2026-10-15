@@ -18,6 +18,8 @@ export interface SupervisedRun {
   timeoutMs: number;
   uid?: number | undefined;
   gid?: number | undefined;
+  /** Supplementary groups (with uid and gid; set by setpriv, since spawn drops them). */
+  groups?: number[] | undefined;
   /** Kill when the role's resident memory exceeds this. */
   rssLimitBytes?: number | undefined;
   /** Kill when this directory grows beyond this many bytes or entries (inodes) on disk. */
@@ -219,15 +221,48 @@ export function sweepRole(uid: number): string[] {
 }
 
 const PRLIMIT = ["/usr/bin/prlimit", "/bin/prlimit"].find((p) => existsSync(p));
+const SETPRIV = ["/usr/bin/setpriv", "/bin/setpriv"].find((p) => existsSync(p));
+
+/**
+ * The argv and spawn identity for a run. Supplementary groups need setpriv, which drops from
+ * root to the role's user, groups and all, before anything of the role runs.
+ */
+export function launch(
+  spec: Pick<SupervisedRun, "argv" | "uid" | "gid" | "groups" | "nproc">,
+  setpriv = SETPRIV,
+  prlimit = PRLIMIT,
+): { argv: string[]; uid?: number; gid?: number } {
+  // A process limit for the role (a fork bomb stays small), set by prlimit before exec.
+  const argv =
+    spec.uid !== undefined && spec.nproc !== undefined && prlimit
+      ? [prlimit, `--nproc=${spec.nproc}`, "--", ...spec.argv]
+      : [...spec.argv];
+  if (!spec.groups?.length) {
+    return {
+      argv,
+      ...(spec.uid !== undefined ? { uid: spec.uid } : {}),
+      ...(spec.gid !== undefined ? { gid: spec.gid } : {}),
+    };
+  }
+  if (spec.uid === undefined || spec.gid === undefined)
+    throw new Error("supplementary groups need a uid and a gid");
+  if (!setpriv) throw new Error("supplementary groups need setpriv, which this image lacks");
+  return {
+    argv: [
+      setpriv,
+      `--reuid=${spec.uid}`,
+      `--regid=${spec.gid}`,
+      `--groups=${spec.groups.join(",")}`,
+      "--",
+      ...argv,
+    ],
+  };
+}
 
 export function runSupervised(spec: SupervisedRun): Promise<SupervisedResult> {
   if (spec.uid === 0) throw new Error("refusing to run supervised work as root");
   const cap = spec.captureBytes ?? 64 * 1024;
-  // A process limit for the role (a fork bomb stays small), set by prlimit before exec.
-  const argv =
-    spec.uid !== undefined && spec.nproc !== undefined && PRLIMIT
-      ? [PRLIMIT, `--nproc=${spec.nproc}`, "--", ...spec.argv]
-      : [...spec.argv];
+  const { argv, uid, gid } = launch(spec);
   return new Promise((resolve) => {
     const started = process.hrtime.bigint();
     const child = spawn(argv[0] as string, argv.slice(1), {
@@ -235,8 +270,8 @@ export function runSupervised(spec: SupervisedRun): Promise<SupervisedResult> {
       env: spec.env,
       detached: true,
       stdio: [spec.stdin !== undefined ? "pipe" : "ignore", "pipe", "pipe"],
-      ...(spec.uid !== undefined ? { uid: spec.uid } : {}),
-      ...(spec.gid !== undefined ? { gid: spec.gid } : {}),
+      ...(uid !== undefined ? { uid } : {}),
+      ...(gid !== undefined ? { gid } : {}),
     });
     const pgid = child.pid ?? -1;
     if (spec.stdin !== undefined && child.stdin) {

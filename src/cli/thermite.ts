@@ -245,6 +245,7 @@ async function main(argv: string[]): Promise<void> {
         scratchDir: env.THERMITE_SCRATCH_DIR ?? "/scratch",
         outboxDir: env.THERMITE_OUTBOX_DIR ?? "/outbox",
         secretFiles,
+        dedicated: env.THERMITE_DEV_GPU_INDEX !== undefined,
         force: rest.includes("--force"),
       });
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

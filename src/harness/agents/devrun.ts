@@ -7,8 +7,10 @@ import { laneCacheEnv } from "./workspace.ts";
 /**
  * Agents' development runs on the measurement device (§6.2a). The judge goes first: a dev run
  * waits while the judge has work queued or running, and the judge does not start a job while a
- * dev run holds the device. Each run is time-limited and killed at the end; its output is
- * diagnostic only and never reaches the ledger as a measurement.
+ * dev run holds the device. On a rig with a dedicated development card, neither waits for the
+ * other: dev runs use their own card, and the broker keeps them off the judge's. Each run is
+ * time-limited and killed at the end; its output is diagnostic only and never reaches the
+ * ledger as a measurement.
  */
 
 export const DevRunRequest = z.object({
@@ -28,6 +30,8 @@ export class DevRuns {
   private readonly ledger: Ledger;
   private readonly scratchDir: string;
   private readonly gpu: boolean;
+  private readonly dedicated: boolean;
+  private readonly unavailable: string | undefined;
   private readonly maxWaitMs: number;
 
   constructor(opts: {
@@ -35,12 +39,18 @@ export class DevRuns {
     ledger: Ledger;
     scratchDir: string;
     gpu: boolean;
+    /** The rig has a dedicated development card. */
+    dedicated?: boolean | undefined;
+    /** Why dev runs cannot run on this rig at all. */
+    unavailable?: string | undefined;
     maxWaitMs?: number;
   }) {
     this.runner = opts.runner;
     this.ledger = opts.ledger;
     this.scratchDir = opts.scratchDir;
     this.gpu = opts.gpu;
+    this.dedicated = opts.dedicated === true;
+    this.unavailable = opts.unavailable;
     this.maxWaitMs = opts.maxWaitMs ?? 10 * 60_000;
   }
 
@@ -76,17 +86,19 @@ export class DevRuns {
     const cwd = resolve(req.cwd);
     if (!cwd.startsWith(laneRoot + sep))
       throw new Error("a dev run must run in the lane's own workspace");
+    if (this.unavailable) return Promise.resolve({ ran: false, reason: this.unavailable });
     // One dev run at a time, in arrival order.
     const next = this.queue.then(async () => {
       const deadline = Date.now() + this.maxWaitMs;
-      while (this.judgeBusy()) {
+      while (!this.dedicated && this.judgeBusy()) {
         if (Date.now() > deadline)
           return { ran: false, reason: "the judge kept the device busy; try again later" };
         if (!this.trialOpen(trial)) return { ran: false, reason: "the trial has ended" };
         await new Promise((r) => setTimeout(r, 1000));
       }
       if (!this.trialOpen(trial)) return { ran: false, reason: "the trial has ended" };
-      this.active = true;
+      // The judge waits for a dev run only when they share the card.
+      this.active = !this.dedicated;
       try {
         const r = await this.runner.run({
           role: req.lane as Role,

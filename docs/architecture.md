@@ -91,4 +91,7 @@ v1 ships drivers for CUDA GPUs and for CPUs. Others, such as serial-attached boa
 **Sharing a device is configurable.**
 
 - **Shared mode** (one device per rig). The judge takes the device whenever it has work waiting, and agents use it for their own test runs the rest of the time.
-- **Dedicated mode.** Agents and the judge each get their own device.
+- **Dedicated mode** (two devices per rig). The judge measures on one device, and agents' test runs use the other, so neither waits for the other. On a CUDA rig, `THERMITE_DEV_GPU_INDEX` names the agents' card, and `THERMITE_GPU_INDEX` the judge's.
+  - Each card's device node belongs to its own group. A test run cannot open the judge's card, and a run being timed cannot open the agents' card, whatever environment either sets.
+  - The judge reads only its own card's state.
+  - A rig that cannot set this up neither times nor allows test runs. It never falls back to sharing while both cards are visible.

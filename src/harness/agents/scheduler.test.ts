@@ -463,6 +463,56 @@ describe("agent scheduler", () => {
     await dev.settle("lane-1");
   });
 
+  test("with a dedicated development card, dev runs and the judge do not wait for each other", async () => {
+    const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
+    await env.service.applyCommand(env.assign);
+    // A judge job that nothing drains here: the judge is busy throughout.
+    env.ledger.enqueueJob({ kind: "calibrate", priority: 10, spec: { run: "js-1" }, actor: "t" });
+    const { DevRuns } = await import("./devrun.ts");
+    const runner = new LocalRunner(env.paths.scratchDir);
+    scheduler0(env).registry.startTrial({
+      id: "t-d",
+      run: "js-1",
+      lane: "lane-1",
+      epoch: 1,
+      family: "f",
+      parent: env.seed,
+      token: "tok",
+    });
+    const { mkdirSync } = await import("node:fs");
+    const cwd = `${env.paths.scratchDir}/lanes/lane-1/ws/repo`;
+    mkdirSync(cwd, { recursive: true });
+    const make = (opts: { dedicated?: boolean; unavailable?: string }) =>
+      new DevRuns({
+        runner,
+        ledger: env.ledger,
+        scratchDir: env.paths.scratchDir,
+        gpu: false,
+        maxWaitMs: 300,
+        ...opts,
+      });
+    type Result = { ran: boolean; reason?: string; stdout?: string };
+    const shared = (await make({}).run(
+      { lane: "lane-1", command: "echo ran", cwd },
+      "t-d",
+    )) as Result;
+    assert.equal(shared.ran, false);
+    assert.match(String(shared.reason), /judge kept the device busy/);
+    const dedicated = make({ dedicated: true });
+    const pending = dedicated.run({ lane: "lane-1", command: "sleep 0.2; echo ran", cwd }, "t-d");
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(dedicated.active, false, "the judge never waits for a dev run on its own card");
+    const ran = (await pending) as Result;
+    assert.equal(ran.ran, true);
+    assert.match(String(ran.stdout), /ran/);
+    const off = (await make({ unavailable: "the dedicated development card is not set up: x" }).run(
+      { lane: "lane-1", command: "echo ran", cwd },
+      "t-d",
+    )) as Result;
+    assert.equal(off.ran, false);
+    assert.match(String(off.reason), /not set up/);
+  });
+
   test("a fork round at a third of the wall budget sends every lane back to the champion", async () => {
     const env = makeJudgeEnv({
       lanes: { count: 1, trials_per_epoch: 1 },

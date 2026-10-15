@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import { log } from "../../common/env.ts";
+import { type GpuLayout, identityFor } from "./devices.ts";
 import { killScope, runSupervised } from "./process.ts";
 import { BrokerRequest, type BrokerResponse, type BrokerRequest as Req } from "./protocol.ts";
 import { IDS, insideRoot, type Role, RunRequest, roleIds } from "./runner.ts";
@@ -17,6 +18,8 @@ export interface BrokerServerOptions {
   scratchDir: string;
   /** Extra environment every role gets (for example PATH). Never secrets. */
   baseEnv: Record<string, string>;
+  /** A rig with a dedicated development card: who may open which card. */
+  gpuLayout?: GpuLayout | undefined;
 }
 
 const LANE_ROLES: Role[] = Array.from({ length: IDS.maxLanes }, (_, i) => [
@@ -58,19 +61,27 @@ export async function handle(req: Req, opts: BrokerServerOptions): Promise<unkno
       const r = RunRequest.parse(req.req);
       insideRoot(opts.scratchDir, r.cwd);
       if (r.disk) insideRoot(opts.scratchDir, r.disk.path);
-      const ids = roleIds(r.role);
       if (r.gpu && !/^lane-\d+$/.test(r.role))
         throw new Error(`role ${r.role} may not ask for the gpu group`);
-      const { uid } = ids;
-      const gid = r.gpu ? IDS.gpuGroup : ids.gid;
+      const { uid, gid, groups, cuda } = identityFor(r.role, r.gpu === true, opts.gpuLayout);
       const outcome = await runSupervised({
         argv: r.argv,
         cwd: r.cwd,
-        // The role's own directory is its home and its TMPDIR: /tmp is closed to roles.
-        env: { ...opts.baseEnv, ...r.env, HOME: r.cwd, TMPDIR: r.cwd, USER: r.role },
+        // The role's own directory is its home and its TMPDIR: /tmp is closed to roles. With a
+        // dedicated development card, CUDA is pointed at the role's own card (its groups are
+        // what keep it off the other).
+        env: {
+          ...opts.baseEnv,
+          ...r.env,
+          HOME: r.cwd,
+          TMPDIR: r.cwd,
+          USER: r.role,
+          ...(cuda ? { CUDA_VISIBLE_DEVICES: cuda } : {}),
+        },
         timeoutMs: r.timeoutMs,
         uid,
         gid,
+        groups,
         rssLimitBytes: r.rssLimitBytes,
         disk: r.disk,
         nproc: NPROC[r.role] ?? 256,

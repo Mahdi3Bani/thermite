@@ -86,6 +86,39 @@ describe("cuda-gpu driver", () => {
     assert.equal(r.reasons.length, 4, r.reasons.join("; "));
   });
 
+  test("every query names one card; by UUID on a rig with a development card", async () => {
+    const seen: string[][] = [];
+    const smi = (inner: (a: string[]) => Promise<string>) => async (args: string[]) => {
+      seen.push(args);
+      return inner(args);
+    };
+    await new CudaDriver({
+      targetClass: "x",
+      index: 1,
+      smi: smi(fake(IDLE, "0x1")),
+    }).readyForTiming();
+    assert.ok(
+      seen.length >= 3 && seen.every((a) => a.join(" ").endsWith("-i 1")),
+      JSON.stringify(seen),
+    );
+    seen.length = 0;
+    const uuid = "GPU-00000000-1111-2222-3333-444444444444";
+    const d = new CudaDriver({ targetClass: "x", index: 1, uuid, smi: smi(fake(IDLE, "0x1")) });
+    assert.deepEqual((await d.readyForTiming()).reasons, []);
+    assert.ok(
+      seen.every((a) => a.join(" ").endsWith(`-i ${uuid}`)),
+      JSON.stringify(seen),
+    );
+    const other = new CudaDriver({ targetClass: "x", uuid: "GPU-ffff", smi: fake(IDLE, "0x1") });
+    await assert.rejects(other.identify(), /not GPU-ffff/);
+    const off = new CudaDriver({
+      targetClass: "x",
+      smi: fake(IDLE, "0x1"),
+      unusable: "not set up",
+    });
+    assert.deepEqual((await off.readyForTiming()).reasons, ["not set up"]);
+  });
+
   test("never a score: zero, negative and non-finite metrics are implausible", () => {
     const d = new CudaDriver({ targetClass: "x", smi: fake(IDLE, "0x1") });
     assert.equal(d.plausibility({ a: 1, b: 0, c: Number.NaN }).length, 2);

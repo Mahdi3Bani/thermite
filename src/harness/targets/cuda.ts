@@ -91,7 +91,14 @@ export interface CudaLimits {
 export interface CudaDriverOptions {
   targetClass: string;
   index?: number | undefined;
+  /**
+   * The card's UUID, which selects it instead of the index. On a rig with a dedicated
+   * development card the run user cannot open that card, and nvidia-smi renumbers what it can.
+   */
+  uuid?: string | undefined;
   limits?: Partial<CudaLimits> | undefined;
+  /** Why the device must not be used for timing at all (for example a failed device setup). */
+  unusable?: string | undefined;
   /** For tests: replaces running nvidia-smi. */
   smi?: ((args: string[]) => Promise<string>) | undefined;
 }
@@ -100,12 +107,16 @@ export class CudaDriver implements TargetDriver {
   readonly type = "cuda-gpu";
   private readonly targetClass: string;
   private readonly index: number;
+  private readonly uuid: string | undefined;
   private readonly limits: CudaLimits;
   private readonly smi: (args: string[]) => Promise<string>;
+  private readonly unusable: string | undefined;
 
   constructor(opts: CudaDriverOptions) {
     this.targetClass = opts.targetClass;
     this.index = opts.index ?? 0;
+    this.uuid = opts.uuid;
+    this.unusable = opts.unusable;
     this.limits = {
       maxIdleUtilization: 5,
       maxIdleMemoryMiB: 600,
@@ -116,12 +127,26 @@ export class CudaDriver implements TargetDriver {
       opts.smi ?? (async (args) => (await run("nvidia-smi", args, { encoding: "utf8" })).stdout);
   }
 
+  /**
+   * Every query names this card, so its output is this card's alone: on a rig with two, the
+   * other card's processes are not this one's.
+   */
+  private only(): string[] {
+    return ["-i", this.uuid ?? String(this.index)];
+  }
+
   private async row(): Promise<GpuRow> {
     const rows = parseGpuRows(
-      await this.smi([`--query-gpu=${FIELDS.join(",")}`, "--format=csv,noheader,nounits"]),
+      await this.smi([
+        `--query-gpu=${FIELDS.join(",")}`,
+        "--format=csv,noheader,nounits",
+        ...this.only(),
+      ]),
     );
-    const r = rows.find((x) => Number(x.index) === this.index) ?? rows[0];
+    const r = rows[0];
     if (!r) throw new Error("nvidia-smi reported no GPU");
+    if (this.uuid && r.uuid !== this.uuid)
+      throw new Error(`nvidia-smi reported ${r.uuid}, not ${this.uuid}`);
     return r;
   }
 
@@ -129,11 +154,15 @@ export class CudaDriver implements TargetDriver {
     // The field was renamed from clocks_throttle_reasons to clocks_event_reasons.
     for (const field of ["clocks_event_reasons.active", "clocks_throttle_reasons.active"]) {
       try {
-        const out = await this.smi([`--query-gpu=index,${field}`, "--format=csv,noheader"]);
+        const out = await this.smi([
+          `--query-gpu=index,${field}`,
+          "--format=csv,noheader",
+          ...this.only(),
+        ]);
         const line = out
           .split("\n")
           .map(parseCsvRow)
-          .find((f) => Number(f[0]) === this.index);
+          .find((f) => f.length >= 2);
         if (line?.[1]) return decodeReasons(line[1]);
       } catch {
         // try the older name
@@ -147,6 +176,7 @@ export class CudaDriver implements TargetDriver {
       const out = await this.smi([
         "--query-compute-apps=pid,used_memory",
         "--format=csv,noheader,nounits",
+        ...this.only(),
       ]);
       return out
         .split("\n")
@@ -176,6 +206,7 @@ export class CudaDriver implements TargetDriver {
   }
 
   async readyForTiming(): Promise<Readiness> {
+    if (this.unusable) return { ready: false, reasons: [this.unusable], details: {} };
     const [r, reasons, apps] = await Promise.all([this.row(), this.reasons(), this.apps()]);
     const why: string[] = [];
     // Anything unreadable is not "fine": a missing or NaN field means not ready.
