@@ -22,6 +22,7 @@ Unknown fields are rejected at every level.
 | `build.rss_mib` | integer | `4096` | Build memory limit, MiB |
 | `build.disk_mib` | integer | `4096` | Build disk limit, MiB |
 | `cells` | object | required | Cell name → parameters. Values are numbers, strings or booleans |
+| `run.copy` | string[] | `[]` | Kit paths copied fresh into each run, read-only, and reached as `{kit:<path>}` |
 | `run.command` | string[] | required | Run argv for one build on one cell |
 | `run.timeout_s` | integer | `300` | Run wall-time limit, seconds |
 | `run.rss_mib` | integer | `1024` | Run memory limit, MiB |
@@ -34,9 +35,11 @@ Unknown fields are rejected at every level.
 | `verifiers` | object | `{}` | Verifier name → `{cells}`, for goal contracts |
 | `verifiers.<name>.cells` | string[] | required, at least 1 | Cells whose runs must all pass the check |
 
+Paths in `build.copy` and `run.copy` are relative to the kit and normalized, with no `..`. Neither can name the whole kit.
+
 ## Placeholders
 
-Placeholders appear inside `run.command` and `check.command` arguments. `{name:sub/path}` expands to the path joined with `sub/path`. An unknown placeholder is an error.
+Placeholders appear inside `run.command` and `check.command` arguments. `{name:sub/path}` expands to the path joined with `sub/path`. An unknown placeholder is an error. In `run.command`, every `{kit}` placeholder must name a path in `run.copy`, or the kit is refused.
 
 | Placeholder | Expands to | Run | Check |
 | --- | --- | --- | --- |
@@ -44,7 +47,7 @@ Placeholders appear inside `run.command` and `check.command` arguments. `{name:s
 | `{params}` | The cell's parameters as `key=value` lines | yes, the run's copy | yes, the judge's copy |
 | `{params_json}` | The cell's parameters as a JSON object | yes, the run's copy | yes, the judge's copy |
 | `{out}` | The run's output directory | yes, writable | yes, to read |
-| `{kit}` | The kit directory | `/nonexistent` | yes |
+| `{kit}` | The kit directory | The run's read-only copy of `run.copy` | yes, the kit itself |
 | `{models}` | The imported models directory; a model is `{models:<sha256>}` | yes | yes |
 
 ## Processes
@@ -55,7 +58,7 @@ Placeholders appear inside `run.command` and `check.command` arguments. `{name:s
 | Run | `run`, with the GPU device group | The run's directory: `params.txt`, `params.json`, `out/` | `PATH`, `LANG=C.UTF-8`; `HOME`, `TMPDIR` = the working directory; `USER` |
 | Check | The judge's own user | The kit directory | `PATH` only |
 
-The run user cannot read the kit directory. Kit files a run needs must be in `build.copy` and `build.outputs`.
+The run user cannot read the kit directory. Kit files a run needs go in `run.copy`. Before each run, the judge copies them into a directory outside the run's working directory. The copies are regular files, owned by the judge and read-only (directories `0555`, files `0444`, or `0555` when executable). Neither the candidate's build nor its run can change them. A link among them, or a path missing from the kit, is an infrastructure error.
 
 ## Limits
 

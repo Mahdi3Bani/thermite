@@ -53,6 +53,14 @@ describe("judge pipeline (local runner, Node test kit)", () => {
     assert.ok(Number(receipts?.n) >= 7, `receipts ${receipts?.n}`);
   });
 
+  test("a run driver from run.copy is copied into each run, and a win still promotes", async () => {
+    const env = await setup({ runCopy: true });
+    const id = await env.submit(FAST_KERNEL, "drop the wasted inner loop");
+    await env.drain();
+    assert.equal(String(env.ledger.getAttempt(id)?.lifecycle), "promoted", why(env, id));
+    assert.equal(env.ledger.currentChampion("js-1").attempt, id);
+  });
+
   test("a wrong kernel is invalid and a crashing one is crash_candidate; the champion stays", async () => {
     const env = await setup();
     const wrong = await env.submit(WRONG_KERNEL, "return early");

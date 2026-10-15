@@ -55,6 +55,16 @@ const p = JSON.parse(readFileSync(params, "utf8"));
 writeFileSync(join(out, "result.json"), JSON.stringify({ value: work(p.n) }));
 `;
 
+/** A run driver kept in the kit and copied into each run (`run.copy`), not built in. */
+const DRIVE = `import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+const [kernel, params, out] = process.argv.slice(2);
+const { work } = await import(pathToFileURL(kernel).href);
+const p = JSON.parse(readFileSync(params, "utf8"));
+writeFileSync(join(out, "result.json"), JSON.stringify({ value: work(p.n) }));
+`;
+
 const CHECK = `import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 const [params, out] = process.argv.slice(2);
@@ -92,6 +102,22 @@ const KIT = {
   check: { command: ["node", "{kit:check.mjs}", "{params_json}", "{out}"], timeout_s: 30 },
 };
 
+/** The same kit with its run driver in `run.copy` instead of the build. */
+const RUN_COPY_KIT = {
+  ...KIT,
+  build: {
+    ...KIT.build,
+    copy: [],
+    command: ["sh", "-c", "mkdir -p out && cp src/kernel/work.mjs out/"],
+    outputs: ["out/work.mjs"],
+  },
+  run: {
+    ...KIT.run,
+    copy: ["bench/drive.mjs"],
+    command: ["node", "{kit:bench/drive.mjs}", "{build:out/work.mjs}", "{params_json}", "{out}"],
+  },
+};
+
 function git(cwd: string, ...args: string[]): string {
   return execFileSync(
     "git",
@@ -125,6 +151,8 @@ export function makeJudgeEnv(
     contract?: Record<string, unknown> | undefined;
     /** Another rig: its own harness on the same project, seed and kit as `share`. */
     rig?: string | undefined;
+    /** The kit's run driver comes from `run.copy` instead of the build. */
+    runCopy?: boolean | undefined;
     share?: { root: string; seed: string; kitCommit: string } | undefined;
   } = {},
 ) {
@@ -151,8 +179,9 @@ export function makeJudgeEnv(
     git(project, "bundle", "create", "--quiet", join(paths.inboxDir, "repos", "p.bundle"), "--all");
     const kitRepo = join(root, "kit");
     kitCommit = repo(kitRepo, {
-      "kit.json": JSON.stringify(KIT, null, 2),
+      "kit.json": JSON.stringify(opts.runCopy ? RUN_COPY_KIT : KIT, null, 2),
       "bench/run.mjs": RUN,
+      "bench/drive.mjs": DRIVE,
       "check.mjs": CHECK,
     });
     git(kitRepo, "bundle", "create", "--quiet", join(paths.inboxDir, "repos", "k.bundle"), "--all");

@@ -37,6 +37,7 @@ Goal campaigns add **verifiers**: named sets of cells. A goal is met when every 
 flowchart LR
   Src[Candidate commit] --> Build[Build, as the builder user]
   Kit[Kit, judge only] -- copy paths --> Build
+  Kit -- run files, read-only --> Run
   Build --> Store[(Build store: hashed, read-only)]
   Store --> Run[Run one cell, as the run user]
   Run --> Out[Outputs]
@@ -47,7 +48,7 @@ flowchart LR
 ```
 
 1. **Build.** The judge exports the candidate's commit into a fresh directory, copies in the kit paths that the build needs, and runs the kit's build command as the builder user. It hashes the outputs and moves them into a store that nothing else can write. The same commit and kit are built once and reused.
-2. **Run.** For each cell, the run user executes the stored build with the cell's parameters. Before every run, the judge checks the build's hashes again.
+2. **Run.** For each cell, the run user executes the stored build with the cell's parameters. Before every run, the judge checks the build's hashes again and gives the run a fresh, read-only copy of the kit's run files, such as a driver script.
 3. **Time.** The judge times the whole run process with its own clock. A metric is the cell's `work` value divided by that time. Nothing the run prints is a score.
 4. **Check.** The judge runs the kit's check on the outputs, with its own copy of the parameters. If the check fails, the run is invalid, however fast it was.
 
@@ -60,7 +61,7 @@ The candidate controls more than its own source files. Its code runs during the 
 The kit directory, the check and the judge's copy of the parameters are outside the candidate's reach. That is where a kit's trust lives:
 
 - **The check recomputes or compares.** It works from the parameters and from references kept in the kit, not from anything the run claims about itself.
-- **References and held-out inputs never go into the build.** The run user cannot read the kit, so a run's helper files are copied into the build, and the build is the candidate's territory. Copy what the run needs and nothing the check relies on.
+- **Run files are the judge's, and references stay in the kit.** The run user cannot read the kit. The judge copies the files a run needs into each run, read-only, so neither the candidate's build nor its run can rewrite them. The run can read those copies, so they never include anything the check relies on.
 - **The check confirms the candidate's code did the work.** The smoke kits link a probe that counts calls to the reference implementation, so a candidate that quietly calls it is caught.
 
 ## Cells, held-out cells and goals

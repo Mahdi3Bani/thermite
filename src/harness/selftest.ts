@@ -1,18 +1,29 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
+import {
+  chownSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { BrokerClient } from "./broker/client.ts";
-import type { Role } from "./broker/runner.ts";
+import { IDS, type Role, walk } from "./broker/runner.ts";
+import { copyForRun } from "./judge/measure.ts";
 
 /**
  * Isolation self-test, run as root inside the harness container (`thermite selftest
  * isolation`). For each role it asks the broker to run a probe as that role's user, which tries
- * to read, list or write what the role must not reach. Every probe must be refused.
+ * to read, list or write what the role must not reach. Every probe must be refused, except a
+ * `readable` probe, which must succeed.
  */
 
 export interface Probe {
   name: string;
-  op: "read" | "list" | "write" | "access" | "create";
+  op: "read" | "list" | "write" | "access" | "create" | "readable";
   path: string;
 }
 
@@ -28,14 +39,14 @@ const probes = JSON.parse(process.argv[1]);
 const out = {};
 for (const p of probes) {
   try {
-    if (p.op === "read") fs.readFileSync(p.path);
+    if (p.op === "read" || p.op === "readable") fs.readFileSync(p.path);
     else if (p.op === "list") fs.readdirSync(p.path);
     else if (p.op === "write") fs.writeFileSync(p.path, "tampered", { flag: "r+" });
     else if (p.op === "create") fs.writeFileSync(p.path + "/probe-" + process.getuid(), "x");
     else fs.accessSync(p.path, fs.constants.W_OK);
-    out[p.name] = "ALLOWED";
+    out[p.name] = p.op === "readable" ? "readable" : "ALLOWED";
   } catch (e) {
-    out[p.name] = e.code || String(e);
+    out[p.name] = (p.op === "readable" ? "UNREADABLE " : "") + (e.code || String(e));
   }
 }
 process.stdout.write(JSON.stringify(out));
@@ -135,6 +146,19 @@ export async function isolationSelftest(opts: {
   const build = firstBuildFile(join(opts.stateDir, "builds"));
   if (build) probes.push({ name: "build-overwrite", op: "write", path: build });
   else skipped.push("build-overwrite (no build yet)");
+  // A run's copy of the kit's run.copy paths, made as the judge makes it and owned by the
+  // controller's user: the run user reads it, and no role may change or add to it.
+  const runKit = join(opts.scratchDir, "thermite", "selftest-run-kit");
+  rmSync(runKit, { recursive: true, force: true });
+  mkdirSync(join(runKit, "src", "run"), { recursive: true });
+  writeFileSync(join(runKit, "src", "run", "driver.sh"), "#!/bin/sh\n", { mode: 0o755 });
+  copyForRun(join(runKit, "src"), ["run"], join(runKit, "kit"));
+  walk(join(runKit, "kit"), (p) => chownSync(p, IDS.thermite.uid, IDS.thermite.gid));
+  const driver = join(runKit, "kit", "run", "driver.sh");
+  probes.push(
+    { name: "run-kit-write", op: "write", path: driver },
+    { name: "run-kit-create", op: "create", path: join(runKit, "kit", "run") },
+  );
   const pid = controllerPid();
   if (pid) probes.push({ name: "controller-environ", op: "read", path: `/proc/${pid}/environ` });
   else skipped.push("controller-environ (controller not found)");
@@ -156,6 +180,7 @@ export async function isolationSelftest(opts: {
       const mine = probes.filter(
         (p) => !(p.name.startsWith("device:") && (role === "run" || role.endsWith("-dev"))),
       );
+      if (role === "run") mine.push({ name: "run-kit-read", op: "readable", path: driver });
       const r = await client.run({
         role,
         argv: [process.execPath, "-e", PROBE, JSON.stringify(mine)],
@@ -170,12 +195,17 @@ export async function isolationSelftest(opts: {
         results = { probe: `failed: exit ${r.exitCode} ${r.stderr.slice(-200)}` };
       }
       report.roles[role] = results;
-      if (Object.values(results).some((v) => v === "ALLOWED" || v.startsWith("failed"))) {
+      if (
+        Object.values(results).some(
+          (v) => v === "ALLOWED" || v.startsWith("UNREADABLE") || v.startsWith("failed"),
+        )
+      ) {
         report.ok = false;
       }
     }
   } finally {
     client.close();
+    rmSync(runKit, { recursive: true, force: true });
   }
   return report;
 }

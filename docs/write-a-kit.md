@@ -50,10 +50,10 @@ Add the cells you intend to hold out. Give them parameters different enough from
 
 ## 4. Write the run command
 
-The run command executes one stored build on one cell, as the run user. Use the placeholders to reach the build, the cell's parameters and the output directory.
+The run command executes one stored build on one cell, as the run user. Use the placeholders to reach the build, the cell's parameters, the output directory and the run's kit files.
 
 - **Write outputs only to `{out}`,** as regular files.
-- **Ship run-time helpers through the build.** The run cannot read the kit directory. A driver script the run needs goes into `build.copy` and `build.outputs`, then is reached as `{build:.kit/run/driver.py}`. Never ship references or held-out inputs this way, because the build is the candidate's territory.
+- **Ship run-time helpers with `run.copy`.** The run cannot read the kit directory. List the driver scripts and inputs the run needs in `run.copy`, and reach them as `{kit:run/driver.py}`. The judge copies them fresh into every run, read-only. Don't ship them through the build: the candidate's build scripts run in the same tree and could rewrite them. The run can read what `run.copy` lists, so never list references or held-out inputs there.
 - **Let the work dominate the time.** The judge times the whole process, including start-up and loading. Repeat the work, as the smoke kit's `reps` does, until it outweighs the fixed cost.
 - **Pin everything that varies.** Pass thread counts explicitly, sized to the rig's CPU quota rather than the host's CPU count. Turn off any automatic tuning that would change parameters between runs, and set seeds.
 - **Use only flags that this version of the project accepts.** Projects rename and remove flags. Run each command line once against the project's own build before the first dry run.

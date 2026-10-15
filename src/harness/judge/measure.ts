@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   chmodSync,
+  copyFileSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -8,9 +9,9 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { runSupervised } from "../broker/process.ts";
-import type { Runner, RunOutcome } from "../broker/runner.ts";
+import { type Runner, type RunOutcome, walk } from "../broker/runner.ts";
 import { expandArgv, type Kit, paramsText } from "../kit.ts";
 import type { BuildManifest, BuildStore } from "./builds.ts";
 
@@ -82,6 +83,36 @@ export function outputProblems(dir: string, maxEntries = 10_000, maxDepth = 32):
   return problems;
 }
 
+/**
+ * Copies the kit's `run.copy` paths into `dest` for one run: regular files and directories
+ * only, owned by the judge and read-only, so the run user can read them but not change them.
+ * A link is refused, because it could reach the kit's references.
+ */
+export function copyForRun(kitDir: string, paths: readonly string[], dest: string): void {
+  const copy = (from: string, to: string, rel: string) => {
+    const st = lstatSync(from);
+    if (st.isDirectory()) {
+      mkdirSync(to, { recursive: true });
+      for (const e of readdirSync(from)) copy(join(from, e), join(to, e), `${rel}/${e}`);
+    } else if (st.isFile()) {
+      copyFileSync(from, to);
+      chmodSync(to, st.mode & 0o111 ? 0o555 : 0o444);
+    } else {
+      throw new Error(`kit run.copy: not a regular file or directory: ${rel}`);
+    }
+  };
+  mkdirSync(dest, { recursive: true });
+  for (const rel of paths) {
+    const from = join(kitDir, rel);
+    if (!existsSync(from)) throw new Error(`kit run.copy: ${rel} is not in the kit`);
+    mkdirSync(dirname(join(dest, rel)), { recursive: true });
+    copy(from, join(dest, rel), rel);
+  }
+  walk(dest, (p, isDir) => {
+    if (isDir) chmodSync(p, 0o555);
+  });
+}
+
 export async function runArm(ctx: MeasureContext, arm: Arm, cell: string): Promise<ArmRun> {
   const r = await runArmInner(ctx, arm, cell);
   ctx.note?.(arm.name, cell, r.kind === "ok" ? "ok" : `${r.kind}: ${r.reason.slice(0, 300)}`);
@@ -96,10 +127,12 @@ async function runArmInner(ctx: MeasureContext, arm: Arm, cell: string): Promise
   if (tampered.length) throw new Error(`build store tampered: ${arm.manifest.key} ${tampered}`);
 
   // <run>/ (0711, unguessable name) holds the judge's own copy of the parameters (0600), which
-  // the check uses; <run>/work/ is handed to the run user with a copy of them and its out/.
+  // the check uses; <run>/work/ is handed to the run user with a copy of them and its out/;
+  // <run>/kit/ is the run's read-only copy of the kit's run.copy paths, which stays the judge's.
   const dir = join(ctx.runsDir, randomUUID());
   const work = join(dir, "work");
   const out = join(work, "out");
+  const kit = join(dir, "kit");
   mkdirSync(out, { recursive: true });
   chmodSync(dir, 0o711);
   const text = paramsText(params);
@@ -109,6 +142,7 @@ async function runArmInner(ctx: MeasureContext, arm: Arm, cell: string): Promise
   writeFileSync(join(work, "params.txt"), text, { mode: 0o600 });
   writeFileSync(join(work, "params.json"), json, { mode: 0o600 });
   try {
+    if (ctx.kit.run.copy.length) copyForRun(ctx.kitDir, ctx.kit.run.copy, kit);
     await ctx.runner.handOver(work, "run");
     const outcome = await ctx.runner.run({
       role: "run",
@@ -117,7 +151,7 @@ async function runArmInner(ctx: MeasureContext, arm: Arm, cell: string): Promise
         params: join(work, "params.txt"),
         params_json: join(work, "params.json"),
         out,
-        kit: "/nonexistent",
+        kit: ctx.kit.run.copy.length ? kit : "/nonexistent",
         models: ctx.modelsDir,
       }),
       cwd: work,
