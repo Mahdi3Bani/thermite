@@ -28,7 +28,8 @@ export interface TrialSpec {
   /** The assignment and context, as the planner and the ledger give them. */
   brief: string;
   wallMs: number;
-  maxTurns: number;
+  /** A cap on the trial's turns: none unless configured (the owner's direction, 2026-10-15). */
+  maxTurns?: number | undefined;
   /** The contract's lane limits (the server enforces them too). */
   limits?: LaneLimitValues | undefined;
 }
@@ -298,15 +299,37 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
     toolExecution: "sequential",
   });
   if (deps.link) linkSession(agent, deps.link);
+  // The budget is stated up front, and the worker is told once when it is nearly spent, so a
+  // trial ends with its best change submitted rather than cut off with nothing.
+  const started = Date.now();
+  const minutes = Math.round(spec.wallMs / 60_000);
+  let warned = false;
+  const warn = (why: string) => {
+    if (warned || result.submitted) return;
+    warned = true;
+    agent.steer({
+      role: "user",
+      content: `${why} Build and test what you have, then submit your best working change now, listing anything unfinished in known_flaws. A trial that ends without a submission is lost.`,
+      timestamp: Date.now(),
+    });
+  };
+  const maxTurns = spec.maxTurns;
+  const warnTurns = maxTurns === undefined ? undefined : Math.max(1, maxTurns - 10);
   agent.subscribe((event) => {
     if (event.type === "turn_end") {
       result.turns++;
       const usage = (event.message as { usage?: { input?: number; output?: number } }).usage;
       result.tokensIn += usage?.input ?? 0;
       result.tokensOut += usage?.output ?? 0;
-      if (result.turns >= spec.maxTurns && !result.submitted) {
+      if (maxTurns !== undefined && result.turns >= maxTurns && !result.submitted) {
         result.stopped = "turns";
         agent.abort();
+      } else if (maxTurns !== undefined && warnTurns !== undefined && result.turns >= warnTurns) {
+        warn(`${maxTurns - result.turns} turns are left in this trial.`);
+      } else if (Date.now() - started >= spec.wallMs * 0.85) {
+        warn(
+          `About ${Math.max(1, Math.round((spec.wallMs - (Date.now() - started)) / 60_000))} minutes are left in this trial.`,
+        );
       }
     }
   });
@@ -315,7 +338,9 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
     agent.abort();
   }, spec.wallMs);
   try {
-    await agent.prompt(spec.brief);
+    await agent.prompt(
+      `${spec.brief}\n\nThis trial lasts ${minutes} minutes${maxTurns !== undefined ? ` and at most ${maxTurns} turns (each model reply is one)` : ""}. Submit before it ends.`,
+    );
     // A model that stops calling tools before submitting (thinking aloud, or out of output
     // tokens) is told to go on, twice at most; a provider error ends the trial.
     for (
@@ -334,9 +359,15 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
   } finally {
     clearTimeout(wall);
   }
-  // Why the model stopped, for a trial that ended without a submission.
+  // Why the model stopped, for a trial that ended without a submission. A trial stopped at its
+  // own turn or time limit says so; the call the limit aborted is not the model's error.
   const last = lastAssistant(agent);
-  if (!result.submitted && !result.error && last && last.stopReason !== "toolUse") {
+  if (!result.submitted && (result.stopped === "turns" || result.stopped === "wall")) {
+    result.error =
+      result.stopped === "turns"
+        ? `the trial reached its limit of ${maxTurns} turns before a submission`
+        : `the trial reached its ${minutes}-minute limit before a submission`;
+  } else if (!result.submitted && !result.error && last && last.stopReason !== "toolUse") {
     result.error = `the model stopped (${last.stopReason})${last.errorMessage ? `: ${last.errorMessage.slice(0, 300)}` : ""}`;
     if (last.stopReason === "error" && result.stopped === "no_submission") result.stopped = "error";
   }

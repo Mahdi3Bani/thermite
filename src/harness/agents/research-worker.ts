@@ -18,7 +18,8 @@ export interface ResearchTrialSpec {
   lane: string;
   brief: string;
   wallMs: number;
-  maxTurns: number;
+  /** A cap on the trial's turns: none unless configured. */
+  maxTurns?: number | undefined;
 }
 
 export interface ResearchDeps {
@@ -157,7 +158,7 @@ export async function runResearchTrial(
       const usage = (event.message as { usage?: { input?: number; output?: number } }).usage;
       result.tokensIn += usage?.input ?? 0;
       result.tokensOut += usage?.output ?? 0;
-      if (result.turns >= spec.maxTurns) {
+      if (spec.maxTurns !== undefined && result.turns >= spec.maxTurns) {
         result.stopped = "turns";
         agent.abort();
       }

@@ -296,7 +296,7 @@ describe("propagation", () => {
     await a.service.applyCommand(a.assign);
     const win = await submit(a, FAST_KERNEL);
     await a.drain();
-    assert.equal(a.ledger.currentChampion("js-1").attempt, win);
+    assert.equal(a.ledger.currentChampion("js-1").attempt, win, a.explain(win));
     const exp = await a.service.export("test");
     const published = a.ledger
       .eventsAfter(0, 10_000)

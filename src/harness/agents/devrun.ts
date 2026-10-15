@@ -111,10 +111,13 @@ export class DevRuns {
           captureBytes: 32 * 1024,
           ...(this.gpu ? { gpu: true } : {}),
         });
+        // What ran and its peak memory, so a killed dev run can be understood afterwards.
         this.ledger.appendEvent("devrun", "dev_run", req.lane, {
           wall_ms: Math.round(r.wallMs),
           exit: r.exitCode,
           killed: r.killedFor,
+          peak_rss_mib: Math.round(r.peakRssBytes / 2 ** 20),
+          command: req.command.slice(0, 300),
         });
         return {
           ran: true,

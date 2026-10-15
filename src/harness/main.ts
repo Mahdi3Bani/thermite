@@ -268,6 +268,8 @@ async function main(): Promise<void> {
         owner: "scheduler",
         maxConcurrent: Number(env.THERMITE_MAX_TRIALS ?? "1"),
         trialWallMs: Number(env.THERMITE_TRIAL_MINUTES ?? "20") * 60_000,
+        // No cap on a trial's turns unless one is configured.
+        maxTurns: env.THERMITE_MAX_TURNS ? Number(env.THERMITE_MAX_TURNS) : undefined,
         runTrial: (spec, signal) =>
           spawnTrial({ kind: "code", spec }, runner, paths.scratchDir, port, signal),
         research,

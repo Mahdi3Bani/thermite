@@ -51,6 +51,7 @@ export interface SchedulerOptions {
   owner: string;
   maxConcurrent?: number | undefined;
   trialWallMs?: number | undefined;
+  /** A cap on each trial's turns: none unless configured (THERMITE_MAX_TURNS). */
   maxTurns?: number | undefined;
   epochCapMs?: number | undefined;
   /** Model price per million tokens, for the contract's llm_usd budget (unset: not enforced). */
@@ -102,7 +103,6 @@ export class Scheduler {
     this.o = {
       maxConcurrent: 1,
       trialWallMs: 20 * 60_000,
-      maxTurns: 60,
       epochCapMs: 3 * 3_600_000,
       backoffBaseMs: 15_000,
       backoffMaxMs: 10 * 60_000,

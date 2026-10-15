@@ -505,6 +505,12 @@ describe("agent scheduler", () => {
     const ran = (await pending) as Result;
     assert.equal(ran.ran, true);
     assert.match(String(ran.stdout), /ran/);
+    const ev = env.ledger.db
+      .prepare("select body from event where kind = 'dev_run' order by id desc limit 1")
+      .get() as { body: string };
+    const body = JSON.parse(ev.body) as { command: string; peak_rss_mib: number };
+    assert.equal(body.command, "sleep 0.2; echo ran");
+    assert.equal(typeof body.peak_rss_mib, "number");
     const off = (await make({ unavailable: "the dedicated development card is not set up: x" }).run(
       { lane: "lane-1", command: "echo ran", cwd },
       "t-d",

@@ -159,6 +159,125 @@ describe("worker trial", () => {
     assert.match(String(r2.error), /the model stopped \(stop\)/);
   });
 
+  test("a configured turn cap is stated, warned of once, and reported as a limit, not a model error", async () => {
+    const env = makeJudgeEnv();
+    await env.service.applyCommand(env.assign);
+    const runner = new LocalRunner(env.paths.scratchDir);
+    const champion = env.ledger.currentChampion("js-1");
+    const ws = await prepareWorkspace({
+      runner,
+      scratchDir: env.paths.scratchDir,
+      mirror: env.service.mirrorFor("proj"),
+      commit: champion.commit_sha,
+      lane: "lane-1",
+    });
+    const seen: string[] = [];
+    // Reads a file every turn and never submits.
+    const busy = await startFakeModel(({ messages }) => {
+      seen.push(JSON.stringify(messages.filter((m) => m.role === "user").map((m) => m.content)));
+      return { toolCalls: [{ name: "read_file", args: { path: "README.md" } }] };
+    });
+    const r = await runTrial(
+      {
+        trialId: "t-budget",
+        run: "js-1",
+        lane: "lane-1",
+        workspace: ws.repo,
+        parentCommit: champion.commit_sha,
+        editablePaths: ["src/kernel/**"],
+        brief: "Make work() faster without changing its result.",
+        wallMs: 600_000,
+        maxTurns: 14,
+      },
+      {
+        runner,
+        laneTool,
+        model: {
+          baseUrl: busy.url,
+          model: "test",
+          apiKey: "k",
+          contextWindow: 32000,
+          maxTokens: 2000,
+        },
+        submit: async () => {
+          throw new Error("not expected");
+        },
+        status: async (id) => env.service.attemptStatus(id),
+      },
+    );
+    await busy.close();
+    assert.equal(r.stopped, "turns");
+    // The call the limit aborted ends as one more turn.
+    assert.ok(r.turns >= 14 && r.turns <= 15, String(r.turns));
+    assert.equal(r.error, "the trial reached its limit of 14 turns before a submission");
+    assert.match(seen[0] ?? "", /lasts 10 minutes and at most 14 turns/);
+    const warnedAt = seen.findIndex((u) => u.includes("turns are left in this trial"));
+    assert.equal(warnedAt, 4, "warned once, after turn 4 (10 turns before the limit)");
+    assert.equal(seen.at(-1)?.split("turns are left").length, 2, "only once");
+  });
+
+  test("without a configured cap a trial is not cut off by its number of turns", async () => {
+    const env = makeJudgeEnv();
+    await env.service.applyCommand(env.assign);
+    const runner = new LocalRunner(env.paths.scratchDir);
+    const champion = env.ledger.currentChampion("js-1");
+    const ws = await prepareWorkspace({
+      runner,
+      scratchDir: env.paths.scratchDir,
+      mirror: env.service.mirrorFor("proj"),
+      commit: champion.commit_sha,
+      lane: "lane-1",
+    });
+    let first = "";
+    // 70 turns of reading (past the old default of 60), then the change and a submission.
+    const long = await startFakeModel(({ messages }) => {
+      first ||= JSON.stringify(messages.find((m) => m.role === "user")?.content ?? "");
+      const done = messages.filter((m) => m.role === "tool").length;
+      if (done < 70) return { toolCalls: [{ name: "read_file", args: { path: "README.md" } }] };
+      if (done === 70)
+        return {
+          toolCalls: [
+            { name: "write_file", args: { path: "src/kernel/work.mjs", content: FAST_KERNEL } },
+          ],
+        };
+      if (done === 71)
+        return {
+          toolCalls: [{ name: "submit", args: { hypothesis: "less work", known_flaws: [] } }],
+        };
+      return { text: "done" };
+    });
+    const r = await runTrial(
+      {
+        trialId: "t-long",
+        run: "js-1",
+        lane: "lane-1",
+        workspace: ws.repo,
+        parentCommit: champion.commit_sha,
+        editablePaths: ["src/kernel/**"],
+        brief: "Make work() faster without changing its result.",
+        wallMs: 600_000,
+      },
+      {
+        runner,
+        laneTool,
+        model: {
+          baseUrl: long.url,
+          model: "test",
+          apiKey: "k",
+          contextWindow: 200000,
+          maxTokens: 2000,
+        },
+        submit: (req) => env.service.submitAttempt({ ...req, lane: req.lane }, "proposer") as never,
+        status: async (id) => env.service.attemptStatus(id),
+      },
+    );
+    await long.close();
+    assert.equal(r.stopped, "submitted", JSON.stringify(r));
+    assert.ok(r.turns > 70, String(r.turns));
+    assert.match(first, /This trial lasts 10 minutes\. Submit before it ends/);
+    assert.doesNotMatch(first, /turns/);
+  });
+
   test("the live view: a worker's turns stream out, and the owner's message arrives as a user turn", async () => {
     const env = makeJudgeEnv();
     await env.service.applyCommand(env.assign);

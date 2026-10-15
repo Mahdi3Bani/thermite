@@ -328,5 +328,37 @@ export function makeJudgeEnv(
       keys.privateKeyPem,
     );
 
-  return { root, paths, service, ledger, judge, assign, sign, patch, drain, seed, kitCommit, keys };
+  /** What became of an attempt, for assertion messages: lifecycle, verdicts, jobs, events. */
+  const explain = (attempt: string) =>
+    JSON.stringify({
+      lifecycle: ledger.getAttempt(attempt)?.lifecycle,
+      verdicts: ledger.db
+        .prepare("select verdict, reasons from verdict where attempt = ? order by id")
+        .all(attempt),
+      jobs: ledger.db
+        .prepare(
+          "select id, kind, state, attempt, substr(result, 1, 300) as result from job order by id",
+        )
+        .all(),
+      events: ledger
+        .eventsAfter(0, 10_000)
+        .events.map((e) => `${e.kind}${e.subject ? `:${e.subject}` : ""}`)
+        .slice(-40),
+    });
+
+  return {
+    root,
+    paths,
+    service,
+    ledger,
+    judge,
+    assign,
+    sign,
+    patch,
+    drain,
+    seed,
+    kitCommit,
+    keys,
+    explain,
+  };
 }
