@@ -74,6 +74,15 @@ const promoteArgs = (id: string, expectedSeq = 1) => ({
 });
 
 describe("ledger", () => {
+  test("a ledger written by newer code is refused, not opened", () => {
+    const { ledger, path } = setup();
+    ledger.db
+      .prepare("insert into schema_migrations (version) values (?)")
+      .run(MIGRATIONS.length + 1);
+    ledger.close();
+    assert.throws(() => Ledger.open(path), /newer than this code/);
+  });
+
   test("migrations are idempotent across reopen", () => {
     const { ledger, path } = setup();
     ledger.close();

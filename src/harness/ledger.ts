@@ -142,6 +142,14 @@ export class Ledger {
       | { v: number | null }
       | undefined;
     const current = row?.v ?? 0;
+    // A ledger written by newer code is never opened by older code: its new tables and columns
+    // would be ignored or broken, and a rollback must not damage the record.
+    if (current > MIGRATIONS.length) {
+      throw new LedgerError(
+        "invalid",
+        `this ledger is at schema version ${current}, newer than this code's ${MIGRATIONS.length}: run a newer Thermite, or restore the ledger from before the upgrade`,
+      );
+    }
     MIGRATIONS.forEach((sql, i) => {
       const version = i + 1;
       if (version <= current) return;

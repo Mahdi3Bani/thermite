@@ -69,15 +69,24 @@ async function main(): Promise<void> {
     ? new BrokerClient(env.THERMITE_BROKER_SOCKET)
     : new LocalRunner(paths.scratchDir);
   const target = env.THERMITE_TARGET ?? "cpu";
-  // A dedicated development card: the broker sets it up; without its layout nothing times.
+  // The broker restricts the GPU's device nodes (and sets up a dedicated development card when
+  // one is configured); without its record of that, a GPU rig neither times nor runs dev runs.
   let devCard: { layout?: GpuLayout; error?: string } | undefined;
-  if (env.THERMITE_DEV_GPU_INDEX !== undefined) {
-    if (target !== "cuda-gpu")
-      throw new Error("THERMITE_DEV_GPU_INDEX needs THERMITE_TARGET=cuda-gpu");
+  if (env.THERMITE_DEV_GPU_INDEX !== undefined && target !== "cuda-gpu") {
+    throw new Error("THERMITE_DEV_GPU_INDEX needs THERMITE_TARGET=cuda-gpu");
+  }
+  if (
+    target === "cuda-gpu" &&
+    (env.THERMITE_DEV_GPU_INDEX !== undefined || env.THERMITE_BROKER_SOCKET)
+  ) {
     devCard = readLayout(env.THERMITE_BROKER_SOCKET);
     log(
       "harness",
-      devCard.error ? "dedicated development card unavailable" : "dedicated development card",
+      devCard.error
+        ? "GPU devices unavailable: the rig will not time"
+        : devCard.layout
+          ? "dedicated development card"
+          : "GPU device nodes restricted to the gpu group",
       devCard,
     );
   }
@@ -201,7 +210,12 @@ async function main(): Promise<void> {
                 smi: smiAsRun(runner, gpuQuery),
               },
             ],
-    deviceMode: driver.type !== "cuda-gpu" ? "none" : devCard ? "dedicated" : "shared",
+    deviceMode:
+      driver.type !== "cuda-gpu"
+        ? "none"
+        : env.THERMITE_DEV_GPU_INDEX !== undefined
+          ? "dedicated"
+          : "shared",
     stateDir: paths.stateDir,
     scratchDir: paths.scratchDir,
   });

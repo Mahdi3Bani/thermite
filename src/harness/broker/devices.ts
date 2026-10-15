@@ -32,10 +32,14 @@ export interface GpuLayout {
 /** Where the broker records the layout, for the controller and the isolation selftest. */
 export const LAYOUT_FILE = "gpu-layout.json";
 
-/** The layout as the broker writes it: established, or why not. */
+/**
+ * The device setup as the broker writes it: a dedicated layout, the shared one (every node in
+ * the `gpu` group), or why it could not be established.
+ */
 export type LayoutRecord =
   | ({ ok: true } & GpuLayout)
-  | { ok: false; mode: "dedicated"; error: string };
+  | { ok: true; mode: "shared"; nodes: string[] }
+  | { ok: false; mode: "dedicated" | "shared"; error: string };
 
 /** `00000000:3B:00.0` (nvidia-smi) to `0000:3b:00.0` (/proc/driver/nvidia/gpus). */
 export function procBusDir(bus: string): string {
@@ -149,9 +153,9 @@ export function identityFor(role: Role, gpu: boolean, layout?: GpuLayout | undef
 }
 
 /**
- * The controller's view: the layout the broker established next to its socket, or why there is
- * none. Without one, a rig configured for a dedicated development card neither times nor runs
- * development runs.
+ * The controller's view: the device setup the broker established next to its socket, or why
+ * there is none. Without one, a GPU rig neither times nor runs development runs: its device
+ * nodes might be open to every role.
  */
 export function readLayout(socketPath: string | undefined): {
   layout?: GpuLayout;
@@ -164,8 +168,16 @@ export function readLayout(socketPath: string | undefined): {
     const r = JSON.parse(
       readFileSync(join(dirname(socketPath), LAYOUT_FILE), "utf8"),
     ) as LayoutRecord;
-    if (!r.ok) return { error: `the dedicated development card is not set up: ${r.error}` };
-    const { ok: _, ...layout } = r;
+    if (!r.ok) {
+      return {
+        error:
+          r.mode === "shared"
+            ? `the GPU's device nodes could not be restricted to the gpu group: ${r.error}`
+            : `the dedicated development card is not set up: ${r.error}`,
+      };
+    }
+    if ("mode" in r && r.mode === "shared") return {};
+    const { ok: _, ...layout } = r as { ok: true } & GpuLayout;
     return { layout };
   } catch (err) {
     return { error: `no device layout from the broker (${String(err)})` };

@@ -232,7 +232,26 @@ function prepareDevices(): GpuLayout | undefined {
   }
   const layoutPath = join(socketDir, LAYOUT_FILE);
   rmSync(layoutPath, { force: true });
-  if (env.THERMITE_DEV_GPU_INDEX === undefined) return undefined;
+  if (env.THERMITE_DEV_GPU_INDEX === undefined) {
+    // Shared mode: every node must now belong to root and the gpu group with mode 0660. If one
+    // does not, the record says so and the controller neither times nor runs dev runs, rather
+    // than leave the device open to roles that must not reach it.
+    const wrong = nodes.filter((p) => {
+      try {
+        const st = statSync(p);
+        return st.uid !== 0 || st.gid !== IDS.gpuGroup || (st.mode & 0o777) !== 0o660;
+      } catch {
+        return true;
+      }
+    });
+    const shared: LayoutRecord = wrong.length
+      ? { ok: false, mode: "shared", error: `${wrong.join(", ")} kept another owner or mode` }
+      : { ok: true, mode: "shared", nodes };
+    if (wrong.length) log("broker", "could not restrict the GPU's device nodes", { nodes: wrong });
+    writeFileSync(layoutPath, `${JSON.stringify(shared)}\n`, { mode: 0o644 });
+    chmodSync(layoutPath, 0o644);
+    return undefined;
+  }
   // A dedicated development card. Anything that fails leaves the record saying why, and the
   // controller then neither times nor allows development runs (it does not fall back to
   // sharing, since both cards are visible).

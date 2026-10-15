@@ -174,6 +174,21 @@ describe("a dedicated development card", () => {
     assert.match(String(readLayout(sock).error), /not set up: x/);
     writeFileSync(join(dir, LAYOUT_FILE), JSON.stringify({ ok: true, ...plan() }));
     assert.equal(readLayout(sock).layout?.dev.node, "/dev/nvidia7");
+    // Shared mode: restricted nodes are fine; nodes left open stop the rig.
+    writeFileSync(
+      join(dir, LAYOUT_FILE),
+      JSON.stringify({ ok: true, mode: "shared", nodes: ["/dev/nvidia0"] }),
+    );
+    assert.deepEqual(readLayout(sock), {});
+    writeFileSync(
+      join(dir, LAYOUT_FILE),
+      JSON.stringify({
+        ok: false,
+        mode: "shared",
+        error: "/dev/nvidia-uvm kept another owner or mode",
+      }),
+    );
+    assert.match(String(readLayout(sock).error), /could not be restricted to the gpu group/);
   });
 
   test("the selftest probes each side's reach and refusal", () => {
