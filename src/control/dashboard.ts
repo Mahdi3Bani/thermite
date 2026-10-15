@@ -633,6 +633,8 @@ ${pending}${body}
     const now = Date.now();
     const vs = views();
     const camps = campaignViews(vs);
+    // One full-width card per campaign; its runs in a table whose columns line up across cards.
+    const cols = `<colgroup><col style="width:28%"><col style="width:20%"><col style="width:14%"><col style="width:120px"><col style="width:12%"><col></colgroup>`;
     const cards = camps
       .map((k) => {
         const h = headline(k);
@@ -641,16 +643,16 @@ ${pending}${body}
         const rows = k.runs
           .map(({ rig, run }) => {
             const rs = runState(run);
-            return `<a class="row" style="padding:6px 0" href="${runHref(rig.id, run)}">${avatar(rig.id)}<span class="grow clip">${esc(run.id)} <span class="muted small">on ${esc(rig.id)}${rig.stale ? " (stale)" : ""}</span></span><span class="muted small nowrap">${esc(runMetric(run))}</span>${run.mode === "hill_climb" ? sparkline(run, 80, 22) : ""}<span class="label ${rs.cls}">${rs.icon}${esc(rs.text)}</span></a>`;
+            const last = run.attempts.at(-1)?.updated_at;
+            return `<tr><td><a href="${runHref(rig.id, run)}"><b>${esc(run.id)}</b></a></td><td>${avatar(rig.id)} ${esc(rig.id)}${rig.stale ? ` <span class="bad xs">stale</span>` : ""}</td><td class="num">${esc(runMetric(run))}</td><td>${run.mode === "hill_climb" ? sparkline(run, 110, 22) : ""}</td><td class="num muted">${last ? `${esc(ago(last, now))} ago` : ""}</td><td class="num"><span class="label ${rs.cls}">${rs.icon}${esc(rs.text)}</span></td></tr>`;
           })
           .join("");
         const last = k.runs
           .flatMap((x) => x.run.attempts.map((a) => a.updated_at))
           .sort()
           .at(-1);
-        return `<div class="card"><div class="card-head">${modeAvatar(k.mode)}<div class="grow"><a class="title" href="${campaignHref(k.name)}">${esc(k.name)}</a><div class="sub">${esc(modeName(k.mode))} · ${k.runs.length} run${k.runs.length > 1 ? "s" : ""} on ${rigs.length} rig${rigs.length > 1 ? "s" : ""}${last ? ` · last attempt ${esc(ago(last, now))} ago` : ""}</div></div><div class="right"><span class="label ${st.cls}">${st.icon}${esc(st.text)}</span></div></div>
-<div class="row" style="margin-top:12px;align-items:baseline;gap:8px"><span style="font-size:22px;font-weight:600">${esc(h.value)}</span><span class="muted small">${esc(h.sub)}</span></div>
-<div class="divider"></div>${rows}</div>`;
+        return `<div class="card camp"><div class="camp-head">${modeAvatar(k.mode)}<div class="grow"><a class="title" href="${campaignHref(k.name)}">${esc(k.name)}</a><div class="sub">${esc(modeName(k.mode))} · ${k.runs.length} run${k.runs.length > 1 ? "s" : ""} on ${esc(rigs.join(", "))}${last ? ` · last attempt ${esc(ago(last, now))} ago` : ""}</div></div><div class="figure"><b>${esc(h.value)}</b><span>${esc(h.sub)}</span></div><span class="label ${st.cls}">${st.icon}${esc(st.text)}</span></div>
+<table class="camp-runs">${cols}<tbody>${rows}</tbody></table></div>`;
       })
       .join("");
     return page(
@@ -662,7 +664,7 @@ ${pending}${body}
         active: "campaigns",
       },
       cards
-        ? `<div class="grid-cards">${cards}</div>`
+        ? `<div class="stack">${cards}</div>`
         : `<div class="card"><div class="empty">No campaign yet.</div></div>`,
       vs,
     );
@@ -794,7 +796,7 @@ ${pending}${body}
                 : i.mode === "goal"
                   ? `<span class="muted small nowrap">${i.goals.filter((g) => g.status === "met").length}/${i.goals.length} goals</span>`
                   : "";
-            return `<a class="row" style="padding:6px 0" href="/ui/rigs/${encodeURIComponent(u.id)}#${encodeURIComponent(i.id)}">${modeAvatar(i.mode)}<span class="grow clip">${esc(i.id)} <span class="muted small">${esc(i.campaign ?? "")}</span></span>${extra}<span class="label ${st.cls}">${st.icon}${esc(st.text)}</span></a>`;
+            return `<a class="row" style="padding:6px 0" href="${runHref(u.id, i)}">${modeAvatar(i.mode)}<span class="grow clip">${esc(i.campaign || i.id)} <span class="muted small">› ${esc(i.id)}</span></span>${extra}<span class="label ${st.cls}">${st.icon}${esc(st.text)}</span></a>`;
           })
           .join("");
         return `<div class="card"><div class="card-head"><span class="iconbox">${icon.cpu}</span><div class="grow"><a class="title" href="/ui/rigs/${encodeURIComponent(u.id)}">${esc(u.id)}</a><div class="sub">${u.stale ? `last report ${esc(ago(u.last_seen, now))} ago` : `reported ${esc(ago(u.last_seen, now))} ago`}</div></div><div class="right">${status}</div></div>
@@ -807,7 +809,7 @@ ${ex ? `<div class="divider"></div><div class="muted xs">Results: ${num(ex.expor
       c,
       {
         title: "Rigs",
-        summary: `${vs.length} rigs · ${vs.filter((u) => u.stale).length} stale · ${vs.reduce((n, u) => n + u.runs.filter((i) => i.status === "running").length, 0)} campaigns running`,
+        summary: `${vs.length} rigs · ${vs.filter((u) => u.stale).length} stale · ${vs.reduce((n, u) => n + u.runs.filter((i) => i.status === "running").length, 0)} runs running`,
         active: "rigs",
       },
       cards

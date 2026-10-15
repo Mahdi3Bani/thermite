@@ -100,7 +100,18 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .stack { display: flex; flex-direction: column; gap: 12px; }
 .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; align-items: start; }
-.grid-cards > .card, .grid2 > .card { margin-top: 0; }
+.grid-cards > .card + .card, .grid2 > .card + .card, .stack > .card + .card { margin-top: 0; }
+.card.camp { padding: 0; }
+.camp-head { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+.camp-head .title { font-weight: 600; font-size: 14px; }
+.camp-head .sub { font-size: 12px; color: var(--muted-foreground); margin-top: 1px; }
+.camp-head .figure { display: flex; flex-direction: column; align-items: flex-end; min-width: 150px; }
+.camp-head .figure b { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.camp-head .figure span { font-size: 11px; color: var(--muted-foreground); }
+.camp-head .label { min-width: 92px; justify-content: flex-end; }
+.camp-runs { table-layout: fixed; border-top: 1px solid var(--border); }
+.camp-runs td { padding: 8px 16px; vertical-align: middle; }
+.camp-runs tr:last-child td { border-bottom: 0; }
 .kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 @media (min-width: 1700px) { .kpis { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
 .head { display: flex; align-items: baseline; gap: 8px; margin: 4px 0 10px; }
