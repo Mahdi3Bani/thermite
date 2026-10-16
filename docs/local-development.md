@@ -96,6 +96,9 @@ Confirmed wins promote automatically by default (`THERMITE_PROMOTION=auto`). Gai
 
 Workers and the planner run when the harness has a model route: an OpenAI-compatible endpoint given by `QWEN_BASE_URL` and `QWEN_MODEL`, with its key in `.dev/secrets/qwen-api-key` (git-ignored; `dev:init` writes a placeholder). Without a route, the judge still runs and you submit patches yourself.
 
+- Set `QWEN_CONTEXT_WINDOW` to the model's context per request. Each reply's length is then clamped to the room left, and a worker is told to submit at 80% of it. Unset means unknown: no clamping, and a request that is too long ends the trial when the server refuses it.
+- `QWEN_MAX_TOKENS` (default 8192) caps each reply, thinking included.
+
 `node scripts/agents-acceptance.mjs` checks the agent machinery without a real model: a scripted model on your machine plans one epoch and plays two workers, which edit, build, use the device and submit through the real harness image.
 
 ## Supervision: advisors, results and lifecycle

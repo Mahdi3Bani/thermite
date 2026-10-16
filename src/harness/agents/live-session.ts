@@ -37,11 +37,24 @@ export function linkSession(agent: Agent, link: SessionLink): void {
   agent.subscribe(async (event) => {
     switch (event.type) {
       case "message_end": {
-        const m = event.message as { role?: string; content?: unknown };
+        const m = event.message as {
+          role?: string;
+          content?: unknown;
+          stopReason?: string;
+          errorMessage?: string;
+          usage?: { input?: number; output?: number };
+        };
         if (m.role !== "assistant") break;
         const thinking = textOf(m.content, "thinking");
         if (thinking) send("thinking", thinking.slice(0, 2000));
         send("text", textOf(m.content, "text"));
+        // A reply that ended other than normally says how, so an anomaly shows its cause.
+        if (m.stopReason && m.stopReason !== "toolUse" && m.stopReason !== "stop") {
+          send(
+            "text",
+            `(reply ended: ${m.stopReason}; ${m.usage?.input ?? "?"} tokens in, ${m.usage?.output ?? "?"} out${m.errorMessage ? `; ${m.errorMessage.slice(0, 300)}` : ""})`,
+          );
+        }
         break;
       }
       case "tool_execution_start":

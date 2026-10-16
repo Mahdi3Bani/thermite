@@ -38,7 +38,10 @@ export function modelConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ModelC
     baseUrl: baseUrl.replace(/\/$/, ""),
     model,
     apiKey,
-    contextWindow: Number(env.QWEN_CONTEXT_WINDOW ?? "131072"),
+    // The model's per-request context. Unset is "unknown" (0): replies are then not clamped to an
+    // estimate of the room left, because a wrong guess (it was 131072) shrinks every reply to one
+    // token once a conversation nears it.
+    contextWindow: Number(env.QWEN_CONTEXT_WINDOW ?? "0"),
     maxTokens: Number(env.QWEN_MAX_TOKENS ?? "8192"),
     reasoning: reasoningFromEnv(env.QWEN_REASONING_EFFORT),
   };

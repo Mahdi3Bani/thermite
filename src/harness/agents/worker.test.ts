@@ -292,6 +292,7 @@ describe("worker trial", () => {
     });
     let calls = 0;
     const said: string[] = [];
+    const lines: { kind: string; text: string }[] = [];
     // Four replies cut off while thinking, then two failed calls, then the change and a submission.
     const flaky = await startFakeModel(({ messages }) => {
       calls++;
@@ -340,6 +341,11 @@ describe("worker trial", () => {
         },
         submit: (req) => env.service.submitAttempt({ ...req, lane: req.lane }, "proposer") as never,
         status: async (id) => env.service.attemptStatus(id),
+        link: {
+          live: async (entries) => {
+            lines.push(...entries);
+          },
+        },
       },
     );
     await flaky.close();
@@ -351,6 +357,15 @@ describe("worker trial", () => {
     assert.ok(
       said.some((u) => u.includes("The model call failed")),
       said.join("\n"),
+    );
+    // The live view says how each abnormal reply ended.
+    assert.ok(
+      lines.some((l) => l.text.startsWith("(reply ended: length; 3000 tokens in, 2000 out")),
+      JSON.stringify(lines),
+    );
+    assert.ok(
+      lines.some((l) => l.text.startsWith("(reply ended: error")),
+      JSON.stringify(lines),
     );
   });
 
@@ -398,6 +413,12 @@ describe("worker trial", () => {
     // Two cut-offs, then a reply that stops of its own accord: back to the caller.
     const ok = fake([{ stopReason: "length" }, { stopReason: "length" }, { stopReason: "stop" }]);
     assert.equal(await keepGoing(ok.agent, never, 32_768), undefined);
+    // An unknown window (0) never reads a long prompt as a full context by itself.
+    const unknown = fake([
+      { stopReason: "length", output: 500, input: 300_000 },
+      { stopReason: "stop" },
+    ]);
+    assert.equal(await keepGoing(unknown.agent, never, 0), undefined);
     // The trial's time running out ends it quietly.
     const late = fake([{ stopReason: "length" }]);
     assert.equal(await keepGoing(late.agent, () => true, 32_768), undefined);

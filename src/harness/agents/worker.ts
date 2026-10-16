@@ -337,6 +337,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
         warn(`${maxTurns - result.turns} turns are left in this trial.`);
       } else if (
         !warnedContext &&
+        deps.model.contextWindow > 0 &&
         (usage?.input ?? 0) >= 0.8 * deps.model.contextWindow &&
         !result.submitted
       ) {
@@ -438,7 +439,7 @@ export async function keepGoing(
     const last = lastAssistant(agent);
     if (last?.stopReason === "length") {
       failures = 0;
-      const full = contextWindow !== undefined && last.input >= 0.95 * contextWindow;
+      const full = (contextWindow ?? 0) > 0 && last.input >= 0.95 * (contextWindow as number);
       if (last.output < 64 || full) {
         return {
           stopped: "context",
