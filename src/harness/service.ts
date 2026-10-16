@@ -183,6 +183,11 @@ export class HarnessService {
    * run there, as the lane's user, through the API with the trial's token.
    */
   readonly trialWorkspaces = new Map<string, { lane: string; repo: string; root: string }>();
+  /** Each open trial's counters as its worker last reported them (kept if the trial dies). */
+  readonly trialProgress = new Map<
+    string,
+    { turns: number; tool_calls: number; tokens_in: number; tokens_out: number }
+  >();
   /** The promotion policy: what happens to a confirmed win (and to one an audit cleared). */
   readonly promotion: "auto" | "owner_approval";
   private readonly targetType: string | undefined;

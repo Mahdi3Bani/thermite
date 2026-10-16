@@ -850,6 +850,7 @@ export class Scheduler {
         r = { ...r, error: err instanceof Error ? err.message : String(err) };
       } finally {
         if (abort.signal.aborted) r = { ...r, stopped: "interrupted" };
+        r = this.withProgress(id, r);
         this.registry.finishTrial(id, r, this.o.owner);
         this.trialLine(
           id,
@@ -959,6 +960,7 @@ export class Scheduler {
         r = { ...r, stopped: "error", error: err instanceof Error ? err.message : String(err) };
       } finally {
         if (abort.signal.aborted && r.stopped !== "submitted") r = { ...r, stopped: "interrupted" };
+        r = this.withProgress(id, r);
         if (r.submitted) this.registry.tagAttempt(r.submitted.attempt, a.family);
         // The trial ends first (its token stops working), then its processes and dev runs.
         this.o.service.trialWorkspaces.delete(id);
@@ -981,6 +983,23 @@ export class Scheduler {
       this.laneRun.delete(a.lane);
     });
     this.running.set(a.lane, work);
+  }
+
+  /**
+   * A trial's result with the counters its worker last reported, when the worker died before
+   * reporting its own (an interrupt kills it): an interrupted trial keeps the work it did.
+   */
+  private withProgress(id: string, r: TrialResult): TrialResult {
+    const p = this.o.service.trialProgress.get(id);
+    this.o.service.trialProgress.delete(id);
+    if (!p || r.turns >= p.turns) return r;
+    return {
+      ...r,
+      turns: p.turns,
+      toolCalls: Math.max(r.toolCalls, p.tool_calls),
+      tokensIn: Math.max(r.tokensIn, p.tokens_in),
+      tokensOut: Math.max(r.tokensOut, p.tokens_out),
+    };
   }
 
   /** A line in a trial's live session (control's live view). */

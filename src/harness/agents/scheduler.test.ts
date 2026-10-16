@@ -270,8 +270,15 @@ describe("agent scheduler", () => {
         maxTokens: 1,
       },
       owner: "s",
-      runTrial: (_spec, signal) =>
+      runTrial: (spec, signal) =>
         new Promise((resolve) => {
+          // The worker reports its counters as it works (after each turn), then is killed.
+          env.service.trialProgress.set(spec.trialId, {
+            turns: 7,
+            tool_calls: 12,
+            tokens_in: 5000,
+            tokens_out: 300,
+          });
           started();
           signal.addEventListener("abort", () => {
             aborted++;
@@ -289,8 +296,15 @@ describe("agent scheduler", () => {
     assert.ok(refused.status === "applied" && !refused.accepted);
     await scheduler.tick(); // applies the reset, then plans epoch 2
     assert.equal(aborted, 1);
-    const trial = env.ledger.db.prepare("select stopped from trial order by started_at").get();
+    const trial = env.ledger.db
+      .prepare("select stopped, turns, tokens_in, tokens_out from trial order by started_at")
+      .get();
     assert.equal(trial?.stopped, "interrupted");
+    // The killed worker reported nothing at the end: its last counters are kept, not zeros.
+    assert.deepEqual(
+      [trial?.turns, trial?.tokens_in, trial?.tokens_out].map(Number),
+      [7, 5000, 300],
+    );
     const epochs = env.ledger.db.prepare("select n, ended_at from epoch order by n").all();
     assert.equal(epochs.length, 2);
     assert.ok(epochs[0]?.ended_at);

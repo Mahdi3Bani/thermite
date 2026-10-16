@@ -293,6 +293,8 @@ describe("worker trial", () => {
     let calls = 0;
     const said: string[] = [];
     const lines: { kind: string; text: string }[] = [];
+    const progress: { turns: number; tool_calls: number; tokens_in: number; tokens_out: number }[] =
+      [];
     // Four replies cut off while thinking, then two failed calls, then the change and a submission.
     const flaky = await startFakeModel(({ messages }) => {
       calls++;
@@ -345,11 +347,19 @@ describe("worker trial", () => {
           live: async (entries) => {
             lines.push(...entries);
           },
+          progress: async (p) => {
+            progress.push(p);
+          },
         },
       },
     );
     await flaky.close();
     assert.equal(r.stopped, "submitted", JSON.stringify(r));
+    // After each turn the session reports its counters, which grow (the harness keeps the last).
+    assert.ok(progress.length >= 2, JSON.stringify(progress));
+    const last = progress.at(-1);
+    assert.ok(last && last.turns === progress.length && last.tool_calls >= 1);
+    assert.ok((last?.tokens_in ?? 0) >= 4 * 3000, JSON.stringify(last));
     assert.ok(
       said.some((u) => u.includes("cut off at the output limit")),
       said.join("\n"),

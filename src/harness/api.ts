@@ -221,8 +221,18 @@ export function createHarnessApi(
         entries: z
           .array(z.object({ kind: z.enum(LIVE_KINDS), text: z.string().max(8000) }))
           .max(200),
+        /** The session's counters so far (turns, tool calls, tokens). */
+        progress: z
+          .object({
+            turns: z.number().int().min(0),
+            tool_calls: z.number().int().min(0),
+            tokens_in: z.number().int().min(0),
+            tokens_out: z.number().int().min(0),
+          })
+          .optional(),
       })
       .parse(await c.req.json());
+    if (body.progress) service.trialProgress.set(trial.id, body.progress);
     for (const e of body.entries) {
       service.live.append({
         source: `trial:${trial.id}`,

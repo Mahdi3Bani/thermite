@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { Runner, RunOutcome, RunRequest } from "../broker/runner.ts";
 import { apiCall } from "./api-call.ts";
+import type { TrialProgress } from "./live-session.ts";
 import { modelConfigFromEnv } from "./model.ts";
 import { runResearchTrial } from "./research-worker.ts";
 import type { AnyTrial } from "./spawn.ts";
@@ -57,6 +58,7 @@ async function main(): Promise<void> {
     live: (entries: unknown[]) => call("POST", "/v1/trial/live", { entries }),
     messages: async () =>
       ((await call("GET", "/v1/trial/messages")) as { messages: string[] }).messages,
+    progress: (p: TrialProgress) => call("POST", "/v1/trial/live", { entries: [], progress: p }),
   };
   if (trial.kind === "research") {
     const result = await runResearchTrial(trial.spec, {

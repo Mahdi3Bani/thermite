@@ -9,6 +9,15 @@ import { type LiveKind, summarizeArgs } from "../../core/live.ts";
 export interface SessionLink {
   live?: ((entries: { kind: LiveKind; text: string }[]) => Promise<unknown>) | undefined;
   messages?: (() => Promise<string[]>) | undefined;
+  /** The session's counters so far, after each turn: kept by the harness if the trial dies. */
+  progress?: ((p: TrialProgress) => Promise<unknown>) | undefined;
+}
+
+export interface TrialProgress {
+  turns: number;
+  tool_calls: number;
+  tokens_in: number;
+  tokens_out: number;
 }
 
 type Block = { type?: string; text?: string; thinking?: string };
@@ -34,6 +43,7 @@ export function linkSession(agent: Agent, link: SessionLink): void {
     if (!link.live || !text) return;
     link.live([{ kind, text }]).catch(() => undefined);
   };
+  const counted: TrialProgress = { turns: 0, tool_calls: 0, tokens_in: 0, tokens_out: 0 };
   agent.subscribe(async (event) => {
     switch (event.type) {
       case "message_end": {
@@ -45,6 +55,8 @@ export function linkSession(agent: Agent, link: SessionLink): void {
           usage?: { input?: number; output?: number };
         };
         if (m.role !== "assistant") break;
+        counted.tokens_in += m.usage?.input ?? 0;
+        counted.tokens_out += m.usage?.output ?? 0;
         const thinking = textOf(m.content, "thinking");
         if (thinking) send("thinking", thinking.slice(0, 2000));
         send("text", textOf(m.content, "text"));
@@ -58,6 +70,7 @@ export function linkSession(agent: Agent, link: SessionLink): void {
         break;
       }
       case "tool_execution_start":
+        counted.tool_calls++;
         send("tool", `${event.toolName} ${summarizeArgs(event.args)}`);
         break;
       case "tool_execution_end":
@@ -67,6 +80,8 @@ export function linkSession(agent: Agent, link: SessionLink): void {
         );
         break;
       case "turn_end": {
+        counted.turns++;
+        link.progress?.({ ...counted }).catch(() => undefined);
         if (!link.messages) break;
         let msgs: string[] = [];
         try {
