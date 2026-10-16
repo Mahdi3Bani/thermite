@@ -110,6 +110,7 @@ create table if not exists rig_live (
 );
 create unique index if not exists rig_live_seq on rig_live (rig, log_id, seq);
 create index if not exists rig_live_rig on rig_live (rig, id);
+create index if not exists rig_live_source on rig_live (rig, source, id);
 `;
 
 /**
@@ -357,6 +358,49 @@ export class ControlStore {
       last_at: String(r.last_at),
       lines: Number(r.lines),
       ended: Number(r.ended) === 1,
+    }));
+  }
+
+  /**
+   * Each worker trial's session in a rig's live log: when it started and what it was asked to do
+   * (its first status line: "trial on lane-1: family, focus"), what it did last (its newest tool
+   * call), and how it ended. Newest first.
+   */
+  liveTrials(rig: string): {
+    source: string;
+    lane: string | null;
+    run: string | null;
+    started_at: string;
+    last_at: string;
+    intro: string;
+    last_tool: string | null;
+    last_tool_at: string | null;
+    ended: string | null;
+  }[] {
+    const rows = this.db
+      .prepare(
+        `select source, max(lane) as lane, max(run) as run, min(at) as started_at, max(at) as last_at,
+           (select text from rig_live x where x.rig = l.rig and x.source = l.source and x.kind = 'status'
+             order by x.id limit 1) as intro,
+           (select text from rig_live x where x.rig = l.rig and x.source = l.source and x.kind = 'tool'
+             order by x.id desc limit 1) as last_tool,
+           (select at from rig_live x where x.rig = l.rig and x.source = l.source and x.kind = 'tool'
+             order by x.id desc limit 1) as last_tool_at,
+           (select text from rig_live x where x.rig = l.rig and x.source = l.source and x.kind = 'status'
+             and x.text like 'trial ended%' order by x.id desc limit 1) as ended
+         from rig_live l where rig = ? and source like 'trial:%' group by source order by max(id) desc`,
+      )
+      .all(rig) as Row[];
+    return rows.map((r) => ({
+      source: String(r.source),
+      lane: r.lane ? String(r.lane) : null,
+      run: r.run ? String(r.run) : null,
+      started_at: String(r.started_at),
+      last_at: String(r.last_at),
+      intro: r.intro ? String(r.intro) : "",
+      last_tool: r.last_tool ? String(r.last_tool) : null,
+      last_tool_at: r.last_tool_at ? String(r.last_tool_at) : null,
+      ended: r.ended ? String(r.ended) : null,
     }));
   }
 

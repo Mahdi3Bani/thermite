@@ -28,6 +28,36 @@ export interface AttemptView {
   hypothesis: string | null;
   recorded_at: string;
   updated_at: string;
+  /** The commit it proposes, and the commit it was made on. */
+  commit: string | null;
+  parent: string | null;
+  /** Flaws its author declared when submitting it (they trigger an audit). */
+  known_flaws: string[];
+  /** The planner's direction for the trial that made it. */
+  family: string | null;
+  trial: string | null;
+  /** Goal campaigns: what the judge's latest finished job found against the champion. */
+  gained: string[] | null;
+  lost: string[];
+  unsure: string[];
+  /** Every verdict it received, oldest first. */
+  history: { at: string; verdict: string; delta: number | null }[];
+  /** What it waits for after its last job: "audit" or "owner_approval". */
+  waiting: string | null;
+}
+
+/** A judge job, from its queued, leased and finished events. */
+export interface JudgeJob {
+  id: string;
+  kind: string;
+  attempt: string | null;
+  /** The run it serves (an attempt's run, or the run that was running when it was queued). */
+  run: string | null;
+  queued_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  state: string | null;
+  result: Record<string, unknown>;
 }
 
 export interface ChampionStep {
@@ -71,8 +101,25 @@ export interface RunView {
   /** Research mode: the newest digest's figures and report. */
   research: Record<string, unknown> | null;
   goals: { goal: string; status: string; reasons: string }[];
+  /** When the judge last checked the goals, and on which champion. */
+  goals_at: string | null;
+  goals_seq: number | null;
   /** Audits (M5): what is held for one, and how each ended. */
-  audits: { attempt: string; reason: string; decision: string | null; at: string }[];
+  audits: {
+    attempt: string;
+    reason: string;
+    decision: string | null;
+    at: string;
+    /** The champion the attempt was measured against. */
+    expected_seq: number | null;
+    /** The auditor's reasons, once it decided. */
+    reasons: string | null;
+  }[];
+  /** Why each pending promotion waits, and against which champion it was measured. */
+  promotion_waits: Record<
+    string,
+    { expected_seq: number | null; reason: string | null; at: string }
+  >;
   /** Subjective-goal reviews: the panel's result, then the owner's. */
   reviews: {
     review: number;
@@ -82,7 +129,14 @@ export interface RunView {
     owner: string | null;
   }[];
   /** "Not possible" proposals and the owner's decisions. */
-  conclusions: { proposal: number; decision: string | null; approaches: number; at: string }[];
+  conclusions: {
+    proposal: number;
+    decision: string | null;
+    approaches: number;
+    at: string;
+    /** The refuted approach families, each with its judged attempts. */
+    families: { family: string; attempts: number }[];
+  }[];
   /** The newest champion published for propagation (what another rig can import). */
   published: {
     seq: number;
@@ -104,6 +158,26 @@ export interface RunView {
     result: string;
   }[];
   directives: number;
+  /** When the run started, and its latest epoch's plan. */
+  created_at: string | null;
+  epoch: {
+    n: number;
+    at: string;
+    source: string;
+    assignments: { lane: string; family: string; parent: string }[];
+  } | null;
+  /** Finished trials, newest last (at most the latest 100). */
+  trials: {
+    trial: string;
+    lane: string | null;
+    family: string | null;
+    attempt: string | null;
+    stopped: string;
+    error: string | null;
+    at: string;
+  }[];
+  /** The run's events, oldest first (at most the latest 400): the timeline's source. */
+  timeline: StoredEvent[];
 }
 
 export interface RigView {
@@ -119,6 +193,8 @@ export interface RigView {
   jobs: Record<string, number>;
   runs: RunView[];
   recent: StoredEvent[];
+  /** The judge: its job in progress, its queue and its recent jobs (newest last). */
+  judge: { now: JudgeJob | null; queued: JudgeJob[]; jobs: JudgeJob[] };
 }
 
 export function rigEvents(
@@ -177,19 +253,38 @@ export function rigView(
         },
         research: null,
         goals: [],
+        goals_at: null,
+        goals_seq: null,
         audits: [],
+        promotion_waits: {},
         reviews: [],
         conclusions: [],
         published: null,
         published_trees: {},
         propagations: [],
         directives: 0,
+        created_at: null,
+        epoch: null,
+        trials: [],
+        timeline: [],
       };
       runs.set(id, v);
     }
     return v;
   };
   const confirmDelta = new Map<string, number>();
+  const jobs = new Map<string, JudgeJob>();
+  // The run that was running when a job without an attempt (validate, calibrate) was queued.
+  let running: string | null = null;
+  // Which run an event belongs to, for the run's timeline.
+  const runOf = (e: StoredEvent): string | null => {
+    const b = e.body ?? {};
+    if (e.subject && runs.has(e.subject)) return e.subject;
+    if (typeof b.run === "string" && b.run) return b.run;
+    if (e.subject && attempts.has(e.subject)) return attempts.get(e.subject)?.run ?? null;
+    if (e.kind.startsWith("job_") && e.subject) return jobs.get(e.subject)?.run ?? null;
+    return null;
+  };
   for (const e of events) {
     const b = e.body ?? {};
     switch (e.kind) {
@@ -197,6 +292,8 @@ export function rigView(
         const v = inst(String(e.subject));
         v.campaign = String(b.campaign ?? "");
         v.mode = String(b.mode ?? "");
+        v.created_at = e.at;
+        running = v.id;
         v.seed_repo =
           ((b.seed as { repo?: string } | undefined)?.repo as string | undefined) ?? null;
         v.status = "running";
@@ -215,6 +312,8 @@ export function rigView(
         const v = inst(String(e.subject));
         v.status = String(b.status);
         v.pause_reason = (b.reason as string | null) ?? null;
+        if (v.status === "running") running = v.id;
+        else if (running === v.id) running = null;
         break;
       }
       case "attempt_recorded": {
@@ -228,6 +327,16 @@ export function rigView(
           hypothesis: (b.hypothesis as string | null) ?? null,
           recorded_at: e.at,
           updated_at: e.at,
+          commit: typeof b.commit === "string" ? b.commit : null,
+          parent: typeof b.parent === "string" ? b.parent : null,
+          known_flaws: Array.isArray(b.known_flaws) ? b.known_flaws.map((f) => String(f)) : [],
+          family: null,
+          trial: null,
+          gained: null,
+          lost: [],
+          unsure: [],
+          history: [],
+          waiting: null,
         };
         attempts.set(a.id, a);
         inst(a.run).attempts.push(a);
@@ -252,6 +361,7 @@ export function rigView(
           a.verdict = String(b.verdict);
           a.delta = typeof b.delta === "number" ? b.delta : null;
           a.updated_at = e.at;
+          a.history.push({ at: e.at, verdict: a.verdict, delta: a.delta });
           if (b.verdict === "win_confirmed" && typeof b.delta === "number") {
             confirmDelta.set(a.id, b.delta);
           }
@@ -286,6 +396,11 @@ export function rigView(
         if (!v.pending_promotions.includes(String(e.subject))) {
           v.pending_promotions.push(String(e.subject));
         }
+        v.promotion_waits[String(e.subject)] = {
+          expected_seq: typeof b.expected_seq === "number" ? b.expected_seq : null,
+          reason: typeof b.reason === "string" ? b.reason : null,
+          at: e.at,
+        };
         break;
       }
       case "calibration": {
@@ -294,7 +409,18 @@ export function rigView(
         break;
       }
       case "epoch_started": {
-        const a = inst(String(e.subject)).agents;
+        const v = inst(String(e.subject));
+        v.epoch = {
+          // Epochs are numbered from 1; an event without its number is the next one.
+          n: Number.isFinite(Number(b.n)) ? Number(b.n) : v.agents.epochs + 1,
+          at: e.at,
+          source: String(b.source ?? ""),
+          assignments: (Array.isArray(b.assignments) ? b.assignments : []).map((x) => {
+            const y = (x ?? {}) as Record<string, unknown>;
+            return { lane: String(y.lane), family: String(y.family), parent: String(y.parent) };
+          }),
+        };
+        const a = v.agents;
         a.epochs++;
         if (b.planner_valid === true) a.planner_valid++;
         if (b.source === "fallback") a.fallbacks++;
@@ -302,7 +428,23 @@ export function rigView(
         break;
       }
       case "trial_finished": {
-        const a = inst(String(e.subject)).agents;
+        const v = inst(String(e.subject));
+        v.trials.push({
+          trial: String(b.trial ?? ""),
+          lane: (b.lane as string | null) ?? null,
+          family: (b.family as string | null) ?? null,
+          attempt: (b.attempt as string | null) ?? null,
+          stopped: String(b.stopped ?? ""),
+          error: (b.error as string | null) ?? null,
+          at: e.at,
+        });
+        if (v.trials.length > 100) v.trials.shift();
+        const made = b.attempt ? attempts.get(String(b.attempt)) : undefined;
+        if (made) {
+          made.family = (b.family as string | null) ?? null;
+          made.trial = String(b.trial ?? "") || null;
+        }
+        const a = v.agents;
         a.trials++;
         if (b.attempt) a.submitted++;
         a.tokens_in += Number(b.tokens_in ?? 0);
@@ -323,6 +465,8 @@ export function rigView(
         v.goals = ((b.goals as { goal: string; status: string; reasons: string }[]) ?? []).map(
           (g) => ({ goal: g.goal, status: g.status, reasons: g.reasons }),
         );
+        v.goals_at = e.at;
+        v.goals_seq = typeof b.champion_seq === "number" ? b.champion_seq : null;
         break;
       }
       case "audit_requested": {
@@ -331,6 +475,8 @@ export function rigView(
           reason: String(b.reason ?? ""),
           decision: null,
           at: e.at,
+          expected_seq: typeof b.expected_seq === "number" ? b.expected_seq : null,
+          reasons: null,
         });
         break;
       }
@@ -338,9 +484,11 @@ export function rigView(
       case "audit_overridden": {
         for (const v of runs.values()) {
           const a = v.audits.filter((x) => x.attempt === e.subject).at(-1);
-          if (a)
+          if (a) {
             a.decision =
               e.kind === "audit_overridden" ? "overridden by the owner" : String(b.decision);
+            if (typeof b.reasons === "string") a.reasons = b.reasons;
+          }
         }
         break;
       }
@@ -362,11 +510,16 @@ export function rigView(
         break;
       }
       case "conclusion_proposed": {
+        const families = (Array.isArray(b.approaches) ? b.approaches : []).map((x) => {
+          const y = (x ?? {}) as Record<string, unknown>;
+          return { family: String(y.family ?? ""), attempts: Number(y.attempts ?? 0) };
+        });
         inst(String(e.subject)).conclusions.push({
           proposal: Number(b.proposal),
           decision: null,
-          approaches: Array.isArray(b.approaches) ? b.approaches.length : 0,
+          approaches: families.length,
           at: e.at,
+          families,
         });
         break;
       }
@@ -418,6 +571,52 @@ export function rigView(
         v.directives = Math.max(0, v.directives - (Array.isArray(b.ids) ? b.ids.length : 0));
         break;
       }
+      case "job_queued": {
+        const attempt = (b.attempt as string | null) ?? null;
+        jobs.set(String(e.subject), {
+          id: String(e.subject),
+          kind: String(b.kind ?? ""),
+          attempt,
+          run: attempt ? (attempts.get(attempt)?.run ?? null) : running,
+          queued_at: e.at,
+          started_at: null,
+          finished_at: null,
+          state: "queued",
+          result: {},
+        });
+        break;
+      }
+      case "job_leased": {
+        const j = jobs.get(String(e.subject));
+        if (j) {
+          j.started_at = e.at;
+          j.state = "running";
+        }
+        break;
+      }
+      case "job_finished": {
+        const j = jobs.get(String(e.subject));
+        if (!j) break;
+        j.finished_at = e.at;
+        j.state = String(b.state ?? "done");
+        j.result =
+          b.result && typeof b.result === "object" ? (b.result as Record<string, unknown>) : {};
+        const a = j.attempt ? attempts.get(j.attempt) : undefined;
+        if (a && j.state === "done") {
+          const r = j.result;
+          if (Array.isArray(r.gained)) a.gained = r.gained.map(String);
+          if (Array.isArray(r.lost)) a.lost = r.lost.map(String);
+          if (Array.isArray(r.unsure)) a.unsure = r.unsure.map(String);
+          a.waiting = typeof r.waiting === "string" ? r.waiting : null;
+        }
+        break;
+      }
+    }
+    const run = runOf(e);
+    if (run && runs.has(run)) {
+      const t = (runs.get(run) as RunView).timeline;
+      t.push(e);
+      if (t.length > 400) t.shift();
     }
   }
   for (const v of runs.values()) {
@@ -431,6 +630,7 @@ export function rigView(
   }
   const summary = u.summary as { jobs?: Record<string, number>; hardware?: unknown } | undefined;
   const now = opts.now ?? Date.now();
+  const allJobs = [...jobs.values()];
   return {
     id: u.id,
     last_seen: u.last_seen,
@@ -442,6 +642,11 @@ export function rigView(
     jobs: summary?.jobs ?? {},
     runs: [...runs.values()],
     recent: events.slice(-50).reverse(),
+    judge: {
+      now: allJobs.filter((j) => j.state === "running").at(-1) ?? null,
+      queued: allJobs.filter((j) => j.state === "queued"),
+      jobs: allJobs.slice(-200),
+    },
   };
 }
 
