@@ -171,7 +171,10 @@ describe("kit commands", () => {
     assert.equal(env.ledger.getRun("js-1")?.promotion, "owner_approval");
     assert.equal(env.service.promotionFor("js-1"), "owner_approval");
     const created = env.ledger.eventsAfter(0, 1000).events.find((e) => e.kind === "run_created");
-    assert.equal((created?.body as { promotion?: string }).promotion, "owner_approval");
+    assert.equal(
+      (created?.body as { promotion?: string } | undefined)?.promotion,
+      "owner_approval",
+    );
     await env.service.applyCommand(env.sign("assign_campaign", { ...base, run: "js-2" }));
     assert.equal(env.ledger.getRun("js-2")?.promotion, null);
     assert.equal(env.service.promotionFor("js-2"), "auto");
