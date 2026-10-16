@@ -7,6 +7,8 @@ import type { AddressInfo } from "node:net";
  */
 
 export interface ScriptedTurn {
+  /** Streamed first as reasoning (reasoning_content), as thinking models do. */
+  thinking?: string;
   text?: string;
   toolCalls?: { name: string; args: unknown }[];
   /** Ends the reply as cut off at the output limit (finish_reason "length"). */
@@ -65,6 +67,8 @@ export async function startFakeModel(script: Script): Promise<FakeModel> {
       const chunk = (delta: unknown, finish: string | null) =>
         `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created: 0, model: parsed.model, choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
       res.writeHead(200, { "content-type": "text/event-stream" });
+      if (turn.thinking)
+        res.write(chunk({ role: "assistant", reasoning_content: turn.thinking }, null));
       res.write(chunk({ role: "assistant", content: turn.text ?? "" }, null));
       (turn.toolCalls ?? []).forEach((t, i) => {
         res.write(

@@ -1,5 +1,5 @@
-import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
-import { type TSchema, Type } from "@earendil-works/pi-ai";
+import { Agent, type AgentMessage, type AgentTool } from "@earendil-works/pi-agent-core";
+import { type Message, type TSchema, Type } from "@earendil-works/pi-ai";
 import { type LaneLimitValues, laneLimits } from "../../core/contract.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { linkSession, type SessionLink } from "./live-session.ts";
@@ -301,6 +301,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
   const agent = new Agent({
     initialState: { systemPrompt: SYSTEM, model, tools, thinkingLevel },
     streamFn: models.streamSimple.bind(models),
+    convertToLlm: withoutPastThinking,
     // One tool call at a time: lane processes are killed by user when a tool finishes, so
     // parallel calls would kill each other, and a submission must end the trial before anything
     // else runs.
@@ -409,6 +410,29 @@ const NUDGE =
 
 const CUT_OFF =
   "Your last reply was cut off at the output limit before it made a tool call. Think briefly, then make one tool call; keep each reply short.";
+
+/**
+ * What is sent to the model: the conversation with every earlier reply's thinking left out (the
+ * replies' text, tool calls and their results stay). Qwen-family chat templates keep earlier
+ * reasoning only until the next user turn, so sending it both grows each prompt by all the
+ * thinking so far and, whenever a nudge or warning is appended, changes the prompt's prefix, which
+ * forces a shared model server to read the whole conversation again.
+ */
+export function withoutPastThinking(messages: AgentMessage[]): Message[] {
+  return messages
+    .filter(
+      (m) =>
+        m.role === "system" ||
+        m.role === "user" ||
+        m.role === "assistant" ||
+        m.role === "toolResult",
+    )
+    .map((m) =>
+      m.role === "assistant" && Array.isArray(m.content)
+        ? { ...m, content: m.content.filter((b) => (b as { type?: string }).type !== "thinking") }
+        : m,
+    ) as Message[];
+}
 
 /** Why keepGoing ended a trial early: its context is full, or the model is stuck or down. */
 export interface TrialEnd {

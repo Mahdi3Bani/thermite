@@ -369,6 +369,74 @@ describe("worker trial", () => {
     );
   });
 
+  test("earlier replies' thinking is never sent back to the model", async () => {
+    const env = makeJudgeEnv();
+    await env.service.applyCommand(env.assign);
+    const runner = new LocalRunner(env.paths.scratchDir);
+    const champion = env.ledger.currentChampion("js-1");
+    const ws = await prepareWorkspace({
+      runner,
+      scratchDir: env.paths.scratchDir,
+      mirror: env.service.mirrorFor("proj"),
+      commit: champion.commit_sha,
+      lane: "lane-1",
+    });
+    const sent: string[] = [];
+    const thinker = await startFakeModel(({ messages }) => {
+      sent.push(JSON.stringify(messages));
+      const done = messages.filter((m) => m.role === "tool").length;
+      if (done === 0)
+        return {
+          thinking: "SECRET-REASONING-1 the inner loop is waste",
+          toolCalls: [{ name: "read_file", args: { path: "src/kernel/work.mjs" } }],
+        };
+      if (done === 1)
+        return {
+          thinking: "SECRET-REASONING-2 drop it",
+          toolCalls: [
+            { name: "write_file", args: { path: "src/kernel/work.mjs", content: FAST_KERNEL } },
+          ],
+        };
+      return {
+        toolCalls: [{ name: "submit", args: { hypothesis: "less work", known_flaws: [] } }],
+      };
+    });
+    const r = await runTrial(
+      {
+        trialId: "t-think",
+        run: "js-1",
+        lane: "lane-1",
+        workspace: ws.repo,
+        parentCommit: champion.commit_sha,
+        editablePaths: ["src/kernel/**"],
+        brief: "Make work() faster without changing its result.",
+        wallMs: 60_000,
+      },
+      {
+        runner,
+        laneTool,
+        model: {
+          baseUrl: thinker.url,
+          model: "test",
+          apiKey: "k",
+          contextWindow: 32000,
+          maxTokens: 2000,
+        },
+        submit: (req) => env.service.submitAttempt({ ...req, lane: req.lane }, "proposer") as never,
+        status: async (id) => env.service.attemptStatus(id),
+      },
+    );
+    await thinker.close();
+    assert.equal(r.stopped, "submitted", JSON.stringify(r));
+    assert.equal(sent.length, 3);
+    // The replies' tool calls went back; their reasoning never did.
+    assert.match(sent[2] ?? "", /write_file/);
+    assert.ok(
+      sent.every((m) => !m.includes("SECRET-REASONING")),
+      sent.join("\n"),
+    );
+  });
+
   test("keepGoing ends a trial on a full context or a stuck model, never loops on it", async () => {
     // A stand-in agent: each prompt appends the next scripted assistant message.
     const fake = (

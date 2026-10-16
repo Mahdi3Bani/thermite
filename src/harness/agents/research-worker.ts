@@ -3,7 +3,7 @@ import { type TSchema, Type } from "@earendil-works/pi-ai";
 import { linkSession, type SessionLink } from "./live-session.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
 import type { TrialResult } from "./worker.ts";
-import { keepGoing } from "./worker.ts";
+import { keepGoing, withoutPastThinking } from "./worker.ts";
 
 /**
  * A research trial: a fresh agent session with research tools only, no shell and no files. Every
@@ -149,6 +149,7 @@ export async function runResearchTrial(
   const agent = new Agent({
     initialState: { systemPrompt: SYSTEM, model, tools, thinkingLevel },
     streamFn: models.streamSimple.bind(models),
+    convertToLlm: withoutPastThinking,
     // One tool call at a time: each is a request to the harness, in the order the model chose.
     toolExecution: "sequential",
   });
