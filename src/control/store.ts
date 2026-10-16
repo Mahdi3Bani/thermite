@@ -109,6 +109,18 @@ create table if not exists rig_live (
   received_at text not null
 );
 create unique index if not exists rig_live_seq on rig_live (rig, log_id, seq);
+-- Champions' patches as each rig's supervisor uploaded them, kept only when they match the
+-- sha256 the rig's signed champion_published event names: what an operator downloads.
+create table if not exists champion_patch (
+  rig text not null,
+  run text not null,
+  seq integer not null,
+  sha256 text not null,
+  base_commit text not null,
+  patch blob not null,
+  received_at text not null,
+  primary key (rig, run, seq)
+);
 create index if not exists rig_live_rig on rig_live (rig, id);
 create index if not exists rig_live_source on rig_live (rig, source, id);
 `;
@@ -661,6 +673,64 @@ export class ControlStore {
   }
 
   /** A rig's events in control's arrival order; `after` is a control `seq`, not an event id. */
+  /** The rig's signed record that a champion was published: its sha256 and base commit. */
+  publishedChampion(
+    rig: string,
+    run: string,
+    seq: number,
+  ): { sha256: string; base_commit: string; repo: string | null } | undefined {
+    const r = this.db
+      .prepare(
+        `select body from rig_event where rig = ? and kind = 'champion_published' and subject = ?
+           and json_extract(body, '$.seq') = ? order by seq desc limit 1`,
+      )
+      .get(rig, run, seq) as { body: string } | undefined;
+    if (!r) return undefined;
+    const b = JSON.parse(r.body) as { sha256?: string; base_commit?: string; repo?: string };
+    return {
+      sha256: String(b.sha256 ?? ""),
+      base_commit: String(b.base_commit ?? ""),
+      repo: b.repo ?? null,
+    };
+  }
+
+  /**
+   * A champion's patch from the rig's supervisor, kept only if it is the one the rig published
+   * (the supervisor transports it; it cannot change it).
+   */
+  putChampionPatch(
+    rig: string,
+    run: string,
+    seq: number,
+    patch: Buffer,
+  ): "stored" | "not_published" | "mismatch" {
+    const pub = this.publishedChampion(rig, run, seq);
+    if (!pub) return "not_published";
+    if (sha256Hex(patch) !== pub.sha256) return "mismatch";
+    this.db
+      .prepare(
+        `insert or ignore into champion_patch (rig, run, seq, sha256, base_commit, patch, received_at)
+           values (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(rig, run, seq, pub.sha256, pub.base_commit, patch, new Date().toISOString());
+    return "stored";
+  }
+
+  championPatch(
+    rig: string,
+    run: string,
+    seq: number,
+  ): { patch: Buffer; sha256: string; base_commit: string } | undefined {
+    const r = this.db
+      .prepare(
+        "select patch, sha256, base_commit from champion_patch where rig = ? and run = ? and seq = ?",
+      )
+      .get(rig, run, seq) as { patch: Uint8Array; sha256: string; base_commit: string } | undefined;
+    return r
+      ? { patch: Buffer.from(r.patch), sha256: r.sha256, base_commit: r.base_commit }
+      : undefined;
+  }
+
   events(rig: string, after: number, limit: number, ledgerId?: string | null): unknown[] {
     const byLedger = ledgerId ? " and ledger_id = ?" : "";
     return (

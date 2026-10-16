@@ -286,6 +286,38 @@ export function createControlApi(
     return c.json({ added });
   });
 
+  // A champion's patch, uploaded by the rig's supervisor once its export is published. It is
+  // kept only if its sha256 is the one the rig's signed champion_published event names.
+  app.post(
+    "/v1/rigs/:rig/champions/:run/:seq/patch",
+    rigAuth,
+    bodyLimit({ maxSize: 64 * 1024 * 1024 }),
+    async (c) => {
+      const seq = Number(c.req.param("seq"));
+      if (!Number.isInteger(seq) || seq < 1) return c.json({ error: "bad seq" }, 400);
+      const patch = Buffer.from(await c.req.arrayBuffer());
+      const r = store.putChampionPatch(c.req.param("rig"), c.req.param("run"), seq, patch);
+      if (r === "not_published")
+        return c.json({ error: "control has no champion_published event for it yet" }, 409);
+      if (r === "mismatch")
+        return c.json({ error: "the patch is not the one the rig published" }, 422);
+      return c.json({ stored: true }, 201);
+    },
+  );
+  app.get("/v1/rigs/:rig/champions/:run/:seq/patch", admin, (c) => {
+    const p = store.championPatch(
+      c.req.param("rig"),
+      c.req.param("run"),
+      Number(c.req.param("seq")),
+    );
+    if (!p) return c.json({ error: "no patch for that champion" }, 404);
+    return c.body(new Uint8Array(p.patch), 200, {
+      "content-type": "text/x-diff",
+      "x-thermite-base-commit": p.base_commit,
+      "x-thermite-sha256": p.sha256,
+    });
+  });
+
   app.post("/v1/rigs/:rig/reports", rigAuth, bodyLimit({ maxSize: 1024 * 1024 }), async (c) => {
     const body = z
       .object({ kind: z.enum(["daily"]), body: z.string().min(1).max(200_000) })

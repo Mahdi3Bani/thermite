@@ -879,6 +879,20 @@ ${
   });
 
   // ---------------------------------------------------------------- one attempt
+  // A champion as a patch file: the result an operator takes away (it applies to the base commit).
+  app.get("/ui/rigs/:rig/runs/:run/champions/:file", (c) => {
+    const m = /^(\d+)\.patch$/.exec(c.req.param("file"));
+    const p = m
+      ? store.championPatch(c.req.param("rig"), c.req.param("run"), Number(m[1]))
+      : undefined;
+    if (!m || !p) return c.text("No patch for that champion yet.", 404);
+    const name = `${c.req.param("run")}-champion-${m[1]}-on-${p.base_commit.slice(0, 8)}.patch`;
+    return c.body(new Uint8Array(p.patch), 200, {
+      "content-type": "text/x-diff; charset=utf-8",
+      "content-disposition": `attachment; filename="${name.replace(/[^\w.-]/g, "_")}"`,
+    });
+  });
+
   app.get("/ui/rigs/:rig/attempts/:attempt", (c) => {
     const now = Date.now();
     const vs = views();

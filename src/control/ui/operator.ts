@@ -589,6 +589,11 @@ export function runNow(
         : r.mode === "hill_climb"
           ? ` · ${esc(signed((champ?.cumulative ?? 1) - 1))} over the starting point`
           : ""
+    }${
+      // The latest published champion as a patch (it applies to the run's starting commit).
+      r.published && store.championPatch(u.id, r.id, r.published.seq)
+        ? ` · <a href="/ui/rigs/${encodeURIComponent(u.id)}/runs/${encodeURIComponent(r.id)}/champions/${r.published.seq}.patch">download champion #${r.published.seq} as a patch</a> <span class="muted">(applies to ${esc(short(r.published.base_commit))})</span>`
+        : ""
     }`,
   );
   const head = opts.heading

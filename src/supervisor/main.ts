@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { log, optionalSecretFromFile, requireEnv, secretFromFile } from "../common/env.ts";
 import { type AdviseState, adviseOnce, emptyAdviseState } from "./advise.ts";
 import { AdvisorsConfig } from "./advisors.ts";
+import { type ChampionUpload, championsIn, uploadChampions } from "./champions.ts";
 import { type ExportState, exportOnce } from "./git-export.ts";
 import { type LiveRelayState, relayLiveOnce, supervisorLive } from "./live.ts";
 import { RelayError, type RelayState, relayCommandsOnce, relayOnce } from "./relay.ts";
@@ -73,6 +74,9 @@ async function main(): Promise<void> {
   const intervalMs = Number(env.THERMITE_POLL_SECONDS ?? "60") * 1000;
   const exportPath = join(home, "export-state.json");
   let exportState: ExportState = load(exportPath, { done: [] });
+  // Champion patches waiting to reach control (kept across restarts).
+  const championQueuePath = join(home, "champion-uploads.json");
+  let championQueue: ChampionUpload[] = load(championQueuePath, []);
   const exportCfg = {
     rig,
     outboxDir: env.THERMITE_OUTBOX_DIR ?? "/outbox",
@@ -221,6 +225,12 @@ async function main(): Promise<void> {
     try {
       const before = exportState.done.length;
       const next = await exportOnce(exportCfg, exportState);
+      // Champions in the exports just made go to control too (downloadable from the dashboard).
+      const fresh = next.done.filter((n) => !exportState.done.includes(n));
+      if (fresh.length) {
+        championQueue.push(...championsIn(exportCfg.outboxDir, fresh));
+        save(championQueuePath, championQueue);
+      }
       if (next.done.length !== before || next.lastError !== exportState.lastError) {
         save(exportPath, next);
         log("supervisor", "exported", {
@@ -244,6 +254,14 @@ async function main(): Promise<void> {
       }
     } catch (err) {
       log("supervisor", "export error", { error: String(err) });
+    }
+    if (championQueue.length && controlUrl && controlToken) {
+      const left = await uploadChampions(
+        { rig, controlUrl, controlToken, resultsRepo: join(home, "results.git") },
+        championQueue,
+      );
+      if (left.length !== championQueue.length) save(championQueuePath, left);
+      championQueue = left;
     }
     try {
       // Supervisor figures for control: git sync, advisors, relay.

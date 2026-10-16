@@ -147,6 +147,8 @@ Workers and the planner run when the harness has a model route: an OpenAI-compat
   - an audit can block a promotion, never force one;
   - a panel's pass still needs the owner's acceptance.
 
+**Getting a result.** A run's champion is published with the rig's next export (every `THERMITE_EXPORT_MINUTES`, 60 by default, or at once with Export now on the rig's page). Its supervisor then uploads the patch to control, which keeps it only if it matches the sha256 the rig published. The run's "at work" panel links it ("download champion #N as a patch"), and the API serves it at `GET /v1/rigs/<rig>/champions/<run>/<seq>/patch` with the owner's token. Apply it to the run's starting commit, which the link names: `git apply` in a checkout of that commit.
+
 **Results repository.** Locally, both rigs' supervisors push their exports to one repository on a shared volume (`file:///results/results.git`). Set `THERMITE_RESULTS_REMOTE` (and `THERMITE_RESULTS_KEY_FILE` for SSH) to use a real one. Propagation reads published champions from it.
 - Set `THERMITE_RESULTS_KNOWN_HOSTS` to a known_hosts file to pin the git host's key. Without it, the first key the host shows is trusted.
 - The supervisor commits only regular files that the export's manifest lists, and never replaces a file already published. After a push, the harness removes the pushed exports from the outbox.
