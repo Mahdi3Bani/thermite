@@ -194,6 +194,34 @@ To run it beside another stack, give it its own project and control port: `THERM
 - a restart, when an engine socket is available;
 - a full reset.
 
+## Credentials and agents over MCP
+
+Control has four kinds of token:
+
+| Token | May |
+| --- | --- |
+| Owner (admin) | Everything, including approvals, accepting reviews and endings, and wipes |
+| Operator | Read; assign, pause, resume, redirect, reset workers and export; message the run's agents on the owner's behalf |
+| Agent | Read; assign, pause, resume, redirect, reset workers and export |
+| Reader | Read |
+
+Locally, `dev:init` writes the owner's and an operator's tokens to `.dev/secrets/`, and compose gives control the files.
+
+Deployed, give control only each token's hash, as `THERMITE_CONTROL_<ROLE>_TOKEN_SHA256` for `ADMIN`, `OPERATOR`, `AGENT` or `READ`. Make each token on your own machine:
+
+```sh
+node dist/cli/thermite.js token new --out ~/thermite-owner-token   # prints its SHA-256
+```
+
+Keep the token, for example in a password manager. The machine control runs on then holds nothing that signs in.
+
+MCP is at `/mcp` on control (streamable HTTP), with the token as a bearer. For example, to let Claude Code operate the local stack:
+
+```sh
+claude mcp add --transport http thermite http://127.0.0.1:8800/mcp \
+  --header "Authorization: Bearer $(cat .dev/secrets/control-operator-token)"
+```
+
 ## The command line
 
 `thermite` validates contracts, prints campaign assignments, issues commands through control and submits patches:

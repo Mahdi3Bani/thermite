@@ -22,6 +22,8 @@ const write = (name, value) => {
   if (!existsSync(p)) writeFileSync(p, value, { mode: 0o644 });
 };
 write("control-admin-token", token());
+// An operating agent's token for control's MCP (it may steer and message agents, never approve).
+write("control-operator-token", token());
 // Rig 1 (always) and rig 2 (the compose "two-rigs" profile). Each has a control token, a
 // harness<->supervisor token and a proposer token.
 write("control-rig-token", token());

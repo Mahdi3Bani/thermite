@@ -1,13 +1,17 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { describe, test } from "node:test";
 import { createHarnessApi } from "../harness/api.ts";
 import { relayOnce } from "../supervisor/relay.ts";
 import { seedDemo } from "../testing/control-demo.ts";
 import { FAST_KERNEL, makeJudgeEnv } from "../testing/judge-env.ts";
 import { createControlApi } from "./api.ts";
+import { Credential } from "./credential.ts";
 import { ControlStore } from "./store.ts";
 
 /** Control with one rig whose harness runs the Node test kit; the relay is called directly. */
+const sha256 = (t: string) => createHash("sha256").update(t).digest("hex");
+
 async function stack(promotion: "auto" | "owner_approval" = "owner_approval") {
   const env = makeJudgeEnv({ promotion });
   const store = new ControlStore(":memory:");
@@ -149,6 +153,27 @@ describe("control dashboard", () => {
     assert.match(list, /Tesla P100-PCIE-16GB · &lt;b&gt;Evil card&lt;\/b&gt; · 4 CPU · 10 GiB RAM/);
   });
 
+  test("with only the token's hash, the owner signs in with the token, and the hash signs in no one", async () => {
+    const store = new ControlStore(":memory:");
+    const control = createControlApi(
+      store,
+      { admin: Credential.ofHash(sha256("admin-token-abcdef")), rigs: {} },
+      makeJudgeEnv().keys.privateKeyPem,
+    );
+    const signIn = (token: string) =>
+      control.request("/ui/login", {
+        method: "POST",
+        body: new URLSearchParams({ token }),
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+      });
+    const ok = await signIn("admin-token-abcdef");
+    assert.equal(ok.headers.get("location"), "/ui");
+    const cookie = (ok.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
+    assert.equal((await control.request("/ui", { headers: { cookie } })).status, 200);
+    const hash = await signIn(sha256("admin-token-abcdef"));
+    assert.equal(hash.headers.get("location"), "/ui/login");
+  });
+
   test("a session survives a restart of control, renews in use, and ends with a new token", async () => {
     const store = new ControlStore(":memory:");
     const keys = makeJudgeEnv().keys;
@@ -176,6 +201,13 @@ describe("control dashboard", () => {
     const before = await formToken(first);
     const restarted = control("admin-token-abcdef");
     assert.equal(await formToken(restarted), before);
+    // Deployed with only the token's hash, control knows the same session.
+    const hashed = createControlApi(
+      store,
+      { admin: Credential.ofHash(sha256("admin-token-abcdef")), rigs: {} },
+      keys.privateKeyPem,
+    );
+    assert.equal(await formToken(hashed), before);
     // A session older than a day is renewed when used.
     store.db.prepare("update ui_session set expires_at = ?").run(Date.now() + 3_600_000);
     const used = await restarted.request("/ui", { headers: { cookie } });

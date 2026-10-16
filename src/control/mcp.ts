@@ -1,9 +1,9 @@
-import { timingSafeEqual } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { Hono } from "hono";
 import { z } from "zod";
 import type { CommandKind } from "../core/commands.ts";
+import type { Credential } from "./credential.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
 import type { ControlStore } from "./store.ts";
 import { leaderboard, rigView } from "./views.ts";
@@ -27,13 +27,21 @@ const AGENT_COMMANDS = [
   "reset_workers",
   "export_now",
 ] as const satisfies readonly CommandKind[];
+/**
+ * An operator (a token the owner gives an operating agent) may also message the run's agents, on
+ * the owner's behalf; it never approves, accepts or wipes.
+ */
+const OPERATOR_COMMANDS = [...AGENT_COMMANDS, "message_agent"] as const;
 /** The owner (admin token) may also approve promotions over MCP; agents never may. */
-const OWNER_COMMANDS = [...AGENT_COMMANDS, "approve_promotion"] as const;
+const OWNER_COMMANDS = [...OPERATOR_COMMANDS, "approve_promotion"] as const;
+
+type Role = "owner" | "operator" | "agent" | "reader";
 
 export interface McpOptions {
-  adminToken: string;
-  agentToken?: string | undefined;
-  readToken?: string | undefined;
+  admin: Credential;
+  operator?: Credential | undefined;
+  agent?: Credential | undefined;
+  read?: Credential | undefined;
   privateKeyPem: string;
   staleAfterMs: number;
 }
@@ -42,20 +50,10 @@ const json = (value: unknown) => ({
   content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }],
 });
 
-function same(a: string, b: string): boolean {
-  const x = Buffer.from(a);
-  const y = Buffer.from(b);
-  return x.length === y.length && timingSafeEqual(x, y);
-}
-
-function buildServer(
-  store: ControlStore,
-  opts: McpOptions,
-  actor: string,
-  role: "owner" | "agent" | "reader",
-): McpServer {
+function buildServer(store: ControlStore, opts: McpOptions, actor: string, role: Role): McpServer {
   const canCommand = role !== "reader";
-  const kinds = role === "owner" ? OWNER_COMMANDS : AGENT_COMMANDS;
+  const kinds =
+    role === "owner" ? OWNER_COMMANDS : role === "operator" ? OPERATOR_COMMANDS : AGENT_COMMANDS;
   const server = new McpServer({ name: "thermite-control", version: "1.0.0" });
   const audited = <A>(tool: string, fn: (args: A) => unknown) => {
     return async (args: A) => {
@@ -258,19 +256,25 @@ export function mountMcp(app: Hono, store: ControlStore, opts: McpOptions): void
   app.all("/mcp", async (c) => {
     const header = c.req.header("authorization") ?? "";
     const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-    const is = (expected: string | undefined) =>
-      expected !== undefined && token.length > 0 && same(token, expected);
-    const role = is(opts.adminToken)
+    const role: Role | undefined = opts.admin.matches(token)
       ? "owner"
-      : is(opts.agentToken)
-        ? "agent"
-        : is(opts.readToken)
-          ? "reader"
-          : undefined;
+      : opts.operator?.matches(token)
+        ? "operator"
+        : opts.agent?.matches(token)
+          ? "agent"
+          : opts.read?.matches(token)
+            ? "reader"
+            : undefined;
     if (!role) return c.json({ error: "unauthorized" }, 401);
     // Stateless: a fresh server and transport per request. The actor is what commands record as
-    // their issuer, and only "owner:" issuers pass the harness's owner-only gates.
-    const actor = role === "owner" ? "owner:mcp" : role === "agent" ? "agent:mcp" : "reader:mcp";
+    // their issuer, and only "owner:" issuers pass the harness's owner-only gates: an operator
+    // acts for the owner (its kinds are limited above), an agent does not.
+    const actor = {
+      owner: "owner:mcp",
+      operator: "owner:operator",
+      agent: "agent:mcp",
+      reader: "reader:mcp",
+    }[role];
     const server = buildServer(store, opts, actor, role);
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,

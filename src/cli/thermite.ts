@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
+import { newToken } from "../control/credential.ts";
 import { generateSigningKeys } from "../core/commands.ts";
 import { CommitSchema, parseContract } from "../core/contract.ts";
 
@@ -14,6 +15,9 @@ const USAGE = `usage: thermite <command> [options]
 
   contract validate <file>            validate a contract and print its sha256
   keys generate <dir>                 write a new Ed25519 control signing key pair
+  token new --out F                   make a control token: write it to F (mode 0600; keep it,
+                                      for example in a password manager) and print its SHA-256,
+                                      the only part control's deployment needs
   assign-payload --contract F --run ID --seed-repo R --seed-commit C --bundle PATH
                  [--bundle-sha256 H] [--kit-repo R --kit-commit C --kit-bundle PATH
                  [--kit-bundle-sha256 H]] [--model NAME=SHA256:PATH ...] [--direction D] [--agents off]
@@ -81,6 +85,18 @@ async function main(argv: string[]): Promise<void> {
       writeFileSync(join(dir, "control-signing.key"), keys.privateKeyPem, { mode: 0o600 });
       writeFileSync(join(dir, "control-signing.pub"), keys.publicKeyPem, { mode: 0o644 });
       process.stdout.write(`wrote ${dir}/control-signing.{key,pub}\n`);
+      return;
+    }
+    case "token": {
+      const [sub, ...args] = rest;
+      const { values } = parseArgs({ args, options: { out: { type: "string" } } });
+      if (sub !== "new" || !values.out) fail(USAGE);
+      if (existsSync(values.out)) fail(`${values.out} exists; a token is never overwritten`);
+      const t = newToken();
+      writeFileSync(values.out, `${t.token}\n`, { mode: 0o600, flag: "wx" });
+      process.stdout.write(
+        `wrote the token to ${values.out}\nsha256 ${t.sha256}\nDeploy control with the hash, for example THERMITE_CONTROL_ADMIN_TOKEN_SHA256=${t.sha256}.\n`,
+      );
       return;
     }
     case "assign-payload": {

@@ -4,6 +4,7 @@ import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { COMMAND_KINDS, type CommandKind, reportBody, verifyJson } from "../core/commands.ts";
 import { LiveBatch, LiveEntry, liveBody } from "../core/live.ts";
+import { Credential } from "./credential.ts";
 import { createDashboard } from "./dashboard.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
 import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
@@ -17,16 +18,27 @@ import { leaderboard, rigView } from "./views.ts";
  * may only report for its own rig, fetch its own pending commands and acknowledge them.
  */
 
+/**
+ * Control's credentials. Each is a token or, in deployment, a Credential holding only the
+ * token's hash (the owner keeps the token; see credential.ts).
+ */
 export interface ControlTokens {
-  admin: string;
+  /** The owner's. */
+  admin: string | Credential;
   /** Optional read-only token (MCP and API reads for observers). */
-  read?: string | undefined;
+  read?: string | Credential | undefined;
   /**
    * Optional token for agents on MCP (for example a coordinating agent): it may read and steer
-   * (assign, pause, resume, redirect, reset workers, export, propagate), never approve, accept or
-   * wipe. The admin token is the owner's.
+   * (assign, pause, resume, redirect, reset workers, export), never message agents, approve,
+   * accept or wipe.
    */
-  agent?: string | undefined;
+  agent?: string | Credential | undefined;
+  /**
+   * Optional token the owner gives an operating agent on MCP: what the agent token may do, and
+   * message the run's agents on the owner's behalf. Approvals, acceptances, endings and wipes
+   * stay the owner's.
+   */
+  operator?: string | Credential | undefined;
   /** rig id -> token */
   rigs: Record<string, string>;
 }
@@ -143,8 +155,21 @@ export function createControlApi(
   const app = new Hono();
   store.setConfiguredRigs(Object.keys(tokens.rigs));
 
+  const owner = Credential.from(tokens.admin);
+  const opt = (t: string | Credential | undefined) =>
+    t === undefined ? undefined : Credential.from(t);
+  const creds = {
+    owner,
+    read: opt(tokens.read),
+    agent: opt(tokens.agent),
+    operator: opt(tokens.operator),
+  };
+  // Each credential is distinct: the owner's, an operator's, an agent's and a reader's.
+  const given = Object.values(creds).filter((x): x is Credential => x !== undefined);
+  if (given.some((x, i) => given.slice(i + 1).some((y) => x.same(y))))
+    throw new Error("the admin, operator, agent and read tokens must all be different");
   const admin: MiddlewareHandler = async (c, next) => {
-    if (!eq(bearer(c.req.header("authorization")), tokens.admin))
+    if (!owner.matches(bearer(c.req.header("authorization"))))
       return c.json({ error: "unauthorized" }, 401);
     await next();
   };
@@ -352,8 +377,7 @@ export function createControlApi(
   // Metrics: the read token is enough (a scraper should not hold the owner's credential).
   const reader: MiddlewareHandler = async (c, next) => {
     const t = bearer(c.req.header("authorization"));
-    if (!eq(t, tokens.admin) && !(tokens.read && eq(t, tokens.read)))
-      return c.json({ error: "unauthorized" }, 401);
+    if (!owner.matches(t) && !creds.read?.matches(t)) return c.json({ error: "unauthorized" }, 401);
     await next();
   };
   app.get("/metrics", reader, (c) =>
@@ -423,7 +447,7 @@ export function createControlApi(
   app.route(
     "/",
     createDashboard(store, {
-      adminToken: tokens.admin,
+      admin: owner,
       privateKeyPem,
       staleAfterMs: opts.staleAfterMs,
       driver: opts.driver,
@@ -432,9 +456,10 @@ export function createControlApi(
   );
   app.get("/", (c) => c.redirect("/ui", 302));
   mountMcp(app, store, {
-    adminToken: tokens.admin,
-    agentToken: tokens.agent,
-    readToken: tokens.read,
+    admin: owner,
+    operator: creds.operator,
+    agent: creds.agent,
+    read: creds.read,
     privateKeyPem,
     staleAfterMs: opts.staleAfterMs,
   });

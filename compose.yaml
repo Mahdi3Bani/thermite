@@ -9,7 +9,10 @@ services:
     environment:
       THERMITE_CONTROL_DIR: /var/lib/thermite-control
       THERMITE_CONTROL_LISTEN: 0.0.0.0:8800
+      # Locally the owner's token is a file; deployed, give only its hash instead
+      # (THERMITE_CONTROL_ADMIN_TOKEN_SHA256, from `thermite token new`).
       THERMITE_CONTROL_ADMIN_TOKEN_FILE: /run/secrets/control-admin-token
+      THERMITE_CONTROL_OPERATOR_TOKEN_FILE: /run/secrets/control-operator-token
       THERMITE_CONTROL_RIG_TOKENS_FILE: /run/secrets/control-rig-tokens
       THERMITE_CONTROL_PUBKEY_EXPORT: /keys/control-signing.pub
       THERMITE_CONTROL_STALE_SECONDS: "${THERMITE_CONTROL_STALE_SECONDS:-180}"
@@ -24,7 +27,7 @@ services:
     volumes:
       - control-state:/var/lib/thermite-control
       - control-pub:/keys
-    secrets: [control-admin-token, control-rig-tokens]
+    secrets: [control-admin-token, control-operator-token, control-rig-tokens]
     ports: ["127.0.0.1:${THERMITE_CONTROL_PORT:-8800}:8800"]
     networks: [control]
     cap_drop: [ALL]
@@ -186,6 +189,7 @@ volumes:
 
 secrets:
   control-admin-token: { file: ./.dev/secrets/control-admin-token }
+  control-operator-token: { file: ./.dev/secrets/control-operator-token }
   control-rig-tokens: { file: ./.dev/secrets/control-rig-tokens.json }
   control-rig-token: { file: ./.dev/secrets/control-rig-token }
   harness-supervisor-token: { file: ./.dev/secrets/harness-supervisor-token }

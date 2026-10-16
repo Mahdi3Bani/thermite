@@ -3,6 +3,7 @@ import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { getCookie, setCookie } from "hono/cookie";
 import { COMMAND_KINDS, type CommandKind } from "../core/commands.ts";
+import type { Credential } from "./credential.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
 import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
 import { type ControlStore, fingerprint } from "./store.ts";
@@ -84,7 +85,8 @@ type Ctx = Context<any, any, any>;
 type RunViewName = "overview" | "attempts" | "history" | "steering";
 
 export interface DashboardOptions {
-  adminToken: string;
+  /** The owner's credential (the dashboard signs in with its token). */
+  admin: Credential;
   privateKeyPem: string;
   staleAfterMs: number;
   driver?: DeploymentDriver | undefined;
@@ -110,8 +112,11 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
     const y = Buffer.from(b);
     return x.length === y.length && timingSafeEqual(x, y);
   };
-  // Keyed by the admin token: stable across restarts, and void once the token changes.
-  const tokenKey = createHash("sha256").update(`thermite-ui\0${opts.adminToken}`).digest();
+  // Keyed by control's own signing key and the owner's credential: stable across restarts, void
+  // once the token changes, and not derivable from the token's hash alone (which is not secret).
+  const tokenKey = createHash("sha256")
+    .update(`thermite-ui\0${opts.privateKeyPem}\0${opts.admin.hex}`)
+    .digest();
   const tokenFp = createHmac("sha256", tokenKey).update("session-fingerprint").digest("hex");
   const csrfOf = (sid: string) =>
     createHmac("sha256", tokenKey).update(`csrf\0${sid}`).digest("hex");
@@ -164,7 +169,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
     if (failures.length >= 20) return c.text("too many failed sign-ins; wait a minute", 429);
     const form = await c.req.parseBody();
     const token = String(form.token ?? "");
-    if (!sameBytes(token, opts.adminToken)) {
+    if (!opts.admin.matches(token)) {
       failures.push(now);
       if (failures.length === 20) store.audit("control", "login_throttled", {});
       return c.redirect("/ui/login", 303);
