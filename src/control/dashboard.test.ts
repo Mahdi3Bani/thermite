@@ -89,6 +89,37 @@ describe("control dashboard", () => {
     assert.match(after, /The model route check FAILED/);
   });
 
+  test("the supervisor's figures, advisor roles included, are accepted and say whether an auditor will decide", async () => {
+    const s = await stack();
+    await s.env.service.applyCommand(s.env.assign);
+    await s.relay();
+    // The shape the supervisor sends (src/supervisor/main.ts): its stats and its configured roles.
+    const r = await s.control.request("/v1/rigs/rig-a/supervisor", {
+      method: "POST",
+      headers: { authorization: "Bearer rig-token-abcdef", "content-type": "application/json" },
+      body: JSON.stringify({
+        at: new Date().toISOString(),
+        relay: { cursor: 3 },
+        export: { remote: false, exports: 1, pushed: [], last_push_at: null, last_error: null },
+        advisors: {
+          teacher_runs: 2,
+          directive_sets: 1,
+          directives: 3,
+          audits: 0,
+          reviews: 0,
+          errors: 0,
+          tokens_in: 100,
+          tokens_out: 20,
+          usd: 0,
+          roles: { teachers: 2, combiner: true, auditor: false, panel: 0 },
+        },
+      }),
+    });
+    assert.equal(r.status, 200, await r.clone().text());
+    const sup = s.store.supervisor("rig-a") as { advisors?: { roles?: { auditor?: boolean } } };
+    assert.equal(sup.advisors?.roles?.auditor, false);
+  });
+
   test("a supervisor's self-report cannot carry markup, and pages forbid scripts", async () => {
     const s = await stack();
     await s.env.service.applyCommand(s.env.assign);

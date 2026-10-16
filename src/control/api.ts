@@ -125,6 +125,15 @@ const SupervisorStats = z.strictObject({
       tokens_out: Count,
       usd: Count,
       last_error: Short.optional(),
+      /** Which advisor roles the rig has configured (so control knows if an auditor decides). */
+      roles: z
+        .strictObject({
+          teachers: Count,
+          combiner: z.boolean(),
+          auditor: z.boolean(),
+          panel: Count,
+        })
+        .optional(),
     })
     .nullable()
     .optional(),
