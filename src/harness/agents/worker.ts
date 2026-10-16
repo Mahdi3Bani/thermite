@@ -199,7 +199,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
     ),
     tool(
       "run",
-      `Run a shell command in the repository (build, test, inspect). Output is truncated. Timings from here never count. Limits: ${limits.runTimeoutS} s per command (timeout_s, default 120), ${limits.runRssMib} MiB of memory, ${limits.workspaceMib} MiB of disk for the workspace.`,
+      `Run a shell command in the repository (build, test, inspect). Output is truncated. Timings from here never count. Limits: ${limits.runTimeoutS} s per command (timeout_s, default 120), ${limits.runRssMib} MiB of memory for the whole command, ${limits.workspaceMib} MiB of disk for the workspace. Anything it starts in the background (nohup, &) is killed when the call ends: run long builds in the foreground with a larger timeout_s, and if one is cut off, run it again (build tools and the lane cache keep finished steps).`,
       Type.Object({ command: Type.String(), timeout_s: Type.Optional(Type.Number()) }),
       async (p) => {
         const r = await deps.runner.run({

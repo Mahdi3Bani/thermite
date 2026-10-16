@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import type { Runner, RunOutcome, RunRequest } from "../broker/runner.ts";
+import { apiCall } from "./api-call.ts";
 import { modelConfigFromEnv } from "./model.ts";
 import { runResearchTrial } from "./research-worker.ts";
 import type { AnyTrial } from "./spawn.ts";
@@ -39,13 +40,14 @@ async function main(): Promise<void> {
   const api = process.env.THERMITE_HARNESS_URL ?? "http://127.0.0.1:8700";
   const token = `trial.${trial.spec.token ?? ""}`;
   const call = async (method: string, path: string, body?: unknown) => {
-    const res = await fetch(`${api}${path}`, {
+    const { status, text } = await apiCall(
+      `${api}${path}`,
       method,
-      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-    });
-    const text = await res.text();
-    if (!res.ok) throw new Error(`${method} ${path} -> ${res.status}: ${text.slice(0, 500)}`);
+      { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body !== undefined ? JSON.stringify(body) : undefined,
+    );
+    if (status < 200 || status >= 300)
+      throw new Error(`${method} ${path} -> ${status}: ${text.slice(0, 500)}`);
     return JSON.parse(text);
   };
   // The live view: this session's turns to the live log, the owner's messages back in.
