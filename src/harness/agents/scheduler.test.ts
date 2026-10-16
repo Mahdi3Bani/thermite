@@ -653,4 +653,86 @@ describe("agent scheduler", () => {
     await second.idle();
     assert.equal(started, 1);
   });
+
+  /** A goal campaign with one lane, a planner that records its input, and trials that record their brief. */
+  async function goalSetup(goalReportWaitMs?: number) {
+    const env = makeJudgeEnv({
+      goal: { opsPerSecond: 150e6 },
+      contract: { lanes: { count: 1, trials_per_epoch: 1 } },
+    });
+    await env.service.applyCommand(env.assign);
+    const planned: string[] = [];
+    const fake = await startFakeModel(({ messages, tools }) => {
+      if (!tools.some((t) => t.function.name === "submit_plan")) return { text: "done" };
+      planned.push(JSON.stringify(messages));
+      return {
+        toolCalls: [
+          {
+            name: "submit_plan",
+            args: {
+              new_families: [{ id: "speed", description: "make the sum faster" }],
+              assignments: [
+                {
+                  lane: "lane-1",
+                  family: "speed",
+                  focus: "reach the fast goal",
+                  parent: "champion",
+                },
+              ],
+            },
+          },
+        ],
+      };
+    });
+    const briefs: string[] = [];
+    const scheduler = new Scheduler({
+      service: env.service,
+      runner: new LocalRunner(env.paths.scratchDir),
+      model: { baseUrl: fake.url, model: "m", apiKey: "k", contextWindow: 32000, maxTokens: 2000 },
+      owner: "scheduler-test",
+      goalReportWaitMs,
+      runTrial: async (spec) => {
+        briefs.push(spec.brief);
+        return { stopped: "no_submission", turns: 1, toolCalls: 0, tokensIn: 0, tokensOut: 0 };
+      },
+    });
+    const live = () =>
+      env.service.live
+        .since(0)
+        .entries.map((e) => e.text)
+        .join("\n");
+    return { env, fake, planned, briefs, scheduler, live };
+  }
+
+  test("goal mode: an epoch is planned from the judge's goal report on the champion", async () => {
+    const { env, fake, planned, briefs, scheduler, live } = await goalSetup();
+    assert.equal(await scheduler.tick(), false); // the seed is not validated yet: no plan
+    assert.equal(planned.length, 0);
+    assert.match(live(), /epoch 1 waits for the judge's goal report on champion #1/);
+    await env.drain(); // the judge validates the seed
+    assert.ok(await scheduler.tick());
+    await scheduler.idle();
+    assert.equal(planned.length, 1);
+    // The planner and the worker both see what the champion meets.
+    assert.match(String(planned[0]), /\\"goal_report\\"/);
+    assert.match(String(planned[0]), /\\"goal\\":\\"fast\\",[^}]*\\"status\\":\\"unmet\\"/);
+    assert.match(String(briefs[0]), /# What the champion meets/);
+    assert.match(String(briefs[0]), /- correct: met\n/);
+    assert.match(String(briefs[0]), /- fast: unmet\. /);
+    await fake.close();
+  });
+
+  test("goal mode: with no goal report in time, the epoch is planned anyway", async () => {
+    const { env, fake, planned, scheduler, live } = await goalSetup(0);
+    assert.ok(await scheduler.tick()); // nothing validated, the wait is over: planned
+    await scheduler.idle();
+    assert.equal(planned.length, 1);
+    assert.doesNotMatch(String(planned[0]), /\\"goal_report\\"/);
+    assert.match(
+      live(),
+      /planning epoch 1 without a goal report on champion #1 \(none after 0 min\)/,
+    );
+    assert.equal(env.ledger.db.prepare("select count(*) as n from epoch").get()?.n, 1);
+    await fake.close();
+  });
 });

@@ -9,7 +9,7 @@ import type { Ledger } from "../ledger.ts";
 import type { Research } from "../research/research.ts";
 import type { HarnessService } from "../service.ts";
 import type { ModelConfig } from "./model.ts";
-import { attribute, lanesOf, type PlannerInput, plan } from "./planner.ts";
+import { attribute, type GoalReport, lanesOf, type PlannerInput, plan } from "./planner.ts";
 import { type Assignment, Registry } from "./registry.ts";
 import type { ResearchTrialSpec } from "./research-worker.ts";
 import type { TrialResult, TrialSpec } from "./worker.ts";
@@ -54,6 +54,8 @@ export interface SchedulerOptions {
   /** A cap on each trial's turns: none unless configured (THERMITE_MAX_TURNS). */
   maxTurns?: number | undefined;
   epochCapMs?: number | undefined;
+  /** Goal mode: how long an epoch waits for the judge's goal report on a new champion. */
+  goalReportWaitMs?: number | undefined;
   /** Model price per million tokens, for the contract's llm_usd budget (unset: not enforced). */
   usdPerMTokIn?: number | undefined;
   usdPerMTokOut?: number | undefined;
@@ -98,12 +100,14 @@ export class Scheduler {
   /** The newest workers_reset event acted on. */
   private resetSeen: number;
   private cooldownNoted = "";
+  private reportNoted = "";
 
   constructor(opts: SchedulerOptions) {
     this.o = {
       maxConcurrent: 1,
       trialWallMs: 20 * 60_000,
       epochCapMs: 3 * 3_600_000,
+      goalReportWaitMs: 2 * 3_600_000,
       backoffBaseMs: 15_000,
       backoffMaxMs: 10 * 60_000,
       ...opts,
@@ -422,6 +426,66 @@ export class Scheduler {
     }
   }
 
+  /** The judge's latest goal report on this champion (its validation), if there is one. */
+  private goalReport(run: string, seq: number): GoalReport | undefined {
+    const row = this.ledger.db
+      .prepare(
+        "select body from event where kind = 'goal_report' and subject = ? and json_extract(body, '$.champion_seq') = ? order by id desc limit 1",
+      )
+      .get(run, seq) as { body: string } | undefined;
+    if (!row) return undefined;
+    const body = JSON.parse(row.body) as GoalReport;
+    return {
+      champion_seq: seq,
+      goals: body.goals.map((g) => ({
+        goal: g.goal,
+        status: g.status,
+        reasons: g.reasons.slice(0, 500),
+      })),
+    };
+  }
+
+  /**
+   * A goal campaign's epoch is planned from the judge's goal report on the current champion, so
+   * lanes are not sent after goals it already meets. The wait ends when the report arrives, when
+   * the judge has stopped validating this champion (three failures), or after goalReportWaitMs.
+   */
+  private awaitingGoalReport(run: string, n: number): boolean {
+    const { seq } = this.ledger.currentChampion(run);
+    if (this.goalReport(run, seq)) return false;
+    const since = String(
+      (
+        this.ledger.db
+          .prepare("select promoted_at from champion where run = ? and seq = ?")
+          .get(run, seq) as { promoted_at: string } | undefined
+      )?.promoted_at ?? "",
+    );
+    const failed = Number(
+      (
+        this.ledger.db
+          .prepare(
+            "select count(*) as k from job where kind = 'validate' and state = 'failed' and json_extract(spec, '$.run') = ? and updated_at >= ?",
+          )
+          .get(run, since) as { k: number }
+      ).k,
+    );
+    const waited = since ? Date.now() - Date.parse(since) : Number.POSITIVE_INFINITY;
+    const giveUp = failed >= 3 || waited >= this.o.goalReportWaitMs;
+    const key = `${run}:${seq}:${n}:${giveUp}`;
+    if (this.reportNoted !== key) {
+      this.reportNoted = key;
+      this.o.service.live.append({
+        source: "planner",
+        kind: "status",
+        text: giveUp
+          ? `planning epoch ${n} without a goal report on champion #${seq} (${failed >= 3 ? "its validation failed" : `none after ${Math.round(waited / 60_000)} min`})`
+          : `epoch ${n} waits for the judge's goal report on champion #${seq}`,
+        run,
+      });
+    }
+    return !giveUp;
+  }
+
   private async planEpoch(run: string, contract: Contract, n: number): Promise<void> {
     const laneCount = this.laneCount(run, contract);
     const lanes = lanesOf(laneCount);
@@ -439,6 +503,7 @@ export class Scheduler {
       laneBests: Object.fromEntries(lanes.map((l) => [l, this.registry.laneBest(run, l)])),
       campaignNotes: contract.notes,
       ownerMessages: this.o.service.takePlannerMessages(run),
+      goalReport: contract.mode === "goal" ? this.goalReport(run, champion.seq) : undefined,
     };
     const live = this.o.service.live;
     live.append({
@@ -527,6 +592,8 @@ export class Scheduler {
     const perEpoch = contract.lanes.trials_per_epoch;
     let epoch = this.registry.currentEpoch(id);
     if (!epoch || epoch.ended_at) {
+      if (contract.mode === "goal" && this.awaitingGoalReport(id, (epoch?.n ?? 0) + 1))
+        return false;
       this.maybeForkRound(id, contract, (epoch?.n ?? 0) + 1);
       await this.planEpoch(id, contract, (epoch?.n ?? 0) + 1);
       epoch = this.registry.currentEpoch(id);
@@ -962,6 +1029,10 @@ export class Scheduler {
           })
           .join("\n")
       : "- none yet";
+    const report =
+      contract.mode === "goal"
+        ? this.goalReport(run, this.ledger.currentChampion(run).seq)
+        : undefined;
     return [
       `# Assignment (epoch ${epoch}, trial ${k} of ${perEpoch}, ${a.lane})`,
       `Campaign: ${contract.title} (${contract.mode})`,
@@ -979,6 +1050,14 @@ export class Scheduler {
       `Direction: ${a.family}${fam ? ` (${fam.description})` : ""}`,
       `Focus: ${a.focus}`,
       "",
+      report
+        ? `# What the champion meets (the judge's check of champion #${report.champion_seq})\n${report.goals
+            .map(
+              (g) =>
+                `- ${g.goal}: ${g.status}${g.status === "met" ? "" : `. ${g.reasons.slice(0, 300)}`}`,
+            )
+            .join("\n")}\n`
+        : "",
       "# Your lane's recent attempts and the judge's findings",
       feedback,
       "",

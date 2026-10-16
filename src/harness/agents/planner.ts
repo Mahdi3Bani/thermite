@@ -28,6 +28,14 @@ export interface PlannerInput {
   campaignNotes?: string | undefined;
   /** The owner's messages to the planner since the last plan (message_agent). */
   ownerMessages?: string[] | undefined;
+  /** Goal mode: the judge's latest report on the champion. */
+  goalReport?: GoalReport | undefined;
+}
+
+/** The judge's validation of a goal campaign's champion: what it meets and what it does not. */
+export interface GoalReport {
+  champion_seq: number;
+  goals: { goal: string; status: string; reasons: string }[];
 }
 
 export interface NewFamily {
@@ -183,8 +191,10 @@ worker; give each lane one direction (an approach family) and a concrete focus. 
 different directions so they do not duplicate each other; reuse directions with promising evidence
 and propose a new family when a genuinely different approach is worth trying. Obey the directives:
 never assign an AVOID family, always assign every MANDATE family, prefer TRY families. Messages in
-owner_messages come from the campaign's owner: take them into account. Answer only by calling
-submit_plan once.`;
+owner_messages come from the campaign's owner: take them into account. In a goal campaign,
+goal_report is the judge's check of the champion: aim lanes at goals it does not meet yet (a goal
+"not run" waits on a goal it requires), never at work the champion already does. Answer only by
+calling submit_plan once.`;
 
 export async function plan(
   input: PlannerInput,
@@ -205,6 +215,7 @@ export async function plan(
       lane_bests: input.laneBests,
       ...(input.campaignNotes ? { campaign_notes: input.campaignNotes } : {}),
       ...(input.ownerMessages?.length ? { owner_messages: input.ownerMessages } : {}),
+      ...(input.goalReport ? { goal_report: input.goalReport } : {}),
     });
     let feedback = "";
     for (let tries = 1; tries <= 2; tries++) {

@@ -47,6 +47,7 @@ Workers research a topic for a set duration: hours or days. Their tools are rese
   - Progress means "meets more goals and loses none". A goal the candidate could not check is unknown, not lost.
   - Progress is screened, then confirmed in fresh runs before promotion. Held-out cells run only at confirmation.
   - Completion needs two validations of the champion that agree.
+  - Each champion's validation is also its goal report. An epoch is planned from it, so the planner and the workers know which goals the champion already meets. After the champion changes, the next epoch waits for the new report, unless the validation fails three times or two hours pass.
   - Subjective goals are reviewed per champion by the supervisor's model panel. The panel is blind to who wrote the change, and needs at least two reviewers who all pass it. The goal is met only when the owner accepts it.
   - "Not possible" is proposed by the harness, never by an agent, and only where the contract allows it. It needs the contract's number of refuted approach families, each with several judged attempts and no progress. Only the owner can accept it and end the campaign.
 - **Research:**
