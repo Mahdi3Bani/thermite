@@ -49,6 +49,9 @@ COPY --from=build /src/package.json ./
 COPY --from=build /src/node_modules ./node_modules
 COPY --from=build /src/dist ./dist
 COPY containers/thermite /usr/local/bin/thermite
+# The smoke check's kits and projects (the rig_check smoke command builds them into a campaign).
+COPY kits ./checks/kits
+COPY examples ./checks/examples
 ENV NODE_OPTIONS=--disable-warning=ExperimentalWarning
 # The broker runs as root so it can start lane, builder and run processes as separate users. It
 # needs only CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETGID and SETUID (compose.yaml drops the rest).

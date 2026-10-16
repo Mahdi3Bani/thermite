@@ -194,6 +194,18 @@ To run it beside another stack, give it its own project and control port: `THERM
 - a restart, when an engine socket is available;
 - a full reset.
 
+## Rig checks
+
+A rig checks itself when control asks: from its page in the dashboard (Checks), with the `rig_check` command over MCP, or with `thermite command --control <URL> --token-file <file> --rig <rig> --kind rig_check --payload '{"check":"smoke"}'`. Each check reports pass or fail in a sentence, in the rig's history and on its page.
+
+| Check | What it does | When |
+| --- | --- | --- |
+| `model` | One short request through the rig's model route, as its workers and planner make them. It must come back as a correct tool call. | After the model server or its settings change, before resuming runs |
+| `isolation` | The isolation selftest: each role's user tries to reach what it must not. | After deploying or changing a rig. Needs an idle rig |
+| `smoke` | A judge-only campaign from the smoke kit in the harness image, on the rig's own target. Candidates with known verdicts (a real win, a no-op, broken changes, ways to cheat) must each get theirs. | After deploying a rig or a new version. Needs an idle rig; its running runs are paused for it and resumed after |
+
+An idle rig has no open trials and no judge jobs. A busy rig answers "not now". `"force": true` runs the check anyway, ending what its probes touch.
+
 ## Credentials and agents over MCP
 
 Control has four kinds of token:

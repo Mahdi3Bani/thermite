@@ -827,6 +827,7 @@ ${ex ? `<div class="divider"></div><div class="muted xs">Results: ${num(ex.expor
     const checksBlock = `<div class="block"><div class="head"><h2>Checks</h2><span class="right muted small">run by the rig itself; results show here and in its history</span></div>
 ${checkCard("model", "One short request through the rig's model route, as its workers and planner make them. It must come back as a correct tool call. Use it after the model server or its settings change, before resuming runs.")}
 ${checkCard("isolation", "The isolation selftest: each role's user tries to reach what it must not (the judge's files, secrets, other roles' work, devices outside its grant). Needs an idle rig: pause its runs first, because each probe ends that role's processes.")}
+${checkCard("smoke", "A judge-only campaign from the smoke kit in the rig's image, on this rig's own target: known candidates (a real win, a no-op, broken changes, ways to cheat) must each get their expected verdict. Minutes on a CPU, up to an hour on a GPU. Needs an idle rig; its running runs are paused for it and resumed after.")}
 </div>`;
     const keyCard = key.pending
       ? `<div class="card warn" style="margin-bottom:16px"><div class="card-head">${icon.key}<span class="title">${key.pubkey ? "This rig now signs its reports with a different key" : "This rig's first report key waits for your acceptance"}</span></div>

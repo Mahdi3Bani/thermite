@@ -35,6 +35,7 @@ import { settlePropagations } from "./propagation.ts";
 import { Research } from "./research/research.ts";
 import { busyReason, isolationSelftest, isolationSummary } from "./selftest.ts";
 import { HarnessService, NOT_BEFORE_FILE, wipeIfRequested } from "./service.ts";
+import { checksDir, smokeCheck } from "./smoke-check.ts";
 import { CpuDriver } from "./targets/cpu.ts";
 import { CudaDriver, smiAs, smiAsRun } from "./targets/cuda.ts";
 import type { TargetDriver } from "./targets/driver.ts";
@@ -281,6 +282,19 @@ async function main(): Promise<void> {
   const model = modelConfigFromEnv(env);
   // Rig checks control can ask for: the model route, and the isolation selftest under the broker.
   if (model) service.rigChecks.model = { run: () => checkModel(model) };
+  service.reconcileRigChecks();
+  // The smoke check: a judge-only campaign from the smoke kit in the image, on this target.
+  service.rigChecks.smoke = {
+    notNow: () => busyReason(paths.stateDir),
+    run: async () =>
+      smokeCheck({
+        service,
+        targetType: driver.type,
+        targetClass: (await driver.identify()).class,
+        checksDir: checksDir(env),
+        scratchDir: paths.scratchDir,
+      }),
+  };
   if (env.THERMITE_BROKER_SOCKET) {
     const socketPath = env.THERMITE_BROKER_SOCKET;
     service.rigChecks.isolation = {

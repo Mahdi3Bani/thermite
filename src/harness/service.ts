@@ -394,6 +394,7 @@ export class HarnessService {
     spec: ImportSpec,
     repoHint: string,
     actor: string,
+    inboxDir = this.paths.inboxDir,
   ): Promise<Record<string, string>> {
     const importId = randomUUID().slice(0, 12);
     switch (spec.kind) {
@@ -403,7 +404,7 @@ export class HarnessService {
         const mirror = this.mirrorFor(repo);
         await initMirror(mirror);
         const r = await importBundle({
-          inboxDir: this.paths.inboxDir,
+          inboxDir,
           rel: spec.path,
           mirror,
           scratchDir: join(this.paths.scratchDir, "imports"),
@@ -444,9 +445,40 @@ export class HarnessService {
     }
   }
 
+  /**
+   * A run on content the harness made itself (a rig check's smoke campaign): its bundles come
+   * from `dir` rather than the inbox, and everything else is checked as for a signed assignment.
+   */
+  async assignLocal(
+    input: {
+      run: string;
+      contract: unknown;
+      seed: { repo: string; commit: string };
+      bundles: ImportSpec[];
+      dir: string;
+    },
+    by: string,
+  ): Promise<unknown> {
+    const parsed = parseContract(input.contract);
+    if (!parsed.ok) throw new Error(`invalid contract: ${parsed.errors.join("; ")}`);
+    return this.assignCampaign(
+      {
+        run: input.run,
+        contract: input.contract,
+        contract_sha: parsed.sha,
+        seed: input.seed,
+        imports: input.bundles,
+        agents: false,
+      },
+      by,
+      input.dir,
+    );
+  }
+
   private async assignCampaign(
     p: z.infer<(typeof CommandPayloads)["assign_campaign"]>,
     by: string,
+    inboxDir = this.paths.inboxDir,
   ): Promise<unknown> {
     const parsed = parseContract(p.contract);
     if (!parsed.ok) throw new Error(`invalid contract: ${parsed.errors.join("; ")}`);
@@ -471,7 +503,8 @@ export class HarnessService {
       (contract.mode === "research" ? { repo: "research", commit: "0".repeat(40) } : undefined);
     if (!seed) throw new Error(`a ${contract.mode} campaign needs a seed commit`);
     const imported = [];
-    for (const spec of p.imports) imported.push(await this.runImport(spec, seed.repo, by));
+    for (const spec of p.imports)
+      imported.push(await this.runImport(spec, seed.repo, by, inboxDir));
     for (const m of contract.models) {
       if (!this.ledger.findImport("model", { sha256: m.sha256 })) {
         throw new Error(`model ${m.name} (${m.sha256}) has not been imported`);
@@ -626,6 +659,37 @@ export class HarnessService {
    */
   rigChecks: Partial<Record<RigCheckName, RigCheck>> = {};
   private checking: string | undefined;
+
+  /**
+   * After a restart: a check that was running when the controller stopped is over, and says so;
+   * a smoke run it left open is closed. Runs the smoke paused stay paused for the operator.
+   */
+  reconcileRigChecks(): void {
+    const open = new Map<string, string>();
+    const rows = this.ledger.db
+      .prepare(
+        "select kind, body from event where kind in ('rig_check_started', 'rig_check_finished') order by id",
+      )
+      .all() as { kind: string; body: string }[];
+    for (const e of rows) {
+      const b = JSON.parse(e.body) as { id?: string; check?: string };
+      if (e.kind === "rig_check_started" && b.id) open.set(b.id, String(b.check ?? ""));
+      if (e.kind === "rig_check_finished" && b.id) open.delete(b.id);
+    }
+    for (const [id, check] of open) {
+      this.ledger.appendEvent("harness", "rig_check_finished", null, {
+        id,
+        check,
+        ok: false,
+        summary:
+          "interrupted: the controller restarted during the check (runs it paused stay paused)",
+      });
+    }
+    for (const r of this.ledger.listRuns()) {
+      if (r.id.startsWith("check-smoke-") && r.status !== "closed")
+        this.ledger.setRunStatus(r.id, "closed", "its smoke check was interrupted", "harness");
+    }
+  }
 
   private startRigCheck(p: { check: RigCheckName; force?: boolean | undefined }, by: string) {
     const check = this.rigChecks[p.check];

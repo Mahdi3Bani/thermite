@@ -440,5 +440,12 @@ describe("harness service and API", () => {
       ["rig_check_started", "isolation", undefined],
       ["rig_check_finished", "isolation", false],
     ]);
+    // A check the controller never finished (it restarted) is closed as interrupted on start.
+    env.service.rigChecks.model = { run: () => new Promise(() => undefined) };
+    await apply({ check: "model" });
+    env.service.reconcileRigChecks();
+    const last = env.service.ledger.eventsAfter(0, 1000).events.at(-1);
+    assert.equal(last?.kind, "rig_check_finished");
+    assert.match(JSON.stringify(last?.body), /interrupted: the controller restarted/);
   });
 });

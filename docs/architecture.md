@@ -74,6 +74,7 @@ The supervisor is the rig's link to everything outside:
   - reset its workers;
   - pause or resume it;
   - propagate one rig's best result to another rig, where that rig's own judge re-measures it;
+  - check a rig: its model route (one tool-calling request), its isolation selftest, or a judge-only smoke campaign on its own target, each reported back as pass or fail;
   - export the rig's results to git.
 - **Lifecycle.** Control can restart or fully reset a rig's containers, and the rig exports its results first.
 - **Reports are signed by the harness.** The supervisor relays them but cannot forge, replay or thin them out:

@@ -8,6 +8,7 @@
 //   - role users cannot reach the ledger, kits, builds, secrets or the broker (isolation);
 //   - tampering with the build store fails and leaves the builds intact;
 //   - nothing a run starts outlives it;
+//   - the isolation and smoke rig checks pass when asked for through control;
 //   - a killed controller is recorded as crash_infra exactly once, and the job completes;
 //   - an A/A calibration measures the rig's noise.
 // It writes a JSON report to .dev/acceptance/. Usage: COMPOSE="podman compose" node scripts/judge-acceptance.mjs
@@ -198,6 +199,14 @@ try {
     Boolean(latestVerdicts(after)[victim]),
     latestVerdicts(after)[victim],
   );
+
+  // The same smoke, asked for through control as an operator would: the harness builds the
+  // campaign from the kit in its image, judges every candidate and compares each verdict.
+  const smoke = await rigCheck("smoke", { timeoutMs: 1_800_000 });
+  check("the smoke check through control: every candidate as expected", smoke.ok === true, {
+    summary: smoke.summary,
+    candidates: smoke.detail?.candidates,
+  });
 
   // Resource numbers for sizing a rig (the CPU smoke; a GPU rig's come from its CUDA smoke).
   const peaks = JSON.parse(
