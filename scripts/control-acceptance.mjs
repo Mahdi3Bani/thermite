@@ -249,6 +249,10 @@ try {
   );
   check("after control returned, the reports caught up", true);
   const after = await view("local-1");
+  // A run's timeline is a log: everything it held before the restart must still be there, in
+  // order; what arrived since (the new attempt's events) is compared through the attempts.
+  const lastSeq = Math.max(0, ...before.runs.flatMap((i) => (i.timeline ?? []).map((e) => e.seq)));
+  const notNew = (j) => j.attempt !== attempt;
   const strip = (v) =>
     JSON.stringify({
       ...v,
@@ -259,8 +263,14 @@ try {
       jobs: null,
       // The supervisor's live figures (timestamps, counters) are not part of the event view.
       supervisor: null,
+      judge: v.judge && {
+        now: v.judge.now && notNew(v.judge.now) ? v.judge.now : null,
+        queued: v.judge.queued.filter(notNew),
+        jobs: v.judge.jobs.filter(notNew),
+      },
       runs: v.runs.map((i) => ({
         ...i,
+        timeline: (i.timeline ?? []).filter((e) => e.seq <= lastSeq),
         // The attempt judged while control was down is new; everything else must match.
         attempts: i.attempts.filter((a) => a.id !== attempt),
         agents: {
