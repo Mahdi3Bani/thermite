@@ -96,6 +96,16 @@ Confirmed wins promote automatically by default (`THERMITE_PROMOTION=auto`). Gai
 
 Workers and the planner run when the harness has a model route: an OpenAI-compatible endpoint given by `QWEN_BASE_URL` and `QWEN_MODEL`, with its key in `.dev/secrets/qwen-api-key` (git-ignored; `dev:init` writes a placeholder). Without a route, the judge still runs and you submit patches yourself.
 
+- The model must support OpenAI-style tool calling: the planner answers through a tool, and workers work only through tools.
+- `QWEN_BASE_URL` ends in `/v1`, for example `https://gateway.example/v1`.
+- A server on your own machine is `http://host.docker.internal:PORT/v1` from inside the containers (with Podman, `host.containers.internal` works too). `localhost` is the container itself.
+- Set the variables in your shell or in a `.env` file next to `compose.yaml` before `compose up`, for example:
+
+  ```sh
+  QWEN_BASE_URL=http://host.docker.internal:8000/v1 QWEN_MODEL=my-model \
+    docker compose up -d --build
+  ```
+
 - Set `QWEN_CONTEXT_WINDOW` to the model's context per request. Each reply's length is then clamped to the room left, and a worker is told to submit at 80% of it. Unset means unknown: no clamping, and a request that is too long ends the trial when the server refuses it.
 - `QWEN_MAX_TOKENS` (default 8192) caps each reply, thinking included.
 

@@ -13,6 +13,9 @@ services:
       THERMITE_CONTROL_RIG_TOKENS_FILE: /run/secrets/control-rig-tokens
       THERMITE_CONTROL_PUBKEY_EXPORT: /keys/control-signing.pub
       THERMITE_CONTROL_STALE_SECONDS: "${THERMITE_CONTROL_STALE_SECONDS:-180}"
+      # "1": the owner accepts each rig's first report key on the dashboard.
+      THERMITE_CONTROL_REQUIRE_KEY_ACCEPT: "${THERMITE_CONTROL_REQUIRE_KEY_ACCEPT:-}"
+      THERMITE_CONTROL_SESSION_DAYS: "${THERMITE_CONTROL_SESSION_DAYS:-}"
       # Restarts through the container engine: see compose.lifecycle.yaml (off by default).
       THERMITE_LIFECYCLE: "${THERMITE_LIFECYCLE:-}"
       THERMITE_COMPOSE_PROJECT: thermite
@@ -39,13 +42,24 @@ services:
       # The promotion policy is the operator's call; locally the acceptance test sets auto.
       THERMITE_PROMOTION: "${THERMITE_PROMOTION:-auto}"
       THERMITE_CALIBRATION_BLOCKS: "${THERMITE_CALIBRATION_BLOCKS:-6}"
-      # The model route for agents (empty: agents off). The key comes from a secret file.
+      # The model route for agents (empty: agents off): an OpenAI-compatible endpoint with tool
+      # calling, its URL ending in /v1. The key comes from a secret file. A server on this
+      # machine is http://host.docker.internal:PORT/v1 (Podman: host.containers.internal too).
       QWEN_BASE_URL: "${QWEN_BASE_URL:-}"
       QWEN_MODEL: "${QWEN_MODEL:-}"
       QWEN_API_KEY_FILE: /run/secrets/qwen-api-key
+      QWEN_CONTEXT_WINDOW: "${QWEN_CONTEXT_WINDOW:-0}"
+      QWEN_MAX_TOKENS: "${QWEN_MAX_TOKENS:-8192}"
+      QWEN_REASONING_EFFORT: "${QWEN_REASONING_EFFORT:-}"
       THERMITE_MAX_TRIALS: "${THERMITE_MAX_TRIALS:-1}"
       THERMITE_TRIAL_MINUTES: "${THERMITE_TRIAL_MINUTES:-20}"
+      THERMITE_MAX_TURNS: "${THERMITE_MAX_TURNS:-}"
+      THERMITE_RESEARCH_MAX_MB: "${THERMITE_RESEARCH_MAX_MB:-}"
+      THERMITE_LLM_USD_PER_MTOK_IN: "${THERMITE_LLM_USD_PER_MTOK_IN:-}"
+      THERMITE_LLM_USD_PER_MTOK_OUT: "${THERMITE_LLM_USD_PER_MTOK_OUT:-}"
       THERMITE_EXPORT_MINUTES: "${THERMITE_EXPORT_MINUTES:-60}"
+    # A model server on this machine (native Linux Docker lacks the name otherwise).
+    extra_hosts: ["host.docker.internal:host-gateway"]
     volumes:
       - harness-state:/var/lib/thermite
       - harness-scratch:/scratch
@@ -68,6 +82,7 @@ services:
       HARNESS_URL: http://harness:8700
       CONTROL_URL: http://control:8800
       THERMITE_POLL_SECONDS: "${THERMITE_POLL_SECONDS:-60}"
+      THERMITE_LIVE_INTERVAL_MS: "${THERMITE_LIVE_INTERVAL_MS:-3000}"
       THERMITE_HARNESS_TOKEN_FILE: /run/secrets/harness-supervisor-token
       THERMITE_CONTROL_TOKEN_FILE: /run/secrets/control-rig-token
       # Locally, both rigs' supervisors push to one results repository on a shared volume.
@@ -99,14 +114,25 @@ services:
       THERMITE_PROPOSER_TOKEN_FILE: /run/secrets/harness2-proposer-token
       THERMITE_PROMOTION: "${THERMITE_PROMOTION:-auto}"
       THERMITE_CALIBRATION_BLOCKS: "${THERMITE_CALIBRATION_BLOCKS:-6}"
+      # The same model route as the first rig.
+      QWEN_BASE_URL: "${QWEN_BASE_URL:-}"
+      QWEN_MODEL: "${QWEN_MODEL:-}"
+      QWEN_API_KEY_FILE: /run/secrets/qwen-api-key
+      QWEN_CONTEXT_WINDOW: "${QWEN_CONTEXT_WINDOW:-0}"
+      QWEN_MAX_TOKENS: "${QWEN_MAX_TOKENS:-8192}"
+      QWEN_REASONING_EFFORT: "${QWEN_REASONING_EFFORT:-}"
+      THERMITE_MAX_TRIALS: "${THERMITE_MAX_TRIALS:-1}"
+      THERMITE_TRIAL_MINUTES: "${THERMITE_TRIAL_MINUTES:-20}"
+      THERMITE_MAX_TURNS: "${THERMITE_MAX_TURNS:-}"
       THERMITE_EXPORT_MINUTES: "${THERMITE_EXPORT_MINUTES:-60}"
+    extra_hosts: ["host.docker.internal:host-gateway"]
     volumes:
       - harness2-state:/var/lib/thermite
       - harness2-scratch:/scratch
       - ./.dev/inbox:/inbox:ro
       - outbox2:/outbox
       - control-pub:/keys:ro
-    secrets: [harness2-supervisor-token, harness2-proposer-token]
+    secrets: [harness2-supervisor-token, harness2-proposer-token, qwen-api-key]
     networks: [rig2, egress]
     cap_drop: [ALL]
     cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETGID, SETUID]
@@ -121,6 +147,7 @@ services:
       HARNESS_URL: http://harness-2:8700
       CONTROL_URL: http://control:8800
       THERMITE_POLL_SECONDS: "${THERMITE_POLL_SECONDS:-60}"
+      THERMITE_LIVE_INTERVAL_MS: "${THERMITE_LIVE_INTERVAL_MS:-3000}"
       THERMITE_HARNESS_TOKEN_FILE: /run/secrets/harness2-supervisor-token
       THERMITE_CONTROL_TOKEN_FILE: /run/secrets/control-rig-token-2
       THERMITE_RESULTS_REMOTE: "${THERMITE_RESULTS_REMOTE:-file:///results/results.git}"
