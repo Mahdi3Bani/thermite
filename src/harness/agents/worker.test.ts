@@ -716,6 +716,49 @@ describe("worker trial", () => {
     assert.match(String(busyReason(env.paths.stateDir)), /1 open trial/);
   });
 
+  test("the lane tool searches the whole tree and keeps each reply small", async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { execFileSync } = await import("node:child_process");
+    const dir = mkdtempSync(`${tmpdir()}/thermite-lanetool-`);
+    // 600 files (more than a listing shows), the match in the last one.
+    for (let i = 0; i < 600; i++) {
+      mkdirSync(`${dir}/d${String(i).padStart(3, "0")}`);
+      writeFileSync(
+        `${dir}/d${String(i).padStart(3, "0")}/f.c`,
+        i === 599 ? "PQ2_0 here\n" : "x\n",
+      );
+    }
+    writeFileSync(
+      `${dir}/long.c`,
+      Array.from({ length: 1000 }, (_, i) => `line ${i + 1}`).join("\n"),
+    );
+    const tool = (op: string, args: unknown) =>
+      JSON.parse(
+        execFileSync(laneTool[0] as string, [...laneTool.slice(1), op, JSON.stringify(args)], {
+          cwd: dir,
+          encoding: "utf8",
+        }),
+      ) as Record<string, unknown>;
+    const found = tool("search", { pattern: "PQ2_0" }).matches as string[];
+    assert.deepEqual(found, ["d599/f.c:1: PQ2_0 here"]);
+    const read = tool("read", { path: "long.c" }) as unknown as {
+      content: string;
+      total_lines: number;
+    };
+    assert.equal(read.total_lines, 1000);
+    assert.match(read.content, /^1\tline 1\n/);
+    assert.match(
+      read.content,
+      /\n400\tline 400\n… lines 401–1000 not shown: read again with offset 400$/,
+    );
+    const more = tool("read", { path: "long.c", offset: 400, limit: 1000 }) as unknown as {
+      content: string;
+    };
+    assert.match(more.content, /^401\tline 401/);
+    assert.match(more.content, /1000\tline 1000$/);
+  });
+
   test("the lane tool never leaves the workspace", async () => {
     const env = makeJudgeEnv();
     await env.service.applyCommand(env.assign);

@@ -20,9 +20,15 @@ import { dirname, join, relative, resolve, sep } from "node:path";
  */
 
 const root = realpathSync(process.cwd());
+// What one call returns is kept small: everything a worker reads stays in its context.
+const READ_LINES = 400;
 const MAX_READ_LINES = 2000;
+const MAX_READ_BYTES = 48_000;
 const MAX_LIST = 500;
-const MAX_MATCHES = 200;
+const MAX_MATCHES = 100;
+// A search looks through the whole tree (not only what a listing would show), skipping big files.
+const MAX_SEARCH_FILES = 100_000;
+const MAX_SEARCH_FILE_BYTES = 2_000_000;
 
 function inside(path: string): string {
   const full = resolve(root, path);
@@ -46,15 +52,15 @@ function stdin(): string {
   }
 }
 
-function walk(dir: string, depth: number, out: string[]): void {
-  if (out.length >= MAX_LIST || depth < 0) return;
+function walk(dir: string, depth: number, out: string[], max = MAX_LIST): void {
+  if (out.length >= max || depth < 0) return;
   for (const e of readdirSync(dir).sort()) {
     if (e === ".git") continue;
     const p = join(dir, e);
     const st = lstatSync(p);
     out.push(`${relative(root, p)}${st.isDirectory() ? "/" : ""}`);
-    if (out.length >= MAX_LIST) return;
-    if (st.isDirectory()) walk(p, depth - 1, out);
+    if (out.length >= max) return;
+    if (st.isDirectory()) walk(p, depth - 1, out, max);
   }
 }
 
@@ -63,13 +69,23 @@ function run(op: string, args: Record<string, unknown>): Record<string, unknown>
     case "read": {
       const lines = readFileSync(inside(String(args.path)), "utf8").split("\n");
       const offset = Math.max(0, Number(args.offset ?? 0));
-      const limit = Math.min(MAX_READ_LINES, Number(args.limit ?? MAX_READ_LINES));
+      const limit = Math.min(MAX_READ_LINES, Number(args.limit ?? READ_LINES));
+      const out: string[] = [];
+      let bytes = 0;
+      for (let i = offset; i < Math.min(lines.length, offset + limit); i++) {
+        const line = `${i + 1}\t${lines[i]}`;
+        bytes += Buffer.byteLength(line) + 1;
+        if (bytes > MAX_READ_BYTES && out.length) break;
+        out.push(line);
+      }
+      const next = offset + out.length;
       return {
         total_lines: lines.length,
-        content: lines
-          .slice(offset, offset + limit)
-          .map((l, i) => `${offset + i + 1}\t${l}`)
-          .join("\n"),
+        content:
+          out.join("\n") +
+          (next < lines.length
+            ? `\n… lines ${next + 1}–${lines.length} not shown: read again with offset ${next}`
+            : ""),
       };
     }
     case "write": {
@@ -109,11 +125,12 @@ function run(op: string, args: Record<string, unknown>): Record<string, unknown>
       const re = new RegExp(String(args.pattern));
       const matches: string[] = [];
       const files: string[] = [];
-      walk(inside(String(args.path ?? ".")), 12, files);
+      walk(inside(String(args.path ?? ".")), 64, files, MAX_SEARCH_FILES);
       for (const f of files) {
         if (f.endsWith("/")) continue;
         let text: string;
         try {
+          if (lstatSync(join(root, f)).size > MAX_SEARCH_FILE_BYTES) continue;
           text = readFileSync(join(root, f), "utf8");
         } catch {
           continue;
@@ -121,11 +138,14 @@ function run(op: string, args: Record<string, unknown>): Record<string, unknown>
         if (text.includes("\0")) continue;
         text.split("\n").forEach((line, i) => {
           if (matches.length < MAX_MATCHES && re.test(line))
-            matches.push(`${f}:${i + 1}: ${line.slice(0, 300)}`);
+            matches.push(`${f}:${i + 1}: ${line.slice(0, 200)}`);
         });
         if (matches.length >= MAX_MATCHES) break;
       }
-      return { matches, truncated: matches.length >= MAX_MATCHES };
+      if (matches.length >= MAX_MATCHES) {
+        matches.push(`… more than ${MAX_MATCHES} matches: narrow the pattern or the path`);
+      }
+      return { matches, truncated: matches.length > MAX_MATCHES };
     }
     default:
       throw new Error(`unknown op ${op}`);
