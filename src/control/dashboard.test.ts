@@ -468,6 +468,19 @@ describe("control dashboard for an operator", () => {
     assert.match(home, /Register the two new tensor types/);
     assert.match(home, /The GPU path uses the slow reference kernel, not a tuned one\./);
     assert.match(home, /it newly meets goldens, real-file and ops, and it loses none/);
+    // What changed and why the judge decided, from the record.
+    assert.match(home, /3 files: <code>src\/types\.c<\/code> <span class="muted">\+120 −4<\/span>/);
+    assert.match(home, /<code>tests\/goldens\.bin<\/code> <span class="muted">binary<\/span>/);
+    assert.match(home, /The judge: newly meets goldens, real-file and ops; loses none/);
+    // A confirmed win's interval; a lane at work, with its focus, from trial_started.
+    assert.match(
+      home,
+      /Confirmed \+14\.2% better than the champion on fresh runs, somewhere between \+9\.1% and \+19\.6%/,
+    );
+    assert.match(
+      home,
+      /working for [^<]* on get the model fully onto the GPU with every layer offloaded <span class="muted">\(direction filter-bank\)<\/span>/,
+    );
     assert.match(home, /its author declared known flaws/);
     assert.match(home, /This rig has no auditor configured/);
     assert.match(home, /Skip the audit and promote/);
@@ -477,8 +490,8 @@ describe("control dashboard for an operator", () => {
     );
     // Its run was replaced by another run: a promotion there changes only that run.
     assert.match(home, /This run is <b>paused: replaced by port-3 on rig-b<\/b>/);
-    // No decline command exists, and the page says so rather than offering one.
-    assert.match(home, /no command to decline it yet/);
+    // A held audit can be declined; leaving it held is said plainly too.
+    assert.match(home, /It stays held, in this list: no auditor will come\./);
     assert.doesNotMatch(home, />Reject</);
     // The auditor's block shows the auditor's reasons, not just the trigger.
     assert.match(home, /Overrule the auditor's block\?/);
@@ -487,12 +500,13 @@ describe("control dashboard for an operator", () => {
     // A confirmed win on a rig that asks for approval.
     assert.match(
       home,
-      /Confirmed \+14\.2% better than the champion on fresh runs \(screening measured \+15\.2%\)/,
+      /Confirmed \+14\.2% better than the champion on fresh runs, somewhere between \+9\.1% and \+19\.6% \(screening measured \+15\.2%\)/,
     );
     assert.match(home, /It becomes <b>champion #5<\/b>/);
-    // Every decision button is a signed-command form with the session's token.
+    // Every decision button is a signed-command form with the session's token: approve (or
+    // overrule) and decline, for each of the four decisions.
     const forms = home.match(/<form class="inline" method="post" action="\/ui\/commands">/g) ?? [];
-    assert.equal(forms.length, 4);
+    assert.equal(forms.length, 8);
   });
 
   test("the overview says what each run is doing now, and what happened, in words", async () => {
@@ -500,7 +514,10 @@ describe("control dashboard for an operator", () => {
     const home = await get("/ui");
     assert.match(home, /At work now/);
     assert.match(home, /measuring the rig's own noise \(the champion against itself\), for 8 min/);
-    assert.match(home, /working for 1 h 3 min on filter-bank, get the model fully onto the GPU/);
+    assert.match(
+      home,
+      /working for 1 h 3 min on get the model fully onto the GPU with every layer offloaded <span class="muted">\(direction filter-bank\)/,
+    );
     assert.match(home, /last: <code>run timeout 270 cmake --build/);
     assert.match(home, /href="\/ui\/rigs\/rig-b\/live\?source=trial%3At-0a1b2c3d4e5f6071"/);
     assert.match(home, /meets 4 of 8 goals/);

@@ -810,6 +810,7 @@ export class Scheduler {
       family: a.family,
       parent: "research",
       token,
+      focus: a.focus,
     });
     this.trialLine(
       id,
@@ -898,6 +899,7 @@ export class Scheduler {
         family: a.family,
         parent,
         token,
+        focus: a.focus,
       });
       this.trialLine(
         id,

@@ -1125,7 +1125,13 @@ export class Judge {
     const summary = {
       run,
       champion_seq: champion.seq,
-      goals: results.map((r) => ({ goal: r.goal, status: r.status, reasons: r.reasons })),
+      // Each goal's description too, so a reader of the report needs no copy of the contract.
+      goals: results.map((r) => ({
+        goal: r.goal,
+        description: contract.goals.find((g) => g.id === r.goal)?.description ?? null,
+        status: r.status,
+        reasons: r.reasons,
+      })),
       complete: done,
       ...(done && !confirming ? { confirming: true } : {}),
     };

@@ -258,7 +258,18 @@ async function main(): Promise<void> {
           last_push_at: exportState.lastPushAt ?? null,
           last_error: exportState.lastError?.slice(0, 900) ?? null,
         },
-        advisors: advisors ? adviseState.stats : null,
+        advisors: advisors
+          ? {
+              ...adviseState.stats,
+              // Which roles are configured, so control can say whether an audit will be decided.
+              roles: {
+                teachers: advisors.teachers.length,
+                combiner: Boolean(advisors.combiner),
+                auditor: Boolean(advisors.auditor),
+                panel: advisors.panel.length,
+              },
+            }
+          : null,
       });
       const lastDaily = reportState.lastDailyAt ? Date.parse(reportState.lastDailyAt) : 0;
       if (Date.now() - lastDaily >= 24 * 3_600_000) {

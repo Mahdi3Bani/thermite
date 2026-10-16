@@ -93,6 +93,7 @@ export interface AttemptCommit {
   specialFiles: string[];
   diffSha: string;
   normalizedDiffSha: string;
+  stat: { path: string; added: number | null; removed: number | null }[];
 }
 
 /**
@@ -140,6 +141,8 @@ export async function diffInfo(
   binaryFiles: string[];
   specialFiles: string[];
   normalizedDiffSha: string;
+  /** Each changed file with its added and removed lines (null for a binary file). */
+  stat: { path: string; added: number | null; removed: number | null }[];
 }> {
   const names = await git(mirror, ["diff", "--name-only", "-z", "--no-renames", parent, commit]);
   const normalized = await git(mirror, [
@@ -171,7 +174,22 @@ export async function diffInfo(
     binaryFiles: binaryFilesOf(numstat),
     specialFiles: specialFilesOf(raw),
     normalizedDiffSha: sha256Hex(normalized),
+    stat: statOf(numstat),
   };
+}
+
+/** `git diff --numstat -z` (no renames) as one entry per file: "added<TAB>removed<TAB>path". */
+function statOf(
+  numstatZ: string,
+): { path: string; added: number | null; removed: number | null }[] {
+  return numstatZ
+    .split("\0")
+    .filter(Boolean)
+    .map((r) => {
+      const [added = "", removed = "", ...path] = r.split("\t");
+      const n = (x: string) => (x === "-" ? null : Number(x));
+      return { path: path.join("\t"), added: n(added), removed: n(removed) };
+    });
 }
 
 /**

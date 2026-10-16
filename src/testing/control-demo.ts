@@ -43,7 +43,12 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
     );
 
   const goals = (load: string) => [
-    { goal: "build", status: "met", reasons: "the engine builds with the new types" },
+    {
+      goal: "build",
+      description: "the engine builds with the new tensor types",
+      status: "met",
+      reasons: "the engine builds with the new types",
+    },
     { goal: "goldens", status: "met", reasons: "every golden file matches" },
     { goal: "real-file", status: "met", reasons: "the real model file parses" },
     { goal: "ops", status: "met", reasons: "GPU ops match the CPU reference" },
@@ -118,6 +123,12 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
             "The GPU path uses the slow reference kernel, not a tuned one.",
             "Only the two new types are covered; mixed-type models are untested.",
           ],
+          files: [
+            { path: "src/types.c", added: 120, removed: 4 },
+            { path: "src/simd/imdct_avx2.c", added: 80, removed: 0 },
+            { path: "tests/goldens.bin", added: null, removed: null },
+          ],
+          files_total: 3,
         },
       ],
       [
@@ -165,7 +176,13 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
         174,
         "verdict",
         "a-7e1a0001",
-        { id: 2, verdict: "goal_progress", delta: null, supersedes: null },
+        {
+          id: 2,
+          verdict: "goal_progress",
+          delta: null,
+          reasons: "newly meets goldens, real-file and ops; loses none; load still unmet",
+          supersedes: null,
+        },
       ],
       [174, "promotion_blocked", "a-7e1a0001", { reason: "audit required: declared flaws" }],
       [
@@ -304,6 +321,18 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
             { lane: "lane-1", family: "filter-bank", parent: "champion" },
             { lane: "lane-2", family: "gemv-kernel", parent: "champion" },
           ],
+        },
+      ],
+      [
+        63,
+        "trial_started",
+        "port-3",
+        {
+          trial: "t-3331",
+          lane: "lane-1",
+          epoch: 1,
+          family: "filter-bank",
+          focus: "get the model fully onto the GPU with every layer offloaded",
         },
       ],
       [
@@ -464,7 +493,15 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
         90,
         "verdict",
         "a-5b5b0001",
-        { id: 12, verdict: "win_confirmed", delta: 0.142, supersedes: null },
+        {
+          id: 12,
+          verdict: "win_confirmed",
+          delta: 0.142,
+          ci_low: 0.091,
+          ci_high: 0.196,
+          reasons: "better beyond min_effect on fresh data",
+          supersedes: null,
+        },
       ],
       [
         90,

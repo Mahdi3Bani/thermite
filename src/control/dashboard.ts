@@ -325,7 +325,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
                 : g.reasons.startsWith("not run")
                   ? "waiting on another goal"
                   : g.status.replace(/_/g, " ");
-            return `<div class="goal"><span class="gi ${cls}">${mark}</span><b>${esc(g.goal)}</b><span class="chip ${cls === "off" ? "" : cls}">${esc(word)}</span><div class="why">${esc(g.reasons.slice(0, 400))}</div></div>`;
+            return `<div class="goal"><span class="gi ${cls}">${mark}</span><b>${esc(g.goal)}</b>${g.description ? ` <span class="muted small">${esc(clip(g.description, 160))}</span>` : ""}<span class="chip ${cls === "off" ? "" : cls}">${esc(word)}</span><div class="why">${esc(g.reasons.slice(0, 400))}</div></div>`;
           })
           .join("")}</div></div>`
       : i.mode === "goal"

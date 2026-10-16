@@ -80,6 +80,8 @@ export interface AttemptInput {
   claim?: string | undefined;
   knownFlaws?: string[] | undefined;
   v0?: unknown;
+  /** The changed files with their line counts, for the record's readers (control's pages). */
+  files?: { path: string; added: number | null; removed: number | null }[] | undefined;
 }
 
 export type PromoteResult = { ok: true; seq: number } | { ok: false; currentSeq: number };
@@ -529,6 +531,8 @@ export class Ledger {
         parent: a.parentCommit,
         hypothesis: a.hypothesis?.slice(0, 500) ?? null,
         known_flaws: a.knownFlaws ?? [],
+        // What changed, bounded: the first 50 files and how many there were in all.
+        ...(a.files ? { files: a.files.slice(0, 50), files_total: a.files.length } : {}),
       });
     });
   }
@@ -917,6 +921,10 @@ export class Ledger {
       id,
       verdict: v.verdict,
       delta: v.delta ?? null,
+      // The interval and the judge's reasons, so a reader sees how sure the verdict is and why.
+      ci_low: v.ciLow ?? null,
+      ci_high: v.ciHigh ?? null,
+      reasons: v.reasons.slice(0, 1000),
       supersedes: v.supersedes ?? null,
     });
     return id;

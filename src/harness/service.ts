@@ -1088,6 +1088,7 @@ export class HarnessService {
         claim: req.claim,
         knownFlaws: req.known_flaws,
         v0,
+        files: made.stat,
       },
       actor,
     );

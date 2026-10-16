@@ -54,9 +54,15 @@ const champSeq = (r: RunView) => r.champion.filter((c) => !c.reopened).at(-1)?.s
 const nextSeq = (r: RunView) => Math.max(1, ...r.champion.map((c) => c.seq)) + 1;
 const short = (sha: string | null | undefined) => (sha ? sha.slice(0, 8) : "?");
 
-/** Whether the rig runs any advisors (an auditor among them); null means none are configured. */
-const hasAdvisors = (u: RigView) =>
-  Boolean((u.supervisor as { advisors?: unknown } | null)?.advisors);
+/**
+ * Whether the rig has an auditor to decide its audits. A supervisor that reports its roles says
+ * so exactly; an older one only says whether any advisors run (null: none are configured).
+ */
+const hasAdvisors = (u: RigView) => {
+  const advisors = (u.supervisor as { advisors?: { roles?: { auditor?: boolean } } | null } | null)
+    ?.advisors;
+  return advisors?.roles ? advisors.roles.auditor === true : Boolean(advisors);
+};
 
 /** What the judge found about an attempt, in a sentence. */
 export function evidence(r: RunView, a: AttemptView): string {
@@ -76,8 +82,9 @@ export function evidence(r: RunView, a: AttemptView): string {
     return `${cap(verdictText(last.verdict))}${a.lost.length ? `: it loses ${listText(a.lost)}` : ""}.${unsure}`;
   }
   const screened = a.history.find((h) => h.verdict === "win_screened" && h.delta !== null);
+  const interval = a.ci ? `, somewhere between ${signed(a.ci[0])} and ${signed(a.ci[1])}` : "";
   if (last.verdict === "win_confirmed" && typeof last.delta === "number")
-    return `Confirmed ${signed(last.delta)} better than the champion on fresh runs${typeof screened?.delta === "number" ? ` (screening measured ${signed(screened.delta)})` : ""}.`;
+    return `Confirmed ${signed(last.delta)} better than the champion on fresh runs${interval}${typeof screened?.delta === "number" ? ` (screening measured ${signed(screened.delta)})` : ""}.`;
   return `${cap(verdictText(last.verdict, last.delta))}.`;
 }
 
@@ -100,8 +107,20 @@ function changeFacts(u: RigView, r: RunView, a: AttemptView | undefined, id: str
   const flaws = a.known_flaws.length
     ? `<dt>Declared flaws</dt><dd><ul class="flaws">${a.known_flaws.map((f) => `<li>${esc(f)}</li>`).join("")}</ul></dd>`
     : `<dt>Declared flaws</dt><dd class="muted">None.</dd>`;
-  return `<dt>The change</dt><dd><div class="quote">${esc(a.hypothesis ?? "(no hypothesis given)")}</div><div class="muted small">${who} · <a href="${attemptHref(u.id, a.id)}">${esc(a.id)}</a></div></dd>
-<dt>What the judge found</dt><dd>${esc(evidence(r, a))}</dd>${flaws}${
+  const files = a.files.length
+    ? `<dt>Files</dt><dd class="small">${a.files_total} file${a.files_total === 1 ? "" : "s"}: ${a.files
+        .slice(0, 8)
+        .map(
+          (f) =>
+            `<code>${esc(f.path)}</code> <span class="muted">${f.added === null ? "binary" : `+${f.added} −${f.removed ?? 0}`}</span>`,
+        )
+        .join(", ")}${a.files_total > 8 ? `, and ${a.files_total - 8} more` : ""}</dd>`
+    : "";
+  const reasons = a.reasons
+    ? `<div class="muted small">The judge: ${esc(clip(a.reasons, 400))}</div>`
+    : "";
+  return `<dt>The change</dt><dd><div class="quote">${esc(a.hypothesis ?? "(no hypothesis given)")}</div><div class="muted small">${who} · <a href="${attemptHref(u.id, a.id)}">${esc(a.id)}</a></div></dd>${files}
+<dt>What the judge found</dt><dd>${esc(evidence(r, a))}${reasons}</dd>${flaws}${
     r.status === "running"
       ? ""
       : `<dt>The run</dt><dd>This run is <b>${esc(runStatusText(r))}</b>. A promotion here changes this run's champion only; other runs of the campaign are not affected.</dd>`
@@ -517,10 +536,21 @@ export function runNow(
       const t = trials.find((x) => x.lane === lane);
       const plan = r.epoch?.assignments.find((a) => a.lane === lane);
       const done = r.trials.filter((x) => x.lane === lane).at(-1);
-      if (t && !t.ended && r.status === "running") {
+      // The record says a lane is at work (trial_started); the live view adds its last step.
+      const work = r.at_work[lane];
+      if ((work || (t && !t.ended)) && r.status === "running") {
+        const since = work?.since ?? t?.started_at ?? null;
+        const what =
+          work?.focus ||
+          plan?.focus ||
+          introText(t?.intro ?? "") ||
+          work?.family ||
+          plan?.family ||
+          "";
+        const family = work?.family ?? plan?.family;
         row(
           lane,
-          `working for ${esc(span(t.started_at, now))} on ${esc(clip(introText(t.intro) || plan?.family || "", 220))}${t.last_tool ? `<div class="muted small">last: <code>${esc(clip(t.last_tool, 110))}</code> ${esc(ago(t.last_tool_at, now))} ago</div>` : ""} <a class="small" href="${liveHref(u.id, t.source)}">watch</a>`,
+          `working for ${esc(span(since, now))} on ${esc(clip(what, 220))}${family && what !== family ? ` <span class="muted">(direction ${esc(family)})</span>` : ""}${t?.last_tool ? `<div class="muted small">last: <code>${esc(clip(t.last_tool, 110))}</code> ${esc(ago(t.last_tool_at, now))} ago</div>` : ""}${t ? ` <a class="small" href="${liveHref(u.id, t.source)}">watch</a>` : ""}`,
           "lane",
         );
       } else {

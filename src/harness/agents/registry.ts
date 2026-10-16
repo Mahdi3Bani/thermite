@@ -210,6 +210,8 @@ export class Registry {
         assignments: input.assignments.map((a) => ({
           lane: a.lane,
           family: a.family,
+          // What the lane is asked to do, for control's "at work now" (the brief has it all).
+          focus: a.focus.slice(0, 300),
           parent: a.parent,
           ...(a.directive === undefined ? {} : { directive: a.directive }),
         })),
@@ -239,21 +241,33 @@ export class Registry {
     family: string;
     parent: string;
     token?: string | undefined;
+    /** The lane's focus for this trial, as the planner gave it. */
+    focus?: string | undefined;
   }): void {
-    this.ledger.db
-      .prepare(
-        "insert into trial (id, run, lane, epoch, family, parent_commit, token_sha, started_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
-      )
-      .run(
-        t.id,
-        t.run,
-        t.lane,
-        t.epoch,
-        t.family,
-        t.parent,
-        t.token ? sha256Hex(t.token) : null,
-        this.now(),
-      );
+    this.ledger.tx(() => {
+      this.ledger.db
+        .prepare(
+          "insert into trial (id, run, lane, epoch, family, parent_commit, token_sha, started_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .run(
+          t.id,
+          t.run,
+          t.lane,
+          t.epoch,
+          t.family,
+          t.parent,
+          t.token ? sha256Hex(t.token) : null,
+          this.now(),
+        );
+      // Control learns that a lane is at work, and on what, from the record, not the live view.
+      this.ledger.appendEvent("scheduler", "trial_started", t.run, {
+        trial: t.id,
+        lane: t.lane,
+        epoch: t.epoch,
+        family: t.family,
+        ...(t.focus ? { focus: t.focus.slice(0, 300) } : {}),
+      });
+    });
   }
 
   /** The open trial a token belongs to; throws when the token is unknown or the trial ended. */

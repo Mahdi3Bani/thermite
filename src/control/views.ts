@@ -44,6 +44,12 @@ export interface AttemptView {
   history: { at: string; verdict: string; delta: number | null }[];
   /** What it waits for after its last job: "audit" or "owner_approval". */
   waiting: string | null;
+  /** Its latest verdict's interval (relative gain, low and high) and the judge's reasons. */
+  ci: [number, number] | null;
+  reasons: string | null;
+  /** The files it changes, with their line counts (null for a binary file), and how many. */
+  files: { path: string; added: number | null; removed: number | null }[];
+  files_total: number;
 }
 
 /** A judge job, from its queued, leased and finished events. */
@@ -102,7 +108,7 @@ export interface RunView {
   };
   /** Research mode: the newest digest's figures and report. */
   research: Record<string, unknown> | null;
-  goals: { goal: string; status: string; reasons: string }[];
+  goals: { goal: string; description: string | null; status: string; reasons: string }[];
   /** When the judge last checked the goals, and on which champion. */
   goals_at: string | null;
   goals_seq: number | null;
@@ -166,7 +172,7 @@ export interface RunView {
     n: number;
     at: string;
     source: string;
-    assignments: { lane: string; family: string; parent: string }[];
+    assignments: { lane: string; family: string; parent: string; focus: string | null }[];
   } | null;
   /** Finished trials, newest last (at most the latest 100). */
   trials: {
@@ -178,6 +184,11 @@ export interface RunView {
     error: string | null;
     at: string;
   }[];
+  /** Each lane's trial in progress: its direction, its focus and when it started. */
+  at_work: Record<
+    string,
+    { trial: string; family: string | null; focus: string | null; since: string }
+  >;
   /** The run's events, oldest first (at most the latest 400): the timeline's source. */
   timeline: StoredEvent[];
 }
@@ -279,6 +290,7 @@ export function rigView(
         created_at: null,
         epoch: null,
         trials: [],
+        at_work: {},
         timeline: [],
       };
       runs.set(id, v);
@@ -369,6 +381,18 @@ export function rigView(
           unsure: [],
           history: [],
           waiting: null,
+          ci: null,
+          reasons: null,
+          files: Array.isArray(b.files)
+            ? (b.files as { path: string; added: number | null; removed: number | null }[]).map(
+                (f) => ({
+                  path: String(f.path),
+                  added: typeof f.added === "number" ? f.added : null,
+                  removed: typeof f.removed === "number" ? f.removed : null,
+                }),
+              )
+            : [],
+          files_total: typeof b.files_total === "number" ? b.files_total : 0,
         };
         attempts.set(a.id, a);
         inst(a.run).attempts.push(a);
@@ -392,6 +416,11 @@ export function rigView(
         if (a) {
           a.verdict = String(b.verdict);
           a.delta = typeof b.delta === "number" ? b.delta : null;
+          a.ci =
+            typeof b.ci_low === "number" && typeof b.ci_high === "number"
+              ? [b.ci_low, b.ci_high]
+              : null;
+          a.reasons = typeof b.reasons === "string" ? b.reasons : null;
           a.updated_at = e.at;
           a.history.push({ at: e.at, verdict: a.verdict, delta: a.delta });
           if (b.verdict === "win_confirmed" && typeof b.delta === "number") {
@@ -449,7 +478,12 @@ export function rigView(
           source: String(b.source ?? ""),
           assignments: (Array.isArray(b.assignments) ? b.assignments : []).map((x) => {
             const y = (x ?? {}) as Record<string, unknown>;
-            return { lane: String(y.lane), family: String(y.family), parent: String(y.parent) };
+            return {
+              lane: String(y.lane),
+              family: String(y.family),
+              parent: String(y.parent),
+              focus: typeof y.focus === "string" ? y.focus : null,
+            };
           }),
         };
         const a = v.agents;
@@ -459,8 +493,20 @@ export function rigView(
         if (Number(b.raw_violations ?? 0) > 0) a.epochs_with_violations++;
         break;
       }
+      case "trial_started": {
+        const v = inst(String(e.subject));
+        v.at_work[String(b.lane)] = {
+          trial: String(b.trial ?? ""),
+          family: typeof b.family === "string" ? b.family : null,
+          focus: typeof b.focus === "string" ? b.focus : null,
+          since: e.at,
+        };
+        break;
+      }
       case "trial_finished": {
         const v = inst(String(e.subject));
+        if (v.at_work[String(b.lane)]?.trial === String(b.trial ?? ""))
+          delete v.at_work[String(b.lane)];
         v.trials.push({
           trial: String(b.trial ?? ""),
           lane: (b.lane as string | null) ?? null,
@@ -494,9 +540,15 @@ export function rigView(
       }
       case "goal_report": {
         const v = inst(String(e.subject));
-        v.goals = ((b.goals as { goal: string; status: string; reasons: string }[]) ?? []).map(
-          (g) => ({ goal: g.goal, status: g.status, reasons: g.reasons }),
-        );
+        v.goals = (
+          (b.goals as { goal: string; description?: string; status: string; reasons: string }[]) ??
+          []
+        ).map((g) => ({
+          goal: g.goal,
+          description: typeof g.description === "string" ? g.description : null,
+          status: g.status,
+          reasons: g.reasons,
+        }));
         v.goals_at = e.at;
         v.goals_seq = typeof b.champion_seq === "number" ? b.champion_seq : null;
         break;
