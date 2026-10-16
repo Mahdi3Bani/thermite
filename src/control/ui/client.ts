@@ -21,6 +21,8 @@ export const CLIENT_JS = `
         const res = await fetch(location.href, { credentials: "same-origin" });
         if (!res.ok || res.redirected) return;
         const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+        // What the owner opened stays open: details with a data-k key keep their state.
+        const open = new Set([...document.querySelectorAll("details[data-k][open]")].map((d) => d.dataset.k));
         for (const sel of ["#content", ".sidebar", ".statusbar"]) {
           const now = $(sel), next = $(sel, doc);
           if (!now || !next) continue;
@@ -28,6 +30,7 @@ export const CLIENT_JS = `
           now.replaceChildren(...next.childNodes);
           now.scrollTop = top;
         }
+        for (const d of document.querySelectorAll("details[data-k]")) if (open.has(d.dataset.k)) d.open = true;
       } catch {}
     }, every * 1000);
   }

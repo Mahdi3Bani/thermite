@@ -133,7 +133,7 @@ export const runKey = (rig: string, run: string) => `${rig}/${run}`;
 export const runHref = (
   rig: string,
   i: Pick<RunView, "id" | "campaign">,
-  view: "overview" | "attempts" | "steering" = "overview",
+  view: "overview" | "attempts" | "history" | "steering" = "overview",
 ) =>
   `${campaignHref(i.campaign || i.id)}?run=${encodeURIComponent(runKey(rig, i.id))}${view === "overview" ? "" : `&view=${view}`}`;
 

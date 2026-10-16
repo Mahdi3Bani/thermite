@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { createHarnessApi } from "../harness/api.ts";
 import { relayOnce } from "../supervisor/relay.ts";
+import { seedDemo } from "../testing/control-demo.ts";
 import { FAST_KERNEL, makeJudgeEnv } from "../testing/judge-env.ts";
 import { createControlApi } from "./api.ts";
 import { ControlStore } from "./store.ts";
@@ -210,8 +211,13 @@ describe("control dashboard", () => {
     await s.relay();
     const home = await (await s.get("/ui")).text();
     const judged = s.env.explain(id);
-    assert.ok(home.includes("Promotion waiting for approval"), judged);
+    assert.ok(home.includes("Promote this change?"), judged);
     assert.ok(home.includes(id), judged);
+    // The decision says what it is about, what the judge found, why it waits and what Approve does.
+    assert.match(home, /drop the waste/);
+    assert.match(home, /Confirmed \+\d+\.\d% better than the champion on fresh runs/);
+    assert.match(home, /asks for your approval before every promotion/);
+    assert.match(home, /It becomes <b>champion #2<\/b>/);
     // A form without the session's token is refused.
     const forged = await s.post("/ui/commands", {
       rig: "rig-a",
@@ -248,7 +254,9 @@ describe("control dashboard", () => {
       /Reset workers/,
     );
     assert.match(await (await s.get("/ui/campaigns")).text(), /js-sum/);
-    assert.doesNotMatch(await (await s.get("/ui")).text(), /Promotion waiting for approval/);
+    const after = await (await s.get("/ui")).text();
+    assert.doesNotMatch(after, /Promote this change\?/);
+    assert.match(after, /became champion #2/);
     const audit = await (await s.get("/ui/audit")).text();
     assert.match(audit, /command_issued/);
   });
@@ -330,5 +338,161 @@ describe("control dashboard", () => {
     );
     const cmd = s.store.listCommands(5).find((c) => c.kind === "message_agent");
     assert.equal(cmd?.issued_by, "owner:ui");
+  });
+});
+
+/** Control over the demo seed (no harness): three rigs with decisions waiting and runs at work. */
+async function demo() {
+  const store = new ControlStore(":memory:");
+  seedDemo(store);
+  const admin = "admin-token-abcdef";
+  const control = createControlApi(
+    store,
+    { admin, rigs: { "rig-a": "t-a-abcdef", "rig-b": "t-b-abcdef", "rig-c": "t-c-abcdef" } },
+    makeJudgeEnv().keys.privateKeyPem,
+  );
+  const login = await control.request("/ui/login", {
+    method: "POST",
+    body: new URLSearchParams({ token: admin }),
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+  });
+  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
+  const get = async (path: string) => (await control.request(path, { headers: { cookie } })).text();
+  return { store, get };
+}
+
+describe("control dashboard for an operator", () => {
+  test("every decision shows what it is about, the evidence, why it waits and what each choice does", async () => {
+    const { get } = await demo();
+    const home = await get("/ui");
+    // A goal-campaign attempt held for an audit, on a rig with no auditor.
+    assert.match(home, /Let this change through without an audit\?/);
+    assert.match(home, /Register the two new tensor types/);
+    assert.match(home, /The GPU path uses the slow reference kernel, not a tuned one\./);
+    assert.match(home, /it newly meets goldens, real-file and ops, and it loses none/);
+    assert.match(home, /its author declared known flaws/);
+    assert.match(home, /This rig has no auditor configured/);
+    assert.match(home, /Skip the audit and promote/);
+    assert.match(
+      home,
+      /You take the auditor's place, on the record\. It becomes <b>champion #2<\/b>/,
+    );
+    // Its run was replaced by another run: a promotion there changes only that run.
+    assert.match(home, /This run is <b>paused: replaced by port-3 on rig-b<\/b>/);
+    // No decline command exists, and the page says so rather than offering one.
+    assert.match(home, /no command to decline it yet/);
+    assert.doesNotMatch(home, />Reject</);
+    // The auditor's block shows the auditor's reasons, not just the trigger.
+    assert.match(home, /Overrule the auditor's block\?/);
+    assert.match(home, /the benchmark measures a cache hit/);
+    assert.match(home, /audited because gain 240\.0% above 100%/);
+    // A confirmed win on a rig that asks for approval.
+    assert.match(
+      home,
+      /Confirmed \+14\.2% better than the champion on fresh runs \(screening measured \+15\.2%\)/,
+    );
+    assert.match(home, /It becomes <b>champion #5<\/b>/);
+    // Every decision button is a signed-command form with the session's token.
+    const forms = home.match(/<form class="inline" method="post" action="\/ui\/commands">/g) ?? [];
+    assert.equal(forms.length, 4);
+  });
+
+  test("the overview says what each run is doing now, and what happened, in words", async () => {
+    const { get } = await demo();
+    const home = await get("/ui");
+    assert.match(home, /At work now/);
+    assert.match(home, /measuring the rig's own noise \(the champion against itself\), for 8 min/);
+    assert.match(home, /working for 1 h 3 min on filter-bank, get the model fully onto the GPU/);
+    assert.match(home, /last: <code>run timeout 270 cmake --build/);
+    assert.match(home, /href="\/ui\/rigs\/rig-b\/live\?source=trial%3At-0a1b2c3d4e5f6071"/);
+    assert.match(home, /meets 4 of 8 goals/);
+    // What happened is sentences, not event kinds and IDs.
+    assert.match(home, /Run port-2 paused: replaced by port-3 on rig-b\./);
+    assert.match(home, /The judge checked champion #1: 4 of 8 goals met\./);
+    for (const raw of ["job leased", "attempt lifecycle", "job queued", "promotion blocked"])
+      assert.doesNotMatch(home, new RegExp(raw));
+  });
+
+  test("an attempt has a page with the change, the judge's findings and its history", async () => {
+    const { get } = await demo();
+    const page = await get("/ui/rigs/rig-a/attempts/a-7e1a0001");
+    assert.match(page, /3c0ffee100112233445566778899aabbccddeeff/);
+    assert.match(page, /Only the two new types are covered/);
+    assert.match(page, /looked like goal progress; being confirmed on fresh runs/);
+    assert.match(page, /confirmed: it meets more goals and loses none/);
+    assert.match(page, /The judge started screening <a href="[^"]+">a-7e1a0001<\/a> \(lane-1\)/);
+    assert.match(
+      page,
+      /lane-1 submitted <a href="\/ui\/rigs\/rig-a\/attempts\/a-7e1a0001">a-7e1a0001<\/a>/,
+    );
+    // Its decision is on its page too, without a link back to itself.
+    assert.match(page, /Skip the audit and promote/);
+    assert.doesNotMatch(page, /Everything about a-7e1a0001/);
+    assert.match(await get("/ui/rigs/rig-a/attempts/a-nope"), /No such attempt on this rig/);
+  });
+
+  test("a run's views: overview, history in words, and steering that says what each control does", async () => {
+    const { get } = await demo();
+    const run = await get("/ui/campaigns/kernel-port");
+    // The running run is shown first, not the paused one with decisions.
+    assert.match(run, /id="rig-b\/port-3"/);
+    assert.match(run, /the judge's check of champion #1/);
+    assert.match(run, /waiting on another goal/);
+    const history = await get("/ui/campaigns/kernel-port?run=rig-b%2Fport-3&view=history");
+    assert.match(
+      history,
+      /The planner planned epoch 1: lane-1 on filter-bank; lane-2 on gemv-kernel\./,
+    );
+    const steering = await get("/ui/campaigns/sum-speed?run=rig-c%2Fsum-1&view=steering");
+    assert.match(steering, /The lanes' running trials stop and no new ones start/);
+    assert.match(steering, /every lane starts again from the champion/);
+    assert.match(steering, /blocked by the auditor/);
+    const attempts = await get("/ui/campaigns/sum-speed?run=rig-c%2Fsum-1&view=attempts");
+    assert.match(attempts, /waiting for your approval/);
+    assert.match(attempts, /href="\/ui\/rigs\/rig-c\/attempts\/a-5b5b0001"/);
+  });
+
+  test("agent-written text in decisions, timelines and attempt pages is escaped", async () => {
+    const { store, get } = await demo();
+    const at = new Date().toISOString();
+    store.ingest({
+      rig: "rig-a",
+      ledger_id: "ledger-rig-a",
+      cursor: 0,
+      next: 1000,
+      events: [
+        {
+          id: 900,
+          at,
+          actor: "harness",
+          kind: "attempt_recorded",
+          subject: "a-evil0001",
+          body: {
+            run: "port-2",
+            lane: "lane-1",
+            lifecycle: "queued",
+            commit: "e".repeat(40),
+            parent: "f".repeat(40),
+            hypothesis: "<img src=x onerror=alert(1)> faster",
+            known_flaws: ["<script>alert(2)</script>"],
+          },
+        },
+        {
+          id: 901,
+          at,
+          actor: "harness",
+          kind: "audit_requested",
+          subject: "a-evil0001",
+          body: { audit: 9, run: "port-2", reason: "declared flaws", expected_seq: 1 },
+        },
+      ],
+      summary: {},
+    });
+    for (const path of ["/ui", "/ui/rigs/rig-a/attempts/a-evil0001", "/ui/rigs/rig-a"]) {
+      const html = await get(path);
+      assert.ok(!html.includes("<img src=x"), path);
+      assert.ok(!html.includes("<script>alert(2)"), path);
+      assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt; faster/, path);
+    }
   });
 });

@@ -245,6 +245,41 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .fc-box { background: var(--code-background); border-radius: var(--control-radius); padding: 9px 12px; font-family: var(--font-mono); font-size: 12px; overflow-x: auto; }
 .fc-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 
+/* decision cards: the question, the facts, then each choice with what it does */
+.dc { background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--warning); border-radius: var(--radius); padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.dc.dc-bad { border-left-color: var(--error); } .dc.dc-violet { border-left-color: var(--violet-foreground); }
+.dc-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.dc-q { display: inline-flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 600; }
+.dc-q.dc-warn .icon { color: var(--warning-foreground); } .dc-q.dc-bad .icon { color: var(--error-foreground); } .dc-q.dc-violet .icon { color: var(--violet-foreground); }
+.dc-head .meta { margin-left: auto; color: var(--muted-foreground); font-size: 12px; }
+.dc-head .meta a { text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 3px; }
+dl.dc-facts, dl.facts { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 8px 14px; margin: 0; font-size: 13px; }
+dl.dc-facts dt, dl.facts dt { color: var(--muted-foreground); font-size: 12px; font-weight: 600; padding-top: 1px; }
+dl.dc-facts dd, dl.facts dd { margin: 0; min-width: 0; word-break: break-word; }
+.quote { border-left: 2px solid var(--border); padding: 1px 0 1px 10px; font-size: 14px; }
+.quote.inline { border: 0; padding: 0; font-style: italic; }
+ul.flaws { margin: 4px 0 0; padding-left: 18px; } ul.flaws li { margin: 2px 0; }
+.dc-choices { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--border); padding-top: 12px; }
+.choice { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 12px; align-items: start; font-size: 13px; }
+.choice .btns { display: flex; } .choice .btns > span { padding-top: 6px; }
+.choice .does { padding-top: 6px; color: var(--foreground); }
+.dc-foot { font-size: 12px; } .dc-foot a { color: var(--primary); }
+@media (max-width: 760px) { dl.dc-facts, dl.facts, .choice { grid-template-columns: minmax(0, 1fr); } }
+
+/* what a run is doing now */
+.now { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; }
+.now + .now { margin-top: 12px; }
+.now-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; font-size: 14px; }
+.now-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.now-list li { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 12px; padding: 7px 0; border-top: 1px solid var(--border); font-size: 13px; }
+.now-list li:first-child { border-top: 0; }
+.now-list .who { color: var(--muted-foreground); font-size: 12px; font-weight: 600; padding-top: 1px; }
+.now-list li.muted .what { color: var(--muted-foreground); }
+.now-list a { color: var(--primary); }
+.side .now { padding: 10px 12px; } .side .now-list li { grid-template-columns: 70px minmax(0, 1fr); gap: 8px; font-size: 12px; }
+ol.steps { margin: 0; padding-left: 18px; font-size: 13px; } ol.steps li { margin: 3px 0; }
+.explain { color: var(--muted-foreground); font-size: 12px; margin: 4px 0 0; }
+
 /* lists */
 .list { display: flex; flex-direction: column; }
 .list .li { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 13px; }
