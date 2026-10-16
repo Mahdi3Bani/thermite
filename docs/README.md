@@ -6,6 +6,7 @@ Thermite is an autoresearch harness. Agents propose changes, and code they canno
 
 | Page | What it covers |
 | --- | --- |
+| [Quick start](quickstart.md) | From a clean clone to a rig that checks itself, a model, your own campaign and its result, on one machine |
 | [Architecture](architecture.md) | Rigs (a harness and a supervisor), the central control service, how they talk, and where they run |
 | [Campaign modes](campaign-modes.md) | Hill climbing, goal-seeking and time-boxed research |
 | [Judging and integrity](judging.md) | How results are measured and accepted without trusting the agents that produced them |
