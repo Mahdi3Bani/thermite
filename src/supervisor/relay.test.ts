@@ -46,7 +46,10 @@ describe("supervisor relay between control and harness", () => {
     assert.equal(issued.status, 201);
     const { id } = (await issued.json()) as { id: string };
 
-    let state = await relayOnce(cfg, { cursor: 0 });
+    // With its commands left to their own loop, a report round does not deliver them.
+    let state = await relayOnce({ ...cfg, skipCommands: true }, { cursor: 0 });
+    assert.equal(store.command(id)?.status, "pending");
+    state = await relayOnce(cfg, state);
     assert.equal(store.command(id)?.status, "delivered");
     assert.equal(env.service.ledger.getRun("smoke-1")?.status, "running");
 

@@ -32,7 +32,7 @@ docker compose up -d --build     # or: podman compose up -d --build
 
 - **control** listens on `127.0.0.1:8800`. It generates its command-signing key on first start and shares only the public key with the harness.
 - **harness** has no published port. Only its supervisor reaches it, over the rig's internal network. It reads imports from `.dev/inbox` (read-only) and writes exports to the `outbox` volume, which its supervisor reads and pushes to the results repository.
-- **supervisor** polls the harness, sends new events to control and relays control's commands. The interval is `THERMITE_POLL_SECONDS` (60 by default).
+- **supervisor** polls the harness and sends new events to control every `THERMITE_POLL_SECONDS` (60 by default). It fetches control's commands on a shorter interval, `THERMITE_COMMAND_POLL_SECONDS` (5 by default), so a pause or a message lands within seconds.
 
 ## The dashboard
 

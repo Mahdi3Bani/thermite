@@ -13,7 +13,7 @@ import { type AdviseState, adviseOnce, emptyAdviseState } from "./advise.ts";
 import { AdvisorsConfig } from "./advisors.ts";
 import { type ExportState, exportOnce } from "./git-export.ts";
 import { type LiveRelayState, relayLiveOnce, supervisorLive } from "./live.ts";
-import { RelayError, type RelayState, relayOnce } from "./relay.ts";
+import { RelayError, type RelayState, relayCommandsOnce, relayOnce } from "./relay.ts";
 import { dailyReport } from "./report.ts";
 import { stageCommand } from "./staging.ts";
 
@@ -176,9 +176,30 @@ async function main(): Promise<void> {
   };
   const livingDone = living();
 
+  // Commands on their own short interval: a pause or a message should not wait for the next
+  // report. The report loop below leaves commands to this one.
+  const commandMs = Number(env.THERMITE_COMMAND_POLL_SECONDS ?? "5") * 1000;
+  const commanding = async () => {
+    let failing = false;
+    while (!stopping && controlUrl && commandMs > 0) {
+      try {
+        await relayCommandsOnce(cfg);
+        failing = false;
+      } catch (err) {
+        if (!failing) log("supervisor", "command relay error", { error: String(err) });
+        failing = true;
+      }
+      if (wipeRequested) break;
+      const until = Date.now() + commandMs;
+      while (!stopping && !wipeRequested && Date.now() < until)
+        await new Promise((r) => setTimeout(r, 250));
+    }
+  };
+  const commandingDone = commanding();
+
   while (!stopping) {
     try {
-      const next = await relayOnce(cfg, state);
+      const next = await relayOnce({ ...cfg, skipCommands: commandMs > 0 }, state);
       if (next.cursor !== state.cursor || next.ledgerId !== state.ledgerId) {
         save(statePath, next);
         log("supervisor", "reported", { cursor: next.cursor });
@@ -256,10 +277,13 @@ async function main(): Promise<void> {
       log("supervisor", "control report error", { error: String(err) });
     }
     const until = Date.now() + intervalMs;
-    while (!stopping && Date.now() < until) await new Promise((r) => setTimeout(r, 250));
+    // A wipe the command loop delivered is acted on at once, not at the next report.
+    while (!stopping && !wipeRequested && Date.now() < until)
+      await new Promise((r) => setTimeout(r, 250));
   }
   await advisingDone;
   await livingDone;
+  await commandingDone;
   process.exit(0);
 }
 

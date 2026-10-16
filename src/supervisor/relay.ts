@@ -14,6 +14,8 @@ export interface RelayConfig {
   controlToken?: string | undefined;
   fetchImpl?: typeof fetch | undefined;
   /** Makes a command's content available first (propagation); "wait" holds it for a later round. */
+  /** True: relayOnce leaves commands to relayCommandsOnce, run on its own shorter interval. */
+  skipCommands?: boolean | undefined;
   /** Content a command brings: relay it, wait for it, or report that it could not be had. */
   stage?: ((cmd: SignedCommand) => Promise<"ready" | "wait" | { failed: string }>) | undefined;
   /** Told about each relayed command's outcome (a full reset's wipe acts on it). */
@@ -146,6 +148,19 @@ export async function relayOnce(cfg: RelayConfig, state: RelayState): Promise<Re
   } catch (err) {
     reportError = err;
   }
+  if (!cfg.skipCommands) await relayCommandsOnce(cfg);
+  const next = { cursor, ledgerId, pageLimit };
+  if (reportError) throw new RelayError(String(reportError), next);
+  return next;
+}
+
+/**
+ * Control's pending commands for this rig, staged and delivered to the harness, each acked with
+ * its outcome. The supervisor runs this every few seconds on its own (a pause should not wait for
+ * the next report); relayOnce runs it too unless told to skip it.
+ */
+export async function relayCommandsOnce(cfg: RelayConfig): Promise<void> {
+  const f = cfg.fetchImpl ?? fetch;
   if (cfg.controlUrl && cfg.controlToken) {
     const pending = must(
       await call(
@@ -206,7 +221,4 @@ export async function relayOnce(cfg: RelayConfig, state: RelayState): Promise<Re
       }
     }
   }
-  const next = { cursor, ledgerId, pageLimit };
-  if (reportError) throw new RelayError(String(reportError), next);
-  return next;
 }

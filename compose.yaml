@@ -85,6 +85,8 @@ services:
       HARNESS_URL: http://harness:8700
       CONTROL_URL: http://control:8800
       THERMITE_POLL_SECONDS: "${THERMITE_POLL_SECONDS:-60}"
+      # Commands (pause, messages, checks) are fetched on their own, shorter interval.
+      THERMITE_COMMAND_POLL_SECONDS: "${THERMITE_COMMAND_POLL_SECONDS:-5}"
       THERMITE_LIVE_INTERVAL_MS: "${THERMITE_LIVE_INTERVAL_MS:-3000}"
       THERMITE_HARNESS_TOKEN_FILE: /run/secrets/harness-supervisor-token
       THERMITE_CONTROL_TOKEN_FILE: /run/secrets/control-rig-token
@@ -150,6 +152,8 @@ services:
       HARNESS_URL: http://harness-2:8700
       CONTROL_URL: http://control:8800
       THERMITE_POLL_SECONDS: "${THERMITE_POLL_SECONDS:-60}"
+      # Commands (pause, messages, checks) are fetched on their own, shorter interval.
+      THERMITE_COMMAND_POLL_SECONDS: "${THERMITE_COMMAND_POLL_SECONDS:-5}"
       THERMITE_LIVE_INTERVAL_MS: "${THERMITE_LIVE_INTERVAL_MS:-3000}"
       THERMITE_HARNESS_TOKEN_FILE: /run/secrets/harness2-supervisor-token
       THERMITE_CONTROL_TOKEN_FILE: /run/secrets/control-rig-token-2
