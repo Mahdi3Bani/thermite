@@ -115,7 +115,7 @@ describe("agent scheduler", () => {
       ["submitted", "submitted"],
     );
     const winner = String(trials[0]?.attempt);
-    assert.equal(env.ledger.currentVerdict(winner)?.verdict, "win_confirmed");
+    assert.equal(env.ledger.currentVerdict(winner)?.verdict, "win_confirmed", env.explain(winner));
     assert.equal(env.ledger.currentVerdict(String(trials[1]?.attempt))?.verdict, "invalid");
     // The win became the champion, so it is no lane's separate best.
     assert.equal(env.ledger.currentChampion("js-1").attempt, winner);

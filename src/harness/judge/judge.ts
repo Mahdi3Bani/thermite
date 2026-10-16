@@ -888,7 +888,65 @@ export class Judge {
     const held = new Set(contract.held_out_cells);
     const pick = (cells: string[]) =>
       cells.filter((c) => (opts.heldOut ? held.has(c) : !held.has(c)));
-    for (const g of contract.goals) {
+    // Priority gates: each code verifier is evaluated once per pass, its gates (`requires`)
+    // first. One whose gate did not pass runs none of its cells. A gate with no cells in this
+    // pass (all held out, or none held out) does not block.
+    type VerifierResult = { ok: boolean; runnable: boolean; reasons: string };
+    const verified = new Map<string, VerifierResult>();
+    const evaluate = async (name: string): Promise<VerifierResult> => {
+      const known = verified.get(name);
+      if (known) return known;
+      const ver = ctx.kit.verifiers[name];
+      let result: VerifierResult;
+      if (!ver) {
+        result = { ok: false, runnable: false, reasons: `the kit has no verifier ${name}` };
+      } else {
+        const blocked: string[] = [];
+        for (const gate of ver.requires) {
+          const g = await evaluate(gate);
+          if (g.runnable && !g.ok) blocked.push(gate);
+        }
+        const cells = pick(ver.cells);
+        if (blocked.length) {
+          result = {
+            ok: false,
+            runnable: true,
+            reasons: `not run: it requires ${blocked.join(", ")}, which did not pass`,
+          };
+        } else if (!cells.length) {
+          result = {
+            ok: false,
+            runnable: false,
+            reasons: opts.heldOut ? "no held-out cells" : "every cell of this verifier is held out",
+          };
+        } else {
+          this.ledger.heartbeat(job.id, job.fence, this.o.leaseMs);
+          const failures: string[] = [];
+          for (const cell of cells) {
+            if (!ctx.kit.cells[cell]) {
+              failures.push(`no cell ${cell}`);
+              continue;
+            }
+            const r = await runArm(ctx, arm, cell);
+            if (r.kind !== "ok") failures.push(`${cell}: ${r.kind}: ${r.reason.slice(0, 300)}`);
+          }
+          result = {
+            ok: !failures.length,
+            runnable: true,
+            reasons: failures.length
+              ? failures.join("; ")
+              : `verifier ${name} passed on ${cells.join(", ")}`,
+          };
+        }
+      }
+      verified.set(name, result);
+      return result;
+    };
+    // Goals run in their verifiers' priority order (others keep the contract's order) and are
+    // reported in the contract's order.
+    const rank = (g: GoalContract["goals"][number]) =>
+      g.verify.type === "code" ? (ctx.kit.verifiers[g.verify.verifier]?.priority ?? 100) : 100;
+    for (const g of [...contract.goals].sort((a, b) => rank(a) - rank(b))) {
       if (opts.goals && !opts.goals.includes(g.id)) continue;
       this.ledger.heartbeat(job.id, job.fence, this.o.leaseMs);
       const v = g.verify;
@@ -924,42 +982,12 @@ export class Judge {
         continue;
       }
       if (v.type === "code") {
-        const ver = ctx.kit.verifiers[v.verifier];
-        if (!ver) {
-          out.push({
-            goal: g.id,
-            required: g.required,
-            status: "not_runnable",
-            reasons: `the kit has no verifier ${v.verifier}`,
-          });
-          continue;
-        }
-        const failures: string[] = [];
-        const cells = pick(ver.cells);
-        if (!cells.length) {
-          out.push({
-            goal: g.id,
-            required: g.required,
-            status: "not_runnable",
-            reasons: opts.heldOut ? "no held-out cells" : "every cell of this verifier is held out",
-          });
-          continue;
-        }
-        for (const cell of cells) {
-          if (!ctx.kit.cells[cell]) {
-            failures.push(`no cell ${cell}`);
-            continue;
-          }
-          const r = await runArm(ctx, arm, cell);
-          if (r.kind !== "ok") failures.push(`${cell}: ${r.kind}: ${r.reason.slice(0, 300)}`);
-        }
+        const r = await evaluate(v.verifier);
         out.push({
           goal: g.id,
           required: g.required,
-          status: failures.length ? "unmet" : "met",
-          reasons: failures.length
-            ? failures.join("; ")
-            : `verifier ${v.verifier} passed on ${cells.join(", ")}`,
+          status: !r.runnable ? "not_runnable" : r.ok ? "met" : "unmet",
+          reasons: r.reasons,
         });
         continue;
       }
@@ -1023,7 +1051,9 @@ export class Judge {
         reasons: failures.length ? `${d.reasons}; ${failures.join("; ")}` : d.reasons,
       });
     }
-    return out;
+    // Reported in the contract's order, whatever order they ran in.
+    const order = new Map(contract.goals.map((g, i) => [g.id, i]));
+    return out.sort((a, b) => (order.get(a.goal) ?? 0) - (order.get(b.goal) ?? 0));
   }
 
   private recordGoals(

@@ -153,6 +153,8 @@ export function makeJudgeEnv(
     rig?: string | undefined;
     /** The kit's run driver comes from `run.copy` instead of the build. */
     runCopy?: boolean | undefined;
+    /** The kit's verifiers, instead of the default single `correctness`. */
+    kitVerifiers?: Record<string, unknown> | undefined;
     share?: { root: string; seed: string; kitCommit: string } | undefined;
   } = {},
 ) {
@@ -179,7 +181,14 @@ export function makeJudgeEnv(
     git(project, "bundle", "create", "--quiet", join(paths.inboxDir, "repos", "p.bundle"), "--all");
     const kitRepo = join(root, "kit");
     kitCommit = repo(kitRepo, {
-      "kit.json": JSON.stringify(opts.runCopy ? RUN_COPY_KIT : KIT, null, 2),
+      "kit.json": JSON.stringify(
+        {
+          ...(opts.runCopy ? RUN_COPY_KIT : KIT),
+          ...(opts.kitVerifiers ? { verifiers: opts.kitVerifiers } : {}),
+        },
+        null,
+        2,
+      ),
       "bench/run.mjs": RUN,
       "bench/drive.mjs": DRIVE,
       "check.mjs": CHECK,

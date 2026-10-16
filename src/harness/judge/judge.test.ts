@@ -177,6 +177,67 @@ describe("judge pipeline (local runner, Node test kit)", () => {
     assert.equal(Number(complete?.n), 2);
   });
 
+  test("goal mode: priority gates skip a goal whose gate did not pass", async () => {
+    const env = await setup({
+      goal: { opsPerSecond: 150e6 },
+      promotion: "auto",
+      kitVerifiers: {
+        correctness: { cells: ["small"], priority: 1 },
+        heavy: { cells: ["big"], priority: 2, requires: ["correctness"] },
+      },
+      contract: {
+        // The gated goal comes first in the contract: priority, not order, decides what runs first.
+        goals: [
+          // Unmet by the seed, so the campaign stays open for the attempt below.
+          {
+            id: "fast",
+            description: "fast enough",
+            verify: {
+              type: "metric_threshold",
+              metric: "ops_per_s",
+              op: ">=",
+              value: 150e6,
+              cells: ["big"],
+            },
+          },
+          {
+            id: "heavy-goal",
+            description: "the big case",
+            verify: { type: "code", verifier: "heavy" },
+          },
+          {
+            id: "correct",
+            description: "still correct",
+            verify: { type: "code", verifier: "correctness" },
+          },
+        ],
+      },
+    });
+    await env.drain(); // validates the seed: correct, so both gates open
+    const checks = (attempt: string | null) =>
+      env.ledger.db
+        .prepare(
+          `select goal, result, detail from goal_check where ${attempt ? "attempt = ?" : "attempt is null"} order by id`,
+        )
+        .all(...(attempt ? [attempt] : [])) as { goal: string; result: string; detail: string }[];
+    const seed = checks(null);
+    assert.ok(
+      seed.some((c) => c.goal === "heavy-goal" && c.result === "met"),
+      JSON.stringify(seed),
+    );
+    // A wrong kernel fails the gate, so the heavy goal is not run at all.
+    const wrong = await env.submit(WRONG_KERNEL, "return early");
+    await env.drain();
+    const got = checks(wrong);
+    const heavy = got.find((c) => c.goal === "heavy-goal");
+    assert.ok(heavy, env.explain(wrong));
+    assert.match(String(heavy?.detail), /not run: it requires correctness, which did not pass/);
+    assert.ok(
+      got.some((c) => c.goal === "correct" && c.result !== "met"),
+      JSON.stringify(got),
+    );
+  });
+
   test("goal mode: a failed validation is tried again, a few times, spaced out", async () => {
     const env = await setup({ goal: { opsPerSecond: 150e6 }, promotion: "auto" });
     // A validation that failed for an infrastructure reason.

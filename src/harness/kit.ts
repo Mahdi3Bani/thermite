@@ -85,13 +85,58 @@ const KitFields = z.strictObject({
   /**
    * Named verifiers for goal-mode contracts (`verify: {type: "code", verifier: name}`): a goal
    * is met when every listed cell's run passes the check.
+   *
+   * Priority gates: verifiers run in `priority` order (lower first), and one whose `requires`
+   * (other verifiers) did not pass is not run at all: its goal is unmet, "not run". A goal that
+   * cannot pass until another does (a model's perplexity, before it loads) then costs nothing.
    */
   verifiers: z
-    .record(z.string().min(1), z.strictObject({ cells: z.array(z.string().min(1)).min(1) }))
+    .record(
+      z.string().min(1),
+      z.strictObject({
+        cells: z.array(z.string().min(1)).min(1),
+        priority: z.number().int().default(100),
+        requires: z.array(z.string().min(1)).default([]),
+      }),
+    )
     .default({}),
 });
 
 export const KitSchema = KitFields.superRefine((kit, ctx) => {
+  // Gates name other verifiers, and never form a cycle.
+  const names = Object.keys(kit.verifiers);
+  for (const [name, v] of Object.entries(kit.verifiers)) {
+    for (const r of v.requires) {
+      if (!names.includes(r) || r === name) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["verifiers", name, "requires"],
+          message: `${r} is not another verifier of this kit`,
+        });
+      }
+    }
+  }
+  const visiting = new Set<string>();
+  const done = new Set<string>();
+  const cyclic = (n: string): boolean => {
+    if (done.has(n)) return false;
+    if (visiting.has(n)) return true;
+    visiting.add(n);
+    const found = (kit.verifiers[n]?.requires ?? []).some((r) => names.includes(r) && cyclic(r));
+    visiting.delete(n);
+    done.add(n);
+    return found;
+  };
+  for (const n of names) {
+    if (cyclic(n)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["verifiers", n],
+        message: "verifier gates form a cycle",
+      });
+      break;
+    }
+  }
   // A run reaches only the kit paths it copies.
   for (const arg of kit.run.command) {
     for (const m of arg.matchAll(/\{kit(?::([^}]+))?\}/g)) {

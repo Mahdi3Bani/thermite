@@ -60,4 +60,34 @@ describe("kit commands", () => {
       );
     }
   });
+
+  test("verifier gates name other verifiers and never form a cycle", () => {
+    const withVerifiers = (verifiers: unknown) => ({ ...base, verifiers });
+    const ok = KitSchema.parse(
+      withVerifiers({
+        load: { cells: ["small"], priority: 1 },
+        ppl: { cells: ["small"], requires: ["load"] },
+      }),
+    );
+    assert.equal(ok.verifiers.ppl?.priority, 100);
+    assert.deepEqual(ok.verifiers.load?.requires, []);
+    assert.throws(
+      () => KitSchema.parse(withVerifiers({ a: { cells: ["small"], requires: ["nope"] } })),
+      /not another verifier/,
+    );
+    assert.throws(
+      () => KitSchema.parse(withVerifiers({ a: { cells: ["small"], requires: ["a"] } })),
+      /not another verifier/,
+    );
+    assert.throws(
+      () =>
+        KitSchema.parse(
+          withVerifiers({
+            a: { cells: ["small"], requires: ["b"] },
+            b: { cells: ["small"], requires: ["a"] },
+          }),
+        ),
+      /cycle/,
+    );
+  });
 });

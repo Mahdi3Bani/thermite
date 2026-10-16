@@ -34,6 +34,8 @@ Unknown fields are rejected at every level.
 | `check.timeout_s` | integer | `120` | Check wall-time limit, seconds |
 | `verifiers` | object | `{}` | Verifier name → `{cells}`, for goal contracts |
 | `verifiers.<name>.cells` | string[] | required, at least 1 | Cells whose runs must all pass the check |
+| `verifiers.<name>.priority` | integer | `100` | Order in which verifiers run: lower first |
+| `verifiers.<name>.requires` | string[] | `[]` | Gates: other verifiers that must pass first. If one does not, this verifier runs none of its cells, and its goal is unmet with "not run" |
 
 Paths in `build.copy` and `run.copy` are relative to the kit and normalized, with no `..`. Neither can name the whole kit.
 
@@ -109,7 +111,7 @@ For each metric, the value of a run is `cells[<cell>][<work>]` divided by the ru
 | Check fails | `invalid` | Infrastructure error |
 | Metric implausible | `invalid` | Infrastructure error |
 
-In goal verification, a failed run on a verifier's cell makes that goal `unmet`, with the run's failure as its reason, for any arm.
+In goal verification, a failed run on a verifier's cell makes that goal `unmet`, with the run's failure as its reason, for any arm. A verifier whose gate (`requires`) did not pass is not run: its goal is `unmet`, with "not run: it requires …, which did not pass". A gate with no cells in a pass (all held out, or none held out) does not block.
 
 Reason lengths kept downstream:
 

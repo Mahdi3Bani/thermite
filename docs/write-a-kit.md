@@ -82,6 +82,17 @@ For each goal verified by code, add a verifier naming the cells that must all pa
 
 A goal that should be held out needs at least one visible cell and one held-out cell. A verifier whose cells are all held out never shows as met.
 
+**Gate expensive goals on cheap ones.** Give verifiers a `priority`, so the quick checks run first, and make a goal that cannot pass until another does require it. A model's perplexity cannot pass before the model loads:
+
+```json
+"verifiers": {
+  "load":       { "cells": ["load"], "priority": 10 },
+  "perplexity": { "cells": ["ppl"], "priority": 20, "requires": ["load"] }
+}
+```
+
+A candidate that fails `load` then costs nothing for `perplexity`. Its goal is unmet with "not run", and the judge moves on to the next attempt. Leave independent goals ungated, such as one checking that an existing model is unchanged, so they still run and still catch regressions.
+
 ## 7. Pin the kit in the contract
 
 Commit the kit and name the commit in the contract's `project.kit`:

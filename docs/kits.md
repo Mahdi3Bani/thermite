@@ -29,7 +29,7 @@ A kit is a directory with a manifest, `kit.json`, and whatever scripts the proje
 | **Metrics** | Scores computed from the judge's own clock, for example operations per second |
 | **Check** | A judge-side program that decides whether a run's outputs are correct |
 
-Goal campaigns add **verifiers**: named sets of cells. A goal is met when every cell in its verifier passes the check.
+Goal campaigns add **verifiers**: named sets of cells. A goal is met when every cell in its verifier passes the check. Verifiers can be **gated**: one runs only once the verifiers it requires have passed, so a candidate that fails a basic goal doesn't spend the judge's time on goals that depend on it.
 
 ## How the judge uses a kit
 
