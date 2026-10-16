@@ -172,7 +172,15 @@ export async function runResearchTrial(
   try {
     await agent.prompt(spec.brief);
     // A cut-off reply or a failed call does not end a research trial before its time.
-    await keepGoing(agent, () => result.stopped !== "no_submission");
+    const end = await keepGoing(
+      agent,
+      () => result.stopped !== "no_submission",
+      deps.model.contextWindow,
+    );
+    if (end) {
+      result.stopped = end.stopped === "context" ? "finished" : "error";
+      result.error = end.error;
+    }
     if (result.stopped === "no_submission") result.stopped = "finished";
   } catch (err) {
     if (result.stopped === "no_submission") {

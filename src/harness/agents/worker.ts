@@ -63,7 +63,15 @@ export interface TrialDeps {
 
 export interface TrialResult {
   submitted?: SubmitOutcome | undefined;
-  stopped: "submitted" | "no_submission" | "finished" | "interrupted" | "turns" | "wall" | "error";
+  stopped:
+    | "submitted"
+    | "no_submission"
+    | "finished"
+    | "interrupted"
+    | "turns"
+    | "wall"
+    | "context"
+    | "error";
   turns: number;
   toolCalls: number;
   tokensIn: number;
@@ -207,7 +215,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
           captureBytes: 32 * 1024,
         });
         return text(
-          `exit ${r.exitCode ?? r.signal}${r.killedFor ? ` (killed: ${r.killedFor})` : ""}\n--- stdout\n${r.stdout.slice(-12_000)}\n--- stderr\n${r.stderr.slice(-6_000)}`,
+          `exit ${r.exitCode ?? r.signal}${r.killedFor ? ` (killed: ${r.killedFor})` : ""}\n--- stdout\n${r.stdout.slice(-6_000)}\n--- stderr\n${r.stderr.slice(-3_000)}\n(output trimmed to its end: pipe through grep, head or tail to see other parts)`,
         );
       },
     ),
@@ -304,6 +312,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
   const started = Date.now();
   const minutes = Math.round(spec.wallMs / 60_000);
   let warned = false;
+  let warnedContext = false;
   const warn = (why: string) => {
     if (warned || result.submitted) return;
     warned = true;
@@ -326,6 +335,18 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
         agent.abort();
       } else if (maxTurns !== undefined && warnTurns !== undefined && result.turns >= warnTurns) {
         warn(`${maxTurns - result.turns} turns are left in this trial.`);
+      } else if (
+        !warnedContext &&
+        (usage?.input ?? 0) >= 0.8 * deps.model.contextWindow &&
+        !result.submitted
+      ) {
+        warnedContext = true;
+        agent.steer({
+          role: "user",
+          content:
+            "This conversation is close to the model's context limit, and the trial ends when it is full. Build and test what you have, then submit your best working change now, listing anything unfinished in known_flaws.",
+          timestamp: Date.now(),
+        });
       } else if (Date.now() - started >= spec.wallMs * 0.85) {
         warn(
           `About ${Math.max(1, Math.round((spec.wallMs - (Date.now() - started)) / 60_000))} minutes are left in this trial.`,
@@ -346,10 +367,16 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
     // calls never end it (keepGoing).
     let nudges = 0;
     for (;;) {
-      await keepGoing(
+      const end = await keepGoing(
         agent,
         () => result.submitted !== undefined || result.stopped !== "no_submission",
+        deps.model.contextWindow,
       );
+      if (end && !result.submitted) {
+        result.stopped = end.stopped;
+        result.error = end.error;
+        break;
+      }
       if (result.submitted || result.stopped !== "no_submission" || nudges++ >= 2) break;
       await agent.prompt(NUDGE);
     }
@@ -382,29 +409,72 @@ const NUDGE =
 const CUT_OFF =
   "Your last reply was cut off at the output limit before it made a tool call. Think briefly, then make one tool call; keep each reply short.";
 
+/** Why keepGoing ended a trial early: its context is full, or the model is stuck or down. */
+export interface TrialEnd {
+  stopped: "context" | "error";
+  error: string;
+}
+
+/** Errors a provider gives for a request longer than the model's context. */
+const CONTEXT_ERROR = /context|too long|maximum (context )?length|exceed/i;
+
 /**
  * Until `done()`, a reply cut off at the output limit is told to think less and act, and a
- * failed model call is retried after a growing pause (5 s to 60 s). Returns when the model
- * stops of its own accord, or once `done()` (a submission, or the trial's time ran out).
+ * failed model call is retried after a growing pause. Returns undefined when the model stops of
+ * its own accord (or once `done()`), or why the trial must end: a full context (a cut-off
+ * reply with almost no output, or a context-length error) cannot be continued, and a model
+ * cut off 5 times running or failing 6 times running is left to the scheduler's backoff rather
+ * than retried against a shared endpoint for the rest of the trial. The lane's next trial
+ * starts afresh either way, so none of this ends research.
  */
-export async function keepGoing(agent: Agent, done: () => boolean): Promise<void> {
+export async function keepGoing(
+  agent: Agent,
+  done: () => boolean,
+  contextWindow?: number | undefined,
+): Promise<TrialEnd | undefined> {
   let failures = 0;
+  let cutoffs = 0;
   while (!done()) {
     const last = lastAssistant(agent);
     if (last?.stopReason === "length") {
       failures = 0;
+      const full = contextWindow !== undefined && last.input >= 0.95 * contextWindow;
+      if (last.output < 64 || full) {
+        return {
+          stopped: "context",
+          error: `the conversation filled the model's context (${last.input} tokens in, ${last.output} out)`,
+        };
+      }
+      if (++cutoffs >= 5) {
+        return {
+          stopped: "error",
+          error: "the model's replies were cut off 5 times in a row without a tool call",
+        };
+      }
       await agent.prompt(CUT_OFF);
     } else if (last?.stopReason === "error") {
-      failures++;
-      await sleepUnlessDone(Math.min(60_000, 5_000 * 2 ** Math.min(failures - 1, 4)), done);
-      if (done()) return;
-      await agent.prompt(
-        `The model call failed (${(last.errorMessage ?? "no detail").slice(0, 200)}). Continue where you left off.`,
-      );
+      cutoffs = 0;
+      const message = (last.errorMessage ?? "no detail").slice(0, 200);
+      if (CONTEXT_ERROR.test(message)) {
+        return {
+          stopped: "context",
+          error: `the conversation filled the model's context: ${message}`,
+        };
+      }
+      if (++failures > 5) {
+        return {
+          stopped: "error",
+          error: `the model call failed ${failures} times in a row: ${message}`,
+        };
+      }
+      await sleepUnlessDone(Math.min(60_000, 5_000 * 2 ** (failures - 1)), done);
+      if (done()) return undefined;
+      await agent.prompt(`The model call failed (${message}). Continue where you left off.`);
     } else {
-      return;
+      return undefined;
     }
   }
+  return undefined;
 }
 
 /** Waits `ms`, or less once `done()` turns true (the trial's time ran out meanwhile). */
@@ -415,11 +485,14 @@ async function sleepUnlessDone(ms: number, done: () => boolean): Promise<void> {
   }
 }
 
-function lastAssistant(agent: Agent): { stopReason: string; errorMessage?: string } | undefined {
+function lastAssistant(
+  agent: Agent,
+): { stopReason: string; errorMessage?: string; input: number; output: number } | undefined {
   const messages = agent.state.messages as {
     role?: string;
     stopReason?: string;
     errorMessage?: string;
+    usage?: { input?: number; output?: number };
   }[];
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
@@ -427,6 +500,8 @@ function lastAssistant(agent: Agent): { stopReason: string; errorMessage?: strin
       return {
         stopReason: m.stopReason,
         ...(m.errorMessage ? { errorMessage: m.errorMessage } : {}),
+        input: m.usage?.input ?? 0,
+        output: m.usage?.output ?? 0,
       };
   }
   return undefined;

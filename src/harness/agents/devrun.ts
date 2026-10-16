@@ -124,8 +124,8 @@ export class DevRuns {
           exit: r.exitCode ?? r.signal,
           killed: r.killedFor,
           wall_ms: Math.round(r.wallMs),
-          stdout: r.stdout.slice(-12_000),
-          stderr: r.stderr.slice(-6_000),
+          stdout: r.stdout.slice(-6_000),
+          stderr: r.stderr.slice(-3_000),
           note: "diagnostic only: this number never counts",
         };
       } finally {

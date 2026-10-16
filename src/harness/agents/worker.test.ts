@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { startFakeModel } from "../../testing/fake-model.ts";
 import { FAST_KERNEL, makeJudgeEnv } from "../../testing/judge-env.ts";
 import { LocalRunner } from "../broker/runner.ts";
-import { runTrial } from "./worker.ts";
+import { keepGoing, runTrial } from "./worker.ts";
 import { prepareWorkspace } from "./workspace.ts";
 
 const laneTool = [
@@ -298,7 +298,11 @@ describe("worker trial", () => {
       const lastUser = [...messages].reverse().find((m) => m.role === "user");
       said.push(JSON.stringify(lastUser?.content ?? ""));
       if (calls <= 4)
-        return { text: "Let me think about the loop structure in depth", cutOff: true };
+        return {
+          text: "Let me think about the loop structure in depth",
+          cutOff: true,
+          usage: { prompt: 3000, completion: 2000 },
+        };
       if (calls <= 6) return { fail: 503 };
       const done = messages.filter((m) => m.role === "tool").length;
       if (done === 0)
@@ -348,6 +352,55 @@ describe("worker trial", () => {
       said.some((u) => u.includes("The model call failed")),
       said.join("\n"),
     );
+  });
+
+  test("keepGoing ends a trial on a full context or a stuck model, never loops on it", async () => {
+    // A stand-in agent: each prompt appends the next scripted assistant message.
+    const fake = (
+      replies: { stopReason: string; output?: number; input?: number; errorMessage?: string }[],
+    ) => {
+      const messages: unknown[] = [];
+      let i = 0;
+      const next = () => {
+        const r = replies[Math.min(i++, replies.length - 1)] as (typeof replies)[number];
+        messages.push({
+          role: "assistant",
+          stopReason: r.stopReason,
+          errorMessage: r.errorMessage,
+          usage: { input: r.input ?? 1000, output: r.output ?? 2000 },
+        });
+      };
+      next();
+      return {
+        agent: { state: { messages }, prompt: async () => next() } as never,
+        calls: () => i,
+      };
+    };
+    const never = () => false;
+    // A one-token cut-off: the context is full.
+    const full = fake([{ stopReason: "length", output: 1, input: 31_900 }]);
+    assert.equal((await keepGoing(full.agent, never, 32_768))?.stopped, "context");
+    assert.equal(full.calls(), 1, "no further call");
+    // A prompt at the context window, even with output: full as well.
+    const atWindow = fake([{ stopReason: "length", output: 500, input: 31_500 }]);
+    assert.equal((await keepGoing(atWindow.agent, never, 32_768))?.stopped, "context");
+    // A context-length error from the provider.
+    const tooLong = fake([
+      { stopReason: "error", errorMessage: "400 maximum context length is 32768 tokens" },
+    ]);
+    assert.equal((await keepGoing(tooLong.agent, never, 32_768))?.stopped, "context");
+    // Cut off 5 times running with real output: stuck, the trial ends.
+    const stuck = fake([{ stopReason: "length" }]);
+    const s5 = await keepGoing(stuck.agent, never, 32_768);
+    assert.equal(s5?.stopped, "error");
+    assert.match(String(s5?.error), /cut off 5 times/);
+    assert.equal(stuck.calls(), 5);
+    // Two cut-offs, then a reply that stops of its own accord: back to the caller.
+    const ok = fake([{ stopReason: "length" }, { stopReason: "length" }, { stopReason: "stop" }]);
+    assert.equal(await keepGoing(ok.agent, never, 32_768), undefined);
+    // The trial's time running out ends it quietly.
+    const late = fake([{ stopReason: "length" }]);
+    assert.equal(await keepGoing(late.agent, () => true, 32_768), undefined);
   });
 
   test("the live view: a worker's turns stream out, and the owner's message arrives as a user turn", async () => {

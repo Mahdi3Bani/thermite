@@ -416,6 +416,8 @@ if (isRoot) {
   const secrets = readSecrets();
   const gpuLayout = prepareDevices();
   const pinnedCpus = chooseRunCpus(gpuLayout);
+  // nvidia-smi as root (the bus query above) resets nvidia-uvm to 0666: put it back now.
+  assertDevices(gpuLayout);
   setInterval(() => assertDevices(gpuLayout), 60_000).unref();
   const killed = killRoles();
   if (killed) log("broker", "killed leftover role processes at start", { killed });
