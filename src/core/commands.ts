@@ -175,6 +175,15 @@ export const CommandPayloads = {
    * an audit that is pending or blocked. The judge's verdict must still be promotable.
    */
   approve_promotion: z.object({ run: IdSchema, attempt: z.string().min(1).max(64) }),
+  /**
+   * The owner says no to a confirmed win that waits for approval, or to an attempt held for (or
+   * blocked by) an audit: it never becomes the champion, and stays in the record as declined.
+   */
+  decline_promotion: z.object({
+    run: IdSchema,
+    attempt: z.string().min(1).max(64),
+    note: z.string().max(2000).optional(),
+  }),
   /** The owner's final acceptance (or rejection) of a goal the review panel passed. */
   accept_review: z.object({
     run: IdSchema,

@@ -1328,6 +1328,7 @@ ${
       export_now: {},
       rig_check: { check: String(f.check ?? ""), ...(f.force === "true" ? { force: true } : {}) },
       approve_promotion: { run, attempt: String(f.attempt ?? "") },
+      decline_promotion: { run, attempt: String(f.attempt ?? "") },
       accept_review: { run, review: Number(f.review), accept: f.accept === "true" },
       conclude: { run, proposal: Number(f.proposal), accept: f.accept === "true" },
       redirect: {

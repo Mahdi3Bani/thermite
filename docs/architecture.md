@@ -66,7 +66,7 @@ The supervisor is the rig's link to everything outside:
 - **API and MCP.** Every view is available to scripts and agents, with scoped tokens and an audit log.
   - An agent's token can steer: assign, pause, resume, redirect, reset workers, export, propagate.
   - An operator's token, which the owner gives an agent that runs campaigns for them, can do the same and also message the run's agents on the owner's behalf.
-  - Only the owner's credential approves a promotion, accepts a subjective goal or a "not possible" ending, or wipes a rig. Control signs who issued each command, and the harness checks it.
+  - Only the owner's credential approves or declines a promotion, accepts a subjective goal or a "not possible" ending, or wipes a rig. Control signs who issued each command, and the harness checks it.
   - Control keeps only each token's SHA-256. The owner makes a token on their own machine and deploys control with its hash, so whoever runs control's machine holds nothing that signs in as the owner.
 - **Commands.** Control signs every command it sends:
   - assign a campaign to a rig, with a starting point;

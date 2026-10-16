@@ -53,6 +53,7 @@ function conflictCheck(set: { kind: string; family?: string | undefined }[]): vo
 /** Command kinds only the owner may issue (control records the issuer in the signed envelope). */
 const OWNER_ONLY = new Set([
   "approve_promotion",
+  "decline_promotion",
   "accept_review",
   "conclude",
   "wipe_state",
@@ -360,6 +361,8 @@ export class HarnessService {
         return this.requestWipe(CommandPayloads.wipe_state.parse(payload), by, envelope.issued_at);
       case "approve_promotion":
         return this.approvePromotion(CommandPayloads.approve_promotion.parse(payload), by);
+      case "decline_promotion":
+        return this.declinePromotion(CommandPayloads.decline_promotion.parse(payload), by);
       case "accept_review": {
         const p = CommandPayloads.accept_review.parse(payload);
         this.requireRun(p.run);
@@ -947,6 +950,27 @@ export class HarnessService {
     }
     if (flaws) setCleared((a.flaws_cleared_by as string | null) ?? null);
     return this.rescreen(p.attempt, r.currentSeq, by);
+  }
+
+  /** The owner's no: the attempt never becomes the champion, and its open audit is over. */
+  private declinePromotion(
+    p: z.infer<(typeof CommandPayloads)["decline_promotion"]>,
+    by: string,
+  ): unknown {
+    const a = this.ledger.getAttempt(p.attempt);
+    if (!a || String(a.run) !== p.run) throw new Error(`attempt ${p.attempt} is not in ${p.run}`);
+    const lifecycle = String(a.lifecycle);
+    if (!["awaiting_approval", "awaiting_audit", "audit_blocked"].includes(lifecycle))
+      throw new Error(`attempt ${p.attempt} is ${lifecycle}: there is nothing to decline`);
+    this.ledger.tx(() => {
+      this.ledger.setAttemptLifecycle(p.attempt, "declined", by);
+      this.ledger.appendEvent(by, "promotion_declined", p.attempt, {
+        run: p.run,
+        was: lifecycle,
+        ...(p.note ? { note: p.note } : {}),
+      });
+    });
+    return { attempt: p.attempt, declined: true, was: lifecycle };
   }
 
   /** The champion moved after a win was confirmed: it is screened again against the new one. */

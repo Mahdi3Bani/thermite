@@ -419,10 +419,47 @@ async function demo() {
   });
   const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
   const get = async (path: string) => (await control.request(path, { headers: { cookie } })).text();
-  return { store, get };
+  const post = (path: string, form: Record<string, string>) =>
+    control.request(path, {
+      method: "POST",
+      body: new URLSearchParams(form),
+      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+    });
+  return { store, get, post };
 }
 
 describe("control dashboard for an operator", () => {
+  test("a waiting promotion and a held audit can each be declined from their card", async () => {
+    const { store, get, post } = await demo();
+    const home = await get("/ui");
+    const forms = [
+      ...home.matchAll(
+        /<form[^>]*action="\/ui\/commands">(?:(?!<\/form>).)*name="kind" value="decline_promotion"(?:(?!<\/form>).)*<\/form>/gs,
+      ),
+    ].map((m) => m[0]);
+    assert.ok(forms.length >= 2, `decline forms: ${forms.length}`);
+    assert.match(home, /It never becomes the champion\. It stays in the record as declined by you/);
+    const field = (form: string, name: string) =>
+      new RegExp(`name="${name}" value="([^"]*)"`).exec(form)?.[1] ?? "";
+    const form = forms[0] as string;
+    const r = await post("/ui/commands", {
+      csrf: field(form, "csrf"),
+      rig: field(form, "rig"),
+      kind: "decline_promotion",
+      run: field(form, "run"),
+      attempt: field(form, "attempt"),
+    });
+    assert.equal(r.status, 303);
+    const cmd = store
+      .pendingCommands(field(form, "rig"))
+      .find((c) => c.envelope.kind === "decline_promotion");
+    assert.equal(cmd?.envelope.issued_by, "owner:ui");
+    assert.deepEqual(cmd?.envelope.payload, {
+      run: field(form, "run"),
+      attempt: field(form, "attempt"),
+    });
+  });
+
   test("every decision shows what it is about, the evidence, why it waits and what each choice does", async () => {
     const { get } = await demo();
     const home = await get("/ui");

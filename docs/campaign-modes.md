@@ -43,6 +43,7 @@ Workers research a topic for a set duration: hours or days. Their tools are rese
   - Gains above the contract's audit trigger (by default 15%, or three times the median confirmed gain) wait for the supervisor's auditor.
     - An audit can block a promotion but never force one.
     - A gain above the absolute trigger, and a change with declared flaws, always go to the owner after the audit.
+    - The owner approves, or declines: a declined change never becomes the champion and stays in the record as declined.
 - **Goal:** the goal tree, metric-threshold goals judged on intervals over repeated runs, and code verifiers from the project kit.
   - Progress means "meets more goals and loses none". A goal the candidate could not check is unknown, not lost.
   - Progress is screened, then confirmed in fresh runs before promotion. Held-out cells run only at confirmation.

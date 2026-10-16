@@ -448,4 +448,39 @@ describe("harness service and API", () => {
     assert.equal(last?.kind, "rig_check_finished");
     assert.match(JSON.stringify(last?.body), /interrupted: the controller restarted/);
   });
+
+  test("the owner declines a waiting promotion: it never becomes champion, and only the owner may", async () => {
+    const env = makeHarnessEnv("rig-a");
+    await env.service.applyCommand(env.sign("assign_campaign", env.assignPayload()));
+    const patch = env.patchFrom((d) =>
+      writeFileSync(join(d, "src", "kernel", "k.c"), "int k(int x) { return x << 1; }\n"),
+    );
+    const r = await env.service.submitAttempt(
+      { run: "smoke-1", patch_base64: patch, hypothesis: "shift", known_flaws: [] },
+      "proposer",
+    );
+    // As the judge leaves a confirmed win under the owner_approval policy.
+    env.service.ledger.setAttemptLifecycle(r.attempt, "awaiting_approval", "judge");
+    const decline = (over?: { issuedBy?: string }) =>
+      env.service.applyCommand(
+        env.sign(
+          "decline_promotion",
+          { run: "smoke-1", attempt: r.attempt, note: "not this one" },
+          over,
+        ),
+      ) as Promise<{ status: string; accepted?: boolean; result?: unknown; reason?: string }>;
+    const byAgent = await decline({ issuedBy: "agent:mcp" });
+    assert.match(JSON.stringify(byAgent), /the owner's to issue/);
+    const ok = await decline();
+    assert.equal(ok.accepted, true, JSON.stringify(ok));
+    assert.equal(String(env.service.ledger.getAttempt(r.attempt)?.lifecycle), "declined");
+    const ev = env.service.ledger.latestEventBody("promotion_declined", r.attempt);
+    assert.deepEqual(ev, { run: "smoke-1", was: "awaiting_approval", note: "not this one" });
+    const again = await decline();
+    assert.match(JSON.stringify(again), /nothing to decline/);
+    const approve = (await env.service.applyCommand(
+      env.sign("approve_promotion", { run: "smoke-1", attempt: r.attempt }),
+    )) as { result?: unknown };
+    assert.match(JSON.stringify(approve), /not awaiting approval/);
+  });
 });

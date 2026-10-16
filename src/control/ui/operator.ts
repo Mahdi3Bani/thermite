@@ -211,8 +211,18 @@ export function needs(
                 does: promoteDoes(r, a, w?.expected_seq ?? null),
               },
               {
+                button: f.cmd({
+                  rig: u.id,
+                  kind: "decline_promotion",
+                  fields: { run: r.id, attempt: id },
+                  label: "Decline",
+                  back,
+                }),
+                does: "It never becomes the champion. It stays in the record as declined by you, and the lanes go on from the current champion.",
+              },
+              {
                 button: `<span class="muted">Leave it waiting</span>`,
-                does: "Nothing changes; the current champion stays. Thermite has no command to decline a promotion yet, so it stays in this list.",
+                does: "Nothing changes for now; it stays in this list.",
               },
             ],
             more: `<a href="${attemptHref(u.id, id)}">Everything about ${esc(id)} →</a>`,
@@ -261,12 +271,22 @@ export function needs(
                 does: `${blocked ? "You overrule the auditor, on the record." : "You take the auditor's place, on the record."} ${promoteDoes(r, a, au.expected_seq)}`,
               },
               {
+                button: f.cmd({
+                  rig: u.id,
+                  kind: "decline_promotion",
+                  fields: { run: r.id, attempt: au.attempt },
+                  label: "Decline",
+                  back,
+                }),
+                does: "It never becomes the champion. It stays in the record as declined by you, and leaves this list.",
+              },
+              {
                 button: `<span class="muted">Leave it ${blocked ? "blocked" : "held"}</span>`,
                 does: blocked
-                  ? "It never becomes the champion. The lanes go on from the current champion."
+                  ? "It stays blocked, in this list; it never becomes the champion unless you overrule."
                   : advisors
                     ? "It waits for the auditor's decision."
-                    : "It stays held: Thermite has no command to decline it yet, and no auditor will come. The lanes go on from the current champion meanwhile.",
+                    : "It stays held, in this list: no auditor will come. The lanes go on from the current champion meanwhile.",
               },
             ],
             more: `<a href="${attemptHref(u.id, au.attempt)}">Everything about ${esc(au.attempt)} →</a>`,

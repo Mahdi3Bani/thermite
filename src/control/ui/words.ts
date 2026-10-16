@@ -30,6 +30,7 @@ const LIFECYCLE: Record<string, string> = {
   confirming: "being confirmed on fresh runs",
   verifying: "being checked",
   awaiting_audit: "held for an audit",
+  declined: "declined by you",
   awaiting_approval: "waiting for your approval",
   audit_blocked: "blocked by the auditor",
   promoted: "became the champion",
@@ -86,6 +87,7 @@ const COMMAND: Record<string, string> = {
   conclude: 'decide a "not possible" proposal',
   export_now: "export now",
   rig_check: "check the rig",
+  decline_promotion: "decline a promotion",
   assign_campaign: "assign a campaign",
   propagate: "import another rig's champion",
   wipe_state: "wipe the rig's state",
@@ -217,6 +219,12 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
       return s(
         `The auditor ${b.decision === "block" ? "blocked" : b.decision === "clear" ? "cleared" : "passed to you"} ${e.subject}${b.reasons ? `: ${clip(String(b.reasons), 200)}` : "."}`,
         b.decision === "block" ? "bad" : "ok",
+        { attempt: String(e.subject), run: att(e.subject)?.run },
+      );
+    case "promotion_declined":
+      return s(
+        `You declined ${e.subject}: it will not become the champion.${b.note ? ` (${String(b.note)})` : ""}`,
+        "warn",
         { attempt: String(e.subject), run: att(e.subject)?.run },
       );
     case "audit_overridden":

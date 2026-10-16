@@ -33,8 +33,8 @@ const AGENT_COMMANDS = [
  * the owner's behalf; it never approves, accepts or wipes.
  */
 const OPERATOR_COMMANDS = [...AGENT_COMMANDS, "message_agent"] as const;
-/** The owner (admin token) may also approve promotions over MCP; agents never may. */
-const OWNER_COMMANDS = [...OPERATOR_COMMANDS, "approve_promotion"] as const;
+/** The owner (admin token) may also approve or decline promotions over MCP; agents never may. */
+const OWNER_COMMANDS = [...OPERATOR_COMMANDS, "approve_promotion", "decline_promotion"] as const;
 
 type Role = "owner" | "operator" | "agent" | "reader";
 

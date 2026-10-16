@@ -513,12 +513,17 @@ export function rigView(
         break;
       }
       case "audit_decided":
-      case "audit_overridden": {
+      case "audit_overridden":
+      case "promotion_declined": {
         for (const v of runs.values()) {
           const a = v.audits.filter((x) => x.attempt === e.subject).at(-1);
           if (a) {
             a.decision =
-              e.kind === "audit_overridden" ? "overridden by the owner" : String(b.decision);
+              e.kind === "audit_overridden"
+                ? "overridden by the owner"
+                : e.kind === "promotion_declined"
+                  ? "declined by the owner"
+                  : String(b.decision);
             if (typeof b.reasons === "string") a.reasons = b.reasons;
           }
         }
