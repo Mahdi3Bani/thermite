@@ -82,8 +82,9 @@ A campaign needs three things:
 
 1. **A kit.** It builds your project, runs its benchmark and checks the result. See
    [Write a kit](write-a-kit.md). Start from `kits/smoke-cpu`.
-2. **A contract.** It names the project, the kit, the objective and the limits. Start from
-   `examples/contracts/smoke-cpu.json`, and check it with `npx thermite contract validate`.
+2. **A contract.** It names the project, the kit, the objective and the limits. Start from an
+   example in `examples/contracts/` (a hill climb, a goal campaign and a research campaign), see
+   [Contract reference](contract-reference.md), and check it with `npx thermite contract validate`.
 3. **Both repositories where the rig can fetch them.** Use a git host the supervisor can reach,
    such as a public or deploy-keyed repository. Without one, put the bundles in `.dev/inbox/` by
    hand (see [Write a kit](write-a-kit.md)).

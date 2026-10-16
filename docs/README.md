@@ -13,6 +13,7 @@ Thermite is an autoresearch harness. Agents propose changes, and code they canno
 | [Kits](kits.md) | The judge's half of a project: how candidates are built, run, timed and checked, and why agents never see it |
 | [Write a kit](write-a-kit.md) | Give a project a tested, pinned kit and send it to a rig |
 | [Kit reference](kit-reference.md) | `kit.json` fields, placeholders, processes, limits and outcomes |
+| [Contract reference](contract-reference.md) | Every contract field for the three modes, its default and what it means |
 | [Glossary](glossary.md) | The terms these pages use |
 | [Roadmap](roadmap.md) | What v1 delivers, in order |
 | [Running locally](local-development.md) | Checks, the compose stack and the smoke test |
