@@ -175,6 +175,7 @@ async function main(): Promise<void> {
     controlPublicKeyPem,
     rigKeys,
     promotion,
+    targetType: driver.type,
   });
   service.onWipe = () => {
     log("harness", "wipe requested: exiting so the next start wipes the state");

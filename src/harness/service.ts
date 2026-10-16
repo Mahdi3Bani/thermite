@@ -26,9 +26,11 @@ import {
   hasCommit,
   initMirror,
   patchBetween,
+  showFile,
   updateRef,
 } from "./git.ts";
 import { importBundle, importFile } from "./imports.ts";
+import { type Kit, KitSchema, kitProblems } from "./kit.ts";
 import { type Ledger, LedgerError } from "./ledger.ts";
 import { writeExport } from "./outbox.ts";
 import { receivePropagation } from "./propagation.ts";
@@ -173,6 +175,7 @@ export class HarnessService {
   readonly trialWorkspaces = new Map<string, { lane: string; repo: string; root: string }>();
   /** The promotion policy: what happens to a confirmed win (and to one an audit cleared). */
   readonly promotion: "auto" | "owner_approval";
+  private readonly targetType: string | undefined;
 
   constructor(input: {
     rig: string;
@@ -183,8 +186,11 @@ export class HarnessService {
     /** The rig's report-signing key (generated once, kept in the private state). */
     rigKeys?: KeyPairPem | undefined;
     promotion?: "auto" | "owner_approval" | undefined;
+    /** The rig's target type (cpu, cuda-gpu, ...): an assigned campaign's kit must measure on it. */
+    targetType?: string | undefined;
   }) {
     this.rigKeys = input.rigKeys;
+    this.targetType = input.targetType;
     this.promotion = input.promotion ?? "owner_approval";
     this.rig = input.rig;
     this.clock = input.clock ?? (() => new Date());
@@ -459,6 +465,27 @@ export class HarnessService {
       if (!this.ledger.findImport("model", { sha256: m.sha256 })) {
         throw new Error(`model ${m.name} (${m.sha256}) has not been imported`);
       }
+    }
+    // The kit is checked against the contract now, not when the judge first needs it.
+    const kitRef = contract.mode !== "research" ? contract.project.kit : undefined;
+    if (kitRef) {
+      const mirror = this.mirrorFor(`kit-${kitRef.repo}`);
+      if (!(await hasCommit(mirror, kitRef.commit))) {
+        throw new Error(
+          `kit commit ${kitRef.commit} is not in kit ${kitRef.repo}; import its bundle first`,
+        );
+      }
+      let kit: Kit;
+      try {
+        kit = KitSchema.parse(JSON.parse(await showFile(mirror, kitRef.commit, "kit.json")));
+      } catch (err) {
+        throw new Error(
+          `kit ${kitRef.repo} at ${kitRef.commit} has no valid kit.json: ${err instanceof Error ? err.message.slice(0, 500) : String(err)}`,
+        );
+      }
+      const problems = kitProblems(contract, kit, this.targetType);
+      if (problems.length)
+        throw new Error(`the kit does not fit the contract: ${problems.join("; ")}`);
     }
     if (contract.mode !== "research") {
       const mirror = this.mirrorFor(seed.repo);

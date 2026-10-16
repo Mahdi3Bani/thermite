@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Creates .dev/ for local compose runs: random tokens, inbox and outbox. Idempotent.
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = join(process.cwd(), ".dev");
@@ -16,6 +16,10 @@ for (const d of [
 ]) {
   mkdirSync(d, { recursive: true, mode: 0o755 });
 }
+// The supervisor fetches sources into the inbox as its own user in its container: on native
+// Linux that user is not you, so the local inbox is open to it (local development only).
+for (const d of [join(root, "inbox"), join(root, "inbox", "repos"), join(root, "inbox", "models")])
+  chmodSync(d, 0o777);
 const token = () => randomBytes(24).toString("base64url");
 const write = (name, value) => {
   const p = join(secrets, name);

@@ -224,11 +224,11 @@ claude mcp add --transport http thermite http://127.0.0.1:8800/mcp \
 
 ## The command line
 
-`thermite` validates contracts, prints campaign assignments, issues commands through control and submits patches:
+`thermite` validates contracts, starts runs, issues commands through control and submits patches. After `npm run build`, run it as `npx thermite` (or `node dist/cli/thermite.js`):
 
 ```sh
-node dist/cli/thermite.js contract validate examples/contracts/smoke-cpu.json
-node dist/cli/thermite.js help
+npx thermite contract validate examples/contracts/smoke-cpu.json
+npx thermite help
 ```
 
 Inside the harness container the same tool is on the path as `thermite`.

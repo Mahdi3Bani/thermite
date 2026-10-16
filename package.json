@@ -5,6 +5,9 @@
   "description": "Autoresearch harness: agents propose, code they cannot touch judges, one control service steers every campaign.",
   "license": "MIT",
   "type": "module",
+  "bin": {
+    "thermite": "dist/cli/thermite.js"
+  },
   "engines": {
     "node": ">=22.19"
   },

@@ -265,6 +265,13 @@ export async function deleteRef(mirror: string, ref: string): Promise<void> {
 }
 
 /** The id of a commit's tree: the same content gives the same tree in any repository. */
+/** A file's content at a commit (for example a kit's kit.json). */
+export async function showFile(mirror: string, commit: string, path: string): Promise<string> {
+  if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(commit))
+    throw new GitError(`not a commit id: ${commit}`);
+  return git(mirror, ["show", `${commit}:${path}`]);
+}
+
 export async function treeOf(mirror: string, commit: string): Promise<string> {
   return (await git(mirror, ["rev-parse", "--verify", `${commit}^{tree}`])).trim();
 }

@@ -18,6 +18,15 @@ const USAGE = `usage: thermite <command> [options]
   token new --out F                   make a control token: write it to F (mode 0600; keep it,
                                       for example in a password manager) and print its SHA-256,
                                       the only part control's deployment needs
+  assign --contract F --run ID [--seed GIT_URL[@COMMIT] | --seed-commit C] [--kit GIT_URL]
+         [--model NAME=URL ...] [--direction D] [--agents off]
+         (--control URL --token-file F --rig R [--ttl MIN] | --print)
+                                      start a run. The rig's supervisor fetches the project and
+                                      kit commits from their repositories, and models from their
+                                      URLs, before the harness checks them. --seed-commit names a
+                                      commit already on the rig (an earlier run's result); a kit
+                                      already there needs no --kit. --print shows the payload
+                                      (for issue_command over MCP) instead of issuing it
   assign-payload --contract F --run ID --seed-repo R --seed-commit C --bundle PATH
                  [--bundle-sha256 H] [--kit-repo R --kit-commit C --kit-bundle PATH
                  [--kit-bundle-sha256 H]] [--model NAME=SHA256:PATH ...] [--direction D] [--agents off]
@@ -95,7 +104,7 @@ async function main(argv: string[]): Promise<void> {
       const t = newToken();
       writeFileSync(values.out, `${t.token}\n`, { mode: 0o600, flag: "wx" });
       process.stdout.write(
-        `wrote the token to ${values.out}\nsha256 ${t.sha256}\nDeploy control with the hash, for example THERMITE_CONTROL_ADMIN_TOKEN_SHA256=${t.sha256}.\n`,
+        `wrote the token to ${values.out}\nsha256 ${t.sha256}\nDeploy control with the hash as THERMITE_CONTROL_<ROLE>_TOKEN_SHA256, where ROLE is ADMIN (the owner), OPERATOR, AGENT or READ.\n`,
       );
       return;
     }
@@ -168,6 +177,121 @@ async function main(argv: string[]): Promise<void> {
         ],
       };
       process.stdout.write(`${JSON.stringify(payload)}\n`);
+      return;
+    }
+    case "assign": {
+      const { values } = parseArgs({
+        args: rest,
+        options: {
+          contract: { type: "string" },
+          run: { type: "string" },
+          seed: { type: "string" },
+          "seed-commit": { type: "string" },
+          kit: { type: "string" },
+          model: { type: "string", multiple: true },
+          direction: { type: "string" },
+          agents: { type: "string" },
+          control: { type: "string" },
+          "token-file": { type: "string" },
+          rig: { type: "string" },
+          ttl: { type: "string" },
+          print: { type: "boolean" },
+        },
+      });
+      if (!values.contract || !values.run) fail(USAGE);
+      if (values.agents !== undefined && values.agents !== "on" && values.agents !== "off")
+        fail("--agents is on or off");
+      if (!values.print && (!values.control || !values["token-file"] || !values.rig))
+        fail("give --control, --token-file and --rig to issue it, or --print to show it");
+      const r = parseContract(JSON.parse(readFileSync(values.contract, "utf8")));
+      if (!r.ok) fail(r.errors.join("\n"));
+      const contract = r.contract;
+      const full = (c: string | undefined, what: string) => {
+        if (!c || !CommitSchema.safeParse(c).success)
+          fail(`${what} must be a full commit id (40 or 64 hexadecimal characters)`);
+        return c;
+      };
+      // "URL@COMMIT", where a URL may itself hold "@" (git@host:path).
+      const ref = (v: string) => {
+        const at = v.lastIndexOf("@");
+        const tail = at > 0 ? v.slice(at + 1) : "";
+        return CommitSchema.safeParse(tail).success
+          ? { url: v.slice(0, at), commit: tail }
+          : { url: v, commit: undefined };
+      };
+      const imports: unknown[] = [];
+      let seed: { repo: string; commit: string } | undefined;
+      if (contract.mode !== "research") {
+        const repo = contract.project.repo;
+        if (values.seed && values["seed-commit"]) fail("--seed or --seed-commit, not both");
+        if (values.seed) {
+          const s = ref(values.seed);
+          const commit = full(s.commit ?? contract.project.commit, "the seed commit");
+          seed = { repo, commit };
+          imports.push({
+            kind: "repo_bundle",
+            path: `repos/${repo}-${commit}.bundle`,
+            repo,
+            commit,
+            source: { git: s.url },
+          });
+        } else {
+          seed = {
+            repo,
+            commit: full(values["seed-commit"] ?? contract.project.commit, "--seed-commit"),
+          };
+        }
+        const kit = contract.project.kit;
+        if (values.kit) {
+          if (!kit) fail("--kit given, but the contract names no project.kit");
+          imports.push({
+            kind: "kit_bundle",
+            path: `repos/kit-${kit.repo}-${kit.commit}.bundle`,
+            repo: kit.repo,
+            commit: kit.commit,
+            source: { git: values.kit },
+          });
+        }
+      }
+      for (const m of values.model ?? []) {
+        const eq = m.indexOf("=");
+        const name = m.slice(0, eq);
+        const listed = contract.models.find((x) => x.name === name);
+        if (eq < 1 || !listed)
+          fail(`--model ${m}: expected NAME=URL for a model the contract lists`);
+        imports.push({
+          kind: "model",
+          path: `models/${listed.sha256}`,
+          name,
+          sha256: listed.sha256,
+          source: { url: m.slice(eq + 1) },
+        });
+      }
+      const payload = {
+        run: values.run,
+        contract,
+        contract_sha: r.sha,
+        ...(seed ? { seed } : {}),
+        ...(values.direction ? { direction: values.direction } : {}),
+        ...(values.agents === "off" ? { agents: false } : {}),
+        imports,
+      };
+      if (values.print) {
+        process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+        return;
+      }
+      const token = readFileSync(values["token-file"] as string, "utf8").trim();
+      const out = await post(
+        `${(values.control as string).replace(/\/$/, "")}/v1/commands`,
+        token,
+        {
+          rig: values.rig,
+          kind: "assign_campaign",
+          payload,
+          ...(values.ttl ? { ttl_minutes: Number(values.ttl) } : {}),
+        },
+      );
+      process.stdout.write(`${JSON.stringify(out)}\n`);
       return;
     }
     case "command": {

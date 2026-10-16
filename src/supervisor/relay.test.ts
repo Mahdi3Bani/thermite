@@ -93,6 +93,49 @@ describe("supervisor relay between control and harness", () => {
     assert.equal(env.service.ledger.getRun("smoke-1")?.status, "running");
   });
 
+  test("a command whose content could not be fetched fails with the reason, and never reaches the harness", async () => {
+    const env = makeHarnessEnv("rig-a");
+    const harness = createHarnessApi(env.service, { supervisor: "sup-token-abcdef" });
+    const store = new ControlStore(":memory:");
+    const control = createControlApi(
+      store,
+      { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } },
+      env.keys.privateKeyPem,
+    );
+    let harnessCalls = 0;
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url = new URL(String(input));
+      if (url.host === "harness" && url.pathname === "/v1/commands") harnessCalls++;
+      const app = url.host === "harness" ? harness : control;
+      return app.request(`${url.pathname}${url.search}`, init as RequestInit);
+    };
+    const issued = await control.request("/v1/commands", {
+      method: "POST",
+      headers: { authorization: "Bearer admin-token-abcdef", "content-type": "application/json" },
+      body: JSON.stringify({ rig: "rig-a", kind: "assign_campaign", payload: env.assignPayload() }),
+    });
+    const { id } = (await issued.json()) as { id: string };
+    let asked = 0;
+    const cfg = {
+      rig: "rig-a",
+      harnessUrl: "http://harness",
+      harnessToken: "sup-token-abcdef",
+      controlUrl: "http://control",
+      controlToken: "rig-token-abcdef",
+      fetchImpl,
+      stage: async () =>
+        ++asked === 1 ? ("wait" as const) : { failed: "staging: the repository has no commit" },
+    };
+    const state = await relayOnce(cfg, { cursor: 0 });
+    assert.equal(store.command(id)?.status, "pending", "it waits while its content is fetched");
+    await relayOnce(cfg, state);
+    const cmd = store.command(id) as { status: string; outcome: unknown };
+    assert.equal(cmd.status, "failed");
+    assert.match(JSON.stringify(cmd.outcome), /staging: the repository has no commit/);
+    assert.equal(harnessCalls, 0);
+    assert.equal(env.service.ledger.getRun("smoke-1"), undefined);
+  });
+
   test("a reset harness ledger restarts the cursor, and control keeps both ledgers' events", async () => {
     const store = new ControlStore(":memory:");
     const controlTokens = { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } };

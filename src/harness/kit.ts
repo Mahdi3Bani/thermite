@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join, posix } from "node:path";
 import { z } from "zod";
+import type { Contract } from "../core/contract.ts";
 
 /**
  * A project kit: the judge-side recipe for building and measuring one project on one target
@@ -176,4 +177,42 @@ export function paramsText(params: Record<string, number | string | boolean>): s
   return `${Object.entries(params)
     .map(([k, v]) => `${k}=${v}`)
     .join("\n")}\n`;
+}
+
+/**
+ * What a contract asks of its kit that the kit does not have, found when the campaign is
+ * assigned rather than when the judge first runs: the target, cells, metrics and verifiers the
+ * contract names. Empty when they all fit.
+ */
+export function kitProblems(contract: Contract, kit: Kit, targetType?: string): string[] {
+  const out: string[] = [];
+  if (targetType && kit.target !== targetType)
+    out.push(`the kit measures on ${kit.target}, and this rig's target is ${targetType}`);
+  const cell = (c: string, where: string) => {
+    if (!(c in kit.cells)) out.push(`${where} names cell ${c}, which the kit does not have`);
+  };
+  const metric = (m: string, where: string) => {
+    if (!(m in kit.metrics)) out.push(`${where} names metric ${m}, which the kit does not have`);
+  };
+  if (contract.mode === "hill_climb") {
+    for (const c of contract.cells) cell(c, "cells");
+    for (const c of contract.held_out_cells) cell(c, "held_out_cells");
+    metric(contract.objective.primary.metric, "the objective");
+    for (const s of contract.objective.secondary) metric(s.metric, "a secondary objective");
+    for (const g of contract.guards) metric(g.metric, "a guard");
+    for (const h of contract.hard_constraints)
+      if (h.kind !== "check") metric(h.metric, "a hard constraint");
+  }
+  if (contract.mode === "goal") {
+    for (const g of contract.goals) {
+      const v = g.verify;
+      if (v.type === "code" && !(v.verifier in kit.verifiers))
+        out.push(`goal ${g.id} names verifier ${v.verifier}, which the kit does not have`);
+      if (v.type === "metric_threshold") {
+        metric(v.metric, `goal ${g.id}`);
+        for (const c of v.cells ?? []) cell(c, `goal ${g.id}`);
+      }
+    }
+  }
+  return out;
 }

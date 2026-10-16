@@ -105,25 +105,25 @@ Check the contract with `thermite contract validate <file>`. Any later change to
 
 ## 8. Send the kit to a rig
 
-Bundle the kit at the pinned commit and take its hash:
+Push the kit to a git repository the rig's supervisor can reach, then start a run through control:
 
 ```sh
-git -C my-kit bundle create ../my-kit.bundle main
-shasum -a 256 ../my-kit.bundle
+thermite assign --contract contract.json --run my-run-1 \
+  --seed https://git.example/my-project.git@<project commit> \
+  --kit https://git.example/my-kit.git --agents off \
+  --control <control URL> --token-file <owner token file> --rig <rig>
 ```
 
-Place the bundle in the rig's inbox next to the project's bundle, then build the assignment and issue it through control:
+- The rig's supervisor fetches the project commit and the kit commit the contract pins. It puts them in the rig's inbox as bundles, and the harness checks that each holds its commit. Models the contract lists come from `--model NAME=URL`, and must match the contract's sha256.
+- The harness checks the kit against the contract before the run starts: the target, cells, metrics and verifiers the contract names. A mismatch fails the command with the reason.
+- If the fetch fails, the command fails with the reason (for example a wrong URL, or a repository without the commit).
+- Private repositories need the supervisor's SSH key (`THERMITE_RESULTS_KEY_FILE`) to be allowed to read them.
+- A commit already on the rig, such as an earlier run's champion, needs no `--seed` URL: use `--seed-commit <commit>`. A kit already there needs no `--kit`.
+- `--print` shows the payload instead of issuing it, for an agent to send with control's MCP `issue_command`.
 
-```sh
-thermite assign-payload --contract contract.json --run my-run-1 \
-  --seed-repo my-project --seed-commit <commit> --bundle repos/my-project.bundle \
-  --kit-repo my-kit --kit-commit <commit> --kit-bundle repos/my-kit.bundle \
-  --kit-bundle-sha256 <sha256> --agents off > payload.json
-thermite command --control <url> --token-file <file> --rig <rig> \
-  --kind assign_campaign --payload @payload.json
-```
+With `--agents off`, the run is judge-only: the judge builds and measures, and no worker starts.
 
-Bundle and model paths are relative to the rig's inbox. With `--agents off`, the run is judge-only: the judge builds and measures, and no worker starts.
+Without network access, bundles can still be placed in the inbox by hand. `thermite assign-payload` then names them by their inbox paths.
 
 ## 9. Test the kit without agents
 

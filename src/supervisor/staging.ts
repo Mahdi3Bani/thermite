@@ -1,17 +1,33 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  createReadStream,
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import { log } from "../common/env.ts";
 import type { SignedCommand } from "../core/commands.ts";
 import { sshCommand } from "./git-export.ts";
 
 /**
- * Staging for commands that bring content. A `propagate` command names another rig's published
- * champion (a patch in the results repository) and the inbox path the harness will read it from.
- * Before relaying the command, the supervisor fetches that file from the results repository into
- * the inbox. It cannot change it: the harness checks the sha256 and the tree the command signs.
+ * Staging for commands that bring content, before the supervisor relays them:
+ * - a `propagate` command names another rig's published champion (a patch in the results
+ *   repository) and the inbox path the harness will read it from;
+ * - an `assign_campaign` command's imports may name a source: a git repository with the
+ *   project's or kit's commit, or a URL for a model. The supervisor fetches it into the inbox
+ *   (a repository as a bundle of that commit).
+ * The supervisor cannot change what arrives: the harness checks the commit, the sha256 and the
+ * tree the command signs. Fetches run in the background, and the command waits for them.
  * Deterministic code only: no model ever runs git here.
  */
 
@@ -25,7 +41,12 @@ export interface StagingConfig {
   remote?: string | undefined;
   sshKeyFile?: string | undefined;
   knownHostsFile?: string | undefined;
+  /** Where fetched git sources are kept between assignments (bare repositories). */
+  sourcesDir?: string | undefined;
 }
+
+/** What staging says about a command: relay it, wait, or report that its content failed. */
+export type StageResult = "ready" | "wait" | { failed: string };
 
 function sshEnv(cfg: StagingConfig): Record<string, string> {
   return sshCommand(cfg.sshKeyFile, cfg.knownHostsFile);
@@ -50,10 +71,8 @@ const sha256 = (b: Buffer) => createHash("sha256").update(b).digest("hex");
  * Makes a command's content available in the inbox. "ready": relay it now. "wait": the content
  * is not available yet (for example the source rig's export is not pushed), try again later.
  */
-export async function stageCommand(
-  cfg: StagingConfig,
-  cmd: SignedCommand,
-): Promise<"ready" | "wait"> {
+export async function stageCommand(cfg: StagingConfig, cmd: SignedCommand): Promise<StageResult> {
+  if (cmd.envelope.kind === "assign_campaign") return stageSources(cfg, cmd);
   if (cmd.envelope.kind !== "propagate") return "ready";
   // Past its expiry the harness refuses it anyway: relay it so the refusal is acknowledged.
   if (Date.parse(cmd.envelope.expires_at) < Date.now()) return "ready";
@@ -102,5 +121,138 @@ export async function stageCommand(
       error: err instanceof Error ? err.message.slice(0, 300) : String(err),
     });
     return "wait";
+  }
+}
+
+// ------------------------------------------------------------------ sources by reference
+
+type Sourced =
+  | { kind: "repo_bundle" | "kit_bundle"; path: string; commit: string; source: { git: string } }
+  | { kind: "model"; path: string; sha256: string; source: { url: string } };
+
+/** Stagings in progress, and finished ones not yet reported, by command id. */
+const inFlight = new Map<string, Promise<StageResult>>();
+const finished = new Map<string, StageResult>();
+/** Models already checked in the inbox (path, size and time), so a big file is hashed once. */
+const verified = new Set<string>();
+
+async function stageSources(cfg: StagingConfig, cmd: SignedCommand): Promise<StageResult> {
+  if (Date.parse(cmd.envelope.expires_at) < Date.now()) return "ready";
+  const id = cmd.envelope.id;
+  const done = finished.get(id);
+  if (done) {
+    finished.delete(id);
+    return done;
+  }
+  if (inFlight.has(id)) return "wait";
+  const imports = ((cmd.envelope.payload as { imports?: unknown[] }).imports ?? []) as Sourced[];
+  const root = resolve(cfg.inboxDir);
+  const todo: { imp: Sourced; target: string }[] = [];
+  for (const imp of imports) {
+    if (!imp?.source) continue;
+    const target = resolve(root, imp.path);
+    if (!target.startsWith(root + sep)) continue; // the harness refuses such a path
+    if (!(await present(imp, target))) todo.push({ imp, target });
+  }
+  if (!todo.length) return "ready";
+  const work = (async (): Promise<StageResult> => {
+    try {
+      for (const { imp, target } of todo) {
+        if (imp.kind === "model") await fetchModel(imp, target);
+        else await bundleFromGit(cfg, imp, target);
+      }
+      log("supervisor", "staged sources", { command: id, files: todo.map((t) => t.imp.path) });
+      return "ready";
+    } catch (err) {
+      const error = err instanceof Error ? err.message.slice(0, 500) : String(err);
+      log("supervisor", "staging failed", { command: id, error });
+      return { failed: `staging: ${error}` };
+    }
+  })();
+  inFlight.set(id, work);
+  void work.then((r) => {
+    inFlight.delete(id);
+    finished.set(id, r);
+  });
+  return "wait";
+}
+
+async function present(imp: Sourced, target: string): Promise<boolean> {
+  if (!existsSync(target)) return false;
+  // A bundle is checked by the harness (it must hold the commit); a model by its hash, here
+  // once, so a wrong file is replaced rather than relayed.
+  if (imp.kind !== "model") return true;
+  const st = statSync(target);
+  const key = `${target}\0${st.size}\0${st.mtimeMs}`;
+  if (verified.has(key)) return true;
+  const h = createHash("sha256");
+  await pipeline(createReadStream(target), h);
+  if (h.digest("hex") !== imp.sha256) return false;
+  verified.add(key);
+  return true;
+}
+
+/** A model from its URL, hashed as it streams; only a file with the signed hash lands. */
+async function fetchModel(imp: Extract<Sourced, { kind: "model" }>, target: string): Promise<void> {
+  const res = await fetch(imp.source.url, { redirect: "follow" });
+  if (!res.ok || !res.body) throw new Error(`${imp.source.url}: HTTP ${res.status}`);
+  mkdirSync(dirname(target), { recursive: true });
+  const tmp = `${target}.tmp-${process.pid}-${Date.now()}`;
+  const h = createHash("sha256");
+  const tee = new Transform({
+    transform(chunk, _enc, cb) {
+      h.update(chunk);
+      cb(null, chunk);
+    },
+  });
+  try {
+    await pipeline(Readable.fromWeb(res.body as never), tee, createWriteStream(tmp));
+    const got = h.digest("hex");
+    if (got !== imp.sha256) throw new Error(`${imp.source.url}: sha256 ${got}, not ${imp.sha256}`);
+    renameSync(tmp, target);
+  } finally {
+    rmSync(tmp, { force: true });
+  }
+}
+
+/**
+ * A repository's commit as a bundle: fetched into a bare cache kept per source, then bundled
+ * from a ref at that commit (with its history, so the harness can import it alone).
+ */
+async function bundleFromGit(
+  cfg: StagingConfig,
+  imp: Extract<Sourced, { kind: "repo_bundle" | "kit_bundle" }>,
+  target: string,
+): Promise<void> {
+  const url = imp.source.git;
+  const dir = cfg.sourcesDir ?? join(dirname(cfg.resultsRepo), "sources");
+  const cache = join(dir, `${createHash("sha256").update(url).digest("hex").slice(0, 16)}.git`);
+  if (!existsSync(join(cache, "HEAD"))) {
+    mkdirSync(cache, { recursive: true });
+    await git(cache, ["init", "--quiet", "--bare"]);
+  }
+  // Never git's ext:: or other command transports: a URL in a command only names a repository.
+  const env = { ...sshEnv(cfg), GIT_ALLOW_PROTOCOL: "https:ssh:git:file" };
+  const has = () =>
+    git(cache, ["cat-file", "-e", `${imp.commit}^{commit}`]).then(
+      () => true,
+      () => false,
+    );
+  if (!(await has())) {
+    // The commit by its id first (most servers allow a reachable one), then all branches and tags.
+    await git(cache, ["fetch", "--quiet", "--no-tags", url, imp.commit], env).catch(() =>
+      git(cache, ["fetch", "--quiet", "--tags", url, "+refs/heads/*:refs/sources/heads/*"], env),
+    );
+  }
+  if (!(await has())) throw new Error(`${url} has no commit ${imp.commit}`);
+  const ref = `refs/thermite/stage/${imp.commit}`;
+  await git(cache, ["update-ref", ref, imp.commit]);
+  mkdirSync(dirname(target), { recursive: true });
+  const tmp = `${target}.tmp-${process.pid}-${Date.now()}`;
+  try {
+    await git(cache, ["bundle", "create", tmp, ref]);
+    renameSync(tmp, target);
+  } finally {
+    rmSync(tmp, { force: true });
   }
 }

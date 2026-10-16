@@ -14,7 +14,8 @@ export interface RelayConfig {
   controlToken?: string | undefined;
   fetchImpl?: typeof fetch | undefined;
   /** Makes a command's content available first (propagation); "wait" holds it for a later round. */
-  stage?: ((cmd: SignedCommand) => Promise<"ready" | "wait">) | undefined;
+  /** Content a command brings: relay it, wait for it, or report that it could not be had. */
+  stage?: ((cmd: SignedCommand) => Promise<"ready" | "wait" | { failed: string }>) | undefined;
   /** Told about each relayed command's outcome (a full reset's wipe acts on it). */
   onDelivered?: ((kind: string, accepted: boolean) => void) | undefined;
 }
@@ -156,7 +157,22 @@ export async function relayOnce(cfg: RelayConfig, state: RelayState): Promise<Re
     ) as { commands: SignedCommand[] };
     for (const cmd of pending.commands) {
       try {
-        if (cfg.stage && (await cfg.stage(cmd)) === "wait") continue;
+        const staged = cfg.stage ? await cfg.stage(cmd) : "ready";
+        if (staged === "wait") continue;
+        if (staged !== "ready") {
+          // The content never arrived: the harness would only refuse it, without the reason.
+          await call(
+            f,
+            `${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/commands/${cmd.envelope.id}/ack`,
+            cfg.controlToken,
+            {
+              method: "POST",
+              body: JSON.stringify({ status: "failed", outcome: { error: staged.failed } }),
+            },
+          );
+          log("supervisor", "command not relayed", { id: cmd.envelope.id, error: staged.failed });
+          continue;
+        }
         const outcome = await call(f, `${cfg.harnessUrl}/v1/commands`, cfg.harnessToken, {
           method: "POST",
           body: JSON.stringify(cmd),

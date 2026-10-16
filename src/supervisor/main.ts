@@ -59,6 +59,7 @@ async function main(): Promise<void> {
           rig,
           inboxDir,
           resultsRepo: join(home, "results.git"),
+          sourcesDir: join(home, "sources"),
           remote,
           sshKeyFile,
           knownHostsFile,

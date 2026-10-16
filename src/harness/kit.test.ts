@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { expandArgv, KitSchema } from "./kit.ts";
+import { parseContract } from "../core/contract.ts";
+import { makeJudgeEnv } from "../testing/judge-env.ts";
+import { expandArgv, KitSchema, kitProblems } from "./kit.ts";
 
 const base = {
   schema_version: 1,
@@ -89,5 +91,72 @@ describe("kit commands", () => {
         ),
       /cycle/,
     );
+  });
+
+  test("a contract is checked against its kit: target, cells, metrics and verifiers", () => {
+    const kit = KitSchema.parse({ ...base, verifiers: { builds: { cells: ["small"] } } });
+    const contract = (fields: Record<string, unknown>) => {
+      const r = parseContract({
+        schema_version: 1,
+        campaign: "c",
+        version: 1,
+        title: "t",
+        project: { repo: "p", kit: { repo: "k", commit: "a".repeat(40) } },
+        target: { type: "cpu", class: "test" },
+        editable_paths: ["src/**"],
+        ...fields,
+      });
+      if (!r.ok) throw new Error(r.errors.join("; "));
+      return r.contract;
+    };
+    const hill = contract({
+      mode: "hill_climb",
+      objective: { primary: { metric: "ops", direction: "max", min_effect: 0.05 } },
+      cells: ["small"],
+    });
+    assert.deepEqual(kitProblems(hill, kit, "cpu"), []);
+    assert.match(kitProblems(hill, kit, "cuda-gpu").join(), /measures on cpu.*target is cuda-gpu/);
+    const wrong = contract({
+      mode: "hill_climb",
+      objective: { primary: { metric: "flops", direction: "max", min_effect: 0.05 } },
+      cells: ["small", "large"],
+      held_out_cells: ["held"],
+    });
+    assert.deepEqual(kitProblems(wrong, kit), [
+      "cells names cell large, which the kit does not have",
+      "held_out_cells names cell held, which the kit does not have",
+      "the objective names metric flops, which the kit does not have",
+    ]);
+    const goal = contract({
+      mode: "goal",
+      deliverable: "d",
+      goals: [
+        { id: "builds", description: "b", verify: { type: "code", verifier: "builds" } },
+        { id: "loads", description: "l", verify: { type: "code", verifier: "loads" } },
+        {
+          id: "fast",
+          description: "f",
+          verify: { type: "metric_threshold", metric: "ops", op: ">=", value: 1, cells: ["big"] },
+        },
+      ],
+    });
+    assert.deepEqual(kitProblems(goal, kit), [
+      "goal loads names verifier loads, which the kit does not have",
+      "goal fast names cell big, which the kit does not have",
+    ]);
+  });
+
+  test("an assignment whose kit does not fit its contract is refused, with the reason, before any run", async () => {
+    const env = makeJudgeEnv({ contract: { cells: ["small", "huge"] } });
+    const out = (await env.service.applyCommand(env.assign)) as {
+      accepted?: boolean;
+      result?: unknown;
+    };
+    assert.equal(out.accepted, false);
+    assert.match(
+      JSON.stringify(out.result),
+      /the kit does not fit the contract: cells names cell huge/,
+    );
+    assert.equal(env.ledger.getRun("js-1"), undefined);
   });
 });

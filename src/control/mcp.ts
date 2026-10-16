@@ -180,7 +180,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
       "issue_command",
       {
         title: "Issue a signed command",
-        description: `Queue a command for a rig; control signs it and the rig's supervisor relays it. Kinds: ${kinds.join(", ")}. The payload must match the kind (for example pause_run {run, reason}; redirect {run, directives:[{kind: avoid|try|mandate|priority|lane_count|note, family?, value?, rationale, citations}]}; approve_promotion {run, attempt}). Returns the command id; poll command_status.`,
+        description: `Queue a command for a rig; control signs it and the rig's supervisor relays it. Kinds: ${kinds.join(", ")}. The payload must match the kind (for example pause_run {run, reason}; redirect {run, directives:[{kind: avoid|try|mandate|priority|lane_count|note, family?, value?, rationale, citations}]}; approve_promotion {run, attempt}; message_agent {run, to: planner|lane-N|trial:ID, text}; assign_campaign {run, contract, contract_sha, seed, imports}, where an import may name a source the rig's supervisor fetches: {git: URL} for a project or kit commit, {url: URL} for a model. \`thermite assign --print\` builds an assign_campaign payload). Returns the command id; poll command_status: a source that cannot be fetched fails the command with the reason.`,
         inputSchema: {
           rig: z.string().min(1),
           kind: z.enum(kinds as unknown as [CommandKind, ...CommandKind[]]),

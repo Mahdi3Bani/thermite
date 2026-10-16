@@ -21,6 +21,25 @@ const InboxPath = z
   .min(1)
   .refine((p) => !p.startsWith("/") && !p.split("/").includes(".."), "relative inbox path");
 
+/**
+ * Where the supervisor fetches an import before relaying the command: a git repository
+ * (https, ssh, git or file URLs) that has the commit, or a file URL for a model. The harness
+ * never reads it: it checks the commit or the sha256 of what arrives, as for a file an
+ * operator put in the inbox.
+ */
+const GitSource = z.object({
+  git: z
+    .string()
+    .max(2000)
+    .regex(/^(?:https:\/\/|ssh:\/\/|git:\/\/|file:\/\/|[\w.-]+@[\w.-]+:)/, "a git URL"),
+});
+const FileSource = z.object({
+  url: z
+    .string()
+    .max(4000)
+    .regex(/^https?:\/\//, "an http(s) URL"),
+});
+
 export const ImportSpec = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("repo_bundle"),
@@ -29,12 +48,14 @@ export const ImportSpec = z.discriminatedUnion("kind", [
     commit: CommitSchema,
     /** When given, the bundle file's sha256 must match as well as the commit. */
     sha256: Sha256Schema.optional(),
+    source: GitSource.optional(),
   }),
   z.object({
     kind: z.literal("model"),
     path: InboxPath,
     name: z.string().min(1),
     sha256: Sha256Schema,
+    source: FileSource.optional(),
   }),
   z.object({
     kind: z.literal("kit_bundle"),
@@ -42,6 +63,7 @@ export const ImportSpec = z.discriminatedUnion("kind", [
     repo: IdSchema,
     commit: CommitSchema,
     sha256: Sha256Schema.optional(),
+    source: GitSource.optional(),
   }),
   /**
    * Another rig's champion as a binary patch against a base commit both rigs have (the
