@@ -108,7 +108,9 @@ describe("supervised processes", () => {
     });
     assert.equal(r.exitCode, 0);
     assert.match(r.stdout, /started/);
-    assert.ok(Date.now() - started < 5000);
+    // Well short of the background sleep's 30 s: the run did not wait for it. (Not tighter:
+    // on a loaded machine without /proc, the per-tick process listing slows the timers.)
+    assert.ok(Date.now() - started < 25_000, `${Date.now() - started} ms`);
     assert.ok(r.leftovers >= 1);
     const pgid = Number(r.pgid);
     assert.ok(
