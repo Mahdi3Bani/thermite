@@ -688,28 +688,19 @@ describe("worker trial", () => {
     assert.equal((await run({ argv: ["sh", "-c", "echo"] })).status, 404);
   });
 
-  test("lane commands and dev runs are held to the contract's lane limits", async () => {
+  /** A trial's lane API over a recording runner, under the given lane limits. */
+  async function laneApi(limits?: Record<string, number>) {
     const env = makeJudgeEnv({
-      contract: {
-        lanes: {
-          count: 2,
-          trials_per_epoch: 1,
-          limits: {
-            run_timeout_s: 30,
-            run_rss_mib: 512,
-            workspace_mib: 1024,
-            dev_run_timeout_s: 45,
-          },
-        },
-      },
+      contract: { lanes: { count: 2, trials_per_epoch: 1, ...(limits ? { limits } : {}) } },
     });
     await env.service.applyCommand(env.assign);
     const inner = new LocalRunner(env.paths.scratchDir);
     const seen: {
-      timeoutMs: number;
+      timeoutMs?: number;
       rssLimitBytes?: number;
       disk?: { limitBytes: number };
       env?: Record<string, string>;
+      keepBackground?: boolean;
     }[] = [];
     const runner = Object.assign(Object.create(inner), {
       run: (req: Parameters<LocalRunner["run"]>[0]) => {
@@ -736,10 +727,10 @@ describe("worker trial", () => {
       token: "lim-token",
     });
     env.service.trialWorkspaces.set("t-lim", { lane: "lane-1", repo: ws.repo, root: ws.dir });
-    const devRequests: { input: { timeout_s: number }; limits: unknown }[] = [];
+    const devRequests: { input: { timeout_s?: number }; limits: unknown }[] = [];
     const devRuns = {
       run: async (input: unknown, _trial: string, limits?: unknown) => {
-        devRequests.push({ input: input as { timeout_s: number }, limits });
+        devRequests.push({ input: input as { timeout_s?: number }, limits });
         return { ran: true };
       },
     };
@@ -749,35 +740,62 @@ describe("worker trial", () => {
       { lanes: { runner, laneTool }, devRuns },
     );
     const headers = { authorization: "Bearer trial.lim-token", "content-type": "application/json" };
-    const r = await api.request("/v1/lane/run", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        role: "lane-1",
-        cwd: ws.repo,
-        argv: ["sh", "-c", "true"],
-        timeoutMs: 3_600_000,
-        rssLimitBytes: 64 * 1024 ** 3,
-        disk: { path: ws.dir, limitBytes: 64 * 1024 ** 3 },
-      }),
+    const run = (body: Record<string, unknown>) =>
+      api.request("/v1/lane/run", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ role: "lane-1", cwd: ws.repo, argv: ["sh", "-c", "true"], ...body }),
+      });
+    const dev = (body: Record<string, unknown>) =>
+      api.request("/v1/dev-runs", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ command: "true", cwd: ws.repo, ...body }),
+      });
+    return { env, ws, seen, devRequests, run, dev };
+  }
+
+  test("lane commands and dev runs are held to the contract's lane limits", async () => {
+    const { env, ws, seen, devRequests, run, dev } = await laneApi({
+      run_timeout_s: 30,
+      run_rss_mib: 512,
+      workspace_mib: 1024,
+      dev_run_timeout_s: 45,
+    });
+    const r = await run({
+      timeoutMs: 3_600_000,
+      rssLimitBytes: 64 * 1024 ** 3,
+      disk: { path: ws.dir, limitBytes: 64 * 1024 ** 3 },
     });
     assert.equal(r.status, 200);
     assert.equal(seen.at(-1)?.timeoutMs, 30_000);
     assert.equal(seen.at(-1)?.rssLimitBytes, 512 * 1024 ** 2);
     assert.equal(seen.at(-1)?.disk?.limitBytes, 1024 * 1024 ** 2);
+    // A command that asks for no limit still gets the contract's.
+    assert.equal((await run({})).status, 200);
+    assert.equal(seen.at(-1)?.timeoutMs, 30_000);
     // The lane's cache: created with its first workspace, kept across trials, named to its commands.
     const cache = `${env.paths.scratchDir}/lanes/lane-1/cache`;
     assert.ok(existsSync(cache));
     assert.equal(seen.at(-1)?.env?.CCACHE_DIR, cache);
     assert.equal(seen.at(-1)?.env?.THERMITE_LANE_CACHE, cache);
-    const d = await api.request("/v1/dev-runs", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ command: "true", cwd: ws.repo, timeout_s: 3600 }),
-    });
+    const d = await dev({ timeout_s: 3600 });
     assert.equal(d.status, 200);
-    assert.equal(devRequests.at(-1)?.input.timeout_s, 45);
-    assert.deepEqual(devRequests.at(-1)?.limits, { rssMib: 4096, diskMib: 1024 });
+    // The dev-run queue applies the limit (it alone knows whether the judge shares the device).
+    assert.equal(devRequests.at(-1)?.input.timeout_s, 3600);
+    assert.deepEqual(devRequests.at(-1)?.limits, { rssMib: 4096, diskMib: 1024, timeoutS: 45 });
+  });
+
+  test("without a time limit in the contract, a lane command has none, and its background work runs on", async () => {
+    const { seen, devRequests, run, dev } = await laneApi();
+    assert.equal((await run({})).status, 200);
+    assert.equal(seen.at(-1)?.timeoutMs, undefined);
+    assert.equal(seen.at(-1)?.keepBackground, true);
+    assert.equal((await run({ timeoutMs: 90_000 })).status, 200);
+    assert.equal(seen.at(-1)?.timeoutMs, 90_000, "an agent may still set its own");
+    assert.equal((await dev({})).status, 200);
+    assert.equal(devRequests.at(-1)?.input.timeout_s, undefined);
+    assert.deepEqual(devRequests.at(-1)?.limits, { rssMib: 4096, diskMib: 2048 });
   });
 
   test("the isolation selftest refuses a rig with open trials or judge jobs", async () => {

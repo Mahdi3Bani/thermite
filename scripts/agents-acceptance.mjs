@@ -5,6 +5,7 @@
 //   - each lane's worker runs in its own process, edits its workspace as the lane's user through
 //     the broker, builds with the shell tool, uses dev_run, and submits once;
 //   - the judge decides both submissions; control reports the agents' figures;
+//   - a lane's background work runs on across its commands and a dev run, as in a shell;
 //   - no lane process outlives its trial.
 // Usage: COMPOSE="podman compose" node scripts/agents-acceptance.mjs
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -27,6 +28,7 @@ const GOOD = readFileSync("kits/smoke-cpu/candidates/good/src/kernel/matmul.c", 
 const NOOP = readFileSync("kits/smoke-cpu/candidates/noop/src/kernel/matmul.c", "utf8");
 let requests = 0;
 const setid = {};
+const background = {};
 
 /** The scripted model: plans with submit_plan; lane-1 improves the kernel, lane-2 restates it. */
 function script(messages, tools) {
@@ -64,6 +66,12 @@ function script(messages, tools) {
         { name: "list_files", args: {} },
         { name: "read_file", args: { path: "src/kernel/matmul.c" } },
         { name: "write_file", args: { path: "src/kernel/matmul.c", content: GOOD } },
+        // Background work outlives the command that started it (and the dev run below); the
+        // trial's end takes it.
+        {
+          name: "run",
+          args: { command: 'sleep 900 > /dev/null 2>&1 & echo $! > bg.pid; echo "BG-STARTED yes"' },
+        },
         {
           name: "run",
           args: {
@@ -81,6 +89,13 @@ function script(messages, tools) {
         },
         { name: "run", args: { command: 'echo "SETID-AFTER $(stat -c %A sg)"; rm -f sg' } },
         { name: "dev_run", args: { command: "cc --version | head -1" } },
+        {
+          name: "run",
+          args: {
+            command:
+              'if kill -0 "$(cat bg.pid)" 2>/dev/null; then echo "BG-ALIVE yes"; else echo "BG-ALIVE no"; fi',
+          },
+        },
         {
           name: "submit",
           args: { hypothesis: "i-k-j loop order makes the inner loop contiguous" },
@@ -104,6 +119,8 @@ const model = createServer((req, res) => {
     for (const m of p.messages ?? []) {
       for (const hit of JSON.stringify(m.content ?? "").matchAll(/SETID-(BEFORE|AFTER) (\S+)/g))
         setid[hit[1]] = hit[2];
+      for (const hit of JSON.stringify(m.content ?? "").matchAll(/BG-(STARTED|ALIVE) (yes|no)/g))
+        background[hit[1]] = hit[2];
     }
     const turn = script(p.messages ?? [], p.tools ?? []);
     const id = `c${requests}`;
@@ -252,6 +269,11 @@ try {
     3000,
   ).catch(() => roleProcesses());
   check("no lane or agent process outlives its trial", lanes.length === 0, lanes);
+  check(
+    "a lane's background process ran on across its commands and a dev run",
+    background.STARTED === "yes" && background.ALIVE === "yes",
+    background,
+  );
   check(
     "a setgid file a lane made lost its bit after the run",
     /^-.....s/.test(setid.BEFORE ?? "") && /^-.....x/.test(setid.AFTER ?? ""),

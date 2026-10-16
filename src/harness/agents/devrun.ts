@@ -1,5 +1,6 @@
 import { join, resolve, sep } from "node:path";
 import { z } from "zod";
+import { SHARED_DEV_RUN_S } from "../../core/contract.ts";
 import { type Role, RoleSchema, type Runner } from "../broker/runner.ts";
 import type { Ledger } from "../ledger.ts";
 import { laneCacheEnv } from "./workspace.ts";
@@ -8,16 +9,22 @@ import { laneCacheEnv } from "./workspace.ts";
  * Agents' development runs on the measurement device (§6.2a). The judge goes first: a dev run
  * waits while the judge has work queued or running, and the judge does not start a job while a
  * dev run holds the device. On a rig with a dedicated development card, neither waits for the
- * other: dev runs use their own card, and the broker keeps them off the judge's. Each run is
- * time-limited and killed at the end; its output is diagnostic only and never reaches the
- * ledger as a measurement.
+ * other: dev runs use their own card, and the broker keeps them off the judge's. A dev run on a
+ * card the judge shares is time-limited, so the judge gets the card back; on a dedicated card
+ * only the contract's limit applies, if it sets one. Nothing a dev run starts on the device
+ * outlives it. Its output is diagnostic only and never reaches the ledger as a measurement.
  */
 
 export const DevRunRequest = z.object({
   lane: RoleSchema.refine((r) => /^lane-\d+$/.test(r), "a lane"),
   command: z.string().min(1).max(4000),
   cwd: z.string().min(1),
-  timeout_s: z.number().int().min(1).max(3600).default(120),
+  timeout_s: z
+    .number()
+    .int()
+    .min(1)
+    .max(24 * 3600)
+    .optional(),
 });
 
 export class DevRuns {
@@ -79,7 +86,10 @@ export class DevRuns {
   run(
     input: unknown,
     trial: string,
-    limits: { rssMib: number; diskMib: number } = { rssMib: 4096, diskMib: 2048 },
+    limits: { rssMib: number; diskMib: number; timeoutS?: number } = {
+      rssMib: 4096,
+      diskMib: 2048,
+    },
   ): Promise<unknown> {
     const req = DevRunRequest.parse(input);
     const laneRoot = join(this.scratchDir, "lanes", req.lane);
@@ -87,8 +97,16 @@ export class DevRuns {
     if (!cwd.startsWith(laneRoot + sep))
       throw new Error("a dev run must run in the lane's own workspace");
     if (this.unavailable) return Promise.resolve({ ran: false, reason: this.unavailable });
-    // One dev run at a time, in arrival order.
+    const cap = limits.timeoutS ?? (this.dedicated ? undefined : SHARED_DEV_RUN_S);
+    const timeoutS =
+      req.timeout_s === undefined ? cap : Math.min(req.timeout_s, cap ?? Number.POSITIVE_INFINITY);
+    // One dev run at a time, in arrival order. One waiting behind another lane's for longer than
+    // maxWaitMs is told so and never runs: the device has no time limit of its own.
+    let started = false;
+    let gaveUp = false;
     const next = this.queue.then(async () => {
+      if (gaveUp) return { ran: false, reason: "another lane's dev run held the device" };
+      started = true;
       const deadline = Date.now() + this.maxWaitMs;
       while (!this.dedicated && this.judgeBusy()) {
         if (Date.now() > deadline)
@@ -105,11 +123,12 @@ export class DevRuns {
           argv: ["sh", "-c", req.command],
           cwd,
           env: laneCacheEnv(this.scratchDir, req.lane),
-          timeoutMs: req.timeout_s * 1000,
+          ...(timeoutS !== undefined ? { timeoutMs: timeoutS * 1000 } : {}),
           rssLimitBytes: limits.rssMib * 1024 * 1024,
           disk: { path: cwd, limitBytes: limits.diskMib * 1024 * 1024 },
           captureBytes: 32 * 1024,
-          ...(this.gpu ? { gpu: true } : {}),
+          // Without a device (a CPU target) a dev run is a lane command run in the judge's turn.
+          ...(this.gpu ? { gpu: true } : { keepBackground: true }),
         });
         // What ran and its peak memory, so a killed dev run can be understood afterwards.
         this.ledger.appendEvent("devrun", "dev_run", req.lane, {
@@ -129,12 +148,26 @@ export class DevRuns {
           note: "diagnostic only: this number never counts",
         };
       } finally {
-        await this.runner.killRole(req.lane as Role).catch(() => 0);
+        // Only the dev run's processes: the lane's own background work runs on.
+        if (this.gpu) await this.runner.killRole(req.lane as Role, { gpu: true }).catch(() => 0);
         this.active = false;
       }
     });
     this.queue = next.catch(() => undefined);
-    this.perLane.set(req.lane, next);
-    return next;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const waited = new Promise<unknown>((resolve) => {
+      timer = setTimeout(() => {
+        if (started) return;
+        gaveUp = true;
+        resolve({
+          ran: false,
+          reason: "another lane's dev run held the device; try again later",
+        });
+      }, this.maxWaitMs);
+      timer.unref?.();
+    });
+    const outcome = Promise.race([next, waited]).finally(() => clearTimeout(timer));
+    this.perLane.set(req.lane, outcome);
+    return outcome;
   }
 }

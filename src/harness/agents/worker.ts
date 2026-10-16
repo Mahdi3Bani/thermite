@@ -1,6 +1,6 @@
 import { Agent, type AgentMessage, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type Message, type TSchema, Type } from "@earendil-works/pi-ai";
-import { type LaneLimitValues, laneLimits } from "../../core/contract.ts";
+import { type LaneLimitValues, laneLimits, SHARED_DEV_RUN_S } from "../../core/contract.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { linkSession, type SessionLink } from "./live-session.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
@@ -56,7 +56,7 @@ export interface TrialDeps {
     known_flaws: string[];
   }): Promise<SubmitOutcome>;
   status(attempt: string): Promise<unknown>;
-  devRun?(req: { lane: string; command: string; timeoutS: number }): Promise<unknown>;
+  devRun?(req: { lane: string; command: string; timeoutS?: number }): Promise<unknown>;
   /** The live view: the session's turns out, the owner's messages in. */
   link?: SessionLink | undefined;
 }
@@ -199,14 +199,18 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
     ),
     tool(
       "run",
-      `Run a shell command in the repository (build, test, inspect). Output is truncated. Timings from here never count. Limits: ${limits.runTimeoutS} s per command (timeout_s, default 120), ${limits.runRssMib} MiB of memory for the whole command, ${limits.workspaceMib} MiB of disk for the workspace. Anything it starts in the background (nohup, &) is killed when the call ends: run long builds in the foreground with a larger timeout_s, and if one is cut off, run it again (build tools and the lane cache keep finished steps).`,
+      `Run a shell command in the repository (build, test, inspect). Output is truncated to its end. Timings from here never count. ${
+        limits.runTimeoutS !== undefined
+          ? `A command is stopped after ${limits.runTimeoutS} s (the campaign's limit), or sooner with timeout_s.`
+          : "A command runs until it finishes; set timeout_s to stop it sooner."
+      } What it starts in the background keeps running until your trial ends: send its output to a file (cmd > log 2>&1 &) and read the file. Memory: ${limits.runRssMib} MiB for everything your lane runs at once. Disk: ${limits.workspaceMib} MiB for the workspace.`,
       Type.Object({ command: Type.String(), timeout_s: Type.Optional(Type.Number()) }),
       async (p) => {
         const r = await deps.runner.run({
           role: spec.lane,
           argv: ["sh", "-c", String(p.command)],
           cwd: spec.workspace,
-          timeoutMs: Math.min(Number(p.timeout_s ?? 120), limits.runTimeoutS) * 1000,
+          ...timeLimit(p.timeout_s, limits.runTimeoutS),
           rssLimitBytes: limits.runRssMib * 1024 * 1024,
           disk: {
             path: spec.workspaceRoot ?? spec.workspace,
@@ -214,21 +218,28 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
           },
           captureBytes: 32 * 1024,
         });
+        const earlier = r.backgroundKilled
+          ? `\n(your background processes were killed earlier: ${r.backgroundKilled} limit)`
+          : "";
         return text(
-          `exit ${r.exitCode ?? r.signal}${r.killedFor ? ` (killed: ${r.killedFor})` : ""}\n--- stdout\n${r.stdout.slice(-6_000)}\n--- stderr\n${r.stderr.slice(-3_000)}\n(output trimmed to its end: pipe through grep, head or tail to see other parts)`,
+          `exit ${r.exitCode ?? r.signal}${r.killedFor ? ` (killed: ${r.killedFor})` : ""}${earlier}\n--- stdout\n${r.stdout.slice(-6_000)}\n--- stderr\n${r.stderr.slice(-3_000)}\n(output trimmed to its end: pipe through grep, head or tail to see other parts)`,
         );
       },
     ),
     tool(
       "dev_run",
-      `Run a command on the measurement device (for example a GPU) when the judge is not using it. Use it to check that your change works on the real target. Results are diagnostic only. Limit: ${limits.devRunTimeoutS} s (timeout_s, default 120).`,
+      `Run a command on the measurement device (for example a GPU) when the judge is not using it. Use it to check that your change works on the real target. Results are diagnostic only. ${
+        limits.devRunTimeoutS !== undefined
+          ? `A dev run is stopped after ${limits.devRunTimeoutS} s (the campaign's limit), or sooner with timeout_s.`
+          : `A dev run ends when its command does, or at timeout_s; where the judge shares the device, it is stopped after ${SHARED_DEV_RUN_S} s at most.`
+      } Nothing it starts on the device outlives it.`,
       Type.Object({ command: Type.String(), timeout_s: Type.Optional(Type.Number()) }),
       async (p) => {
         if (!deps.devRun) return text("dev_run is not available for this campaign; use run.");
         const r = await deps.devRun({
           lane: spec.lane,
           command: String(p.command),
-          timeoutS: Math.min(Number(p.timeout_s ?? 120), limits.devRunTimeoutS),
+          ...(Number(p.timeout_s) > 0 ? { timeoutS: Math.trunc(Number(p.timeout_s)) } : {}),
         });
         return text(JSON.stringify(r).slice(0, 16_000));
       },
@@ -530,4 +541,11 @@ function lastAssistant(
       };
   }
   return undefined;
+}
+
+/** A command's time limit: the one asked for (seconds), within the campaign's if it sets one. */
+function timeLimit(askedS: unknown, limitS: number | undefined): { timeoutMs?: number } {
+  const asked = Number(askedS) > 0 ? Math.ceil(Number(askedS)) : undefined;
+  const s = asked === undefined ? limitS : limitS === undefined ? asked : Math.min(asked, limitS);
+  return s !== undefined ? { timeoutMs: s * 1000 } : {};
 }

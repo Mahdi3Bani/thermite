@@ -295,7 +295,8 @@ export function createHarnessApi(
     if (req.gpu) throw new Unauthorized("device runs go through dev_run");
     if (!inside(req.cwd) || (req.disk && !inside(req.disk.path)))
       throw new Unauthorized("outside the trial's workspace");
-    // The contract's lane limits (defaults when it sets none) bound every lane command.
+    // The contract's lane limits bound every lane command: memory and disk always (defaults
+    // when it sets none), time only when it sets one.
     const limits = laneLimits(service.contractFor(trial.run));
     const rssCap = limits.runRssMib * 1024 ** 2;
     const diskCap = limits.workspaceMib * 1024 ** 2;
@@ -308,13 +309,15 @@ export function createHarnessApi(
       argv,
       cwd: req.cwd,
       env: laneCacheEnv(service.paths.scratchDir, trial.lane),
-      timeoutMs: Math.min(req.timeoutMs, limits.runTimeoutS * 1000),
+      ...timeLimit(req.timeoutMs, limits.runTimeoutS),
       rssLimitBytes: Math.min(req.rssLimitBytes ?? rssCap, rssCap),
       ...(req.disk
         ? { disk: { path: req.disk.path, limitBytes: Math.min(req.disk.limitBytes, diskCap) } }
         : {}),
       ...(req.stdin !== undefined ? { stdin: req.stdin } : {}),
       captureBytes: Math.min(req.captureBytes ?? 64 * 1024, 32 * 1024 * 1024),
+      // As in a shell: what a command starts in the background runs on until the trial ends.
+      keepBackground: true,
     });
     return c.json(r as object);
   });
@@ -330,11 +333,17 @@ export function createHarnessApi(
       (await extras.devRuns.run(
         {
           ...body,
-          timeout_s: Math.min(Math.trunc(body.timeout_s ?? 120), limits.devRunTimeoutS),
+          ...(body.timeout_s !== undefined
+            ? { timeout_s: Math.max(1, Math.trunc(body.timeout_s)) }
+            : {}),
           lane: trial.lane,
         },
         trial.id,
-        { rssMib: limits.devRunRssMib, diskMib: limits.workspaceMib },
+        {
+          rssMib: limits.devRunRssMib,
+          diskMib: limits.workspaceMib,
+          ...(limits.devRunTimeoutS !== undefined ? { timeoutS: limits.devRunTimeoutS } : {}),
+        },
       )) as object,
     );
   });
@@ -390,4 +399,15 @@ export function createHarnessApi(
   });
 
   return app;
+}
+
+/** A command's time limit: what it asked for, within the contract's limit if there is one. */
+function timeLimit(
+  askedMs: number | undefined,
+  limitS: number | undefined,
+): { timeoutMs?: number } {
+  const capMs = limitS !== undefined ? limitS * 1000 : undefined;
+  const ms =
+    askedMs === undefined ? capMs : capMs === undefined ? askedMs : Math.min(askedMs, capMs);
+  return ms !== undefined ? { timeoutMs: ms } : {};
 }

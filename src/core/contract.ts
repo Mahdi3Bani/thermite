@@ -43,12 +43,15 @@ const SearchPolicy = z.strictObject({
  * before it keep their hash; laneLimits() fills the defaults.
  */
 const LaneLimits = z.strictObject({
-  /** One shell or lane-tool command (a build, a test). */
+  /** One shell or lane-tool command (a build, a test). Unset: no limit (the trial's end). */
   run_timeout_s: z.number().int().min(10).max(7200).optional(),
   run_rss_mib: z.number().int().min(256).max(16_384).optional(),
   /** The trial's workspace, build trees included. */
   workspace_mib: z.number().int().min(256).max(65_536).optional(),
-  /** One development run on the measurement device. */
+  /**
+   * One development run on the measurement device. Unset: no limit on a dedicated development
+   * card; on a card the judge shares, the rig's own (the judge needs the card back).
+   */
   dev_run_timeout_s: z.number().int().min(10).max(3600).optional(),
   dev_run_rss_mib: z.number().int().min(256).max(16_384).optional(),
   /** A worker's whole trial. Unset: the rig's default (THERMITE_TRIAL_MINUTES). */
@@ -327,22 +330,27 @@ export function parseContract(input: unknown): ContractParse {
 
 /** The content hash of a validated contract: sha256 of its canonical JSON. */
 export interface LaneLimitValues {
-  runTimeoutS: number;
+  /** Unset: a lane command runs until it ends (no default time limit; owner, 2026-10-16). */
+  runTimeoutS?: number | undefined;
   runRssMib: number;
   workspaceMib: number;
-  devRunTimeoutS: number;
+  /** Unset: see dev_run_timeout_s. */
+  devRunTimeoutS?: number | undefined;
   devRunRssMib: number;
   trialMinutes?: number | undefined;
 }
+
+/** A dev run's limit on a device the judge shares, when the contract sets none. */
+export const SHARED_DEV_RUN_S = 300;
 
 /** A contract's lane limits, with the defaults for anything it leaves out. */
 export function laneLimits(contract: Pick<Contract, "lanes">): LaneLimitValues {
   const l = contract.lanes.limits ?? {};
   return {
-    runTimeoutS: l.run_timeout_s ?? 600,
+    runTimeoutS: l.run_timeout_s,
     runRssMib: l.run_rss_mib ?? 2048,
     workspaceMib: l.workspace_mib ?? 2048,
-    devRunTimeoutS: l.dev_run_timeout_s ?? 300,
+    devRunTimeoutS: l.dev_run_timeout_s,
     devRunRssMib: l.dev_run_rss_mib ?? 4096,
     trialMinutes: l.trial_minutes,
   };

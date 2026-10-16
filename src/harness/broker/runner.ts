@@ -1,7 +1,7 @@
 import { chmodSync, lstatSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { z } from "zod";
-import { runSupervised, type SupervisedResult } from "./process.ts";
+import { killScope, runSupervised, type SupervisedResult } from "./process.ts";
 
 /**
  * Roles and the runner interface. Inside the harness container the broker (root) runs each
@@ -58,11 +58,13 @@ export const RunRequest = z.object({
   argv: z.array(z.string()).min(1),
   cwd: z.string().min(1),
   env: z.record(z.string(), z.string()).default({}),
+  /** Unset: no time limit (the run ends with its command, or when its role is killed). */
   timeoutMs: z
     .number()
     .int()
     .positive()
-    .max(24 * 3_600_000),
+    .max(24 * 3_600_000)
+    .optional(),
   rssLimitBytes: z.number().int().positive().optional(),
   disk: z.object({ path: z.string().min(1), limitBytes: z.number().int().positive() }).optional(),
   /** Written to the child's stdin (file contents for workers' file tools). */
@@ -82,6 +84,11 @@ export const RunRequest = z.object({
    * Only lane roles may ask; the broker refuses it for any other role.
    */
   gpu: z.boolean().optional(),
+  /**
+   * A lane's plain command: what it starts in the background keeps running after it, as in a
+   * shell, until the lane's trial ends (killRole). The broker allows it for nothing else.
+   */
+  keepBackground: z.boolean().optional(),
 });
 export type RunRequest = z.input<typeof RunRequest>;
 
@@ -97,8 +104,11 @@ export interface Runner {
   reclaim(path: string): Promise<void>;
   /** Removes a directory under scratch, whoever owns its files. */
   remove(path: string): Promise<void>;
-  /** Kills every process of a role. */
-  killRole(role: Role): Promise<number>;
+  /**
+   * Kills every process of a role; with `gpu`, only a lane's processes on the device (its dev
+   * runs), leaving its plain commands running.
+   */
+  killRole(role: Role, opts?: { gpu?: boolean }): Promise<number>;
 }
 
 /** Resolves `path` and checks it lies strictly inside `root` (symlinks resolved). */
@@ -126,6 +136,8 @@ export function walk(path: string, visit: (p: string, isDir: boolean) => void): 
 export class LocalRunner implements Runner {
   readonly separated = false;
   private readonly scratchDir: string;
+  /** Each role's process groups left running in the background. */
+  private readonly background = new Map<string, Set<number>>();
 
   constructor(scratchDir: string) {
     this.scratchDir = scratchDir;
@@ -134,7 +146,8 @@ export class LocalRunner implements Runner {
   async run(input: RunRequest): Promise<RunOutcome> {
     const req = RunRequest.parse(input);
     insideRoot(this.scratchDir, req.cwd);
-    return runSupervised({
+    const keep = req.keepBackground === true && /^lane-\d+$/.test(req.role) && !req.gpu;
+    const r = await runSupervised({
       argv: req.argv,
       cwd: req.cwd,
       env: { PATH: process.env.PATH ?? "/usr/bin:/bin", TMPDIR: req.cwd, ...req.env },
@@ -143,7 +156,15 @@ export class LocalRunner implements Runner {
       disk: req.disk,
       stdin: req.stdin,
       captureBytes: req.captureBytes,
+      leaveBackground: keep,
     });
+    // Without users, a role's background work is known by its process groups.
+    if (r.pgid !== undefined) {
+      const groups = this.background.get(req.role) ?? new Set<number>();
+      groups.add(r.pgid);
+      this.background.set(req.role, groups);
+    }
+    return r;
   }
 
   async handOver(path: string): Promise<void> {
@@ -164,7 +185,11 @@ export class LocalRunner implements Runner {
     rmSync(full, { recursive: true, force: true });
   }
 
-  async killRole(): Promise<number> {
-    return 0;
+  async killRole(role: Role, opts: { gpu?: boolean } = {}): Promise<number> {
+    if (opts.gpu) return 0; // dev runs leave nothing behind
+    let killed = 0;
+    for (const pgid of this.background.get(role) ?? []) killed += killScope({ pgid });
+    this.background.delete(role);
+    return killed;
   }
 }

@@ -8,14 +8,17 @@ import { join } from "node:path";
  *
  * With `uid` set (inside the harness container, where the broker is root) the child runs as that
  * user and cleanup kills every process of that user, which is safe because each role has a
- * dedicated user. Without it (local development) cleanup kills the child's process group.
+ * dedicated user. With `scopeGid` too, only the user's processes holding that group: a lane's
+ * plain commands and its dev runs on the device share a user but not a group. Without `uid`
+ * (local development) cleanup kills the child's process group.
  */
 
 export interface SupervisedRun {
   argv: readonly string[];
   cwd: string;
   env: Record<string, string>;
-  timeoutMs: number;
+  /** Unset: no time limit; the run ends when its command does (or its role is killed). */
+  timeoutMs?: number | undefined;
   uid?: number | undefined;
   gid?: number | undefined;
   /** Supplementary groups (with uid and gid; set by setpriv, since spawn drops them). */
@@ -32,6 +35,14 @@ export interface SupervisedRun {
   stdin?: string | undefined;
   /** Bytes of stdout and stderr kept (the tail). */
   captureBytes?: number | undefined;
+  /** With uid: the run is the user's processes holding this group (real, effective or extra). */
+  scopeGid?: number | undefined;
+  /**
+   * What the command starts in the background outlives it, as in a shell: the run returns when
+   * its main process exits, and the leftovers stay under the memory and disk limits until they
+   * end or their role is killed (a lane's trial end).
+   */
+  leaveBackground?: boolean | undefined;
 }
 
 export type KilledFor = "timeout" | "memory" | "disk" | null;
@@ -45,18 +56,24 @@ export interface SupervisedResult {
   peakRssBytes: number;
   peakDiskBytes: number;
   peakEntries: number;
-  /** Processes still alive when the main process exited (killed then). */
+  /** Processes still alive when the main process exited (killed then, unless left running). */
   leftovers: number;
+  /** Background processes an earlier run left were killed since, and why. */
+  backgroundKilled?: "memory" | "disk" | undefined;
+  /** Local development: the process group left running in the background. */
+  pgid?: number | undefined;
   /** What the role left in shared places, removed after the run. */
   swept: string[];
   stdout: string;
   stderr: string;
 }
 
-interface Proc {
+export interface Proc {
   pid: number;
   pgid: number;
   uid: number;
+  /** Real, effective, saved and filesystem gids, then the supplementary groups (Linux only). */
+  gids: number[];
   rssBytes: number;
 }
 
@@ -73,7 +90,13 @@ export function listProcesses(): Proc[] {
         const status = readFileSync(`/proc/${name}/status`, "utf8");
         const uid = Number(/^Uid:\s+(\d+)/m.exec(status)?.[1] ?? -1);
         const rssKb = Number(/^VmRSS:\s+(\d+)/m.exec(status)?.[1] ?? 0);
-        out.push({ pid: Number(name), pgid: Number(rest[2]), uid, rssBytes: rssKb * 1024 });
+        const gids = [
+          ...(/^Gid:\s+(.*)$/m.exec(status)?.[1] ?? "").trim().split(/\s+/),
+          ...(/^Groups:\s*(.*)$/m.exec(status)?.[1] ?? "").trim().split(/\s+/),
+        ]
+          .filter((g) => g !== "")
+          .map(Number);
+        out.push({ pid: Number(name), pgid: Number(rest[2]), uid, gids, rssBytes: rssKb * 1024 });
       } catch {
         // the process exited while we looked
       }
@@ -89,6 +112,7 @@ export function listProcesses(): Proc[] {
       pid: pid as number,
       pgid: pgid as number,
       uid: uid as number,
+      gids: [],
       rssBytes: (rss as number) * 1024,
     }));
 }
@@ -136,18 +160,46 @@ export function diskUsage(path: string, maxEntries = 200_000, maxDepth = 128): D
   return { bytes, entries, truncated };
 }
 
-function members(scope: { uid?: number | undefined; pgid: number }, procs: Proc[]): Proc[] {
-  return scope.uid !== undefined
-    ? procs.filter((p) => p.uid === scope.uid)
-    : procs.filter((p) => p.pgid === scope.pgid);
+/** A run's processes: a user's (holding a group, if one is given), or a process group's. */
+export interface Scope {
+  uid?: number | undefined;
+  gid?: number | undefined;
+  pgid?: number | undefined;
+}
+
+export function members(scope: Scope, procs: Proc[]): Proc[] {
+  if (scope.uid !== undefined) {
+    return procs.filter(
+      (p) => p.uid === scope.uid && (scope.gid === undefined || p.gids.includes(scope.gid)),
+    );
+  }
+  return procs.filter((p) => p.pgid === scope.pgid);
 }
 
 /**
  * Kills every process of a user (or a process group). For a user it runs kill(-1, SIGKILL) as
  * that user, which the kernel applies to all of the user's processes at once, so a fork bomb
- * cannot outrun it; it repeats until none are left.
+ * cannot outrun it; it repeats until none are left. For a user's processes holding a group it
+ * kills them one by one, round after round; any it cannot catch (a fork bomb, within the role's
+ * process limit) take the whole user with them.
  */
-export function killScope(scope: { uid?: number | undefined; pgid?: number | undefined }): number {
+export function killScope(scope: Scope): number {
+  if (scope.uid !== undefined && scope.gid !== undefined) {
+    let killed = 0;
+    for (let round = 0; round < 20; round++) {
+      const victims = members(scope, listProcesses());
+      if (!victims.length) return killed;
+      for (const v of victims) {
+        try {
+          process.kill(v.pid, "SIGKILL");
+          killed++;
+        } catch {
+          // gone already
+        }
+      }
+    }
+    return killed + killScope({ uid: scope.uid });
+  }
   if (scope.uid === undefined) {
     if (scope.pgid === undefined) return 0;
     let n = 0;
@@ -306,11 +358,17 @@ export function runSupervised(spec: SupervisedRun): Promise<SupervisedResult> {
     let exitWallMs: number | undefined;
     let exitCode: number | null = null;
     let exitSignal: string | null = null;
-    const scope = { uid: spec.uid, pgid };
-    const killAll = () => killScope(spec.uid !== undefined ? { uid: spec.uid } : { pgid });
+    const scope: Scope = spec.uid !== undefined ? { uid: spec.uid, gid: spec.scopeGid } : { pgid };
+    const key = scopeKey(scope);
+    const backgroundKilled = key ? lingerKilled.get(key) : undefined;
+    if (key) lingerKilled.delete(key);
+    const killAll = () => killScope(scope);
     const kill = (why: KilledFor) => {
       if (killedFor === null && exitWallMs === undefined) killedFor = why;
-      killAll();
+      // A command's own timeout ends the command, not what earlier ones left running; memory
+      // and disk limits are the lane's whole, so a breach ends all of it.
+      if (why === "timeout" && spec.leaveBackground) killScope({ pgid });
+      else killAll();
     };
     const sampleDisk = () => {
       if (!spec.disk) return;
@@ -320,7 +378,8 @@ export function runSupervised(spec: SupervisedRun): Promise<SupervisedResult> {
       if (d.bytes > spec.disk.limitBytes || d.truncated) kill("disk");
     };
 
-    const timer = setTimeout(() => kill("timeout"), spec.timeoutMs);
+    const timer =
+      spec.timeoutMs !== undefined ? setTimeout(() => kill("timeout"), spec.timeoutMs) : undefined;
     let ticks = 0;
     const watch = setInterval(() => {
       ticks++;
@@ -337,15 +396,23 @@ export function runSupervised(spec: SupervisedRun): Promise<SupervisedResult> {
     }, 100);
 
     let settled = false;
+    let grace: ReturnType<typeof setTimeout> | undefined;
     const finish = () => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       clearTimeout(deadline);
+      clearTimeout(grace);
       clearInterval(watch);
-      // Nothing a run started may outlive it.
-      killAll();
-      const swept = spec.uid !== undefined ? sweepRole(spec.uid) : [];
+      let swept: string[] = [];
+      if (spec.leaveBackground) {
+        // Left running, as in a shell; still under the memory and disk limits.
+        if (leftovers) lingerUnder(scope, spec);
+      } else {
+        // Nothing a run started may outlive it.
+        killAll();
+        swept = spec.uid !== undefined ? sweepRole(spec.uid) : [];
+      }
       sampleDisk();
       // A breach between two samples still counts, even if the child finished first.
       if (killedFor === null && spec.disk && peakDisk > spec.disk.limitBytes) killedFor = "disk";
@@ -364,21 +431,33 @@ export function runSupervised(spec: SupervisedRun): Promise<SupervisedResult> {
         swept,
         stdout,
         stderr,
+        ...(backgroundKilled ? { backgroundKilled } : {}),
+        ...(spec.leaveBackground && leftovers && spec.uid === undefined ? { pgid } : {}),
       });
     };
     // Even if the pipes never close (a process stuck in a driver, a survivor holding them), the
     // run ends: timeout plus a grace period.
-    const deadline = setTimeout(() => {
-      if (killedFor === null) killedFor = "timeout";
-      finish();
-    }, spec.timeoutMs + 15_000);
+    const deadline =
+      spec.timeoutMs !== undefined
+        ? setTimeout(() => {
+            if (killedFor === null) killedFor = "timeout";
+            finish();
+          }, spec.timeoutMs + 15_000)
+        : undefined;
     child.on("exit", (code, signal) => {
       exitWallMs = Number(process.hrtime.bigint() - started) / 1e6;
       exitCode = code;
       exitSignal = signal;
-      // Background children may hold the pipes open; kill them so "close" follows promptly.
       leftovers = members(scope, listProcesses()).length;
-      killAll();
+      if (spec.leaveBackground) {
+        // Background processes may hold the pipes open: the run is over all the same. Their
+        // output is still read (and dropped), so they never block on a full pipe.
+        grace = setTimeout(finish, 1000);
+      } else {
+        // Background children may hold the pipes open; kill them so "close" follows promptly.
+        killAll();
+        grace = setTimeout(finish, 15_000);
+      }
     });
     child.on("error", (err) => {
       stderr += String(err);
@@ -387,4 +466,49 @@ export function runSupervised(spec: SupervisedRun): Promise<SupervisedResult> {
     });
     child.on("close", finish);
   });
+}
+
+/** Why a scope's background processes were killed since its last run (told to the next). */
+const lingerKilled = new Map<string, "memory" | "disk">();
+const lingering = new Map<string, ReturnType<typeof setInterval>>();
+
+function scopeKey(scope: Scope): string | undefined {
+  return scope.uid !== undefined ? `${scope.uid}:${scope.gid ?? "*"}` : undefined;
+}
+
+/**
+ * Watches what a run left in the background: killed if, together, it exceeds the run's memory
+ * limit or its directory exceeds the disk limit. The watch ends when nothing is left.
+ */
+function lingerUnder(scope: Scope, spec: Pick<SupervisedRun, "rssLimitBytes" | "disk">): void {
+  if (spec.rssLimitBytes === undefined && !spec.disk) return;
+  const key = scopeKey(scope) ?? `pgid:${scope.pgid}`;
+  clearInterval(lingering.get(key));
+  let ticks = 0;
+  const stop = (why?: "memory" | "disk") => {
+    clearInterval(t);
+    lingering.delete(key);
+    if (why) {
+      killScope(scope);
+      if (scopeKey(scope)) lingerKilled.set(key, why);
+    }
+  };
+  const t = setInterval(() => {
+    ticks++;
+    let procs: Proc[];
+    try {
+      procs = members(scope, listProcesses());
+    } catch {
+      return;
+    }
+    if (!procs.length) return stop();
+    const rss = procs.reduce((s, p) => s + p.rssBytes, 0);
+    if (spec.rssLimitBytes !== undefined && rss > spec.rssLimitBytes) return stop("memory");
+    if (spec.disk && ticks % 5 === 0) {
+      const d = diskUsage(spec.disk.path, spec.disk.maxEntries ?? 50_000);
+      if (d.bytes > spec.disk.limitBytes || d.truncated) return stop("disk");
+    }
+  }, 1000);
+  t.unref();
+  lingering.set(key, t);
 }

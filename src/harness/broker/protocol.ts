@@ -11,7 +11,12 @@ export const BrokerRequest = z.discriminatedUnion("op", [
   z.object({ id: z.number().int(), op: z.literal("handOver"), path: z.string(), role: RoleSchema }),
   z.object({ id: z.number().int(), op: z.literal("reclaim"), path: z.string() }),
   z.object({ id: z.number().int(), op: z.literal("remove"), path: z.string() }),
-  z.object({ id: z.number().int(), op: z.literal("killRole"), role: RoleSchema }),
+  z.object({
+    id: z.number().int(),
+    op: z.literal("killRole"),
+    role: RoleSchema,
+    gpu: z.boolean().optional(),
+  }),
 ]);
 export type BrokerRequest = z.infer<typeof BrokerRequest>;
 

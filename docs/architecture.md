@@ -32,6 +32,9 @@ The harness does the research. It contains:
 - **Executors and target drivers:** they run official measurements on the rig's target, such as a GPU or a CPU set, with the clock owned by the executor.
 - **The planner:** a stateless model call each epoch that assigns directions to lanes from a deterministic summary of the ledger.
 - **Workers:** one fresh agent session per trial, each in its own workspace, proposing one change per trial.
+  - A lane's commands have no time limit unless the contract sets one. What they start in the background runs on, as in a shell, until the trial ends.
+  - Memory and disk limits cover everything a lane runs.
+  - A development run on a device the judge shares is time-limited, so the judge gets the device back. Nothing a development run starts on the device outlives it.
 - **A small privileged broker:** it starts, stops and isolates the other processes. Each lane's tools and shell commands, builds and candidate runs each run as separate users, and none of them can read the judge's files. A worker's agent session runs as its lane's own agent user, which can read none of the harness's state, kits, secrets or lane files. Its file and shell tools reach its workspace only through the harness API, with a token bound to its own trial that stops working when the trial ends; the harness runs them as the lane's user, in that trial's workspace only.
 
 Network: DNS, the internet and its model endpoint. Nothing else in the network can reach the harness except its own supervisor.

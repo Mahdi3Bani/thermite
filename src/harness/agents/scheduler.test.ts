@@ -519,6 +519,79 @@ describe("agent scheduler", () => {
     assert.match(String(off.reason), /not set up/);
   });
 
+  test("a dev run's time limit: none on a dedicated card, the shared default otherwise; a run stuck behind another lane's gives up", async () => {
+    const env = makeJudgeEnv({ lanes: { count: 2, trials_per_epoch: 1 } });
+    await env.service.applyCommand(env.assign);
+    const { DevRuns } = await import("./devrun.ts");
+    const { SHARED_DEV_RUN_S } = await import("../../core/contract.ts");
+    const inner = new LocalRunner(env.paths.scratchDir);
+    const seen: (number | undefined)[] = [];
+    const runner = Object.assign(Object.create(inner), {
+      run: (req: Parameters<LocalRunner["run"]>[0]) => {
+        seen.push(req.timeoutMs);
+        return inner.run(req);
+      },
+    }) as LocalRunner;
+    const registry = scheduler0(env).registry;
+    for (const lane of ["lane-1", "lane-2"]) {
+      registry.startTrial({
+        id: `t-${lane}`,
+        run: "js-1",
+        lane,
+        epoch: 1,
+        family: "f",
+        parent: env.seed,
+        token: `tok-${lane}`,
+      });
+    }
+    const { mkdirSync } = await import("node:fs");
+    const cwd = (lane: string) => {
+      const d = `${env.paths.scratchDir}/lanes/${lane}/ws/repo`;
+      mkdirSync(d, { recursive: true });
+      return d;
+    };
+    const make = (dedicated: boolean, maxWaitMs = 10_000) =>
+      new DevRuns({
+        runner,
+        ledger: env.ledger,
+        scratchDir: env.paths.scratchDir,
+        gpu: false,
+        dedicated,
+        maxWaitMs,
+      });
+    const limits: { rssMib: number; diskMib: number; timeoutS?: number } = {
+      rssMib: 512,
+      diskMib: 512,
+    };
+    const one = (dev: InstanceType<typeof DevRuns>, extra: Record<string, unknown>, l = limits) =>
+      dev.run({ lane: "lane-1", command: "true", cwd: cwd("lane-1"), ...extra }, "t-lane-1", l);
+    await one(make(true), {});
+    await one(make(false), {});
+    await one(make(false), { timeout_s: 60 });
+    await one(make(true), { timeout_s: 9000 }, { ...limits, timeoutS: 1800 });
+    assert.deepEqual(seen, [undefined, SHARED_DEV_RUN_S * 1000, 60_000, 1_800_000]);
+    // Lane-1's long dev run holds the card; lane-2's, waiting longer than maxWaitMs, is told so.
+    const dev = make(true, 300);
+    const long = dev.run(
+      { lane: "lane-1", command: "sleep 1.5", cwd: cwd("lane-1") },
+      "t-lane-1",
+      limits,
+    );
+    const behind = (await dev.run(
+      { lane: "lane-2", command: "echo ran", cwd: cwd("lane-2") },
+      "t-lane-2",
+      limits,
+    )) as { ran: boolean; reason: string };
+    assert.equal(behind.ran, false);
+    assert.match(behind.reason, /another lane's dev run held the device/);
+    const settled = Date.now();
+    await dev.settle("lane-2"); // lane-2's trial end does not wait behind lane-1
+    assert.ok(Date.now() - settled < 500);
+    assert.equal(((await long) as { ran: boolean }).ran, true);
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(seen.length, 5, "the one that gave up never ran");
+  });
+
   test("a fork round at a third of the wall budget sends every lane back to the champion", async () => {
     const env = makeJudgeEnv({
       lanes: { count: 1, trials_per_epoch: 1 },

@@ -69,8 +69,8 @@ export class BrokerClient implements Runner {
     return this.call({ op: "remove", path });
   }
 
-  killRole(role: Role): Promise<number> {
-    return this.call({ op: "killRole", role });
+  killRole(role: Role, opts: { gpu?: boolean } = {}): Promise<number> {
+    return this.call({ op: "killRole", role, ...(opts.gpu ? { gpu: true } : {}) });
   }
 
   close(): void {

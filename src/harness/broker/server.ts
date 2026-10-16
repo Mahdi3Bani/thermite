@@ -3,7 +3,7 @@ import { chmodSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import { log } from "../../common/env.ts";
 import { type GpuLayout, identityFor } from "./devices.ts";
-import { killScope, runSupervised } from "./process.ts";
+import { killScope, runSupervised, sweepRole } from "./process.ts";
 import { BrokerRequest, type BrokerResponse, type BrokerRequest as Req } from "./protocol.ts";
 import { IDS, insideRoot, type Role, RunRequest, roleIds } from "./runner.ts";
 
@@ -68,6 +68,7 @@ export async function handle(req: Req, opts: BrokerServerOptions): Promise<unkno
       if (r.gpu && !/^lane-\d+$/.test(r.role))
         throw new Error(`role ${r.role} may not ask for the gpu group`);
       const { uid, gid, groups, cuda } = identityFor(r.role, r.gpu === true, opts.gpuLayout);
+      const lane = /^lane-\d+$/.test(r.role);
       // A root process using CUDA (an operator's exec, say) can reset a node to 0666.
       opts.assertDevices?.();
       const outcome = await runSupervised({
@@ -94,6 +95,9 @@ export async function handle(req: Req, opts: BrokerServerOptions): Promise<unkno
         nproc: NPROC[r.role] ?? 256,
         stdin: r.stdin,
         captureBytes: r.captureBytes,
+        // A lane's user runs both its plain commands and its dev runs: each is supervised and
+        // cleaned up within its own group, and only plain commands may leave work running.
+        ...(lane ? { scopeGid: gid, leaveBackground: !r.gpu && r.keepBackground === true } : {}),
       });
       // A lane's dev runs have the gpu group: a setgid file left behind would let its plain
       // runs reach the device outside the judge's gate. Such bits are cleared after every lane
@@ -115,8 +119,17 @@ export async function handle(req: Req, opts: BrokerServerOptions): Promise<unkno
       });
       return null;
     }
-    case "killRole":
-      return killScope({ uid: roleIds(req.role).uid });
+    case "killRole": {
+      const { uid } = roleIds(req.role);
+      if (req.gpu) {
+        if (!/^lane-\d+$/.test(req.role)) throw new Error(`role ${req.role} has no dev runs`);
+        return killScope({ uid, gid: identityFor(req.role, true, opts.gpuLayout).gid });
+      }
+      const killed = killScope({ uid });
+      // What its background work left in shared places goes with it.
+      sweepRole(uid);
+      return killed;
+    }
   }
 }
 
