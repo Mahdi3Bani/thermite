@@ -159,4 +159,21 @@ describe("kit commands", () => {
     );
     assert.equal(env.ledger.getRun("js-1"), undefined);
   });
+
+  test("a run assigned with its own promotion policy keeps it; one without follows the rig's", async () => {
+    const env = makeJudgeEnv({ promotion: "auto" });
+    const base = (env.assign as unknown as { envelope: { payload: Record<string, unknown> } })
+      .envelope.payload;
+    const out = (await env.service.applyCommand(
+      env.sign("assign_campaign", { ...base, promotion: "owner_approval" }),
+    )) as { accepted?: boolean; result?: unknown };
+    assert.equal(out.accepted, true, JSON.stringify(out.result));
+    assert.equal(env.ledger.getRun("js-1")?.promotion, "owner_approval");
+    assert.equal(env.service.promotionFor("js-1"), "owner_approval");
+    const created = env.ledger.eventsAfter(0, 1000).events.find((e) => e.kind === "run_created");
+    assert.equal((created?.body as { promotion?: string }).promotion, "owner_approval");
+    await env.service.applyCommand(env.sign("assign_campaign", { ...base, run: "js-2" }));
+    assert.equal(env.ledger.getRun("js-2")?.promotion, null);
+    assert.equal(env.service.promotionFor("js-2"), "auto");
+  });
 });

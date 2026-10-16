@@ -116,16 +116,33 @@ describe("planner", () => {
       seen.push(reasoning_effort);
       return { text: "no plan" };
     });
-    const env = { QWEN_BASE_URL: fake.url, QWEN_MODEL: "m", QWEN_API_KEY: "k" };
+    const env = {
+      THERMITE_MODEL_BASE_URL: fake.url,
+      THERMITE_MODEL: "m",
+      THERMITE_MODEL_API_KEY: "k",
+    };
     for (const effort of [undefined, "none", "high"]) {
-      const cfg = modelConfigFromEnv({ ...env, QWEN_REASONING_EFFORT: effort });
+      const cfg = modelConfigFromEnv({ ...env, THERMITE_MODEL_REASONING_EFFORT: effort });
       assert.ok(cfg);
       seen.length = 0;
       await plan(base, cfg);
       assert.ok(seen.length > 0);
       assert.deepEqual(new Set(seen), new Set([effort]));
     }
-    assert.throws(() => modelConfigFromEnv({ ...env, QWEN_REASONING_EFFORT: "max" }), /must be/);
+    assert.throws(
+      () => modelConfigFromEnv({ ...env, THERMITE_MODEL_REASONING_EFFORT: "max" }),
+      /must be/,
+    );
+    // The old QWEN_* names are still read, and the new name wins when both are set.
+    const old = modelConfigFromEnv({
+      QWEN_BASE_URL: fake.url,
+      QWEN_MODEL: "old",
+      QWEN_API_KEY: "k",
+      QWEN_CONTEXT_WINDOW: "262144",
+      THERMITE_MODEL: "new",
+    });
+    assert.equal(old?.model, "new");
+    assert.equal(old?.contextWindow, 262144);
     await fake.close();
   });
 });

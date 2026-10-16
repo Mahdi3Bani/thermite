@@ -170,8 +170,8 @@ const composeEnv = {
   THERMITE_POLL_SECONDS: "2",
   THERMITE_PROMOTION: "auto",
   THERMITE_CALIBRATION_BLOCKS: "0",
-  QWEN_BASE_URL: `http://${hostName}:${port}/v1`,
-  QWEN_MODEL: "scripted",
+  THERMITE_MODEL_BASE_URL: `http://${hostName}:${port}/v1`,
+  THERMITE_MODEL: "scripted",
   THERMITE_MAX_TRIALS: "2",
 };
 const report = {

@@ -19,7 +19,7 @@ const USAGE = `usage: thermite <command> [options]
                                       for example in a password manager) and print its SHA-256,
                                       the only part control's deployment needs
   assign --contract F --run ID [--seed GIT_URL[@COMMIT] | --seed-commit C] [--kit GIT_URL]
-         [--model NAME=URL ...] [--direction D] [--agents off]
+         [--model NAME=URL ...] [--direction D] [--agents off] [--promotion auto|owner]
          (--control URL --token-file F --rig R [--ttl MIN] | --print)
                                       start a run. The rig's supervisor fetches the project and
                                       kit commits from their repositories, and models from their
@@ -191,6 +191,7 @@ async function main(argv: string[]): Promise<void> {
           model: { type: "string", multiple: true },
           direction: { type: "string" },
           agents: { type: "string" },
+          promotion: { type: "string" },
           control: { type: "string" },
           "token-file": { type: "string" },
           rig: { type: "string" },
@@ -201,6 +202,8 @@ async function main(argv: string[]): Promise<void> {
       if (!values.contract || !values.run) fail(USAGE);
       if (values.agents !== undefined && values.agents !== "on" && values.agents !== "off")
         fail("--agents is on or off");
+      if (values.promotion !== undefined && !["auto", "owner"].includes(values.promotion))
+        fail("--promotion is auto or owner");
       if (!values.print && (!values.control || !values["token-file"] || !values.rig))
         fail("give --control, --token-file and --rig to issue it, or --print to show it");
       const r = parseContract(JSON.parse(readFileSync(values.contract, "utf8")));
@@ -274,6 +277,10 @@ async function main(argv: string[]): Promise<void> {
         ...(seed ? { seed } : {}),
         ...(values.direction ? { direction: values.direction } : {}),
         ...(values.agents === "off" ? { agents: false } : {}),
+        // The run's own promotion policy; unset, the rig's default applies.
+        ...(values.promotion
+          ? { promotion: values.promotion === "owner" ? "owner_approval" : "auto" }
+          : {}),
         imports,
       };
       if (values.print) {
@@ -382,6 +389,7 @@ async function main(argv: string[]): Promise<void> {
       const secretFiles = [
         env.THERMITE_SUPERVISOR_TOKEN_FILE,
         env.THERMITE_PROPOSER_TOKEN_FILE,
+        env.THERMITE_MODEL_API_KEY_FILE,
         env.QWEN_API_KEY_FILE,
       ].filter((f): f is string => Boolean(f));
       const report = await isolationSelftest({

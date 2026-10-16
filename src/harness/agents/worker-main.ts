@@ -36,7 +36,9 @@ async function main(): Promise<void> {
   const trial = JSON.parse(readFileSync(String(process.argv[2]), "utf8")) as AnyTrial;
   const model = modelConfigFromEnv();
   if (!model)
-    throw new Error("no model route configured (QWEN_BASE_URL, QWEN_MODEL, QWEN_API_KEY)");
+    throw new Error(
+      "no model route configured (THERMITE_MODEL_BASE_URL, THERMITE_MODEL, THERMITE_MODEL_API_KEY)",
+    );
   const api = process.env.THERMITE_HARNESS_URL ?? "http://127.0.0.1:8700";
   const token = `trial.${trial.spec.token ?? ""}`;
   const call = async (method: string, path: string, body?: unknown) => {

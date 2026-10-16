@@ -48,12 +48,12 @@ services:
       # The model route for agents (empty: agents off): an OpenAI-compatible endpoint with tool
       # calling, its URL ending in /v1. The key comes from a secret file. A server on this
       # machine is http://host.docker.internal:PORT/v1 (Podman: host.containers.internal too).
-      QWEN_BASE_URL: "${QWEN_BASE_URL:-}"
-      QWEN_MODEL: "${QWEN_MODEL:-}"
-      QWEN_API_KEY_FILE: /run/secrets/qwen-api-key
-      QWEN_CONTEXT_WINDOW: "${QWEN_CONTEXT_WINDOW:-0}"
-      QWEN_MAX_TOKENS: "${QWEN_MAX_TOKENS:-8192}"
-      QWEN_REASONING_EFFORT: "${QWEN_REASONING_EFFORT:-}"
+      THERMITE_MODEL_BASE_URL: "${THERMITE_MODEL_BASE_URL:-}"
+      THERMITE_MODEL: "${THERMITE_MODEL:-}"
+      THERMITE_MODEL_API_KEY_FILE: /run/secrets/model-api-key
+      THERMITE_MODEL_CONTEXT_WINDOW: "${THERMITE_MODEL_CONTEXT_WINDOW:-0}"
+      THERMITE_MODEL_MAX_TOKENS: "${THERMITE_MODEL_MAX_TOKENS:-8192}"
+      THERMITE_MODEL_REASONING_EFFORT: "${THERMITE_MODEL_REASONING_EFFORT:-}"
       THERMITE_MAX_TRIALS: "${THERMITE_MAX_TRIALS:-1}"
       THERMITE_TRIAL_MINUTES: "${THERMITE_TRIAL_MINUTES:-20}"
       THERMITE_MAX_TURNS: "${THERMITE_MAX_TURNS:-}"
@@ -69,7 +69,7 @@ services:
       - ./.dev/inbox:/inbox:ro
       - outbox:/outbox
       - control-pub:/keys:ro
-    secrets: [harness-supervisor-token, harness-proposer-token, qwen-api-key]
+    secrets: [harness-supervisor-token, harness-proposer-token, model-api-key]
     # No published ports: only the rig's supervisor reaches the harness.
     networks: [rig, egress]
     # The broker's needs only: separate users for roles, ownership of scratch, killing leftovers.
@@ -118,12 +118,12 @@ services:
       THERMITE_PROMOTION: "${THERMITE_PROMOTION:-auto}"
       THERMITE_CALIBRATION_BLOCKS: "${THERMITE_CALIBRATION_BLOCKS:-6}"
       # The same model route as the first rig.
-      QWEN_BASE_URL: "${QWEN_BASE_URL:-}"
-      QWEN_MODEL: "${QWEN_MODEL:-}"
-      QWEN_API_KEY_FILE: /run/secrets/qwen-api-key
-      QWEN_CONTEXT_WINDOW: "${QWEN_CONTEXT_WINDOW:-0}"
-      QWEN_MAX_TOKENS: "${QWEN_MAX_TOKENS:-8192}"
-      QWEN_REASONING_EFFORT: "${QWEN_REASONING_EFFORT:-}"
+      THERMITE_MODEL_BASE_URL: "${THERMITE_MODEL_BASE_URL:-}"
+      THERMITE_MODEL: "${THERMITE_MODEL:-}"
+      THERMITE_MODEL_API_KEY_FILE: /run/secrets/model-api-key
+      THERMITE_MODEL_CONTEXT_WINDOW: "${THERMITE_MODEL_CONTEXT_WINDOW:-0}"
+      THERMITE_MODEL_MAX_TOKENS: "${THERMITE_MODEL_MAX_TOKENS:-8192}"
+      THERMITE_MODEL_REASONING_EFFORT: "${THERMITE_MODEL_REASONING_EFFORT:-}"
       THERMITE_MAX_TRIALS: "${THERMITE_MAX_TRIALS:-1}"
       THERMITE_TRIAL_MINUTES: "${THERMITE_TRIAL_MINUTES:-20}"
       THERMITE_MAX_TURNS: "${THERMITE_MAX_TURNS:-}"
@@ -135,7 +135,7 @@ services:
       - ./.dev/inbox:/inbox:ro
       - outbox2:/outbox
       - control-pub:/keys:ro
-    secrets: [harness2-supervisor-token, harness2-proposer-token, qwen-api-key]
+    secrets: [harness2-supervisor-token, harness2-proposer-token, model-api-key]
     networks: [rig2, egress]
     cap_drop: [ALL]
     cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETGID, SETUID]
@@ -195,7 +195,7 @@ secrets:
   harness-supervisor-token: { file: ./.dev/secrets/harness-supervisor-token }
   harness-proposer-token: { file: ./.dev/secrets/harness-proposer-token }
   # A local model route's key (git-ignored; dev-init writes a placeholder).
-  qwen-api-key: { file: ./.dev/secrets/qwen-api-key }
+  model-api-key: { file: ./.dev/secrets/model-api-key }
   control-rig-token-2: { file: ./.dev/secrets/control-rig-token-2 }
   harness2-supervisor-token: { file: ./.dev/secrets/harness2-supervisor-token }
   harness2-proposer-token: { file: ./.dev/secrets/harness2-proposer-token }

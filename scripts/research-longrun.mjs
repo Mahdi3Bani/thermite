@@ -123,8 +123,8 @@ const hostName = (process.env.COMPOSE ?? "podman compose").startsWith("docker")
   : "host.containers.internal";
 const composeEnv = {
   THERMITE_POLL_SECONDS: "10",
-  QWEN_BASE_URL: `http://${hostName}:${port}/v1`,
-  QWEN_MODEL: "scripted-researcher",
+  THERMITE_MODEL_BASE_URL: `http://${hostName}:${port}/v1`,
+  THERMITE_MODEL: "scripted-researcher",
   THERMITE_MAX_TRIALS: "1",
   THERMITE_TRIAL_MINUTES: "5",
 };

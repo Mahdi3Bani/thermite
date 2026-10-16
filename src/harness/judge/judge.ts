@@ -833,7 +833,7 @@ export class Judge {
         lifecycle: "awaiting_audit",
       };
     }
-    if (this.o.promotion === "owner_approval") {
+    if (this.o.service.promotionFor(run) === "owner_approval") {
       return {
         ...fin,
         result: { ...(fin.result as object), promoted: false, waiting: "owner_approval" },

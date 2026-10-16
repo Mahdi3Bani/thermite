@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Role, Runner } from "../broker/runner.ts";
+import { MODEL_ENV_NAMES } from "./model.ts";
 import type { ResearchTrialSpec } from "./research-worker.ts";
 import type { TrialResult, TrialSpec } from "./worker.ts";
 
@@ -10,16 +11,7 @@ export type AnyTrial =
   | { kind: "research"; spec: ResearchTrialSpec };
 
 /** What a worker process gets: the model route and the harness URL. No tokens, no broker. */
-const MODEL_ENV = [
-  "QWEN_BASE_URL",
-  "QWEN_MODEL",
-  "QWEN_API_KEY",
-  "QWEN_CONTEXT_WINDOW",
-  "QWEN_MAX_TOKENS",
-  "QWEN_REASONING_EFFORT",
-  "NODE_OPTIONS",
-  "LANG",
-];
+const MODEL_ENV = [...MODEL_ENV_NAMES, "NODE_OPTIONS", "LANG"];
 
 /**
  * Runs one trial's worker process. Under the broker it runs as the lane's own agent user

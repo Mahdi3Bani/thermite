@@ -78,6 +78,8 @@ export interface RunView {
   mode: string | null;
   /** The project repository the run works on (from its assignment). */
   seed_repo: string | null;
+  /** The run's own promotion policy (null: the rig's default, which control does not see). */
+  promotion: "auto" | "owner_approval" | null;
   status: string;
   pause_reason: string | null;
   champion: ChampionStep[];
@@ -242,6 +244,7 @@ export function rigView(
         campaign: null,
         mode: null,
         seed_repo: null,
+        promotion: null,
         status: "unknown",
         pause_reason: null,
         champion: [],
@@ -323,6 +326,8 @@ export function rigView(
         running = v.id;
         v.seed_repo =
           ((b.seed as { repo?: string } | undefined)?.repo as string | undefined) ?? null;
+        v.promotion =
+          b.promotion === "auto" || b.promotion === "owner_approval" ? b.promotion : null;
         v.status = "running";
         v.champion.push({
           seq: 1,

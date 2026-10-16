@@ -45,6 +45,8 @@ export interface RunRow {
   pause_reason: string | null;
   /** False: no worker agents run for this run (the judge still works). */
   agents: boolean;
+  /** The run's own promotion policy; null: the rig's default. */
+  promotion: "auto" | "owner_approval" | null;
 }
 
 export interface JobRow {
@@ -324,6 +326,8 @@ export class Ledger {
     direction?: string | undefined;
     /** False: a judge-only run (no worker agents). */
     agents?: boolean | undefined;
+    /** The run's own promotion policy (unset: the rig's default). */
+    promotion?: "auto" | "owner_approval" | undefined;
     actor: string;
   }): void {
     this.tx(() => {
@@ -341,7 +345,7 @@ export class Ledger {
       const at = this.now();
       this.run(
         `insert into run (id, campaign, version, contract_sha, mode, seed_repo, seed_commit,
-           direction, status, agents, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?)`,
+           direction, status, agents, promotion, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?)`,
         input.id,
         input.contract.campaign,
         input.contract.version,
@@ -351,6 +355,7 @@ export class Ledger {
         input.seedCommit,
         input.direction ?? null,
         input.agents === false ? 0 : 1,
+        input.promotion ?? null,
         at,
         at,
       );
@@ -381,6 +386,7 @@ export class Ledger {
         seed: { repo: input.seedRepo, commit: input.seedCommit },
         direction: input.direction ?? null,
         agents: input.agents !== false,
+        promotion: input.promotion ?? null,
       });
     });
   }
@@ -1251,6 +1257,7 @@ function toRun(r: Row): RunRow {
     status: String(r.status) as RunRow["status"],
     pause_reason: r.pause_reason === null ? null : String(r.pause_reason),
     agents: r.agents === undefined || Number(r.agents) !== 0,
+    promotion: r.promotion === "auto" || r.promotion === "owner_approval" ? r.promotion : null,
   };
 }
 

@@ -593,4 +593,8 @@ export const MIGRATIONS: readonly (string | ((db: DatabaseSync) => void))[] = [
       "update job set spec = json_set(json_remove(spec, '$.instance'), '$.run', json_extract(spec, '$.instance')) where json_extract(spec, '$.instance') is not null",
     );
   },
+  // 11: a run's own promotion policy, chosen when it is assigned (null: the rig's default).
+  `
+  alter table run add column promotion text check (promotion in ('auto', 'owner_approval'));
+  `,
 ];

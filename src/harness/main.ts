@@ -277,7 +277,7 @@ async function main(): Promise<void> {
   });
   log("harness", "judge ready", { separated: runner.separated, promotion });
 
-  // Agents run only with a model route (QWEN_* from the rig's configuration; the key from the
+  // Agents run only with a model route (THERMITE_MODEL_* from the rig's configuration; the key from the
   // broker). Each trial is its own worker process.
   const model = modelConfigFromEnv(env);
   // Rig checks control can ask for: the model route, and the isolation selftest under the broker.
@@ -310,6 +310,7 @@ async function main(): Promise<void> {
           secretFiles: [
             env.THERMITE_SUPERVISOR_TOKEN_FILE,
             env.THERMITE_PROPOSER_TOKEN_FILE,
+            env.THERMITE_MODEL_API_KEY_FILE,
             env.QWEN_API_KEY_FILE,
           ].filter((f): f is string => Boolean(f)),
           dedicated: env.THERMITE_DEV_GPU_INDEX !== undefined,

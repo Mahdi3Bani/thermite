@@ -134,8 +134,8 @@ const composeEnv = {
   THERMITE_PROMOTION: "auto",
   THERMITE_CALIBRATION_BLOCKS: "0",
   THERMITE_EXPORT_MINUTES: "0.1",
-  QWEN_BASE_URL: `http://${hostName}:${port}/v1`,
-  QWEN_MODEL: "scripted",
+  THERMITE_MODEL_BASE_URL: `http://${hostName}:${port}/v1`,
+  THERMITE_MODEL: "scripted",
   // Agents plan epochs but run no trials: this acceptance is about steering, not workers.
   THERMITE_MAX_TRIALS: "0",
   THERMITE_ADVISORS_FILE: "/etc/thermite/advisors/advisors.json",

@@ -392,7 +392,15 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
             `Another rig's run of this campaign imports this run's champion, and its own judge tests it there. If it holds up, it counts as cross-verified.`,
           )
         : "";
+    // The run's promotion policy, as it was assigned: what a confirmed win does here.
+    const policy =
+      i.promotion === "auto"
+        ? "Promotion: <b>automatic</b>. A confirmed win becomes the champion; an audit still holds a surprising gain or declared flaws, and a gain above the absolute trigger waits for you."
+        : i.promotion === "owner_approval"
+          ? "Promotion: <b>your approval</b>. Every confirmed win waits for you before it becomes the champion."
+          : "Promotion: <b>the rig's default</b> (set where the rig is deployed). A run assigned with its own policy shows it here.";
     const steer = `<div class="card"><div class="card-head"><span class="title">Steer this run</span><span class="right muted small">${i.directives} directive${i.directives === 1 ? "" : "s"} in force</span></div>
+<div class="small" style="margin-top:6px">${policy}</div>
 <div class="dc-choices" style="border:0;padding-top:10px">
 ${
   i.status === "paused"

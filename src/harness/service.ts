@@ -208,6 +208,11 @@ export class HarnessService {
     this.controlPublicKeyPem = input.controlPublicKeyPem;
   }
 
+  /** A run's promotion policy: its own, chosen when it was assigned, or the rig's default. */
+  promotionFor(run: string): "auto" | "owner_approval" {
+    return this.ledger.getRun(run)?.promotion ?? this.promotion;
+  }
+
   mirrorFor(repo: string): string {
     return join(this.paths.stateDir, "git", `${repo}.git`);
   }
@@ -552,6 +557,7 @@ export class HarnessService {
         seedCommit: seed.commit,
         direction: p.direction,
         agents: p.agents,
+        promotion: p.promotion,
         actor: by,
       });
     });
@@ -793,7 +799,8 @@ export class HarnessService {
     if (String(audit.trigger) === "known_flaws") return toOwner("declared flaws need the owner");
     // A gain above the absolute trigger always needs the owner; a model never decides it.
     if (String(audit.trigger) === "absolute") return toOwner("a gain this large needs the owner");
-    if (this.promotion === "owner_approval") return toOwner("promotion policy: owner approval");
+    if (this.promotionFor(run) === "owner_approval")
+      return toOwner("promotion policy: owner approval");
     const r = await this.promoteAttempt({
       run,
       attempt: input.attempt,

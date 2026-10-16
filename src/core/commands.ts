@@ -113,6 +113,11 @@ export const CommandPayloads = {
     imports: z.array(ImportSpec).default([]),
     /** False: a judge-only run. No worker agents run; the judge still works. */
     agents: z.boolean().optional(),
+    /**
+     * The run's promotion policy: "auto" (confirmed wins promote, audits still hold surprising
+     * ones) or "owner_approval" (every promotion waits for the owner). Unset: the rig's default.
+     */
+    promotion: z.enum(["auto", "owner_approval"]).optional(),
   }),
   /**
    * A check of the rig itself, run by its harness: the model route (one tool-calling request),
