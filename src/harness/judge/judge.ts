@@ -44,7 +44,7 @@ export interface JudgeOptions {
   runner: Runner;
   driver: TargetDriver;
   owner: string;
-  /** D8 is an owner decision; until it is made, promotions wait for approval by default. */
+  /** The rig's promotion policy: confirmed wins promote on their own, or wait for the owner. */
   promotion: PromotionPolicy;
   leaseMs?: number | undefined;
   /** Readiness retries before a block is abandoned as an infrastructure failure. */
@@ -802,7 +802,7 @@ export class Judge {
   /**
    * What happens to a promotable result: an audit first when one is triggered (open known flaws,
    * a gain above the contract's audit trigger, a goal campaign's adversarial checklist), then
-   * the promotion policy (D8).
+   * the rig's promotion policy.
    */
   private promotion(
     fin: Finish,

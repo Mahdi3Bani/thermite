@@ -9,8 +9,8 @@ COPY src ./src
 RUN npm run build && npm prune --omit=dev --no-fund --no-audit
 
 FROM ${NODE_IMAGE}
-# python3: an operator's staging script stages models and repo bundles into the inbox before the supervisor
-# starts (it runs in this container).
+# python3: for an operator's staging scripts, which put models and repo bundles into the inbox
+# before the supervisor starts (they run in this container).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git openssh-client tini ca-certificates python3 \
  && rm -rf /var/lib/apt/lists/*

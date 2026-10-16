@@ -208,7 +208,7 @@ try {
     latestVerdicts(after)[victim],
   );
 
-  // Resource numbers for the infrastructure session (CPU smoke; GPU numbers come from M2b).
+  // Resource numbers for sizing a rig (the CPU smoke; a GPU rig's come from its CUDA smoke).
   const peaks = JSON.parse(
     harnessExec(
       "node",

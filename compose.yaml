@@ -36,7 +36,7 @@ services:
       THERMITE_CONTROL_PUBKEY_FILE: /keys/control-signing.pub
       THERMITE_SUPERVISOR_TOKEN_FILE: /run/secrets/harness-supervisor-token
       THERMITE_PROPOSER_TOKEN_FILE: /run/secrets/harness-proposer-token
-      # D8 (promotion policy) is the owner's call; locally the acceptance test sets auto.
+      # The promotion policy is the operator's call; locally the acceptance test sets auto.
       THERMITE_PROMOTION: "${THERMITE_PROMOTION:-auto}"
       THERMITE_CALIBRATION_BLOCKS: "${THERMITE_CALIBRATION_BLOCKS:-6}"
       # The model route for agents (empty: agents off). The key comes from a secret file.

@@ -55,7 +55,7 @@ async function main(): Promise<void> {
     fetch: createControlApi(store, tokens, privateKeyPem, {
       staleAfterMs,
       driver,
-      // The owner accepts each rig's first report key (no trust on first use).
+      // Optional: the owner accepts each rig's first report key (no trust on first use).
       requireKeyAcceptance: env.THERMITE_CONTROL_REQUIRE_KEY_ACCEPT === "1",
       sessionDays: env.THERMITE_CONTROL_SESSION_DAYS
         ? Number(env.THERMITE_CONTROL_SESSION_DAYS)

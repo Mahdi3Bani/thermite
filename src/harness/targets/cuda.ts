@@ -5,7 +5,7 @@ import type { Role, Runner } from "../broker/runner.ts";
 import type { Readiness, TargetDriver, TargetIdentity } from "./driver.ts";
 
 /**
- * CUDA GPU target, read through nvidia-smi. It never changes clocks, power or cooling (D14):
+ * CUDA GPU target, read through nvidia-smi. It never changes clocks, power or cooling:
  * it records them with every block and refuses to time when the device is busy, hot or
  * throttled. Processes in other containers are invisible to nvidia-smi, so "idle" is judged
  * from utilization and memory use as well as from the process list.

@@ -15,7 +15,7 @@ import { Fetcher, FetchRefused } from "../harness/research/fetcher.ts";
  * checked again by the harness: directives (with citations) steer the planner, an audit can
  * block a promotion but never pass one, and a panel pass still needs the owner.
  *
- * Runtimes (D6 is the owner's choice): an OpenAI-compatible model route run here with read-only
+ * Runtimes (the operator's choice, per role): an OpenAI-compatible model route run here with read-only
  * tools (the campaign brief, a guarded web fetch, an optional knowledge-base search), or a
  * command-line agent (for example Claude Code or Codex) given the prompt on stdin and expected
  * to print one JSON object. Neither gets a shell or file tools from Thermite: the supervisor
@@ -69,7 +69,7 @@ export const AdvisorsConfig = z.strictObject({
   fetch_domains: z.array(z.string().min(1)).default([]),
   /** Spending limit per day for all advisors of the rig (USD; from the runtimes' prices). */
   max_usd_per_day: z.number().nonnegative().default(20),
-  /** An optional knowledge-base MCP server the advisors may search (read only; D13). */
+  /** An optional knowledge-base MCP server the advisors may search (read only). */
   kb: z
     .strictObject({
       mcp_url: z.url(),

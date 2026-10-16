@@ -171,7 +171,7 @@ export class HarnessService {
    * run there, as the lane's user, through the API with the trial's token.
    */
   readonly trialWorkspaces = new Map<string, { lane: string; repo: string; root: string }>();
-  /** D8: what happens to a confirmed win (and to one an audit cleared). */
+  /** The promotion policy: what happens to a confirmed win (and to one an audit cleared). */
   readonly promotion: "auto" | "owner_approval";
 
   constructor(input: {
@@ -646,7 +646,7 @@ export class HarnessService {
     }
     if (input.decision === "needs_owner") return toOwner("the auditor asked for the owner");
     if (String(audit.trigger) === "known_flaws") return toOwner("declared flaws need the owner");
-    // D8: a gain above the absolute trigger always needs the owner; a model never decides it.
+    // A gain above the absolute trigger always needs the owner; a model never decides it.
     if (String(audit.trigger) === "absolute") return toOwner("a gain this large needs the owner");
     if (this.promotion === "owner_approval") return toOwner("promotion policy: owner approval");
     const r = await this.promoteAttempt({

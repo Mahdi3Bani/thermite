@@ -331,7 +331,7 @@ async function advanceOnce(input: {
             export?: { remote?: boolean; pushed?: string[]; pushed_commit?: string | null };
           } | null;
           if (sup?.export && sup.export.remote === false) {
-            fail("the rig has no results repository: its export cannot be verified (D24)");
+            fail("the rig has no results repository: its export cannot be verified");
             break;
           }
           if (!sup?.export?.pushed?.includes(String(r.export_name))) break;

@@ -3,14 +3,15 @@
 // in a cluster): git bundles of the smoke project and its kit, an assign_campaign payload that
 // pins both by commit and sha256, and one patch per candidate with its expected outcome.
 //
-// usage: node scripts/stage-smoke.mjs --kit smoke-cuda --out DIR [--run ID] [--target-class C] [--version N]
+// usage: node scripts/stage-smoke.mjs --kit smoke-cpu|smoke-cuda --out DIR [--run ID] [--version N]
+//        [--target-class C]   (required for smoke-cuda: the GPU class the rig reports)
 //
 // The run is judge-only (--agents off): an acceptance measures the judge, and workers on a rig
 // with a model route would otherwise start, use the device and add noise to the calibration.
 //
 // Copy DIR/repos/* into the rig's inbox under repos/, issue DIR/assign-payload.json through
 // control as an assign_campaign command, then submit DIR/candidates/*.patch from inside the
-// harness (see the M2b runbook).
+// harness.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -77,7 +78,12 @@ contract.project = {
   kit: { repo: `${kitName}-kit`, commit: kit.commit },
 };
 if (kitName === "smoke-cuda") {
-  contract.target = { type: "cuda-gpu", class: values["target-class"] ?? "p100-pcie-16g" };
+  const targetClass = values["target-class"];
+  if (!targetClass) {
+    console.error("smoke-cuda needs --target-class (the GPU model's class, as the rig reports it)");
+    process.exit(2);
+  }
+  contract.target = { type: "cuda-gpu", class: targetClass };
   contract.editable_paths = ["src/kernel/**"];
   contract.notes = "Smoke campaign for judge acceptance on a GPU rig.";
 }

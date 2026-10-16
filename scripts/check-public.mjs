@@ -13,14 +13,16 @@
 // non-ignored files from disk, except the owner's tooling directories (.agents/, .claude/,
 // skills-lock.json), which are never committed by agents.
 //
-// A missing private denylist is an error; --allow-missing-denylist downgrades it to a warning
-// (for clones that do not have .internal/).
+// A clone without .internal/ (a contributor's, say) checks the generic patterns only, with a
+// warning. Where .internal/ exists, a missing denylist is an error: the maintainers' checkouts
+// must never pass without it. --allow-missing-denylist also downgrades that to a warning.
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const root = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
-const denylistPath = join(root, ".internal", "public-denylist.txt");
+const internalDir = join(root, ".internal");
+const denylistPath = join(internalDir, "public-denylist.txt");
 
 // Addresses that may appear in public files: unspecified, loopback and the documentation ranges.
 const allowedIPv4 =
@@ -53,11 +55,13 @@ if (existsSync(denylistPath)) {
     const source = caseSensitive ? line.slice(3) : line;
     lab.push({ label: "lab identifier", re: new RegExp(source, caseSensitive ? "" : "i") });
   }
-} else if (process.argv.includes("--allow-missing-denylist")) {
-  console.warn("check-public: private denylist not found; checking generic patterns only.");
+} else if (!existsSync(internalDir) || process.argv.includes("--allow-missing-denylist")) {
+  console.warn("check-public: no private denylist here; checking generic patterns only.");
 } else {
   console.error(`check-public: private denylist missing (${denylistPath}).`);
-  console.error("Use --allow-missing-denylist only where .internal/ does not exist.");
+  console.error(
+    ".internal/ exists, so its denylist must too (--allow-missing-denylist to override).",
+  );
   process.exit(1);
 }
 

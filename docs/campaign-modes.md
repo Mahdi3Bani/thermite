@@ -55,5 +55,5 @@ Workers research a topic for a set duration: hours or days. Their tools are rese
   - A claim is verified only if its quotes are in the archive and every number it states is in its quotes. Only claims quoted from enough independent domains are reported as findings. Duplicate claims are folded together.
   - Also: notes, hypotheses, report sections (shown as worker notes, never as findings), hourly digests with novelty figures, and a final report from the claim ledger.
   - The clock is controlled only by the harness and counts running time only.
-  - Web search needs a configured search provider. Without one, workers follow the campaign's seed URLs and the links of archived pages.
+  - Web search is not built in yet: workers follow the campaign's seed URLs and the links of archived pages.
   - Research planning is deterministic in v1. Lanes go to the least-covered questions, rotating between exploring, finding primary sources, checking contradictions and consolidating. When novelty falls, primary sources and contradictions come first.

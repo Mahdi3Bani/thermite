@@ -249,7 +249,7 @@ export class Research {
     );
     const reason = blocked
       ? `blocked by the search policy (${blocked})`
-      : "no search provider is configured for this rig (an owner decision, D27): fetch URLs from the seeds and the links of archived sources";
+      : "this rig has no web search: fetch URLs from the seeds and the links of archived sources";
     this.ledger.db
       .prepare(
         "insert into research_query (run, lane, query, allowed, reason, created_at) values (?, ?, ?, ?, ?, ?)",

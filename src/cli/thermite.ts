@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { generateSigningKeys } from "../core/commands.ts";
-import { parseContract } from "../core/contract.ts";
+import { CommitSchema, parseContract } from "../core/contract.ts";
 
 /**
  * The thermite command line: contract checks, key generation, issuing commands through control,
@@ -66,6 +66,11 @@ async function main(argv: string[]): Promise<void> {
       process.stdout.write(
         `ok ${r.contract.mode} ${r.contract.campaign} v${r.contract.version} sha256=${r.sha}\n`,
       );
+      // Valid, but not yet runnable: say what an assignment will still need.
+      if (r.contract.mode !== "research" && !r.contract.project.kit)
+        process.stderr.write(
+          "warning: no project.kit: the judge cannot measure this campaign until the contract names a kit repository and commit\n",
+        );
       return;
     }
     case "keys": {
@@ -108,6 +113,8 @@ async function main(argv: string[]): Promise<void> {
       ) {
         fail(USAGE);
       }
+      if (!CommitSchema.safeParse(values["seed-commit"]).success)
+        fail("--seed-commit must be a full commit id (40 or 64 hexadecimal characters)");
       const r = parseContract(JSON.parse(readFileSync(values.contract, "utf8")));
       if (!r.ok) fail(r.errors.join("\n"));
       const models = (values.model ?? []).map((m) => {
@@ -157,7 +164,6 @@ async function main(argv: string[]): Promise<void> {
           kind: { type: "string" },
           payload: { type: "string" },
           ttl: { type: "string" },
-          by: { type: "string" },
         },
       });
       if (
@@ -174,7 +180,6 @@ async function main(argv: string[]): Promise<void> {
         kind: values.kind,
         payload: readJsonArg(values.payload),
         ...(values.ttl ? { ttl_minutes: Number(values.ttl) } : {}),
-        ...(values.by ? { issued_by: values.by } : {}),
       });
       process.stdout.write(`${JSON.stringify(out)}\n`);
       return;

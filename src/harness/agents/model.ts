@@ -2,7 +2,7 @@ import { createModels, createProvider, type Model } from "@earendil-works/pi-ai"
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 
 /**
- * The harness's model route: an OpenAI-compatible endpoint (for example a LiteLLM
+ * The harness's model route: an OpenAI-compatible endpoint (for example a LiteLLM or vLLM
  * gateway). Workers and the planner use only this; the model name comes from configuration
  * (QWEN_MODEL), never from code.
  */

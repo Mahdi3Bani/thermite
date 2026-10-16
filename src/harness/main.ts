@@ -161,8 +161,8 @@ async function main(): Promise<void> {
     privateKeyPem: readFileSync(rigKeyPath, "utf8"),
     publicKeyPem: readFileSync(`${rigKeyPath}.pub`, "utf8"),
   };
-  // D8, the owner's promotion policy (2026-10-15): confirmed wins promote on their own; audits
-  // still hold surprising ones, and a gain above the absolute trigger still waits for the owner.
+  // The promotion policy: confirmed wins promote on their own (auto); audits still hold
+  // surprising ones, and a gain above the absolute trigger still waits for the owner.
   // owner_approval makes every promotion wait.
   const promotion = (env.THERMITE_PROMOTION ?? "auto") as PromotionPolicy;
   if (promotion !== "auto" && promotion !== "owner_approval") {

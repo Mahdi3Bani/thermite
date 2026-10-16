@@ -52,13 +52,13 @@ These are review rules for Thermite's code and records. [AGENTS.md](AGENTS.md) i
 - Use TypeScript in strict mode with ES modules on Node.js LTS. Avoid `any` without a stated reason.
 - Validate every input that crosses a trust boundary against a schema: API requests, contracts, commands, imported manifests and all LLM output.
 - Keep modules small with narrow interfaces. Handle external failures explicitly, with typed errors and no silent catches.
-- Pin and justify dependencies, and prefer the standard library. Choose the formatter and linter in M1 and record their commands in AGENTS.md.
+- Pin and justify dependencies, and prefer the standard library. The formatter and linter is Biome; its commands are in AGENTS.md.
 - Never put secrets in code, logs, records or `.internal/`. Credentials are files mounted at deploy time.
 
 ## Testing
 
 - Test observable behaviour and important failure transitions. Tests must be able to fail.
-- **Statistics and state machines:** rig and property tests against reference values. Cover verdicts, compare-and-swap promotion, fencing and invalidation.
+- **Statistics and state machines:** unit and property tests against reference values. Cover verdicts, compare-and-swap promotion, fencing and invalidation.
 - **Isolation:** tests that prove agent users cannot reach judge files, credentials or devices outside their grants.
 - **Adversarial cases:**
   - timer tampering;

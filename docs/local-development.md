@@ -12,7 +12,7 @@ Without a model route, a "proposer" is you, submitting patches.
 
 ## Requirements
 
-- Node.js 22.15 or later, for the checks and the command line.
+- Node.js 22.19 or later, for the checks and the command line (the agent libraries require it).
 - Docker with Compose, or Podman with `podman compose` or podman-compose.
 
 ## Checks
@@ -31,7 +31,7 @@ docker compose up -d --build     # or: podman compose up -d --build
 ```
 
 - **control** listens on `127.0.0.1:8800`. It generates its command-signing key on first start and shares only the public key with the harness.
-- **harness** has no published port. Only its supervisor reaches it, over the rig's internal network. It reads imports from `.dev/inbox` (read-only) and writes exports to `.dev/outbox`.
+- **harness** has no published port. Only its supervisor reaches it, over the rig's internal network. It reads imports from `.dev/inbox` (read-only) and writes exports to the `outbox` volume, which its supervisor reads and pushes to the results repository.
 - **supervisor** polls the harness, sends new events to control and relays control's commands. The interval is `THERMITE_POLL_SECONDS` (60 by default).
 
 ## The dashboard
@@ -131,7 +131,7 @@ Workers and the planner run when the harness has a model route: an OpenAI-compat
   - It gets an empty home and working directory, and its whole process group is killed at its time limit.
 - Neither runtime gets a shell or file tools from Thermite.
 - Web fetch is off unless `fetch_domains` lists domains. With `"*"` (any public site), the knowledge-base search is left out of the same agent, and the auditor fetches only from listed domains.
-- `max_usd_per_day` caps what all advisors of a rig spend.
+- `max_usd_per_day` caps what all advisors of a rig spend. It counts only what it can price: set `usd_per_mtok_in` and `usd_per_mtok_out` on each `openai` runtime, or the cap never trips. A `cli` runtime's spend is not counted.
 - What they produce is checked twice, by the supervisor and by the harness:
   - directives need citations;
   - an audit can block a promotion, never force one;

@@ -134,7 +134,7 @@ export const CommandPayloads = {
     through_event: z.number().int().min(0),
   }),
   /**
-   * The owner approves a confirmed win waiting for promotion (promotion policy D8), or overrides
+   * The owner approves a confirmed win waiting for promotion (the rig's promotion policy), or overrides
    * an audit that is pending or blocked. The judge's verdict must still be promotable.
    */
   approve_promotion: z.object({ run: IdSchema, attempt: z.string().min(1).max(64) }),
