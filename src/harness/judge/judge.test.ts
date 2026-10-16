@@ -137,7 +137,7 @@ describe("judge pipeline (local runner, Node test kit)", () => {
   });
 
   test("goal mode: the seed is validated; an attempt that meets a new goal completes the campaign", async () => {
-    const env = await setup({ goal: { opsPerSecond: 150e6 }, promotion: "auto" });
+    const env = await setup({ goal: { opsPerSecond: 90e6 }, promotion: "auto" });
     await env.drain(); // validates the seed
     const status = () =>
       Object.fromEntries(
@@ -179,7 +179,7 @@ describe("judge pipeline (local runner, Node test kit)", () => {
 
   test("goal mode: priority gates skip a goal whose gate did not pass", async () => {
     const env = await setup({
-      goal: { opsPerSecond: 150e6 },
+      goal: { opsPerSecond: 90e6 },
       promotion: "auto",
       kitVerifiers: {
         correctness: { cells: ["small"], priority: 1 },
@@ -196,7 +196,7 @@ describe("judge pipeline (local runner, Node test kit)", () => {
               type: "metric_threshold",
               metric: "ops_per_s",
               op: ">=",
-              value: 150e6,
+              value: 90e6,
               cells: ["big"],
             },
           },
@@ -239,7 +239,7 @@ describe("judge pipeline (local runner, Node test kit)", () => {
   });
 
   test("goal mode: a failed validation is tried again, a few times, spaced out", async () => {
-    const env = await setup({ goal: { opsPerSecond: 150e6 }, promotion: "auto" });
+    const env = await setup({ goal: { opsPerSecond: 90e6 }, promotion: "auto" });
     // A validation that failed for an infrastructure reason.
     const jobId = env.ledger.enqueueJob({
       kind: "validate",

@@ -744,7 +744,7 @@ describe("agent scheduler", () => {
   /** A goal campaign with one lane, a planner that records its input, and trials that record their brief. */
   async function goalSetup(goalReportWaitMs?: number) {
     const env = makeJudgeEnv({
-      goal: { opsPerSecond: 150e6 },
+      goal: { opsPerSecond: 90e6 },
       contract: { lanes: { count: 1, trials_per_epoch: 1 } },
     });
     await env.service.applyCommand(env.assign);

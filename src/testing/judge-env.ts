@@ -17,15 +17,13 @@ import { CpuDriver } from "../harness/targets/cpu.ts";
  * that removes it is clearly faster.
  */
 
-export const SEED_KERNEL = `// The kernel: sum of i % 7 over [0, n). The seed does pointless extra work.
+export const SEED_KERNEL = `// The kernel: sum of i % 7 over [0, n). The seed also idles for a time proportional to n,
+// a stand-in for wasted work that, unlike a CPU loop, a busy test machine does not stretch: a
+// clear win stays clearly measurable when tests share the machine.
 export function work(n) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, n / 50000);
   let s = 0;
-  for (let i = 0; i < n; i++) {
-    let waste = 0;
-    for (let k = 0; k < 40; k++) waste = (waste + ((i + k) & 3)) | 0;
-    if (waste === -1) s += 1;
-    s += i % 7;
-  }
+  for (let i = 0; i < n; i++) s += i % 7;
   return s;
 }
 `;
