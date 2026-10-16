@@ -38,8 +38,8 @@ docker compose up -d --build     # or: podman compose up -d --build
 
 Sign in at `http://127.0.0.1:8800/ui` with the admin token from `.dev/secrets/control-admin-token`. A sign-in survives restarts of control and renews while you use it. A session left unused for 30 days ends (`THERMITE_CONTROL_SESSION_DAYS`), and so does every session when the admin token changes. The pages follow the work's hierarchy, Campaign ▸ Run ▸ Lane ▸ Trial ▸ Attempt:
 
-- **Overview** lists what waits for you first, then campaigns and rigs.
-- **Campaigns** shows each campaign with its runs on every rig. A campaign's page sums up its runs at the top, then shows one run at a time in tabs, with its overview, attempts and steering.
+- **Overview** lists what waits for you first. Each decision says what it is about, what the judge found, why it waits and what each button does. Beside the decisions: what each running run's judge, planner and lanes are doing now, and what happened lately, in words.
+- **Campaigns** shows each campaign with its runs on every rig. A campaign's page sums up its runs at the top, then shows one run at a time in tabs, with its overview, attempts, history and steering. Each attempt has its own page.
 - **Rigs** shows each rig's hardware, judge, results export, advisors and key. A rig's harness reports its hardware when it starts: each device and who uses it, the driver, CPU and memory limits, disks and compilers.
 - **Live** shows a rig's agent sessions and its judge as they work. The supervisor relays new lines every `THERMITE_LIVE_INTERVAL_MS` milliseconds (3000 by default). From a session you can message a worker's trial, a lane, the planner or the advisors. The message is a signed `message_agent` command, which only the owner's credential can issue. A worker reads it after its current turn.
 
@@ -49,7 +49,7 @@ To work on the dashboard without a stack, run a demo with synthetic campaigns an
 node --experimental-strip-types scripts/dashboard-demo.ts   # http://127.0.0.1:8810/ui
 ```
 
-It prints the token to sign in with.
+It prints the token to sign in with. The dashboard's tests use a smaller fixture with the shapes the harness writes (`src/testing/control-demo.ts`): a goal campaign with attempts held for audits, a run at work, and a hill climb with an approval and an auditor's block.
 
 ## The smoke test
 
