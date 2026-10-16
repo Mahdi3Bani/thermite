@@ -289,7 +289,9 @@ async function main(): Promise<void> {
         const report = await isolationSelftest({
           socketPath,
           stateDir: paths.stateDir,
-          scratchDir: paths.scratchDir,
+          // The scratch root, as the command-line selftest uses it (the controller's own area,
+          // paths.scratchDir, is a directory inside it).
+          scratchDir: env.THERMITE_SCRATCH_DIR ?? "/scratch",
           outboxDir: paths.outboxDir,
           secretFiles: [
             env.THERMITE_SUPERVISOR_TOKEN_FILE,

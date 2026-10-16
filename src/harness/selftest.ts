@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   chownSync,
   existsSync,
   mkdirSync,
@@ -205,7 +206,7 @@ export async function isolationSelftest(opts: {
   // A run's copy of the kit's run.copy paths, made as the judge makes it and owned by the
   // controller's user: the run user reads it, and no role may change or add to it.
   const runKit = join(opts.scratchDir, "thermite", "selftest-run-kit");
-  rmSync(runKit, { recursive: true, force: true });
+  removeOwnTree(runKit);
   mkdirSync(join(runKit, "src", "run"), { recursive: true });
   writeFileSync(join(runKit, "src", "run", "driver.sh"), "#!/bin/sh\n", { mode: 0o755 });
   copyForRun(join(runKit, "src"), ["run"], join(runKit, "kit"));
@@ -278,7 +279,7 @@ export async function isolationSelftest(opts: {
     }
   } finally {
     client.close();
-    rmSync(runKit, { recursive: true, force: true });
+    removeOwnTree(runKit);
   }
   return report;
 }
@@ -301,4 +302,16 @@ export function isolationSummary(report: IsolationReport): string {
   if (report.ok)
     return `isolation holds: every probe of ${roles} roles came out as it must (devices: ${report.devices})`;
   return `isolation does NOT hold (devices: ${report.devices}): ${bad.slice(0, 12).join("; ") || "the device setup failed"}`;
+}
+
+/**
+ * Removes a tree the controller made read-only (a run's kit copy): its directories are opened
+ * again first, since only root may remove entries from a directory without write permission.
+ */
+function removeOwnTree(path: string): void {
+  if (!existsSync(path)) return;
+  walk(path, (p, isDir) => {
+    if (isDir) chmodSync(p, 0o755);
+  });
+  rmSync(path, { recursive: true, force: true });
 }
