@@ -174,6 +174,8 @@ export async function isolationSelftest(opts: {
   dedicated?: boolean;
   /** Probe even while trials or judge jobs are live (they may be killed). */
   force?: boolean;
+  /** The controller's pid, when the controller itself runs the selftest (a rig check). */
+  controllerPid?: number;
 }): Promise<IsolationReport> {
   const busy = opts.force ? undefined : busyReason(opts.stateDir);
   if (busy) throw new Error(`the rig is busy: ${busy}; rerun with --force to probe anyway`);
@@ -213,7 +215,7 @@ export async function isolationSelftest(opts: {
     { name: "run-kit-write", op: "write", path: driver },
     { name: "run-kit-create", op: "create", path: join(runKit, "kit", "run") },
   );
-  const pid = controllerPid();
+  const pid = opts.controllerPid ?? controllerPid();
   if (pid) probes.push({ name: "controller-environ", op: "read", path: `/proc/${pid}/environ` });
   else skipped.push("controller-environ (controller not found)");
   const nodes = (existsSync("/dev") ? readdirSync("/dev") : [])
@@ -279,4 +281,24 @@ export async function isolationSelftest(opts: {
     rmSync(runKit, { recursive: true, force: true });
   }
   return report;
+}
+
+/** A selftest's outcome in a sentence: what passed, or which probes a role got through. */
+export function isolationSummary(report: IsolationReport): string {
+  const bad = Object.entries(report.roles).flatMap(([role, results]) =>
+    Object.entries(results)
+      .filter(
+        ([, v]) =>
+          v === "ALLOWED" ||
+          v.startsWith("UNREADABLE") ||
+          v.startsWith("UNREACHABLE") ||
+          v.startsWith("WRONG GPUS") ||
+          v.startsWith("failed"),
+      )
+      .map(([probe, v]) => `${role} ${probe}: ${v}`),
+  );
+  const roles = Object.keys(report.roles).length;
+  if (report.ok)
+    return `isolation holds: every probe of ${roles} roles came out as it must (devices: ${report.devices})`;
+  return `isolation does NOT hold (devices: ${report.devices}): ${bad.slice(0, 12).join("; ") || "the device setup failed"}`;
 }

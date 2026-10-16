@@ -21,6 +21,7 @@ import {
 import { generateSigningKeys } from "../core/commands.ts";
 import { DevRuns } from "./agents/devrun.ts";
 import { modelConfigFromEnv } from "./agents/model.ts";
+import { checkModel } from "./agents/model-check.ts";
 import { Scheduler } from "./agents/scheduler.ts";
 import { spawnTrial } from "./agents/spawn.ts";
 import { createHarnessApi } from "./api.ts";
@@ -32,6 +33,7 @@ import { Judge, type PromotionPolicy } from "./judge/judge.ts";
 import { Ledger } from "./ledger.ts";
 import { settlePropagations } from "./propagation.ts";
 import { Research } from "./research/research.ts";
+import { busyReason, isolationSelftest, isolationSummary } from "./selftest.ts";
 import { HarnessService, NOT_BEFORE_FILE, wipeIfRequested } from "./service.ts";
 import { CpuDriver } from "./targets/cpu.ts";
 import { CudaDriver, smiAs, smiAsRun } from "./targets/cuda.ts";
@@ -277,6 +279,31 @@ async function main(): Promise<void> {
   // Agents run only with a model route (QWEN_* from the rig's configuration; the key from the
   // broker). Each trial is its own worker process.
   const model = modelConfigFromEnv(env);
+  // Rig checks control can ask for: the model route, and the isolation selftest under the broker.
+  if (model) service.rigChecks.model = { run: () => checkModel(model) };
+  if (env.THERMITE_BROKER_SOCKET) {
+    const socketPath = env.THERMITE_BROKER_SOCKET;
+    service.rigChecks.isolation = {
+      notNow: () => busyReason(paths.stateDir),
+      run: async ({ force }) => {
+        const report = await isolationSelftest({
+          socketPath,
+          stateDir: paths.stateDir,
+          scratchDir: paths.scratchDir,
+          outboxDir: paths.outboxDir,
+          secretFiles: [
+            env.THERMITE_SUPERVISOR_TOKEN_FILE,
+            env.THERMITE_PROPOSER_TOKEN_FILE,
+            env.QWEN_API_KEY_FILE,
+          ].filter((f): f is string => Boolean(f)),
+          dedicated: env.THERMITE_DEV_GPU_INDEX !== undefined,
+          force,
+          controllerPid: process.pid,
+        });
+        return { ok: report.ok, summary: isolationSummary(report), detail: { ...report } };
+      },
+    };
+  }
   const scheduler = model
     ? new Scheduler({
         service,

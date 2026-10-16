@@ -21,6 +21,7 @@ import {
   latestVerdicts,
   lifecycles,
   prepare,
+  rigCheck,
   sleep,
   submit,
   until,
@@ -75,23 +76,13 @@ try {
     calibration.body.summary,
   );
 
-  // The selftest refuses a busy rig (its probes kill each role's processes): wait for the
-  // calibration job to finish.
-  let isolation;
-  for (let i = 0; i < 20; i++) {
-    try {
-      isolation = { ok: true, out: JSON.parse(harnessExec("thermite", "selftest", "isolation")) };
-    } catch (err) {
-      isolation = { ok: false, out: String(err.stdout ?? "") + String(err.stderr ?? err) };
-    }
-    if (isolation.ok || !String(isolation.out).includes("the rig is busy")) break;
-    await sleep(3000);
-  }
-  check(
-    "isolation: role users are refused everywhere",
-    isolation.ok && isolation.out.ok,
-    isolation.out,
-  );
+  // The isolation selftest, asked for through control as an operator would: the rig refuses
+  // it while busy (its probes kill each role's processes), so it is asked again until idle.
+  const isolation = await rigCheck("isolation");
+  check("isolation through control: role users are refused everywhere", isolation.ok === true, {
+    summary: isolation.summary,
+    detail: isolation.detail,
+  });
 
   // Everything except the known-good change first, so each is judged against the seed.
   const ids = {};

@@ -6,7 +6,8 @@
 //     the broker, builds with the shell tool, uses dev_run, and submits once;
 //   - the judge decides both submissions; control reports the agents' figures;
 //   - a lane's background work runs on across its commands and a dev run, as in a shell;
-//   - no lane process outlives its trial.
+//   - no lane process outlives its trial;
+//   - control's model check reaches the model through the rig's route with a correct tool call.
 // Usage: COMPOSE="podman compose" node scripts/agents-acceptance.mjs
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -20,6 +21,7 @@ import {
   latestVerdicts,
   lifecycles,
   prepare,
+  rigCheck,
   sleep,
   until,
 } from "./lib/smoke-env.mjs";
@@ -32,6 +34,12 @@ const background = {};
 
 /** The scripted model: plans with submit_plan; lane-1 improves the kernel, lane-2 restates it. */
 function script(messages, tools) {
+  // The rig's model check: echo back the word it was given.
+  if (tools.some((t) => t.function.name === "echo")) {
+    if (messages.some((m) => m.role === "tool")) return { text: "done" };
+    const word = /the word (\S+)\./.exec(JSON.stringify(messages))?.[1] ?? "";
+    return { toolCalls: [{ name: "echo", args: { word } }] };
+  }
   if (tools.some((t) => t.function.name === "submit_plan")) {
     return {
       toolCalls: [
@@ -239,6 +247,15 @@ try {
   );
   const view = (await api("/v1/rigs/local-1/view")).body;
   const agents = view.runs[0].agents;
+  const modelCheck = await rigCheck("model");
+  check(
+    "control's model check: a correct tool call through the rig's route",
+    modelCheck.ok === true,
+    {
+      summary: modelCheck.summary,
+      detail: modelCheck.detail,
+    },
+  );
   check(
     "control reports the agents' figures",
     agents.epochs >= 1 && agents.planner_valid >= 1 && agents.trials >= 2 && agents.tokens_in > 0,

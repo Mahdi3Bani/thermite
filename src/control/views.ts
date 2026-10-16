@@ -195,6 +195,16 @@ export interface RigView {
   recent: StoredEvent[];
   /** The judge: its job in progress, its queue and its recent jobs (newest last). */
   judge: { now: JudgeJob | null; queued: JudgeJob[]; jobs: JudgeJob[] };
+  /** Each rig check's latest result (model route, isolation, smoke), or that it is running. */
+  checks: Record<string, RigCheckView>;
+}
+
+export interface RigCheckView {
+  check: string;
+  started_at: string;
+  finished_at: string | null;
+  ok: boolean | null;
+  summary: string | null;
 }
 
 export function rigEvents(
@@ -285,9 +295,26 @@ export function rigView(
     if (e.kind.startsWith("job_") && e.subject) return jobs.get(e.subject)?.run ?? null;
     return null;
   };
+  const checks: Record<string, RigCheckView> = {};
   for (const e of events) {
     const b = e.body ?? {};
     switch (e.kind) {
+      case "rig_check_started": {
+        const check = String(b.check ?? "");
+        checks[check] = { check, started_at: e.at, finished_at: null, ok: null, summary: null };
+        break;
+      }
+      case "rig_check_finished": {
+        const check = String(b.check ?? "");
+        checks[check] = {
+          check,
+          started_at: checks[check]?.started_at ?? e.at,
+          finished_at: e.at,
+          ok: b.ok === true,
+          summary: typeof b.summary === "string" ? b.summary : null,
+        };
+        break;
+      }
       case "run_created": {
         const v = inst(String(e.subject));
         v.campaign = String(b.campaign ?? "");
@@ -647,6 +674,7 @@ export function rigView(
       queued: allJobs.filter((j) => j.state === "queued"),
       jobs: allJobs.slice(-200),
     },
+    checks,
   };
 }
 

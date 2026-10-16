@@ -85,6 +85,7 @@ const COMMAND: Record<string, string> = {
   accept_review: "decide a review",
   conclude: 'decide a "not possible" proposal',
   export_now: "export now",
+  rig_check: "check the rig",
   assign_campaign: "assign a campaign",
   propagate: "import another rig's champion",
   wipe_state: "wipe the rig's state",
@@ -299,6 +300,15 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
         `Your command "${commandText(String(b.kind ?? ""))}" was ${b.accepted === false ? "refused" : "applied"}.`,
         b.accepted === false ? "bad" : "",
       );
+    case "rig_check_started":
+      return s(
+        `The ${checkName(String(b.check ?? ""))} check started${b.force ? " (forced)" : ""}.`,
+      );
+    case "rig_check_finished":
+      return s(
+        `The ${checkName(String(b.check ?? ""))} check ${b.ok === true ? "passed" : "FAILED"}: ${String(b.summary ?? "")}`,
+        b.ok === true ? "ok" : "bad",
+      );
     case "command_rejected":
       return s(
         `A command${b.kind ? ` ("${commandText(String(b.kind))}")` : ""} was refused: ${String(b.reason ?? "")}.`,
@@ -346,4 +356,9 @@ export function span(fromIso: string | null | undefined, now: number): string {
   const h = Math.floor(m / 60);
   if (h < 48) return `${h} h${m % 60 ? ` ${m % 60} min` : ""}`;
   return `${Math.round(h / 24)} days`;
+}
+
+/** A rig check's name in words. */
+export function checkName(check: string): string {
+  return { model: "model route", isolation: "isolation", smoke: "smoke" }[check] ?? check;
 }

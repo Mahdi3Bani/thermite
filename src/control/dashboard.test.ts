@@ -60,6 +60,35 @@ async function stack(promotion: "auto" | "owner_approval" = "owner_approval") {
 }
 
 describe("control dashboard", () => {
+  test("a rig check runs from the rig page, and its result shows there in words", async () => {
+    const s = await stack();
+    await s.env.service.applyCommand(s.env.assign);
+    s.env.service.rigChecks.model = {
+      run: async () => ({
+        ok: false,
+        summary: "m failed the tool-call check: no tool call (stop: stop)",
+      }),
+    };
+    await s.relay();
+    const page = await (await s.get("/ui/rigs/rig-a")).text();
+    assert.match(page, /<h2>Checks<\/h2>/);
+    assert.match(page, /model route<\/b>.*not run yet/s);
+    const r = await s.post("/ui/commands", {
+      csrf: s.csrfFrom(page),
+      rig: "rig-a",
+      kind: "rig_check",
+      check: "model",
+      back: "/ui/rigs/rig-a",
+    });
+    assert.equal(r.status, 303);
+    await s.relay(); // delivered: the harness starts the check
+    await new Promise((res) => setTimeout(res, 20));
+    await s.relay(); // its result reaches control
+    const after = await (await s.get("/ui/rigs/rig-a")).text();
+    assert.match(after, /FAILED<\/span> [^:]* ago: m failed the tool-call check: no tool call/);
+    assert.match(after, /The model route check FAILED/);
+  });
+
   test("a supervisor's self-report cannot carry markup, and pages forbid scripts", async () => {
     const s = await stack();
     await s.env.service.applyCommand(s.env.assign);

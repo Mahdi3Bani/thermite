@@ -110,6 +110,39 @@ export async function command(kind, payload, rig = "local-1") {
   return done;
 }
 
+/**
+ * Runs a rig check through control and returns its result from the rig's events. A busy rig
+ * refuses the isolation and smoke checks ("not now"): it is asked again until it is idle.
+ */
+export async function rigCheck(check, { rig = "local-1", timeoutMs = 300_000 } = {}) {
+  let id;
+  for (let i = 0; !id; i++) {
+    const issued = await api("/v1/commands", {
+      method: "POST",
+      body: JSON.stringify({ rig, kind: "rig_check", payload: { check } }),
+    });
+    if (issued.status !== 201) throw new Error(`issue failed: ${JSON.stringify(issued)}`);
+    const done = await until("rig_check delivered", async () => {
+      const c = await api(`/v1/commands/${issued.body.id}`);
+      return c.body.status !== "pending" ? c.body : undefined;
+    });
+    if (done.status === "delivered" && done.outcome?.accepted !== false) {
+      id = done.outcome.result.id;
+    } else if (i < 40 && /not now/.test(JSON.stringify(done.outcome))) {
+      await new Promise((r) => setTimeout(r, 3000));
+    } else {
+      throw new Error(`rig_check ${check} refused: ${JSON.stringify(done)}`);
+    }
+  }
+  const finished = await until(
+    `the ${check} check`,
+    async () => (await events()).find((e) => e.kind === "rig_check_finished" && e.body.id === id),
+    timeoutMs,
+    2000,
+  );
+  return finished.body;
+}
+
 export async function assign(env, run, rig = "local-1") {
   const payload = sh("node", [
     "dist/cli/thermite.js",

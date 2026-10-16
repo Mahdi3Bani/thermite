@@ -26,6 +26,7 @@ const AGENT_COMMANDS = [
   "redirect",
   "reset_workers",
   "export_now",
+  "rig_check",
 ] as const satisfies readonly CommandKind[];
 /**
  * An operator (a token the owner gives an operating agent) may also message the run's agents, on

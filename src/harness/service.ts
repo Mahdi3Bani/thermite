@@ -17,6 +17,7 @@ import {
 import { type Contract, contractSha, parseContract } from "../core/contract.ts";
 import type { Hardware } from "../core/hardware.ts";
 import { LiveLog, liveBody } from "../core/live.ts";
+import type { RigCheckReport } from "./agents/model-check.ts";
 import { Registry } from "./agents/registry.ts";
 import { type AuditDecision, type AuditPackage, Audits } from "./audits.ts";
 import { Conclusions } from "./conclusions.ts";
@@ -117,6 +118,14 @@ export interface HarnessPaths {
   scratchDir: string;
   inboxDir: string;
   outboxDir: string;
+}
+
+export type RigCheckName = "model" | "isolation" | "smoke";
+
+export interface RigCheck {
+  /** Why the check cannot start now (for example a busy rig), if it cannot. */
+  notNow?: (() => string | undefined) | undefined;
+  run: (opts: { force: boolean }) => Promise<RigCheckReport>;
 }
 
 export type CommandOutcome =
@@ -273,6 +282,8 @@ export class HarnessService {
     switch (envelope.kind) {
       case "assign_campaign":
         return this.assignCampaign(CommandPayloads.assign_campaign.parse(payload), by);
+      case "rig_check":
+        return this.startRigCheck(CommandPayloads.rig_check.parse(payload), by);
       case "pause_run": {
         const p = CommandPayloads.pause_run.parse(payload);
         this.ledger.setRunStatus(p.run, "paused", p.reason, by);
@@ -606,6 +617,49 @@ export class HarnessService {
 
   /** Called when a wipe was requested (the controller exits; tests observe it). */
   onWipe?: () => void;
+
+  // ------------------------------------------------------------ rig checks
+
+  /**
+   * The checks this rig can run, wired in by the controller (main.ts): each may say why it
+   * cannot start now (a busy rig), and runs in the background, reporting as an event.
+   */
+  rigChecks: Partial<Record<RigCheckName, RigCheck>> = {};
+  private checking: string | undefined;
+
+  private startRigCheck(p: { check: RigCheckName; force?: boolean | undefined }, by: string) {
+    const check = this.rigChecks[p.check];
+    if (!check) throw new Error(`this rig cannot run the ${p.check} check`);
+    if (this.checking) throw new Error(`the ${this.checking} check is still running`);
+    const force = p.force === true;
+    const notNow = force ? undefined : check.notNow?.();
+    if (notNow) throw new Error(`not now: ${notNow}`);
+    const id = `chk-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+    this.checking = p.check;
+    this.ledger.appendEvent(by, "rig_check_started", null, { id, check: p.check, force });
+    const finish = (r: RigCheckReport) => {
+      // The details stay bounded: an isolation report lists every probe of every role.
+      const detail = r.detail ? JSON.stringify(r.detail) : undefined;
+      this.ledger.appendEvent("harness", "rig_check_finished", null, {
+        id,
+        check: p.check,
+        ok: r.ok,
+        summary: r.summary.slice(0, 2000),
+        ...(detail
+          ? { detail: detail.length > 60_000 ? `${detail.slice(0, 60_000)}…` : r.detail }
+          : {}),
+      });
+    };
+    void check
+      .run({ force })
+      .then(finish, (err: unknown) =>
+        finish({ ok: false, summary: err instanceof Error ? err.message : String(err) }),
+      )
+      .finally(() => {
+        this.checking = undefined;
+      });
+    return { check: p.check, id, started: true };
+  }
 
   // ------------------------------------------------------------ audits, reviews, briefs
 

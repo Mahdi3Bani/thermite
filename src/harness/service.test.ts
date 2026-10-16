@@ -389,4 +389,56 @@ describe("harness service and API", () => {
     assert.throws(() => resolveInbox(inbox, "link/hosts"), /escapes inbox/);
     assert.ok(existsSync(resolveInbox(inbox, "repos/smoke.bundle")));
   });
+
+  test("a rig check runs in the background and reports; a busy rig, an unknown or a second check is refused", async () => {
+    const env = makeHarnessEnv("rig-a");
+    let release: () => void = () => undefined;
+    let busy: string | undefined;
+    env.service.rigChecks = {
+      model: {
+        run: () =>
+          new Promise((done) => {
+            release = () =>
+              done({ ok: true, summary: "a correct tool call", detail: { seconds: 1 } });
+          }),
+      },
+      isolation: { notNow: () => busy, run: async () => ({ ok: false, summary: "ALLOWED" }) },
+    };
+    const apply = async (payload: unknown) =>
+      (await env.service.applyCommand(env.sign("rig_check", payload))) as {
+        accepted?: boolean;
+        result?: Record<string, unknown> | { error?: string };
+      };
+    const events = () =>
+      env.service.ledger
+        .eventsAfter(0, 1000)
+        .events.filter((e) => e.kind.startsWith("rig_check"))
+        .map((e) => [
+          e.kind,
+          (e.body as { check?: string; ok?: boolean }).check,
+          (e.body as { ok?: boolean }).ok,
+        ]);
+    const started = await apply({ check: "model" });
+    assert.equal(started.accepted, true);
+    assert.equal((started.result as { started?: boolean }).started, true);
+    const second = await apply({ check: "isolation" });
+    assert.equal(second.accepted, false);
+    assert.match(JSON.stringify(second.result), /the model check is still running/);
+    release();
+    await new Promise((r) => setTimeout(r, 20));
+    busy = "1 open trial(s)";
+    const refused = await apply({ check: "isolation" });
+    assert.match(JSON.stringify(refused.result), /not now: 1 open trial/);
+    const forced = await apply({ check: "isolation", force: true });
+    assert.equal(forced.accepted, true);
+    await new Promise((r) => setTimeout(r, 20));
+    const unknown = await apply({ check: "smoke" });
+    assert.match(JSON.stringify(unknown.result), /cannot run the smoke check/);
+    assert.deepEqual(events(), [
+      ["rig_check_started", "model", undefined],
+      ["rig_check_finished", "model", true],
+      ["rig_check_started", "isolation", undefined],
+      ["rig_check_finished", "isolation", false],
+    ]);
+  });
 });

@@ -114,6 +114,16 @@ export const CommandPayloads = {
     /** False: a judge-only run. No worker agents run; the judge still works. */
     agents: z.boolean().optional(),
   }),
+  /**
+   * A check of the rig itself, run by its harness: the model route (one tool-calling request),
+   * the isolation selftest, or a judge-only smoke campaign on the rig's own target. The result
+   * comes back as a rig_check_finished event.
+   */
+  rig_check: z.object({
+    check: z.enum(["model", "isolation", "smoke"]),
+    /** Isolation and smoke want an idle rig; force runs them anyway (trials may be killed). */
+    force: z.boolean().optional(),
+  }),
   pause_run: z.object({ run: IdSchema, reason: z.string().min(1) }),
   resume_run: z.object({ run: IdSchema }),
   /** A directive set; by default it replaces this author's previous set. */

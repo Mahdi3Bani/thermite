@@ -49,6 +49,7 @@ import { STYLE } from "./ui/style.ts";
 import {
   attemptState,
   auditReason,
+  checkName,
   clip,
   findAttempt,
   jobText,
@@ -814,6 +815,19 @@ ${ex ? `<div class="divider"></div><div class="muted xs">Results: ${num(ex.expor
       now,
       { limit: 30 },
     );
+    const checkCard = (check: string, what: string) => {
+      const r = u.checks[check];
+      const result = !r
+        ? `<span class="muted">not run yet</span>`
+        : r.finished_at === null
+          ? `<span class="warn">running, started ${esc(ago(r.started_at, now))} ago</span>`
+          : `<span class="${r.ok ? "ok" : "bad"}">${r.ok ? "passed" : "FAILED"}</span> ${esc(ago(r.finished_at, now))} ago: ${esc(r.summary ?? "")}`;
+      return `<div class="card tight" style="margin-bottom:10px"><div class="row"><b>${esc(checkName(check))}</b><span class="grow"></span>${cmdForm(c, { rig: u.id, kind: "rig_check", fields: { check }, label: r && r.finished_at === null ? "Running…" : "Run this check", back })}</div><div class="small muted">${what}</div><div class="small" style="margin-top:6px">${result}</div></div>`;
+    };
+    const checksBlock = `<div class="block"><div class="head"><h2>Checks</h2><span class="right muted small">run by the rig itself; results show here and in its history</span></div>
+${checkCard("model", "One short request through the rig's model route, as its workers and planner make them. It must come back as a correct tool call. Use it after the model server or its settings change, before resuming runs.")}
+${checkCard("isolation", "The isolation selftest: each role's user tries to reach what it must not (the judge's files, secrets, other roles' work, devices outside its grant). Needs an idle rig: pause its runs first, because each probe ends that role's processes.")}
+</div>`;
     const keyCard = key.pending
       ? `<div class="card warn" style="margin-bottom:16px"><div class="card-head">${icon.key}<span class="title">${key.pubkey ? "This rig now signs its reports with a different key" : "This rig's first report key waits for your acceptance"}</span></div>
 <p class="small">Its reports are refused until you accept the key. A full reset keeps a rig's key: a change is expected only when the rig's identity was rebuilt on purpose. Check the fingerprint with the rig's deployment before accepting.</p>
@@ -837,6 +851,7 @@ ${opts.driver ? `<form method="post" action="/ui/rigs/${encodeURIComponent(u.id)
         active: "rigs",
       },
       `${keyCard}<div class="block"><div class="head"><h2>Hardware</h2><span class="right muted small">${hardwareLine(u.hardware)}</span></div>${hardwareCard(u.hardware, now)}</div>
+${checksBlock}
 <div class="cols"><div>${runsNow ? `<div class="block"><div class="head"><h2>At work now</h2></div>${runsNow}</div>` : ""}<div class="head"><h2>Runs on this rig</h2><span class="right muted small">each belongs to a campaign</span></div>${runs || `<div class="card"><div class="empty">No campaign assigned.</div></div>`}</div>
 <div><div class="block"><div class="head"><h2>Rig</h2></div><div class="card"><div class="stack" style="gap:10px">
 <div class="small"><span class="muted">Judge</span> ${u.judge.now ? `${esc(jobText(u.judge.now, findAttempt(u, u.judge.now.attempt ?? "")?.lane))} <span class="muted">for ${esc(span(u.judge.now.started_at, now))}</span>` : "idle"}${num(u.jobs.queued) ? ` <span class="muted">· ${num(u.jobs.queued)} queued</span>` : ""}</div>
@@ -1302,6 +1317,7 @@ ${
       resume_run: { run },
       reset_workers: { run },
       export_now: {},
+      rig_check: { check: String(f.check ?? ""), ...(f.force === "true" ? { force: true } : {}) },
       approve_promotion: { run, attempt: String(f.attempt ?? "") },
       accept_review: { run, review: Number(f.review), accept: f.accept === "true" },
       conclude: { run, proposal: Number(f.proposal), accept: f.accept === "true" },
