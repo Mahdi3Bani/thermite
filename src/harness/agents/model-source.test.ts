@@ -35,6 +35,7 @@ describe("the agents' model source", () => {
     m.set(route);
     const cur = m.current();
     assert.deepEqual(cur, {
+      api: undefined,
       baseUrl: "https://models.example/v1",
       model: "m-1",
       apiKey: "sk-secret-0001",

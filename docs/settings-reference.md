@@ -22,7 +22,7 @@ or its assignment instead: lane limits, trial length, budgets and the run's prom
 | `THERMITE_CONTROL_RIG_TOKENS_FILE` | required | A JSON file: `{"<rig>": "<token>"}`, one token per rig |
 | `THERMITE_CONTROL_REQUIRE_KEY_ACCEPT` | off | `1`: the owner accepts each rig's first report key on the dashboard |
 | `THERMITE_CONTROL_SESSION_DAYS` | 30 | How long an unused dashboard sign-in lasts |
-| `THERMITE_CONTROL_SECRETS_KEY_FILE` | `secrets.key` in `THERMITE_CONTROL_DIR`, made on first start | The key that encrypts the API keys of the model routes set on the dashboard. Mount it from a separate secret to keep it off the store's volume; without it, the stored keys cannot be read |
+| `THERMITE_CONTROL_SECRETS_KEY_FILE` | `secrets.key` in `THERMITE_CONTROL_DIR`, made on first start | The key that encrypts the API keys of the model providers set on the dashboard. Mount it from a separate secret to keep it off the store's volume; without it, the stored keys cannot be read |
 | `THERMITE_CONTROL_STALE_SECONDS` | 180 | A rig with no report for this long shows as stale |
 | `THERMITE_LIFECYCLE` | none | `compose` or `kubernetes`: lets control restart rigs and finish a full reset |
 | `THERMITE_COMPOSE_PROJECT`, `THERMITE_COMPOSE_SERVICES`, `THERMITE_ENGINE_SOCKET` | `thermite`, `{}`, `/run/engine.sock` | For `compose`: the project, each rig's service names, and the container engine's socket |
@@ -60,9 +60,9 @@ or its assignment instead: lane limits, trial length, budgets and the run's prom
 | `THERMITE_LLM_USD_PER_MTOK_IN`, `_OUT` | none | Prices per million tokens, for a contract's `llm_usd` budget |
 | `THERMITE_RESEARCH_MAX_MB` | none | A cap on a research campaign's archived corpus, only when set |
 
-A model route set on control's **Settings** page comes before these, and needs none of them: the
-rig receives it, key included, through its supervisor. These settings are for a rig that keeps its
-own route. Their older names, `QWEN_*`, are still read when the new ones are unset.
+A model chosen for the rig on control's **Settings** page comes before these, and needs none of
+them: the rig receives it, with its provider's key, through its supervisor. These settings are for
+a rig that keeps its own model. `THERMITE_MODEL_API` is `openai` (the default) or `anthropic`. Their older names, `QWEN_*`, are still read when the new ones are unset.
 
 ### Places and exports
 
@@ -91,7 +91,7 @@ own route. Their older names, `QWEN_*`, are still read when the new ones are uns
 | `THERMITE_POLL_SECONDS` | 60 | How often it reports the harness's events to control |
 | `THERMITE_COMMAND_POLL_SECONDS` | 5 | How often it fetches control's commands. `0` puts them back on the report round |
 | `THERMITE_LIVE_INTERVAL_MS` | 3000 | How often it relays the live view |
-| `THERMITE_MODEL_ROUTE_POLL_SECONDS` | 30 | How often it asks control for the rig's model route, and hands a changed one to its harness |
+| `THERMITE_MODEL_ROUTE_POLL_SECONDS` | 30 | How often it asks control for the rig's model and its provider, and hands a change to its harness |
 | `THERMITE_SUPERVISOR_HOME` | `/var/lib/thermite-supervisor` | Its state: relay cursor, results repository, fetched sources, advisor records |
 | `THERMITE_INBOX_DIR`, `THERMITE_OUTBOX_DIR` | `/inbox`, `/outbox` | The harness's inbox (it writes imports there) and outbox (it reads exports) |
 | `THERMITE_RESULTS_REMOTE` | none | The results repository it pushes exports to. Unset: it commits locally only |

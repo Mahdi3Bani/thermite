@@ -367,7 +367,7 @@ details.matrix .card { border: 0; border-radius: 0; }
 .form-end { grid-column: 1 / -1; }
 .route-name { color: var(--foreground); }
 .rr-route { grid-template-columns: 90px minmax(0, 1fr) auto; align-items: center; }
-.route-acts { display: flex; gap: 6px; align-items: center; } .route-acts select { width: 180px; }
+.route-acts { display: flex; gap: 6px; align-items: center; } .route-acts select { width: 260px; }
 @media (max-width: 760px) { .form-grid { grid-template-columns: minmax(0, 1fr); } }
 .camp-top { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
 .camp-name { font-weight: 650; font-size: 15px; }

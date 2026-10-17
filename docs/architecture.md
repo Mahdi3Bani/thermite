@@ -77,10 +77,11 @@ The supervisor is the rig's link to everything outside:
   - check a rig: its model route (one tool-calling request), its isolation selftest, or a judge-only smoke campaign on its own target, each reported back as pass or fail;
   - export the rig's results to git.
 - **Lifecycle.** Control can restart or fully reset a rig's containers, and the rig exports its results first.
-- **Model routes.** The owner sets the agents' model on the dashboard's settings page: an OpenAI-compatible endpoint, the model's name and its API key.
-  - Control encrypts the key with a key of its own, kept outside its store, and never shows it again.
-  - A rig receives a route only when the owner gives it to that rig. Its supervisor fetches it over its own authenticated channel and hands it to the harness, which keeps it readable by root alone.
+- **Model providers.** The owner adds the agents' model providers on the dashboard's settings page: a name, the type (OpenAI-compatible or Anthropic), the base URL and the API key. Control lists each provider's models from the provider itself, and the owner chooses a model for each rig.
+  - Control encrypts each key with a key of its own, kept outside its store, and never shows it again.
+  - A rig receives a provider's key only when the owner gives it one of the provider's models. Its supervisor fetches it over its own authenticated channel and hands it to the harness, which keeps it readable by root alone.
   - The key is never in a command, an event, an export or a log. A worker gets it in its environment, which the lane's commands, running as another user, cannot read.
+  - Control calls providers over HTTPS to list their models; it needs that much outbound access.
 - **Reports are signed by the harness.** The supervisor relays them but cannot forge, replay or thin them out:
   - each report carries the harness's time and its latest event;
   - control takes a report only if it continues the stream it has, is newer than the last one, and comes from the rig's current ledger;

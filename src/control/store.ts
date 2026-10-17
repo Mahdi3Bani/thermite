@@ -121,24 +121,26 @@ create table if not exists champion_patch (
   received_at text not null,
   primary key (rig, run, seq)
 );
--- A model route the owner set: where the agents' model is, and its API key sealed (control's
--- secret box; never stored in clear). version moves on every change, so rigs pick it up.
-create table if not exists model_route (
+-- A model provider the owner set: its type, where it is, and its API key sealed (control's secret
+-- box; never stored in clear). models is its own model list, as control last read it (plus any the
+-- owner added by name). version moves on every change, so the rigs that use it pick it up.
+create table if not exists model_provider (
   name text primary key,
+  type text not null,
   base_url text not null,
-  model text not null,
-  context_window integer not null default 0,
-  max_tokens integer not null default 0,
-  reasoning text,
   key_sealed text not null,
   key_hint text not null,
   version integer not null default 1,
-  updated_at text not null
+  updated_at text not null,
+  models text not null default '[]',
+  models_at text,
+  models_error text
 );
--- The route each rig's agents use. A rig with none keeps its own settings (its environment).
-create table if not exists rig_model_route (
+-- The provider and model each rig's agents use. A rig with none keeps its own settings.
+create table if not exists rig_model (
   rig text primary key,
-  route text not null,
+  provider text not null,
+  model text not null,
   assigned_at text not null
 );
 create index if not exists rig_live_rig on rig_live (rig, id);
@@ -196,20 +198,50 @@ export interface IngestReport {
   summary: unknown;
 }
 
-/** A model route as stored: its key only sealed, and a hint of it for the dashboard. */
-export interface ModelRoute {
+export type ProviderType = "openai" | "anthropic";
+
+/** A model in a provider's list: its id, and its context window when the provider says it. */
+export interface ProviderModel {
+  id: string;
+  context_window?: number | undefined;
+  /** Added by the owner by its name (the provider does not list it). */
+  added?: boolean | undefined;
+}
+
+/** A model provider as stored: its key only sealed, and a hint of it for the dashboard. */
+export interface ModelProvider {
   name: string;
+  type: ProviderType;
   base_url: string;
-  model: string;
-  /** The model's context per request; 0 when not known. */
-  context_window: number;
-  /** The cap on each reply; 0 for the rig's default. */
-  max_tokens: number;
-  reasoning: string | null;
   key_sealed: string;
   key_hint: string;
   version: number;
   updated_at: string;
+  models: ProviderModel[];
+  models_at: string | null;
+  models_error: string | null;
+}
+
+function providerOf(r: Row): ModelProvider {
+  let models: ProviderModel[] = [];
+  try {
+    models = JSON.parse(String(r.models ?? "[]")) as ProviderModel[];
+  } catch {
+    models = [];
+  }
+  return {
+    name: String(r.name),
+    type: r.type === "anthropic" ? "anthropic" : "openai",
+    base_url: String(r.base_url),
+    key_sealed: String(r.key_sealed),
+    key_hint: String(r.key_hint),
+    version: Number(r.version),
+    updated_at: String(r.updated_at),
+    models,
+    models_at: r.models_at === null || r.models_at === undefined ? null : String(r.models_at),
+    models_error:
+      r.models_error === null || r.models_error === undefined ? null : String(r.models_error),
+  };
 }
 
 export class ControlStore {
@@ -227,6 +259,7 @@ export class ControlStore {
     if (!cols.includes("pending_pubkey"))
       this.db.exec("alter table rig add column pending_pubkey text");
     if (!cols.includes("report_at")) this.db.exec("alter table rig add column report_at text");
+    migrateModelRoutes(this.db);
     if (!cols.includes("supervisor")) {
       this.db.exec("alter table rig add column supervisor text");
       this.db.exec("alter table rig add column supervisor_at text");
@@ -768,85 +801,116 @@ export class ControlStore {
   }
 
   /**
-   * Creates or changes a model route. A change without a new key keeps the sealed one; a new
-   * route needs a key. Its version moves on every change, so the rigs that use it pick it up.
+   * Creates or changes a model provider. A change without a new key keeps the sealed one; a new
+   * provider needs a key. Its version moves on every change, so the rigs that use it pick it up.
    */
-  putModelRoute(
-    r: Omit<ModelRoute, "version" | "updated_at" | "key_sealed" | "key_hint"> & {
-      key?: { sealed: string; hint: string } | undefined;
-    },
-  ): "created" | "updated" | "needs_key" {
-    const now = new Date().toISOString();
-    const old = this.modelRoute(r.name);
-    if (!old && !r.key) return "needs_key";
+  putProvider(p: {
+    name: string;
+    type: ProviderType;
+    base_url: string;
+    key?: { sealed: string; hint: string } | undefined;
+  }): "created" | "updated" | "needs_key" {
+    const old = this.provider(p.name);
+    if (!old && !p.key) return "needs_key";
     this.db
       .prepare(
-        `insert into model_route (name, base_url, model, context_window, max_tokens, reasoning, key_sealed, key_hint, version, updated_at)
-         values (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
-         on conflict (name) do update set base_url = excluded.base_url, model = excluded.model,
-           context_window = excluded.context_window, max_tokens = excluded.max_tokens,
-           reasoning = excluded.reasoning, key_sealed = excluded.key_sealed,
-           key_hint = excluded.key_hint, version = model_route.version + 1,
-           updated_at = excluded.updated_at`,
+        `insert into model_provider (name, type, base_url, key_sealed, key_hint, version, updated_at)
+         values (?, ?, ?, ?, ?, 1, ?)
+         on conflict (name) do update set type = excluded.type, base_url = excluded.base_url,
+           key_sealed = excluded.key_sealed, key_hint = excluded.key_hint,
+           version = model_provider.version + 1, updated_at = excluded.updated_at`,
       )
       .run(
-        r.name,
-        r.base_url,
-        r.model,
-        r.context_window,
-        r.max_tokens,
-        r.reasoning,
-        r.key?.sealed ?? old?.key_sealed ?? "",
-        r.key?.hint ?? old?.key_hint ?? "",
-        now,
+        p.name,
+        p.type,
+        p.base_url,
+        p.key?.sealed ?? old?.key_sealed ?? "",
+        p.key?.hint ?? old?.key_hint ?? "",
+        new Date().toISOString(),
       );
     return old ? "updated" : "created";
   }
 
-  modelRoutes(): ModelRoute[] {
-    return this.db
-      .prepare("select * from model_route order by name")
-      .all() as unknown as ModelRoute[];
+  providers(): ModelProvider[] {
+    return (this.db.prepare("select * from model_provider order by name").all() as Row[]).map(
+      providerOf,
+    );
   }
 
-  modelRoute(name: string): ModelRoute | undefined {
-    return this.db.prepare("select * from model_route where name = ?").get(name) as unknown as
-      | ModelRoute
+  provider(name: string): ModelProvider | undefined {
+    const r = this.db.prepare("select * from model_provider where name = ?").get(name) as
+      | Row
       | undefined;
+    return r ? providerOf(r) : undefined;
   }
 
-  /** Deletes a route no rig uses. */
-  deleteModelRoute(name: string): "deleted" | "in_use" | "missing" {
-    if (!this.modelRoute(name)) return "missing";
-    if (this.db.prepare("select 1 from rig_model_route where route = ?").get(name)) return "in_use";
-    this.db.prepare("delete from model_route where name = ?").run(name);
+  /**
+   * Keeps what the provider listed (and the models the owner added by name), or, when listing
+   * failed, its error, keeping the last list so the rigs' models stay choosable.
+   */
+  setProviderModels(name: string, listed: ProviderModel[] | { error: string }): void {
+    const now = new Date().toISOString();
+    if ("error" in listed) {
+      this.db
+        .prepare("update model_provider set models_error = ?, models_at = ? where name = ?")
+        .run(listed.error.slice(0, 300), now, name);
+      return;
+    }
+    const added = (this.provider(name)?.models ?? []).filter(
+      (m) => m.added && !listed.some((x) => x.id === m.id),
+    );
+    this.db
+      .prepare(
+        "update model_provider set models = ?, models_error = null, models_at = ? where name = ?",
+      )
+      .run(JSON.stringify([...listed, ...added]), now, name);
+  }
+
+  /** A model the provider does not list, added by the owner by its name. */
+  addProviderModel(name: string, id: string): void {
+    const p = this.provider(name);
+    if (!p || p.models.some((m) => m.id === id)) return;
+    this.db
+      .prepare("update model_provider set models = ? where name = ?")
+      .run(JSON.stringify([...p.models, { id, added: true }]), name);
+  }
+
+  /** Deletes a provider no rig uses. */
+  deleteProvider(name: string): "deleted" | "in_use" | "missing" {
+    if (!this.provider(name)) return "missing";
+    if (this.db.prepare("select 1 from rig_model where provider = ?").get(name)) return "in_use";
+    this.db.prepare("delete from model_provider where name = ?").run(name);
     return "deleted";
   }
 
-  /** Gives a rig's agents a route, or (null) returns them to the rig's own settings. */
-  assignModelRoute(rig: string, route: string | null): void {
-    if (route === null) {
-      this.db.prepare("delete from rig_model_route where rig = ?").run(rig);
+  /** Gives a rig's agents a provider's model, or (null) returns them to the rig's own settings. */
+  assignRigModel(rig: string, choice: { provider: string; model: string } | null): void {
+    if (choice === null) {
+      this.db.prepare("delete from rig_model where rig = ?").run(rig);
       return;
     }
-    if (!this.modelRoute(route)) throw new Error(`no model route ${route}`);
+    if (!this.provider(choice.provider)) throw new Error(`no model provider ${choice.provider}`);
     this.db
       .prepare(
-        `insert into rig_model_route (rig, route, assigned_at) values (?, ?, ?)
-         on conflict (rig) do update set route = excluded.route, assigned_at = excluded.assigned_at`,
+        `insert into rig_model (rig, provider, model, assigned_at) values (?, ?, ?, ?)
+         on conflict (rig) do update set provider = excluded.provider, model = excluded.model,
+           assigned_at = excluded.assigned_at`,
       )
-      .run(rig, route, new Date().toISOString());
+      .run(rig, choice.provider, choice.model, new Date().toISOString());
   }
 
-  /** Each rig's route by name. */
-  rigModelRoutes(): Record<string, string> {
-    const rows = this.db.prepare("select rig, route from rig_model_route").all() as Row[];
-    return Object.fromEntries(rows.map((r) => [String(r.rig), String(r.route)]));
+  /** Each rig's provider and model. */
+  rigModels(): Record<string, { provider: string; model: string }> {
+    const rows = this.db.prepare("select rig, provider, model from rig_model").all() as Row[];
+    return Object.fromEntries(
+      rows.map((r) => [String(r.rig), { provider: String(r.provider), model: String(r.model) }]),
+    );
   }
 
-  modelRouteFor(rig: string): ModelRoute | undefined {
-    const name = this.rigModelRoutes()[rig];
-    return name ? this.modelRoute(name) : undefined;
+  rigModelFor(rig: string): { provider: ModelProvider; model: string } | undefined {
+    const c = this.rigModels()[rig];
+    const provider = c ? this.provider(c.provider) : undefined;
+    return c && provider ? { provider, model: c.model } : undefined;
   }
 
   events(rig: string, after: number, limit: number, ledgerId?: string | null): unknown[] {
@@ -996,4 +1060,40 @@ export class ControlStore {
 /** A short fingerprint of a public key, for the dashboard and the audit log. */
 export function fingerprint(pubkeyPem: string): string {
   return sha256Hex(pubkeyPem.trim()).slice(0, 16);
+}
+
+/**
+ * The settings page's first version stored one route per model (model_route, rig_model_route).
+ * Each becomes a provider of type openai with that model, and its rigs keep their model.
+ */
+function migrateModelRoutes(db: DatabaseSync): void {
+  const has = (t: string) =>
+    db.prepare("select 1 from sqlite_master where type = 'table' and name = ?").get(t);
+  if (!has("model_route")) return;
+  const now = new Date().toISOString();
+  const routes = db.prepare("select * from model_route").all() as Row[];
+  for (const r of routes)
+    db.prepare(
+      `insert or ignore into model_provider (name, type, base_url, key_sealed, key_hint, version, updated_at, models)
+       values (?, 'openai', ?, ?, ?, 1, ?, ?)`,
+    ).run(
+      String(r.name),
+      String(r.base_url),
+      String(r.key_sealed),
+      String(r.key_hint),
+      now,
+      JSON.stringify([{ id: String(r.model), added: true }]),
+    );
+  if (has("rig_model_route")) {
+    const given = db.prepare("select * from rig_model_route").all() as Row[];
+    for (const g of given) {
+      const route = routes.find((r) => r.name === g.route);
+      if (route)
+        db.prepare(
+          "insert or ignore into rig_model (rig, provider, model, assigned_at) values (?, ?, ?, ?)",
+        ).run(String(g.rig), String(route.name), String(route.model), now);
+    }
+    db.exec("drop table rig_model_route");
+  }
+  db.exec("drop table model_route");
 }

@@ -30,6 +30,9 @@ services:
     secrets: [control-admin-token, control-operator-token, control-rig-tokens]
     ports: ["127.0.0.1:${THERMITE_CONTROL_PORT:-8800}:8800"]
     networks: [control]
+    # Control lists model providers' models: a provider on this machine is at host.docker.internal
+    # (with Podman, host.containers.internal too).
+    extra_hosts: ["host.docker.internal:host-gateway"]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     restart: unless-stopped

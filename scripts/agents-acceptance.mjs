@@ -148,6 +148,12 @@ const model = createServer((req, res) => {
     body += d;
   });
   req.on("end", () => {
+    // The provider's model list, as control reads it.
+    if (req.method === "GET" && req.url === "/v1/models") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ data: [{ id: "scripted", context_length: 32768 }] }));
+      return;
+    }
     requests++;
     const p = JSON.parse(body);
     for (const m of p.messages ?? []) {
@@ -283,33 +289,39 @@ try {
       detail: modelCheck.detail,
     },
   );
-  // A route entered on control's settings page: the rig takes it, and its model check goes
-  // through it with the route's own key. The key shows in no page or event.
-  const routeKey = "route-key-acceptance-0001";
+  // A provider entered on control's settings page: control lists its models, the rig takes one,
+  // and its model check goes through it with the provider's own key. The key shows nowhere.
+  const providerKey = "provider-key-acceptance-0001";
   const ui = await dashboard();
   const settings = await ui.page("/ui/settings");
   const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(settings)?.[1] ?? "";
-  await ui.post("/ui/settings/routes", {
+  await ui.post("/ui/settings/providers", {
     csrf,
-    name: "scripted-route",
+    name: "scripted-provider",
+    type: "openai",
     base_url: `http://${hostName}:${port}/v1`,
-    model: "scripted",
-    api_key: routeKey,
+    api_key: providerKey,
   });
-  await ui.post("/ui/settings/rigs", { csrf, rig: "local-1", route: "scripted-route" });
-  const taken = await until("the rig takes the route", async () => {
+  const listed = await ui.page("/ui/settings");
+  await ui.post("/ui/settings/rigs", {
+    csrf,
+    rig: "local-1",
+    choice: "scripted-provider|scripted",
+  });
+  const taken = await until("the rig takes the provider's model", async () => {
     const m = (await api("/v1/rigs/local-1/view")).body.model;
-    return m?.source === "control" && m.name === "scripted-route" ? m : undefined;
+    return m?.source === "control" && m.name === "scripted-provider" ? m : undefined;
   });
   keysSeen.clear();
   const routeCheck = await rigCheck("model");
   const pages = [await ui.page("/ui/settings"), await ui.page("/ui/rigs/local-1")].join("");
   check(
-    "a route from the settings page reaches the rig and its model, and its key shows nowhere",
-    routeCheck.ok === true &&
-      keysSeen.has(`Bearer ${routeKey}`) &&
-      !pages.includes(routeKey) &&
-      !JSON.stringify(await events()).includes(routeKey),
+    "a provider from the settings page lists its models, reaches the rig and its model, and its key shows nowhere",
+    /1 model/.test(listed) &&
+      routeCheck.ok === true &&
+      keysSeen.has(`Bearer ${providerKey}`) &&
+      !pages.includes(providerKey) &&
+      !JSON.stringify(await events()).includes(providerKey),
     { taken, summary: routeCheck.summary, keys: keysSeen.size },
   );
   check(

@@ -5,6 +5,8 @@ import { type ModelConfig, reasoningFromEnv } from "./model.ts";
 /** A model route as control hands it to the rig (through its supervisor), key included. */
 export const ControlRoute = z.strictObject({
   name: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/),
+  /** The provider's API (the first version's routes had none: OpenAI-compatible). */
+  type: z.enum(["openai", "anthropic"]).default("openai"),
   version: z.number().int().min(1),
   base_url: z
     .string()
@@ -20,7 +22,7 @@ export const ControlRoute = z.strictObject({
   revision: z.string().regex(/^[0-9a-f]{8,64}$/),
   api_key: z.string().min(1).max(4096),
 });
-export type ControlRoute = z.infer<typeof ControlRoute>;
+export type ControlRoute = z.input<typeof ControlRoute>;
 
 /** Which route the agents use, as the rig reports it (never the key). */
 export interface ModelInfo {
@@ -60,6 +62,7 @@ export class ModelSource {
     const r = this.route;
     if (!r) return this.fromEnv;
     return {
+      api: r.type === "anthropic" ? "anthropic" : undefined,
       baseUrl: r.base_url.replace(/\/$/, ""),
       model: r.model,
       apiKey: r.api_key,

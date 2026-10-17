@@ -11,6 +11,7 @@ import { issueCommand, propagateChampion } from "./issue.ts";
 import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
 import { mountMcp } from "./mcp.ts";
 import { metricsText } from "./metrics.ts";
+import { providerBase } from "./providers.ts";
 import { SecretBox } from "./secrets.ts";
 import type { ControlStore, IngestReport } from "./store.ts";
 import { leaderboard, rigView } from "./views.ts";
@@ -160,6 +161,8 @@ export interface ControlOptions {
    * only: routes then need their keys again after a restart.
    */
   secrets?: SecretBox | undefined;
+  /** How control reaches model providers to list their models (tests give their own). */
+  providerFetch?: typeof fetch | undefined;
 }
 
 export function createControlApi(
@@ -303,40 +306,35 @@ export function createControlApi(
     return c.json({ added });
   });
 
-  // The model route this rig's agents use, with its key, for the rig's supervisor alone: it hands
-  // it to its harness. The key is opened only here, and nothing caches or logs the reply.
+  // The provider and model this rig's agents use, with the provider's key, for the rig's supervisor
+  // alone: it hands them to its harness. The key is opened only here, and nothing caches or logs it.
   app.get("/v1/rigs/:rig/model-route", rigAuth, (c) => {
     c.header("cache-control", "no-store");
-    const r = store.modelRouteFor(c.req.param("rig"));
+    const r = store.rigModelFor(c.req.param("rig"));
     if (!r) return c.json({ route: null });
+    const p = r.provider;
     let key: string;
     try {
-      key = secrets.open(r.key_sealed);
+      key = secrets.open(p.key_sealed);
     } catch {
-      return c.json({ error: "the route's key cannot be opened: enter it again" }, 409);
+      return c.json({ error: "the provider's key cannot be opened: enter it again" }, 409);
     }
+    const contextWindow = p.models.find((m) => m.id === r.model)?.context_window ?? 0;
+    const base = providerBase(p.type, p.base_url);
     return c.json({
       route: {
-        name: r.name,
-        version: r.version,
-        base_url: r.base_url,
+        name: p.name,
+        type: p.type,
+        version: p.version,
+        base_url: base,
         model: r.model,
-        context_window: r.context_window,
-        max_tokens: r.max_tokens,
-        reasoning: r.reasoning,
-        key_hint: r.key_hint,
-        // Changes with anything about the route, even one deleted and made again by the same name.
+        context_window: contextWindow,
+        max_tokens: 0,
+        reasoning: null,
+        key_hint: p.key_hint,
+        // Changes with anything about the route, even a provider deleted and made again.
         revision: sha256Hex(
-          [
-            r.name,
-            r.version,
-            r.base_url,
-            r.model,
-            r.context_window,
-            r.max_tokens,
-            r.reasoning,
-            r.key_sealed,
-          ].join("\n"),
+          [p.name, p.type, p.version, base, r.model, contextWindow, p.key_sealed].join("\n"),
         ).slice(0, 16),
         api_key: key,
       },
@@ -542,6 +540,7 @@ export function createControlApi(
       driver: opts.driver,
       sessionDays: opts.sessionDays,
       secrets,
+      providerFetch: opts.providerFetch,
     }),
   );
   app.get("/", (c) => c.redirect("/ui", 302));

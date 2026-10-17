@@ -1,4 +1,5 @@
 import { createModels, createProvider, type Model } from "@earendil-works/pi-ai";
+import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 
 /**
@@ -10,6 +11,8 @@ import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completio
 export type ReasoningEffort = "off" | "low" | "medium" | "high";
 
 export interface ModelConfig {
+  /** The provider's API: OpenAI-compatible chat completions (the default) or Anthropic's Messages. */
+  api?: "openai" | "anthropic" | undefined;
   baseUrl: string;
   model: string;
   apiKey: string;
@@ -41,6 +44,7 @@ export const MODEL_SETTINGS = {
   contextWindow: ["THERMITE_MODEL_CONTEXT_WINDOW", "QWEN_CONTEXT_WINDOW"],
   maxTokens: ["THERMITE_MODEL_MAX_TOKENS", "QWEN_MAX_TOKENS"],
   reasoning: ["THERMITE_MODEL_REASONING_EFFORT", "QWEN_REASONING_EFFORT"],
+  api: ["THERMITE_MODEL_API", "QWEN_MODEL_API"],
 } as const;
 
 /** Every variable name the model route may be read from (new names and their aliases). */
@@ -65,7 +69,11 @@ export function modelConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ModelC
   const model = setting(env, MODEL_SETTINGS.model);
   const apiKey = setting(env, MODEL_SETTINGS.apiKey);
   if (!baseUrl || !model || !apiKey) return undefined;
+  const api = setting(env, MODEL_SETTINGS.api);
+  if (api !== undefined && api !== "openai" && api !== "anthropic")
+    throw new Error(`THERMITE_MODEL_API must be openai or anthropic, not ${api}`);
   return {
+    api: api === "anthropic" ? "anthropic" : undefined,
     baseUrl: baseUrl.replace(/\/$/, ""),
     model,
     apiKey,
@@ -81,6 +89,7 @@ export function modelConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ModelC
 /** A route as a worker's environment (THERMITE_MODEL_*), for a worker started on it. */
 export function modelEnv(cfg: ModelConfig): Record<string, string> {
   return {
+    ...(cfg.api === "anthropic" ? { THERMITE_MODEL_API: "anthropic" } : {}),
     THERMITE_MODEL_BASE_URL: cfg.baseUrl,
     THERMITE_MODEL: cfg.model,
     THERMITE_MODEL_API_KEY: cfg.apiKey,
@@ -93,6 +102,7 @@ export function modelEnv(cfg: ModelConfig): Record<string, string> {
 }
 
 export function buildModel(cfg: ModelConfig) {
+  if (cfg.api === "anthropic") return buildAnthropic(cfg);
   const provider = "thermite-qwen";
   const model: Model<"openai-completions"> = {
     id: cfg.model,
@@ -134,5 +144,41 @@ export function buildModel(cfg: ModelConfig) {
   const resolved = models.getModel(provider, cfg.model);
   if (!resolved) throw new Error(`model ${cfg.model} did not register`);
   // The agents' thinking level: "off" sends reasoning_effort "none" when reasoning is configured.
+  return { models, model: resolved, thinkingLevel: cfg.reasoning ?? ("off" as const) };
+}
+
+/** An Anthropic route: the Messages API; its base URL has no /v1 (the client adds it). */
+function buildAnthropic(cfg: ModelConfig) {
+  const provider = "thermite-anthropic";
+  const model: Model<"anthropic-messages"> = {
+    id: cfg.model,
+    name: cfg.model,
+    api: "anthropic-messages",
+    provider,
+    baseUrl: cfg.baseUrl,
+    reasoning: cfg.reasoning !== undefined && cfg.reasoning !== "off",
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: cfg.contextWindow,
+    maxTokens: cfg.maxTokens,
+  };
+  const models = createModels();
+  models.setProvider(
+    createProvider({
+      id: provider,
+      name: "Harness model route",
+      baseUrl: cfg.baseUrl,
+      auth: {
+        apiKey: {
+          name: "Model route key",
+          resolve: async () => ({ auth: { apiKey: cfg.apiKey } }),
+        },
+      },
+      models: [model],
+      api: anthropicMessagesApi(),
+    }),
+  );
+  const resolved = models.getModel(provider, cfg.model);
+  if (!resolved) throw new Error(`model ${cfg.model} did not register`);
   return { models, model: resolved, thinkingLevel: cfg.reasoning ?? ("off" as const) };
 }

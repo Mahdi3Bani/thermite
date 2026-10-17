@@ -56,26 +56,28 @@ closes when the check is done.
 
 ## 4. Connect a model
 
-Workers and the planner need an OpenAI-compatible endpoint with tool calling. You give it to the
-rig on the dashboard, with no restart:
+Workers and the planner need a model with tool calling, from an OpenAI-compatible provider or
+Anthropic. You add it on the dashboard, with no restart:
 
-1. Open **Settings** and add a route: a name, the endpoint's base URL (ending in `/v1`), the
-   model's name there, and its API key. Set the context window when you know it.
-2. Under **Which route each rig uses**, choose the route for the rig and press **Use**. The rig
-   takes it within a minute.
-3. Press **Check**. The rig's **model** check sends one request through the route, which must come
-   back as a correct tool call. If it fails, its sentence says what came back instead: no tool
-   call, a refusal, or a cut-off reply.
+1. Open **Settings** and add a provider: a name, its type, its base URL (for an OpenAI-compatible
+   provider, the URL ending in `/v1`; for Anthropic, leave it empty) and its API key. Control
+   lists the provider's models from the provider itself.
+2. Under **Which model each rig uses**, choose a model for the rig and press **Use**. The rig takes
+   it within a minute.
+3. Press **Check**. The rig's **model** check sends one request through it, which must come back
+   as a correct tool call. If it fails, its sentence says what came back instead: no tool call, a
+   refusal, or a cut-off reply.
 
 Control keeps the key encrypted and never shows it again: the page shows only its last four
-characters. Only the rigs you give the route to receive the key, and the agents use it from their
-next plan or trial.
+characters. Only the rigs you give one of the provider's models receive the key, and the agents
+use it from their next plan or trial. If a provider does not list a model you need, add it by its
+name under the provider.
 
-For a server on your own machine, the URL is `http://host.docker.internal:<port>/v1`. With
+For a server on your own machine, the base URL is `http://host.docker.internal:<port>/v1`. With
 Podman, `host.containers.internal` works too.
 
-A rig can also take its route from its own settings (`THERMITE_MODEL_*`, see
-[Settings reference](settings-reference.md)). A route from the settings page comes first.
+A rig can also take its model from its own settings (`THERMITE_MODEL_*`, see
+[Settings reference](settings-reference.md)). A model chosen on the settings page comes first.
 
 ## 5. Run a campaign on your own project
 

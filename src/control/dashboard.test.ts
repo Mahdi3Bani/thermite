@@ -17,7 +17,10 @@ import { ControlStore } from "./store.ts";
 /** Control with one rig whose harness runs the Node test kit; the relay is called directly. */
 const sha256 = (t: string) => createHash("sha256").update(t).digest("hex");
 
-async function stack(promotion: "auto" | "owner_approval" = "owner_approval") {
+async function stack(
+  promotion: "auto" | "owner_approval" = "owner_approval",
+  opts: { providerFetch?: typeof fetch } = {},
+) {
   const env = makeJudgeEnv({ promotion });
   const store = new ControlStore(":memory:");
   const admin = "admin-token-abcdef";
@@ -25,6 +28,7 @@ async function stack(promotion: "auto" | "owner_approval" = "owner_approval") {
     store,
     { admin, rigs: { "rig-a": "rig-token-abcdef" } },
     env.keys.privateKeyPem,
+    { staleAfterMs: 180_000, providerFetch: opts.providerFetch },
   );
   const harness = createHarnessApi(env.service, { supervisor: "sup-token-abcdef" });
   const fetchImpl: typeof fetch = async (input, init) => {
@@ -65,72 +69,105 @@ async function stack(promotion: "auto" | "owner_approval" = "owner_approval") {
 }
 
 describe("control dashboard", () => {
-  test("a model route's key goes in once on the settings page, sealed, and reaches only its rig's harness", async () => {
-    const s = await stack();
+  test("a provider's key goes in once on the settings page, sealed; its models are listed; only its rig's harness gets the key", async () => {
+    // A fake provider: an OpenAI-compatible one that takes only its key, and Anthropic's API.
+    const key = "test-key-never-shown-0001";
+    const providerFetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      const h = new Headers(init?.headers);
+      if (url === "https://models.example/v1/models")
+        return h.get("authorization") === `Bearer ${key}`
+          ? Response.json({
+              data: [{ id: "deepseek-v4.1-flash-free", context_length: 262144 }, { id: "other" }],
+            })
+          : new Response("no", { status: 401 });
+      if (
+        url.startsWith("https://api.anthropic.com/v1/models") &&
+        h.get("x-api-key") === "sk-ant-x"
+      )
+        return Response.json({ data: [{ id: "claude-test" }], has_more: false });
+      return new Response("no", { status: 404 });
+    }) as typeof fetch;
+    const s = await stack("owner_approval", { providerFetch });
     const dir = mkdtempSync(join(tmpdir(), "thermite-route-"));
     s.env.service.models = new ModelSource(join(dir, "model-route.json"), undefined);
     await s.relay();
-    const key = "sk-live-never-shown-0001";
     let page = await (await s.get("/ui/settings")).text();
-    assert.match(page, /No route yet/);
+    assert.match(page, /No provider yet/);
     const csrf = s.csrfFrom(page);
     // A form without the session's token is refused.
-    assert.equal((await s.post("/ui/settings/routes", { csrf: "0", name: "x" })).status, 403);
-    const added = await s.post("/ui/settings/routes", {
+    assert.equal((await s.post("/ui/settings/providers", { csrf: "0", name: "x" })).status, 403);
+    const where = (r: Response) => decodeURIComponent(r.headers.get("location") ?? "");
+    const added = await s.post("/ui/settings/providers", {
       csrf,
       name: "opencode",
+      type: "openai",
       base_url: "https://models.example/v1/",
-      model: "deepseek-v4.1-flash-free",
       api_key: key,
-      context_window: "262,144",
-      max_tokens: "",
-      reasoning: "",
     });
-    assert.equal(added.status, 303);
-    assert.match(added.headers.get("location") ?? "", /ok=/);
-    // A new route needs its key.
-    const keyless = await s.post("/ui/settings/routes", {
+    assert.match(where(added), /ok="opencode" is saved and lists 2 models/);
+    // A wrong key is saved, and the page says why its models could not be listed.
+    const wrong = await s.post("/ui/settings/providers", {
+      csrf,
+      name: "wrong",
+      type: "openai",
+      base_url: "https://models.example/v1",
+      api_key: "sk-wrong-9999",
+    });
+    assert.match(where(wrong), /HTTP 401 \(is the key right\?\)/);
+    // A new provider needs its key; a change without one keeps the sealed key and lists again.
+    const keyless = await s.post("/ui/settings/providers", {
       csrf,
       name: "other",
+      type: "openai",
       base_url: "https://models.example/v1",
-      model: "m",
     });
-    assert.match(keyless.headers.get("location") ?? "", /needs%20its%20API%20key/);
-    // A change without a key keeps the sealed one.
-    await s.post("/ui/settings/routes", {
+    assert.match(where(keyless), /needs its API key/);
+    await s.post("/ui/settings/providers", {
       csrf,
       name: "opencode",
+      type: "openai",
       base_url: "https://models.example/v1",
-      model: "deepseek-v4.1-flash-free",
-      context_window: "262144",
-      reasoning: "low",
     });
-    const stored = s.store.modelRoute("opencode");
-    assert.equal(stored?.version, 2);
-    assert.equal(stored?.base_url, "https://models.example/v1");
+    assert.equal(s.store.provider("opencode")?.version, 2);
+    assert.equal(s.store.provider("opencode")?.models.length, 2);
     page = await (await s.get("/ui/settings")).text();
     assert.match(page, /key …0001/);
-    assert.match(page, /262,144 context/);
+    assert.match(page, /deepseek-v4\.1-flash-free <span class="muted">· 262k<\/span>/);
     // The key is in no page, row or audit entry: only sealed, and as its last four characters.
     const everything = JSON.stringify([
       page,
-      s.store.db.prepare("select * from model_route").all(),
+      s.store.db.prepare("select * from model_provider").all(),
       s.store.db.prepare("select * from audit").all(),
     ]);
     assert.ok(!everything.includes(key));
-    // Only the rig it is given to, with its own token, receives it.
+    // Only the rig given one of its models, with its own token, receives the key.
     const routeOf = (token: string) =>
       s.control.request("/v1/rigs/rig-a/model-route", {
         headers: { authorization: `Bearer ${token}` },
       });
     assert.deepEqual(await (await routeOf("rig-token-abcdef")).json(), { route: null });
-    await s.post("/ui/settings/rigs", { csrf, rig: "rig-a", route: "opencode" });
+    const unlisted = await s.post("/ui/settings/rigs", {
+      csrf,
+      rig: "rig-a",
+      choice: "opencode|nope",
+    });
+    assert.match(where(unlisted), /does not list that model/);
+    await s.post("/ui/settings/rigs", {
+      csrf,
+      rig: "rig-a",
+      choice: "opencode|deepseek-v4.1-flash-free",
+    });
     assert.equal((await routeOf("admin-token-abcdef")).status, 401);
     const given = (await (await routeOf("rig-token-abcdef")).json()) as {
-      route: { api_key: string; version: number; reasoning: string };
+      route: { api_key: string; type: string; context_window: number; base_url: string };
     };
     assert.equal(given.route.api_key, key);
-    assert.equal(given.route.reasoning, "low");
+    assert.equal(given.route.type, "openai");
+    assert.equal(given.route.context_window, 262144);
+    // A model the provider does not list can be added by its name.
+    await s.post("/ui/settings/providers/opencode/models", { csrf, model: "custom-model" });
+    assert.ok(s.store.provider("opencode")?.models.some((m) => m.id === "custom-model" && m.added));
     // The supervisor hands it to its harness once; its agents use it from then on.
     const sync = {
       rig: "rig-a",
@@ -145,14 +182,11 @@ describe("control dashboard", () => {
     const current = s.env.service.models.current();
     assert.equal(current?.apiKey, key);
     assert.equal(current?.model, "deepseek-v4.1-flash-free");
-    assert.equal(current?.reasoning, "low");
+    assert.equal(current?.contextWindow, 262144);
     assert.equal(statSync(join(dir, "model-route.json")).mode & 0o777, 0o600);
     await s.relay();
     page = await (await s.get("/ui/settings")).text();
-    assert.match(
-      page,
-      /Its agents use &quot;opencode&quot; \(version 2, deepseek-v4\.1-flash-free\)/,
-    );
+    assert.match(page, /Its agents use deepseek-v4\.1-flash-free from opencode\./);
     const rig = await (await s.get("/ui/rigs/rig-a")).text();
     assert.match(rig, /The agents now use model route &quot;opencode&quot;/);
     // Nothing the rig reports or records carries the key.
@@ -163,14 +197,28 @@ describe("control dashboard", () => {
         s.env.service.ledger.db.prepare("select * from event").all(),
       ]).includes(key),
     );
-    // Back to the rig's own settings, and a route in use cannot be deleted meanwhile.
-    const busy = await s.post("/ui/settings/routes/opencode/delete", { csrf });
-    assert.match(busy.headers.get("location") ?? "", /still%20in%20use/);
-    await s.post("/ui/settings/rigs", { csrf, rig: "rig-a", route: "" });
+    // An Anthropic provider: its base URL may be left empty, and its route says its API.
+    const ant = await s.post("/ui/settings/providers", {
+      csrf,
+      name: "anthropic",
+      type: "anthropic",
+      base_url: "",
+      api_key: "sk-ant-x",
+    });
+    assert.match(where(ant), /lists 1 model/);
+    assert.equal(s.store.provider("anthropic")?.base_url, "https://api.anthropic.com");
+    await s.post("/ui/settings/rigs", { csrf, rig: "rig-a", choice: "anthropic|claude-test" });
+    assert.equal(await syncModelRoute(sync), "set");
+    assert.equal(s.env.service.models.current()?.api, "anthropic");
+    assert.equal(s.env.service.models.current()?.baseUrl, "https://api.anthropic.com");
+    // Back to the rig's own settings; a provider in use cannot be deleted meanwhile.
+    const busy = await s.post("/ui/settings/providers/anthropic/delete", { csrf });
+    assert.match(where(busy), /still in use/);
+    await s.post("/ui/settings/rigs", { csrf, rig: "rig-a", choice: "" });
     assert.equal(await syncModelRoute(sync), "cleared");
     assert.equal(s.env.service.models.current(), undefined);
-    await s.post("/ui/settings/routes/opencode/delete", { csrf });
-    assert.equal(s.store.modelRoute("opencode"), undefined);
+    await s.post("/ui/settings/providers/anthropic/delete", { csrf });
+    assert.equal(s.store.provider("anthropic"), undefined);
   });
 
   test("a rig check runs from the rig page, and its result shows there in words", async () => {
