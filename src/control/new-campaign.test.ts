@@ -6,7 +6,7 @@ import { describe, test } from "node:test";
 import { generateSigningKeys, verifyCommand } from "../core/commands.ts";
 import type { CampaignDraft } from "./campaign-builder.ts";
 import { KitRepos } from "./kit-repos.ts";
-import { startCampaign } from "./new-campaign.ts";
+import { startCampaign, startRun } from "./new-campaign.ts";
 import { ControlStore } from "./store.ts";
 
 const C = "9a41c07e0d1f2a3b4c5d6e7f8091a2b3c4d5e6f7";
@@ -92,6 +92,60 @@ describe("starting a campaign from the page", () => {
       by: "owner:ui",
     });
     assert.ok(saved.ok && saved.run === undefined && saved.version === 3);
+  });
+
+  test("a try runs the kit with no agents; a later run starts from the saved version and its sources", () => {
+    const keys = generateSigningKeys();
+    const store = new ControlStore(":memory:");
+    store.setConfiguredRigs(["rig-a", "rig-b"]);
+    const kits = new KitRepos(mkdtempSync(join(tmpdir(), "thermite-kits-")));
+    const deps = { store, kits, privateKeyPem: keys.privateKeyPem };
+    const target = { type: "cpu", class: "generic-cpu" };
+    const payloadOf = (id: string) =>
+      (
+        JSON.parse(
+          (
+            store.db.prepare("select signed from command where id = ?").get(id) as {
+              signed: string;
+            }
+          ).signed,
+        ) as { envelope: { payload: { run: string; agents?: boolean; imports: unknown[] } } }
+      ).envelope.payload;
+    const tried = startCampaign(deps, {
+      draft,
+      rig: "rig-a",
+      target,
+      start: "try",
+      by: "owner:ui",
+    });
+    assert.ok(tried.ok && tried.run === "matmul-speed-try-1", JSON.stringify(tried));
+    if (!tried.ok) return;
+    assert.equal(payloadOf(String(tried.command)).agents, false);
+    const real = startRun(deps, {
+      campaign: "matmul-speed",
+      rig: "rig-b",
+      target,
+      agents: true,
+      by: "owner:ui",
+    });
+    assert.ok(real.ok && real.run === "matmul-speed-1", JSON.stringify(real));
+    if (!real.ok) return;
+    const p = payloadOf(real.command);
+    assert.equal(p.agents, undefined);
+    assert.deepEqual(p.imports, payloadOf(String(tried.command)).imports);
+    // A rig with other hardware is refused, and an unknown campaign too.
+    const gpu = startRun(deps, {
+      campaign: "matmul-speed",
+      rig: "rig-b",
+      target: { type: "cuda-gpu", class: "p100" },
+      agents: true,
+      by: "owner:ui",
+    });
+    assert.match(JSON.stringify(gpu), /measures on cuda-gpu/);
+    assert.equal(
+      startRun(deps, { campaign: "nothing", rig: "rig-a", agents: true, by: "owner:ui" }).ok,
+      false,
+    );
   });
 
   test("a draft with mistakes changes nothing and says why", () => {

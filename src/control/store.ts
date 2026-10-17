@@ -175,6 +175,8 @@ create table if not exists campaign_version (
   version integer not null,
   contract text not null,
   sha text not null,
+  -- Where its runs fetch the project and the kit from (URLs and Git access names, no secrets).
+  sources text not null default '{}',
   created_at text not null,
   created_by text not null,
   approved_by text,
@@ -282,6 +284,12 @@ function providerOf(r: Row): ModelProvider {
   };
 }
 
+/** Where a campaign version's runs fetch from: no secrets, only addresses and access names. */
+export interface CampaignSources {
+  project?: { url: string; access?: string | undefined; repo: string; commit: string } | undefined;
+  kit?: { control: string } | { git: string; access?: string | undefined } | undefined;
+}
+
 /** Git access as listed (never its secret). */
 export interface GitAccess {
   name: string;
@@ -343,6 +351,11 @@ export class ControlStore {
       this.db.exec("alter table rig add column pending_pubkey text");
     if (!cols.includes("report_at")) this.db.exec("alter table rig add column report_at text");
     migrateModelRoutes(this.db);
+    const versionCols = (this.db.prepare("pragma table_info(campaign_version)").all() as Row[]).map(
+      (r) => r.name,
+    );
+    if (!versionCols.includes("sources"))
+      this.db.exec("alter table campaign_version add column sources text not null default '{}'");
     const rigModelCols = (this.db.prepare("pragma table_info(rig_model)").all() as Row[]).map(
       (r) => r.name,
     );
@@ -1175,24 +1188,26 @@ export class ControlStore {
     return (r.v ?? 0) + 1;
   }
 
-  /** Stores a campaign version, approved by whoever created it. */
+  /** Stores a campaign version, approved by whoever created it, with where its runs fetch from. */
   putCampaign(c: {
     campaign: string;
     version: number;
     contract: unknown;
     sha: string;
+    sources?: CampaignSources | undefined;
     by: string;
   }): void {
     this.db
       .prepare(
-        `insert into campaign_version (campaign, version, contract, sha, created_at, created_by, approved_by)
-         values (?, ?, ?, ?, ?, ?, ?)`,
+        `insert into campaign_version (campaign, version, contract, sha, sources, created_at, created_by, approved_by)
+         values (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         c.campaign,
         c.version,
         canonicalJson(c.contract),
         c.sha,
+        canonicalJson(c.sources ?? {}),
         new Date().toISOString(),
         c.by,
         c.by,
@@ -1210,6 +1225,7 @@ export class ControlStore {
     version: number;
     contract: unknown;
     sha: string;
+    sources: CampaignSources;
     created_at: string;
     created_by: string;
   }[] {
@@ -1225,6 +1241,7 @@ export class ControlStore {
       version: Number(r.version),
       contract: JSON.parse(String(r.contract)),
       sha: String(r.sha),
+      sources: JSON.parse(String(r.sources ?? "{}")) as CampaignSources,
       created_at: String(r.created_at),
       created_by: String(r.created_by),
     }));

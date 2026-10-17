@@ -185,7 +185,8 @@ ${field("Notes for the agents", "Anything the agents should know: constraints, i
 
 <section class="pane" data-pane="review" hidden><div class="sec"><h2>Review and start</h2>
 <div class="card hl"><p class="sum" data-summary></p>
-<div class="act"><button class="primary big" name="start" value="start">Start the campaign</button><button name="start" value="save">Save without starting</button></div>
+<div class="act"><button class="primary big" name="start" value="start">Start the campaign</button><button name="start" value="try" data-modes="hill_climb goal">Try the kit first</button><button name="start" value="save">Save without starting</button></div>
+<div class="nc-does" data-modes="hill_climb goal"><b>Try the kit first</b> starts a run with no agents: the judge builds your project and runs every case once on its own, and the run's page shows each step, or what failed and why. When it looks right, start the campaign from there.</div>
 <div class="nc-does"><b>What happens.</b> Control checks everything, writes the kit into a repository of its own if you described it here, saves the campaign as its next version approved in your name, and assigns the first run to the rig. The rig fetches the project and the kit, checks both, and the judge measures the starting point before any agent submits.</div></div>
 <details class="adv" style="margin-top:12px"><summary>What control will check (the draft)</summary><div><pre class="json" id="draft-preview"></pre></div></details></div>
 <div class="act"><button data-back>Back</button></div></section>

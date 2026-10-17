@@ -10,7 +10,7 @@ import { makeDeployKey } from "./git-keys.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
 import type { KitRepos } from "./kit-repos.ts";
 import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
-import { startCampaign } from "./new-campaign.ts";
+import { startCampaign, startRun } from "./new-campaign.ts";
 import { ANTHROPIC_BASE, isOpencodeOwn, listModels, providerBase } from "./providers.ts";
 import { probeRepository } from "./repo-probe.ts";
 import { keyHint, type SecretBox } from "./secrets.ts";
@@ -816,7 +816,12 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           draft,
           rig: rig.id,
           target: { type: target.type, class: target.class },
-          start: String(f.start_value ?? "start") !== "save",
+          start:
+            String(f.start_value ?? "start") === "save"
+              ? false
+              : String(f.start_value) === "try"
+                ? "try"
+                : true,
           promotion: promotion === "auto" || promotion === "owner_approval" ? promotion : undefined,
           by: "owner:ui",
         },
@@ -825,7 +830,67 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       r = { ok: false, errors: [err instanceof Error ? err.message : String(err)] };
     }
     if (!r.ok) return newCampaignPage(c, { draft, errors: r.errors });
-    return c.redirect(campaignHref(r.campaign), 303);
+    return c.redirect(
+      r.run
+        ? `${campaignHref(r.campaign)}?run=${encodeURIComponent(runKey(rig.id, r.run))}`
+        : campaignHref(r.campaign),
+      303,
+    );
+  });
+
+  // ---------------------------------------------------------------- another run of a campaign
+  /** The form that starts a run of a campaign created here: which rig, with or without agents. */
+  const startRunCard = (c: Ctx, campaign: string, vs: RigView[], heading: string) => {
+    const versions = store.campaignVersions(campaign);
+    if (!versions.length || !opts.kits) return "";
+    const want = (versions[0]?.contract as { target?: { type?: string } }).target?.type;
+    const rigOptions = vs
+      .map((u) => {
+        const t = u.hardware?.target?.type;
+        const fits = !want || !t || t === want;
+        return `<option value="${esc(u.id)}"${fits ? "" : " disabled"}>${esc(u.id)}${t ? ` · ${esc(t)}` : ""}${fits ? "" : " (other hardware)"}${u.stale ? " · not reporting" : ""}</option>`;
+      })
+      .join("");
+    return `<div class="block"><div class="head"><h2>${esc(heading)}</h2><span class="right">version ${versions[0]?.version} · saved ${esc(ago(versions[0]?.created_at ?? "", Date.now()))} ago</span></div><div class="card"><form method="post" action="/ui/campaigns/${encodeURIComponent(campaign)}/runs" class="form-grid"><input type="hidden" name="csrf" value="${csrf(c)}">
+<label>${infoLabel("Rig", "Where the run goes. Rigs whose hardware differs from the kit's are greyed out.")}<select name="rig">${rigOptions}</select></label>
+<label>${infoLabel("Agents", "With agents: they propose changes and the judge measures each one. A try of the kit: no agents; the judge builds the starting point and runs every case on its own, so you see the kit work before anything else runs.")}<select name="agents"><option value="on">with agents</option><option value="off">a try of the kit: no agents</option></select></label>
+<label>${infoLabel("When a change is confirmed better", "Keep it at once as the new best, or wait for you. The rig's default is set where the rig is deployed.")}<select name="promotion"><option value="">the rig's default</option><option value="auto">always keep it</option><option value="owner_approval">ask me every time</option></select></label>
+<div class="form-end"><button class="primary">Start the run</button></div></form>
+<div class="nc-does"><b>What happens.</b> Control signs an assignment of version ${versions[0]?.version} to the rig; the rig fetches the project and the kit, checks both, and starts the run.</div></div></div>`;
+  };
+  app.post("/ui/campaigns/:campaign/runs", async (c) => {
+    const f = await c.req.parseBody();
+    const campaign = c.req.param("campaign");
+    const vs = views();
+    const rig = vs.find((u) => u.id === String(f.rig ?? ""));
+    const back = (m: string) =>
+      c.redirect(`${campaignHref(campaign)}?error=${encodeURIComponent(m)}`, 303);
+    if (!opts.kits) return c.text("This control keeps no campaigns.", 404);
+    if (!rig) return back("Choose a rig.");
+    const promotion = String(f.promotion ?? "");
+    let r: ReturnType<typeof startRun>;
+    try {
+      r = startRun(
+        { store, kits: opts.kits, privateKeyPem: opts.privateKeyPem },
+        {
+          campaign,
+          rig: rig.id,
+          target: rig.hardware?.target
+            ? { type: rig.hardware.target.type, class: rig.hardware.target.class }
+            : undefined,
+          agents: String(f.agents ?? "on") !== "off",
+          promotion: promotion === "auto" || promotion === "owner_approval" ? promotion : undefined,
+          by: "owner:ui",
+        },
+      );
+    } catch (err) {
+      r = { ok: false, errors: [err instanceof Error ? err.message : String(err)] };
+    }
+    if (!r.ok) return back(r.errors.join(" "));
+    return c.redirect(
+      `${campaignHref(campaign)}?run=${encodeURIComponent(runKey(rig.id, r.run))}`,
+      303,
+    );
   });
 
   app.get("/ui/campaigns/:campaign", (c) => {
@@ -833,17 +898,43 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     const vs = views();
     const name = c.req.param("campaign");
     const k = campaignViews(vs).find((x) => x.name === name);
-    if (!k)
+    const failed = c.req.query("error");
+    const note = failed
+      ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not started.</b> ${esc(failed)}</div>`
+      : "";
+    if (!k) {
+      // Saved on control, with no run reported yet: what was asked for, and a way to start one.
+      const saved = store.campaignVersions(name);
+      if (!saved.length)
+        return page(
+          c,
+          {
+            title: "Not found",
+            crumbs: [{ href: "/ui/campaigns", text: "Campaigns" }],
+            active: "campaigns",
+          },
+          `<div class="card"><div class="empty">No such campaign.</div></div>`,
+          vs,
+        );
+      const waiting = c.req.query("run");
+      const title = (saved[0]?.contract as { title?: string }).title ?? name;
       return page(
         c,
         {
-          title: "Not found",
+          title: name,
           crumbs: [{ href: "/ui/campaigns", text: "Campaigns" }],
+          summary: esc(title),
           active: "campaigns",
+          refresh: waiting ? 5 : undefined,
         },
-        `<div class="card"><div class="empty">No such campaign.</div></div>`,
+        `${note}${
+          waiting
+            ? `<div class="card" style="margin-bottom:16px"><b>Starting ${esc(waiting)}.</b> <span class="muted">The rig fetches the project and the kit and checks both; the run shows here once the rig reports it, usually within a minute.</span></div>`
+            : `<div class="card" style="margin-bottom:16px"><div class="empty">Saved, with no run yet.</div></div>`
+        }${startRunCard(c, name, vs, "Start a run")}`,
         vs,
       );
+    }
     const st = campaignState(k);
     const rigs = rigList(k);
     const h = headline(k);
@@ -919,7 +1010,11 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         summary: `${esc(modeName(k.mode))} · ${k.runs.length} run${k.runs.length > 1 ? "s" : ""} on ${esc(rigs.join(", "))} · <span class="${st.cls}">${esc(st.text)}</span> · ${esc(h.value)} ${esc(h.sub)}`,
         active: "campaigns",
       },
-      `${summary ? `<div class="block" style="margin-bottom:8px">${summary}${goalMatrix}</div>` : ""}${tabs}${runSection(c, sel.rig, sel.run, vs, now, view)}`,
+      `${note}${summary ? `<div class="block" style="margin-bottom:8px">${summary}${goalMatrix}</div>` : ""}${tabs}${
+        /-try-\d+$/.test(sel.run.id)
+          ? `<div class="card hl" style="margin-bottom:12px"><b>A try of the kit.</b> No agents work on this run: the judge builds the starting point and runs every case on its own. Its results are below. When they look right, start the campaign below.</div>`
+          : ""
+      }${runSection(c, sel.rig, sel.run, vs, now, view)}${startRunCard(c, k.name, vs, /-try-\d+$/.test(sel.run.id) ? "Start the campaign" : "Start another run")}`,
       vs,
     );
   });

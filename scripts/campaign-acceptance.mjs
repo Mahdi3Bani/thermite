@@ -59,7 +59,8 @@ const hostName = compose[0] === "docker" ? "host.docker.internal" : "host.contai
 const projectUrl = `git://${hostName}:${port}/tiny.git`;
 
 prepare();
-const composeEnv = { THERMITE_POLL_SECONDS: "2", THERMITE_CALIBRATION_BLOCKS: "0" };
+// Two calibration blocks: a try of the kit is the judge measuring the starting point on its own.
+const composeEnv = { THERMITE_POLL_SECONDS: "2", THERMITE_CALIBRATION_BLOCKS: "2" };
 console.log("compose: build and start");
 dc(composeEnv, "up", "-d", "--build");
 try {
@@ -112,15 +113,42 @@ try {
       csrf,
       draft: JSON.stringify(draft),
       rig: "local-1",
-      start_value: "start",
+      start_value: "try",
     }),
     headers: { cookie },
     redirect: "manual",
   });
-  check("control took the campaign and assigned its first run", res.status === 303, {
-    status: res.status,
-    location: res.headers.get("location"),
-    page: res.status === 303 ? undefined : (await res.text()).match(/<li>[^<]*<\/li>/g),
+  check(
+    "control took the campaign and started a try of its kit",
+    res.status === 303 && /acc-tiny-try-1/.test(String(res.headers.get("location"))),
+    {
+      status: res.status,
+      location: res.headers.get("location"),
+      page: res.status === 303 ? undefined : (await res.text()).match(/<li>[^<]*<\/li>/g),
+    },
+  );
+  // The try: no agents; the judge builds the starting point and runs every case on its own.
+  const calibrated = await until(
+    "the judge measures the try on its own",
+    async () =>
+      (await events()).find((e) => e.kind === "calibration" && e.subject === "acc-tiny-try-1"),
+    600_000,
+    3000,
+  );
+  check(
+    "the try measured every case with no agents",
+    calibrated?.body?.blocks === 2,
+    calibrated?.body,
+  );
+  // Then the campaign itself, from its page's start form.
+  const started = await fetch(`${control}/ui/campaigns/acc-tiny/runs`, {
+    method: "POST",
+    body: new URLSearchParams({ csrf, rig: "local-1", agents: "on", promotion: "" }),
+    headers: { cookie },
+    redirect: "manual",
+  });
+  check("the campaign's own run starts from its page", started.status === 303, {
+    location: started.headers.get("location"),
   });
   const created = await until(
     "the run starts on the rig",

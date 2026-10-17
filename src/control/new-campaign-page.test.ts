@@ -146,7 +146,10 @@ describe("the new-campaign page", () => {
       start_value: "start",
     });
     assert.equal(res.status, 303);
-    assert.equal(res.headers.get("location"), "/ui/campaigns/matmul-speed");
+    assert.equal(
+      res.headers.get("location"),
+      "/ui/campaigns/matmul-speed?run=rig-a%2Fmatmul-speed-1",
+    );
     assert.ok(s.probes.includes("https://git.example.com/team/fastmat.git@main"));
     const [v] = s.store.campaignVersions("matmul-speed");
     const contract = v?.contract as { target: unknown; project: { kit: { commit: string } } };
@@ -160,6 +163,40 @@ describe("the new-campaign page", () => {
         "campaign_version_created",
       ),
     );
+  });
+
+  test("try the kit first: a no-agents run, a page that waits for it, and a start form for the real run", async () => {
+    const s = await stack();
+    const res = await s.post("/ui/campaigns/new", {
+      csrf: s.csrf,
+      draft: JSON.stringify({ ...draft(), project: { ...(draft().project as object), commit: C } }),
+      rig: "rig-a",
+      start_value: "try",
+    });
+    assert.equal(res.status, 303);
+    assert.equal(
+      res.headers.get("location"),
+      "/ui/campaigns/matmul-speed?run=rig-a%2Fmatmul-speed-try-1",
+    );
+    // Before the rig reports the run: the saved campaign, waiting, with a way to start a run.
+    const waiting = await (
+      await s.get("/ui/campaigns/matmul-speed?run=rig-a%2Fmatmul-speed-try-1")
+    ).text();
+    assert.match(waiting, /Starting rig-a\/matmul-speed-try-1/);
+    assert.match(waiting, /data-refresh="5"/);
+    assert.match(waiting, /action="\/ui\/campaigns\/matmul-speed\/runs"/);
+    const started = await s.post("/ui/campaigns/matmul-speed/runs", {
+      csrf: s.csrf,
+      rig: "rig-a",
+      agents: "on",
+      promotion: "",
+    });
+    assert.equal(started.status, 303);
+    assert.match(String(started.headers.get("location")), /run=rig-a%2Fmatmul-speed-1$/);
+    const kinds = s.store.listCommands(10).map((c) => c.kind);
+    assert.deepEqual(kinds, ["assign_campaign", "assign_campaign"]);
+    const bad = await s.post("/ui/campaigns/matmul-speed/runs", { csrf: s.csrf, rig: "nope" });
+    assert.match(String(bad.headers.get("location")), /error=Choose%20a%20rig/);
   });
 
   test("mistakes come back on the page with the answers kept, and nothing is created", async () => {
