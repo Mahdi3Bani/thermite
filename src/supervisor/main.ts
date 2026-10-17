@@ -18,6 +18,7 @@ import { syncModelRoute } from "./model-route.ts";
 import { RelayError, type RelayState, relayCommandsOnce, relayOnce } from "./relay.ts";
 import { dailyReport } from "./report.ts";
 import { stageCommand } from "./staging.ts";
+import { waitForHarness } from "./startup.ts";
 
 function load<T>(path: string, fallback: T): T {
   return existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as T) : fallback;
@@ -125,6 +126,9 @@ async function main(): Promise<void> {
     });
     if (!res.ok) throw new Error(`POST ${path} -> ${res.status}`);
   };
+
+  // The harness may still be starting: wait for it once, before the relays begin.
+  await waitForHarness(harnessUrl, () => stopping);
 
   // Advisors run on their own: a teacher round can take many minutes.
   const advising = async () => {
