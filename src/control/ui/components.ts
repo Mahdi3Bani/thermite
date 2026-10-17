@@ -72,6 +72,9 @@ export const icon = {
   ),
   cpu: svg('<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/>', 18),
   logout: svg('<path d="M15 4h4v16h-4M10 17l5-5-5-5M15 12H3"/>'),
+  cog: svg(
+    '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+  ),
 };
 
 // ---------------------------------------------------------------- small parts
@@ -349,11 +352,10 @@ export function shell(s: Shell, body: string): string {
     ${nav("/ui/commands", "commands", icon.list, "Commands")}
     ${nav("/ui/reports", "reports", icon.file, "Reports")}
     ${nav("/ui/audit", "audit", icon.shield, "Audit log")}
-    ${nav("/ui/settings", "settings", icon.key, "Settings")}
   </nav>
   ${campRows ? `<div class="section">Campaigns</div>${campRows}` : ""}
   ${s.rigs.length ? `<div class="section">Rigs</div>${rigRows}` : ""}
-  <div class="side-foot"><form method="post" action="/ui/logout"><button class="ghost sm">${icon.logout}Sign out</button></form></div>
+  <div class="side-foot"><form method="post" action="/ui/logout"><button class="ghost sm">${icon.logout}Sign out</button></form><a class="cog${s.active === "settings" ? " on" : ""}" href="/ui/settings" title="Settings" aria-label="Settings">${icon.cog}</a></div>
 </aside>
 <div class="main">
   <header class="topbar">

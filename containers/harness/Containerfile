@@ -59,10 +59,10 @@ WORKDIR /opt/thermite
 COPY --from=build /src/package.json ./
 COPY --from=build /src/node_modules ./node_modules
 COPY --from=build /src/dist ./dist
-COPY containers/thermite /usr/local/bin/thermite
+COPY --chmod=0755 containers/thermite /usr/local/bin/thermite
 # The OpenCode harness: its binary, and Thermite's tools for an agent's own shell.
 COPY --from=opencode /usr/local/bin/opencode /usr/local/bin/opencode
-COPY containers/thermite-trial /usr/local/bin/thermite-trial
+COPY --chmod=0755 containers/thermite-trial /usr/local/bin/thermite-trial
 # The smoke check's kits and projects (the rig_check smoke command builds them into a campaign).
 COPY kits ./checks/kits
 COPY examples ./checks/examples

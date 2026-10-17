@@ -81,9 +81,9 @@ describe("control dashboard", () => {
               data: [{ id: "deepseek-v4.1-flash-free", context_length: 262144 }, { id: "other" }],
             })
           : new Response("no", { status: 401 });
-      // OpenCode's own list needs no key.
-      if (url === "https://opencode.ai/zen/v1/models" && !h.get("authorization"))
-        return Response.json({ data: [{ id: "free-model" }] });
+      // OpenCode's own list (it needs no key).
+      if (url === "https://opencode.ai/zen/v1/models")
+        return Response.json({ data: [{ id: "free-model-free" }, { id: "paid-model" }] });
       if (
         url.startsWith("https://api.anthropic.com/v1/models") &&
         h.get("x-api-key") === "sk-ant-x"
@@ -221,19 +221,19 @@ describe("control dashboard", () => {
       type: "opencode",
       base_url: "",
     });
-    assert.match(where(oc), /lists 1 model/);
+    assert.match(where(oc), /lists 2 models/);
     assert.equal(s.store.provider("zen")?.key_sealed, "");
     const underPi = await s.post("/ui/settings/rigs", {
       csrf,
       rig: "rig-a",
-      choice: "zen|free-model",
+      choice: "zen|free-model-free",
       harness: "pi",
     });
     assert.match(where(underPi), /run only in the OpenCode harness/);
     await s.post("/ui/settings/rigs", {
       csrf,
       rig: "rig-a",
-      choice: "zen|free-model",
+      choice: "zen|free-model-free",
       harness: "opencode",
     });
     assert.equal(await syncModelRoute(sync), "set");
@@ -243,7 +243,48 @@ describe("control dashboard", () => {
     assert.equal(zen?.apiKey, "");
     await s.relay();
     page = await (await s.get("/ui/settings")).text();
-    assert.match(page, /Its agents run under OpenCode v2 with free-model from zen\./);
+    assert.match(page, /Its agents run under OpenCode v2 with free-model-free from zen\./);
+    // A provider added as OpenAI-compatible at OpenCode's own endpoint, with its key, is OpenCode's
+    // own too: under OpenCode it runs through OpenCode's built-in provider (no key sent); under Pi,
+    // its key serves its paid models, and its free models are refused there.
+    await s.post("/ui/settings/providers", {
+      csrf,
+      name: "oc-key",
+      type: "openai",
+      base_url: "https://opencode.ai/zen/v1/models",
+      api_key: "test-oc-key-0002",
+    });
+    assert.equal(s.store.provider("oc-key")?.base_url, "https://opencode.ai/zen/v1");
+    const freeUnderPi = await s.post("/ui/settings/rigs", {
+      csrf,
+      rig: "rig-a",
+      choice: "oc-key|free-model-free",
+      harness: "pi",
+    });
+    assert.match(where(freeUnderPi), /free models run only in the OpenCode harness/);
+    await s.post("/ui/settings/rigs", {
+      csrf,
+      rig: "rig-a",
+      choice: "oc-key|free-model-free",
+      harness: "opencode",
+    });
+    const own = (await (await routeOf("rig-token-abcdef")).json()) as {
+      route: { type: string; api_key: string; harness: string };
+    };
+    assert.deepEqual(
+      [own.route.type, own.route.api_key, own.route.harness],
+      ["opencode", "", "opencode"],
+    );
+    await s.post("/ui/settings/rigs", {
+      csrf,
+      rig: "rig-a",
+      choice: "oc-key|paid-model",
+      harness: "pi",
+    });
+    const paid = (await (await routeOf("rig-token-abcdef")).json()) as {
+      route: { type: string; api_key: string };
+    };
+    assert.deepEqual([paid.route.type, paid.route.api_key], ["openai", "test-oc-key-0002"]);
     // Any other provider works under OpenCode too (through the harness's key-adding proxy).
     await s.post("/ui/settings/rigs", {
       csrf,

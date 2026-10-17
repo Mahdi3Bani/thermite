@@ -6,7 +6,7 @@ import { COMMAND_KINDS, type CommandKind } from "../core/commands.ts";
 import type { Credential } from "./credential.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
 import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
-import { ANTHROPIC_BASE, listModels, providerBase } from "./providers.ts";
+import { ANTHROPIC_BASE, isOpencodeOwn, listModels, providerBase } from "./providers.ts";
 import { keyHint, type SecretBox } from "./secrets.ts";
 import {
   type ControlStore,
@@ -1598,7 +1598,7 @@ ${runsNow ? `<div class="block"><div class="head"><h2>At work</h2><span class="n
         const pName = encodeURIComponent(p.name);
         return `<details class="dq${p.models_error ? " dq-bad" : ""}" data-k="provider-${esc(p.name)}"><summary>
 <span class="dq-kind route-name">${esc(TYPES[p.type])}</span>
-<span class="dq-main"><span class="dq-head">${esc(p.name)}</span>${status}<span class="dq-sub"><span class="dq-where">${esc(p.base_url || ANTHROPIC_BASE)}</span><span class="chip">${p.key_hint ? `key ${esc(p.key_hint)}` : "no key: its free models"}</span>${p.type === "opencode" ? `<span class="chip info">runs in the OpenCode harness</span>` : ""}${p.base_url.startsWith("http://") ? `<span class="chip warn">not HTTPS</span>` : ""}<span class="dq-where">${rigs.length ? `used by ${rigs.map((x) => esc(x)).join(", ")}` : "no rig uses it"}</span></span></span>
+<span class="dq-main"><span class="dq-head">${esc(p.name)}</span>${status}<span class="dq-sub"><span class="dq-where">${esc(p.base_url || ANTHROPIC_BASE)}</span><span class="chip">${p.key_hint ? `key ${esc(p.key_hint)}` : "no key: its free models"}</span>${p.type === "opencode" ? `<span class="chip info">runs in the OpenCode harness</span>` : isOpencodeOwn(p) ? `<span class="chip info">OpenCode's own: its free models run in the OpenCode harness</span>` : ""}${p.base_url.startsWith("http://") ? `<span class="chip warn">not HTTPS</span>` : ""}<span class="dq-where">${rigs.length ? `used by ${rigs.map((x) => esc(x)).join(", ")}` : "no rig uses it"}</span></span></span>
 <span class="dq-side"><span class="dq-btns"><form class="inline" method="post" action="/ui/settings/providers/${pName}/refresh"><input type="hidden" name="csrf" value="${t}"><button>Refresh models</button></form></span></span>
 </summary><div class="dq-body">${list}
 <form method="post" action="/ui/settings/providers/${pName}/models" class="row" style="gap:8px"><input type="hidden" name="csrf" value="${t}"><input name="model" maxlength="200" placeholder="a model it does not list, by its name" style="width:320px"><button>Add it</button></form>
@@ -1625,7 +1625,7 @@ ${
         .filter((p) => p.models.length)
         .map(
           (p) =>
-            `<optgroup label="${esc(p.name)}${p.type === "opencode" ? " (OpenCode harness only)" : ""}">${p.models
+            `<optgroup label="${esc(p.name)}${p.type === "opencode" ? " (OpenCode harness only)" : isOpencodeOwn(p) ? " (free models: OpenCode harness only)" : ""}">${p.models
               .map(
                 (m) =>
                   `<option value="${esc(`${encodeURIComponent(p.name)}|${encodeURIComponent(m.id)}`)}"${want?.provider === p.name && want.model === m.id ? " selected" : ""}>${esc(m.id)}</option>`,
@@ -1797,11 +1797,16 @@ ${note}
     const p = store.provider(provider);
     if (!p?.models.some((m) => m.id === model))
       return c.redirect(settingsUrl("error", "That provider does not list that model."), 303);
-    if (p.type === "opencode" && harness !== "opencode")
+    // OpenCode's free models (and a keyless OpenCode provider) need its own client.
+    if (
+      harness !== "opencode" &&
+      isOpencodeOwn(p) &&
+      (p.type === "opencode" || !p.key_sealed || model.endsWith("-free"))
+    )
       return c.redirect(
         settingsUrl(
           "error",
-          "OpenCode's own models run only in the OpenCode harness: choose OpenCode v2 for this rig.",
+          "OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig.",
         ),
         303,
       );

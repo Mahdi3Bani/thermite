@@ -11,7 +11,7 @@ import { issueCommand, propagateChampion } from "./issue.ts";
 import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
 import { mountMcp } from "./mcp.ts";
 import { metricsText } from "./metrics.ts";
-import { providerBase } from "./providers.ts";
+import { isOpencodeOwn, providerBase } from "./providers.ts";
 import { SecretBox } from "./secrets.ts";
 import type { ControlStore, IngestReport } from "./store.ts";
 import { leaderboard, rigView } from "./views.ts";
@@ -322,10 +322,14 @@ export function createControlApi(
     }
     const contextWindow = p.models.find((m) => m.id === r.model)?.context_window ?? 0;
     const base = providerBase(p.type, p.base_url);
+    // OpenCode's own provider, under the OpenCode harness, runs through OpenCode's built-in one:
+    // it needs no key (its free models), so none is sent.
+    const native = r.harness === "opencode" && isOpencodeOwn(p);
+    if (native) key = "";
     return c.json({
       route: {
         name: p.name,
-        type: p.type,
+        type: native ? "opencode" : p.type === "opencode" ? "openai" : p.type,
         harness: r.harness,
         version: p.version,
         base_url: base,
@@ -336,9 +340,17 @@ export function createControlApi(
         key_hint: p.key_hint,
         // Changes with anything about the route, even a provider deleted and made again.
         revision: sha256Hex(
-          [p.name, p.type, r.harness, p.version, base, r.model, contextWindow, p.key_sealed].join(
-            "\n",
-          ),
+          [
+            p.name,
+            p.type,
+            native,
+            r.harness,
+            p.version,
+            base,
+            r.model,
+            contextWindow,
+            p.key_sealed,
+          ].join("\n"),
         ).slice(0, 16),
         api_key: key,
       },

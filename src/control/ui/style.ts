@@ -77,7 +77,9 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .dot.ok { background: var(--success); } .dot.warn { background: #ea580c; } .dot.bad { background: var(--error); } .dot.info { background: var(--info); }
 .dot.pulse { animation: pulse 1.6s ease-in-out infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
-.side-foot { margin-top: auto; padding: 12px 8px 0; }
+.side-foot { margin-top: auto; padding: 12px 8px 0; display: flex; align-items: center; justify-content: space-between; }
+.side-foot .cog { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: var(--control-radius); color: var(--muted-foreground); }
+.side-foot .cog:hover, .side-foot .cog.on { background: var(--sidebar-row-hover); color: var(--foreground); text-decoration: none; }
 
 .main { grid-row: 1 / 2; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
 .topbar { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 20px; border-bottom: 1px solid var(--border); background: var(--background); }

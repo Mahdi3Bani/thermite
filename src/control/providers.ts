@@ -12,6 +12,21 @@ export const ANTHROPIC_BASE = "https://api.anthropic.com";
 export const OPENCODE_BASE = "https://opencode.ai/zen/v1";
 
 /**
+ * Whether a provider is OpenCode's own: its type says so, or its base URL is OpenCode's. Under
+ * the OpenCode harness such a provider runs through OpenCode's built-in provider, which its free
+ * models require (and which ignores any other endpoint, so no proxy can add a key to it).
+ */
+export function isOpencodeOwn(p: { type: ProviderType; base_url: string }): boolean {
+  if (p.type === "opencode") return true;
+  try {
+    const u = new URL(p.base_url);
+    return u.hostname === "opencode.ai" && u.pathname.startsWith("/zen");
+  } catch {
+    return false;
+  }
+}
+
+/**
  * A provider's base URL as its API client takes it. A pasted endpoint URL is trimmed back to its
  * base: an OpenAI-compatible one loses /models or /chat/completions; Anthropic's has no /v1 (the
  * client adds it).
