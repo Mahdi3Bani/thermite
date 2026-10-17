@@ -23,8 +23,10 @@ import { DevRuns } from "./agents/devrun.ts";
 import { modelConfigFromEnv } from "./agents/model.ts";
 import { checkModel } from "./agents/model-check.ts";
 import { ModelSource } from "./agents/model-source.ts";
+import { opencodeModelCheck, opencodeOnce, runOpencodeTrial } from "./agents/opencode.ts";
 import { Scheduler } from "./agents/scheduler.ts";
 import { spawnTrial } from "./agents/spawn.ts";
+import { laneCacheEnv } from "./agents/workspace.ts";
 import { createHarnessApi } from "./api.ts";
 import { BrokerClient } from "./broker/client.ts";
 import { type GpuLayout, readLayout } from "./broker/devices.ts";
@@ -287,11 +289,21 @@ async function main(): Promise<void> {
   service.models = models;
   const model = () => models.current();
   // Rig checks control can ask for: the model route, and the isolation selftest under the broker.
+  // OpenCode (the worker harness a rig may choose) reaches the harness API on loopback.
+  const apiUrl = `http://127.0.0.1:${port}`;
+  const once = {
+    runner,
+    apiUrl,
+    scratchDir: paths.scratchDir,
+    mintProxyToken: () => service.mintProxyToken(),
+  };
   service.rigChecks.model = {
     run: async () => {
       const m = model();
       return m
-        ? checkModel(m)
+        ? m.harness === "opencode"
+          ? opencodeModelCheck(m, once)
+          : checkModel(m)
         : {
             ok: false,
             summary:
@@ -349,8 +361,37 @@ async function main(): Promise<void> {
     trialWallMs: Number(env.THERMITE_TRIAL_MINUTES ?? "20") * 60_000,
     // No cap on a trial's turns unless one is configured.
     maxTurns: env.THERMITE_MAX_TURNS ? Number(env.THERMITE_MAX_TURNS) : undefined,
-    runTrial: (spec, signal) =>
-      spawnTrial({ kind: "code", spec }, runner, paths.scratchDir, port, signal, model()),
+    // Each trial runs in the harness the rig's route names: Pi (a worker process) or OpenCode.
+    runTrial: (spec, signal) => {
+      const m = model();
+      if (m?.harness !== "opencode")
+        return spawnTrial({ kind: "code", spec }, runner, paths.scratchDir, port, signal, m);
+      return runOpencodeTrial(spec, {
+        runner,
+        model: m,
+        apiUrl,
+        live: (entries) => {
+          for (const e of entries)
+            service.live.append({
+              source: `trial:${spec.trialId}`,
+              kind: e.kind,
+              text: e.text,
+              lane: spec.lane,
+              run: spec.run,
+            });
+        },
+        progress: (p) => service.trialProgress.set(spec.trialId, p),
+        submitted: () => service.trialSubmission(spec.trialId),
+        messages: () => service.takeMessages({ id: spec.trialId, run: spec.run, lane: spec.lane }),
+        env: laneCacheEnv(paths.scratchDir, spec.lane),
+        signal,
+      });
+    },
+    askOpencode: async (m, prompt, signal) => {
+      const t = await opencodeOnce(m, prompt, once, 300_000, signal);
+      if (!t.lastText) throw new Error(t.errors.at(-1) ?? "OpenCode gave no answer");
+      return t.lastText;
+    },
     research,
     runResearchTrial: (spec, signal) =>
       spawnTrial({ kind: "research", spec }, runner, paths.scratchDir, port, signal, model()),

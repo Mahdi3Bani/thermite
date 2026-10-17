@@ -1,4 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
 import { resolve } from "node:path";
 import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -121,6 +123,82 @@ export function createHarnessApi(
   });
 
   app.get("/v1/health", (c) => c.json({ ok: true, rig: service.rig }));
+
+  // The model proxy: OpenCode reaches the rig's provider through here, so the provider's key never
+  // reaches the lane. It takes a trial's token or one the harness minted for a check or a plan
+  // (as a bearer token, or as Anthropic's x-api-key), adds the real key and streams the answer.
+  const openTrial = (token: string) => {
+    try {
+      registry.openTrial(token);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  app.all("/v1/model-proxy/*", bodyLimit({ maxSize: 64 * 1024 * 1024 }), async (c) => {
+    const bearer = c.req.header("authorization") ?? "";
+    const given = bearer.startsWith("Bearer ")
+      ? bearer.slice(7)
+      : (c.req.header("x-api-key") ?? "");
+    const ok = given.startsWith("trial.")
+      ? openTrial(given.slice("trial.".length))
+      : service.proxyTokenValid(given);
+    if (!ok) return c.json({ error: "unauthorized" }, 401);
+    const m = service.models?.current();
+    if (!m || m.api === "opencode") return c.json({ error: "no provider to reach" }, 404);
+    const rest = c.req.path.slice("/v1/model-proxy/".length);
+    const target = new URL(`${m.baseUrl}/${rest}${new URL(c.req.url).search}`);
+    const headers: Record<string, string> = {};
+    for (const k of [
+      "content-type",
+      "accept",
+      "anthropic-version",
+      "anthropic-beta",
+      "user-agent",
+    ]) {
+      const v = c.req.header(k);
+      if (v) headers[k] = v;
+    }
+    if (m.api === "anthropic") headers["x-api-key"] = m.apiKey;
+    else headers.authorization = `Bearer ${m.apiKey}`;
+    const body =
+      c.req.method === "GET" || c.req.method === "HEAD"
+        ? undefined
+        : Buffer.from(await c.req.arrayBuffer());
+    if (body) headers["content-length"] = String(body.length);
+    // node:http, not fetch: a long model call must not meet fetch's header timeout.
+    return await new Promise<Response>((resolve) => {
+      const send = target.protocol === "https:" ? httpsRequest : httpRequest;
+      const req = send(target, { method: c.req.method, headers, agent: false }, (res) => {
+        const stream = new ReadableStream<Uint8Array>({
+          start(ctrl) {
+            res.on("data", (d: Buffer) => ctrl.enqueue(new Uint8Array(d)));
+            res.on("end", () => ctrl.close());
+            res.on("error", (e) => ctrl.error(e));
+          },
+          cancel() {
+            res.destroy();
+          },
+        });
+        const out = new Headers();
+        for (const k of ["content-type", "cache-control"]) {
+          const v = res.headers[k];
+          if (typeof v === "string") out.set(k, v);
+        }
+        resolve(new Response(stream, { status: res.statusCode ?? 502, headers: out }));
+      });
+      req.on("error", (e) =>
+        resolve(
+          Response.json(
+            { error: `the provider could not be reached: ${e.message}` },
+            { status: 502 },
+          ),
+        ),
+      );
+      if (body) req.write(body);
+      req.end();
+    });
+  });
 
   // The agents' model route, as control set it: the supervisor hands it over (key included) and
   // reads back which route is in use (never the key).

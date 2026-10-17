@@ -8,7 +8,13 @@ import { issueCommand, propagateChampion } from "./issue.ts";
 import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
 import { ANTHROPIC_BASE, listModels, providerBase } from "./providers.ts";
 import { keyHint, type SecretBox } from "./secrets.ts";
-import { type ControlStore, fingerprint, type ModelProvider, type ProviderType } from "./store.ts";
+import {
+  type ControlStore,
+  fingerprint,
+  type Harness,
+  type ModelProvider,
+  type ProviderType,
+} from "./store.ts";
 import { CLIENT_JS } from "./ui/client.ts";
 import {
   ago,
@@ -1535,15 +1541,18 @@ ${runsNow ? `<div class="block"><div class="head"><h2>At work</h2><span class="n
   const TYPES: Record<ProviderType, string> = {
     openai: "OpenAI-compatible",
     anthropic: "Anthropic",
+    opencode: "OpenCode",
   };
+  const HARNESSES: Record<Harness, string> = { pi: "Pi", opencode: "OpenCode v2" };
   const MODEL_ID = /^[\w.:/@+-]{1,200}$/;
   const settingsUrl = (k: "ok" | "error", m: string) =>
     `/ui/settings?${k}=${encodeURIComponent(m)}`;
   /** Reads the provider's model list now and keeps it (or why it could not). */
   const listInto = async (p: ModelProvider): Promise<string | null> => {
-    let key: string;
+    let key = "";
     try {
-      key = opts.secrets.open(p.key_sealed);
+      // OpenCode's own provider may have no key: its list and free models need none.
+      if (p.key_sealed) key = opts.secrets.open(p.key_sealed);
     } catch {
       store.setProviderModels(p.name, { error: "its key cannot be opened: enter it again" });
       return "its key cannot be opened: enter it again";
@@ -1553,7 +1562,7 @@ ${runsNow ? `<div class="block"><div class="head"><h2>At work</h2><span class="n
     return "error" in listed ? listed.error : null;
   };
   const typeSelect = (sel?: ProviderType) =>
-    `<select name="type">${(Object.keys(TYPES) as ProviderType[]).map((t) => `<option value="${t}"${t === sel ? " selected" : ""}>${TYPES[t]}</option>`).join("")}</select>`;
+    `<select name="type">${(Object.keys(TYPES) as ProviderType[]).map((t) => `<option value="${t}"${t === sel ? " selected" : ""}>${t === "opencode" ? "OpenCode (its own models)" : TYPES[t]}</option>`).join("")}</select>`;
 
   app.get("/ui/settings", (c) => {
     const now = Date.now();
@@ -1589,7 +1598,7 @@ ${runsNow ? `<div class="block"><div class="head"><h2>At work</h2><span class="n
         const pName = encodeURIComponent(p.name);
         return `<details class="dq${p.models_error ? " dq-bad" : ""}" data-k="provider-${esc(p.name)}"><summary>
 <span class="dq-kind route-name">${esc(TYPES[p.type])}</span>
-<span class="dq-main"><span class="dq-head">${esc(p.name)}</span>${status}<span class="dq-sub"><span class="dq-where">${esc(p.base_url || ANTHROPIC_BASE)}</span><span class="chip">key ${esc(p.key_hint)}</span>${p.base_url.startsWith("http://") ? `<span class="chip warn">not HTTPS</span>` : ""}<span class="dq-where">${rigs.length ? `used by ${rigs.map((x) => esc(x)).join(", ")}` : "no rig uses it"}</span></span></span>
+<span class="dq-main"><span class="dq-head">${esc(p.name)}</span>${status}<span class="dq-sub"><span class="dq-where">${esc(p.base_url || ANTHROPIC_BASE)}</span><span class="chip">${p.key_hint ? `key ${esc(p.key_hint)}` : "no key: its free models"}</span>${p.type === "opencode" ? `<span class="chip info">runs in the OpenCode harness</span>` : ""}${p.base_url.startsWith("http://") ? `<span class="chip warn">not HTTPS</span>` : ""}<span class="dq-where">${rigs.length ? `used by ${rigs.map((x) => esc(x)).join(", ")}` : "no rig uses it"}</span></span></span>
 <span class="dq-side"><span class="dq-btns"><form class="inline" method="post" action="/ui/settings/providers/${pName}/refresh"><input type="hidden" name="csrf" value="${t}"><button>Refresh models</button></form></span></span>
 </summary><div class="dq-body">${list}
 <form method="post" action="/ui/settings/providers/${pName}/models" class="row" style="gap:8px"><input type="hidden" name="csrf" value="${t}"><input name="model" maxlength="200" placeholder="a model it does not list, by its name" style="width:320px"><button>Add it</button></form>
@@ -1608,15 +1617,15 @@ ${
     const addForm = `<form method="post" action="/ui/settings/providers" class="form-grid" autocomplete="off"><input type="hidden" name="csrf" value="${t}">
 <label>Name<input name="name" required maxlength="64" placeholder="for example opencode"></label>
 <label>Type${typeSelect()}</label>
-<label>Base URL<input name="base_url" maxlength="500" placeholder="https://…/v1 (Anthropic: empty for ${ANTHROPIC_BASE})"></label>
-<label>API key<input name="api_key" type="password" autocomplete="new-password" maxlength="4096" required placeholder="never shown again"></label>
+<label>Base URL<input name="base_url" maxlength="500" placeholder="https://…/v1 (Anthropic and OpenCode: empty for their own)"></label>
+<label>API key<input name="api_key" type="password" autocomplete="new-password" maxlength="4096" placeholder="never shown again (OpenCode: empty for its free models)"></label>
 <div class="form-end"><button class="primary">Add and list its models</button></div></form>`;
     const options = (want: { provider: string; model: string } | undefined) =>
       `<option value=""${want ? "" : " selected"}>its own settings</option>${providers
         .filter((p) => p.models.length)
         .map(
           (p) =>
-            `<optgroup label="${esc(p.name)}">${p.models
+            `<optgroup label="${esc(p.name)}${p.type === "opencode" ? " (OpenCode harness only)" : ""}">${p.models
               .map(
                 (m) =>
                   `<option value="${esc(`${encodeURIComponent(p.name)}|${encodeURIComponent(m.id)}`)}"${want?.provider === p.name && want.model === m.id ? " selected" : ""}>${esc(m.id)}</option>`,
@@ -1631,15 +1640,20 @@ ${
         const uses = !m
           ? "Its harness does not report its model (it needs a newer image)."
           : m.source === "control"
-            ? `Its agents use ${m.model} from ${m.name}.`
+            ? `Its agents run under ${HARNESSES[m.harness]} with ${m.model} from ${m.name}.`
             : m.source === "environment"
-              ? `Its agents use the rig's own settings (${m.model}).`
+              ? `Its agents use the rig's own settings (${m.model}, under ${HARNESSES[m.harness]}).`
               : "Its agents have no model: they wait.";
         const moving =
           m &&
           want &&
-          !(m.source === "control" && m.name === want.provider && m.model === want.model)
-            ? ` <span class="chip info">taking ${esc(want.model)}</span>`
+          !(
+            m.source === "control" &&
+            m.name === want.provider &&
+            m.model === want.model &&
+            m.harness === want.harness
+          )
+            ? ` <span class="chip info">taking ${esc(want.model)} under ${esc(HARNESSES[want.harness])}</span>`
             : m && !want && m.source === "control"
               ? ` <span class="chip info">going back to its own settings</span>`
               : "";
@@ -1649,17 +1663,17 @@ ${
           : chk.finished_at === null
             ? "Its model check is running."
             : `Its model check ${chk.ok ? "passed" : "FAILED"} ${ago(chk.finished_at, now)} ago: ${chk.summary ?? ""}`;
-        return `<div class="ck rr-route"><span class="ck-res"><a href="/ui/rigs/${encodeURIComponent(u.id)}"><b>${esc(u.id)}</b></a></span><span class="ck-main"><span>${esc(uses)}${moving}</span><span class="ck-sum ${chk?.finished_at && !chk.ok ? "bad" : ""}">${esc(checked)}</span></span><span class="route-acts"><form class="inline" method="post" action="/ui/settings/rigs"><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="rig" value="${esc(u.id)}"><select name="choice" aria-label="model for ${esc(u.id)}">${options(want)}</select><button>Use</button></form>${cmdForm(c, { rig: u.id, kind: "rig_check", fields: { check: "model" }, label: "Check", back: "/ui/settings" })}</span></div>`;
+        return `<div class="ck rr-route"><span class="ck-res"><a href="/ui/rigs/${encodeURIComponent(u.id)}"><b>${esc(u.id)}</b></a></span><span class="ck-main"><span>${esc(uses)}${moving}</span><span class="ck-sum ${chk?.finished_at && !chk.ok ? "bad" : ""}">${esc(checked)}</span></span><span class="route-acts"><form class="inline" method="post" action="/ui/settings/rigs"><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="rig" value="${esc(u.id)}"><select name="harness" class="harness" aria-label="harness for ${esc(u.id)}">${(Object.keys(HARNESSES) as Harness[]).map((h) => `<option value="${h}"${(want?.harness ?? "pi") === h ? " selected" : ""}>${HARNESSES[h]}</option>`).join("")}</select><select name="choice" aria-label="model for ${esc(u.id)}">${options(want)}</select><button>Use</button></form>${cmdForm(c, { rig: u.id, kind: "rig_check", fields: { check: "model" }, label: "Check", back: "/ui/settings" })}</span></div>`;
       })
       .join("");
     return page(
       c,
       { title: "Settings", active: "settings" },
-      `<p class="run-said">Add a provider once: its name, type, base URL and API key. Thermite lists its models from the provider itself; then you choose which model each rig's agents use. Control keeps each key encrypted and never shows it again.</p>
+      `<p class="run-said">Add a provider once: its name, type, base URL and API key. Thermite lists its models from the provider itself. Then choose, for each rig, the harness its agents run in (Pi or OpenCode v2) and their model: any provider works with either harness, and OpenCode's own models need the OpenCode harness. Control keeps each key encrypted and never shows it again.</p>
 ${note}
 <div class="block"><div class="head"><h2>Model providers</h2><span class="n">${providers.length}</span><span class="right">models come from each provider's own list</span></div>${providers.length ? `<div class="dqs">${providerRows}</div>` : `<div class="card"><div class="empty">No provider yet: add one below.</div></div>`}</div>
 <div class="block"><div class="head"><h2>Add a provider</h2></div><div class="card">${addForm}</div></div>
-<div class="block"><div class="head"><h2>Which model each rig uses</h2><span class="right">a rig takes a change within a minute; then check it</span></div><div class="card flat">${rigRows || `<div class="empty">No rig has reported yet.</div>`}</div></div>`,
+<div class="block"><div class="head"><h2>Harness and model for each rig</h2><span class="right">a rig takes a change within a minute; then check it</span></div><div class="card flat">${rigRows || `<div class="empty">No rig has reported yet.</div>`}</div></div>`,
       vs,
     );
   });
@@ -1760,6 +1774,7 @@ ${note}
     const f = await c.req.parseBody();
     const rig = String(f.rig ?? "");
     const choice = String(f.choice ?? "");
+    const harness: Harness = f.harness === "opencode" ? "opencode" : "pi";
     if (!store.rigs().some((x) => x.id === rig))
       return c.redirect(settingsUrl("error", "No such rig."), 303);
     if (!choice) {
@@ -1782,10 +1797,21 @@ ${note}
     const p = store.provider(provider);
     if (!p?.models.some((m) => m.id === model))
       return c.redirect(settingsUrl("error", "That provider does not list that model."), 303);
-    store.assignRigModel(rig, { provider, model });
-    store.audit("owner:ui", "rig_model_given", { rig, provider, model });
+    if (p.type === "opencode" && harness !== "opencode")
+      return c.redirect(
+        settingsUrl(
+          "error",
+          "OpenCode's own models run only in the OpenCode harness: choose OpenCode v2 for this rig.",
+        ),
+        303,
+      );
+    store.assignRigModel(rig, { provider, model, harness });
+    store.audit("owner:ui", "rig_model_given", { rig, provider, model, harness });
     return c.redirect(
-      settingsUrl("ok", `${rig} takes ${model} from "${provider}" within a minute. Check it then.`),
+      settingsUrl(
+        "ok",
+        `${rig} takes ${model} from "${provider}" under ${HARNESSES[harness]} within a minute, and checks it.`,
+      ),
       303,
     );
   });

@@ -43,6 +43,10 @@ export interface SchedulerOptions {
    * harness runs, and each plan and trial takes the route current when it starts.
    */
   model?: ModelConfig | (() => ModelConfig | undefined) | undefined;
+  /** A planner call through OpenCode, for OpenCode's own models: the answer's text. */
+  askOpencode?:
+    | ((model: ModelConfig, prompt: string, signal?: AbortSignal) => Promise<string>)
+    | undefined;
   /** Runs one trial (in a child process in the harness; in-process in tests); abortable. */
   runTrial: (spec: TrialSpec, signal: AbortSignal) => Promise<TrialResult>;
   /** Research mode: the research service and its trial runner. */
@@ -523,7 +527,14 @@ export class Scheduler {
     this.watch();
     let p: Awaited<ReturnType<typeof plan>>;
     try {
-      p = await plan(input, this.modelNow(), ctrl.signal);
+      const m = this.modelNow();
+      // OpenCode's own models are reached only through OpenCode; every other provider, through Pi.
+      const ask =
+        m?.api === "opencode" && this.o.askOpencode
+          ? (prompt: string, sig?: AbortSignal) =>
+              (this.o.askOpencode as NonNullable<SchedulerOptions["askOpencode"]>)(m, prompt, sig)
+          : undefined;
+      p = await plan(input, m, ctrl.signal, ask);
     } finally {
       this.planning = undefined;
     }

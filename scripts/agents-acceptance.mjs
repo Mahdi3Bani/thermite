@@ -57,6 +57,28 @@ async function dashboard() {
 
 /** The scripted model: plans with submit_plan; lane-1 improves the kernel, lane-2 restates it. */
 function script(messages, tools) {
+  const names = tools.map((t) => t.function.name);
+  // OpenCode (its own tools, shell among them): its model check, then a trial that edits the
+  // kernel and submits with thermite-trial. A request without tools names the session.
+  if (names.includes("shell") && names.includes("execute")) {
+    if (messages.some((m) => m.role === "tool")) return { text: "done" };
+    const asked = JSON.stringify(messages);
+    const word = /run exactly this command: echo (thermite-[a-z0-9]+)/.exec(asked)?.[1];
+    if (word) return { toolCalls: [{ name: "shell", args: { command: `echo ${word}` } }] };
+    return {
+      toolCalls: [
+        {
+          name: "shell",
+          args: {
+            command:
+              "printf '\\n/* tidied */\\n' >> src/kernel/matmul.c && thermite-trial submit --hypothesis 'opencode harness: a tidied kernel'",
+            timeout: 0,
+          },
+        },
+      ],
+    };
+  }
+  if (!tools.length) return { text: "A Thermite trial" };
   // The rig's model check: echo back the word it was given.
   if (tools.some((t) => t.function.name === "echo")) {
     if (messages.some((m) => m.role === "tool")) return { text: "done" };
@@ -323,6 +345,51 @@ try {
       !pages.includes(providerKey) &&
       !JSON.stringify(await events()).includes(providerKey),
     { taken, summary: routeCheck.summary, keys: keysSeen.size },
+  );
+  // The OpenCode harness with the same provider: OpenCode runs as the lane, submits with
+  // thermite-trial, and reaches the provider only through the harness's proxy, which adds the key.
+  await ui.post("/ui/settings/rigs", {
+    csrf,
+    rig: "local-1",
+    choice: "scripted-provider|scripted",
+    harness: "opencode",
+  });
+  await until("the rig runs the model under OpenCode", async () => {
+    const m = (await api("/v1/rigs/local-1/view")).body.model;
+    return m?.source === "control" && m.harness === "opencode" ? m : undefined;
+  });
+  keysSeen.clear();
+  const ocCheck = await until(
+    "OpenCode's model check (run when the rig took the route)",
+    async () =>
+      (await events()).find(
+        (e) => e.kind === "rig_check_finished" && e.body.detail?.harness === "opencode",
+      ),
+    300_000,
+    2000,
+  );
+  const ocAttempt = await until(
+    "a trial under OpenCode submitted",
+    async () =>
+      (await events()).find(
+        (e) =>
+          e.kind === "attempt_recorded" && /opencode harness/.test(String(e.body.hypothesis ?? "")),
+      ),
+    600_000,
+    3000,
+  );
+  check(
+    "OpenCode runs the check and a trial as the lane, submits with thermite-trial, and reaches the provider only through the proxy",
+    ocCheck.body.ok === true &&
+      ocAttempt !== undefined &&
+      keysSeen.has(`Bearer ${providerKey}`) &&
+      ![...keysSeen].some((k) => /Bearer (trial|proxy)\./.test(k)),
+    {
+      check: ocCheck.body.summary,
+      attempt: ocAttempt?.subject,
+      lane: ocAttempt?.body.lane,
+      keys: [...keysSeen].map((k) => k.slice(0, 16)),
+    },
   );
   check(
     "control reports the agents' figures",

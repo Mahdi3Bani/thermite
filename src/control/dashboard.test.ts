@@ -81,6 +81,9 @@ describe("control dashboard", () => {
               data: [{ id: "deepseek-v4.1-flash-free", context_length: 262144 }, { id: "other" }],
             })
           : new Response("no", { status: 401 });
+      // OpenCode's own list needs no key.
+      if (url === "https://opencode.ai/zen/v1/models" && !h.get("authorization"))
+        return Response.json({ data: [{ id: "free-model" }] });
       if (
         url.startsWith("https://api.anthropic.com/v1/models") &&
         h.get("x-api-key") === "sk-ant-x"
@@ -186,7 +189,7 @@ describe("control dashboard", () => {
     assert.equal(statSync(join(dir, "model-route.json")).mode & 0o777, 0o600);
     await s.relay();
     page = await (await s.get("/ui/settings")).text();
-    assert.match(page, /Its agents use deepseek-v4\.1-flash-free from opencode\./);
+    assert.match(page, /Its agents run under Pi with deepseek-v4\.1-flash-free from opencode\./);
     const rig = await (await s.get("/ui/rigs/rig-a")).text();
     assert.match(rig, /The agents now use model route &quot;opencode&quot;/);
     // Nothing the rig reports or records carries the key.
@@ -211,6 +214,54 @@ describe("control dashboard", () => {
     assert.equal(await syncModelRoute(sync), "set");
     assert.equal(s.env.service.models.current()?.api, "anthropic");
     assert.equal(s.env.service.models.current()?.baseUrl, "https://api.anthropic.com");
+    // OpenCode's own provider needs no key, and its models run only in the OpenCode harness.
+    const oc = await s.post("/ui/settings/providers", {
+      csrf,
+      name: "zen",
+      type: "opencode",
+      base_url: "",
+    });
+    assert.match(where(oc), /lists 1 model/);
+    assert.equal(s.store.provider("zen")?.key_sealed, "");
+    const underPi = await s.post("/ui/settings/rigs", {
+      csrf,
+      rig: "rig-a",
+      choice: "zen|free-model",
+      harness: "pi",
+    });
+    assert.match(where(underPi), /run only in the OpenCode harness/);
+    await s.post("/ui/settings/rigs", {
+      csrf,
+      rig: "rig-a",
+      choice: "zen|free-model",
+      harness: "opencode",
+    });
+    assert.equal(await syncModelRoute(sync), "set");
+    const zen = s.env.service.models.current();
+    assert.equal(zen?.harness, "opencode");
+    assert.equal(zen?.api, "opencode");
+    assert.equal(zen?.apiKey, "");
+    await s.relay();
+    page = await (await s.get("/ui/settings")).text();
+    assert.match(page, /Its agents run under OpenCode v2 with free-model from zen\./);
+    // Any other provider works under OpenCode too (through the harness's key-adding proxy).
+    await s.post("/ui/settings/rigs", {
+      csrf,
+      rig: "rig-a",
+      choice: "opencode|deepseek-v4.1-flash-free",
+      harness: "opencode",
+    });
+    assert.equal(await syncModelRoute(sync), "set");
+    assert.equal(s.env.service.models.current()?.harness, "opencode");
+    assert.equal(s.env.service.models.current()?.api, undefined);
+    await s.post("/ui/settings/rigs", {
+      csrf,
+      rig: "rig-a",
+      choice: "anthropic|claude-test",
+      harness: "pi",
+    });
+    assert.equal(await syncModelRoute(sync), "set");
+    await s.post("/ui/settings/providers/zen/delete", { csrf });
     // Back to the rig's own settings; a provider in use cannot be deleted meanwhile.
     const busy = await s.post("/ui/settings/providers/anthropic/delete", { csrf });
     assert.match(where(busy), /still in use/);

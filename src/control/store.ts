@@ -198,7 +198,8 @@ export interface IngestReport {
   summary: unknown;
 }
 
-export type ProviderType = "openai" | "anthropic";
+export type ProviderType = "openai" | "anthropic" | "opencode";
+export type Harness = "pi" | "opencode";
 
 /** A model in a provider's list: its id, and its context window when the provider says it. */
 export interface ProviderModel {
@@ -231,7 +232,7 @@ function providerOf(r: Row): ModelProvider {
   }
   return {
     name: String(r.name),
-    type: r.type === "anthropic" ? "anthropic" : "openai",
+    type: r.type === "anthropic" || r.type === "opencode" ? r.type : "openai",
     base_url: String(r.base_url),
     key_sealed: String(r.key_sealed),
     key_hint: String(r.key_hint),
@@ -260,6 +261,11 @@ export class ControlStore {
       this.db.exec("alter table rig add column pending_pubkey text");
     if (!cols.includes("report_at")) this.db.exec("alter table rig add column report_at text");
     migrateModelRoutes(this.db);
+    const rigModelCols = (this.db.prepare("pragma table_info(rig_model)").all() as Row[]).map(
+      (r) => r.name,
+    );
+    if (!rigModelCols.includes("harness"))
+      this.db.exec("alter table rig_model add column harness text not null default 'pi'");
     if (!cols.includes("supervisor")) {
       this.db.exec("alter table rig add column supervisor text");
       this.db.exec("alter table rig add column supervisor_at text");
@@ -811,7 +817,8 @@ export class ControlStore {
     key?: { sealed: string; hint: string } | undefined;
   }): "created" | "updated" | "needs_key" {
     const old = this.provider(p.name);
-    if (!old && !p.key) return "needs_key";
+    // OpenCode's own free models need no key; every other provider does.
+    if (!old && !p.key && p.type !== "opencode") return "needs_key";
     this.db
       .prepare(
         `insert into model_provider (name, type, base_url, key_sealed, key_hint, version, updated_at)
@@ -883,8 +890,14 @@ export class ControlStore {
     return "deleted";
   }
 
-  /** Gives a rig's agents a provider's model, or (null) returns them to the rig's own settings. */
-  assignRigModel(rig: string, choice: { provider: string; model: string } | null): void {
+  /**
+   * Gives a rig's agents a harness and a provider's model, or (null) returns them to the rig's own
+   * settings.
+   */
+  assignRigModel(
+    rig: string,
+    choice: { provider: string; model: string; harness?: Harness | undefined } | null,
+  ): void {
     if (choice === null) {
       this.db.prepare("delete from rig_model where rig = ?").run(rig);
       return;
@@ -892,25 +905,36 @@ export class ControlStore {
     if (!this.provider(choice.provider)) throw new Error(`no model provider ${choice.provider}`);
     this.db
       .prepare(
-        `insert into rig_model (rig, provider, model, assigned_at) values (?, ?, ?, ?)
+        `insert into rig_model (rig, provider, model, harness, assigned_at) values (?, ?, ?, ?, ?)
          on conflict (rig) do update set provider = excluded.provider, model = excluded.model,
-           assigned_at = excluded.assigned_at`,
+           harness = excluded.harness, assigned_at = excluded.assigned_at`,
       )
-      .run(rig, choice.provider, choice.model, new Date().toISOString());
+      .run(rig, choice.provider, choice.model, choice.harness ?? "pi", new Date().toISOString());
   }
 
-  /** Each rig's provider and model. */
-  rigModels(): Record<string, { provider: string; model: string }> {
-    const rows = this.db.prepare("select rig, provider, model from rig_model").all() as Row[];
+  /** Each rig's provider, model and harness. */
+  rigModels(): Record<string, { provider: string; model: string; harness: Harness }> {
+    const rows = this.db
+      .prepare("select rig, provider, model, harness from rig_model")
+      .all() as Row[];
     return Object.fromEntries(
-      rows.map((r) => [String(r.rig), { provider: String(r.provider), model: String(r.model) }]),
+      rows.map((r) => [
+        String(r.rig),
+        {
+          provider: String(r.provider),
+          model: String(r.model),
+          harness: r.harness === "opencode" ? ("opencode" as const) : ("pi" as const),
+        },
+      ]),
     );
   }
 
-  rigModelFor(rig: string): { provider: ModelProvider; model: string } | undefined {
+  rigModelFor(
+    rig: string,
+  ): { provider: ModelProvider; model: string; harness: Harness } | undefined {
     const c = this.rigModels()[rig];
     const provider = c ? this.provider(c.provider) : undefined;
-    return c && provider ? { provider, model: c.model } : undefined;
+    return c && provider ? { provider, model: c.model, harness: c.harness } : undefined;
   }
 
   events(rig: string, after: number, limit: number, ledgerId?: string | null): unknown[] {

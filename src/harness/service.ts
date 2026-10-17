@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
@@ -677,6 +677,33 @@ export class HarnessService {
   /** Where the agents' model route comes from (control's route, else the rig's settings). */
   models: ModelSource | undefined;
 
+  /** Credentials the model proxy takes besides trials' tokens: one per check or planner call. */
+  private proxyTokens = new Map<string, number>();
+
+  /** A credential for the model proxy that lasts `ms` (an OpenCode model check or plan). */
+  mintProxyToken(ms = 15 * 60_000): string {
+    const now = Date.now();
+    for (const [t, until] of this.proxyTokens) if (until < now) this.proxyTokens.delete(t);
+    const token = `proxy.${randomBytes(24).toString("hex")}`;
+    this.proxyTokens.set(token, now + ms);
+    return token;
+  }
+
+  proxyTokenValid(token: string): boolean {
+    const until = this.proxyTokens.get(token);
+    return until !== undefined && until >= Date.now();
+  }
+
+  /** A trial's submission, once it has one: its attempt and where the attempt stands. */
+  trialSubmission(trialId: string): { attempt: string; lifecycle: string } | undefined {
+    const t = this.ledger.db.prepare("select attempt from trial where id = ?").get(trialId) as
+      | { attempt: string | null }
+      | undefined;
+    if (!t?.attempt) return undefined;
+    const a = this.ledger.getAttempt(t.attempt);
+    return { attempt: t.attempt, lifecycle: String(a?.lifecycle ?? "recorded") };
+  }
+
   /**
    * Takes the model route control set for this rig, or (null) goes back to the rig's own
    * settings. The record names the route, never its key. New plans and trials use it.
@@ -689,6 +716,10 @@ export class HarnessService {
     this.ledger.appendEvent(by, route ? "model_route_set" : "model_route_cleared", null, {
       ...info,
     });
+    // A new model is checked at once (unless a check is running): its result shows on the
+    // settings page without anyone pressing Check.
+    if (info.source !== "none" && this.rigChecks.model && !this.checking)
+      this.startRigCheck({ check: "model" }, "harness");
     return info;
   }
   private checking: string | undefined;

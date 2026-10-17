@@ -6,7 +6,9 @@ import { type ModelConfig, reasoningFromEnv } from "./model.ts";
 export const ControlRoute = z.strictObject({
   name: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/),
   /** The provider's API (the first version's routes had none: OpenAI-compatible). */
-  type: z.enum(["openai", "anthropic"]).default("openai"),
+  type: z.enum(["openai", "anthropic", "opencode"]).default("openai"),
+  /** The harness the agents run in (the first versions' routes had none: Pi). */
+  harness: z.enum(["pi", "opencode"]).default("pi"),
   version: z.number().int().min(1),
   base_url: z
     .string()
@@ -20,7 +22,8 @@ export const ControlRoute = z.strictObject({
   key_hint: z.string().max(16),
   /** Changes whenever anything about the route does (control's digest of it). */
   revision: z.string().regex(/^[0-9a-f]{8,64}$/),
-  api_key: z.string().min(1).max(4096),
+  /** OpenCode's own free models need none: an empty key. */
+  api_key: z.string().max(4096),
 });
 export type ControlRoute = z.input<typeof ControlRoute>;
 
@@ -30,6 +33,8 @@ export interface ModelInfo {
   name?: string | undefined;
   version?: number | undefined;
   revision?: string | undefined;
+  /** The harness the agents run in. */
+  harness?: "pi" | "opencode" | undefined;
   model?: string | undefined;
   base_url?: string | undefined;
   key_hint?: string | undefined;
@@ -62,7 +67,8 @@ export class ModelSource {
     const r = this.route;
     if (!r) return this.fromEnv;
     return {
-      api: r.type === "anthropic" ? "anthropic" : undefined,
+      api: r.type === "anthropic" || r.type === "opencode" ? r.type : undefined,
+      harness: r.harness === "opencode" ? "opencode" : undefined,
       baseUrl: r.base_url.replace(/\/$/, ""),
       model: r.model,
       apiKey: r.api_key,
@@ -80,12 +86,18 @@ export class ModelSource {
         name: r.name,
         version: r.version,
         revision: r.revision,
+        harness: r.harness ?? "pi",
         model: r.model,
         base_url: r.base_url,
         key_hint: r.key_hint,
       };
     return this.fromEnv
-      ? { source: "environment", model: this.fromEnv.model, base_url: this.fromEnv.baseUrl }
+      ? {
+          source: "environment",
+          model: this.fromEnv.model,
+          base_url: this.fromEnv.baseUrl,
+          harness: this.fromEnv.harness ?? "pi",
+        }
       : { source: "none" };
   }
 

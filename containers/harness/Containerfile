@@ -12,6 +12,17 @@ RUN npm run build && npm prune --omit=dev --no-fund --no-audit
 
 FROM ${NODE_IMAGE} AS node
 
+# OpenCode v2, the worker harness a rig may choose instead of Pi: one pinned release's binary
+# (npm checks the package against the registry's hash).
+FROM ${NODE_IMAGE} AS opencode
+ARG OPENCODE_VERSION=2.0.32
+ARG TARGETARCH
+RUN cd /tmp \
+ && npm pack --silent "@opencode/cli-linux-$([ "$TARGETARCH" = arm64 ] && echo arm64 || echo x64)@${OPENCODE_VERSION}" \
+ && tar -xzf opencode-cli-linux-*.tgz package/bin/opencode \
+ && install -m 0755 package/bin/opencode /usr/local/bin/opencode \
+ && rm -rf /tmp/*
+
 FROM ${BASE_IMAGE}
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 # git for the mirror; a C/C++ toolchain, CMake, Ninja and ccache for kit and lane builds of real
@@ -49,6 +60,9 @@ COPY --from=build /src/package.json ./
 COPY --from=build /src/node_modules ./node_modules
 COPY --from=build /src/dist ./dist
 COPY containers/thermite /usr/local/bin/thermite
+# The OpenCode harness: its binary, and Thermite's tools for an agent's own shell.
+COPY --from=opencode /usr/local/bin/opencode /usr/local/bin/opencode
+COPY containers/thermite-trial /usr/local/bin/thermite-trial
 # The smoke check's kits and projects (the rig_check smoke command builds them into a campaign).
 COPY kits ./checks/kits
 COPY examples ./checks/examples

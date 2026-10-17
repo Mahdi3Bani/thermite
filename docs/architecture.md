@@ -82,6 +82,10 @@ The supervisor is the rig's link to everything outside:
   - A rig receives a provider's key only when the owner gives it one of the provider's models. Its supervisor fetches it over its own authenticated channel and hands it to the harness, which keeps it readable by root alone.
   - The key is never in a command, an event, an export or a log. A worker gets it in its environment, which the lane's commands, running as another user, cannot read.
   - Control calls providers over HTTPS to list their models; it needs that much outbound access.
+- **Worker harnesses.** Each rig's agents run in Pi (built in) or OpenCode v2, chosen with the model on the settings page.
+  - Under OpenCode, a trial runs `opencode run` headless in the lane's workspace, as the lane's own user, with its own tools approved and under the lane's memory, disk and time limits. It has exactly the access the lane's commands have, and none of the judge's. Thermite's tools are the `thermite-trial` command (submit, dev runs, status), which calls the harness API with the trial's token.
+  - OpenCode reaches the rig's provider through a proxy in the harness API, which takes the trial's token and adds the provider's key, so the key never reaches the lane. OpenCode's own models need no key.
+  - OpenCode's permission rules are not treated as a boundary; the user it runs as is.
 - **Reports are signed by the harness.** The supervisor relays them but cannot forge, replay or thin them out:
   - each report carries the harness's time and its latest event;
   - control takes a report only if it continues the stream it has, is newer than the last one, and comes from the rig's current ledger;

@@ -8,11 +8,21 @@ import type { ProviderModel, ProviderType } from "./store.ts";
 
 /** Anthropic's API, when its base URL is left empty. */
 export const ANTHROPIC_BASE = "https://api.anthropic.com";
+/** OpenCode's own models (its free ones need no key), when its base URL is left empty. */
+export const OPENCODE_BASE = "https://opencode.ai/zen/v1";
 
-/** A provider's base URL as its API client takes it (Anthropic's has no /v1: the client adds it). */
+/**
+ * A provider's base URL as its API client takes it. A pasted endpoint URL is trimmed back to its
+ * base: an OpenAI-compatible one loses /models or /chat/completions; Anthropic's has no /v1 (the
+ * client adds it).
+ */
 export function providerBase(type: ProviderType, base: string): string {
-  const b = base.trim().replace(/\/+$/, "");
+  const b = base
+    .trim()
+    .replace(/\/+$/, "")
+    .replace(/\/(models|chat\/completions|messages|completions)$/, "");
   if (type === "anthropic") return (b || ANTHROPIC_BASE).replace(/\/v1$/, "");
+  if (type === "opencode") return b || OPENCODE_BASE;
   return b;
 }
 
@@ -34,10 +44,13 @@ export async function listModels(
   fetchImpl: typeof fetch = fetch,
 ): Promise<ProviderModel[] | { error: string }> {
   const root = providerBase(type, base);
+  // OpenCode's own list needs no key (its free models need none).
   const headers: Record<string, string> =
     type === "anthropic"
       ? { "x-api-key": key, "anthropic-version": "2023-06-01" }
-      : { authorization: `Bearer ${key}` };
+      : key
+        ? { authorization: `Bearer ${key}` }
+        : {};
   const out: ProviderModel[] = [];
   let after: string | undefined;
   // Anthropic pages its list; OpenAI-compatible providers answer in one.

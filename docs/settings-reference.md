@@ -62,7 +62,9 @@ or its assignment instead: lane limits, trial length, budgets and the run's prom
 
 A model chosen for the rig on control's **Settings** page comes before these, and needs none of
 them: the rig receives it, with its provider's key, through its supervisor. These settings are for
-a rig that keeps its own model. `THERMITE_MODEL_API` is `openai` (the default) or `anthropic`. Their older names, `QWEN_*`, are still read when the new ones are unset.
+a rig that keeps its own model. `THERMITE_MODEL_API` is `openai` (the default), `anthropic` or
+`opencode` (OpenCode's own models); `THERMITE_AGENT_HARNESS` is `pi` (the default) or `opencode`.
+`THERMITE_OPENCODE_BIN` names the OpenCode binary when it is not `opencode` on the PATH. Their older names, `QWEN_*`, are still read when the new ones are unset.
 
 ### Places and exports
 

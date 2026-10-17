@@ -11,8 +11,13 @@ import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completio
 export type ReasoningEffort = "off" | "low" | "medium" | "high";
 
 export interface ModelConfig {
-  /** The provider's API: OpenAI-compatible chat completions (the default) or Anthropic's Messages. */
-  api?: "openai" | "anthropic" | undefined;
+  /**
+   * The provider's API: OpenAI-compatible chat completions (the default), Anthropic's Messages,
+   * or OpenCode's own models (only the OpenCode harness reaches those).
+   */
+  api?: "openai" | "anthropic" | "opencode" | undefined;
+  /** The harness the agents run in: Pi, in-process (the default), or OpenCode v2. */
+  harness?: "pi" | "opencode" | undefined;
   baseUrl: string;
   model: string;
   apiKey: string;
@@ -45,6 +50,7 @@ export const MODEL_SETTINGS = {
   maxTokens: ["THERMITE_MODEL_MAX_TOKENS", "QWEN_MAX_TOKENS"],
   reasoning: ["THERMITE_MODEL_REASONING_EFFORT", "QWEN_REASONING_EFFORT"],
   api: ["THERMITE_MODEL_API", "QWEN_MODEL_API"],
+  harness: ["THERMITE_AGENT_HARNESS", "QWEN_AGENT_HARNESS"],
 } as const;
 
 /** Every variable name the model route may be read from (new names and their aliases). */
@@ -70,10 +76,14 @@ export function modelConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ModelC
   const apiKey = setting(env, MODEL_SETTINGS.apiKey);
   if (!baseUrl || !model || !apiKey) return undefined;
   const api = setting(env, MODEL_SETTINGS.api);
-  if (api !== undefined && api !== "openai" && api !== "anthropic")
-    throw new Error(`THERMITE_MODEL_API must be openai or anthropic, not ${api}`);
+  if (api !== undefined && api !== "openai" && api !== "anthropic" && api !== "opencode")
+    throw new Error(`THERMITE_MODEL_API must be openai, anthropic or opencode, not ${api}`);
+  const harness = setting(env, MODEL_SETTINGS.harness);
+  if (harness !== undefined && harness !== "pi" && harness !== "opencode")
+    throw new Error(`THERMITE_AGENT_HARNESS must be pi or opencode, not ${harness}`);
   return {
-    api: api === "anthropic" ? "anthropic" : undefined,
+    api: api === "anthropic" || api === "opencode" ? api : undefined,
+    harness: harness === "opencode" ? "opencode" : undefined,
     baseUrl: baseUrl.replace(/\/$/, ""),
     model,
     apiKey,
@@ -89,7 +99,8 @@ export function modelConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ModelC
 /** A route as a worker's environment (THERMITE_MODEL_*), for a worker started on it. */
 export function modelEnv(cfg: ModelConfig): Record<string, string> {
   return {
-    ...(cfg.api === "anthropic" ? { THERMITE_MODEL_API: "anthropic" } : {}),
+    ...(cfg.api && cfg.api !== "openai" ? { THERMITE_MODEL_API: cfg.api } : {}),
+    ...(cfg.harness === "opencode" ? { THERMITE_AGENT_HARNESS: "opencode" } : {}),
     THERMITE_MODEL_BASE_URL: cfg.baseUrl,
     THERMITE_MODEL: cfg.model,
     THERMITE_MODEL_API_KEY: cfg.apiKey,

@@ -196,10 +196,14 @@ goal_report is the judge's check of the champion: aim lanes at goals it does not
 "not run" waits on a goal it requires), never at work the champion already does. Answer only by
 calling submit_plan once.`;
 
+/** A planner call through another harness (OpenCode): the prompt in, the model's answer out. */
+export type Ask = (prompt: string, signal?: AbortSignal) => Promise<string>;
+
 export async function plan(
   input: PlannerInput,
   model?: ModelConfig,
   signal?: AbortSignal,
+  ask?: Ask,
 ): Promise<PlanResult> {
   const rawViolations: string[] = [];
   if (model) {
@@ -222,7 +226,9 @@ export async function plan(
       if (signal?.aborted) break;
       let raw: unknown;
       try {
-        raw = await callPlanner(model, `${context}${feedback}`, signal);
+        raw = ask
+          ? await askPlanner(ask, `${context}${feedback}`, signal)
+          : await callPlanner(model, `${context}${feedback}`, signal);
       } catch (err) {
         rawViolations.push(`try ${tries}: ${err instanceof Error ? err.message : String(err)}`);
         continue;
@@ -240,7 +246,7 @@ export async function plan(
         };
       }
       rawViolations.push(...errors.map((e) => `try ${tries}: ${e}`));
-      feedback = `\n\nYour previous plan was refused:\n- ${errors.join("\n- ")}\nCall submit_plan again with a corrected plan.`;
+      feedback = `\n\nYour previous plan was refused:\n- ${errors.join("\n- ")}\n${ask ? "Answer again with a corrected plan." : "Call submit_plan again with a corrected plan."}`;
     }
   }
   const f = fallbackPlan(input);
@@ -252,6 +258,24 @@ export async function plan(
     assignments: f.assignments,
     newFamilies: f.newFamilies,
   };
+}
+
+/** The planner through another harness: the same instructions, with the plan as JSON text. */
+async function askPlanner(ask: Ask, context: string, signal?: AbortSignal): Promise<unknown> {
+  const text = await ask(
+    `${SYSTEM.replace(
+      "Answer only by calling submit_plan once.",
+      'Answer with only the plan, as one JSON object: {"new_families": [{"id": "...", "description": "..."}], "assignments": [{"lane": "lane-1", "family": "...", "focus": "...", "parent": "champion" or "lane_best"}], "notes": "..."}. Use no tools.',
+    )}\n\nThe campaign, as JSON:\n${context}`,
+    signal,
+  );
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text)?.[1];
+  const body = fenced ?? text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
+  try {
+    return JSON.parse(body);
+  } catch {
+    throw new Error(`the planner's answer was not a JSON plan: ${text.slice(0, 200)}`);
+  }
 }
 
 async function callPlanner(

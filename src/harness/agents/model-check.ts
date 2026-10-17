@@ -23,7 +23,8 @@ type Reply = {
  * time, the reply's stop reason and token use, and whether the reply carried thinking: what a
  * new or changed model server most often gets wrong (no tool calls, a cut-off reply, a refusal).
  */
-export async function checkModel(cfg: ModelConfig, timeoutMs = 300_000): Promise<RigCheckReport> {
+// One short tool call: a route that has not answered in two minutes is not working.
+export async function checkModel(cfg: ModelConfig, timeoutMs = 120_000): Promise<RigCheckReport> {
   const { models, model, thinkingLevel } = buildModel(cfg);
   const word = `thermite-${Math.random().toString(36).slice(2, 8)}`;
   let echoed: string | undefined;
@@ -49,7 +50,11 @@ export async function checkModel(cfg: ModelConfig, timeoutMs = 300_000): Promise
     streamFn: models.streamSimple.bind(models),
   });
   const started = Date.now();
-  const timer = setTimeout(() => agent.abort(), timeoutMs);
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    agent.abort();
+  }, timeoutMs);
   let thrown: string | undefined;
   try {
     await agent.prompt(`Call echo with the word ${word}.`);
@@ -86,8 +91,9 @@ export async function checkModel(cfg: ModelConfig, timeoutMs = 300_000): Promise
       detail,
     };
   }
-  const why =
-    echoed !== undefined
+  const why = timedOut
+    ? `no answer in ${Math.round(timeoutMs / 1000)} s (is the model up?)`
+    : echoed !== undefined
       ? `it called the tool with "${echoed.slice(0, 80)}", not "${word}"`
       : detail.error
         ? `no tool call: ${String(detail.error).slice(0, 300)}`

@@ -313,9 +313,10 @@ export function createControlApi(
     const r = store.rigModelFor(c.req.param("rig"));
     if (!r) return c.json({ route: null });
     const p = r.provider;
-    let key: string;
+    let key = "";
     try {
-      key = secrets.open(p.key_sealed);
+      // OpenCode's own provider may have no key (its free models need none).
+      if (p.key_sealed) key = secrets.open(p.key_sealed);
     } catch {
       return c.json({ error: "the provider's key cannot be opened: enter it again" }, 409);
     }
@@ -325,6 +326,7 @@ export function createControlApi(
       route: {
         name: p.name,
         type: p.type,
+        harness: r.harness,
         version: p.version,
         base_url: base,
         model: r.model,
@@ -334,7 +336,9 @@ export function createControlApi(
         key_hint: p.key_hint,
         // Changes with anything about the route, even a provider deleted and made again.
         revision: sha256Hex(
-          [p.name, p.type, p.version, base, r.model, contextWindow, p.key_sealed].join("\n"),
+          [p.name, p.type, r.harness, p.version, base, r.model, contextWindow, p.key_sealed].join(
+            "\n",
+          ),
         ).slice(0, 16),
         api_key: key,
       },

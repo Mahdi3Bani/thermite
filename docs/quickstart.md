@@ -62,11 +62,16 @@ Anthropic. You add it on the dashboard, with no restart:
 1. Open **Settings** and add a provider: a name, its type, its base URL (for an OpenAI-compatible
    provider, the URL ending in `/v1`; for Anthropic, leave it empty) and its API key. Control
    lists the provider's models from the provider itself.
-2. Under **Which model each rig uses**, choose a model for the rig and press **Use**. The rig takes
-   it within a minute.
-3. Press **Check**. The rig's **model** check sends one request through it, which must come back
-   as a correct tool call. If it fails, its sentence says what came back instead: no tool call, a
-   refusal, or a cut-off reply.
+2. Under **Harness and model for each rig**, choose the harness the rig's agents run in and their
+   model, then press **Use**. The rig takes it within a minute and checks it at once: one request
+   through it must come back as a correct tool call. If it fails, its sentence says what came back
+   instead: no tool call, a refusal, or a cut-off reply. **Check** runs it again.
+
+The harness is **Pi** (built in) or **OpenCode v2**. Under OpenCode, each trial runs `opencode` in
+the lane's workspace as the lane's own user, with its own tools approved, and submits with the
+`thermite-trial` command; a provider's key stays in the harness, which adds it to OpenCode's
+requests. Any provider works with either harness. OpenCode's own models (add a provider of type
+OpenCode, with no key for its free models) run only under OpenCode.
 
 Control keeps the key encrypted and never shows it again: the page shows only its last four
 characters. Only the rigs you give one of the provider's models receive the key, and the agents

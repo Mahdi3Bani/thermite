@@ -58,6 +58,19 @@ describe("a provider's model list", () => {
       providerBase("anthropic", "https://api.anthropic.com/v1/"),
       "https://api.anthropic.com",
     );
+    // A pasted endpoint URL comes back to its base.
+    assert.equal(
+      providerBase("openai", "https://p.example/zen/v1/models"),
+      "https://p.example/zen/v1",
+    );
+    assert.equal(
+      providerBase("openai", "https://p.example/v1/chat/completions/"),
+      "https://p.example/v1",
+    );
+    assert.equal(
+      providerBase("anthropic", "https://api.anthropic.com/v1/messages"),
+      "https://api.anthropic.com",
+    );
   });
 
   test("failures say what went wrong, never with the key", async () => {
@@ -98,7 +111,9 @@ describe("the first settings page's routes", () => {
     assert.equal(p?.type, "openai");
     assert.equal(p?.key_sealed, "s1:x");
     assert.deepEqual(p?.models, [{ id: "m-1", added: true }]);
-    assert.deepEqual(store.rigModels(), { "rig-a": { provider: "oc", model: "m-1" } });
+    assert.deepEqual(store.rigModels(), {
+      "rig-a": { provider: "oc", model: "m-1", harness: "pi" },
+    });
     assert.equal(
       store.db.prepare("select 1 from sqlite_master where name = 'model_route'").get(),
       undefined,
