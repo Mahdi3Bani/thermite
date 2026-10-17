@@ -53,6 +53,47 @@ describe("judge pipeline (local runner, Node test kit)", () => {
     assert.ok(Number(receipts?.n) >= 7, `receipts ${receipts?.n}`);
   });
 
+  test("a score from the judge's clock as plain time: a faster kernel wins on lower seconds", async () => {
+    const env = await setup({
+      kitMetrics: { seconds: { unit: "s", from: "time" } },
+      contract: {
+        objective: { primary: { metric: "seconds", direction: "min", min_effect: 0.1 } },
+      },
+    });
+    const id = await env.submit(FAST_KERNEL, "drop the wasted inner loop");
+    await env.drain();
+    const history = env.ledger.db
+      .prepare("select verdict from verdict where attempt = ? order by id")
+      .all(id)
+      .map((r) => r.verdict);
+    assert.deepEqual(history, ["win_screened", "win_confirmed"], why(env, id));
+    const m = env.ledger.db
+      .prepare("select distinct metric from measurement")
+      .all()
+      .map((r) => r.metric);
+    assert.deepEqual(m, ["seconds"]);
+  });
+
+  test("a score the check works out from the output: measured as the check reports it", async () => {
+    // The test kit's check reports the result it read as `value`: the same for both arms.
+    const env = await setup({
+      kitMetrics: { value: { unit: "", from: "check", field: "value" } },
+      contract: { objective: { primary: { metric: "value", direction: "max", min_effect: 0.1 } } },
+    });
+    const id = await env.submit(FAST_KERNEL, "drop the wasted inner loop");
+    await env.drain();
+    const last = env.ledger.db
+      .prepare("select verdict from verdict where attempt = ? order by id desc limit 1")
+      .get(id) as { verdict: string };
+    assert.equal(last.verdict, "neutral", why(env, id));
+    const values = env.ledger.db
+      .prepare("select distinct value from measurement where metric = 'value'")
+      .all()
+      .map((r) => Number(r.value));
+    assert.deepEqual(values, [values[0]]);
+    assert.ok((values[0] ?? 0) > 0);
+  });
+
   test("a run driver from run.copy is copied into each run, and a win still promotes", async () => {
     const env = await setup({ runCopy: true });
     const id = await env.submit(FAST_KERNEL, "drop the wasted inner loop");

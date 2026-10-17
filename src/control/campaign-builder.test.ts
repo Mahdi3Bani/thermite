@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
@@ -113,6 +113,41 @@ describe("the new-campaign page's builder", () => {
     assert.match(fail.reasons[0] ?? "", /^the check exited 1/);
   });
 
+  test("{args} split as written, {input} from the kit's inputs, and a check's own score passed on", () => {
+    const b = buildCampaign({
+      ...hillClimb,
+      kit: {
+        ...here,
+        cases: [{ name: "light", args: "--users 10 --tag 'a b'", input: "req.log", work: 1 }],
+        inputs: [{ name: "req.log", content_base64: Buffer.from("GET /\n").toString("base64") }],
+        run: "printf '%s|' {args} > {out}/args.txt; cat {input} > {out}/copy.log",
+        check: 'echo noise; echo \'{"pass": true, "p99_ms": 12.5}\'',
+        held_out: [],
+      },
+    });
+    assert.ok(b.ok && b.kit, JSON.stringify(!b.ok && b.errors));
+    if (!b.ok || !b.kit) return;
+    const kit = checkout(b.kit);
+    const out = mkdtempSync(join(tmpdir(), "thermite-out-"));
+    const params = join(out, "..", `params-args-${process.pid}.txt`);
+    writeFileSync(
+      params,
+      paramsText({ args: "--users 10 --tag 'a b'", input: "req.log", work: 1 }),
+    );
+    execFileSync("sh", [join(kit, "run/run.sh"), "/b", out, params, join(kit, "run")]);
+    // Word-split as the shell splits a line: the quotes in the arguments stay as characters.
+    assert.equal(readFileSync(join(out, "args.txt"), "utf8"), "--users|10|--tag|'a|b'|");
+    assert.equal(readFileSync(join(out, "copy.log"), "utf8"), "GET /\n");
+    const verdict = execFileSync(
+      "sh",
+      [join(kit, "check/check.sh"), "/b", out, params, join(kit, "check")],
+      {
+        encoding: "utf8",
+      },
+    );
+    assert.deepEqual(JSON.parse(verdict.trim()), { pass: true, p99_ms: 12.5 });
+  });
+
   test("a command with quotes survives the wrapper, and an unknown placeholder is refused in words", () => {
     const quoted = shellCommand(`echo 'it''s {n}' > {out}/x`, new Set(["n"]));
     assert.equal(quoted.text, `echo 'it''s "$P_n"' > "$OUT"/x`);
@@ -124,13 +159,58 @@ describe("the new-campaign page's builder", () => {
     assert.match(JSON.stringify(!b.ok && b.errors), /\{size\} is not a placeholder here/);
   });
 
-  test("a hill climb needs each case's work; goals become verifiers and thresholds", () => {
-    const noWork = buildCampaign({
+  test("without work per case the score is time; a check's number or a rate when asked; goals become verifiers and thresholds", () => {
+    const time = buildCampaign({
       ...hillClimb,
       kit: { ...here, cases: [{ name: "small", params: { n: 64 } }], held_out: [] },
+      score: { kind: "time" },
     });
-    assert.equal(noWork.ok, false);
-    assert.match(JSON.stringify(!noWork.ok && noWork.errors), /needs its work per run/);
+    assert.ok(time.ok, JSON.stringify(!time.ok && time.errors));
+    if (time.ok) {
+      const kit = KitSchema.parse(JSON.parse(String(time.kit?.files["kit.json"])));
+      assert.deepEqual(kit.metrics, { seconds: { unit: "s", from: "time" } });
+      assert.deepEqual((time.contract.objective as { primary: unknown }).primary, {
+        metric: "seconds",
+        direction: "min",
+        min_effect: 0.05,
+      });
+    }
+    const checked = buildCampaign({
+      ...hillClimb,
+      kit: {
+        ...here,
+        cases: [
+          { name: "validation", input: "val.csv" },
+          { name: "test", input: "test.csv", hidden: true },
+        ],
+        inputs: [
+          { name: "val.csv", content_base64: Buffer.from("a,b\n").toString("base64") },
+          { name: "test.csv", content_base64: Buffer.from("c,d\n").toString("base64") },
+        ],
+        run: "python3 predict.py --data {input} --out {out}/predictions.csv",
+        check: "python3 {kit}/score.py {out}/predictions.csv",
+        held_out: [],
+        runs_per_case: 3,
+      },
+      score: { kind: "check", field: "accuracy", unit: "%", direction: "max" },
+    });
+    assert.ok(checked.ok, JSON.stringify(!checked.ok && checked.errors));
+    if (checked.ok) {
+      const kit = KitSchema.parse(JSON.parse(String(checked.kit?.files["kit.json"])));
+      assert.deepEqual(kit.metrics, { accuracy: { unit: "%", from: "check", field: "accuracy" } });
+      assert.deepEqual(kit.cells.test, { input: "test.csv" });
+      assert.deepEqual(checked.contract.cells, ["validation"]);
+      assert.deepEqual(checked.contract.held_out_cells, ["test"]);
+      assert.deepEqual(checked.contract.acceptance, { runs_per_cell: 3 });
+      assert.ok(
+        checked.kit?.files["run/inputs/val.csv"] && checked.kit?.files["check/inputs/test.csv"],
+      );
+    }
+    const missing = buildCampaign({
+      ...hillClimb,
+      kit: { ...here, cases: [{ name: "a", input: "nope.csv" }], run: "x {input}", held_out: [] },
+    });
+    assert.match(JSON.stringify(!missing.ok && missing.errors), /not among the input files/);
     const goal = buildCampaign({
       ...hillClimb,
       mode: "goal",

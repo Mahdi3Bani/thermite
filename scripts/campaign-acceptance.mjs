@@ -9,7 +9,18 @@ import { execFileSync, spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { api, compose, control, dc, events, prepare, secret, until } from "./lib/smoke-env.mjs";
+import {
+  api,
+  compose,
+  control,
+  dc,
+  events,
+  latestVerdicts,
+  prepare,
+  secret,
+  submit,
+  until,
+} from "./lib/smoke-env.mjs";
 
 const results = [];
 const check = (name, ok, detail) => {
@@ -25,7 +36,7 @@ const work = join(root, "work");
 mkdirSync(work);
 writeFileSync(
   join(work, "bench.c"),
-  `#include <stdio.h>\n#include <stdlib.h>\nint main(int c, char **v) { long n = atol(v[1]); volatile double s = 0; for (long i = 0; i < n * 20000; i++) s += i; printf("%ld\\n", n); return 0; }\n`,
+  `#include <stdio.h>\n#include <stdlib.h>\nint main(int c, char **v) { long n = atol(v[1]); volatile double s = 0; for (long i = 0; i < n * 200000; i++) s += i; printf("%ld\\n", n); return 0; }\n`,
 );
 const git = (...a) =>
   execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...a], {
@@ -79,18 +90,20 @@ try {
     campaign: "acc-tiny",
     title: "Acceptance: a campaign from nothing",
     project: { url: projectUrl, ref: "main", commit, repo: "tiny", editable_paths: ["bench.c"] },
+    // The case shape the page sends: a name and its arguments; the score is plain time.
     kit: {
       source: "here",
       build: "cc -O2 -o bench bench.c",
       outputs: ["bench"],
       cases: [
-        { name: "small", params: { n: 50 }, work: 1000000 },
-        { name: "large", params: { n: 200 }, work: 4000000 },
+        { name: "small", args: "50" },
+        { name: "large", args: "200" },
       ],
-      run: "{build}/bench {n} > {out}/result.txt",
-      check: 'test "$(cat {out}/result.txt)" = "{n}"',
+      run: "{build}/bench {args} > {out}/result.txt",
+      check: 'test "$(cat {out}/result.txt)" = {args}',
+      runs_per_case: 1,
     },
-    score: { name: "loops", unit: "loops/s", direction: "max", min_effect: 0.1 },
+    score: { kind: "time", min_effect: 0.1 },
     lanes: 1,
   };
   const res = await fetch(`${control}/ui/campaigns/new`, {
@@ -127,6 +140,23 @@ try {
       imports.some((i) => i.kind === "kit_bundle"),
     imports,
   );
+  // A faster benchmark (a tenth of the loop) must win on the judge's clock, scored as time.
+  const faster = execFileSync(
+    "sh",
+    ["-c", "sed 's/n \\* 200000/n * 20000/' bench.c > f.c && mv f.c bench.c && git diff"],
+    { cwd: work, encoding: "utf8" },
+  );
+  const sub = submit(composeEnv, "acc-tiny-1", faster, "loop a tenth as often");
+  const verdict = await until(
+    "the judge's verdict on the faster benchmark",
+    async () => {
+      const v = latestVerdicts(await events())[sub.attempt];
+      return v && v !== "win_screened" ? v : undefined;
+    },
+    600_000,
+    3000,
+  );
+  check("a faster run wins when the score is time", verdict === "win_confirmed", { verdict });
   const cmd = (await api("/v1/commands")).body.commands.find((c) => c.kind === "assign_campaign");
   check(
     "the assignment was signed by control for the owner and delivered",

@@ -68,12 +68,25 @@ const KitFields = z.strictObject({
     disk_mib: Mib.default(256),
   }),
   /**
-   * Metrics derived from the executor's own wall clock: value = cell[work] / seconds.
-   * Nothing the candidate prints is a score.
+   * The scores the judge measures, never anything the candidate prints:
+   *   {unit, work}                 a rate from the judge's own clock: cell[work] / seconds;
+   *   {unit, from: "time"}         the run's wall time in seconds, from the judge's clock;
+   *   {unit, from: "check", field} a number the kit's check (the judge's own program) works out
+   *                                from the run's outputs, such as accuracy or size.
+   * Each must come out above zero: the judge compares runs by their ratio.
    */
   metrics: z.record(
     z.string().min(1),
-    z.strictObject({ unit: z.string().min(1), work: z.string().min(1) }),
+    z.union([
+      z.strictObject({ unit: z.string().min(1), work: z.string().min(1) }),
+      z.strictObject({ unit: z.string().min(1).default("s"), from: z.literal("time") }),
+      z.strictObject({
+        // Unitless is common here: an accuracy, a ratio.
+        unit: z.string().default(""),
+        from: z.literal("check"),
+        field: z.string().min(1),
+      }),
+    ]),
   ),
   /**
    * The correctness and dispatch check for one run's outputs, run by the judge (not the run

@@ -27,9 +27,10 @@ Unknown fields are rejected at every level.
 | `run.timeout_s` | integer | `300` | Run wall-time limit, seconds |
 | `run.rss_mib` | integer | `1024` | Run memory limit, MiB |
 | `run.disk_mib` | integer | `256` | Run disk limit, MiB |
-| `metrics` | object | required | Metric name → `{unit, work}` |
-| `metrics.<name>.unit` | string | required | Unit shown with the value, such as `FLOP/s` |
-| `metrics.<name>.work` | string | required | Name of the cell parameter holding the work done by one run |
+| `metrics` | object | required | Metric name → one of the three kinds below |
+| `metrics.<name>` as `{unit, work}` | | | A rate: the cell parameter named by `work` divided by the run's time, from the judge's clock |
+| `metrics.<name>` as `{unit, from: "time"}` | | | The run's time in seconds, from the judge's clock (`unit` defaults to `s`) |
+| `metrics.<name>` as `{unit, from: "check", field}` | | | A number the kit's check works out from the run's outputs and prints in its JSON line, under `field` (`unit` may be empty) |
 | `check.command` | string[] | required | Check argv |
 | `check.timeout_s` | integer | `120` | Check wall-time limit, seconds |
 | `verifiers` | object | `{}` | Verifier name → `{cells}`, for goal contracts |
@@ -97,7 +98,15 @@ If the last line is not JSON, the run fails with `check produced no result (exit
 
 ## Metrics
 
-For each metric, the value of a run is `cells[<cell>][<work>]` divided by the run process's wall time in seconds, measured by the judge. A `work` value that is missing, zero or not a number is an infrastructure error. The driver rejects implausible values; the CPU driver rejects values that are not finite.
+A metric is measured by the judge, never taken from what the run prints:
+
+- **A rate** (`{unit, work}`): `cells[<cell>][<work>]` divided by the run process's wall time in seconds.
+- **Time** (`{from: "time"}`): the run process's wall time in seconds; a contract improves it with `direction: "min"`.
+- **A number the check works out** (`{from: "check", field}`): the check, the judge's own program, reads the run's outputs and prints the number in its JSON line, for example `{"pass": true, "accuracy": 0.93}`. A run whose check reports no such number above zero is invalid.
+
+Every value must be above zero: the judge compares runs by their ratio.
+
+For a rate, the value of a run is `cells[<cell>][<work>]` divided by the run process's wall time in seconds, measured by the judge. A `work` value that is missing, zero or not a number is an infrastructure error. The driver rejects implausible values; the CPU driver rejects values that are not finite.
 
 ## Outcomes
 

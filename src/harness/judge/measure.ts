@@ -196,8 +196,27 @@ async function runArmInner(ctx: MeasureContext, arm: Arm, cell: string): Promise
     const seconds = outcome.wallMs / 1000;
     const metrics: Record<string, number> = {};
     for (const [name, m] of Object.entries(ctx.kit.metrics)) {
+      if ("from" in m && m.from === "check") {
+        // The judge's check worked it out from the outputs; it must be a number above zero.
+        const v = Number(check.details[m.field]);
+        if (!Number.isFinite(v) || v <= 0) {
+          return {
+            kind: "invalid",
+            reason: `the check reported no ${m.field} above zero (got ${JSON.stringify(check.details[m.field] ?? null)})`,
+            check,
+            outcome,
+          };
+        }
+        metrics[name] = v;
+        continue;
+      }
+      if (!(seconds > 0)) throw new Error(`kit metric ${name}: bad time ${seconds}`);
+      if ("from" in m) {
+        metrics[name] = seconds;
+        continue;
+      }
       const amount = Number(params[m.work]);
-      if (!Number.isFinite(amount) || amount <= 0 || !(seconds > 0)) {
+      if (!Number.isFinite(amount) || amount <= 0) {
         throw new Error(`kit metric ${name}: bad work ${params[m.work]} or time ${seconds}`);
       }
       metrics[name] = amount / seconds;

@@ -87,6 +87,46 @@ export const NEW_CAMPAIGN_JS = `
   // ------------------------------------------------ the draft
   const repoName = (url) => (url.replace(/\\.git$/, "").split(/[/:]/).pop() || "project").toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^[^a-z0-9]+/, "").slice(0, 64) || "project";
   const files = [];
+  const inputs = [];
+  const asBase64 = (f) => new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.readAsDataURL(f); });
+  $("#input-files")?.addEventListener("change", async (e) => {
+    for (const f of e.target.files) inputs.push({ name: f.name, content_base64: await asBase64(f) });
+    $("#input-files-list").textContent = inputs.map((f) => f.name).join(", ");
+    const dl = $("#nc-inputs"); dl.replaceChildren();
+    for (const f of inputs) { const o = document.createElement("option"); o.value = f.name; dl.append(o); }
+    e.target.value = "";
+    update();
+  });
+  // A list of cases pasted at once: one per line, its name and then its arguments.
+  $("#paste-cases")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    if ($("#paste-box")) return;
+    const box = document.createElement("div");
+    box.id = "paste-box";
+    const ta = document.createElement("textarea");
+    ta.className = "mono";
+    ta.style.cssText = "width:100%;height:90px;margin-top:8px";
+    ta.placeholder = "light --users 10\\nheavy --users 500";
+    const add = document.createElement("button");
+    add.className = "sm primary";
+    add.textContent = "Add these cases";
+    box.append(ta, add);
+    e.target.closest(".act").after(box);
+    add.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      const body = $("#cases tbody"), tpl = body.querySelector("tr");
+      for (const line of ta.value.split("\\n").map((l) => l.trim()).filter(Boolean)) {
+        const at = line.search(/\\s/), row = tpl.cloneNode(true);
+        row.querySelectorAll("input").forEach((i) => { if (i.type === "checkbox") i.checked = false; else i.value = ""; });
+        const [name, args] = [...row.querySelectorAll("input")];
+        name.value = at < 0 ? line : line.slice(0, at);
+        args.value = at < 0 ? "" : line.slice(at + 1).trim();
+        body.appendChild(row);
+      }
+      box.remove();
+      update();
+    });
+  });
   $("#kit-files")?.addEventListener("change", async (e) => {
     for (const f of e.target.files) {
       const b64 = await new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.readAsDataURL(f); });
@@ -109,17 +149,26 @@ export const NEW_CAMPAIGN_JS = `
     const url = val("project_url");
     d.project = { url, ...(val("project_access") ? { access: val("project_access") } : {}), ref: val("project_ref") || undefined, commit: found ? found.commit : undefined, repo: repoName(url), editable_paths: lines("editable_paths"), forbidden_patterns: lines("forbidden_patterns") };
     if ((choice.kit || "here") === "here") {
+      const timed = (choice.score || "time") === "time";
       const cases = $$("#cases tbody tr").map((tr) => {
-        const [name, params, work] = [...tr.querySelectorAll("input")].map((i) => i.value.trim());
-        const p = {};
-        for (const kv of params.split(/\\s+/).filter(Boolean)) { const at = kv.indexOf("="); if (at > 0) { const v = kv.slice(at + 1); p[kv.slice(0, at)] = v !== "" && Number.isFinite(Number(v)) ? Number(v) : v; } }
-        return { name, params: p, ...(work ? { work: Number(work) } : {}) };
+        const [name, args, input, work, hidden] = [...tr.querySelectorAll("input")];
+        return {
+          name: name.value.trim(),
+          ...(args.value.trim() ? { args: args.value.trim() } : {}),
+          ...(input.value.trim() ? { input: input.value.trim() } : {}),
+          ...(timed && work.value.trim() ? { work: Number(work.value.trim()) } : {}),
+          ...(hidden.checked ? { hidden: true } : {}),
+        };
       }).filter((c) => c.name);
-      d.kit = { source: "here", build: val("build"), outputs: words("outputs"), cases, run: val("run"), check: val("check"), files, held_out: words("held_out") };
+      d.kit = { source: "here", build: val("build") || "true", outputs: words("outputs"), cases, inputs, run: val("run"), check: val("check"), files, runs_per_case: Number(val("runs_per_case") || 3) };
     } else {
       d.kit = { source: "repo", url: val("kit_url"), ...(val("kit_access") ? { access: val("kit_access") } : {}), commit: val("kit_commit"), repo: repoName(val("kit_url")), cells: words("kit_cells"), held_out: words("held_out_repo") };
     }
-    d.score = { name: ((choice.kit || "here") === "repo" ? val("repo_metric") : val("score_name")) || "rate", unit: val("score_unit") || "runs/s", direction: val("direction") || "max", min_effect: (num("min_effect") ?? 5) / 100 };
+    d.score = (choice.kit || "here") === "repo"
+      ? { name: val("repo_metric") || "rate", direction: val("direction") || "max", min_effect: (num("min_effect") ?? 5) / 100 }
+      : (choice.score || "time") === "check"
+        ? { kind: "check", field: val("score_field") || undefined, unit: val("score_unit"), direction: val("direction") || "max", min_effect: (num("min_effect") ?? 5) / 100 }
+        : { kind: "time", min_effect: (num("min_effect") ?? 5) / 100 };
     if (mode === "goal") {
       d.goals = $$("#goals tbody tr").map((tr, i) => {
         const [desc, detail] = [...tr.querySelectorAll("input")].map((x) => x.value.trim());
@@ -139,8 +188,10 @@ export const NEW_CAMPAIGN_JS = `
     const mode = choice.mode || "hill_climb";
     $$("[data-modes]").forEach((el) => (el.hidden = !el.dataset.modes.split(" ").includes(mode)));
     $$("[data-kit]").forEach((el) => (el.hidden = el.dataset.kit !== (choice.kit || "here")));
+    $$("[data-score]").forEach((el) => (el.hidden = el.dataset.score !== (choice.score || "time")));
     const rig = choice.rig || "", lanes = val("lanes") || "2";
-    const aim = { hill_climb: "make " + (val("score_name") || "its score") + " " + (val("direction") === "min" ? "lower" : "higher") + ", keeping only changes the judge confirms are at least " + (val("min_effect") || "5") + "% better", goal: "reach its goals, each checked by the judge", research: "research " + (val("topic") || "its topic") + " and report checked findings" }[mode];
+    const score = (choice.score || "time") === "check" ? (val("score_field") || "its score") + " " + (val("direction") === "min" ? "lower" : "higher") : "its runs faster";
+    const aim = { hill_climb: "make " + score + ", keeping only changes the judge confirms are at least " + (val("min_effect") || "5") + "% better", goal: "reach its goals, each checked by the judge", research: "research " + (val("topic") || "its topic") + " and report checked findings" }[mode];
     const proj = mode === "research" ? "" : " on " + repoName(val("project_url") || "the project") + (found ? " at " + found.commit.slice(0, 7) : "") + ", changing only " + (lines("editable_paths").join(", ") || "(no files yet)");
     const s = (val("campaign") || "The campaign") + " will " + aim + proj + ". " + lanes + " agent" + (lanes === "1" ? "" : "s") + " work on " + (rig || "(no rig chosen)") + ".";
     for (const el of $$("[data-summary]")) el.textContent = s;
@@ -159,8 +210,12 @@ export const NEW_CAMPAIGN_JS = `
     const set = (n, v) => { if (form.elements[n] && v !== undefined && v !== null) form.elements[n].value = Array.isArray(v) ? v.join(n === "editable_paths" || n === "forbidden_patterns" || n === "questions" || n === "seeds" ? "\\n" : " ") : v; };
     set("campaign", back.campaign); set("title", back.title); set("notes", back.notes); set("lanes", back.lanes);
     if (back.project) { set("project_access", back.project.access); set("project_url", back.project.url); set("project_ref", back.project.ref); set("editable_paths", back.project.editable_paths); set("forbidden_patterns", back.project.forbidden_patterns); }
-    if (back.kit && back.kit.source === "here") { for (const k of ["build", "run", "check"]) set(k, back.kit[k]); set("outputs", back.kit.outputs); set("held_out", back.kit.held_out); }
-    if (back.score) { set("score_name", back.score.name); set("score_unit", back.score.unit); set("direction", back.score.direction); set("min_effect", back.score.min_effect * 100); }
+    if (back.kit && back.kit.source === "here") { for (const k of ["build", "run", "check"]) set(k, back.kit[k]); set("outputs", back.kit.outputs); set("runs_per_case", back.kit.runs_per_case); }
+    if (back.score) {
+      set("score_field", back.score.field); set("score_unit", back.score.unit); set("direction", back.score.direction); set("min_effect", back.score.min_effect * 100);
+      choice.score = back.score.kind || "time";
+      $$('.ch[data-group="score"]').forEach((c) => c.classList.toggle("on", c.dataset.value === choice.score));
+    }
     if (back.research) { set("topic", back.research.topic); set("questions", back.research.questions); set("seeds", back.research.seeds); set("min_duration", back.research.min_duration); }
     $$('.ch[data-group="mode"]').forEach((c) => { c.classList.toggle("on", c.dataset.value === back.mode); });
     choice.mode = back.mode;

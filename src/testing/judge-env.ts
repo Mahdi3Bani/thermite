@@ -153,6 +153,8 @@ export function makeJudgeEnv(
     runCopy?: boolean | undefined;
     /** The kit's verifiers, instead of the default single `correctness`. */
     kitVerifiers?: Record<string, unknown> | undefined;
+    /** The kit's metrics, instead of the default rate `ops_per_s`. */
+    kitMetrics?: Record<string, unknown> | undefined;
     share?: { root: string; seed: string; kitCommit: string } | undefined;
   } = {},
 ) {
@@ -183,6 +185,7 @@ export function makeJudgeEnv(
         {
           ...(opts.runCopy ? RUN_COPY_KIT : KIT),
           ...(opts.kitVerifiers ? { verifiers: opts.kitVerifiers } : {}),
+          ...(opts.kitMetrics ? { metrics: opts.kitMetrics } : {}),
         },
         null,
         2,

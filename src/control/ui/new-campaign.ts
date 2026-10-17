@@ -42,8 +42,10 @@ const step = (n: number, id: string, title: string, modes = "") =>
 
 interface CaseDraft {
   name?: string;
-  params?: Record<string, unknown>;
+  args?: string;
+  input?: string;
   work?: number;
+  hidden?: boolean;
 }
 
 export function newCampaignBody(p: NewCampaignPage): string {
@@ -53,18 +55,9 @@ export function newCampaignBody(p: NewCampaignPage): string {
     goals?: { description?: string; verify?: { type?: string; cells?: string[] } }[];
   };
   const mode = d.mode ?? "hill_climb";
-  const cases: CaseDraft[] = d.kit?.cases?.length
-    ? d.kit.cases
-    : [
-        { name: "small", params: { n: 1024 } },
-        { name: "large", params: { n: 4096 } },
-      ];
+  const cases: CaseDraft[] = d.kit?.cases?.length ? d.kit.cases : [{ name: "default" }];
   const caseRow = (c: CaseDraft) =>
-    `<tr><td><input aria-label="case name" value="${esc(c.name ?? "")}" placeholder="small"></td><td><input class="mono" aria-label="parameters" value="${esc(
-      Object.entries(c.params ?? {})
-        .map(([k, v]) => `${k}=${v}`)
-        .join(" "),
-    )}" placeholder="n=1024"></td><td><input class="mono" aria-label="work per run" value="${esc(c.work === undefined ? "" : String(c.work))}" placeholder="2147483648"></td><td><button class="sm" data-del>×</button></td></tr>`;
+    `<tr><td><input aria-label="case name" value="${esc(c.name ?? "")}" placeholder="light"></td><td><input class="mono" aria-label="arguments" value="${esc(c.args ?? "")}" placeholder="--users 10"></td><td><input class="mono" aria-label="input file" list="nc-inputs" value="${esc(c.input ?? "")}" placeholder="none"></td><td data-score="time"><input class="mono" aria-label="work done" value="${esc(c.work === undefined ? "" : String(c.work))}" placeholder="—"></td><td><input type="checkbox" aria-label="hidden test"${c.hidden ? " checked" : ""}></td><td><button class="sm" data-del>×</button></td></tr>`;
   const goals = d.goals?.length
     ? d.goals
     : [{ description: "", verify: { type: "check", cells: [] as string[] } }];
@@ -139,22 +132,28 @@ ${choice("kit", "repo", "A kit in a repository", "You keep the kit in git, with 
 ${choice("kit", "upload", "Upload a kit", "A .zip or .tar.gz with kit.json at its top. Coming next.", false, true)}
 </div>
 <div data-kit="here" style="margin-top:14px">
-<div class="g2">${field("Build", "The command that builds the project, run in a fresh copy of the code as a user who can write only there.", `<input class="mono" name="build" placeholder="cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j8">`)}${field("What the build makes", "The files or folders the run needs, relative to the project, separated by spaces. The judge keeps exactly these, hashed, so a run cannot swap them.", `<input class="mono" name="outputs" placeholder="build/bench">`)}</div>
-${field("Test cases", "Each case is a set of parameters the run receives, such as a problem size (n=1024). Work per run is how much one run does, for example 2·n³ operations: the score is the work divided by the time. A hill climb needs it; goals do not.", `<table class="tbl" id="cases"><thead><tr><th>Name</th><th>Parameters</th><th>Work per run</th><th></th></tr></thead><tbody>${cases.map(caseRow).join("")}</tbody></table><div class="act" style="margin-top:6px"><button class="sm" data-add="#cases">Add a case</button></div>`)}
-${field("Run", "The command that runs one build on one case. {build} is the folder with the build's files (a file keeps its path: {build}/build/bench), {out} is where to write results, and each parameter is {name}, for example {n}.", `<input class="mono" name="run" placeholder="{build}/build/bench --n {n} --out {out}/result.bin">`)}
-<div class="ph"><button class="sm" data-ph="{build}" data-into="run">{build}</button><button class="sm" data-ph="{out}" data-into="run">{out}</button><button class="sm" data-ph="{kit}" data-into="run">{kit}</button></div>
+${field("Run", "How the judge runs your program for one case. {args} is the case's arguments, {input} its input file, {build} what the build made (a file keeps its path: {build}/build/app), {out} a folder for results, {kit} the files you add below. Use only what you need.", `<input class="mono" name="run" placeholder="{build}/build/app {args} --out {out}/result.txt">`)}
+<div class="ph"><button class="sm" data-ph="{args}" data-into="run">{args}</button><button class="sm" data-ph="{input}" data-into="run">{input}</button><button class="sm" data-ph="{build}" data-into="run">{build}</button><button class="sm" data-ph="{out}" data-into="run">{out}</button><button class="sm" data-ph="{kit}" data-into="run">{kit}</button></div>
 <div style="height:12px"></div>
-${field("Is it right?", "A command that checks one run's output and exits 0 when it is correct. A fast but wrong run is invalid, never a win. It runs as the judge, with the files you add below in {kit}.", `<input class="mono" name="check" placeholder="python3 {kit}/check.py {out}/result.bin {n}">`)}
-${field("Files for the check", "References and scripts the check uses, such as check.py or expected outputs. The run cannot read them unless you tick the box: never let it read reference answers.", `<span class="act"><input type="file" id="kit-files" multiple><label class="small"><input type="checkbox" id="kit-files-run"> the run reads these too</label><span class="muted small" id="kit-files-list"></span></span>`)}
-<div data-modes="hill_climb" style="margin-top:6px"><div class="g3">
-${field("Score name", "What the score is called, for example throughput.", `<input name="score_name" placeholder="throughput">`)}
-${field("Unit", "Shown with the score, for example FLOP/s.", `<input name="score_unit" placeholder="FLOP/s">`)}
-${field("Better is", "Whether a higher or a lower score is better.", `<select name="direction"><option value="max">higher</option><option value="min">lower</option></select>`)}
-${field("Smallest gain that counts (%)", "A change must beat the current best by at least this much, confirmed statistically, to be kept. Smaller differences count as no change.", `<input name="min_effect" value="5">`)}
+${field("Test cases", "What differs between runs. A case is a name plus its arguments, its input file, or nothing at all; one case is fine. For example: a web service's light and heavy loads, a compiler's source files, a model's validation data.", `<table class="tbl" id="cases"><thead><tr><th style="width:18%">${infoLabel("Name", "A short name shown in results: light, big-module, validation.")}</th><th>${infoLabel("Arguments", "Added to the run command as {args} for this case. Empty is fine.")}</th><th style="width:20%">${infoLabel("Input file", "One of the input files below, given to the run as {input}.")}</th><th data-score="time" style="width:14%">${infoLabel("Work done", "Only to see speed as a rate: how much one run of this case does (requests, frames, bytes). Leave it empty and the score is plain time.")}</th><th style="width:10%">${infoLabel("Hidden test", "Tick to keep this case as a hidden test. The judge doesn't use it when it first scores a change, only to double-check a change that already looks better. So a change can't win just by helping the cases the agents can see.")}</th><th></th></tr></thead><tbody>${cases.map(caseRow).join("")}</tbody></table><div class="act" style="margin-top:6px"><button class="sm" data-add="#cases">Add a case</button><button class="sm" id="paste-cases">Paste a list…</button><span class="muted small">One case per line: its name, then its arguments.</span></div>`)}
+${field("Input files", "Files the cases run on: datasets, source files, request logs. The run reads the one its case names as {input}; the check can read them too.", `<span class="act"><input type="file" id="input-files" multiple><span class="muted small" id="input-files-list"></span></span><datalist id="nc-inputs"></datalist>`)}
+<div class="sec" style="margin:14px 0 0"><h2 style="font-size:14px">The score</h2>
+<div class="g2">
+${choice("score", "time", "How long a run takes", "The judge times every run with its own clock: shorter is better. Give work done per case to see a rate instead (requests per second, frames per second).", true)}
+${choice("score", "check", "A number your check works out", "Your check reads the run's output and prints a number: accuracy, p99 latency, size in bytes, compression ratio, tests passed. The judge uses the check's number, never one the program prints itself.")}
+</div>
+<div class="g3" data-score="check">
+${field("The number's name", 'The field your check prints in its JSON line, such as accuracy in {"pass": true, "accuracy": 0.93}. It must be above zero.', `<input class="mono" name="score_field" placeholder="accuracy">`)}
+${field("Better is", "Whether a higher or a lower number is better.", `<select name="direction"><option value="max">higher</option><option value="min">lower</option></select>`)}
+${field("Unit", "Shown with the number: %, ms, bytes, ×. Empty is fine.", `<input name="score_unit" placeholder="%">`)}
+</div>
+<div class="g3">
+${field("Smallest gain that counts (%)", "A change must beat the best so far by at least this much, confirmed by repeated runs, to be kept.", `<input name="min_effect" value="5">`)}
+${field("Runs per case", "How many times each case runs per measurement; the middle value counts. More runs steady a noisy machine.", `<select name="runs_per_case"><option>1</option><option selected>3</option><option>5</option></select>`)}
 </div></div>
-<details class="adv"><summary>Advanced</summary><div class="g3">
-${field("Cases held back", "Case names, separated by spaces, measured only to confirm a win, never while screening, so agents cannot tune a change to them.", `<input name="held_out" placeholder="none">`)}
-</div></details>
+${field("Is it right?", 'Runs after each case, as the judge, with the run\'s output in {out}. Exit 0 when the result is right. To report a score, print one JSON line such as {"pass": true, "accuracy": 0.93}. A fast but wrong run never wins.', `<input class="mono" name="check" placeholder="python3 {kit}/check.py {out}/result.txt">`)}
+${field("Files for the check", "Scripts and expected answers the check uses, in {kit}. The run can't read them unless you tick the box: never let it read the answers.", `<span class="act"><input type="file" id="kit-files" multiple><label class="small"><input type="checkbox" id="kit-files-run"> the run reads these too</label><span class="muted small" id="kit-files-list"></span></span>`)}
+<div class="g2">${field("Build", "The command that builds the project, run in a fresh copy of the code. A project with nothing to build, such as scripts, can use true.", `<input class="mono" name="build" placeholder="make">`)}${field("What the build makes", "The files or folders the run needs, relative to the project, separated by spaces. The judge keeps exactly these, so a run can't swap them.", `<input class="mono" name="outputs" placeholder="build/app">`)}</div>
 </div>
 <div data-kit="repo" style="margin-top:14px" hidden><div class="g3">${field("Kit repository", "The git repository holding kit.json and its scripts.", `<input name="kit_url" placeholder="https://… .git">`)}${field("Kit repository access", "Public needs nothing; a private kit repository needs Git access from Settings.", `<select name="kit_access"><option value="">Public: no key</option>${accessOptions}</select>`)}${field("Kit commit", "The full commit of the kit to use.", `<input class="mono" name="kit_commit" placeholder="40 hexadecimal characters">`)}${field("Cases to measure", "The kit's case names this campaign measures, separated by spaces.", `<input name="kit_cells" placeholder="small large">`)}</div>
 ${field("Cases held back", "Measured only to confirm a win.", `<input name="held_out_repo" placeholder="none">`)}
