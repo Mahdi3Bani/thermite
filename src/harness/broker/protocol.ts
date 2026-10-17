@@ -8,7 +8,13 @@ import { RoleSchema, RunRequest } from "./runner.ts";
 
 export const BrokerRequest = z.discriminatedUnion("op", [
   z.object({ id: z.number().int(), op: z.literal("run"), req: RunRequest }),
-  z.object({ id: z.number().int(), op: z.literal("handOver"), path: z.string(), role: RoleSchema }),
+  z.object({
+    id: z.number().int(),
+    op: z.literal("handOver"),
+    path: z.string(),
+    role: RoleSchema,
+    harnessReads: z.boolean().optional(),
+  }),
   z.object({ id: z.number().int(), op: z.literal("reclaim"), path: z.string() }),
   z.object({ id: z.number().int(), op: z.literal("remove"), path: z.string() }),
   z.object({

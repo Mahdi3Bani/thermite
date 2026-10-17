@@ -63,6 +63,7 @@ export async function prepareWorkspace(input: {
   await git("init", "--quiet", "-b", "work");
   await git("add", "-A");
   await git("commit", "--quiet", "--allow-empty", "-m", `parent ${input.commit}`);
-  await input.runner.handOver(dir, input.lane);
+  // The controller follows a trial's output in its area (OpenCode writes its events there).
+  await input.runner.handOver(dir, input.lane, { harnessReads: true });
   return { dir, repo };
 }

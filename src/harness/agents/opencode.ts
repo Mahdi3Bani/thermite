@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { laneLimits } from "../../core/contract.ts";
+import { type LaneLimitValues, laneLimits } from "../../core/contract.ts";
 import { type LiveKind, summarizeArgs } from "../../core/live.ts";
-import type { Role, Runner } from "../broker/runner.ts";
+import type { Role, Runner, RunOutcome } from "../broker/runner.ts";
 import type { TrialProgress } from "./live-session.ts";
 import type { ModelConfig } from "./model.ts";
 import type { RigCheckReport } from "./model-check.ts";
@@ -188,6 +188,25 @@ ATTEMPT" shows how the judge decided an attempt.
 Your shell tool stops a command after two minutes unless you set its timeout: for a long build or
 test, set timeout to 0. What a command starts in the background runs until the trial ends.`;
 
+/** The lane's limits, as the agent must know them: OpenCode and its commands share them. */
+export function limitsNote(limits: LaneLimitValues): string {
+  return `Memory: ${limits.runRssMib} MiB for everything your lane runs at once, OpenCode itself included (it uses about 500 MiB). Going over stops OpenCode and the whole trial, so keep parallel builds small (for example make -j2 or -j4). Disk: ${limits.workspaceMib} MiB, and at most 50,000 files, for this trial's directory, OpenCode's own files included.`;
+}
+
+/** Why the broker stopped OpenCode, when a memory or disk limit did. */
+export function breachError(
+  o: Pick<RunOutcome, "killedFor"> &
+    Partial<Pick<RunOutcome, "peakRssBytes" | "peakDiskBytes" | "peakEntries">>,
+  limits: LaneLimitValues,
+): string | undefined {
+  const mib = (b: number | undefined) => Math.round((b ?? 0) / 1024 ** 2);
+  if (o.killedFor === "memory")
+    return `stopped by the lane's memory limit: OpenCode and what it ran reached ${mib(o.peakRssBytes)} MiB, over ${limits.runRssMib} MiB (the contract's lanes.limits.run_rss_mib)`;
+  if (o.killedFor === "disk")
+    return `stopped by the lane's disk limit: the trial's directory reached ${mib(o.peakDiskBytes)} MiB in ${o.peakEntries ?? 0} files, over ${limits.workspaceMib} MiB (lanes.limits.workspace_mib) or 50,000 files`;
+  return undefined;
+}
+
 const NUDGE =
   'You have not submitted yet. Keep working: make your change, build and test it, then run `thermite-trial submit --hypothesis "..."` once. If you find no change worth judging, say why in one sentence.';
 
@@ -261,7 +280,7 @@ export async function runOpencodeTrial(
     argv: [
       "sh",
       "-c",
-      "mkdir -p opencode-home/.config/opencode opencode-tmp && cat > opencode-home/.config/opencode/opencode.jsonc && : > opencode-events.jsonl",
+      "mkdir -p opencode-home/.config/opencode opencode-tmp && cat > opencode-home/.config/opencode/opencode.jsonc && : > opencode-events.jsonl && chmod 0644 opencode-events.jsonl",
     ],
     cwd: area,
     timeoutMs: 30_000,
@@ -278,7 +297,7 @@ export async function runOpencodeTrial(
   const started = Date.now();
   const deadline = started + spec.wallMs;
   const minutes = Math.round(spec.wallMs / 60_000);
-  let message = `${SYSTEM}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. This trial lasts ${minutes} minutes. Submit before it ends.`;
+  let message = `${SYSTEM}\n\n${limitsNote(limits)}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. This trial lasts ${minutes} minutes. Submit before it ends.`;
   let offset = 0;
   const pump = () => {
     const r = readNew(events, offset);
@@ -354,6 +373,13 @@ export async function runOpencodeTrial(
       break;
     }
     if (deps.submitted()) break;
+    // A memory or disk limit ends OpenCode with everything it ran: say which, with the figures.
+    const breach = breachError(outcome, limits);
+    if (breach) {
+      result.stopped = "error";
+      result.error = breach;
+      break;
+    }
     if (outcome.killedFor === "timeout" || Date.now() >= deadline) {
       result.stopped = "wall";
       break;

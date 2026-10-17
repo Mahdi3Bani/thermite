@@ -3,8 +3,11 @@ import { appendFileSync, mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import { laneLimits } from "../../core/contract.ts";
 import type { Runner, RunOutcome, RunRequest } from "../broker/runner.ts";
 import {
+  breachError,
+  limitsNote,
   newTally,
   opencodeConfig,
   opencodeModelId,
@@ -163,6 +166,73 @@ describe("the OpenCode harness", () => {
     assert.equal(run.env?.HOME, join(area, "opencode-home"));
     assert.ok(!JSON.stringify(runs).includes('"apiKey"'));
     assert.ok(live.includes("tool") && live.includes("text"));
+  });
+
+  test("a memory or disk limit that stops OpenCode is named, with its figures", async () => {
+    const limits = laneLimits({
+      lanes: { count: 2, trials_per_epoch: 1, limits: { run_rss_mib: 4096, workspace_mib: 16384 } },
+    });
+    assert.match(limitsNote(limits), /Memory: 4096 MiB .*OpenCode itself included/);
+    assert.equal(breachError({ killedFor: "timeout", peakRssBytes: 0 }, limits), undefined);
+    const area = mkdtempSync(join(tmpdir(), "thermite-oc-"));
+    const runner = {
+      run: async (req: RunRequest): Promise<RunOutcome> =>
+        ({
+          exitCode: req.argv.includes("run") ? null : 0,
+          signal: req.argv.includes("run") ? "SIGKILL" : null,
+          killedFor: req.argv.includes("run") ? "memory" : null,
+          peakRssBytes: 4400 * 1024 ** 2,
+          peakDiskBytes: 0,
+          peakEntries: 0,
+          stdout: "",
+          stderr: "",
+        }) as unknown as RunOutcome,
+      killRole: async () => 0,
+    } as unknown as Runner;
+    const runs: string[] = [];
+    const r = await runOpencodeTrial(
+      {
+        trialId: "t-3",
+        run: "r-1",
+        lane: "lane-1",
+        workspace: area,
+        workspaceRoot: area,
+        parentCommit: "c".repeat(40),
+        editablePaths: ["src/**"],
+        brief: "b",
+        wallMs: 60_000,
+        limits,
+      },
+      {
+        runner: {
+          ...runner,
+          run: (req: RunRequest) => {
+            runs.push(req.argv.join(" "));
+            return runner.run(req);
+          },
+        } as Runner,
+        model,
+        apiUrl: "http://h",
+        live: () => undefined,
+        progress: () => undefined,
+        submitted: () => undefined,
+        pollMs: 5,
+      },
+    );
+    assert.equal(r.stopped, "error");
+    assert.match(
+      String(r.error),
+      /memory limit: OpenCode and what it ran reached 4400 MiB, over 4096 MiB/,
+    );
+    // Not continued: a breach ends the trial.
+    assert.equal(runs.filter((x) => x.includes(" run ")).length, 1);
+    // The agent was told its limits.
+    assert.ok(runs.some((x) => x.includes("Memory: 4096 MiB")));
+    const disk = breachError(
+      { killedFor: "disk", peakDiskBytes: 300 * 1024 ** 2, peakEntries: 50_000 },
+      limits,
+    );
+    assert.match(String(disk), /300 MiB in 50000 files, over 16384 MiB/);
   });
 
   test("a run that ends without a submission is continued in its session, twice at most", async () => {

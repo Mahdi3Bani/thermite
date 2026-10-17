@@ -57,8 +57,8 @@ export class BrokerClient implements Runner {
     return this.call({ op: "run", req });
   }
 
-  handOver(path: string, role: Role): Promise<void> {
-    return this.call({ op: "handOver", path, role });
+  handOver(path: string, role: Role, opts: { harnessReads?: boolean } = {}): Promise<void> {
+    return this.call({ op: "handOver", path, role, ...opts });
   }
 
   reclaim(path: string): Promise<void> {

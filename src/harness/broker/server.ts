@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync } from "node:fs";
+import { chmodSync, chownSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import { log } from "../../common/env.ts";
 import { type GpuLayout, identityFor } from "./devices.ts";
@@ -109,7 +109,13 @@ export async function handle(req: Req, opts: BrokerServerOptions): Promise<unkno
     }
     case "handOver": {
       const { uid, gid } = roleIds(req.role);
-      chownTree(insideRoot(opts.scratchDir, req.path), uid, gid);
+      const path = insideRoot(opts.scratchDir, req.path);
+      chownTree(path, uid, gid);
+      // The controller's group, which no role is in, may enter and read; other roles may not.
+      if (req.harnessReads) {
+        chownSync(path, uid, IDS.thermite.gid);
+        chmodSync(path, 0o750);
+      }
       return null;
     }
     case "reclaim":

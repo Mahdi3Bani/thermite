@@ -98,8 +98,11 @@ export interface Runner {
   /** True when roles really run as separate users. */
   readonly separated: boolean;
   run(req: RunRequest): Promise<RunOutcome>;
-  /** Gives a directory under scratch to a role (it may then write there). */
-  handOver(path: string, role: Role): Promise<void>;
+  /**
+   * Gives a directory under scratch to a role (it may then write there). With `harnessReads`, the
+   * controller may still read it (it follows a trial's output there); no other role may.
+   */
+  handOver(path: string, role: Role, opts?: { harnessReads?: boolean }): Promise<void>;
   /** Takes a directory back for the controller (so it can read and move results). */
   reclaim(path: string): Promise<void>;
   /** Removes a directory under scratch, whoever owns its files. */

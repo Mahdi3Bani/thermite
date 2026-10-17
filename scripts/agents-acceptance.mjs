@@ -378,16 +378,28 @@ try {
     600_000,
     3000,
   );
+  // The controller follows OpenCode's output in the lane's area: the trial's turns are counted.
+  const ocTrial = await until(
+    "the OpenCode trial's end, with its turns",
+    async () =>
+      (await events()).find(
+        (e) => e.kind === "trial_finished" && e.body.attempt === ocAttempt.subject,
+      ),
+    120_000,
+    2000,
+  );
   check(
     "OpenCode runs the check and a trial as the lane, submits with thermite-trial, and reaches the provider only through the proxy",
     ocCheck.body.ok === true &&
       ocAttempt !== undefined &&
+      Number(ocTrial.body.turns) >= 1 &&
       keysSeen.has(`Bearer ${providerKey}`) &&
       ![...keysSeen].some((k) => /Bearer (trial|proxy)\./.test(k)),
     {
       check: ocCheck.body.summary,
       attempt: ocAttempt?.subject,
       lane: ocAttempt?.body.lane,
+      turns: ocTrial?.body.turns,
       keys: [...keysSeen].map((k) => k.slice(0, 16)),
     },
   );
