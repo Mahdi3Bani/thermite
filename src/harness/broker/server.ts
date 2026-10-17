@@ -74,14 +74,16 @@ export async function handle(req: Req, opts: BrokerServerOptions): Promise<unkno
       const outcome = await runSupervised({
         argv: r.argv,
         cwd: r.cwd,
-        // The role's own directory is its home and its TMPDIR: /tmp is closed to roles. With a
-        // dedicated development card, CUDA is pointed at the role's own card (its groups are
-        // what keep it off the other).
+        // The role's own directory is its home and its TMPDIR (/tmp is closed to roles), unless
+        // the harness gives the run others in the role's own area (OpenCode's home and temp
+        // directory, outside the workspace). Only the harness's controller makes requests here.
+        // With a dedicated development card, CUDA is pointed at the role's own card (its groups
+        // are what keep it off the other).
         env: {
           ...opts.baseEnv,
           ...r.env,
-          HOME: r.cwd,
-          TMPDIR: r.cwd,
+          HOME: r.env.HOME ?? r.cwd,
+          TMPDIR: r.env.TMPDIR ?? r.cwd,
           USER: r.role,
           ...(cuda ? { CUDA_VISIBLE_DEVICES: cuda } : {}),
         },
