@@ -44,7 +44,8 @@ are empty for now.
 Go to **Rigs › local-1**. Under **Checks**, run:
 
 1. **isolation.** Each part of the rig tries to reach what it must not, such as the judge's files,
-   secrets and other parts' work. It passes in a minute or two.
+   secrets and other parts' work. It passes in a minute or two. The harness also runs it by itself
+   each time it starts, so its latest result is usually already there.
 2. **smoke.** The rig builds a small benchmark project and its kit from its image, starts a
    judge-only campaign, and submits changes with known outcomes: a real speed-up, a no-op, broken
    changes, and ways to cheat the timer or the reference. Each must get its expected verdict. On a

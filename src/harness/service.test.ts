@@ -3,14 +3,17 @@ import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readdirSync,
   readFileSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { makeHarnessEnv } from "../testing/harness-env.ts";
+import { ModelSource } from "./agents/model-source.ts";
 import { createHarnessApi } from "./api.ts";
 import { resolveInbox } from "./imports.ts";
 
@@ -447,6 +450,70 @@ describe("harness service and API", () => {
     const last = env.service.ledger.eventsAfter(0, 1000).events.at(-1);
     assert.equal(last?.kind, "rig_check_finished");
     assert.match(JSON.stringify(last?.body), /interrupted: the controller restarted/);
+  });
+
+  test("the isolation check at start runs forced and is awaited; a route set meanwhile is checked after it", async () => {
+    const env = makeHarnessEnv("rig-a");
+    let release: () => void = () => undefined;
+    const ran: string[] = [];
+    env.service.rigChecks = {
+      isolation: {
+        // Busy (a trial left open by the previous controller): the start check runs anyway.
+        notNow: () => "1 open trial(s)",
+        run: () =>
+          new Promise((done) => {
+            ran.push("isolation");
+            release = () => done({ ok: true, summary: "isolation holds" });
+          }),
+      },
+      model: {
+        run: async () => {
+          ran.push("model");
+          return { ok: true, summary: "a correct tool call" };
+        },
+      },
+    };
+    let finished = false;
+    const atStart = env.service.checkAtStart("isolation").then(() => {
+      finished = true;
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(finished, false);
+    // A model route arriving during the isolation check waits for it, then is checked.
+    env.service.models = new ModelSource(
+      join(mkdtempSync(join(tmpdir(), "thermite-ms-")), "r.json"),
+      undefined,
+    );
+    env.service.setModelRoute(
+      {
+        name: "p",
+        version: 1,
+        base_url: "http://m/v1",
+        model: "m",
+        context_window: 0,
+        max_tokens: 0,
+        reasoning: null,
+        key_hint: "…k",
+        revision: "0123abcd",
+        api_key: "k",
+      },
+      "supervisor",
+    );
+    assert.deepEqual(ran, ["isolation"]);
+    release();
+    await atStart;
+    await new Promise((r) => setTimeout(r, 20));
+    assert.deepEqual(ran, ["isolation", "model"]);
+    const started = env.service.ledger
+      .eventsAfter(0, 1000)
+      .events.filter((e) => e.kind === "rig_check_started")
+      .map((e) => [(e.body as { check: string }).check, (e.body as { force: boolean }).force]);
+    assert.deepEqual(started, [
+      ["isolation", true],
+      ["model", false],
+    ]);
+    // A rig without the check skips it.
+    await makeHarnessEnv("rig-b").service.checkAtStart("isolation");
   });
 
   test("the owner declines a waiting promotion: it never becomes champion, and only the owner may", async () => {

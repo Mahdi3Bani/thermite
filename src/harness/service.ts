@@ -718,8 +718,10 @@ export class HarnessService {
     });
     // A new model is checked at once (unless a check is running): its result shows on the
     // settings page without anyone pressing Check.
-    if (info.source !== "none" && this.rigChecks.model && !this.checking)
-      this.startRigCheck({ check: "model" }, "harness");
+    if (info.source !== "none" && this.rigChecks.model) {
+      if (this.checking) this.modelCheckWaits = true;
+      else this.startRigCheck({ check: "model" }, "harness");
+    }
     return info;
   }
   private checking: string | undefined;
@@ -778,15 +780,32 @@ export class HarnessService {
           : {}),
       });
     };
-    void check
+    this.checkRun = check
       .run({ force })
       .then(finish, (err: unknown) =>
         finish({ ok: false, summary: err instanceof Error ? err.message : String(err) }),
       )
       .finally(() => {
         this.checking = undefined;
+        // A model route that arrived during another check is checked now.
+        if (this.modelCheckWaits && this.rigChecks.model) {
+          this.modelCheckWaits = false;
+          this.startRigCheck({ check: "model" }, "harness");
+        }
       });
     return { check: p.check, id, started: true };
+  }
+  private checkRun: Promise<void> | undefined;
+  private modelCheckWaits = false;
+
+  /**
+   * A check at start, run before anything else and awaited. Forced: at start no trial or judge
+   * job of this controller can be running. Never fatal: its result is its own event.
+   */
+  async checkAtStart(check: RigCheckName): Promise<void> {
+    if (!this.rigChecks[check]) return;
+    this.startRigCheck({ check, force: true }, "harness");
+    await this.checkRun;
   }
 
   // ------------------------------------------------------------ audits, reviews, briefs

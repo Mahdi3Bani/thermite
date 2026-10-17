@@ -251,6 +251,41 @@ async function main(): Promise<void> {
       : undefined,
   });
 
+  // The route control sets for this rig: kept in the state directory, root only.
+  const routeFile = join(paths.stateDir, "model-route.json");
+  // A check a previous controller left running is over.
+  service.reconcileRigChecks();
+  if (env.THERMITE_BROKER_SOCKET) {
+    const socketPath = env.THERMITE_BROKER_SOCKET;
+    service.rigChecks.isolation = {
+      notNow: () => busyReason(paths.stateDir),
+      run: async ({ force }) => {
+        const report = await isolationSelftest({
+          socketPath,
+          stateDir: paths.stateDir,
+          // The scratch root, as the command-line selftest uses it (the controller's own area,
+          // paths.scratchDir, is a directory inside it).
+          scratchDir: env.THERMITE_SCRATCH_DIR ?? "/scratch",
+          outboxDir: paths.outboxDir,
+          secretFiles: [
+            routeFile,
+            env.THERMITE_SUPERVISOR_TOKEN_FILE,
+            env.THERMITE_PROPOSER_TOKEN_FILE,
+            env.THERMITE_MODEL_API_KEY_FILE,
+            env.QWEN_API_KEY_FILE,
+          ].filter((f): f is string => Boolean(f)),
+          dedicated: env.THERMITE_DEV_GPU_INDEX !== undefined,
+          force,
+          controllerPid: process.pid,
+        });
+        return { ok: report.ok, summary: isolationSummary(report), detail: { ...report } };
+      },
+    };
+  }
+  // The isolation check at every start, before the API, the judge or any agent runs: nothing of
+  // theirs can be running yet, and control sees the result beside the rig's hardware.
+  await service.checkAtStart("isolation");
+
   const { host, port } = parseListen(env.THERMITE_LISTEN ?? "0.0.0.0:8700");
   const server = serve({
     fetch: createHarnessApi(service, tokens, {
@@ -284,7 +319,6 @@ async function main(): Promise<void> {
   // broker). Each trial is its own worker process.
   // The route control sets (kept in the state directory, root only) comes before the rig's own
   // settings; every plan and trial takes the route current when it starts.
-  const routeFile = join(paths.stateDir, "model-route.json");
   const models = new ModelSource(routeFile, modelConfigFromEnv(env));
   service.models = models;
   const model = () => models.current();
@@ -311,7 +345,6 @@ async function main(): Promise<void> {
           };
     },
   };
-  service.reconcileRigChecks();
   // The smoke check: a judge-only campaign from the smoke kit in the image, on this target.
   service.rigChecks.smoke = {
     notNow: () => busyReason(paths.stateDir),
@@ -324,33 +357,6 @@ async function main(): Promise<void> {
         scratchDir: paths.scratchDir,
       }),
   };
-  if (env.THERMITE_BROKER_SOCKET) {
-    const socketPath = env.THERMITE_BROKER_SOCKET;
-    service.rigChecks.isolation = {
-      notNow: () => busyReason(paths.stateDir),
-      run: async ({ force }) => {
-        const report = await isolationSelftest({
-          socketPath,
-          stateDir: paths.stateDir,
-          // The scratch root, as the command-line selftest uses it (the controller's own area,
-          // paths.scratchDir, is a directory inside it).
-          scratchDir: env.THERMITE_SCRATCH_DIR ?? "/scratch",
-          outboxDir: paths.outboxDir,
-          secretFiles: [
-            routeFile,
-            env.THERMITE_SUPERVISOR_TOKEN_FILE,
-            env.THERMITE_PROPOSER_TOKEN_FILE,
-            env.THERMITE_MODEL_API_KEY_FILE,
-            env.QWEN_API_KEY_FILE,
-          ].filter((f): f is string => Boolean(f)),
-          dedicated: env.THERMITE_DEV_GPU_INDEX !== undefined,
-          force,
-          controllerPid: process.pid,
-        });
-        return { ok: report.ok, summary: isolationSummary(report), detail: { ...report } };
-      },
-    };
-  }
   // Agents wait while no route is set; one set later starts them without a restart.
   const scheduler = new Scheduler({
     service,

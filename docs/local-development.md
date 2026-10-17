@@ -205,7 +205,7 @@ A rig checks itself when control asks: from its page in the dashboard (Checks), 
 | Check | What it does | When |
 | --- | --- | --- |
 | `model` | One short request through the rig's model route, as its workers and planner make them. It must come back as a correct tool call. | After the model server or its settings change, before resuming runs |
-| `isolation` | The isolation selftest: each role's user tries to reach what it must not. | After deploying or changing a rig. Needs an idle rig |
+| `isolation` | The isolation selftest: each role's user tries to reach what it must not. | The harness runs it at every start, before its API, judge and agents. Run it again after changing a rig; it needs an idle rig |
 | `smoke` | A judge-only campaign from the smoke kit in the harness image, on the rig's own target. Candidates with known verdicts (a real win, a no-op, broken changes, ways to cheat) must each get theirs. | After deploying a rig or a new version. Needs an idle rig; its running runs are paused for it and resumed after |
 
 An idle rig has no open trials and no judge jobs. A busy rig answers "not now". `"force": true` runs the check anyway, ending what its probes touch.
