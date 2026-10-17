@@ -31,7 +31,6 @@ import {
   runState,
   type Shell,
   shell,
-  sparkline,
   stackBar,
 } from "./ui/components.ts";
 import {
@@ -46,21 +45,13 @@ import {
   type Need,
   needs as operatorNeeds,
   runBrief,
-  runProgress,
+  runRow,
   runStateHtml,
   timeline,
   waitingOn,
 } from "./ui/operator.ts";
 import { STYLE } from "./ui/style.ts";
-import {
-  auditReason,
-  clip,
-  findAttempt,
-  jobText,
-  runStatusText,
-  signed,
-  span,
-} from "./ui/words.ts";
+import { auditReason, clip, jobText, runStatusText, signed, span } from "./ui/words.ts";
 import {
   type CampaignView,
   campaignViews,
@@ -666,38 +657,39 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     const now = Date.now();
     const vs = views();
     const camps = campaignViews(vs);
-    // One full-width card per campaign; its runs in a table whose columns line up across cards.
-    const cols = `<colgroup><col style="width:28%"><col style="width:20%"><col style="width:14%"><col style="width:120px"><col style="width:12%"><col></colgroup>`;
+    // Each campaign in a sentence (its best run, what is at work, what waits), then its runs.
     const cards = camps
       .map((k) => {
         const h = headline(k);
-        const st = campaignState(k);
-        const rigs = rigList(k);
-        const rows = k.runs
-          .map(({ rig, run }) => {
-            const last = run.attempts.at(-1)?.updated_at;
-            return `<tr><td><a href="${runHref(rig.id, run)}"><b>${esc(run.id)}</b></a></td><td>${avatar(rig.id)} ${esc(rig.id)}${rig.stale ? ` <span class="bad xs">not reporting</span>` : ""}</td><td class="num">${esc(runMetric(run))}</td><td>${run.mode === "hill_climb" ? sparkline(run, 110, 22) : ""}</td><td class="num muted">${last ? `last attempt ${esc(ago(last, now))} ago` : "no attempt yet"}</td><td class="num">${runStateHtml(run)}</td></tr>`;
-          })
-          .join("");
-        const last = k.runs
-          .flatMap((x) => x.run.attempts.map((a) => a.updated_at))
-          .sort()
-          .at(-1);
-        return `<div class="card camp"><div class="camp-head">${modeAvatar(k.mode)}<div class="grow"><a class="title" href="${campaignHref(k.name)}">${esc(k.name)}</a><div class="sub">${esc(modeName(k.mode))} · ${k.runs.length} run${k.runs.length > 1 ? "s" : ""} on ${esc(rigs.join(", "))}${last ? ` · last attempt ${esc(ago(last, now))} ago` : ""}</div></div><div class="figure"><b>${esc(h.value)}</b><span>${esc(h.sub)}</span></div><span class="label ${st.cls}">${st.icon}${esc(st.text)}</span></div>
-<table class="camp-runs">${cols}<tbody>${rows}</tbody></table></div>`;
+        const live = k.runs.filter((x) => x.run.status === "running").length;
+        const waiting = k.runs.reduce((n, x) => n + waitingOn(x.run), 0);
+        const best = h.best;
+        const said = [
+          k.mode === "goal"
+            ? best?.goals.length
+              ? `Its best run meets ${best.goals.filter((g) => g.status === "met").length} of ${best.goals.length} goals.`
+              : "The judge has not checked its goals yet."
+            : k.mode === "hill_climb"
+              ? `Its best run is ${esc(h.value)} over where it started.`
+              : `${esc(h.value)} verified claims.`,
+          live ? `${live} run${live === 1 ? " is" : "s are"} at work.` : "No run is at work.",
+          waiting
+            ? `<b class="warn">${waiting} decision${waiting === 1 ? " waits" : "s wait"} for you.</b>`
+            : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
+        return `<div class="card flat camp"><div class="camp-top">${modeAvatar(k.mode)}<div class="grow"><a class="camp-name" href="${campaignHref(k.name)}">${esc(k.name)}</a> <span class="muted small">${esc(modeName(k.mode))}</span><div class="small camp-said">${said}</div></div></div>${k.runs.map((x) => runRow(x.rig, x.run, now, "rig")).join("")}</div>`;
       })
       .join("");
     return page(
       c,
       {
         title: "Campaigns",
-        summary:
-          "each campaign runs on one or more rigs; open one for its runs, lanes and attempts",
+        summary: `${camps.length} campaign${camps.length === 1 ? "" : "s"}; open one for its runs, lanes and attempts`,
         active: "campaigns",
       },
-      cards
-        ? `<div class="stack">${cards}</div>`
-        : `<div class="card"><div class="empty">No campaign yet.</div></div>`,
+      cards || `<div class="card"><div class="empty">No campaign yet.</div></div>`,
       vs,
     );
   });
@@ -802,52 +794,63 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
   app.get("/ui/rigs", (c) => {
     const now = Date.now();
     const vs = views();
+    // Each rig: whether it reports, what it runs on, its judge, its checks, then its runs.
+    const checks: [string, string][] = [
+      ["model", "model route"],
+      ["isolation", "isolation"],
+      ["smoke", "judge smoke"],
+    ];
     const cards = vs
       .map((u) => {
         const key = store.rigKey(u.id);
         const status = key.pending
-          ? `<span class="pill warn">Key to accept</span>`
+          ? `<span class="chip warn">Key to accept</span>`
           : u.stale
-            ? `<span class="pill bad">Stale</span>`
-            : `<span class="pill ok">Live</span>`;
-        const queued = num(u.jobs.queued);
-        const leased = num(u.jobs.leased);
-        const done = num(u.jobs.done);
+            ? `<span class="chip bad">Not reporting</span>`
+            : `<span class="chip ok">Live</span>`;
+        const queued = u.judge.queued.length;
         const sup = u.supervisor as Record<string, unknown> | null;
         const ex =
           sup?.export && typeof sup.export === "object"
             ? (sup.export as Record<string, unknown>)
             : null;
-        const rows = u.runs
-          .map((i) => {
-            const st = runState(i);
-            const champ = i.champion.filter((s) => !s.reopened).at(-1);
-            const extra =
-              i.mode === "hill_climb"
-                ? `<span class="muted small nowrap">${pct((champ?.cumulative ?? 1) - 1, 1)}</span>`
-                : i.mode === "goal"
-                  ? `<span class="muted small nowrap">${i.goals.filter((g) => g.status === "met").length}/${i.goals.length} goals</span>`
-                  : "";
-            return `<a class="row" style="padding:6px 0" href="${runHref(u.id, i)}">${modeAvatar(i.mode)}<span class="grow clip">${esc(i.campaign || i.id)} <span class="muted small">› ${esc(i.id)}</span></span>${extra}<span class="label ${st.cls}">${st.icon}${esc(st.text)}</span></a>`;
+        const said = [
+          u.stale
+            ? `<b class="bad">No report for ${esc(span(u.last_seen, now))}.</b>`
+            : `Reported ${esc(ago(u.last_seen, now))} ago.`,
+          u.judge.now
+            ? `The judge is ${jobHtml(u, u.judge.now)}${queued ? `, with ${queued} more queued` : ""}.`
+            : `The judge is idle${queued ? `, with ${queued} queued` : ""}.`,
+          ex?.last_error
+            ? `<span class="bad">Its last export failed: ${esc(clip(String(ex.last_error), 120))}</span>`
+            : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
+        const marks = checks
+          .map(([k, name]) => {
+            const r = u.checks[k];
+            const [tone, mark, word] = !r
+              ? ["", "·", "not run yet"]
+              : r.finished_at === null
+                ? ["info", "…", "running"]
+                : r.ok
+                  ? ["ok", "✓", `passed ${ago(r.finished_at, now)} ago`]
+                  : ["bad", "✕", `failed ${ago(r.finished_at, now)} ago`];
+            return `<span class="chip ${tone}" title="${esc(word)}">${mark} ${esc(name)}</span>`;
           })
           .join("");
-        return `<div class="card"><div class="card-head"><span class="iconbox">${icon.cpu}</span><div class="grow"><a class="title" href="/ui/rigs/${encodeURIComponent(u.id)}">${esc(u.id)}</a><div class="sub">${u.stale ? `last report ${esc(ago(u.last_seen, now))} ago` : `reported ${esc(ago(u.last_seen, now))} ago`}</div></div><div class="right">${status}</div></div>
-${u.hardware ? `<div class="muted xs" style="margin-top:8px">${hardwareLine(u.hardware)}</div>` : ""}
-<div class="small" style="margin-top:12px"><span class="muted">Judge</span> ${u.judge.now ? `${esc(jobText(u.judge.now, findAttempt(u, u.judge.now.attempt ?? "")?.lane))} <span class="muted">for ${esc(span(u.judge.now.started_at, now))}</span>` : `<span class="muted">idle</span>`}${queued ? ` <span class="muted">· ${queued} queued</span>` : ""} <span class="muted">· ${fmtInt(done)} jobs done${leased && !u.judge.now ? ` · ${leased} running` : ""}</span></div>
-<div class="divider"></div>${rows || `<div class="muted small">Idle. No campaign assigned.</div>`}
-${ex ? `<div class="divider"></div><div class="muted xs">Results: ${num(ex.exports)} exports${ex.remote === true ? ` · pushed ${esc(ago(String(ex.last_push_at ?? ""), now) || "never")} ago` : " · no results repository"}${ex.last_error ? ` · <span class="bad">${esc(String(ex.last_error).slice(0, 120))}</span>` : ""}</div>` : ""}</div>`;
+        return `<div class="card flat camp"><div class="camp-top"><span class="iconbox">${icon.cpu}</span><div class="grow"><div><a class="camp-name" href="/ui/rigs/${encodeURIComponent(u.id)}">${esc(u.id)}</a> ${status} <span class="muted small">${hardwareLine(u.hardware)}</span></div><div class="small camp-said">${said}</div><div class="chips">${marks}</div></div></div>${u.runs.map((i) => runRow(u, i, now, "campaign")).join("") || `<div class="empty">No campaign assigned.</div>`}</div>`;
       })
       .join("");
     return page(
       c,
       {
         title: "Rigs",
-        summary: `${vs.length} rigs · ${vs.filter((u) => u.stale).length} stale · ${vs.reduce((n, u) => n + u.runs.filter((i) => i.status === "running").length, 0)} runs running`,
+        summary: `${vs.length} rig${vs.length === 1 ? "" : "s"} · ${vs.filter((u) => u.stale).length} not reporting · ${vs.reduce((n, u) => n + u.runs.filter((i) => i.status === "running").length, 0)} runs at work`,
         active: "rigs",
       },
-      cards
-        ? `<div class="grid-cards">${cards}</div>`
-        : `<div class="card"><div class="empty">No rig has reported yet.</div></div>`,
+      cards || `<div class="card"><div class="empty">No rig has reported yet.</div></div>`,
       vs,
     );
   });
@@ -935,18 +938,7 @@ ${ex ? `<div class="divider"></div><div class="muted xs">Results: ${num(ex.expor
         return `<div class="ck"><span class="ck-res">${res}</span><span class="ck-main"><span><b>${esc(name)}</b> <span class="muted small">${when}</span></span>${r?.finished_at && r.summary ? `<span class="ck-sum ${r.ok ? "" : "bad"}">${esc(r.summary)}</span>` : ""}<span class="ck-what">${esc(what)}</span></span>${cmdForm(c, { rig: u.id, kind: "rig_check", fields: { check: k }, label: r && r.finished_at === null ? "Running…" : "Run it", back })}</div>`;
       })
       .join("");
-    const runRows = u.runs
-      .map((i) => {
-        const [word, tone] =
-          i.status === "running"
-            ? ["Running", "ok"]
-            : i.status === "paused"
-              ? ["Paused", "warn"]
-              : [cap(i.status), ""];
-        const n = waitingOn(i);
-        return `<a class="rr" href="${runHref(u.id, i)}"><span class="chip ${tone}">${esc(word)}</span><span class="ar-main"><b>${esc(i.campaign || i.id)} › ${esc(i.id)}</b><span class="muted small">${esc(i.status !== "running" && i.pause_reason ? i.pause_reason : modeName(i.mode))}</span></span><span class="brief-progress">${runProgress(i)}</span><span class="rr-need">${n ? `<span class="warn small">${n} need${n === 1 ? "s" : ""} you</span>` : ""}</span></a>`;
-      })
-      .join("");
+    const runRows = u.runs.map((i) => runRow(u, i, now, "campaign")).join("");
     const jobs = u.judge.jobs
       .slice(-8)
       .reverse()

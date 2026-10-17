@@ -99,19 +99,8 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .cols { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 24px; align-items: start; }
 .stack { display: flex; flex-direction: column; gap: 12px; }
 .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; align-items: start; }
-.grid-cards > .card + .card, .grid2 > .card + .card, .stack > .card + .card { margin-top: 0; }
+.grid2 > .card + .card, .stack > .card + .card { margin-top: 0; }
 .card.camp { padding: 0; }
-.camp-head { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
-.camp-head .title { font-weight: 600; font-size: 14px; }
-.camp-head .sub { font-size: 12px; color: var(--muted-foreground); margin-top: 1px; }
-.camp-head .figure { display: flex; flex-direction: column; align-items: flex-end; min-width: 150px; }
-.camp-head .figure b { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; }
-.camp-head .figure span { font-size: 11px; color: var(--muted-foreground); }
-.camp-head .label { min-width: 92px; justify-content: flex-end; }
-.camp-runs { table-layout: fixed; border-top: 1px solid var(--border); }
-.camp-runs td { padding: 8px 16px; vertical-align: middle; }
-.camp-runs tr:last-child td { border-bottom: 0; }
 .kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 @media (min-width: 1700px) { .kpis { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
 .head { display: flex; align-items: baseline; gap: 8px; margin: 4px 0 10px; }
@@ -364,11 +353,16 @@ details.matrix .card { border: 0; border-radius: 0; }
 .ck-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .ck-sum { font-size: 13px; } .ck-sum.bad { color: var(--error-foreground); }
 .ck-what { color: var(--muted-foreground); font-size: 12px; }
-.rr { display: grid; grid-template-columns: 80px minmax(0, 1fr) auto 90px; gap: 10px; align-items: center; padding: 9px 14px; border-bottom: 1px solid var(--border); font-size: 13px; color: inherit; }
+.rr { display: grid; grid-template-columns: 80px minmax(0, 1fr) auto 100px; gap: 10px; align-items: center; padding: 9px 14px; border-bottom: 1px solid var(--border); font-size: 13px; color: inherit; }
 .rr:last-child { border-bottom: 0; }
 .rr:hover { background: var(--muted); text-decoration: none; }
 .rr .chip { justify-content: center; }
 .rr-need { text-align: right; }
+.camp + .camp { margin-top: 16px; }
+.camp-top { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.camp-name { font-weight: 650; font-size: 15px; }
+.camp-said { margin-top: 3px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
 ol.steps { margin: 0; padding-left: 18px; font-size: 13px; } ol.steps li { margin: 3px 0; }
 .explain { color: var(--muted-foreground); font-size: 12px; margin: 4px 0 0; }
 
@@ -380,13 +374,6 @@ ol.steps { margin: 0; padding-left: 18px; font-size: 13px; } ol.steps li { margi
 .tl-s { min-width: 0; word-break: break-word; } .tl-s a { color: var(--primary); }
 .tl-rig { color: var(--muted-foreground); font-size: 12px; white-space: nowrap; }
 
-/* rig tiles (Magnesium's fleet tiles) */
-.tile { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.tile:hover { border-color: color-mix(in srgb, var(--foreground) 25%, transparent); text-decoration: none; }
-.tile .name { display: flex; align-items: center; gap: 7px; font-weight: 600; font-size: 13px; }
-.tile .name .gain { margin-left: auto; font-weight: 600; font-size: 12px; color: var(--success-foreground); font-variant-numeric: tabular-nums; }
-.tile .sub { font-size: 12px; color: var(--muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tile.off .name, .tile.off .sub { color: var(--muted-foreground); }
 
 /* chart */
 svg.chart { width: 100%; height: auto; display: block; }

@@ -732,6 +732,35 @@ export function runBrief(
   return `<section class="brief">${head}${rows.join("")}</section>`;
 }
 
+/**
+ * A run as one row: its state, its name (with its campaign, or with its rig), why it is paused or
+ * when it last had an attempt, its progress, and how many decisions wait for the owner.
+ */
+export function runRow(u: RigView, r: RunView, now: number, name: "campaign" | "rig"): string {
+  const [word, tone] =
+    r.status === "running"
+      ? ["Running", "ok"]
+      : r.status === "paused"
+        ? ["Paused", "warn"]
+        : [cap(r.status), ""];
+  const n = waitingOn(r);
+  const last = r.attempts
+    .map((a) => a.updated_at)
+    .sort()
+    .at(-1);
+  const sub =
+    r.status !== "running" && r.pause_reason
+      ? r.pause_reason
+      : last
+        ? `last attempt ${ago(last, now)} ago`
+        : "no attempt yet";
+  const title =
+    name === "campaign"
+      ? `${esc(r.campaign || r.id)} › ${esc(r.id)}`
+      : `${esc(r.id)} <span class="muted small">on ${esc(u.id)}${u.stale ? ` <span class="bad">(not reporting)</span>` : ""}</span>`;
+  return `<a class="rr" href="${runHref(u.id, r)}"><span class="chip ${tone}">${esc(word)}</span><span class="ar-main"><b>${title}</b><span class="muted small">${esc(sub)}</span></span><span class="brief-progress">${runProgress(r)}</span><span class="rr-need">${n ? `<span class="warn small">${n} need${n === 1 ? "s" : ""} you</span>` : ""}</span></a>`;
+}
+
 /** An attempt's outcome as one word a person scans for, with its tone. */
 export function outcome(r: RunView, a: AttemptView): { word: string; tone: string } {
   const champ = r.champion.find((c) => c.attempt === a.id && !c.reopened);

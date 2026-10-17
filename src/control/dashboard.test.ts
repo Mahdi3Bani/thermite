@@ -572,6 +572,19 @@ describe("control dashboard for an operator", () => {
       /get the model fully onto the GPU with every layer offloaded <a class="small" href="\/ui\/rigs\/rig-b\/live\?source=trial%3At-0a1b2c3d4e5f6071">watch<\/a><\/span><span class="br-when">1 h 3 min</,
     );
     assert.match(home, /4\/8 goals/);
+    // The lists say each campaign and rig in a sentence, then their runs as rows.
+    const campaigns = await get("/ui/campaigns");
+    assert.match(campaigns, /Its best run meets 4 of 8 goals\. 1 run is at work\./);
+    assert.match(
+      campaigns,
+      /<b>port-2 <span class="muted small">on rig-a<\/span><\/b><span class="muted small">replaced by port-3 on rig-b<\/span>/,
+    );
+    const rigsList = await get("/ui/rigs");
+    assert.match(
+      rigsList,
+      /The judge is measuring the rig's own noise \(the champion against itself\)\./,
+    );
+    assert.match(rigsList, /<span class="chip " title="not run yet">· model route<\/span>/);
     // The run's page adds each lane's last step.
     const run = await get("/ui/campaigns/kernel-port?run=rig-b%2Fport-3");
     assert.match(run, /last: <code>run timeout 270 cmake --build/);
