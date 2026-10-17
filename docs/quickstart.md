@@ -87,7 +87,13 @@ A rig can also take its model from its own settings (`THERMITE_MODEL_*`, see
 
 ## 5. Run a campaign on your own project
 
-A campaign needs three things:
+The simplest way is the dashboard: **Campaigns › New campaign**. It asks, in five steps, what the
+campaign should do (hill climbing, reaching goals, or research), where your project is, how to
+measure it, and which rig runs it. You can describe the kit right there: a build command, test
+cases, a run command and a check. Control writes the kit, keeps it, and starts the first run. Each
+field's ⓘ says what it means.
+
+From the command line instead, a campaign needs three things:
 
 1. **A kit.** It builds your project, runs its benchmark and checks the result. See
    [Write a kit](write-a-kit.md). Start from `kits/smoke-cpu`.

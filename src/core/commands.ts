@@ -27,12 +27,16 @@ const InboxPath = z
  * never reads it: it checks the commit or the sha256 of what arrives, as for a file an
  * operator put in the inbox.
  */
-const GitSource = z.object({
-  git: z
-    .string()
-    .max(2000)
-    .regex(/^(?:https:\/\/|ssh:\/\/|git:\/\/|file:\/\/|[\w.-]+@[\w.-]+:)/, "a git URL"),
-});
+const GitSource = z.union([
+  z.object({
+    git: z
+      .string()
+      .max(2000)
+      .regex(/^(?:https:\/\/|ssh:\/\/|git:\/\/|file:\/\/|[\w.-]+@[\w.-]+:)/, "a git URL"),
+  }),
+  /** A kit control wrote and keeps itself; the supervisor fetches it from control. */
+  z.object({ control: z.string().regex(/^kits\/[a-z0-9][a-z0-9._-]{0,63}$/, "kits/<name>") }),
+]);
 const FileSource = z.object({
   url: z
     .string()

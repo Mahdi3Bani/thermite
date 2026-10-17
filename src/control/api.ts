@@ -8,10 +8,12 @@ import { LiveBatch, LiveEntry, liveBody } from "../core/live.ts";
 import { Credential, newToken } from "./credential.ts";
 import { createDashboard } from "./dashboard.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
+import type { KitRepos } from "./kit-repos.ts";
 import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
 import { mountMcp } from "./mcp.ts";
 import { metricsText } from "./metrics.ts";
 import { isOpencodeOwn, providerBase } from "./providers.ts";
+import type { probeRepository } from "./repo-probe.ts";
 import { SecretBox } from "./secrets.ts";
 import { type ControlStore, fingerprint, type IngestReport, RIG_ID } from "./store.ts";
 import { leaderboard, rigView } from "./views.ts";
@@ -163,6 +165,10 @@ export interface ControlOptions {
   secrets?: SecretBox | undefined;
   /** How control reaches model providers to list their models (tests give their own). */
   providerFetch?: typeof fetch | undefined;
+  /** The kits control writes itself, served to rigs (none: no kits are served). */
+  kits?: KitRepos | undefined;
+  /** How the new-campaign page reads a project's repository (tests give their own). */
+  probeRepo?: typeof probeRepository | undefined;
 }
 
 export function createControlApi(
@@ -309,6 +315,20 @@ export function createControlApi(
 
   // The provider and model this rig's agents use, with the provider's key, for the rig's supervisor
   // alone: it hands them to its harness. The key is opened only here, and nothing caches or logs it.
+  // A kit control keeps, as plain-HTTP git for a rig's supervisor to fetch by commit. Only the
+  // files such a fetch reads are served; the query git sends first (?service=...) is ignored,
+  // which tells git to fetch the plain way.
+  app.get("/v1/rigs/:rig/git/kits/:repo/*", rigAuth, (c) => {
+    const m = /^(.+)\.git$/.exec(c.req.param("repo"));
+    const rel = c.req.path.split(`/git/kits/${c.req.param("repo")}/`)[1] ?? "";
+    const body = m && opts.kits ? opts.kits.file(m[1] as string, rel) : undefined;
+    if (!body) return c.text("not found", 404);
+    return c.body(new Uint8Array(body), 200, {
+      "content-type": "application/octet-stream",
+      "cache-control": "no-store",
+    });
+  });
+
   app.get("/v1/rigs/:rig/model-route", rigAuth, (c) => {
     c.header("cache-control", "no-store");
     const r = store.rigModelFor(c.req.param("rig"));
@@ -610,6 +630,8 @@ export function createControlApi(
       sessionDays: opts.sessionDays,
       secrets,
       providerFetch: opts.providerFetch,
+      kits: opts.kits,
+      probeRepo: opts.probeRepo,
     }),
   );
   app.get("/", (c) => c.redirect("/ui", 302));

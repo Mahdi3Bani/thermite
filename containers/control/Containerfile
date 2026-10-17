@@ -10,7 +10,7 @@ RUN npm run build && npm prune --omit=dev --no-fund --no-audit
 
 FROM ${NODE_IMAGE}
 RUN apt-get update \
- && apt-get install -y --no-install-recommends tini ca-certificates \
+ && apt-get install -y --no-install-recommends tini ca-certificates git \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/thermite
 COPY --from=build /src/package.json ./

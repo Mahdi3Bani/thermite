@@ -110,6 +110,27 @@ export const CLIENT_JS = `
     setInterval(poll, 2000);
   }
 
+  // ------------------------------------------------ info icons: a label's description on hover
+  const tip = document.createElement("div");
+  tip.id = "tip";
+  document.body.appendChild(tip);
+  const showTip = (el) => {
+    tip.textContent = el.dataset.tip || "";
+    tip.style.display = "block";
+    const r = el.getBoundingClientRect();
+    let x = Math.min(r.left - 8, window.innerWidth - tip.offsetWidth - 12);
+    if (x < 12) x = 12;
+    let y = r.bottom + 8;
+    if (y + tip.offsetHeight > window.innerHeight - 8) y = r.top - tip.offsetHeight - 8;
+    tip.style.left = x + "px";
+    tip.style.top = y + "px";
+  };
+  const hideTip = () => (tip.style.display = "none");
+  document.addEventListener("mouseover", (ev) => { const i = ev.target.closest && ev.target.closest(".ii"); if (i) showTip(i); });
+  document.addEventListener("mouseout", (ev) => { if (ev.target.closest && ev.target.closest(".ii")) hideTip(); });
+  document.addEventListener("focusin", (ev) => { const i = ev.target.closest && ev.target.closest(".ii"); if (i) showTip(i); });
+  document.addEventListener("focusout", hideTip);
+
   // ------------------------------------------------ the composer: Cmd/Ctrl+Enter sends
   const ta = $(".composer textarea");
   if (ta) ta.addEventListener("keydown", (ev) => {

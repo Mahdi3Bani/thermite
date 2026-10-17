@@ -43,6 +43,9 @@ export interface StagingConfig {
   knownHostsFile?: string | undefined;
   /** Where fetched git sources are kept between assignments (bare repositories). */
   sourcesDir?: string | undefined;
+  /** Control's address and this rig's token: kits control keeps are fetched from there. */
+  controlUrl?: string | undefined;
+  controlToken?: string | undefined;
 }
 
 /** What staging says about a command: relay it, wait, or report that its content failed. */
@@ -127,7 +130,12 @@ export async function stageCommand(cfg: StagingConfig, cmd: SignedCommand): Prom
 // ------------------------------------------------------------------ sources by reference
 
 type Sourced =
-  | { kind: "repo_bundle" | "kit_bundle"; path: string; commit: string; source: { git: string } }
+  | {
+      kind: "repo_bundle" | "kit_bundle";
+      path: string;
+      commit: string;
+      source: { git: string } | { control: string };
+    }
   | { kind: "model"; path: string; sha256: string; source: { url: string } };
 
 /** Stagings in progress, and finished ones not yet reported, by command id. */
@@ -224,7 +232,15 @@ async function bundleFromGit(
   imp: Extract<Sourced, { kind: "repo_bundle" | "kit_bundle" }>,
   target: string,
 ): Promise<void> {
-  const url = imp.source.git;
+  // A kit control keeps comes from control, as this rig, over plain HTTP(S); the token goes in
+  // a header and only to control's own address.
+  const fromControl = "control" in imp.source;
+  if (fromControl && (!cfg.controlUrl || !cfg.controlToken))
+    throw new Error(`${imp.path}: a kit from control, but this supervisor has no control to ask`);
+  const url =
+    "control" in imp.source
+      ? `${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/git/${imp.source.control}.git`
+      : imp.source.git;
   const dir = cfg.sourcesDir ?? join(dirname(cfg.resultsRepo), "sources");
   const cache = join(dir, `${createHash("sha256").update(url).digest("hex").slice(0, 16)}.git`);
   if (!existsSync(join(cache, "HEAD"))) {
@@ -232,7 +248,14 @@ async function bundleFromGit(
     await git(cache, ["init", "--quiet", "--bare"]);
   }
   // Never git's ext:: or other command transports: a URL in a command only names a repository.
-  const env = { ...sshEnv(cfg), GIT_ALLOW_PROTOCOL: "https:ssh:git:file" };
+  const env: Record<string, string> = fromControl
+    ? {
+        GIT_ALLOW_PROTOCOL: "http:https",
+        GIT_CONFIG_COUNT: "1",
+        GIT_CONFIG_KEY_0: "http.extraHeader",
+        GIT_CONFIG_VALUE_0: `Authorization: Bearer ${cfg.controlToken}`,
+      }
+    : { ...sshEnv(cfg), GIT_ALLOW_PROTOCOL: "https:ssh:git:file" };
   const has = () =>
     git(cache, ["cat-file", "-e", `${imp.commit}^{commit}`]).then(
       () => true,

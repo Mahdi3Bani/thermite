@@ -7,9 +7,11 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import { serve } from "@hono/node-server";
 import { createControlApi } from "../control/api.ts";
+import { KitRepos } from "../control/kit-repos.ts";
 import { ControlStore } from "../control/store.ts";
-import type { SignedCommand } from "../core/commands.ts";
+import { generateSigningKeys, type SignedCommand } from "../core/commands.ts";
 import { createHarnessApi } from "../harness/api.ts";
 import { makeJudgeEnv } from "../testing/judge-env.ts";
 import { relayOnce } from "./relay.ts";
@@ -61,6 +63,55 @@ function setup() {
 }
 
 describe("staging sources by reference", () => {
+  test("a kit control keeps is fetched from control, as this rig and with its token only", async () => {
+    const { root, inboxDir, cfg } = setup();
+    const kits = new KitRepos(join(root, "control-kits"));
+    const commit = kits.commit(
+      "demo-kit",
+      { "kit.json": Buffer.from("{}\n"), "run/run.sh": Buffer.from("echo run\n") },
+      "written on the page",
+    );
+    const control = createControlApi(
+      new ControlStore(":memory:"),
+      { admin: "owner-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } },
+      generateSigningKeys().privateKeyPem,
+      { staleAfterMs: 180_000, kits },
+    );
+    const server = serve({ fetch: control.fetch, hostname: "127.0.0.1", port: 0 });
+    await new Promise((r) => server.once("listening", r));
+    const controlUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    try {
+      const imports = [
+        {
+          kind: "kit_bundle",
+          path: "repos/kit-demo.bundle",
+          repo: "demo-kit",
+          commit,
+          source: { control: "kits/demo-kit" },
+        },
+      ];
+      // Without the rig's token, control serves nothing.
+      const refused = await staged(
+        { ...cfg, controlUrl, controlToken: "wrong-token-abcdef" },
+        assign("k-1", imports),
+      );
+      assert.equal(typeof refused, "object");
+      assert.ok(!existsSync(join(inboxDir, "repos", "kit-demo.bundle")));
+      const ok = await staged(
+        { ...cfg, controlUrl, controlToken: "rig-token-abcdef" },
+        assign("k-2", imports),
+      );
+      assert.equal(ok, "ready");
+      const heads = git(root, "bundle", "list-heads", join(inboxDir, "repos", "kit-demo.bundle"));
+      assert.match(heads, new RegExp(`^${commit} `));
+      // A supervisor with no control to ask says so, rather than fetching from anywhere else.
+      const none = await staged(cfg, assign("k-3", [{ ...imports[0], path: "repos/k3.bundle" }]));
+      assert.match(JSON.stringify(none), /no control to ask/);
+    } finally {
+      server.close();
+    }
+  });
+
   test("a project's commit is fetched from its repository and lands in the inbox as a bundle", async () => {
     const { root, inboxDir, cfg } = setup();
     const repo = join(root, "project");

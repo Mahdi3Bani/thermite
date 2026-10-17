@@ -154,6 +154,18 @@ create table if not exists rig_token (
   rotated_at text,
   retired_at text
 );
+-- Campaigns created on control (the new-campaign page): each version's contract as approved,
+-- with its content hash. Runs are assigned from a version.
+create table if not exists campaign_version (
+  campaign text not null,
+  version integer not null,
+  contract text not null,
+  sha text not null,
+  created_at text not null,
+  created_by text not null,
+  approved_by text,
+  primary key (campaign, version)
+);
 create index if not exists rig_live_rig on rig_live (rig, id);
 create index if not exists rig_live_source on rig_live (rig, source, id);
 `;
@@ -1053,6 +1065,95 @@ export class ControlStore {
       .run(status, canonicalJson(outcome ?? {}), new Date().toISOString(), id, rig);
     if (Number(r.changes) > 0) this.audit(`rig:${rig}`, "command_acked", { id, status });
     return Number(r.changes) > 0;
+  }
+
+  /** The next version number for a campaign created on control (1 for a new one). */
+  nextCampaignVersion(campaign: string): number {
+    const r = this.db
+      .prepare("select max(version) as v from campaign_version where campaign = ?")
+      .get(campaign) as { v: number | null };
+    return (r.v ?? 0) + 1;
+  }
+
+  /** Stores a campaign version, approved by whoever created it. */
+  putCampaign(c: {
+    campaign: string;
+    version: number;
+    contract: unknown;
+    sha: string;
+    by: string;
+  }): void {
+    this.db
+      .prepare(
+        `insert into campaign_version (campaign, version, contract, sha, created_at, created_by, approved_by)
+         values (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        c.campaign,
+        c.version,
+        canonicalJson(c.contract),
+        c.sha,
+        new Date().toISOString(),
+        c.by,
+        c.by,
+      );
+    this.audit(c.by, "campaign_version_created", {
+      campaign: c.campaign,
+      version: c.version,
+      sha: c.sha,
+    });
+  }
+
+  /** Every campaign version created on control, newest first. */
+  campaignVersions(campaign?: string): {
+    campaign: string;
+    version: number;
+    contract: unknown;
+    sha: string;
+    created_at: string;
+    created_by: string;
+  }[] {
+    const rows = (
+      campaign
+        ? this.db
+            .prepare("select * from campaign_version where campaign = ? order by version desc")
+            .all(campaign)
+        : this.db.prepare("select * from campaign_version order by created_at desc").all()
+    ) as Row[];
+    return rows.map((r) => ({
+      campaign: String(r.campaign),
+      version: Number(r.version),
+      contract: JSON.parse(String(r.contract)),
+      sha: String(r.sha),
+      created_at: String(r.created_at),
+      created_by: String(r.created_by),
+    }));
+  }
+
+  /**
+   * A run name for a campaign's next run on a rig: the campaign's name and the next number not
+   * yet used there (from the rig's reports and from assignments still on their way).
+   */
+  nextRunName(rig: string, campaign: string): string {
+    const base = campaign.slice(0, 58);
+    const taken = new Set<string>();
+    const created = this.db
+      .prepare("select distinct subject from rig_event where rig = ? and kind = 'run_created'")
+      .all(rig) as { subject: string | null }[];
+    for (const r of created) if (r.subject) taken.add(r.subject);
+    const assigned = this.db
+      .prepare("select signed from command where rig = ? and kind = 'assign_campaign'")
+      .all(rig) as { signed: string }[];
+    for (const c of assigned) {
+      try {
+        const run = (JSON.parse(c.signed) as { envelope?: { payload?: { run?: string } } }).envelope
+          ?.payload?.run;
+        if (run) taken.add(run);
+      } catch {
+        // not a command this store wrote
+      }
+    }
+    for (let n = 1; ; n++) if (!taken.has(`${base}-${n}`)) return `${base}-${n}`;
   }
 
   /** Rigs that have a token but have not reported yet still accept commands. */

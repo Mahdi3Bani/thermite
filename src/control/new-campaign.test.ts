@@ -1,0 +1,116 @@
+import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, test } from "node:test";
+import { generateSigningKeys, verifyCommand } from "../core/commands.ts";
+import type { CampaignDraft } from "./campaign-builder.ts";
+import { KitRepos } from "./kit-repos.ts";
+import { startCampaign } from "./new-campaign.ts";
+import { ControlStore } from "./store.ts";
+
+const C = "9a41c07e0d1f2a3b4c5d6e7f8091a2b3c4d5e6f7";
+const draft: CampaignDraft = {
+  mode: "hill_climb",
+  campaign: "matmul-speed",
+  title: "Make the matrix multiply faster",
+  target: { type: "x", class: "x" },
+  project: {
+    url: "https://git.example.com/team/fastmat.git",
+    commit: C,
+    repo: "fastmat",
+    editable_paths: ["src/kernels/**"],
+  },
+  kit: {
+    source: "here",
+    build: "make bench",
+    outputs: ["bench"],
+    cases: [{ name: "small", params: { n: 64 }, work: 524288 }],
+    run: "{build}/bench --n {n} --out {out}/result.txt",
+    check: "test -s {out}/result.txt",
+  },
+  score: { name: "throughput", unit: "FLOP/s" },
+};
+
+describe("starting a campaign from the page", () => {
+  test("the kit is kept on control, the contract stored, and the first run assigned with both sources", () => {
+    const keys = generateSigningKeys();
+    const store = new ControlStore(":memory:");
+    store.setConfiguredRigs(["rig-a"]);
+    const kits = new KitRepos(mkdtempSync(join(tmpdir(), "thermite-kits-")));
+    const deps = { store, kits, privateKeyPem: keys.privateKeyPem };
+    const target = { type: "cpu", class: "generic-cpu" };
+    const r = startCampaign(deps, { draft, rig: "rig-a", target, start: true, by: "owner:ui" });
+    assert.ok(r.ok, JSON.stringify(!r.ok && r.errors));
+    if (!r.ok) return;
+    assert.equal(r.version, 1);
+    assert.equal(r.run, "matmul-speed-1");
+    const head = kits.head("matmul-speed-kit");
+    assert.match(String(head), /^[0-9a-f]{40}$/);
+    const [stored] = store.campaignVersions("matmul-speed");
+    assert.equal(stored?.sha, r.sha);
+    const contract = stored?.contract as { target: unknown; project: { kit: { commit: string } } };
+    assert.deepEqual(contract.target, target);
+    assert.equal(contract.project.kit.commit, head);
+    // The assignment is signed by control, and names where each source comes from.
+    const row = store.db
+      .prepare("select signed from command where id = ?")
+      .get(String(r.command)) as {
+      signed: string;
+    };
+    const cmd = JSON.parse(row.signed);
+    assert.ok(verifyCommand(cmd, keys.publicKeyPem, "rig-a").ok);
+    const payload = cmd.envelope.payload as {
+      run: string;
+      contract_sha: string;
+      seed: { repo: string; commit: string };
+      imports: { kind: string; commit: string; source: Record<string, string> }[];
+    };
+    assert.equal(payload.contract_sha, r.sha);
+    assert.deepEqual(payload.seed, { repo: "fastmat", commit: C });
+    assert.deepEqual(
+      payload.imports.map((i) => [i.kind, i.commit, i.source]),
+      [
+        ["repo_bundle", C, { git: "https://git.example.com/team/fastmat.git" }],
+        ["kit_bundle", head, { control: "kits/matmul-speed-kit" }],
+      ],
+    );
+    // Again: a new version, the same kit commit (nothing changed), the next run's name.
+    const again = startCampaign(deps, { draft, rig: "rig-a", target, start: true, by: "owner:ui" });
+    assert.ok(again.ok);
+    if (again.ok) {
+      assert.equal(again.version, 2);
+      assert.equal(again.run, "matmul-speed-2");
+    }
+    assert.equal(kits.head("matmul-speed-kit"), head);
+    // Saved only: stored, nothing assigned.
+    const saved = startCampaign(deps, {
+      draft,
+      rig: "rig-a",
+      target,
+      start: false,
+      by: "owner:ui",
+    });
+    assert.ok(saved.ok && saved.run === undefined && saved.version === 3);
+  });
+
+  test("a draft with mistakes changes nothing and says why", () => {
+    const store = new ControlStore(":memory:");
+    store.setConfiguredRigs(["rig-a"]);
+    const kits = new KitRepos(mkdtempSync(join(tmpdir(), "thermite-kits-")));
+    const r = startCampaign(
+      { store, kits, privateKeyPem: generateSigningKeys().privateKeyPem },
+      {
+        draft: { ...draft, kit: { ...(draft.kit as object), run: "{build}/bench {size}" } },
+        rig: "rig-a",
+        target: { type: "cpu", class: "generic-cpu" },
+        start: true,
+        by: "owner:ui",
+      },
+    );
+    assert.equal(r.ok, false);
+    assert.match(JSON.stringify(!r.ok && r.errors), /\{size\} is not a placeholder/);
+    assert.equal(store.campaignVersions().length, 0);
+    assert.equal(kits.head("matmul-speed-kit"), undefined);
+  });
+});

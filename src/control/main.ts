@@ -5,6 +5,7 @@ import { log, optionalSecretFromFile, parseListen } from "../common/env.ts";
 import { generateSigningKeys } from "../core/commands.ts";
 import { createControlApi } from "./api.ts";
 import { Credential } from "./credential.ts";
+import { KitRepos } from "./kit-repos.ts";
 import { advanceResets, driverFromEnv } from "./lifecycle.ts";
 import { SecretBox } from "./secrets.ts";
 import { ControlStore } from "./store.ts";
@@ -80,6 +81,8 @@ async function main(): Promise<void> {
       secrets: SecretBox.fromFile(
         env.THERMITE_CONTROL_SECRETS_KEY_FILE ?? join(dir, "secrets.key"),
       ),
+      // Kits written on the new-campaign page, kept as git repositories in control's state.
+      kits: new KitRepos(join(dir, "kits")),
     }).fetch,
     hostname: host,
     port,

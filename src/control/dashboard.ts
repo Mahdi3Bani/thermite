@@ -5,8 +5,11 @@ import { getCookie, setCookie } from "hono/cookie";
 import { COMMAND_KINDS, type CommandKind } from "../core/commands.ts";
 import type { Credential } from "./credential.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
+import type { KitRepos } from "./kit-repos.ts";
 import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
+import { startCampaign } from "./new-campaign.ts";
 import { ANTHROPIC_BASE, isOpencodeOwn, listModels, providerBase } from "./providers.ts";
+import { probeRepository } from "./repo-probe.ts";
 import { keyHint, type SecretBox } from "./secrets.ts";
 import {
   type ControlStore,
@@ -41,6 +44,8 @@ import {
   shell,
   stackBar,
 } from "./ui/components.ts";
+import { newCampaignBody } from "./ui/new-campaign.ts";
+import { NEW_CAMPAIGN_JS } from "./ui/new-campaign-client.ts";
 import {
   attemptDetail,
   attemptHref,
@@ -100,6 +105,10 @@ export interface DashboardOptions {
   secrets: SecretBox;
   /** How control reaches model providers to list their models (tests give their own). */
   providerFetch?: typeof fetch | undefined;
+  /** Kits control writes (the new-campaign page); none: campaigns cannot be created here. */
+  kits?: KitRepos | undefined;
+  /** How control reads a project's repository (tests give their own). */
+  probeRepo?: typeof probeRepository | undefined;
 }
 
 export function createDashboard(store: ControlStore, opts: DashboardOptions): Hono {
@@ -700,10 +709,100 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         title: "Campaigns",
         summary: `${camps.length} campaign${camps.length === 1 ? "" : "s"}; open one for its runs, lanes and attempts`,
         active: "campaigns",
+        actions: opts.kits
+          ? `<a class="btn primary" href="/ui/campaigns/new">New campaign</a>`
+          : undefined,
       },
-      cards || `<div class="card"><div class="empty">No campaign yet.</div></div>`,
+      cards ||
+        `<div class="card"><div class="empty">No campaign yet.${opts.kits ? ` <a href="/ui/campaigns/new">Start one.</a>` : ""}</div></div>`,
       vs,
     );
+  });
+
+  // ---------------------------------------------------------------- a new campaign
+  app.get("/ui/assets/new-campaign.js", (c) =>
+    c.body(NEW_CAMPAIGN_JS, 200, {
+      "content-type": "text/javascript; charset=utf-8",
+      "cache-control": "no-cache",
+    }),
+  );
+  const newCampaignPage = (
+    c: Ctx,
+    extra: { draft?: Record<string, unknown>; errors?: string[] } = {},
+  ) =>
+    page(
+      c,
+      {
+        title: "New campaign",
+        active: "campaigns",
+        crumbs: [{ href: "/ui/campaigns", text: "Campaigns" }],
+      },
+      newCampaignBody({ csrf: csrf(c), rigs: views(), ...extra }),
+    );
+  app.get("/ui/campaigns/new", (c) =>
+    opts.kits ? newCampaignPage(c) : c.text("This control keeps no kits.", 404),
+  );
+  // The project's head at a ref and its paths (not its contents), for the page's suggestions.
+  app.get("/ui/campaigns/new/probe", async (c) => {
+    const url = c.req.query("url") ?? "";
+    const ref = c.req.query("ref") || "HEAD";
+    try {
+      return c.json(await (opts.probeRepo ?? probeRepository)(url, ref));
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+    }
+  });
+  app.post("/ui/campaigns/new", async (c) => {
+    const f = await c.req.parseBody();
+    if (!opts.kits) return c.text("This control keeps no kits.", 404);
+    let draft: Record<string, unknown>;
+    try {
+      draft = JSON.parse(String(f.draft ?? "")) as Record<string, unknown>;
+    } catch {
+      return newCampaignPage(c, { errors: ["The page sent no answers: is its script blocked?"] });
+    }
+    const vs = views();
+    const rig = vs.find((u) => u.id === String(f.rig ?? ""));
+    if (!rig) return newCampaignPage(c, { draft, errors: ["Choose a rig for the first run."] });
+    const target = rig.hardware?.target;
+    if (!target)
+      return newCampaignPage(c, {
+        draft,
+        errors: [`${rig.id} has not reported its hardware yet, so its target is unknown.`],
+      });
+    // The project pinned to a commit: control looks the ref up when the page did not.
+    const project = draft.project as { url?: string; ref?: string; commit?: string } | undefined;
+    if (project?.url && !project.commit) {
+      try {
+        project.commit = (
+          await (opts.probeRepo ?? probeRepository)(project.url, project.ref || "HEAD")
+        ).commit;
+      } catch (err) {
+        return newCampaignPage(c, {
+          draft,
+          errors: [`The project: ${err instanceof Error ? err.message : String(err)}`],
+        });
+      }
+    }
+    const promotion = String(f.promotion ?? "");
+    let r: ReturnType<typeof startCampaign>;
+    try {
+      r = startCampaign(
+        { store, kits: opts.kits, privateKeyPem: opts.privateKeyPem },
+        {
+          draft,
+          rig: rig.id,
+          target: { type: target.type, class: target.class },
+          start: String(f.start_value ?? "start") !== "save",
+          promotion: promotion === "auto" || promotion === "owner_approval" ? promotion : undefined,
+          by: "owner:ui",
+        },
+      );
+    } catch (err) {
+      r = { ok: false, errors: [err instanceof Error ? err.message : String(err)] };
+    }
+    if (!r.ok) return newCampaignPage(c, { draft, errors: r.errors });
+    return c.redirect(campaignHref(r.campaign), 303);
   });
 
   app.get("/ui/campaigns/:campaign", (c) => {
