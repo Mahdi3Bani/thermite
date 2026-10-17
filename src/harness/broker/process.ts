@@ -1,5 +1,5 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { existsSync, lstatSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 /**
@@ -27,6 +27,13 @@ export interface SupervisedRun {
   cpus?: string | undefined;
   /** Kill when the role's resident memory exceeds this. */
   rssLimitBytes?: number | undefined;
+  /**
+   * Processes started as this program (the first word of their command line) are spared when
+   * the memory limit is passed: the others are killed first (an agent's commands), and the run
+   * ends only if the spared ones alone are over the limit. Needs /proc (Linux); elsewhere every
+   * breach ends the run.
+   */
+  spareExe?: string | undefined;
   /** Kill when this directory grows beyond this many bytes or entries (inodes) on disk. */
   disk?: { path: string; limitBytes: number; maxEntries?: number | undefined } | undefined;
   /** RLIMIT_NPROC for the role (only with uid; needs prlimit). */
@@ -60,12 +67,29 @@ export interface SupervisedResult {
   leftovers: number;
   /** Background processes an earlier run left were killed since, and why. */
   backgroundKilled?: "memory" | "disk" | undefined;
+  /** With spareExe: how many times the limit was passed and the agent's commands were killed. */
+  memoryKills?: number | undefined;
   /** Local development: the process group left running in the background. */
   pgid?: number | undefined;
   /** What the role left in shared places, removed after the run. */
   swept: string[];
   stdout: string;
   stderr: string;
+}
+
+/**
+ * The program a process was started as: the first word of its command line (Linux). Readable for
+ * any process, unlike /proc/<pid>/exe, which needs ptrace rights the broker does not have. A
+ * process can set this itself, so it only ever decides which processes are killed first, never
+ * whether a limit holds.
+ */
+export function procArgv0(pid: number): string | undefined {
+  try {
+    const cmdline = readFileSync(`/proc/${pid}/cmdline`, "utf8");
+    return cmdline.slice(0, cmdline.indexOf("\0") >>> 0) || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export interface Proc {
@@ -381,13 +405,46 @@ export function runSupervised(spec: SupervisedRun): Promise<SupervisedResult> {
     const timer =
       spec.timeoutMs !== undefined ? setTimeout(() => kill("timeout"), spec.timeoutMs) : undefined;
     let ticks = 0;
+    let memoryKills = 0;
+    // The agent's program, as it may appear on a command line: as given, and its real path.
+    const spareNames = new Set<string>();
+    if (spec.spareExe) {
+      spareNames.add(spec.spareExe);
+      try {
+        spareNames.add(realpathSync(spec.spareExe));
+      } catch {
+        // as given only
+      }
+    }
+    // Over the memory limit with an agent to spare: kill its commands, keep it. Only when the
+    // spared processes alone are over (or none can be told apart) does the run end.
+    const overMemory = (procs: Proc[]) => {
+      if (spareNames.size && existsSync("/proc/self/cmdline")) {
+        const spared = procs.filter((p) => spareNames.has(procArgv0(p.pid) ?? ""));
+        const others = procs.filter((p) => !spared.includes(p));
+        const sparedRss = spared.reduce((s, p) => s + p.rssBytes, 0);
+        if (spared.length && others.length && sparedRss <= (spec.rssLimitBytes ?? 0)) {
+          for (const p of others) {
+            try {
+              process.kill(p.pid, "SIGKILL");
+            } catch {
+              // gone already
+            }
+          }
+          memoryKills++;
+          return;
+        }
+      }
+      kill("memory");
+    };
     const watch = setInterval(() => {
       ticks++;
       if (spec.rssLimitBytes !== undefined || ticks % 5 === 0) {
         try {
-          const rss = members(scope, listProcesses()).reduce((s, p) => s + p.rssBytes, 0);
+          const procs = members(scope, listProcesses());
+          const rss = procs.reduce((s, p) => s + p.rssBytes, 0);
           peakRss = Math.max(peakRss, rss);
-          if (spec.rssLimitBytes !== undefined && rss > spec.rssLimitBytes) kill("memory");
+          if (spec.rssLimitBytes !== undefined && rss > spec.rssLimitBytes) overMemory(procs);
         } catch {
           // process listing failed this tick; try again on the next
         }
@@ -414,9 +471,15 @@ export function runSupervised(spec: SupervisedRun): Promise<SupervisedResult> {
         swept = spec.uid !== undefined ? sweepRole(spec.uid) : [];
       }
       sampleDisk();
-      // A breach between two samples still counts, even if the child finished first.
+      // A breach between two samples still counts, even if the child finished first (unless
+      // the agent was spared: its commands' kills are counted instead).
       if (killedFor === null && spec.disk && peakDisk > spec.disk.limitBytes) killedFor = "disk";
-      if (killedFor === null && spec.rssLimitBytes !== undefined && peakRss > spec.rssLimitBytes) {
+      if (
+        killedFor === null &&
+        !memoryKills &&
+        spec.rssLimitBytes !== undefined &&
+        peakRss > spec.rssLimitBytes
+      ) {
         killedFor = "memory";
       }
       resolve({
@@ -431,6 +494,7 @@ export function runSupervised(spec: SupervisedRun): Promise<SupervisedResult> {
         swept,
         stdout,
         stderr,
+        ...(memoryKills ? { memoryKills } : {}),
         ...(backgroundKilled ? { backgroundKilled } : {}),
         ...(spec.leaveBackground && leftovers && spec.uid === undefined ? { pgid } : {}),
       });

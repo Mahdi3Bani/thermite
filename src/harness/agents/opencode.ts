@@ -190,7 +190,17 @@ test, set timeout to 0. What a command starts in the background runs until the t
 
 /** The lane's limits, as the agent must know them: OpenCode and its commands share them. */
 export function limitsNote(limits: LaneLimitValues): string {
-  return `Memory: ${limits.runRssMib} MiB for everything your lane runs at once, OpenCode itself included (it uses about 500 MiB). Going over stops OpenCode and the whole trial, so keep parallel builds small (for example make -j2 or -j4). Disk: ${limits.workspaceMib} MiB, and at most 50,000 files, for this trial's directory, OpenCode's own files included.`;
+  return `Memory: ${limits.runRssMib} MiB for everything your lane runs at once, OpenCode itself included (it uses about 500 MiB). A command that takes it over the limit is killed (your shell tool reports "Killed by SIGKILL"): run it again with less parallelism (for example make -j2) or a smaller input, or as a development run, which has its own limit. Disk: ${limits.workspaceMib} MiB, and at most 50,000 files, for this trial's directory, OpenCode's own files included; going over ends the trial.`;
+}
+
+/** OpenCode's executable as an absolute path (found on PATH), or undefined if it is not there. */
+export function opencodeExe(): string | undefined {
+  if (OPENCODE_BIN.startsWith("/")) return OPENCODE_BIN;
+  for (const dir of (process.env.PATH ?? "").split(":")) {
+    const p = join(dir, OPENCODE_BIN);
+    if (dir && existsSync(p)) return p;
+  }
+  return undefined;
 }
 
 /** Why the broker stopped OpenCode, when a memory or disk limit did. */
@@ -201,7 +211,7 @@ export function breachError(
 ): string | undefined {
   const mib = (b: number | undefined) => Math.round((b ?? 0) / 1024 ** 2);
   if (o.killedFor === "memory")
-    return `stopped by the lane's memory limit: OpenCode and what it ran reached ${mib(o.peakRssBytes)} MiB, over ${limits.runRssMib} MiB (the contract's lanes.limits.run_rss_mib)`;
+    return `stopped by the lane's memory limit: OpenCode reached ${mib(o.peakRssBytes)} MiB with what it ran, over ${limits.runRssMib} MiB (the contract's lanes.limits.run_rss_mib), and its commands' memory could not be freed`;
   if (o.killedFor === "disk")
     return `stopped by the lane's disk limit: the trial's directory reached ${mib(o.peakDiskBytes)} MiB in ${o.peakEntries ?? 0} files, over ${limits.workspaceMib} MiB (lanes.limits.workspace_mib) or 50,000 files`;
   return undefined;
@@ -338,13 +348,17 @@ export async function runOpencodeTrial(
         "-c",
         'exec "$@" >> "$THERMITE_OPENCODE_EVENTS" 2>&1',
         "sh",
-        OPENCODE_BIN,
+        // By its full path, so the broker knows OpenCode's processes from its commands'.
+        opencodeExe() ?? OPENCODE_BIN,
         ...args,
       ],
       cwd: spec.workspace,
       env,
       timeoutMs: remaining,
       rssLimitBytes: limits.runRssMib * 1024 * 1024,
+      // Over the memory limit, OpenCode's commands are killed and OpenCode carries on, as a
+      // lane command under Pi would be; the trial ends only if OpenCode alone is over.
+      ...(opencodeExe() ? { spareExe: opencodeExe() } : {}),
       disk: { path: area, limitBytes: limits.workspaceMib * 1024 * 1024 },
       captureBytes: 4096,
     });

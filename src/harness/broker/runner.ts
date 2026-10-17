@@ -66,6 +66,12 @@ export const RunRequest = z.object({
     .max(24 * 3_600_000)
     .optional(),
   rssLimitBytes: z.number().int().positive().optional(),
+  /**
+   * The executable of an agent that runs its commands itself (OpenCode): when the memory limit
+   * is passed, its commands are killed and it is spared, as a shell's command would be; only if
+   * it alone is over the limit does the run end.
+   */
+  spareExe: z.string().min(1).startsWith("/").optional(),
   disk: z.object({ path: z.string().min(1), limitBytes: z.number().int().positive() }).optional(),
   /** Written to the child's stdin (file contents for workers' file tools). */
   stdin: z
@@ -156,6 +162,7 @@ export class LocalRunner implements Runner {
       env: { PATH: process.env.PATH ?? "/usr/bin:/bin", TMPDIR: req.cwd, ...req.env },
       timeoutMs: req.timeoutMs,
       rssLimitBytes: req.rssLimitBytes,
+      spareExe: req.spareExe,
       disk: req.disk,
       stdin: req.stdin,
       captureBytes: req.captureBytes,

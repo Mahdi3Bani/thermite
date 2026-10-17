@@ -61,10 +61,29 @@ function script(messages, tools) {
   // OpenCode (its own tools, shell among them): its model check, then a trial that edits the
   // kernel and submits with thermite-trial. A request without tools names the session.
   if (names.includes("shell") && names.includes("execute")) {
-    if (messages.some((m) => m.role === "tool")) return { text: "done" };
     const asked = JSON.stringify(messages);
     const word = /run exactly this command: echo (thermite-[a-z0-9]+)/.exec(asked)?.[1];
-    if (word) return { toolCalls: [{ name: "shell", args: { command: `echo ${word}` } }] };
+    const tools = messages.filter((m) => m.role === "tool").length;
+    if (word) {
+      if (tools) return { text: "done" };
+      return { toolCalls: [{ name: "shell", args: { command: `echo ${word}` } }] };
+    }
+    // A trial: first a command that takes the lane over its memory limit (the broker kills it
+    // and spares OpenCode), then the change and its submission, then done.
+    if (tools === 0)
+      return {
+        toolCalls: [
+          {
+            name: "shell",
+            args: {
+              command:
+                "python3 -c 'import time; b = bytearray(int(2.5 * 1024**3)); time.sleep(20)'",
+              timeout: 0,
+            },
+          },
+        ],
+      };
+    if (tools > 1) return { text: "done" };
     return {
       toolCalls: [
         {
@@ -162,6 +181,8 @@ function script(messages, tools) {
 }
 
 /** The keys the model was asked with (a route set on control's settings page brings its own). */
+/** Whether the OpenCode trial's memory hog came back killed (the lane's memory limit). */
+const hogSeen = {};
 const keysSeen = new Set();
 const model = createServer((req, res) => {
   keysSeen.add(String(req.headers.authorization ?? ""));
@@ -179,6 +200,9 @@ const model = createServer((req, res) => {
     requests++;
     const p = JSON.parse(body);
     for (const m of p.messages ?? []) {
+      // The broker kills the whole command, shell and all; OpenCode's shell tool says so.
+      if (m.role === "tool" && /Killed by SIGKILL/.test(JSON.stringify(m.content ?? "")))
+        hogSeen.killed = true;
       for (const hit of JSON.stringify(m.content ?? "").matchAll(/SETID-(BEFORE|AFTER) (\S+)/g))
         setid[hit[1]] = hit[2];
       for (const hit of JSON.stringify(m.content ?? "").matchAll(/BG-(STARTED|ALIVE) (yes|no)/g))
@@ -393,6 +417,8 @@ try {
     ocCheck.body.ok === true &&
       ocAttempt !== undefined &&
       Number(ocTrial.body.turns) >= 1 &&
+      // Its first command passed the lane's memory limit: the broker killed it, not OpenCode.
+      hogSeen.killed === true &&
       keysSeen.has(`Bearer ${providerKey}`) &&
       ![...keysSeen].some((k) => /Bearer (trial|proxy)\./.test(k)),
     {
@@ -400,6 +426,7 @@ try {
       attempt: ocAttempt?.subject,
       lane: ocAttempt?.body.lane,
       turns: ocTrial?.body.turns,
+      memory_hog_killed: hogSeen.killed ?? false,
       keys: [...keysSeen].map((k) => k.slice(0, 16)),
     },
   );

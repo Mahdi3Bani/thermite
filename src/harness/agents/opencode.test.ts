@@ -173,6 +173,7 @@ describe("the OpenCode harness", () => {
       lanes: { count: 2, trials_per_epoch: 1, limits: { run_rss_mib: 4096, workspace_mib: 16384 } },
     });
     assert.match(limitsNote(limits), /Memory: 4096 MiB .*OpenCode itself included/);
+    assert.match(limitsNote(limits), /command that takes it over the limit is killed/);
     assert.equal(breachError({ killedFor: "timeout", peakRssBytes: 0 }, limits), undefined);
     const area = mkdtempSync(join(tmpdir(), "thermite-oc-"));
     const runner = {
@@ -222,7 +223,7 @@ describe("the OpenCode harness", () => {
     assert.equal(r.stopped, "error");
     assert.match(
       String(r.error),
-      /memory limit: OpenCode and what it ran reached 4400 MiB, over 4096 MiB/,
+      /memory limit: OpenCode reached 4400 MiB with what it ran, over 4096 MiB/,
     );
     // Not continued: a breach ends the trial.
     assert.equal(runs.filter((x) => x.includes(" run ")).length, 1);

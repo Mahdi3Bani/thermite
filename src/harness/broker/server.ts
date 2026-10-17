@@ -93,6 +93,7 @@ export async function handle(req: Req, opts: BrokerServerOptions): Promise<unkno
         groups,
         cpus: r.role === "run" ? opts.runCpus : undefined,
         rssLimitBytes: r.rssLimitBytes,
+        spareExe: r.spareExe,
         disk: r.disk,
         nproc: NPROC[r.role] ?? 256,
         stdin: r.stdin,
