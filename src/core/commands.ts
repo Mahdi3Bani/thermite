@@ -33,6 +33,11 @@ const GitSource = z.union([
       .string()
       .max(2000)
       .regex(/^(?:https:\/\/|ssh:\/\/|git:\/\/|file:\/\/|[\w.-]+@[\w.-]+:)/, "a git URL"),
+    /** Git access control keeps for a private repository, by name; the rig asks control for it. */
+    access: z
+      .string()
+      .regex(/^[a-z0-9][a-z0-9._-]{0,63}$/)
+      .optional(),
   }),
   /** A kit control wrote and keeps itself; the supervisor fetches it from control. */
   z.object({ control: z.string().regex(/^kits\/[a-z0-9][a-z0-9._-]{0,63}$/, "kits/<name>") }),

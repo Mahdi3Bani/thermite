@@ -84,6 +84,8 @@ Run from the repository root before every commit, and report which ran and which
   - `COMPOSE="podman compose" npm run acceptance:judge` (the other two compose variants work the same way)
 - Control acceptance (M3), after changes to control, the dashboard, MCP, the relay or the compose rigs. It uses two rigs under the `two-rigs` profile:
   - `COMPOSE="podman compose" node scripts/control-acceptance.mjs`
+- New-campaign acceptance, after changes to the new-campaign page, the campaign builder, kits kept on control, Git access or the supervisor's staging. A tiny project is served by `git daemon`; the campaign is created through the dashboard form and its first run must start with both imports verified:
+  - `COMPOSE="podman compose" node scripts/campaign-acceptance.mjs`
 - Agents acceptance (M4), after changes to the workers, planner, scheduler, dev runs or the harness image. A scripted model on the host stands in for a real model route:
   - `COMPOSE="podman compose" node scripts/agents-acceptance.mjs`
 - Steering acceptance (M5), after changes to the supervisor's advisors, audits, propagation, reviews, the lifecycle drivers or full reset. It uses two rigs and a scripted host model; with Podman it also mounts the engine socket (`compose.lifecycle.yaml`) to test restarts. Allow about 20–30 minutes:

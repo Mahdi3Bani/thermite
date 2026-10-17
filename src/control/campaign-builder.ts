@@ -52,9 +52,13 @@ const KitHere = z.strictObject({
   run_timeout_s: z.number().int().positive().max(86_400).optional(),
   held_out: z.array(IdSchema).default([]),
 });
+/** Git access control keeps, by name (Settings), for a private repository. */
+const AccessName = z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/, "a Git access name");
+
 const KitRepo = z.strictObject({
   source: z.literal("repo"),
   url: GitUrl,
+  access: AccessName.optional(),
   commit: CommitSchema,
   repo: IdSchema,
   /** The kit's cases this campaign measures, and those held back for confirmation. */
@@ -94,6 +98,7 @@ export const CampaignDraft = z.strictObject({
   project: z
     .strictObject({
       url: GitUrl,
+      access: AccessName.optional(),
       ref: z.string().max(300).optional(),
       commit: CommitSchema,
       repo: IdSchema,

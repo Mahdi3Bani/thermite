@@ -154,6 +154,20 @@ create table if not exists rig_token (
   rotated_at text,
   retired_at text
 );
+-- Git access for private repositories (Settings): an SSH deploy key control made (its public
+-- half shown, its private half sealed) or an HTTPS token (sealed). Rigs get one only for a
+-- campaign assigned to them that names it.
+create table if not exists git_access (
+  name text primary key,
+  kind text not null check (kind in ('ssh', 'token')),
+  public_key text,
+  fingerprint text,
+  secret_sealed text not null,
+  hint text not null,
+  username text,
+  created_at text not null,
+  created_by text not null
+);
 -- Campaigns created on control (the new-campaign page): each version's contract as approved,
 -- with its content hash. Runs are assigned from a version.
 create table if not exists campaign_version (
@@ -265,6 +279,28 @@ function providerOf(r: Row): ModelProvider {
     models_at: r.models_at === null || r.models_at === undefined ? null : String(r.models_at),
     models_error:
       r.models_error === null || r.models_error === undefined ? null : String(r.models_error),
+  };
+}
+
+/** Git access as listed (never its secret). */
+export interface GitAccess {
+  name: string;
+  kind: "ssh" | "token";
+  public_key: string | null;
+  fingerprint: string | null;
+  hint: string;
+  username: string | null;
+}
+
+function gitAccessOf(r: Row): GitAccess {
+  const opt = (v: unknown) => (v === null || v === undefined ? null : String(v));
+  return {
+    name: String(r.name),
+    kind: r.kind === "token" ? "token" : "ssh",
+    public_key: opt(r.public_key),
+    fingerprint: opt(r.fingerprint),
+    hint: String(r.hint),
+    username: opt(r.username),
   };
 }
 
@@ -1065,6 +1101,70 @@ export class ControlStore {
       .run(status, canonicalJson(outcome ?? {}), new Date().toISOString(), id, rig);
     if (Number(r.changes) > 0) this.audit(`rig:${rig}`, "command_acked", { id, status });
     return Number(r.changes) > 0;
+  }
+
+  /** Adds Git access; a name is used once (delete it to make another). */
+  putGitAccess(g: GitAccess & { secret_sealed: string; by: string }): void {
+    this.db
+      .prepare(
+        `insert into git_access (name, kind, public_key, fingerprint, secret_sealed, hint, username, created_at, created_by)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        g.name,
+        g.kind,
+        g.public_key,
+        g.fingerprint,
+        g.secret_sealed,
+        g.hint,
+        g.username,
+        new Date().toISOString(),
+        g.by,
+      );
+    this.audit(g.by, "git_access_added", { name: g.name, kind: g.kind, hint: g.hint });
+  }
+
+  /** Git access by name, with its sealed secret (for control's own use only). */
+  gitAccess(name: string): (GitAccess & { secret_sealed: string }) | undefined {
+    const r = this.db.prepare("select * from git_access where name = ?").get(name) as
+      | Row
+      | undefined;
+    return r ? { ...gitAccessOf(r), secret_sealed: String(r.secret_sealed) } : undefined;
+  }
+
+  /** Every Git access, without secrets. */
+  gitAccessList(): GitAccess[] {
+    return (this.db.prepare("select * from git_access order by name").all() as Row[]).map(
+      gitAccessOf,
+    );
+  }
+
+  deleteGitAccess(name: string, by: string): boolean {
+    const r = this.db.prepare("delete from git_access where name = ?").run(name);
+    if (Number(r.changes)) this.audit(by, "git_access_deleted", { name });
+    return Number(r.changes) > 0;
+  }
+
+  /**
+   * Whether a rig was assigned a campaign that names this Git access in an import: the only
+   * rigs control hands it to.
+   */
+  rigUsesGitAccess(rig: string, name: string): boolean {
+    const rows = this.db
+      .prepare("select signed from command where rig = ? and kind = 'assign_campaign'")
+      .all(rig) as { signed: string }[];
+    return rows.some((r) => {
+      try {
+        const imports = (
+          JSON.parse(r.signed) as {
+            envelope?: { payload?: { imports?: { source?: { access?: string } }[] } };
+          }
+        ).envelope?.payload?.imports;
+        return (imports ?? []).some((i) => i.source?.access === name);
+      } catch {
+        return false;
+      }
+    });
   }
 
   /** The next version number for a campaign created on control (1 for a new one). */

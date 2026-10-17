@@ -1,9 +1,12 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { getCookie, setCookie } from "hono/cookie";
 import { COMMAND_KINDS, type CommandKind } from "../core/commands.ts";
 import type { Credential } from "./credential.ts";
+import { makeDeployKey } from "./git-keys.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
 import type { KitRepos } from "./kit-repos.ts";
 import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
@@ -44,7 +47,7 @@ import {
   shell,
   stackBar,
 } from "./ui/components.ts";
-import { newCampaignBody } from "./ui/new-campaign.ts";
+import { infoLabel, newCampaignBody } from "./ui/new-campaign.ts";
 import { NEW_CAMPAIGN_JS } from "./ui/new-campaign-client.ts";
 import {
   attemptDetail,
@@ -737,8 +740,22 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         active: "campaigns",
         crumbs: [{ href: "/ui/campaigns", text: "Campaigns" }],
       },
-      newCampaignBody({ csrf: csrf(c), rigs: views(), ...extra }),
+      newCampaignBody({ csrf: csrf(c), rigs: views(), access: store.gitAccessList(), ...extra }),
     );
+  /** Git access for control's own lookups: the secret unsealed, host keys pinned per access. */
+  const accessFor = (name: string | undefined) => {
+    if (!name) return undefined;
+    const g = store.gitAccess(name);
+    if (!g) throw new Error(`no Git access named ${name}`);
+    const secret = opts.secrets.open(g.secret_sealed);
+    return {
+      auth:
+        g.kind === "ssh"
+          ? ({ kind: "ssh", privateKey: secret } as const)
+          : ({ kind: "token", token: secret, username: g.username ?? undefined } as const),
+      knownHostsFile: join(opts.kits?.dir ?? tmpdir(), "..", "known_hosts", name),
+    };
+  };
   app.get("/ui/campaigns/new", (c) =>
     opts.kits ? newCampaignPage(c) : c.text("This control keeps no kits.", 404),
   );
@@ -747,7 +764,9 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     const url = c.req.query("url") ?? "";
     const ref = c.req.query("ref") || "HEAD";
     try {
-      return c.json(await (opts.probeRepo ?? probeRepository)(url, ref));
+      return c.json(
+        await (opts.probeRepo ?? probeRepository)(url, ref, accessFor(c.req.query("access"))),
+      );
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
     }
@@ -775,7 +794,11 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     if (project?.url && !project.commit) {
       try {
         project.commit = (
-          await (opts.probeRepo ?? probeRepository)(project.url, project.ref || "HEAD")
+          await (opts.probeRepo ?? probeRepository)(
+            project.url,
+            project.ref || "HEAD",
+            accessFor((project as { access?: string }).access),
+          )
         ).commit;
       } catch (err) {
         return newCampaignPage(c, {
@@ -1772,8 +1795,87 @@ ${
 ${note}
 <div class="block"><div class="head"><h2>Model providers</h2><span class="n">${providers.length}</span><span class="right">models come from each provider's own list</span></div>${providers.length ? `<div class="dqs">${providerRows}</div>` : `<div class="card"><div class="empty">No provider yet: add one below.</div></div>`}</div>
 <div class="block"><div class="head"><h2>Add a provider</h2></div><div class="card">${addForm}</div></div>
+${gitAccessBlock(t)}
 <div class="block"><div class="head"><h2>Harness and model for each rig</h2><span class="right">a rig takes a change within a minute; then check it</span></div><div class="card flat">${rigRows || `<div class="empty">No rig has reported yet.</div>`}</div></div>`,
       vs,
+    );
+  });
+
+  // ---------------------------------------------------------------- Git access (Settings)
+  const ACCESS_NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+  const gitAccessBlock = (t: string) => {
+    const rows = store
+      .gitAccessList()
+      .map(
+        (g) =>
+          `<div class="card" style="margin-bottom:10px"><div class="card-head"><span class="title">${esc(g.name)}</span><span class="chip">${g.kind === "ssh" ? "SSH deploy key" : "HTTPS token"}</span><span class="sub">${g.kind === "ssh" ? esc(g.fingerprint ?? "") : `token ${esc(g.hint)}${g.username ? ` · user ${esc(g.username)}` : ""}`}</span><span class="right"><form class="inline" method="post" action="/ui/settings/git/${encodeURIComponent(g.name)}/delete"><input type="hidden" name="csrf" value="${t}"><button class="sm danger">Delete</button></form></span></div>${
+            g.public_key
+              ? `<div class="muted small" style="margin:8px 0 4px">Add this public key to the repository (or the account) as a <b>read-only</b> deploy key. Its private half stays sealed in control.</div><pre class="json" style="white-space:pre-wrap;word-break:break-all">${esc(g.public_key)}</pre>`
+              : ""
+          }</div>`,
+      )
+      .join("");
+    return `<div class="block"><div class="head"><h2>Git access</h2><span class="n">${store.gitAccessList().length}</span><span class="right">for private repositories; a rig gets one only for a campaign that names it</span></div>${rows}
+<div class="card"><form method="post" action="/ui/settings/git" class="form-grid" autocomplete="off"><input type="hidden" name="csrf" value="${t}">
+<label>${infoLabel("Name", "How campaigns refer to it, for example github-deploy: lowercase letters, digits, dots, dashes.")}<input name="name" required maxlength="64" placeholder="github-deploy"></label>
+<label>${infoLabel("Kind", "A deploy key: control makes an SSH key pair and shows its public half for you to add to the repository; it works with ssh:// and git@host:path addresses. A token: an HTTPS access token you paste, for https:// addresses.")}<select name="kind"><option value="ssh">SSH deploy key (control makes it)</option><option value="token">HTTPS token (you paste it)</option></select></label>
+<label>${infoLabel("Token", "Only for a token: the access token, read-only if the host allows. Control encrypts it at once and never shows it again.")}<input name="token" type="password" autocomplete="new-password" maxlength="4096" placeholder="only for a token"></label>
+<label>${infoLabel("User name", "Only for a token: the name the host expects with it. GitHub takes x-access-token (the default); GitLab takes oauth2.")}<input name="username" maxlength="100" placeholder="x-access-token"></label>
+<div class="form-end"><button class="primary">Add it</button></div></form></div></div>`;
+  };
+  app.post("/ui/settings/git", async (c) => {
+    const f = await c.req.parseBody();
+    const fail = (m: string) => c.redirect(settingsUrl("error", m), 303);
+    const name = String(f.name ?? "").trim();
+    if (!ACCESS_NAME.test(name))
+      return fail("A Git access name is lowercase letters, digits, dots and dashes.");
+    if (store.gitAccess(name)) return fail(`"${name}" exists already: delete it first.`);
+    if (f.kind === "token") {
+      const token = String(f.token ?? "").trim();
+      if (!token || /\s/.test(token) || token.length > 4096)
+        return fail("Paste the token, without spaces.");
+      const username = String(f.username ?? "").trim() || null;
+      store.putGitAccess({
+        name,
+        kind: "token",
+        public_key: null,
+        fingerprint: null,
+        secret_sealed: opts.secrets.seal(token),
+        hint: keyHint(token),
+        username,
+        by: "owner:ui",
+      });
+      return c.redirect(
+        settingsUrl("ok", `"${name}" is kept, sealed: choose it on the new-campaign page.`),
+        303,
+      );
+    }
+    const key = makeDeployKey(`thermite ${name}`);
+    store.putGitAccess({
+      name,
+      kind: "ssh",
+      public_key: key.publicKey,
+      fingerprint: key.fingerprint,
+      secret_sealed: opts.secrets.seal(key.privateKey),
+      hint: key.fingerprint.slice(-6),
+      username: null,
+      by: "owner:ui",
+    });
+    return c.redirect(
+      settingsUrl(
+        "ok",
+        `Made the deploy key "${name}": add its public key, below, to the repository as a read-only deploy key.`,
+      ),
+      303,
+    );
+  });
+  app.post("/ui/settings/git/:name/delete", (c) => {
+    const name = c.req.param("name");
+    return c.redirect(
+      store.deleteGitAccess(name, "owner:ui")
+        ? settingsUrl("ok", `"${name}" is deleted. Rigs that ran with it keep nothing of it.`)
+        : settingsUrl("error", "No such Git access."),
+      303,
     );
   });
 

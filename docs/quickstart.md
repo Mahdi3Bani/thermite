@@ -91,7 +91,9 @@ The simplest way is the dashboard: **Campaigns › New campaign**. It asks, in f
 campaign should do (hill climbing, reaching goals, or research), where your project is, how to
 measure it, and which rig runs it. You can describe the kit right there: a build command, test
 cases, a run command and a check. Control writes the kit, keeps it, and starts the first run. Each
-field's ⓘ says what it means.
+field's ⓘ says what it means. For a private repository, first add Git access in **Settings**: a
+deploy key control makes (add its public half to the repository) or an HTTPS token. Only the rigs
+that run a campaign using it ever receive it.
 
 From the command line instead, a campaign needs three things:
 

@@ -16,6 +16,7 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import { log } from "../common/env.ts";
+import { type GitAuth, withGitAuth } from "../common/git-auth.ts";
 import type { SignedCommand } from "../core/commands.ts";
 import { sshCommand } from "./git-export.ts";
 
@@ -134,7 +135,7 @@ type Sourced =
       kind: "repo_bundle" | "kit_bundle";
       path: string;
       commit: string;
-      source: { git: string } | { control: string };
+      source: { git: string; access?: string } | { control: string };
     }
   | { kind: "model"; path: string; sha256: string; source: { url: string } };
 
@@ -261,12 +262,21 @@ async function bundleFromGit(
       () => true,
       () => false,
     );
-  if (!(await has())) {
+  const fetchWith = async (e: Record<string, string>) => {
+    if (await has()) return;
     // The commit by its id first (most servers allow a reachable one), then all branches and tags.
-    await git(cache, ["fetch", "--quiet", "--no-tags", url, imp.commit], env).catch(() =>
-      git(cache, ["fetch", "--quiet", "--tags", url, "+refs/heads/*:refs/sources/heads/*"], env),
+    await git(cache, ["fetch", "--quiet", "--no-tags", url, imp.commit], e).catch(() =>
+      git(cache, ["fetch", "--quiet", "--tags", url, "+refs/heads/*:refs/sources/heads/*"], e),
     );
-  }
+  };
+  // A private repository: the Git access its campaign names, handed by control for this fetch.
+  const access = "git" in imp.source ? imp.source.access : undefined;
+  if (access) {
+    const auth = await gitAccessFromControl(cfg, access);
+    await withGitAuth(auth, join(dirname(dir), "known_hosts", access), (g) =>
+      fetchWith({ ...g.env, GIT_ALLOW_PROTOCOL: g.protocols }),
+    );
+  } else await fetchWith(env);
   if (!(await has())) throw new Error(`${url} has no commit ${imp.commit}`);
   const ref = `refs/thermite/stage/${imp.commit}`;
   await git(cache, ["update-ref", ref, imp.commit]);
@@ -278,4 +288,24 @@ async function bundleFromGit(
   } finally {
     rmSync(tmp, { force: true });
   }
+}
+
+/** Git access by name, from control: only for a campaign assigned to this rig that names it. */
+async function gitAccessFromControl(cfg: StagingConfig, name: string): Promise<GitAuth> {
+  if (!cfg.controlUrl || !cfg.controlToken)
+    throw new Error(`Git access ${name}: this supervisor has no control to ask`);
+  const res = await fetch(
+    `${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/git-access/${encodeURIComponent(name)}`,
+    { headers: { authorization: `Bearer ${cfg.controlToken}` } },
+  );
+  if (!res.ok) throw new Error(`Git access ${name}: control answered ${res.status}`);
+  const g = (await res.json()) as {
+    kind?: string;
+    private_key?: string;
+    token?: string;
+    username?: string;
+  };
+  if (g.kind === "ssh" && g.private_key) return { kind: "ssh", privateKey: g.private_key };
+  if (g.kind === "token" && g.token) return { kind: "token", token: g.token, username: g.username };
+  throw new Error(`Git access ${name}: control's answer has no key`);
 }

@@ -61,8 +61,8 @@ export function startCampaign(
   if (!input.start) return { ok: true, campaign: contract.campaign, version, sha: parsed.sha };
 
   const draft = input.draft as {
-    project?: { url: string; commit: string; repo: string };
-    kit?: { source: string; url?: string; repo?: string; commit?: string };
+    project?: { url: string; commit: string; repo: string; access?: string };
+    kit?: { source: string; url?: string; repo?: string; commit?: string; access?: string };
   };
   const run = deps.store.nextRunName(input.rig, contract.campaign);
   const imports: unknown[] = [];
@@ -75,7 +75,7 @@ export function startCampaign(
       path: `repos/${p.repo}-${p.commit}.bundle`,
       repo: p.repo,
       commit: p.commit,
-      source: { git: p.url },
+      source: { git: p.url, ...(p.access ? { access: p.access } : {}) },
     });
     const k = contract.project.kit;
     imports.push({
@@ -83,7 +83,12 @@ export function startCampaign(
       path: `repos/kit-${k.repo}-${k.commit}.bundle`,
       repo: k.repo,
       commit: k.commit,
-      source: built.kit ? { control: `kits/${k.repo}` } : { git: draft.kit?.url as string },
+      source: built.kit
+        ? { control: `kits/${k.repo}` }
+        : {
+            git: draft.kit?.url as string,
+            ...(draft.kit?.access ? { access: draft.kit.access } : {}),
+          },
     });
   }
   const issued = issueCommand(deps.store, deps.privateKeyPem, {

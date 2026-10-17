@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { type GitAuth, withGitAuth } from "../common/git-auth.ts";
 
 const run = promisify(execFile);
 
@@ -25,15 +26,37 @@ const env = {
   GIT_CONFIG_NOSYSTEM: "1",
 };
 
-export async function probeRepository(url: string, ref: string): Promise<Probe> {
-  if (!/^https:\/\/[^\s@]+$/.test(url))
+export async function probeRepository(
+  url: string,
+  ref: string,
+  access?: { auth: GitAuth; knownHostsFile: string },
+): Promise<Probe> {
+  const ssh = access?.auth.kind === "ssh";
+  if (
+    ssh
+      ? !/^(?:ssh:\/\/[^\s]+|[\w.-]+@[\w.-]+:[^\s]+)$/.test(url)
+      : !/^https:\/\/[^\s@]+$/.test(url)
+  )
     throw new Error(
-      "the repository must be an https:// URL (private repositories come with Git access keys)",
+      ssh
+        ? "with an SSH deploy key, the repository is an ssh:// or git@host:path address"
+        : "the repository must be an https:// URL, or choose Git access for a private one",
     );
+  return withGitAuth(access?.auth, access?.knownHostsFile, (g) =>
+    probeWith(url, ref, access ? { ...g.env, GIT_ALLOW_PROTOCOL: g.protocols } : {}),
+  );
+}
+
+async function probeWith(url: string, ref: string, extra: Record<string, string>): Promise<Probe> {
   if (!/^[\w./-]{1,200}$/.test(ref) || ref.startsWith("-"))
     throw new Error("the branch, tag or commit has characters git does not allow");
   const git = (args: string[], cwd?: string) =>
-    run("git", args, { cwd, env, timeout: 60_000, maxBuffer: 64 * 1024 * 1024 });
+    run("git", args, {
+      cwd,
+      env: { ...env, ...extra },
+      timeout: 60_000,
+      maxBuffer: 64 * 1024 * 1024,
+    });
   let commit: string | undefined;
   if (/^[0-9a-f]{40}$/.test(ref)) commit = ref;
   else {

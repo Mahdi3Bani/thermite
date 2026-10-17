@@ -1,3 +1,4 @@
+import type { GitAccess } from "../store.ts";
 import type { RigView } from "../views.ts";
 import { esc } from "./components.ts";
 
@@ -12,6 +13,8 @@ import { esc } from "./components.ts";
 export interface NewCampaignPage {
   csrf: string;
   rigs: RigView[];
+  /** Git access kept in Settings, for private repositories. */
+  access?: GitAccess[] | undefined;
   /** A draft sent back with mistakes, to fill the form again. */
   draft?: Record<string, unknown> | undefined;
   errors?: string[] | undefined;
@@ -91,6 +94,13 @@ export function newCampaignBody(p: NewCampaignPage): string {
     })
     .join("");
 
+  const accessOptions = (p.access ?? [])
+    .map(
+      (g) =>
+        `<option value="${esc(g.name)}">${esc(g.name)} · ${g.kind === "ssh" ? "SSH deploy key" : "HTTPS token"}</option>`,
+    )
+    .join("");
+  const noAccess = !(p.access ?? []).length;
   const errors = p.errors?.length
     ? `<div class="card bad" style="margin-bottom:16px"><b>Not started: fix these first.</b><ul style="margin:6px 0 0 18px">${p.errors.map((e) => `<li>${esc(e)}</li>`).join("")}</ul></div>`
     : "";
@@ -113,6 +123,7 @@ ${choice("mode", "research", "Research a question", "Agents read sources and rep
 
 <section class="pane" data-pane="project" hidden><div class="sec"><h2>Your project</h2><p class="lead">The code the agents change. Each rig fetches it itself from the repository, at the commit control looks up now.</p>
 <div class="g2" style="max-width:860px">${field("Repository", "The project's git repository, as https://… . Rigs fetch it; Thermite never pushes to it. Private repositories need a key, which comes with Settings › Providers › Git access.", `<input name="project_url" placeholder="https://github.com/you/project.git">`)}${field("Start from", "A branch, tag or full commit. Control pins it to the exact commit now, so every run starts from the same code.", `<input name="project_ref" placeholder="main">`)}</div>
+<div style="max-width:420px">${field("Repository access", "Public needs nothing. A private repository needs Git access, set up once in Settings: a deploy key control makes (for ssh:// and git@host:path addresses) or an HTTPS token. Only rigs that run this campaign receive it.", `<select name="project_access"><option value="">Public: no key</option>${accessOptions}</select>`)}${noAccess ? `<div class="muted small" style="margin:-8px 0 12px">No Git access yet: <a href="/ui/settings">add a deploy key or a token in Settings</a>.</div>` : ""}</div>
 <div class="act" style="margin-bottom:12px"><button class="sm" id="probe">Look it up</button><span class="muted small" id="probe-out">Control reads the repository's files (not their contents) to suggest the paths below.</span></div>
 ${field("Files the agents may change", "Patterns, one per line. A change to any other file is refused before the judge builds it, so agents cannot touch your tests or benchmark. ** matches any folders.", `<textarea name="editable_paths" placeholder="src/kernels/**"></textarea>`)}
 <div class="ph" id="suggest"></div>
@@ -145,7 +156,7 @@ ${field("Smallest gain that counts (%)", "A change must beat the current best by
 ${field("Cases held back", "Case names, separated by spaces, measured only to confirm a win, never while screening, so agents cannot tune a change to them.", `<input name="held_out" placeholder="none">`)}
 </div></details>
 </div>
-<div data-kit="repo" style="margin-top:14px" hidden><div class="g3">${field("Kit repository", "The git repository holding kit.json and its scripts.", `<input name="kit_url" placeholder="https://… .git">`)}${field("Kit commit", "The full commit of the kit to use.", `<input class="mono" name="kit_commit" placeholder="40 hexadecimal characters">`)}${field("Cases to measure", "The kit's case names this campaign measures, separated by spaces.", `<input name="kit_cells" placeholder="small large">`)}</div>
+<div data-kit="repo" style="margin-top:14px" hidden><div class="g3">${field("Kit repository", "The git repository holding kit.json and its scripts.", `<input name="kit_url" placeholder="https://… .git">`)}${field("Kit repository access", "Public needs nothing; a private kit repository needs Git access from Settings.", `<select name="kit_access"><option value="">Public: no key</option>${accessOptions}</select>`)}${field("Kit commit", "The full commit of the kit to use.", `<input class="mono" name="kit_commit" placeholder="40 hexadecimal characters">`)}${field("Cases to measure", "The kit's case names this campaign measures, separated by spaces.", `<input name="kit_cells" placeholder="small large">`)}</div>
 ${field("Cases held back", "Measured only to confirm a win.", `<input name="held_out_repo" placeholder="none">`)}
 <div data-modes="hill_climb"><div class="g3">${field("The kit's metric", "The name of the metric in the kit's kit.json to improve.", `<input name="repo_metric" placeholder="flops_per_s">`)}</div></div></div>
 <div data-modes="goal" style="margin-top:14px">${field("Goals", "What the result must do. Each goal is checked by the judge: the check passes on some cases (list their names), the score reaches a value (write >= 4e13 on large), or people review it (criteria separated by ;).", `<table class="tbl" id="goals"><thead><tr><th style="width:40%">The goal</th><th>Checked by</th><th>Detail</th><th></th></tr></thead><tbody>${goals.map(goalRow).join("")}</tbody></table><div class="act" style="margin-top:6px"><button class="sm" data-add="#goals">Add a goal</button></div>`)}</div>

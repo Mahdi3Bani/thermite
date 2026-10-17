@@ -329,6 +329,32 @@ export function createControlApi(
     });
   });
 
+  // Git access for a private repository, to a rig whose assigned campaign names it; otherwise
+  // refused. The secret leaves control only here, never in a signed command.
+  app.get("/v1/rigs/:rig/git-access/:name", rigAuth, (c) => {
+    const rig = c.req.param("rig");
+    const name = c.req.param("name");
+    const g = store.gitAccess(name);
+    if (!g || !store.rigUsesGitAccess(rig, name))
+      return c.json({ error: "no such Git access for this rig" }, 404);
+    let secret: string;
+    try {
+      secret = secrets.open(g.secret_sealed);
+    } catch {
+      return c.json(
+        { error: "the Git access could not be unsealed (control's secrets key?)" },
+        500,
+      );
+    }
+    store.audit(`rig:${rig}`, "git_access_handed", { name });
+    c.header("cache-control", "no-store");
+    return c.json(
+      g.kind === "ssh"
+        ? { kind: "ssh", private_key: secret }
+        : { kind: "token", token: secret, username: g.username ?? undefined },
+    );
+  });
+
   app.get("/v1/rigs/:rig/model-route", rigAuth, (c) => {
     c.header("cache-control", "no-store");
     const r = store.rigModelFor(c.req.param("rig"));

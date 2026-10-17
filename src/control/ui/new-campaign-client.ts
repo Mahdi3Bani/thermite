@@ -70,7 +70,7 @@ export const NEW_CAMPAIGN_JS = `
     if (!url) return;
     out.textContent = "Looking it up…";
     try {
-      const res = await fetch("/ui/campaigns/new/probe?" + new URLSearchParams({ url, ref }), { credentials: "same-origin" });
+      const res = await fetch("/ui/campaigns/new/probe?" + new URLSearchParams({ url, ref, access: val("project_access") }), { credentials: "same-origin" });
       const j = await res.json();
       if (!res.ok) { found = null; out.textContent = j.error || "Control could not read it."; update(); return; }
       found = j;
@@ -107,7 +107,7 @@ export const NEW_CAMPAIGN_JS = `
       return d;
     }
     const url = val("project_url");
-    d.project = { url, ref: val("project_ref") || undefined, commit: found ? found.commit : undefined, repo: repoName(url), editable_paths: lines("editable_paths"), forbidden_patterns: lines("forbidden_patterns") };
+    d.project = { url, ...(val("project_access") ? { access: val("project_access") } : {}), ref: val("project_ref") || undefined, commit: found ? found.commit : undefined, repo: repoName(url), editable_paths: lines("editable_paths"), forbidden_patterns: lines("forbidden_patterns") };
     if ((choice.kit || "here") === "here") {
       const cases = $$("#cases tbody tr").map((tr) => {
         const [name, params, work] = [...tr.querySelectorAll("input")].map((i) => i.value.trim());
@@ -117,7 +117,7 @@ export const NEW_CAMPAIGN_JS = `
       }).filter((c) => c.name);
       d.kit = { source: "here", build: val("build"), outputs: words("outputs"), cases, run: val("run"), check: val("check"), files, held_out: words("held_out") };
     } else {
-      d.kit = { source: "repo", url: val("kit_url"), commit: val("kit_commit"), repo: repoName(val("kit_url")), cells: words("kit_cells"), held_out: words("held_out_repo") };
+      d.kit = { source: "repo", url: val("kit_url"), ...(val("kit_access") ? { access: val("kit_access") } : {}), commit: val("kit_commit"), repo: repoName(val("kit_url")), cells: words("kit_cells"), held_out: words("held_out_repo") };
     }
     d.score = { name: ((choice.kit || "here") === "repo" ? val("repo_metric") : val("score_name")) || "rate", unit: val("score_unit") || "runs/s", direction: val("direction") || "max", min_effect: (num("min_effect") ?? 5) / 100 };
     if (mode === "goal") {
@@ -158,7 +158,7 @@ export const NEW_CAMPAIGN_JS = `
   if (back) {
     const set = (n, v) => { if (form.elements[n] && v !== undefined && v !== null) form.elements[n].value = Array.isArray(v) ? v.join(n === "editable_paths" || n === "forbidden_patterns" || n === "questions" || n === "seeds" ? "\\n" : " ") : v; };
     set("campaign", back.campaign); set("title", back.title); set("notes", back.notes); set("lanes", back.lanes);
-    if (back.project) { set("project_url", back.project.url); set("project_ref", back.project.ref); set("editable_paths", back.project.editable_paths); set("forbidden_patterns", back.project.forbidden_patterns); }
+    if (back.project) { set("project_access", back.project.access); set("project_url", back.project.url); set("project_ref", back.project.ref); set("editable_paths", back.project.editable_paths); set("forbidden_patterns", back.project.forbidden_patterns); }
     if (back.kit && back.kit.source === "here") { for (const k of ["build", "run", "check"]) set(k, back.kit[k]); set("outputs", back.kit.outputs); set("held_out", back.kit.held_out); }
     if (back.score) { set("score_name", back.score.name); set("score_unit", back.score.unit); set("direction", back.score.direction); set("min_effect", back.score.min_effect * 100); }
     if (back.research) { set("topic", back.research.topic); set("questions", back.research.questions); set("seeds", back.research.seeds); set("min_duration", back.research.min_duration); }
