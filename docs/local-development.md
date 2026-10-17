@@ -22,6 +22,8 @@ npm ci
 npm run check            # typecheck, lint, tests, public-content check
 ```
 
+CI (`.github/workflows/ci.yml`) runs the same checks on Node 22 and 24 for every pull request and push to `main`, then the compose smoke test with Docker.
+
 ## The compose stack
 
 ```sh
