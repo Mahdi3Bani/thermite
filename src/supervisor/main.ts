@@ -14,6 +14,7 @@ import { AdvisorsConfig } from "./advisors.ts";
 import { type ChampionUpload, championsIn, uploadChampions } from "./champions.ts";
 import { type ExportState, exportOnce } from "./git-export.ts";
 import { type LiveRelayState, relayLiveOnce, supervisorLive } from "./live.ts";
+import { syncModelRoute } from "./model-route.ts";
 import { RelayError, type RelayState, relayCommandsOnce, relayOnce } from "./relay.ts";
 import { dailyReport } from "./report.ts";
 import { stageCommand } from "./staging.ts";
@@ -201,6 +202,25 @@ async function main(): Promise<void> {
   };
   const commandingDone = commanding();
 
+  // The agents' model route, from control's settings page: checked every half minute.
+  const routeMs = Number(env.THERMITE_MODEL_ROUTE_POLL_SECONDS ?? "30") * 1000;
+  const routing = async () => {
+    let failing = false;
+    while (!stopping && controlUrl && controlToken && routeMs > 0) {
+      try {
+        await syncModelRoute({ rig, controlUrl, controlToken, harnessUrl, harnessToken });
+        failing = false;
+      } catch (err) {
+        if (!failing) log("supervisor", "model route error", { error: String(err) });
+        failing = true;
+      }
+      const until = Date.now() + routeMs;
+      while (!stopping && !wipeRequested && Date.now() < until)
+        await new Promise((r) => setTimeout(r, 250));
+    }
+  };
+  const routingDone = routing();
+
   while (!stopping) {
     try {
       const next = await relayOnce({ ...cfg, skipCommands: commandMs > 0 }, state);
@@ -313,6 +333,7 @@ async function main(): Promise<void> {
   await advisingDone;
   await livingDone;
   await commandingDone;
+  await routingDone;
   process.exit(0);
 }
 

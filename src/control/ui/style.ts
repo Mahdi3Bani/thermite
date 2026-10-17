@@ -359,6 +359,16 @@ details.matrix .card { border: 0; border-radius: 0; }
 .rr .chip { justify-content: center; }
 .rr-need { text-align: right; }
 .camp + .camp { margin-top: 16px; }
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; width: 100%; }
+.form-grid label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 600; }
+.form-grid label .muted { font-weight: 400; }
+.form-grid input, .form-grid select { width: 100%; }
+.form-grid input[readonly] { background: var(--muted); color: var(--muted-foreground); }
+.form-end { grid-column: 1 / -1; }
+.route-name { color: var(--foreground); }
+.rr-route { grid-template-columns: 90px minmax(0, 1fr) auto; align-items: center; }
+.route-acts { display: flex; gap: 6px; align-items: center; } .route-acts select { width: 180px; }
+@media (max-width: 760px) { .form-grid { grid-template-columns: minmax(0, 1fr); } }
 .camp-top { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
 .camp-name { font-weight: 650; font-size: 15px; }
 .camp-said { margin-top: 3px; }

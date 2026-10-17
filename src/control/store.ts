@@ -121,6 +121,26 @@ create table if not exists champion_patch (
   received_at text not null,
   primary key (rig, run, seq)
 );
+-- A model route the owner set: where the agents' model is, and its API key sealed (control's
+-- secret box; never stored in clear). version moves on every change, so rigs pick it up.
+create table if not exists model_route (
+  name text primary key,
+  base_url text not null,
+  model text not null,
+  context_window integer not null default 0,
+  max_tokens integer not null default 0,
+  reasoning text,
+  key_sealed text not null,
+  key_hint text not null,
+  version integer not null default 1,
+  updated_at text not null
+);
+-- The route each rig's agents use. A rig with none keeps its own settings (its environment).
+create table if not exists rig_model_route (
+  rig text primary key,
+  route text not null,
+  assigned_at text not null
+);
 create index if not exists rig_live_rig on rig_live (rig, id);
 create index if not exists rig_live_source on rig_live (rig, source, id);
 `;
@@ -174,6 +194,22 @@ export interface IngestReport {
     body: unknown;
   }[];
   summary: unknown;
+}
+
+/** A model route as stored: its key only sealed, and a hint of it for the dashboard. */
+export interface ModelRoute {
+  name: string;
+  base_url: string;
+  model: string;
+  /** The model's context per request; 0 when not known. */
+  context_window: number;
+  /** The cap on each reply; 0 for the rig's default. */
+  max_tokens: number;
+  reasoning: string | null;
+  key_sealed: string;
+  key_hint: string;
+  version: number;
+  updated_at: string;
 }
 
 export class ControlStore {
@@ -729,6 +765,88 @@ export class ControlStore {
     return r
       ? { patch: Buffer.from(r.patch), sha256: r.sha256, base_commit: r.base_commit }
       : undefined;
+  }
+
+  /**
+   * Creates or changes a model route. A change without a new key keeps the sealed one; a new
+   * route needs a key. Its version moves on every change, so the rigs that use it pick it up.
+   */
+  putModelRoute(
+    r: Omit<ModelRoute, "version" | "updated_at" | "key_sealed" | "key_hint"> & {
+      key?: { sealed: string; hint: string } | undefined;
+    },
+  ): "created" | "updated" | "needs_key" {
+    const now = new Date().toISOString();
+    const old = this.modelRoute(r.name);
+    if (!old && !r.key) return "needs_key";
+    this.db
+      .prepare(
+        `insert into model_route (name, base_url, model, context_window, max_tokens, reasoning, key_sealed, key_hint, version, updated_at)
+         values (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+         on conflict (name) do update set base_url = excluded.base_url, model = excluded.model,
+           context_window = excluded.context_window, max_tokens = excluded.max_tokens,
+           reasoning = excluded.reasoning, key_sealed = excluded.key_sealed,
+           key_hint = excluded.key_hint, version = model_route.version + 1,
+           updated_at = excluded.updated_at`,
+      )
+      .run(
+        r.name,
+        r.base_url,
+        r.model,
+        r.context_window,
+        r.max_tokens,
+        r.reasoning,
+        r.key?.sealed ?? old?.key_sealed ?? "",
+        r.key?.hint ?? old?.key_hint ?? "",
+        now,
+      );
+    return old ? "updated" : "created";
+  }
+
+  modelRoutes(): ModelRoute[] {
+    return this.db
+      .prepare("select * from model_route order by name")
+      .all() as unknown as ModelRoute[];
+  }
+
+  modelRoute(name: string): ModelRoute | undefined {
+    return this.db.prepare("select * from model_route where name = ?").get(name) as unknown as
+      | ModelRoute
+      | undefined;
+  }
+
+  /** Deletes a route no rig uses. */
+  deleteModelRoute(name: string): "deleted" | "in_use" | "missing" {
+    if (!this.modelRoute(name)) return "missing";
+    if (this.db.prepare("select 1 from rig_model_route where route = ?").get(name)) return "in_use";
+    this.db.prepare("delete from model_route where name = ?").run(name);
+    return "deleted";
+  }
+
+  /** Gives a rig's agents a route, or (null) returns them to the rig's own settings. */
+  assignModelRoute(rig: string, route: string | null): void {
+    if (route === null) {
+      this.db.prepare("delete from rig_model_route where rig = ?").run(rig);
+      return;
+    }
+    if (!this.modelRoute(route)) throw new Error(`no model route ${route}`);
+    this.db
+      .prepare(
+        `insert into rig_model_route (rig, route, assigned_at) values (?, ?, ?)
+         on conflict (rig) do update set route = excluded.route, assigned_at = excluded.assigned_at`,
+      )
+      .run(rig, route, new Date().toISOString());
+  }
+
+  /** Each rig's route by name. */
+  rigModelRoutes(): Record<string, string> {
+    const rows = this.db.prepare("select rig, route from rig_model_route").all() as Row[];
+    return Object.fromEntries(rows.map((r) => [String(r.rig), String(r.route)]));
+  }
+
+  modelRouteFor(rig: string): ModelRoute | undefined {
+    const name = this.rigModelRoutes()[rig];
+    return name ? this.modelRoute(name) : undefined;
   }
 
   events(rig: string, after: number, limit: number, ledgerId?: string | null): unknown[] {

@@ -18,6 +18,7 @@ import { type Contract, contractSha, parseContract } from "../core/contract.ts";
 import type { Hardware } from "../core/hardware.ts";
 import { LiveLog, liveBody } from "../core/live.ts";
 import type { RigCheckReport } from "./agents/model-check.ts";
+import type { ControlRoute, ModelInfo, ModelSource } from "./agents/model-source.ts";
 import { Registry } from "./agents/registry.ts";
 import { type AuditDecision, type AuditPackage, Audits } from "./audits.ts";
 import { Conclusions } from "./conclusions.ts";
@@ -672,6 +673,24 @@ export class HarnessService {
    * cannot start now (a busy rig), and runs in the background, reporting as an event.
    */
   rigChecks: Partial<Record<RigCheckName, RigCheck>> = {};
+
+  /** Where the agents' model route comes from (control's route, else the rig's settings). */
+  models: ModelSource | undefined;
+
+  /**
+   * Takes the model route control set for this rig, or (null) goes back to the rig's own
+   * settings. The record names the route, never its key. New plans and trials use it.
+   */
+  setModelRoute(route: ControlRoute | null, by: string): ModelInfo {
+    if (!this.models) throw new Error("this harness runs no agents");
+    if (route) this.models.set(route);
+    else this.models.clear();
+    const info = this.models.info();
+    this.ledger.appendEvent(by, route ? "model_route_set" : "model_route_cleared", null, {
+      ...info,
+    });
+    return info;
+  }
   private checking: string | undefined;
 
   /**
@@ -1243,6 +1262,8 @@ export class HarnessService {
       summary: {
         ...(this.ledger.summary() as Record<string, unknown>),
         ...(this.hardware ? { hardware: this.hardware } : {}),
+        // Which model route the agents use (its name and the key's hint, never the key).
+        ...(this.models ? { model: this.models.info() } : {}),
       },
       generated_at: this.clock().toISOString(),
       latest_event: this.ledger.latestEventId(),

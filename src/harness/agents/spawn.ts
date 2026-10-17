@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Role, Runner } from "../broker/runner.ts";
-import { MODEL_ENV_NAMES } from "./model.ts";
+import { MODEL_ENV_NAMES, type ModelConfig, modelEnv } from "./model.ts";
 import type { ResearchTrialSpec } from "./research-worker.ts";
 import type { TrialResult, TrialSpec } from "./worker.ts";
 
@@ -26,6 +26,8 @@ export async function spawnTrial(
   scratchDir: string,
   apiPort: number,
   signal?: AbortSignal,
+  /** The route the trial uses; without one, the harness's own model settings pass through. */
+  model?: ModelConfig | undefined,
 ): Promise<TrialResult> {
   const spec = trial.spec;
   const lane = /^lane-(\d+)$/.exec(spec.lane)?.[1];
@@ -48,11 +50,12 @@ export async function spawnTrial(
       cwd: dir,
       env: {
         ...Object.fromEntries(
-          MODEL_ENV.filter((k) => process.env[k] !== undefined).map((k) => [
-            k,
-            process.env[k] as string,
-          ]),
+          (model ? ["NODE_OPTIONS", "LANG"] : MODEL_ENV)
+            .filter((k) => process.env[k] !== undefined)
+            .map((k) => [k, process.env[k] as string]),
         ),
+        // Only the worker's own user can read its environment; the lane's commands run as another.
+        ...(model ? modelEnv(model) : {}),
         THERMITE_HARNESS_URL: `http://127.0.0.1:${apiPort}`,
       },
       timeoutMs: spec.wallMs + 120_000,

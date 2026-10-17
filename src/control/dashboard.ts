@@ -6,7 +6,8 @@ import { COMMAND_KINDS, type CommandKind } from "../core/commands.ts";
 import type { Credential } from "./credential.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
 import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
-import { type ControlStore, fingerprint } from "./store.ts";
+import { keyHint, type SecretBox } from "./secrets.ts";
+import { type ControlStore, fingerprint, type ModelRoute } from "./store.ts";
 import { CLIENT_JS } from "./ui/client.ts";
 import {
   ago,
@@ -88,6 +89,8 @@ export interface DashboardOptions {
   driver?: DeploymentDriver | undefined;
   /** Days a dashboard session lasts without use (default 30). */
   sessionDays?: number | undefined;
+  /** Seals the model routes' API keys (the settings page). */
+  secrets: SecretBox;
 }
 
 export function createDashboard(store: ControlStore, opts: DashboardOptions): Hono {
@@ -1518,6 +1521,195 @@ ${runsNow ? `<div class="block"><div class="head"><h2>At work</h2><span class="n
       return c.text(`refused: ${err instanceof Error ? err.message : String(err)}`, 400);
     }
     return c.redirect("/ui/reports", 303);
+  });
+
+  // ---------------------------------------------------------------- settings: model routes
+  // The agents' model routes: where the model is, its name and its API key. Control seals each key
+  // (its secret box) and never shows it again; a rig receives a route's key only when the owner
+  // gives the route to it, through its supervisor's authenticated channel.
+  const ROUTE_NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+  const REASONING = ["none", "low", "medium", "high"];
+  const routeForm = (
+    t: string,
+    r?: ModelRoute,
+  ) => `<form method="post" action="/ui/settings/routes" class="form-grid" autocomplete="off">
+<input type="hidden" name="csrf" value="${t}">
+<label>Name<input name="name" required maxlength="64" value="${esc(r?.name ?? "")}"${r ? " readonly" : ""} placeholder="for example opencode-deepseek"></label>
+<label>Base URL<input name="base_url" required type="url" maxlength="500" value="${esc(r?.base_url ?? "")}" placeholder="https://…/v1 (OpenAI-compatible, with tool calling)"></label>
+<label>Model<input name="model" required maxlength="200" value="${esc(r?.model ?? "")}" placeholder="the model's name at that endpoint"></label>
+<label>API key<input name="api_key" type="password" autocomplete="new-password" maxlength="4096"${r ? "" : " required"} placeholder="${r ? `empty keeps the key ending ${esc(r.key_hint)}` : "the endpoint's key; never shown again"}"></label>
+<label><span>Context window <span class="muted">tokens per request, if known</span></span><input name="context_window" inputmode="numeric" value="${r?.context_window || ""}"></label>
+<label><span>Longest reply <span class="muted">tokens, thinking included; empty: 8192</span></span><input name="max_tokens" inputmode="numeric" value="${r?.max_tokens || ""}"></label>
+<label>Reasoning effort<select name="reasoning"><option value="">the server's default</option>${REASONING.map((x) => `<option${r?.reasoning === x ? " selected" : ""}>${x}</option>`).join("")}</select></label>
+<div class="form-end"><button class="primary">${r ? "Save the route" : "Add the route"}</button></div></form>`;
+
+  app.get("/ui/settings", (c) => {
+    const now = Date.now();
+    const vs = views();
+    const t = csrf(c);
+    const routes = store.modelRoutes();
+    const given = store.rigModelRoutes();
+    const usersOf = (name: string) =>
+      Object.entries(given)
+        .filter(([, r]) => r === name)
+        .map(([rig]) => rig);
+    const ok = c.req.query("ok");
+    const error = c.req.query("error");
+    const note = error
+      ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not saved.</b> ${esc(error)}</div>`
+      : ok
+        ? `<div class="card" style="margin-bottom:16px"><b class="ok">${esc(ok)}</b></div>`
+        : "";
+    const routeRows = routes
+      .map((r) => {
+        const rigs = usersOf(r.name);
+        const facts = [
+          `<span class="chip">key ${esc(r.key_hint)}</span>`,
+          r.base_url.startsWith("http://") ? `<span class="chip warn">not HTTPS</span>` : "",
+          r.context_window
+            ? `<span class="chip">${r.context_window.toLocaleString("en-US")} context</span>`
+            : "",
+          r.max_tokens
+            ? `<span class="chip">${r.max_tokens.toLocaleString("en-US")} longest reply</span>`
+            : "",
+          r.reasoning ? `<span class="chip">reasoning ${esc(r.reasoning)}</span>` : "",
+        ].join("");
+        return `<details class="dq" data-k="route-${esc(r.name)}"><summary>
+<span class="dq-kind route-name">${icon.key}Route</span>
+<span class="dq-main"><span class="dq-head">${esc(r.name)}</span><span class="dq-why">${esc(r.model)} at ${esc(r.base_url)}</span><span class="dq-sub">${facts}<span class="dq-where">${rigs.length ? `used by ${rigs.map((x) => esc(x)).join(", ")}` : "no rig uses it"}</span></span></span>
+<span class="dq-side"><span class="dq-age">version ${r.version} · changed ${esc(ago(r.updated_at, now))} ago</span></span>
+</summary><div class="dq-body">${routeForm(t, r)}${
+          rigs.length
+            ? `<div class="muted small">To delete it, give its rigs another route first.</div>`
+            : `<form class="inline" method="post" action="/ui/settings/routes/${encodeURIComponent(r.name)}/delete"><input type="hidden" name="csrf" value="${t}"><button class="danger">Delete this route</button></form>`
+        }</div></details>`;
+      })
+      .join("");
+    const rigRows = vs
+      .map((u) => {
+        const m = u.model;
+        const want = given[u.id] ?? "";
+        const uses = !m
+          ? "Its harness does not report its model route (it needs a newer image)."
+          : m.source === "control"
+            ? `Its agents use "${m.name}" (version ${m.version}, ${m.model}).`
+            : m.source === "environment"
+              ? `Its agents use the rig's own settings (${m.model}).`
+              : "Its agents have no model route: they wait.";
+        const moving =
+          m && want && !(m.source === "control" && m.name === want)
+            ? ` <span class="chip info">handing over "${esc(want)}"</span>`
+            : m && !want && m.source === "control"
+              ? ` <span class="chip info">handing back to its own settings</span>`
+              : "";
+        const chk = u.checks.model;
+        const checked = !chk
+          ? "Its model check has not run."
+          : chk.finished_at === null
+            ? "Its model check is running."
+            : `Its model check ${chk.ok ? "passed" : "FAILED"} ${ago(chk.finished_at, now)} ago: ${chk.summary ?? ""}`;
+        const select = `<select name="route" aria-label="route for ${esc(u.id)}"><option value="">its own settings</option>${routes.map((r) => `<option value="${esc(r.name)}"${r.name === want ? " selected" : ""}>${esc(r.name)}</option>`).join("")}</select>`;
+        return `<div class="ck rr-route"><span class="ck-res"><a href="/ui/rigs/${encodeURIComponent(u.id)}"><b>${esc(u.id)}</b></a></span><span class="ck-main"><span>${esc(uses)}${moving}</span><span class="ck-sum ${chk?.finished_at && !chk.ok ? "bad" : ""}">${esc(checked)}</span></span><span class="route-acts"><form class="inline" method="post" action="/ui/settings/rigs"><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="rig" value="${esc(u.id)}">${select}<button>Use</button></form>${cmdForm(c, { rig: u.id, kind: "rig_check", fields: { check: "model" }, label: "Check", back: "/ui/settings" })}</span></div>`;
+      })
+      .join("");
+    return page(
+      c,
+      { title: "Settings", active: "settings" },
+      `<p class="run-said">The agents reach their model through a route: where the model is, its name and its API key. Control keeps each key encrypted and never shows it again. A rig receives a route's key only when you give the route to it; its agents use it from their next plan or trial.</p>
+${note}
+<div class="block"><div class="head"><h2>Model routes</h2><span class="n">${routes.length}</span><span class="right">open one to change it; leave the key empty to keep it</span></div>${routes.length ? `<div class="dqs">${routeRows}</div>` : `<div class="card"><div class="empty">No route yet: add one below.</div></div>`}</div>
+<div class="block"><div class="head"><h2>Add a route</h2></div><div class="card">${routeForm(t)}</div></div>
+<div class="block"><div class="head"><h2>Which route each rig uses</h2><span class="right">a rig takes a change within a minute; then check it</span></div><div class="card flat">${rigRows || `<div class="empty">No rig has reported yet.</div>`}</div></div>`,
+      vs,
+    );
+  });
+
+  app.post("/ui/settings/routes", async (c) => {
+    const f = await c.req.parseBody();
+    const fail = (m: string) => c.redirect(`/ui/settings?error=${encodeURIComponent(m)}`, 303);
+    const name = String(f.name ?? "").trim();
+    if (!ROUTE_NAME.test(name))
+      return fail("A route's name is lowercase letters, digits, dots, dashes and underscores.");
+    const base = String(f.base_url ?? "")
+      .trim()
+      .replace(/\/+$/, "");
+    let url: URL;
+    try {
+      url = new URL(base);
+    } catch {
+      return fail("The base URL is not a URL.");
+    }
+    if (!/^https?:$/.test(url.protocol) || url.username || url.password || url.search || url.hash)
+      return fail("The base URL is http or https, with no credentials, query or fragment in it.");
+    const model = String(f.model ?? "").trim();
+    if (!/^[\w.:/@+-]{1,200}$/.test(model))
+      return fail("The model's name is its name at the endpoint, without spaces.");
+    const key = String(f.api_key ?? "").trim();
+    if (key.length > 4096 || /\s/.test(key)) return fail("The API key has spaces or is too long.");
+    const whole = (v: unknown, max: number) => {
+      const t = String(v ?? "").replace(/[\s,_]/g, "");
+      if (!t) return 0;
+      const n = Number(t);
+      return Number.isInteger(n) && n >= 0 && n <= max ? n : Number.NaN;
+    };
+    const contextWindow = whole(f.context_window, 100_000_000);
+    const maxTokens = whole(f.max_tokens, 10_000_000);
+    if (Number.isNaN(contextWindow) || Number.isNaN(maxTokens))
+      return fail("The context window and the longest reply are whole numbers of tokens.");
+    const reasoning = String(f.reasoning ?? "");
+    if (reasoning && !REASONING.includes(reasoning))
+      return fail("The reasoning effort is none, low, medium or high.");
+    const r = store.putModelRoute({
+      name,
+      base_url: base,
+      model,
+      context_window: contextWindow,
+      max_tokens: maxTokens,
+      reasoning: reasoning || null,
+      key: key ? { sealed: opts.secrets.seal(key), hint: keyHint(key) } : undefined,
+    });
+    if (r === "needs_key") return fail("A new route needs its API key.");
+    // The audit names the route and the key's hint, never the key.
+    store.audit("owner:ui", r === "created" ? "model_route_added" : "model_route_changed", {
+      name,
+      base_url: base,
+      model,
+      context_window: contextWindow,
+      max_tokens: maxTokens,
+      reasoning: reasoning || null,
+      key: key ? `replaced (${keyHint(key)})` : "kept",
+    });
+    return c.redirect(
+      `/ui/settings?ok=${encodeURIComponent(r === "created" ? `Route "${name}" added. Give it to a rig below.` : `Route "${name}" saved: the rigs that use it take it within a minute.`)}`,
+      303,
+    );
+  });
+
+  app.post("/ui/settings/routes/:name/delete", (c) => {
+    const name = c.req.param("name");
+    const r = store.deleteModelRoute(name);
+    if (r === "deleted") store.audit("owner:ui", "model_route_deleted", { name });
+    const m =
+      r === "deleted"
+        ? `ok=${encodeURIComponent(`Route "${name}" deleted.`)}`
+        : `error=${encodeURIComponent(r === "in_use" ? `Route "${name}" is still in use.` : "No such route.")}`;
+    return c.redirect(`/ui/settings?${m}`, 303);
+  });
+
+  app.post("/ui/settings/rigs", async (c) => {
+    const f = await c.req.parseBody();
+    const rig = String(f.rig ?? "");
+    const route = String(f.route ?? "");
+    if (!store.rigs().some((x) => x.id === rig))
+      return c.redirect(`/ui/settings?error=${encodeURIComponent("No such rig.")}`, 303);
+    if (route && !store.modelRoute(route))
+      return c.redirect(`/ui/settings?error=${encodeURIComponent("No such route.")}`, 303);
+    store.assignModelRoute(rig, route || null);
+    store.audit("owner:ui", "model_route_given", { rig, route: route || null });
+    return c.redirect(
+      `/ui/settings?ok=${encodeURIComponent(route ? `${rig} takes "${route}" within a minute. Check it then.` : `${rig} goes back to its own settings within a minute.`)}`,
+      303,
+    );
   });
 
   app.post("/ui/commands", async (c) => {

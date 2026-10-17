@@ -6,6 +6,7 @@ import { generateSigningKeys } from "../core/commands.ts";
 import { createControlApi } from "./api.ts";
 import { Credential } from "./credential.ts";
 import { advanceResets, driverFromEnv } from "./lifecycle.ts";
+import { SecretBox } from "./secrets.ts";
 import { ControlStore } from "./store.ts";
 
 /** Control service entry point. Generates its signing key on first start. */
@@ -70,6 +71,11 @@ async function main(): Promise<void> {
       sessionDays: env.THERMITE_CONTROL_SESSION_DAYS
         ? Number(env.THERMITE_CONTROL_SESSION_DAYS)
         : undefined,
+      // The key that seals model routes' API keys: its own file, made on first use. Mount it
+      // from a separate secret to keep it off the database's volume.
+      secrets: SecretBox.fromFile(
+        env.THERMITE_CONTROL_SECRETS_KEY_FILE ?? join(dir, "secrets.key"),
+      ),
     }).fetch,
     hostname: host,
     port,

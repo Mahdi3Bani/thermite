@@ -16,12 +16,14 @@ import {
   api,
   assign,
   command,
+  control,
   dc,
   events,
   latestVerdicts,
   lifecycles,
   prepare,
   rigCheck,
+  secret,
   sleep,
   until,
 } from "./lib/smoke-env.mjs";
@@ -31,6 +33,27 @@ const NOOP = readFileSync("kits/smoke-cpu/candidates/noop/src/kernel/matmul.c", 
 let requests = 0;
 const setid = {};
 const background = {};
+
+/** A dashboard session: sign in with the admin token, keep the cookie, post forms. */
+async function dashboard() {
+  const login = await fetch(`${control}/ui/login`, {
+    method: "POST",
+    body: new URLSearchParams({ token: secret("control-admin-token") }),
+    redirect: "manual",
+  });
+  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0];
+  const page = async (path) => (await fetch(`${control}${path}`, { headers: { cookie } })).text();
+  const post = async (path, form) =>
+    (
+      await fetch(`${control}${path}`, {
+        method: "POST",
+        body: new URLSearchParams(form),
+        headers: { cookie },
+        redirect: "manual",
+      })
+    ).status;
+  return { page, post };
+}
 
 /** The scripted model: plans with submit_plan; lane-1 improves the kernel, lane-2 restates it. */
 function script(messages, tools) {
@@ -116,7 +139,10 @@ function script(messages, tools) {
   return steps[done] ? { toolCalls: [steps[done]] } : { text: "done" };
 }
 
+/** The keys the model was asked with (a route set on control's settings page brings its own). */
+const keysSeen = new Set();
 const model = createServer((req, res) => {
+  keysSeen.add(String(req.headers.authorization ?? ""));
   let body = "";
   req.on("data", (d) => {
     body += d;
@@ -173,6 +199,7 @@ const composeEnv = {
   THERMITE_MODEL_BASE_URL: `http://${hostName}:${port}/v1`,
   THERMITE_MODEL: "scripted",
   THERMITE_MAX_TRIALS: "2",
+  THERMITE_MODEL_ROUTE_POLL_SECONDS: "2",
 };
 const report = {
   started_at: new Date().toISOString(),
@@ -255,6 +282,35 @@ try {
       summary: modelCheck.summary,
       detail: modelCheck.detail,
     },
+  );
+  // A route entered on control's settings page: the rig takes it, and its model check goes
+  // through it with the route's own key. The key shows in no page or event.
+  const routeKey = "route-key-acceptance-0001";
+  const ui = await dashboard();
+  const settings = await ui.page("/ui/settings");
+  const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(settings)?.[1] ?? "";
+  await ui.post("/ui/settings/routes", {
+    csrf,
+    name: "scripted-route",
+    base_url: `http://${hostName}:${port}/v1`,
+    model: "scripted",
+    api_key: routeKey,
+  });
+  await ui.post("/ui/settings/rigs", { csrf, rig: "local-1", route: "scripted-route" });
+  const taken = await until("the rig takes the route", async () => {
+    const m = (await api("/v1/rigs/local-1/view")).body.model;
+    return m?.source === "control" && m.name === "scripted-route" ? m : undefined;
+  });
+  keysSeen.clear();
+  const routeCheck = await rigCheck("model");
+  const pages = [await ui.page("/ui/settings"), await ui.page("/ui/rigs/local-1")].join("");
+  check(
+    "a route from the settings page reaches the rig and its model, and its key shows nowhere",
+    routeCheck.ok === true &&
+      keysSeen.has(`Bearer ${routeKey}`) &&
+      !pages.includes(routeKey) &&
+      !JSON.stringify(await events()).includes(routeKey),
+    { taken, summary: routeCheck.summary, keys: keysSeen.size },
   );
   check(
     "control reports the agents' figures",

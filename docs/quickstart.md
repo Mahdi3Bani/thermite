@@ -56,25 +56,26 @@ closes when the check is done.
 
 ## 4. Connect a model
 
-Workers and the planner need an OpenAI-compatible endpoint with tool calling. Stop the stack, set
-the route, and start it again:
+Workers and the planner need an OpenAI-compatible endpoint with tool calling. You give it to the
+rig on the dashboard, with no restart:
 
-Put the endpoint's API key in `.dev/secrets/model-api-key` (an editor keeps it out of your shell
-history), then:
+1. Open **Settings** and add a route: a name, the endpoint's base URL (ending in `/v1`), the
+   model's name there, and its API key. Set the context window when you know it.
+2. Under **Which route each rig uses**, choose the route for the rig and press **Use**. The rig
+   takes it within a minute.
+3. Press **Check**. The rig's **model** check sends one request through the route, which must come
+   back as a correct tool call. If it fails, its sentence says what came back instead: no tool
+   call, a refusal, or a cut-off reply.
 
-```sh
-docker compose down
-THERMITE_MODEL_BASE_URL=https://gateway.example/v1 THERMITE_MODEL=<model name> \
-  docker compose up -d
-```
+Control keeps the key encrypted and never shows it again: the page shows only its last four
+characters. Only the rigs you give the route to receive the key, and the agents use it from their
+next plan or trial.
 
 For a server on your own machine, the URL is `http://host.docker.internal:<port>/v1`. With
-Podman, `host.containers.internal` works too. Set `THERMITE_MODEL_CONTEXT_WINDOW` to the model's
-context per request when you know it.
+Podman, `host.containers.internal` works too.
 
-Then run the rig's **model** check. It sends one request through the rig's route, which must come
-back as a correct tool call. If it fails, its sentence says what came back instead: no tool call,
-a refusal, or a cut-off reply.
+A rig can also take its route from its own settings (`THERMITE_MODEL_*`, see
+[Settings reference](settings-reference.md)). A route from the settings page comes first.
 
 ## 5. Run a campaign on your own project
 

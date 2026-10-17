@@ -22,6 +22,7 @@ import { generateSigningKeys } from "../core/commands.ts";
 import { DevRuns } from "./agents/devrun.ts";
 import { modelConfigFromEnv } from "./agents/model.ts";
 import { checkModel } from "./agents/model-check.ts";
+import { ModelSource } from "./agents/model-source.ts";
 import { Scheduler } from "./agents/scheduler.ts";
 import { spawnTrial } from "./agents/spawn.ts";
 import { createHarnessApi } from "./api.ts";
@@ -279,9 +280,25 @@ async function main(): Promise<void> {
 
   // Agents run only with a model route (THERMITE_MODEL_* from the rig's configuration; the key from the
   // broker). Each trial is its own worker process.
-  const model = modelConfigFromEnv(env);
+  // The route control sets (kept in the state directory, root only) comes before the rig's own
+  // settings; every plan and trial takes the route current when it starts.
+  const routeFile = join(paths.stateDir, "model-route.json");
+  const models = new ModelSource(routeFile, modelConfigFromEnv(env));
+  service.models = models;
+  const model = () => models.current();
   // Rig checks control can ask for: the model route, and the isolation selftest under the broker.
-  if (model) service.rigChecks.model = { run: () => checkModel(model) };
+  service.rigChecks.model = {
+    run: async () => {
+      const m = model();
+      return m
+        ? checkModel(m)
+        : {
+            ok: false,
+            summary:
+              "no model route: set one on control's settings page (or in the rig's settings)",
+          };
+    },
+  };
   service.reconcileRigChecks();
   // The smoke check: a judge-only campaign from the smoke kit in the image, on this target.
   service.rigChecks.smoke = {
@@ -308,6 +325,7 @@ async function main(): Promise<void> {
           scratchDir: env.THERMITE_SCRATCH_DIR ?? "/scratch",
           outboxDir: paths.outboxDir,
           secretFiles: [
+            routeFile,
             env.THERMITE_SUPERVISOR_TOKEN_FILE,
             env.THERMITE_PROPOSER_TOKEN_FILE,
             env.THERMITE_MODEL_API_KEY_FILE,
@@ -321,32 +339,33 @@ async function main(): Promise<void> {
       },
     };
   }
-  const scheduler = model
-    ? new Scheduler({
-        service,
-        runner,
-        model,
-        owner: "scheduler",
-        maxConcurrent: Number(env.THERMITE_MAX_TRIALS ?? "1"),
-        trialWallMs: Number(env.THERMITE_TRIAL_MINUTES ?? "20") * 60_000,
-        // No cap on a trial's turns unless one is configured.
-        maxTurns: env.THERMITE_MAX_TURNS ? Number(env.THERMITE_MAX_TURNS) : undefined,
-        runTrial: (spec, signal) =>
-          spawnTrial({ kind: "code", spec }, runner, paths.scratchDir, port, signal),
-        research,
-        runResearchTrial: (spec, signal) =>
-          spawnTrial({ kind: "research", spec }, runner, paths.scratchDir, port, signal),
-        devRuns,
-        usdPerMTokIn: env.THERMITE_LLM_USD_PER_MTOK_IN
-          ? Number(env.THERMITE_LLM_USD_PER_MTOK_IN)
-          : undefined,
-        usdPerMTokOut: env.THERMITE_LLM_USD_PER_MTOK_OUT
-          ? Number(env.THERMITE_LLM_USD_PER_MTOK_OUT)
-          : undefined,
-      })
-    : undefined;
-  log("harness", scheduler ? "agents ready" : "no model route: agents off", {
-    model: model?.model ?? null,
+  // Agents wait while no route is set; one set later starts them without a restart.
+  const scheduler = new Scheduler({
+    service,
+    runner,
+    model,
+    owner: "scheduler",
+    maxConcurrent: Number(env.THERMITE_MAX_TRIALS ?? "1"),
+    trialWallMs: Number(env.THERMITE_TRIAL_MINUTES ?? "20") * 60_000,
+    // No cap on a trial's turns unless one is configured.
+    maxTurns: env.THERMITE_MAX_TURNS ? Number(env.THERMITE_MAX_TURNS) : undefined,
+    runTrial: (spec, signal) =>
+      spawnTrial({ kind: "code", spec }, runner, paths.scratchDir, port, signal, model()),
+    research,
+    runResearchTrial: (spec, signal) =>
+      spawnTrial({ kind: "research", spec }, runner, paths.scratchDir, port, signal, model()),
+    devRuns,
+    usdPerMTokIn: env.THERMITE_LLM_USD_PER_MTOK_IN
+      ? Number(env.THERMITE_LLM_USD_PER_MTOK_IN)
+      : undefined,
+    usdPerMTokOut: env.THERMITE_LLM_USD_PER_MTOK_OUT
+      ? Number(env.THERMITE_LLM_USD_PER_MTOK_OUT)
+      : undefined,
+  });
+  const info = models.info();
+  log("harness", info.source === "none" ? "agents wait for a model route" : "agents ready", {
+    route: info.source,
+    model: info.model ?? null,
   });
   const exportEveryMs = Number(env.THERMITE_EXPORT_MINUTES ?? "60") * 60_000;
   let stopping = false;
@@ -365,7 +384,7 @@ async function main(): Promise<void> {
     }
   };
   const scheduling = async () => {
-    while (!stopping && scheduler) {
+    while (!stopping) {
       try {
         await scheduler.tick();
       } catch (err) {

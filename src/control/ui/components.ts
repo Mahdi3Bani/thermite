@@ -287,7 +287,16 @@ export interface Shell {
   /** Breadcrumb links before the title. */
   crumbs?: { href: string; text: string }[] | undefined;
   actions?: string | undefined;
-  active: "overview" | "campaigns" | "rigs" | "live" | "commands" | "reports" | "audit" | "";
+  active:
+    | "overview"
+    | "campaigns"
+    | "rigs"
+    | "live"
+    | "commands"
+    | "reports"
+    | "audit"
+    | "settings"
+    | "";
   rigs: RigView[];
   needs: number;
   now: number;
@@ -340,6 +349,7 @@ export function shell(s: Shell, body: string): string {
     ${nav("/ui/commands", "commands", icon.list, "Commands")}
     ${nav("/ui/reports", "reports", icon.file, "Reports")}
     ${nav("/ui/audit", "audit", icon.shield, "Audit log")}
+    ${nav("/ui/settings", "settings", icon.key, "Settings")}
   </nav>
   ${campRows ? `<div class="section">Campaigns</div>${campRows}` : ""}
   ${s.rigs.length ? `<div class="section">Rigs</div>${rigRows}` : ""}

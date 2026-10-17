@@ -210,6 +210,34 @@ export interface RigView {
   judge: { now: JudgeJob | null; queued: JudgeJob[]; jobs: JudgeJob[] };
   /** Each rig check's latest result (model route, isolation, smoke), or that it is running. */
   checks: Record<string, RigCheckView>;
+  /** Which model route its agents use, from its signed report (older harnesses send none). */
+  model: RigModelView | null;
+}
+
+export interface RigModelView {
+  source: "control" | "environment" | "none";
+  name: string | null;
+  version: number | null;
+  model: string | null;
+  base_url: string | null;
+  key_hint: string | null;
+}
+
+/** Reads a report's model route loosely: anything malformed is dropped, never trusted. */
+export function readModelInfo(x: unknown): RigModelView | null {
+  if (!x || typeof x !== "object") return null;
+  const o = x as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === "string" ? v.slice(0, 300) : null);
+  const source = o.source;
+  if (source !== "control" && source !== "environment" && source !== "none") return null;
+  return {
+    source,
+    name: str(o.name),
+    version: typeof o.version === "number" && Number.isInteger(o.version) ? o.version : null,
+    model: str(o.model),
+    base_url: str(o.base_url),
+    key_hint: str(o.key_hint),
+  };
 }
 
 export interface RigCheckView {
@@ -717,7 +745,9 @@ export function rigView(
     v.agents.attempts = v.attempts.length;
     v.agents.duplicates = v.attempts.filter((a) => a.lifecycle === "duplicate").length;
   }
-  const summary = u.summary as { jobs?: Record<string, number>; hardware?: unknown } | undefined;
+  const summary = u.summary as
+    | { jobs?: Record<string, number>; hardware?: unknown; model?: unknown }
+    | undefined;
   const now = opts.now ?? Date.now();
   const allJobs = [...jobs.values()];
   return {
@@ -728,6 +758,7 @@ export function rigView(
     summary: u.summary,
     supervisor: store.supervisor(u.id),
     hardware: readHardware(summary?.hardware),
+    model: readModelInfo(summary?.model),
     jobs: summary?.jobs ?? {},
     runs: [...runs.values()],
     recent: events.slice(-50).reverse(),

@@ -5,6 +5,7 @@ import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { laneLimits } from "../core/contract.ts";
 import { LIVE_KINDS } from "../core/live.ts";
+import { ControlRoute } from "./agents/model-source.ts";
 import { Registry } from "./agents/registry.ts";
 import { laneCacheEnv } from "./agents/workspace.ts";
 import { type Role, type Runner, RunRequest } from "./broker/runner.ts";
@@ -120,6 +121,19 @@ export function createHarnessApi(
   });
 
   app.get("/v1/health", (c) => c.json({ ok: true, rig: service.rig }));
+
+  // The agents' model route, as control set it: the supervisor hands it over (key included) and
+  // reads back which route is in use (never the key).
+  app.get("/v1/model-route", supervisor, (c) =>
+    service.models
+      ? c.json(service.models.info())
+      : c.json({ error: "no agents on this rig" }, 404),
+  );
+  app.put("/v1/model-route", supervisor, bodyLimit({ maxSize: 16 * 1024 }), async (c) => {
+    if (!service.models) return c.json({ error: "no agents on this rig" }, 404);
+    const body = z.object({ route: ControlRoute.nullable() }).parse(await c.req.json());
+    return c.json(service.setModelRoute(body.route, "supervisor"));
+  });
 
   app.get("/v1/snapshot", supervisor, (c) => {
     const cursor = Number(c.req.query("cursor") ?? "0");

@@ -38,7 +38,11 @@ const KEEP = new Set(["win_screened", "win_confirmed"]);
 export interface SchedulerOptions {
   service: HarnessService;
   runner: Runner;
-  model?: ModelConfig | undefined;
+  /**
+   * The model route, or how to read it now: control may set or change the route while the
+   * harness runs, and each plan and trial takes the route current when it starts.
+   */
+  model?: ModelConfig | (() => ModelConfig | undefined) | undefined;
   /** Runs one trial (in a child process in the harness; in-process in tests); abortable. */
   runTrial: (spec: TrialSpec, signal: AbortSignal) => Promise<TrialResult>;
   /** Research mode: the research service and its trial runner. */
@@ -519,7 +523,7 @@ export class Scheduler {
     this.watch();
     let p: Awaited<ReturnType<typeof plan>>;
     try {
-      p = await plan(input, this.o.model, ctrl.signal);
+      p = await plan(input, this.modelNow(), ctrl.signal);
     } finally {
       this.planning = undefined;
     }
@@ -560,12 +564,18 @@ export class Scheduler {
     });
   }
 
+  /** The model route now (none: agents wait). */
+  private modelNow(): ModelConfig | undefined {
+    const m = this.o.model;
+    return typeof m === "function" ? m() : m;
+  }
+
   /** One scheduling step: plan when needed, start trials that may start. */
   async tick(): Promise<boolean> {
     this.stopIfNotRunning();
     await this.applyResets();
     const inst = this.run();
-    if (!inst || !this.o.model) return false;
+    if (!inst || !this.modelNow()) return false;
     // The contract's wall-time budget ends agent work (the judge still finishes what is queued).
     const wallHours = inst.contract.budget.wall_hours;
     const created = this.ledger.db

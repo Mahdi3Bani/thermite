@@ -22,7 +22,7 @@ export interface ModelConfig {
   reasoning?: ReasoningEffort | undefined;
 }
 
-function reasoningFromEnv(raw: string | undefined): ReasoningEffort | undefined {
+export function reasoningFromEnv(raw: string | undefined): ReasoningEffort | undefined {
   if (raw === undefined || raw === "") return undefined;
   if (raw === "none" || raw === "off") return "off";
   if (raw === "low" || raw === "medium" || raw === "high") return raw;
@@ -75,6 +75,20 @@ export function modelConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ModelC
     contextWindow: Number(setting(env, MODEL_SETTINGS.contextWindow) ?? "0"),
     maxTokens: Number(setting(env, MODEL_SETTINGS.maxTokens) ?? "8192"),
     reasoning: reasoningFromEnv(setting(env, MODEL_SETTINGS.reasoning)),
+  };
+}
+
+/** A route as a worker's environment (THERMITE_MODEL_*), for a worker started on it. */
+export function modelEnv(cfg: ModelConfig): Record<string, string> {
+  return {
+    THERMITE_MODEL_BASE_URL: cfg.baseUrl,
+    THERMITE_MODEL: cfg.model,
+    THERMITE_MODEL_API_KEY: cfg.apiKey,
+    THERMITE_MODEL_CONTEXT_WINDOW: String(cfg.contextWindow),
+    THERMITE_MODEL_MAX_TOKENS: String(cfg.maxTokens),
+    ...(cfg.reasoning !== undefined
+      ? { THERMITE_MODEL_REASONING_EFFORT: cfg.reasoning === "off" ? "none" : cfg.reasoning }
+      : {}),
   };
 }
 

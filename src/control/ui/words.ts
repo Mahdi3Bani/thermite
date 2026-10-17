@@ -313,6 +313,18 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
       return s(
         `The ${checkName(String(b.check ?? ""))} check started${b.force ? " (forced)" : ""}.`,
       );
+    case "model_route_set":
+      return s(
+        `The agents now use model route "${String(b.name ?? "?")}" (${String(b.model ?? "?")}, version ${String(b.version ?? "?")}).`,
+        "ok",
+      );
+    case "model_route_cleared":
+      return s(
+        b.source === "none"
+          ? "The agents have no model route now: they wait for one."
+          : `The agents are back on the rig's own model settings${b.model ? ` (${String(b.model)})` : ""}.`,
+        b.source === "none" ? "warn" : "",
+      );
     case "rig_check_finished":
       return s(
         `The ${checkName(String(b.check ?? ""))} check ${b.ok === true ? "passed" : "FAILED"}: ${String(b.summary ?? "")}`,

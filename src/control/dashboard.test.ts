@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { mkdtempSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, test } from "node:test";
+import { ModelSource } from "../harness/agents/model-source.ts";
 import { createHarnessApi } from "../harness/api.ts";
+import { syncModelRoute } from "../supervisor/model-route.ts";
 import { relayOnce } from "../supervisor/relay.ts";
 import { seedDemo } from "../testing/control-demo.ts";
 import { FAST_KERNEL, makeJudgeEnv } from "../testing/judge-env.ts";
@@ -56,10 +61,118 @@ async function stack(promotion: "auto" | "owner_approval" = "owner_approval") {
       headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
     });
   const csrfFrom = (html: string) => /name="csrf" value="([0-9a-f]+)"/.exec(html)?.[1] ?? "";
-  return { env, store, control, relay, get, post, csrfFrom, login };
+  return { env, store, control, relay, get, post, csrfFrom, login, fetchImpl };
 }
 
 describe("control dashboard", () => {
+  test("a model route's key goes in once on the settings page, sealed, and reaches only its rig's harness", async () => {
+    const s = await stack();
+    const dir = mkdtempSync(join(tmpdir(), "thermite-route-"));
+    s.env.service.models = new ModelSource(join(dir, "model-route.json"), undefined);
+    await s.relay();
+    const key = "sk-live-never-shown-0001";
+    let page = await (await s.get("/ui/settings")).text();
+    assert.match(page, /No route yet/);
+    const csrf = s.csrfFrom(page);
+    // A form without the session's token is refused.
+    assert.equal((await s.post("/ui/settings/routes", { csrf: "0", name: "x" })).status, 403);
+    const added = await s.post("/ui/settings/routes", {
+      csrf,
+      name: "opencode",
+      base_url: "https://models.example/v1/",
+      model: "deepseek-v4.1-flash-free",
+      api_key: key,
+      context_window: "262,144",
+      max_tokens: "",
+      reasoning: "",
+    });
+    assert.equal(added.status, 303);
+    assert.match(added.headers.get("location") ?? "", /ok=/);
+    // A new route needs its key.
+    const keyless = await s.post("/ui/settings/routes", {
+      csrf,
+      name: "other",
+      base_url: "https://models.example/v1",
+      model: "m",
+    });
+    assert.match(keyless.headers.get("location") ?? "", /needs%20its%20API%20key/);
+    // A change without a key keeps the sealed one.
+    await s.post("/ui/settings/routes", {
+      csrf,
+      name: "opencode",
+      base_url: "https://models.example/v1",
+      model: "deepseek-v4.1-flash-free",
+      context_window: "262144",
+      reasoning: "low",
+    });
+    const stored = s.store.modelRoute("opencode");
+    assert.equal(stored?.version, 2);
+    assert.equal(stored?.base_url, "https://models.example/v1");
+    page = await (await s.get("/ui/settings")).text();
+    assert.match(page, /key …0001/);
+    assert.match(page, /262,144 context/);
+    // The key is in no page, row or audit entry: only sealed, and as its last four characters.
+    const everything = JSON.stringify([
+      page,
+      s.store.db.prepare("select * from model_route").all(),
+      s.store.db.prepare("select * from audit").all(),
+    ]);
+    assert.ok(!everything.includes(key));
+    // Only the rig it is given to, with its own token, receives it.
+    const routeOf = (token: string) =>
+      s.control.request("/v1/rigs/rig-a/model-route", {
+        headers: { authorization: `Bearer ${token}` },
+      });
+    assert.deepEqual(await (await routeOf("rig-token-abcdef")).json(), { route: null });
+    await s.post("/ui/settings/rigs", { csrf, rig: "rig-a", route: "opencode" });
+    assert.equal((await routeOf("admin-token-abcdef")).status, 401);
+    const given = (await (await routeOf("rig-token-abcdef")).json()) as {
+      route: { api_key: string; version: number; reasoning: string };
+    };
+    assert.equal(given.route.api_key, key);
+    assert.equal(given.route.reasoning, "low");
+    // The supervisor hands it to its harness once; its agents use it from then on.
+    const sync = {
+      rig: "rig-a",
+      controlUrl: "http://control",
+      controlToken: "rig-token-abcdef",
+      harnessUrl: "http://harness",
+      harnessToken: "sup-token-abcdef",
+      fetchImpl: s.fetchImpl,
+    };
+    assert.equal(await syncModelRoute(sync), "set");
+    assert.equal(await syncModelRoute(sync), "unchanged");
+    const current = s.env.service.models.current();
+    assert.equal(current?.apiKey, key);
+    assert.equal(current?.model, "deepseek-v4.1-flash-free");
+    assert.equal(current?.reasoning, "low");
+    assert.equal(statSync(join(dir, "model-route.json")).mode & 0o777, 0o600);
+    await s.relay();
+    page = await (await s.get("/ui/settings")).text();
+    assert.match(
+      page,
+      /Its agents use &quot;opencode&quot; \(version 2, deepseek-v4\.1-flash-free\)/,
+    );
+    const rig = await (await s.get("/ui/rigs/rig-a")).text();
+    assert.match(rig, /The agents now use model route &quot;opencode&quot;/);
+    // Nothing the rig reports or records carries the key.
+    assert.ok(
+      !JSON.stringify([
+        s.store.db.prepare("select * from rig").all(),
+        s.store.db.prepare("select * from rig_event").all(),
+        s.env.service.ledger.db.prepare("select * from event").all(),
+      ]).includes(key),
+    );
+    // Back to the rig's own settings, and a route in use cannot be deleted meanwhile.
+    const busy = await s.post("/ui/settings/routes/opencode/delete", { csrf });
+    assert.match(busy.headers.get("location") ?? "", /still%20in%20use/);
+    await s.post("/ui/settings/rigs", { csrf, rig: "rig-a", route: "" });
+    assert.equal(await syncModelRoute(sync), "cleared");
+    assert.equal(s.env.service.models.current(), undefined);
+    await s.post("/ui/settings/routes/opencode/delete", { csrf });
+    assert.equal(s.store.modelRoute("opencode"), undefined);
+  });
+
   test("a rig check runs from the rig page, and its result shows there in words", async () => {
     const s = await stack();
     await s.env.service.applyCommand(s.env.assign);

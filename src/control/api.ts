@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
+import { sha256Hex } from "../core/canonical.ts";
 import { COMMAND_KINDS, type CommandKind, reportBody, verifyJson } from "../core/commands.ts";
 import { LiveBatch, LiveEntry, liveBody } from "../core/live.ts";
 import { Credential } from "./credential.ts";
@@ -10,6 +11,7 @@ import { issueCommand, propagateChampion } from "./issue.ts";
 import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
 import { mountMcp } from "./mcp.ts";
 import { metricsText } from "./metrics.ts";
+import { SecretBox } from "./secrets.ts";
 import type { ControlStore, IngestReport } from "./store.ts";
 import { leaderboard, rigView } from "./views.ts";
 
@@ -153,6 +155,11 @@ export interface ControlOptions {
   requireKeyAcceptance?: boolean | undefined;
   /** Days a dashboard session lasts without use. */
   sessionDays?: number | undefined;
+  /**
+   * Seals the API keys of the model routes the owner sets. Without one, a box with a key in memory
+   * only: routes then need their keys again after a restart.
+   */
+  secrets?: SecretBox | undefined;
 }
 
 export function createControlApi(
@@ -165,6 +172,7 @@ export function createControlApi(
   store.setConfiguredRigs(Object.keys(tokens.rigs));
 
   const owner = Credential.from(tokens.admin);
+  const secrets = opts.secrets ?? SecretBox.ephemeral();
   const opt = (t: string | Credential | undefined) =>
     t === undefined ? undefined : Credential.from(t);
   const creds = {
@@ -293,6 +301,46 @@ export function createControlApi(
       added += store.addLive(rig, `supervisor:${body.supervisor.log_id}`, own, false);
     }
     return c.json({ added });
+  });
+
+  // The model route this rig's agents use, with its key, for the rig's supervisor alone: it hands
+  // it to its harness. The key is opened only here, and nothing caches or logs the reply.
+  app.get("/v1/rigs/:rig/model-route", rigAuth, (c) => {
+    c.header("cache-control", "no-store");
+    const r = store.modelRouteFor(c.req.param("rig"));
+    if (!r) return c.json({ route: null });
+    let key: string;
+    try {
+      key = secrets.open(r.key_sealed);
+    } catch {
+      return c.json({ error: "the route's key cannot be opened: enter it again" }, 409);
+    }
+    return c.json({
+      route: {
+        name: r.name,
+        version: r.version,
+        base_url: r.base_url,
+        model: r.model,
+        context_window: r.context_window,
+        max_tokens: r.max_tokens,
+        reasoning: r.reasoning,
+        key_hint: r.key_hint,
+        // Changes with anything about the route, even one deleted and made again by the same name.
+        revision: sha256Hex(
+          [
+            r.name,
+            r.version,
+            r.base_url,
+            r.model,
+            r.context_window,
+            r.max_tokens,
+            r.reasoning,
+            r.key_sealed,
+          ].join("\n"),
+        ).slice(0, 16),
+        api_key: key,
+      },
+    });
   });
 
   // A champion's patch, uploaded by the rig's supervisor once its export is published. It is
@@ -493,6 +541,7 @@ export function createControlApi(
       staleAfterMs: opts.staleAfterMs,
       driver: opts.driver,
       sessionDays: opts.sessionDays,
+      secrets,
     }),
   );
   app.get("/", (c) => c.redirect("/ui", 302));
