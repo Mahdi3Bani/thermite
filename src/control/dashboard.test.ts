@@ -508,10 +508,16 @@ describe("control dashboard for an operator", () => {
       home,
       /Confirmed \+14\.2% better than the champion on fresh runs, somewhere between \+9\.1% and \+19\.6%/,
     );
+    assert.match(home, /get the model fully onto the GPU with every layer offloaded/);
+    // Each decision's row leads with the change, then why it waits, then the facts as chips.
+    assert.match(home, /<span class="dq-head">Register the two new tensor types/);
     assert.match(
       home,
-      /working for [^<]* on get the model fully onto the GPU with every layer offloaded <span class="muted">\(direction filter-bank\)<\/span>/,
+      /<span class="dq-why">Its author declared known flaws; no auditor is configured, so it waits for you<\/span>/,
     );
+    assert.match(home, /<b>\+3 goals<\/b>.*2 declared flaws.*3 files/s);
+    assert.match(home, /<b>\+14\.2%<\/b><\/span><span class="chip">\+9\.1% to \+19\.6%<\/span>/);
+    assert.match(home, /The auditor blocked it: The change caches the result between calls/);
     assert.match(home, /its author declared known flaws/);
     assert.match(home, /This rig has no auditor configured/);
     assert.match(home, /Skip the audit and promote/);
@@ -543,15 +549,21 @@ describe("control dashboard for an operator", () => {
   test("the overview says what each run is doing now, and what happened, in words", async () => {
     const { get } = await demo();
     const home = await get("/ui");
-    assert.match(home, /At work now/);
-    assert.match(home, /measuring the rig's own noise \(the champion against itself\), for 8 min/);
+    // The few numbers first, then one line per lane and for the judge, with how long.
+    assert.match(home, /<b>4<\/b><span>need you<\/span>/);
+    assert.match(home, /<h2>At work<\/h2>/);
     assert.match(
       home,
-      /working for 1 h 3 min on get the model fully onto the GPU with every layer offloaded <span class="muted">\(direction filter-bank\)/,
+      /measuring the rig's own noise \(the champion against itself\)<\/span><span class="br-when">8 min</,
     );
-    assert.match(home, /last: <code>run timeout 270 cmake --build/);
-    assert.match(home, /href="\/ui\/rigs\/rig-b\/live\?source=trial%3At-0a1b2c3d4e5f6071"/);
-    assert.match(home, /meets 4 of 8 goals/);
+    assert.match(
+      home,
+      /get the model fully onto the GPU with every layer offloaded <a class="small" href="\/ui\/rigs\/rig-b\/live\?source=trial%3At-0a1b2c3d4e5f6071">watch<\/a><\/span><span class="br-when">1 h 3 min</,
+    );
+    assert.match(home, /4\/8 goals/);
+    // The run's page adds each lane's last step.
+    const run = await get("/ui/campaigns/kernel-port?run=rig-b%2Fport-3");
+    assert.match(run, /last: <code>run timeout 270 cmake --build/);
     // What happened is sentences, not event kinds and IDs.
     assert.match(home, /Run port-2 paused: replaced by port-3 on rig-b\./);
     assert.match(home, /The judge checked champion #1: 4 of 8 goals met\./);
@@ -566,14 +578,18 @@ describe("control dashboard for an operator", () => {
     assert.match(page, /Only the two new types are covered/);
     assert.match(page, /looked like goal progress; being confirmed on fresh runs/);
     assert.match(page, /confirmed: it meets more goals and loses none/);
-    assert.match(page, /The judge started screening <a href="[^"]+">a-7e1a0001<\/a> \(lane-1\)/);
+    // The history names the change by what it does, linked; its id is the link's title.
     assert.match(
       page,
-      /lane-1 submitted <a href="\/ui\/rigs\/rig-a\/attempts\/a-7e1a0001">a-7e1a0001<\/a>/,
+      /The judge started screening <a href="[^"]+" title="a-7e1a0001">“Register the two new tensor types/,
+    );
+    assert.match(
+      page,
+      /lane-1 submitted <a href="\/ui\/rigs\/rig-a\/attempts\/a-7e1a0001" title="a-7e1a0001">“Register/,
     );
     // Its decision is on its page too, without a link back to itself.
     assert.match(page, /Skip the audit and promote/);
-    assert.doesNotMatch(page, /Everything about a-7e1a0001/);
+    assert.doesNotMatch(page, /Everything about this change/);
     assert.match(await get("/ui/rigs/rig-a/attempts/a-nope"), /No such attempt on this rig/);
   });
 

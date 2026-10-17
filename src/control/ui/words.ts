@@ -151,7 +151,8 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
     case "attempt_recorded": {
       const flaws = Array.isArray(b.known_flaws) ? b.known_flaws.length : 0;
       return s(
-        `${b.lane ? String(b.lane) : "Someone"} submitted ${e.subject}${b.hypothesis ? `: "${clip(String(b.hypothesis), 160)}"` : "."}${flaws ? ` It declares ${flaws} known flaw${flaws > 1 ? "s" : ""}.` : ""}`,
+        // A known attempt is named by its hypothesis where the sentence is shown; else quote it.
+        `${b.lane ? String(b.lane) : "Someone"} submitted ${e.subject}${b.hypothesis && !att(e.subject)?.hypothesis ? `: "${clip(String(b.hypothesis), 160)}"` : "."}${flaws ? ` It declares ${flaws} known flaw${flaws > 1 ? "s" : ""}.` : ""}`,
         "",
         { attempt: String(e.subject), run: String(b.run ?? "") },
       );

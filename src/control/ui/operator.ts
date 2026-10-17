@@ -1,10 +1,11 @@
 import { type ControlStore, fingerprint } from "../store.ts";
 import type { AttemptView, RigView, RunView, StoredEvent } from "../views.ts";
-import { ago, esc, icon, modeAvatar, modeName, runHref } from "./components.ts";
+import { ago, esc, icon, modeAvatar, runHref, sparkline } from "./components.ts";
 import {
   attemptState,
   auditReason,
   clip,
+  findAttempt,
   jobText,
   listText,
   runStatusText,
@@ -119,7 +120,10 @@ function changeFacts(u: RigView, r: RunView, a: AttemptView | undefined, id: str
   const reasons = a.reasons
     ? `<div class="muted small">The judge: ${esc(clip(a.reasons, 400))}</div>`
     : "";
-  return `<dt>The change</dt><dd><div class="quote">${esc(a.hypothesis ?? "(no hypothesis given)")}</div><div class="muted small">${who} · <a href="${attemptHref(u.id, a.id)}">${esc(a.id)}</a></div></dd>${files}
+  // The row already says what the change does; a longer hypothesis is quoted here in full.
+  const full =
+    (a.hypothesis?.length ?? 0) > 160 ? `<div class="quote">${esc(a.hypothesis)}</div>` : "";
+  return `<dt>The change</dt><dd>${full}<div class="small">${who} · <a href="${attemptHref(u.id, a.id)}">${esc(a.id)}</a></div></dd>${files}
 <dt>What the judge found</dt><dd>${esc(evidence(r, a))}${reasons}</dd>${flaws}${
     r.status === "running"
       ? ""
@@ -127,25 +131,76 @@ function changeFacts(u: RigView, r: RunView, a: AttemptView | undefined, id: str
   }`;
 }
 
-/** A decision card: the question, the facts, then each choice with what it does. */
+/**
+ * A decision as one row that reads at a glance: what it is about, why it waits for the owner,
+ * the facts that decide it and its buttons. Opened, it shows the question, the full evidence and
+ * what each choice does. It keeps its open state across the page's refresh (data-k).
+ */
 function card(o: {
   tone: "warn" | "bad" | "violet";
   ic: string;
+  /** One or two words for the kind of decision: "Promote", "Blocked". */
+  kind: string;
   question: string;
+  /** What it is about (HTML, escaped): a change in its author's words, a rig, a goal. */
+  headline: string;
+  /** Why it waits for the owner, in one clause (HTML, escaped). */
+  why: string;
+  chips?: string | undefined;
+  key: string;
   u: RigView;
   r?: RunView | undefined;
+  lane?: string | null | undefined;
   since?: string | undefined;
   now: number;
   facts: string;
-  choices: { button: string; does: string }[];
+  /** Each choice; those with a button show it on the row. */
+  choices: { button?: string | undefined; label: string; does: string }[];
   more?: string | undefined;
 }): string {
   const where = o.r
-    ? `<a href="${runHref(o.u.id, o.r)}">${esc(o.r.campaign || o.r.id)} › ${esc(o.r.id)}</a> on ${esc(o.u.id)}`
-    : `rig ${esc(o.u.id)}`;
-  return `<article class="dc dc-${o.tone}"><header class="dc-head"><span class="dc-q dc-${o.tone}">${o.ic}${esc(o.question)}</span><span class="meta">${where}${o.since ? ` · waiting ${esc(span(o.since, o.now))}` : ""}</span></header>
-<dl class="dc-facts">${o.facts}</dl>
-<div class="dc-choices">${o.choices.map((c) => `<div class="choice"><div class="btns">${c.button}</div><div class="does">${c.does}</div></div>`).join("")}</div>${o.more ? `<footer class="dc-foot">${o.more}</footer>` : ""}</article>`;
+    ? `<a href="${runHref(o.u.id, o.r)}">${esc(o.r.campaign || o.r.id)} › ${esc(o.r.id)}</a> · ${esc(o.u.id)}${o.lane ? ` · ${esc(o.lane)}` : ""}`
+    : `rig <a href="/ui/rigs/${encodeURIComponent(o.u.id)}">${esc(o.u.id)}</a>`;
+  const buttons = o.choices.flatMap((c) => (c.button ? [c.button] : [])).join("");
+  return `<details class="dq dq-${o.tone}" data-k="need-${esc(o.key)}"><summary>
+<span class="dq-kind">${o.ic}${esc(o.kind)}</span>
+<span class="dq-main"><span class="dq-head">${o.headline}</span><span class="dq-why">${o.why}</span><span class="dq-sub"><span class="dq-where">${where}</span>${o.chips ?? ""}</span></span>
+<span class="dq-side">${o.since ? `<span class="dq-age">waiting ${esc(span(o.since, o.now))}</span>` : ""}<span class="dq-btns">${buttons}</span></span>
+</summary><div class="dq-body"><p class="dq-q">${esc(o.question)}</p><dl class="dc-facts">${o.facts}</dl>
+<dl class="dq-choices">${o.choices.map((c) => `<dt>${esc(c.label)}</dt><dd>${c.does}</dd>`).join("")}</dl>${o.more ? `<div class="dq-foot">${o.more}</div>` : ""}</div></details>`;
+}
+
+/** What an attempt is, in its author's words, for a decision's row. */
+const changeHeadline = (a: AttemptView | undefined, id: string) =>
+  a?.hypothesis ? esc(clip(a.hypothesis, 160)) : `<code>${esc(id)}</code>`;
+
+/** The facts that decide a change, as chips: its gain and interval, goals, flaws and files. */
+export function changeChips(r: RunView, a: AttemptView | undefined): string {
+  if (!a) return "";
+  const out: string[] = [];
+  if (r.mode !== "goal" && typeof a.delta === "number") {
+    out.push(
+      `<span class="chip ${a.delta > 0 ? "ok" : "bad"}"><b>${esc(signed(a.delta))}</b></span>`,
+    );
+    if (a.ci)
+      out.push(`<span class="chip">${esc(signed(a.ci[0]))} to ${esc(signed(a.ci[1]))}</span>`);
+  }
+  if (r.mode === "goal") {
+    if (a.gained?.length)
+      out.push(
+        `<span class="chip ok"><b>+${a.gained.length} goal${a.gained.length === 1 ? "" : "s"}</b></span>`,
+      );
+    if (a.lost.length)
+      out.push(
+        `<span class="chip bad">−${a.lost.length} goal${a.lost.length === 1 ? "" : "s"}</span>`,
+      );
+  }
+  const flaws = a.known_flaws.length;
+  if (flaws)
+    out.push(`<span class="chip warn">${flaws} declared flaw${flaws === 1 ? "" : "s"}</span>`);
+  if (a.files_total)
+    out.push(`<span class="chip">${a.files_total} file${a.files_total === 1 ? "" : "s"}</span>`);
+  return out.join("");
 }
 
 const promoteDoes = (r: RunView, a: AttemptView | undefined, expected: number | null) => {
@@ -176,9 +231,16 @@ export function needs(
         html: card({
           tone: "warn",
           ic: icon.key,
+          kind: "New key",
           question: key.pubkey
             ? "Accept this rig's new report key?"
             : "Accept a new rig's report key?",
+          headline: key.pubkey
+            ? `${esc(u.id)} now signs its reports with a different key`
+            : `${esc(u.id)} reported for the first time`,
+          why: "Its reports are refused until you accept its key",
+          chips: `<span class="chip"><code>${fp}</code></span>`,
+          key: `key-${u.id}`,
           u,
           now,
           facts: `<dt>What</dt><dd>${key.pubkey ? "The rig now signs its reports with a different key than the one control pinned." : "This rig reported for the first time."} Until you accept its key, control refuses its reports, so its runs are invisible here.</dd>
@@ -187,10 +249,11 @@ export function needs(
           choices: [
             {
               button: `<form class="inline" method="post" action="/ui/rigs/${encodeURIComponent(u.id)}/key/accept"><input type="hidden" name="csrf" value="${f.csrf}"><input type="hidden" name="fingerprint" value="${fp}"><button class="primary">Accept this key</button></form>`,
+              label: "Accept this key",
               does: "Control pins this key and accepts the rig's reports from now on.",
             },
             {
-              button: `<span class="muted">Leave it</span>`,
+              label: "Leave it",
               does: "Its reports stay refused. Do this if the fingerprint does not match: something else may be reporting as this rig.",
             },
           ],
@@ -210,10 +273,18 @@ export function needs(
           at: w?.at ?? a?.updated_at,
           html: card({
             tone: "warn",
-            ic: icon.warn,
+            ic: icon.trophy,
+            kind: "Promote",
             question: "Promote this change?",
+            headline: changeHeadline(a, id),
+            why: w?.reason
+              ? `The auditor passed it to you: ${esc(clip(w.reason, 160))}`
+              : "This rig promotes only with your approval",
+            chips: changeChips(r, a),
+            key: `promote-${u.id}-${r.id}-${id}`,
             u,
             r,
+            lane: a?.lane,
             since: w?.at ?? a?.updated_at,
             now,
             facts: `${changeFacts(u, r, a, id)}<dt>Why it waits</dt><dd>${w?.reason ? `The auditor passed it to you: ${esc(w.reason)}` : "This rig asks for your approval before every promotion (its promotion policy)."}</dd>`,
@@ -227,6 +298,7 @@ export function needs(
                   cls: "primary",
                   back,
                 }),
+                label: "Approve",
                 does: promoteDoes(r, a, w?.expected_seq ?? null),
               },
               {
@@ -237,14 +309,15 @@ export function needs(
                   label: "Decline",
                   back,
                 }),
+                label: "Decline",
                 does: "It never becomes the champion. It stays in the record as declined by you, and the lanes go on from the current champion.",
               },
               {
-                button: `<span class="muted">Leave it waiting</span>`,
+                label: "Leave it waiting",
                 does: "Nothing changes for now; it stays in this list.",
               },
             ],
-            more: `<a href="${attemptHref(u.id, id)}">Everything about ${esc(id)} →</a>`,
+            more: `<a href="${attemptHref(u.id, id)}">Everything about this change (${esc(id)}) →</a>`,
           }),
         });
       }
@@ -261,11 +334,19 @@ export function needs(
           html: card({
             tone: blocked ? "bad" : "warn",
             ic: icon.shield,
+            kind: blocked ? "Blocked" : "Audit held",
             question: blocked
               ? "Overrule the auditor's block?"
               : "Let this change through without an audit?",
+            headline: changeHeadline(a, au.attempt),
+            why: blocked
+              ? `<span class="bad">The auditor blocked it: ${esc(clip(au.reasons ?? "no reasons given", 200))}</span>`
+              : `${esc(cap(auditReason(au.reason)))}${advisors ? "; the rig's auditor will decide unless you do" : "; no auditor is configured, so it waits for you"}`,
+            chips: changeChips(r, a),
+            key: `audit-${u.id}-${r.id}-${au.attempt}`,
             u,
             r,
+            lane: a?.lane,
             since: au.at,
             now,
             facts: `${changeFacts(u, r, a, au.attempt)}<dt>Why it waits</dt><dd>${
@@ -287,6 +368,7 @@ export function needs(
                   cls: blocked ? "" : "primary",
                   back,
                 }),
+                label: blocked ? "Overrule and promote" : "Skip the audit and promote",
                 does: `${blocked ? "You overrule the auditor, on the record." : "You take the auditor's place, on the record."} ${promoteDoes(r, a, au.expected_seq)}`,
               },
               {
@@ -297,10 +379,11 @@ export function needs(
                   label: "Decline",
                   back,
                 }),
+                label: "Decline",
                 does: "It never becomes the champion. It stays in the record as declined by you, and leaves this list.",
               },
               {
-                button: `<span class="muted">Leave it ${blocked ? "blocked" : "held"}</span>`,
+                label: `Leave it ${blocked ? "blocked" : "held"}`,
                 does: blocked
                   ? "It stays blocked, in this list; it never becomes the champion unless you overrule."
                   : advisors
@@ -308,7 +391,7 @@ export function needs(
                     : "It stays held, in this list: no auditor will come. The lanes go on from the current champion meanwhile.",
               },
             ],
-            more: `<a href="${attemptHref(u.id, au.attempt)}">Everything about ${esc(au.attempt)} →</a>`,
+            more: `<a href="${attemptHref(u.id, au.attempt)}">Everything about this change (${esc(au.attempt)}) →</a>`,
           }),
         });
       }
@@ -320,7 +403,11 @@ export function needs(
           html: card({
             tone: "violet",
             ic: icon.check,
+            kind: "Review",
             question: `Accept the goal "${rv.goal}" as met?`,
+            headline: `The review panel passed "${esc(rv.goal)}"`,
+            why: "A subjective goal counts as met only with your word",
+            key: `review-${u.id}-${r.id}-${rv.review}`,
             u,
             r,
             now,
@@ -336,6 +423,7 @@ export function needs(
                   cls: "primary",
                   back,
                 }),
+                label: "Accept",
                 does: "The goal counts as met. The judge then checks the champion's goals again; if every required goal is met, the campaign completes.",
               },
               {
@@ -346,6 +434,7 @@ export function needs(
                   label: "Reject",
                   back,
                 }),
+                label: "Reject",
                 does: "The goal stays unmet, and your rejection is recorded.",
               },
             ],
@@ -361,7 +450,11 @@ export function needs(
           html: card({
             tone: "warn",
             ic: icon.warn,
+            kind: "Not possible?",
             question: "End this campaign as not possible?",
+            headline: `The harness proposes that the goals cannot be reached`,
+            why: `${k.approaches} approach families were tried and refuted; only you can end a campaign`,
+            key: `conclusion-${u.id}-${r.id}-${k.proposal}`,
             u,
             r,
             since: k.at,
@@ -378,6 +471,7 @@ export function needs(
                   cls: "primary",
                   back,
                 }),
+                label: "End it: not possible",
                 does: "The run closes as not possible. Its agents stop and nothing more is judged.",
               },
               {
@@ -388,6 +482,7 @@ export function needs(
                   label: "Keep going",
                   back,
                 }),
+                label: "Keep going",
                 does: "The proposal is dismissed and the agents carry on.",
               },
             ],
@@ -403,14 +498,20 @@ export function needs(
         html: card({
           tone: "bad",
           ic: icon.x,
+          kind: "Not reporting",
           question: "This rig stopped reporting",
+          headline: `${esc(u.id)} stopped reporting`,
+          why: `No report for ${esc(span(u.last_seen, now))}; control cannot see its runs`,
+          key: `stale-${u.id}`,
           u,
+          since: u.last_seen,
           now,
           facts: `<dt>What</dt><dd>No report for ${esc(span(u.last_seen, now))}. Its runs may still be working, but control cannot see them, and your commands wait until it reports again.</dd>
 <dt>Check</dt><dd>The rig's supervisor and harness containers, and its network path to control.</dd>`,
           choices: [
             {
               button: `<a class="btn" href="/ui/rigs/${encodeURIComponent(u.id)}">Open the rig</a>`,
+              label: "Open the rig",
               does: "Its last known state, hardware and actions (restart, full reset).",
             },
           ],
@@ -428,7 +529,11 @@ export function needs(
       html: card({
         tone: "bad",
         ic: icon.warn,
+        kind: "Wipe",
         question: "Wipe this rig's state?",
+        headline: `The full reset of ${esc(u.id)} waits for your confirmation`,
+        why: "The rig is paused and its export is pushed; the wipe cannot be undone",
+        key: `reset-${String(rs.id)}`,
         u,
         since: String(rs.updated_at),
         now,
@@ -437,10 +542,12 @@ export function needs(
         choices: [
           {
             button: `<form class="inline" method="post" action="/ui/resets/${esc(rs.id)}/confirm"><input type="hidden" name="csrf" value="${f.csrf}"><button class="danger">Confirm the wipe</button></form>`,
+            label: "Confirm the wipe",
             does: "The rig's ledger, builds and workspaces are deleted. This cannot be undone; the export is what remains.",
           },
           {
             button: `<form class="inline" method="post" action="/ui/resets/${esc(rs.id)}/cancel"><input type="hidden" name="csrf" value="${f.csrf}"><button>Cancel the reset</button></form>`,
+            label: "Cancel the reset",
             does: "Nothing is wiped. The rig stays paused until you resume its run.",
           },
         ],
@@ -477,139 +584,213 @@ export function runStateHtml(r: RunView): string {
 /** A trial's intro line without its "trial on lane-1: " prefix. */
 const introText = (s: string) => s.replace(/^(research )?trial on [^:]+: /, "");
 
-/** One run's present: its judge, planner, lanes and latest result, in words. */
-export function runNow(
+// ---------------------------------------------------------------- a run at a glance
+
+/** A goal's state: its tone, mark and word. */
+export function goalState(g: RunView["goals"][number]): {
+  tone: string;
+  mark: string;
+  word: string;
+} {
+  if (g.status === "met") return { tone: "ok", mark: "✓", word: "met" };
+  if (g.reasons.startsWith("not run") || g.status === "not_runnable")
+    return {
+      tone: "off",
+      mark: "·",
+      word: g.reasons.startsWith("not run") ? "waiting on another goal" : "not runnable",
+    };
+  if (g.status === "unmet") return { tone: "bad", mark: "✕", word: "unmet" };
+  return { tone: "warn", mark: "·", word: g.status.replace(/_/g, " ") };
+}
+
+/** A run's progress in one glance: its goals as a bar, its gain, or its verified claims. */
+export function runProgress(r: RunView): string {
+  if (r.mode === "goal") {
+    if (!r.goals.length) return `<span class="muted small">goals not checked yet</span>`;
+    const met = r.goals.filter((g) => g.status === "met").length;
+    const segs = r.goals
+      .map((g) => {
+        const st = goalState(g);
+        return `<span class="seg ${st.tone}" title="${esc(g.goal)}: ${esc(st.word)}"></span>`;
+      })
+      .join("");
+    return `<span class="goalbar">${segs}</span><b class="fig">${met}/${r.goals.length} goals</b>`;
+  }
+  if (r.mode === "hill_climb") {
+    const champ = r.champion.filter((c) => !c.reopened).at(-1);
+    return `${sparkline(r, 90, 22)}<b class="fig">${esc(signed((champ?.cumulative ?? 1) - 1))}</b>`;
+  }
+  const verified = Number((r.research as Record<string, unknown> | null)?.verified ?? 0);
+  return `<b class="fig">${Number.isFinite(verified) ? verified : 0} verified claims</b>`;
+}
+
+/**
+ * What a run is doing now, one line each: every lane's focus and for how long, the judge, and the
+ * planner when it waits. With `heading`, the run's name, progress and champion lead; with
+ * `detail`, each lane also shows its last step and the judge its latest line.
+ */
+export function runBrief(
   store: ControlStore,
   u: RigView,
   r: RunView,
   now: number,
-  opts: { heading?: boolean } = {},
+  opts: { heading?: boolean; detail?: boolean; waiting?: number } = {},
 ): string {
   const rows: string[] = [];
-  const row = (who: string, html: string, cls = "") =>
+  const row = (who: string, what: string, when = "", cls = "") =>
     rows.push(
-      `<li class="${cls}"><span class="who">${esc(who)}</span><span class="what">${html}</span></li>`,
+      `<div class="br ${cls}"><span class="br-who">${esc(who)}</span><span class="br-what">${what}</span><span class="br-when">${when}</span></div>`,
     );
-  // The judge.
-  const j = u.judge.now;
-  const mine = (x: { run: string | null }) => x.run === r.id || x.run === null;
-  const queued = u.judge.queued.filter(mine).length;
-  const judgeLine = store.liveTail(u.id, 1, "judge")[0];
-  if (j && mine(j)) {
-    const a = j.attempt ? r.attempts.find((x) => x.id === j.attempt) : undefined;
-    row(
-      "Judge",
-      `${esc(jobText(j, a?.lane))}, for ${esc(span(j.started_at, now))}${judgeLine && j.started_at && judgeLine.at >= j.started_at && !/: started$/.test(judgeLine.text) ? ` <span class="muted">· now: ${esc(clip(judgeLine.text, 120))}</span>` : ""}${queued ? ` <span class="muted">· ${queued} more queued</span>` : ""}`,
-    );
-  } else {
-    const last = u.judge.jobs.filter((x) => mine(x) && x.finished_at).at(-1);
-    row(
-      "Judge",
-      `idle${queued ? `, ${queued} queued` : ""}${last ? ` <span class="muted">· last finished ${esc(ago(last.finished_at, now))} ago: ${esc(jobText(last))}</span>` : ""}`,
-      "muted",
-    );
-  }
-  // The planner and the lanes.
-  if (r.status === "running" || r.epoch) {
-    const planner = store
-      .liveTail(u.id, 40, "planner")
-      .filter((l) => !l.run || l.run === r.id)
-      .at(-1);
-    const waiting =
-      planner && planner.kind === "status" && (!r.epoch || planner.at > r.epoch.at)
-        ? ` <span class="warn">· ${esc(planner.text)}</span>`
-        : "";
-    row(
-      "Planner",
-      r.epoch
-        ? `planned epoch ${r.epoch.n} ${esc(ago(r.epoch.at, now))} ago${r.epoch.source === "fallback" ? " (its fallback plan: the model's plan was refused)" : ""}${waiting}`
-        : `no epoch yet${waiting}`,
-    );
-    const trials = store.liveTrials(u.id).filter((t) => t.run === r.id);
-    const lanes = [
-      ...new Set([
-        ...(r.epoch?.assignments.map((a) => a.lane) ?? []),
-        ...trials.map((t) => t.lane).filter((l): l is string => !!l),
-      ]),
-    ].sort();
-    for (const lane of lanes) {
-      const t = trials.find((x) => x.lane === lane);
-      const plan = r.epoch?.assignments.find((a) => a.lane === lane);
+  const trials = store.liveTrials(u.id).filter((t) => t.run === r.id);
+  const lanes = [
+    ...new Set([
+      ...Object.keys(r.at_work),
+      ...(r.epoch?.assignments.map((a) => a.lane) ?? []),
+      ...trials.map((t) => t.lane).filter((l): l is string => !!l),
+    ]),
+  ].sort();
+  for (const lane of lanes) {
+    const t = trials.find((x) => x.lane === lane);
+    const plan = r.epoch?.assignments.find((a) => a.lane === lane);
+    const work = r.at_work[lane];
+    if ((work || (t && !t.ended)) && r.status === "running") {
+      const what =
+        work?.focus ||
+        plan?.focus ||
+        introText(t?.intro ?? "") ||
+        work?.family ||
+        plan?.family ||
+        "";
+      const last =
+        opts.detail && t?.last_tool
+          ? `<span class="br-more">last: <code>${esc(clip(t.last_tool, 110))}</code> ${esc(ago(t.last_tool_at, now))} ago</span>`
+          : "";
+      row(
+        lane,
+        `${esc(clip(what, 200))}${t ? ` <a class="small" href="${liveHref(u.id, t.source)}">watch</a>` : ""}${last}`,
+        esc(span(work?.since ?? t?.started_at ?? null, now)),
+      );
+    } else {
       const done = r.trials.filter((x) => x.lane === lane).at(-1);
-      // The record says a lane is at work (trial_started); the live view adds its last step.
-      const work = r.at_work[lane];
-      if ((work || (t && !t.ended)) && r.status === "running") {
-        const since = work?.since ?? t?.started_at ?? null;
-        const what =
-          work?.focus ||
-          plan?.focus ||
-          introText(t?.intro ?? "") ||
-          work?.family ||
-          plan?.family ||
-          "";
-        const family = work?.family ?? plan?.family;
-        row(
-          lane,
-          `working for ${esc(span(since, now))} on ${esc(clip(what, 220))}${family && what !== family ? ` <span class="muted">(direction ${esc(family)})</span>` : ""}${t?.last_tool ? `<div class="muted small">last: <code>${esc(clip(t.last_tool, 110))}</code> ${esc(ago(t.last_tool_at, now))} ago</div>` : ""}${t ? ` <a class="small" href="${liveHref(u.id, t.source)}">watch</a>` : ""}`,
-          "lane",
-        );
-      } else {
-        const ended = t?.ended ?? null;
-        row(
-          lane,
-          `${r.status === "running" ? "between trials" : "stopped"}${
-            done
-              ? ` <span class="muted">· last trial ended ${esc(ago(done.at, now))} ago: ${esc(done.attempt ? `submitted ${done.attempt}` : `${done.stopped.replace(/_/g, " ")}${done.error ? ` (${clip(done.error, 100)})` : ""}`)}</span>`
-              : ended
-                ? ` <span class="muted">· ${esc(clip(ended, 140))}</span>`
-                : ""
-          }`,
-          "lane muted",
-        );
-      }
+      row(
+        lane,
+        r.status !== "running"
+          ? "stopped"
+          : plan
+            ? `next: ${esc(clip(plan.focus || plan.family, 160))}`
+            : `between trials${done ? ` <span class="muted">· the last ${done.attempt ? "submitted a change" : `ended: ${esc(done.stopped.replace(/_/g, " "))}`} ${esc(ago(done.at, now))} ago</span>` : ""}`,
+        "",
+        "muted",
+      );
     }
   }
-  // The latest result.
-  const v = [...r.timeline].reverse().find((e) => e.kind === "verdict");
-  if (v) {
-    const sen = sentence(u, v);
-    if (sen)
-      row(
-        "Latest result",
-        `${sentenceHtml(u, sen)} <span class="muted">${esc(ago(v.at, now))} ago</span>`,
-      );
-  }
+  if (!lanes.length && r.status === "running")
+    row(
+      "lanes",
+      r.agents.trials ? "between trials" : "no agents on this run: changes come from people",
+      "",
+      "muted",
+    );
+  // The planner, only when it waits for something.
+  const planner = store
+    .liveTail(u.id, 40, "planner")
+    .filter((l) => !l.run || l.run === r.id)
+    .at(-1);
+  if (
+    r.status === "running" &&
+    planner &&
+    planner.kind === "status" &&
+    (!r.epoch || planner.at > r.epoch.at)
+  )
+    row("planner", `<span class="warn">${esc(planner.text)}</span>`);
+  // The judge.
+  const mine = (x: { run: string | null }) => x.run === r.id || x.run === null;
+  const j = u.judge.now && mine(u.judge.now) ? u.judge.now : null;
+  const queued = u.judge.queued.filter(mine).length;
+  if (j) {
+    const a = j.attempt ? r.attempts.find((x) => x.id === j.attempt) : undefined;
+    const line = opts.detail ? store.liveTail(u.id, 1, "judge")[0] : undefined;
+    row(
+      "judge",
+      `${esc(jobText(j, a?.lane))}${queued ? ` <span class="muted">· ${queued} more queued</span>` : ""}${line && j.started_at && line.at >= j.started_at && !/: started$/.test(line.text) ? `<span class="br-more">now: ${esc(clip(line.text, 120))}</span>` : ""}`,
+      esc(span(j.started_at, now)),
+    );
+  } else row("judge", `idle${queued ? `, ${queued} queued` : ""}`, "", "muted");
+  if (opts.waiting)
+    rows.push(
+      `<div class="br"><span class="br-who"></span><a class="br-what warn" href="#needs">${opts.waiting} decision${opts.waiting === 1 ? "" : "s"} from this run wait${opts.waiting === 1 ? "s" : ""} for you ↑</a><span class="br-when"></span></div>`,
+    );
   const champ = r.champion.filter((c) => !c.reopened).at(-1);
-  const met = r.goals.filter((g) => g.status === "met").length;
-  row(
-    "Champion",
-    `#${champ?.seq ?? 1}${champ?.attempt ? ` (${esc(champ.attempt)})` : " (the starting commit)"} since ${esc(ago(champ?.at, now))} ago${
-      r.mode === "goal"
-        ? ` · meets ${met} of ${r.goals.length} goals${r.goals_at ? ` <span class="muted">(checked ${esc(ago(r.goals_at, now))} ago)</span>` : ""}`
-        : r.mode === "hill_climb"
-          ? ` · ${esc(signed((champ?.cumulative ?? 1) - 1))} over the starting point`
-          : ""
-    }${
-      // The latest published champion as a patch (it applies to the run's starting commit).
-      r.published && store.championPatch(u.id, r.id, r.published.seq)
-        ? ` · <a href="/ui/rigs/${encodeURIComponent(u.id)}/runs/${encodeURIComponent(r.id)}/champions/${r.published.seq}.patch">download champion #${r.published.seq} as a patch</a> <span class="muted">(applies to ${esc(short(r.published.base_commit))})</span>`
-        : ""
-    }`,
-  );
   const head = opts.heading
-    ? `<div class="now-head">${modeAvatar(r.mode)}<a href="${runHref(u.id, r)}"><b>${esc(r.campaign || r.id)}</b> › ${esc(r.id)}</a><span class="muted small">on ${esc(u.id)} · ${esc(modeName(r.mode))} · ${esc(runStatusText(r))}${r.created_at ? ` · started ${esc(ago(r.created_at, now))} ago` : ""}</span></div>`
+    ? `<div class="brief-head">${modeAvatar(r.mode)}<a class="brief-name" href="${runHref(u.id, r)}">${esc(r.campaign || r.id)} › ${esc(r.id)}</a><span class="muted small">on ${esc(u.id)}</span><span class="brief-progress">${runProgress(r)}</span><span class="muted small nowrap">champion #${champ?.seq ?? 1}${r.created_at ? ` · started ${esc(ago(r.created_at, now))} ago` : ""}</span></div>`
     : "";
-  return `<section class="now">${head}<ul class="now-list">${rows.join("")}</ul></section>`;
+  return `<section class="brief">${head}${rows.join("")}</section>`;
+}
+
+/** An attempt's outcome as one word a person scans for, with its tone. */
+export function outcome(r: RunView, a: AttemptView): { word: string; tone: string } {
+  const champ = r.champion.find((c) => c.attempt === a.id && !c.reopened);
+  if (champ) return { word: `Champion #${champ.seq}`, tone: "ok" };
+  const audit = r.audits.filter((x) => x.attempt === a.id).at(-1);
+  if (audit?.decision === "block" || a.lifecycle === "audit_blocked")
+    return { word: "Blocked", tone: "bad" };
+  if (
+    r.pending_promotions.includes(a.id) ||
+    a.lifecycle === "awaiting_approval" ||
+    a.lifecycle === "awaiting_audit" ||
+    (audit && audit.decision === null)
+  )
+    return { word: "Needs you", tone: "warn" };
+  if (a.lifecycle === "declined") return { word: "Declined", tone: "" };
+  if (a.lifecycle === "promoted") return { word: "Promoted", tone: "ok" };
+  if (["queued", "building", "screening", "confirming", "verifying"].includes(a.lifecycle))
+    return { word: "Judging", tone: "info" };
+  if (a.lifecycle === "duplicate") return { word: "Duplicate", tone: "" };
+  const v = a.verdict ?? "";
+  if (v === "win_confirmed" || v === "goal_progress") return { word: "Won", tone: "ok" };
+  if (v === "win_screened" || v === "goal_screened") return { word: "Judging", tone: "info" };
+  if (["invalid", "rejected_v0", "crash_candidate"].includes(v))
+    return { word: "Broken", tone: "bad" };
+  if (["crash_infra", "inconclusive", "invalidated"].includes(v))
+    return { word: "Unclear", tone: "" };
+  if (!v) return { word: "Judging", tone: "info" };
+  return { word: "Lost", tone: "" };
+}
+
+/** Attempts as rows: the outcome word, the change, where it stands, its effect, lane and age. */
+export function attemptRows(u: RigView, r: RunView, xs: AttemptView[], now: number): string {
+  if (!xs.length)
+    return `<div class="card"><div class="empty">No attempt yet: the lanes have not submitted anything.</div></div>`;
+  return `<div class="card flat">${xs
+    .map((a) => {
+      const o = outcome(r, a);
+      const effect =
+        r.mode === "goal"
+          ? a.gained?.length || a.lost.length
+            ? `${a.gained?.length ? `<span class="chip ok">+${a.gained.length} goal${a.gained.length === 1 ? "" : "s"}</span>` : ""}${a.lost.length ? `<span class="chip bad">−${a.lost.length}</span>` : ""}`
+            : ""
+          : typeof a.delta === "number"
+            ? `<span class="chip ${a.delta > 0 ? "ok" : a.delta < 0 ? "bad" : ""}"><b>${esc(signed(a.delta))}</b></span>`
+            : "";
+      const where =
+        o.word === "Blocked" ? "the judge measured it; the auditor blocked it" : attemptState(a);
+      return `<a class="ar" href="${attemptHref(u.id, a.id)}"><span class="chip ${o.tone} ar-out">${esc(o.word)}</span><span class="ar-main"><b>${esc(clip(a.hypothesis ?? a.id, 160))}</b><span class="muted small">${esc(where)}${a.known_flaws.length ? ` · ${a.known_flaws.length} declared flaw${a.known_flaws.length === 1 ? "" : "s"}` : ""}</span></span><span class="ar-effect">${effect}</span><span class="ar-lane">${esc(a.lane ?? "by hand")}</span><span class="ar-age">${esc(ago(a.updated_at, now))}</span></a>`;
+    })
+    .join("")}</div>`;
 }
 
 // ---------------------------------------------------------------- what happened
 
-/** A sentence, escaped, with its attempt linked. */
+/** A sentence, escaped, with its attempt named by what it does and linked. */
 export function sentenceHtml(u: RigView, s: Sentence): string {
   let html = esc(s.text);
   if (s.attempt) {
     const id = esc(s.attempt);
-    html = html.replace(id, `<a href="${attemptHref(u.id, s.attempt)}">${id}</a>`);
+    const hyp = findAttempt(u, s.attempt)?.hypothesis;
+    html = html.replace(
+      id,
+      `<a href="${attemptHref(u.id, s.attempt)}" title="${id}">${hyp ? `“${esc(clip(hyp, 70))}”` : id}</a>`,
+    );
   }
   return html;
 }
@@ -625,12 +806,12 @@ export function timeline(
     const s = sentence(u, e);
     if (!s) continue;
     rows.push(
-      `<div class="li"><span class="t" title="${esc(e.at)}">${esc(ago(e.at, now))}</span><span class="grow ${s.tone}">${sentenceHtml(u, s)}</span>${opts.showRig ? `<span class="right muted">${esc(u.id)}</span>` : ""}</div>`,
+      `<div class="tl-row"><span class="tl-t" title="${esc(e.at)}">${esc(ago(e.at, now))}</span><span class="dot ${s.tone}"></span><span class="tl-s">${sentenceHtml(u, s)}</span>${opts.showRig ? `<span class="tl-rig">${esc(u.id)}</span>` : ""}</div>`,
     );
     if (rows.length >= (opts.limit ?? 30)) break;
   }
   return rows.length
-    ? `<div class="card flat"><div class="list">${rows.join("")}</div></div>`
+    ? `<div class="card flat tl">${rows.join("")}</div>`
     : `<div class="card"><div class="empty">Nothing yet.</div></div>`;
 }
 

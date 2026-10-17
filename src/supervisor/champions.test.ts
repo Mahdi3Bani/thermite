@@ -119,11 +119,13 @@ describe("champion patches reach control", () => {
       /r-1-champion-2-on-bbbbbbbb\.patch/,
     );
     assert.deepEqual(Buffer.from(await file.arrayBuffer()), patch);
-    // The run's "at work" panel links it.
-    const home = await (await control.request("/ui", { headers: { cookie } })).text();
+    // The run's page links it, with the commit it applies to.
+    const run = await (
+      await control.request("/ui/campaigns/c?run=rig-a%2Fr-1", { headers: { cookie } })
+    ).text();
     assert.match(
-      home,
-      /href="\/ui\/rigs\/rig-a\/runs\/r-1\/champions\/2\.patch">download champion #2 as a patch<\/a> <span class="muted">\(applies to bbbbbbbb\)/,
+      run,
+      /href="\/ui\/rigs\/rig-a\/runs\/r-1\/champions\/2\.patch">download champion #2 as a patch<\/a> <span class="muted small">\(applies to bbbbbbbb\)/,
     );
   });
 });
