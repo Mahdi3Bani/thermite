@@ -1,5 +1,5 @@
 import { type ControlStore, fingerprint } from "../store.ts";
-import type { AttemptView, RigView, RunView, StoredEvent } from "../views.ts";
+import type { AttemptView, JudgeJob, RigView, RunView, StoredEvent } from "../views.ts";
 import { ago, esc, icon, modeAvatar, runHref, sparkline } from "./components.ts";
 import {
   attemptState,
@@ -43,7 +43,10 @@ export interface Need {
   run?: string | undefined;
   attempt?: string | undefined;
   at?: string | undefined;
+  /** Its row in a list of decisions. */
   html: string;
+  /** The same decision as a box on its attempt's page: the buttons, each choice and why. */
+  box: string;
 }
 
 export const attemptHref = (rig: string, attempt: string) =>
@@ -89,7 +92,7 @@ export function evidence(r: RunView, a: AttemptView): string {
   return `${cap(verdictText(last.verdict, last.delta))}.`;
 }
 
-const cap = (s: string) => s.replace(/^./, (c) => c.toUpperCase());
+export const cap = (s: string) => s.replace(/^./, (c) => c.toUpperCase());
 
 /** "The change" for a decision: hypothesis, who made it, on what. */
 function changeFacts(u: RigView, r: RunView, a: AttemptView | undefined, id: string): string {
@@ -157,17 +160,20 @@ function card(o: {
   /** Each choice; those with a button show it on the row. */
   choices: { button?: string | undefined; label: string; does: string }[];
   more?: string | undefined;
-}): string {
+}): { html: string; box: string } {
   const where = o.r
     ? `<a href="${runHref(o.u.id, o.r)}">${esc(o.r.campaign || o.r.id)} › ${esc(o.r.id)}</a> · ${esc(o.u.id)}${o.lane ? ` · ${esc(o.lane)}` : ""}`
     : `rig <a href="/ui/rigs/${encodeURIComponent(o.u.id)}">${esc(o.u.id)}</a>`;
   const buttons = o.choices.flatMap((c) => (c.button ? [c.button] : [])).join("");
-  return `<details class="dq dq-${o.tone}" data-k="need-${esc(o.key)}"><summary>
+  const choices = o.choices.map((c) => `<dt>${esc(c.label)}</dt><dd>${c.does}</dd>`).join("");
+  const box = `<div class="decide decide-${o.tone}"><div class="decide-q"><span class="dq-kind">${o.ic}${esc(o.kind)}</span><b>${esc(o.question)}</b><span class="dq-age">${o.since ? `waiting ${esc(span(o.since, o.now))}` : ""}</span></div><div class="decide-why">${o.why}</div><div class="dq-btns">${buttons}</div><dl class="dq-choices">${choices}</dl></div>`;
+  const html = `<details class="dq dq-${o.tone}" data-k="need-${esc(o.key)}"><summary>
 <span class="dq-kind">${o.ic}${esc(o.kind)}</span>
 <span class="dq-main"><span class="dq-head">${o.headline}</span><span class="dq-why">${o.why}</span><span class="dq-sub"><span class="dq-where">${where}</span>${o.chips ?? ""}</span></span>
 <span class="dq-side">${o.since ? `<span class="dq-age">waiting ${esc(span(o.since, o.now))}</span>` : ""}<span class="dq-btns">${buttons}</span></span>
 </summary><div class="dq-body"><p class="dq-q">${esc(o.question)}</p><dl class="dc-facts">${o.facts}</dl>
-<dl class="dq-choices">${o.choices.map((c) => `<dt>${esc(c.label)}</dt><dd>${c.does}</dd>`).join("")}</dl>${o.more ? `<div class="dq-foot">${o.more}</div>` : ""}</div></details>`;
+<dl class="dq-choices">${choices}</dl>${o.more ? `<div class="dq-foot">${o.more}</div>` : ""}</div></details>`;
+  return { html, box };
 }
 
 /** What an attempt is, in its author's words, for a decision's row. */
@@ -228,7 +234,7 @@ export function needs(
       out.push({
         kind: "key",
         rig: u.id,
-        html: card({
+        ...card({
           tone: "warn",
           ic: icon.key,
           kind: "New key",
@@ -271,7 +277,7 @@ export function needs(
           run: r.id,
           attempt: id,
           at: w?.at ?? a?.updated_at,
-          html: card({
+          ...card({
             tone: "warn",
             ic: icon.trophy,
             kind: "Promote",
@@ -331,7 +337,7 @@ export function needs(
           run: r.id,
           attempt: au.attempt,
           at: au.at,
-          html: card({
+          ...card({
             tone: blocked ? "bad" : "warn",
             ic: icon.shield,
             kind: blocked ? "Blocked" : "Audit held",
@@ -400,7 +406,7 @@ export function needs(
           kind: "review",
           rig: u.id,
           run: r.id,
-          html: card({
+          ...card({
             tone: "violet",
             ic: icon.check,
             kind: "Review",
@@ -447,7 +453,7 @@ export function needs(
           rig: u.id,
           run: r.id,
           at: k.at,
-          html: card({
+          ...card({
             tone: "warn",
             ic: icon.warn,
             kind: "Not possible?",
@@ -495,7 +501,7 @@ export function needs(
         kind: "stale",
         rig: u.id,
         at: u.last_seen,
-        html: card({
+        ...card({
           tone: "bad",
           ic: icon.x,
           kind: "Not reporting",
@@ -526,7 +532,7 @@ export function needs(
       kind: "reset",
       rig: u.id,
       at: String(rs.updated_at),
-      html: card({
+      ...card({
         tone: "bad",
         ic: icon.warn,
         kind: "Wipe",
@@ -708,11 +714,10 @@ export function runBrief(
   const j = u.judge.now && mine(u.judge.now) ? u.judge.now : null;
   const queued = u.judge.queued.filter(mine).length;
   if (j) {
-    const a = j.attempt ? r.attempts.find((x) => x.id === j.attempt) : undefined;
     const line = opts.detail ? store.liveTail(u.id, 1, "judge")[0] : undefined;
     row(
       "judge",
-      `${esc(jobText(j, a?.lane))}${queued ? ` <span class="muted">· ${queued} more queued</span>` : ""}${line && j.started_at && line.at >= j.started_at && !/: started$/.test(line.text) ? `<span class="br-more">now: ${esc(clip(line.text, 120))}</span>` : ""}`,
+      `${jobHtml(u, j)}${queued ? ` <span class="muted">· ${queued} more queued</span>` : ""}${line && j.started_at && line.at >= j.started_at && !/: started$/.test(line.text) ? `<span class="br-more">now: ${esc(clip(line.text, 120))}</span>` : ""}`,
       esc(span(j.started_at, now)),
     );
   } else row("judge", `idle${queued ? `, ${queued} queued` : ""}`, "", "muted");
@@ -779,6 +784,18 @@ export function attemptRows(u: RigView, r: RunView, xs: AttemptView[], now: numb
     .join("")}</div>`;
 }
 
+/** A judge job in words, its attempt named by what it does and linked. */
+export function jobHtml(u: RigView, j: JudgeJob): string {
+  const a = j.attempt ? findAttempt(u, j.attempt) : undefined;
+  const html = esc(jobText(j, a?.lane));
+  if (!j.attempt) return html;
+  const id = esc(j.attempt);
+  return html.replace(
+    id,
+    `<a href="${attemptHref(u.id, j.attempt)}" title="${id}">${a?.hypothesis ? `“${esc(clip(a.hypothesis, 70))}”` : id}</a>`,
+  );
+}
+
 // ---------------------------------------------------------------- what happened
 
 /** A sentence, escaped, with its attempt named by what it does and linked. */
@@ -815,8 +832,76 @@ export function timeline(
     : `<div class="card"><div class="empty">Nothing yet.</div></div>`;
 }
 
-/** One attempt, in full: the change, the judge's findings, its history. */
-export function attemptDetail(u: RigView, r: RunView, a: AttemptView, now: number): string {
+/**
+ * One attempt, in full: what it does and where it stands in one sentence, the decision it waits
+ * for, then what happened to it, the goals it moves, the files it changes and its facts.
+ */
+export function attemptDetail(
+  u: RigView,
+  r: RunView,
+  a: AttemptView,
+  now: number,
+  opts: { decision?: Need | undefined; patch?: string | undefined } = {},
+): string {
+  const o = outcome(r, a);
+  const base = r.champion.filter((c) => !c.reopened && c.commit === a.parent).at(-1);
+  const champ = r.champion.find((c) => c.attempt === a.id && !c.reopened);
+  const audit = r.audits.filter((x) => x.attempt === a.id).at(-1);
+  const on = base ? `, on champion #${base.seq}` : "";
+  const state = champ
+    ? `It became champion #${champ.seq}: the lanes build on it.`
+    : opts.decision
+      ? "It waits for your decision."
+      : a.lifecycle === "declined"
+        ? "You declined it: it never becomes the champion."
+        : audit?.decision === "block"
+          ? "The auditor blocked it."
+          : "";
+  const said = `${esc(a.lane ?? "Someone")} submitted it ${esc(ago(a.recorded_at, now))} ago${a.lane ? "" : " by hand"}${esc(on)}. ${esc(evidence(r, a))}${state ? ` <b class="${o.tone === "ok" ? "ok" : o.tone === "bad" ? "bad" : "warn"}">${esc(state)}</b>` : ""}`;
+
+  // What happened to it, in order: submitted, each verdict, its audit, its promotion.
+  const steps = [
+    { at: a.recorded_at, text: `Submitted${a.lane ? ` by ${a.lane}` : " by hand"}`, tone: "" },
+    ...a.history.map((h) => ({
+      at: h.at,
+      text: cap(verdictText(h.verdict, h.delta)),
+      tone: ["win_confirmed", "goal_progress"].includes(h.verdict)
+        ? "ok"
+        : ["win_screened", "goal_screened", "neutral", "no_progress"].includes(h.verdict)
+          ? ""
+          : "bad",
+    })),
+    ...(audit
+      ? [
+          {
+            at: audit.at,
+            text:
+              audit.decision === "block"
+                ? `The auditor blocked it: ${audit.reasons ?? "no reasons given"}`
+                : audit.decision === null
+                  ? `Held for an audit: ${auditReason(audit.reason)}`
+                  : audit.decision === "clear"
+                    ? "The auditor cleared it"
+                    : "The auditor passed it to you",
+            tone: audit.decision === "block" ? "bad" : audit.decision === "clear" ? "ok" : "warn",
+          },
+        ]
+      : []),
+    ...(r.pending_promotions.includes(a.id)
+      ? [
+          {
+            at: r.promotion_waits[a.id]?.at ?? a.updated_at,
+            text: "Waits for your approval",
+            tone: "warn",
+          },
+        ]
+      : []),
+    ...(a.lifecycle === "declined"
+      ? [{ at: a.updated_at, text: "Declined by you", tone: "" }]
+      : []),
+    ...(champ ? [{ at: champ.at, text: `Became champion #${champ.seq}`, tone: "ok" }] : []),
+  ].sort((x, y) => x.at.localeCompare(y.at));
+  const stepper = `<ol class="stepper">${steps.map((x) => `<li class="${x.tone}"><span class="sd"></span><span class="st">${esc(x.text)}</span><span class="sa">${esc(ago(x.at, now))}</span></li>`).join("")}</ol>`;
   const history = r.timeline.filter(
     (e) =>
       e.subject === a.id ||
@@ -824,44 +909,90 @@ export function attemptDetail(u: RigView, r: RunView, a: AttemptView, now: numbe
         u.judge.jobs.find((j) => j.id === e.subject)?.attempt === a.id) ||
       (e.kind === "trial_finished" && (e.body as { attempt?: unknown }).attempt === a.id),
   );
+
+  // The goals it moves, against the champion it was measured on.
+  const goals =
+    r.mode === "goal" && r.goals.length
+      ? `<div class="block"><div class="head"><h2>Goals</h2><span class="right">against the champion it was measured on${base ? ` (#${base.seq})` : ""}</span></div><div class="card flat">${r.goals
+          .map((g) => {
+            const gained = a.gained?.includes(g.goal);
+            const lost = a.lost.includes(g.goal);
+            const unsure = a.unsure.includes(g.goal);
+            const [tone, mark, word] = gained
+              ? ["ok", "✓", "newly met"]
+              : lost
+                ? ["bad", "✕", "lost"]
+                : unsure
+                  ? ["off", "·", "could not check"]
+                  : g.status === "met"
+                    ? ["ok", "✓", "met by the champion too"]
+                    : ["off", "·", "not met yet"];
+            return `<div class="gl"><span class="gl-mark ${tone}">${mark}</span><span class="gl-main"><span><b>${esc(g.goal)}</b> ${gained || lost ? `<span class="chip ${tone}">${esc(word)}</span>` : `<span class="muted small">${esc(word)}</span>`}</span>${g.description ? `<span class="muted">${esc(clip(g.description, 200))}</span>` : ""}</span></div>`;
+          })
+          .join("")}</div></div>`
+      : "";
+
+  // The files it changes, with their line counts as bars.
+  const most = Math.max(1, ...a.files.map((f) => (f.added ?? 0) + (f.removed ?? 0)));
+  const bar = (n: number) => `${Math.round((n / most) * 120)}px`;
+  const files = a.files.length
+    ? `${a.files
+        .map(
+          (f) =>
+            `<div class="fl"><code>${esc(f.path)}</code>${
+              f.added === null
+                ? `<span class="fl-bar"></span><span class="muted small">binary</span>`
+                : `<span class="fl-bar"><i class="add" style="width:${bar(f.added)}"></i><i class="rem" style="width:${bar(f.removed ?? 0)}"></i></span><span class="fl-n"><span class="ok">+${f.added}</span> <span class="bad">−${f.removed ?? 0}</span></span>`
+            }</div>`,
+        )
+        .join(
+          "",
+        )}${a.files_total > a.files.length ? `<div class="fl muted small">and ${a.files_total - a.files.length} more</div>` : ""}`
+    : `<div class="empty">The rig did not report its files (an older harness).</div>`;
+
   const facts = [
-    ["State", esc(attemptState(a))],
-    ["Lane", esc(a.lane ?? "none (submitted by hand)")],
-    ["Direction", esc(a.family ?? "?")],
     [
-      "Commit",
-      `<code>${esc(a.commit ?? "?")}</code><div class="muted small">made on <code>${esc(a.parent ?? "?")}</code></div>`,
+      "Run",
+      `<a href="${runHref(u.id, r)}">${esc(r.campaign || r.id)} › ${esc(r.id)}</a> on ${esc(u.id)}`,
     ],
+    ["Lane", esc(a.lane ?? "none: submitted by hand")],
+    ...(a.family ? [["Direction", esc(a.family)]] : []),
+    [
+      "Made on",
+      `${base ? `champion #${base.seq} ` : ""}<code class="muted" title="${esc(a.parent ?? "")}">${esc(short(a.parent))}</code>`,
+    ],
+    ["Commit", `<code>${esc(a.commit ?? "?")}</code>`],
     [
       "Submitted",
       `${esc(ago(a.recorded_at, now))} ago <span class="muted small">(${esc(a.recorded_at.slice(0, 16).replace("T", " "))} UTC)</span>`,
     ],
-    [
-      "Trial",
-      a.trial
-        ? `<a href="${liveHref(u.id, `trial:${a.trial}`)}"><code>${esc(a.trial)}</code></a> <span class="muted small">(its session, while the live log keeps it)</span>`
-        : `<span class="muted">unknown</span>`,
-    ],
-  ];
-  const verdicts = a.history.length
-    ? `<ol class="steps">${a.history.map((h) => `<li><b>${esc(verdictText(h.verdict, h.delta))}</b> <span class="muted small">${esc(ago(h.at, now))} ago</span></li>`).join("")}</ol>`
-    : `<div class="muted">No verdict yet.</div>`;
-  const goals =
-    r.mode === "goal" && (a.gained || a.lost.length || a.unsure.length)
-      ? `<div class="stack" style="gap:6px;margin-top:10px">${a.gained?.length ? `<div><span class="chip ok">newly met</span> ${esc(listText(a.gained))}</div>` : ""}${a.lost.length ? `<div><span class="chip bad">lost</span> ${esc(listText(a.lost))}</div>` : ""}${a.unsure.length ? `<div><span class="chip">could not check</span> ${esc(listText(a.unsure))}</div>` : ""}</div>`
-      : "";
-  return `<div class="cols"><div>
-<div class="block"><div class="head"><h2>The change</h2></div><div class="card"><div class="quote">${esc(a.hypothesis ?? "(no hypothesis given)")}</div>
-${a.known_flaws.length ? `<div class="divider"></div><div class="small"><b>Declared flaws</b> <span class="muted">(its author's own list; they make it wait for an audit)</span></div><ul class="flaws">${a.known_flaws.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : `<div class="muted small" style="margin-top:8px">No declared flaws.</div>`}
-<div class="muted xs" style="margin-top:10px">The diff itself stays on the rig: it is in the rig's ledger and in its exports (<code>attempts/${esc(a.id)}.patch</code>).</div></div></div>
-<div class="block"><div class="head"><h2>What the judge found</h2></div><div class="card"><p style="margin:0 0 10px">${esc(evidence(r, a))}</p>${verdicts}${goals}
-<div class="muted xs" style="margin-top:10px">Intervals and the judge's full reasons are kept in the rig's ledger; control receives the verdicts and changes only.</div></div></div>
-<div class="block"><div class="head"><h2>History</h2></div>${timeline(
+    ...(a.trial
+      ? [
+          [
+            "Trial",
+            `<a href="${liveHref(u.id, `trial:${a.trial}`)}"><code>${esc(a.trial)}</code></a> <span class="muted small">(its session, while the live log keeps it)</span>`,
+          ],
+        ]
+      : []),
+  ]
+    .map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`)
+    .join("");
+
+  return `<div class="att-head"><div class="att-crumb"><span class="chip ${o.tone}">${esc(o.word)}</span>${esc(r.campaign || r.id)} › ${esc(r.id)} › attempt ${esc(a.id)}</div><h1 class="att-title">${esc(a.hypothesis ?? "(no hypothesis given)")}</h1>${opts.patch ? `<div class="small">${opts.patch}</div>` : ""}</div>
+<p class="run-said">${said}</p>
+${opts.decision ? `<div class="block"><div class="head"><h2>Your decision</h2></div>${opts.decision.box}</div>` : ""}
+<div class="cols run-cols"><div>
+${a.known_flaws.length ? `<div class="block"><div class="head"><h2>Flaws its author declared</h2><span class="n">${a.known_flaws.length}</span></div><div class="card flat">${a.known_flaws.map((f) => `<div class="fw">${esc(f)}</div>`).join("")}</div></div>` : ""}
+<div class="block"><div class="head"><h2>What happened to it</h2></div><div class="card">${stepper}</div>
+<details class="card flat matrix" data-k="events-${esc(a.id)}" style="margin-top:10px"><summary>Every event <span class="muted small">${history.length}</span></summary>${timeline(
     history.map((e) => ({ u, e })),
     now,
     { limit: 100 },
-  )}</div>
-</div><div>
-<div class="block"><div class="head"><h2>Facts</h2></div><div class="card"><dl class="facts">${facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join("")}</dl></div></div>
+  )}</details></div>
+${goals}
+<div class="block"><div class="head"><h2>Files it changes</h2><span class="n">${a.files_total}</span><span class="right">the diff stays on the rig: <code>attempts/${esc(a.id)}.patch</code> in its exports</span></div><div class="card flat">${files}</div></div>
+</div><div class="side">
+<div class="block"><div class="head"><h2>Facts</h2></div><div class="card"><dl class="facts">${facts}</dl></div></div>
+${a.reasons ? `<div class="block"><div class="head"><h2>The judge's reasons</h2></div><div class="card small">${esc(a.reasons)}</div></div>` : ""}
 </div></div>`;
 }

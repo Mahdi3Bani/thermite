@@ -72,7 +72,10 @@ describe("control dashboard", () => {
     await s.relay();
     const page = await (await s.get("/ui/rigs/rig-a")).text();
     assert.match(page, /<h2>Checks<\/h2>/);
-    assert.match(page, /model route<\/b>.*not run yet/s);
+    assert.match(
+      page,
+      /<span class="chip">not run yet<\/span><\/span><span class="ck-main"><span><b>Model route<\/b>/,
+    );
     const r = await s.post("/ui/commands", {
       csrf: s.csrfFrom(page),
       rig: "rig-a",
@@ -85,7 +88,12 @@ describe("control dashboard", () => {
     await new Promise((res) => setTimeout(res, 20));
     await s.relay(); // its result reaches control
     const after = await (await s.get("/ui/rigs/rig-a")).text();
-    assert.match(after, /FAILED<\/span> [^:]* ago: m failed the tool-call check: no tool call/);
+    assert.match(
+      after,
+      /<span class="chip bad">failed<\/span><\/span><span class="ck-main"><span><b>Model route<\/b> <span class="muted small">[^<]* ago<\/span><\/span><span class="ck-sum bad">m failed the tool-call check: no tool call/,
+    );
+    // The page's opening sentence says so, and so does its history.
+    assert.match(after, /<b class="bad">Its model route check failed\.<\/b>/);
     assert.match(after, /The model route check FAILED/);
   });
 
@@ -207,6 +215,9 @@ describe("control dashboard", () => {
     assert.match(page, /one for the judge, one for agents' dev runs/);
     assert.match(page, /quota 4 CPU of the host's 56/);
     assert.match(page, /10 GiB limit/);
+    // The short version comes first.
+    assert.match(page, /<h2>What it runs on<\/h2>/);
+    assert.match(page, /<dt>CPU<\/dt><dd>4 of the host/);
     assert.ok(!page.includes("<b>Evil card</b>"));
     assert.match(page, /&lt;b&gt;Evil card/);
     const list = await (await s.get("/ui/rigs")).text();
@@ -587,7 +598,22 @@ describe("control dashboard for an operator", () => {
       page,
       /lane-1 submitted <a href="\/ui\/rigs\/rig-a\/attempts\/a-7e1a0001" title="a-7e1a0001">“Register/,
     );
-    // Its decision is on its page too, without a link back to itself.
+    // It opens with what it does and where it stands, in a sentence.
+    assert.match(page, /<h1 class="att-title">Register the two new tensor types/);
+    assert.match(
+      page,
+      /lane-1 submitted it [^<]* ago, on champion #1\. Confirmed on fresh runs: it newly meets goldens, real-file and ops/,
+    );
+    assert.match(page, /It waits for your decision\./);
+    // What happened to it, step by step; the goals it moves; its files as bars.
+    assert.match(
+      page,
+      /<span class="st">Held for an audit: its author declared known flaws<\/span>/,
+    );
+    assert.match(page, /<b>goldens<\/b> <span class="chip ok">newly met<\/span>/);
+    assert.match(page, /<code>src\/types\.c<\/code><span class="fl-bar">/);
+    // Its decision is on its page too, as a box, without a link back to itself.
+    assert.match(page, /<div class="decide decide-warn">/);
     assert.match(page, /Skip the audit and promote/);
     assert.doesNotMatch(page, /Everything about this change/);
     assert.match(await get("/ui/rigs/rig-a/attempts/a-nope"), /No such attempt on this rig/);

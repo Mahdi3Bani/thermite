@@ -38,20 +38,22 @@ import {
   attemptDetail,
   attemptHref,
   attemptRows,
+  cap,
   type Forms,
   goalState,
+  jobHtml,
   liveHref,
   type Need,
   needs as operatorNeeds,
   runBrief,
+  runProgress,
   runStateHtml,
   timeline,
+  waitingOn,
 } from "./ui/operator.ts";
 import { STYLE } from "./ui/style.ts";
 import {
-  attemptState,
   auditReason,
-  checkName,
   clip,
   findAttempt,
   jobText,
@@ -869,42 +871,166 @@ ${ex ? `<div class="divider"></div><div class="muted xs">Results: ${num(ex.expor
     const obj = (x: unknown) => (x && typeof x === "object" ? (x as Record<string, unknown>) : {});
     const ex = obj(sup?.export);
     const adv = sup?.advisors ? obj(sup.advisors) : null;
-    const runsNow = u.runs
-      .filter((i) => i.status === "running")
-      .map((i) => runBrief(store, u, i, now, { heading: true, detail: true }))
+    const live = u.runs.filter((i) => i.status === "running");
+    const runsNow = live
+      .map((i) =>
+        runBrief(store, u, i, now, { heading: true, detail: true, waiting: waitingOn(i) }),
+      )
       .join("");
-    const runs = u.runs
-      .map((i) => {
-        const st = runState(i);
-        const champ = i.champion.filter((s) => !s.reopened).at(-1);
-        const metric =
-          i.mode === "hill_climb"
-            ? `${pct((champ?.cumulative ?? 1) - 1, 1)} gain`
-            : i.mode === "goal"
-              ? `${i.goals.filter((g) => g.status === "met").length}/${i.goals.length} goals met`
-              : `${num((i.research as Record<string, unknown> | null)?.verified)} verified claims`;
-        return `<a class="card tight row" style="text-decoration:none;margin-bottom:10px" href="${runHref(u.id, i)}">${modeAvatar(i.mode)}<span class="grow" style="display:flex;flex-direction:column;min-width:0"><span><b>${esc(i.campaign || i.id)}</b> <span class="muted">› ${esc(i.id)}</span></span><span class="muted xs">${esc(modeName(i.mode))} · ${esc(metric)} · ${i.attempts.length} attempts</span></span>${i.mode === "hill_climb" ? sparkline(i) : ""}<span class="label ${st.cls}">${st.icon}${esc(st.text)}</span></a>`;
+    const checks: [string, string, string][] = [
+      [
+        "model",
+        "Model route",
+        "One short request through the rig's model route, as its workers and planner make them; it must come back as a correct tool call. Run it after the model server or its settings change, before resuming runs.",
+      ],
+      [
+        "isolation",
+        "Isolation",
+        "Each role's user tries to reach what it must not: the judge's files, secrets, other roles' work, devices outside its grant. Needs an idle rig: pause its runs first, because each probe ends that role's processes.",
+      ],
+      [
+        "smoke",
+        "Judge smoke",
+        "Known candidates (a real win, a no-op, broken changes, ways to cheat) must each get their expected verdict on this rig's own target. Minutes on a CPU, up to an hour on a GPU; its running runs are paused for it and resumed after.",
+      ],
+    ];
+    const failed = checks.filter(([k]) => u.checks[k]?.finished_at && u.checks[k]?.ok === false);
+    const j = u.judge.now;
+    const queued = u.judge.queued.length;
+    // The rig in a few sentences: is it reporting, what runs on it, its judge, what is wrong.
+    const said = [
+      u.stale
+        ? `<b class="bad">${esc(u.id)} has not reported for ${esc(span(u.last_seen, now))}.</b>`
+        : `${esc(u.id)} is live; it reported ${esc(ago(u.last_seen, now))} ago.`,
+      live.length
+        ? `It runs ${live.map((i) => `<a href="${runHref(u.id, i)}">${esc(i.campaign || i.id)} › ${esc(i.id)}</a>`).join(" and ")}.`
+        : u.runs.length
+          ? "No run is at work on it."
+          : "No campaign is assigned to it.",
+      j
+        ? `The judge is ${jobHtml(u, j)}${queued ? `, with ${queued} more queued` : ""}.`
+        : `The judge is idle${queued ? `, with ${queued} queued` : ""}.`,
+      failed.length
+        ? `<b class="bad">Its ${failed.map(([, n]) => n.toLowerCase()).join(" and ")} check${failed.length > 1 ? "s" : ""} failed.</b>`
+        : "",
+      key.pending ? `<b class="warn">Its report key waits for your acceptance.</b>` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const checkRows = checks
+      .map(([k, name, what]) => {
+        const r = u.checks[k];
+        const res = !r
+          ? `<span class="chip">not run yet</span>`
+          : r.finished_at === null
+            ? `<span class="chip info">running</span>`
+            : r.ok
+              ? `<span class="chip ok">passed</span>`
+              : `<span class="chip bad">failed</span>`;
+        const when = !r
+          ? ""
+          : r.finished_at === null
+            ? `started ${esc(ago(r.started_at, now))} ago`
+            : `${esc(ago(r.finished_at, now))} ago`;
+        return `<div class="ck"><span class="ck-res">${res}</span><span class="ck-main"><span><b>${esc(name)}</b> <span class="muted small">${when}</span></span>${r?.finished_at && r.summary ? `<span class="ck-sum ${r.ok ? "" : "bad"}">${esc(r.summary)}</span>` : ""}<span class="ck-what">${esc(what)}</span></span>${cmdForm(c, { rig: u.id, kind: "rig_check", fields: { check: k }, label: r && r.finished_at === null ? "Running…" : "Run it", back })}</div>`;
       })
+      .join("");
+    const runRows = u.runs
+      .map((i) => {
+        const [word, tone] =
+          i.status === "running"
+            ? ["Running", "ok"]
+            : i.status === "paused"
+              ? ["Paused", "warn"]
+              : [cap(i.status), ""];
+        const n = waitingOn(i);
+        return `<a class="rr" href="${runHref(u.id, i)}"><span class="chip ${tone}">${esc(word)}</span><span class="ar-main"><b>${esc(i.campaign || i.id)} › ${esc(i.id)}</b><span class="muted small">${esc(i.status !== "running" && i.pause_reason ? i.pause_reason : modeName(i.mode))}</span></span><span class="brief-progress">${runProgress(i)}</span><span class="rr-need">${n ? `<span class="warn small">${n} need${n === 1 ? "s" : ""} you</span>` : ""}</span></a>`;
+      })
+      .join("");
+    const jobs = u.judge.jobs
+      .slice(-8)
+      .reverse()
+      .map((x) => {
+        const tone =
+          x.state === "running"
+            ? "info"
+            : x.state === "done"
+              ? "ok"
+              : x.state === "queued"
+                ? ""
+                : "bad";
+        const tag =
+          x.state === "running"
+            ? ` <span class="chip info">now</span>`
+            : x.state === "queued"
+              ? ` <span class="chip">queued</span>`
+              : x.state !== "done"
+                ? ` <span class="chip bad">${esc(x.state ?? "?")}</span>`
+                : "";
+        return `<div class="tl-row"><span class="tl-t">${esc(ago(x.finished_at ?? x.started_at ?? x.queued_at, now))}</span><span class="dot ${tone}"></span><span class="tl-s">${cap(jobHtml(u, x))}${tag}</span></div>`;
+      })
+      .join("");
+    const h = u.hardware;
+    const gib = (mib: number) => `${Math.round(mib / 1024)} GiB`;
+    const hw = h
+      ? [
+          [
+            "Judge",
+            esc(
+              h.devices
+                .filter((d) => d.role !== "dev")
+                .map((d) => d.name)
+                .join(", ") || "the CPU",
+            ),
+          ],
+          [
+            "Dev runs",
+            esc(
+              h.device_mode === "dedicated"
+                ? h.devices
+                    .filter((d) => d.role === "dev")
+                    .map((d) => d.name)
+                    .join(", ")
+                : h.device_mode === "shared"
+                  ? "share the judge's device, and wait for it"
+                  : "on the CPU",
+            ),
+          ],
+          ["CPU", esc(`${h.cpu.quota ?? h.cpu.usable} of the host's ${h.cpu.host}`)],
+          ["Memory", esc(gib(h.memory.limit_mib ?? h.memory.host_mib))],
+          [
+            "Disk free",
+            esc(h.disks.map((d) => `${d.name} ${d.free_gib} of ${d.total_gib} GiB`).join(" · ")),
+          ],
+        ]
+          .map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`)
+          .join("")
+      : "";
+    const rigFacts = [
+      ["Key", `<code>${esc(key.pubkey ? fingerprint(key.pubkey) : "not pinned")}</code>`],
+      ["Ledger", `<code>${esc(u.ledger_id ?? "")}</code>`],
+      ...(sup
+        ? [
+            [
+              "Results",
+              `${num(ex.exports)} exports${ex.remote === true ? ` · <span title="${esc(ex.last_push_at ?? "")}">pushed ${esc(ago(String(ex.last_push_at ?? ""), now) || "?")} ago</span>` : " · no results repository"}${ex.last_error ? `<div class="bad xs">${esc(String(ex.last_error).slice(0, 300))}</div>` : ""}`,
+            ],
+            [
+              "Advisors",
+              adv
+                ? `${num(adv.teacher_runs)} teacher rounds · ${num(adv.directive_sets)} directive sets · ${num(adv.audits)} audits · ${num(adv.errors)} errors · $${num(adv.usd).toFixed(2)}`
+                : "none configured",
+            ],
+          ]
+        : []),
+    ]
+      .map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`)
       .join("");
     const events = timeline(
       u.recent.map((e) => ({ u, e })),
       now,
-      { limit: 30 },
+      { limit: 12 },
     );
-    const checkCard = (check: string, what: string) => {
-      const r = u.checks[check];
-      const result = !r
-        ? `<span class="muted">not run yet</span>`
-        : r.finished_at === null
-          ? `<span class="warn">running, started ${esc(ago(r.started_at, now))} ago</span>`
-          : `<span class="${r.ok ? "ok" : "bad"}">${r.ok ? "passed" : "FAILED"}</span> ${esc(ago(r.finished_at, now))} ago: ${esc(r.summary ?? "")}`;
-      return `<div class="card tight" style="margin-bottom:10px"><div class="row"><b>${esc(checkName(check))}</b><span class="grow"></span>${cmdForm(c, { rig: u.id, kind: "rig_check", fields: { check }, label: r && r.finished_at === null ? "Running…" : "Run this check", back })}</div><div class="small muted">${what}</div><div class="small" style="margin-top:6px">${result}</div></div>`;
-    };
-    const checksBlock = `<div class="block"><div class="head"><h2>Checks</h2><span class="right muted small">run by the rig itself; results show here and in its history</span></div>
-${checkCard("model", "One short request through the rig's model route, as its workers and planner make them. It must come back as a correct tool call. Use it after the model server or its settings change, before resuming runs.")}
-${checkCard("isolation", "The isolation selftest: each role's user tries to reach what it must not (the judge's files, secrets, other roles' work, devices outside its grant). Needs an idle rig: pause its runs first, because each probe ends that role's processes.")}
-${checkCard("smoke", "A judge-only campaign from the smoke kit in the rig's image, on this rig's own target: known candidates (a real win, a no-op, broken changes, ways to cheat) must each get their expected verdict. Minutes on a CPU, up to an hour on a GPU. Needs an idle rig; its running runs are paused for it and resumed after.")}
-</div>`;
     const keyCard = key.pending
       ? `<div class="card warn" style="margin-bottom:16px"><div class="card-head">${icon.key}<span class="title">${key.pubkey ? "This rig now signs its reports with a different key" : "This rig's first report key waits for your acceptance"}</span></div>
 <p class="small">Its reports are refused until you accept the key. A full reset keeps a rig's key: a change is expected only when the rig's identity was rebuilt on purpose. Check the fingerprint with the rig's deployment before accepting.</p>
@@ -923,25 +1049,24 @@ ${opts.driver ? `<form method="post" action="/ui/rigs/${encodeURIComponent(u.id)
       {
         title: u.id,
         crumbs: [{ href: "/ui/rigs", text: "Rigs" }],
-        summary: `${u.stale ? `<span class="bad">stale</span> · last report ${esc(ago(u.last_seen, now))} ago` : `<span class="ok">live</span> · reported ${esc(ago(u.last_seen, now))} ago`} · key <code>${esc(key.pubkey ? fingerprint(key.pubkey) : "not pinned")}</code>`,
+        summary: u.stale
+          ? `<span class="bad">not reporting</span>`
+          : `<span class="ok">live</span>`,
         actions,
         active: "rigs",
       },
-      `${keyCard}<div class="block"><div class="head"><h2>Hardware</h2><span class="right muted small">${hardwareLine(u.hardware)}</span></div>${hardwareCard(u.hardware, now)}</div>
-${checksBlock}
-<div class="cols"><div>${runsNow ? `<div class="block"><div class="head"><h2>At work now</h2></div>${runsNow}</div>` : ""}<div class="head"><h2>Runs on this rig</h2><span class="right muted small">each belongs to a campaign</span></div>${runs || `<div class="card"><div class="empty">No campaign assigned.</div></div>`}</div>
-<div><div class="block"><div class="head"><h2>Rig</h2></div><div class="card"><div class="stack" style="gap:10px">
-<div class="small"><span class="muted">Judge</span> ${u.judge.now ? `${esc(jobText(u.judge.now, findAttempt(u, u.judge.now.attempt ?? "")?.lane))} <span class="muted">for ${esc(span(u.judge.now.started_at, now))}</span>` : "idle"}${num(u.jobs.queued) ? ` <span class="muted">· ${num(u.jobs.queued)} queued</span>` : ""}</div>
-<div class="small"><span class="muted">Ledger</span> <code>${esc(u.ledger_id ?? "")}</code></div>
-${
-  sup
-    ? `<div class="small"><span class="muted">Results</span> ${num(ex.exports)} exports${ex.remote === true ? ` · <span title="${esc(ex.last_push_at ?? "")}">pushed ${esc(ago(String(ex.last_push_at ?? ""), now) || "?")} ago</span>` : " · no results repository"}${ex.last_error ? `<div class="bad xs">${esc(String(ex.last_error).slice(0, 300))}</div>` : ""}</div>
-<div class="small"><span class="muted">Advisors</span> ${adv ? `${num(adv.teacher_runs)} teacher rounds · ${num(adv.directive_sets)} directive sets · ${num(adv.audits)} audits · ${num(adv.errors)} errors · $${num(adv.usd).toFixed(2)}` : "none configured"}</div>
-<div class="muted xs">The supervisor reports these figures itself (unsigned).</div>`
-    : ""
-}
-</div></div></div>
-<div class="block"><div class="head"><h2>What happened</h2><span class="right">newest first</span></div>${events}</div></div></div>`,
+      `<p class="run-said">${said}</p>
+${keyCard}
+${runsNow ? `<div class="block"><div class="head"><h2>At work</h2><span class="n">${live.length}</span></div>${runsNow}</div>` : ""}
+<div class="cols run-cols"><div>
+<div class="block"><div class="head"><h2>Checks</h2><span class="right">run by the rig itself; each result also goes to its history</span></div><div class="card flat">${checkRows}</div></div>
+<div class="block"><div class="head"><h2>Runs on this rig</h2><span class="n">${u.runs.length}</span></div>${runRows ? `<div class="card flat">${runRows}</div>` : `<div class="card"><div class="empty">No campaign assigned.</div></div>`}</div>
+<div class="block"><div class="head"><h2>The judge's last jobs</h2></div>${jobs ? `<div class="card flat tl">${jobs}</div>` : `<div class="card"><div class="empty">No job yet.</div></div>`}</div>
+</div><div class="side">
+<div class="block"><div class="head"><h2>What it runs on</h2></div>${h ? `<div class="card"><dl class="facts">${hw}</dl></div><details class="card flat matrix" data-k="hw-${esc(u.id)}" style="margin-top:10px"><summary>Every detail</summary>${hardwareCard(h, now)}</details>` : hardwareCard(h, now)}</div>
+<div class="block"><div class="head"><h2>The rig</h2></div><div class="card"><dl class="facts">${rigFacts}</dl>${sup ? `<div class="muted xs" style="margin-top:8px">The supervisor reports its figures itself (unsigned).</div>` : ""}</div></div>
+<div class="block"><div class="head"><h2>Recent</h2><span class="right">newest first</span></div>${events}</div>
+</div></div>`,
       vs,
     );
   });
@@ -976,7 +1101,13 @@ ${
         vs,
       );
     const back = attemptHref(u.id, a.id);
-    const decisions = needs(c, [u], now, back).filter((n) => n.attempt === a.id);
+    const decision = needs(c, [u], now, back).find((n) => n.attempt === a.id);
+    // A champion's patch, once the rig has published it.
+    const champ = r.champion.find((x) => x.attempt === a.id && !x.reopened);
+    const patch =
+      champ && store.championPatch(u.id, r.id, champ.seq)
+        ? `<a href="/ui/rigs/${encodeURIComponent(u.id)}/runs/${encodeURIComponent(r.id)}/champions/${champ.seq}.patch">Download champion #${champ.seq} as a patch</a>`
+        : undefined;
     return page(
       c,
       {
@@ -986,10 +1117,9 @@ ${
           { href: campaignHref(r.campaign || r.id), text: r.campaign || r.id },
           { href: runHref(u.id, r), text: `${r.id} on ${u.id}` },
         ],
-        summary: `${a.lane ? `${esc(a.lane)} · ` : ""}${esc(attemptState(a))}`,
         active: "campaigns",
       },
-      `${decisions.length ? `<div class="block"><div class="head"><h2>Your decision</h2></div><div class="dqs">${decisions.map((n) => n.html.replace(/<div class="dq-foot">[\s\S]*?<\/div><\/div><\/details>$/, "</div></details>").replace('<details class="dq', '<details open class="dq')).join("")}</div></div>` : ""}${attemptDetail(u, r, a, now)}`,
+      attemptDetail(u, r, a, now, { decision, patch }),
       vs,
     );
   });
