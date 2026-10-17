@@ -5,6 +5,7 @@ import { canonicalJson, sha256Hex } from "../core/canonical.ts";
 import type { SignedCommand } from "../core/commands.ts";
 import type { LiveEntry } from "../core/live.ts";
 import { currentEvent } from "../core/names.ts";
+import { Credential } from "./credential.ts";
 
 /**
  * Control's store: rigs, the events they report, and command queues. A single control process
@@ -143,6 +144,16 @@ create table if not exists rig_model (
   model text not null,
   assigned_at text not null
 );
+-- Rigs enrolled through control (thermite rig add, or the API): each token only as its SHA-256.
+-- A rig in the rig tokens file needs no row. A retired rig's token stops working.
+create table if not exists rig_token (
+  rig text primary key,
+  token_sha256 text not null,
+  created_at text not null,
+  created_by text not null,
+  rotated_at text,
+  retired_at text
+);
 create index if not exists rig_live_rig on rig_live (rig, id);
 create index if not exists rig_live_source on rig_live (rig, source, id);
 `;
@@ -244,6 +255,29 @@ function providerOf(r: Row): ModelProvider {
       r.models_error === null || r.models_error === undefined ? null : String(r.models_error),
   };
 }
+
+/** A rig enrolled through control. */
+export interface EnrolledRig {
+  rig: string;
+  created_at: string;
+  created_by: string;
+  rotated_at: string | null;
+  retired_at: string | null;
+}
+
+function enrolledOf(r: Row): EnrolledRig {
+  const opt = (v: unknown) => (v === null || v === undefined ? null : String(v));
+  return {
+    rig: String(r.rig),
+    created_at: String(r.created_at),
+    created_by: String(r.created_by),
+    rotated_at: opt(r.rotated_at),
+    retired_at: opt(r.retired_at),
+  };
+}
+
+/** A rig's name: what the lifecycle drivers accept (a Kubernetes namespace part, a compose name). */
+export const RIG_ID = /^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$/;
 
 export class ControlStore {
   readonly db: DatabaseSync;
@@ -1023,7 +1057,62 @@ export class ControlStore {
 
   /** Rigs that have a token but have not reported yet still accept commands. */
   knownRig(rig: string): boolean {
-    return this.configuredRigs.has(rig);
+    return this.configuredRigs.has(rig) || this.enrolledRig(rig) !== undefined;
+  }
+
+  /** An enrolled rig's record, if it is enrolled and not retired. */
+  enrolledRig(rig: string): EnrolledRig | undefined {
+    const r = this.db
+      .prepare("select * from rig_token where rig = ? and retired_at is null")
+      .get(rig) as Row | undefined;
+    return r ? enrolledOf(r) : undefined;
+  }
+
+  /** Every rig enrolled through control, retired ones included. */
+  enrolledRigs(): EnrolledRig[] {
+    return (this.db.prepare("select * from rig_token order by rig").all() as Row[]).map(enrolledOf);
+  }
+
+  /** Whether a token is this enrolled rig's current one. */
+  rigTokenMatches(rig: string, token: string): boolean {
+    const r = this.db
+      .prepare("select token_sha256 from rig_token where rig = ? and retired_at is null")
+      .get(rig) as { token_sha256: string } | undefined;
+    return r ? Credential.ofHash(r.token_sha256).matches(token) : false;
+  }
+
+  /** Enrolls a rig with a token's SHA-256. A retired rig may be enrolled again. */
+  enrollRig(rig: string, tokenSha256: string, by: string): void {
+    if (this.enrolledRig(rig)) throw new Error(`rig ${rig} is already enrolled`);
+    this.db
+      .prepare(
+        `insert into rig_token (rig, token_sha256, created_at, created_by) values (?, ?, ?, ?)
+         on conflict(rig) do update set token_sha256 = excluded.token_sha256,
+           created_at = excluded.created_at, created_by = excluded.created_by,
+           rotated_at = null, retired_at = null`,
+      )
+      .run(rig, Credential.ofHash(tokenSha256).hex, new Date().toISOString(), by);
+    this.audit(by, "rig_enrolled", { rig });
+  }
+
+  /** Gives an enrolled rig a new token; the old one stops working at once. */
+  rotateRigToken(rig: string, tokenSha256: string, by: string): void {
+    const r = this.db
+      .prepare(
+        "update rig_token set token_sha256 = ?, rotated_at = ? where rig = ? and retired_at is null",
+      )
+      .run(Credential.ofHash(tokenSha256).hex, new Date().toISOString(), rig);
+    if (Number(r.changes) === 0) throw new Error(`rig ${rig} is not enrolled`);
+    this.audit(by, "rig_token_rotated", { rig });
+  }
+
+  /** Retires an enrolled rig: its token stops working. Its history stays. */
+  retireRig(rig: string, by: string): void {
+    const r = this.db
+      .prepare("update rig_token set retired_at = ? where rig = ? and retired_at is null")
+      .run(new Date().toISOString(), rig);
+    if (Number(r.changes) === 0) throw new Error(`rig ${rig} is not enrolled`);
+    this.audit(by, "rig_retired", { rig });
   }
 
   setConfiguredRigs(rigs: readonly string[]): void {

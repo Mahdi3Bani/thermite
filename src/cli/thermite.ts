@@ -1,10 +1,11 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { newToken } from "../control/credential.ts";
 import { generateSigningKeys } from "../core/commands.ts";
 import { CommitSchema, parseContract } from "../core/contract.ts";
+import { type Enrolled, writeRigFiles } from "./rig.ts";
 
 /**
  * The thermite command line: contract checks, key generation, issuing commands through control,
@@ -32,6 +33,13 @@ const USAGE = `usage: thermite <command> [options]
                  [--kit-bundle-sha256 H]] [--model NAME=SHA256:PATH ...] [--direction D] [--agents off]
                                       print an assign_campaign payload (bundle and model
                                       paths are relative to the rig's inbox)
+  rig add RIG --control URL --token-file F --out DIR
+                                      enroll a rig with control (owner's token): control makes
+                                      its token, and DIR gets the files the rig's host needs
+  rig token RIG --control URL --token-file F --out FILE
+                                      give an enrolled rig a new token (the old one stops working)
+  rig retire RIG --control URL --token-file F
+                                      shut an enrolled rig out of control; its history stays
   command --control URL --token-file F --rig U --kind K --payload JSON|@file [--ttl MIN]
                                       issue a signed command through control (admin token)
   submit --harness URL --token-file F --run ID --patch-file P --hypothesis TEXT
@@ -299,6 +307,51 @@ async function main(argv: string[]): Promise<void> {
         },
       );
       process.stdout.write(`${JSON.stringify(out)}\n`);
+      return;
+    }
+    case "rig": {
+      const [sub, rig, ...args] = rest;
+      const { values } = parseArgs({
+        args,
+        options: {
+          control: { type: "string" },
+          "token-file": { type: "string" },
+          out: { type: "string" },
+        },
+      });
+      if (!rig || !values.control || !values["token-file"]) fail(USAGE);
+      const control = values.control.replace(/\/$/, "");
+      const token = readFileSync(values["token-file"], "utf8").trim();
+      const at = `${control}/v1/rigs`;
+      if (sub === "add") {
+        if (!values.out) fail(USAGE);
+        if (existsSync(values.out) && readdirSync(values.out).length)
+          fail(`${values.out} is not empty; a rig's files are never overwritten`);
+        const enrolled = (await post(at, token, { rig })) as Enrolled;
+        const files = writeRigFiles(values.out, enrolled, control);
+        process.stdout.write(
+          `enrolled ${rig}; control's key fingerprint ${enrolled.control_fingerprint}\nwrote ${files.map((f) => join(values.out as string, f)).join("\n      ")}\n`,
+        );
+        return;
+      }
+      if (sub === "token") {
+        if (!values.out) fail(USAGE);
+        if (existsSync(values.out)) fail(`${values.out} exists; a token is never overwritten`);
+        const out = (await post(`${at}/${encodeURIComponent(rig)}/token`, token, {})) as {
+          token: string;
+        };
+        writeFileSync(values.out, `${out.token}\n`, { mode: 0o600, flag: "wx" });
+        process.stdout.write(
+          `${rig} has a new token, in ${values.out}; its old token no longer works\n`,
+        );
+        return;
+      }
+      if (sub === "retire") {
+        await post(`${at}/${encodeURIComponent(rig)}/retire`, token, {});
+        process.stdout.write(`${rig} is retired: its token no longer works\n`);
+        return;
+      }
+      fail(USAGE);
       return;
     }
     case "command": {

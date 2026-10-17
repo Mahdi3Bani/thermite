@@ -19,7 +19,7 @@ or its assignment instead: lane limits, trial length, budgets and the run's prom
 | `THERMITE_CONTROL_OPERATOR_TOKEN_SHA256` or `_FILE` | none | An operating agent's credential: steer and message agents, never approve |
 | `THERMITE_CONTROL_AGENT_TOKEN_SHA256` or `_FILE` | none | An agent's credential: steer, never message or approve |
 | `THERMITE_CONTROL_READ_TOKEN_SHA256` or `_FILE` | none | A read-only credential |
-| `THERMITE_CONTROL_RIG_TOKENS_FILE` | required | A JSON file: `{"<rig>": "<token>"}`, one token per rig |
+| `THERMITE_CONTROL_RIG_TOKENS_FILE` | none | A JSON file: `{"<rig>": "<token>"}`, one token per rig, read at start. Rigs enrolled with `thermite rig add` need no entry here and no restart |
 | `THERMITE_CONTROL_REQUIRE_KEY_ACCEPT` | off | `1`: the owner accepts each rig's first report key on the dashboard |
 | `THERMITE_CONTROL_SESSION_DAYS` | 30 | How long an unused dashboard sign-in lasts |
 | `THERMITE_CONTROL_SECRETS_KEY_FILE` | `secrets.key` in `THERMITE_CONTROL_DIR`, made on first start | The key that encrypts the API keys of the model providers set on the dashboard. Mount it from a separate secret to keep it off the store's volume; without it, the stored keys cannot be read |

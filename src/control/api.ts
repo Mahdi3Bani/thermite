@@ -1,11 +1,11 @@
-import { timingSafeEqual } from "node:crypto";
+import { createPublicKey, timingSafeEqual } from "node:crypto";
 import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { sha256Hex } from "../core/canonical.ts";
 import { COMMAND_KINDS, type CommandKind, reportBody, verifyJson } from "../core/commands.ts";
 import { LiveBatch, LiveEntry, liveBody } from "../core/live.ts";
-import { Credential } from "./credential.ts";
+import { Credential, newToken } from "./credential.ts";
 import { createDashboard } from "./dashboard.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
 import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
@@ -13,7 +13,7 @@ import { mountMcp } from "./mcp.ts";
 import { metricsText } from "./metrics.ts";
 import { isOpencodeOwn, providerBase } from "./providers.ts";
 import { SecretBox } from "./secrets.ts";
-import type { ControlStore, IngestReport } from "./store.ts";
+import { type ControlStore, fingerprint, type IngestReport, RIG_ID } from "./store.ts";
 import { leaderboard, rigView } from "./views.ts";
 
 /**
@@ -193,12 +193,13 @@ export function createControlApi(
       return c.json({ error: "unauthorized" }, 401);
     await next();
   };
+  // A rig's token is in the rig tokens file, or was made by control when the rig was enrolled.
   const rigAuth: MiddlewareHandler = async (c, next) => {
     const rig = c.req.param("rig") ?? "";
+    const token = bearer(c.req.header("authorization"));
     const expected = tokens.rigs[rig];
-    if (!expected || !eq(bearer(c.req.header("authorization")), expected)) {
-      return c.json({ error: "unauthorized" }, 401);
-    }
+    const ok = expected !== undefined ? eq(token, expected) : store.rigTokenMatches(rig, token);
+    if (!ok) return c.json({ error: "unauthorized" }, 401);
     await next();
   };
 
@@ -475,7 +476,59 @@ export function createControlApi(
     return c.json({ ok: true });
   });
 
-  app.get("/v1/rigs", admin, (c) => c.json({ rigs: store.rigs() }));
+  app.get("/v1/rigs", admin, (c) => c.json({ rigs: store.rigs(), enrolled: store.enrolledRigs() }));
+
+  // Enrollment: control makes a rig's token, shows it once and keeps only its SHA-256, so a new
+  // rig needs no change to control's deployment and no restart.
+  const publicKeyPem = createPublicKey(privateKeyPem)
+    .export({ type: "spki", format: "pem" })
+    .toString();
+  const RigName = z.strictObject({
+    rig: z
+      .string()
+      .regex(
+        RIG_ID,
+        "a rig's name is 2 to 40 characters of a-z, 0-9 and -, starting and ending with a letter or digit",
+      ),
+  });
+  const inFile = (rig: string) =>
+    tokens.rigs[rig] !== undefined
+      ? `rig ${rig} has its token in control's rig tokens file; change it there`
+      : undefined;
+  app.post("/v1/rigs", admin, async (c) => {
+    const { rig } = RigName.parse(await c.req.json());
+    const taken =
+      inFile(rig) ?? (store.enrolledRig(rig) ? `rig ${rig} is already enrolled` : undefined);
+    if (taken) return c.json({ error: taken }, 409);
+    const t = newToken();
+    store.enrollRig(rig, t.sha256, "owner:api");
+    return c.json(
+      {
+        rig,
+        token: t.token,
+        control_public_key: publicKeyPem,
+        control_fingerprint: fingerprint(publicKeyPem),
+      },
+      201,
+    );
+  });
+  app.post("/v1/rigs/:rig/token", admin, (c) => {
+    const rig = c.req.param("rig");
+    const fixed = inFile(rig);
+    if (fixed) return c.json({ error: fixed }, 409);
+    if (!store.enrolledRig(rig)) return c.json({ error: `rig ${rig} is not enrolled` }, 404);
+    const t = newToken();
+    store.rotateRigToken(rig, t.sha256, "owner:api");
+    return c.json({ rig, token: t.token });
+  });
+  app.post("/v1/rigs/:rig/retire", admin, (c) => {
+    const rig = c.req.param("rig");
+    const fixed = inFile(rig);
+    if (fixed) return c.json({ error: fixed }, 409);
+    if (!store.enrolledRig(rig)) return c.json({ error: `rig ${rig} is not enrolled` }, 404);
+    store.retireRig(rig, "owner:api");
+    return c.json({ rig, retired: true });
+  });
 
   // Metrics: the read token is enough (a scraper should not hold the owner's credential).
   const reader: MiddlewareHandler = async (c, next) => {

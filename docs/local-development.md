@@ -246,3 +246,16 @@ npx thermite help
 ```
 
 Inside the harness container the same tool is on the path as `thermite`.
+
+### Adding a rig
+
+Control makes a new rig's token when the owner enrolls it, so control needs no restart and no change to its deployment:
+
+```sh
+npx thermite rig add gpu-rig-1 --control https://control.example.com \
+  --token-file ~/.config/thermite/owner-token --out rig-gpu-rig-1
+```
+
+The output directory gets the rig's control token, a token its harness and supervisor share, control's public key and its fingerprint, and the rig's name and control's address, with a README that maps each file to its setting. Tokens are written to files (mode 0600) and never printed; control keeps only their SHA-256.
+
+`thermite rig token <rig> … --out FILE` replaces an enrolled rig's token; the old one stops working at once. `thermite rig retire <rig> …` shuts a rig out; its history stays. Rigs listed in `THERMITE_CONTROL_RIG_TOKENS_FILE` keep working as before and are changed in that file.

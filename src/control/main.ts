@@ -1,7 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { serve } from "@hono/node-server";
-import { log, optionalSecretFromFile, parseListen, requireEnv } from "../common/env.ts";
+import { log, optionalSecretFromFile, parseListen } from "../common/env.ts";
 import { generateSigningKeys } from "../core/commands.ts";
 import { createControlApi } from "./api.ts";
 import { Credential } from "./credential.ts";
@@ -52,10 +52,14 @@ async function main(): Promise<void> {
     operator: credential("OPERATOR"),
     agent: credential("AGENT"),
     read: credential("READ"),
-    // One token per rig ({"<rig>": "<token>"}).
-    rigs: JSON.parse(
-      readFileSync(requireEnv("THERMITE_CONTROL_RIG_TOKENS_FILE"), "utf8"),
-    ) as Record<string, string>,
+    // Optional: rigs whose tokens are set in a file ({"<rig>": "<token>"}). Rigs enrolled through
+    // control (`thermite rig add`) need no entry and no restart.
+    rigs: env.THERMITE_CONTROL_RIG_TOKENS_FILE
+      ? (JSON.parse(readFileSync(env.THERMITE_CONTROL_RIG_TOKENS_FILE, "utf8")) as Record<
+          string,
+          string
+        >)
+      : {},
   };
   const store = new ControlStore(join(dir, "control.db"));
   const { host, port } = parseListen(env.THERMITE_CONTROL_LISTEN ?? "0.0.0.0:8800");
@@ -84,6 +88,10 @@ async function main(): Promise<void> {
     host,
     port,
     rigs: Object.keys(tokens.rigs),
+    enrolled: store
+      .enrolledRigs()
+      .filter((r) => !r.retired_at)
+      .map((r) => r.rig),
     lifecycle: driver?.kind ?? null,
   });
   // Full resets advance as their evidence arrives.
