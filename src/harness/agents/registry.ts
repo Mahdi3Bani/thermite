@@ -206,6 +206,10 @@ export class Registry {
         planner_tries: input.tries,
         planner_valid: input.valid,
         raw_violations: input.rawViolations.length,
+        // Why the model's plans were refused (the first few, shortened), so a fallback says why.
+        ...(input.rawViolations.length
+          ? { refused: input.rawViolations.slice(0, 4).map((v) => v.slice(0, 300)) }
+          : {}),
         directives: input.directives ?? [],
         assignments: input.assignments.map((a) => ({
           lane: a.lane,

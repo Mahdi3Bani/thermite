@@ -143,7 +143,7 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
         ? (b.assignments as { lane?: string; family?: string }[])
         : [];
       return s(
-        `The planner planned ${Number.isFinite(Number(b.n)) ? `epoch ${String(b.n)}` : "an epoch"}${b.source === "fallback" ? " (its fallback plan: the model's plan was refused)" : ""}: ${as.map((a) => `${a.lane} on ${a.family}`).join("; ")}.`,
+        `The planner planned ${Number.isFinite(Number(b.n)) ? `epoch ${String(b.n)}` : "an epoch"}${b.source === "fallback" ? ` (its fallback plan: the model's plan was refused${Array.isArray(b.refused) && b.refused.length ? `, because ${String(b.refused[0]).replace(/^try \d+: /, "")}` : ""})` : ""}: ${as.map((a) => `${a.lane} on ${a.family}`).join("; ")}.`,
         "",
         { run: String(e.subject) },
       );
