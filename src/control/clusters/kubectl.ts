@@ -95,6 +95,67 @@ export async function contextsOf(
   };
 }
 
+/**
+ * What a pasted kubeconfig would make kubectl do inside control, read without contacting the
+ * cluster (kubectl config view runs no plugin). Refused: exec and auth-provider plugins (they
+ * run commands in control's container) and file references (they read control's own files,
+ * its secrets among them); everything must be inline data. Warned: skipped TLS checks, plain
+ * http.
+ */
+export async function inspectKubeconfig(
+  k: ClusterKubectl,
+  kubeconfig: string,
+): Promise<{ problems: string[]; warnings: string[] }> {
+  const r = await k.kubectl({ kubeconfig }, ["config", "view", "--raw", "-o", "json"]);
+  let cfg: {
+    clusters?: { name?: string; cluster?: Record<string, unknown> }[];
+    users?: { name?: string; user?: Record<string, unknown> }[];
+  };
+  try {
+    cfg = JSON.parse(r.stdout) as typeof cfg;
+  } catch {
+    return { problems: [`kubectl could not read it: ${kubeError(r)}`], warnings: [] };
+  }
+  const problems: string[] = [];
+  const warnings: string[] = [];
+  for (const u of cfg.users ?? []) {
+    const user = u.user ?? {};
+    const who = `user "${u.name ?? "?"}"`;
+    if (user.exec)
+      problems.push(
+        `${who} runs a command (exec) to log in: control runs no commands from a kubeconfig; use a token or a client certificate, inline`,
+      );
+    if (user["auth-provider"])
+      problems.push(
+        `${who} uses an auth-provider plugin: use a token or a client certificate, inline`,
+      );
+    for (const f of ["tokenFile", "client-certificate", "client-key"])
+      if (user[f])
+        problems.push(
+          `${who} reads a file (${f}): put the data inline (token, client-certificate-data, client-key-data)`,
+        );
+  }
+  for (const c of cfg.clusters ?? []) {
+    const cluster = c.cluster ?? {};
+    const which = `cluster "${c.name ?? "?"}"`;
+    if (cluster["certificate-authority"])
+      problems.push(
+        `${which} reads a file (certificate-authority): use certificate-authority-data`,
+      );
+    if (cluster["proxy-url"])
+      problems.push(
+        `${which} goes through a proxy (proxy-url): control talks to the API server directly`,
+      );
+    if (cluster["insecure-skip-tls-verify"])
+      warnings.push(
+        `${which} skips TLS verification: control can't tell the real API server from another`,
+      );
+    if (typeof cluster.server === "string" && cluster.server.startsWith("http:"))
+      warnings.push(`${which} uses plain http`);
+  }
+  return { problems, warnings };
+}
+
 /** The kubectl operations control uses (tests give their own). */
 export interface ClusterKubectl {
   kubectl: typeof kubectl;

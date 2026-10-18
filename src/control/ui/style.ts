@@ -455,6 +455,17 @@ pre.report { white-space: pre-wrap; font-family: var(--font-mono); font-size: 12
 .lv-said { white-space: pre-wrap; }
 .lv-status span, .lv-log span { color: var(--muted-foreground); }
 .lv-unsigned { margin-left: 8px; font-size: 10px; color: var(--warning-foreground); }
+/* Edit rig: one row per part, with its switch. */
+.pt { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.pt:last-child { border-bottom: 0; } .pt.locked { opacity: .8; } .pt-off { margin-top: 4px; color: var(--muted-foreground); }
+.pt-state { font-size: 12px; } .pt-state.on { color: var(--success-foreground); } .pt-state.off { color: var(--warning-foreground); }
+.sw { position: relative; display: inline-block; width: 40px; height: 22px; margin-top: 2px; }
+.sw input { opacity: 0; width: 0; height: 0; }
+.knob { position: absolute; inset: 0; background: var(--border); border-radius: 999px; transition: .15s; cursor: pointer; }
+.knob::before { content: ""; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .15s; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+.sw input:checked + .knob { background: var(--primary); } .sw input:checked + .knob::before { transform: translateX(18px); }
+.sw input:disabled + .knob { cursor: not-allowed; opacity: .6; }
+.chg li { margin: 2px 0; }
 .kind { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
 .kind.m { background: var(--primary-surface); color: var(--info-foreground); }
 .kind.r { background: var(--warning-surface); color: var(--warning-foreground); }

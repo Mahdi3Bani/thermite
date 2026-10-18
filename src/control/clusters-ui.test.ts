@@ -23,6 +23,20 @@ function fakeCluster(o: { canCreateNamespaces?: boolean; slots?: Record<string, 
     kubectl: async (_t, args, stdin) => {
       calls.push({ args, stdin });
       const a = args.join(" ");
+      if (a === "config view --raw -o json")
+        return ok(
+          JSON.stringify(
+            _t.kubeconfig.includes("exec:")
+              ? {
+                  clusters: [{ name: "c", cluster: { "certificate-authority": "/etc/ca.crt" } }],
+                  users: [{ name: "u", user: { exec: { command: "sh" } } }],
+                }
+              : {
+                  clusters: [{ name: "c", cluster: { server: "https://k.example.com" } }],
+                  users: [{ name: "u", user: { token: "x" } }],
+                },
+          ),
+        );
       if (a === "version -o json")
         return ok(JSON.stringify({ serverVersion: { gitVersion: "v1.35.2" } }));
       if (a === "get nodes -o json")
@@ -118,6 +132,15 @@ describe("clusters in Providers and Add a rig", () => {
     assert.match(
       await s.post("/ui/settings/add", { type: "k8s", name: "work", kubeconfig: "not yaml" }),
       /not a kubeconfig/,
+    );
+    // A kubeconfig that would run a command or read a file inside control is refused.
+    assert.match(
+      await s.post("/ui/settings/add", {
+        type: "k8s",
+        name: "work",
+        kubeconfig: `${KUBECONFIG}# exec:`,
+      }),
+      /Not added: user "u" runs a command \(exec\) to log in.*cluster "c" reads a file \(certificate-authority\)/,
     );
     assert.match(
       await s.post("/ui/settings/add", {

@@ -184,6 +184,20 @@ export const CommandPayloads = {
    * an audit that is pending or blocked. The judge's verdict must still be promotable.
    */
   approve_promotion: z.object({ run: IdSchema, attempt: z.string().min(1).max(64) }),
+  /** The rig's own settings from its Edit page (owner only): only the fields that change. */
+  rig_settings: z.strictObject({
+    judge: z.boolean().optional(),
+    workers: z.boolean().optional(),
+    lanes: z.number().int().min(1).max(16).optional(),
+    planner: z.boolean().optional(),
+    auditor: z.boolean().optional(),
+    teachers: z.boolean().optional(),
+    review: z.boolean().optional(),
+    exports: z.boolean().optional(),
+    trial_minutes: z.number().int().min(1).max(10_080).optional(),
+    max_turns: z.number().int().min(1).max(100_000).nullable().optional(),
+    promotion: z.enum(["auto", "owner_approval"]).optional(),
+  }),
   /**
    * The owner says no to a confirmed win that waits for approval, or to an attempt held for (or
    * blocked by) an audit: it never becomes the champion, and stays in the record as declined.

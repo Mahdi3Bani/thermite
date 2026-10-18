@@ -200,6 +200,9 @@ export function createHarnessApi(
     });
   });
 
+  // The rig's settings (Edit rig), for the supervisor's own parts: its advisors.
+  app.get("/v1/settings", supervisor, (c) => c.json(service.settings.get()));
+
   // The agents' model route, as control set it: the supervisor hands it over (key included) and
   // reads back which route is in use (never the key).
   app.get("/v1/model-route", supervisor, (c) =>

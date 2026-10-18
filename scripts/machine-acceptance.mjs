@@ -83,7 +83,7 @@ try {
     added,
   );
   let html = await page();
-  const pub = /(ssh-ed25519 [A-Za-z0-9+/=]+ thermite test-box)/.exec(html)?.[1];
+  const pub = /(restrict ssh-ed25519 [A-Za-z0-9+/=]+ thermite test-box)/.exec(html)?.[1];
   check(
     "control made the machine's key and shows only its public half",
     Boolean(pub) && !html.includes("PRIVATE KEY"),

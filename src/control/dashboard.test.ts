@@ -653,6 +653,40 @@ describe("control dashboard", () => {
     assert.equal(s.env.ledger.getRun("js-1")?.status, "paused");
   });
 
+  test("Edit rig: the rig's reported settings, and Save sends only what changed", async () => {
+    const s = await stack();
+    await s.relay();
+    const page = await (await s.get("/ui/rigs/rig-a/edit")).text();
+    assert.match(
+      page,
+      /<input type="checkbox" name="judge" value="1" data-part data-name="Judge" checked>/,
+    );
+    assert.match(page, /<b>Supervisor<\/b> <span class="pt-state on">on<\/span>/);
+    assert.match(page, /<script src="\/ui\/assets\/edit-rig.js" defer>/);
+    const labels = page.match(/class="lb"/g)?.length ?? 0;
+    const tips = page.match(/class="ii" tabindex="0" data-tip="[^"]+"/g)?.length ?? 0;
+    assert.ok(labels > 0 && tips === labels, `${labels} labels, ${tips} with descriptions`);
+    // The form as the page sends it: every switch on but the planner, two workers at a time.
+    const form: Record<string, string> = { csrf: s.csrfFrom(page), choice: "", harness: "pi" };
+    for (const k of ["judge", "workers", "auditor", "teachers", "review", "exports"]) form[k] = "1";
+    Object.assign(form, { lanes: "2", trial_minutes: "20", max_turns: "", promotion: "auto" });
+    const r = await s.post("/ui/rigs/rig-a/edit", form);
+    assert.match(
+      decodeURIComponent(String(r.headers.get("location"))),
+      /Control sent \d settings to rig-a/,
+    );
+    const cmd = s.store.listCommands(5).find((c) => c.kind === "rig_settings");
+    assert.ok(cmd);
+    await s.relay();
+    assert.equal(s.env.service.settings.get().planner, false);
+    assert.equal(s.env.service.settings.get().lanes, 2);
+    await s.relay();
+    assert.match(
+      await (await s.get("/ui/rigs/rig-a/edit")).text(),
+      /name="planner" value="1" data-part data-name="Planner">/,
+    );
+  });
+
   test("the live view: lines are escaped, only control's own script runs, and the composer messages an agent", async () => {
     const s = await stack();
     await s.env.service.applyCommand(s.env.assign);

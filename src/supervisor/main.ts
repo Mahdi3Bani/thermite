@@ -132,6 +132,17 @@ async function main(): Promise<void> {
   // The harness may still be starting: wait for it once, before the relays begin.
   await waitForHarness(harnessUrl, () => stopping);
 
+  /** The rig's settings from the harness; all advisors on when it can't say (an older harness). */
+  let lastSettings = { teachers: true, auditor: true, review: true };
+  const rigSettings = async () => {
+    try {
+      const r = await fetch(`${harnessUrl}/v1/settings`, {
+        headers: { authorization: `Bearer ${harnessToken}` },
+      });
+      if (r.ok) lastSettings = { ...lastSettings, ...((await r.json()) as typeof lastSettings) };
+    } catch {}
+    return lastSettings;
+  };
   // Advisors run on their own: a teacher round can take many minutes.
   const advising = async () => {
     while (!stopping && advisors) {
@@ -142,7 +153,19 @@ async function main(): Promise<void> {
         text: "advisor round started",
       });
       try {
-        adviseState = await adviseOnce({ harnessUrl, harnessToken, home, advisors }, adviseState);
+        // Only the roles both configured and switched on in the rig's settings (Edit rig).
+        const on = await rigSettings();
+        const active = {
+          ...advisors,
+          teachers: on.teachers ? advisors.teachers : [],
+          combiner: on.teachers ? advisors.combiner : undefined,
+          auditor: on.auditor ? advisors.auditor : undefined,
+          panel: on.review ? advisors.panel : [],
+        };
+        adviseState = await adviseOnce(
+          { harnessUrl, harnessToken, home, advisors: active },
+          adviseState,
+        );
         save(advisePath, adviseState);
         const a = adviseState.stats;
         supervisorLive.append({
@@ -305,12 +328,13 @@ async function main(): Promise<void> {
         advisors: advisors
           ? {
               ...adviseState.stats,
-              // Which roles are configured, so control can say whether an audit will be decided.
+              // Which roles are configured and on, so control can say whether an audit will be
+              // decided.
               roles: {
-                teachers: advisors.teachers.length,
-                combiner: Boolean(advisors.combiner),
-                auditor: Boolean(advisors.auditor),
-                panel: advisors.panel.length,
+                teachers: lastSettings.teachers ? advisors.teachers.length : 0,
+                combiner: lastSettings.teachers && Boolean(advisors.combiner),
+                auditor: lastSettings.auditor && Boolean(advisors.auditor),
+                panel: lastSettings.review ? advisors.panel.length : 0,
               },
             }
           : null,

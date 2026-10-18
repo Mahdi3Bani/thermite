@@ -9,7 +9,14 @@ import type { Ledger } from "../ledger.ts";
 import type { Research } from "../research/research.ts";
 import type { HarnessService } from "../service.ts";
 import type { ModelConfig } from "./model.ts";
-import { attribute, type GoalReport, lanesOf, type PlannerInput, plan } from "./planner.ts";
+import {
+  attribute,
+  fallbackPlan,
+  type GoalReport,
+  lanesOf,
+  type PlannerInput,
+  plan,
+} from "./planner.ts";
 import { type Assignment, Registry } from "./registry.ts";
 import type { ResearchTrialSpec } from "./research-worker.ts";
 import type { TrialResult, TrialSpec } from "./worker.ts";
@@ -61,6 +68,9 @@ export interface SchedulerOptions {
   trialWallMs?: number | undefined;
   /** A cap on each trial's turns: none unless configured (THERMITE_MAX_TURNS). */
   maxTurns?: number | undefined;
+  /** The rig's settings: whether workers start trials and the planner plans (default on). */
+  workersOn?: (() => boolean) | undefined;
+  plannerOn?: (() => boolean) | undefined;
   epochCapMs?: number | undefined;
   /** Goal mode: how long an epoch waits for the judge's goal report on a new champion. */
   goalReportWaitMs?: number | undefined;
@@ -494,6 +504,15 @@ export class Scheduler {
     return !giveUp;
   }
 
+  /** New limits from the rig's settings; they apply from the next trial or check. */
+  configure(p: {
+    maxConcurrent?: number;
+    trialWallMs?: number;
+    maxTurns?: number | undefined;
+  }): void {
+    Object.assign(this.o, p);
+  }
+
   private async planEpoch(run: string, contract: Contract, n: number): Promise<void> {
     const laneCount = this.laneCount(run, contract);
     const lanes = lanesOf(laneCount);
@@ -534,7 +553,18 @@ export class Scheduler {
           ? (prompt: string, sig?: AbortSignal) =>
               (this.o.askOpencode as NonNullable<SchedulerOptions["askOpencode"]>)(m, prompt, sig)
           : undefined;
-      p = await plan(input, m, ctrl.signal, ask);
+      // The planner off on this rig: the fixed fallback plan, said so in the epoch's record.
+      if (this.o.plannerOn && !this.o.plannerOn()) {
+        const f = fallbackPlan(input);
+        p = {
+          source: "fallback",
+          tries: 0,
+          valid: false,
+          rawViolations: ["the planner is off on this rig (Edit rig)"],
+          assignments: f.assignments,
+          newFamilies: f.newFamilies,
+        };
+      } else p = await plan(input, m, ctrl.signal, ask);
     } finally {
       this.planning = undefined;
     }
@@ -638,6 +668,7 @@ export class Scheduler {
       if (trials.length >= perEpoch || this.running.has(a.lane)) continue;
       if (last && (!last.ended || !this.settled(last.attempt))) continue;
       if (this.running.size >= this.o.maxConcurrent) continue;
+      if (this.o.workersOn && !this.o.workersOn()) continue;
       if (this.openAttempts(id) >= contract.budget.max_open_attempts) continue;
       if (this.laneWaitMs(id, a.lane, false) > 0) continue;
       this.startTrial(id, contract, epoch.n, a, trials.length + 1, perEpoch);
@@ -682,6 +713,7 @@ export class Scheduler {
         complete = false;
       if (trials.length >= contract.lanes.trials_per_epoch || this.running.has(a.lane)) continue;
       if (this.running.size >= this.o.maxConcurrent) continue;
+      if (this.o.workersOn && !this.o.workersOn()) continue;
       if (this.laneWaitMs(run, a.lane, true) > 0) continue;
       this.startResearchTrial(run, contract, epoch.n, a, clock);
       started = true;

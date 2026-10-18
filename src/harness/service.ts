@@ -37,6 +37,7 @@ import { type Ledger, LedgerError } from "./ledger.ts";
 import { writeExport } from "./outbox.ts";
 import { receivePropagation } from "./propagation.ts";
 import { Reviews } from "./reviews.ts";
+import { RigSettingsStore } from "./rig-settings.ts";
 import { checkV0 } from "./v0.ts";
 
 /** A directive set may not both avoid a family and try or mandate it. */
@@ -59,6 +60,7 @@ const OWNER_ONLY = new Set([
   "conclude",
   "wipe_state",
   "message_agent",
+  "rig_settings",
 ]);
 
 /** Written by an accepted wipe_state; the next controller start wipes the state and removes it. */
@@ -189,8 +191,12 @@ export class HarnessService {
     string,
     { turns: number; tool_calls: number; tokens_in: number; tokens_out: number }
   >();
+  /** The rig's own settings (Edit rig): parts on or off, workers at once, limits, promotion. */
+  readonly settings: RigSettingsStore;
   /** The promotion policy: what happens to a confirmed win (and to one an audit cleared). */
-  readonly promotion: "auto" | "owner_approval";
+  get promotion(): "auto" | "owner_approval" {
+    return this.settings.get().promotion;
+  }
   private readonly targetType: string | undefined;
 
   constructor(input: {
@@ -204,10 +210,26 @@ export class HarnessService {
     promotion?: "auto" | "owner_approval" | undefined;
     /** The rig's target type (cpu, cuda-gpu, ...): an assigned campaign's kit must measure on it. */
     targetType?: string | undefined;
+    /** The rig's settings; none: defaults in memory, with this promotion policy. */
+    settings?: RigSettingsStore | undefined;
   }) {
     this.rigKeys = input.rigKeys;
     this.targetType = input.targetType;
-    this.promotion = input.promotion ?? "owner_approval";
+    this.settings =
+      input.settings ??
+      new RigSettingsStore({
+        judge: true,
+        workers: true,
+        lanes: 1,
+        planner: true,
+        auditor: true,
+        teachers: true,
+        review: true,
+        exports: true,
+        trial_minutes: 20,
+        max_turns: null,
+        promotion: input.promotion ?? "owner_approval",
+      });
     this.rig = input.rig;
     this.clock = input.clock ?? (() => new Date());
     this.ledger = input.ledger;
@@ -367,6 +389,12 @@ export class HarnessService {
         return this.requestWipe(CommandPayloads.wipe_state.parse(payload), by, envelope.issued_at);
       case "approve_promotion":
         return this.approvePromotion(CommandPayloads.approve_promotion.parse(payload), by);
+      case "rig_settings": {
+        const change = CommandPayloads.rig_settings.parse(payload);
+        const now = this.settings.set(change);
+        this.ledger.appendEvent(by, "rig_settings_changed", null, { change, settings: now });
+        return { settings: now };
+      }
       case "decline_promotion":
         return this.declinePromotion(CommandPayloads.decline_promotion.parse(payload), by);
       case "accept_review": {
@@ -1314,6 +1342,8 @@ export class HarnessService {
         ...(this.hardware ? { hardware: this.hardware } : {}),
         // Which model route the agents use (its name and the key's hint, never the key).
         ...(this.models ? { model: this.models.info() } : {}),
+        // What runs on this rig and how (Edit rig).
+        settings: this.settings.get(),
       },
       generated_at: this.clock().toISOString(),
       latest_event: this.ledger.latestEventId(),

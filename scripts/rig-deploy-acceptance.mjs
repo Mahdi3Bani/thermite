@@ -99,7 +99,7 @@ try {
     private_key: "",
   });
   let html = await get("/ui/settings");
-  const pub = /(ssh-ed25519 [A-Za-z0-9+/=]+ thermite test-host)/.exec(html)?.[1];
+  const pub = /(restrict ssh-ed25519 [A-Za-z0-9+/=]+ thermite test-host)/.exec(html)?.[1];
   execSync(`podman exec -i ${host} sh -c 'cat >> /home/thermite/.ssh/authorized_keys'`, {
     input: `${pub}\n`,
     shell: "/bin/sh",

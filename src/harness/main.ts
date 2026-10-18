@@ -36,6 +36,7 @@ import { Judge, type PromotionPolicy } from "./judge/judge.ts";
 import { Ledger } from "./ledger.ts";
 import { settlePropagations } from "./propagation.ts";
 import { Research } from "./research/research.ts";
+import { RigSettingsStore } from "./rig-settings.ts";
 import { busyReason, isolationSelftest, isolationSummary } from "./selftest.ts";
 import { HarnessService, NOT_BEFORE_FILE, wipeIfRequested } from "./service.ts";
 import { checksDir, smokeCheck } from "./smoke-check.ts";
@@ -174,6 +175,23 @@ async function main(): Promise<void> {
   if (promotion !== "auto" && promotion !== "owner_approval") {
     throw new Error(`THERMITE_PROMOTION must be auto or owner_approval, not ${promotion}`);
   }
+  // The rig's settings (Edit rig): the environment gives the defaults, owner commands change them.
+  const settings = new RigSettingsStore(
+    {
+      judge: true,
+      workers: true,
+      lanes: Number(env.THERMITE_MAX_TRIALS ?? "1"),
+      planner: true,
+      auditor: true,
+      teachers: true,
+      review: true,
+      exports: true,
+      trial_minutes: Number(env.THERMITE_TRIAL_MINUTES ?? "20"),
+      max_turns: env.THERMITE_MAX_TURNS ? Number(env.THERMITE_MAX_TURNS) : null,
+      promotion,
+    },
+    join(paths.stateDir, "rig-settings.json"),
+  );
   const service = new HarnessService({
     rig,
     ledger,
@@ -182,6 +200,7 @@ async function main(): Promise<void> {
     rigKeys,
     promotion,
     targetType: driver.type,
+    settings,
   });
   service.onWipe = () => {
     log("harness", "wipe requested: exiting so the next start wipes the state");
@@ -363,10 +382,12 @@ async function main(): Promise<void> {
     runner,
     model,
     owner: "scheduler",
-    maxConcurrent: Number(env.THERMITE_MAX_TRIALS ?? "1"),
-    trialWallMs: Number(env.THERMITE_TRIAL_MINUTES ?? "20") * 60_000,
+    maxConcurrent: settings.get().lanes,
+    trialWallMs: settings.get().trial_minutes * 60_000,
     // No cap on a trial's turns unless one is configured.
-    maxTurns: env.THERMITE_MAX_TURNS ? Number(env.THERMITE_MAX_TURNS) : undefined,
+    maxTurns: settings.get().max_turns ?? undefined,
+    workersOn: () => settings.get().workers,
+    plannerOn: () => settings.get().planner,
     // Each trial runs in the harness the rig's route names: Pi (a worker process) or OpenCode.
     runTrial: (spec, signal) => {
       const m = model();
@@ -409,6 +430,14 @@ async function main(): Promise<void> {
       ? Number(env.THERMITE_LLM_USD_PER_MTOK_OUT)
       : undefined,
   });
+  settings.onChange((s) => {
+    scheduler.configure({
+      maxConcurrent: s.lanes,
+      trialWallMs: s.trial_minutes * 60_000,
+      maxTurns: s.max_turns ?? undefined,
+    });
+    log("harness", "settings changed", { ...s });
+  });
   const info = models.info();
   log("harness", info.source === "none" ? "agents wait for a model route" : "agents ready", {
     route: info.source,
@@ -423,7 +452,8 @@ async function main(): Promise<void> {
     while (!stopping) {
       let worked = false;
       try {
-        worked = await executor.tick();
+        // The judge off (Edit rig): jobs wait in the queue, nothing is measured.
+        worked = settings.get().judge ? await executor.tick() : false;
       } catch (err) {
         log("harness", "executor error", { error: String(err) });
       }
@@ -452,6 +482,7 @@ async function main(): Promise<void> {
       const last = ledger.lastExport();
       const lastAt = last ? Date.parse(last.created_at) : 0;
       if (
+        settings.get().exports &&
         ledger.recordedAfter(last?.through_event ?? 0, ["export_written"]) &&
         Date.now() - lastAt >= exportEveryMs
       ) {

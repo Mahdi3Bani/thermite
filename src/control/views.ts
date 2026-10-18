@@ -193,6 +193,40 @@ export interface RunView {
   timeline: StoredEvent[];
 }
 
+/** The rig's own settings as its harness reports them. */
+export interface RigSettingsView {
+  judge: boolean;
+  workers: boolean;
+  lanes: number;
+  planner: boolean;
+  auditor: boolean;
+  teachers: boolean;
+  review: boolean;
+  exports: boolean;
+  trial_minutes: number;
+  max_turns: number | null;
+  promotion: "auto" | "owner_approval";
+}
+
+function readSettings(v: unknown): RigSettingsView | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  const b = (k: string) => o[k] !== false;
+  return {
+    judge: b("judge"),
+    workers: b("workers"),
+    lanes: typeof o.lanes === "number" ? o.lanes : 1,
+    planner: b("planner"),
+    auditor: b("auditor"),
+    teachers: b("teachers"),
+    review: b("review"),
+    exports: b("exports"),
+    trial_minutes: typeof o.trial_minutes === "number" ? o.trial_minutes : 20,
+    max_turns: typeof o.max_turns === "number" ? o.max_turns : null,
+    promotion: o.promotion === "auto" ? "auto" : "owner_approval",
+  };
+}
+
 export interface RigView {
   id: string;
   last_seen: string;
@@ -212,6 +246,8 @@ export interface RigView {
   checks: Record<string, RigCheckView>;
   /** Which model route its agents use, from its signed report (older harnesses send none). */
   model: RigModelView | null;
+  /** The rig's own settings (Edit rig), from its signed report; null from an older harness. */
+  settings: RigSettingsView | null;
 }
 
 export interface RigModelView {
@@ -749,7 +785,7 @@ export function rigView(
     v.agents.duplicates = v.attempts.filter((a) => a.lifecycle === "duplicate").length;
   }
   const summary = u.summary as
-    | { jobs?: Record<string, number>; hardware?: unknown; model?: unknown }
+    | { jobs?: Record<string, number>; hardware?: unknown; model?: unknown; settings?: unknown }
     | undefined;
   const now = opts.now ?? Date.now();
   const allJobs = [...jobs.values()];
@@ -762,6 +798,7 @@ export function rigView(
     supervisor: store.supervisor(u.id),
     hardware: readHardware(summary?.hardware),
     model: readModelInfo(summary?.model),
+    settings: readSettings(summary?.settings),
     jobs: summary?.jobs ?? {},
     runs: [...runs.values()],
     recent: events.slice(-50).reverse(),

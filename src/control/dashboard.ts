@@ -5,9 +5,15 @@ import { join } from "node:path";
 import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { getCookie, setCookie } from "hono/cookie";
-import { COMMAND_KINDS, type CommandKind } from "../core/commands.ts";
+import { COMMAND_KINDS, type CommandKind, CommandPayloads } from "../core/commands.ts";
 import { type ClusterFacts, checkCluster, clusterLine } from "./clusters/facts.ts";
-import { type ClusterKubectl, KUBE_NAME, kubeError, realKubectl } from "./clusters/kubectl.ts";
+import {
+  type ClusterKubectl,
+  inspectKubeconfig,
+  KUBE_NAME,
+  kubeError,
+  realKubectl,
+} from "./clusters/kubectl.ts";
 import { asList, clusterRigObjects } from "./clusters/manifests.ts";
 import type { Credential } from "./credential.ts";
 import { newToken } from "./credential.ts";
@@ -74,6 +80,7 @@ import {
   shell,
   stackBar,
 } from "./ui/components.ts";
+import { EDIT_RIG_JS } from "./ui/edit-rig-client.ts";
 import { liveEntryHtml, liveLinesHtml, resultJoin } from "./ui/live.ts";
 import { infoLabel, newCampaignBody } from "./ui/new-campaign.ts";
 import { NEW_CAMPAIGN_JS } from "./ui/new-campaign-client.ts";
@@ -101,6 +108,7 @@ import {
   type CampaignView,
   campaignViews,
   leaderboard,
+  type RigSettingsView,
   type RigView,
   type RunView,
   rigView,
@@ -1389,7 +1397,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
 <p class="small">Its reports are refused until you accept the key. A full reset keeps a rig's key: a change is expected only when the rig's identity was rebuilt on purpose. Check the fingerprint with the rig's deployment before accepting.</p>
 <div class="row"><code>${esc(fingerprint(key.pending))}</code><span class="grow"></span><form class="inline" method="post" action="/ui/rigs/${encodeURIComponent(u.id)}/key/accept"><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="fingerprint" value="${esc(fingerprint(key.pending))}"><button class="primary">Accept this key</button></form></div></div>`
       : "";
-    const actions = `<a class="btn" href="/ui/rigs/${encodeURIComponent(u.id)}/live">${icon.terminal}Live</a>
+    const actions = `<a class="btn" href="/ui/rigs/${encodeURIComponent(u.id)}/edit">Edit rig</a><a class="btn" href="/ui/rigs/${encodeURIComponent(u.id)}/live">${icon.terminal}Live</a>
 ${cmdForm(c, { rig: u.id, kind: "export_now", label: "Export now", back })}
 <details class="menu"><summary class="btn">${icon.dots}</summary><div class="menu-body">
 ${opts.driver ? `<form method="post" action="/ui/rigs/${encodeURIComponent(u.id)}/restart"><input type="hidden" name="csrf" value="${t}"><button style="width:100%;justify-content:center">Restart the rig's containers</button></form>` : `<div class="muted small">No deployment driver: restarts are not available.</div>`}
@@ -2183,7 +2191,7 @@ ${
 <span class="dq-main"><span class="dq-head">${esc(m.name)} <span class="muted" style="font-weight:400">· SSH</span></span>${status}<span class="dq-sub"><span class="dq-where">${esc(m.user)}@${esc(m.address)}${m.port === 22 ? "" : `:${m.port}`}</span><span class="chip">key ${esc(m.key_fingerprint.slice(-6))}</span>${trusted ? `<span class="dq-where">host key ${esc(fingerprintOf(m.host_keys[0]?.split(/\s+/)[2] ?? "").slice(0, 19))}…</span>` : ""}</span></span>
 <span class="dq-side"><span class="dq-btns">${trusted ? form("check", "Check again") : ""}</span></span>
 </summary><div class="dq-body">${hostKey}${machineFacts(m, t)}
-<div class="muted small" style="margin:10px 0 4px">Control logs in as ${esc(m.user)} with the key whose public half is below. It must be in that user's <code>~/.ssh/authorized_keys</code> on the machine.</div><pre class="json" style="white-space:pre-wrap;word-break:break-all">${esc(m.public_key)}</pre>
+<div class="muted small" style="margin:10px 0 4px">Control logs in as ${esc(m.user)} with this key. Put this line in that user's <code>~/.ssh/authorized_keys</code> on the machine: <code>restrict</code> turns off forwarding and terminals, which control does not use.</div><pre class="json" style="white-space:pre-wrap;word-break:break-all">restrict ${esc(m.public_key)}</pre>
 ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm danger"')}</div></details>`;
       })
       .join("");
@@ -2290,6 +2298,8 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
     } catch (err) {
       return fail(err instanceof Error ? err.message : String(err));
     }
+    const seen = await inspectKubeconfig(kube, kubeconfig);
+    if (seen.problems.length) return fail(`Not added: ${seen.problems.join("; ")}.`);
     if (context && !contexts.contexts.includes(context))
       return fail(
         `The kubeconfig has no context "${context}": it has ${contexts.contexts.join(", ") || "none"}.`,
@@ -2307,10 +2317,14 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
       by: "owner:ui",
     });
     const why = await checkClusterNow(name);
+    const careful = seen.warnings.length ? ` Note: ${seen.warnings.join("; ")}.` : "";
     return c.redirect(
       why
-        ? settingsUrl("error", `"${name}" is added, but the check failed: ${why}`)
-        : settingsUrl("ok", `"${name}" is added and checked: see what control found below.`),
+        ? settingsUrl("error", `"${name}" is added, but the check failed: ${why}${careful}`)
+        : settingsUrl(
+            "ok",
+            `"${name}" is added and checked: see what control found below.${careful}`,
+          ),
       303,
     );
   };
@@ -3329,6 +3343,18 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         303,
       );
     }
+    const given = giveRigModel(rig, choice, harness);
+    return c.redirect(
+      "error" in given ? settingsUrl("error", given.error) : settingsUrl("ok", given.ok),
+      303,
+    );
+  });
+  /** Gives a rig a provider's model under a harness, as Providers and Edit rig both do. */
+  const giveRigModel = (
+    rig: string,
+    choice: string,
+    harness: Harness,
+  ): { ok: string } | { error: string } => {
     const [pRaw, mRaw] = choice.split("|");
     let provider = "";
     let model = "";
@@ -3340,28 +3366,214 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     }
     const p = store.provider(provider);
     if (!p?.models.some((m) => m.id === model))
-      return c.redirect(settingsUrl("error", "That provider does not list that model."), 303);
+      return { error: "That provider does not list that model." };
     // OpenCode's free models (and a keyless OpenCode provider) need its own client.
     if (
       harness !== "opencode" &&
       isOpencodeOwn(p) &&
       (p.type === "opencode" || !p.key_sealed || model.endsWith("-free"))
     )
-      return c.redirect(
-        settingsUrl(
-          "error",
+      return {
+        error:
           "OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig.",
-        ),
-        303,
-      );
+      };
     store.assignRigModel(rig, { provider, model, harness });
     store.audit("owner:ui", "rig_model_given", { rig, provider, model, harness });
-    return c.redirect(
-      settingsUrl(
-        "ok",
-        `${rig} takes ${model} from "${provider}" under ${HARNESSES[harness]} within a minute, and checks it.`,
-      ),
-      303,
+    return {
+      ok: `${rig} takes ${model} from "${provider}" under ${HARNESSES[harness]} within a minute, and checks it.`,
+    };
+  };
+
+  // ---------------------------------------------------------------- Edit rig
+  // What runs on a rig and how, from its page: parts on or off, workers at once, limits, the
+  // workers' model, the promotion policy. The harness parts go as one signed owner command
+  // (rig_settings) with only what changed; the rig reports the settings it runs with.
+  const PARTS: { id: keyof RigSettingsView; name: string; does: string; off: string }[] = [
+    {
+      id: "judge",
+      name: "Judge",
+      does: "It builds and measures each change that the agents submit, and it does the goal checks. Agents cannot change it.",
+      off: "Changes wait in its queue. Nothing is measured, thus no change becomes the champion.",
+    },
+    {
+      id: "workers",
+      name: "Workers (agents)",
+      does: "Each worker is an agent that tries one idea in its own copy of the code, then submits a change to the judge.",
+      off: "No new trial starts. A trial that runs at this time continues to its end.",
+    },
+    {
+      id: "planner",
+      name: "Planner",
+      does: "Before each round of trials, it reads what the agents found and gives each worker its next direction.",
+      off: "Workers get the fixed plan that Thermite makes without a model.",
+    },
+    {
+      id: "auditor",
+      name: "Auditor",
+      does: "It reads a change before it becomes the champion, when the campaign asks for an audit. Used only if the rig has one configured.",
+      off: "Audits wait for you in Needs you.",
+    },
+    {
+      id: "teachers",
+      name: "Teacher pair",
+      does: "Two strong models review the work of the agents and give advice to the planner. Used only if the rig has them configured.",
+      off: "The planner works without their advice.",
+    },
+    {
+      id: "review",
+      name: "Review panel",
+      does: "It decides goals that code cannot check. Used only if the rig has one configured.",
+      off: "Those goals wait for your decision.",
+    },
+    {
+      id: "exports",
+      name: "Exports",
+      does: "Every hour, the rig writes its results for the supervisor to send to the results repository.",
+      off: "Results stay on the rig only. If the rig is lost, its results are lost.",
+    },
+  ];
+  app.get("/ui/assets/edit-rig.js", (c) =>
+    c.body(EDIT_RIG_JS, 200, {
+      "content-type": "text/javascript; charset=utf-8",
+      "cache-control": "no-cache",
+    }),
+  );
+  app.get("/ui/rigs/:rig/edit", (c) => {
+    const vs = views();
+    const u = vs.find((x) => x.id === c.req.param("rig"));
+    if (!u)
+      return page(
+        c,
+        { title: "Not found", active: "rigs" },
+        `<div class="card"><div class="empty">No such rig.</div></div>`,
+        vs,
+      );
+    const s = u.settings;
+    const t = csrf(c);
+    const rName = encodeURIComponent(u.id);
+    const providers = store.providers().filter((p) => p.models.length);
+    const want = store.rigModels()[u.id];
+    const sw = (p: (typeof PARTS)[number]) => `<div class="pt">
+<label class="sw"><input type="checkbox" name="${p.id}" value="1" data-part data-name="${esc(p.name)}"${s?.[p.id] ? " checked" : ""}${s ? "" : " disabled"}><span class="knob"></span></label>
+<div><div><b>${esc(p.name)}</b> <span class="pt-state ${s?.[p.id] ? "on" : "off"}">${s ? (s[p.id] ? "on" : "off") : "?"}</span></div><div class="muted small">${esc(p.does)}</div><div class="small pt-off"><b>When it is off:</b> ${esc(p.off)}</div>${p.id === "workers" ? `<label class="fd" style="max-width:220px;margin-top:8px">${infoLabel("Workers at a time", "How many agents work at the same time. Each one uses its own CPUs, memory and disk, and the same model.")}<input name="lanes" type="number" min="1" max="16" value="${s?.lanes ?? 1}"${s ? "" : " disabled"}></label>` : ""}</div></div>`;
+    const modelOptions = `<option value="">its own settings</option>${providers
+      .map(
+        (p) =>
+          `<optgroup label="${esc(p.name)}">${p.models
+            .map(
+              (m) =>
+                `<option value="${esc(`${encodeURIComponent(p.name)}|${encodeURIComponent(m.id)}`)}"${want?.provider === p.name && want.model === m.id ? " selected" : ""}>${esc(m.id)}</option>`,
+            )
+            .join("")}</optgroup>`,
+      )
+      .join("")}`;
+    const placed = store.machineRig(u.id) ?? store.clusterRig(u.id);
+    const where = placed
+      ? "machine" in placed
+        ? `The machine ${esc(placed.machine)}, set up by control. Stop, start or remove it from the rig's page.`
+        : `The cluster ${esc(placed.cluster)}, namespace ${esc(placed.namespace)}, set up by control.`
+      : "Set up outside control (for example by your own infrastructure tooling). Its GPUs and version change with a roll.";
+    return page(
+      c,
+      {
+        title: `Edit ${u.id}`,
+        crumbs: [
+          { href: "/ui/rigs", text: "Rigs" },
+          { href: `/ui/rigs/${rName}`, text: u.id },
+        ],
+        active: "rigs",
+      },
+      `<p class="run-said">Change what ${esc(u.id)} runs. Control sends the change to the rig as a signed command, and the rig takes it in less than one minute. A part that you turn off keeps all its data.</p>
+${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness is older: it does not report its settings and cannot take them. They work after its next roll. The workers' model works at this time.</div>`}
+<form id="edit-rig" method="post" action="/ui/rigs/${rName}/edit"><input type="hidden" name="csrf" value="${t}">
+<div class="sec"><h2>1 · Parts of the rig</h2><div class="card flat">${PARTS.map(sw).join("")}
+<div class="pt locked"><label class="sw"><input type="checkbox" checked disabled><span class="knob"></span></label><div><div><b>Supervisor</b> <span class="pt-state on">on</span></div><div class="muted small">It relays reports to control, fetches projects and kits, and does all git work for the rig.</div><div class="small pt-off"><b>Always on.</b> It connects the rig to control. Without it, control cannot see or steer the rig.</div></div></div></div></div>
+<div class="sec"><h2>2 · The agents</h2><div class="g3">
+<label class="fd">${infoLabel("Workers' model", "The model that the workers use, from Settings › Providers.")}<select name="choice">${modelOptions}</select></label>
+<label class="fd">${infoLabel("Harness", "Pi or OpenCode v2: the program that runs each worker. OpenCode's own free models need OpenCode v2.")}<select name="harness"><option value="pi"${want?.harness !== "opencode" ? " selected" : ""}>Pi</option><option value="opencode"${want?.harness === "opencode" ? " selected" : ""}>OpenCode v2</option></select></label>
+<label class="fd">${infoLabel("One trial lasts (minutes)", "How long a worker can work on one idea before it must submit, when the campaign sets no limit.")}<input name="trial_minutes" type="number" min="1" value="${s?.trial_minutes ?? ""}"${s ? "" : " disabled"}></label>
+<label class="fd">${infoLabel("Turns per trial", "How many model turns a worker can take in one trial. Empty: no limit.")}<input name="max_turns" type="number" min="1" value="${s?.max_turns ?? ""}" placeholder="no limit"${s ? "" : " disabled"}></label>
+</div></div>
+<div class="sec"><h2>3 · When a change becomes the champion</h2><div class="g2">
+<label class="ch${s?.promotion === "auto" ? " on" : ""}"><input type="radio" name="promotion" value="auto"${s?.promotion === "auto" ? " checked" : ""}${s ? "" : " disabled"} style="margin:2px 8px 0 0"><span><b>Automatically</b><br><span class="muted small">The judge confirms the change on new runs, and it becomes the champion. A change that the campaign sends to an audit still waits for the audit.</span></span></label>
+<label class="ch${s?.promotion === "owner_approval" ? " on" : ""}"><input type="radio" name="promotion" value="owner_approval"${s?.promotion === "owner_approval" ? " checked" : ""}${s ? "" : " disabled"} style="margin:2px 8px 0 0"><span><b>Ask me for each change</b><br><span class="muted small">Each confirmed change waits for you in Needs you.</span></span></label>
+</div><div class="muted small" style="margin-top:6px">A campaign can set its own rule when it starts; that rule comes first for its runs.</div></div>
+<div class="sec"><h2>4 · Where it runs</h2><div class="card"><dl class="facts"><dt>Place</dt><dd>${where}</dd>${u.hardware ? `<dt>Hardware</dt><dd>${hardwareLine(u.hardware)}</dd>` : ""}</dl></div></div>
+<div class="card hl" style="margin-top:16px"><b>What changes when you save</b><ul class="chg" id="chg"><li>Nothing changes.</li></ul><div class="act"><button class="primary big" id="save">Save changes</button><a class="btn" href="/ui/rigs/${rName}">Cancel</a></div></div>
+</form>
+<script src="/ui/assets/edit-rig.js" defer></script>`,
+      vs,
+    );
+  });
+  app.post("/ui/rigs/:rig/edit", async (c) => {
+    const rig = c.req.param("rig");
+    const u = views().find((x) => x.id === rig);
+    const back = (k: "ok" | "error", msg: string) =>
+      c.redirect(`/ui/rigs/${encodeURIComponent(rig)}?${k}=${encodeURIComponent(msg)}`, 303);
+    if (!u) return back("error", "No such rig.");
+    const f = await c.req.parseBody();
+    const said: string[] = [];
+    // The workers' model: as in Providers.
+    const choice = String(f.choice ?? "");
+    const harness: Harness = f.harness === "opencode" ? "opencode" : "pi";
+    const want = store.rigModels()[rig];
+    const was = want
+      ? `${encodeURIComponent(want.provider)}|${encodeURIComponent(want.model)}`
+      : "";
+    if (choice !== was || (choice && harness !== want?.harness)) {
+      if (!choice) {
+        store.assignRigModel(rig, null);
+        store.audit("owner:ui", "rig_model_given", { rig, provider: null, model: null });
+        said.push("its own model settings");
+      } else {
+        const given = giveRigModel(rig, choice, harness);
+        if ("error" in given) return back("error", given.error);
+        said.push("a new model");
+      }
+    }
+    // The harness's settings: only what changed, as one signed command.
+    const s = u.settings;
+    if (s) {
+      const change: Record<string, unknown> = {};
+      for (const p of PARTS) {
+        const on = f[p.id] === "1";
+        if (on !== s[p.id]) change[p.id] = on;
+      }
+      const num = (k: string) => {
+        const v = String(f[k] ?? "").trim();
+        return v === "" ? null : Number(v);
+      };
+      const lanes = num("lanes");
+      if (lanes !== null && lanes !== s.lanes) change.lanes = lanes;
+      const minutes = num("trial_minutes");
+      if (minutes !== null && minutes !== s.trial_minutes) change.trial_minutes = minutes;
+      const turns = num("max_turns");
+      if (turns !== s.max_turns) change.max_turns = turns;
+      const promotion = String(f.promotion ?? s.promotion);
+      if (promotion !== s.promotion) change.promotion = promotion;
+      if (Object.keys(change).length) {
+        const parsed = CommandPayloads.rig_settings.safeParse(change);
+        if (!parsed.success)
+          return back(
+            "error",
+            `Not saved: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`,
+          );
+        issueCommand(store, opts.privateKeyPem, {
+          rig,
+          kind: "rig_settings",
+          payload: parsed.data,
+          issuedBy: "owner:ui",
+        });
+        said.push(
+          `${Object.keys(change).length} setting${Object.keys(change).length === 1 ? "" : "s"}`,
+        );
+      }
+    }
+    return back(
+      "ok",
+      said.length
+        ? `Control sent ${said.join(" and ")} to ${rig}. The rig takes the change in less than one minute.`
+        : "Nothing changed.",
     );
   });
 
