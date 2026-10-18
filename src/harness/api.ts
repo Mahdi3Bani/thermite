@@ -11,6 +11,7 @@ import { ControlRoute } from "./agents/model-source.ts";
 import { Registry } from "./agents/registry.ts";
 import { laneCacheEnv } from "./agents/workspace.ts";
 import { type Role, type Runner, RunRequest } from "./broker/runner.ts";
+import { chatgptRequest, chatgptRouteAllowed } from "./chatgpt.ts";
 import { LedgerError } from "./ledger.ts";
 import type { Research } from "./research/research.ts";
 import { Reviews } from "./reviews.ts";
@@ -149,6 +150,13 @@ export function createHarnessApi(
     if (!m || m.api === "opencode" || m.api === "claude")
       return c.json({ error: "no provider to reach" }, 404);
     const rest = c.req.path.slice("/v1/model-proxy/".length);
+    // A ChatGPT sign-in reaches only OpenAI's Responses API and the account's model list.
+    const chatgpt = m.api === "chatgpt";
+    if (chatgpt && !chatgptRouteAllowed(c.req.method, rest))
+      return c.json(
+        { error: "a ChatGPT sign-in reaches only POST /responses and GET /models" },
+        403,
+      );
     const target = new URL(`${m.baseUrl}/${rest}${new URL(c.req.url).search}`);
     const headers: Record<string, string> = {};
     for (const k of [
@@ -162,11 +170,19 @@ export function createHarnessApi(
       if (v) headers[k] = v;
     }
     if (m.api === "anthropic") headers["x-api-key"] = m.apiKey;
-    else headers.authorization = `Bearer ${m.apiKey}`;
-    const body =
+    else headers.authorization = `Bearer ${m.keyNow?.() ?? m.apiKey}`;
+    const raw =
       c.req.method === "GET" || c.req.method === "HEAD"
         ? undefined
         : Buffer.from(await c.req.arrayBuffer());
+    let body: Buffer | undefined = raw;
+    if (raw && chatgpt) {
+      try {
+        body = chatgptRequest(raw);
+      } catch (err) {
+        return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+      }
+    }
     if (body) headers["content-length"] = String(body.length);
     // node:http, not fetch: a long model call must not meet fetch's header timeout.
     return await new Promise<Response>((resolve) => {

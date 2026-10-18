@@ -4,7 +4,8 @@ import { type AdvisorRuntime, AdvisorsConfig } from "./advisors.ts";
  * The advisors' models that control gives a rig (the owner's choice for each role on the rig's
  * Edit page), as runtimes the supervisor runs. A role control gives a model replaces the
  * supervisor's own configuration for that role; a role it gives none keeps it. A Claude
- * subscription's role runs in Claude Code; an API-key route runs here with read-only tools.
+ * subscription's role runs in Claude Code; an API-key route or a ChatGPT sign-in runs here with
+ * read-only tools (a sign-in's access token lasts an hour; control's routes are read each round).
  * OpenCode's own models need OpenCode, which advisors do not run, so such a route is skipped.
  */
 
@@ -40,7 +41,8 @@ export function runtimeOf(route: AdvisorRoute, name: string): AdvisorRuntime | u
       effort: EFFORTS.find((e) => e === route.effort),
       timeout_s: 1800,
     };
-  if (route.type !== "openai" && route.type !== "anthropic") return undefined;
+  if (route.type !== "openai" && route.type !== "anthropic" && route.type !== "chatgpt")
+    return undefined;
   const reasoning = route.reasoning;
   return {
     name,

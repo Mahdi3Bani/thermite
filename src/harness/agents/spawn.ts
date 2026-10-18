@@ -14,6 +14,25 @@ export type AnyTrial =
 const MODEL_ENV = [...MODEL_ENV_NAMES, "NODE_OPTIONS", "LANG"];
 
 /**
+ * The route a worker process gets. A ChatGPT sign-in's token is renewed hourly and stays in the
+ * harness: the worker reaches the model through the harness's proxy with its trial's own token,
+ * which stops working when the trial ends.
+ */
+export function workerRoute(
+  model: ModelConfig,
+  apiPort: number,
+  trialToken: string | undefined,
+): ModelConfig {
+  if (model.api !== "chatgpt") return model;
+  return {
+    ...model,
+    baseUrl: `http://127.0.0.1:${apiPort}/v1/model-proxy`,
+    apiKey: `trial.${trialToken ?? ""}`,
+    keyNow: undefined,
+  };
+}
+
+/**
  * Runs one trial's worker process. Under the broker it runs as the lane's own agent user
  * (`agent-N`), which can read none of the harness's state, kits, secrets or lane files and
  * cannot reach the broker: its tools go through the harness API with its trial token. Its
@@ -37,6 +56,7 @@ export async function spawnTrial(
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const specFile = join(dir, "trial.json");
   writeFileSync(specFile, JSON.stringify(trial), { mode: 0o600 });
+  const route = model ? workerRoute(model, apiPort, spec.token) : undefined;
   await runner.handOver(dir, role);
   const main = fileURLToPath(new URL("./worker-main.js", import.meta.url));
   const abort = () => void runner.killRole(role).catch(() => 0);
@@ -55,7 +75,7 @@ export async function spawnTrial(
             .map((k) => [k, process.env[k] as string]),
         ),
         // Only the worker's own user can read its environment; the lane's commands run as another.
-        ...(model ? modelEnv(model) : {}),
+        ...(route ? modelEnv(route) : {}),
         THERMITE_HARNESS_URL: `http://127.0.0.1:${apiPort}`,
       },
       timeoutMs: spec.wallMs + 120_000,

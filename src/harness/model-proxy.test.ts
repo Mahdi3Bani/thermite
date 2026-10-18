@@ -84,4 +84,87 @@ describe("the model proxy", () => {
       p.server.close();
     }
   });
+
+  test("a ChatGPT sign-in: only the Responses API and the model list, each request made to fit, with the newest token", async () => {
+    const p = await provider();
+    try {
+      const env = makeJudgeEnv();
+      const file = join(mkdtempSync(join(tmpdir(), "thermite-proxy-")), "model-route.json");
+      env.service.models = new ModelSource(file, undefined);
+      const route = (token: string, revision: string) => ({
+        name: "chatgpt-pro",
+        type: "chatgpt" as const,
+        harness: "opencode" as const,
+        version: 1,
+        base_url: `${p.url}/v1`,
+        model: "gpt-test",
+        context_window: 0,
+        max_tokens: 0,
+        reasoning: null,
+        key_hint: "…0001",
+        revision,
+        api_key: token,
+      });
+      env.service.models.set(route("access-token-one", "aaaaaaaa"));
+      const api = createHarnessApi(env.service, { supervisor: "sup-token-abcdef" });
+      const auth = { authorization: `Bearer ${env.service.mintProxyToken()}` };
+      const sent = await api.request("/v1/model-proxy/responses", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...auth },
+        body: JSON.stringify({
+          model: "gpt-test",
+          stream: false,
+          store: true,
+          max_output_tokens: 32000,
+          temperature: 0.2,
+          previous_response_id: "resp_old",
+          instructions: "Be brief.",
+          input: [
+            { role: "system", content: "You are a worker." },
+            { type: "message", role: "user", content: "hi" },
+          ],
+        }),
+      });
+      assert.equal(sent.status, 200);
+      assert.equal(p.seen[0]?.url, "/v1/responses");
+      assert.equal(p.seen[0]?.headers.authorization, "Bearer access-token-one");
+      assert.deepEqual(JSON.parse(String(p.seen[0]?.body)), {
+        model: "gpt-test",
+        stream: true,
+        store: false,
+        instructions: "Be brief.",
+        input: [
+          { role: "developer", content: "You are a worker." },
+          { type: "message", role: "user", content: "hi" },
+        ],
+      });
+      // Control renewed the token: the next call carries the new one.
+      env.service.models.set(route("access-token-two", "bbbbbbbb"));
+      assert.equal((await api.request("/v1/model-proxy/models", { headers: auth })).status, 200);
+      assert.equal(p.seen[1]?.url, "/v1/models");
+      assert.equal(p.seen[1]?.headers.authorization, "Bearer access-token-two");
+      // Nothing else reaches OpenAI with the plan's token.
+      for (const [method, path] of [
+        ["POST", "chat/completions"],
+        ["GET", "responses"],
+        ["POST", "files"],
+      ] as const) {
+        const r = await api.request(`/v1/model-proxy/${path}`, {
+          method,
+          headers: { "content-type": "application/json", ...auth },
+          ...(method === "POST" ? { body: "{}" } : {}),
+        });
+        assert.equal(r.status, 403, `${method} ${path}`);
+      }
+      const notJson = await api.request("/v1/model-proxy/responses", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...auth },
+        body: "not json",
+      });
+      assert.equal(notJson.status, 400);
+      assert.equal(p.seen.length, 2);
+    } finally {
+      p.server.close();
+    }
+  });
 });

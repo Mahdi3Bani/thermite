@@ -1,6 +1,7 @@
 import { createModels, createProvider, type Model } from "@earendil-works/pi-ai";
 import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
+import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 
 /**
  * The harness's model route: an OpenAI-compatible endpoint (for example a LiteLLM or vLLM
@@ -10,13 +11,28 @@ import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completio
 
 export type ReasoningEffort = "off" | "low" | "medium" | "high";
 
+/** Where a ChatGPT sign-in's access token is used: OpenAI's Responses API (and its model list). */
+export const CHATGPT_API = "https://api.openai.com/v1";
+/** OpenAI's code when a ChatGPT plan's usage is full. Its reset time is not given. */
+export const CHATGPT_LIMIT_CODE = "subscription_sharing_usage_limit_exceeded";
+/** How long agents wait before they try a full ChatGPT plan again (OpenAI gives no reset time). */
+export const CHATGPT_LIMIT_WAIT_MS = 15 * 60_000;
+
+/** When agents may try again after a provider's error, if it said a ChatGPT plan's usage is full. */
+export function usageLimitRetry(error: string | undefined, now = Date.now()): string | undefined {
+  return error?.includes(CHATGPT_LIMIT_CODE)
+    ? new Date(now + CHATGPT_LIMIT_WAIT_MS).toISOString()
+    : undefined;
+}
+
 export interface ModelConfig {
   /**
    * The provider's API: OpenAI-compatible chat completions (the default), Anthropic's Messages,
-   * OpenCode's own models (only the OpenCode harness reaches those), or a Claude subscription
-   * (only Claude Code may use it; apiKey is then its token).
+   * OpenCode's own models (only the OpenCode harness reaches those), a Claude subscription
+   * (only Claude Code may use it; apiKey is then its token), or a ChatGPT sign-in (OpenAI's
+   * Responses API; apiKey is then a one-hour access token that control renews).
    */
-  api?: "openai" | "anthropic" | "opencode" | "claude" | undefined;
+  api?: "openai" | "anthropic" | "opencode" | "claude" | "chatgpt" | undefined;
   /** The harness the agents run in: Pi, in-process (the default), OpenCode v2 or Claude Code. */
   harness?: "pi" | "opencode" | "claude-code" | undefined;
   baseUrl: string;
@@ -31,6 +47,8 @@ export interface ModelConfig {
   reasoning?: ReasoningEffort | undefined;
   /** Claude Code's effort level, for a Claude subscription (--effort). */
   effort?: "low" | "medium" | "high" | "xhigh" | "max" | undefined;
+  /** The key at the time of each call, when it is renewed while the route stays (a ChatGPT sign-in). */
+  keyNow?: (() => string) | undefined;
 }
 
 export function reasoningFromEnv(raw: string | undefined): ReasoningEffort | undefined {
@@ -84,9 +102,12 @@ export function modelConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ModelC
     api !== "openai" &&
     api !== "anthropic" &&
     api !== "opencode" &&
-    api !== "claude"
+    api !== "claude" &&
+    api !== "chatgpt"
   )
-    throw new Error(`THERMITE_MODEL_API must be openai, anthropic, opencode or claude, not ${api}`);
+    throw new Error(
+      `THERMITE_MODEL_API must be openai, anthropic, opencode, claude or chatgpt, not ${api}`,
+    );
   const harness = setting(env, MODEL_SETTINGS.harness);
   if (
     harness !== undefined &&
@@ -101,7 +122,10 @@ export function modelConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ModelC
       "a Claude subscription (THERMITE_MODEL_API=claude) runs only with THERMITE_AGENT_HARNESS=claude-code, and that harness only with it",
     );
   return {
-    api: api === "anthropic" || api === "opencode" || api === "claude" ? api : undefined,
+    api:
+      api === "anthropic" || api === "opencode" || api === "claude" || api === "chatgpt"
+        ? api
+        : undefined,
     harness: harness === "opencode" || harness === "claude-code" ? harness : undefined,
     baseUrl: baseUrl.replace(/\/$/, ""),
     model,
@@ -135,6 +159,7 @@ export function modelEnv(cfg: ModelConfig): Record<string, string> {
 
 export function buildModel(cfg: ModelConfig) {
   if (cfg.api === "anthropic") return buildAnthropic(cfg);
+  if (cfg.api === "chatgpt") return buildChatGPT(cfg);
   const provider = "thermite-qwen";
   const model: Model<"openai-completions"> = {
     id: cfg.model,
@@ -208,6 +233,50 @@ function buildAnthropic(cfg: ModelConfig) {
       },
       models: [model],
       api: anthropicMessagesApi(),
+    }),
+  );
+  const resolved = models.getModel(provider, cfg.model);
+  if (!resolved) throw new Error(`model ${cfg.model} did not register`);
+  return { models, model: resolved, thinkingLevel: cfg.reasoning ?? ("off" as const) };
+}
+
+/**
+ * A ChatGPT sign-in: OpenAI's Responses API, as pi-ai's own "openai" provider sends it. Direct to
+ * OpenAI, pi-ai leaves out the fields this route refuses (it knows the access token from an API
+ * key); through the harness's proxy, the proxy does. Its models reason: the instructions go as a
+ * developer message, which the route takes (it refuses system messages), and no reasoning effort
+ * is sent unless one is set. The key is read at each call, because control renews it hourly.
+ */
+function buildChatGPT(cfg: ModelConfig) {
+  const provider = "openai";
+  const model: Model<"openai-responses"> = {
+    id: cfg.model,
+    name: cfg.model,
+    api: "openai-responses",
+    provider,
+    baseUrl: cfg.baseUrl,
+    reasoning: true,
+    thinkingLevelMap: { off: cfg.reasoning === "off" ? "none" : null },
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: cfg.contextWindow,
+    maxTokens: cfg.maxTokens,
+    compat: { supportsMaxOutputTokens: false, supportsLongCacheRetention: false },
+  };
+  const models = createModels();
+  models.setProvider(
+    createProvider({
+      id: provider,
+      name: "ChatGPT sign-in",
+      baseUrl: cfg.baseUrl,
+      auth: {
+        apiKey: {
+          name: "ChatGPT access token",
+          resolve: async () => ({ auth: { apiKey: cfg.keyNow?.() ?? cfg.apiKey } }),
+        },
+      },
+      models: [model],
+      api: openAIResponsesApi(),
     }),
   );
   const resolved = models.getModel(provider, cfg.model);

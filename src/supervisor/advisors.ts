@@ -29,8 +29,11 @@ const Runtime = z.discriminatedUnion("runtime", [
   z.strictObject({
     name: z.string().min(1).max(60),
     runtime: z.literal("openai"),
-    /** The provider's API (Anthropic's Messages, or OpenAI-compatible: the default). */
-    api: z.enum(["openai", "anthropic"]).optional(),
+    /**
+     * The provider's API: Anthropic's Messages, a ChatGPT sign-in (OpenAI's Responses API, with
+     * a one-hour access token from control), or OpenAI-compatible (the default).
+     */
+    api: z.enum(["openai", "anthropic", "chatgpt"]).optional(),
     base_url: z.url(),
     model: z.string().min(1),
     /** The key: a file (configured), or in memory (a route control gave the role). */
@@ -279,7 +282,7 @@ export async function runAdvisor<S extends z.ZodType>(input: {
     rt.api_key ?? (rt.api_key_file ? readFileSync(rt.api_key_file, "utf8").trim() : "");
   if (!apiKey) return { ...result, error: `advisor ${rt.name} has no key` };
   const { models, model } = buildModel({
-    api: rt.api === "anthropic" ? "anthropic" : undefined,
+    api: rt.api === "anthropic" || rt.api === "chatgpt" ? rt.api : undefined,
     baseUrl: rt.base_url.replace(/\/$/, ""),
     model: rt.model,
     apiKey,

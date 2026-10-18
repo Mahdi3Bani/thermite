@@ -7,7 +7,7 @@ export const ControlRoute = z
   .strictObject({
     name: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/),
     /** The provider's API (the first version's routes had none: OpenAI-compatible). */
-    type: z.enum(["openai", "anthropic", "opencode", "claude"]).default("openai"),
+    type: z.enum(["openai", "anthropic", "opencode", "claude", "chatgpt"]).default("openai"),
     /** The harness the agents run in (the first versions' routes had none: Pi). */
     harness: z.enum(["pi", "opencode", "claude-code"]).default("pi"),
     version: z.number().int().min(1),
@@ -25,7 +25,10 @@ export const ControlRoute = z
     key_hint: z.string().max(16),
     /** Changes whenever anything about the route does (control's digest of it). */
     revision: z.string().regex(/^[0-9a-f]{8,64}$/),
-    /** OpenCode's own free models need none: an empty key. A Claude subscription: its token. */
+    /**
+     * OpenCode's own free models need none: an empty key. A Claude subscription: its token. A
+     * ChatGPT sign-in: a one-hour access token, renewed by control (a new revision each time).
+     */
     api_key: z.string().max(4096),
   })
   .refine((r) => (r.type === "claude") === (r.harness === "claude-code"), {
@@ -81,27 +84,23 @@ export class ModelSource {
   current(): ModelConfig | undefined {
     const r = this.route;
     if (!r) return this.fromEnv;
-    return {
-      api:
-        r.type === "anthropic" || r.type === "opencode" || r.type === "claude" ? r.type : undefined,
-      harness: r.harness === "opencode" || r.harness === "claude-code" ? r.harness : undefined,
-      baseUrl: r.base_url.replace(/\/$/, ""),
-      model: r.model,
-      apiKey: r.api_key,
-      contextWindow: r.context_window,
-      maxTokens: r.max_tokens || 8192,
-      reasoning: reasoningFromEnv(r.reasoning ?? undefined),
-      effort: r.effort ?? undefined,
-    };
+    return this.configOf(r, () => this.route);
   }
 
   /** The planner's own route, when control gave the planner a model; else the workers'. */
   planner(): ModelConfig | undefined {
     const r = this.plannerRoute;
-    if (!r) return undefined;
+    return r ? this.configOf(r, () => this.plannerRoute) : undefined;
+  }
+
+  /**
+   * A route as the agents' configuration. A ChatGPT sign-in's token is renewed under the same
+   * route: a call reads the newest one, so a long trial or plan outlives the hour of its first.
+   */
+  private configOf(r: ControlRoute, now: () => ControlRoute | undefined): ModelConfig {
+    const type = r.type ?? "openai";
     return {
-      api:
-        r.type === "anthropic" || r.type === "opencode" || r.type === "claude" ? r.type : undefined,
+      api: type === "openai" ? undefined : type,
       harness: r.harness === "opencode" || r.harness === "claude-code" ? r.harness : undefined,
       baseUrl: r.base_url.replace(/\/$/, ""),
       model: r.model,
@@ -110,6 +109,14 @@ export class ModelSource {
       maxTokens: r.max_tokens || 8192,
       reasoning: reasoningFromEnv(r.reasoning ?? undefined),
       effort: r.effort ?? undefined,
+      ...(type === "chatgpt"
+        ? {
+            keyNow: () => {
+              const n = now();
+              return n && n.name === r.name && n.type === "chatgpt" ? n.api_key : r.api_key;
+            },
+          }
+        : {}),
     };
   }
 

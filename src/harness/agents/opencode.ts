@@ -46,9 +46,14 @@ export function opencodeConfig(m: ModelConfig, proxyRoot: string): Record<string
       thermite: {
         name: "Thermite route",
         env: ["THERMITE_PROXY_AUTH"],
+        // A ChatGPT sign-in: OpenAI's Responses API (OpenCode's own OpenAI provider posts to
+        // {base}/responses with store off and the whole history; the proxy drops what the
+        // route refuses, such as max_output_tokens).
         package: anthropic
           ? "@opencode/ai/providers/anthropic"
-          : "@opencode/ai/providers/openai-compatible",
+          : m.api === "chatgpt"
+            ? "@opencode/ai/providers/openai"
+            : "@opencode/ai/providers/openai-compatible",
         // Anthropic's client posts to {base}/messages; its API is at /v1/messages.
         settings: { baseURL: anthropic ? `${proxyRoot}/v1` : proxyRoot },
         models: { [m.model]: { name: m.model } },

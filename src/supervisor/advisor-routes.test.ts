@@ -18,7 +18,7 @@ const route = (o: Partial<Record<string, unknown>> = {}) => ({
 });
 
 describe("advisors from control", () => {
-  test("a Claude subscription's role runs in Claude Code; an API key's runs here; OpenCode's own is skipped", () => {
+  test("a Claude subscription's role runs in Claude Code; an API key's or a ChatGPT sign-in's runs here; OpenCode's own is skipped", () => {
     assert.deepEqual(
       runtimeOf(
         route({ type: "claude", model: "claude-opus-5-5", effort: "max", api_key: "tok" }),
@@ -39,6 +39,13 @@ describe("advisors from control", () => {
     assert.equal(keyed?.runtime === "openai" && keyed.api_key, "key-in-memory");
     assert.equal(keyed?.runtime === "openai" && keyed.reasoning, "medium");
     assert.equal(runtimeOf(route({ type: "opencode" }), "x"), undefined);
+    // A ChatGPT sign-in runs here too, on OpenAI's Responses API with its access token.
+    const signedIn = runtimeOf(
+      route({ type: "chatgpt", base_url: "https://api.openai.com/v1", api_key: "access" }),
+      "reviewer-1",
+    );
+    assert.equal(signedIn?.runtime === "openai" && signedIn.api, "chatgpt");
+    assert.equal(signedIn?.runtime === "openai" && signedIn.api_key, "access");
   });
 
   test("control's roles replace the file's; roles control leaves keep the file's", async () => {

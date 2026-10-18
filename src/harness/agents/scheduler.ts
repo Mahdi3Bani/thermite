@@ -8,7 +8,7 @@ import type { Role, Runner } from "../broker/runner.ts";
 import type { Ledger } from "../ledger.ts";
 import type { Research } from "../research/research.ts";
 import type { HarnessService } from "../service.ts";
-import type { ModelConfig } from "./model.ts";
+import { type ModelConfig, usageLimitRetry } from "./model.ts";
 import {
   attribute,
   fallbackPlan,
@@ -1055,6 +1055,11 @@ export class Scheduler {
         // The trial ends first (its token stops working), then its processes and dev runs.
         this.o.service.trialWorkspaces.delete(id);
         this.registry.finishTrial(id, { ...r, attempt: r.submitted?.attempt }, this.o.owner);
+        // A full ChatGPT plan gives no reset time: the agents wait a while and try again.
+        if (!r.retryAfter && r.stopped === "error") {
+          const until = usageLimitRetry(r.error);
+          if (until) r = { ...r, retryAfter: until };
+        }
         if (r.retryAfter)
           this.ledger.appendEvent(this.o.owner, "agents_wait_for_limit", run, {
             until: r.retryAfter,
