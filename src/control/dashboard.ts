@@ -6,6 +6,9 @@ import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { getCookie, setCookie } from "hono/cookie";
 import { COMMAND_KINDS, type CommandKind } from "../core/commands.ts";
+import { type ClusterFacts, checkCluster, clusterLine } from "./clusters/facts.ts";
+import { type ClusterKubectl, KUBE_NAME, kubeError, realKubectl } from "./clusters/kubectl.ts";
+import { asList, clusterRigObjects } from "./clusters/manifests.ts";
 import type { Credential } from "./credential.ts";
 import { newToken } from "./credential.ts";
 import { makeDeployKey } from "./git-keys.ts";
@@ -34,6 +37,8 @@ import { ANTHROPIC_BASE, isOpencodeOwn, listModels, providerBase } from "./provi
 import { probeRepository } from "./repo-probe.ts";
 import { keyHint, type SecretBox } from "./secrets.ts";
 import {
+  type Cluster,
+  type ClusterRig,
   type ControlStore,
   fingerprint,
   type Harness,
@@ -142,6 +147,8 @@ export interface DashboardOptions {
   machineSsh?: MachineSsh | undefined;
   /** The images control deploys rigs from (none: control can't set rigs up on machines). */
   rigImages?: RigImages | undefined;
+  /** How control reaches Kubernetes clusters (tests give their own). */
+  clusterKubectl?: ClusterKubectl | undefined;
 }
 
 /** The images a rig control sets up runs: the harness (CPU, and CUDA for GPU rigs), the supervisor. */
@@ -1180,6 +1187,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     const vs = views();
     const u = vs.find((x) => x.id === c.req.param("rig"));
     const placed = store.machineRig(c.req.param("rig"));
+    const onCluster = store.clusterRig(c.req.param("rig"));
     const flashOk = c.req.query("ok");
     const flashError = c.req.query("error");
     const flash = flashError
@@ -1187,6 +1195,19 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       : flashOk
         ? `<div class="card" style="margin-bottom:16px"><b class="ok">${esc(flashOk)}</b></div>`
         : "";
+    if (!u && onCluster)
+      return page(
+        c,
+        {
+          title: onCluster.rig,
+          crumbs: [{ href: "/ui/rigs", text: "Rigs" }],
+          summary: `on ${esc(onCluster.cluster)} · ${esc(onCluster.status)}`,
+          active: "rigs",
+          refresh: onCluster.status === "deploying" || onCluster.status === "starting" ? 5 : 15,
+        },
+        `<p class="run-said">Control is setting ${esc(onCluster.rig)} up on ${esc(onCluster.cluster)}. Its page fills in once the rig reports for the first time.</p>${flash}${clusterPlacedBlock(onCluster, csrf(c))}`,
+        vs,
+      );
     if (!u && placed)
       return page(
         c,
@@ -1397,7 +1418,7 @@ ${runsNow ? `<div class="block"><div class="head"><h2>At work</h2><span class="n
 </div><div class="side">
 <div class="block"><div class="head"><h2>What it runs on</h2></div>${h ? `<div class="card"><dl class="facts">${hw}</dl></div><details class="card flat matrix" data-k="hw-${esc(u.id)}" style="margin-top:10px"><summary>Every detail</summary>${hardwareCard(h, now)}</details>` : hardwareCard(h, now)}</div>
 <div class="block"><div class="head"><h2>The rig</h2></div><div class="card"><dl class="facts">${rigFacts}</dl>${sup ? `<div class="muted xs" style="margin-top:8px">The supervisor reports its figures itself (unsigned).</div>` : ""}</div></div>
-${placed ? placedBlock(placed, t) : ""}
+${placed ? placedBlock(placed, t) : ""}${onCluster ? clusterPlacedBlock(onCluster, t) : ""}
 <div class="block"><div class="head"><h2>Recent</h2><span class="right">newest first</span></div>${events}</div>
 </div></div>`,
       vs,
@@ -1877,6 +1898,10 @@ ${placed ? placedBlock(placed, t) : ""}
       "Add and read its host key",
       "Control reads the machine's host key for you to compare and trust. Then it logs in and reads the machine: its system, GPUs, container engine and NVIDIA's toolkit, and whether it reaches control. It changes nothing, and installs nothing unless you allow it.",
     ],
+    k8s: [
+      "Add and check the cluster",
+      "Control reads the cluster with this kubeconfig: its version, its nodes and their GPUs, DRA device classes, storage classes, and whether it may create namespaces or deploy into the slots you name. It changes nothing.",
+    ],
     gittoken: [
       "Add the token",
       "Control seals the token. It goes only to rigs running a campaign that uses it. Use a token that can only read the repositories you need.",
@@ -1907,7 +1932,8 @@ ${placed ? placedBlock(placed, t) : ""}
     const vs = views();
     const t = csrf(c);
     const providers = store.providers();
-    const gitCount = store.gitAccessList().length + store.machines().length;
+    const gitCount =
+      store.gitAccessList().length + store.machines().length + store.clusters().length;
     const given = store.rigModels();
     const usersOf = (name: string) =>
       Object.entries(given)
@@ -1955,7 +1981,7 @@ ${
       .join("");
     const models = "openai anthropic opencode";
     const addForm = `<form method="post" action="/ui/settings/add" class="form-grid" autocomplete="off" id="prov-add" data-says="${esc(JSON.stringify(ADD_SAYS))}"><input type="hidden" name="csrf" value="${t}">
-<label>${infoLabel("Type", `${TYPE_TIP} Git access lets rigs fetch private repositories: a deploy key control makes, or an HTTPS token you paste.`)}<select name="type" id="ptype"><optgroup label="Models">${(Object.keys(TYPES) as ProviderType[]).map((x) => `<option value="${x}">${x === "opencode" ? "OpenCode (its own models)" : TYPES[x]}</option>`).join("")}</optgroup><optgroup label="Git access"><option value="gitkey">A deploy key (control makes it)</option><option value="gittoken">An access token (HTTPS)</option></optgroup><optgroup label="Where rigs run"><option value="ssh">A machine over SSH</option></optgroup></select></label>
+<label>${infoLabel("Type", `${TYPE_TIP} Git access lets rigs fetch private repositories: a deploy key control makes, or an HTTPS token you paste.`)}<select name="type" id="ptype"><optgroup label="Models">${(Object.keys(TYPES) as ProviderType[]).map((x) => `<option value="${x}">${x === "opencode" ? "OpenCode (its own models)" : TYPES[x]}</option>`).join("")}</optgroup><optgroup label="Git access"><option value="gitkey">A deploy key (control makes it)</option><option value="gittoken">An access token (HTTPS)</option></optgroup><optgroup label="Where rigs run"><option value="ssh">A machine over SSH</option><option value="k8s">A Kubernetes cluster</option></optgroup></select></label>
 <label>${infoLabel("Name", "How it shows in Thermite, and how rigs and campaigns refer to it: for example my-litellm or github-deploy. Lowercase letters, digits, dots and dashes.")}<input name="name" required maxlength="64" placeholder="for example my-litellm"></label>
 <label data-for="${models}">${infoLabel("Base URL", BASE_TIP)}<input name="base_url" maxlength="500" placeholder="https://…/v1 (Anthropic and OpenCode: empty for their own)"></label>
 <label data-for="${models}">${infoLabel("API key", "The provider's key. Control seals it at once and never shows it again. OpenCode: leave it empty for its free models.")}<input name="api_key" type="password" autocomplete="new-password" maxlength="4096" placeholder="never shown again"></label>
@@ -1964,6 +1990,11 @@ ${
 <label data-for="ssh" hidden>${infoLabel("Address", "The machine's host name or IP address, as control reaches it.")}<input name="address" maxlength="253" placeholder="gpu-box.example.com"></label>
 <label data-for="ssh" hidden>${infoLabel("SSH port", "The port its SSH server listens on: usually 22.")}<input name="port" value="22" maxlength="5"></label>
 <label data-for="ssh" hidden>${infoLabel("User", "The account control logs in as. Give Thermite an account of its own if you can. It needs sudo without a password only to install what is missing, and only when you allow each install; rigs run as this user with rootless Podman.")}<input name="user" maxlength="32" placeholder="thermite"></label>
+<label data-for="k8s" hidden style="grid-column:1/-1">${infoLabel("Kubeconfig", "A kubeconfig for the cluster. Control seals it at once and never shows it again. Give it only the rights the placement needs: to create namespaces and, in them, deployments, services, secrets, volume claims and network policies; or, for slots, a role in each slot.")}<textarea name="kubeconfig" class="mono" rows="4" maxlength="262144" placeholder="apiVersion: v1&#10;kind: Config&#10;…"></textarea></label>
+<label data-for="k8s" hidden>${infoLabel("Context", "Which cluster and user in the kubeconfig to use. Empty: its current context.")}<input name="context" maxlength="253" placeholder="its current context"></label>
+<label data-for="k8s" hidden>${infoLabel("Placement", "Where each rig goes. Namespaces control creates: one namespace per rig, with its own network rules. Slots: namespaces the cluster's operators made for Thermite, with their own quotas and rules; control only deploys into a free one.")}<select name="placement"><option value="created">A namespace control creates for each rig</option><option value="slot">Slots the cluster's operators made</option></select></label>
+<label data-for="k8s" hidden>${infoLabel("Namespace for each rig", "For created namespaces: the name of each rig's namespace. {rig} becomes the rig's name.")}<input name="namespace_pattern" maxlength="63" value="thermite-{rig}"></label>
+<label data-for="k8s" hidden>${infoLabel("Slots", "For slots: the slot namespaces, separated by commas. Control checks that it may deploy into each one.")}<input name="slots" maxlength="2000" placeholder="thermite-slot-1, thermite-slot-2"></label>
 <label data-for="ssh" hidden style="grid-column:1/-1">${infoLabel("Private key", "The SSH private key for that user, without a passphrase. Control seals it at once and never shows it again. Leave it empty and control makes a key: add its public half, shown next, to the user's ~/.ssh/authorized_keys on the machine.")}<textarea name="private_key" class="mono" rows="4" maxlength="16384" placeholder="empty: control makes a key"></textarea></label>
 <div class="nc-does" id="pdo" style="grid-column:1/-1"><b>What happens.</b> ${ADD_SAYS.openai[1]}</div>
 <div class="form-end"><button class="primary" id="padd">${ADD_SAYS.openai[0]}</button></div></form>`;
@@ -2022,7 +2053,7 @@ ${
       },
       `<p class="run-said">Providers are what Thermite uses: model providers serve the agents' models, Git access lets rigs fetch private repositories, and machines are where control sets rigs up. Add each once with its key. Control seals every key, never shows it again, and gives a rig only what it uses. Then choose, for each rig, the harness its agents run in (Pi or OpenCode v2) and their model.</p>
 ${note}
-<div class="block"><div class="head"><h2>Providers</h2><span class="n">${providers.length + gitCount}</span><span class="right">models are read from each provider itself</span></div>${providers.length + gitCount ? `<div class="dqs">${providerRows}${gitRows(t)}${machineRows(t)}</div>` : `<div class="card"><div class="empty">No provider yet: add one below.</div></div>`}</div>
+<div class="block"><div class="head"><h2>Providers</h2><span class="n">${providers.length + gitCount}</span><span class="right">models are read from each provider itself</span></div>${providers.length + gitCount ? `<div class="dqs">${providerRows}${gitRows(t)}${machineRows(t)}${clusterRows(t)}</div>` : `<div class="card"><div class="empty">No provider yet: add one below.</div></div>`}</div>
 <div class="block"><div class="head"><h2>Add a provider</h2></div><div class="card">${addForm}</div></div>
 <div class="block"><div class="head"><h2>Harness and model for each rig</h2><span class="right">a rig takes a change within a minute; then check it</span></div><div class="card flat">${rigRows || `<div class="empty">No rig has reported yet.</div>`}</div></div>
 <script src="/ui/assets/providers.js" defer></script>`,
@@ -2158,6 +2189,152 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
       .join("");
   const machineUrl = (k: "ok" | "error", m: string) => settingsUrl(k, m);
 
+  // ---------------------------------------------------------------- clusters (Providers)
+  // A Kubernetes cluster control sets rigs up on, with its kubeconfig sealed. Its facts come from
+  // a read-only check (clusters/facts.ts).
+  const kube = opts.clusterKubectl ?? realKubectl;
+  const NS = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
+  const clusterTarget = (c: Cluster & { kubeconfig_sealed: string }) => ({
+    kubeconfig: opts.secrets.open(c.kubeconfig_sealed),
+    context: c.context || undefined,
+  });
+  const checkClusterNow = async (name: string): Promise<string | null> => {
+    const c = store.cluster(name);
+    if (!c) return "no such cluster";
+    try {
+      store.setClusterFacts(name, { facts: await checkCluster(kube, clusterTarget(c), c.slots) });
+      return null;
+    } catch (err) {
+      const why = err instanceof Error ? err.message : String(err);
+      store.setClusterFacts(name, { error: why });
+      return why;
+    }
+  };
+  const clusterRows = (t: string) =>
+    store
+      .clusters()
+      .map((k) => {
+        const f = k.facts as ClusterFacts | null;
+        const kName = encodeURIComponent(k.name);
+        const rigsHere = store.clusterRigs(k.name).filter((r) => r.status !== "removed");
+        const status = k.check_error
+          ? `<span class="dq-why bad">${esc(k.check_error)}${f ? " (showing the last check)" : ""}</span>`
+          : f
+            ? `<span class="dq-why">${esc(clusterLine(f))}${k.checked_at ? ` · checked ${esc(ago(k.checked_at, Date.now()))} ago` : ""}</span>`
+            : `<span class="dq-why">not checked yet</span>`;
+        const where =
+          k.placement === "created"
+            ? `a namespace for each rig: ${k.namespace_pattern}`
+            : `slots: ${k.slots.join(", ") || "none named"}`;
+        const yes = (ok: boolean, text: string) =>
+          `<span class="chip ${ok ? "ok" : "warn"}">${esc(text)}</span>`;
+        const facts = f
+          ? `<dl class="facts"><dt>Version</dt><dd>${esc(f.version)}</dd><dt>Nodes</dt><dd>${
+              f.nodes
+                .map(
+                  (n) =>
+                    `${esc(n.name)}: ${n.ready ? "ready" : `<span class="bad">not ready</span>`}, ${esc(n.cpu)} CPUs, ${esc(n.memory)} memory${n.gpus ? `, <b>${n.gpus} GPU${n.gpus === 1 ? "" : "s"}</b>${n.gpu_product ? ` (${esc(n.gpu_product)})` : ""}` : ""}`,
+                )
+                .join("<br>") || "none listed (the kubeconfig may not read nodes)"
+            }</dd><dt>GPUs</dt><dd>${f.nodes.some((n) => n.gpus) ? yes(true, "NVIDIA's device plugin") : yes(false, "no device-plugin GPUs")} ${f.device_classes.length ? yes(true, `DRA: ${f.device_classes.join(", ")}`) : `<span class="muted">no DRA device classes</span>`}</dd><dt>Storage</dt><dd>${f.storage_classes.map((s) => `${esc(s.name)}${s.default ? " (default)" : ""}`).join(", ") || yes(false, "no storage class")}</dd><dt>Placement</dt><dd>${
+              k.placement === "created"
+                ? f.can_create_namespaces
+                  ? yes(true, "control may create namespaces")
+                  : yes(
+                      false,
+                      "control may not create namespaces: use slots, or give the kubeconfig that right",
+                    )
+                : f.slots
+                    .map(
+                      (s) =>
+                        `${esc(s.namespace)}: ${s.usable ? (s.used_by ? `used by rig ${esc(s.used_by)}` : yes(true, "free")) : yes(false, "control may not deploy here")}`,
+                    )
+                    .join("<br>") || "no slots named"
+            }</dd></dl>`
+          : "";
+        const form = (action: string, label: string, cls = "sm") =>
+          `<form class="inline" method="post" action="/ui/settings/clusters/${kName}/${action}"><input type="hidden" name="csrf" value="${t}"><button class="${cls}">${label}</button></form>`;
+        return `<details class="dq${k.check_error ? " dq-bad" : ""}" data-k="cluster-${esc(k.name)}"><summary>
+<span class="dq-kind"><span class="kind r">Cluster</span></span>
+<span class="dq-main"><span class="dq-head">${esc(k.name)} <span class="muted" style="font-weight:400">· Kubernetes</span></span>${status}<span class="dq-sub"><span class="dq-where">${esc(k.context || "its current context")}</span><span class="dq-where">${esc(where)}</span><span class="dq-where">${rigsHere.length ? `runs ${rigsHere.map((r) => esc(r.rig)).join(", ")}` : "no rig yet"}</span></span></span>
+<span class="dq-side"><span class="dq-btns">${form("check", "Check again")}</span></span>
+</summary><div class="dq-body">${facts}${
+          rigsHere.length
+            ? `<div class="muted small" style="margin-top:10px">In use by ${rigsHere.map((r) => esc(r.rig)).join(", ")}: remove those rigs before deleting it.</div>`
+            : `<div style="margin-top:10px">${form("delete", "Delete this cluster", "sm danger")}</div>`
+        }</div></details>`;
+      })
+      .join("");
+  const addCluster = async (c: Ctx, f: Record<string, unknown>) => {
+    const fail = (m: string) => c.redirect(settingsUrl("error", m), 303);
+    const name = String(f.name ?? "").trim();
+    const kubeconfig = String(f.kubeconfig ?? "").trim();
+    let context = String(f.context ?? "").trim();
+    const placement = f.placement === "slot" ? "slot" : "created";
+    const pattern = String(f.namespace_pattern ?? "").trim() || "thermite-{rig}";
+    const slots = String(f.slots ?? "")
+      .split(/[\s,]+/)
+      .filter(Boolean);
+    if (!ACCESS_NAME.test(name))
+      return fail("A cluster's name is lowercase letters, digits, dots and dashes.");
+    if (store.cluster(name)) return fail(`"${name}" exists already.`);
+    if (!kubeconfig) return fail("Paste the cluster's kubeconfig.");
+    if (!pattern.includes("{rig}") || !NS.test(pattern.replace("{rig}", "rig")))
+      return fail("The namespace for each rig must contain {rig} and make a valid namespace name.");
+    if (placement === "slot" && !slots.length) return fail("Name the slots, separated by commas.");
+    const bad = slots.find((s) => !NS.test(s));
+    if (bad) return fail(`"${bad}" is not a namespace name.`);
+    let contexts: { contexts: string[]; current: string };
+    try {
+      contexts = await kube.contextsOf(kubeconfig);
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : String(err));
+    }
+    if (context && !contexts.contexts.includes(context))
+      return fail(
+        `The kubeconfig has no context "${context}": it has ${contexts.contexts.join(", ") || "none"}.`,
+      );
+    if (!context) context = contexts.current;
+    if (!context || !KUBE_NAME.test(context))
+      return fail("The kubeconfig has no current context: name one.");
+    store.addCluster({
+      name,
+      kubeconfig_sealed: opts.secrets.seal(kubeconfig),
+      context,
+      placement,
+      namespace_pattern: pattern,
+      slots,
+      by: "owner:ui",
+    });
+    const why = await checkClusterNow(name);
+    return c.redirect(
+      why
+        ? settingsUrl("error", `"${name}" is added, but the check failed: ${why}`)
+        : settingsUrl("ok", `"${name}" is added and checked: see what control found below.`),
+      303,
+    );
+  };
+  app.post("/ui/settings/clusters/:name/check", async (c) => {
+    const name = c.req.param("name");
+    if (!store.cluster(name)) return c.redirect(settingsUrl("error", "No such cluster."), 303);
+    const why = await checkClusterNow(name);
+    return c.redirect(
+      why ? settingsUrl("error", `"${name}": ${why}`) : settingsUrl("ok", `Read "${name}" again.`),
+      303,
+    );
+  });
+  app.post("/ui/settings/clusters/:name/delete", (c) => {
+    const name = c.req.param("name");
+    if (store.clusterRigs(name).some((r) => r.status !== "removed"))
+      return c.redirect(settingsUrl("error", `"${name}" still runs rigs: remove them first.`), 303);
+    return c.redirect(
+      store.deleteCluster(name, "owner:ui")
+        ? settingsUrl("ok", `"${name}" is deleted: control keeps nothing of its kubeconfig.`)
+        : settingsUrl("error", "No such cluster."),
+      303,
+    );
+  });
+
   // ---------------------------------------------------------------- rigs on machines
   // Rigs › Add a rig: control enrolls the rig, writes its files and Quadlet units over SSH, and
   // starts it (machines/deploy.ts). Every step is a setup event on the rig's page.
@@ -2168,6 +2345,7 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
     rig === "add" ||
     store.knownRig(rig) ||
     Boolean(store.machineRig(rig)) ||
+    Boolean(store.clusterRig(rig)) ||
     views().some((u) => u.id === rig);
   /** GPUs of a machine that rigs control set up there use, by index. */
   const gpusInUse = (machine: string) =>
@@ -2200,17 +2378,94 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
     start: "Started",
     restart: "Restarted",
     remove: "Removed from the machine",
+    applied: "Its objects applied in the cluster: namespace, secret, volume, deployments",
+    remove_cluster: "Removed from the cluster",
   };
-  /** A rig control set up: where, its setup history, and stop, start, restart and remove. */
-  const placedBlock = (r: MachineRig, t: string) => {
-    const rName = encodeURIComponent(r.rig);
-    const steps = store
-      .rigSetupEvents(r.rig)
+  /** Waits for a new rig's first report, for at most 10 minutes; a setup event either way. */
+  const awaitFirstReport = async (rig: string, setStatus: (s: string) => void) => {
+    const deadline = Date.now() + 10 * 60_000;
+    while (Date.now() < deadline) {
+      if (views().some((u) => u.id === rig)) {
+        store.rigSetupEvent(rig, "first_report", true);
+        setStatus("running");
+        return;
+      }
+      await sleep(5000);
+    }
+    store.rigSetupEvent(
+      rig,
+      "first_report",
+      false,
+      "no report after 10 minutes: it may not have started",
+    );
+    setStatus("failed");
+  };
+  const setupSteps = (rig: string) =>
+    store
+      .rigSetupEvents(rig)
       .map(
         (e) =>
           `<div class="tl-row"><span class="muted small">${esc(ago(e.at, Date.now()))} ago</span><span class="${e.ok ? "ok" : "bad"}">${e.ok ? "✓" : "✕"}</span><span>${esc(STEP_WORDS[e.step] ?? e.step)}${e.detail ? ` <span class="muted small">· ${esc(e.detail)}</span>` : ""}</span></div>`,
       )
       .join("");
+  /** A rig control set up on a cluster: where, its setup history, and its controls. */
+  const clusterPlacedBlock = (r: ClusterRig, t: string) => {
+    const rName = encodeURIComponent(r.rig);
+    const act = (action: string, label: string, extra = "", cls = "sm") =>
+      `<form class="inline" method="post" action="/ui/rigs/${rName}/cluster/${action}"><input type="hidden" name="csrf" value="${t}">${extra}<button class="${cls}">${label}</button></form>`;
+    const s = r.spec;
+    const manage =
+      r.status === "removed" || r.status === "deploying"
+        ? ""
+        : `<div class="act" style="margin-top:10px">${r.status === "stopped" ? act("start", "Start its pods") : act("stop", "Stop its pods")}${act("restart", "Restart them")}</div>
+<details style="margin-top:8px"><summary class="small">Remove it from ${esc(r.cluster)}</summary><div class="small muted" style="margin:6px 0">${r.placement === "created" ? "Deletes its namespace, with everything in it," : "Deletes its deployments, service, volume claim and secret from the slot,"} and retires its token. Results it has not exported are lost.</div>${act("remove", "Remove the rig", `<input name="confirm" placeholder="type: remove ${esc(r.rig)}" style="margin-right:6px">`, "sm danger")}</details>`;
+    return `<div class="block"><div class="head"><h2>Set up by control</h2><span class="right">${esc(r.status)}</span></div><div class="card"><dl class="facts"><dt>Cluster</dt><dd><a href="/ui/settings">${esc(r.cluster)}</a> (Providers)</dd><dt>Namespace</dt><dd>${esc(r.namespace)} <span class="muted">(${r.placement === "created" ? "made by control" : "a slot"})</span></dd><dt>GPUs</dt><dd>${s.gpus ? `${s.gpus} through ${s.gpuMode === "dra" ? `DRA (${esc(s.deviceClass ?? "")})` : "NVIDIA's device plugin"}${s.gpus === 2 ? ": one for the judge, one for the agents" : ", shared by the judge and the agents"}` : "none: it measures on the CPU"}${s.node ? ` · on ${esc(s.node)}` : ""}</dd><dt>Storage</dt><dd>${s.storageGi} GB${s.storageClass ? ` · ${esc(s.storageClass)}` : ""}</dd><dt>Images</dt><dd class="mono small">${esc(s.images.harness)}<br>${esc(s.images.supervisor)}</dd></dl>
+<div class="tl" style="margin-top:10px">${setupSteps(r.rig) || `<div class="muted small">No step yet.</div>`}</div>${manage}</div></div>`;
+  };
+  /** Sets a rig up on a cluster, in the background: one apply, then the first report. */
+  const deployClusterRig = async (
+    r: ClusterRig,
+    k: Cluster & { kubeconfig_sealed: string },
+    controlToken: string,
+  ) => {
+    try {
+      const objects = clusterRigObjects(
+        {
+          rig: r.rig,
+          placement: r.placement,
+          namespace: r.namespace,
+          controlUrl: opts.publicUrl ?? "",
+          images: r.spec.images,
+          gpus: r.spec.gpus,
+          gpuMode: r.spec.gpuMode,
+          deviceClass: r.spec.deviceClass,
+          node: r.spec.node,
+          storageClass: r.spec.storageClass,
+          storageGi: r.spec.storageGi,
+          controlPublicKey,
+        },
+        { controlToken, harnessSupervisorToken: newToken().token },
+      );
+      const out = await kube.kubectl(
+        clusterTarget(k),
+        ["apply", "-f", "-"],
+        asList(objects),
+        120_000,
+      );
+      if (out.code !== 0) throw new Error(kubeError(out));
+      store.rigSetupEvent(r.rig, "applied", true, `namespace ${r.namespace}`);
+      store.setClusterRigStatus(r.rig, "starting");
+    } catch (err) {
+      store.rigSetupEvent(r.rig, "deploy", false, err instanceof Error ? err.message : String(err));
+      store.setClusterRigStatus(r.rig, "failed");
+      return;
+    }
+    await awaitFirstReport(r.rig, (s) => store.setClusterRigStatus(r.rig, s));
+  };
+  /** A rig control set up: where, its setup history, and stop, start, restart and remove. */
+  const placedBlock = (r: MachineRig, t: string) => {
+    const rName = encodeURIComponent(r.rig);
+    const steps = setupSteps(r.rig);
     const act = (action: string, label: string, extra = "", cls = "sm") =>
       `<form class="inline" method="post" action="/ui/rigs/${rName}/machine/${action}"><input type="hidden" name="csrf" value="${t}">${extra}<button class="${cls}">${label}</button></form>`;
     const manage =
@@ -2260,22 +2515,7 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
       store.setMachineRigStatus(r.rig, "failed");
       return;
     }
-    const deadline = Date.now() + 10 * 60_000;
-    while (Date.now() < deadline) {
-      if (views().some((u) => u.id === r.rig)) {
-        store.rigSetupEvent(r.rig, "first_report", true);
-        store.setMachineRigStatus(r.rig, "running");
-        return;
-      }
-      await sleep(5000);
-    }
-    store.rigSetupEvent(
-      r.rig,
-      "first_report",
-      false,
-      "no report after 10 minutes: its services may not have started",
-    );
-    store.setMachineRigStatus(r.rig, "failed");
+    await awaitFirstReport(r.rig, (s) => store.setMachineRigStatus(r.rig, s));
   };
   app.get("/ui/assets/add-rig.js", (c) =>
     c.body(ADD_RIG_JS, 200, {
@@ -2297,7 +2537,7 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
         const sub = why
           ? `Not ready: ${why}. Fix it under Settings › Providers.`
           : `${factsLine(f as MachineFacts)}${rigsHere.length ? ` · runs ${rigsHere.map((r) => r.rig).join(", ")}` : ""}${f?.gpus.length ? ` · ${free} GPU${free === 1 ? "" : "s"} free` : ""}`;
-        return `<label class="ch${why ? " dis" : ""}"><input type="radio" name="machine" value="${esc(m.name)}"${why ? " disabled" : i === 0 ? " checked" : ""} style="margin:2px 8px 0 0"><span><b>${esc(m.name)} · a machine over SSH</b><br><span class="muted small">${esc(sub)}</span></span></label>`;
+        return `<label class="ch${why ? " dis" : ""}"><input type="radio" name="place" value="machine:${esc(m.name)}"${why ? " disabled" : i === 0 ? " checked" : ""} style="margin:2px 8px 0 0"><span><b>${esc(m.name)} · a machine over SSH</b><br><span class="muted small">${esc(sub)}</span></span></label>`;
       })
       .join("");
     const gpuLists = machines
@@ -2310,7 +2550,76 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
             return `<label class="gr${by ? " used" : ""}"><input type="checkbox" name="gpus" value="${g.index}"${by ? " disabled" : ""}><span><b>GPU ${g.index}</b> · ${esc(g.name)} ${Math.round(g.memory_mib / 1024)} GB</span><span class="muted small">${by ? `used by rig ${esc(by)}` : `free · ${g.busy_pct}% busy · ${g.used_mib} MiB in use`}</span></label>`;
           })
           .join("");
-        return `<div data-machine="${esc(m.name)}" hidden>${rows ? `<div class="card flat">${rows}</div>` : `<div class="card"><div class="muted">This machine has no NVIDIA GPU: the rig measures on its CPUs.</div></div>`}</div>`;
+        return `<div data-place="machine:${esc(m.name)}" hidden>${rows ? `<div class="card flat">${rows}</div>` : `<div class="card"><div class="muted">This machine has no NVIDIA GPU: the rig measures on its CPUs.</div></div>`}</div>`;
+      })
+      .join("");
+    // Clusters: how many GPUs and how, which node, which storage, and (for slots) which slot.
+    const clusters = store.clusters();
+    const clusterReady = (k: Cluster) => {
+      const f = k.facts as ClusterFacts | null;
+      if (!f) return "it has not been checked yet";
+      if (k.check_error) return `its last check failed: ${k.check_error}`;
+      if (k.placement === "created" && !f.can_create_namespaces)
+        return "control may not create namespaces there";
+      if (k.placement === "slot" && !f.slots.some((s) => s.usable && !s.used_by))
+        return "it has no free slot";
+      return undefined;
+    };
+    const clusterCards = clusters
+      .map((k) => {
+        const why = clusterReady(k);
+        const f = k.facts as ClusterFacts | null;
+        const sub = why
+          ? `Not ready: ${why}. Check it under Settings › Providers.`
+          : `${clusterLine(f as ClusterFacts)} · ${k.placement === "created" ? `rigs get namespace ${k.namespace_pattern}` : `${(f as ClusterFacts).slots.filter((s) => s.usable && !s.used_by).length} free slot(s)`}`;
+        return `<label class="ch${why ? " dis" : ""}"><input type="radio" name="place" value="cluster:${esc(k.name)}"${why ? " disabled" : ""} style="margin:2px 8px 0 0"><span><b>${esc(k.name)} · Kubernetes</b><br><span class="muted small">${esc(sub)}</span></span></label>`;
+      })
+      .join("");
+    const clusterSections = clusters
+      .map((k) => {
+        const f = (k.facts as ClusterFacts | null) ?? {
+          version: "?",
+          nodes: [],
+          device_classes: [],
+          storage_classes: [],
+          can_create_namespaces: false,
+          slots: [],
+        };
+        const kn = esc(k.name);
+        // A slot's role usually can't list nodes or device classes: then the choices are offered
+        // as asked, and the cluster's own rules decide.
+        const restricted = !f.nodes.length;
+        const plugin = restricted || f.nodes.some((n) => n.gpus > 0);
+        const maxGpus = restricted
+          ? 2
+          : Math.min(
+              2,
+              Math.max(0, ...f.nodes.map((n) => n.gpus), f.device_classes.length ? 2 : 0),
+            );
+        const opt = (v: string, text: string, on = false) =>
+          `<option value="${esc(v)}"${on ? " selected" : ""}>${esc(text)}</option>`;
+        const def = f.storage_classes.find((s) => s.default)?.name;
+        return `<div data-place="cluster:${kn}" hidden><div class="g3">
+<label class="fd">${infoLabel("GPUs", "How many GPUs the rig's harness pod asks for. One is shared by the judge and the agents; two give each its own.")}<select name="k_gpus__${kn}">${Array.from({ length: maxGpus + 1 }, (_, n) => opt(String(n), n === 0 ? "none: the CPU" : String(n), n === Math.min(1, maxGpus))).join("")}</select></label>
+<label class="fd">${infoLabel("GPUs through", "NVIDIA's device plugin (nvidia.com/gpu) or DRA (a device class), as the cluster offers them.")}<select name="k_mode__${kn}">${plugin ? opt("device-plugin", "NVIDIA's device plugin") : ""}${f.device_classes.map((d) => opt(`dra:${d}`, `DRA: ${d}`)).join("")}${restricted ? opt("dra", "DRA: a device class you name") : ""}${!plugin && !f.device_classes.length ? opt("device-plugin", "no GPUs offered") : ""}</select></label>
+${restricted ? `<label class="fd">${infoLabel("DRA device class", "Only for DRA in a cluster whose classes control can't list: the device class the cluster's operators named, such as gpu.nvidia.com.")}<input name="k_class__${kn}" maxlength="253" placeholder="gpu.nvidia.com"></label>` : ""}
+<label class="fd">${infoLabel("Node", "Any lets Kubernetes choose. A fixed node keeps the rig on a known machine, which keeps timings comparable between runs.")}<select name="k_node__${kn}">${opt("", "any node with room")}${f.nodes
+          .filter((n) => n.ready)
+          .map((n) =>
+            opt(n.name, `${n.name}${n.gpus ? ` (${n.gpus} GPU${n.gpus === 1 ? "" : "s"})` : ""}`),
+          )
+          .join("")}</select></label>
+<label class="fd">${infoLabel("Storage class", "The class for the rig's volume (its state, builds, inbox and outbox).")}<select name="k_storage__${kn}">${def ? "" : opt("", "the cluster's default")}${f.storage_classes.map((s) => opt(s.name, `${s.name}${s.default ? " (default)" : ""}`, s.name === def)).join("")}</select></label>
+<label class="fd">${infoLabel("Volume size (GB)", "The rig's volume: builds and model files can be large.")}<input name="k_size__${kn}" value="100"></label>
+${
+  k.placement === "slot"
+    ? `<label class="fd">${infoLabel("Slot", "One of the free slots the cluster's operators made for Thermite.")}<select name="k_slot__${kn}">${f.slots
+        .filter((s) => s.usable && !s.used_by)
+        .map((s) => opt(s.namespace, s.namespace))
+        .join("")}</select></label>`
+    : `<div class="fd">${infoLabel("Namespace", "Control creates it for this rig, with its own network rules.")}<span class="mono small">${esc(k.namespace_pattern)}</span></div>`
+}
+</div></div>`;
       })
       .join("");
     const images = opts.rigImages;
@@ -2318,8 +2627,8 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
       ? "Control has no rig images configured (THERMITE_RIG_HARNESS_IMAGE, THERMITE_RIG_SUPERVISOR_IMAGE), so it can't set rigs up yet."
       : !opts.publicUrl
         ? "Control's address for rigs is not set (THERMITE_CONTROL_PUBLIC_URL), so a rig would not know where to report."
-        : !machines.length
-          ? "No machine yet: add one under Settings › Providers (A machine over SSH)."
+        : !machines.length && !clusters.length
+          ? "No machine or cluster yet: add one under Settings › Providers."
           : "";
     return page(
       c,
@@ -2327,9 +2636,9 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
       `<p class="run-said">Choose where the rig runs. Control connects there with the credentials you gave it once, writes the rig's files and services, starts it and looks after it: stop, start, restart, remove. You never log in to the machine yourself.</p>
 ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not created.</b> ${esc(error)}</div>` : ""}${blocked ? `<div class="card warn" style="margin-bottom:16px">${esc(blocked)}</div>` : ""}
 <form id="add-rig" method="post" action="/ui/rigs/add" autocomplete="off"><input type="hidden" name="csrf" value="${t}">
-<div class="sec"><h2>1 · Where</h2><p class="lead">A machine control knows. Machines are added, checked and prepared under <a href="/ui/settings">Settings › Providers</a>.</p>
-<div class="stack">${cards || `<div class="card"><div class="empty">No machine yet.</div></div>`}<a class="ch" href="/ui/settings"><span><b>+ A new machine over SSH</b><br><span class="muted small">Any Linux machine control can reach with an SSH key: bare metal or a VM. Add it in Providers, then come back.</span></span></a></div></div>
-<div class="sec"><h2>2 · Which GPUs</h2><p class="lead">The machine's GPUs as control last read them. One GPU is shared by the judge and the agents; with two, the lower-numbered one is the judge's and the other the agents'.</p>${gpuLists}<div class="nc-does" id="gpu-note"></div></div>
+<div class="sec"><h2>1 · Where</h2><p class="lead">A machine or a cluster control knows. They are added, checked and prepared under <a href="/ui/settings">Settings › Providers</a>.</p>
+<div class="stack">${cards}${clusterCards}${cards || clusterCards ? "" : `<div class="card"><div class="empty">No machine or cluster yet.</div></div>`}<a class="ch" href="/ui/settings"><span><b>+ A new machine or cluster</b><br><span class="muted small">A Linux machine control can reach with an SSH key, or a Kubernetes cluster through a kubeconfig. Add it in Providers, then come back.</span></span></a></div></div>
+<div class="sec"><h2>2 · GPUs and resources</h2><p class="lead">As control last read the place. One GPU is shared by the judge and the agents; with two, the judge and the agents get one each (on a machine, the lower-numbered GPU is the judge's).</p>${gpuLists}${clusterSections}<div class="nc-does" id="gpu-note"></div></div>
 <div class="sec"><h2>3 · Name and start</h2><div class="g3">
 <label class="fd">${infoLabel("Rig name", "The rig's name in Thermite: lowercase letters, digits and dashes. It names the rig's runs, history and files, so it can't change later.")}<input name="rig" required maxlength="63" placeholder="gpu-box-1-a"></label>
 <label class="fd" style="grid-column:span 2">${infoLabel("Images", "The Thermite images control deploys, as set where control is deployed. A GPU rig uses the CUDA harness image.")}<span class="mono small">${images ? `${esc(images.harness)}${images.harnessCuda ? `<br>${esc(images.harnessCuda)} (GPU rigs)` : ""}<br>${esc(images.supervisor)}` : "none configured"}</span></label>
@@ -2343,7 +2652,9 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     const f = await c.req.parseBody({ all: true });
     const fail = (why: string) => c.redirect(`/ui/rigs/add?error=${encodeURIComponent(why)}`, 303);
     const rig = String(f.rig ?? "").trim();
-    const m = store.machine(String(f.machine ?? ""));
+    const place = String(f.place ?? (f.machine ? `machine:${String(f.machine)}` : ""));
+    if (place.startsWith("cluster:")) return addClusterRigFrom(c, f, rig, place.slice(8), fail);
+    const m = store.machine(place.startsWith("machine:") ? place.slice(8) : "");
     const gpus = [f.gpus ?? []]
       .flat()
       .map((x) => Number(x))
@@ -2383,6 +2694,177 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     const r = store.machineRig(rig) as MachineRig;
     void deployRig(r, m, token.token).catch(() => {});
     return c.redirect(`/ui/rigs/${encodeURIComponent(rig)}`, 303);
+  });
+  /** Add a rig on a cluster: checks the choices, enrolls the rig, then applies its objects. */
+  const addClusterRigFrom = (
+    c: Ctx,
+    f: Record<string, unknown>,
+    rig: string,
+    name: string,
+    fail: (why: string) => Response,
+  ) => {
+    const k = store.cluster(name);
+    const one = (key: string) => {
+      const v = f[`${key}__${name}`];
+      return String(Array.isArray(v) ? v[0] : (v ?? "")).trim();
+    };
+    if (!opts.rigImages) return fail("Control has no rig images configured.");
+    if (!opts.publicUrl) return fail("Control's address for rigs is not set.");
+    if (!RIG_NAME.test(rig)) return fail("A rig's name is lowercase letters, digits and dashes.");
+    if (rigTaken(rig)) return fail(`There is a rig named ${rig} already.`);
+    if (!k) return fail("Choose a machine or a cluster.");
+    const facts = k.facts as ClusterFacts | null;
+    if (!facts || k.check_error) return fail(`${k.name} is not ready: check it under Providers.`);
+    const gpus = Number(one("k_gpus") || "0");
+    if (!Number.isInteger(gpus) || gpus < 0 || gpus > 2)
+      return fail("A rig takes none, one or two GPUs for now; rigs with more come later.");
+    // Control checks only what it could see: a slot's role may not list nodes, classes or storage.
+    const mode = one("k_mode") || "device-plugin";
+    const deviceClass = mode.startsWith("dra:")
+      ? mode.slice(4)
+      : mode === "dra"
+        ? one("k_class")
+        : undefined;
+    if (gpus && mode === "dra" && !/^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$/.test(deviceClass ?? ""))
+      return fail("Name the DRA device class, such as gpu.nvidia.com.");
+    if (gpus && mode.startsWith("dra:") && !facts.device_classes.includes(deviceClass ?? ""))
+      return fail(`${k.name} has no DRA device class ${deviceClass}.`);
+    if (gpus && !deviceClass && facts.nodes.length && !facts.nodes.some((n) => n.gpus >= gpus))
+      return fail(
+        `No node of ${k.name} offers ${gpus} GPU${gpus === 1 ? "" : "s"} through the device plugin.`,
+      );
+    const node = one("k_node") || undefined;
+    if (node && !facts.nodes.some((n) => n.name === node))
+      return fail(`${k.name} has no node ${node} that control can see.`);
+    const storageClass = one("k_storage") || undefined;
+    if (
+      storageClass &&
+      facts.storage_classes.length &&
+      !facts.storage_classes.some((s) => s.name === storageClass)
+    )
+      return fail(`${k.name} has no storage class ${storageClass}.`);
+    if (storageClass && !NS.test(storageClass)) return fail("That is not a storage class name.");
+    const storageGi = Number(one("k_size") || "100");
+    if (!Number.isInteger(storageGi) || storageGi < 1 || storageGi > 10_000)
+      return fail("The volume size is a whole number of GB, from 1 to 10000.");
+    let namespace: string;
+    if (k.placement === "slot") {
+      namespace = one("k_slot");
+      if (!facts.slots.some((s) => s.namespace === namespace && s.usable && !s.used_by))
+        return fail("Choose a free slot.");
+      if (
+        store.clusterRigs(k.name).some((r) => r.namespace === namespace && r.status !== "removed")
+      )
+        return fail(`The slot ${namespace} is in use.`);
+    } else {
+      namespace = k.namespace_pattern.replace("{rig}", rig);
+      if (!NS.test(namespace)) return fail(`"${namespace}" is not a namespace name.`);
+    }
+    if (gpus && !opts.rigImages.harnessCuda)
+      return fail(
+        "Control has no CUDA harness image configured (THERMITE_RIG_HARNESS_CUDA_IMAGE).",
+      );
+    const token = newToken();
+    store.enrollRig(rig, token.sha256, "owner:ui");
+    store.addClusterRig({
+      rig,
+      cluster: k.name,
+      namespace,
+      placement: k.placement,
+      spec: {
+        gpus,
+        gpuMode: deviceClass ? "dra" : "device-plugin",
+        deviceClass,
+        node,
+        storageClass,
+        storageGi,
+        images: {
+          harness: gpus ? (opts.rigImages.harnessCuda as string) : opts.rigImages.harness,
+          supervisor: opts.rigImages.supervisor,
+        },
+      },
+      created_by: "owner:ui",
+    });
+    store.rigSetupEvent(rig, "enrolled", true);
+    void deployClusterRig(store.clusterRig(rig) as ClusterRig, k, token.token).catch(() => {});
+    return c.redirect(`/ui/rigs/${encodeURIComponent(rig)}`, 303);
+  };
+  app.post("/ui/rigs/:rig/cluster/:action", async (c) => {
+    const r = store.clusterRig(c.req.param("rig"));
+    const action = c.req.param("action");
+    const back = (k: "ok" | "error", msg: string) =>
+      c.redirect(
+        `/ui/rigs/${encodeURIComponent(c.req.param("rig"))}?${k}=${encodeURIComponent(msg)}`,
+        303,
+      );
+    if (!r || r.status === "removed") return back("error", "Control didn't set this rig up.");
+    if (!["stop", "start", "restart", "remove"].includes(action))
+      return back("error", "No such action.");
+    const f = await c.req.parseBody();
+    if (action === "remove" && String(f.confirm ?? "").trim() !== `remove ${r.rig}`)
+      return back("error", `Type "remove ${r.rig}" to remove it.`);
+    const k = store.cluster(r.cluster);
+    if (!k) return back("error", `The cluster ${r.cluster} is no longer in Providers.`);
+    const sel = `app.kubernetes.io/instance=${r.rig}`;
+    const runs: string[][] =
+      action === "stop" || action === "start"
+        ? [
+            [
+              "scale",
+              "deployment",
+              "-n",
+              r.namespace,
+              "-l",
+              sel,
+              `--replicas=${action === "stop" ? 0 : 1}`,
+            ],
+          ]
+        : action === "restart"
+          ? [["rollout", "restart", "deployment", "-n", r.namespace, "-l", sel]]
+          : r.placement === "created"
+            ? [["delete", "namespace", r.namespace, "--wait=false", "--ignore-not-found"]]
+            : [
+                [
+                  "delete",
+                  "deployment,service,persistentvolumeclaim,secret",
+                  "-n",
+                  r.namespace,
+                  "-l",
+                  sel,
+                  "--ignore-not-found",
+                ],
+                [
+                  "delete",
+                  "resourceclaimtemplates",
+                  "-n",
+                  r.namespace,
+                  "-l",
+                  sel,
+                  "--ignore-not-found",
+                ],
+              ];
+    for (const [i, args] of runs.entries()) {
+      const out = await kube.kubectl(clusterTarget(k), args, undefined, 120_000);
+      // A cluster without DRA has no resourceclaimtemplates: that last delete may fail harmlessly.
+      if (out.code !== 0 && !(action === "remove" && i === 1)) {
+        store.rigSetupEvent(
+          r.rig,
+          action === "remove" ? "remove_cluster" : action,
+          false,
+          kubeError(out),
+        );
+        return back("error", kubeError(out));
+      }
+    }
+    const step = action === "remove" ? "remove_cluster" : action;
+    store.rigSetupEvent(r.rig, step, true);
+    store.setClusterRigStatus(
+      r.rig,
+      action === "stop" ? "stopped" : action === "remove" ? "removed" : "running",
+    );
+    if (action === "remove") store.retireRig(r.rig, "owner:ui");
+    store.audit("owner:ui", `cluster_rig_${action}`, { rig: r.rig, cluster: r.cluster });
+    return back("ok", `${STEP_WORDS[step]}.`);
   });
   app.post("/ui/rigs/:rig/machine/:action", async (c) => {
     const r = store.machineRig(c.req.param("rig"));
@@ -2734,6 +3216,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
   app.post("/ui/settings/add", async (c) => {
     const f = await c.req.parseBody();
     if (f.type === "ssh") return addMachine(c, f);
+    if (f.type === "k8s") return addCluster(c, f);
     if (f.type === "gitkey" || f.type === "gittoken")
       return addGit(c, { ...f, kind: f.type === "gittoken" ? "token" : "ssh" });
     return saveProvider(c, f);

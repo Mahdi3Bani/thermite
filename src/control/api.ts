@@ -5,6 +5,7 @@ import { z } from "zod";
 import { sha256Hex } from "../core/canonical.ts";
 import { COMMAND_KINDS, type CommandKind, reportBody, verifyJson } from "../core/commands.ts";
 import { LiveBatch, LiveEntry, liveBody } from "../core/live.ts";
+import type { ClusterKubectl } from "./clusters/kubectl.ts";
 import { Credential, newToken } from "./credential.ts";
 import { createDashboard, type RigImages } from "./dashboard.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
@@ -176,6 +177,8 @@ export interface ControlOptions {
   machineSsh?: MachineSsh | undefined;
   /** The images control deploys rigs from on machines. */
   rigImages?: RigImages | undefined;
+  /** How control reaches Kubernetes clusters (tests give their own). */
+  clusterKubectl?: ClusterKubectl | undefined;
 }
 
 export function createControlApi(
@@ -668,6 +671,7 @@ export function createControlApi(
       publicUrl: opts.publicUrl,
       machineSsh: opts.machineSsh,
       rigImages: opts.rigImages,
+      clusterKubectl: opts.clusterKubectl,
     }),
   );
   app.get("/", (c) => c.redirect("/ui", 302));

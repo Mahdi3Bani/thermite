@@ -201,6 +201,33 @@ create table if not exists machine_install (
   ok integer,
   output text
 );
+-- Kubernetes clusters control sets rigs up on: the kubeconfig sealed, the context, how rigs are
+-- placed (namespaces control creates, or slots the cluster's operators made), what the last check
+-- found.
+create table if not exists cluster (
+  name text primary key,
+  kubeconfig_sealed text not null,
+  context text not null default '',
+  placement text not null check (placement in ('created', 'slot')),
+  namespace_pattern text not null default 'thermite-{rig}',
+  slots text not null default '[]',
+  facts text,
+  checked_at text,
+  check_error text,
+  created_at text not null,
+  created_by text not null
+);
+-- Rigs control set up on a cluster: where, how, and how it stands.
+create table if not exists cluster_rig (
+  rig text primary key,
+  cluster text not null,
+  namespace text not null,
+  placement text not null,
+  spec text not null,
+  status text not null,
+  created_at text not null,
+  created_by text not null
+);
 -- Rigs control set up on a machine: where, on which GPUs, with which images, and how it stands.
 create table if not exists machine_rig (
   rig text primary key,
@@ -391,6 +418,62 @@ const machineOf = (r: Row): Machine => ({
   checked_at: r.checked_at === null ? null : String(r.checked_at),
   check_error: r.check_error === null ? null : String(r.check_error),
   created_at: String(r.created_at),
+});
+
+/** A cluster as listed (never its kubeconfig). */
+export interface Cluster {
+  name: string;
+  context: string;
+  placement: "created" | "slot";
+  namespace_pattern: string;
+  slots: string[];
+  facts: unknown;
+  checked_at: string | null;
+  check_error: string | null;
+  created_at: string;
+}
+
+/** A rig control set up on a cluster; spec holds what it was deployed with (no secrets). */
+export interface ClusterRig {
+  rig: string;
+  cluster: string;
+  namespace: string;
+  placement: "created" | "slot";
+  spec: {
+    gpus: number;
+    gpuMode: "device-plugin" | "dra";
+    deviceClass?: string | undefined;
+    node?: string | undefined;
+    storageClass?: string | undefined;
+    storageGi: number;
+    images: { harness: string; supervisor: string };
+  };
+  status: string;
+  created_at: string;
+  created_by: string;
+}
+
+const clusterOf = (r: Row): Cluster => ({
+  name: String(r.name),
+  context: String(r.context),
+  placement: String(r.placement) as Cluster["placement"],
+  namespace_pattern: String(r.namespace_pattern),
+  slots: JSON.parse(String(r.slots)) as string[],
+  facts: r.facts ? JSON.parse(String(r.facts)) : null,
+  checked_at: r.checked_at === null ? null : String(r.checked_at),
+  check_error: r.check_error === null ? null : String(r.check_error),
+  created_at: String(r.created_at),
+});
+
+const clusterRigOf = (r: Row): ClusterRig => ({
+  rig: String(r.rig),
+  cluster: String(r.cluster),
+  namespace: String(r.namespace),
+  placement: String(r.placement) as ClusterRig["placement"],
+  spec: JSON.parse(String(r.spec)) as ClusterRig["spec"],
+  status: String(r.status),
+  created_at: String(r.created_at),
+  created_by: String(r.created_by),
 });
 
 /** A rig control set up on a machine. */
@@ -1497,6 +1580,109 @@ export class ControlStore {
       ok: Number(r.ok) === 1,
       detail: r.detail === null ? null : String(r.detail),
     }));
+  }
+
+  // ---------------------------------------------------------------- clusters (Kubernetes)
+  addCluster(c: {
+    name: string;
+    kubeconfig_sealed: string;
+    context: string;
+    placement: Cluster["placement"];
+    namespace_pattern: string;
+    slots: string[];
+    by: string;
+  }): void {
+    this.db
+      .prepare(
+        `insert into cluster (name, kubeconfig_sealed, context, placement, namespace_pattern, slots, created_at, created_by)
+         values (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        c.name,
+        c.kubeconfig_sealed,
+        c.context,
+        c.placement,
+        c.namespace_pattern,
+        JSON.stringify(c.slots),
+        new Date().toISOString(),
+        c.by,
+      );
+    this.audit(c.by, "cluster_added", {
+      name: c.name,
+      context: c.context,
+      placement: c.placement,
+      slots: c.slots,
+    });
+  }
+
+  cluster(name: string): (Cluster & { kubeconfig_sealed: string }) | undefined {
+    const r = this.db.prepare("select * from cluster where name = ?").get(name) as Row | undefined;
+    return r ? { ...clusterOf(r), kubeconfig_sealed: String(r.kubeconfig_sealed) } : undefined;
+  }
+
+  clusters(): Cluster[] {
+    return (this.db.prepare("select * from cluster order by name").all() as Row[]).map(clusterOf);
+  }
+
+  setClusterFacts(name: string, r: { facts: unknown } | { error: string }): void {
+    if ("facts" in r)
+      this.db
+        .prepare("update cluster set facts = ?, checked_at = ?, check_error = null where name = ?")
+        .run(JSON.stringify(r.facts), new Date().toISOString(), name);
+    else
+      this.db
+        .prepare("update cluster set checked_at = ?, check_error = ? where name = ?")
+        .run(new Date().toISOString(), r.error, name);
+  }
+
+  deleteCluster(name: string, by: string): boolean {
+    const r = this.db.prepare("delete from cluster where name = ?").run(name);
+    if (Number(r.changes)) this.audit(by, "cluster_deleted", { name });
+    return Number(r.changes) > 0;
+  }
+
+  addClusterRig(r: Omit<ClusterRig, "created_at" | "status">): void {
+    this.db
+      .prepare(
+        `insert into cluster_rig (rig, cluster, namespace, placement, spec, status, created_at, created_by)
+         values (?, ?, ?, ?, ?, 'deploying', ?, ?)`,
+      )
+      .run(
+        r.rig,
+        r.cluster,
+        r.namespace,
+        r.placement,
+        JSON.stringify(r.spec),
+        new Date().toISOString(),
+        r.created_by,
+      );
+    this.audit(r.created_by, "cluster_rig_created", {
+      rig: r.rig,
+      cluster: r.cluster,
+      namespace: r.namespace,
+      placement: r.placement,
+      gpus: r.spec.gpus,
+    });
+  }
+
+  clusterRig(rig: string): ClusterRig | undefined {
+    const r = this.db.prepare("select * from cluster_rig where rig = ?").get(rig) as
+      | Row
+      | undefined;
+    return r ? clusterRigOf(r) : undefined;
+  }
+
+  clusterRigs(cluster?: string): ClusterRig[] {
+    const rows = (
+      cluster
+        ? this.db.prepare("select * from cluster_rig where cluster = ? order by rig").all(cluster)
+        : this.db.prepare("select * from cluster_rig order by cluster, rig").all()
+    ) as Row[];
+    return rows.map(clusterRigOf);
+  }
+
+  setClusterRigStatus(rig: string, status: string): void {
+    this.db.prepare("update cluster_rig set status = ? where rig = ?").run(status, rig);
   }
 
   deleteMachine(name: string, by: string): boolean {

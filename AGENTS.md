@@ -68,7 +68,7 @@ Read [CONVENTIONS.md](CONVENTIONS.md) before changing this repository. Public do
 
 ## Checks
 
-Run from the repository root before every commit, and report which ran and which didn't.
+Run from the repository root, and report which ran and which didn't. Before each commit: typecheck, lint, the public check, and the test files the change touches (`node scripts/test.mjs <files>`). Before each release or deployment: the full `npm run check` and the compose checks the changes need.
 
 - Install: `npm ci` (Node.js 22.19 or later; the agent libraries require it).
 - All the fast checks: `npm run check`. It runs, in order:
@@ -88,6 +88,8 @@ Run from the repository root before every commit, and report which ran and which
   - `COMPOSE="podman compose" node scripts/campaign-acceptance.mjs`
 - Machines acceptance, after changes to machines over SSH, their checks or install recipes. A local container with an SSH server stands in for the machine (never a real host); control reaches it from its own image, the host key must match, and Podman is installed only after the owner's yes (it downloads packages):
   - `COMPOSE="podman compose" node scripts/machine-acceptance.mjs`
+- Cluster acceptance, after changes to rigs on Kubernetes (cluster checks, the manifests, Add a rig on a cluster) or to control's image. A local kind cluster on Podman stands in for the cluster (never a real cluster); a rig is set up in a namespace control creates and in a pre-made slot with a namespaced role, and each must report. Podman and kind:
+  - `COMPOSE="podman compose" node scripts/cluster-acceptance.mjs`
 - Rig deploy acceptance, after changes to setting rigs up on machines (Rigs › Add a rig, the deploy and management scripts, the Quadlet units) or to the rig images. A privileged local container with systemd, sshd and rootless Podman stands in for the machine (never a real host); control sets a CPU rig up there over SSH, the rig must report, and it is stopped, started and removed. Podman only; it loads the rig images into the stand-in, so check the Podman VM's free disk first:
   - `COMPOSE="podman compose" node scripts/rig-deploy-acceptance.mjs`
 - Agents acceptance (M4), after changes to the workers, planner, scheduler, dev runs or the harness image. A scripted model on the host stands in for a real model route:

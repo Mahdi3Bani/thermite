@@ -137,7 +137,8 @@ try {
   const addPage = await get("/ui/rigs/add");
   check(
     "Add a rig offers the machine",
-    /name="machine" value="test-host"(?! disabled)/.test(addPage) && !/Not ready/.test(addPage),
+    /name="place" value="machine:test-host"(?! disabled)/.test(addPage) &&
+      !/Not ready/.test(addPage),
     addPage
       .match(/<label class="ch[^>]*>[\s\S]*?<\/label>/)?.[0]
       ?.replace(/<[^>]+>/g, " ")

@@ -306,7 +306,7 @@ describe("machines in Providers", () => {
     const seen = /name="seen" value="([^"]+)"/.exec(await s.page("/ui/settings"))?.[1] ?? "";
     await s.post("/ui/settings/machines/box/trust", { seen });
     const add = await s.page("/ui/rigs/add");
-    assert.match(add, /name="machine" value="box" checked/);
+    assert.match(add, /name="place" value="machine:box" checked/);
     assert.match(add, /<script src="\/ui\/assets\/add-rig.js" defer>/);
     const labels = add.match(/class="lb"/g)?.length ?? 0;
     const tips = add.match(/class="ii" tabindex="0" data-tip="[^"]+"/g)?.length ?? 0;
