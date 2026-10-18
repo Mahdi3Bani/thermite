@@ -617,9 +617,14 @@ export class Ledger {
    */
   leaseJob(owner: string, ttlMs: number, kinds?: readonly string[]): JobRow | undefined {
     return this.tx(() => {
-      const filter = kinds?.length ? `and kind in (${kinds.map(() => "?").join(",")})` : "";
+      const filter = kinds?.length ? `and j.kind in (${kinds.map(() => "?").join(",")})` : "";
+      // A paused or closed run's jobs wait in the queue: the judge's time goes to running runs.
       const r = this.get<Row>(
-        `select id from job where state = 'queued' ${filter} order by priority, id limit 1`,
+        `select j.id from job j
+         left join attempt a on a.id = j.attempt
+         left join run i on i.id = coalesce(a.run, json_extract(j.spec, '$.run'))
+         where j.state = 'queued' ${filter} and (i.status is null or i.status = 'running')
+         order by j.priority, j.id limit 1`,
         ...(kinds ?? []),
       );
       if (!r) return undefined;

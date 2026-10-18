@@ -256,6 +256,17 @@ describe("ledger", () => {
     check.close();
   });
 
+  test("a paused run's jobs wait in the queue; the judge takes a running run's first", () => {
+    const { ledger } = setup();
+    const old = ledger.enqueueJob({ kind: "validate", spec: { run: "race-1" }, actor: "t" });
+    ledger.setRunStatus("race-1", "paused", "replaced", "t");
+    const free = ledger.enqueueJob({ kind: "calibrate", actor: "t" });
+    assert.equal(ledger.leaseJob("exec", 60_000)?.id, free);
+    assert.equal(ledger.leaseJob("exec", 60_000), undefined);
+    ledger.setRunStatus("race-1", "running", null, "t");
+    assert.equal(ledger.leaseJob("exec", 60_000)?.id, old);
+  });
+
   test("leases are fenced: an expired holder cannot write, and repeated expiry blocks the job", () => {
     let now = new Date("2026-10-14T00:00:00Z");
     const { ledger } = setup(() => now);
