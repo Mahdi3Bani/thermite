@@ -1,6 +1,6 @@
 # Thermite
 
-**Autonomous research campaigns for code, across a fleet of machines. Agents propose changes; code they cannot touch measures them, judges them and keeps the best.**
+**Autoresearch that burns through everything.** Agents propose changes; code they cannot touch measures them, judges them and keeps the best. Run many research campaigns across your machines, and steer them all from one dashboard.
 
 [![ci](https://github.com/iammrduncan/thermite/actions/workflows/ci.yml/badge.svg)](https://github.com/iammrduncan/thermite/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -15,6 +15,7 @@ Point Thermite at a project and a goal: make a kernel faster without breaking it
 ## Why Thermite
 
 - **Agents propose; code judges.** An agent never grades its own work. It submits a change and a claim, and a judge it cannot modify measures the change. "The agent says it's faster" and "it is faster" stay separate.
+- **It runs until the job is done.** There are no default caps on turns, submissions, failures or wall time. A campaign runs until its goals are met, its time box ends or you stop it; only the limits you configure apply.
 - **No state lives in an agent.** Every agent call starts fresh, with context the harness builds from its record of what has been tried, measured and decided. A crashed or confused session loses nothing.
 - **Wide search, not early convergence.** Workers run in parallel without seeing each other's work. A stateless planner gives each one a different direction.
 - **Nothing useful is thrown away.** Each campaign builds on its best confirmed result, and keeps every losing attempt with its code and its verdict.
@@ -32,7 +33,7 @@ flowchart LR
   Ledger --> Planner
 ```
 
-Each project comes with a **kit**: the judge's half of the project, which says how candidates are built, run, timed and checked. Agents never see it. [Kits](docs/kits.md) and [judging](docs/judging.md) explain how this holds up against agents that try to cheat the timer or the reference.
+Each project comes with a **kit**: the judge's half of the project, which says how candidates are built, run, timed and checked. Agents never see it. The CPU smoke kit ships 12 known candidates, among them a real speed-up, a no-op, a timer edit, a reference fallback, NaN output, memory and disk exhaustion and an attempt to overwrite the champion; the judge acceptance test requires each one to get its expected verdict. [Kits](docs/kits.md) and [judging](docs/judging.md) explain the mechanism.
 
 ## Quick start
 
