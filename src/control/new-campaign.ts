@@ -39,10 +39,16 @@ export type StartResult =
     }
   | { ok: false; errors: string[] };
 
-type Deps = { store: ControlStore; kits: KitRepos; privateKeyPem: string };
+type Deps = {
+  store: ControlStore;
+  kits: KitRepos;
+  privateKeyPem: string;
+  /** The files of a kit uploaded on the page, by its id. */
+  uploads?: ((id: string) => Record<string, Buffer> | undefined) | undefined;
+};
 
 export function startCampaign(deps: Deps, input: StartInput): StartResult {
-  const built = buildCampaign({ ...input.draft, target: input.target });
+  const built = buildCampaign({ ...input.draft, target: input.target }, { uploads: deps.uploads });
   if (!built.ok) return built;
   const contract = built.contract as {
     campaign: string;
@@ -56,7 +62,7 @@ export function startCampaign(deps: Deps, input: StartInput): StartResult {
     contract.project.kit.commit = deps.kits.commit(
       built.kit.name,
       built.kit.files,
-      `${contract.campaign} version ${version}: the kit as described on the new-campaign page`,
+      `${contract.campaign} version ${version}: the kit from the new-campaign page`,
     );
   }
   const parsed = parseContract(contract);

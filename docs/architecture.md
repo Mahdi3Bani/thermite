@@ -45,7 +45,7 @@ The supervisor is the rig's link to everything outside:
 
 - **Reporting.** Every 60 seconds it polls the harness and sends new results, champion changes, worker statistics and costs to control.
 - **Commands.** It picks up control's signed commands and relays them to the harness.
-- **Git and data.** It handles all git work: it pushes the harness's exports to the results repository, fetches the projects, kits and models an assignment names into the harness's inbox, and stages other rigs' published champions there for propagation. A kit written on control's new-campaign page is fetched from control itself, with the rig's token. The harness verifies every commit and hash against a signed command before using anything.
+- **Git and data.** It handles all git work: it pushes the harness's exports to the results repository, fetches the projects, kits and models an assignment names into the harness's inbox, and stages other rigs' published champions there for propagation. A kit written or uploaded on control's new-campaign page is fetched from control itself, with the rig's token. The harness verifies every commit and hash against a signed command before using anything.
 - **Teaching.** Hourly, two frontier models review the rig's progress and research externally. A neutral combiner turns their reviews into structured directives for the planner.
 - **Audits.** A fresh-context auditor reviews surprising results. An audit can hold a result back; it can never pass one.
 

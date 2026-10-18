@@ -3,10 +3,11 @@
 // A tiny C project is served from this machine by git daemon. The form's draft describes the kit
 // on the page; control writes the kit, keeps it, stores the contract and signs the assignment.
 // The rig's supervisor fetches the project from the git server and the kit from control (with
-// the rig's token), the harness checks both by commit, and the run starts.
+// the rig's token), the harness checks both by commit, and the run starts. Then the same kit,
+// uploaded as a .zip, starts a second campaign's try.
 // Usage: COMPOSE="podman compose" node scripts/campaign-acceptance.mjs (or "docker compose").
 import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -190,6 +191,66 @@ try {
     "the assignment was signed by control for the owner and delivered",
     cmd?.status === "delivered" && cmd?.issued_by === "owner:ui",
     cmd && { status: cmd.status, issued_by: cmd.issued_by },
+  );
+  // The kit control wrote, fetched as a rig would and uploaded as a .zip with one top folder:
+  // control unpacks it in its own image, keeps it as a new kit, and a try of it runs.
+  const kitDir = join(root, "uploaded", "kit");
+  execFileSync("git", [
+    "-c",
+    `http.extraHeader=Authorization: Bearer ${secret("control-rig-token")}`,
+    "clone",
+    "-q",
+    `${control}/v1/rigs/local-1/git/kits/acc-tiny-kit.git`,
+    kitDir,
+  ]);
+  rmSync(join(kitDir, ".git"), { recursive: true });
+  execFileSync("zip", ["-qr", join(root, "kit.zip"), "kit"], { cwd: join(root, "uploaded") });
+  const form = new FormData();
+  form.append("csrf", csrf);
+  form.append("archive", new File([readFileSync(join(root, "kit.zip"))], "kit.zip"));
+  const up = await fetch(`${control}/ui/campaigns/new/kit`, {
+    method: "POST",
+    body: form,
+    headers: { cookie },
+  });
+  const kit = await up.json();
+  check(
+    "control unpacked and checked an uploaded kit",
+    up.status === 200 && kit.cells?.join(" ") === "small large",
+    kit,
+  );
+  const fromUpload = await fetch(`${control}/ui/campaigns/new`, {
+    method: "POST",
+    body: new URLSearchParams({
+      csrf,
+      draft: JSON.stringify({
+        ...draft,
+        campaign: "acc-up",
+        kit: { source: "upload", upload: kit.id, cells: kit.cells, held_out: [] },
+        score: { min_effect: 0.1 },
+      }),
+      rig: "local-1",
+      start_value: "try",
+    }),
+    headers: { cookie },
+    redirect: "manual",
+  });
+  check(
+    "control took a campaign with the uploaded kit and started its try",
+    fromUpload.status === 303 && /acc-up-try-1/.test(String(fromUpload.headers.get("location"))),
+    { status: fromUpload.status, location: fromUpload.headers.get("location") },
+  );
+  const uploadedTry = await until(
+    "the judge measures the uploaded kit's try",
+    async () =>
+      (await events()).find((e) => e.kind === "calibration" && e.subject === "acc-up-try-1"),
+    600_000,
+    3000,
+  );
+  check(
+    "the uploaded kit's try measured every case",
+    uploadedTry?.body?.blocks === 2,
+    uploadedTry?.body,
   );
 } catch (err) {
   check("acceptance run", false, String(err?.stack ?? err));

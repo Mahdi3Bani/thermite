@@ -81,6 +81,14 @@ const KitRepo = z.strictObject({
   held_out: z.array(IdSchema).default([]),
 });
 
+/** A kit uploaded on the page (kit-upload.ts), by its archive's sha256, with the cases to use. */
+const KitUploaded = z.strictObject({
+  source: z.literal("upload"),
+  upload: z.string().regex(/^[0-9a-f]{64}$/, "an uploaded kit's id"),
+  cells: z.array(IdSchema).min(1),
+  held_out: z.array(IdSchema).default([]),
+});
+
 const Goal = z.strictObject({
   id: IdSchema,
   description: z.string().min(1).max(2000),
@@ -88,6 +96,8 @@ const Goal = z.strictObject({
   verify: z.discriminatedUnion("type", [
     /** The check passes on every one of these cases. */
     z.strictObject({ type: z.literal("check"), cells: z.array(IdSchema).min(1) }),
+    /** One of a kit's own checks passes (a kit from a repository or an upload). */
+    z.strictObject({ type: z.literal("verifier"), verifier: IdSchema }),
     /** The score clears a bound on these cases. */
     z.strictObject({
       type: z.literal("metric"),
@@ -121,7 +131,7 @@ export const CampaignDraft = z.strictObject({
       forbidden_patterns: z.array(z.string().min(1).max(500)).default([]),
     })
     .optional(),
-  kit: z.discriminatedUnion("source", [KitHere, KitRepo]).optional(),
+  kit: z.discriminatedUnion("source", [KitHere, KitRepo, KitUploaded]).optional(),
   /**
    * The score. "time": how long a run takes, from the judge's clock (a rate instead when every
    * measured case says how much work it does). "check": a number the check works out from the
@@ -240,8 +250,14 @@ rm -f "$tail_file"`
 }
 `;
 
-/** Builds the contract (and kit) from the page's answers, or says what is wrong in words. */
-export function buildCampaign(input: unknown): Built {
+/**
+ * Builds the contract (and kit) from the page's answers, or says what is wrong in words.
+ * `uploads` gives the files of a kit uploaded earlier, by its id.
+ */
+export function buildCampaign(
+  input: unknown,
+  opts: { uploads?: (id: string) => Record<string, Buffer> | undefined } = {},
+): Built {
   const parsed = CampaignDraft.safeParse(input);
   if (!parsed.success)
     return {
@@ -293,6 +309,10 @@ export function buildCampaign(input: unknown): Built {
   let direction: "max" | "min" = d.score?.direction ?? "max";
   if (d.kit.source === "here") {
     const k = d.kit;
+    if (d.goals?.some((g) => g.verify.type === "verifier"))
+      errors.push(
+        "a kit described here has no checks of its own: check a goal by the check passing on cases",
+      );
     const params = new Set(k.cases.flatMap((c) => Object.keys(c.params)));
     const run = shellCommand(k.run, params);
     const check = shellCommand(k.check, params);
@@ -392,6 +412,26 @@ export function buildCampaign(input: unknown): Built {
       );
     kit = { name: kitName(d.campaign), files };
     kitRef = { repo: kit.name };
+  } else if (d.kit.source === "upload") {
+    // An uploaded kit is kept by control like one described here; its cases and scores are its own.
+    const files = opts.uploads?.(d.kit.upload);
+    if (!files) return { ok: false, errors: ["the uploaded kit is gone: upload it again"] };
+    const k = d.kit;
+    cells = k.cells.filter((c) => !k.held_out.includes(c));
+    heldOut = k.held_out;
+    let manifest: { metrics?: Record<string, unknown> } = {};
+    try {
+      manifest = JSON.parse(String(files["kit.json"]));
+    } catch {
+      return { ok: false, errors: ["the uploaded kit's kit.json is not JSON"] };
+    }
+    const names = Object.keys(manifest.metrics ?? {});
+    if (d.mode === "hill_climb" && !d.score?.name) metric = names[0] ?? metric;
+    // A time score improves downwards whatever the page said.
+    if ((manifest.metrics?.[metric] as { from?: string } | undefined)?.from === "time")
+      direction = "min";
+    kit = { name: kitName(d.campaign), files };
+    kitRef = { repo: kit.name };
   } else {
     kitRef = { repo: d.kit.repo, commit: d.kit.commit };
     cells = d.kit.cells.filter((c) => !d.kit?.held_out.includes(c));
@@ -434,15 +474,17 @@ export function buildCampaign(input: unknown): Built {
         verify:
           g.verify.type === "check"
             ? { type: "code", verifier: g.id }
-            : g.verify.type === "metric"
-              ? {
-                  type: "metric_threshold",
-                  metric,
-                  op: g.verify.op,
-                  value: g.verify.value,
-                  cells: g.verify.cells,
-                }
-              : { type: "review", criteria: g.verify.criteria },
+            : g.verify.type === "verifier"
+              ? { type: "code", verifier: g.verify.verifier }
+              : g.verify.type === "metric"
+                ? {
+                    type: "metric_threshold",
+                    metric,
+                    op: g.verify.op,
+                    value: g.verify.value,
+                    cells: g.verify.cells,
+                  }
+                : { type: "review", criteria: g.verify.criteria },
       })),
       deliverable: "a commit that meets every required goal",
       ...(heldOut.length ? { held_out_cells: heldOut } : {}),
@@ -453,8 +495,9 @@ export function buildCampaign(input: unknown): Built {
   if (!r.ok) return { ok: false, errors: r.errors };
   // The contract against the kit, as the harness checks it at assignment.
   if (kit) {
-    const parsedKit = KitSchema.parse(JSON.parse(String(kit.files["kit.json"])));
-    const problems = kitProblems(r.contract, parsedKit, d.target.type);
+    const parsedKit = KitSchema.safeParse(JSON.parse(String(kit.files["kit.json"])));
+    if (!parsedKit.success) return { ok: false, errors: ["the kit's kit.json is not a valid kit"] };
+    const problems = kitProblems(r.contract, parsedKit.data, d.target.type);
     if (problems.length) return { ok: false, errors: problems };
   }
   return { ok: true, contract, kit };

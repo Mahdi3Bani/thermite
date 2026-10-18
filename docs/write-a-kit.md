@@ -105,7 +105,9 @@ Check the contract with `thermite contract validate <file>`. Any later change to
 
 ## 8. Send the kit to a rig
 
-Push the kit to a git repository the rig's supervisor can reach, then start a run through control:
+The dashboard is the shortest way: on **Campaigns › New campaign**, under *How to measure*, choose **Upload a kit** and give it the kit as a `.zip`, `.tar.gz`, `.tgz` or `.tar` with `kit.json` at its top (or inside one top folder). Control unpacks it, refuses links, checks `kit.json`, and lists the kit's cases and scores: choose which cases to measure, which to keep as hidden tests, and which score to improve. Control keeps the kit as a git repository of its own, and rigs fetch it from control. **Try the kit first** then runs it with no agents, as in step 9. Choose **A kit in a repository** instead to use the kit's own repository.
+
+From the command line, push the kit to a git repository the rig's supervisor can reach, then start a run through control:
 
 ```sh
 thermite assign --contract contract.json --run my-run-1 \
@@ -117,7 +119,7 @@ thermite assign --contract contract.json --run my-run-1 \
 - The rig's supervisor fetches the project commit and the kit commit the contract pins. It puts them in the rig's inbox as bundles, and the harness checks that each holds its commit. Models the contract lists come from `--model NAME=URL`, and must match the contract's sha256.
 - The harness checks the kit against the contract before the run starts: the target, cells, metrics and verifiers the contract names. A mismatch fails the command with the reason.
 - If the fetch fails, the command fails with the reason (for example a wrong URL, or a repository without the commit).
-- Private repositories need the supervisor's SSH key (`THERMITE_RESULTS_KEY_FILE`) to be allowed to read them.
+- A private repository needs a key. Started from the command line, the supervisor's own SSH key (`THERMITE_RESULTS_KEY_FILE`) must be allowed to read it. Started from the dashboard, the campaign can name Git access set up once in **Settings** instead: a deploy key control makes, or an HTTPS token, which only rigs whose campaigns use it receive.
 - A commit already on the rig, such as an earlier run's champion, needs no `--seed` URL: use `--seed-commit <commit>`. A kit already there needs no `--kit`.
 - `--print` shows the payload instead of issuing it, for an agent to send with control's MCP `issue_command`.
 

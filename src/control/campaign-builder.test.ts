@@ -1,8 +1,16 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, test } from "node:test";
 import { parseContract } from "../core/contract.ts";
 import { KitSchema, paramsText } from "../harness/kit.ts";
@@ -279,5 +287,60 @@ describe("the new-campaign page's builder", () => {
     assert.ok(research.ok, JSON.stringify(!research.ok && research.errors));
     const missing = buildCampaign({ ...hillClimb, project: undefined });
     assert.equal(missing.ok, false);
+  });
+
+  test("an uploaded kit is kept as it came, with the cases and score chosen on the page", () => {
+    const root = resolve(import.meta.dirname, "..", "..", "kits", "smoke-cpu");
+    const files: Record<string, Buffer> = {};
+    for (const p of readdirSync(root, { recursive: true }) as string[])
+      if (statSync(join(root, p)).isFile()) files[p] = readFileSync(join(root, p));
+    const id = "a".repeat(64);
+    const uploads = (u: string) => (u === id ? files : undefined);
+    const kit = {
+      source: "upload",
+      upload: id,
+      cells: ["small", "held"],
+      held_out: ["held"],
+    } as const;
+    const r = buildCampaign({ ...hillClimb, kit, score: { min_effect: 0.1 } }, { uploads });
+    assert.ok(r.ok, JSON.stringify(!r.ok && r.errors));
+    if (r.ok) {
+      assert.equal(r.kit?.files, files);
+      assert.deepEqual(r.contract.cells, ["small"]);
+      assert.deepEqual(r.contract.held_out_cells, ["held"]);
+      // The kit's own metric, and the gain asked for.
+      assert.deepEqual((r.contract.objective as { primary: unknown }).primary, {
+        metric: "flops_per_s",
+        direction: "max",
+        min_effect: 0.1,
+      });
+    }
+    // Gone from control, a case the kit doesn't have, or a goal by a check the kit lacks: refused.
+    const gone = buildCampaign({ ...hillClimb, kit });
+    assert.deepEqual(!gone.ok && gone.errors, ["the uploaded kit is gone: upload it again"]);
+    const odd = buildCampaign({ ...hillClimb, kit: { ...kit, cells: ["huge"] } }, { uploads });
+    assert.equal(odd.ok, false);
+    const goal = buildCampaign(
+      {
+        ...hillClimb,
+        mode: "goal",
+        kit,
+        goals: [
+          { id: "loads", description: "It loads", verify: { type: "verifier", verifier: "loads" } },
+        ],
+      },
+      { uploads },
+    );
+    assert.equal(goal.ok, false);
+    assert.match(JSON.stringify(!goal.ok && goal.errors), /loads/);
+    // A kit described here has no checks of its own to name.
+    const own = buildCampaign({
+      ...hillClimb,
+      mode: "goal",
+      goals: [
+        { id: "loads", description: "It loads", verify: { type: "verifier", verifier: "loads" } },
+      ],
+    });
+    assert.match(JSON.stringify(!own.ok && own.errors), /no checks of its own/);
   });
 });

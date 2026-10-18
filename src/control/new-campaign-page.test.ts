@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, test } from "node:test";
 import { createHarnessApi } from "../harness/api.ts";
 import { relayOnce } from "../supervisor/relay.ts";
@@ -80,7 +81,14 @@ async function stack() {
   const csrf =
     /name="csrf" value="([0-9a-f]+)"/.exec(await (await get("/ui/campaigns/new")).text())?.[1] ??
     "";
-  return { store, kits, get, post, csrf, probes };
+  /** Sends a kit archive as the page does: a multipart form with the page's token. */
+  const upload = (name: string, archive: Buffer, token = csrf) => {
+    const body = new FormData();
+    body.append("csrf", token);
+    body.append("archive", new File([new Uint8Array(archive)], name));
+    return control.request("/ui/campaigns/new/kit", { method: "POST", body, headers: { cookie } });
+  };
+  return { store, kits, get, post, upload, csrf, probes };
 }
 
 const draft = (over: Record<string, unknown> = {}) => ({
@@ -197,6 +205,59 @@ describe("the new-campaign page", () => {
     assert.deepEqual(kinds, ["assign_campaign", "assign_campaign"]);
     const bad = await s.post("/ui/campaigns/matmul-speed/runs", { csrf: s.csrf, rig: "nope" });
     assert.match(String(bad.headers.get("location")), /error=Choose%20a%20rig/);
+  });
+
+  test("an uploaded kit is checked and summed up, then kept by control for the campaign", async () => {
+    const s = await stack();
+    const dir = mkdtempSync(join(tmpdir(), "thermite-up-"));
+    const smoke = resolve(import.meta.dirname, "..", "..", "kits", "smoke-cpu");
+    execFileSync("tar", ["-czf", join(dir, "kit.tar.gz"), "-C", smoke, "."]);
+    const res = await s.upload("kit.tar.gz", readFileSync(join(dir, "kit.tar.gz")));
+    assert.equal(res.status, 200);
+    const kit = (await res.json()) as { id: string; name: string; cells: string[] };
+    assert.equal(kit.name, "smoke-cpu");
+    assert.deepEqual(kit.cells, ["small", "large", "held"]);
+    // A page sent back with mistakes can show it again.
+    const again = await s.get(`/ui/campaigns/new/kit/${kit.id}`);
+    assert.deepEqual(await again.json(), kit);
+    assert.equal((await s.get(`/ui/campaigns/new/kit/${"0".repeat(64)}`)).status, 404);
+    const saved = await s.post("/ui/campaigns/new", {
+      csrf: s.csrf,
+      draft: JSON.stringify(
+        draft({
+          project: { ...(draft().project as object), commit: C },
+          kit: { source: "upload", upload: kit.id, cells: ["small", "held"], held_out: ["held"] },
+          score: { name: "flops_per_s", direction: "max", min_effect: 0.05 },
+        }),
+      ),
+      rig: "rig-a",
+      start_value: "save",
+    });
+    assert.equal(saved.status, 303, await saved.text());
+    const [v] = s.store.campaignVersions("matmul-speed");
+    assert.deepEqual(v?.sources.kit, { control: "kits/matmul-speed-kit" });
+    const contract = v?.contract as { project: { kit: { commit: string } }; cells: string[] };
+    assert.deepEqual(contract.cells, ["small"]);
+    // The kit repository holds the archive's files at the commit the contract names.
+    const show = (path: string) =>
+      execFileSync("git", [
+        "--git-dir",
+        join(s.kits.dir, "matmul-speed-kit.git"),
+        "show",
+        `${contract.project.kit.commit}:${path}`,
+      ]);
+    assert.deepEqual(show("kit.json"), readFileSync(join(smoke, "kit.json")));
+    assert.deepEqual(show("bench/build.sh"), readFileSync(join(smoke, "bench", "build.sh")));
+    // Not a kit, or a form without the page's token: refused.
+    const bad = await s.upload("notes.tgz", Buffer.from("not an archive"));
+    assert.equal(bad.status, 400);
+    assert.match(((await bad.json()) as { error: string }).error, /.+/);
+    const forged = await s.upload(
+      "kit.tar.gz",
+      readFileSync(join(dir, "kit.tar.gz")),
+      "0".repeat(64),
+    );
+    assert.equal(forged.status, 403);
   });
 
   test("mistakes come back on the page with the answers kept, and nothing is created", async () => {

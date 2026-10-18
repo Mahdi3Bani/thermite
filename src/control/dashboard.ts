@@ -1,4 +1,5 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Context, Hono } from "hono";
@@ -9,6 +10,7 @@ import type { Credential } from "./credential.ts";
 import { makeDeployKey } from "./git-keys.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
 import type { KitRepos } from "./kit-repos.ts";
+import { kitSummary, unpackKit } from "./kit-upload.ts";
 import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
 import { startCampaign, startRun } from "./new-campaign.ts";
 import { ANTHROPIC_BASE, isOpencodeOwn, listModels, providerBase } from "./providers.ts";
@@ -771,6 +773,38 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
     }
   });
+  // A kit uploaded on the page: unpacked and checked now, its archive kept beside the kit
+  // repositories (never served to rigs: only <name>.git is) until a campaign uses it.
+  const uploadsDir = () => join(opts.kits?.dir ?? "", "uploads");
+  app.post("/ui/campaigns/new/kit", async (c) => {
+    const f = await c.req.parseBody();
+    const file = f.archive;
+    if (!opts.kits) return c.json({ error: "This control keeps no kits." }, 404);
+    if (!(file instanceof File)) return c.json({ error: "Choose a kit archive." }, 400);
+    try {
+      const archive = Buffer.from(await file.arrayBuffer());
+      const k = await unpackKit(file.name, archive);
+      mkdirSync(uploadsDir(), { recursive: true });
+      writeFileSync(join(uploadsDir(), k.id), archive);
+      writeFileSync(join(uploadsDir(), `${k.id}.name`), file.name);
+      return c.json({ id: k.id, ...kitSummary(k.kit) });
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+    }
+  });
+  /** An uploaded kit, unpacked again from its kept archive. */
+  const uploaded = async (id: string) => {
+    if (!/^[0-9a-f]{64}$/.test(id)) return undefined;
+    const p = join(uploadsDir(), id);
+    if (!existsSync(p)) return undefined;
+    return unpackKit(readFileSync(`${p}.name`, "utf8"), readFileSync(p));
+  };
+  // What a page sent back with mistakes shows again about the kit it had uploaded.
+  app.get("/ui/campaigns/new/kit/:id", async (c) => {
+    const k = await uploaded(c.req.param("id")).catch(() => undefined);
+    if (!k) return c.json({ error: "The uploaded kit is gone: upload it again." }, 404);
+    return c.json({ id: k.id, ...kitSummary(k.kit) });
+  });
   app.post("/ui/campaigns/new", async (c) => {
     const f = await c.req.parseBody();
     if (!opts.kits) return c.text("This control keeps no kits.", 404);
@@ -808,10 +842,17 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       }
     }
     const promotion = String(f.promotion ?? "");
+    const uploadId = (draft.kit as { source?: string; upload?: string } | undefined)?.upload;
+    const upload = uploadId ? await uploaded(uploadId).catch(() => undefined) : undefined;
     let r: ReturnType<typeof startCampaign>;
     try {
       r = startCampaign(
-        { store, kits: opts.kits, privateKeyPem: opts.privateKeyPem },
+        {
+          store,
+          kits: opts.kits,
+          privateKeyPem: opts.privateKeyPem,
+          uploads: (id) => (id === uploadId ? upload?.files : undefined),
+        },
         {
           draft,
           rig: rig.id,
@@ -843,7 +884,8 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
   const startRunCard = (c: Ctx, campaign: string, vs: RigView[], heading: string) => {
     const versions = store.campaignVersions(campaign);
     if (!versions.length || !opts.kits) return "";
-    const want = (versions[0]?.contract as { target?: { type?: string } }).target?.type;
+    const want = (versions[0]?.contract as { target?: { type?: string } } | undefined)?.target
+      ?.type;
     const rigOptions = vs
       .map((u) => {
         const t = u.hardware?.target?.type;
@@ -917,7 +959,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           vs,
         );
       const waiting = c.req.query("run");
-      const title = (saved[0]?.contract as { title?: string }).title ?? name;
+      const title = (saved[0]?.contract as { title?: string } | undefined)?.title ?? name;
       return page(
         c,
         {

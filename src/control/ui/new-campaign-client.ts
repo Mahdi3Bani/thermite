@@ -135,6 +135,48 @@ export const NEW_CAMPAIGN_JS = `
     const list = $("#kit-files-list"); list.textContent = files.map((f) => f.name + (f.run ? " (the run reads it)" : "")).join(", ");
     e.target.value = "";
   });
+  // ------------------------------------------------ an uploaded kit: control checks it and says what it holds
+  let upKit = null;
+  const option = (value, text) => { const o = document.createElement("option"); o.value = value; o.textContent = text; return o; };
+  const showKit = (j, pick) => {
+    upKit = j;
+    form.elements.kit_upload.value = j.id;
+    $("#up-kit").hidden = false;
+    const n = j.cells.length;
+    $("#up-summary").textContent = j.name + ": measures on " + j.target + ", " + n + " case" + (n === 1 ? "" : "s") + ", scores " + Object.keys(j.metrics).join(", ") + ".";
+    const body = $("#up-cases tbody"); body.replaceChildren();
+    for (const c of j.cells) {
+      const name = document.createElement("td"); name.className = "mono"; name.textContent = c;
+      const sel = document.createElement("select"); sel.dataset.cell = c; sel.setAttribute("aria-label", "use of " + c);
+      sel.append(option("measure", "Measured"), option("hidden", "Hidden test"), option("skip", "Not used"));
+      if (pick) sel.value = (pick.held_out || []).includes(c) ? "hidden" : (pick.cells || []).includes(c) ? "measure" : "skip";
+      const use = document.createElement("td"); use.append(sel);
+      const tr = document.createElement("tr"); tr.append(name, use); body.append(tr);
+    }
+    const ms = form.elements.up_metric; ms.replaceChildren();
+    for (const [m, about] of Object.entries(j.metrics)) ms.append(option(m, m + ": " + about.about));
+    $("#up-verifiers").textContent = j.verifiers.length
+      ? "The kit's own checks, for goals checked by the kit's own check: " + j.verifiers.join(", ") + "."
+      : "This kit has no checks of its own: check its goals by the check passing on cases, or by the score.";
+    update();
+  };
+  $("#kit-archive")?.addEventListener("change", async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const out = $("#kit-archive-out");
+    out.textContent = "Checking " + f.name + "…";
+    const body = new FormData();
+    body.append("csrf", form.elements.csrf.value);
+    body.append("archive", f);
+    try {
+      const res = await fetch("/ui/campaigns/new/kit", { method: "POST", body, credentials: "same-origin" });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { out.textContent = j.error || "Control could not read it."; return; }
+      out.textContent = f.name + ": checked.";
+      showKit(j);
+    } catch { out.textContent = "Control could not take the upload."; }
+    e.target.value = "";
+  });
   const num = (name) => { const n = Number(val(name)); return Number.isFinite(n) && val(name) !== "" ? n : undefined; };
   const draft = () => {
     const mode = choice.mode || "hill_climb";
@@ -161,12 +203,17 @@ export const NEW_CAMPAIGN_JS = `
         };
       }).filter((c) => c.name);
       d.kit = { source: "here", build: val("build") || "true", outputs: words("outputs"), cases, inputs, run: val("run"), check: val("check"), files, runs_per_case: Number(val("runs_per_case") || 3) };
+    } else if (choice.kit === "upload") {
+      const use = $$("#up-cases select");
+      d.kit = { source: "upload", upload: val("kit_upload"), cells: use.filter((s) => s.value !== "skip").map((s) => s.dataset.cell), held_out: use.filter((s) => s.value === "hidden").map((s) => s.dataset.cell) };
     } else {
       d.kit = { source: "repo", url: val("kit_url"), ...(val("kit_access") ? { access: val("kit_access") } : {}), commit: val("kit_commit"), repo: repoName(val("kit_url")), cells: words("kit_cells"), held_out: words("held_out_repo") };
     }
     d.score = (choice.kit || "here") === "repo"
       ? { name: val("repo_metric") || "rate", direction: val("direction") || "max", min_effect: (num("min_effect") ?? 5) / 100 }
-      : (choice.score || "time") === "check"
+      : choice.kit === "upload"
+        ? { name: val("up_metric") || undefined, direction: val("up_direction") || "max", min_effect: (num("up_min_effect") ?? 5) / 100 }
+        : (choice.score || "time") === "check"
         ? { kind: "check", field: val("score_field") || undefined, unit: val("score_unit"), direction: val("direction") || "max", min_effect: (num("min_effect") ?? 5) / 100 }
         : { kind: "time", min_effect: (num("min_effect") ?? 5) / 100 };
     if (mode === "goal") {
@@ -175,6 +222,7 @@ export const NEW_CAMPAIGN_JS = `
         const kind = tr.querySelector("select").value;
         const id = (desc.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "goal") + "-" + (i + 1);
         if (kind === "check") return { id, description: desc, verify: { type: "check", cells: detail.split(/[\\s,]+/).filter(Boolean) } };
+        if (kind === "verifier") return { id, description: desc, verify: { type: "verifier", verifier: detail } };
         if (kind === "review") return { id, description: desc, verify: { type: "review", criteria: detail.split(";").map((x) => x.trim()).filter(Boolean) } };
         const m = /^(>=|<=|>|<)\\s*([-+0-9.eE]+)\\s+on\\s+(.+)$/.exec(detail);
         return { id, description: desc, verify: m ? { type: "metric", op: m[1], value: Number(m[2]), cells: m[3].split(/[\\s,]+/).filter(Boolean) } : { type: "metric", op: ">=", value: NaN, cells: [] } };
@@ -189,9 +237,16 @@ export const NEW_CAMPAIGN_JS = `
     $$("[data-modes]").forEach((el) => (el.hidden = !el.dataset.modes.split(" ").includes(mode)));
     $$("[data-kit]").forEach((el) => (el.hidden = el.dataset.kit !== (choice.kit || "here")));
     $$("[data-score]").forEach((el) => (el.hidden = el.dataset.score !== (choice.score || "time")));
+    $$("option[data-kits]").forEach((o) => { o.hidden = !o.dataset.kits.split(" ").includes(choice.kit || "here"); });
+    // An uploaded kit's time score is better lower, whatever was chosen.
+    const kind = upKit?.metrics[val("up_metric")]?.kind;
+    if (form.elements.up_direction) {
+      if (kind === "time") form.elements.up_direction.value = "min";
+      form.elements.up_direction.disabled = kind === "time";
+    }
     const rig = choice.rig || "", lanes = val("lanes") || "2";
-    const score = (choice.score || "time") === "check" ? (val("score_field") || "its score") + " " + (val("direction") === "min" ? "lower" : "higher") : "its runs faster";
-    const aim = { hill_climb: "make " + score + ", keeping only changes the judge confirms are at least " + (val("min_effect") || "5") + "% better", goal: "reach its goals, each checked by the judge", research: "research " + (val("topic") || "its topic") + " and report checked findings" }[mode];
+    const score = choice.kit === "upload" ? (val("up_metric") || "the kit's score") + " " + (val("up_direction") === "min" ? "lower" : "higher") : (choice.score || "time") === "check" ? (val("score_field") || "its score") + " " + (val("direction") === "min" ? "lower" : "higher") : "its runs faster";
+    const aim = { hill_climb: "make " + score + ", keeping only changes the judge confirms are at least " + (val(choice.kit === "upload" ? "up_min_effect" : "min_effect") || "5") + "% better", goal: "reach its goals, each checked by the judge", research: "research " + (val("topic") || "its topic") + " and report checked findings" }[mode];
     const proj = mode === "research" ? "" : " on " + repoName(val("project_url") || "the project") + (found ? " at " + found.commit.slice(0, 7) : "") + ", changing only " + (lines("editable_paths").join(", ") || "(no files yet)");
     const s = (val("campaign") || "The campaign") + " will " + aim + proj + ". " + lanes + " agent" + (lanes === "1" ? "" : "s") + " work on " + (rig || "(no rig chosen)") + ".";
     for (const el of $$("[data-summary]")) el.textContent = s;
@@ -215,6 +270,20 @@ export const NEW_CAMPAIGN_JS = `
       set("score_field", back.score.field); set("score_unit", back.score.unit); set("direction", back.score.direction); set("min_effect", back.score.min_effect * 100);
       choice.score = back.score.kind || "time";
       $$('.ch[data-group="score"]').forEach((c) => c.classList.toggle("on", c.dataset.value === choice.score));
+    }
+    if (back.kit && back.kit.source === "repo") { set("kit_url", back.kit.url); set("kit_access", back.kit.access); set("kit_commit", back.kit.commit); set("kit_cells", back.kit.cells); set("held_out_repo", back.kit.held_out); if (back.score) set("repo_metric", back.score.name); }
+    if (back.kit && back.kit.source) choice.kit = back.kit.source;
+    if (back.kit && back.kit.source === "upload" && back.kit.upload) {
+      fetch("/ui/campaigns/new/kit/" + encodeURIComponent(back.kit.upload), { credentials: "same-origin" })
+        .then((r) => r.json().then((j) => ({ ok: r.ok, j })))
+        .then(({ ok, j }) => {
+          if (!ok) { $("#kit-archive-out").textContent = j.error || "Upload the kit again."; return; }
+          $("#kit-archive-out").textContent = "Uploaded before and kept on control. Choose another archive to replace it.";
+          showKit(j, back.kit);
+          if (back.score) { set("up_metric", back.score.name); set("up_direction", back.score.direction); set("up_min_effect", back.score.min_effect * 100); }
+          update();
+        })
+        .catch(() => {});
     }
     if (back.research) { set("topic", back.research.topic); set("questions", back.research.questions); set("seeds", back.research.seeds); set("min_duration", back.research.min_duration); }
     $$('.ch[data-group="mode"]').forEach((c) => { c.classList.toggle("on", c.dataset.value === back.mode); });

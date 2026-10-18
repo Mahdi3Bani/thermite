@@ -52,7 +52,10 @@ export function newCampaignBody(p: NewCampaignPage): string {
   const d = (p.draft ?? {}) as {
     mode?: string;
     kit?: { source?: string; cases?: CaseDraft[] };
-    goals?: { description?: string; verify?: { type?: string; cells?: string[] } }[];
+    goals?: {
+      description?: string;
+      verify?: { type?: string; cells?: string[]; verifier?: string };
+    }[];
   };
   const mode = d.mode ?? "hill_climb";
   const cases: CaseDraft[] = d.kit?.cases?.length ? d.kit.cases : [{ name: "default" }];
@@ -61,8 +64,11 @@ export function newCampaignBody(p: NewCampaignPage): string {
   const goals = d.goals?.length
     ? d.goals
     : [{ description: "", verify: { type: "check", cells: [] as string[] } }];
-  const goalRow = (g: { description?: string; verify?: { type?: string; cells?: string[] } }) =>
-    `<tr><td><input aria-label="the goal" value="${esc(g.description ?? "")}" placeholder="It builds and its tests pass"></td><td><select aria-label="checked by"><option value="check"${g.verify?.type === "check" ? " selected" : ""}>the check passes on cases</option><option value="metric"${g.verify?.type === "metric" ? " selected" : ""}>the score reaches</option><option value="review"${g.verify?.type === "review" ? " selected" : ""}>people review it</option></select></td><td><input aria-label="detail" value="${esc((g.verify?.cells ?? []).join(" "))}" placeholder="small large  ·  >= 4e13 on large  ·  clear names; no dead code"></td><td><button class="sm" data-del>×</button></td></tr>`;
+  const goalRow = (g: {
+    description?: string;
+    verify?: { type?: string; cells?: string[]; verifier?: string };
+  }) =>
+    `<tr><td><input aria-label="the goal" value="${esc(g.description ?? "")}" placeholder="It builds and its tests pass"></td><td><select aria-label="checked by"><option value="check"${g.verify?.type === "check" ? " selected" : ""}>the check passes on cases</option><option value="metric"${g.verify?.type === "metric" ? " selected" : ""}>the score reaches</option><option value="verifier" data-kits="repo upload"${g.verify?.type === "verifier" ? " selected" : ""}>the kit's own check</option><option value="review"${g.verify?.type === "review" ? " selected" : ""}>people review it</option></select></td><td><input aria-label="detail" value="${esc(g.verify?.verifier ?? (g.verify?.cells ?? []).join(" "))}" placeholder="small large  ·  >= 4e13 on large  ·  clear names; no dead code"></td><td><button class="sm" data-del>×</button></td></tr>`;
 
   // Rigs that can run a campaign on the kit's target. A rig with no hardware report shows, and
   // its target is whatever it reports later (control refuses a mismatch at assignment).
@@ -127,9 +133,9 @@ ${field("Lines never allowed", "Regular expressions, one per line. A change that
 
 <section class="pane" data-pane="measure" hidden><div class="sec"><h2>How to measure</h2><p class="lead">The kit: how the judge builds your project, runs it on test cases and checks the output. Agents never see it. Thermite times every run with its own clock; nothing the program prints counts as a score.</p>
 <div class="cards3">
-${choice("kit", "here", "Describe it here", "A few commands and test cases. Control writes the kit and keeps it. Best for a first campaign.", d.kit?.source !== "repo")}
+${choice("kit", "here", "Describe it here", "A few commands and test cases. Control writes the kit and keeps it. Best for a first campaign.", !d.kit?.source || d.kit.source === "here")}
 ${choice("kit", "repo", "A kit in a repository", "You keep the kit in git, with its own kit.json and scripts.", d.kit?.source === "repo")}
-${choice("kit", "upload", "Upload a kit", "A .zip or .tar.gz with kit.json at its top. Coming next.", false, true)}
+${choice("kit", "upload", "Upload a kit", "A kit you already have, as a .zip or .tar.gz with kit.json at its top. Control checks it and keeps it.", d.kit?.source === "upload")}
 </div>
 <div data-kit="here" style="margin-top:14px">
 ${field("Run", "How the judge runs your program for one case. {args} is the case's arguments, {input} its input file, {build} what the build made (a file keeps its path: {build}/build/app), {out} a folder for results, {kit} the files you add below. Use only what you need.", `<input class="mono" name="run" placeholder="{build}/build/app {args} --out {out}/result.txt">`)}
@@ -156,9 +162,19 @@ ${field("Files for the check", "Scripts and expected answers the check uses, in 
 <div class="g2">${field("Build", "The command that builds the project, run in a fresh copy of the code. A project with nothing to build, such as scripts, can use true.", `<input class="mono" name="build" placeholder="make">`)}${field("What the build makes", "The files or folders the run needs, relative to the project, separated by spaces. The judge keeps exactly these, so a run can't swap them.", `<input class="mono" name="outputs" placeholder="build/app">`)}</div>
 </div>
 <div data-kit="repo" style="margin-top:14px" hidden><div class="g3">${field("Kit repository", "The git repository holding kit.json and its scripts.", `<input name="kit_url" placeholder="https://… .git">`)}${field("Kit repository access", "Public needs nothing; a private kit repository needs Git access from Settings.", `<select name="kit_access"><option value="">Public: no key</option>${accessOptions}</select>`)}${field("Kit commit", "The full commit of the kit to use.", `<input class="mono" name="kit_commit" placeholder="40 hexadecimal characters">`)}${field("Cases to measure", "The kit's case names this campaign measures, separated by spaces.", `<input name="kit_cells" placeholder="small large">`)}</div>
-${field("Cases held back", "Measured only to confirm a win.", `<input name="held_out_repo" placeholder="none">`)}
+${field("Hidden tests", "Kit cases kept as hidden tests, separated by spaces. The judge doesn't use them when it first scores a change, only to double-check a change that already looks better.", `<input name="held_out_repo" placeholder="none">`)}
 <div data-modes="hill_climb"><div class="g3">${field("The kit's metric", "The name of the metric in the kit's kit.json to improve.", `<input name="repo_metric" placeholder="flops_per_s">`)}</div></div></div>
-<div data-modes="goal" style="margin-top:14px">${field("Goals", "What the result must do. Each goal is checked by the judge: the check passes on some cases (list their names), the score reaches a value (write >= 4e13 on large), or people review it (criteria separated by ;).", `<table class="tbl" id="goals"><thead><tr><th style="width:40%">The goal</th><th>Checked by</th><th>Detail</th><th></th></tr></thead><tbody>${goals.map(goalRow).join("")}</tbody></table><div class="act" style="margin-top:6px"><button class="sm" data-add="#goals">Add a goal</button></div>`)}</div>
+<div data-kit="upload" style="margin-top:14px" hidden><input type="hidden" name="kit_upload">
+${field("Kit archive", "A .zip, .tar.gz, .tgz or .tar holding kit.json and the kit's scripts and files, at its top or inside one folder. Control unpacks it, checks kit.json and shows what it found. Nothing in it runs until a run starts.", `<span class="act"><input type="file" id="kit-archive" accept=".zip,.tar,.tgz,.gz"><span class="muted small" id="kit-archive-out">No kit uploaded yet.</span></span>`)}
+<div id="up-kit" hidden><p class="sum" id="up-summary"></p>
+${field("The kit's cases", "Choose how this campaign uses each case. Measured: every change is scored on it. Hidden test: only used to double-check a change that already looks better, so a change can't win just by helping the cases the agents can see. Not used: this campaign skips it.", `<table class="tbl" id="up-cases" style="max-width:560px"><thead><tr><th>Case</th><th style="width:45%">Use</th></tr></thead><tbody></tbody></table>`)}
+<div data-modes="hill_climb"><div class="g3">
+${field("The score", "Which of the kit's metrics this campaign improves.", `<select name="up_metric"></select>`)}
+${field("Better is", "Whether a higher or a lower number is better. A time is always better lower.", `<select name="up_direction"><option value="max">higher</option><option value="min">lower</option></select>`)}
+${field("Smallest gain that counts (%)", "A change must beat the best so far by at least this much, confirmed by repeated runs, to be kept.", `<input name="up_min_effect" value="5">`)}
+</div></div>
+<p class="muted small" data-modes="goal" id="up-verifiers"></p></div></div>
+<div data-modes="goal" style="margin-top:14px">${field("Goals", "What the result must do. Each goal is checked by the judge: the check passes on some cases (list their names), the score reaches a value (write >= 4e13 on large), one of the kit's own checks passes (name it; for a kit from a repository or an upload), or people review it (criteria separated by ;).", `<table class="tbl" id="goals"><thead><tr><th style="width:40%">The goal</th><th>Checked by</th><th>Detail</th><th></th></tr></thead><tbody>${goals.map(goalRow).join("")}</tbody></table><div class="act" style="margin-top:6px"><button class="sm" data-add="#goals">Add a goal</button></div>`)}</div>
 <div class="act" style="margin-top:14px"><button data-back>Back</button><button class="primary" data-next>Next</button></div></div></section>
 
 <section class="pane" data-pane="research" hidden><div class="sec"><h2>The question</h2>
