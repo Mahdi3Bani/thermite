@@ -303,6 +303,10 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
   /** The page shell with the sidebar's rigs and campaigns. */
   const page = (c: Ctx, s: Omit<Shell, "rigs" | "needs" | "now">, body: string, vs = views()) => {
     const now = Date.now();
+    // A command just sent from this page (POST /ui/commands): say so at the top.
+    const sent = c.req.query("sent");
+    if (sent)
+      body = `<div class="card sent-note" style="margin-bottom:16px"><b class="ok">${esc(sent)}</b></div>${body}`;
     return c.html(
       shell(
         {
@@ -2938,7 +2942,14 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     } catch (err) {
       return c.text(`refused: ${err instanceof Error ? err.message : String(err)}`, 400);
     }
-    return c.redirect(backTo(f, `/ui/rigs/${encodeURIComponent(String(f.rig))}`), 303);
+    // The page says the command went; the rig's answer shows where the command was given.
+    const to = backTo(f, `/ui/rigs/${encodeURIComponent(String(f.rig))}`);
+    const [path, hash] = to.split("#");
+    const sent = `Control sent the command to ${String(f.rig)}. The rig does it in less than 10 seconds. This page shows the result.`;
+    return c.redirect(
+      `${path}${path?.includes("?") ? "&" : "?"}sent=${encodeURIComponent(sent)}${hash ? `#${hash}` : ""}`,
+      303,
+    );
   });
 
   return app;

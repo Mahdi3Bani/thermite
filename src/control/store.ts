@@ -343,6 +343,23 @@ export interface CampaignSources {
   kit?: { control: string } | { git: string; access?: string | undefined } | undefined;
 }
 
+/** A decision the owner sent to a rig, and the rig's answer once it came. */
+export interface Decision {
+  id: string;
+  rig: string;
+  kind: string;
+  run: string;
+  attempt?: string | undefined;
+  review?: number | undefined;
+  proposal?: number | undefined;
+  accept?: boolean | undefined;
+  issued_at: string;
+  /** pending, delivered, rejected, failed or expired. */
+  status: string;
+  acked_at: string | null;
+  outcome: { accepted?: boolean; result?: Record<string, unknown> | null } | null;
+}
+
 /** A machine as listed (never its key). Host keys are known_hosts lines. */
 export interface Machine {
   name: string;
@@ -1734,6 +1751,43 @@ export class ControlStore {
       acked_at: r.acked_at === null ? null : String(r.acked_at),
       outcome: r.outcome ? JSON.parse(String(r.outcome)) : null,
     }));
+  }
+
+  /**
+   * The owner's decisions sent to rigs (promote, decline, accept a review, conclude), newest
+   * first, with what each rig answered: so a decision shows as sent the moment it is made, not
+   * only once the rig's next report arrives.
+   */
+  decisions(limit = 200): Decision[] {
+    const rows = this.db
+      .prepare(
+        `select id, rig, kind, signed, issued_at, status, acked_at, outcome from command
+         where kind in ('approve_promotion', 'decline_promotion', 'accept_review', 'conclude')
+         order by issued_at desc limit ?`,
+      )
+      .all(limit) as Row[];
+    return rows.map((r) => {
+      let payload: Record<string, unknown> = {};
+      try {
+        payload =
+          (JSON.parse(String(r.signed)) as { envelope?: { payload?: Record<string, unknown> } })
+            .envelope?.payload ?? {};
+      } catch {}
+      return {
+        id: String(r.id),
+        rig: String(r.rig),
+        kind: String(r.kind),
+        run: typeof payload.run === "string" ? payload.run : "",
+        attempt: typeof payload.attempt === "string" ? payload.attempt : undefined,
+        review: typeof payload.review === "number" ? payload.review : undefined,
+        proposal: typeof payload.proposal === "number" ? payload.proposal : undefined,
+        accept: typeof payload.accept === "boolean" ? payload.accept : undefined,
+        issued_at: String(r.issued_at),
+        status: String(r.status),
+        acked_at: r.acked_at === null ? null : String(r.acked_at),
+        outcome: r.outcome ? (JSON.parse(String(r.outcome)) as Decision["outcome"]) : null,
+      };
+    });
   }
 
   listAudit(limit = 200): { at: string; actor: string; action: string; body: unknown }[] {

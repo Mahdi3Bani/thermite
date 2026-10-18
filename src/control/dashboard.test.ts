@@ -567,13 +567,18 @@ describe("control dashboard", () => {
     await s.relay();
     const home = await (await s.get("/ui")).text();
     const judged = s.env.explain(id);
-    assert.ok(home.includes("Promote this change?"), judged);
+    assert.ok(home.includes("Make this change the new champion?"), judged);
     assert.ok(home.includes(id), judged);
-    // The decision says what it is about, what the judge found, why it waits and what Approve does.
+    // The decision says, in plain words, what it is about, what the judge found, why it waits and
+    // what each choice does.
     assert.match(home, /drop the waste/);
-    assert.match(home, /Confirmed \+\d+\.\d% better than the champion on fresh runs/);
-    assert.match(home, /asks for your approval before every promotion/);
-    assert.match(home, /It becomes <b>champion #2<\/b>/);
+    assert.match(
+      home,
+      /The judge measured the change again on new runs: \+\d+\.\d% compared with the champion\./,
+    );
+    assert.match(home, /This rig changes its champion only after you agree/);
+    assert.match(home, /The change becomes <b>champion #2<\/b>/);
+    assert.match(home, /The champion is the version of the project that the agents start from/);
     // A form without the session's token is refused.
     const forged = await s.post("/ui/commands", {
       rig: "rig-a",
@@ -591,6 +596,20 @@ describe("control dashboard", () => {
       csrf: s.csrfFrom(home),
     });
     assert.equal(ok.status, 303);
+    // The page says the command went, and the decision shows as sent, without its buttons.
+    const back = String(ok.headers.get("location"));
+    assert.match(back, /sent=Control%20sent%20the%20command%20to%20rig-a/);
+    const sent = await (await s.get(back)).text();
+    assert.match(
+      sent,
+      /Control sent the command to rig-a\. The rig does it in less than 10 seconds/,
+    );
+    const home2 = await (await s.get("/ui")).text();
+    assert.match(
+      home2,
+      /You selected <b>Make it the champion<\/b> [^<]* ago\. Control sent it to the rig\./,
+    );
+    assert.doesNotMatch(home2, /name="kind" value="approve_promotion"/);
     await s.relay(); // delivers the signed command to the harness
     assert.equal(s.env.ledger.currentChampion("js-1").seq, 2);
     await s.relay(); // reports the promotion back
@@ -611,7 +630,7 @@ describe("control dashboard", () => {
     );
     assert.match(await (await s.get("/ui/campaigns")).text(), /js-sum/);
     const after = await (await s.get("/ui")).text();
-    assert.doesNotMatch(after, /Promote this change\?/);
+    assert.doesNotMatch(after, /Make this change the new champion\?/);
     assert.match(after, /became champion #2/);
     const audit = await (await s.get("/ui/audit")).text();
     assert.match(audit, /command_issued/);
@@ -733,7 +752,10 @@ describe("control dashboard for an operator", () => {
       ),
     ].map((m) => m[0]);
     assert.ok(forms.length >= 2, `decline forms: ${forms.length}`);
-    assert.match(home, /It never becomes the champion\. It stays in the record as declined by you/);
+    assert.match(
+      home,
+      /The change does not become the champion\. The record shows that you rejected it\./,
+    );
     const field = (form: string, name: string) =>
       new RegExp(`name="${name}" value="([^"]*)"`).exec(form)?.[1] ?? "";
     const form = forms[0] as string;
@@ -759,10 +781,13 @@ describe("control dashboard for an operator", () => {
     const { get } = await demo();
     const home = await get("/ui");
     // A goal-campaign attempt held for an audit, on a rig with no auditor.
-    assert.match(home, /Let this change through without an audit\?/);
+    assert.match(home, /Make this change the new champion\?/);
     assert.match(home, /Register the two new tensor types/);
     assert.match(home, /The GPU path uses the slow reference kernel, not a tuned one\./);
-    assert.match(home, /it newly meets goldens, real-file and ops, and it loses none/);
+    assert.match(
+      home,
+      /With this change, the project gets these goals that the champion does not get: goldens, real-file and ops\. It keeps all the goals that the champion gets\./,
+    );
     // What changed and why the judge decided, from the record.
     assert.match(home, /3 files: <code>src\/types\.c<\/code> <span class="muted">\+120 −4<\/span>/);
     assert.match(home, /<code>tests\/goldens\.bin<\/code> <span class="muted">binary<\/span>/);
@@ -770,40 +795,56 @@ describe("control dashboard for an operator", () => {
     // A confirmed win's interval; a lane at work, with its focus, from trial_started.
     assert.match(
       home,
-      /Confirmed \+14\.2% better than the champion on fresh runs, somewhere between \+9\.1% and \+19\.6%/,
+      /The judge measured the change again on new runs: \+14\.2% compared with the champion\. The correct value is between \+9\.1% and \+19\.6%\./,
     );
     assert.match(home, /get the model fully onto the GPU with every layer offloaded/);
-    // Each decision's row leads with the change, then why it waits, then the facts as chips.
-    assert.match(home, /<span class="dq-head">Register the two new tensor types/);
+    // Each decision's row leads with what the change does in plain words, then why it waits,
+    // then the facts as chips.
     assert.match(
       home,
-      /<span class="dq-why">Its author declared known flaws; no auditor is configured, so it waits for you<\/span>/,
+      /<span class="dq-head">lane-1 changed 3 files\. With this change, the project gets 3 more goals: goldens, real-file and ops\./,
     );
-    assert.match(home, /<b>\+3 goals<\/b>.*2 declared flaws.*3 files/s);
-    assert.match(home, /<b>\+14\.2%<\/b><\/span><span class="chip">\+9\.1% to \+19\.6%<\/span>/);
-    assert.match(home, /The auditor blocked it: The change caches the result between calls/);
-    assert.match(home, /its author declared known flaws/);
-    assert.match(home, /This rig has no auditor configured/);
-    assert.match(home, /Skip the audit and promote/);
     assert.match(
       home,
-      /You take the auditor's place, on the record\. It becomes <b>champion #2<\/b>/,
+      /<span class="dq-why">The agent that made the change wrote 2 problems with it\. This rig has no auditor, thus you must make the decision\.<\/span>/,
+    );
+    assert.match(home, /<b>\+3 goals<\/b>.*2 problems from the agent.*3 files/s);
+    assert.match(home, /<b>\+14\.2%<\/b><\/span><span class="chip">\+9\.1% to \+19\.6%<\/span>/);
+    assert.match(
+      home,
+      /The auditor stopped this change\. Its cause: The change caches the result between calls/,
+    );
+    assert.match(home, /Problems that the agent wrote/);
+    assert.match(
+      home,
+      /This rig has no auditor\.<\/b> Thus, no one other than you will make the decision\./,
+    );
+    assert.match(home, /Make it the champion/);
+    assert.match(
+      home,
+      /You make the decision, not an auditor\. The record shows your name\. The change becomes <b>champion #2<\/b>/,
     );
     // Its run was replaced by another run: a promotion there changes only that run.
-    assert.match(home, /This run is <b>paused: replaced by port-3 on rig-b<\/b>/);
+    assert.match(
+      home,
+      /This run is <b>paused: replaced by port-3 on rig-b<\/b>\. A new champion changes this run only\./,
+    );
     // A held audit can be declined; leaving it held is said plainly too.
-    assert.match(home, /It stays held, in this list: no auditor will come\./);
+    assert.match(
+      home,
+      /The change stays in this list\. No auditor will make the decision for you\./,
+    );
     assert.doesNotMatch(home, />Reject</);
     // The auditor's block shows the auditor's reasons, not just the trigger.
-    assert.match(home, /Overrule the auditor's block\?/);
+    assert.match(home, /Overrule the auditor and make this change the champion\?/);
     assert.match(home, /the benchmark measures a cache hit/);
-    assert.match(home, /audited because gain 240\.0% above 100%/);
+    assert.match(home, /The audit started because Gain 240\.0% above 100%\./);
     // A confirmed win on a rig that asks for approval.
     assert.match(
       home,
-      /Confirmed \+14\.2% better than the champion on fresh runs, somewhere between \+9\.1% and \+19\.6% \(screening measured \+15\.2%\)/,
+      /\+14\.2% compared with the champion\. The correct value is between \+9\.1% and \+19\.6%\. The first test measured \+15\.2%\./,
     );
-    assert.match(home, /It becomes <b>champion #5<\/b>/);
+    assert.match(home, /The change becomes <b>champion #5<\/b>/);
     // Every decision button is a signed-command form with the session's token: approve (or
     // overrule) and decline, for each of the four decisions.
     const forms = home.match(/<form class="inline" method="post" action="\/ui\/commands">/g) ?? [];
@@ -868,19 +909,19 @@ describe("control dashboard for an operator", () => {
     assert.match(page, /<h1 class="att-title">Register the two new tensor types/);
     assert.match(
       page,
-      /lane-1 submitted it [^<]* ago, on champion #1\. Confirmed on fresh runs: it newly meets goldens, real-file and ops/,
+      /lane-1 submitted it [^<]* ago, on champion #1\. The judge did the goal checks again on new runs\. With this change, the project gets these goals that the champion does not get: goldens, real-file and ops/,
     );
     assert.match(page, /It waits for your decision\./);
     // What happened to it, step by step; the goals it moves; its files as bars.
     assert.match(
       page,
-      /<span class="st">Held for an audit: its author declared known flaws<\/span>/,
+      /<span class="st">Held for an audit: the agent that made the change wrote problems with it<\/span>/,
     );
     assert.match(page, /<b>goldens<\/b> <span class="chip ok">newly met<\/span>/);
     assert.match(page, /<code>src\/types\.c<\/code><span class="fl-bar">/);
     // Its decision is on its page too, as a box, without a link back to itself.
     assert.match(page, /<div class="decide decide-warn">/);
-    assert.match(page, /Skip the audit and promote/);
+    assert.match(page, /Make it the champion/);
     assert.doesNotMatch(page, /Everything about this change/);
     assert.match(await get("/ui/rigs/rig-a/attempts/a-nope"), /No such attempt on this rig/);
   });

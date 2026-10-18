@@ -435,6 +435,8 @@ pre.report { white-space: pre-wrap; font-family: var(--font-mono); font-size: 12
 .gr { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 14px; border-bottom: 1px solid var(--border); font-size: 13px; cursor: pointer; }
 .gr:last-child { border-bottom: 0; } .gr.used { color: var(--muted-foreground); cursor: not-allowed; }
 #add-rig [hidden] { display: none !important; }
+.dq-sent { display: inline-block; max-width: 380px; font-size: 12px; line-height: 1.45; color: var(--muted-foreground); text-align: right; white-space: normal; }
+.dq-sent b { color: var(--foreground); }
 .kind { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
 .kind.m { background: var(--primary-surface); color: var(--info-foreground); }
 .kind.r { background: var(--warning-surface); color: var(--warning-foreground); }

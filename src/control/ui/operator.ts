@@ -1,4 +1,4 @@
-import { type ControlStore, fingerprint } from "../store.ts";
+import { type ControlStore, type Decision, fingerprint } from "../store.ts";
 import type { AttemptView, JudgeJob, RigView, RunView, StoredEvent } from "../views.ts";
 import { ago, esc, icon, modeAvatar, runHref, sparkline } from "./components.ts";
 import {
@@ -72,23 +72,30 @@ const hasAdvisors = (u: RigView) => {
 export function evidence(r: RunView, a: AttemptView): string {
   const goal = r.mode === "goal";
   const last = a.history.at(-1);
-  if (!last) return "The judge has not decided on it yet.";
+  // Simplified Technical English: short sentences, approved words, one meaning each.
+  if (!last) return "The judge has not made a decision about it.";
   if (goal) {
-    const gained = listText(a.gained ?? []) || "no new goal";
+    const n = a.gained?.length ?? 0;
+    const gained = listText(a.gained ?? []);
+    const these = n === 1 ? "this goal" : "these goals";
     const kept = a.lost.length
-      ? `it loses ${listText(a.lost)}, which the champion meets`
-      : "it loses none of the goals the champion meets";
-    const unsure = a.unsure.length ? ` The judge could not check ${listText(a.unsure)}.` : "";
+      ? `It loses ${listText(a.lost)}, which the champion gets.`
+      : "It keeps all the goals that the champion gets.";
+    const unsure = a.unsure.length
+      ? ` The judge could not do the check for ${listText(a.unsure)}.`
+      : "";
     if (last.verdict === "goal_progress")
-      return `Confirmed on fresh runs: it newly meets ${gained}, and ${kept}.${unsure}`;
+      return `The judge did the goal checks again on new runs. With this change, the project gets ${these} that the champion does not get: ${gained}. ${kept}${unsure}`;
     if (last.verdict === "goal_screened")
-      return `In screening it newly met ${gained}, and ${kept}. It is being confirmed on fresh runs.${unsure}`;
+      return `In the first test, the project got ${these} with this change: ${gained}. At this time, the judge does the goal checks again on new runs. ${kept}${unsure}`;
     return `${cap(verdictText(last.verdict))}${a.lost.length ? `: it loses ${listText(a.lost)}` : ""}.${unsure}`;
   }
   const screened = a.history.find((h) => h.verdict === "win_screened" && h.delta !== null);
-  const interval = a.ci ? `, somewhere between ${signed(a.ci[0])} and ${signed(a.ci[1])}` : "";
+  const interval = a.ci
+    ? ` The correct value is between ${signed(a.ci[0])} and ${signed(a.ci[1])}.`
+    : "";
   if (last.verdict === "win_confirmed" && typeof last.delta === "number")
-    return `Confirmed ${signed(last.delta)} better than the champion on fresh runs${interval}${typeof screened?.delta === "number" ? ` (screening measured ${signed(screened.delta)})` : ""}.`;
+    return `The judge measured the change again on new runs: ${signed(last.delta)} compared with the champion.${interval}${typeof screened?.delta === "number" ? ` The first test measured ${signed(screened.delta)}.` : ""}`;
   return `${cap(verdictText(last.verdict, last.delta))}.`;
 }
 
@@ -109,8 +116,8 @@ function changeFacts(u: RigView, r: RunView, a: AttemptView | undefined, id: str
     .filter(Boolean)
     .join(" · ");
   const flaws = a.known_flaws.length
-    ? `<dt>Declared flaws</dt><dd><ul class="flaws">${a.known_flaws.map((f) => `<li>${esc(f)}</li>`).join("")}</ul></dd>`
-    : `<dt>Declared flaws</dt><dd class="muted">None.</dd>`;
+    ? `<dt>Problems that the agent wrote</dt><dd><ul class="flaws">${a.known_flaws.map((f) => `<li>${esc(f)}</li>`).join("")}</ul></dd>`
+    : `<dt>Problems that the agent wrote</dt><dd class="muted">None.</dd>`;
   const files = a.files.length
     ? `<dt>Files</dt><dd class="small">${a.files_total} file${a.files_total === 1 ? "" : "s"}: ${a.files
         .slice(0, 8)
@@ -123,14 +130,13 @@ function changeFacts(u: RigView, r: RunView, a: AttemptView | undefined, id: str
   const reasons = a.reasons
     ? `<div class="muted small">The judge: ${esc(clip(a.reasons, 400))}</div>`
     : "";
-  // The row already says what the change does; a longer hypothesis is quoted here in full.
-  const full =
-    (a.hypothesis?.length ?? 0) > 160 ? `<div class="quote">${esc(a.hypothesis)}</div>` : "";
-  return `<dt>The change</dt><dd>${full}<div class="small">${who} · <a href="${attemptHref(u.id, a.id)}">${esc(a.id)}</a></div></dd>${files}
+  // The row says what the change does in plain words; the agent's own account is quoted here.
+  const own = a.hypothesis ? `<div class="quote">${esc(a.hypothesis)}</div>` : "";
+  return `<dt>What the agent says that it did</dt><dd>${own}<div class="small">${who} · <a href="${attemptHref(u.id, a.id)}">${esc(a.id)}</a></div></dd>${files}
 <dt>What the judge found</dt><dd>${esc(evidence(r, a))}${reasons}</dd>${flaws}${
     r.status === "running"
       ? ""
-      : `<dt>The run</dt><dd>This run is <b>${esc(runStatusText(r))}</b>. A promotion here changes this run's champion only; other runs of the campaign are not affected.</dd>`
+      : `<dt>The run</dt><dd>This run is <b>${esc(runStatusText(r))}</b>. A new champion changes this run only. The other runs of the campaign do not change.</dd>`
   }`;
 }
 
@@ -160,11 +166,18 @@ function card(o: {
   /** Each choice; those with a button show it on the row. */
   choices: { button?: string | undefined; label: string; does: string }[];
   more?: string | undefined;
+  /** The owner's choice already sent for this item, and the rig's answer (see decidedState). */
+  decided?: { sent: boolean; html: string } | undefined;
 }): { html: string; box: string } {
   const where = o.r
     ? `<a href="${runHref(o.u.id, o.r)}">${esc(o.r.campaign || o.r.id)} › ${esc(o.r.id)}</a> · ${esc(o.u.id)}${o.lane ? ` · ${esc(o.lane)}` : ""}`
     : `rig <a href="/ui/rigs/${encodeURIComponent(o.u.id)}">${esc(o.u.id)}</a>`;
-  const buttons = o.choices.flatMap((c) => (c.button ? [c.button] : [])).join("");
+  // Once the owner has chosen, the row says so instead of offering the buttons again; a choice
+  // the rig refused says why, and the buttons come back.
+  const buttons = o.decided?.sent
+    ? `<span class="dq-sent">${o.decided.html}</span>`
+    : o.choices.flatMap((c) => (c.button ? [c.button] : [])).join("");
+  if (o.decided && !o.decided.sent) o.why = `${o.why}<br>${o.decided.html}`;
   const choices = o.choices.map((c) => `<dt>${esc(c.label)}</dt><dd>${c.does}</dd>`).join("");
   const box = `<div class="decide decide-${o.tone}"><div class="decide-q"><span class="dq-kind">${o.ic}${esc(o.kind)}</span><b>${esc(o.question)}</b><span class="dq-age">${o.since ? `waiting ${esc(span(o.since, o.now))}` : ""}</span></div><div class="decide-why">${o.why}</div><div class="dq-btns">${buttons}</div><dl class="dq-choices">${choices}</dl></div>`;
   const html = `<details class="dq dq-${o.tone}" data-k="need-${esc(o.key)}"><summary>
@@ -176,9 +189,21 @@ function card(o: {
   return { html, box };
 }
 
-/** What an attempt is, in its author's words, for a decision's row. */
-const changeHeadline = (a: AttemptView | undefined, id: string) =>
-  a?.hypothesis ? esc(clip(a.hypothesis, 160)) : `<code>${esc(id)}</code>`;
+/**
+ * What a change does, in plain words, for a decision's row: who made it, how many files, and
+ * what the judge found. The agent's own account is in the row's details.
+ */
+const changeHeadline = (r: RunView, a: AttemptView | undefined, id: string) => {
+  if (!a) return `The change <code>${esc(id)}</code>`;
+  const who = a.files_total
+    ? `${esc(a.lane ?? "An agent")} changed ${a.files_total} file${a.files_total === 1 ? "" : "s"}.`
+    : `${esc(a.lane ?? "An agent")} made a change.`;
+  if (r.mode === "goal" && a.gained?.length)
+    return `${who} With this change, the project gets ${a.gained.length} more goal${a.gained.length === 1 ? "" : "s"}: ${esc(listText(a.gained))}.`;
+  if (r.mode !== "goal" && typeof a.delta === "number")
+    return `${who} The judge measured it: ${esc(signed(a.delta))} compared with the champion.`;
+  return `${who} ${esc(clip(a.hypothesis ?? "", 140))}`;
+};
 
 /** The facts that decide a change, as chips: its gain and interval, goals, flaws and files. */
 export function changeChips(r: RunView, a: AttemptView | undefined): string {
@@ -203,20 +228,104 @@ export function changeChips(r: RunView, a: AttemptView | undefined): string {
   }
   const flaws = a.known_flaws.length;
   if (flaws)
-    out.push(`<span class="chip warn">${flaws} declared flaw${flaws === 1 ? "" : "s"}</span>`);
+    out.push(
+      `<span class="chip warn">${flaws} problem${flaws === 1 ? "" : "s"} from the agent</span>`,
+    );
   if (a.files_total)
     out.push(`<span class="chip">${a.files_total} file${a.files_total === 1 ? "" : "s"}</span>`);
   return out.join("");
 }
 
+/** What a champion is, first in a decision's details. */
+const CHAMPION_IS =
+  "<dt>The champion</dt><dd>The champion is the version of the project that the agents start from. The judge compares each new change with it.</dd>";
+const REJECT_DOES =
+  "The change does not become the champion. The record shows that you rejected it. The agents continue from the current champion.";
+
+/** Why a change waits for an audit, in plain words. */
+const auditWhy = (reason: string, a: AttemptView | undefined) => {
+  const n = a?.known_flaws.length ?? 0;
+  if (reason === "declared flaws")
+    return n
+      ? `The agent that made the change wrote ${n} problem${n === 1 ? "" : "s"} with it.`
+      : "The agent that made the change wrote problems with it.";
+  if (reason === "the contract's adversarial checklist")
+    return "The contract tells the judge to do an adversarial test of each change in a goal campaign.";
+  return `${cap(reason)}.`;
+};
+
 const promoteDoes = (r: RunView, a: AttemptView | undefined, expected: number | null) => {
   const cur = champSeq(r);
   const moved = expected !== null && expected !== cur;
-  const flaws = a?.known_flaws.length ? " You also accept its declared flaws, on the record." : "";
+  const flaws = a?.known_flaws.length
+    ? " You also accept the problems that the agent wrote. The record shows your name."
+    : "";
   return moved
-    ? `The champion has changed since this was measured (#${expected} then, #${cur} now), so it is <b>re-tested against champion #${cur}</b> first, not promoted yet.${flaws}`
-    : `It becomes <b>champion #${nextSeq(r)}</b>: lanes start their next trials from it, and the judge measures new attempts against it.${flaws}`;
+    ? `The champion changed after the judge measured this change: it was champion #${expected}, and at this time it is champion #${cur}. Thus the judge first <b>tests the change again against champion #${cur}</b>. The change does not become the champion at this time.${flaws}`
+    : `The change becomes <b>champion #${nextSeq(r)}</b>. The agents start their next work from it, and the judge compares new changes with it.${flaws}`;
 };
+
+/**
+ * The owner's latest choice on one waiting item, made since it began waiting, and what the rig
+ * answered. The rig's report removes the item only up to a minute later, so without this the
+ * row looks untouched and a second click is refused.
+ */
+export function decidedState(
+  ds: Decision[],
+  item: { rig: string; run: string; attempt?: string; review?: number; proposal?: number },
+  since: string | undefined,
+  label: (d: Decision) => string,
+  now: number,
+): { sent: boolean; html: string } | undefined {
+  const d = ds.find(
+    (x) =>
+      x.rig === item.rig &&
+      x.run === item.run &&
+      (item.attempt === undefined || x.attempt === item.attempt) &&
+      (item.review === undefined || x.review === item.review) &&
+      (item.proposal === undefined || x.proposal === item.proposal) &&
+      (!since || x.issued_at >= since),
+  );
+  if (!d) return undefined;
+  const chose = `You selected <b>${esc(label(d))}</b> ${esc(ago(d.issued_at, now))} ago.`;
+  const result = d.outcome?.result ?? {};
+  const refused =
+    d.status === "failed" ||
+    d.status === "rejected" ||
+    d.status === "expired" ||
+    d.outcome?.accepted === false;
+  if (refused) {
+    const why =
+      typeof result.error === "string"
+        ? result.error
+        : d.status === "expired"
+          ? "the command expired before the rig got it"
+          : `the rig answered ${d.status}`;
+    return {
+      sent: false,
+      html: `<span class="bad">${chose} The rig did not do it. The cause from the rig: ${esc(why)}.</span>`,
+    };
+  }
+  if (d.status === "pending")
+    return {
+      sent: true,
+      html: `${chose} Control sent it to the rig. The rig does it in less than 10 seconds.`,
+    };
+  const did =
+    d.kind === "approve_promotion"
+      ? result.promoted
+        ? `The rig made the change ${typeof result.seq === "number" ? `champion #${result.seq}` : "the champion"}.`
+        : result.rescreen
+          ? `The champion changed, thus the rig tests the change again against champion #${esc(String(result.champion_seq ?? "?"))}.`
+          : "The rig did it."
+      : d.kind === "decline_promotion"
+        ? "The rig rejected the change."
+        : "The rig recorded your decision.";
+  return {
+    sent: true,
+    html: `${chose} ${did} This item goes away after the next report from the rig, in about one minute.`,
+  };
+}
 
 /** Everything that waits for the owner on these rigs, with full context. */
 export function needs(
@@ -227,6 +336,9 @@ export function needs(
   back: string,
 ): Need[] {
   const out: Need[] = [];
+  const ds = store.decisions();
+  const promoteOr = (promote: string) => (d: Decision) =>
+    d.kind === "approve_promotion" ? promote : "Reject it";
   for (const u of vs) {
     const key = store.rigKey(u.id);
     if (key.pending) {
@@ -280,12 +392,12 @@ export function needs(
           ...card({
             tone: "warn",
             ic: icon.trophy,
-            kind: "Promote",
-            question: "Promote this change?",
-            headline: changeHeadline(a, id),
+            kind: "Your decision",
+            question: "Make this change the new champion?",
+            headline: changeHeadline(r, a, id),
             why: w?.reason
-              ? `The auditor passed it to you: ${esc(clip(w.reason, 160))}`
-              : "This rig promotes only with your approval",
+              ? `The auditor sent this change to you: ${esc(clip(w.reason, 160))}`
+              : "This rig changes its champion only after you agree",
             chips: changeChips(r, a),
             key: `promote-${u.id}-${r.id}-${id}`,
             u,
@@ -293,18 +405,18 @@ export function needs(
             lane: a?.lane,
             since: w?.at ?? a?.updated_at,
             now,
-            facts: `${changeFacts(u, r, a, id)}<dt>Why it waits</dt><dd>${w?.reason ? `The auditor passed it to you: ${esc(w.reason)}` : "This rig asks for your approval before every promotion (its promotion policy)."}</dd>`,
+            facts: `${CHAMPION_IS}${changeFacts(u, r, a, id)}<dt>Why this waits for you</dt><dd>${w?.reason ? `The auditor sent this change to you: ${esc(w.reason)}` : "This rig changes its champion only after you agree. This is its promotion rule."}</dd>`,
             choices: [
               {
                 button: f.cmd({
                   rig: u.id,
                   kind: "approve_promotion",
                   fields: { run: r.id, attempt: id },
-                  label: "Approve",
+                  label: "Make it the champion",
                   cls: "primary",
                   back,
                 }),
-                label: "Approve",
+                label: "Make it the champion",
                 does: promoteDoes(r, a, w?.expected_seq ?? null),
               },
               {
@@ -312,18 +424,22 @@ export function needs(
                   rig: u.id,
                   kind: "decline_promotion",
                   fields: { run: r.id, attempt: id },
-                  label: "Decline",
+                  label: "Reject it",
                   back,
                 }),
-                label: "Decline",
-                does: "It never becomes the champion. It stays in the record as declined by you, and the lanes go on from the current champion.",
+                label: "Reject it",
+                does: REJECT_DOES,
               },
-              {
-                label: "Leave it waiting",
-                does: "Nothing changes for now; it stays in this list.",
-              },
+              { label: "Do nothing", does: "Nothing changes. The change stays in this list." },
             ],
             more: `<a href="${attemptHref(u.id, id)}">Everything about this change (${esc(id)}) →</a>`,
+            decided: decidedState(
+              ds,
+              { rig: u.id, run: r.id, attempt: id },
+              w?.at ?? a?.updated_at,
+              promoteOr("Make it the champion"),
+              now,
+            ),
           }),
         });
       }
@@ -340,14 +456,14 @@ export function needs(
           ...card({
             tone: blocked ? "bad" : "warn",
             ic: icon.shield,
-            kind: blocked ? "Blocked" : "Audit held",
+            kind: blocked ? "Blocked" : "Your decision",
             question: blocked
-              ? "Overrule the auditor's block?"
-              : "Let this change through without an audit?",
-            headline: changeHeadline(a, au.attempt),
+              ? "Overrule the auditor and make this change the champion?"
+              : "Make this change the new champion?",
+            headline: changeHeadline(r, a, au.attempt),
             why: blocked
-              ? `<span class="bad">The auditor blocked it: ${esc(clip(au.reasons ?? "no reasons given", 200))}</span>`
-              : `${esc(cap(auditReason(au.reason)))}${advisors ? "; the rig's auditor will decide unless you do" : "; no auditor is configured, so it waits for you"}`,
+              ? `<span class="bad">The auditor stopped this change. Its cause: ${esc(clip(au.reasons ?? "the auditor gave none", 200))}</span>`
+              : `${esc(cap(auditWhy(au.reason, a)))} ${advisors ? "The auditor of this rig will make the decision if you do not." : "This rig has no auditor, thus you must make the decision."}`,
             chips: changeChips(r, a),
             key: `audit-${u.id}-${r.id}-${au.attempt}`,
             u,
@@ -355,13 +471,13 @@ export function needs(
             lane: a?.lane,
             since: au.at,
             now,
-            facts: `${changeFacts(u, r, a, au.attempt)}<dt>Why it waits</dt><dd>${
+            facts: `${CHAMPION_IS}${changeFacts(u, r, a, au.attempt)}<dt>Why this waits for you</dt><dd>${
               blocked
-                ? `The auditor blocked it: <span class="quote inline">${esc(au.reasons ?? "no reasons given")}</span> <span class="muted">(It was audited because ${esc(auditReason(au.reason))}.)</span>`
-                : `It needs an audit before it can become the champion, because ${esc(auditReason(au.reason))}. ${
+                ? `The auditor stopped this change. Its cause: <span class="quote inline">${esc(au.reasons ?? "the auditor gave none")}</span> <span class="muted">(The audit started because ${esc(auditWhy(au.reason, a))})</span>`
+                : `A change must have an audit before it becomes the champion when ${esc(auditWhy(au.reason, a).replace(/^The /, "the ").replace(/\.$/, ""))}. ${
                     advisors
-                      ? "The rig's auditor will decide; you can decide first."
-                      : "<b>This rig has no auditor configured</b>, so nothing else will decide it: it waits for you."
+                      ? "The auditor of this rig will make the decision. You can make it first."
+                      : "<b>This rig has no auditor.</b> Thus, no one other than you will make the decision."
                   }`
             }</dd>`,
             choices: [
@@ -370,34 +486,41 @@ export function needs(
                   rig: u.id,
                   kind: "approve_promotion",
                   fields: { run: r.id, attempt: au.attempt },
-                  label: blocked ? "Overrule and promote" : "Skip the audit and promote",
+                  label: blocked ? "Overrule the auditor" : "Make it the champion",
                   cls: blocked ? "" : "primary",
                   back,
                 }),
-                label: blocked ? "Overrule and promote" : "Skip the audit and promote",
-                does: `${blocked ? "You overrule the auditor, on the record." : "You take the auditor's place, on the record."} ${promoteDoes(r, a, au.expected_seq)}`,
+                label: blocked ? "Overrule the auditor" : "Make it the champion",
+                does: `${blocked ? "You overrule the auditor." : "You make the decision, not an auditor."} The record shows your name. ${promoteDoes(r, a, au.expected_seq)}`,
               },
               {
                 button: f.cmd({
                   rig: u.id,
                   kind: "decline_promotion",
                   fields: { run: r.id, attempt: au.attempt },
-                  label: "Decline",
+                  label: "Reject it",
                   back,
                 }),
-                label: "Decline",
-                does: "It never becomes the champion. It stays in the record as declined by you, and leaves this list.",
+                label: "Reject it",
+                does: REJECT_DOES,
               },
               {
-                label: `Leave it ${blocked ? "blocked" : "held"}`,
+                label: "Do nothing",
                 does: blocked
-                  ? "It stays blocked, in this list; it never becomes the champion unless you overrule."
+                  ? "The change stays stopped, in this list. It does not become the champion if you do not overrule the auditor."
                   : advisors
-                    ? "It waits for the auditor's decision."
-                    : "It stays held, in this list: no auditor will come. The lanes go on from the current champion meanwhile.",
+                    ? "The change waits for the decision of the auditor."
+                    : "The change stays in this list. No auditor will make the decision for you. The agents continue from the current champion.",
               },
             ],
             more: `<a href="${attemptHref(u.id, au.attempt)}">Everything about this change (${esc(au.attempt)}) →</a>`,
+            decided: decidedState(
+              ds,
+              { rig: u.id, run: r.id, attempt: au.attempt },
+              au.at,
+              promoteOr(blocked ? "Overrule the auditor" : "Make it the champion"),
+              now,
+            ),
           }),
         });
       }
@@ -414,6 +537,13 @@ export function needs(
             headline: `The review panel passed "${esc(rv.goal)}"`,
             why: "A subjective goal counts as met only with your word",
             key: `review-${u.id}-${r.id}-${rv.review}`,
+            decided: decidedState(
+              ds,
+              { rig: u.id, run: r.id, review: rv.review },
+              undefined,
+              (d) => (d.accept ? "Accept" : "Reject"),
+              now,
+            ),
             u,
             r,
             now,
@@ -461,6 +591,13 @@ export function needs(
             headline: `The harness proposes that the goals cannot be reached`,
             why: `${k.approaches} approach families were tried and refuted; only you can end a campaign`,
             key: `conclusion-${u.id}-${r.id}-${k.proposal}`,
+            decided: decidedState(
+              ds,
+              { rig: u.id, run: r.id, proposal: k.proposal },
+              k.at,
+              (d) => (d.accept ? "End it: not possible" : "Keep going"),
+              now,
+            ),
             u,
             r,
             since: k.at,

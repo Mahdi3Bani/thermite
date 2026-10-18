@@ -342,9 +342,9 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
 
 /** The audit trigger in words ("declared flaws" says little on its own). */
 export function auditReason(reason: string): string {
-  if (reason === "declared flaws") return "its author declared known flaws";
+  if (reason === "declared flaws") return "the agent that made the change wrote problems with it";
   if (reason === "the contract's adversarial checklist")
-    return "the contract asks for an adversarial check of every goal-campaign promotion";
+    return "the contract tells the judge to do an adversarial test of each change in a goal campaign";
   return reason;
 }
 
