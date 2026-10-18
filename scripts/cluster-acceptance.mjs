@@ -26,6 +26,7 @@ if (compose[0] !== "podman") {
   process.exit(1);
 }
 const cluster = "thermite-accept";
+const privateRanges = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]; // public-check: allow (the RFC 1918 private ranges)
 const ctl = "thermite-kind-control";
 const kindEnv = { ...process.env, KIND_EXPERIMENTAL_PROVIDER: "podman" };
 const kind = (...a) =>
@@ -228,6 +229,25 @@ try {
     "--role=thermite-control",
     "--serviceaccount=thermite-slot-1:thermite-control",
   );
+  // Control reads the slot's network rules, and writes none.
+  kc(
+    "create",
+    "role",
+    "thermite-control-read",
+    "-n",
+    "thermite-slot-1",
+    "--verb=get,list",
+    "--resource=networkpolicies.networking.k8s.io",
+  );
+  kc(
+    "create",
+    "rolebinding",
+    "thermite-control-read",
+    "-n",
+    "thermite-slot-1",
+    "--role=thermite-control-read",
+    "--serviceaccount=thermite-slot-1:thermite-control",
+  );
   const token = kc(
     "create",
     "token",
@@ -247,11 +267,61 @@ try {
     placement: "slot",
     slots: "thermite-slot-1, thermite-slot-2",
   });
-  const slots = await get("/ui/settings");
+  let slots = await get("/ui/settings");
   check(
     "with a namespaced role, control may deploy into its slot and nowhere else",
-    /thermite-slot-1: <span class="chip ok">free/.test(slots) &&
-      /thermite-slot-2: <span class="chip warn">control may not deploy here/.test(slots),
+    /thermite-slot-2: <span class="chip warn">control may not deploy here/.test(slots),
+  );
+  // Decision 46: without a rule that keeps the harness off the cluster, the slot is refused.
+  check(
+    "a slot whose network rules don't keep the harness off the cluster is refused",
+    /thermite-slot-1: <span class="chip warn">refused: no network rule/.test(slots) &&
+      /Refused: in the slot thermite-slot-1/.test(
+        await post("/ui/rigs/add", {
+          place: "cluster:kind-slots",
+          rig: "slot-rig-0",
+          "k_gpus__kind-slots": "0",
+          "k_slot__kind-slots": "thermite-slot-1",
+        }),
+      ),
+  );
+  // The operators' rule: the harness reaches DNS and the internet, not private addresses.
+  const rule = {
+    apiVersion: "networking.k8s.io/v1",
+    kind: "NetworkPolicy",
+    metadata: { name: "thermite-harness", namespace: "thermite-slot-1" },
+    spec: {
+      podSelector: { matchLabels: { "app.kubernetes.io/component": "harness" } },
+      policyTypes: ["Egress"],
+      egress: [
+        {
+          ports: [
+            { port: 53, protocol: "UDP" },
+            { port: 53, protocol: "TCP" },
+          ],
+        },
+        {
+          to: [
+            {
+              ipBlock: {
+                cidr: "0.0.0.0/0",
+                except: privateRanges,
+              },
+            },
+          ],
+        },
+      ],
+    },
+  };
+  sh("kubectl", ["--context", `kind-${cluster}`, "apply", "-f", "-"], {
+    input: JSON.stringify(rule),
+    stdio: ["pipe", "pipe", "inherit"],
+  });
+  await post("/ui/settings/clusters/kind-slots/check", {});
+  slots = await get("/ui/settings");
+  check(
+    "with the operators' rule, the slot is free",
+    /thermite-slot-1: <span class="chip ok">free/.test(slots),
   );
   const inSlot = await rigUp(
     {

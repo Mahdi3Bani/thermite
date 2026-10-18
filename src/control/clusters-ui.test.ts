@@ -3,6 +3,7 @@ import { describe, test } from "node:test";
 import { generateSigningKeys } from "../core/commands.ts";
 import { createControlApi } from "./api.ts";
 import type { ClusterKubectl } from "./clusters/kubectl.ts";
+import { PRIVATE_RANGES } from "./clusters/netcheck.ts";
 import { SecretBox } from "./secrets.ts";
 import { ControlStore } from "./store.ts";
 
@@ -77,6 +78,38 @@ function fakeCluster(o: { canCreateNamespaces?: boolean; slots?: Record<string, 
       const slot = /^auth can-i create deployments -n (\S+)$/.exec(a);
       if (slot) return ok(o.slots?.[slot[1] as string] ? "yes\n" : "no\n");
       if (args[0] === "get" && args[1] === "deployments") return ok("");
+      // The operators' network rule in slot 1: DNS and the internet without private ranges.
+      const np = /^get networkpolicy -n (\S+) -o json$/.exec(a);
+      if (np)
+        return ok(
+          JSON.stringify({
+            items:
+              np[1] === "thermite-slot-1"
+                ? [
+                    {
+                      metadata: { name: "thermite-harness" },
+                      spec: {
+                        podSelector: { matchLabels: { "app.kubernetes.io/component": "harness" } },
+                        policyTypes: ["Egress"],
+                        egress: [
+                          { ports: [{ port: 53, protocol: "UDP" }] },
+                          {
+                            to: [
+                              {
+                                ipBlock: {
+                                  cidr: "0.0.0.0/0",
+                                  except: PRIVATE_RANGES,
+                                },
+                              },
+                            ],
+                          },
+                        ],
+                      },
+                    },
+                  ]
+                : [],
+          }),
+        );
       return ok("");
     },
   };
@@ -232,7 +265,7 @@ describe("clusters in Providers and Add a rig", () => {
   test("slots: only free slots control may use; nothing created outside the slot", async () => {
     const f = fakeCluster({
       canCreateNamespaces: false,
-      slots: { "thermite-slot-1": true, "thermite-slot-2": false },
+      slots: { "thermite-slot-1": true, "thermite-slot-2": false, "thermite-slot-3": true },
     });
     const s = await control(f.k);
     await s.post("/ui/settings/add", {
@@ -240,11 +273,25 @@ describe("clusters in Providers and Add a rig", () => {
       name: "lab",
       kubeconfig: KUBECONFIG,
       placement: "slot",
-      slots: "thermite-slot-1, thermite-slot-2",
+      slots: "thermite-slot-1, thermite-slot-2, thermite-slot-3",
     });
     const page = await s.page("/ui/settings");
     assert.match(page, /thermite-slot-1: <span class="chip ok">free/);
     assert.match(page, /thermite-slot-2: <span class="chip warn">control may not deploy here/);
+    // Decision 46: a slot whose rules don't keep the harness off the cluster is refused.
+    assert.match(
+      page,
+      /thermite-slot-3: <span class="chip warn">refused: no network rule in the slot limits/,
+    );
+    assert.match(
+      await s.post("/ui/rigs/add", {
+        place: "cluster:lab",
+        rig: "lab-3",
+        k_gpus__lab: "0",
+        k_slot__lab: "thermite-slot-3",
+      }),
+      /Refused: in the slot thermite-slot-3, no network rule in the slot limits where the harness may connect/,
+    );
     assert.match(
       await s.post("/ui/rigs/add", {
         place: "cluster:lab",

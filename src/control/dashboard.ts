@@ -6,7 +6,13 @@ import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { getCookie, setCookie } from "hono/cookie";
 import { COMMAND_KINDS, type CommandKind, CommandPayloads } from "../core/commands.ts";
-import { type ClusterFacts, checkCluster, clusterLine } from "./clusters/facts.ts";
+import {
+  type ClusterFacts,
+  checkCluster,
+  clusterLine,
+  HARNESS_LABELS,
+  slotNetwork,
+} from "./clusters/facts.ts";
 import {
   type ClusterKubectl,
   inspectKubeconfig,
@@ -2255,7 +2261,7 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
                 : f.slots
                     .map(
                       (s) =>
-                        `${esc(s.namespace)}: ${s.usable ? (s.used_by ? `used by rig ${esc(s.used_by)}` : yes(true, "free")) : yes(false, "control may not deploy here")}`,
+                        `${esc(s.namespace)}: ${s.usable ? (s.used_by ? `used by rig ${esc(s.used_by)}` : s.network_ok === false ? yes(false, `refused: ${s.network_why ?? "its network rules don't keep the harness off the cluster"}`) : yes(true, "free")) : yes(false, "control may not deploy here")}`,
                     )
                     .join("<br>") || "no slots named"
             }</dd></dl>`
@@ -2710,7 +2716,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     return c.redirect(`/ui/rigs/${encodeURIComponent(rig)}`, 303);
   });
   /** Add a rig on a cluster: checks the choices, enrolls the rig, then applies its objects. */
-  const addClusterRigFrom = (
+  const addClusterRigFrom = async (
     c: Ctx,
     f: Record<string, unknown>,
     rig: string,
@@ -2770,6 +2776,15 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         store.clusterRigs(k.name).some((r) => r.namespace === namespace && r.status !== "removed")
       )
         return fail(`The slot ${namespace} is in use.`);
+      // Decision 46: refuse a slot whose rules don't keep this harness off the cluster.
+      const net = await slotNetwork(kube, clusterTarget(k), namespace, {
+        ...HARNESS_LABELS,
+        "app.kubernetes.io/instance": rig,
+      });
+      if (!net.ok)
+        return fail(
+          `Refused: in the slot ${namespace}, ${net.why}. A rig's harness may reach only DNS, the internet and its model: ask the cluster's operators for a network rule that keeps it off the cluster.`,
+        );
     } else {
       namespace = k.namespace_pattern.replace("{rig}", rig);
       if (!NS.test(namespace)) return fail(`"${namespace}" is not a namespace name.`);

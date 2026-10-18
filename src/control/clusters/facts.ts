@@ -1,4 +1,5 @@
 import { type ClusterKubectl, type ClusterTarget, kubeError } from "./kubectl.ts";
+import { harnessKeptOffCluster } from "./netcheck.ts";
 
 /**
  * What control reads from a cluster before it sets a rig up there, and again with "Check again".
@@ -23,6 +24,9 @@ export interface ClusterSlot {
   usable: boolean;
   /** A rig control set up there already, by its label. */
   used_by?: string | undefined;
+  /** Whether the slot's network rules keep a harness off the cluster (decision 46), and why. */
+  network_ok?: boolean | undefined;
+  network_why?: string | undefined;
 }
 
 export interface ClusterFacts {
@@ -77,6 +81,26 @@ export function parseStorageClasses(text: string): { name: string; default: bool
   }));
 }
 
+/** The labels every rig's harness pod has (its instance label is added per rig). */
+export const HARNESS_LABELS = {
+  "app.kubernetes.io/name": "thermite",
+  "app.kubernetes.io/managed-by": "thermite-control",
+  "app.kubernetes.io/component": "harness",
+};
+
+/** Reads a slot's network rules and says whether they keep a harness with these labels off the cluster. */
+export async function slotNetwork(
+  k: ClusterKubectl,
+  t: ClusterTarget,
+  namespace: string,
+  labels: Record<string, string>,
+): Promise<{ ok: boolean; why: string }> {
+  const r = await k.kubectl(t, ["get", "networkpolicy", "-n", namespace, "-o", "json"]);
+  if (r.code !== 0)
+    return { ok: false, why: `control could not read the slot's network rules: ${kubeError(r)}` };
+  return harnessKeptOffCluster((json(r.stdout).items ?? []) as never[], labels);
+}
+
 /** Reads the cluster. Throws, in words, when control can't reach it at all. */
 export async function checkCluster(
   k: ClusterKubectl,
@@ -117,10 +141,13 @@ export async function checkCluster(
       "-o",
       "jsonpath={.items[0].metadata.labels.app\\.kubernetes\\.io/instance}",
     ]);
+    const net = await slotNetwork(k, t, s, HARNESS_LABELS);
     out.slots.push({
       namespace: s,
       usable: can.stdout.trim() === "yes",
       used_by: used.code === 0 && used.stdout.trim() ? used.stdout.trim() : undefined,
+      network_ok: net.ok,
+      network_why: net.why,
     });
   }
   return out;
