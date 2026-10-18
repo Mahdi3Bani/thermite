@@ -193,30 +193,30 @@ g2.ev(5, "propagation_received", "decode-b", {
 g2.ev(4.5, "propagation_accepted", "decode-b", { attempt: "a-prop-1", verdict: "win_confirmed" });
 
 const g3 = new Rig("gpu-3");
-g3.ev(20, "run_created", "format-port-1", {
-  campaign: "format-port",
+g3.ev(20, "run_created", "regex-dfa-1", {
+  campaign: "regex-dfa",
   version: 1,
   mode: "goal",
-  seed: { repo: "inference-engine", commit: "0a1b2c3d4e5f" },
+  seed: { repo: "text-search", commit: "0a1b2c3d4e5f" },
 });
 for (let i = 0; i < 22; i++) {
   const t = 19 - i * 0.8;
-  const id = `a-fp-${(i + 1).toString().padStart(3, "0")}`;
+  const id = `a-rx-${(i + 1).toString().padStart(3, "0")}`;
   g3.ev(
     t,
     "attempt_recorded",
     id,
     {
-      run: "format-port-1",
+      run: "regex-dfa-1",
       lane: `lane-${(i % 2) + 1}`,
       lifecycle: "queued",
       hypothesis: pick([
-        "declare the new type traits",
-        "CPU dequantize for the new types",
-        "GET_ROWS kernel for the new types",
-        "a fused kernel for the new types",
-        "fp32 reference path behind an env switch",
-        "a prepass for small inputs",
+        "a lazy DFA that caches up to 4096 states",
+        "a SIMD prefilter for literal prefixes",
+        "Unicode classes compiled to byte ranges",
+        "a one-pass NFA for anchored patterns",
+        "bounded backtracking for short inputs",
+        "a memchr fast path for single-byte literals",
       ]),
     },
     "agent",
@@ -226,46 +226,46 @@ for (let i = 0; i < 22; i++) {
     delta: null,
   });
   g3.ev(t - 0.41, "attempt_lifecycle", id, { lifecycle: "judged" });
-  g3.ev(t - 0.05, "trial_finished", "format-port-1", {
+  g3.ev(t - 0.05, "trial_finished", "regex-dfa-1", {
     attempt: id,
     tokens_in: 30000,
     tokens_out: 9000,
     stopped: "submitted",
   });
   if (i % 2 === 0)
-    g3.ev(t + 0.1, "epoch_started", "format-port-1", { planner_valid: true, source: "planner" });
+    g3.ev(t + 0.1, "epoch_started", "regex-dfa-1", { planner_valid: true, source: "planner" });
 }
-g3.ev(1.2, "goal_report", "format-port-1", {
+g3.ev(1.2, "goal_report", "regex-dfa-1", {
   goals: [
-    { goal: "build", status: "met", reasons: "verifier build passed on info" },
-    { goal: "goldens", status: "met", reasons: "verifier goldens passed on goldens" },
-    { goal: "real-file", status: "met", reasons: "verifier real-file passed on realfile" },
+    { goal: "builds", status: "met", reasons: "verifier builds passed on info" },
+    { goal: "conformance", status: "met", reasons: "verifier conformance passed on suite-a" },
+    { goal: "unicode", status: "met", reasons: "verifier unicode passed on ucd-cases" },
     {
-      goal: "ops",
+      goal: "same-matches",
       status: "unmet",
       reasons:
-        "ops: invalid: case 7 of 40: error 1.2e-02 exceeds 5e-03",
+        "corpus-a: invalid: 3 of 1200 patterns match differently from the backtracking engine",
     },
     {
-      goal: "load",
+      goal: "memory",
       status: "unmet",
-      reasons: "load: invalid: no coverage line for the new kernel",
+      reasons: "memory: invalid: the DFA for pattern set B needs 412 MiB, above 256 MiB",
     },
-    { goal: "numerics", status: "not_runnable", reasons: "the fast path is not built yet" },
+    { goal: "streaming", status: "not_runnable", reasons: "the streaming API is not built yet" },
     {
-      goal: "sane",
+      goal: "throughput",
       status: "unmet",
-      reasons: "quality: invalid: quality score 0.91 is below 0.95",
+      reasons: "corpus-b: invalid: 1.8 GB/s is below 2.5 GB/s",
     },
     {
-      goal: "native",
+      goal: "latency",
       status: "unmet",
-      reasons: "native: invalid: throughput 3.4 items/s is below 15.0",
+      reasons: "latency: invalid: p99 match latency 3.1 ms is above 1.0 ms",
     },
     {
-      goal: "reference-unchanged",
+      goal: "api-unchanged",
       status: "met",
-      reasons: "verifier reference-unchanged passed on reference",
+      reasons: "verifier api-unchanged passed on public-headers",
     },
   ],
 });
@@ -307,27 +307,27 @@ const g4 = new Rig("gpu-4");
 // Synthetic hardware, shaped like what a harness reports (no real host data).
 const card = (role: "judge" | "dev" | "shared", n: number) => ({
   role,
-  name: "Tesla P100-PCIE-16GB",
+  name: "NVIDIA L4",
   uuid: `GPU-${String(n).repeat(8)}-0000-0000-0000-000000000000`,
-  bus: `00000000:${(0x80 + n).toString(16).toUpperCase()}:00.0`,
-  memory_mib: 16384,
+  bus: `00000000:0${n}:00.0`,
+  memory_mib: 23034,
   driver: "550.00.00",
   cuda: "12.4",
-  power_limit_w: 250,
-  max_sm_mhz: 1328,
-  max_mem_mhz: 715,
-  pcie: "gen3 x16",
-  vbios: "86.00.00.00.01",
+  power_limit_w: 72,
+  max_sm_mhz: 2040,
+  max_mem_mhz: 6251,
+  pcie: "gen4 x16",
+  vbios: "95.04.00.00.01",
 });
 const hardware = (devices: ReturnType<typeof card>[], cpus: number, mib: number) => ({
   collected_at: iso(6),
   target: devices.length
-    ? { type: "cuda-gpu", class: "p100-pcie-16g", id: devices[0]?.uuid ?? "" }
+    ? { type: "cuda-gpu", class: "l4-24g", id: devices[0]?.uuid ?? "" }
     : { type: "cpu", class: "generic-cpu", id: "cpu" },
   device_mode: devices.length > 1 ? "dedicated" : devices.length ? "shared" : "none",
   devices,
-  cpu: { model: "Example Xeon CPU @ 2.20GHz", host: 56, usable: 56, quota: cpus },
-  memory: { host_mib: 257_000, limit_mib: mib },
+  cpu: { model: "Example EPYC CPU @ 2.45GHz", host: 64, usable: 64, quota: cpus },
+  memory: { host_mib: 515_000, limit_mib: mib },
   disks: [
     { name: "state", total_gib: 200, free_gib: 143.5 },
     { name: "scratch", total_gib: 100, free_gib: 81.2 },
@@ -350,15 +350,15 @@ const report = (u: Rig, jobs: Record<string, number>, hw: unknown, lastSeenHours
     generated_at: iso(lastSeenHoursAgo),
   });
 };
-report(g1, { queued: 1, leased: 1, done: 214 }, hardware([card("shared", 1)], 4, 10_240));
-report(g2, { queued: 0, leased: 1, done: 162 }, hardware([card("shared", 2)], 4, 10_240));
+report(g1, { queued: 1, leased: 1, done: 214 }, hardware([card("shared", 1)], 6, 16_384));
+report(g2, { queued: 0, leased: 1, done: 162 }, hardware([card("shared", 2)], 8, 24_576));
 report(
   g3,
   { queued: 2, leased: 1, done: 88 },
-  hardware([card("judge", 3), card("dev", 4)], 4, 10_240),
+  hardware([card("judge", 3), card("dev", 4)], 12, 32_768),
 );
 report(c1, { done: 0 }, hardware([], 8, 16_384));
-report(g4, {}, undefined);
+report(g4, {}, hardware([card("judge", 5), card("dev", 6)], 16, 65_536));
 store.db.prepare("update rig set last_seen = ? where id = ?").run(iso(2.3), "gpu-4");
 for (const [u, usd] of [
   ["gpu-1", 4.2],
@@ -561,12 +561,12 @@ for (const [rig, kind, payload] of [
     "gpu-3",
     "redirect",
     {
-      run: "format-port-1",
+      run: "regex-dfa-1",
       directives: [
         {
           kind: "try",
-          family: "fused-kernel",
-          rationale: "the probe's decode is fastest",
+          family: "simd-prefilter",
+          rationale: "the prefilter probe skips most of the input",
           citations: [],
         },
       ],

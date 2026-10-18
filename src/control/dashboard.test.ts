@@ -816,27 +816,30 @@ describe("control dashboard for an operator", () => {
     const home = await get("/ui");
     // A goal-campaign attempt held for an audit, on a rig with no auditor.
     assert.match(home, /Make this change the new champion\?/);
-    assert.match(home, /Register the two new tensor types/);
-    assert.match(home, /The GPU path uses the slow reference kernel, not a tuned one\./);
+    assert.match(home, /Add a dispatch table that picks SIMD routines/);
+    assert.match(home, /The filter bank still runs the scalar code\./);
     assert.match(
       home,
-      /With this change, the project gets these goals that the champion does not get: goldens, real-file and ops\. It keeps all the goals that the champion gets\./,
+      /With this change, the project gets these goals that the champion does not get: vectors, recordings and simd\. It keeps all the goals that the champion gets\./,
     );
     // What changed and why the judge decided, from the record.
-    assert.match(home, /3 files: <code>src\/types\.c<\/code> <span class="muted">\+120 −4<\/span>/);
-    assert.match(home, /<code>tests\/goldens\.bin<\/code> <span class="muted">binary<\/span>/);
-    assert.match(home, /The judge: newly meets goldens, real-file and ops; loses none/);
+    assert.match(
+      home,
+      /3 files: <code>src\/dispatch\.c<\/code> <span class="muted">\+120 −4<\/span>/,
+    );
+    assert.match(home, /<code>tests\/vectors\.bin<\/code> <span class="muted">binary<\/span>/);
+    assert.match(home, /The judge: newly meets vectors, recordings and simd; loses none/);
     // A confirmed win's interval; a lane at work, with its focus, from trial_started.
     assert.match(
       home,
       /The judge measured the change again on new runs: \+14\.2% compared with the champion\. The correct value is between \+9\.1% and \+19\.6%\./,
     );
-    assert.match(home, /get the model fully onto the GPU with every layer offloaded/);
+    assert.match(home, /vectorize the filter bank so a frame fits its time budget/);
     // Each decision's row leads with what the change does in plain words, then why it waits,
     // then the facts as chips.
     assert.match(
       home,
-      /<span class="dq-head">lane-1 changed 3 files\. With this change, the project gets 3 more goals: goldens, real-file and ops\./,
+      /<span class="dq-head">lane-1 changed 3 files\. With this change, the project gets 3 more goals: vectors, recordings and simd\./,
     );
     assert.match(
       home,
@@ -858,10 +861,10 @@ describe("control dashboard for an operator", () => {
       home,
       /You make the decision, not an auditor\. The record shows your name\. The change becomes <b>champion #2<\/b>/,
     );
-    // Its run was replaced by another run: a promotion there changes only that run.
+    // Its run was moved to another rig: a promotion there changes only that run.
     assert.match(
       home,
-      /This run is <b>paused: replaced by port-3 on rig-b<\/b>\. A new champion changes this run only\./,
+      /This run is <b>paused: moved to rig-b as dec-2<\/b>\. A new champion changes this run only\./,
     );
     // A held audit can be declined; leaving it held is said plainly too.
     assert.match(
@@ -880,16 +883,16 @@ describe("control dashboard for an operator", () => {
     );
     assert.match(home, /The change becomes <b>champion #5<\/b>/);
     // Every decision button is a signed-command form with the session's token: approve (or
-    // overrule) and decline, for each of the four decisions.
+    // overrule) and decline, for each of the three decisions.
     const forms = home.match(/<form class="inline" method="post" action="\/ui\/commands">/g) ?? [];
-    assert.equal(forms.length, 8);
+    assert.equal(forms.length, 6);
   });
 
   test("the overview says what each run is doing now, and what happened, in words", async () => {
     const { get } = await demo();
     const home = await get("/ui");
     // The few numbers first, then one line per lane and for the judge, with how long.
-    assert.match(home, /<b>4<\/b><span>need you<\/span>/);
+    assert.match(home, /<b>3<\/b><span>need you<\/span>/);
     assert.match(home, /<h2>At work<\/h2>/);
     assert.match(
       home,
@@ -897,7 +900,7 @@ describe("control dashboard for an operator", () => {
     );
     assert.match(
       home,
-      /get the model fully onto the GPU with every layer offloaded <a class="small" href="\/ui\/rigs\/rig-b\/live\?source=trial%3At-0a1b2c3d4e5f6071">watch<\/a><\/span><span class="br-when">1 h 3 min</,
+      /vectorize the filter bank so a frame fits its time budget <a class="small" href="\/ui\/rigs\/rig-b\/live\?source=trial%3At-0a1b2c3d4e5f6071">watch<\/a><\/span><span class="br-when">1 h 3 min</,
     );
     assert.match(home, /4\/8 goals/);
     // The lists say each campaign and rig in a sentence, then their runs as rows.
@@ -905,7 +908,7 @@ describe("control dashboard for an operator", () => {
     assert.match(campaigns, /Its best run meets 4 of 8 goals\. 1 run is at work\./);
     assert.match(
       campaigns,
-      /<b>port-2 <span class="muted small">on rig-a<\/span><\/b><span class="muted small">replaced by port-3 on rig-b<\/span>/,
+      /<b>dec-1 <span class="muted small">on rig-a<\/span><\/b><span class="muted small">moved to rig-b as dec-2<\/span>/,
     );
     const rigsList = await get("/ui/rigs");
     assert.match(
@@ -914,10 +917,10 @@ describe("control dashboard for an operator", () => {
     );
     assert.match(rigsList, /<span class="chip " title="not run yet">· model route<\/span>/);
     // The run's page adds each lane's last step.
-    const run = await get("/ui/campaigns/kernel-port?run=rig-b%2Fport-3");
-    assert.match(run, /last: <code>run timeout 270 cmake --build/);
+    const run = await get("/ui/campaigns/opus-simd?run=rig-b%2Fdec-2");
+    assert.match(run, /last: <code>run timeout 270 make -C build bench-decode/);
     // What happened is sentences, not event kinds and IDs.
-    assert.match(home, /Run port-2 paused: replaced by port-3 on rig-b\./);
+    assert.match(home, /Run dec-1 paused: moved to rig-b as dec-2\./);
     assert.match(home, /The judge checked champion #1: 4 of 8 goals met\./);
     for (const raw of ["job leased", "attempt lifecycle", "job queued", "promotion blocked"])
       assert.doesNotMatch(home, new RegExp(raw));
@@ -927,23 +930,23 @@ describe("control dashboard for an operator", () => {
     const { get } = await demo();
     const page = await get("/ui/rigs/rig-a/attempts/a-7e1a0001");
     assert.match(page, /3c0ffee100112233445566778899aabbccddeeff/);
-    assert.match(page, /Only the two new types are covered/);
+    assert.match(page, /Only x86 SIMD is covered/);
     assert.match(page, /looked like goal progress; being confirmed on fresh runs/);
     assert.match(page, /confirmed: it meets more goals and loses none/);
     // The history names the change by what it does, linked; its id is the link's title.
     assert.match(
       page,
-      /The judge started screening <a href="[^"]+" title="a-7e1a0001">“Register the two new tensor types/,
+      /The judge started screening <a href="[^"]+" title="a-7e1a0001">“Add a dispatch table/,
     );
     assert.match(
       page,
-      /lane-1 submitted <a href="\/ui\/rigs\/rig-a\/attempts\/a-7e1a0001" title="a-7e1a0001">“Register/,
+      /lane-1 submitted <a href="\/ui\/rigs\/rig-a\/attempts\/a-7e1a0001" title="a-7e1a0001">“Add a dispatch/,
     );
     // It opens with what it does and where it stands, in a sentence.
-    assert.match(page, /<h1 class="att-title">Register the two new tensor types/);
+    assert.match(page, /<h1 class="att-title">Add a dispatch table that picks SIMD routines/);
     assert.match(
       page,
-      /lane-1 submitted it [^<]* ago, on champion #1\. The judge did the goal checks again on new runs\. With this change, the project gets these goals that the champion does not get: goldens, real-file and ops/,
+      /lane-1 submitted it [^<]* ago, on champion #1\. The judge did the goal checks again on new runs\. With this change, the project gets these goals that the champion does not get: vectors, recordings and simd/,
     );
     assert.match(page, /It waits for your decision\./);
     // What happened to it, step by step; the goals it moves; its files as bars.
@@ -951,8 +954,8 @@ describe("control dashboard for an operator", () => {
       page,
       /<span class="st">Held for an audit: the agent that made the change wrote problems with it<\/span>/,
     );
-    assert.match(page, /<b>goldens<\/b> <span class="chip ok">newly met<\/span>/);
-    assert.match(page, /<code>src\/types\.c<\/code><span class="fl-bar">/);
+    assert.match(page, /<b>vectors<\/b> <span class="chip ok">newly met<\/span>/);
+    assert.match(page, /<code>src\/dispatch\.c<\/code><span class="fl-bar">/);
     // Its decision is on its page too, as a box, without a link back to itself.
     assert.match(page, /<div class="decide decide-warn">/);
     assert.match(page, /Make it the champion/);
@@ -962,15 +965,15 @@ describe("control dashboard for an operator", () => {
 
   test("a run's views: overview, history in words, and steering that says what each control does", async () => {
     const { get } = await demo();
-    const run = await get("/ui/campaigns/kernel-port");
+    const run = await get("/ui/campaigns/opus-simd");
     // The running run is shown first, not the paused one with decisions.
-    assert.match(run, /id="rig-b\/port-3"/);
+    assert.match(run, /id="rig-b\/dec-2"/);
     assert.match(run, /the judge's check of champion #1/);
     assert.match(run, /waiting on another goal/);
-    const history = await get("/ui/campaigns/kernel-port?run=rig-b%2Fport-3&view=history");
+    const history = await get("/ui/campaigns/opus-simd?run=rig-b%2Fdec-2&view=history");
     assert.match(
       history,
-      /The planner planned epoch 1: lane-1 on filter-bank; lane-2 on gemv-kernel\./,
+      /The planner planned epoch 1: lane-1 on filter-bank; lane-2 on range-decoder\./,
     );
     const steering = await get("/ui/campaigns/sum-speed?run=rig-c%2Fsum-1&view=steering");
     assert.match(steering, /The lanes' running trials stop and no new ones start/);
@@ -997,7 +1000,7 @@ describe("control dashboard for an operator", () => {
           kind: "attempt_recorded",
           subject: "a-evil0001",
           body: {
-            run: "port-2",
+            run: "dec-1",
             lane: "lane-1",
             lifecycle: "queued",
             commit: "e".repeat(40),
@@ -1012,7 +1015,7 @@ describe("control dashboard for an operator", () => {
           actor: "harness",
           kind: "audit_requested",
           subject: "a-evil0001",
-          body: { audit: 9, run: "port-2", reason: "declared flaws", expected_seq: 1 },
+          body: { audit: 9, run: "dec-1", reason: "declared flaws", expected_seq: 1 },
         },
       ],
       summary: {},

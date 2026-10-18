@@ -3,7 +3,8 @@ import type { LiveEntry } from "../core/live.ts";
 
 /**
  * A realistic control store for dashboard tests and demos: three rigs, a goal campaign with two
- * runs (one with attempts held for an audit, one with lanes at work and the judge validating), and
+ * runs (one with an attempt held for an audit and another that did not hold on fresh runs, one
+ * with lanes at work and the judge validating), and
  * a hill climb whose rig waits for the owner's approval of a confirmed win, with an earlier one the
  * auditor blocked. Every event has the shape the harness writes; names are generic.
  */
@@ -42,43 +43,51 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
       true,
     );
 
-  const goals = (load: string) => [
+  const goals = (realtime: string) => [
     {
-      goal: "build",
-      description: "the engine builds with the new tensor types",
+      goal: "builds",
+      description: "the decoder builds with the SIMD backend",
       status: "met",
-      reasons: "the engine builds with the new types",
+      reasons: "the decoder builds with the SIMD backend",
     },
-    { goal: "goldens", status: "met", reasons: "every golden file matches" },
-    { goal: "real-file", status: "met", reasons: "the real model file parses" },
-    { goal: "ops", status: "met", reasons: "GPU ops match the CPU reference" },
-    { goal: "load", status: "unmet", reasons: load },
+    { goal: "vectors", status: "met", reasons: "every conformance vector decodes bit-exact" },
+    { goal: "recordings", status: "met", reasons: "the sample recordings decode without errors" },
+    { goal: "simd", status: "met", reasons: "the SIMD routines match the scalar reference" },
+    { goal: "realtime", status: "unmet", reasons: realtime },
     {
-      goal: "numerics",
+      goal: "latency",
       status: "unmet",
-      reasons: "not run: it requires load, which did not pass",
+      reasons: "not run: it requires realtime, which did not pass",
     },
-    { goal: "sane", status: "unmet", reasons: "not run: it requires numerics, which did not pass" },
-    { goal: "native", status: "unmet", reasons: "not run: it requires load, which did not pass" },
+    {
+      goal: "quality",
+      status: "unmet",
+      reasons: "not run: it requires latency, which did not pass",
+    },
+    {
+      goal: "power",
+      status: "unmet",
+      reasons: "not run: it requires realtime, which did not pass",
+    },
   ];
   const seedGoals = goals("a frame takes 31 ms against a 20 ms budget").map((g) =>
-    ["build", "goldens", "real-file", "ops"].includes(g.goal) && g.goal !== "build"
-      ? { ...g, status: "unmet", reasons: "the engine has no support for the new types yet" }
+    ["vectors", "recordings", "simd"].includes(g.goal)
+      ? { ...g, status: "unmet", reasons: "the decoder has no SIMD backend yet" }
       : g,
   );
 
-  // ---------------------------------------------------------------- rig-a: port-2, held for audits
+  // ---------------------------------------------------------------- rig-a: dec-1, an attempt held for an audit
   rig(
     "rig-a",
     [
       [
         600,
         "run_created",
-        "port-2",
+        "dec-1",
         {
-          campaign: "kernel-port",
+          campaign: "opus-simd",
           mode: "goal",
-          seed: { repo: "engine", commit: "4be1c0ffee00112233445566778899aabbccddee" },
+          seed: { repo: "decoder", commit: "4be1c0ffee00112233445566778899aabbccddee" },
         },
       ],
       [598, "job_queued", "1", { attempt: null, kind: "validate" }],
@@ -86,14 +95,14 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
       [
         574,
         "goal_report",
-        "port-2",
-        { run: "port-2", champion_seq: 1, goals: seedGoals, complete: false },
+        "dec-1",
+        { run: "dec-1", champion_seq: 1, goals: seedGoals, complete: false },
       ],
       [574, "job_finished", "1", { state: "done", result: { champion_seq: 1 } }],
       [
         573,
         "epoch_started",
-        "port-2",
+        "dec-1",
         {
           n: 1,
           source: "planner",
@@ -102,8 +111,8 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
           raw_violations: 0,
           directives: [],
           assignments: [
-            { lane: "lane-1", family: "types-and-traits", parent: "champion" },
-            { lane: "lane-2", family: "cpu-reference", parent: "champion" },
+            { lane: "lane-1", family: "simd-dispatch", parent: "champion" },
+            { lane: "lane-2", family: "bit-reader", parent: "champion" },
           ],
         },
       ],
@@ -112,21 +121,21 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
         "attempt_recorded",
         "a-7e1a0001",
         {
-          run: "port-2",
+          run: "dec-1",
           lane: "lane-1",
           lifecycle: "queued",
           commit: "3c0ffee100112233445566778899aabbccddeeff",
           parent: "4be1c0ffee00112233445566778899aabbccddee",
           hypothesis:
-            "Register the two new tensor types with their traits and a CPU to_float, and dispatch GPU matmuls for them through the existing reference kernel.",
+            "Add a dispatch table that picks SIMD routines at start-up from the CPU's features, and route the inverse transform through it, with the scalar code as the fallback.",
           known_flaws: [
-            "The GPU path uses the slow reference kernel, not a tuned one.",
-            "Only the two new types are covered; mixed-type models are untested.",
+            "The filter bank still runs the scalar code.",
+            "Only x86 SIMD is covered; ARM builds use the scalar fallback.",
           ],
           files: [
-            { path: "src/types.c", added: 120, removed: 4 },
+            { path: "src/dispatch.c", added: 120, removed: 4 },
             { path: "src/simd/imdct_avx2.c", added: 80, removed: 0 },
-            { path: "tests/goldens.bin", added: null, removed: null },
+            { path: "tests/vectors.bin", added: null, removed: null },
           ],
           files_total: 3,
         },
@@ -134,12 +143,12 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
       [
         470,
         "trial_finished",
-        "port-2",
+        "dec-1",
         {
           trial: "t-1111",
           lane: "lane-1",
           epoch: 1,
-          family: "types-and-traits",
+          family: "simd-dispatch",
           attempt: "a-7e1a0001",
           stopped: "submitted",
           turns: 212,
@@ -164,7 +173,7 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
           state: "done",
           result: {
             verdict: "goal_screened",
-            gained: ["goldens", "real-file", "ops"],
+            gained: ["vectors", "recordings", "simd"],
             lost: [],
             unsure: [],
           },
@@ -180,7 +189,7 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
           id: 2,
           verdict: "goal_progress",
           delta: null,
-          reasons: "newly meets goldens, real-file and ops; loses none; load still unmet",
+          reasons: "newly meets vectors, recordings and simd; loses none; realtime still unmet",
           supersedes: null,
         },
       ],
@@ -189,7 +198,7 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
         174,
         "audit_requested",
         "a-7e1a0001",
-        { audit: 1, run: "port-2", reason: "declared flaws", expected_seq: 1 },
+        { audit: 1, run: "dec-1", reason: "declared flaws", expected_seq: 1 },
       ],
       [174, "attempt_lifecycle", "a-7e1a0001", { lifecycle: "awaiting_audit" }],
       [
@@ -200,7 +209,7 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
           state: "done",
           result: {
             verdict: "goal_progress",
-            gained: ["goldens", "real-file", "ops"],
+            gained: ["vectors", "recordings", "simd"],
             promoted: false,
             waiting: "audit",
           },
@@ -211,13 +220,13 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
         "attempt_recorded",
         "a-7e1a0002",
         {
-          run: "port-2",
+          run: "dec-1",
           lane: "lane-2",
           lifecycle: "queued",
           commit: "7e1a000255aa66bb77cc88dd99ee00ff11223344",
           parent: "4be1c0ffee00112233445566778899aabbccddee",
-          hypothesis: "Add the CPU reference path for the new types first, then the goldens.",
-          known_flaws: ["No GPU kernel at all: the GPU ops goal is left for later."],
+          hypothesis: "Read the bitstream 64 bits at a time instead of byte by byte.",
+          known_flaws: [],
         },
       ],
       [170, "job_queued", "4", { attempt: "a-7e1a0002", kind: "evaluate" }],
@@ -236,7 +245,7 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
           state: "done",
           result: {
             verdict: "goal_screened",
-            gained: ["goldens", "real-file"],
+            gained: ["vectors"],
             lost: [],
             unsure: [],
           },
@@ -248,46 +257,38 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
         20,
         "verdict",
         "a-7e1a0002",
-        { id: 4, verdict: "goal_progress", delta: null, supersedes: null },
+        {
+          id: 4,
+          verdict: "not_confirmed",
+          delta: null,
+          reasons: "confirmation failed: no longer met: vectors; vs champion seq 1",
+          supersedes: null,
+        },
       ],
-      [
-        20,
-        "audit_requested",
-        "a-7e1a0002",
-        { audit: 2, run: "port-2", reason: "declared flaws", expected_seq: 1 },
-      ],
-      [20, "attempt_lifecycle", "a-7e1a0002", { lifecycle: "awaiting_audit" }],
+      [20, "attempt_lifecycle", "a-7e1a0002", { lifecycle: "judged" }],
       [
         20,
         "job_finished",
         "5",
-        {
-          state: "done",
-          result: {
-            verdict: "goal_progress",
-            gained: ["goldens", "real-file"],
-            promoted: false,
-            waiting: "audit",
-          },
-        },
+        { state: "done", result: { verdict: "not_confirmed", gained: [] } },
       ],
-      [18, "run_status", "port-2", { status: "paused", reason: "replaced by port-3 on rig-b" }],
+      [18, "run_status", "dec-1", { status: "paused", reason: "moved to rig-b as dec-2" }],
     ],
     { jobs: { done: 5 } },
   );
 
-  // ---------------------------------------------------------------- rig-b: port-3, at work
+  // ---------------------------------------------------------------- rig-b: dec-2, at work
   rig(
     "rig-b",
     [
       [
         70,
         "run_created",
-        "port-3",
+        "dec-2",
         {
-          campaign: "kernel-port",
+          campaign: "opus-simd",
           mode: "goal",
-          seed: { repo: "engine", commit: "3c0ffee100112233445566778899aabbccddeeff" },
+          seed: { repo: "decoder", commit: "3c0ffee100112233445566778899aabbccddeeff" },
         },
       ],
       [70, "job_queued", "1", { attempt: null, kind: "validate" }],
@@ -295,9 +296,9 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
       [
         46,
         "goal_report",
-        "port-3",
+        "dec-2",
         {
-          run: "port-3",
+          run: "dec-2",
           champion_seq: 1,
           goals: goals(
             "the profile shows the scalar filter bank on the hot path; a frame takes 26 ms against a 20 ms budget",
@@ -309,7 +310,7 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
       [
         64,
         "epoch_started",
-        "port-3",
+        "dec-2",
         {
           n: 1,
           source: "planner",
@@ -319,20 +320,20 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
           directives: [],
           assignments: [
             { lane: "lane-1", family: "filter-bank", parent: "champion" },
-            { lane: "lane-2", family: "gemv-kernel", parent: "champion" },
+            { lane: "lane-2", family: "range-decoder", parent: "champion" },
           ],
         },
       ],
       [
         63,
         "trial_started",
-        "port-3",
+        "dec-2",
         {
           trial: "t-3331",
           lane: "lane-1",
           epoch: 1,
           family: "filter-bank",
-          focus: "get the model fully onto the GPU with every layer offloaded",
+          focus: "vectorize the filter bank so a frame fits its time budget",
         },
       ],
       [
@@ -347,14 +348,14 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
     { jobs: { leased: 1, queued: 0, done: 1 } },
   );
   live("rig-b", [
-    [65, { source: "planner", kind: "status", text: "planning epoch 1 (2 lanes)", run: "port-3" }],
+    [65, { source: "planner", kind: "status", text: "planning epoch 1 (2 lanes)", run: "dec-2" }],
     [
       64,
       {
         source: "planner",
         kind: "text",
-        text: "epoch 1: planned by the model\nlane-1: filter-bank, vectorize the filter bank so a frame fits its time budget\nlane-2: gemv-kernel, a tuned matrix-vector kernel for the new types",
-        run: "port-3",
+        text: "epoch 1: planned by the model\nlane-1: filter-bank, vectorize the filter bank so a frame fits its time budget\nlane-2: range-decoder, a branch-free range decoder",
+        run: "dec-2",
       },
     ],
     [
@@ -364,7 +365,7 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
         kind: "status",
         text: "trial on lane-1: filter-bank, vectorize the filter bank so a frame fits its time budget (from the champion, seq 1)",
         lane: "lane-1",
-        run: "port-3",
+        run: "dec-2",
       },
     ],
     [
@@ -372,19 +373,19 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
       {
         source: "trial:t-1b2c3d4e5f607182",
         kind: "status",
-        text: "trial on lane-2: gemv-kernel, a tuned matrix-vector kernel for the new types (from the champion, seq 1)",
+        text: "trial on lane-2: range-decoder, a branch-free range decoder (from the champion, seq 1)",
         lane: "lane-2",
-        run: "port-3",
+        run: "dec-2",
       },
     ],
-    [60, { source: "judge", kind: "log", text: "validate port-3: started", run: "port-3" }],
+    [60, { source: "judge", kind: "log", text: "validate dec-2: started", run: "dec-2" }],
     [
       46,
       {
         source: "judge",
         kind: "log",
-        text: "validate port-3: done",
-        run: "port-3",
+        text: "validate dec-2: done",
+        run: "dec-2",
       },
     ],
     [
@@ -392,9 +393,9 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
       {
         source: "trial:t-0a1b2c3d4e5f6071",
         kind: "tool",
-        text: "run timeout 270 cmake --build build-cuda --target server -j 2 2>&1 | tail -3",
+        text: "run timeout 270 make -C build bench-decode 2>&1 | tail -3",
         lane: "lane-1",
-        run: "port-3",
+        run: "dec-2",
       },
     ],
     [
@@ -402,9 +403,9 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
       {
         source: "trial:t-0a1b2c3d4e5f6071",
         kind: "result",
-        text: "run (268011 ms): exit 124\n[212/412] Building CUDA object mmq.cu.o",
+        text: "run (41207 ms): exit 0\ndecode: 1000 frames, 23.8 ms per frame",
         lane: "lane-1",
-        run: "port-3",
+        run: "dec-2",
       },
     ],
     [
@@ -412,12 +413,12 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
       {
         source: "trial:t-1b2c3d4e5f607182",
         kind: "tool",
-        text: "read src/kernels/gemv.cu",
+        text: "read src/range_dec.c",
         lane: "lane-2",
-        run: "port-3",
+        run: "dec-2",
       },
     ],
-    [8, { source: "judge", kind: "log", text: "calibrate port-3: started", run: "port-3" }],
+    [8, { source: "judge", kind: "log", text: "calibrate dec-2: started", run: "dec-2" }],
   ]);
 
   // ---------------------------------------------------------------- rig-c: a hill climb, approvals
