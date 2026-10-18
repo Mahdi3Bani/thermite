@@ -29,7 +29,14 @@ import { spawnTrial } from "./agents/spawn.ts";
 import { laneCacheEnv } from "./agents/workspace.ts";
 import { createHarnessApi } from "./api.ts";
 import { BrokerClient } from "./broker/client.ts";
-import { cardsOf, type GpuLayout, parseIndexList, readLayout, runRole } from "./broker/devices.ts";
+import {
+  cardsOf,
+  effectiveGpuLists,
+  type GpuLayout,
+  parseIndexList,
+  readLayout,
+  runRole,
+} from "./broker/devices.ts";
 import { LocalRunner, type Runner } from "./broker/runner.ts";
 import { collectHardware } from "./hardware.ts";
 import { Judge, type PromotionPolicy, serial } from "./judge/judge.ts";
@@ -202,9 +209,14 @@ async function main(): Promise<void> {
       trial_minutes: Number(env.THERMITE_TRIAL_MINUTES ?? "20"),
       max_turns: env.THERMITE_MAX_TURNS ? Number(env.THERMITE_MAX_TURNS) : null,
       promotion,
+      judge_gpus: null,
     },
     join(paths.stateDir, "rig-settings.json"),
   );
+  // A rig configured with its GPU set: the broker split it for this start (the lists it gave).
+  const gpuSet = env.THERMITE_GPUS ? parseIndexList(env.THERMITE_GPUS, "THERMITE_GPUS").length : 0;
+  const judgeNow =
+    gpuSet >= 2 ? parseIndexList(env.THERMITE_GPU_INDEX ?? "0", "THERMITE_GPU_INDEX").length : 0;
   const service = new HarnessService({
     rig,
     ledger,
@@ -215,6 +227,7 @@ async function main(): Promise<void> {
     targetType: driver.type,
     settings,
   });
+  if (gpuSet >= 2) service.gpuSplit = { set: gpuSet, judge: judgeNow };
   service.onWipe = () => {
     log("harness", "wipe requested: exiting so the next start wipes the state");
     process.exit(0);
@@ -496,6 +509,17 @@ async function main(): Promise<void> {
       maxTurns: s.max_turns ?? undefined,
     });
     log("harness", "settings changed", { ...s });
+    // A new GPU split is applied by the broker when the harness starts: exit, and it restarts.
+    if (gpuSet >= 2) {
+      const next = effectiveGpuLists(env, s.judge_gpus).judge.split(",").length;
+      if (next !== judgeNow) {
+        log("harness", "the GPU split changed: restarting to regroup the cards", {
+          judge: next,
+          agents: gpuSet - next,
+        });
+        setTimeout(() => process.exit(0), 1500).unref();
+      }
+    }
   });
   const info = models.info();
   log("harness", info.source === "none" ? "agents wait for a model route" : "agents ready", {

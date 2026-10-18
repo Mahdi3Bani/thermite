@@ -438,6 +438,7 @@ async function main(argv: string[]): Promise<void> {
     case "selftest": {
       if (rest[0] !== "isolation") fail(USAGE);
       const { isolationSelftest } = await import("../harness/selftest.ts");
+      const { effectiveGpuLists, savedJudgeGpus } = await import("../harness/broker/devices.ts");
       const env = process.env;
       const secretFiles = [
         env.THERMITE_SUPERVISOR_TOKEN_FILE,
@@ -451,7 +452,10 @@ async function main(argv: string[]): Promise<void> {
         scratchDir: env.THERMITE_SCRATCH_DIR ?? "/scratch",
         outboxDir: env.THERMITE_OUTBOX_DIR ?? "/outbox",
         secretFiles,
-        dedicated: env.THERMITE_DEV_GPU_INDEX !== undefined,
+        // As the broker set the cards up: explicit lists, or the rig's GPU set and its split.
+        dedicated:
+          effectiveGpuLists(env, savedJudgeGpus(env.THERMITE_STATE_DIR ?? "/var/lib/thermite"))
+            .dev !== undefined,
         force: rest.includes("--force"),
       });
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

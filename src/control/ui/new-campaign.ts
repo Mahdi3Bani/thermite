@@ -195,6 +195,7 @@ ${field("One try lasts (minutes)", "How long an agent works on one idea before i
 ${field("Memory per agent (MiB)", "Memory for everything one agent runs at once. A command that goes over is stopped. Empty: 2048.", `<input name="run_rss_mib" placeholder="2048">`)}
 ${field("Disk per agent (MiB)", "Disk for one try's copy of the code and its builds. Empty: 2048.", `<input name="workspace_mib" placeholder="2048">`)}
 ${field("Stop after (hours)", "Stop the agents after this many hours. Empty: no limit; the campaign runs until it is done or you stop it.", `<input name="wall_hours" placeholder="no limit">`)}
+${field("GPUs for the judge", "For a rig with several GPUs: how many the judge measures on; the rest are the agents' for their own test runs. More judge GPUs check more changes at once; more agent GPUs let more lanes test at once. It changes the rig's split for every run on it, and the rig's harness restarts to apply it. Empty: the rig's current split.", `<input name="judge_gpus" inputmode="numeric" placeholder="the rig's current split">`)}
 ${field("Notes for the agents", "Anything the agents should know: constraints, ideas to avoid, where to look.", `<textarea name="notes"></textarea>`)}
 </div></details>
 <div class="act" style="margin-top:12px"><button data-back>Back</button><button class="primary" data-next>Next</button></div></div></section>

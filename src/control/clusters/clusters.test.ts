@@ -61,8 +61,8 @@ describe("rigs on Kubernetes", () => {
     };
     const env = Object.fromEntries(harness.containers[0]?.env.map((e) => [e.name, e.value]) ?? []);
     assert.equal(env.THERMITE_TARGET, "cuda-gpu");
-    assert.equal(env.THERMITE_GPU_INDEX, "0");
-    assert.equal(env.THERMITE_DEV_GPU_INDEX, "1");
+    assert.equal(env.THERMITE_GPUS, "0,1");
+    assert.equal(env.THERMITE_JUDGE_GPUS, "1");
     assert.deepEqual(harness.containers[0]?.resources, { limits: { "nvidia.com/gpu": 2 } });
     assert.deepEqual(harness.containers[0]?.securityContext.capabilities.add, [
       "CHOWN",
@@ -134,11 +134,11 @@ describe("rigs on Kubernetes", () => {
         ).containers[0]?.env.map((e) => [e.name, e.value]) ?? [],
       );
     const four = envOf(clusterRigObjects({ ...plan, gpus: 4 }, secrets) as Obj[]);
-    assert.equal(four.THERMITE_GPU_INDEX, "0,1");
-    assert.equal(four.THERMITE_DEV_GPU_INDEX, "2,3");
+    assert.equal(four.THERMITE_GPUS, "0,1,2,3");
+    assert.equal(four.THERMITE_JUDGE_GPUS, "2");
     const three = envOf(clusterRigObjects({ ...plan, gpus: 3, judgeGpus: 1 }, secrets) as Obj[]);
-    assert.equal(three.THERMITE_GPU_INDEX, "0");
-    assert.equal(three.THERMITE_DEV_GPU_INDEX, "1,2");
+    assert.equal(three.THERMITE_GPUS, "0,1,2");
+    assert.equal(three.THERMITE_JUDGE_GPUS, "1");
     assert.throws(
       () => clusterRigObjects({ ...plan, gpus: 3, judgeGpus: 3 }, secrets),
       /judge takes 1 to 2/,

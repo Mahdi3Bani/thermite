@@ -43,6 +43,8 @@ or its assignment instead: lane limits, trial length, budgets and the run's prom
 | `THERMITE_TARGET_CLASS` | `generic-cpu`, or `cuda-gpu` | The target's class (contracts and kits name it) |
 | `THERMITE_GPU_INDEX` | 0 | The judge's GPU, or a list of them (`0,1`): one executor per card |
 | `THERMITE_DEV_GPU_INDEX` | none | GPUs for the agents' development runs, one or a list (`2,3`), never one of the judge's. Unset: development runs share the judge's GPU and wait for it |
+| `THERMITE_GPUS` | none | The rig's GPU set (`0,1,2,3`), in place of the two lists above: the first cards are the judge's and the rest the agents'. How many are the judge's is the rig's setting, changed from Edit rig or by the campaign deployed on the rig; the harness restarts to regroup the cards |
+| `THERMITE_JUDGE_GPUS` | half the set, rounded up | With `THERMITE_GPUS`: the judge's share until the rig's setting says otherwise |
 | `THERMITE_RUN_CPUS` | `auto` on a GPU rig, otherwise `off` | CPUs timed runs are pinned to: `auto` (each judge GPU's local CPUs, disjoint between cards), `off`, or a CPU list (split between the judge cards) |
 | `THERMITE_CALIBRATION_BLOCKS` | 6 | Blocks of the A/A calibration that measures the rig's noise when a run starts |
 | `THERMITE_PROMOTION` | `auto` | The rig's default promotion policy, `auto` or `owner_approval`, for runs assigned without their own |

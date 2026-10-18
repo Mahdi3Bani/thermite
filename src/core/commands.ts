@@ -197,6 +197,8 @@ export const CommandPayloads = {
     trial_minutes: z.number().int().min(1).max(10_080).optional(),
     max_turns: z.number().int().min(1).max(100_000).nullable().optional(),
     promotion: z.enum(["auto", "owner_approval"]).optional(),
+    /** How many of the rig's GPUs are the judge's (a rig configured with its GPU set). */
+    judge_gpus: z.number().int().min(1).max(8).nullable().optional(),
   }),
   /**
    * The owner says no to a confirmed win that waits for approval, or to an attempt held for (or

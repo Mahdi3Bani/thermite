@@ -15,6 +15,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { log } from "../common/env.ts";
 import {
+  effectiveGpuLists,
   expectedNodeGroups,
   formatCpuList,
   type GpuLayout,
@@ -27,6 +28,7 @@ import {
   procBusDir,
   runCpus,
   runRole,
+  savedJudgeGpus,
   shareCpus,
 } from "./broker/devices.ts";
 import { killScope } from "./broker/process.ts";
@@ -197,7 +199,10 @@ function assertDevices(layout: GpuLayout | undefined): void {
  * "auto" (the default on a GPU rig: each judge card's local CPUs this container may use), "off",
  * or an explicit CPU list. With several judge cards the sets are made disjoint (shareCpus).
  */
-function chooseRunCpus(layout: GpuLayout | undefined): Record<string, string> | undefined {
+function chooseRunCpus(
+  layout: GpuLayout | undefined,
+  lists: GpuLists,
+): Record<string, string> | undefined {
   const want = env.THERMITE_RUN_CPUS ?? (env.THERMITE_TARGET === "cuda-gpu" ? "auto" : "off");
   if (want === "off") return undefined;
   const judges = layout?.judges ?? [];
@@ -219,7 +224,7 @@ function chooseRunCpus(layout: GpuLayout | undefined): Record<string, string> | 
               "--query-gpu=pci.bus_id",
               "--format=csv,noheader",
               "-i",
-              String(parseIndexList(env.THERMITE_GPU_INDEX ?? "0", "THERMITE_GPU_INDEX")[0]),
+              String(parseIndexList(lists.judge, "THERMITE_GPU_INDEX")[0]),
             ],
             { encoding: "utf8" },
           ).trim(),
@@ -227,11 +232,11 @@ function chooseRunCpus(layout: GpuLayout | undefined): Record<string, string> | 
     const allowed = /^Cpus_allowed_list:\s*(\S+)$/m.exec(
       readFileSync("/proc/self/status", "utf8"),
     )?.[1];
-    const lists = buses.map((bus) => {
+    const perCard = buses.map((bus) => {
       const local = readFileSync(`/sys/bus/pci/devices/${procBusDir(bus)}/local_cpulist`, "utf8");
       return allowed ? parseCpuList(runCpus(local, allowed)) : [];
     });
-    const pinned = byRole(lists);
+    const pinned = byRole(perCard);
     if (!Object.keys(pinned).length) {
       log("broker", "timed runs are not pinned: the cards' local CPUs are not in this container", {
         allowed,
@@ -248,7 +253,11 @@ function chooseRunCpus(layout: GpuLayout | undefined): Record<string, string> | 
   }
 }
 
-function prepareDevices(): GpuLayout | undefined {
+/** The judge's and the agents' cards this start uses (explicit lists, or the rig's GPU set split). */
+type GpuLists = ReturnType<typeof effectiveGpuLists>;
+const currentLists = (): GpuLists => effectiveGpuLists(env, savedJudgeGpus(stateDir));
+
+function prepareDevices(lists: GpuLists): GpuLayout | undefined {
   const nodes = deviceNodes();
   for (const p of nodes) {
     tryDo(`set the gpu group on ${p}`, () => {
@@ -258,7 +267,7 @@ function prepareDevices(): GpuLayout | undefined {
   }
   const layoutPath = join(socketDir, LAYOUT_FILE);
   rmSync(layoutPath, { force: true });
-  if (env.THERMITE_DEV_GPU_INDEX === undefined) {
+  if (lists.dev === undefined) {
     // Shared mode: every node must now belong to root and the gpu group with mode 0660. If one
     // does not, the record says so and the controller neither times nor runs dev runs, rather
     // than leave the device open to roles that must not reach it.
@@ -298,8 +307,8 @@ function prepareDevices(): GpuLayout | undefined {
         }
       },
       nodes,
-      judgeIndices: parseIndexList(env.THERMITE_GPU_INDEX ?? "0", "THERMITE_GPU_INDEX"),
-      devIndices: parseIndexList(env.THERMITE_DEV_GPU_INDEX, "THERMITE_DEV_GPU_INDEX"),
+      judgeIndices: parseIndexList(lists.judge, "THERMITE_GPU_INDEX"),
+      devIndices: parseIndexList(lists.dev, "THERMITE_DEV_GPU_INDEX"),
     });
     for (const { node, gid } of nodeGroups(layout)) {
       chownSync(node, 0, gid);
@@ -381,6 +390,13 @@ function wipeIfMarked(): boolean {
   return true;
 }
 
+/**
+ * Before each start of the controller: the cards it uses. A rig configured with its GPU set may
+ * have a new split in its settings (Edit rig, or a campaign's deployment); the controller exited
+ * to apply it, its role processes are gone, and the cards are regrouped here.
+ */
+let beforeStart: (() => Record<string, string | undefined>) | undefined;
+
 function startController(extraEnv: Record<string, string>): void {
   if (isRoot) {
     try {
@@ -394,6 +410,10 @@ function startController(extraEnv: Record<string, string>): void {
   const childEnv: Record<string, string> = {};
   for (const [k, v] of Object.entries(env)) {
     if (v !== undefined && !(k in SECRET_VARS)) childEnv[k] = v;
+  }
+  for (const [k, v] of Object.entries(beforeStart?.() ?? {})) {
+    if (v === undefined) delete childEnv[k];
+    else childEnv[k] = v;
   }
   child = spawn(process.execPath, [...process.execArgv, controller], {
     stdio: "inherit",
@@ -440,21 +460,39 @@ if (isRoot) {
   prepareSocket();
   setInterval(prepareOutbox, 60_000).unref();
   const secrets = readSecrets();
-  const gpuLayout = prepareDevices();
-  const pinnedCpus = chooseRunCpus(gpuLayout);
-  // nvidia-smi as root (the bus query above) resets nvidia-uvm to 0666: put it back now.
-  assertDevices(gpuLayout);
-  setInterval(() => assertDevices(gpuLayout), 60_000).unref();
-  const killed = killRoles();
-  if (killed) log("broker", "killed leftover role processes at start", { killed });
-  const server = startBrokerServer({
+  let lists = currentLists();
+  let gpuLayout = prepareDevices(lists);
+  // The server reads the layout and the CPU sets from here, so a new split reaches it.
+  const serverOpts = {
     socketPath,
     scratchDir,
     baseEnv: { PATH: env.PATH ?? "/usr/local/bin:/usr/bin:/bin", LANG: "C.UTF-8" },
     gpuLayout,
     assertDevices: () => assertDevices(gpuLayout),
-    runCpus: pinnedCpus,
-  });
+    runCpus: chooseRunCpus(gpuLayout, lists),
+  };
+  // nvidia-smi as root (the bus query above) resets nvidia-uvm to 0666: put it back now.
+  assertDevices(gpuLayout);
+  setInterval(() => assertDevices(gpuLayout), 60_000).unref();
+  const killed = killRoles();
+  if (killed) log("broker", "killed leftover role processes at start", { killed });
+  beforeStart = () => {
+    const next = currentLists();
+    if (next.judge !== lists.judge || next.dev !== lists.dev) {
+      log("broker", "the rig's GPU split changed: regrouping the cards", {
+        judge: next.judge,
+        dev: next.dev ?? null,
+      });
+      lists = next;
+      gpuLayout = prepareDevices(lists);
+      serverOpts.gpuLayout = gpuLayout;
+      serverOpts.runCpus = chooseRunCpus(gpuLayout, lists);
+      assertDevices(gpuLayout);
+    }
+    // The controller reads the lists as if configured so.
+    return { THERMITE_GPU_INDEX: lists.judge, THERMITE_DEV_GPU_INDEX: lists.dev };
+  };
+  const server = startBrokerServer(serverOpts);
   server.on("listening", () => {
     chownSync(socketPath, 0, TG);
     chmodSync(socketPath, 0o660);

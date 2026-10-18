@@ -7,7 +7,8 @@ import type { CommandPayloads } from "../core/commands.ts";
  * (rig_settings): which parts run, how many workers at once, a trial's length and turns, and the
  * promotion policy. The harness keeps them in its private state, applies them to its loops at
  * once, and reports them; the supervisor applies its own parts (auditor, teacher pair, review
- * panel) from that report. A part turned off keeps all its data.
+ * panel) from that report. A part turned off keeps all its data. The GPU split is applied by the
+ * broker when the harness starts, so changing it restarts the harness.
  */
 export interface RigSettings {
   /** The judge builds and measures; off: changes wait in its queue. */
@@ -29,6 +30,11 @@ export interface RigSettings {
   /** A cap on each trial's turns; null: none. */
   max_turns: number | null;
   promotion: "auto" | "owner_approval";
+  /**
+   * On a rig configured with its GPU set (THERMITE_GPUS): how many cards are the judge's; the
+   * rest are the agents'. Null: the rig's default. A change restarts the harness to regroup them.
+   */
+  judge_gpus: number | null;
 }
 
 export type RigSettingsChange = z.infer<(typeof CommandPayloads)["rig_settings"]>;

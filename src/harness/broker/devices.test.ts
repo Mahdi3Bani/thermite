@@ -6,6 +6,7 @@ import { describe, test } from "node:test";
 import { deviceProbes } from "../selftest.ts";
 import {
   devGroup,
+  effectiveGpuLists,
   expectedNodeGroups,
   formatCpuList,
   type GpuLayout,
@@ -339,5 +340,36 @@ describe("a rig with several judge cards and several development cards", () => {
       ]),
       [[0, 1, 2], [3]],
     );
+  });
+});
+
+describe("a rig configured with its GPU set", () => {
+  test("explicit lists win; a set is split by the rig's setting, else the default", () => {
+    assert.deepEqual(
+      effectiveGpuLists({ THERMITE_GPU_INDEX: "0,1", THERMITE_DEV_GPU_INDEX: "2" }, 3),
+      {
+        judge: "0,1",
+        dev: "2",
+        set: 0,
+      },
+    );
+    assert.deepEqual(effectiveGpuLists({}), { judge: "0", set: 0 });
+    assert.deepEqual(effectiveGpuLists({ THERMITE_GPUS: "3" }), { judge: "3", set: 1 });
+    const set = { THERMITE_GPUS: "4,5,6,7" };
+    assert.deepEqual(effectiveGpuLists(set), { judge: "4,5", dev: "6,7", set: 4 });
+    assert.deepEqual(effectiveGpuLists({ ...set, THERMITE_JUDGE_GPUS: "1" }), {
+      judge: "4",
+      dev: "5,6,7",
+      set: 4,
+    });
+    // The rig's setting comes before the deployment's starting split.
+    assert.deepEqual(effectiveGpuLists({ ...set, THERMITE_JUDGE_GPUS: "1" }, 3), {
+      judge: "4,5,6",
+      dev: "7",
+      set: 4,
+    });
+    // A split that doesn't fit falls back to the default.
+    assert.equal(effectiveGpuLists(set, 4).judge, "4,5");
+    assert.equal(effectiveGpuLists(set, 0).judge, "4,5");
   });
 });

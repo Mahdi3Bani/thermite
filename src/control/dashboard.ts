@@ -927,6 +927,8 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       }
     }
     const promotion = String(f.promotion ?? "");
+    const split = splitFor(rig, String(f.judge_gpus ?? ""));
+    if (typeof split === "string") return newCampaignPage(c, { draft, errors: [split] });
     const uploadId = (draft.kit as { source?: string; upload?: string } | undefined)?.upload;
     const upload = uploadId ? await uploaded(uploadId).catch(() => undefined) : undefined;
     let r: ReturnType<typeof startCampaign>;
@@ -956,6 +958,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       r = { ok: false, errors: [err instanceof Error ? err.message : String(err)] };
     }
     if (!r.ok) return newCampaignPage(c, { draft, errors: r.errors });
+    if (r.run && split !== undefined) sendSplit(rig.id, split);
     return c.redirect(
       r.run
         ? `${campaignHref(r.campaign)}?run=${encodeURIComponent(runKey(rig.id, r.run))}`
@@ -963,6 +966,31 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       303,
     );
   });
+
+  /**
+   * The GPU split a campaign's deployment asks for on its rig (a rig is a set of GPUs; what is
+   * deployed on it decides how they are used): undefined when it asks for none or the rig has it
+   * already, the number to send, or why it can't be.
+   */
+  const splitFor = (rig: RigView, raw: string): number | string | undefined => {
+    if (!raw.trim()) return undefined;
+    const judge = Number(raw);
+    const g = rig.gpu_split;
+    if (!g || g.set < 2)
+      return `${rig.id} has no GPU set to split: its GPUs are set where it is deployed.`;
+    const top = Math.min(8, g.set - 1);
+    if (!Number.isInteger(judge) || judge < 1 || judge > top || g.set - judge > 8)
+      return `With ${g.set} GPUs the judge takes 1 to ${top} of them, and the agents at most 8.`;
+    return judge === g.judge ? undefined : judge;
+  };
+  /** Sends the rig its new GPU split, signed for the owner; the rig restarts its harness to apply it. */
+  const sendSplit = (rig: string, judge: number) =>
+    issueCommand(store, opts.privateKeyPem, {
+      rig,
+      kind: "rig_settings",
+      payload: { judge_gpus: judge },
+      issuedBy: "owner:ui",
+    });
 
   // ---------------------------------------------------------------- another run of a campaign
   /** The form that starts a run of a campaign created here: which rig, with or without agents. */
@@ -982,6 +1010,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
 <label>${infoLabel("Rig", "Where the run goes. Rigs whose hardware differs from the kit's are greyed out.")}<select name="rig">${rigOptions}</select></label>
 <label>${infoLabel("Agents", "With agents: they propose changes and the judge measures each one. A try of the kit: no agents; the judge builds the starting point and runs every case on its own, so you see the kit work before anything else runs.")}<select name="agents"><option value="on">with agents</option><option value="off">a try of the kit: no agents</option></select></label>
 <label>${infoLabel("When a change is confirmed better", "Keep it at once as the new best, or wait for you. The rig's default is set where the rig is deployed.")}<select name="promotion"><option value="">the rig's default</option><option value="auto">always keep it</option><option value="owner_approval">ask me every time</option></select></label>
+<label>${infoLabel("GPUs for the judge", "For a rig with several GPUs: how many the judge measures on; the rest are the agents'. It changes the rig's split for every run on it, and the rig's harness restarts to apply it. Empty: the rig's current split.")}<input name="judge_gpus" inputmode="numeric" placeholder="the rig's current split"></label>
 <div class="form-end"><button class="primary">Start the run</button></div></form>
 <div class="nc-does"><b>What happens.</b> Control signs an assignment of version ${versions[0]?.version} to the rig; the rig fetches the project and the kit, checks both, and starts the run.</div></div></div>`;
   };
@@ -995,6 +1024,8 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     if (!opts.kits) return c.text("This control keeps no campaigns.", 404);
     if (!rig) return back("Choose a rig.");
     const promotion = String(f.promotion ?? "");
+    const split = splitFor(rig, String(f.judge_gpus ?? ""));
+    if (typeof split === "string") return back(split);
     let r: ReturnType<typeof startRun>;
     try {
       r = startRun(
@@ -1014,6 +1045,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       r = { ok: false, errors: [err instanceof Error ? err.message : String(err)] };
     }
     if (!r.ok) return back(r.errors.join(" "));
+    if (split !== undefined) sendSplit(rig.id, split);
     return c.redirect(
       `${campaignHref(campaign)}?run=${encodeURIComponent(runKey(rig.id, r.run))}`,
       303,
@@ -3999,7 +4031,11 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
 <label class="ch${s?.promotion === "auto" ? " on" : ""}"><input type="radio" name="promotion" value="auto"${s?.promotion === "auto" ? " checked" : ""}${s ? "" : " disabled"} style="margin:2px 8px 0 0"><span><b>Automatically</b><br><span class="muted small">The judge confirms the change on new runs, and it becomes the champion. A change that the campaign sends to an audit still waits for the audit.</span></span></label>
 <label class="ch${s?.promotion === "owner_approval" ? " on" : ""}"><input type="radio" name="promotion" value="owner_approval"${s?.promotion === "owner_approval" ? " checked" : ""}${s ? "" : " disabled"} style="margin:2px 8px 0 0"><span><b>Ask me for each change</b><br><span class="muted small">Each confirmed change waits for you in Needs you.</span></span></label>
 </div><div class="muted small" style="margin-top:6px">A campaign can set its own rule when it starts; that rule comes first for its runs.</div></div>
-<div class="sec"><h2>4 · Where it runs</h2><div class="card"><dl class="facts"><dt>Place</dt><dd>${where}</dd>${u.hardware ? `<dt>Hardware</dt><dd>${hardwareLine(u.hardware)}</dd>` : ""}</dl></div></div>
+<div class="sec"><h2>4 · Where it runs</h2><div class="card"><dl class="facts"><dt>Place</dt><dd>${where}</dd>${u.hardware ? `<dt>Hardware</dt><dd>${hardwareLine(u.hardware)}</dd>` : ""}</dl>${
+        u.gpu_split && u.gpu_split.set >= 2
+          ? `<label class="fd" style="max-width:260px;margin-top:10px">${infoLabel("GPUs for the judge", `How many of the rig's ${u.gpu_split.set} GPUs the judge measures on; the rest are the agents' for their own test runs. More judge GPUs check more changes at once; more agent GPUs let more lanes test at once. A campaign started on this rig can set it too.`)}<input name="judge_gpus" type="number" min="1" max="${Math.min(8, u.gpu_split.set - 1)}" value="${u.gpu_split.judge}" data-restarts></label><div class="muted small">Now: ${u.gpu_split.judge} for the judge, ${u.gpu_split.set - u.gpu_split.judge} for the agents. A new split restarts the rig's harness to regroup the GPUs: running trials and judge jobs start again.</div>`
+          : ""
+      }</div></div>
 <div class="card hl" style="margin-top:16px"><b>What changes when you save</b><ul class="chg" id="chg"><li>Nothing changes.</li></ul><div class="act"><button class="primary big" id="save">Save changes</button><a class="btn" href="/ui/rigs/${rName}">Cancel</a></div></div>
 </form>
 <script src="/ui/assets/edit-rig.js" defer></script>`,
@@ -4052,6 +4088,16 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       if (turns !== s.max_turns) change.max_turns = turns;
       const promotion = String(f.promotion ?? s.promotion);
       if (promotion !== s.promotion) change.promotion = promotion;
+      const judge = num("judge_gpus");
+      if (u.gpu_split && judge !== null && judge !== u.gpu_split.judge) {
+        const top = Math.min(8, u.gpu_split.set - 1);
+        if (!Number.isInteger(judge) || judge < 1 || judge > top || u.gpu_split.set - judge > 8)
+          return back(
+            "error",
+            `Not saved: with ${u.gpu_split.set} GPUs the judge takes 1 to ${top} of them, and the agents at most 8.`,
+          );
+        change.judge_gpus = judge;
+      }
       if (Object.keys(change).length) {
         const parsed = CommandPayloads.rig_settings.safeParse(change);
         if (!parsed.success)

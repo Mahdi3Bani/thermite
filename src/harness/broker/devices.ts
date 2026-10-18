@@ -45,6 +45,60 @@ export const runRole = (i: number): Role => (i === 0 ? "run" : (`run-${i}` as Ro
 export const judgeCardOf = (role: Role): number | undefined =>
   role === "run" ? 0 : /^run-([1-7])$/.test(role) ? Number(role.slice(4)) : undefined;
 
+/**
+ * The judge's and the agents' cards, as THERMITE_GPU_INDEX and THERMITE_DEV_GPU_INDEX take them.
+ * Explicit lists win. Otherwise a rig configured with its GPU set (THERMITE_GPUS) splits it: the
+ * first `judge` cards for the judge, the rest for the agents, where `judge` is the rig's setting
+ * (Edit rig, or the campaign deployed on it), else THERMITE_JUDGE_GPUS, else half rounded up. A
+ * split that does not fit the set falls back to the default. One card is shared.
+ */
+export function effectiveGpuLists(
+  env: Record<string, string | undefined>,
+  savedJudge?: number | null | undefined,
+): { judge: string; dev?: string | undefined; set: number } {
+  if (env.THERMITE_DEV_GPU_INDEX !== undefined)
+    return {
+      judge: env.THERMITE_GPU_INDEX ?? "0",
+      dev: env.THERMITE_DEV_GPU_INDEX,
+      set: 0,
+    };
+  if (env.THERMITE_GPUS === undefined) return { judge: env.THERMITE_GPU_INDEX ?? "0", set: 0 };
+  const cards = parseIndexList(env.THERMITE_GPUS, "THERMITE_GPUS");
+  if (cards.length === 1) return { judge: String(cards[0]), set: 1 };
+  const fits = (j: number | null | undefined) =>
+    typeof j === "number" &&
+    Number.isInteger(j) &&
+    j >= 1 &&
+    j <= cards.length - 1 &&
+    j <= IDS.maxCards &&
+    cards.length - j <= IDS.maxCards;
+  const fromEnv = env.THERMITE_JUDGE_GPUS ? Number(env.THERMITE_JUDGE_GPUS) : undefined;
+  const j = fits(savedJudge)
+    ? (savedJudge as number)
+    : fits(fromEnv)
+      ? (fromEnv as number)
+      : Math.ceil(cards.length / 2);
+  return {
+    judge: cards.slice(0, j).join(","),
+    dev: cards.slice(j).join(","),
+    set: cards.length,
+  };
+}
+
+/** The judge's share the rig's settings keep (rig-settings.json in its state), if any. */
+export function savedJudgeGpus(stateDir: string): number | null {
+  try {
+    const v = (
+      JSON.parse(readFileSync(join(stateDir, "rig-settings.json"), "utf8")) as {
+        judge_gpus?: unknown;
+      }
+    ).judge_gpus;
+    return typeof v === "number" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 /** "0", "0,1" or "2, 3" (THERMITE_GPU_INDEX and THERMITE_DEV_GPU_INDEX) as card indices. */
 export function parseIndexList(text: string, what: string): number[] {
   const list = text

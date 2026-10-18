@@ -35,8 +35,8 @@ describe("a rig deployed on a machine", () => {
     const h = u["thermite-gpu-box-1-a-harness.container"] ?? "";
     assert.match(h, /^Image=registry\.example\.com\/thermite\/harness-cuda:0\.2\.0$/m);
     assert.match(h, /^Environment=THERMITE_TARGET=cuda-gpu$/m);
-    assert.match(h, /^Environment=THERMITE_GPU_INDEX=0$/m);
-    assert.match(h, /^Environment=THERMITE_DEV_GPU_INDEX=1$/m);
+    assert.match(h, /^Environment=THERMITE_GPUS=0,1$/m);
+    assert.match(h, /^Environment=THERMITE_JUDGE_GPUS=1$/m);
     assert.match(h, /^AddDevice=nvidia\.com\/gpu=2\nAddDevice=nvidia\.com\/gpu=3$/m);
     assert.match(h, /^AddCapability=CHOWN DAC_OVERRIDE FOWNER KILL SETGID SETUID$/m);
     assert.match(h, /^DropCapability=ALL$/m);
@@ -49,13 +49,13 @@ describe("a rig deployed on a machine", () => {
     // A CPU rig has no devices; more GPUs are split, the lowest-numbered for the judge.
     const cpu = rigUnits({ ...plan, gpus: [] })["thermite-gpu-box-1-a-harness.container"] ?? "";
     assert.match(cpu, /^Environment=THERMITE_TARGET=cpu$/m);
-    assert.ok(!/AddDevice|GPU_INDEX/.test(cpu));
+    assert.ok(!/AddDevice|GPU_INDEX|THERMITE_GPUS/.test(cpu));
     const four =
       rigUnits({ ...plan, gpus: [2, 3, 5, 7], judgeGpus: 1 })[
         "thermite-gpu-box-1-a-harness.container"
       ] ?? "";
-    assert.match(four, /^Environment=THERMITE_GPU_INDEX=0$/m);
-    assert.match(four, /^Environment=THERMITE_DEV_GPU_INDEX=1,2,3$/m);
+    assert.match(four, /^Environment=THERMITE_GPUS=0,1,2,3$/m);
+    assert.match(four, /^Environment=THERMITE_JUDGE_GPUS=1$/m);
     assert.match(four, /^AddDevice=nvidia.com\/gpu=7$/m);
     assert.throws(() => rigUnits({ ...plan, gpus: [0, 1], judgeGpus: 2 }), /judge takes 1 to 1/);
     assert.throws(

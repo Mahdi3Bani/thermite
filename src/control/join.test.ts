@@ -251,8 +251,8 @@ describe("join a rig yourself: the dashboard and /v1/join", () => {
     const units = await (
       await s.fetchJoin("/v1/join/box-m/script?uid=1000", s.tokenOf(four))
     ).text();
-    assert.match(units, /^Environment=THERMITE_GPU_INDEX=0$/m);
-    assert.match(units, /^Environment=THERMITE_DEV_GPU_INDEX=1,2,3$/m);
+    assert.match(units, /^Environment=THERMITE_GPUS=0,1,2,3$/m);
+    assert.match(units, /^Environment=THERMITE_JUDGE_GPUS=1$/m);
     assert.match(units, /grep -qx 'nvidia.com\/gpu=3'/);
   });
 

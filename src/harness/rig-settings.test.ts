@@ -19,6 +19,7 @@ const defaults: RigSettings = {
   trial_minutes: 20,
   max_turns: null,
   promotion: "owner_approval",
+  judge_gpus: null,
 };
 
 describe("the rig's own settings (Edit rig)", () => {

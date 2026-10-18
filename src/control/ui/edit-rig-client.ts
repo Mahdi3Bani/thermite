@@ -25,6 +25,7 @@ export const EDIT_RIG_JS = `
         if (el.checked && !was) out.push("You change when a change becomes the champion: " + el.closest("label").querySelector("b").textContent.toLowerCase() + ".");
       } else if (el.tagName === "SELECT" || el.type === "number") {
         if (el.value !== was) out.push("You change " + label(el) + " to " + (el.value === "" ? (el.name === "choice" ? "its own settings" : "no limit") : el.options ? el.options[el.selectedIndex].textContent : el.value) + ".");
+        if (el.value !== was && el.dataset.restarts !== undefined) out.push("The rig's harness restarts to regroup its GPUs: running trials and judge jobs start again.");
       }
     }
     const ul = document.getElementById("chg");

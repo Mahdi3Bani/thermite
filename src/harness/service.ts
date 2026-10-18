@@ -193,6 +193,8 @@ export class HarnessService {
   >();
   /** The rig's own settings (Edit rig): parts on or off, workers at once, limits, promotion. */
   readonly settings: RigSettingsStore;
+  /** A rig configured with its GPU set: how many cards, and how many the judge has now. */
+  gpuSplit?: { set: number; judge: number } | undefined;
   /** The promotion policy: what happens to a confirmed win (and to one an audit cleared). */
   get promotion(): "auto" | "owner_approval" {
     return this.settings.get().promotion;
@@ -229,6 +231,7 @@ export class HarnessService {
         trial_minutes: 20,
         max_turns: null,
         promotion: input.promotion ?? "owner_approval",
+        judge_gpus: null,
       });
     this.rig = input.rig;
     this.clock = input.clock ?? (() => new Date());
@@ -1344,6 +1347,7 @@ export class HarnessService {
         ...(this.models ? { model: this.models.info() } : {}),
         // What runs on this rig and how (Edit rig).
         settings: this.settings.get(),
+        ...(this.gpuSplit ? { gpu_split: this.gpuSplit } : {}),
       },
       generated_at: this.clock().toISOString(),
       latest_event: this.ledger.latestEventId(),

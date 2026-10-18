@@ -206,6 +206,8 @@ export interface RigSettingsView {
   trial_minutes: number;
   max_turns: number | null;
   promotion: "auto" | "owner_approval";
+  /** The judge's share of a rig's GPU set, if set on the rig; null: its default. */
+  judge_gpus: number | null;
 }
 
 function readSettings(v: unknown): RigSettingsView | null {
@@ -224,7 +226,17 @@ function readSettings(v: unknown): RigSettingsView | null {
     trial_minutes: typeof o.trial_minutes === "number" ? o.trial_minutes : 20,
     max_turns: typeof o.max_turns === "number" ? o.max_turns : null,
     promotion: o.promotion === "auto" ? "auto" : "owner_approval",
+    judge_gpus: typeof o.judge_gpus === "number" ? o.judge_gpus : null,
   };
+}
+
+/** A rig configured with its GPU set: how many cards, and how many are the judge's now. */
+function readGpuSplit(v: unknown): { set: number; judge: number } | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  return typeof o.set === "number" && typeof o.judge === "number"
+    ? { set: o.set, judge: o.judge }
+    : null;
 }
 
 export interface RigView {
@@ -248,6 +260,8 @@ export interface RigView {
   model: RigModelView | null;
   /** The rig's own settings (Edit rig), from its signed report; null from an older harness. */
   settings: RigSettingsView | null;
+  /** A rig whose GPU split control may change (its GPU set and the judge's share now). */
+  gpu_split: { set: number; judge: number } | null;
 }
 
 export interface RigModelView {
@@ -785,7 +799,13 @@ export function rigView(
     v.agents.duplicates = v.attempts.filter((a) => a.lifecycle === "duplicate").length;
   }
   const summary = u.summary as
-    | { jobs?: Record<string, number>; hardware?: unknown; model?: unknown; settings?: unknown }
+    | {
+        jobs?: Record<string, number>;
+        hardware?: unknown;
+        model?: unknown;
+        settings?: unknown;
+        gpu_split?: unknown;
+      }
     | undefined;
   const now = opts.now ?? Date.now();
   const allJobs = [...jobs.values()];
@@ -799,6 +819,7 @@ export function rigView(
     hardware: readHardware(summary?.hardware),
     model: readModelInfo(summary?.model),
     settings: readSettings(summary?.settings),
+    gpu_split: readGpuSplit((summary as { gpu_split?: unknown } | undefined)?.gpu_split),
     jobs: summary?.jobs ?? {},
     runs: [...runs.values()],
     recent: events.slice(-50).reverse(),

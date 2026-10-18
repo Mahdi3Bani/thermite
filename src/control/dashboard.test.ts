@@ -700,6 +700,36 @@ describe("control dashboard", () => {
     );
   });
 
+  test("Edit rig: a rig with a GPU set shows the judge's share, and a new one is sent signed", async () => {
+    const s = await stack();
+    // No GPU set reported: no field.
+    await s.relay();
+    assert.doesNotMatch(await (await s.get("/ui/rigs/rig-a/edit")).text(), /name="judge_gpus"/);
+    s.env.service.gpuSplit = { set: 4, judge: 2 };
+    await s.relay();
+    const page = await (await s.get("/ui/rigs/rig-a/edit")).text();
+    assert.match(
+      page,
+      /<input name="judge_gpus" type="number" min="1" max="3" value="2" data-restarts>/,
+    );
+    assert.match(
+      page,
+      /Now: 2 for the judge, 2 for the agents\. A new split restarts the rig's harness/,
+    );
+    const form: Record<string, string> = { csrf: s.csrfFrom(page), choice: "", harness: "pi" };
+    for (const k of ["judge", "workers", "planner", "auditor", "teachers", "review", "exports"])
+      form[k] = "1";
+    Object.assign(form, { lanes: "1", trial_minutes: "20", max_turns: "", promotion: "auto" });
+    const bad = await s.post("/ui/rigs/rig-a/edit", { ...form, judge_gpus: "4" });
+    assert.match(
+      decodeURIComponent(String(bad.headers.get("location"))),
+      /with 4 GPUs the judge takes 1 to 3 of them/,
+    );
+    await s.post("/ui/rigs/rig-a/edit", { ...form, judge_gpus: "3" });
+    const cmd = s.store.pendingCommands("rig-a").find((c) => c.envelope.kind === "rig_settings");
+    assert.equal((cmd?.envelope.payload as { judge_gpus?: number } | undefined)?.judge_gpus, 3);
+  });
+
   test("the live view: lines are escaped, only control's own script runs, and the composer messages an agent", async () => {
     const s = await stack();
     await s.env.service.applyCommand(s.env.assign);

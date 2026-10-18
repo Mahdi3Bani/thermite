@@ -16,7 +16,7 @@ import { cleanEngine } from "./lib/smoke-env.mjs";
 
 const engine = (process.env.COMPOSE ?? "podman compose").split(" ")[0];
 const image = "localhost/thermite-harness:multigpu-check";
-const names = ["thermite-multigpu-a", "thermite-multigpu-b"];
+const names = ["thermite-multigpu-a", "thermite-multigpu-b", "thermite-multigpu-c"];
 const sh = (args, opts = {}) =>
   execFileSync(engine, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...opts });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -35,8 +35,8 @@ const cleanup = () => {
   rmSync(dir, { recursive: true, force: true });
 };
 
-/** Starts the harness on fake GPUs with these judge and agents' lists; returns its logs reader. */
-function start(name, judge, dev) {
+/** Starts the harness on fake GPUs with these settings (the judge's and agents' lists, or a set). */
+function start(name, gpuEnv) {
   return sh([
     "run",
     "-d",
@@ -54,10 +54,7 @@ function start(name, judge, dev) {
     `THERMITE_RIG_ID=${name}`,
     "-e",
     "THERMITE_TARGET=cuda-gpu",
-    "-e",
-    `THERMITE_GPU_INDEX=${judge}`,
-    "-e",
-    `THERMITE_DEV_GPU_INDEX=${dev}`,
+    ...Object.entries(gpuEnv).flatMap(([k, v]) => ["-e", `${k}=${v}`]),
     "-e",
     "THERMITE_CALIBRATION_BLOCKS=0",
     "-e",
@@ -84,7 +81,7 @@ const logs = (name) => {
   const r = spawnSync(engine, ["logs", name], { encoding: "utf8" });
   return `${r.stdout}${r.stderr}`;
 };
-const logLine = (name, msg) =>
+const logLines = (name, msg) =>
   logs(name)
     .split("\n")
     .map((l) => {
@@ -94,16 +91,32 @@ const logLine = (name, msg) =>
         return undefined;
       }
     })
-    .find((l) => l?.msg === msg);
-async function waitFor(name, msg, ms = 180_000) {
+    .filter((l) => l?.msg === msg);
+const logLine = (name, msg) => logLines(name, msg)[0];
+/** The `nth` line (from 1) with this message, once it is there. */
+async function waitFor(name, msg, ms = 180_000, nth = 1) {
   const deadline = Date.now() + ms;
   while (Date.now() < deadline) {
-    const l = logLine(name, msg);
+    const l = logLines(name, msg)[nth - 1];
     if (l) return l;
     await sleep(2000);
   }
-  throw new Error(`${name}: no "${msg}" in ${ms / 1000} s\n${logs(name).slice(-3000)}`);
+  throw new Error(`${name}: no "${msg}" (${nth}) in ${ms / 1000} s\n${logs(name).slice(-3000)}`);
 }
+const groupsOf = (name) =>
+  sh([
+    "exec",
+    name,
+    "stat",
+    "-c",
+    "%n %g",
+    "/dev/nvidia0",
+    "/dev/nvidia1",
+    "/dev/nvidia2",
+    "/dev/nvidia3",
+  ])
+    .trim()
+    .replace(/\n/g, "; ");
 
 try {
   mkdirSync(join(dir, "keys"));
@@ -123,7 +136,7 @@ try {
 
   // Two judge cards and two agents' cards.
   const a = names[0];
-  start(a, "0,1", "2,3");
+  start(a, { THERMITE_GPU_INDEX: "0,1", THERMITE_DEV_GPU_INDEX: "2,3" });
   const cards = await waitFor(a, "dedicated cards");
   check(
     JSON.stringify(cards.judges) === JSON.stringify(["/dev/nvidia0", "/dev/nvidia1"]) &&
@@ -205,9 +218,48 @@ try {
 
   // Overlapping lists: refused, and the rig neither times nor allows dev runs.
   const b = names[1];
-  start(b, "0,1", "1,2");
+  start(b, { THERMITE_GPU_INDEX: "0,1", THERMITE_DEV_GPU_INDEX: "1,2" });
   const refused = await waitFor(b, "could not set up the dedicated development card");
   check(/both index 1/.test(refused.error ?? ""), "overlapping lists are refused", refused.error);
+
+  // A rig configured with its GPU set: the deployment's starting split, then a new one from the
+  // rig's settings (as Edit rig or a campaign's deployment sends it), applied when the harness
+  // restarts: the broker regroups the cards.
+  const c = names[2];
+  start(c, { THERMITE_GPUS: "0,1,2,3", THERMITE_JUDGE_GPUS: "1" });
+  const first = await waitFor(c, "judge ready");
+  check(
+    first.judge_cards === 1 &&
+      groupsOf(c) ===
+        "/dev/nvidia0 10500; /dev/nvidia1 10501; /dev/nvidia2 10521; /dev/nvidia3 10522",
+    "a GPU set starts with the deployment's split: one judge card, three agents' cards",
+    groupsOf(c),
+  );
+  sh([
+    "exec",
+    c,
+    "sh",
+    "-c",
+    `printf '{"judge_gpus":3}' > /var/lib/thermite/rig-settings.json && chmod 0644 /var/lib/thermite/rig-settings.json`,
+  ]);
+  // The controller exits to apply a new split (as it does when the setting changes).
+  sh([
+    "exec",
+    c,
+    "node",
+    "-e",
+    `const fs = require("fs"); for (const p of fs.readdirSync("/proc")) { if (!/^\\d+$/.test(p) || Number(p) === process.pid) continue; try { const argv = fs.readFileSync("/proc/" + p + "/cmdline", "utf8").split("\\0"); if ((argv[1] || "").endsWith("dist/harness/main.js")) process.kill(Number(p), "SIGTERM"); } catch {} }`,
+  ]);
+  const regrouped = await waitFor(c, "the rig's GPU split changed: regrouping the cards");
+  const second = await waitFor(c, "judge ready", 180_000, 2);
+  check(
+    regrouped.judge === "0,1,2" &&
+      second.judge_cards === 3 &&
+      groupsOf(c) ===
+        "/dev/nvidia0 10500; /dev/nvidia1 10511; /dev/nvidia2 10512; /dev/nvidia3 10501",
+    "a new split in the rig's settings regroups the cards at the next start: three judge cards, one agents' card",
+    groupsOf(c),
+  );
 } catch (err) {
   console.error(err instanceof Error ? err.message : String(err));
   failed++;
