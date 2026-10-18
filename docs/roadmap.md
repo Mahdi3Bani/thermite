@@ -11,7 +11,7 @@ v1 is being built in milestones. Each milestone ends with checks that must pass 
 | **M5: supervision** | Teacher review with cited directives, audits, the review panel for subjective goals, "not possible" endings, propagation and cross-verification across rigs, daily reports, lifecycle control and full reset | Built; accepted locally |
 | **M6: test fire** | Several campaigns in all three modes running unattended for days, with deliberate failures injected along the way | Planned |
 
-Since M5, control also sets rigs up by itself, on machines over SSH and on Kubernetes clusters, and the dashboard has model providers and a new-campaign page. [Architecture](architecture.md) describes them.
+Since M5, control also sets rigs up by itself, on machines over SSH and on Kubernetes clusters, or gives you one command to join a rig where it cannot connect. Rigs may have many GPUs, split between the judge and the agents by what is deployed on them. The dashboard has one Providers page (model providers, Git access, machines, clusters and RunPod, read-only for now) and a new-campaign page. [Architecture](architecture.md) describes them.
 
 ## Later
 
