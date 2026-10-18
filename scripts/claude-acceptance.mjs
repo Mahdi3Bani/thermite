@@ -6,11 +6,24 @@
 //   - the planner plans through Claude Code, with no tools;
 //   - a worker trial runs Claude Code as the lane's user, with the token in Claude Code's
 //     environment and the safety flags, edits the code and submits with thermite-trial;
+//   - the auditor, given the subscription's model on Edit rig, audits a large gain in Claude
+//     Code in the supervisor, with no tools, no settings or MCP, and its effort;
 //   - the subscription's usage windows reach the Providers page;
 //   - the token shows in no page, event or record.
 // Usage: COMPOSE="podman compose" node scripts/claude-acceptance.mjs
 import { readFileSync, writeFileSync } from "node:fs";
-import { api, assign, control, dc, events, prepare, secret, until } from "./lib/smoke-env.mjs";
+import {
+  api,
+  assign,
+  candidatePatch,
+  control,
+  dc,
+  events,
+  prepare,
+  secret,
+  submit,
+  until,
+} from "./lib/smoke-env.mjs";
 
 const TOKEN = "sk-ant-oat01-acceptance-stand-in-token-0000"; // public-check: allow (a made-up token for the stand-in)
 const files = ["-f", "compose.yaml", "-f", "containers/test-claude/compose.yaml"];
@@ -29,9 +42,38 @@ const check = (name, ok, detail) => {
   );
 };
 
+/** A form's current values from its page (inputs, checked boxes and radios, selected options). */
+const formOf = (html, id) => {
+  const start = html.indexOf(`<form id="${id}"`);
+  const form = html.slice(start, html.indexOf("</form>", start));
+  const unesc = (v) =>
+    v
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&");
+  const f = {};
+  for (const [, a] of form.matchAll(/<input ([^>]*)>/g)) {
+    const name = /name="([^"]+)"/.exec(a)?.[1];
+    const type = /type="([^"]+)"/.exec(a)?.[1] ?? "text";
+    if (!name || /\sdisabled/.test(a)) continue;
+    if ((type === "checkbox" || type === "radio") && !/\schecked/.test(a)) continue;
+    f[name] = unesc(/value="([^"]*)"/.exec(a)?.[1] ?? "");
+  }
+  for (const [, name, body] of form.matchAll(/<select name="([^"]+)"[^>]*>([\s\S]*?)<\/select>/g)) {
+    const picked =
+      /<option value="([^"]*)"[^>]*\sselected/.exec(body) ?? /<option value="([^"]*)"/.exec(body);
+    f[name] = unesc(picked?.[1] ?? "");
+  }
+  return f;
+};
+
 const env = prepare();
 const contract = JSON.parse(readFileSync(env.contractFile, "utf8"));
 contract.lanes = { count: 1, trials_per_epoch: 1 };
+// Audits for any win above 1% (the smoke kit's good kernel wins far more).
+contract.acceptance.audit = { ratio_to_median: 3, absolute: 0.01 };
 writeFileSync(env.contractFile, JSON.stringify(contract));
 dc(composeEnv, ...files, "up", "-d", "--build");
 try {
@@ -77,6 +119,16 @@ try {
     "the rig took the subscription's model in Claude Code",
     model.model === "claude-opus-5-5",
     model,
+  );
+  // The auditor on the subscription too, through Edit rig's agents table (the form as it stands).
+  const form = formOf(await page("/ui/rigs/local-1/edit"), "edit-rig");
+  form.role_auditor = `claude-test|${encodeURIComponent("opus-5.5")}`;
+  form.effort_auditor = "high";
+  const edited = await post("/ui/rigs/local-1/edit", form);
+  check(
+    "the auditor is given the subscription's model on Edit rig",
+    /a model for the auditor/.test(edited),
+    edited,
   );
   const modelCheck = await until(
     "the model check through Claude Code",
@@ -145,6 +197,35 @@ try {
     "the controller followed Claude Code's output (turns counted)",
     Number(trial.body.turns) >= 1,
     trial.body,
+  );
+  const good = submit(
+    composeEnv,
+    "smoke-1",
+    candidatePatch(env, "kits/smoke-cpu/candidates/good"),
+    "good kernel",
+  );
+  const audited = await until(
+    "the good kernel's audit, in Claude Code in the supervisor",
+    async () =>
+      (await api("/v1/rigs/local-1/view")).body.runs
+        ?.find((r) => r.id === "smoke-1")
+        ?.audits?.find((a) => a.attempt === good.attempt && a.decision),
+    1_200_000,
+    3000,
+  );
+  const why = String(audited.reasons ?? "");
+  check(
+    "the auditor ran in Claude Code in the supervisor, with no tools, no settings or MCP, its effort and the token in its environment",
+    audited.decision === "clear" &&
+      /Claude Code stand-in/.test(why) &&
+      /tools=none /.test(why) &&
+      /effort=high /.test(why) &&
+      /token=set /.test(why) &&
+      /scrub=1 /.test(why) &&
+      /strict_mcp=true /.test(why) &&
+      /no_settings=true /.test(why) &&
+      /model=claude-opus-5-5\)/.test(why),
+    audited,
   );
   const providers = await until(
     "the subscription's usage on the Providers page",

@@ -2,7 +2,8 @@
 // Test only (scripts/claude-acceptance.mjs): a stand-in for Claude Code's headless mode. It
 // prints the stream-json Claude Code prints (init, assistant turns, tool results, a rate-limit
 // event, the result) and does what each of Thermite's calls asks: the model check's echo, the
-// planner's JSON plan, or a trial's change and its submission with thermite-trial. It reports
+// planner's JSON plan, a trial's change and its submission with thermite-trial, or an advisor's
+// answer (the prompt on stdin, as the supervisor's advisors send it). It reports
 // what it was given (its user, whether the token and the safety flags were there), never the
 // token itself. It refuses to run without THERMITE_FAKE_CLAUDE=1, so it can't stand in by mistake.
 const { execSync } = require("node:child_process");
@@ -12,7 +13,9 @@ if (process.env.THERMITE_FAKE_CLAUDE !== "1" && !require("node:fs").existsSync("
 }
 const args = process.argv.slice(2);
 const val = (f) => (args.includes(f) ? args[args.indexOf(f) + 1] : undefined);
-const prompt = val("-p") ?? "";
+// The prompt follows -p, or comes on stdin (the advisors: `claude -p --output-format json ...`).
+const given = val("-p");
+const prompt = given && !given.startsWith("--") ? given : require("node:fs").readFileSync(0, "utf8");
 const session = val("--resume") ?? `s-${process.pid}`;
 const out = (e) => process.stdout.write(`${JSON.stringify({ session_id: session, ...e })}\n`);
 let n = 0;
@@ -63,6 +66,15 @@ if (word) {
     new_families: [{ id: "cc-tidy", description: "Small tidy-ups proposed by the Claude Code stand-in." }],
     assignments: ctx.lanes.map((lane) => ({ lane, family: "cc-tidy", focus: "tidy the kernel", parent: "champion" })),
     notes: `planned by the Claude Code stand-in (${facts})`,
+  });
+  turn([{ type: "text", text: answer }]);
+} else if (/You audit a candidate change/.test(prompt)) {
+  // The auditor, run by the supervisor: what it was given, as its reasons.
+  const extra = `tools=${val("--tools") === "" ? "none" : val("--tools")} effort=${val("--effort") ?? "default"}`;
+  answer = JSON.stringify({
+    decision: "clear",
+    reasons: `audited by the Claude Code stand-in (${extra} ${facts})`,
+    citations: ["diff"],
   });
   turn([{ type: "text", text: answer }]);
 } else if (/thermite-trial submit/.test(prompt)) {
