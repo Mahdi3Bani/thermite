@@ -217,6 +217,18 @@ create table if not exists cluster (
   created_at text not null,
   created_by text not null
 );
+-- GPU clouds (RunPod) control reads with the owner's key, sealed: what the last read found.
+create table if not exists gpu_cloud (
+  name text primary key,
+  kind text not null check (kind in ('runpod')),
+  key_sealed text not null,
+  key_hint text not null,
+  facts text,
+  checked_at text,
+  check_error text,
+  created_at text not null,
+  created_by text not null
+);
 -- Rigs control set up on a cluster: where, how, and how it stands.
 create table if not exists cluster_rig (
   rig text primary key,
@@ -432,6 +444,27 @@ export interface Cluster {
   check_error: string | null;
   created_at: string;
 }
+
+/** A GPU cloud as listed (never its key). */
+export interface GpuCloud {
+  name: string;
+  kind: "runpod";
+  key_hint: string;
+  facts: unknown;
+  checked_at: string | null;
+  check_error: string | null;
+  created_at: string;
+}
+
+const gpuCloudOf = (r: Row): GpuCloud => ({
+  name: String(r.name),
+  kind: String(r.kind) as GpuCloud["kind"],
+  key_hint: String(r.key_hint),
+  facts: r.facts ? JSON.parse(String(r.facts)) : null,
+  checked_at: r.checked_at === null ? null : String(r.checked_at),
+  check_error: r.check_error === null ? null : String(r.check_error),
+  created_at: String(r.created_at),
+});
 
 /** A rig control set up on a cluster; spec holds what it was deployed with (no secrets). */
 export interface ClusterRig {
@@ -1580,6 +1613,62 @@ export class ControlStore {
       ok: Number(r.ok) === 1,
       detail: r.detail === null ? null : String(r.detail),
     }));
+  }
+
+  // ---------------------------------------------------------------- GPU clouds (RunPod)
+  addGpuCloud(g: {
+    name: string;
+    kind: GpuCloud["kind"];
+    key_sealed: string;
+    key_hint: string;
+    by: string;
+  }): void {
+    this.db
+      .prepare(
+        `insert into gpu_cloud (name, kind, key_sealed, key_hint, created_at, created_by)
+         values (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(g.name, g.kind, g.key_sealed, g.key_hint, new Date().toISOString(), g.by);
+    this.audit(g.by, "gpu_cloud_added", { name: g.name, kind: g.kind, key_hint: g.key_hint });
+  }
+
+  gpuCloud(name: string): (GpuCloud & { key_sealed: string }) | undefined {
+    const r = this.db.prepare("select * from gpu_cloud where name = ?").get(name) as
+      | Row
+      | undefined;
+    return r ? { ...gpuCloudOf(r), key_sealed: String(r.key_sealed) } : undefined;
+  }
+
+  gpuClouds(): GpuCloud[] {
+    return (this.db.prepare("select * from gpu_cloud order by name").all() as Row[]).map(
+      gpuCloudOf,
+    );
+  }
+
+  setGpuCloudFacts(name: string, r: { facts: unknown } | { error: string }): void {
+    if ("facts" in r)
+      this.db
+        .prepare(
+          "update gpu_cloud set facts = ?, checked_at = ?, check_error = null where name = ?",
+        )
+        .run(JSON.stringify(r.facts), new Date().toISOString(), name);
+    else
+      this.db
+        .prepare("update gpu_cloud set checked_at = ?, check_error = ? where name = ?")
+        .run(new Date().toISOString(), r.error, name);
+  }
+
+  replaceGpuCloudKey(name: string, key_sealed: string, key_hint: string, by: string): void {
+    this.db
+      .prepare("update gpu_cloud set key_sealed = ?, key_hint = ? where name = ?")
+      .run(key_sealed, key_hint, name);
+    this.audit(by, "gpu_cloud_key_replaced", { name, key_hint });
+  }
+
+  deleteGpuCloud(name: string, by: string): boolean {
+    const r = this.db.prepare("delete from gpu_cloud where name = ?").run(name);
+    if (Number(r.changes)) this.audit(by, "gpu_cloud_deleted", { name });
+    return Number(r.changes) > 0;
   }
 
   // ---------------------------------------------------------------- clusters (Kubernetes)

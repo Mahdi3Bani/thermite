@@ -179,6 +179,8 @@ export interface ControlOptions {
   rigImages?: RigImages | undefined;
   /** How control reaches Kubernetes clusters (tests give their own). */
   clusterKubectl?: ClusterKubectl | undefined;
+  /** How control reaches GPU clouds' APIs (tests give their own). */
+  cloudFetch?: typeof fetch | undefined;
 }
 
 export function createControlApi(
@@ -672,6 +674,7 @@ export function createControlApi(
       machineSsh: opts.machineSsh,
       rigImages: opts.rigImages,
       clusterKubectl: opts.clusterKubectl,
+      cloudFetch: opts.cloudFetch,
     }),
   );
   app.get("/", (c) => c.redirect("/ui", 302));

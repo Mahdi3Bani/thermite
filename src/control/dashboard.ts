@@ -47,6 +47,7 @@ import {
 import { startCampaign, startRun } from "./new-campaign.ts";
 import { ANTHROPIC_BASE, isOpencodeOwn, listModels, providerBase } from "./providers.ts";
 import { probeRepository } from "./repo-probe.ts";
+import { type RunpodFacts, readRunpod, runpodLine } from "./runpod.ts";
 import { keyHint, type SecretBox } from "./secrets.ts";
 import {
   type Cluster,
@@ -163,6 +164,8 @@ export interface DashboardOptions {
   rigImages?: RigImages | undefined;
   /** How control reaches Kubernetes clusters (tests give their own). */
   clusterKubectl?: ClusterKubectl | undefined;
+  /** How control reaches GPU clouds' APIs (tests give their own). */
+  cloudFetch?: typeof fetch | undefined;
 }
 
 /** The images a rig control sets up runs: the harness (CPU, and CUDA for GPU rigs), the supervisor. */
@@ -1916,6 +1919,10 @@ ${placed ? placedBlock(placed, t) : ""}${onCluster ? clusterPlacedBlock(onCluste
       "Add and check the cluster",
       "Control reads the cluster with this kubeconfig: its version, its nodes and their GPUs, DRA device classes, storage classes, and whether it may create namespaces or deploy into the slots you name. It changes nothing.",
     ],
+    runpod: [
+      "Add and read the account",
+      "Control seals the key and reads, with it, RunPod's GPU types with their prices and stock, its data centers, your network volumes and your pods. It starts nothing and spends nothing.",
+    ],
     gittoken: [
       "Add the token",
       "Control seals the token. It goes only to rigs running a campaign that uses it. Use a token that can only read the repositories you need.",
@@ -1947,7 +1954,10 @@ ${placed ? placedBlock(placed, t) : ""}${onCluster ? clusterPlacedBlock(onCluste
     const t = csrf(c);
     const providers = store.providers();
     const gitCount =
-      store.gitAccessList().length + store.machines().length + store.clusters().length;
+      store.gitAccessList().length +
+      store.machines().length +
+      store.clusters().length +
+      store.gpuClouds().length;
     const given = store.rigModels();
     const usersOf = (name: string) =>
       Object.entries(given)
@@ -1995,7 +2005,7 @@ ${
       .join("");
     const models = "openai anthropic opencode";
     const addForm = `<form method="post" action="/ui/settings/add" class="form-grid" autocomplete="off" id="prov-add" data-says="${esc(JSON.stringify(ADD_SAYS))}"><input type="hidden" name="csrf" value="${t}">
-<label>${infoLabel("Type", `${TYPE_TIP} Git access lets rigs fetch private repositories: a deploy key control makes, or an HTTPS token you paste.`)}<select name="type" id="ptype"><optgroup label="Models">${(Object.keys(TYPES) as ProviderType[]).map((x) => `<option value="${x}">${x === "opencode" ? "OpenCode (its own models)" : TYPES[x]}</option>`).join("")}</optgroup><optgroup label="Git access"><option value="gitkey">A deploy key (control makes it)</option><option value="gittoken">An access token (HTTPS)</option></optgroup><optgroup label="Where rigs run"><option value="ssh">A machine over SSH</option><option value="k8s">A Kubernetes cluster</option></optgroup></select></label>
+<label>${infoLabel("Type", `${TYPE_TIP} Git access lets rigs fetch private repositories: a deploy key control makes, or an HTTPS token you paste.`)}<select name="type" id="ptype"><optgroup label="Models">${(Object.keys(TYPES) as ProviderType[]).map((x) => `<option value="${x}">${x === "opencode" ? "OpenCode (its own models)" : TYPES[x]}</option>`).join("")}</optgroup><optgroup label="Git access"><option value="gitkey">A deploy key (control makes it)</option><option value="gittoken">An access token (HTTPS)</option></optgroup><optgroup label="Where rigs run"><option value="ssh">A machine over SSH</option><option value="k8s">A Kubernetes cluster</option><option value="runpod">RunPod (a GPU cloud)</option></optgroup></select></label>
 <label>${infoLabel("Name", "How it shows in Thermite, and how rigs and campaigns refer to it: for example my-litellm or github-deploy. Lowercase letters, digits, dots and dashes.")}<input name="name" required maxlength="64" placeholder="for example my-litellm"></label>
 <label data-for="${models}">${infoLabel("Base URL", BASE_TIP)}<input name="base_url" maxlength="500" placeholder="https://…/v1 (Anthropic and OpenCode: empty for their own)"></label>
 <label data-for="${models}">${infoLabel("API key", "The provider's key. Control seals it at once and never shows it again. OpenCode: leave it empty for its free models.")}<input name="api_key" type="password" autocomplete="new-password" maxlength="4096" placeholder="never shown again"></label>
@@ -2009,6 +2019,7 @@ ${
 <label data-for="k8s" hidden>${infoLabel("Placement", "Where each rig goes. Namespaces control creates: one namespace per rig, with its own network rules. Slots: namespaces the cluster's operators made for Thermite, with their own quotas and rules; control only deploys into a free one.")}<select name="placement"><option value="created">A namespace control creates for each rig</option><option value="slot">Slots the cluster's operators made</option></select></label>
 <label data-for="k8s" hidden>${infoLabel("Namespace for each rig", "For created namespaces: the name of each rig's namespace. {rig} becomes the rig's name.")}<input name="namespace_pattern" maxlength="63" value="thermite-{rig}"></label>
 <label data-for="k8s" hidden>${infoLabel("Slots", "For slots: the slot namespaces, separated by commas. Control checks that it may deploy into each one.")}<input name="slots" maxlength="2000" placeholder="thermite-slot-1, thermite-slot-2"></label>
+<label data-for="runpod" hidden>${infoLabel("RunPod API key", "A key from RunPod's console (Settings, API Keys). Control seals it at once and never shows it again. For now control only reads with it; a read-only key is enough.")}<input name="runpod_key" type="password" autocomplete="new-password" maxlength="4096" placeholder="never shown again"></label>
 <label data-for="ssh" hidden style="grid-column:1/-1">${infoLabel("Private key", "The SSH private key for that user, without a passphrase. Control seals it at once and never shows it again. Leave it empty and control makes a key: add its public half, shown next, to the user's ~/.ssh/authorized_keys on the machine.")}<textarea name="private_key" class="mono" rows="4" maxlength="16384" placeholder="empty: control makes a key"></textarea></label>
 <div class="nc-does" id="pdo" style="grid-column:1/-1"><b>What happens.</b> ${ADD_SAYS.openai[1]}</div>
 <div class="form-end"><button class="primary" id="padd">${ADD_SAYS.openai[0]}</button></div></form>`;
@@ -2065,9 +2076,9 @@ ${
         active: "settings",
         crumbs: [{ href: "/ui/settings", text: "Settings" }],
       },
-      `<p class="run-said">Providers are what Thermite uses: model providers serve the agents' models, Git access lets rigs fetch private repositories, and machines are where control sets rigs up. Add each once with its key. Control seals every key, never shows it again, and gives a rig only what it uses. Then choose, for each rig, the harness its agents run in (Pi or OpenCode v2) and their model.</p>
+      `<p class="run-said">Providers are what Thermite uses: model providers serve the agents' models, Git access lets rigs fetch private repositories, and machines, clusters and GPU clouds are where rigs run. Add each once with its key. Control seals every key, never shows it again, and gives a rig only what it uses. Then choose, for each rig, the harness its agents run in (Pi or OpenCode v2) and their model.</p>
 ${note}
-<div class="block"><div class="head"><h2>Providers</h2><span class="n">${providers.length + gitCount}</span><span class="right">models are read from each provider itself</span></div>${providers.length + gitCount ? `<div class="dqs">${providerRows}${gitRows(t)}${machineRows(t)}${clusterRows(t)}</div>` : `<div class="card"><div class="empty">No provider yet: add one below.</div></div>`}</div>
+<div class="block"><div class="head"><h2>Providers</h2><span class="n">${providers.length + gitCount}</span><span class="right">models are read from each provider itself</span></div>${providers.length + gitCount ? `<div class="dqs">${providerRows}${gitRows(t)}${machineRows(t)}${clusterRows(t)}${cloudRows(t)}</div>` : `<div class="card"><div class="empty">No provider yet: add one below.</div></div>`}</div>
 <div class="block"><div class="head"><h2>Add a provider</h2></div><div class="card">${addForm}</div></div>
 <div class="block"><div class="head"><h2>Harness and model for each rig</h2><span class="right">a rig takes a change within a minute; then check it</span></div><div class="card flat">${rigRows || `<div class="empty">No rig has reported yet.</div>`}</div></div>
 <script src="/ui/assets/providers.js" defer></script>`,
@@ -2351,6 +2362,142 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
       store.deleteCluster(name, "owner:ui")
         ? settingsUrl("ok", `"${name}" is deleted: control keeps nothing of its kubeconfig.`)
         : settingsUrl("error", "No such cluster."),
+      303,
+    );
+  });
+
+  // ---------------------------------------------------------------- GPU clouds (Providers)
+  // RunPod, read with the owner's key (runpod.ts): GPU types, prices and stock, data centers,
+  // network volumes and pods. Control starts nothing there yet.
+  const checkCloudNow = async (name: string): Promise<string | null> => {
+    const g = store.gpuCloud(name);
+    if (!g) return "no such GPU cloud";
+    let key: string;
+    try {
+      key = opts.secrets.open(g.key_sealed);
+    } catch {
+      store.setGpuCloudFacts(name, { error: "its key cannot be opened: enter it again" });
+      return "its key cannot be opened: enter it again";
+    }
+    try {
+      store.setGpuCloudFacts(name, { facts: await readRunpod(key, opts.cloudFetch) });
+      return null;
+    } catch (err) {
+      const why = err instanceof Error ? err.message : String(err);
+      store.setGpuCloudFacts(name, { error: why });
+      return why;
+    }
+  };
+  const usd = (n: number | null) => (n === null ? "–" : `$${n.toFixed(2)}`);
+  const STOCK: Record<string, string> = {
+    HIGH: "high",
+    MEDIUM: "medium",
+    LOW: "low",
+    NONE: "none",
+  };
+  const cloudRows = (t: string) =>
+    store
+      .gpuClouds()
+      .map((g) => {
+        const f = g.facts as RunpodFacts | null;
+        const gName = encodeURIComponent(g.name);
+        const status = g.check_error
+          ? `<span class="dq-why bad">${esc(g.check_error)}${f ? " (showing the last read)" : ""}</span>`
+          : f
+            ? `<span class="dq-why">${esc(runpodLine(f))}${g.checked_at ? ` · read ${esc(ago(g.checked_at, Date.now()))} ago` : ""}</span>`
+            : `<span class="dq-why">not read yet</span>`;
+        const running = f?.pods.filter((p) => p.cost_per_hr > 0) ?? [];
+        const form = (action: string, label: string, cls = "sm", extra = "") =>
+          `<form class="inline" method="post" action="/ui/settings/clouds/${gName}/${action}"><input type="hidden" name="csrf" value="${t}">${extra}<button class="${cls}">${label}</button></form>`;
+        const gpus = f?.gpus.length
+          ? `<div class="card flat" style="margin-top:6px;max-height:340px;overflow:auto"><table><thead><tr><th>GPU</th><th class="num">Memory</th><th class="num">Secure, per GPU-hour</th><th class="num">Community, per GPU-hour</th><th>Secure stock</th></tr></thead><tbody>${f.gpus
+              .map(
+                (x) =>
+                  `<tr><td>${esc(x.name)}</td><td class="num">${x.memory_gb} GB</td><td class="num">${x.secure ? usd(x.price_secure) : "–"}</td><td class="num">${x.community ? usd(x.price_community) : "–"}</td><td>${x.availability ? esc(STOCK[x.availability] ?? x.availability.toLowerCase()) : "–"}</td></tr>`,
+              )
+              .join("")}</tbody></table></div>`
+          : "";
+        const facts = f
+          ? `<dl class="facts"><dt>Pods</dt><dd>${
+              f.pods
+                .map(
+                  (p) =>
+                    `${esc(p.name || p.id)}: ${esc(p.status.toLowerCase())}${p.gpus ? `, ${p.gpus} GPU${p.gpus === 1 ? "" : "s"}` : ""}${p.cost_per_hr ? `, <b>${usd(p.cost_per_hr)}/h</b>` : ""}`,
+                )
+                .join("<br>") || "none"
+            }</dd><dt>Network volumes</dt><dd>${f.volumes.map((v) => `${esc(v.name || v.id)}: ${v.size_gb} GB in ${esc(v.datacenter)}`).join("<br>") || "none"}</dd><dt>Data centers</dt><dd>${f.datacenters.map((d) => esc(d.id)).join(", ") || "none listed"}</dd></dl>${gpus}<div class="muted small" style="margin-top:6px">Prices are RunPod's list prices when control last read them. RunPod bills a pod while it runs, and storage while it exists.</div>`
+          : "";
+        return `<details class="dq${g.check_error ? " dq-bad" : ""}" data-k="cloud-${esc(g.name)}"><summary>
+<span class="dq-kind"><span class="kind r">GPU cloud</span></span>
+<span class="dq-main"><span class="dq-head">${esc(g.name)} <span class="muted" style="font-weight:400">· RunPod</span></span>${status}<span class="dq-sub"><span class="chip">key ${esc(g.key_hint)}</span><span class="chip info">control only reads: it starts nothing</span>${running.length ? `<span class="chip warn">${running.length} pod${running.length === 1 ? "" : "s"} running: billed while they run</span>` : ""}</span></span>
+<span class="dq-side"><span class="dq-btns">${form("check", "Read again")}</span></span>
+</summary><div class="dq-body">${facts}
+<form method="post" action="/ui/settings/clouds/${gName}/key" class="form-grid" autocomplete="off" style="margin-top:10px"><input type="hidden" name="csrf" value="${t}"><label>${infoLabel("New API key", "Control seals the new key, reads the account with it, and forgets the old one.")}<input name="runpod_key" type="password" autocomplete="new-password" maxlength="4096" placeholder="empty keeps the key ending ${esc(g.key_hint)}"></label><div class="form-end"><button>Replace the key</button></div></form>
+<div style="margin-top:10px">${form("delete", "Delete this GPU cloud", "sm danger")} <span class="muted small">Control forgets the key. Nothing at RunPod changes.</span></div></div></details>`;
+      })
+      .join("");
+  const addRunpod = async (c: Ctx, f: Record<string, unknown>) => {
+    const fail = (m: string) => c.redirect(settingsUrl("error", m), 303);
+    const name = String(f.name ?? "").trim();
+    const key = String(f.runpod_key ?? "").trim();
+    if (!ACCESS_NAME.test(name))
+      return fail("A GPU cloud's name is lowercase letters, digits, dots and dashes.");
+    if (store.gpuCloud(name)) return fail(`"${name}" exists already.`);
+    if (!key) return fail("Paste the RunPod API key.");
+    // A key that RunPod refuses is not kept.
+    try {
+      const facts = await readRunpod(key, opts.cloudFetch);
+      store.addGpuCloud({
+        name,
+        kind: "runpod",
+        key_sealed: opts.secrets.seal(key),
+        key_hint: keyHint(key),
+        by: "owner:ui",
+      });
+      store.setGpuCloudFacts(name, { facts });
+    } catch (err) {
+      return fail(`Not added: ${err instanceof Error ? err.message : String(err)}.`);
+    }
+    return c.redirect(
+      settingsUrl("ok", `"${name}" is added and read: see what control found below.`),
+      303,
+    );
+  };
+  app.post("/ui/settings/clouds/:name/check", async (c) => {
+    const name = c.req.param("name");
+    if (!store.gpuCloud(name)) return c.redirect(settingsUrl("error", "No such GPU cloud."), 303);
+    const why = await checkCloudNow(name);
+    return c.redirect(
+      why ? settingsUrl("error", `"${name}": ${why}`) : settingsUrl("ok", `Read "${name}" again.`),
+      303,
+    );
+  });
+  app.post("/ui/settings/clouds/:name/key", async (c) => {
+    const name = c.req.param("name");
+    const key = String((await c.req.parseBody()).runpod_key ?? "").trim();
+    if (!store.gpuCloud(name)) return c.redirect(settingsUrl("error", "No such GPU cloud."), 303);
+    if (!key) return c.redirect(settingsUrl("error", "Paste the new key."), 303);
+    try {
+      const facts = await readRunpod(key, opts.cloudFetch);
+      store.replaceGpuCloudKey(name, opts.secrets.seal(key), keyHint(key), "owner:ui");
+      store.setGpuCloudFacts(name, { facts });
+    } catch (err) {
+      return c.redirect(
+        settingsUrl(
+          "error",
+          `Kept the old key: ${err instanceof Error ? err.message : String(err)}.`,
+        ),
+        303,
+      );
+    }
+    return c.redirect(settingsUrl("ok", `"${name}" has its new key, and is read again.`), 303);
+  });
+  app.post("/ui/settings/clouds/:name/delete", (c) => {
+    const name = c.req.param("name");
+    return c.redirect(
+      store.deleteGpuCloud(name, "owner:ui")
+        ? settingsUrl("ok", `"${name}" is deleted: control keeps nothing of its key.`)
+        : settingsUrl("error", "No such GPU cloud."),
       303,
     );
   });
@@ -3246,6 +3393,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     const f = await c.req.parseBody();
     if (f.type === "ssh") return addMachine(c, f);
     if (f.type === "k8s") return addCluster(c, f);
+    if (f.type === "runpod") return addRunpod(c, f);
     if (f.type === "gitkey" || f.type === "gittoken")
       return addGit(c, { ...f, kind: f.type === "gittoken" ? "token" : "ssh" });
     return saveProvider(c, f);
