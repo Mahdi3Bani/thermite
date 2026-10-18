@@ -342,8 +342,10 @@ export interface IngestReport {
   summary: unknown;
 }
 
-export type ProviderType = "openai" | "anthropic" | "opencode";
-export type Harness = "pi" | "opencode";
+/** A model provider's kind; "claude" is a Claude subscription (its token from `claude setup-token`). */
+export type ProviderType = "openai" | "anthropic" | "opencode" | "claude";
+/** Where a rig's agents run: Pi, OpenCode v2, or Claude Code (the only one a Claude subscription allows). */
+export type Harness = "pi" | "opencode" | "claude-code";
 
 /** A model in a provider's list: its id, and its context window when the provider says it. */
 export interface ProviderModel {
@@ -376,7 +378,8 @@ function providerOf(r: Row): ModelProvider {
   }
   return {
     name: String(r.name),
-    type: r.type === "anthropic" || r.type === "opencode" ? r.type : "openai",
+    type:
+      r.type === "anthropic" || r.type === "opencode" || r.type === "claude" ? r.type : "openai",
     base_url: String(r.base_url),
     key_sealed: String(r.key_sealed),
     key_hint: String(r.key_hint),
@@ -1308,7 +1311,10 @@ export class ControlStore {
         {
           provider: String(r.provider),
           model: String(r.model),
-          harness: r.harness === "opencode" ? ("opencode" as const) : ("pi" as const),
+          harness:
+            r.harness === "opencode" || r.harness === "claude-code"
+              ? (r.harness as "opencode" | "claude-code")
+              : ("pi" as const),
         },
       ]),
     );

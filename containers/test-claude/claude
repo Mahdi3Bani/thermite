@@ -1,0 +1,72 @@
+#!/usr/bin/env node
+// Test only (scripts/claude-acceptance.mjs): a stand-in for Claude Code's headless mode. It
+// prints the stream-json Claude Code prints (init, assistant turns, tool results, a rate-limit
+// event, the result) and does what each of Thermite's calls asks: the model check's echo, the
+// planner's JSON plan, or a trial's change and its submission with thermite-trial. It reports
+// what it was given (its user, whether the token and the safety flags were there), never the
+// token itself. It refuses to run without THERMITE_FAKE_CLAUDE=1, so it can't stand in by mistake.
+const { execSync } = require("node:child_process");
+if (process.env.THERMITE_FAKE_CLAUDE !== "1" && !require("node:fs").existsSync("/opt/fake-claude/enabled")) {
+  process.stderr.write("test-claude: not enabled\n");
+  process.exit(2);
+}
+const args = process.argv.slice(2);
+const val = (f) => (args.includes(f) ? args[args.indexOf(f) + 1] : undefined);
+const prompt = val("-p") ?? "";
+const session = val("--resume") ?? `s-${process.pid}`;
+const out = (e) => process.stdout.write(`${JSON.stringify({ session_id: session, ...e })}\n`);
+let n = 0;
+const turn = (content) =>
+  out({
+    type: "assistant",
+    message: { id: `msg_${++n}`, content, usage: { input_tokens: 100, cache_read_input_tokens: 900, output_tokens: 20 } },
+  });
+const bash = (command) => {
+  turn([{ type: "tool_use", id: `tu_${n + 1}`, name: "Bash", input: { command } }]);
+  let output;
+  let isError = false;
+  try {
+    output = execSync(command, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], shell: "/bin/sh" });
+  } catch (e) {
+    output = `${e.stdout ?? ""}${e.stderr ?? ""}`;
+    isError = true;
+  }
+  out({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: `tu_${n}`, content: output, is_error: isError }] } });
+  return output;
+};
+const facts = [
+  `uid=${process.getuid()}`,
+  `token=${(process.env.CLAUDE_CODE_OAUTH_TOKEN ?? "").startsWith("sk-ant-oat01-") ? "set" : "missing"}`,
+  `scrub=${process.env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB ?? "unset"}`,
+  `strict_mcp=${args.includes("--strict-mcp-config")}`,
+  `no_settings=${val("--setting-sources") === ""}`,
+  `model=${val("--model")}`,
+].join(" ");
+out({ type: "system", subtype: "init", tools: val("--tools") === "" ? [] : ["Bash"], mcp_servers: [], model: val("--model") });
+const reset = Math.floor(Date.now() / 1000) + 3 * 3600;
+out({
+  type: "rate_limit_event",
+  rate_limit_info: {
+    status: "allowed",
+    resetsAt: reset,
+    rateLimitType: "five_hour",
+    unifiedWindows: { five_hour: { utilization: 0.42, resetsAt: reset }, seven_day: { utilization: 0.17, resetsAt: reset + 4 * 86400 } },
+  },
+});
+let answer = "done";
+const word = /run exactly this command: echo (thermite-[a-z0-9]+)/.exec(prompt)?.[1];
+if (word) {
+  answer = bash(`echo ${word}`).trim();
+} else if (/The campaign, as JSON:/.test(prompt)) {
+  const ctx = JSON.parse(prompt.slice(prompt.indexOf("The campaign, as JSON:") + "The campaign, as JSON:".length));
+  answer = JSON.stringify({
+    new_families: [{ id: "cc-tidy", description: "Small tidy-ups proposed by the Claude Code stand-in." }],
+    assignments: ctx.lanes.map((lane) => ({ lane, family: "cc-tidy", focus: "tidy the kernel", parent: "champion" })),
+    notes: `planned by the Claude Code stand-in (${facts})`,
+  });
+  turn([{ type: "text", text: answer }]);
+} else if (/thermite-trial submit/.test(prompt)) {
+  bash(`printf '\\n/* tidied by claude code */\\n' >> src/kernel/matmul.c && thermite-trial submit --hypothesis 'claude code harness: a tidied kernel (${facts})'`);
+  turn([{ type: "text", text: "Submitted." }]);
+}
+out({ type: "result", subtype: "success", is_error: false, result: answer, num_turns: n, usage: { input_tokens: 100 * n, output_tokens: 20 * n } });

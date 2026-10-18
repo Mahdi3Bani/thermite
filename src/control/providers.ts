@@ -12,6 +12,23 @@ export const ANTHROPIC_BASE = "https://api.anthropic.com";
 export const OPENCODE_BASE = "https://opencode.ai/zen/v1";
 
 /**
+ * A Claude subscription's models, as the owner picks them (`claude-code:<id>`), and the name
+ * Claude Code takes for each. The list is fixed here: control never calls Anthropic with a
+ * subscription's token, because only Claude Code may use it. Opus 5.5 has its 1M-token window
+ * already, so "[1m]" names the same model.
+ */
+export const CLAUDE_MODELS: { id: string; claude: string; context_window: number }[] = [
+  { id: "opus-5.5", claude: "claude-opus-5-5", context_window: 1_000_000 },
+  { id: "opus-5.5[1m]", claude: "claude-opus-5-5", context_window: 1_000_000 },
+  { id: "sonnet-5.5", claude: "claude-sonnet-5-5", context_window: 1_000_000 },
+  { id: "haiku-5.5", claude: "claude-haiku-5-5", context_window: 200_000 },
+  { id: "fable-5.1", claude: "claude-fable-5-1", context_window: 1_000_000 },
+];
+
+/** Claude Code's name for a subscription model id (an unknown id passes as it is). */
+export const claudeModelName = (id: string) => CLAUDE_MODELS.find((m) => m.id === id)?.claude ?? id;
+
+/**
  * Whether a provider is OpenCode's own: its type says so, or its base URL is OpenCode's. Under
  * the OpenCode harness such a provider runs through OpenCode's built-in provider, which its free
  * models require (and which ignores any other endpoint, so no proxy can add a key to it).
@@ -37,6 +54,8 @@ export function providerBase(type: ProviderType, base: string): string {
     .replace(/\/+$/, "")
     .replace(/\/(models|chat\/completions|messages|completions)$/, "");
   if (type === "anthropic") return (b || ANTHROPIC_BASE).replace(/\/v1$/, "");
+  // A Claude subscription has no endpoint of its own here: Claude Code knows where it goes.
+  if (type === "claude") return ANTHROPIC_BASE;
   if (type === "opencode") return b || OPENCODE_BASE;
   return b;
 }
@@ -58,6 +77,9 @@ export async function listModels(
   key: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<ProviderModel[] | { error: string }> {
+  // A Claude subscription's list is fixed: no call to Anthropic with its token.
+  if (type === "claude")
+    return CLAUDE_MODELS.map((m) => ({ id: m.id, context_window: m.context_window }));
   const root = providerBase(type, base);
   // OpenCode's own list needs no key (its free models need none).
   const headers: Record<string, string> =

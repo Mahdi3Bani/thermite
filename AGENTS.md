@@ -88,6 +88,8 @@ Run from the repository root, and report which ran and which didn't. Before each
   - `COMPOSE="podman compose" node scripts/multigpu-acceptance.mjs`
 - Agents acceptance (M4), after changes to the workers, planner, scheduler, dev runs or the harness image. A scripted model on the host stands in for a real model route:
   - `COMPOSE="podman compose" node scripts/agents-acceptance.mjs`
+- Claude Code acceptance, after changes to the Claude Code harness, subscriptions in Providers or the model routes. A stand-in for Claude Code (`containers/test-claude`, mounted only by its compose file) runs the model check, the planner and a trial through the real harness image, with no subscription and no download:
+  - `COMPOSE="podman compose" node scripts/claude-acceptance.mjs`
 - Steering acceptance (M5), after changes to the supervisor's advisors, audits, propagation, reviews, the lifecycle drivers or full reset. It uses two rigs and a scripted host model; with Podman it also mounts the engine socket (`compose.lifecycle.yaml`) to test restarts. Allow about 20–30 minutes:
   - `COMPOSE="podman compose" node scripts/steering-acceptance.mjs`
 - Clean up after every local run. The compose scripts prune dangling images and trim the Podman VM when their stack comes down; after a run stopped by hand, do the same (`podman image prune -f`, `podman machine ssh sudo fstrim -a`), and never prune tagged images, which may be other projects'.

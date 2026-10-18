@@ -196,6 +196,10 @@ details.menu > summary::-webkit-details-marker { display: none; }
 details.menu[open] > .menu-body { position: absolute; right: 0; top: 38px; z-index: 20; width: 320px; background: var(--popover); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; box-shadow: 0 12px 32px rgb(0 0 0 / 12%); display: flex; flex-direction: column; gap: 10px; }
 
 /* bars */
+.use { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 22px; font-size: 13px; }
+.ubar { height: 8px; border-radius: 99px; background: var(--muted); overflow: hidden; margin: 4px 0 2px; }
+.ubar > div { height: 100%; background: var(--primary); border-radius: 99px; }
+.ubar.warn > div { background: var(--warning-foreground); }
 .meter { display: grid; grid-template-columns: auto 1fr auto; gap: 2px 8px; align-items: center; font-size: 12px; }
 .meter .k { color: var(--muted-foreground); } .meter .v { text-align: right; font-variant-numeric: tabular-nums; }
 .bar { grid-column: 1 / -1; height: 3px; background: var(--border); border-radius: 999px; overflow: hidden; }

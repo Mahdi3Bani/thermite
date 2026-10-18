@@ -70,6 +70,114 @@ async function stack(
 }
 
 describe("control dashboard", () => {
+  test("a Claude subscription: its token sealed with no call to Anthropic, its models only in Claude Code, its usage from the rigs", async () => {
+    const calls: string[] = [];
+    const providerFetch = (async (input: string | URL | Request) => {
+      calls.push(String(input));
+      return new Response("no", { status: 404 });
+    }) as typeof fetch;
+    const s = await stack("owner_approval", { providerFetch });
+    const dir = mkdtempSync(join(tmpdir(), "thermite-claude-route-"));
+    s.env.service.models = new ModelSource(join(dir, "model-route.json"), undefined);
+    await s.relay();
+    let page = await (await s.get("/ui/settings")).text();
+    const csrf = s.csrfFrom(page);
+    const where = (r: Response) => decodeURIComponent(r.headers.get("location") ?? "");
+    const token = "sk-ant-oat01-test-subscription-token-7777"; // public-check: allow (a made-up token for tests)
+    assert.match(
+      where(
+        await s.post("/ui/settings/add", {
+          csrf,
+          type: "claude",
+          name: "claude-max",
+          claude_token: "not-a-token",
+        }),
+      ),
+      /not a token from claude setup-token/,
+    );
+    assert.match(
+      where(
+        await s.post("/ui/settings/add", {
+          csrf,
+          type: "claude",
+          name: "claude-max",
+          claude_token: token,
+        }),
+      ),
+      /"claude-max" is saved: its 5 models run only in Claude Code/,
+    );
+    assert.deepEqual(calls, [], "control never calls Anthropic with a subscription's token");
+    page = await (await s.get("/ui/settings")).text();
+    assert.match(page, /claude-code:opus-5\.5\[1m\]/);
+    assert.match(page, /runs only in Claude Code, Anthropic's own program/);
+    assert.match(page, /token …7777/);
+    assert.ok(
+      !JSON.stringify([
+        page,
+        s.store.db.prepare("select * from model_provider").all(),
+        s.store.db.prepare("select * from audit").all(),
+      ]).includes(token),
+    );
+    // Its model goes to a rig in Claude Code, whatever harness the form named.
+    await s.post("/ui/settings/rigs", {
+      csrf,
+      rig: "rig-a",
+      harness: "pi",
+      choice: "claude-max|opus-5.5%5B1m%5D",
+    });
+    assert.equal(s.store.rigModels()["rig-a"]?.harness, "claude-code");
+    const route = (await (
+      await s.control.request("/v1/rigs/rig-a/model-route", {
+        headers: { authorization: "Bearer rig-token-abcdef" },
+      })
+    ).json()) as { route: { type: string; harness: string; model: string; api_key: string } };
+    assert.equal(route.route.type, "claude");
+    assert.equal(route.route.harness, "claude-code");
+    assert.equal(route.route.model, "claude-opus-5-5");
+    assert.equal(route.route.api_key, token);
+    const sync = {
+      rig: "rig-a",
+      controlUrl: "http://control",
+      controlToken: "rig-token-abcdef",
+      harnessUrl: "http://harness",
+      harnessToken: "sup-token-abcdef",
+      fetchImpl: s.fetchImpl,
+    };
+    assert.equal(await syncModelRoute(sync), "set");
+    const m = s.env.service.models.current();
+    assert.equal(m?.api, "claude");
+    assert.equal(m?.harness, "claude-code");
+    // The rig reports the windows Claude Code showed; the subscription's row shows them.
+    s.env.service.subscriptionUsage = {
+      five_hour: { utilization: 0.34, resets_at: "2026-10-18T15:40:00.000Z" },
+      seven_day: { utilization: 0.61, resets_at: "2026-10-20T09:00:00.000Z" },
+      at: new Date().toISOString(),
+    };
+    await s.relay();
+    page = await (await s.get("/ui/settings")).text();
+    assert.match(page, /<b>5-hour window<\/b> · 34% used · resets 2026-10-18 15:40 UTC/);
+    assert.match(page, /<b>Weekly window<\/b> · 61% used/);
+    assert.match(page, /Its agents run under Claude Code with claude-opus-5-5 from claude-max/);
+    // Claude Code with any other provider is refused.
+    await s.post("/ui/settings/providers", {
+      csrf,
+      name: "keyed",
+      type: "anthropic",
+      api_key: "sk-ant-api-x",
+    });
+    assert.match(
+      where(
+        await s.post("/ui/settings/rigs", {
+          csrf,
+          rig: "rig-a",
+          harness: "claude-code",
+          choice: "keyed|claude-test",
+        }),
+      ),
+      /does not list that model|Claude Code runs only with a Claude subscription/,
+    );
+  });
+
   test("a provider's key goes in once on the settings page, sealed; its models are listed; only its rig's harness gets the key", async () => {
     // A fake provider: an OpenAI-compatible one that takes only its key, and Anthropic's API.
     const key = "test-key-never-shown-0001";

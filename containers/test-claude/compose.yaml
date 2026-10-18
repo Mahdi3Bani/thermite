@@ -1,0 +1,8 @@
+# Test only (scripts/claude-acceptance.mjs): the harness with a stand-in for Claude Code mounted,
+# so the Claude Code harness runs end to end without a subscription or a download.
+services:
+  harness:
+    environment:
+      THERMITE_CLAUDE_BIN: /opt/fake-claude/claude
+    volumes:
+      - ./containers/test-claude:/opt/fake-claude:ro

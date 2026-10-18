@@ -14,7 +14,7 @@ import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from 
 import type { MachineSsh } from "./machines/ssh.ts";
 import { mountMcp } from "./mcp.ts";
 import { metricsText } from "./metrics.ts";
-import { isOpencodeOwn, providerBase } from "./providers.ts";
+import { claudeModelName, isOpencodeOwn, providerBase } from "./providers.ts";
 import type { probeRepository } from "./repo-probe.ts";
 import { SecretBox } from "./secrets.ts";
 import { type ControlStore, fingerprint, type IngestReport, RIG_ID } from "./store.ts";
@@ -381,6 +381,26 @@ export function createControlApi(
     }
     const contextWindow = p.models.find((m) => m.id === r.model)?.context_window ?? 0;
     const base = providerBase(p.type, p.base_url);
+    // A Claude subscription: its token, for Claude Code only, under Claude Code's model name.
+    if (p.type === "claude")
+      return c.json({
+        route: {
+          name: p.name,
+          type: "claude",
+          harness: "claude-code",
+          version: p.version,
+          base_url: base,
+          model: claudeModelName(r.model),
+          context_window: contextWindow,
+          max_tokens: 0,
+          reasoning: null,
+          key_hint: p.key_hint,
+          revision: sha256Hex(
+            [p.name, "claude", p.version, r.model, contextWindow, p.key_sealed].join("\n"),
+          ).slice(0, 16),
+          api_key: key,
+        },
+      });
     // OpenCode's own provider, under the OpenCode harness, runs through OpenCode's built-in one:
     // it needs no key (its free models), so none is sent.
     const native = r.harness === "opencode" && isOpencodeOwn(p);

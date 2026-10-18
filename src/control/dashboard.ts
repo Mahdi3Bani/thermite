@@ -60,7 +60,13 @@ import {
   USER,
 } from "./machines/ssh.ts";
 import { startCampaign, startRun } from "./new-campaign.ts";
-import { ANTHROPIC_BASE, isOpencodeOwn, listModels, providerBase } from "./providers.ts";
+import {
+  ANTHROPIC_BASE,
+  CLAUDE_MODELS,
+  isOpencodeOwn,
+  listModels,
+  providerBase,
+} from "./providers.ts";
 import { probeRepository } from "./repo-probe.ts";
 import { type RunpodFacts, readRunpod, runpodLine } from "./runpod.ts";
 import { keyHint, type SecretBox } from "./secrets.ts";
@@ -1937,8 +1943,15 @@ ${placed ? placedBlock(placed, t) : ""}${onCluster ? clusterPlacedBlock(onCluste
     openai: "OpenAI-compatible",
     anthropic: "Anthropic",
     opencode: "OpenCode",
+    claude: "Claude subscription",
   };
-  const HARNESSES: Record<Harness, string> = { pi: "Pi", opencode: "OpenCode v2" };
+  /** The types reached with an API key (a subscription is added differently). */
+  const KEY_TYPES: ProviderType[] = ["openai", "anthropic", "opencode"];
+  const HARNESSES: Record<Harness, string> = {
+    pi: "Pi",
+    opencode: "OpenCode v2",
+    "claude-code": "Claude Code",
+  };
   const TYPE_TIP =
     "What kind of provider it is. OpenAI-compatible covers most model servers (vLLM, LiteLLM, OpenRouter, Ollama). Anthropic is Anthropic's own API. OpenCode is OpenCode's own service, whose free models need the OpenCode harness.";
   const BASE_TIP =
@@ -1973,6 +1986,10 @@ ${placed ? placedBlock(placed, t) : ""}${onCluster ? clusterPlacedBlock(onCluste
       "Add and read the account",
       "Control seals the key and reads, with it, RunPod's GPU types with their prices and stock, its data centers, your network volumes and your pods. It starts nothing and spends nothing.",
     ],
+    claude: [
+      "Add the subscription",
+      "Control seals the token. It makes no call to Anthropic with it: only Claude Code, on the rigs whose agents use one of its models, uses it. Its models then show in each rig's model list as claude-code:<model>.",
+    ],
     gittoken: [
       "Add the token",
       "Control seals the token. It goes only to rigs running a campaign that uses it. Use a token that can only read the repositories you need.",
@@ -1996,7 +2013,7 @@ ${placed ? placedBlock(placed, t) : ""}${onCluster ? clusterPlacedBlock(onCluste
     return "error" in listed ? listed.error : null;
   };
   const typeSelect = (sel?: ProviderType) =>
-    `<select name="type">${(Object.keys(TYPES) as ProviderType[]).map((t) => `<option value="${t}"${t === sel ? " selected" : ""}>${t === "opencode" ? "OpenCode (its own models)" : TYPES[t]}</option>`).join("")}</select>`;
+    `<select name="type">${KEY_TYPES.map((t) => `<option value="${t}"${t === sel ? " selected" : ""}>${t === "opencode" ? "OpenCode (its own models)" : TYPES[t]}</option>`).join("")}</select>`;
 
   app.get("/ui/settings", (c) => {
     const now = Date.now();
@@ -2020,9 +2037,47 @@ ${placed ? placedBlock(placed, t) : ""}${onCluster ? clusterPlacedBlock(onCluste
       : ok
         ? `<div class="card" style="margin-bottom:16px"><b class="ok">${esc(ok)}</b></div>`
         : "";
+    /** A subscription's latest usage windows, as its rigs' runtime reported them. */
+    const usageOf = (name: string) => {
+      type W = { utilization: number; resets_at: string };
+      let best: { five_hour?: W; seven_day?: W; at: string; rig: string } | undefined;
+      for (const u of vs) {
+        const r = (u.summary as { subscription_usage?: { provider?: string; at?: string } } | null)
+          ?.subscription_usage;
+        if (r?.provider === name && r.at && (!best || r.at > best.at))
+          best = { ...(r as { five_hour?: W; seven_day?: W; at: string }), rig: u.id };
+      }
+      return best;
+    };
+    const bar = (label: string, w: { utilization: number; resets_at: string } | undefined) =>
+      w
+        ? `<div><div class="small"><b>${esc(label)}</b> · ${Math.round(w.utilization * 100)}% used · resets ${esc(w.resets_at.slice(0, 16).replace("T", " "))} UTC</div><div class="ubar${w.utilization >= 0.8 ? " warn" : ""}"><div style="width:${Math.min(100, Math.round(w.utilization * 100))}%"></div></div></div>`
+        : "";
+    /** A Claude subscription: its token's hint, its models, what its rigs report of its usage. */
+    const claudeRow = (p: (typeof providers)[number], rigs: string[]) => {
+      const pName = encodeURIComponent(p.name);
+      const use = usageOf(p.name);
+      const windows = use
+        ? `<div class="use">${bar("5-hour window", use.five_hour)}${bar("Weekly window", use.seven_day)}</div><div class="muted small" style="margin-top:4px">As Claude Code on ${esc(use.rig)} reported it ${esc(ago(use.at, now))} ago. When a window is full, the agents on this subscription wait for its reset; nothing pays for more.</div>`
+        : `<div class="muted small">No usage reported yet: Claude Code on a rig reports the 5-hour and weekly windows once an agent uses this subscription.</div>`;
+      return `<details class="dq" data-k="provider-${esc(p.name)}"><summary>
+<span class="dq-kind"><span class="kind m">Subscription</span></span>
+<span class="dq-main"><span class="dq-head">${esc(p.name)} <span class="muted" style="font-weight:400">· Claude subscription</span></span><span class="dq-why">${p.models.length} models · runs only in Claude Code, Anthropic's own program</span><span class="dq-sub"><span class="chip">token ${esc(p.key_hint)}</span><span class="dq-where">${rigs.length ? `used by ${rigs.map((x) => esc(x)).join(", ")}` : "no rig uses it"}</span></span></span>
+</summary><div class="dq-body">${windows}
+<div class="chips" style="margin:12px 0">${p.models.map((m) => `<span class="chip">claude-code:${esc(m.id)}</span>`).join("")}</div>
+<form method="post" action="/ui/settings/providers" class="form-grid" autocomplete="off"><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="name" value="${esc(p.name)}"><input type="hidden" name="type" value="claude">
+<label>${infoLabel("New token from claude setup-token", "A new token replaces the old one at once; control seals it and never shows it again. Tokens from claude setup-token last one year.")}<input name="claude_token" type="password" autocomplete="new-password" maxlength="4096" placeholder="empty keeps the token ending ${esc(p.key_hint)}"></label>
+<div class="form-end row" style="gap:8px"><button class="primary">Replace the token</button></div></form>
+${
+  rigs.length
+    ? `<div class="muted small">In use: give its rigs another model before deleting it.</div>`
+    : `<form class="inline" method="post" action="/ui/settings/providers/${pName}/delete"><input type="hidden" name="csrf" value="${t}"><button class="danger">Delete this subscription</button></form>`
+}</div></details>`;
+    };
     const providerRows = providers
       .map((p) => {
         const rigs = usersOf(p.name);
+        if (p.type === "claude") return claudeRow(p, rigs);
         const status = p.models_error
           ? `<span class="dq-why bad">${esc(p.models_error)}${p.models.length ? ` (keeping its last list of ${p.models.length})` : ""}</span>`
           : `<span class="dq-why">${p.models.length} model${p.models.length === 1 ? "" : "s"}${p.models_at ? ` · listed ${esc(ago(p.models_at, now))} ago` : ""}</span>`;
@@ -2055,7 +2110,7 @@ ${
       .join("");
     const models = "openai anthropic opencode";
     const addForm = `<form method="post" action="/ui/settings/add" class="form-grid" autocomplete="off" id="prov-add" data-says="${esc(JSON.stringify(ADD_SAYS))}"><input type="hidden" name="csrf" value="${t}">
-<label>${infoLabel("Type", `${TYPE_TIP} Git access lets rigs fetch private repositories: a deploy key control makes, or an HTTPS token you paste.`)}<select name="type" id="ptype"><optgroup label="Models">${(Object.keys(TYPES) as ProviderType[]).map((x) => `<option value="${x}">${x === "opencode" ? "OpenCode (its own models)" : TYPES[x]}</option>`).join("")}</optgroup><optgroup label="Git access"><option value="gitkey">A deploy key (control makes it)</option><option value="gittoken">An access token (HTTPS)</option></optgroup><optgroup label="Where rigs run"><option value="ssh">A machine over SSH</option><option value="k8s">A Kubernetes cluster</option><option value="runpod">RunPod (a GPU cloud)</option></optgroup></select></label>
+<label>${infoLabel("Type", `${TYPE_TIP} Git access lets rigs fetch private repositories: a deploy key control makes, or an HTTPS token you paste.`)}<select name="type" id="ptype"><optgroup label="Models by API key">${KEY_TYPES.map((x) => `<option value="${x}">${x === "opencode" ? "OpenCode (its own models)" : TYPES[x]}</option>`).join("")}</optgroup><optgroup label="Subscriptions"><option value="claude">Claude subscription (Pro or Max)</option></optgroup><optgroup label="Git access"><option value="gitkey">A deploy key (control makes it)</option><option value="gittoken">An access token (HTTPS)</option></optgroup><optgroup label="Where rigs run"><option value="ssh">A machine over SSH</option><option value="k8s">A Kubernetes cluster</option><option value="runpod">RunPod (a GPU cloud)</option></optgroup></select></label>
 <label>${infoLabel("Name", "How it shows in Thermite, and how rigs and campaigns refer to it: for example my-litellm or github-deploy. Lowercase letters, digits, dots and dashes.")}<input name="name" required maxlength="64" placeholder="for example my-litellm"></label>
 <label data-for="${models}">${infoLabel("Base URL", BASE_TIP)}<input name="base_url" maxlength="500" placeholder="https://…/v1 (Anthropic and OpenCode: empty for their own)"></label>
 <label data-for="${models}">${infoLabel("API key", "The provider's key. Control seals it at once and never shows it again. OpenCode: leave it empty for its free models.")}<input name="api_key" type="password" autocomplete="new-password" maxlength="4096" placeholder="never shown again"></label>
@@ -2069,6 +2124,8 @@ ${
 <label data-for="k8s" hidden>${infoLabel("Placement", "Where each rig goes. Namespaces control creates: one namespace per rig, with its own network rules. Slots: namespaces the cluster's operators made for Thermite, with their own quotas and rules; control only deploys into a free one.")}<select name="placement"><option value="created">A namespace control creates for each rig</option><option value="slot">Slots the cluster's operators made</option></select></label>
 <label data-for="k8s" hidden>${infoLabel("Namespace for each rig", "For created namespaces: the name of each rig's namespace. {rig} becomes the rig's name.")}<input name="namespace_pattern" maxlength="63" value="thermite-{rig}"></label>
 <label data-for="k8s" hidden>${infoLabel("Slots", "For slots: the slot namespaces, separated by commas. Control checks that it may deploy into each one.")}<input name="slots" maxlength="2000" placeholder="thermite-slot-1, thermite-slot-2"></label>
+<div data-for="claude" hidden class="card flat" style="grid-column:1/-1;padding:12px 14px"><b>Get the token on your own computer.</b> <span class="muted small">Control cannot open Anthropic's sign-in page for you.</span><ol class="small" style="margin:8px 0 0 18px;line-height:1.7"><li>Install Claude Code there, if it is not installed: <code>npm install -g @anthropic-ai/claude-code</code></li><li>Run <code>claude setup-token</code> and sign in with your Claude account in the browser.</li><li>Copy the token it prints, and paste it below. It is good for one year.</li></ol></div>
+<label data-for="claude" hidden style="grid-column:1/-1">${infoLabel("Token from claude setup-token", "The long-lived token that Claude Code prints. Control seals it at once and never shows it again. Only Claude Code, Anthropic's own program, uses it on the rigs: Anthropic does not allow other programs to use a subscription.")}<input name="claude_token" type="password" autocomplete="new-password" maxlength="4096" placeholder="sk-ant-oat01-… never shown again"></label>
 <label data-for="runpod" hidden>${infoLabel("RunPod API key", "A key from RunPod's console (Settings, API Keys). Control seals it at once and never shows it again. For now control only reads with it; a read-only key is enough.")}<input name="runpod_key" type="password" autocomplete="new-password" maxlength="4096" placeholder="never shown again"></label>
 <label data-for="ssh" hidden style="grid-column:1/-1">${infoLabel("Private key", "The SSH private key for that user, without a passphrase. Control seals it at once and never shows it again. Leave it empty and control makes a key: add its public half, shown next, to the user's ~/.ssh/authorized_keys on the machine.")}<textarea name="private_key" class="mono" rows="4" maxlength="16384" placeholder="empty: control makes a key"></textarea></label>
 <div class="nc-does" id="pdo" style="grid-column:1/-1"><b>What happens.</b> ${ADD_SAYS.openai[1]}</div>
@@ -2078,10 +2135,10 @@ ${
         .filter((p) => p.models.length)
         .map(
           (p) =>
-            `<optgroup label="${esc(p.name)}${p.type === "opencode" ? " (OpenCode harness only)" : isOpencodeOwn(p) ? " (free models: OpenCode harness only)" : ""}">${p.models
+            `<optgroup label="${esc(p.name)}${p.type === "claude" ? " (Claude subscription: runs in Claude Code)" : p.type === "opencode" ? " (OpenCode harness only)" : isOpencodeOwn(p) ? " (free models: OpenCode harness only)" : ""}">${p.models
               .map(
                 (m) =>
-                  `<option value="${esc(`${encodeURIComponent(p.name)}|${encodeURIComponent(m.id)}`)}"${want?.provider === p.name && want.model === m.id ? " selected" : ""}>${esc(m.id)}</option>`,
+                  `<option value="${esc(`${encodeURIComponent(p.name)}|${encodeURIComponent(m.id)}`)}"${want?.provider === p.name && want.model === m.id ? " selected" : ""}>${p.type === "claude" ? "claude-code:" : ""}${esc(m.id)}</option>`,
               )
               .join("")}</optgroup>`,
         )
@@ -3769,6 +3826,45 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     return saveProvider(c, f);
   });
   app.post("/ui/settings/providers", async (c) => saveProvider(c, await c.req.parseBody()));
+  /**
+   * A Claude subscription added or its token replaced: the token sealed, the fixed model list, and
+   * no call to Anthropic (only Claude Code may use the token).
+   */
+  const saveClaude = (c: Ctx, name: string, token: string) => {
+    const fail = (m: string) => c.redirect(settingsUrl("error", m), 303);
+    if (token && (token.length > 4096 || /\s/.test(token)))
+      return fail(
+        "The token has spaces or is too long: paste only what claude setup-token printed.",
+      );
+    if (token && !token.startsWith("sk-ant-"))
+      return fail("That is not a token from claude setup-token: it starts with sk-ant-.");
+    const old = store.provider(name);
+    if (old && old.type !== "claude")
+      return fail(`"${name}" is a provider of another kind: choose another name.`);
+    const r = store.putProvider({
+      name,
+      type: "claude",
+      base_url: providerBase("claude", ""),
+      key: token ? { sealed: opts.secrets.seal(token), hint: keyHint(token) } : undefined,
+    });
+    if (r === "needs_key") return fail("Paste the token from claude setup-token.");
+    store.audit("owner:ui", r === "created" ? "model_provider_added" : "model_provider_changed", {
+      name,
+      type: "claude",
+      key: token ? `replaced (${keyHint(token)})` : "kept",
+    });
+    store.setProviderModels(
+      name,
+      CLAUDE_MODELS.map((m) => ({ id: m.id, context_window: m.context_window })),
+    );
+    return c.redirect(
+      settingsUrl(
+        "ok",
+        `"${name}" is saved: its ${CLAUDE_MODELS.length} models run only in Claude Code. Choose one for a rig below.`,
+      ),
+      303,
+    );
+  };
   /** A model provider added or changed. */
   const saveProvider = async (c: Ctx, f: Record<string, unknown>) => {
     const fail = (m: string) => c.redirect(settingsUrl("error", m), 303);
@@ -3777,6 +3873,8 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       return fail("A provider's name is lowercase letters, digits, dots, dashes and underscores.");
     const type = String(f.type ?? "") as ProviderType;
     if (!(type in TYPES)) return fail("A provider is OpenAI-compatible or Anthropic.");
+    if (type === "claude")
+      return saveClaude(c, name, String(f.claude_token ?? f.api_key ?? "").trim());
     const raw = String(f.base_url ?? "").trim();
     if (!raw && type === "openai") return fail("An OpenAI-compatible provider needs its base URL.");
     const base = providerBase(type, raw);
@@ -3865,7 +3963,8 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     const f = await c.req.parseBody();
     const rig = String(f.rig ?? "");
     const choice = String(f.choice ?? "");
-    const harness: Harness = f.harness === "opencode" ? "opencode" : "pi";
+    const harness: Harness =
+      f.harness === "opencode" || f.harness === "claude-code" ? f.harness : "pi";
     if (!store.rigs().some((x) => x.id === rig))
       return c.redirect(settingsUrl("error", "No such rig."), 303);
     if (!choice) {
@@ -3886,8 +3985,9 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
   const giveRigModel = (
     rig: string,
     choice: string,
-    harness: Harness,
+    picked: Harness,
   ): { ok: string } | { error: string } => {
+    let harness = picked;
     const [pRaw, mRaw] = choice.split("|");
     let provider = "";
     let model = "";
@@ -3900,6 +4000,13 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     const p = store.provider(provider);
     if (!p?.models.some((m) => m.id === model))
       return { error: "That provider does not list that model." };
+    // A Claude subscription runs only in Claude Code, and Claude Code only on one.
+    if (p.type === "claude") harness = "claude-code";
+    else if (harness === "claude-code")
+      return {
+        error:
+          "Claude Code runs only with a Claude subscription here: choose Pi or OpenCode v2 for this provider.",
+      };
     // OpenCode's free models (and a keyless OpenCode provider) need its own client.
     if (
       harness !== "opencode" &&
@@ -3992,10 +4099,10 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     const modelOptions = `<option value="">its own settings</option>${providers
       .map(
         (p) =>
-          `<optgroup label="${esc(p.name)}">${p.models
+          `<optgroup label="${esc(p.name)}${p.type === "claude" ? " (Claude subscription: runs in Claude Code)" : ""}">${p.models
             .map(
               (m) =>
-                `<option value="${esc(`${encodeURIComponent(p.name)}|${encodeURIComponent(m.id)}`)}"${want?.provider === p.name && want.model === m.id ? " selected" : ""}>${esc(m.id)}</option>`,
+                `<option value="${esc(`${encodeURIComponent(p.name)}|${encodeURIComponent(m.id)}`)}"${want?.provider === p.name && want.model === m.id ? " selected" : ""}>${p.type === "claude" ? "claude-code:" : ""}${esc(m.id)}</option>`,
             )
             .join("")}</optgroup>`,
       )
@@ -4023,7 +4130,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
 <div class="pt locked"><label class="sw"><input type="checkbox" checked disabled><span class="knob"></span></label><div><div><b>Supervisor</b> <span class="pt-state on">on</span></div><div class="muted small">It relays reports to control, fetches projects and kits, and does all git work for the rig.</div><div class="small pt-off"><b>Always on.</b> It connects the rig to control. Without it, control cannot see or steer the rig.</div></div></div></div></div>
 <div class="sec"><h2>2 · The agents</h2><div class="g3">
 <label class="fd">${infoLabel("Workers' model", "The model that the workers use, from Settings › Providers.")}<select name="choice">${modelOptions}</select></label>
-<label class="fd">${infoLabel("Harness", "Pi or OpenCode v2: the program that runs each worker. OpenCode's own free models need OpenCode v2.")}<select name="harness"><option value="pi"${want?.harness !== "opencode" ? " selected" : ""}>Pi</option><option value="opencode"${want?.harness === "opencode" ? " selected" : ""}>OpenCode v2</option></select></label>
+<label class="fd">${infoLabel("Harness", "The program that runs each worker: Pi, OpenCode v2 or Claude Code. OpenCode's own free models need OpenCode v2. A Claude subscription runs only in Claude Code, which control chooses for it.")}<select name="harness"><option value="pi"${!want?.harness || want.harness === "pi" ? " selected" : ""}>Pi</option><option value="opencode"${want?.harness === "opencode" ? " selected" : ""}>OpenCode v2</option><option value="claude-code"${want?.harness === "claude-code" ? " selected" : ""}>Claude Code</option></select></label>
 <label class="fd">${infoLabel("One trial lasts (minutes)", "How long a worker can work on one idea before it must submit, when the campaign sets no limit.")}<input name="trial_minutes" type="number" min="1" value="${s?.trial_minutes ?? ""}"${s ? "" : " disabled"}></label>
 <label class="fd">${infoLabel("Turns per trial", "How many model turns a worker can take in one trial. Empty: no limit.")}<input name="max_turns" type="number" min="1" value="${s?.max_turns ?? ""}" placeholder="no limit"${s ? "" : " disabled"}></label>
 </div></div>
@@ -4052,7 +4159,8 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
     const said: string[] = [];
     // The workers' model: as in Providers.
     const choice = String(f.choice ?? "");
-    const harness: Harness = f.harness === "opencode" ? "opencode" : "pi";
+    const harness: Harness =
+      f.harness === "opencode" || f.harness === "claude-code" ? f.harness : "pi";
     const want = store.rigModels()[rig];
     const was = want
       ? `${encodeURIComponent(want.provider)}|${encodeURIComponent(want.model)}`
