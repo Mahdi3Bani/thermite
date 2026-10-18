@@ -32,6 +32,24 @@ try {
 } catch {}
 try {
   run("run", "-d", "--name", box, "--network", "thermite_control", "thermite-test-machine");
+  // Kubernetes adds no passwd entry for the image's user (Podman does): ssh must work without one.
+  if (engine === "podman") {
+    const bare = sh("podman", [
+      "run",
+      "--rm",
+      "--passwd=false",
+      "--entrypoint",
+      "sh",
+      "docker.io/library/thermite-control:latest",
+      "-c",
+      "ssh -V 2>&1; getent passwd $(id -u)",
+    ]);
+    check(
+      "control's user has a passwd entry, so ssh runs as on Kubernetes",
+      /OpenSSH/.test(bare) && /^thermite:/m.test(bare),
+      bare.trim(),
+    );
+  }
   await until("control answers", async () => (await fetch(`${control}/v1/health`)).ok, 120_000);
   const login = await fetch(`${control}/ui/login`, {
     method: "POST",
