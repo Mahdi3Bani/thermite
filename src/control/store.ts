@@ -201,6 +201,26 @@ create table if not exists machine_install (
   ok integer,
   output text
 );
+-- Rigs control set up on a machine: where, on which GPUs, with which images, and how it stands.
+create table if not exists machine_rig (
+  rig text primary key,
+  machine text not null,
+  gpus text not null default '[]',
+  images text not null,
+  root integer not null default 0,
+  status text not null,
+  created_at text not null,
+  created_by text not null
+);
+-- Each step of setting a rig up or managing it, for the rig's history: what, whether it worked.
+create table if not exists rig_setup_event (
+  id integer primary key,
+  rig text not null,
+  at text not null,
+  step text not null,
+  ok integer not null,
+  detail text
+);
 -- Campaigns created on control (the new-campaign page): each version's contract as approved,
 -- with its content hash. Runs are assigned from a version.
 create table if not exists campaign_version (
@@ -354,6 +374,30 @@ const machineOf = (r: Row): Machine => ({
   checked_at: r.checked_at === null ? null : String(r.checked_at),
   check_error: r.check_error === null ? null : String(r.check_error),
   created_at: String(r.created_at),
+});
+
+/** A rig control set up on a machine. */
+export interface MachineRig {
+  rig: string;
+  machine: string;
+  gpus: number[];
+  images: { harness: string; supervisor: string };
+  root: boolean;
+  /** deploying, running, stopped, failed, removed. */
+  status: string;
+  created_at: string;
+  created_by: string;
+}
+
+const machineRigOf = (r: Row): MachineRig => ({
+  rig: String(r.rig),
+  machine: String(r.machine),
+  gpus: JSON.parse(String(r.gpus)) as number[],
+  images: JSON.parse(String(r.images)) as MachineRig["images"],
+  root: Number(r.root) === 1,
+  status: String(r.status),
+  created_at: String(r.created_at),
+  created_by: String(r.created_by),
 });
 
 /** Git access as listed (never its secret). */
@@ -1373,6 +1417,68 @@ export class ControlStore {
       finished_at: r.finished_at === null ? null : String(r.finished_at),
       ok: r.ok === null ? null : Number(r.ok) === 1,
       output: r.output === null ? null : String(r.output),
+    }));
+  }
+
+  addMachineRig(r: Omit<MachineRig, "created_at" | "status">): void {
+    this.db
+      .prepare(
+        `insert into machine_rig (rig, machine, gpus, images, root, status, created_at, created_by)
+         values (?, ?, ?, ?, ?, 'deploying', ?, ?)`,
+      )
+      .run(
+        r.rig,
+        r.machine,
+        JSON.stringify(r.gpus),
+        JSON.stringify(r.images),
+        r.root ? 1 : 0,
+        new Date().toISOString(),
+        r.created_by,
+      );
+    this.audit(r.created_by, "machine_rig_created", {
+      rig: r.rig,
+      machine: r.machine,
+      gpus: r.gpus,
+      images: r.images,
+    });
+  }
+
+  machineRig(rig: string): MachineRig | undefined {
+    const r = this.db.prepare("select * from machine_rig where rig = ?").get(rig) as
+      | Row
+      | undefined;
+    return r ? machineRigOf(r) : undefined;
+  }
+
+  /** The rigs control set up, on one machine or all, removed ones last. */
+  machineRigs(machine?: string): MachineRig[] {
+    const rows = (
+      machine
+        ? this.db.prepare("select * from machine_rig where machine = ? order by rig").all(machine)
+        : this.db.prepare("select * from machine_rig order by machine, rig").all()
+    ) as Row[];
+    return rows.map(machineRigOf);
+  }
+
+  setMachineRigStatus(rig: string, status: string): void {
+    this.db.prepare("update machine_rig set status = ? where rig = ?").run(status, rig);
+  }
+
+  /** One step of a rig's setup or management, for its history. */
+  rigSetupEvent(rig: string, step: string, ok: boolean, detail?: string): void {
+    this.db
+      .prepare("insert into rig_setup_event (rig, at, step, ok, detail) values (?, ?, ?, ?, ?)")
+      .run(rig, new Date().toISOString(), step, ok ? 1 : 0, detail ?? null);
+  }
+
+  rigSetupEvents(rig: string): { at: string; step: string; ok: boolean; detail: string | null }[] {
+    return (
+      this.db.prepare("select * from rig_setup_event where rig = ? order by id").all(rig) as Row[]
+    ).map((r) => ({
+      at: String(r.at),
+      step: String(r.step),
+      ok: Number(r.ok) === 1,
+      detail: r.detail === null ? null : String(r.detail),
     }));
   }
 

@@ -6,7 +6,7 @@ import { sha256Hex } from "../core/canonical.ts";
 import { COMMAND_KINDS, type CommandKind, reportBody, verifyJson } from "../core/commands.ts";
 import { LiveBatch, LiveEntry, liveBody } from "../core/live.ts";
 import { Credential, newToken } from "./credential.ts";
-import { createDashboard } from "./dashboard.ts";
+import { createDashboard, type RigImages } from "./dashboard.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
 import type { KitRepos } from "./kit-repos.ts";
 import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
@@ -174,6 +174,8 @@ export interface ControlOptions {
   publicUrl?: string | undefined;
   /** How control reaches machines over SSH (tests give their own). */
   machineSsh?: MachineSsh | undefined;
+  /** The images control deploys rigs from on machines. */
+  rigImages?: RigImages | undefined;
 }
 
 export function createControlApi(
@@ -665,6 +667,7 @@ export function createControlApi(
       probeRepo: opts.probeRepo,
       publicUrl: opts.publicUrl,
       machineSsh: opts.machineSsh,
+      rigImages: opts.rigImages,
     }),
   );
   app.get("/", (c) => c.redirect("/ui", 302));

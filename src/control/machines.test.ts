@@ -56,14 +56,23 @@ function fakeMachine() {
   return { state, ssh };
 }
 
-async function control(ssh: MachineSsh) {
+async function control(
+  ssh: MachineSsh,
+  extra: Partial<Parameters<typeof createControlApi>[3]> = {},
+) {
   const store = new ControlStore(":memory:");
   const secrets = SecretBox.ephemeral();
   const api = createControlApi(
     store,
     { admin: ADMIN, rigs: {} },
     generateSigningKeys().privateKeyPem,
-    { staleAfterMs: 180_000, secrets, machineSsh: ssh, publicUrl: "https://control.example.com" },
+    {
+      staleAfterMs: 180_000,
+      secrets,
+      machineSsh: ssh,
+      publicUrl: "https://control.example.com",
+      ...extra,
+    },
   );
   const login = await api.request("/ui/login", {
     method: "POST",
@@ -269,5 +278,84 @@ describe("machines in Providers", () => {
       await s.page("/ui/settings"),
       /Last install: NVIDIA(&#39;|')s container toolkit, allowed by owner:ui, <span class="chip ok">done/,
     );
+  });
+
+  test("Add a rig enrolls the rig, deploys it over SSH, and manages it from its page", async () => {
+    const m = fakeMachine();
+    const scripts: string[] = [];
+    const base = m.ssh.sshScript;
+    m.ssh.sshScript = async (target, script, args) => {
+      if (script === CHECK_SCRIPT) return base(target, script, args);
+      scripts.push(script);
+      return { code: 0, stdout: "started", stderr: "" };
+    };
+    const s = await control(m.ssh, {
+      rigImages: {
+        harness: "registry.example.com/thermite/harness:1",
+        harnessCuda: "registry.example.com/thermite/harness-cuda:1",
+        supervisor: "registry.example.com/thermite/supervisor:1",
+      },
+    });
+    await s.post("/ui/settings/add", {
+      type: "ssh",
+      name: "box",
+      address: "box",
+      port: "22",
+      user: "thermite",
+    });
+    const seen = /name="seen" value="([^"]+)"/.exec(await s.page("/ui/settings"))?.[1] ?? "";
+    await s.post("/ui/settings/machines/box/trust", { seen });
+    const add = await s.page("/ui/rigs/add");
+    assert.match(add, /name="machine" value="box" checked/);
+    assert.match(add, /<script src="\/ui\/assets\/add-rig.js" defer>/);
+    const labels = add.match(/class="lb"/g)?.length ?? 0;
+    const tips = add.match(/class="ii" tabindex="0" data-tip="[^"]+"/g)?.length ?? 0;
+    assert.ok(labels > 0 && tips === labels, `${labels} labels, ${tips} with descriptions`);
+    // The GPU needs NVIDIA's toolkit first; a bad name or a taken GPU is refused.
+    assert.match(
+      await s.post("/ui/rigs/add", { machine: "box", rig: "box-a", gpus: "0" }),
+      /needs NVIDIA's container toolkit first/,
+    );
+    assert.match(
+      await s.post("/ui/rigs/add", { machine: "box", rig: "Box A" }),
+      /lowercase letters/,
+    );
+    assert.equal(s.store.machineRigs().length, 0);
+    assert.equal(await s.post("/ui/rigs/add", { machine: "box", rig: "box-a" }), "/ui/rigs/box-a");
+    await new Promise((r) => setTimeout(r, 20));
+    // Enrolled with a token of its own; the deploy script carries it, and the units the CPU image.
+    assert.ok(s.store.enrolledRig("box-a"));
+    assert.equal(scripts.length, 1);
+    assert.match(scripts[0] ?? "", /Image=registry\.example\.com\/thermite\/harness:1/);
+    assert.match(scripts[0] ?? "", /Environment=CONTROL_URL=https:\/\/control\.example\.com/);
+    assert.equal(s.store.machineRig("box-a")?.status, "starting");
+    let page = await s.page("/ui/rigs/box-a");
+    assert.match(page, /Control is setting box-a up on box/);
+    assert.match(page, /Enrolled with control: a token of its own/);
+    assert.match(page, /Files and units written, images ready, services started/);
+    assert.match(
+      await s.post("/ui/rigs/add", { machine: "box", rig: "box-a" }),
+      /There is a rig named box-a already/,
+    );
+    // Managed from its page: stop, start, and remove only with its name typed.
+    assert.match(await s.post("/ui/rigs/box-a/machine/stop", {}), /ok=Stopped/);
+    assert.match(
+      scripts[1] ?? "",
+      /systemctl --user stop thermite-box-a-supervisor\.service thermite-box-a-harness\.service/,
+    );
+    assert.equal(s.store.machineRig("box-a")?.status, "stopped");
+    assert.match(await s.post("/ui/rigs/box-a/machine/start", {}), /ok=Started/);
+    assert.match(
+      await s.post("/ui/rigs/box-a/machine/remove", { confirm: "remove" }),
+      /Type "remove box-a"/,
+    );
+    assert.match(
+      await s.post("/ui/rigs/box-a/machine/remove", { confirm: "remove box-a" }),
+      /ok=Removed/,
+    );
+    assert.equal(s.store.machineRig("box-a")?.status, "removed");
+    assert.equal(s.store.enrolledRig("box-a"), undefined);
+    page = await s.page("/ui/rigs/box-a");
+    assert.match(page, /Removed from the machine/);
   });
 });

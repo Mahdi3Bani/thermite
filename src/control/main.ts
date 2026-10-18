@@ -85,6 +85,15 @@ async function main(): Promise<void> {
       kits: new KitRepos(join(dir, "kits")),
       // How rigs and the machines control sets rigs up on reach control.
       publicUrl: env.THERMITE_CONTROL_PUBLIC_URL || undefined,
+      // The images rigs on machines run (none: control can't set rigs up there).
+      rigImages:
+        env.THERMITE_RIG_HARNESS_IMAGE && env.THERMITE_RIG_SUPERVISOR_IMAGE
+          ? {
+              harness: env.THERMITE_RIG_HARNESS_IMAGE,
+              harnessCuda: env.THERMITE_RIG_HARNESS_CUDA_IMAGE || undefined,
+              supervisor: env.THERMITE_RIG_SUPERVISOR_IMAGE,
+            }
+          : undefined,
     }).fetch,
     hostname: host,
     port,

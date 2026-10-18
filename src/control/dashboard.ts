@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, createPublicKey, randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,11 +7,13 @@ import { bodyLimit } from "hono/body-limit";
 import { getCookie, setCookie } from "hono/cookie";
 import { COMMAND_KINDS, type CommandKind } from "../core/commands.ts";
 import type { Credential } from "./credential.ts";
+import { newToken } from "./credential.ts";
 import { makeDeployKey } from "./git-keys.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
 import type { KitRepos } from "./kit-repos.ts";
 import { kitSummary, unpackKit } from "./kit-upload.ts";
 import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
+import { deployScript, manageScript, RIG_NAME, type RigAction } from "./machines/deploy.ts";
 import {
   CHECK_SCRIPT,
   factsLine,
@@ -36,9 +38,11 @@ import {
   fingerprint,
   type Harness,
   type Machine,
+  type MachineRig,
   type ModelProvider,
   type ProviderType,
 } from "./store.ts";
+import { ADD_RIG_JS } from "./ui/add-rig-client.ts";
 import { CLIENT_JS } from "./ui/client.ts";
 import {
   ago,
@@ -135,6 +139,15 @@ export interface DashboardOptions {
   publicUrl?: string | undefined;
   /** How control reaches machines over SSH (tests give their own). */
   machineSsh?: MachineSsh | undefined;
+  /** The images control deploys rigs from (none: control can't set rigs up on machines). */
+  rigImages?: RigImages | undefined;
+}
+
+/** The images a rig control sets up runs: the harness (CPU, and CUDA for GPU rigs), the supervisor. */
+export interface RigImages {
+  harness: string;
+  harnessCuda?: string | undefined;
+  supervisor: string;
 }
 
 export function createDashboard(store: ControlStore, opts: DashboardOptions): Hono {
@@ -1146,6 +1159,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       {
         title: "Rigs",
         summary: `${vs.length} rig${vs.length === 1 ? "" : "s"} · ${vs.filter((u) => u.stale).length} not reporting · ${vs.reduce((n, u) => n + u.runs.filter((i) => i.status === "running").length, 0)} runs at work`,
+        actions: `<a class="btn primary" href="/ui/rigs/add">Add a rig</a>`,
         active: "rigs",
       },
       cards || `<div class="card"><div class="empty">No rig has reported yet.</div></div>`,
@@ -1154,10 +1168,33 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
   });
 
   // ---------------------------------------------------------------- one rig
-  app.get("/ui/rigs/:rig", (c) => {
+  app.get("/ui/rigs/:rig", (c, next) => {
+    // Rigs › Add a rig has its own page, registered further down.
+    if (c.req.param("rig") === "add") return next();
     const now = Date.now();
     const vs = views();
     const u = vs.find((x) => x.id === c.req.param("rig"));
+    const placed = store.machineRig(c.req.param("rig"));
+    const flashOk = c.req.query("ok");
+    const flashError = c.req.query("error");
+    const flash = flashError
+      ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not done.</b> ${esc(flashError)}</div>`
+      : flashOk
+        ? `<div class="card" style="margin-bottom:16px"><b class="ok">${esc(flashOk)}</b></div>`
+        : "";
+    if (!u && placed)
+      return page(
+        c,
+        {
+          title: placed.rig,
+          crumbs: [{ href: "/ui/rigs", text: "Rigs" }],
+          summary: `on ${esc(placed.machine)} · ${esc(placed.status)}`,
+          active: "rigs",
+          refresh: placed.status === "deploying" || placed.status === "starting" ? 5 : 15,
+        },
+        `<p class="run-said">Control is setting ${esc(placed.rig)} up on ${esc(placed.machine)}. Its page fills in once the rig reports for the first time.</p>${flash}${placedBlock(placed, csrf(c))}`,
+        vs,
+      );
     if (!u)
       return page(
         c,
@@ -1346,7 +1383,7 @@ ${opts.driver ? `<form method="post" action="/ui/rigs/${encodeURIComponent(u.id)
         active: "rigs",
       },
       `<p class="run-said">${said}</p>
-${keyCard}
+${flash}${keyCard}
 ${runsNow ? `<div class="block"><div class="head"><h2>At work</h2><span class="n">${live.length}</span></div>${runsNow}</div>` : ""}
 <div class="cols run-cols"><div>
 <div class="block"><div class="head"><h2>Checks</h2><span class="right">run by the rig itself; each result also goes to its history</span></div><div class="card flat">${checkRows}</div></div>
@@ -1355,6 +1392,7 @@ ${runsNow ? `<div class="block"><div class="head"><h2>At work</h2><span class="n
 </div><div class="side">
 <div class="block"><div class="head"><h2>What it runs on</h2></div>${h ? `<div class="card"><dl class="facts">${hw}</dl></div><details class="card flat matrix" data-k="hw-${esc(u.id)}" style="margin-top:10px"><summary>Every detail</summary>${hardwareCard(h, now)}</details>` : hardwareCard(h, now)}</div>
 <div class="block"><div class="head"><h2>The rig</h2></div><div class="card"><dl class="facts">${rigFacts}</dl>${sup ? `<div class="muted xs" style="margin-top:8px">The supervisor reports its figures itself (unsigned).</div>` : ""}</div></div>
+${placed ? placedBlock(placed, t) : ""}
 <div class="block"><div class="head"><h2>Recent</h2><span class="right">newest first</span></div>${events}</div>
 </div></div>`,
       vs,
@@ -2136,6 +2174,277 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
       })
       .join("");
   const machineUrl = (k: "ok" | "error", m: string) => settingsUrl(k, m);
+
+  // ---------------------------------------------------------------- rigs on machines
+  // Rigs › Add a rig: control enrolls the rig, writes its files and Quadlet units over SSH, and
+  // starts it (machines/deploy.ts). Every step is a setup event on the rig's page.
+  const controlPublicKey = createPublicKey(opts.privateKeyPem)
+    .export({ type: "spki", format: "pem" })
+    .toString();
+  const rigTaken = (rig: string) =>
+    rig === "add" ||
+    store.knownRig(rig) ||
+    Boolean(store.machineRig(rig)) ||
+    views().some((u) => u.id === rig);
+  /** GPUs of a machine that rigs control set up there use, by index. */
+  const gpusInUse = (machine: string) =>
+    new Map(
+      store
+        .machineRigs(machine)
+        .filter((r) => r.status !== "removed")
+        .flatMap((r) => r.gpus.map((g) => [g, r.rig] as const)),
+    );
+  /** Why a machine can't take a rig now, or nothing. */
+  const notReady = (m: Machine): string | undefined => {
+    const f = m.facts as MachineFacts | null;
+    if (!m.host_keys.length) return "its host key is not trusted yet";
+    if (!f) return "it has not been checked yet";
+    if (m.check_error) return `its last check failed: ${m.check_error}`;
+    if (!f.podman) return "Podman is missing";
+    if (!f.systemd) return "it has no systemd";
+    if (!f.root && f.linger === false) return "lingering is off for its user";
+    return undefined;
+  };
+  const tail = (s: string) => s.trim().split("\n").slice(-3).join(" ").slice(0, 400);
+  // The wait for a new rig's first report never keeps control (or a test) from exiting.
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms).unref());
+  const STEP_WORDS: Record<string, string> = {
+    enrolled: "Enrolled with control: a token of its own",
+    deployed: "Files and units written, images ready, services started",
+    first_report: "First report reached control",
+    deploy: "Setting it up",
+    stop: "Stopped",
+    start: "Started",
+    restart: "Restarted",
+    remove: "Removed from the machine",
+  };
+  /** A rig control set up: where, its setup history, and stop, start, restart and remove. */
+  const placedBlock = (r: MachineRig, t: string) => {
+    const rName = encodeURIComponent(r.rig);
+    const steps = store
+      .rigSetupEvents(r.rig)
+      .map(
+        (e) =>
+          `<div class="tl-row"><span class="muted small">${esc(ago(e.at, Date.now()))} ago</span><span class="${e.ok ? "ok" : "bad"}">${e.ok ? "✓" : "✕"}</span><span>${esc(STEP_WORDS[e.step] ?? e.step)}${e.detail ? ` <span class="muted small">· ${esc(e.detail)}</span>` : ""}</span></div>`,
+      )
+      .join("");
+    const act = (action: string, label: string, extra = "", cls = "sm") =>
+      `<form class="inline" method="post" action="/ui/rigs/${rName}/machine/${action}"><input type="hidden" name="csrf" value="${t}">${extra}<button class="${cls}">${label}</button></form>`;
+    const manage =
+      r.status === "removed" || r.status === "deploying"
+        ? ""
+        : `<div class="act" style="margin-top:10px">${r.status === "stopped" ? act("start", "Start its services") : act("stop", "Stop its services")}${act("restart", "Restart them")}</div>
+<details style="margin-top:8px"><summary class="small">Remove it from ${esc(r.machine)}</summary><div class="small muted" style="margin:6px 0">Stops its services and deletes its units, files and volumes on the machine, and retires its token. Results it has not exported are lost.</div>${act("remove", "Remove the rig", `<input name="confirm" placeholder="type: remove ${esc(r.rig)}" style="margin-right:6px">`, "sm danger")}</details>`;
+    return `<div class="block"><div class="head"><h2>Set up by control</h2><span class="right">${esc(r.status)}</span></div><div class="card"><dl class="facts"><dt>Machine</dt><dd><a href="/ui/settings">${esc(r.machine)}</a> (Providers)</dd><dt>GPUs</dt><dd>${r.gpus.length ? r.gpus.map((g, i) => `GPU ${g}${r.gpus.length === 2 ? (i === 0 ? " (judge)" : " (agents)") : " (shared)"}`).join(", ") : "none: it measures on the CPU"}</dd><dt>Images</dt><dd class="mono small">${esc(r.images.harness)}<br>${esc(r.images.supervisor)}</dd></dl>
+<div class="tl" style="margin-top:10px">${steps || `<div class="muted small">No step yet.</div>`}</div>${manage}</div></div>`;
+  };
+  /** Sets a rig up on a machine, in the background: each step becomes a setup event. */
+  const deployRig = async (
+    r: MachineRig,
+    m: Machine & { key_sealed: string },
+    controlToken: string,
+  ) => {
+    const target = {
+      address: m.address,
+      port: m.port,
+      user: m.user,
+      privateKey: opts.secrets.open(m.key_sealed),
+      hostKeys: m.host_keys,
+    };
+    try {
+      const out = await ssh.sshScript(
+        target,
+        deployScript(
+          {
+            rig: r.rig,
+            controlUrl: opts.publicUrl ?? "",
+            images: r.images,
+            gpus: r.gpus,
+            root: r.root,
+            controlPublicKey,
+            controlFingerprint: fingerprint(controlPublicKey),
+          },
+          { controlToken, harnessSupervisorToken: newToken().token },
+        ),
+        [],
+        30 * 60_000,
+      );
+      if (out.code !== 0) throw new Error(tail(out.stderr) || `the deploy exited ${out.code}`);
+      store.rigSetupEvent(r.rig, "deployed", true);
+      store.setMachineRigStatus(r.rig, "starting");
+    } catch (err) {
+      store.rigSetupEvent(r.rig, "deploy", false, err instanceof Error ? err.message : String(err));
+      store.setMachineRigStatus(r.rig, "failed");
+      return;
+    }
+    const deadline = Date.now() + 10 * 60_000;
+    while (Date.now() < deadline) {
+      if (views().some((u) => u.id === r.rig)) {
+        store.rigSetupEvent(r.rig, "first_report", true);
+        store.setMachineRigStatus(r.rig, "running");
+        return;
+      }
+      await sleep(5000);
+    }
+    store.rigSetupEvent(
+      r.rig,
+      "first_report",
+      false,
+      "no report after 10 minutes: its services may not have started",
+    );
+    store.setMachineRigStatus(r.rig, "failed");
+  };
+  app.get("/ui/assets/add-rig.js", (c) =>
+    c.body(ADD_RIG_JS, 200, {
+      "content-type": "text/javascript; charset=utf-8",
+      "cache-control": "no-cache",
+    }),
+  );
+  app.get("/ui/rigs/add", (c) => {
+    const t = csrf(c);
+    const error = c.req.query("error");
+    const machines = store.machines();
+    const cards = machines
+      .map((m, i) => {
+        const why = notReady(m);
+        const f = m.facts as MachineFacts | null;
+        const used = gpusInUse(m.name);
+        const free = (f?.gpus ?? []).filter((g) => !used.has(g.index)).length;
+        const rigsHere = store.machineRigs(m.name).filter((r) => r.status !== "removed");
+        const sub = why
+          ? `Not ready: ${why}. Fix it under Settings › Providers.`
+          : `${factsLine(f as MachineFacts)}${rigsHere.length ? ` · runs ${rigsHere.map((r) => r.rig).join(", ")}` : ""}${f?.gpus.length ? ` · ${free} GPU${free === 1 ? "" : "s"} free` : ""}`;
+        return `<label class="ch${why ? " dis" : ""}"><input type="radio" name="machine" value="${esc(m.name)}"${why ? " disabled" : i === 0 ? " checked" : ""} style="margin:2px 8px 0 0"><span><b>${esc(m.name)} · a machine over SSH</b><br><span class="muted small">${esc(sub)}</span></span></label>`;
+      })
+      .join("");
+    const gpuLists = machines
+      .map((m) => {
+        const f = m.facts as MachineFacts | null;
+        const used = gpusInUse(m.name);
+        const rows = (f?.gpus ?? [])
+          .map((g) => {
+            const by = used.get(g.index);
+            return `<label class="gr${by ? " used" : ""}"><input type="checkbox" name="gpus" value="${g.index}"${by ? " disabled" : ""}><span><b>GPU ${g.index}</b> · ${esc(g.name)} ${Math.round(g.memory_mib / 1024)} GB</span><span class="muted small">${by ? `used by rig ${esc(by)}` : `free · ${g.busy_pct}% busy · ${g.used_mib} MiB in use`}</span></label>`;
+          })
+          .join("");
+        return `<div data-machine="${esc(m.name)}" hidden>${rows ? `<div class="card flat">${rows}</div>` : `<div class="card"><div class="muted">This machine has no NVIDIA GPU: the rig measures on its CPUs.</div></div>`}</div>`;
+      })
+      .join("");
+    const images = opts.rigImages;
+    const blocked = !images
+      ? "Control has no rig images configured (THERMITE_RIG_HARNESS_IMAGE, THERMITE_RIG_SUPERVISOR_IMAGE), so it can't set rigs up yet."
+      : !opts.publicUrl
+        ? "Control's address for rigs is not set (THERMITE_CONTROL_PUBLIC_URL), so a rig would not know where to report."
+        : !machines.length
+          ? "No machine yet: add one under Settings › Providers (A machine over SSH)."
+          : "";
+    return page(
+      c,
+      { title: "Add a rig", crumbs: [{ href: "/ui/rigs", text: "Rigs" }], active: "rigs" },
+      `<p class="run-said">Choose where the rig runs. Control connects there with the credentials you gave it once, writes the rig's files and services, starts it and looks after it: stop, start, restart, remove. You never log in to the machine yourself.</p>
+${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not created.</b> ${esc(error)}</div>` : ""}${blocked ? `<div class="card warn" style="margin-bottom:16px">${esc(blocked)}</div>` : ""}
+<form id="add-rig" method="post" action="/ui/rigs/add" autocomplete="off"><input type="hidden" name="csrf" value="${t}">
+<div class="sec"><h2>1 · Where</h2><p class="lead">A machine control knows. Machines are added, checked and prepared under <a href="/ui/settings">Settings › Providers</a>.</p>
+<div class="stack">${cards || `<div class="card"><div class="empty">No machine yet.</div></div>`}<a class="ch" href="/ui/settings"><span><b>+ A new machine over SSH</b><br><span class="muted small">Any Linux machine control can reach with an SSH key: bare metal or a VM. Add it in Providers, then come back.</span></span></a></div></div>
+<div class="sec"><h2>2 · Which GPUs</h2><p class="lead">The machine's GPUs as control last read them. One GPU is shared by the judge and the agents; with two, the lower-numbered one is the judge's and the other the agents'.</p>${gpuLists}<div class="nc-does" id="gpu-note"></div></div>
+<div class="sec"><h2>3 · Name and start</h2><div class="g3">
+<label class="fd">${infoLabel("Rig name", "The rig's name in Thermite: lowercase letters, digits and dashes. It names the rig's runs, history and files, so it can't change later.")}<input name="rig" required maxlength="63" placeholder="gpu-box-1-a"></label>
+<label class="fd" style="grid-column:span 2">${infoLabel("Images", "The Thermite images control deploys, as set where control is deployed. A GPU rig uses the CUDA harness image.")}<span class="mono small">${images ? `${esc(images.harness)}${images.harnessCuda ? `<br>${esc(images.harnessCuda)} (GPU rigs)` : ""}<br>${esc(images.supervisor)}` : "none configured"}</span></label>
+</div>
+<div class="card hl"><p class="sum" id="add-sum">Control will enroll the rig, write its files and services on the machine, start it, and wait for its first report.</p><div class="act"><button class="primary big"${blocked ? " disabled" : ""}>Create the rig</button></div></div></div>
+</form>
+<script src="/ui/assets/add-rig.js" defer></script>`,
+    );
+  });
+  app.post("/ui/rigs/add", async (c) => {
+    const f = await c.req.parseBody({ all: true });
+    const fail = (why: string) => c.redirect(`/ui/rigs/add?error=${encodeURIComponent(why)}`, 303);
+    const rig = String(f.rig ?? "").trim();
+    const m = store.machine(String(f.machine ?? ""));
+    const gpus = [f.gpus ?? []]
+      .flat()
+      .map((x) => Number(x))
+      .sort((a, b) => a - b);
+    if (!opts.rigImages) return fail("Control has no rig images configured.");
+    if (!opts.publicUrl) return fail("Control's address for rigs is not set.");
+    if (!RIG_NAME.test(rig)) return fail("A rig's name is lowercase letters, digits and dashes.");
+    if (rigTaken(rig)) return fail(`There is a rig named ${rig} already.`);
+    if (!m) return fail("Choose a machine.");
+    const why = notReady(m);
+    if (why) return fail(`${m.name} is not ready: ${why}.`);
+    const facts = m.facts as MachineFacts;
+    const used = gpusInUse(m.name);
+    for (const g of gpus) {
+      if (!facts.gpus.some((x) => x.index === g)) return fail(`${m.name} has no GPU ${g}.`);
+      if (used.has(g)) return fail(`GPU ${g} is used by rig ${used.get(g)}.`);
+    }
+    if (gpus.length > 2)
+      return fail(
+        "A rig takes one or two GPUs for now; rigs with more come with rigs of many GPUs.",
+      );
+    if (gpus.length && !(facts.nvidia_ctk && facts.cdi))
+      return fail(`${m.name} needs NVIDIA's container toolkit first: install it under Providers.`);
+    if (gpus.length && !opts.rigImages.harnessCuda)
+      return fail(
+        "Control has no CUDA harness image configured (THERMITE_RIG_HARNESS_CUDA_IMAGE).",
+      );
+    const images = {
+      harness: gpus.length ? (opts.rigImages.harnessCuda as string) : opts.rigImages.harness,
+      supervisor: opts.rigImages.supervisor,
+    };
+    const token = newToken();
+    store.enrollRig(rig, token.sha256, "owner:ui");
+    const placed = { rig, machine: m.name, gpus, images, root: facts.root, created_by: "owner:ui" };
+    store.addMachineRig(placed);
+    store.rigSetupEvent(rig, "enrolled", true);
+    const r = store.machineRig(rig) as MachineRig;
+    void deployRig(r, m, token.token).catch(() => {});
+    return c.redirect(`/ui/rigs/${encodeURIComponent(rig)}`, 303);
+  });
+  app.post("/ui/rigs/:rig/machine/:action", async (c) => {
+    const r = store.machineRig(c.req.param("rig"));
+    const action = c.req.param("action") as RigAction;
+    const back = (k: "ok" | "error", msg: string) =>
+      c.redirect(
+        `/ui/rigs/${encodeURIComponent(c.req.param("rig"))}?${k}=${encodeURIComponent(msg)}`,
+        303,
+      );
+    if (!r || r.status === "removed") return back("error", "Control didn't set this rig up.");
+    if (!["stop", "start", "restart", "remove"].includes(action))
+      return back("error", "No such action.");
+    const f = await c.req.parseBody();
+    if (action === "remove" && String(f.confirm ?? "").trim() !== `remove ${r.rig}`)
+      return back("error", `Type "remove ${r.rig}" to remove it.`);
+    const m = store.machine(r.machine);
+    if (!m) return back("error", `The machine ${r.machine} is no longer in Providers.`);
+    try {
+      const out = await ssh.sshScript(
+        {
+          address: m.address,
+          port: m.port,
+          user: m.user,
+          privateKey: opts.secrets.open(m.key_sealed),
+          hostKeys: m.host_keys,
+        },
+        manageScript(r, action),
+        [],
+        5 * 60_000,
+      );
+      if (out.code !== 0) throw new Error(tail(out.stderr) || `exit ${out.code}`);
+    } catch (err) {
+      const why = err instanceof Error ? err.message : String(err);
+      store.rigSetupEvent(r.rig, action, false, why);
+      return back("error", why);
+    }
+    store.rigSetupEvent(r.rig, action, true);
+    store.setMachineRigStatus(
+      r.rig,
+      action === "stop" ? "stopped" : action === "remove" ? "removed" : "running",
+    );
+    if (action === "remove") store.retireRig(r.rig, "owner:ui");
+    store.audit("owner:ui", `machine_rig_${action}`, { rig: r.rig, machine: r.machine });
+    return back("ok", `${STEP_WORDS[action]}.`);
+  });
   /** Reads the machine's facts now (read-only), and keeps them or why it could not. */
   const checkMachine = async (name: string): Promise<string | null> => {
     const m = store.machine(name);
