@@ -69,6 +69,7 @@ import {
   shell,
   stackBar,
 } from "./ui/components.ts";
+import { liveEntryHtml, liveLinesHtml, resultJoin } from "./ui/live.ts";
 import { infoLabel, newCampaignBody } from "./ui/new-campaign.ts";
 import { NEW_CAMPAIGN_JS } from "./ui/new-campaign-client.ts";
 import {
@@ -1488,14 +1489,6 @@ ${placed ? placedBlock(placed, t) : ""}
     );
   });
 
-  /** "· 48.2 s · exit 0" from a tool result line ("run (48210 ms): exit 0 ..."). */
-  const resultHint = (text: string) => {
-    const m = /^(\S+)( failed)? \((\d+) ms\): ?(.*)/s.exec(text);
-    if (!m) return "";
-    const ms = Number(m[3]);
-    const first = (m[4] ?? "").split("\n")[0]?.slice(0, 60) ?? "";
-    return `<span class="${m[2] ? "bad" : "muted"} xs">· ${ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${ms} ms`}${m[2] ? " · failed" : first ? ` · ${esc(first)}` : ""}</span>`;
-  };
   const sourceName = (s: string, lane?: string | null) =>
     s === "planner"
       ? "Planner"
@@ -1542,47 +1535,26 @@ ${placed ? placedBlock(placed, t) : ""}
           `<a class="side-row${s.source === source ? " on" : ""}" href="/ui/rigs/${encodeURIComponent(u.id)}/live?source=${encodeURIComponent(s.source)}">${sourceAvatar(s.source)}<span class="two"><span class="name"><b>${esc(sourceName(s.source, s.lane))}</b></span><span class="muted xs clip">${esc([intros.get(s.source) || (s.source.startsWith("trial:") ? s.source.slice(6) : (s.run ?? "")), `${ago(s.last_at, now)} ago`].filter(Boolean).join(" · "))}</span></span>${s.source.startsWith("trial:") ? `<span class="right">${ended.get(s.source) ? `<span class="muted xs">ended</span>` : `<span class="label info xs"><span class="dot info pulse"></span>working</span>`}</span>` : ""}</a>`,
       ),
     ].join("");
-    // Server-rendered lines (the script appends new ones the same way).
-    const out: string[] = [];
-    let openTool = false;
-    for (const e of lines) {
-      const who = !source
-        ? `<span class="muted xs">${esc(sourceName(e.source, e.lane))}${e.source.startsWith("trial:") ? ` · ${esc(e.source.slice(6))}` : ""}</span>`
+    // Lines with their times, formatted once (ui/live.ts); the script adds new ones the same way.
+    const out = [liveLinesHtml(lines, { showWho: !source, name: sourceName, now })];
+    // Who is at work: for one worker, its agent, task, start and last activity.
+    const agent = u.model
+      ? u.model.source === "control"
+        ? `${HARNESSES[u.model.harness] ?? u.model.harness} · ${u.model.model} (from ${u.model.name})`
+        : u.model.source === "environment"
+          ? `${HARNESSES[u.model.harness] ?? u.model.harness} · ${u.model.model} (the rig's own settings)`
+          : "no model: the agents wait"
+      : "not reported by this rig's harness";
+    const trial = source.startsWith("trial:")
+      ? store.liveTrials(u.id).find((x) => x.source === source)
+      : undefined;
+    const whenAt = (at: string) =>
+      `${esc(at.slice(11, 19))} UTC <span class="muted">(${esc(ago(at, now))} ago)</span>`;
+    const head = trial
+      ? `<div class="lv-head"><dl class="facts"><dt>Agent</dt><dd>${esc(agent)}</dd><dt>Task</dt><dd>${esc(intros.get(source) || "not given")}</dd><dt>Started</dt><dd>${whenAt(trial.started_at)}</dd><dt>Last activity</dt><dd>${whenAt(trial.last_at)} ${trial.ended ? `<span class="chip">ended</span>` : `<span class="chip info">working</span>`}</dd></dl></div>`
+      : !source
+        ? `<div class="lv-head"><dl class="facts"><dt>Agents</dt><dd>${esc(agent)}</dd><dt>Last activity</dt><dd>${sources[0] ? whenAt(sources[0].last_at) : "none yet"}</dd></dl></div>`
         : "";
-      if (e.kind === "result" && openTool) {
-        out[out.length - 1] = (out[out.length - 1] as string)
-          .replace("</summary>", `${resultHint(e.text)}</summary>`)
-          .replace("</details>", `<pre>${esc(e.text)}</pre></details>`)
-          .replace('<details class="tool">', '<details class="tool" data-done="1">');
-        openTool = false;
-        continue;
-      }
-      openTool = false;
-      if (e.kind === "status") out.push(`<div class="status">${esc(e.text)}</div>`);
-      else if (e.kind === "text") out.push(`${who}<div class="tx">${esc(e.text)}</div>`);
-      else if (e.kind === "thinking")
-        out.push(
-          `<details class="think"><summary>Thinking</summary><pre>${esc(e.text)}</pre></details>`,
-        );
-      else if (e.kind === "tool") {
-        const sp = e.text.indexOf(" ");
-        out.push(
-          `<details class="tool"><summary><span class="name">${esc(sp > 0 ? e.text.slice(0, sp) : e.text)}</span><span>${esc(sp > 0 ? e.text.slice(sp + 1, sp + 120) : "")}</span></summary><pre>${esc(e.text)}</pre></details>`,
-        );
-        openTool = true;
-      } else if (e.kind === "result")
-        out.push(
-          `<details class="tool"><summary>result</summary><pre>${esc(e.text)}</pre></details>`,
-        );
-      else if (e.kind === "message")
-        out.push(
-          `<div class="msg"><div class="who">You</div>${esc(e.text.replace(/^Owner( to [^:]+)?: /, ""))}</div>`,
-        );
-      else
-        out.push(
-          `<div class="logline"><span class="t">${esc(e.at.slice(11, 19))}</span><span>${esc(e.text)}</span>${!source ? `<span class="muted">${esc(sourceName(e.source, e.lane))}</span>` : ""}</div>`,
-        );
-    }
     // The composer: who can receive a message from here.
     const running = u.runs.filter((i) => i.status === "running");
     const inst = (sel?.run && u.runs.find((i) => i.id === sel.run)) || running[0] || u.runs[0];
@@ -1636,16 +1608,23 @@ ${placed ? placedBlock(placed, t) : ""}
         refresh: 0,
       },
       `<aside class="sessions"><div class="section" style="margin-top:4px">Sessions</div>${list}</aside>
-<div class="transcript-wrap"><div class="transcript" id="transcript" data-rig="${esc(u.id)}" data-source="${esc(source)}" data-after="${after}">${out.join("") || `<div class="empty">No live lines yet. They appear here as the rig's agents and judge work.</div>`}</div>${composer}</div>`,
+<div class="transcript-wrap">${head}<div class="transcript" id="transcript" data-rig="${esc(u.id)}" data-source="${esc(source)}" data-after="${after}">${out.join("") || `<div class="empty">No live lines yet. They appear here as the rig's agents and judge work.</div>`}</div>${composer}</div>`,
       vs,
     );
   });
 
   app.get("/ui/rigs/:rig/live.json", (c) => {
     const after = Math.max(0, Math.trunc(Number(c.req.query("after") ?? "0")) || 0);
-    return c.json({
-      entries: store.live(c.req.param("rig"), after, 500, c.req.query("source") || undefined),
-    });
+    const source = c.req.query("source") || undefined;
+    const now = Date.now();
+    // Each line as the page shows it; a result also as the part it adds to its call's row.
+    const entries = store.live(c.req.param("rig"), after, 500, source).map((e) => ({
+      id: e.id,
+      kind: e.kind,
+      html: liveEntryHtml(e, { showWho: !source, name: sourceName, now }),
+      ...(e.kind === "result" ? { join: resultJoin(e) } : {}),
+    }));
+    return c.json({ entries });
   });
 
   app.post("/ui/rigs/:rig/message", async (c) => {

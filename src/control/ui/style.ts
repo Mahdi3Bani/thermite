@@ -437,6 +437,24 @@ pre.report { white-space: pre-wrap; font-family: var(--font-mono); font-size: 12
 #add-rig [hidden] { display: none !important; }
 .dq-sent { display: inline-block; max-width: 380px; font-size: 12px; line-height: 1.45; color: var(--muted-foreground); text-align: right; white-space: normal; }
 .dq-sent b { color: var(--foreground); }
+/* The live view: every line has its time; tool calls read as commands. */
+.lv-head { padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--card); }
+.lv-head dl.facts { grid-template-columns: 110px minmax(0, 1fr); gap: 4px 12px; }
+.lv-row { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; padding: 3px 0; align-items: baseline; font-size: 13px; line-height: 1.5; }
+.lv-t { font: 12px var(--font-mono, ui-monospace, monospace); color: var(--muted-foreground); white-space: nowrap; cursor: default; }
+.lv-body { min-width: 0; }
+.lv-body details > summary { cursor: pointer; list-style: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lv-body details > summary::-webkit-details-marker { display: none; }
+.lv-body details[open] > summary { white-space: normal; }
+.lv-body pre { margin: 6px 0 4px; padding: 8px 10px; max-height: 360px; overflow: auto; background: var(--muted); border-radius: 6px; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+.lv-name { display: inline-block; min-width: 62px; font: 600 12px var(--font-mono, ui-monospace, monospace); color: var(--foreground); }
+.lv-cmd { font-size: 12px; background: none; padding: 0; }
+.lv-res, .lv-hint .lv-res { margin-left: 8px; font-size: 12px; }
+.lv-who { display: inline-block; margin-right: 8px; font-size: 11px; color: var(--muted-foreground); }
+.lv-think summary { color: var(--muted-foreground); }
+.lv-said { white-space: pre-wrap; }
+.lv-status span, .lv-log span { color: var(--muted-foreground); }
+.lv-unsigned { margin-left: 8px; font-size: 10px; color: var(--warning-foreground); }
 .kind { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
 .kind.m { background: var(--primary-surface); color: var(--info-foreground); }
 .kind.r { background: var(--warning-surface); color: var(--warning-foreground); }
