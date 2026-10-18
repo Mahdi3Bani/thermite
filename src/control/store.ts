@@ -168,6 +168,39 @@ create table if not exists git_access (
   created_at text not null,
   created_by text not null
 );
+-- Machines control sets rigs up on, over SSH: the key sealed, the host keys the owner trusted
+-- (none until then), and what the last read-only check found.
+create table if not exists machine (
+  name text primary key,
+  address text not null,
+  port integer not null,
+  user text not null,
+  key_sealed text not null,
+  public_key text not null,
+  key_fingerprint text not null,
+  host_keys text not null default '[]',
+  seen_host_keys text not null default '[]',
+  facts text,
+  checked_at text,
+  check_error text,
+  created_at text not null,
+  created_by text not null
+);
+-- Installs on a machine: each one approved by the owner for one recipe's exact script, used
+-- once, before it expires; then its outcome.
+create table if not exists machine_install (
+  id integer primary key,
+  machine text not null,
+  recipe text not null,
+  script_sha text not null,
+  approved_by text not null,
+  approved_at text not null,
+  expires_at text not null,
+  started_at text,
+  finished_at text,
+  ok integer,
+  output text
+);
 -- Campaigns created on control (the new-campaign page): each version's contract as approved,
 -- with its content hash. Runs are assigned from a version.
 create table if not exists campaign_version (
@@ -289,6 +322,39 @@ export interface CampaignSources {
   project?: { url: string; access?: string | undefined; repo: string; commit: string } | undefined;
   kit?: { control: string } | { git: string; access?: string | undefined } | undefined;
 }
+
+/** A machine as listed (never its key). Host keys are known_hosts lines. */
+export interface Machine {
+  name: string;
+  address: string;
+  port: number;
+  user: string;
+  public_key: string;
+  key_fingerprint: string;
+  /** The host keys the owner trusted; empty until then. */
+  host_keys: string[];
+  /** The host keys the machine presented when last asked, for the owner to compare. */
+  seen_host_keys: string[];
+  facts: unknown;
+  checked_at: string | null;
+  check_error: string | null;
+  created_at: string;
+}
+
+const machineOf = (r: Row): Machine => ({
+  name: String(r.name),
+  address: String(r.address),
+  port: Number(r.port),
+  user: String(r.user),
+  public_key: String(r.public_key),
+  key_fingerprint: String(r.key_fingerprint),
+  host_keys: JSON.parse(String(r.host_keys)) as string[],
+  seen_host_keys: JSON.parse(String(r.seen_host_keys)) as string[],
+  facts: r.facts ? JSON.parse(String(r.facts)) : null,
+  checked_at: r.checked_at === null ? null : String(r.checked_at),
+  check_error: r.check_error === null ? null : String(r.check_error),
+  created_at: String(r.created_at),
+});
 
 /** Git access as listed (never its secret). */
 export interface GitAccess {
@@ -1150,6 +1216,170 @@ export class ControlStore {
     return (this.db.prepare("select * from git_access order by name").all() as Row[]).map(
       gitAccessOf,
     );
+  }
+
+  // ---------------------------------------------------------------- machines (over SSH)
+  addMachine(m: {
+    name: string;
+    address: string;
+    port: number;
+    user: string;
+    key_sealed: string;
+    public_key: string;
+    key_fingerprint: string;
+    seen_host_keys: string[];
+    by: string;
+  }): void {
+    this.db
+      .prepare(
+        `insert into machine (name, address, port, user, key_sealed, public_key, key_fingerprint, seen_host_keys, created_at, created_by)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        m.name,
+        m.address,
+        m.port,
+        m.user,
+        m.key_sealed,
+        m.public_key,
+        m.key_fingerprint,
+        JSON.stringify(m.seen_host_keys),
+        new Date().toISOString(),
+        m.by,
+      );
+    this.audit(m.by, "machine_added", {
+      name: m.name,
+      address: m.address,
+      port: m.port,
+      user: m.user,
+      key: m.key_fingerprint,
+    });
+  }
+
+  machine(name: string): (Machine & { key_sealed: string }) | undefined {
+    const r = this.db.prepare("select * from machine where name = ?").get(name) as Row | undefined;
+    return r ? { ...machineOf(r), key_sealed: String(r.key_sealed) } : undefined;
+  }
+
+  machines(): Machine[] {
+    return (this.db.prepare("select * from machine order by name").all() as Row[]).map(machineOf);
+  }
+
+  /** The host keys the machine presents now, kept for the owner to compare. */
+  seeMachineHostKeys(name: string, lines: string[]): void {
+    this.db
+      .prepare("update machine set seen_host_keys = ? where name = ?")
+      .run(JSON.stringify(lines), name);
+  }
+
+  /** The owner trusts the host keys they were shown: from now on only these connect. */
+  trustMachineHostKeys(name: string, lines: string[], by: string): void {
+    this.db
+      .prepare("update machine set host_keys = ? where name = ?")
+      .run(JSON.stringify(lines), name);
+    this.audit(by, "machine_host_key_trusted", { name, keys: lines.length });
+  }
+
+  /** What the last check found, or why it failed (keeping the facts before it). */
+  setMachineFacts(name: string, r: { facts: unknown } | { error: string }): void {
+    if ("facts" in r)
+      this.db
+        .prepare("update machine set facts = ?, checked_at = ?, check_error = null where name = ?")
+        .run(JSON.stringify(r.facts), new Date().toISOString(), name);
+    else
+      this.db
+        .prepare("update machine set checked_at = ?, check_error = ? where name = ?")
+        .run(new Date().toISOString(), r.error, name);
+  }
+
+  /** The owner's yes to one install: one recipe's exact script on one machine, used once. */
+  approveInstall(i: {
+    machine: string;
+    recipe: string;
+    script_sha: string;
+    by: string;
+    ttlMs: number;
+  }): number {
+    const now = Date.now();
+    const r = this.db
+      .prepare(
+        `insert into machine_install (machine, recipe, script_sha, approved_by, approved_at, expires_at)
+         values (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        i.machine,
+        i.recipe,
+        i.script_sha,
+        i.by,
+        new Date(now).toISOString(),
+        new Date(now + i.ttlMs).toISOString(),
+      );
+    this.audit(i.by, "machine_install_approved", {
+      machine: i.machine,
+      recipe: i.recipe,
+      script_sha: i.script_sha,
+    });
+    return Number(r.lastInsertRowid);
+  }
+
+  /** Uses an approval: false when it was used already, has expired, or doesn't match. */
+  startInstall(id: number, machine: string, recipe: string, scriptSha: string): boolean {
+    const r = this.db
+      .prepare(
+        `update machine_install set started_at = ?
+         where id = ? and machine = ? and recipe = ? and script_sha = ? and started_at is null and expires_at > ?`,
+      )
+      .run(new Date().toISOString(), id, machine, recipe, scriptSha, new Date().toISOString());
+    return Number(r.changes) > 0;
+  }
+
+  finishInstall(id: number, ok: boolean, output: string): void {
+    const r = this.db
+      .prepare("update machine_install set finished_at = ?, ok = ?, output = ? where id = ?")
+      .run(new Date().toISOString(), ok ? 1 : 0, output.slice(-4000), id);
+    if (Number(r.changes)) {
+      const row = this.db
+        .prepare("select machine, recipe from machine_install where id = ?")
+        .get(id) as Row;
+      this.audit("control", "machine_install_finished", {
+        machine: String(row.machine),
+        recipe: String(row.recipe),
+        ok,
+      });
+    }
+  }
+
+  /** A machine's installs, newest first. */
+  machineInstalls(machine: string): {
+    id: number;
+    recipe: string;
+    approved_by: string;
+    approved_at: string;
+    started_at: string | null;
+    finished_at: string | null;
+    ok: boolean | null;
+    output: string | null;
+  }[] {
+    return (
+      this.db
+        .prepare("select * from machine_install where machine = ? order by id desc limit 20")
+        .all(machine) as Row[]
+    ).map((r) => ({
+      id: Number(r.id),
+      recipe: String(r.recipe),
+      approved_by: String(r.approved_by),
+      approved_at: String(r.approved_at),
+      started_at: r.started_at === null ? null : String(r.started_at),
+      finished_at: r.finished_at === null ? null : String(r.finished_at),
+      ok: r.ok === null ? null : Number(r.ok) === 1,
+      output: r.output === null ? null : String(r.output),
+    }));
+  }
+
+  deleteMachine(name: string, by: string): boolean {
+    const r = this.db.prepare("delete from machine where name = ?").run(name);
+    if (Number(r.changes)) this.audit(by, "machine_deleted", { name });
+    return Number(r.changes) > 0;
   }
 
   /** A token replaced in place: same name, so campaigns that name it keep working. */

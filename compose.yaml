@@ -16,6 +16,8 @@ services:
       THERMITE_CONTROL_RIG_TOKENS_FILE: /run/secrets/control-rig-tokens
       THERMITE_CONTROL_PUBKEY_EXPORT: /keys/control-signing.pub
       THERMITE_CONTROL_STALE_SECONDS: "${THERMITE_CONTROL_STALE_SECONDS:-180}"
+      # Control's address as rigs and the machines it sets rigs up on reach it.
+      THERMITE_CONTROL_PUBLIC_URL: "${THERMITE_CONTROL_PUBLIC_URL:-}"
       # "1": the owner accepts each rig's first report key on the dashboard.
       THERMITE_CONTROL_REQUIRE_KEY_ACCEPT: "${THERMITE_CONTROL_REQUIRE_KEY_ACCEPT:-}"
       THERMITE_CONTROL_SESSION_DAYS: "${THERMITE_CONTROL_SESSION_DAYS:-}"

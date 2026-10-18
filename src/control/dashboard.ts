@@ -12,6 +12,21 @@ import { issueCommand, propagateChampion } from "./issue.ts";
 import type { KitRepos } from "./kit-repos.ts";
 import { kitSummary, unpackKit } from "./kit-upload.ts";
 import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
+import {
+  CHECK_SCRIPT,
+  factsLine,
+  type MachineFacts,
+  missing,
+  parseFacts,
+} from "./machines/facts.ts";
+import { RECIPES, type RecipeId, recipeScript, scriptSha } from "./machines/recipes.ts";
+import {
+  ADDRESS,
+  fingerprint as fingerprintOf,
+  type MachineSsh,
+  openSsh,
+  USER,
+} from "./machines/ssh.ts";
 import { startCampaign, startRun } from "./new-campaign.ts";
 import { ANTHROPIC_BASE, isOpencodeOwn, listModels, providerBase } from "./providers.ts";
 import { probeRepository } from "./repo-probe.ts";
@@ -20,6 +35,7 @@ import {
   type ControlStore,
   fingerprint,
   type Harness,
+  type Machine,
   type ModelProvider,
   type ProviderType,
 } from "./store.ts";
@@ -115,6 +131,10 @@ export interface DashboardOptions {
   kits?: KitRepos | undefined;
   /** How control reads a project's repository (tests give their own). */
   probeRepo?: typeof probeRepository | undefined;
+  /** Control's address as rigs and machines reach it. */
+  publicUrl?: string | undefined;
+  /** How control reaches machines over SSH (tests give their own). */
+  machineSsh?: MachineSsh | undefined;
 }
 
 export function createDashboard(store: ControlStore, opts: DashboardOptions): Hono {
@@ -1832,6 +1852,10 @@ ${runsNow ? `<div class="block"><div class="head"><h2>At work</h2><span class="n
       "Make the key",
       "Control makes an SSH key pair and shows its public half: add it to the repository (or the account) as a read-only deploy key. The private half stays sealed in control and goes only to rigs running a campaign that uses it.",
     ],
+    ssh: [
+      "Add and read its host key",
+      "Control reads the machine's host key for you to compare and trust. Then it logs in and reads the machine: its system, GPUs, container engine and NVIDIA's toolkit, and whether it reaches control. It changes nothing, and installs nothing unless you allow it.",
+    ],
     gittoken: [
       "Add the token",
       "Control seals the token. It goes only to rigs running a campaign that uses it. Use a token that can only read the repositories you need.",
@@ -1862,7 +1886,7 @@ ${runsNow ? `<div class="block"><div class="head"><h2>At work</h2><span class="n
     const vs = views();
     const t = csrf(c);
     const providers = store.providers();
-    const gitCount = store.gitAccessList().length;
+    const gitCount = store.gitAccessList().length + store.machines().length;
     const given = store.rigModels();
     const usersOf = (name: string) =>
       Object.entries(given)
@@ -1910,12 +1934,16 @@ ${
       .join("");
     const models = "openai anthropic opencode";
     const addForm = `<form method="post" action="/ui/settings/add" class="form-grid" autocomplete="off" id="prov-add" data-says="${esc(JSON.stringify(ADD_SAYS))}"><input type="hidden" name="csrf" value="${t}">
-<label>${infoLabel("Type", `${TYPE_TIP} Git access lets rigs fetch private repositories: a deploy key control makes, or an HTTPS token you paste.`)}<select name="type" id="ptype"><optgroup label="Models">${(Object.keys(TYPES) as ProviderType[]).map((x) => `<option value="${x}">${x === "opencode" ? "OpenCode (its own models)" : TYPES[x]}</option>`).join("")}</optgroup><optgroup label="Git access"><option value="gitkey">A deploy key (control makes it)</option><option value="gittoken">An access token (HTTPS)</option></optgroup></select></label>
+<label>${infoLabel("Type", `${TYPE_TIP} Git access lets rigs fetch private repositories: a deploy key control makes, or an HTTPS token you paste.`)}<select name="type" id="ptype"><optgroup label="Models">${(Object.keys(TYPES) as ProviderType[]).map((x) => `<option value="${x}">${x === "opencode" ? "OpenCode (its own models)" : TYPES[x]}</option>`).join("")}</optgroup><optgroup label="Git access"><option value="gitkey">A deploy key (control makes it)</option><option value="gittoken">An access token (HTTPS)</option></optgroup><optgroup label="Where rigs run"><option value="ssh">A machine over SSH</option></optgroup></select></label>
 <label>${infoLabel("Name", "How it shows in Thermite, and how rigs and campaigns refer to it: for example my-litellm or github-deploy. Lowercase letters, digits, dots and dashes.")}<input name="name" required maxlength="64" placeholder="for example my-litellm"></label>
 <label data-for="${models}">${infoLabel("Base URL", BASE_TIP)}<input name="base_url" maxlength="500" placeholder="https://…/v1 (Anthropic and OpenCode: empty for their own)"></label>
 <label data-for="${models}">${infoLabel("API key", "The provider's key. Control seals it at once and never shows it again. OpenCode: leave it empty for its free models.")}<input name="api_key" type="password" autocomplete="new-password" maxlength="4096" placeholder="never shown again"></label>
 <label data-for="gittoken" hidden>${infoLabel("Token", "An access token for the Git host, read-only if the host allows. Control seals it at once and never shows it again.")}<input name="token" type="password" autocomplete="new-password" maxlength="4096" placeholder="never shown again"></label>
 <label data-for="gittoken" hidden>${infoLabel("User name", "The name the host expects with the token. GitHub takes x-access-token (the default); GitLab takes oauth2.")}<input name="username" maxlength="100" placeholder="x-access-token"></label>
+<label data-for="ssh" hidden>${infoLabel("Address", "The machine's host name or IP address, as control reaches it.")}<input name="address" maxlength="253" placeholder="gpu-box.example.com"></label>
+<label data-for="ssh" hidden>${infoLabel("SSH port", "The port its SSH server listens on: usually 22.")}<input name="port" value="22" maxlength="5"></label>
+<label data-for="ssh" hidden>${infoLabel("User", "The account control logs in as. Give Thermite an account of its own if you can. It needs sudo without a password only to install what is missing, and only when you allow each install; rigs run as this user with rootless Podman.")}<input name="user" maxlength="32" placeholder="thermite"></label>
+<label data-for="ssh" hidden style="grid-column:1/-1">${infoLabel("Private key", "The SSH private key for that user, without a passphrase. Control seals it at once and never shows it again. Leave it empty and control makes a key: add its public half, shown next, to the user's ~/.ssh/authorized_keys on the machine.")}<textarea name="private_key" class="mono" rows="4" maxlength="16384" placeholder="empty: control makes a key"></textarea></label>
 <div class="nc-does" id="pdo" style="grid-column:1/-1"><b>What happens.</b> ${ADD_SAYS.openai[1]}</div>
 <div class="form-end"><button class="primary" id="padd">${ADD_SAYS.openai[0]}</button></div></form>`;
     const options = (want: { provider: string; model: string } | undefined) =>
@@ -1971,9 +1999,9 @@ ${
         active: "settings",
         crumbs: [{ href: "/ui/settings", text: "Settings" }],
       },
-      `<p class="run-said">Providers are what Thermite uses: model providers serve the agents' models, and Git access lets rigs fetch private repositories. Add each once with its key. Control seals every key, never shows it again, and gives a rig only what it uses. Then choose, for each rig, the harness its agents run in (Pi or OpenCode v2) and their model.</p>
+      `<p class="run-said">Providers are what Thermite uses: model providers serve the agents' models, Git access lets rigs fetch private repositories, and machines are where control sets rigs up. Add each once with its key. Control seals every key, never shows it again, and gives a rig only what it uses. Then choose, for each rig, the harness its agents run in (Pi or OpenCode v2) and their model.</p>
 ${note}
-<div class="block"><div class="head"><h2>Providers</h2><span class="n">${providers.length + gitCount}</span><span class="right">models are read from each provider itself</span></div>${providers.length + gitCount ? `<div class="dqs">${providerRows}${gitRows(t)}</div>` : `<div class="card"><div class="empty">No provider yet: add one below.</div></div>`}</div>
+<div class="block"><div class="head"><h2>Providers</h2><span class="n">${providers.length + gitCount}</span><span class="right">models are read from each provider itself</span></div>${providers.length + gitCount ? `<div class="dqs">${providerRows}${gitRows(t)}${machineRows(t)}</div>` : `<div class="card"><div class="empty">No provider yet: add one below.</div></div>`}</div>
 <div class="block"><div class="head"><h2>Add a provider</h2></div><div class="card">${addForm}</div></div>
 <div class="block"><div class="head"><h2>Harness and model for each rig</h2><span class="right">a rig takes a change within a minute; then check it</span></div><div class="card flat">${rigRows || `<div class="empty">No rig has reported yet.</div>`}</div></div>
 <script src="/ui/assets/providers.js" defer></script>`,
@@ -2011,6 +2039,311 @@ ${
 }</div></details>`;
       })
       .join("");
+  // ---------------------------------------------------------------- machines (Providers)
+  // A machine control sets rigs up on, over SSH. Its host key is trusted once by the owner;
+  // its facts come from a read-only check (machines/facts.ts).
+  const ssh = opts.machineSsh ?? openSsh;
+  const kib = (n: number) => `${Math.round(n / 1024 / 1024)} GB`;
+  const machineFacts = (m: Machine, t: string) => {
+    const f = m.facts as MachineFacts | null;
+    if (!f) return "";
+    const need = missing(f);
+    const installs = store.machineInstalls(m.name);
+    const running = installs.find((i) => i.started_at && !i.finished_at);
+    const last = installs.find((i) => i.finished_at);
+    const mName = encodeURIComponent(m.name);
+    // Each missing piece: what control would run, and the owner's yes or no.
+    const asks = running
+      ? `<div class="card" style="margin-top:10px"><b>Installing ${esc(RECIPES[running.recipe as RecipeId]?.title ?? running.recipe)}</b>, as ${esc(running.approved_by)} allowed ${esc(ago(running.approved_at, Date.now()))} ago. This page shows when it is done.</div>`
+      : need
+          .map((id) => {
+            const r = RECIPES[id];
+            const s = recipeScript(id, f);
+            if ("error" in s)
+              return `<div class="card warn" style="margin-top:10px"><b>${esc(r.title)} is missing.</b> ${esc(r.why)} Control won't install it: ${esc(s.error)}.</div>`;
+            return `<div class="card warn" style="margin-top:10px"><b>May control install ${esc(r.title)}?</b> ${esc(r.why)} Control would run exactly this on ${esc(m.name)}, and nothing else:<pre class="json" style="white-space:pre-wrap;margin:8px 0">${esc(s.script)}</pre><div class="act"><form class="inline" method="post" action="/ui/settings/machines/${mName}/install"><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="recipe" value="${id}"><input type="hidden" name="sha" value="${scriptSha(s.script)}"><button class="sm primary">Install it</button></form><form class="inline" method="post" action="/ui/settings/machines/${mName}/decline"><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="recipe" value="${id}"><button class="sm">Don't install: I'll do it myself</button></form></div><div class="muted small" style="margin-top:6px">Your yes is recorded with your name, for this script on this machine, and used once.</div></div>`;
+          })
+          .join("");
+    const lastRun = last
+      ? `<div class="muted small" style="margin-top:10px">Last install: ${esc(RECIPES[last.recipe as RecipeId]?.title ?? last.recipe)}, allowed by ${esc(last.approved_by)}, ${last.ok ? `<span class="chip ok">done</span>` : `<span class="chip bad">failed</span>`} ${esc(ago(last.finished_at ?? "", Date.now()))} ago.${last.ok ? "" : `</div><pre class="json" style="white-space:pre-wrap;max-height:200px;overflow:auto">${esc(last.output ?? "")}</pre><div>`}</div>`
+      : "";
+    const yes = (ok: boolean, text: string) =>
+      `<span class="chip ${ok ? "ok" : "warn"}">${esc(text)}</span>`;
+    const control = !opts.publicUrl
+      ? `<span class="muted">control's address for rigs is not set (THERMITE_CONTROL_PUBLIC_URL), so this was not checked</span>`
+      : `${esc(opts.publicUrl)} ${yes(f.reaches_control === "200", f.reaches_control === "200" ? "reached" : `not reached (${f.reaches_control ?? "no answer"})`)}`;
+    return `<dl class="facts" style="margin-top:4px">
+<dt>System</dt><dd>${esc(f.os)} · kernel ${esc(f.kernel)} · ${esc(f.arch)} · ${f.cpus} CPUs · ${kib(f.mem_kib)} memory · ${kib(f.disk_free_kib)} free for ${esc(f.user)}</dd>
+<dt>GPUs</dt><dd>${
+      f.gpus.length
+        ? `${f.gpus.map((g) => `GPU ${g.index}: ${esc(g.name)}, ${Math.round(g.memory_mib / 1024)} GB, ${g.busy_pct}% busy, ${g.used_mib} MiB in use`).join("<br>")}<br><span class="muted">driver ${esc(f.driver ?? "?")} · CUDA ${esc(f.cuda ?? "?")}</span>`
+        : `none: rigs here measure on the CPU`
+    }</dd>
+<dt>Containers</dt><dd>${f.podman ? yes(true, `Podman ${f.podman}`) : yes(false, "Podman missing")}${f.docker ? ` <span class="muted">Docker ${esc(f.docker)} (rigs use Podman)</span>` : ""}${f.gpus.length ? ` ${yes(Boolean(f.nvidia_ctk && f.cdi), f.nvidia_ctk ? (f.cdi ? `NVIDIA container toolkit ${f.nvidia_ctk} · CDI` : "NVIDIA container toolkit, no CDI spec") : "NVIDIA container toolkit missing")}` : ""}</dd>
+<dt>Services</dt><dd>${f.systemd ? `systemd ${esc(f.systemd)}` : yes(false, "no systemd: control runs rigs as systemd services, so a rig can't run here")}${f.root || f.linger === undefined ? "" : ` · ${f.linger ? yes(true, "lingering on") : yes(false, "lingering off: rigs would stop when the user logs out")}`}</dd>
+<dt>Rights</dt><dd>${f.root ? "root" : f.sudo ? "sudo without a password (used only for installs you allow)" : "no sudo: control can't install anything, only report what is missing"}</dd>
+<dt>Reaches control</dt><dd>${control}</dd>
+</dl>${need.length ? `<div class="muted" style="margin-top:10px"><b>Missing for a rig:</b> ${need.map((x) => esc(RECIPES[x].title)).join("; ")}.</div>` : ""}${asks}${lastRun}`;
+  };
+  const machineRows = (t: string) =>
+    store
+      .machines()
+      .map((m) => {
+        const mName = encodeURIComponent(m.name);
+        const trusted = m.host_keys.length > 0;
+        const f = m.facts as MachineFacts | null;
+        const changed =
+          trusted &&
+          m.seen_host_keys.length > 0 &&
+          m.seen_host_keys.join("\n") !== m.host_keys.join("\n");
+        const keyList = (lines: string[]) =>
+          lines
+            .map((l) => {
+              const [, type, key] = l.split(/\s+/);
+              return `<code>${esc(fingerprintOf(key ?? ""))}</code> <span class="muted">(${esc((type ?? "").replace(/^ssh-/, "").toUpperCase())})</span>`;
+            })
+            .join("<br>");
+        const status = !trusted
+          ? `<span class="dq-why bad">its host key is not trusted yet: open it to compare and trust it</span>`
+          : m.check_error
+            ? `<span class="dq-why bad">${esc(m.check_error)}${f ? " (showing the last check)" : ""}</span>`
+            : f
+              ? `<span class="dq-why">${esc(factsLine(f))}${m.checked_at ? ` · checked ${esc(ago(m.checked_at, Date.now()))} ago` : ""}</span>`
+              : `<span class="dq-why">not checked yet</span>`;
+        const form = (action: string, label: string, primary = false, extra = "") =>
+          `<form class="inline" method="post" action="/ui/settings/machines/${mName}/${action}"><input type="hidden" name="csrf" value="${t}">${extra}<button class="sm${primary ? " primary" : ""}">${label}</button></form>`;
+        const trust = (lines: string[], label: string) =>
+          form(
+            "trust",
+            label,
+            true,
+            `<input type="hidden" name="seen" value="${esc(lines.join("\n"))}">`,
+          );
+        const hostKey = !trusted
+          ? m.seen_host_keys.length
+            ? `<div class="card warn" style="margin-bottom:10px"><b>Check the host key.</b> The machine presented:<br>${keyList(m.seen_host_keys)}<br>If you know its fingerprint (on the machine: <code>ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub</code>), compare it. Control pins these keys, and later refuses a machine that presents another. <div class="act" style="margin-top:8px">${trust(m.seen_host_keys, "It matches: trust it")}${form("scan", "Read it again")}</div></div>`
+            : `<div class="card warn" style="margin-bottom:10px"><b>No SSH server answered</b> at ${esc(m.address)} port ${m.port}. <div class="act" style="margin-top:8px">${form("scan", "Read its host key again")}</div></div>`
+          : changed
+            ? `<div class="card warn" style="margin-bottom:10px"><b>The machine now presents a different host key:</b><br>${keyList(m.seen_host_keys)}<br>If the machine was reinstalled, compare it and trust the new key. If not, someone may be in between: don't. <div class="act" style="margin-top:8px">${trust(m.seen_host_keys, "Trust the new key")}</div></div>`
+            : "";
+        return `<details class="dq${!trusted || m.check_error ? " dq-bad" : ""}" data-k="machine-${esc(m.name)}"${!trusted ? " open" : ""}><summary>
+<span class="dq-kind"><span class="kind r">Machine</span></span>
+<span class="dq-main"><span class="dq-head">${esc(m.name)} <span class="muted" style="font-weight:400">· SSH</span></span>${status}<span class="dq-sub"><span class="dq-where">${esc(m.user)}@${esc(m.address)}${m.port === 22 ? "" : `:${m.port}`}</span><span class="chip">key ${esc(m.key_fingerprint.slice(-6))}</span>${trusted ? `<span class="dq-where">host key ${esc(fingerprintOf(m.host_keys[0]?.split(/\s+/)[2] ?? "").slice(0, 19))}…</span>` : ""}</span></span>
+<span class="dq-side"><span class="dq-btns">${trusted ? form("check", "Check again") : ""}</span></span>
+</summary><div class="dq-body">${hostKey}${machineFacts(m, t)}
+<div class="muted small" style="margin:10px 0 4px">Control logs in as ${esc(m.user)} with the key whose public half is below. It must be in that user's <code>~/.ssh/authorized_keys</code> on the machine.</div><pre class="json" style="white-space:pre-wrap;word-break:break-all">${esc(m.public_key)}</pre>
+${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm danger"')}</div></details>`;
+      })
+      .join("");
+  const machineUrl = (k: "ok" | "error", m: string) => settingsUrl(k, m);
+  /** Reads the machine's facts now (read-only), and keeps them or why it could not. */
+  const checkMachine = async (name: string): Promise<string | null> => {
+    const m = store.machine(name);
+    if (!m) return "no such machine";
+    try {
+      const r = await ssh.sshScript(
+        {
+          address: m.address,
+          port: m.port,
+          user: m.user,
+          privateKey: opts.secrets.open(m.key_sealed),
+          hostKeys: m.host_keys,
+        },
+        CHECK_SCRIPT,
+        [opts.publicUrl ? `${opts.publicUrl.replace(/\/$/, "")}/v1/health` : ""],
+        60_000,
+      );
+      if (r.code !== 0)
+        throw new Error(`the check exited ${r.code}: ${r.stderr.trim().split("\n").pop() ?? ""}`);
+      store.setMachineFacts(name, { facts: parseFacts(r.stdout) });
+      return null;
+    } catch (err) {
+      const why = err instanceof Error ? err.message : String(err);
+      store.setMachineFacts(name, { error: why });
+      // A changed host key: read what it presents now, for the owner to compare.
+      if (/different host key/.test(why))
+        await ssh
+          .scanHostKeys(m.address, m.port)
+          .then((keys) =>
+            store.seeMachineHostKeys(
+              name,
+              keys.map((k) => k.line),
+            ),
+          )
+          .catch(() => {});
+      return why;
+    }
+  };
+  const addMachine = async (c: Ctx, f: Record<string, unknown>) => {
+    const fail = (m: string) => c.redirect(machineUrl("error", m), 303);
+    const name = String(f.name ?? "").trim();
+    const address = String(f.address ?? "").trim();
+    const port = Number(String(f.port ?? "22").trim() || "22");
+    const user = String(f.user ?? "").trim();
+    let privateKey = String(f.private_key ?? "").trim();
+    if (!ACCESS_NAME.test(name))
+      return fail("A machine's name is lowercase letters, digits, dots and dashes.");
+    if (store.machine(name)) return fail(`"${name}" exists already.`);
+    if (!ADDRESS.test(address)) return fail("The address is a host name or an IP address.");
+    if (!Number.isInteger(port) || port < 1 || port > 65535)
+      return fail("The port is a number from 1 to 65535.");
+    if (!USER.test(user)) return fail("The user is a Unix account name, such as thermite.");
+    let pub: { line: string; fingerprint: string };
+    if (privateKey) {
+      try {
+        pub = await ssh.publicKeyOf(privateKey);
+      } catch (err) {
+        return fail(err instanceof Error ? err.message : String(err));
+      }
+    } else {
+      const k = makeDeployKey(`thermite ${name}`);
+      privateKey = k.privateKey;
+      pub = { line: k.publicKey, fingerprint: k.fingerprint };
+    }
+    const seen = await ssh.scanHostKeys(address, port).catch(() => []);
+    store.addMachine({
+      name,
+      address,
+      port,
+      user,
+      key_sealed: opts.secrets.seal(privateKey),
+      public_key: pub.line,
+      key_fingerprint: pub.fingerprint,
+      seen_host_keys: seen.map((k) => k.line),
+      by: "owner:ui",
+    });
+    return c.redirect(
+      seen.length
+        ? machineUrl(
+            "ok",
+            `"${name}" is added. Compare its host key below, then trust it: control connects only after that.`,
+          )
+        : machineUrl(
+            "error",
+            `"${name}" is added, but no SSH server answered at ${address} port ${port}. Read its host key again when it is up.`,
+          ),
+      303,
+    );
+  };
+  app.post("/ui/settings/machines/:name/scan", async (c) => {
+    const m = store.machine(c.req.param("name"));
+    if (!m) return c.redirect(machineUrl("error", "No such machine."), 303);
+    const keys = await ssh.scanHostKeys(m.address, m.port).catch(() => []);
+    store.seeMachineHostKeys(
+      m.name,
+      keys.map((k) => k.line),
+    );
+    return c.redirect(
+      keys.length
+        ? machineUrl("ok", `Read "${m.name}"'s host key: compare it below.`)
+        : machineUrl("error", `No SSH server answered at ${m.address} port ${m.port}.`),
+      303,
+    );
+  });
+  // The owner trusts exactly the keys they were shown (the form carries them back).
+  app.post("/ui/settings/machines/:name/trust", async (c) => {
+    const m = store.machine(c.req.param("name"));
+    const seen = String((await c.req.parseBody()).seen ?? "");
+    if (!m) return c.redirect(machineUrl("error", "No such machine."), 303);
+    if (!m.seen_host_keys.length || seen !== m.seen_host_keys.join("\n"))
+      return c.redirect(
+        machineUrl("error", "The host key changed since the page showed it: compare it again."),
+        303,
+      );
+    store.trustMachineHostKeys(m.name, m.seen_host_keys, "owner:ui");
+    const why = await checkMachine(m.name);
+    return c.redirect(
+      why
+        ? machineUrl("error", `Trusted "${m.name}"'s host key, but the check failed: ${why}`)
+        : machineUrl(
+            "ok",
+            `Trusted "${m.name}"'s host key and read the machine: see what it found below.`,
+          ),
+      303,
+    );
+  });
+  app.post("/ui/settings/machines/:name/check", async (c) => {
+    const name = c.req.param("name");
+    if (!store.machine(name)?.host_keys.length)
+      return c.redirect(machineUrl("error", "Trust the machine's host key first."), 303);
+    const why = await checkMachine(name);
+    return c.redirect(
+      why ? machineUrl("error", `"${name}": ${why}`) : machineUrl("ok", `Read "${name}" again.`),
+      303,
+    );
+  });
+  // An install the owner allowed: bound to the exact script the page showed, used once, now.
+  app.post("/ui/settings/machines/:name/install", async (c) => {
+    const f = await c.req.parseBody();
+    const m = store.machine(c.req.param("name"));
+    const id = String(f.recipe ?? "") as RecipeId;
+    const fail = (why: string) => c.redirect(machineUrl("error", why), 303);
+    if (!m) return fail("No such machine.");
+    const facts = m.facts as MachineFacts | null;
+    if (!m.host_keys.length || !facts) return fail("Trust and check the machine first.");
+    if (!(id in RECIPES) || !missing(facts).includes(id))
+      return fail("That isn't missing on this machine any more: press Check again.");
+    if (store.machineInstalls(m.name).some((i) => i.started_at && !i.finished_at))
+      return fail(`An install is already running on "${m.name}".`);
+    const s = recipeScript(id, facts);
+    if ("error" in s) return fail(s.error);
+    const sha = scriptSha(s.script);
+    if (String(f.sha ?? "") !== sha)
+      return fail("What control would run changed since the page showed it: read it again.");
+    const approval = store.approveInstall({
+      machine: m.name,
+      recipe: id,
+      script_sha: sha,
+      by: "owner:ui",
+      ttlMs: 30 * 60_000,
+    });
+    if (!store.startInstall(approval, m.name, id, sha)) return fail("That approval can't be used.");
+    const target = {
+      address: m.address,
+      port: m.port,
+      user: m.user,
+      privateKey: opts.secrets.open(m.key_sealed),
+      hostKeys: m.host_keys,
+    };
+    // It runs on: the page shows it running, then its outcome and the machine read again.
+    void ssh
+      .sshScript(target, s.script, [], 30 * 60_000)
+      .then(
+        (r) => store.finishInstall(approval, r.code === 0, `${r.stdout}\n${r.stderr}`.trim()),
+        (err) =>
+          store.finishInstall(approval, false, err instanceof Error ? err.message : String(err)),
+      )
+      .then(() => checkMachine(m.name))
+      .catch(() => {});
+    return c.redirect(
+      machineUrl(
+        "ok",
+        `Installing ${RECIPES[id].title} on "${m.name}", as you allowed: this page shows when it is done.`,
+      ),
+      303,
+    );
+  });
+  app.post("/ui/settings/machines/:name/decline", async (c) => {
+    const id = String((await c.req.parseBody()).recipe ?? "") as RecipeId;
+    const title = RECIPES[id]?.title ?? "it";
+    return c.redirect(
+      machineUrl(
+        "ok",
+        `Control won't install ${title}. Install it yourself (the commands are shown below), then press Check again.`,
+      ),
+      303,
+    );
+  });
+  app.post("/ui/settings/machines/:name/delete", (c) => {
+    const name = c.req.param("name");
+    return c.redirect(
+      store.deleteMachine(name, "owner:ui")
+        ? machineUrl("ok", `"${name}" is deleted: control keeps nothing of its key.`)
+        : machineUrl("error", "No such machine."),
+      303,
+    );
+  });
+
   /** Git access added from the add form (or the older Git access form). */
   const addGit = (c: Ctx, f: Record<string, unknown>) => {
     const fail = (m: string) => c.redirect(settingsUrl("error", m), 303);
@@ -2108,6 +2441,7 @@ ${
   // The add form: a model provider or Git access, by its type.
   app.post("/ui/settings/add", async (c) => {
     const f = await c.req.parseBody();
+    if (f.type === "ssh") return addMachine(c, f);
     if (f.type === "gitkey" || f.type === "gittoken")
       return addGit(c, { ...f, kind: f.type === "gittoken" ? "token" : "ssh" });
     return saveProvider(c, f);

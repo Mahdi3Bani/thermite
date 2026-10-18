@@ -83,6 +83,8 @@ async function main(): Promise<void> {
       ),
       // Kits written on the new-campaign page, kept as git repositories in control's state.
       kits: new KitRepos(join(dir, "kits")),
+      // How rigs and the machines control sets rigs up on reach control.
+      publicUrl: env.THERMITE_CONTROL_PUBLIC_URL || undefined,
     }).fetch,
     hostname: host,
     port,

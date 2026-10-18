@@ -10,6 +10,7 @@ import { createDashboard } from "./dashboard.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
 import type { KitRepos } from "./kit-repos.ts";
 import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
+import type { MachineSsh } from "./machines/ssh.ts";
 import { mountMcp } from "./mcp.ts";
 import { metricsText } from "./metrics.ts";
 import { isOpencodeOwn, providerBase } from "./providers.ts";
@@ -169,6 +170,10 @@ export interface ControlOptions {
   kits?: KitRepos | undefined;
   /** How the new-campaign page reads a project's repository (tests give their own). */
   probeRepo?: typeof probeRepository | undefined;
+  /** Control's address as rigs and machines reach it (THERMITE_CONTROL_PUBLIC_URL). */
+  publicUrl?: string | undefined;
+  /** How control reaches machines over SSH (tests give their own). */
+  machineSsh?: MachineSsh | undefined;
 }
 
 export function createControlApi(
@@ -658,6 +663,8 @@ export function createControlApi(
       providerFetch: opts.providerFetch,
       kits: opts.kits,
       probeRepo: opts.probeRepo,
+      publicUrl: opts.publicUrl,
+      machineSsh: opts.machineSsh,
     }),
   );
   app.get("/", (c) => c.redirect("/ui", 302));

@@ -24,6 +24,7 @@ or its assignment instead: lane limits, trial length, budgets and the run's prom
 | `THERMITE_CONTROL_SESSION_DAYS` | 30 | How long an unused dashboard sign-in lasts |
 | `THERMITE_CONTROL_SECRETS_KEY_FILE` | `secrets.key` in `THERMITE_CONTROL_DIR`, made on first start | The key that encrypts the API keys of the model providers set on the dashboard. Mount it from a separate secret to keep it off the store's volume; without it, the stored keys cannot be read |
 | `THERMITE_CONTROL_STALE_SECONDS` | 180 | A rig with no report for this long shows as stale |
+| `THERMITE_CONTROL_PUBLIC_URL` | none | Control's address as rigs and machines reach it, for example `https://control.example.com`. A machine's check asks whether the machine reaches it |
 | `THERMITE_LIFECYCLE` | none | `compose` or `kubernetes`: lets control restart rigs and finish a full reset |
 | `THERMITE_COMPOSE_PROJECT`, `THERMITE_COMPOSE_SERVICES`, `THERMITE_ENGINE_SOCKET` | `thermite`, `{}`, `/run/engine.sock` | For `compose`: the project, each rig's service names, and the container engine's socket |
 | `THERMITE_K8S_NAMESPACE`, `THERMITE_K8S_SELECTOR_HARNESS`, `THERMITE_K8S_SELECTOR_SUPERVISOR` | `ar-{rig}`, `app.kubernetes.io/component=harness` and `=supervisor` | For `kubernetes`: where each rig's pods are and how to find them |

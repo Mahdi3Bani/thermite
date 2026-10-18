@@ -82,6 +82,11 @@ The supervisor is the rig's link to everything outside:
   - A rig receives a provider's key only when the owner gives it one of the provider's models. Its supervisor fetches it over its own authenticated channel and hands it to the harness, which keeps it readable by root alone.
   - The key is never in a command, an event, an export or a log. A worker gets it in its environment, which the lane's commands, running as another user, cannot read.
   - Control calls providers over HTTPS to list their models; it needs that much outbound access.
+- **Machines.** The same list holds machines control sets rigs up on, over SSH: an address, a user and a key (pasted, or made by control for the owner to add to the user's `authorized_keys`).
+  - Control reads the machine's host key and the owner compares and trusts it once; every later connection must present that key, and a changed key is refused and shown.
+  - Control connects with the OpenSSH client in its image, the key in a file that exists only for the call. Every command is one of Thermite's fixed scripts sent on standard input; nothing typed on the page is run as a command.
+  - A read-only check reads the machine: system, GPUs, Podman, NVIDIA's container toolkit, systemd, sudo, and whether it reaches control.
+  - What a rig needs and the machine lacks is installed only from a fixed list of recipes, each shown exactly as it would run, and only after the owner says yes to that install on that machine. The yes is recorded with who gave it, bound to that script, and used once.
 - **Worker harnesses.** Each rig's agents run in Pi (built in) or OpenCode v2, chosen with the model on the settings page.
   - Under OpenCode, a trial runs `opencode run` headless in the lane's workspace, as the lane's own user, with its own tools approved and under the lane's memory, disk and time limits. It has exactly the access the lane's commands have, and none of the judge's. Thermite's tools are the `thermite-trial` command (submit, dev runs, status), which calls the harness API with the trial's token.
   - OpenCode reaches the rig's provider through a proxy in the harness API, which takes the trial's token and adds the provider's key, so the key never reaches the lane. OpenCode's own models need no key.

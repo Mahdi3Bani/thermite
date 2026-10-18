@@ -434,6 +434,7 @@ pre.report { white-space: pre-wrap; font-family: var(--font-mono); font-size: 12
 #nc [hidden], #prov-add [hidden] { display: none !important; }
 .kind { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
 .kind.m { background: var(--primary-surface); color: var(--info-foreground); }
+.kind.r { background: var(--warning-surface); color: var(--warning-foreground); }
 .kind.g { background: color-mix(in srgb, var(--violet-foreground) 14%, transparent); color: var(--violet-foreground); }
 .fd { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; min-width: 0; }
 .fd input:not([type=checkbox]):not([type=file]), .fd select, .fd textarea { height: 34px; padding: 0 10px; border: 1px solid var(--input); border-radius: var(--control-radius); background: var(--card); font-size: 13px; width: 100%; }

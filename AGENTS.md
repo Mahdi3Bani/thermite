@@ -86,6 +86,8 @@ Run from the repository root before every commit, and report which ran and which
   - `COMPOSE="podman compose" node scripts/control-acceptance.mjs`
 - New-campaign acceptance, after changes to the new-campaign page, the campaign builder, kits kept on control, Git access or the supervisor's staging. A tiny project is served by `git daemon`; the campaign is created through the dashboard form and its first run must start with both imports verified:
   - `COMPOSE="podman compose" node scripts/campaign-acceptance.mjs`
+- Machines acceptance, after changes to machines over SSH, their checks or install recipes. A local container with an SSH server stands in for the machine (never a real host); control reaches it from its own image, the host key must match, and Podman is installed only after the owner's yes (it downloads packages):
+  - `COMPOSE="podman compose" node scripts/machine-acceptance.mjs`
 - Agents acceptance (M4), after changes to the workers, planner, scheduler, dev runs or the harness image. A scripted model on the host stands in for a real model route:
   - `COMPOSE="podman compose" node scripts/agents-acceptance.mjs`
 - Steering acceptance (M5), after changes to the supervisor's advisors, audits, propagation, reviews, the lifecycle drivers or full reset. It uses two rigs and a scripted host model; with Podman it also mounts the engine socket (`compose.lifecycle.yaml`) to test restarts. Allow about 20–30 minutes:
