@@ -68,6 +68,7 @@ import {
   timeline,
   waitingOn,
 } from "./ui/operator.ts";
+import { PROVIDERS_JS } from "./ui/providers-client.ts";
 import { STYLE } from "./ui/style.ts";
 import { auditReason, clip, jobText, runStatusText, signed, span } from "./ui/words.ts";
 import {
@@ -727,6 +728,12 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
   // ---------------------------------------------------------------- a new campaign
   app.get("/ui/assets/new-campaign.js", (c) =>
     c.body(NEW_CAMPAIGN_JS, 200, {
+      "content-type": "text/javascript; charset=utf-8",
+      "cache-control": "no-cache",
+    }),
+  );
+  app.get("/ui/assets/providers.js", (c) =>
+    c.body(PROVIDERS_JS, 200, {
       "content-type": "text/javascript; charset=utf-8",
       "cache-control": "no-cache",
     }),
@@ -1803,6 +1810,33 @@ ${runsNow ? `<div class="block"><div class="head"><h2>At work</h2><span class="n
     opencode: "OpenCode",
   };
   const HARNESSES: Record<Harness, string> = { pi: "Pi", opencode: "OpenCode v2" };
+  const TYPE_TIP =
+    "What kind of provider it is. OpenAI-compatible covers most model servers (vLLM, LiteLLM, OpenRouter, Ollama). Anthropic is Anthropic's own API. OpenCode is OpenCode's own service, whose free models need the OpenCode harness.";
+  const BASE_TIP =
+    "Where the provider's API is: for an OpenAI-compatible server, the address ending in /v1. Anthropic and OpenCode: leave it empty for their own.";
+  /** The add form's button and what it says happens, by type (the page script shows them). */
+  const ADD_SAYS = {
+    openai: [
+      "Add and list its models",
+      "Control seals the key and reads the provider's model list at once, and again when you press Refresh models.",
+    ],
+    anthropic: [
+      "Add and list its models",
+      "Control seals the key and reads Anthropic's model list with it.",
+    ],
+    opencode: [
+      "Add and list its models",
+      "OpenCode's free models need no key, and run only in the OpenCode harness. Control reads its model list at once.",
+    ],
+    gitkey: [
+      "Make the key",
+      "Control makes an SSH key pair and shows its public half: add it to the repository (or the account) as a read-only deploy key. The private half stays sealed in control and goes only to rigs running a campaign that uses it.",
+    ],
+    gittoken: [
+      "Add the token",
+      "Control seals the token. It goes only to rigs running a campaign that uses it. Use a token that can only read the repositories you need.",
+    ],
+  } satisfies Record<string, [string, string]>;
   const MODEL_ID = /^[\w.:/@+-]{1,200}$/;
   const settingsUrl = (k: "ok" | "error", m: string) =>
     `/ui/settings?${k}=${encodeURIComponent(m)}`;
@@ -1828,6 +1862,7 @@ ${runsNow ? `<div class="block"><div class="head"><h2>At work</h2><span class="n
     const vs = views();
     const t = csrf(c);
     const providers = store.providers();
+    const gitCount = store.gitAccessList().length;
     const given = store.rigModels();
     const usersOf = (name: string) =>
       Object.entries(given)
@@ -1856,15 +1891,15 @@ ${runsNow ? `<div class="block"><div class="head"><h2>At work</h2><span class="n
           : "";
         const pName = encodeURIComponent(p.name);
         return `<details class="dq${p.models_error ? " dq-bad" : ""}" data-k="provider-${esc(p.name)}"><summary>
-<span class="dq-kind route-name">${esc(TYPES[p.type])}</span>
-<span class="dq-main"><span class="dq-head">${esc(p.name)}</span>${status}<span class="dq-sub"><span class="dq-where">${esc(p.base_url || ANTHROPIC_BASE)}</span><span class="chip">${p.key_hint ? `key ${esc(p.key_hint)}` : "no key: its free models"}</span>${p.type === "opencode" ? `<span class="chip info">runs in the OpenCode harness</span>` : isOpencodeOwn(p) ? `<span class="chip info">OpenCode's own: its free models run in the OpenCode harness</span>` : ""}${p.base_url.startsWith("http://") ? `<span class="chip warn">not HTTPS</span>` : ""}<span class="dq-where">${rigs.length ? `used by ${rigs.map((x) => esc(x)).join(", ")}` : "no rig uses it"}</span></span></span>
+<span class="dq-kind"><span class="kind m">Models</span></span>
+<span class="dq-main"><span class="dq-head">${esc(p.name)} <span class="muted" style="font-weight:400">· ${esc(TYPES[p.type])}</span></span>${status}<span class="dq-sub"><span class="dq-where">${esc(p.base_url || ANTHROPIC_BASE)}</span><span class="chip">${p.key_hint ? `key ${esc(p.key_hint)}` : "no key: its free models"}</span>${p.type === "opencode" ? `<span class="chip info">runs in the OpenCode harness</span>` : isOpencodeOwn(p) ? `<span class="chip info">OpenCode's own: its free models run in the OpenCode harness</span>` : ""}${p.base_url.startsWith("http://") ? `<span class="chip warn">not HTTPS</span>` : ""}<span class="dq-where">${rigs.length ? `used by ${rigs.map((x) => esc(x)).join(", ")}` : "no rig uses it"}</span></span></span>
 <span class="dq-side"><span class="dq-btns"><form class="inline" method="post" action="/ui/settings/providers/${pName}/refresh"><input type="hidden" name="csrf" value="${t}"><button>Refresh models</button></form></span></span>
 </summary><div class="dq-body">${list}
-<form method="post" action="/ui/settings/providers/${pName}/models" class="row" style="gap:8px"><input type="hidden" name="csrf" value="${t}"><input name="model" maxlength="200" placeholder="a model it does not list, by its name" style="width:320px"><button>Add it</button></form>
+<form method="post" action="/ui/settings/providers/${pName}/models" class="form-grid"><input type="hidden" name="csrf" value="${t}"><label>${infoLabel("A model it does not list", "Some providers serve models their list leaves out. Add one by its id at the provider; it shows as yours.")}<input name="model" maxlength="200" placeholder="its id at the provider"></label><div class="form-end"><button>Add it</button></div></form>
 <form method="post" action="/ui/settings/providers" class="form-grid" autocomplete="off"><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="name" value="${esc(p.name)}">
-<label>Type${typeSelect(p.type)}</label>
-<label>Base URL<input name="base_url" maxlength="500" value="${esc(p.base_url)}"></label>
-<label>API key<input name="api_key" type="password" autocomplete="new-password" maxlength="4096" placeholder="empty keeps the key ending ${esc(p.key_hint)}"></label>
+<label>${infoLabel("Type", TYPE_TIP)}${typeSelect(p.type)}</label>
+<label>${infoLabel("Base URL", BASE_TIP)}<input name="base_url" maxlength="500" value="${esc(p.base_url)}"></label>
+<label>${infoLabel("API key", "Control seals a new key at once and never shows it again. Leave it empty to keep the current one.")}<input name="api_key" type="password" autocomplete="new-password" maxlength="4096" placeholder="empty keeps the key ending ${esc(p.key_hint)}"></label>
 <div class="form-end row" style="gap:8px"><button class="primary">Save and list its models</button></div></form>
 ${
   rigs.length
@@ -1873,12 +1908,16 @@ ${
 }</div></details>`;
       })
       .join("");
-    const addForm = `<form method="post" action="/ui/settings/providers" class="form-grid" autocomplete="off"><input type="hidden" name="csrf" value="${t}">
-<label>Name<input name="name" required maxlength="64" placeholder="for example opencode"></label>
-<label>Type${typeSelect()}</label>
-<label>Base URL<input name="base_url" maxlength="500" placeholder="https://…/v1 (Anthropic and OpenCode: empty for their own)"></label>
-<label>API key<input name="api_key" type="password" autocomplete="new-password" maxlength="4096" placeholder="never shown again (OpenCode: empty for its free models)"></label>
-<div class="form-end"><button class="primary">Add and list its models</button></div></form>`;
+    const models = "openai anthropic opencode";
+    const addForm = `<form method="post" action="/ui/settings/add" class="form-grid" autocomplete="off" id="prov-add" data-says="${esc(JSON.stringify(ADD_SAYS))}"><input type="hidden" name="csrf" value="${t}">
+<label>${infoLabel("Type", `${TYPE_TIP} Git access lets rigs fetch private repositories: a deploy key control makes, or an HTTPS token you paste.`)}<select name="type" id="ptype"><optgroup label="Models">${(Object.keys(TYPES) as ProviderType[]).map((x) => `<option value="${x}">${x === "opencode" ? "OpenCode (its own models)" : TYPES[x]}</option>`).join("")}</optgroup><optgroup label="Git access"><option value="gitkey">A deploy key (control makes it)</option><option value="gittoken">An access token (HTTPS)</option></optgroup></select></label>
+<label>${infoLabel("Name", "How it shows in Thermite, and how rigs and campaigns refer to it: for example my-litellm or github-deploy. Lowercase letters, digits, dots and dashes.")}<input name="name" required maxlength="64" placeholder="for example my-litellm"></label>
+<label data-for="${models}">${infoLabel("Base URL", BASE_TIP)}<input name="base_url" maxlength="500" placeholder="https://…/v1 (Anthropic and OpenCode: empty for their own)"></label>
+<label data-for="${models}">${infoLabel("API key", "The provider's key. Control seals it at once and never shows it again. OpenCode: leave it empty for its free models.")}<input name="api_key" type="password" autocomplete="new-password" maxlength="4096" placeholder="never shown again"></label>
+<label data-for="gittoken" hidden>${infoLabel("Token", "An access token for the Git host, read-only if the host allows. Control seals it at once and never shows it again.")}<input name="token" type="password" autocomplete="new-password" maxlength="4096" placeholder="never shown again"></label>
+<label data-for="gittoken" hidden>${infoLabel("User name", "The name the host expects with the token. GitHub takes x-access-token (the default); GitLab takes oauth2.")}<input name="username" maxlength="100" placeholder="x-access-token"></label>
+<div class="nc-does" id="pdo" style="grid-column:1/-1"><b>What happens.</b> ${ADD_SAYS.openai[1]}</div>
+<div class="form-end"><button class="primary" id="padd">${ADD_SAYS.openai[0]}</button></div></form>`;
     const options = (want: { provider: string; model: string } | undefined) =>
       `<option value=""${want ? "" : " selected"}>its own settings</option>${providers
         .filter((p) => p.models.length)
@@ -1927,41 +1966,53 @@ ${
       .join("");
     return page(
       c,
-      { title: "Settings", active: "settings" },
-      `<p class="run-said">Add a provider once: its name, type, base URL and API key. Thermite lists its models from the provider itself. Then choose, for each rig, the harness its agents run in (Pi or OpenCode v2) and their model: any provider works with either harness, and OpenCode's own models need the OpenCode harness. Control keeps each key encrypted and never shows it again.</p>
+      {
+        title: "Providers",
+        active: "settings",
+        crumbs: [{ href: "/ui/settings", text: "Settings" }],
+      },
+      `<p class="run-said">Providers are what Thermite uses: model providers serve the agents' models, and Git access lets rigs fetch private repositories. Add each once with its key. Control seals every key, never shows it again, and gives a rig only what it uses. Then choose, for each rig, the harness its agents run in (Pi or OpenCode v2) and their model.</p>
 ${note}
-<div class="block"><div class="head"><h2>Model providers</h2><span class="n">${providers.length}</span><span class="right">models come from each provider's own list</span></div>${providers.length ? `<div class="dqs">${providerRows}</div>` : `<div class="card"><div class="empty">No provider yet: add one below.</div></div>`}</div>
+<div class="block"><div class="head"><h2>Providers</h2><span class="n">${providers.length + gitCount}</span><span class="right">models are read from each provider itself</span></div>${providers.length + gitCount ? `<div class="dqs">${providerRows}${gitRows(t)}</div>` : `<div class="card"><div class="empty">No provider yet: add one below.</div></div>`}</div>
 <div class="block"><div class="head"><h2>Add a provider</h2></div><div class="card">${addForm}</div></div>
-${gitAccessBlock(t)}
-<div class="block"><div class="head"><h2>Harness and model for each rig</h2><span class="right">a rig takes a change within a minute; then check it</span></div><div class="card flat">${rigRows || `<div class="empty">No rig has reported yet.</div>`}</div></div>`,
+<div class="block"><div class="head"><h2>Harness and model for each rig</h2><span class="right">a rig takes a change within a minute; then check it</span></div><div class="card flat">${rigRows || `<div class="empty">No rig has reported yet.</div>`}</div></div>
+<script src="/ui/assets/providers.js" defer></script>`,
       vs,
     );
   });
 
   // ---------------------------------------------------------------- Git access (Settings)
   const ACCESS_NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/;
-  const gitAccessBlock = (t: string) => {
-    const rows = store
+  const gitRows = (t: string) =>
+    store
       .gitAccessList()
-      .map(
-        (g) =>
-          `<div class="card" style="margin-bottom:10px"><div class="card-head"><span class="title">${esc(g.name)}</span><span class="chip">${g.kind === "ssh" ? "SSH deploy key" : "HTTPS token"}</span><span class="sub">${g.kind === "ssh" ? esc(g.fingerprint ?? "") : `token ${esc(g.hint)}${g.username ? ` · user ${esc(g.username)}` : ""}`}</span><span class="right"><form class="inline" method="post" action="/ui/settings/git/${encodeURIComponent(g.name)}/delete"><input type="hidden" name="csrf" value="${t}"><button class="sm danger">Delete</button></form></span></div>${
-            g.public_key
-              ? `<div class="muted small" style="margin:8px 0 4px">Add this public key to the repository (or the account) as a <b>read-only</b> deploy key. Its private half stays sealed in control.</div><pre class="json" style="white-space:pre-wrap;word-break:break-all">${esc(g.public_key)}</pre>`
-              : ""
-          }</div>`,
-      )
+      .map((g) => {
+        const users = store.campaignsUsingGitAccess(g.name);
+        const gName = encodeURIComponent(g.name);
+        const ssh = g.kind === "ssh";
+        return `<details class="dq" data-k="git-${esc(g.name)}"><summary>
+<span class="dq-kind"><span class="kind g">Git access</span></span>
+<span class="dq-main"><span class="dq-head">${esc(g.name)} <span class="muted" style="font-weight:400">· ${ssh ? "SSH deploy key" : "HTTPS token"}</span></span><span class="dq-why">${ssh ? `fingerprint ${esc(g.fingerprint ?? "")}` : `token ${esc(g.hint)}${g.username ? ` · user ${esc(g.username)}` : ""}`}</span><span class="dq-sub"><span class="dq-where">${ssh ? "for ssh:// and git@host:path addresses" : "for https:// addresses"}</span><span class="dq-where">${users.length ? `used by ${users.map((x) => esc(x)).join(", ")}` : "no campaign uses it"}</span></span></span>
+</summary><div class="dq-body">${
+          ssh && g.public_key
+            ? `<div class="muted small" style="margin:0 0 4px">Add this public key to the repository (or the account) as a <b>read-only</b> deploy key. Its private half stays sealed in control.</div><pre class="json" style="white-space:pre-wrap;word-break:break-all">${esc(g.public_key)}</pre>`
+            : ""
+        }
+<form method="post" action="/ui/settings/git/${gName}/test" class="form-grid" autocomplete="off"><input type="hidden" name="csrf" value="${t}"><label>${infoLabel("Try it on a repository", `Control reads the repository's branches with this ${ssh ? "key" : "token"}, as a rig would fetch it, and says what it found. Nothing is changed or kept.`)}<input name="url" required maxlength="500" placeholder="${ssh ? "git@github.com:you/project.git" : "https://github.com/you/project.git"}"></label><div class="form-end"><button>Try it</button></div></form>${
+          ssh
+            ? ""
+            : `
+<form method="post" action="/ui/settings/git/${gName}/token" class="form-grid" autocomplete="off"><input type="hidden" name="csrf" value="${t}"><label>${infoLabel("New token", "Replaces the token under the same name, so campaigns that use it keep working. Control seals it at once and never shows it again.")}<input name="token" type="password" autocomplete="new-password" maxlength="4096" required placeholder="replaces the token ending ${esc(g.hint)}"></label><div class="form-end"><button class="primary">Replace the token</button></div></form>`
+        }
+${
+  users.length
+    ? `<div class="muted small">In use by ${users.map((x) => esc(x)).join(", ")}: their runs fetch with it, so it can't be deleted.</div>`
+    : `<form class="inline" method="post" action="/ui/settings/git/${gName}/delete"><input type="hidden" name="csrf" value="${t}"><button class="danger">Delete this Git access</button></form>`
+}</div></details>`;
+      })
       .join("");
-    return `<div class="block"><div class="head"><h2>Git access</h2><span class="n">${store.gitAccessList().length}</span><span class="right">for private repositories; a rig gets one only for a campaign that names it</span></div>${rows}
-<div class="card"><form method="post" action="/ui/settings/git" class="form-grid" autocomplete="off"><input type="hidden" name="csrf" value="${t}">
-<label>${infoLabel("Name", "How campaigns refer to it, for example github-deploy: lowercase letters, digits, dots, dashes.")}<input name="name" required maxlength="64" placeholder="github-deploy"></label>
-<label>${infoLabel("Kind", "A deploy key: control makes an SSH key pair and shows its public half for you to add to the repository; it works with ssh:// and git@host:path addresses. A token: an HTTPS access token you paste, for https:// addresses.")}<select name="kind"><option value="ssh">SSH deploy key (control makes it)</option><option value="token">HTTPS token (you paste it)</option></select></label>
-<label>${infoLabel("Token", "Only for a token: the access token, read-only if the host allows. Control encrypts it at once and never shows it again.")}<input name="token" type="password" autocomplete="new-password" maxlength="4096" placeholder="only for a token"></label>
-<label>${infoLabel("User name", "Only for a token: the name the host expects with it. GitHub takes x-access-token (the default); GitLab takes oauth2.")}<input name="username" maxlength="100" placeholder="x-access-token"></label>
-<div class="form-end"><button class="primary">Add it</button></div></form></div></div>`;
-  };
-  app.post("/ui/settings/git", async (c) => {
-    const f = await c.req.parseBody();
+  /** Git access added from the add form (or the older Git access form). */
+  const addGit = (c: Ctx, f: Record<string, unknown>) => {
     const fail = (m: string) => c.redirect(settingsUrl("error", m), 303);
     const name = String(f.name ?? "").trim();
     if (!ACCESS_NAME.test(name))
@@ -2005,9 +2056,47 @@ ${gitAccessBlock(t)}
       ),
       303,
     );
+  };
+  app.post("/ui/settings/git", async (c) => addGit(c, await c.req.parseBody()));
+  // Reads a repository's branches with this access, as a rig would fetch it; nothing is kept.
+  app.post("/ui/settings/git/:name/test", async (c) => {
+    const name = c.req.param("name");
+    const url = String((await c.req.parseBody()).url ?? "").trim();
+    if (!store.gitAccess(name)) return c.redirect(settingsUrl("error", "No such Git access."), 303);
+    try {
+      const found = await (opts.probeRepo ?? probeRepository)(url, "HEAD", accessFor(name));
+      return c.redirect(
+        settingsUrl(
+          "ok",
+          `"${name}" reads ${url}: its default branch is at ${found.commit.slice(0, 7)}, with ${found.files} files.`,
+        ),
+        303,
+      );
+    } catch (err) {
+      const why = err instanceof Error ? err.message : String(err);
+      return c.redirect(settingsUrl("error", `"${name}" could not read ${url}: ${why}`), 303);
+    }
+  });
+  app.post("/ui/settings/git/:name/token", async (c) => {
+    const name = c.req.param("name");
+    const token = String((await c.req.parseBody()).token ?? "").trim();
+    if (!token || /\s/.test(token) || token.length > 4096)
+      return c.redirect(settingsUrl("error", "Paste the token, without spaces."), 303);
+    return c.redirect(
+      store.replaceGitToken(name, opts.secrets.seal(token), keyHint(token), "owner:ui")
+        ? settingsUrl("ok", `"${name}" has its new token; campaigns that use it keep working.`)
+        : settingsUrl("error", "No such token."),
+      303,
+    );
   });
   app.post("/ui/settings/git/:name/delete", (c) => {
     const name = c.req.param("name");
+    const users = store.campaignsUsingGitAccess(name);
+    if (users.length)
+      return c.redirect(
+        settingsUrl("error", `"${name}" is used by ${users.join(", ")}: their runs fetch with it.`),
+        303,
+      );
     return c.redirect(
       store.deleteGitAccess(name, "owner:ui")
         ? settingsUrl("ok", `"${name}" is deleted. Rigs that ran with it keep nothing of it.`)
@@ -2016,8 +2105,16 @@ ${gitAccessBlock(t)}
     );
   });
 
-  app.post("/ui/settings/providers", async (c) => {
+  // The add form: a model provider or Git access, by its type.
+  app.post("/ui/settings/add", async (c) => {
     const f = await c.req.parseBody();
+    if (f.type === "gitkey" || f.type === "gittoken")
+      return addGit(c, { ...f, kind: f.type === "gittoken" ? "token" : "ssh" });
+    return saveProvider(c, f);
+  });
+  app.post("/ui/settings/providers", async (c) => saveProvider(c, await c.req.parseBody()));
+  /** A model provider added or changed. */
+  const saveProvider = async (c: Ctx, f: Record<string, unknown>) => {
     const fail = (m: string) => c.redirect(settingsUrl("error", m), 303);
     const name = String(f.name ?? "").trim();
     if (!PROVIDER_NAME.test(name))
@@ -2066,7 +2163,7 @@ ${gitAccessBlock(t)}
           ),
       303,
     );
-  });
+  };
 
   app.post("/ui/settings/providers/:name/refresh", async (c) => {
     const p = store.provider(c.req.param("name"));

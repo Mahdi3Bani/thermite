@@ -77,7 +77,7 @@ The supervisor is the rig's link to everything outside:
   - check a rig: its model route (one tool-calling request), its isolation selftest (which the harness also runs at every start), or a judge-only smoke campaign on its own target, each reported back as pass or fail;
   - export the rig's results to git.
 - **Lifecycle.** Control can restart or fully reset a rig's containers, and the rig exports its results first.
-- **Model providers.** The owner adds the agents' model providers on the dashboard's settings page: a name, the type (OpenAI-compatible or Anthropic), the base URL and the API key. Control lists each provider's models from the provider itself, and the owner chooses a model for each rig.
+- **Providers.** The owner adds the agents' model providers on the dashboard's Providers page (under Settings), in the same list as Git access for private repositories: a name, the type (OpenAI-compatible or Anthropic), the base URL and the API key. Control lists each provider's models from the provider itself, and the owner chooses a model for each rig.
   - Control encrypts each key with a key of its own, kept outside its store, and never shows it again.
   - A rig receives a provider's key only when the owner gives it one of the provider's models. Its supervisor fetches it over its own authenticated channel and hands it to the harness, which keeps it readable by root alone.
   - The key is never in a command, an event, an export or a log. A worker gets it in its environment, which the lane's commands, running as another user, cannot read.

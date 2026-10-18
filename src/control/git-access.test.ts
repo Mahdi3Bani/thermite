@@ -18,7 +18,7 @@ import { ControlStore } from "./store.ts";
 const ADMIN = "admin-token-abcdef";
 const C = "9a41c07e0d1f2a3b4c5d6e7f8091a2b3c4d5e6f7";
 
-async function control() {
+async function control(extra: Partial<Parameters<typeof createControlApi>[3]> = {}) {
   const keys = generateSigningKeys();
   const store = new ControlStore(":memory:");
   const secrets = SecretBox.ephemeral();
@@ -27,7 +27,7 @@ async function control() {
     store,
     { admin: ADMIN, rigs: { "rig-a": "rig-token-aaaaaa", "rig-b": "rig-token-bbbbbb" } },
     keys.privateKeyPem,
-    { staleAfterMs: 180_000, kits, secrets },
+    { staleAfterMs: 180_000, kits, secrets, ...extra },
   );
   const login = await api.request("/ui/login", {
     method: "POST",
@@ -100,6 +100,97 @@ describe("Git access for private repositories", () => {
     );
     await s.post("/ui/settings/git/gitlab-token/delete", {});
     assert.equal(s.store.gitAccess("gitlab-token"), undefined);
+  });
+
+  test("Providers lists models and Git access together, one form adds either, and access can be tried", async () => {
+    const tried: string[] = [];
+    const s = await control({
+      probeRepo: async (url, _ref, access) => {
+        tried.push(`${url} ${access?.auth.kind}`);
+        if (url.includes("nope")) throw new Error("the host refused the key");
+        return { commit: C, files: 12, suggest: [] };
+      },
+      providerFetch: async () => Response.json({ data: [{ id: "model-a" }] }),
+    });
+    const where = (r: Response) => decodeURIComponent(String(r.headers.get("location")));
+    assert.match(
+      where(await s.post("/ui/settings/add", { type: "gitkey", name: "github-deploy" })),
+      /Made the deploy key "github-deploy"/,
+    );
+    await s.post("/ui/settings/add", {
+      type: "gittoken",
+      name: "gitlab-token",
+      token: "glpat-secret-value-1234",
+      username: "oauth2",
+    });
+    await s.post("/ui/settings/add", {
+      type: "openai",
+      name: "lab-models",
+      base_url: "https://models.example.com/v1",
+      api_key: "sk-model-key-9876",
+    });
+    assert.equal(s.store.gitAccess("gitlab-token")?.kind, "token");
+    assert.deepEqual(
+      s.store.provider("lab-models")?.models.map((m) => m.id),
+      ["model-a"],
+    );
+    const page = await s.page("/ui/settings");
+    assert.match(page, /<title>Providers · Thermite<\/title>/);
+    assert.equal(page.match(/class="kind m">Models</g)?.length, 1);
+    assert.equal(page.match(/class="kind g">Git access</g)?.length, 2);
+    assert.match(page, /<script src="\/ui\/assets\/providers.js" defer><\/script>/);
+    assert.ok(!page.includes("glpat-secret-value-1234") && !page.includes("sk-model-key-9876"));
+    // Every label on the page says what it is for.
+    const labels = page.match(/class="lb"/g)?.length ?? 0;
+    const tips = page.match(/class="ii" tabindex="0" data-tip="[^"]+"/g)?.length ?? 0;
+    assert.ok(labels > 8 && tips === labels, `${labels} labels, ${tips} with descriptions`);
+    const script = await (await s.api.request("/ui/assets/providers.js")).text();
+    assert.doesNotThrow(() => new Function(script));
+    // Trying it on a repository says what it found, or why not.
+    assert.match(
+      where(
+        await s.post("/ui/settings/git/github-deploy/test", {
+          url: "git@git.example.com:team/private.git",
+        }),
+      ),
+      /reads git@git.example.com:team\/private.git: its default branch is at 9a41c07, with 12 files/,
+    );
+    assert.match(
+      where(
+        await s.post("/ui/settings/git/github-deploy/test", {
+          url: "git@git.example.com:team/nope.git",
+        }),
+      ),
+      /could not read git@git.example.com:team\/nope.git: the host refused the key/,
+    );
+    assert.deepEqual(tried, [
+      "git@git.example.com:team/private.git ssh",
+      "git@git.example.com:team/nope.git ssh",
+    ]);
+    // A token is replaced under the same name.
+    await s.post("/ui/settings/git/gitlab-token/token", { token: "glpat-new-value-5678" });
+    const g = s.store.gitAccess("gitlab-token");
+    assert.equal(g && s.secrets.open(g.secret_sealed), "glpat-new-value-5678");
+    assert.match(await s.page("/ui/settings"), /token …5678 · user oauth2/);
+    // Access a campaign fetches with can't be deleted.
+    const saved = startCampaign(
+      { store: s.store, kits: s.kits, privateKeyPem: s.keys.privateKeyPem },
+      {
+        draft: draft("gitlab-token"),
+        rig: "rig-a",
+        target: { type: "cpu", class: "generic-cpu" },
+        start: false,
+        by: "owner:ui",
+      },
+    );
+    assert.ok(saved.ok, JSON.stringify(!saved.ok && saved.errors));
+    assert.deepEqual(s.store.campaignsUsingGitAccess("gitlab-token"), ["private-speed"]);
+    assert.match(
+      where(await s.post("/ui/settings/git/gitlab-token/delete", {})),
+      /"gitlab-token" is used by private-speed/,
+    );
+    assert.ok(s.store.gitAccess("gitlab-token"));
+    assert.match(await s.page("/ui/settings"), /In use by private-speed/);
   });
 
   test("a rig gets Git access only for a campaign assigned to it that names it", async () => {

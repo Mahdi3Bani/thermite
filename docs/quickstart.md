@@ -60,9 +60,9 @@ closes when the check is done.
 Workers and the planner need a model with tool calling, from an OpenAI-compatible provider or
 Anthropic. You add it on the dashboard, with no restart:
 
-1. Open **Settings** and add a provider: a name, its type, its base URL (for an OpenAI-compatible
-   provider, the URL ending in `/v1`; for Anthropic, leave it empty) and its API key. Control
-   lists the provider's models from the provider itself.
+1. Open **Settings › Providers** and add a provider: a name, its type, its base URL (for an
+   OpenAI-compatible provider, the URL ending in `/v1`; for Anthropic, leave it empty) and its API
+   key. Control lists the provider's models from the provider itself.
 2. Under **Harness and model for each rig**, choose the harness the rig's agents run in and their
    model, then press **Use**. The rig takes it within a minute and checks it at once: one request
    through it must come back as a correct tool call. If it fails, its sentence says what came back
@@ -93,7 +93,7 @@ measure it, and which rig runs it. You can describe the kit right there: a build
 cases, a run command and a check. Control writes the kit, keeps it, and starts the first run. A
 kit you already have can come from its git repository, or be uploaded as a `.zip` or `.tar.gz`
 with `kit.json` at its top; control checks it, lists its cases and scores to choose from, and
-keeps it like a kit written on the page. Each field's ⓘ says what it means. For a private repository, first add Git access in **Settings**: a
+keeps it like a kit written on the page. Each field's ⓘ says what it means. For a private repository, first add Git access in **Settings › Providers**: a
 deploy key control makes (add its public half to the repository) or an HTTPS token. Only the rigs
 that run a campaign using it ever receive it.
 

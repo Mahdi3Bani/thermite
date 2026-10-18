@@ -431,7 +431,10 @@ pre.report { white-space: pre-wrap; font-family: var(--font-mono); font-size: 12
 .ii:hover, .ii:focus { background: var(--foreground); color: var(--background); border-color: var(--foreground); outline: none; }
 #tip { position: fixed; z-index: 50; max-width: 340px; padding: 10px 12px; border-radius: 8px; background: var(--foreground); color: var(--background); font-size: 12.5px; line-height: 1.45; box-shadow: 0 6px 24px rgba(0,0,0,.18); pointer-events: none; display: none; }
 /* The new-campaign page. */
-#nc [hidden] { display: none !important; }
+#nc [hidden], #prov-add [hidden] { display: none !important; }
+.kind { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+.kind.m { background: var(--primary-surface); color: var(--info-foreground); }
+.kind.g { background: color-mix(in srgb, var(--violet-foreground) 14%, transparent); color: var(--violet-foreground); }
 .fd { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; min-width: 0; }
 .fd input:not([type=checkbox]):not([type=file]), .fd select, .fd textarea { height: 34px; padding: 0 10px; border: 1px solid var(--input); border-radius: var(--control-radius); background: var(--card); font-size: 13px; width: 100%; }
 .fd textarea { height: 64px; padding: 8px 10px; font-family: var(--font-mono); font-size: 12px; }

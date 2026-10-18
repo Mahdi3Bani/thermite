@@ -1152,6 +1152,41 @@ export class ControlStore {
     );
   }
 
+  /** A token replaced in place: same name, so campaigns that name it keep working. */
+  replaceGitToken(name: string, secretSealed: string, hint: string, by: string): boolean {
+    const r = this.db
+      .prepare(
+        "update git_access set secret_sealed = ?, hint = ? where name = ? and kind = 'token'",
+      )
+      .run(secretSealed, hint, name);
+    if (Number(r.changes)) this.audit(by, "git_access_token_replaced", { name, hint });
+    return Number(r.changes) > 0;
+  }
+
+  /** The campaigns whose latest version fetches its project or kit with this Git access. */
+  campaignsUsingGitAccess(name: string): string[] {
+    const latest = new Map<string, CampaignSources>();
+    const rows = this.db
+      .prepare("select campaign, sources from campaign_version order by version desc")
+      .all() as { campaign: string; sources: string }[];
+    for (const r of rows) {
+      if (latest.has(r.campaign)) continue;
+      try {
+        latest.set(r.campaign, JSON.parse(r.sources) as CampaignSources);
+      } catch {
+        latest.set(r.campaign, {});
+      }
+    }
+    return [...latest]
+      .filter(
+        ([, s]) =>
+          s.project?.access === name ||
+          (s.kit !== undefined && "git" in s.kit && s.kit.access === name),
+      )
+      .map(([c]) => c)
+      .sort();
+  }
+
   deleteGitAccess(name: string, by: string): boolean {
     const r = this.db.prepare("delete from git_access where name = ?").run(name);
     if (Number(r.changes)) this.audit(by, "git_access_deleted", { name });
