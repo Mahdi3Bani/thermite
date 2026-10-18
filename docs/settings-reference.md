@@ -69,8 +69,9 @@ A model chosen for the rig on control's **Settings** page comes before these, an
 them: the rig receives it, with its provider's key, through its supervisor. These settings are for
 a rig that keeps its own model. `THERMITE_MODEL_API` is `openai` (the default), `anthropic`,
 `opencode` (OpenCode's own models) or `claude` (a Claude subscription, whose token is then
-`THERMITE_MODEL_API_KEY`); `THERMITE_AGENT_HARNESS` is `pi` (the default), `opencode` or
-`claude-code`. A Claude subscription goes only with `claude-code`, and `claude-code` only with one.
+`THERMITE_MODEL_API_KEY`); `chatgpt` is set by the harness for its own workers only, because a
+ChatGPT login comes from control, which renews it every hour. `THERMITE_AGENT_HARNESS` is `pi` (the
+default), `opencode` or `claude-code`. A Claude subscription goes only with `claude-code`, and `claude-code` only with one.
 `THERMITE_OPENCODE_BIN` and `THERMITE_CLAUDE_BIN` name the OpenCode and Claude Code binaries when
 they are not `opencode` and `claude` on the PATH. Their older names, `QWEN_*`, are still read when the new ones are unset.
 

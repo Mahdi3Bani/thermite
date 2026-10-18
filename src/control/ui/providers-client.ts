@@ -20,7 +20,7 @@ export const PROVIDERS_JS = `
     const b = document.createElement("b");
     b.textContent = "What happens.";
     what.append(b, " " + s[1]);
-    form.elements.name.placeholder = t === "gitkey" || t === "gittoken" ? "for example github-deploy" : t === "runpod" ? "for example runpod" : t === "claude" ? "for example claude-max" : "for example my-litellm";
+    form.elements.name.placeholder = t === "gitkey" || t === "gittoken" ? "for example github-deploy" : t === "runpod" ? "for example runpod" : t === "claude" ? "for example claude-max" : t === "chatgpt" ? "for example chatgpt-pro" : "for example my-litellm";
   };
   type.addEventListener("change", show);
   show();

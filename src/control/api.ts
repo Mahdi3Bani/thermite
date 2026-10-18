@@ -5,6 +5,7 @@ import { z } from "zod";
 import { sha256Hex } from "../core/canonical.ts";
 import { COMMAND_KINDS, type CommandKind, reportBody, verifyJson } from "../core/commands.ts";
 import { LiveBatch, LiveEntry, liveBody } from "../core/live.ts";
+import { CHATGPT_API, ChatGPTLogins } from "./chatgpt.ts";
 import type { ClusterKubectl } from "./clusters/kubectl.ts";
 import { Credential, newToken } from "./credential.ts";
 import { createDashboard, type RigImages } from "./dashboard.ts";
@@ -203,6 +204,8 @@ export function createControlApi(
 
   const owner = Credential.from(tokens.admin);
   const secrets = opts.secrets ?? SecretBox.ephemeral();
+  // ChatGPT subscriptions' logins: control alone renews them (the dashboard signs them in).
+  const chatgpt = new ChatGPTLogins(store, secrets, opts.providerFetch);
   const opt = (t: string | Credential | undefined) =>
     t === undefined ? undefined : Credential.from(t);
   const creds = {
@@ -378,14 +381,38 @@ export function createControlApi(
 
   /**
    * A route as a rig receives it: the provider's endpoint and key (or a subscription's token, for
-   * Claude Code only), the model and the harness it runs in. Undefined when the key can't be opened.
+   * Claude Code only; or a ChatGPT login's access token, renewed here), the model and the harness
+   * it runs in. Undefined when the key can't be opened or the login renewed.
    */
-  const routeOf = (
+  const routeOf = async (
     p: ModelProvider,
     model: string,
     harness: Harness,
     effort: Effort | null | undefined,
-  ): Record<string, unknown> | undefined => {
+  ): Promise<Record<string, unknown> | undefined> => {
+    // Other providers take a reasoning effort up to high.
+    const reasoning = effort ? (effort === "xhigh" || effort === "max" ? "high" : effort) : null;
+    if (p.type === "chatgpt") {
+      const access = await chatgpt.access(p);
+      if (typeof access !== "string") return undefined;
+      return {
+        name: p.name,
+        type: "chatgpt",
+        harness: harness === "opencode" ? "opencode" : "pi",
+        version: p.version,
+        base_url: CHATGPT_API,
+        model,
+        context_window: p.models.find((m) => m.id === model)?.context_window ?? 0,
+        max_tokens: 0,
+        reasoning,
+        key_hint: p.key_hint,
+        // A renewed token is a new revision: the rig takes it on its next round.
+        revision: sha256Hex(
+          [p.name, "chatgpt", p.version, harness, model, reasoning ?? "", access].join("\n"),
+        ).slice(0, 16),
+        api_key: access,
+      };
+    }
     let key = "";
     try {
       // OpenCode's own provider may have no key (its free models need none).
@@ -420,8 +447,6 @@ export function createControlApi(
     // it needs no key (its free models), so none is sent.
     const native = harness === "opencode" && isOpencodeOwn(p);
     if (native) key = "";
-    // Other providers take a reasoning effort up to high.
-    const reasoning = effort ? (effort === "xhigh" || effort === "max" ? "high" : effort) : null;
     return {
       name: p.name,
       type: native ? "opencode" : p.type === "opencode" ? "openai" : p.type,
@@ -452,7 +477,7 @@ export function createControlApi(
     };
   };
   /** A rig's other agent's route (planner or an advisor), when the owner gave it a model. */
-  const roleRouteOf = (rig: string, role: AgentRole) => {
+  const roleRouteOf = async (rig: string, role: AgentRole) => {
     const a = store.roleModels(rig)[role];
     const p = a ? store.provider(a.provider) : undefined;
     if (!a || !p) return null;
@@ -460,31 +485,39 @@ export function createControlApi(
     // planner can; the dashboard gives it no advisor); every other provider through Pi.
     const opencodeOnly = isOpencodeOwn(p) && (p.type === "opencode" || !p.key_sealed);
     const harness = p.type === "claude" ? "claude-code" : opencodeOnly ? "opencode" : "pi";
-    return routeOf(p, a.model, harness, a.effort) ?? null;
+    return (await routeOf(p, a.model, harness, a.effort)) ?? null;
   };
 
-  app.get("/v1/rigs/:rig/model-route", rigAuth, (c) => {
+  app.get("/v1/rigs/:rig/model-route", rigAuth, async (c) => {
     c.header("cache-control", "no-store");
     const rig = c.req.param("rig");
     const r = store.rigModelFor(rig);
-    const planner = roleRouteOf(rig, "planner");
+    const planner = await roleRouteOf(rig, "planner");
     if (!r) return c.json({ route: null, planner });
-    const route = routeOf(r.provider, r.model, r.harness, r.effort);
+    const route = await routeOf(r.provider, r.model, r.harness, r.effort);
     if (!route)
-      return c.json({ error: "the provider's key cannot be opened: enter it again" }, 409);
+      return c.json(
+        {
+          error:
+            r.provider.type === "chatgpt"
+              ? "the ChatGPT login could not be renewed: sign in again on the Providers page"
+              : "the provider's key cannot be opened: enter it again",
+        },
+        409,
+      );
     return c.json({ route, planner });
   });
 
   // The supervisor's advisors, by role, when the owner gave them models (each with its key or
   // a subscription's token). A role with none keeps the supervisor's own configuration.
-  app.get("/v1/rigs/:rig/advisor-routes", rigAuth, (c) => {
+  app.get("/v1/rigs/:rig/advisor-routes", rigAuth, async (c) => {
     c.header("cache-control", "no-store");
     const rig = c.req.param("rig");
     return c.json({
-      teachers: roleRouteOf(rig, "teachers"),
-      combiner: roleRouteOf(rig, "combiner"),
-      auditor: roleRouteOf(rig, "auditor"),
-      panel: roleRouteOf(rig, "panel"),
+      teachers: await roleRouteOf(rig, "teachers"),
+      combiner: await roleRouteOf(rig, "combiner"),
+      auditor: await roleRouteOf(rig, "auditor"),
+      panel: await roleRouteOf(rig, "panel"),
     });
   });
 
@@ -739,6 +772,7 @@ export function createControlApi(
       driver: opts.driver,
       sessionDays: opts.sessionDays,
       secrets,
+      chatgpt,
       providerFetch: opts.providerFetch,
       kits: opts.kits,
       probeRepo: opts.probeRepo,

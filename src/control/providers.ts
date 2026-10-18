@@ -56,6 +56,8 @@ export function providerBase(type: ProviderType, base: string): string {
   if (type === "anthropic") return (b || ANTHROPIC_BASE).replace(/\/v1$/, "");
   // A Claude subscription has no endpoint of its own here: Claude Code knows where it goes.
   if (type === "claude") return ANTHROPIC_BASE;
+  // A ChatGPT sign-in reaches only OpenAI's Responses API.
+  if (type === "chatgpt") return "https://api.openai.com/v1";
   if (type === "opencode") return b || OPENCODE_BASE;
   return b;
 }
@@ -77,6 +79,8 @@ export async function listModels(
   key: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<ProviderModel[] | { error: string }> {
+  // A ChatGPT login is listed by its own code (control renews its token first).
+  if (type === "chatgpt") return { error: "a ChatGPT subscription lists its models on its own" };
   // A Claude subscription's list is fixed: no call to Anthropic with its token.
   if (type === "claude")
     return CLAUDE_MODELS.map((m) => ({ id: m.id, context_window: m.context_window }));

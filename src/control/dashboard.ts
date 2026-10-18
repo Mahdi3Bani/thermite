@@ -6,6 +6,7 @@ import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { getCookie, setCookie } from "hono/cookie";
 import { COMMAND_KINDS, type CommandKind, CommandPayloads } from "../core/commands.ts";
+import { CHATGPT_API, CHATGPT_REDIRECT, ChatGPTLogins } from "./chatgpt.ts";
 import {
   type ClusterFacts,
   checkCluster,
@@ -176,6 +177,8 @@ export interface DashboardOptions {
   sessionDays?: number | undefined;
   /** Seals the model providers' API keys (the settings page). */
   secrets: SecretBox;
+  /** ChatGPT subscriptions' sign-ins and logins (shared with the API, which renews them). */
+  chatgpt?: ChatGPTLogins | undefined;
   /** How control reaches model providers to list their models (tests give their own). */
   providerFetch?: typeof fetch | undefined;
   /** Kits control writes (the new-campaign page); none: campaigns cannot be created here. */
@@ -203,6 +206,7 @@ export interface RigImages {
 
 export function createDashboard(store: ControlStore, opts: DashboardOptions): Hono {
   const app = new Hono();
+  const chatgpt = opts.chatgpt ?? new ChatGPTLogins(store, opts.secrets, opts.providerFetch);
   // Only control's own script runs: even an escaping mistake cannot become code.
   app.use("/ui/*", async (c, next) => {
     await next();
@@ -1948,7 +1952,11 @@ ${placed ? placedBlock(placed, t) : ""}${onCluster ? clusterPlacedBlock(onCluste
     anthropic: "Anthropic",
     opencode: "OpenCode",
     claude: "Claude subscription",
+    chatgpt: "ChatGPT subscription",
   };
+  /** How a provider's models show in the model lists: a subscription's with its program. */
+  const modelPrefix = (type: ProviderType) =>
+    type === "claude" ? "claude-code:" : type === "chatgpt" ? "chatgpt:" : "";
   /** The types reached with an API key (a subscription is added differently). */
   const KEY_TYPES: ProviderType[] = ["openai", "anthropic", "opencode"];
   const HARNESSES: Record<Harness, string> = {
@@ -1990,6 +1998,10 @@ ${placed ? placedBlock(placed, t) : ""}${onCluster ? clusterPlacedBlock(onCluste
       "Add and read the account",
       "Control seals the key and reads, with it, RunPod's GPU types with their prices and stock, its data centers, your network volumes and your pods. It starts nothing and spends nothing.",
     ],
+    chatgpt: [
+      "Finish the sign-in",
+      "Control exchanges the code for the login, seals it and renews it from now on (only control does). Rigs whose agents use one of its models get a token that lasts one hour, renewed while they use it. Its models then show in each rig's model list as chatgpt:<model>.",
+    ],
     claude: [
       "Add the subscription",
       "Control seals the token. It makes no call to Anthropic with it: only Claude Code, on the rigs whose agents use one of its models, uses it. Its models then show in each rig's model list as claude-code:<model>.",
@@ -2004,6 +2016,11 @@ ${placed ? placedBlock(placed, t) : ""}${onCluster ? clusterPlacedBlock(onCluste
     `/ui/settings?${k}=${encodeURIComponent(m)}`;
   /** Reads the provider's model list now and keeps it (or why it could not). */
   const listInto = async (p: ModelProvider): Promise<string | null> => {
+    if (p.type === "chatgpt") {
+      const listed = await chatgpt.models(p);
+      store.setProviderModels(p.name, listed);
+      return "error" in listed ? listed.error : null;
+    }
     let key = "";
     try {
       // OpenCode's own provider may have no key: its list and free models need none.
@@ -2030,10 +2047,15 @@ ${placed ? placedBlock(placed, t) : ""}${onCluster ? clusterPlacedBlock(onCluste
       store.clusters().length +
       store.gpuClouds().length;
     const given = store.rigModels();
+    /** The rigs whose workers or other agents use one of the provider's models. */
     const usersOf = (name: string) =>
-      Object.entries(given)
-        .filter(([, g]) => g.provider === name)
-        .map(([rig]) => rig);
+      vs
+        .map((u) => u.id)
+        .filter(
+          (rig) =>
+            given[rig]?.provider === name ||
+            Object.values(store.roleModels(rig)).some((r) => r?.provider === name),
+        );
     const ok = c.req.query("ok");
     const error = c.req.query("error");
     const note = error
@@ -2078,10 +2100,33 @@ ${
     : `<form class="inline" method="post" action="/ui/settings/providers/${pName}/delete"><input type="hidden" name="csrf" value="${t}"><button class="danger">Delete this subscription</button></form>`
 }</div></details>`;
     };
+    /** A ChatGPT subscription: its sign-in, its models, and how to sign in again. */
+    const chatgptRow = (p: (typeof providers)[number], rigs: string[]) => {
+      const pName = encodeURIComponent(p.name);
+      const status = p.models_error
+        ? `<span class="dq-why bad">${esc(p.models_error)}</span>`
+        : `<span class="dq-why">${p.models.length} model${p.models.length === 1 ? "" : "s"} · runs in Pi or OpenCode v2 · control renews the login</span>`;
+      return `<details class="dq${p.models_error ? " dq-bad" : ""}" data-k="provider-${esc(p.name)}"><summary>
+<span class="dq-kind"><span class="kind m">Subscription</span></span>
+<span class="dq-main"><span class="dq-head">${esc(p.name)} <span class="muted" style="font-weight:400">· ChatGPT subscription</span></span>${status}<span class="dq-sub"><span class="chip">sign-in ${esc(p.key_hint)}</span><span class="dq-where">${rigs.length ? `used by ${rigs.map((x) => esc(x)).join(", ")}` : "no rig uses it"}</span></span></span>
+<span class="dq-side"><span class="dq-btns"><form class="inline" method="post" action="/ui/settings/providers/${pName}/refresh"><input type="hidden" name="csrf" value="${t}"><button>Refresh models</button></form></span></span>
+</summary><div class="dq-body"><div class="muted small">OpenAI does not tell apps how much of the plan is used: see it in ChatGPT, Settings › Usage. When the plan is full, the agents on this subscription wait and try again every 15 minutes; nothing pays for more.</div>
+<div class="chips" style="margin:12px 0">${p.models.map((m) => `<span class="chip">chatgpt:${esc(m.id)}</span>`).join("")}</div>
+<form method="post" action="/ui/settings/add" class="form-grid" autocomplete="off"><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="name" value="${esc(p.name)}"><input type="hidden" name="type" value="chatgpt"><input type="hidden" name="chatgpt_consent" value="1">
+<div style="grid-column:1/-1" class="small">To sign in again (for example after the login ended): <a href="/ui/settings/chatgpt/start?name=${pName}" target="_blank" rel="noopener">Sign in with ChatGPT ↗</a>, then paste the address the tab goes to.</div>
+<label style="grid-column:1/-1">${infoLabel("The address the tab went to", `After the sign-in, the tab goes to an address that starts with ${CHATGPT_REDIRECT} and shows an error. Copy that whole address and paste it here.`)}<input name="chatgpt_url" maxlength="4096" placeholder="${esc(CHATGPT_REDIRECT)}?code=…"></label>
+<div class="form-end row" style="gap:8px"><button class="primary">Finish the sign-in</button></div></form>
+${
+  rigs.length
+    ? `<div class="muted small">In use: give its rigs another model before deleting it.</div>`
+    : `<form class="inline" method="post" action="/ui/settings/providers/${pName}/delete"><input type="hidden" name="csrf" value="${t}"><button class="danger">Sign out and delete</button></form>`
+}</div></details>`;
+    };
     const providerRows = providers
       .map((p) => {
         const rigs = usersOf(p.name);
         if (p.type === "claude") return claudeRow(p, rigs);
+        if (p.type === "chatgpt") return chatgptRow(p, rigs);
         const status = p.models_error
           ? `<span class="dq-why bad">${esc(p.models_error)}${p.models.length ? ` (keeping its last list of ${p.models.length})` : ""}</span>`
           : `<span class="dq-why">${p.models.length} model${p.models.length === 1 ? "" : "s"}${p.models_at ? ` · listed ${esc(ago(p.models_at, now))} ago` : ""}</span>`;
@@ -2114,7 +2159,7 @@ ${
       .join("");
     const models = "openai anthropic opencode";
     const addForm = `<form method="post" action="/ui/settings/add" class="form-grid" autocomplete="off" id="prov-add" data-says="${esc(JSON.stringify(ADD_SAYS))}"><input type="hidden" name="csrf" value="${t}">
-<label>${infoLabel("Type", `${TYPE_TIP} Git access lets rigs fetch private repositories: a deploy key control makes, or an HTTPS token you paste.`)}<select name="type" id="ptype"><optgroup label="Models by API key">${KEY_TYPES.map((x) => `<option value="${x}">${x === "opencode" ? "OpenCode (its own models)" : TYPES[x]}</option>`).join("")}</optgroup><optgroup label="Subscriptions"><option value="claude">Claude subscription (Pro or Max)</option></optgroup><optgroup label="Git access"><option value="gitkey">A deploy key (control makes it)</option><option value="gittoken">An access token (HTTPS)</option></optgroup><optgroup label="Where rigs run"><option value="ssh">A machine over SSH</option><option value="k8s">A Kubernetes cluster</option><option value="runpod">RunPod (a GPU cloud)</option></optgroup></select></label>
+<label>${infoLabel("Type", `${TYPE_TIP} Git access lets rigs fetch private repositories: a deploy key control makes, or an HTTPS token you paste.`)}<select name="type" id="ptype"><optgroup label="Models by API key">${KEY_TYPES.map((x) => `<option value="${x}">${x === "opencode" ? "OpenCode (its own models)" : TYPES[x]}</option>`).join("")}</optgroup><optgroup label="Subscriptions"><option value="claude">Claude subscription (Pro or Max)</option><option value="chatgpt">ChatGPT subscription (Plus or Pro)</option></optgroup><optgroup label="Git access"><option value="gitkey">A deploy key (control makes it)</option><option value="gittoken">An access token (HTTPS)</option></optgroup><optgroup label="Where rigs run"><option value="ssh">A machine over SSH</option><option value="k8s">A Kubernetes cluster</option><option value="runpod">RunPod (a GPU cloud)</option></optgroup></select></label>
 <label>${infoLabel("Name", "How it shows in Thermite, and how rigs and campaigns refer to it: for example my-litellm or github-deploy. Lowercase letters, digits, dots and dashes.")}<input name="name" required maxlength="64" placeholder="for example my-litellm"></label>
 <label data-for="${models}">${infoLabel("Base URL", BASE_TIP)}<input name="base_url" maxlength="500" placeholder="https://…/v1 (Anthropic and OpenCode: empty for their own)"></label>
 <label data-for="${models}">${infoLabel("API key", "The provider's key. Control seals it at once and never shows it again. OpenCode: leave it empty for its free models.")}<input name="api_key" type="password" autocomplete="new-password" maxlength="4096" placeholder="never shown again"></label>
@@ -2130,6 +2175,9 @@ ${
 <label data-for="k8s" hidden>${infoLabel("Slots", "For slots: the slot namespaces, separated by commas. Control checks that it may deploy into each one.")}<input name="slots" maxlength="2000" placeholder="thermite-slot-1, thermite-slot-2"></label>
 <div data-for="claude" hidden class="card flat" style="grid-column:1/-1;padding:12px 14px"><b>Get the token on your own computer.</b> <span class="muted small">Control cannot open Anthropic's sign-in page for you.</span><ol class="small" style="margin:8px 0 0 18px;line-height:1.7"><li>Install Claude Code there, if it is not installed: <code>npm install -g @anthropic-ai/claude-code</code></li><li>Run <code>claude setup-token</code> and sign in with your Claude account in the browser.</li><li>Copy the token it prints, and paste it below. It is good for one year.</li></ol></div>
 <label data-for="claude" hidden style="grid-column:1/-1">${infoLabel("Token from claude setup-token", "The long-lived token that Claude Code prints. Control seals it at once and never shows it again. Only Claude Code, Anthropic's own program, uses it on the rigs: Anthropic does not allow other programs to use a subscription.")}<input name="claude_token" type="password" autocomplete="new-password" maxlength="4096" placeholder="sk-ant-oat01-… never shown again"></label>
+<div data-for="chatgpt" hidden class="card flat" style="grid-column:1/-1;padding:12px 14px"><b>Sign in with ChatGPT, then paste one address.</b> <span class="muted small">For your own use only: a Thermite that several people use takes API keys.</span><ol class="small" style="margin:8px 0 0 18px;line-height:1.7"><li>Press <b>Sign in with ChatGPT</b>. A ChatGPT page opens in a new tab. Sign in there and allow Thermite.</li><li>The tab then goes to an address that starts with <code>${esc(CHATGPT_REDIRECT)}</code> and shows an error. That is expected: the address is for an app on your own computer.</li><li>Copy that whole address from the tab's address bar, and paste it below.</li></ol><div class="act" style="margin-top:10px"><a class="btn sm" href="/ui/settings/chatgpt/start" target="_blank" rel="noopener">Sign in with ChatGPT ↗</a></div></div>
+<label data-for="chatgpt" hidden style="grid-column:1/-1">${infoLabel("The address the tab went to", `After the sign-in, the tab goes to an address that starts with ${CHATGPT_REDIRECT} and shows an error. Copy that whole address and paste it here. It holds a one-time code that control exchanges for the login; it works for a few minutes only.`)}<input name="chatgpt_url" maxlength="4096" placeholder="${esc(CHATGPT_REDIRECT)}?code=…"></label>
+<label data-for="chatgpt" hidden style="grid-column:1/-1">${infoLabel("Unattended use", "OpenAI asks apps to get your consent before they use your plan when you are not there. Thermite's agents work for hours without you: workers, the planner and the advisors, on the rigs you give its models.")}<span class="row small" style="gap:8px"><input type="checkbox" name="chatgpt_consent" value="1" style="height:auto;width:auto"> I allow Thermite's agents to use my ChatGPT plan when I am not there, for my own research.</span></label>
 <label data-for="runpod" hidden>${infoLabel("RunPod API key", "A key from RunPod's console (Settings, API Keys). Control seals it at once and never shows it again. For now control only reads with it; a read-only key is enough.")}<input name="runpod_key" type="password" autocomplete="new-password" maxlength="4096" placeholder="never shown again"></label>
 <label data-for="ssh" hidden style="grid-column:1/-1">${infoLabel("Private key", "The SSH private key for that user, without a passphrase. Control seals it at once and never shows it again. Leave it empty and control makes a key: add its public half, shown next, to the user's ~/.ssh/authorized_keys on the machine.")}<textarea name="private_key" class="mono" rows="4" maxlength="16384" placeholder="empty: control makes a key"></textarea></label>
 <div class="nc-does" id="pdo" style="grid-column:1/-1"><b>What happens.</b> ${ADD_SAYS.openai[1]}</div>
@@ -2139,10 +2187,10 @@ ${
         .filter((p) => p.models.length)
         .map(
           (p) =>
-            `<optgroup label="${esc(p.name)}${p.type === "claude" ? " (Claude subscription: runs in Claude Code)" : p.type === "opencode" ? " (OpenCode harness only)" : isOpencodeOwn(p) ? " (free models: OpenCode harness only)" : ""}">${p.models
+            `<optgroup label="${esc(p.name)}${p.type === "claude" ? " (Claude subscription: runs in Claude Code)" : p.type === "chatgpt" ? " (ChatGPT subscription: Pi or OpenCode)" : p.type === "opencode" ? " (OpenCode harness only)" : isOpencodeOwn(p) ? " (free models: OpenCode harness only)" : ""}">${p.models
               .map(
                 (m) =>
-                  `<option value="${esc(`${encodeURIComponent(p.name)}|${encodeURIComponent(m.id)}`)}"${want?.provider === p.name && want.model === m.id ? " selected" : ""}>${p.type === "claude" ? "claude-code:" : ""}${esc(m.id)}</option>`,
+                  `<option value="${esc(`${encodeURIComponent(p.name)}|${encodeURIComponent(m.id)}`)}"${want?.provider === p.name && want.model === m.id ? " selected" : ""}>${modelPrefix(p.type)}${esc(m.id)}</option>`,
               )
               .join("")}</optgroup>`,
         )
@@ -3869,6 +3917,53 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       303,
     );
   };
+  // Sign in with ChatGPT: control starts the sign-in (it keeps the PKCE secret) and sends the
+  // owner's browser to OpenAI's page. Signing in again to a provider keeps its client and host IDs.
+  app.get("/ui/settings/chatgpt/start", (c) => {
+    const name = c.req.query("name");
+    return c.redirect(chatgpt.start(name && PROVIDER_NAME.test(name) ? name : undefined), 302);
+  });
+  /**
+   * A ChatGPT subscription signed in (or again): the code in the address the owner pasted is
+   * exchanged for the login, which control seals and renews; its models are listed with it.
+   */
+  const saveChatGPT = async (c: Ctx, name: string, pasted: string, consent: boolean) => {
+    const fail = (m: string) => c.redirect(settingsUrl("error", m), 303);
+    const old = store.provider(name);
+    if (old && old.type !== "chatgpt")
+      return fail(`"${name}" is a provider of another kind: choose another name.`);
+    if (!consent)
+      return fail(
+        "Tick the box that allows Thermite's agents to use your plan when you are not there: OpenAI asks apps for your consent.",
+      );
+    if (!pasted) return fail("Paste the address the tab went to after the sign-in.");
+    const login = await chatgpt.finish(pasted);
+    if ("error" in login) return fail(login.error);
+    const r = store.putProvider({
+      name,
+      type: "chatgpt",
+      base_url: CHATGPT_API,
+      key: { sealed: chatgpt.seal(login), hint: keyHint(login.client_id) },
+    });
+    store.audit("owner:ui", r === "created" ? "model_provider_added" : "model_provider_changed", {
+      name,
+      type: "chatgpt",
+      login: "signed in with ChatGPT",
+      unattended_use: "allowed by the owner",
+    });
+    const p = store.provider(name);
+    const listError = p ? await listInto(p) : "it was not saved";
+    const n = store.provider(name)?.models.length ?? 0;
+    return c.redirect(
+      listError
+        ? settingsUrl("error", `"${name}" is signed in, but ${listError}.`)
+        : settingsUrl(
+            "ok",
+            `"${name}" is signed in: its ${n} model${n === 1 ? "" : "s"} run in Pi or OpenCode v2. Choose one for a rig below.`,
+          ),
+      303,
+    );
+  };
   /** A model provider added or changed. */
   const saveProvider = async (c: Ctx, f: Record<string, unknown>) => {
     const fail = (m: string) => c.redirect(settingsUrl("error", m), 303);
@@ -3879,6 +3974,13 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     if (!(type in TYPES)) return fail("A provider is OpenAI-compatible or Anthropic.");
     if (type === "claude")
       return saveClaude(c, name, String(f.claude_token ?? f.api_key ?? "").trim());
+    if (type === "chatgpt")
+      return saveChatGPT(
+        c,
+        name,
+        String(f.chatgpt_url ?? "").trim(),
+        String(f.chatgpt_consent ?? "") === "1",
+      );
     const raw = String(f.base_url ?? "").trim();
     if (!raw && type === "openai") return fail("An OpenAI-compatible provider needs its base URL.");
     const base = providerBase(type, raw);
@@ -3951,13 +4053,24 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     return c.redirect(settingsUrl("ok", `${model} added to "${name}".`), 303);
   });
 
-  app.post("/ui/settings/providers/:name/delete", (c) => {
+  app.post("/ui/settings/providers/:name/delete", async (c) => {
     const name = c.req.param("name");
+    const was = store.provider(name);
     const r = store.deleteProvider(name);
-    if (r === "deleted") store.audit("owner:ui", "model_provider_deleted", { name });
+    // A ChatGPT login is ended at OpenAI too (signed out), with the login control had.
+    const signedOut =
+      r === "deleted" && was?.type === "chatgpt" ? await chatgpt.revoke(was) : undefined;
+    if (r === "deleted")
+      store.audit("owner:ui", "model_provider_deleted", {
+        name,
+        ...(signedOut === undefined ? {} : { signed_out_at_openai: signedOut }),
+      });
     return c.redirect(
       r === "deleted"
-        ? settingsUrl("ok", `"${name}" deleted.`)
+        ? settingsUrl(
+            "ok",
+            `"${name}" deleted.${signedOut === undefined ? "" : signedOut ? " OpenAI confirmed the sign-out." : " OpenAI did not confirm the sign-out: disconnect Thermite in ChatGPT, Settings › Security and login › Sign in with ChatGPT."}`,
+          )
         : settingsUrl("error", r === "in_use" ? `"${name}" is still in use.` : "No such provider."),
       303,
     );
@@ -4111,9 +4224,11 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     const kindOf = (p: ModelProvider) =>
       p.type === "claude"
         ? "claude"
-        : isOpencodeOwn(p) && (p.type === "opencode" || !p.key_sealed)
-          ? "opencode"
-          : "key";
+        : p.type === "chatgpt"
+          ? "chatgpt"
+          : isOpencodeOwn(p) && (p.type === "opencode" || !p.key_sealed)
+            ? "opencode"
+            : "key";
     /** Where one agent runs with a model of that kind (the client script says the same). */
     const runsText = (role: AgentRole, kind: string) =>
       kind === "claude"
@@ -4130,10 +4245,10 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       `<option value="" data-kind="">${esc(empty)}</option>${providers
         .map(
           (p) =>
-            `<optgroup label="${esc(p.name)}${p.type === "claude" ? " (Claude subscription: runs in Claude Code)" : ""}">${p.models
+            `<optgroup label="${esc(p.name)}${p.type === "claude" ? " (Claude subscription: runs in Claude Code)" : p.type === "chatgpt" ? " (ChatGPT subscription)" : ""}">${p.models
               .map(
                 (m) =>
-                  `<option value="${esc(`${encodeURIComponent(p.name)}|${encodeURIComponent(m.id)}`)}" data-kind="${kindOf(p)}"${picked?.provider === p.name && picked.model === m.id ? " selected" : ""}>${p.type === "claude" ? "claude-code:" : ""}${esc(m.id)}</option>`,
+                  `<option value="${esc(`${encodeURIComponent(p.name)}|${encodeURIComponent(m.id)}`)}" data-kind="${kindOf(p)}"${picked?.provider === p.name && picked.model === m.id ? " selected" : ""}>${modelPrefix(p.type)}${esc(m.id)}</option>`,
               )
               .join("")}</optgroup>`,
         )

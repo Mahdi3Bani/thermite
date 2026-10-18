@@ -178,6 +178,186 @@ describe("control dashboard", () => {
     );
   });
 
+  test("a ChatGPT subscription: signed in with a pasted address, renewed by control alone, its token in the rig's route, signed out on delete", async () => {
+    // A stand-in for OpenAI's sign-in, token, model-list and sign-out endpoints.
+    const calls: { url: string; form?: URLSearchParams | undefined; auth?: string | undefined }[] =
+      [];
+    let issued = 0;
+    let refuse = false;
+    let shortLived = false;
+    const SCOPE = "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct";
+    const providerFetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      const form = init?.body instanceof URLSearchParams ? init.body : undefined;
+      calls.push({ url, form, auth: new Headers(init?.headers).get("authorization") ?? undefined });
+      if (url === "https://auth.openai.com/api/accounts/oauth/token") {
+        if (refuse) return Response.json({ error: "invalid_grant" }, { status: 400 });
+        issued++;
+        await new Promise((r) => setTimeout(r, 20));
+        return Response.json({
+          access_token: `access-${issued}`,
+          refresh_token: `refresh-${issued}`,
+          id_token: "id",
+          token_type: "Bearer",
+          // The first is nearly spent, so the first route renews it.
+          expires_in: issued === 1 || shortLived ? 60 : 3600,
+          scope: SCOPE,
+          earliest_refresh_at: Math.floor(Date.now() / 1000) - 1,
+        });
+      }
+      if (url === "https://api.openai.com/v1/models")
+        return Response.json({
+          models: [
+            { slug: "gpt-test", visibility: "list" },
+            { slug: "gpt-hidden", visibility: "hide" },
+          ],
+        });
+      if (url === "https://auth.openai.com/.well-known/openid-configuration")
+        return Response.json({ revocation_endpoint: "https://auth.openai.com/oauth/revoke" });
+      if (url === "https://auth.openai.com/oauth/revoke") return new Response("", { status: 200 });
+      return new Response("not found", { status: 404 });
+    }) as typeof fetch;
+    const s = await stack("owner_approval", { providerFetch });
+    await s.relay();
+    let page = await (await s.get("/ui/settings")).text();
+    const csrf = s.csrfFrom(page);
+    assert.match(page, /<option value="chatgpt">ChatGPT subscription/);
+    const where = (r: Response) => decodeURIComponent(String(r.headers.get("location")));
+    // Control sends the browser to OpenAI's sign-in page, as Thermite, with its own host ID.
+    const start = await s.get("/ui/settings/chatgpt/start");
+    assert.equal(start.status, 302);
+    const signIn = new URL(String(start.headers.get("location")));
+    assert.equal(
+      `${signIn.origin}${signIn.pathname}`,
+      "https://auth.openai.com/api/accounts/authorize",
+    );
+    const q = signIn.searchParams;
+    assert.equal(q.get("client_id"), "dynamic_agent_client");
+    assert.equal(q.get("agent_name_hint"), "Thermite");
+    assert.match(q.get("ext_agent_host_id") ?? "", /^urn:uuid:[0-9a-f-]{36}$/);
+    assert.equal(q.get("redirect_uri"), "http://127.0.0.1:1455/auth/callback");
+    assert.equal(q.get("resource"), "https://api.openai.com/v1");
+    assert.equal(q.get("scope"), SCOPE);
+    assert.equal(q.get("code_challenge_method"), "S256");
+    const state = q.get("state") ?? "";
+    const pasted = `http://127.0.0.1:1455/auth/callback?code=code-1&state=${state}&client_id=oaiapp_test0001`;
+    const add = (o: Record<string, string>) =>
+      s.post("/ui/settings/add", { csrf, type: "chatgpt", name: "chatgpt-pro", ...o });
+    // Nothing is exchanged without the owner's consent, or for a sign-in control did not start.
+    assert.match(where(await add({ chatgpt_url: pasted })), /Tick the box/);
+    const foreign = pasted.replace(state, "not-control-s");
+    assert.match(
+      where(await add({ chatgpt_url: foreign, chatgpt_consent: "1" })),
+      /did not start this sign-in/,
+    );
+    assert.equal(calls.length, 0);
+    const added = await add({ chatgpt_url: pasted, chatgpt_consent: "1" });
+    assert.match(where(added), /"chatgpt-pro" is signed in: its 1 model run in Pi or OpenCode v2/);
+    const exchange = calls.find((c) => c.form?.get("grant_type") === "authorization_code");
+    assert.equal(exchange?.form?.get("client_id"), "oaiapp_test0001");
+    assert.equal(exchange?.form?.get("code"), "code-1");
+    const verifier = exchange?.form?.get("code_verifier") ?? "";
+    assert.equal(
+      createHash("sha256").update(verifier).digest("base64url"),
+      q.get("code_challenge"),
+    );
+    // Used once: the same address can't be exchanged again.
+    assert.match(
+      where(await add({ chatgpt_url: pasted, chatgpt_consent: "1" })),
+      /did not start this sign-in/,
+    );
+    assert.deepEqual(
+      s.store.provider("chatgpt-pro")?.models.map((m) => m.id),
+      ["gpt-test"],
+      "only the models OpenAI lists for display",
+    );
+    const audit = JSON.stringify(
+      await (
+        await s.control.request("/v1/audit?limit=50", {
+          headers: { authorization: "Bearer admin-token-abcdef" },
+        })
+      ).json(),
+    );
+    assert.match(audit, /unattended_use/);
+    page = await (await s.get("/ui/settings")).text();
+    assert.match(page, /chatgpt:gpt-test/);
+    assert.ok(!/access-1|refresh-1/.test(page + audit), "the login shows nowhere");
+    // Given to the rig: the first routes renew the nearly spent token once, though two ask at once.
+    await s.post("/ui/settings/rigs", {
+      csrf,
+      rig: "rig-a",
+      choice: "chatgpt-pro|gpt-test",
+      harness: "opencode",
+    });
+    const asRig = async () =>
+      (await (
+        await s.control.request("/v1/rigs/rig-a/model-route", {
+          headers: { authorization: "Bearer rig-token-abcdef" },
+        })
+      ).json()) as { route: Record<string, unknown> | null; error?: string };
+    const [a, b] = await Promise.all([asRig(), asRig()]);
+    assert.equal(a.route?.type, "chatgpt");
+    assert.equal(a.route?.harness, "opencode");
+    assert.equal(a.route?.base_url, "https://api.openai.com/v1");
+    assert.equal(a.route?.model, "gpt-test");
+    assert.equal(a.route?.api_key, "access-2");
+    assert.equal(b.route?.api_key, "access-2");
+    const renewals = () => calls.filter((c) => c.form?.get("grant_type") === "refresh_token");
+    assert.equal(renewals().length, 1);
+    assert.equal(renewals()[0]?.form?.get("refresh_token"), "refresh-1");
+    assert.equal(renewals()[0]?.form?.get("client_id"), "oaiapp_test0001");
+    assert.equal(renewals()[0]?.form?.get("resource"), "https://api.openai.com/v1");
+    assert.equal((await asRig()).route?.revision, a.route?.revision, "fresh: taken as it is");
+    assert.equal(renewals().length, 1);
+    // The harness gets it through its supervisor.
+    s.env.service.models = new ModelSource(
+      join(mkdtempSync(join(tmpdir(), "thermite-chatgpt-")), "model-route.json"),
+      undefined,
+    );
+    const sync = {
+      rig: "rig-a",
+      controlUrl: "http://control",
+      controlToken: "rig-token-abcdef",
+      harnessUrl: "http://harness",
+      harnessToken: "sup-token-abcdef",
+      fetchImpl: s.fetchImpl,
+    };
+    assert.equal(await syncModelRoute(sync), "set");
+    assert.equal(s.env.service.models?.current()?.api, "chatgpt");
+    // Signing in again keeps the issued client ID and the host ID.
+    const again = new URL(
+      String((await s.get("/ui/settings/chatgpt/start?name=chatgpt-pro")).headers.get("location")),
+    );
+    assert.equal(again.searchParams.get("client_id"), "oaiapp_test0001");
+    assert.equal(again.searchParams.get("agent_name_hint"), null);
+    assert.equal(again.searchParams.get("ext_agent_host_id"), q.get("ext_agent_host_id"));
+    // Deleted once no rig uses it: signed out at OpenAI with the newest refresh token.
+    await s.post("/ui/settings/rigs", { csrf, rig: "rig-a", choice: "" });
+    const del = await s.post("/ui/settings/providers/chatgpt-pro/delete", { csrf });
+    assert.match(where(del), /OpenAI confirmed the sign-out/);
+    const revoke = calls.find((c) => c.url === "https://auth.openai.com/oauth/revoke");
+    assert.equal(revoke?.form?.get("token"), "refresh-2");
+    assert.equal(revoke?.form?.get("token_type_hint"), "refresh_token");
+    assert.equal(revoke?.form?.get("client_id"), "oaiapp_test0001");
+    // A login OpenAI ended can't be renewed: the rig is told, and Providers says to sign in again.
+    shortLived = true;
+    const second = new URL(
+      String((await s.get("/ui/settings/chatgpt/start")).headers.get("location")),
+    );
+    const pasted2 = `http://127.0.0.1:1455/auth/callback?code=code-2&state=${second.searchParams.get("state")}&client_id=oaiapp_test0002`;
+    assert.match(where(await add({ chatgpt_url: pasted2, chatgpt_consent: "1" })), /is signed in/);
+    await s.post("/ui/settings/rigs", { csrf, rig: "rig-a", choice: "chatgpt-pro|gpt-test" });
+    refuse = true;
+    const ended = await asRig();
+    assert.equal(ended.route, undefined);
+    assert.match(String(ended.error), /sign in again/);
+    page = await (await s.get("/ui/settings")).text();
+    assert.match(
+      page,
+      /its ChatGPT sign-in ended \(OpenAI answered HTTP 400 \(invalid_grant\)\): sign in again/,
+    );
+  });
+
   test("Edit rig: a model and an effort for each agent; the planner's route reaches the harness, the advisors' reach the supervisor", async () => {
     const s = await stack("owner_approval", {
       providerFetch: (async () =>
@@ -255,8 +435,11 @@ describe("control dashboard", () => {
     // A role set back to "same as the workers" loses its own model.
     await s.post("/ui/rigs/rig-a/edit", { ...form, role_auditor: "", effort_auditor: "" });
     assert.equal(s.store.roleModels("rig-a").auditor, undefined);
-    // A provider some role uses can't be deleted.
+    // A provider some role uses can't be deleted, and Providers says which rig uses it.
     assert.equal(s.store.deleteProvider("claude-max"), "in_use");
+    const providersPage = await (await s.get("/ui/settings")).text();
+    const claudeRow = providersPage.slice(providersPage.indexOf('data-k="provider-claude-max"'));
+    assert.match(claudeRow.slice(0, claudeRow.indexOf("</summary>")), /used by rig-a/);
   });
 
   test("a provider's key goes in once on the settings page, sealed; its models are listed; only its rig's harness gets the key", async () => {

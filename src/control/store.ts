@@ -353,8 +353,11 @@ export interface IngestReport {
   summary: unknown;
 }
 
-/** A model provider's kind; "claude" is a Claude subscription (its token from `claude setup-token`). */
-export type ProviderType = "openai" | "anthropic" | "opencode" | "claude";
+/**
+ * A model provider's kind; "claude" is a Claude subscription (its token from `claude setup-token`),
+ * "chatgpt" a ChatGPT subscription (its login from Sign in with ChatGPT, renewed by control).
+ */
+export type ProviderType = "openai" | "anthropic" | "opencode" | "claude" | "chatgpt";
 /** Where a rig's agents run: Pi, OpenCode v2, or Claude Code (the only one a Claude subscription allows). */
 export type Harness = "pi" | "opencode" | "claude-code";
 /** How hard an agent's model thinks: Claude Code's levels (other providers take up to high). */
@@ -396,7 +399,9 @@ function providerOf(r: Row): ModelProvider {
   return {
     name: String(r.name),
     type:
-      r.type === "anthropic" || r.type === "opencode" || r.type === "claude" ? r.type : "openai",
+      r.type === "anthropic" || r.type === "opencode" || r.type === "claude" || r.type === "chatgpt"
+        ? r.type
+        : "openai",
     base_url: String(r.base_url),
     key_sealed: String(r.key_sealed),
     key_hint: String(r.key_hint),
@@ -1278,6 +1283,14 @@ export class ControlStore {
         "update model_provider set models = ?, models_error = null, models_at = ? where name = ?",
       )
       .run(JSON.stringify([...listed, ...added]), now, name);
+  }
+
+  /**
+   * A provider's sealed key replaced where nothing else changes (a ChatGPT login control renewed):
+   * its version stays; the routes' revisions follow the key.
+   */
+  setProviderKey(name: string, sealed: string): void {
+    this.db.prepare("update model_provider set key_sealed = ? where name = ?").run(sealed, name);
   }
 
   /** A model the provider does not list, added by the owner by its name. */

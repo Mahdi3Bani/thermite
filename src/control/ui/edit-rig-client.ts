@@ -24,9 +24,11 @@ export const EDIT_RIG_JS = `
     const harness = form.querySelector("[data-harness]");
     const wKind = workers ? kindOf(workers) : "";
     if (harness && wKind === "claude") harness.value = "claude-code";
+    if (harness && wKind === "chatgpt" && harness.value === "claude-code") harness.value = "pi";
     const lanes = Number((form.querySelector('[name="lanes"]') || {}).value) || 1;
     const sessions = { workers: lanes, teachers: 2, panel: 3 };
     let claude = 0;
+    let chatgpt = 0;
     for (const sel of form.querySelectorAll("[data-role]")) {
       const role = sel.dataset.role;
       const own = kindOf(sel);
@@ -35,11 +37,15 @@ export const EDIT_RIG_JS = `
       if (cell)
         cell.textContent = own ? text(role, own) : role !== "planner" ? "the advisors file, if the rig has one" : wKind ? "as the workers: " + text(role, wKind) : "as the workers";
       if (kind === "claude") claude += sessions[role] || 1;
+      if (kind === "chatgpt") chatgpt += sessions[role] || 1;
     }
     const share = document.getElementById("share");
     if (share) {
-      share.hidden = !claude;
-      share.textContent = claude ? "One subscription, many agents: on this rig, up to " + claude + " agent sessions at once can use a Claude subscription, and other rigs may use it too. When its window is full, these agents wait for the reset." : "";
+      share.hidden = !claude && !chatgpt;
+      const parts = [];
+      if (claude) parts.push(claude + " can use a Claude subscription");
+      if (chatgpt) parts.push(chatgpt + " can use a ChatGPT subscription");
+      share.textContent = parts.length ? "One subscription, many agents: on this rig, of the agent sessions that run at once, up to " + parts.join(" and ") + ". Other rigs may use them too. When a plan is full, these agents wait; nothing pays for more." : "";
     }
   };
   const say = () => {
