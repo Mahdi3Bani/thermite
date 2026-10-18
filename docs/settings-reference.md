@@ -41,9 +41,9 @@ or its assignment instead: lane limits, trial length, budgets and the run's prom
 | `THERMITE_RIG_ID` | required | The rig's name, as control knows it |
 | `THERMITE_TARGET` | `cpu` | `cpu` or `cuda-gpu` |
 | `THERMITE_TARGET_CLASS` | `generic-cpu`, or `cuda-gpu` | The target's class (contracts and kits name it) |
-| `THERMITE_GPU_INDEX` | 0 | The judge's GPU |
-| `THERMITE_DEV_GPU_INDEX` | none | A second GPU for the agents' development runs. Unset: development runs share the judge's GPU and wait for it |
-| `THERMITE_RUN_CPUS` | `auto` on a GPU rig, otherwise `off` | CPUs timed runs are pinned to: `auto` (the GPU's local CPUs), `off`, or a CPU list |
+| `THERMITE_GPU_INDEX` | 0 | The judge's GPU, or a list of them (`0,1`): one executor per card |
+| `THERMITE_DEV_GPU_INDEX` | none | GPUs for the agents' development runs, one or a list (`2,3`), never one of the judge's. Unset: development runs share the judge's GPU and wait for it |
+| `THERMITE_RUN_CPUS` | `auto` on a GPU rig, otherwise `off` | CPUs timed runs are pinned to: `auto` (each judge GPU's local CPUs, disjoint between cards), `off`, or a CPU list (split between the judge cards) |
 | `THERMITE_CALIBRATION_BLOCKS` | 6 | Blocks of the A/A calibration that measures the rig's noise when a run starts |
 | `THERMITE_PROMOTION` | `auto` | The rig's default promotion policy, `auto` or `owner_approval`, for runs assigned without their own |
 

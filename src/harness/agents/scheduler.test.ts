@@ -606,6 +606,76 @@ describe("agent scheduler", () => {
     assert.equal(seen.length, 5, "the one that gave up never ran");
   });
 
+  test("development cards are a pool: any free card, a wait only when all are busy, one dev run per lane at a time", async () => {
+    const env = makeJudgeEnv({ lanes: { count: 3, trials_per_epoch: 1 } });
+    await env.service.applyCommand(env.assign);
+    const { DevRuns } = await import("./devrun.ts");
+    const registry = scheduler0(env).registry;
+    for (const lane of ["lane-1", "lane-2", "lane-3"]) {
+      registry.startTrial({
+        id: `t-${lane}`,
+        run: "js-1",
+        lane,
+        epoch: 1,
+        family: "f",
+        parent: env.seed,
+        token: `tok-${lane}`,
+      });
+    }
+    const { mkdirSync } = await import("node:fs");
+    const cwd = (lane: string) => {
+      const d = `${env.paths.scratchDir}/lanes/${lane}/ws/repo`;
+      mkdirSync(d, { recursive: true });
+      return d;
+    };
+    // A device stand-in: each dev run holds its card for a while; which card and when are kept.
+    const log: { lane: string; card: number; start: number; end: number }[] = [];
+    const t0 = Date.now();
+    const runner = {
+      separated: false,
+      run: async (req: { role: string; devCard?: number; gpu?: boolean }) => {
+        assert.equal(req.gpu, true);
+        const start = Date.now() - t0;
+        await new Promise((r) => setTimeout(r, 300));
+        log.push({ lane: req.role, card: req.devCard ?? 0, start, end: Date.now() - t0 });
+        return { exitCode: 0, signal: null, wallMs: 300, peakRssBytes: 0, stdout: "", stderr: "" };
+      },
+      killRole: async () => 0,
+    } as unknown as LocalRunner;
+    const dev = new DevRuns({
+      runner,
+      ledger: env.ledger,
+      scratchDir: env.paths.scratchDir,
+      gpu: true,
+      dedicated: true,
+      cards: 2,
+      maxWaitMs: 10_000,
+    });
+    const go = (lane: string) =>
+      dev.run({ lane, command: "true", cwd: cwd(lane) }, `t-${lane}`) as Promise<{
+        ran: boolean;
+        card?: number;
+      }>;
+    const out = await Promise.all([go("lane-1"), go("lane-2"), go("lane-3"), go("lane-1")]);
+    assert.ok(out.every((o) => o.ran));
+    // Two at once on the two cards; the third waited for a card.
+    const first = log.filter((x) => x.start < 150);
+    assert.deepEqual(first.map((x) => x.card).sort(), [0, 1]);
+    assert.equal(log.length, 4);
+    // Lane-1's second dev run started only after its first ended.
+    const l1 = log.filter((x) => x.lane === "lane-1").sort((a, b) => a.start - b.start);
+    assert.ok((l1[1] as { start: number }).start >= (l1[0] as { end: number }).end - 5);
+    // Never two dev runs on one card at once.
+    for (const a of log)
+      for (const b of log)
+        if (a !== b && a.card === b.card)
+          assert.ok(a.end <= b.start + 5 || b.end <= a.start + 5, "a card ran two at once");
+    assert.ok(
+      out.every((o) => o.card === 1 || o.card === 2),
+      "the answer names the card",
+    );
+  });
+
   test("a fork round at a third of the wall budget sends every lane back to the champion", async () => {
     const env = makeJudgeEnv({
       lanes: { count: 1, trials_per_epoch: 1 },

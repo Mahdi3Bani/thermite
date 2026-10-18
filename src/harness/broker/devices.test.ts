@@ -5,18 +5,22 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { deviceProbes } from "../selftest.ts";
 import {
+  devGroup,
   expectedNodeGroups,
   formatCpuList,
   type GpuLayout,
   identityFor,
+  judgeGroup,
   LAYOUT_FILE,
   nodeGroups,
   parseCpuList,
+  parseIndexList,
   parseMinor,
   planDedicated,
   procBusDir,
   readLayout,
   runCpus,
+  shareCpus,
 } from "./devices.ts";
 import { launch } from "./process.ts";
 import { IDS } from "./runner.ts";
@@ -39,8 +43,8 @@ const plan = (over: Partial<Parameters<typeof planDedicated>[0]> = {}) =>
       return i;
     },
     nodes: NODES,
-    judgeIndex: 0,
-    devIndex: 1,
+    judgeIndices: [0],
+    devIndices: [1],
     ...over,
   });
 
@@ -81,8 +85,9 @@ describe("a dedicated development card", () => {
   });
 
   test("anything unexpected stops the layout", () => {
-    assert.throws(() => plan({ devIndex: 0 }), /both index 0/);
-    assert.throws(() => plan({ devIndex: 2 }), /no GPU with index 2/);
+    assert.throws(() => plan({ devIndices: [0] }), /both index 0/);
+    assert.throws(() => plan({ devIndices: [2] }), /no GPU with index 2/);
+    assert.throws(() => plan({ devIndices: [] }), /at least one judge card and one development/);
     assert.throws(() => plan({ nodes: NODES.filter((n) => n !== "/dev/nvidia7") }), /missing/);
     assert.throws(() => plan({ nodes: [...NODES, "/dev/nvidia8"] }), /more cards/);
     assert.throws(() => plan({ information: () => "no minor here" }), /Device Minor/);
@@ -217,5 +222,122 @@ describe("a dedicated development card", () => {
     assert.deepEqual(by("dev"), {});
     const gpus = deviceProbes(NODES, "dev", l).find((p) => p.op === "gpus");
     assert.equal(gpus?.expect, l.dev.uuid);
+  });
+});
+
+// Shaped like four cards in one container (no real host data).
+const SMI4 = `0, GPU-aaaaaaaa-0000-0000-0000-000000000000, 00000000:01:00.0
+1, GPU-bbbbbbbb-0000-0000-0000-000000000000, 00000000:02:00.0
+2, GPU-cccccccc-0000-0000-0000-000000000000, 00000000:03:00.0
+3, GPU-dddddddd-0000-0000-0000-000000000000, 00000000:04:00.0
+`;
+const NODES4 = [
+  "/dev/nvidia0",
+  "/dev/nvidia1",
+  "/dev/nvidia2",
+  "/dev/nvidia3",
+  "/dev/nvidiactl",
+  "/dev/nvidia-uvm",
+];
+const plan4 = (judgeIndices: number[], devIndices: number[]) =>
+  planDedicated({
+    smiCsv: SMI4,
+    information: (bus) => `Device Minor: ${Number(bus.split(":")[1]) - 1}\n`,
+    nodes: NODES4,
+    judgeIndices,
+    devIndices,
+  });
+
+describe("a rig with several judge cards and several development cards", () => {
+  test("every card gets its own group; the first of each kind keeps the two-card groups", () => {
+    const l = plan4([0, 1], [2, 3]);
+    assert.deepEqual(
+      l.judges.map((c) => c.node),
+      ["/dev/nvidia0", "/dev/nvidia1"],
+    );
+    assert.equal(l.judge.node, "/dev/nvidia0");
+    assert.equal(l.dev.node, "/dev/nvidia2");
+    assert.deepEqual(nodeGroups(l), [
+      { node: "/dev/nvidia0", gid: IDS.gpuGroup },
+      { node: "/dev/nvidia1", gid: IDS.gpuJudgeBase + 1 },
+      { node: "/dev/nvidia2", gid: IDS.gpuDevGroup },
+      { node: "/dev/nvidia3", gid: IDS.gpuDevBase + 1 },
+      { node: "/dev/nvidiactl", gid: IDS.gpuCtlGroup },
+      { node: "/dev/nvidia-uvm", gid: IDS.gpuCtlGroup },
+    ]);
+    assert.equal(judgeGroup(0), IDS.gpuGroup);
+    assert.equal(devGroup(0), IDS.gpuDevGroup);
+    // Three judge cards and one development card is a valid split too.
+    assert.equal(plan4([0, 1, 3], [2]).judges.length, 3);
+    assert.throws(() => plan4([0, 1], [1, 2, 3]), /both index 1/);
+    assert.throws(() => plan4([0], [1]), /more cards than the layout covers/);
+  });
+
+  test("each judge card is timed by its own user; each dev run reaches only its card", () => {
+    const l = plan4([0, 1], [2, 3]);
+    assert.deepEqual(identityFor("run-1", false, l), {
+      uid: IDS.run.uid + 1,
+      gid: IDS.gpuJudgeBase + 1,
+      groups: [IDS.gpuCtlGroup],
+      cuda: "GPU-bbbbbbbb-0000-0000-0000-000000000000",
+    });
+    assert.equal(identityFor("run", false, l).cuda, "GPU-aaaaaaaa-0000-0000-0000-000000000000");
+    assert.deepEqual(identityFor("lane-3", true, l, 1), {
+      uid: 10103,
+      gid: IDS.gpuDevBase + 1,
+      groups: [IDS.gpuCtlGroup],
+      cuda: "GPU-dddddddd-0000-0000-0000-000000000000",
+    });
+    assert.equal(identityFor("lane-3", true, l).gid, IDS.gpuDevGroup);
+    assert.throws(() => identityFor("run-2", false, l), /no judge card 3/);
+    assert.throws(() => identityFor("lane-3", true, l, 2), /no development card 3/);
+    assert.throws(() => identityFor("run-1", false), /shares one card/);
+  });
+
+  test("the selftest probes each card's identity against every other card", () => {
+    const l = plan4([0, 1], [2, 3]);
+    const by = (side: "judge" | "dev", card: number) =>
+      Object.fromEntries(deviceProbes(NODES4, side, l, card).map((p) => [p.name, p.op]));
+    assert.deepEqual(by("judge", 1), {
+      "device:nvidia1": "reachable",
+      "device:nvidiactl": "reachable",
+      "device:nvidia-uvm": "reachable",
+      "device:nvidia0": "access",
+      "device:nvidia2": "access",
+      "device:nvidia3": "access",
+      "visible-gpus": "gpus",
+    });
+    assert.equal(by("dev", 1)["device:nvidia3"], "reachable");
+    assert.equal(by("dev", 1)["device:nvidia2"], "access");
+    assert.throws(() => deviceProbes(NODES4, "judge", l, 2), /no judge card 3/);
+  });
+
+  test("index lists, and disjoint CPU sets for the judge cards", () => {
+    assert.deepEqual(parseIndexList("0", "X"), [0]);
+    assert.deepEqual(parseIndexList(" 2, 3 ", "X"), [2, 3]);
+    assert.throws(() => parseIndexList("0,0", "X"), /names a GPU twice/);
+    assert.throws(() => parseIndexList("a", "X"), /a GPU index or a list/);
+    assert.throws(() => parseIndexList("0,1,2,3,4,5,6,7,8", "X"), /at most 8/);
+    // Two cards on one socket split its CPUs; a card on another socket keeps its own.
+    assert.deepEqual(
+      shareCpus([
+        [0, 1, 2, 3],
+        [0, 1, 2, 3],
+        [8, 9],
+      ]),
+      [
+        [0, 1],
+        [2, 3],
+        [8, 9],
+      ],
+    );
+    // Overlapping sets: the later card keeps only CPUs not taken.
+    assert.deepEqual(
+      shareCpus([
+        [0, 1, 2],
+        [2, 3],
+      ]),
+      [[0, 1, 2], [3]],
+    );
   });
 });

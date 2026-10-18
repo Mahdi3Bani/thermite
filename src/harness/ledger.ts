@@ -615,17 +615,34 @@ export class Ledger {
    * Leases the next queued job (lowest priority number first). The fence increments on every
    * lease, so a holder whose lease expired can no longer write results.
    */
-  leaseJob(owner: string, ttlMs: number, kinds?: readonly string[]): JobRow | undefined {
+  /**
+   * Leases the next job. On a rig with several judge cards each executor passes its card: it
+   * then skips a job pinned to another card (a calibration) and a job that must avoid its card
+   * (a confirmation, which belongs on another card than its screen's).
+   */
+  leaseJob(
+    owner: string,
+    ttlMs: number,
+    kinds?: readonly string[],
+    card?: string | undefined,
+  ): JobRow | undefined {
     return this.tx(() => {
       const filter = kinds?.length ? `and j.kind in (${kinds.map(() => "?").join(",")})` : "";
+      const cards =
+        card === undefined
+          ? ""
+          : `and coalesce(json_extract(j.spec, '$.card'), ?) = ?
+             and coalesce(json_extract(j.spec, '$.avoid_card'), '') <> ?`;
       // A paused or closed run's jobs wait in the queue: the judge's time goes to running runs.
       const r = this.get<Row>(
         `select j.id from job j
          left join attempt a on a.id = j.attempt
          left join run i on i.id = coalesce(a.run, json_extract(j.spec, '$.run'))
-         where j.state = 'queued' ${filter} and (i.status is null or i.status = 'running')
+         where j.state = 'queued' ${filter} ${cards}
+           and (i.status is null or i.status = 'running')
          order by j.priority, j.id limit 1`,
         ...(kinds ?? []),
+        ...(card === undefined ? [] : [card, card, card]),
       );
       if (!r) return undefined;
       const until = new Date(this.clock().getTime() + ttlMs).toISOString();

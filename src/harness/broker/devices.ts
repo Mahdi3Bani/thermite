@@ -5,10 +5,12 @@ import { IDS, type Role, roleIds } from "./runner.ts";
 /**
  * GPU device nodes and who may open them. On a rig with one card (shared mode) every
  * /dev/nvidia* node belongs to the `gpu` group, which the run user and agents' development runs
- * have. On a rig with a dedicated development card, the judge's card and the development card
- * each get their own group, and the nodes every CUDA process needs (nvidiactl, nvidia-uvm, ...)
- * a third, `gpuctl`. The run user then has `gpu` and `gpuctl`, and a development run has
- * `gpudev` and `gpuctl`: neither can open the other's card, whatever its environment says.
+ * have. On a rig with dedicated cards, every card gets a group of its own, and the nodes every
+ * CUDA process needs (nvidiactl, nvidia-uvm, ...) one more, `gpuctl`. Judge cards and
+ * development cards are pools: judge card i is timed by its own user (run, run-1, ...) with that
+ * card's group, and a development run gets the group of the development card it was given. No
+ * process can open a card its groups don't name, whatever its environment says. The first card
+ * of each kind keeps the groups a two-card rig always had (`gpu` and `gpudev`).
  */
 
 export interface GpuCard {
@@ -23,10 +25,41 @@ export interface GpuCard {
 
 export interface GpuLayout {
   mode: "dedicated";
+  /** The first judge card and the first development card (judges[0] and devs[0]). */
   judge: GpuCard;
   dev: GpuCard;
+  /** Every judge card, then every development card, in the order configured. */
+  judges: GpuCard[];
+  devs: GpuCard[];
   /** Every other /dev/nvidia* node: control, UVM, modeset. */
   control: string[];
+}
+
+/** The group of judge card i. */
+export const judgeGroup = (i: number) => (i === 0 ? IDS.gpuGroup : IDS.gpuJudgeBase + i);
+/** The group of development card k. */
+export const devGroup = (k: number) => (k === 0 ? IDS.gpuDevGroup : IDS.gpuDevBase + k);
+/** The user who times runs on judge card i. */
+export const runRole = (i: number): Role => (i === 0 ? "run" : (`run-${i}` as Role));
+/** Which judge card a timing role uses, or undefined for any other role. */
+export const judgeCardOf = (role: Role): number | undefined =>
+  role === "run" ? 0 : /^run-([1-7])$/.test(role) ? Number(role.slice(4)) : undefined;
+
+/** "0", "0,1" or "2, 3" (THERMITE_GPU_INDEX and THERMITE_DEV_GPU_INDEX) as card indices. */
+export function parseIndexList(text: string, what: string): number[] {
+  const list = text
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+  if (!list.length || list.some((x) => !/^\d+$/.test(x)))
+    throw new Error(`${what} is a GPU index or a list of them, such as 0 or 0,1: not "${text}"`);
+  const n = list.map(Number);
+  if (new Set(n).size !== n.length) throw new Error(`${what} names a GPU twice: "${text}"`);
+  if (n.length > IDS.maxCards)
+    throw new Error(
+      `${what} names ${n.length} GPUs; a rig takes at most ${IDS.maxCards} of each kind`,
+    );
+  return n;
 }
 
 /** Where the broker records the layout, for the controller and the isolation selftest. */
@@ -68,12 +101,21 @@ export function planDedicated(opts: {
   /** The driver's information for a card, by /proc bus directory or nvidia-smi index. */
   information: (procBus: string, index: number) => string;
   nodes: string[];
-  judgeIndex: number;
-  devIndex: number;
+  judgeIndices: number[];
+  devIndices: number[];
 }): GpuLayout {
-  if (opts.judgeIndex === opts.devIndex) {
-    throw new Error(`the judge's card and the development card are both index ${opts.judgeIndex}`);
+  if (!opts.judgeIndices.length || !opts.devIndices.length)
+    throw new Error(
+      "a rig with dedicated cards needs at least one judge card and one development card",
+    );
+  const both = opts.judgeIndices.find((i) => opts.devIndices.includes(i));
+  if (both !== undefined) {
+    throw new Error(`a judge card and a development card are both index ${both}`);
   }
+  if (opts.judgeIndices.length > IDS.maxCards || opts.devIndices.length > IDS.maxCards)
+    throw new Error(
+      `a rig takes at most ${IDS.maxCards} judge cards and ${IDS.maxCards} development cards`,
+    );
   const rows = opts.smiCsv
     .split("\n")
     .map((l) => l.split(",").map((f) => f.trim()))
@@ -86,16 +128,19 @@ export function planDedicated(opts: {
     if (!opts.nodes.includes(node)) throw new Error(`the ${what}'s node ${node} is missing`);
     return { index, uuid, bus, node };
   };
-  const judge = card(opts.judgeIndex, "judge's card");
-  const dev = card(opts.devIndex, "development card");
+  const judges = opts.judgeIndices.map((i, n) => card(i, `judge card ${n + 1}`));
+  const devs = opts.devIndices.map((i, n) => card(i, `development card ${n + 1}`));
+  const planned = new Set([...judges, ...devs].map((c) => c.node));
   const cardNode = /^\/dev\/nvidia\d+$/;
-  const strays = opts.nodes.filter((n) => cardNode.test(n) && n !== judge.node && n !== dev.node);
-  // A third card would be reachable through neither group, but nothing should be left unplanned.
+  const strays = opts.nodes.filter((n) => cardNode.test(n) && !planned.has(n));
+  // A card left out would be reachable through no group, but nothing should be left unplanned.
   if (strays.length) throw new Error(`more cards than the layout covers: ${strays.join(", ")}`);
   return {
     mode: "dedicated",
-    judge,
-    dev,
+    judge: judges[0] as GpuCard,
+    dev: devs[0] as GpuCard,
+    judges,
+    devs,
     control: opts.nodes.filter((n) => !cardNode.test(n)),
   };
 }
@@ -120,10 +165,15 @@ export function expectedNodeGroups(
 /** Owner group and mode for each node of a layout. */
 export function nodeGroups(layout: GpuLayout): { node: string; gid: number }[] {
   return [
-    { node: layout.judge.node, gid: IDS.gpuGroup },
-    { node: layout.dev.node, gid: IDS.gpuDevGroup },
+    ...cardsOf(layout).judges.map((c, i) => ({ node: c.node, gid: judgeGroup(i) })),
+    ...cardsOf(layout).devs.map((c, k) => ({ node: c.node, gid: devGroup(k) })),
     ...layout.control.map((node) => ({ node, gid: IDS.gpuCtlGroup })),
   ];
+}
+
+/** A layout's cards; a record written before rigs had several of each has judge and dev only. */
+export function cardsOf(layout: GpuLayout): { judges: GpuCard[]; devs: GpuCard[] } {
+  return { judges: layout.judges ?? [layout.judge], devs: layout.devs ?? [layout.dev] };
 }
 
 export interface Identity {
@@ -139,15 +189,30 @@ export interface Identity {
  * The user, groups and visible card a role runs with. `gpu` is a lane's development run on the
  * device. Without a dedicated layout this is the shared mode: such runs get the `gpu` group.
  */
-export function identityFor(role: Role, gpu: boolean, layout?: GpuLayout | undefined): Identity {
+export function identityFor(
+  role: Role,
+  gpu: boolean,
+  layout?: GpuLayout | undefined,
+  devCard = 0,
+): Identity {
   const ids = roleIds(role);
   const devUser = gpu || /^lane-\d+-dev$/.test(role);
-  if (!layout) return { uid: ids.uid, gid: gpu ? IDS.gpuGroup : ids.gid };
-  if (role === "run") {
-    return { uid: ids.uid, gid: IDS.gpuGroup, groups: [IDS.gpuCtlGroup], cuda: layout.judge.uuid };
+  const judgeCard = judgeCardOf(role);
+  if (!layout) {
+    if (judgeCard !== undefined && judgeCard > 0)
+      throw new Error(`${role} times on a judge card of its own: this rig shares one card`);
+    return { uid: ids.uid, gid: gpu ? IDS.gpuGroup : ids.gid };
+  }
+  const { judges, devs } = cardsOf(layout);
+  if (judgeCard !== undefined) {
+    const c = judges[judgeCard];
+    if (!c) throw new Error(`this rig has no judge card ${judgeCard + 1} for ${role}`);
+    return { uid: ids.uid, gid: judgeGroup(judgeCard), groups: [IDS.gpuCtlGroup], cuda: c.uuid };
   }
   if (devUser) {
-    return { uid: ids.uid, gid: IDS.gpuDevGroup, groups: [IDS.gpuCtlGroup], cuda: layout.dev.uuid };
+    const c = devs[devCard];
+    if (!c) throw new Error(`this rig has no development card ${devCard + 1}`);
+    return { uid: ids.uid, gid: devGroup(devCard), groups: [IDS.gpuCtlGroup], cuda: c.uuid };
   }
   return { uid: ids.uid, gid: ids.gid };
 }
@@ -218,4 +283,26 @@ export function formatCpuList(cpus: number[]): string {
 export function runCpus(localList: string, allowedList: string): string {
   const allowed = new Set(parseCpuList(allowedList));
   return formatCpuList(parseCpuList(localList).filter((c) => allowed.has(c)));
+}
+
+/**
+ * Disjoint CPU sets for several judge cards, from each card's usable CPUs (in card order): cards
+ * with the same CPUs (one socket) split them into equal runs; a card whose CPUs overlap an earlier
+ * card's keeps only the ones not taken. Two timed runs then never share a core.
+ */
+export function shareCpus(lists: number[][]): number[][] {
+  const key = (l: number[]) => [...l].sort((a, b) => a - b).join(",");
+  const groups = new Map<string, number[]>();
+  for (const [i, l] of lists.entries()) groups.set(key(l), [...(groups.get(key(l)) ?? []), i]);
+  const out: number[][] = lists.map(() => []);
+  const taken = new Set<number>();
+  for (const [k, members] of groups) {
+    const cpus = (k ? k.split(",").map(Number) : []).filter((c) => !taken.has(c));
+    const size = Math.floor(cpus.length / members.length);
+    members.forEach((m, j) => {
+      out[m] = cpus.slice(j * size, (j + 1) * size);
+      for (const c of out[m] as number[]) taken.add(c);
+    });
+  }
+  return out;
 }

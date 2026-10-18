@@ -4,6 +4,7 @@ import { log } from "../../common/env.ts";
 import type { Contract, GoalContract, HillClimbContract } from "../../core/contract.ts";
 import { meanInterval, toFraction, toLog } from "../../core/stats.ts";
 import { Audits, auditTrigger } from "../audits.ts";
+import { runRole } from "../broker/devices.ts";
 import type { Runner } from "../broker/runner.ts";
 import { Conclusions } from "../conclusions.ts";
 import { exportTree, patchBetween } from "../git.ts";
@@ -54,6 +55,24 @@ export interface JudgeOptions {
   calibrationEveryMs?: number | undefined;
   /** An agent's development run holds the device: the judge waits for it to end. */
   deviceGate?: { active: boolean } | undefined;
+  /**
+   * This executor's judge card on a rig with several: its place among the judge cards, its id,
+   * and how many there are. Each card is calibrated on its own, a confirmation goes to another
+   * card than its screen's, and runs are timed by the card's own user.
+   */
+  card?: { index: number; uuid: string; count: number } | undefined;
+  /** Builds run one at a time across the rig's executors (they share the builder user). */
+  buildLock?: (<T>(fn: () => Promise<T>) => Promise<T>) | undefined;
+}
+
+/** One at a time: each call waits for the ones before it. */
+export function serial(): <T>(fn: () => Promise<T>) => Promise<T> {
+  let tail: Promise<unknown> = Promise.resolve();
+  return <T>(fn: () => Promise<T>) => {
+    const next = tail.then(fn, fn);
+    tail = next.catch(() => undefined);
+    return next;
+  };
 }
 
 class InfraError extends Error {}
@@ -125,6 +144,8 @@ export class Judge {
       calibrationBlocks: 6,
       calibrationEveryMs: 24 * 3_600_000,
       deviceGate: undefined,
+      card: undefined,
+      buildLock: undefined,
       ...opts,
     } as Required<JudgeOptions>;
     this.ledger = opts.service.ledger;
@@ -138,12 +159,12 @@ export class Judge {
     this.ledger.expireLeases(this.o.owner);
     this.maybeScheduleCalibration();
     this.maybeScheduleValidation();
-    const job = this.ledger.leaseJob(this.o.owner, this.o.leaseMs, [
-      "evaluate",
-      "confirm",
-      "calibrate",
-      "validate",
-    ]);
+    const job = this.ledger.leaseJob(
+      this.o.owner,
+      this.o.leaseMs,
+      ["evaluate", "confirm", "calibrate", "validate"],
+      this.cards > 1 ? this.o.card?.uuid : undefined,
+    );
     if (!job) return false;
     const subject = job.attempt ?? this.jobRun(job) ?? "";
     this.note(`${job.kind} ${subject}: started`, this.jobRun(job));
@@ -302,15 +323,17 @@ export class Judge {
     if (!inst) throw new InfraError(`no run ${run}`);
     const started = Date.now();
     this.note(`build ${commit.slice(0, 12)}: started`, run);
-    const b = await this.store.ensure({
-      repo: inst.seed_repo,
-      mirror: this.o.service.mirrorFor(inst.seed_repo),
-      commit,
-      kit: k.kit,
-      kitDir: k.dir,
-      kitCommit: k.commit,
-      actor: this.o.owner,
-    });
+    const ensure = () =>
+      this.store.ensure({
+        repo: inst.seed_repo,
+        mirror: this.o.service.mirrorFor(inst.seed_repo),
+        commit,
+        kit: k.kit,
+        kitDir: k.dir,
+        kitCommit: k.commit,
+        actor: this.o.owner,
+      });
+    const b = await (this.o.buildLock ? this.o.buildLock(ensure) : ensure());
     this.note(
       `build ${commit.slice(0, 12)}: ${b.ok ? "ok" : `failed (${b.reason.slice(0, 200)})`} in ${Math.round((Date.now() - started) / 1000)} s`,
       run,
@@ -359,6 +382,7 @@ export class Judge {
       kitDir: k.dir,
       runsDir,
       modelsDir: join(this.o.service.paths.stateDir, "models"),
+      runRole: runRole(this.o.card?.index ?? 0),
       note: (arm, cell, outcome) =>
         held.has(cell)
           ? this.note(`held-out run ${++heldRuns} done`, run)
@@ -648,7 +672,7 @@ export class Judge {
                 attempt: attemptId,
                 kind: "confirm",
                 priority: 50,
-                spec: { baseline_seq: champion.seq, screen_job: job.id },
+                spec: { baseline_seq: champion.seq, screen_job: job.id, ...this.avoidMe() },
                 actor: this.o.owner,
               },
             }
@@ -1220,7 +1244,7 @@ export class Judge {
                 attempt: attemptId,
                 kind: "confirm",
                 priority: 50,
-                spec: { baseline_seq: champion.seq, screen_job: job.id, gained },
+                spec: { baseline_seq: champion.seq, screen_job: job.id, gained, ...this.avoidMe() },
                 actor: this.o.owner,
               },
             }
@@ -1378,33 +1402,49 @@ export class Judge {
    * interval assumes, so a few blocks that happen to agree on a noisy rig do not decide.
    */
   private noiseFloor(run: string): number {
+    // With several judge cards, each card's own noise: a verdict uses the floor of the card it
+    // was measured on.
+    const mine = this.cards > 1 ? this.o.card?.uuid : undefined;
     const r = this.ledger.db
       .prepare(
-        "select body from event where kind = 'calibration' and subject = ? order by id desc limit 1",
+        `select body from event where kind = 'calibration' and subject = ?
+           ${mine ? "and json_extract(body, '$.card') = ?" : ""} order by id desc limit 1`,
       )
-      .get(run) as { body: string } | undefined;
+      .get(run, ...(mine ? [mine] : [])) as { body: string } | undefined;
     const sigma = r ? Number((JSON.parse(r.body) as { sigma?: unknown }).sigma) : 0;
     return Number.isFinite(sigma) && sigma > 0 ? sigma : 0;
   }
 
   private maybeScheduleCalibration(): void {
     if (this.o.calibrationBlocks < 2) return;
+    // Each judge card calibrates for itself; its executor schedules the job pinned to it.
+    const mine = this.cards > 1 ? this.o.card?.uuid : undefined;
     for (const inst of this.ledger.listRuns()) {
       if (inst.status !== "running" || inst.mode !== "hill_climb") continue;
       const last = this.ledger.db
         .prepare(
           `select created_at from job where kind = 'calibrate' and json_extract(spec, '$.run') = ?
-             order by id desc limit 1`,
+             ${mine ? "and json_extract(spec, '$.card') = ?" : ""} order by id desc limit 1`,
         )
-        .get(inst.id) as { created_at: string } | undefined;
+        .get(inst.id, ...(mine ? [mine] : [])) as { created_at: string } | undefined;
       if (last && Date.now() - Date.parse(last.created_at) < this.o.calibrationEveryMs) continue;
       this.ledger.enqueueJob({
         kind: "calibrate",
         priority: 200,
-        spec: { run: inst.id },
+        spec: { run: inst.id, ...(mine ? { card: mine } : {}) },
         actor: this.o.owner,
       });
     }
+  }
+
+  /** How many judge cards the rig has. */
+  private get cards(): number {
+    return this.o.card?.count ?? 1;
+  }
+
+  /** A confirmation's spec: on a rig with several judge cards, not on this (the screen's) card. */
+  private avoidMe(): { avoid_card?: string } {
+    return this.cards > 1 && this.o.card ? { avoid_card: this.o.card.uuid } : {};
   }
 
   private async calibrate(job: JobRow): Promise<Finish> {
@@ -1444,6 +1484,9 @@ export class Judge {
       mean: i.estimate,
       ci: [i.low, i.high],
       summary: `A/A ${pct(i.estimate)} [${pct(i.low)}, ${pct(i.high)}], block sigma ${(sd * 100).toFixed(3)}%`,
+      ...(this.cards > 1 && this.o.card
+        ? { card: this.o.card.uuid, card_index: this.o.card.index }
+        : {}),
     };
     return { result, events: [{ kind: "calibration", subject: run, body: result }] };
   }

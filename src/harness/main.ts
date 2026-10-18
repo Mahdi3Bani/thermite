@@ -29,10 +29,10 @@ import { spawnTrial } from "./agents/spawn.ts";
 import { laneCacheEnv } from "./agents/workspace.ts";
 import { createHarnessApi } from "./api.ts";
 import { BrokerClient } from "./broker/client.ts";
-import { type GpuLayout, readLayout } from "./broker/devices.ts";
+import { cardsOf, type GpuLayout, parseIndexList, readLayout, runRole } from "./broker/devices.ts";
 import { LocalRunner, type Runner } from "./broker/runner.ts";
 import { collectHardware } from "./hardware.ts";
-import { Judge, type PromotionPolicy } from "./judge/judge.ts";
+import { Judge, type PromotionPolicy, serial } from "./judge/judge.ts";
 import { Ledger } from "./ledger.ts";
 import { settlePropagations } from "./propagation.ts";
 import { Research } from "./research/research.ts";
@@ -97,17 +97,30 @@ async function main(): Promise<void> {
       devCard,
     );
   }
-  let driver: TargetDriver;
-  if (target === "cpu") driver = new CpuDriver(env.THERMITE_TARGET_CLASS ?? "generic-cpu");
+  // One driver per judge card: each executor times on its own card, as its own user.
+  const judgeCards = devCard?.layout ? cardsOf(devCard.layout).judges : [];
+  const devCards = devCard?.layout ? cardsOf(devCard.layout).devs : [];
+  let drivers: TargetDriver[];
+  if (target === "cpu") drivers = [new CpuDriver(env.THERMITE_TARGET_CLASS ?? "generic-cpu")];
   else if (target === "cuda-gpu") {
-    driver = new CudaDriver({
-      targetClass: env.THERMITE_TARGET_CLASS ?? "cuda-gpu",
-      index: Number(env.THERMITE_GPU_INDEX ?? "0"),
-      uuid: devCard?.layout?.judge.uuid,
-      smi: smiAsRun(runner, join(paths.scratchDir, "thermite", "gpu-query")),
-      unusable: devCard?.error,
-    });
+    const first = parseIndexList(env.THERMITE_GPU_INDEX ?? "0", "THERMITE_GPU_INDEX")[0] ?? 0;
+    const cards = judgeCards.length ? judgeCards : [{ index: first, uuid: undefined }];
+    drivers = cards.map(
+      (c, i) =>
+        new CudaDriver({
+          targetClass: env.THERMITE_TARGET_CLASS ?? "cuda-gpu",
+          index: c.index,
+          uuid: c.uuid,
+          smi: smiAs(
+            runner,
+            runRole(i),
+            join(paths.scratchDir, "thermite", i ? `gpu-query-${i}` : "gpu-query"),
+          ),
+          unusable: devCard?.error,
+        }),
+    );
   } else throw new Error(`no target driver ${target}; this build has cpu and cuda-gpu`);
+  const driver = drivers[0] as TargetDriver;
 
   // Private state: only the controller's user may enter. Builds and models are reachable by
   // exact path only (0711), because the run user executes builds and loads models.
@@ -218,16 +231,29 @@ async function main(): Promise<void> {
         ? []
         : layout
           ? [
-              { role: "judge", select: layout.judge.uuid, smi: smiAsRun(runner, gpuQuery) },
-              {
-                role: "dev",
-                select: layout.dev.uuid,
-                smi: smiAs(
-                  runner,
-                  "lane-1-dev",
-                  join(paths.scratchDir, "thermite", "gpu-query-dev"),
-                ),
-              },
+              ...judgeCards.map((c, i) => ({
+                role: "judge" as const,
+                select: c.uuid,
+                smi: i
+                  ? smiAs(runner, runRole(i), join(paths.scratchDir, "thermite", `gpu-query-${i}`))
+                  : smiAsRun(runner, gpuQuery),
+              })),
+              ...devCards.map((c, k) => ({
+                role: "dev" as const,
+                select: c.uuid,
+                smi: k
+                  ? smiAs(
+                      runner,
+                      "lane-1",
+                      join(paths.scratchDir, "thermite", `gpu-query-dev-${k}`),
+                      k,
+                    )
+                  : smiAs(
+                      runner,
+                      "lane-1-dev",
+                      join(paths.scratchDir, "thermite", "gpu-query-dev"),
+                    ),
+              })),
             ]
           : [
               {
@@ -246,14 +272,28 @@ async function main(): Promise<void> {
     scratchDir: paths.scratchDir,
   });
   if (devCard?.error) service.hardware.errors.push(devCard.error);
+  // One GPU model per rig: its judge cards share one target class. Mixed cards are separate rigs;
+  // until then only the first judge card judges.
+  const cardModels = new Set(
+    service.hardware.devices.filter((d) => d.role === "judge").map((d) => d.name),
+  );
+  const judging = cardModels.size > 1 ? drivers.slice(0, 1) : drivers;
+  if (cardModels.size > 1)
+    service.hardware.errors.push(
+      `the judge cards are different models (${[...cardModels].join(", ")}): only the first judges; put different models in separate rigs`,
+    );
   log("harness", "hardware", {
     devices: service.hardware.devices.map((d) => `${d.role}: ${d.name} ${d.uuid}`),
     errors: service.hardware.errors,
   });
 
-  const executorId = "executor-0";
-  const reclaimed = ledger.reclaimLeases(executorId, "controller-start");
-  if (reclaimed.length) log("harness", "reclaimed leases at start", { jobs: reclaimed });
+  // One executor per judge card that judges (executor-0 is the first card's, as always).
+  const executorIds = judging.map((_, i) => `executor-${i}`);
+  for (const id of executorIds) {
+    const reclaimed = ledger.reclaimLeases(id, "controller-start");
+    if (reclaimed.length)
+      log("harness", "reclaimed leases at start", { executor: id, jobs: reclaimed });
+  }
 
   const devRuns = new DevRuns({
     runner,
@@ -261,6 +301,7 @@ async function main(): Promise<void> {
     scratchDir: paths.scratchDir,
     gpu: driver.type === "cuda-gpu",
     dedicated: devCard?.layout !== undefined,
+    cards: devCards.length || undefined,
     unavailable: devCard?.error,
   });
 
@@ -323,16 +364,34 @@ async function main(): Promise<void> {
   });
   log("harness", "listening", { rig, host, port, target: (await driver.identify()).id });
 
-  const executor = new Judge({
-    service,
-    runner,
-    driver,
-    owner: executorId,
+  const buildLock = serial();
+  const executors = judging.map(
+    (d, i) =>
+      new Judge({
+        service,
+        runner,
+        driver: d,
+        owner: executorIds[i] as string,
+        promotion,
+        calibrationBlocks: Number(env.THERMITE_CALIBRATION_BLOCKS ?? "6"),
+        deviceGate: devRuns,
+        buildLock,
+        ...(judging.length > 1
+          ? {
+              card: {
+                index: i,
+                uuid: (judgeCards[i] as { uuid: string }).uuid,
+                count: judging.length,
+              },
+            }
+          : {}),
+      }),
+  );
+  log("harness", "judge ready", {
+    separated: runner.separated,
     promotion,
-    calibrationBlocks: Number(env.THERMITE_CALIBRATION_BLOCKS ?? "6"),
-    deviceGate: devRuns,
+    judge_cards: executors.length,
   });
-  log("harness", "judge ready", { separated: runner.separated, promotion });
 
   // Agents run only with a model route (THERMITE_MODEL_* from the rig's configuration; the key from the
   // broker). Each trial is its own worker process.
@@ -448,14 +507,15 @@ async function main(): Promise<void> {
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   // Three independent loops: a judging job never holds up the scheduler (trials, epochs) or the
   // exports, and a slow planner call never holds up the judge.
-  const judging = async () => {
+  // One judging loop per judge card.
+  const judgeLoop = async (executor: Judge, id: string) => {
     while (!stopping) {
       let worked = false;
       try {
         // The judge off (Edit rig): jobs wait in the queue, nothing is measured.
         worked = settings.get().judge ? await executor.tick() : false;
       } catch (err) {
-        log("harness", "executor error", { error: String(err) });
+        log("harness", "executor error", { executor: id, error: String(err) });
       }
       if (!worked) await sleep(1000);
     }
@@ -495,7 +555,11 @@ async function main(): Promise<void> {
       await sleep(5000);
     }
   };
-  const running = Promise.all([judging(), scheduling(), exporting()]);
+  const running = Promise.all([
+    ...executors.map((e, i) => judgeLoop(e, executorIds[i] as string)),
+    scheduling(),
+    exporting(),
+  ]);
 
   const shutdown = async (signal: string) => {
     if (stopping) return;

@@ -11,7 +11,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { runSupervised } from "../broker/process.ts";
-import { type Runner, type RunOutcome, walk } from "../broker/runner.ts";
+import { type Role, type Runner, type RunOutcome, walk } from "../broker/runner.ts";
 import { expandArgv, type Kit, paramsText } from "../kit.ts";
 import type { BuildManifest, BuildStore } from "./builds.ts";
 
@@ -56,6 +56,8 @@ export interface MeasureContext {
   modelsDir: string;
   /** Tells the live view how a run went (never a measurement; held-out cells are not named). */
   note?: ((arm: string, cell: string, outcome: string) => void) | undefined;
+  /** The user that times runs on this executor's judge card: run, or run-1 to run-7. */
+  runRole?: Role | undefined;
 }
 
 /**
@@ -143,9 +145,9 @@ async function runArmInner(ctx: MeasureContext, arm: Arm, cell: string): Promise
   writeFileSync(join(work, "params.json"), json, { mode: 0o600 });
   try {
     if (ctx.kit.run.copy.length) copyForRun(ctx.kitDir, ctx.kit.run.copy, kit);
-    await ctx.runner.handOver(work, "run");
+    await ctx.runner.handOver(work, ctx.runRole ?? "run");
     const outcome = await ctx.runner.run({
-      role: "run",
+      role: ctx.runRole ?? "run",
       argv: expandArgv(ctx.kit.run.command, {
         build: arm.dir,
         params: join(work, "params.txt"),

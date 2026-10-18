@@ -21,6 +21,12 @@ export const IDS = {
   gpuDevGroup: 10501,
   /** Dedicated mode: the nodes every CUDA process needs (nvidiactl, nvidia-uvm, ...). */
   gpuCtlGroup: 10502,
+  /** Judge card i (from 1): group 10510 + i, timed by user run-i (uid 10030 + i). */
+  gpuJudgeBase: 10510,
+  /** Development card k (from 1): group 10520 + k. */
+  gpuDevBase: 10520,
+  /** Cards of each kind a rig may have: judge cards and development cards, 8 each. */
+  maxCards: 8,
   laneBase: 10100,
   laneDevBase: 10200,
   /** Each lane's worker agent process: its own user, with no access to the lane's files. */
@@ -31,7 +37,7 @@ export const IDS = {
 export const RoleSchema = z
   .string()
   .regex(
-    /^(builder|run|lane-([1-9]|1[0-6])|lane-([1-9]|1[0-6])-dev|agent-([1-9]|1[0-6]))$/,
+    /^(builder|run|run-[1-7]|lane-([1-9]|1[0-6])|lane-([1-9]|1[0-6])-dev|agent-([1-9]|1[0-6]))$/,
     "unknown role",
   );
 export type Role = z.infer<typeof RoleSchema>;
@@ -39,6 +45,11 @@ export type Role = z.infer<typeof RoleSchema>;
 export function roleIds(role: Role): { uid: number; gid: number } {
   if (role === "builder") return IDS.builder;
   if (role === "run") return IDS.run;
+  const judge = /^run-([1-7])$/.exec(role);
+  if (judge) {
+    const i = Number(judge[1]);
+    return { uid: IDS.run.uid + i, gid: IDS.gpuJudgeBase + i };
+  }
   const agent = /^agent-(\d+)$/.exec(role);
   if (agent) {
     const n = Number(agent[1]);
@@ -90,6 +101,11 @@ export const RunRequest = z.object({
    * Only lane roles may ask; the broker refuses it for any other role.
    */
   gpu: z.boolean().optional(),
+  /**
+   * With `gpu` on a rig with several development cards: which one (0 is the first). The
+   * controller hands out free cards; the run's groups reach that card only.
+   */
+  devCard: z.number().int().min(0).max(7).optional(),
   /**
    * A lane's plain command: what it starts in the background keeps running after it, as in a
    * shell, until the lane's trial ends (killRole). The broker allows it for nothing else.

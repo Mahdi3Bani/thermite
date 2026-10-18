@@ -16,13 +16,18 @@ import { fileURLToPath } from "node:url";
 import { log } from "../common/env.ts";
 import {
   expectedNodeGroups,
+  formatCpuList,
   type GpuLayout,
   LAYOUT_FILE,
   type LayoutRecord,
   nodeGroups,
+  parseCpuList,
+  parseIndexList,
   planDedicated,
   procBusDir,
   runCpus,
+  runRole,
+  shareCpus,
 } from "./broker/devices.ts";
 import { killScope } from "./broker/process.ts";
 import { IDS, roleIds } from "./broker/runner.ts";
@@ -35,8 +40,9 @@ import { ALL_ROLES, startBrokerServer } from "./broker/server.ts";
  * - reads the harness's secret files and passes their values only to the controller, then
  *   closes the secrets directory to every other user;
  * - gives the device nodes to the `gpu` group (mode 0660), so only roles in that group reach
- *   the device; with a dedicated development card (THERMITE_DEV_GPU_INDEX), gives each card
- *   and the shared nodes their own groups instead (broker/devices.ts);
+ *   the device; with dedicated cards (THERMITE_GPU_INDEX and THERMITE_DEV_GPU_INDEX, each a
+ *   card or a list), gives each card and the shared nodes their own groups instead
+ *   (broker/devices.ts);
  * - serves the broker socket, through which the controller runs work as separate users;
  * - runs the controller as `thermite` and restarts it if it exits, after killing anything a
  *   role left running.
@@ -187,35 +193,53 @@ function assertDevices(layout: GpuLayout | undefined): void {
 }
 
 /**
- * The CPUs timed runs are pinned to. THERMITE_RUN_CPUS is "auto" (the default on a GPU rig: the
- * judge's card's local CPUs this container may use), "off", or an explicit CPU list.
+ * The CPUs timed runs are pinned to, by timing user (run, run-1, ...). THERMITE_RUN_CPUS is
+ * "auto" (the default on a GPU rig: each judge card's local CPUs this container may use), "off",
+ * or an explicit CPU list. With several judge cards the sets are made disjoint (shareCpus).
  */
-function chooseRunCpus(layout: GpuLayout | undefined): string | undefined {
+function chooseRunCpus(layout: GpuLayout | undefined): Record<string, string> | undefined {
   const want = env.THERMITE_RUN_CPUS ?? (env.THERMITE_TARGET === "cuda-gpu" ? "auto" : "off");
   if (want === "off") return undefined;
-  if (want !== "auto") return want;
+  const judges = layout?.judges ?? [];
+  const count = Math.max(1, judges.length);
+  const byRole = (lists: number[][]) =>
+    Object.fromEntries(
+      shareCpus(lists)
+        .map((cpus, i) => [runRole(i), formatCpuList(cpus)] as const)
+        .filter(([, cpus]) => cpus),
+    );
+  if (want !== "auto") return byRole(Array.from({ length: count }, () => parseCpuList(want)));
   try {
-    const bus =
-      layout?.judge.bus ??
-      execFileSync(
-        "nvidia-smi",
-        ["--query-gpu=pci.bus_id", "--format=csv,noheader", "-i", env.THERMITE_GPU_INDEX ?? "0"],
-        { encoding: "utf8" },
-      ).trim();
-    const local = readFileSync(`/sys/bus/pci/devices/${procBusDir(bus)}/local_cpulist`, "utf8");
+    const buses = judges.length
+      ? judges.map((c) => c.bus)
+      : [
+          execFileSync(
+            "nvidia-smi",
+            [
+              "--query-gpu=pci.bus_id",
+              "--format=csv,noheader",
+              "-i",
+              String(parseIndexList(env.THERMITE_GPU_INDEX ?? "0", "THERMITE_GPU_INDEX")[0]),
+            ],
+            { encoding: "utf8" },
+          ).trim(),
+        ];
     const allowed = /^Cpus_allowed_list:\s*(\S+)$/m.exec(
       readFileSync("/proc/self/status", "utf8"),
     )?.[1];
-    const cpus = allowed ? runCpus(local, allowed) : "";
-    if (!cpus) {
-      log("broker", "timed runs are not pinned: the card's local CPUs are not in this container", {
-        local: local.trim(),
+    const lists = buses.map((bus) => {
+      const local = readFileSync(`/sys/bus/pci/devices/${procBusDir(bus)}/local_cpulist`, "utf8");
+      return allowed ? parseCpuList(runCpus(local, allowed)) : [];
+    });
+    const pinned = byRole(lists);
+    if (!Object.keys(pinned).length) {
+      log("broker", "timed runs are not pinned: the cards' local CPUs are not in this container", {
         allowed,
       });
       return undefined;
     }
-    log("broker", "timed runs pinned to the judge card's local CPUs", { bus, cpus });
-    return cpus;
+    log("broker", "timed runs pinned to their judge card's local CPUs", { buses, pinned });
+    return pinned;
   } catch (err) {
     log("broker", "timed runs are not pinned", {
       error: err instanceof Error ? err.message : String(err),
@@ -274,8 +298,8 @@ function prepareDevices(): GpuLayout | undefined {
         }
       },
       nodes,
-      judgeIndex: Number(env.THERMITE_GPU_INDEX ?? "0"),
-      devIndex: Number(env.THERMITE_DEV_GPU_INDEX),
+      judgeIndices: parseIndexList(env.THERMITE_GPU_INDEX ?? "0", "THERMITE_GPU_INDEX"),
+      devIndices: parseIndexList(env.THERMITE_DEV_GPU_INDEX, "THERMITE_DEV_GPU_INDEX"),
     });
     for (const { node, gid } of nodeGroups(layout)) {
       chownSync(node, 0, gid);
@@ -286,9 +310,9 @@ function prepareDevices(): GpuLayout | undefined {
       }
     }
     record = { ok: true, ...layout };
-    log("broker", "dedicated development card", {
-      judge: layout.judge.node,
-      dev: layout.dev.node,
+    log("broker", "dedicated cards", {
+      judges: layout.judges.map((c) => c.node),
+      devs: layout.devs.map((c) => c.node),
       control: layout.control,
     });
   } catch (err) {

@@ -267,6 +267,41 @@ describe("ledger", () => {
     assert.equal(ledger.leaseJob("exec", 60_000)?.id, old);
   });
 
+  test("with several judge cards, a pinned job waits for its card and a confirmation avoids its screen's", () => {
+    const { ledger } = setup();
+    const calA = ledger.enqueueJob({
+      kind: "calibrate",
+      priority: 10,
+      spec: { run: "race-1", card: "GPU-a" },
+      actor: "t",
+    });
+    const confirm = ledger.enqueueJob({
+      kind: "confirm",
+      priority: 20,
+      spec: { run: "race-1", avoid_card: "GPU-a" },
+      actor: "t",
+    });
+    const plain = ledger.enqueueJob({
+      kind: "validate",
+      priority: 30,
+      spec: { run: "race-1" },
+      actor: "t",
+    });
+    // Card B: not A's calibration, but the confirmation (it must not run on A).
+    assert.equal(ledger.leaseJob("executor-1", 60_000, undefined, "GPU-b")?.id, confirm);
+    // Card A: its own calibration, then the unpinned job; never the confirmation.
+    assert.equal(ledger.leaseJob("executor-0", 60_000, undefined, "GPU-a")?.id, calA);
+    assert.equal(ledger.leaseJob("executor-0", 60_000, undefined, "GPU-a")?.id, plain);
+    assert.equal(ledger.leaseJob("executor-0", 60_000, undefined, "GPU-a"), undefined);
+    // A rig with one judge card passes no card and takes everything.
+    const again = ledger.enqueueJob({
+      kind: "confirm",
+      spec: { run: "race-1", avoid_card: "GPU-a" },
+      actor: "t",
+    });
+    assert.equal(ledger.leaseJob("executor-0", 60_000)?.id, again);
+  });
+
   test("leases are fenced: an expired holder cannot write, and repeated expiry blocks the job", () => {
     let now = new Date("2026-10-14T00:00:00Z");
     const { ledger } = setup(() => now);

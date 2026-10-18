@@ -12,7 +12,7 @@ import {
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { BrokerClient } from "./broker/client.ts";
-import { type GpuLayout, readLayout } from "./broker/devices.ts";
+import { cardsOf, type GpuLayout, judgeCardOf, readLayout, runRole } from "./broker/devices.ts";
 import { IDS, type Role, walk } from "./broker/runner.ts";
 import { copyForRun } from "./judge/measure.ts";
 
@@ -75,33 +75,35 @@ process.stdout.write(JSON.stringify(out));
 
 /** Who a role is to the device: the run user, a development run, or neither. */
 function deviceSide(role: Role, gpu: boolean): "judge" | "dev" | "other" {
-  if (role === "run") return "judge";
+  if (judgeCardOf(role) !== undefined) return "judge";
   return gpu || role.endsWith("-dev") ? "dev" : "other";
 }
 
 /**
  * The device-node probes for one side. In shared mode the run user and development runs reach
- * every node and are not probed; everyone else is refused every node. With a dedicated
- * development card each side must reach its own card and the shared nodes, and be refused the
- * other side's card, and nvidia-smi must list exactly its own card.
+ * every node and are not probed; everyone else is refused every node. With dedicated cards each
+ * judge identity and each development card must reach its own card and the shared nodes, and be
+ * refused every other card, and nvidia-smi must list exactly its own card.
  */
 export function deviceProbes(
   nodes: string[],
   side: "judge" | "dev" | "other",
   layout?: GpuLayout | undefined,
+  card = 0,
 ): Probe[] {
   const refuse = (p: string): Probe => ({ name: `device:${p.slice(5)}`, op: "access", path: p });
   const reach = (p: string): Probe => ({ name: `device:${p.slice(5)}`, op: "reachable", path: p });
   if (side === "other") return nodes.map(refuse);
   if (!layout) return [];
-  const [mine, theirs] =
-    side === "judge" ? [layout.judge.node, layout.dev.node] : [layout.dev.node, layout.judge.node];
-  const uuid = side === "judge" ? layout.judge.uuid : layout.dev.uuid;
+  const { judges, devs } = cardsOf(layout);
+  const own = (side === "judge" ? judges : devs)[card];
+  if (!own) throw new Error(`no ${side === "judge" ? "judge" : "development"} card ${card + 1}`);
+  const others = [...judges, ...devs].filter((c) => c.node !== own.node);
   return [
-    reach(mine),
+    reach(own.node),
     ...layout.control.map(reach),
-    refuse(theirs),
-    { name: "visible-gpus", op: "gpus", path: "nvidia-smi", expect: uuid },
+    ...others.map((c) => refuse(c.node)),
+    { name: "visible-gpus", op: "gpus", path: "nvidia-smi", expect: own.uuid },
   ];
 }
 
@@ -224,37 +226,55 @@ export async function isolationSelftest(opts: {
     .map((d) => join("/dev", d));
   // A dedicated development card is probed as the broker set it up; a failed setup fails here.
   const card = opts.dedicated ? readLayout(opts.socketPath) : {};
-  const devices = card.layout
-    ? `dedicated: judge ${card.layout.judge.node}, development ${card.layout.dev.node}`
+  const cards = card.layout ? cardsOf(card.layout) : undefined;
+  const devices = cards
+    ? `dedicated: judge ${cards.judges.map((c) => c.node).join(", ")}, development ${cards.devs.map((c) => c.node).join(", ")}`
     : card.error
       ? `dedicated, NOT SET UP: ${card.error}`
       : "shared";
 
   const client = new BrokerClient(opts.socketPath);
-  const roles = opts.roles ?? (["builder", "run", "lane-1", "lane-1-dev", "agent-1"] as Role[]);
-  // A lane's development run is the lane's user with the device group: probed as itself too.
+  const roles =
+    opts.roles ??
+    ([
+      "builder",
+      "run",
+      // Each further judge card's timing user.
+      ...(cards?.judges.slice(1).map((_, i) => runRole(i + 1)) ?? []),
+      "lane-1",
+      "lane-1-dev",
+      "agent-1",
+    ] as Role[]);
+  // A lane's development run is the lane's user with the device group: probed as itself too,
+  // once on each development card.
   const subjects = roles.flatMap((role) =>
     role === "lane-1"
       ? [
-          { key: role, role, gpu: false },
-          { key: "lane-1+gpu", role, gpu: true },
+          { key: role, role, gpu: false, card: 0 },
+          ...(cards?.devs ?? [undefined]).map((_, k) => ({
+            key: k ? `lane-1+gpu@${k + 1}` : "lane-1+gpu",
+            role,
+            gpu: true,
+            card: k,
+          })),
         ]
-      : [{ key: role as string, role, gpu: false }],
+      : [{ key: role as string, role, gpu: false, card: judgeCardOf(role) ?? 0 }],
   );
   const report: IsolationReport = { ok: card.error === undefined, devices, roles: {}, skipped };
   try {
-    for (const { key, role, gpu } of subjects) {
+    for (const { key, role, gpu, card: n } of subjects) {
       const cwd = join(opts.scratchDir, "thermite", `selftest-${key}`);
       mkdirSync(cwd, { recursive: true });
       await client.handOver(cwd, role);
-      const mine = [...probes, ...deviceProbes(nodes, deviceSide(role, gpu), card.layout)];
-      if (role === "run") mine.push({ name: "run-kit-read", op: "readable", path: driver });
+      const mine = [...probes, ...deviceProbes(nodes, deviceSide(role, gpu), card.layout, n)];
+      if (judgeCardOf(role) !== undefined)
+        mine.push({ name: "run-kit-read", op: "readable", path: driver });
       const r = await client.run({
         role,
         argv: [process.execPath, "-e", PROBE, JSON.stringify(mine)],
         cwd,
         timeoutMs: 30_000,
-        ...(gpu ? { gpu: true } : {}),
+        ...(gpu ? { gpu: true, ...(n ? { devCard: n } : {}) } : {}),
       });
       await client.remove(cwd);
       let results: Record<string, string>;

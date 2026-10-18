@@ -7,7 +7,10 @@ export interface Hardware {
   collected_at: string;
   /** The judge's target, as its driver identifies it (the comparability key is `id`). */
   target: { type: string; class: string; id: string };
-  /** "shared": one device for the judge and agents' dev runs; "dedicated": one each. */
+  /**
+   * "shared": one device for the judge and agents' dev runs; "dedicated": cards of their own for
+   * the judge and for dev runs (one or more of each; devices lists them with their roles).
+   */
   device_mode: "shared" | "dedicated" | "none";
   devices: HardwareDevice[];
   cpu: {

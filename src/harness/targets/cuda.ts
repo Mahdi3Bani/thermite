@@ -272,6 +272,8 @@ export function smiAs(
   runner: Runner,
   role: Role,
   dir: string,
+  /** A lane's dev run on this development card (a rig with several), in place of `role`'s card. */
+  devCard?: number | undefined,
 ): (args: string[]) => Promise<string> {
   let ready: Promise<void> | undefined;
   return async (args) => {
@@ -289,6 +291,7 @@ export function smiAs(
         cwd: dir,
         timeoutMs: 30_000,
         captureBytes: 1024 * 1024,
+        ...(devCard !== undefined ? { gpu: true, devCard } : {}),
       });
       if (r.exitCode === 0) return r.stdout;
       last = `nvidia-smi exited ${r.exitCode ?? r.signal}: ${r.stderr.slice(-300)}`;

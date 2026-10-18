@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { CRASH_KERNEL, FAST_KERNEL, makeJudgeEnv, WRONG_KERNEL } from "../../testing/judge-env.ts";
+import { LocalRunner } from "../broker/runner.ts";
+import { CpuDriver } from "../targets/cpu.ts";
+import { Judge, serial } from "./judge.ts";
 
 /** Verdict history with reasons, for assertion messages. */
 function why(
@@ -51,6 +54,65 @@ describe("judge pipeline (local runner, Node test kit)", () => {
     const receipts = env.ledger.db.prepare("select count(*) as n from receipt").get();
     // At least the first screening look (3 blocks) plus 4 confirmation blocks.
     assert.ok(Number(receipts?.n) >= 7, `receipts ${receipts?.n}`);
+  });
+
+  test("two judge cards: each calibrates itself, and a win screened on one is confirmed on the other", async () => {
+    const env = await setup();
+    const buildLock = serial();
+    const card = (index: number) =>
+      new Judge({
+        service: env.service,
+        runner: new LocalRunner(env.paths.scratchDir),
+        driver: new CpuDriver("test", { maxLoadFraction: Number.POSITIVE_INFINITY }),
+        owner: `executor-${index}`,
+        promotion: "auto",
+        readyRetries: 0,
+        calibrationBlocks: 2,
+        buildLock,
+        card: { index, uuid: `GPU-${"ab"[index]}`, count: 2 },
+      });
+    const [a, b] = [card(0), card(1)];
+    // Each card schedules and runs its own calibration.
+    assert.equal(await a.tick(), true);
+    assert.equal(await b.tick(), true);
+    const cals = env.ledger.db
+      .prepare(
+        "select json_extract(body, '$.card') as card from event where kind = 'calibration' order by id",
+      )
+      .all()
+      .map((r) => r.card);
+    assert.deepEqual([...cals].sort(), ["GPU-a", "GPU-b"]);
+    const id = await env.submit(FAST_KERNEL, "drop the wasted inner loop");
+    // Card A screens it; the confirmation is then not A's to take.
+    assert.equal(await a.tick(), true);
+    const confirm = env.ledger.db
+      .prepare("select id, spec from job where kind = 'confirm' and attempt = ?")
+      .get(id) as { id: number; spec: string };
+    assert.equal(JSON.parse(confirm.spec).avoid_card, "GPU-a");
+    assert.equal(await a.tick(), false);
+    assert.equal(await b.tick(), true);
+    const leased = env.ledger.db
+      .prepare("select actor from event where kind = 'job_leased' and subject = ?")
+      .all(String(confirm.id))
+      .map((r) => r.actor);
+    assert.deepEqual(leased, ["executor-1"]);
+    assert.equal(
+      (
+        env.ledger.db.prepare("select state from job where id = ?").get(confirm.id) as {
+          state: string;
+        }
+      ).state,
+      "done",
+    );
+    assert.deepEqual(
+      env.ledger.db
+        .prepare("select verdict from verdict where attempt = ? order by id")
+        .all(id)
+        .map((r) => r.verdict),
+      ["win_screened", "win_confirmed"],
+      why(env, id),
+    );
+    assert.equal(env.ledger.currentChampion("js-1").attempt, id);
   });
 
   test("a score from the judge's clock as plain time: a faster kernel wins on lower seconds", async () => {

@@ -136,7 +136,11 @@ v1 ships drivers for CUDA GPUs and for CPUs. Others, such as serial-attached boa
 **Sharing a device is configurable.**
 
 - **Shared mode** (one device per rig). The judge takes the device whenever it has work waiting, and agents use it for their own test runs the rest of the time.
-- **Dedicated mode** (two devices per rig). The judge measures on one device, and agents' test runs use the other, so neither waits for the other. On a CUDA rig, `THERMITE_DEV_GPU_INDEX` names the agents' card, and `THERMITE_GPU_INDEX` the judge's.
-  - Each card's device node belongs to its own group. A test run cannot open the judge's card, and a run being timed cannot open the agents' card, whatever environment either sets.
-  - The judge reads only its own card's state.
-  - A rig that cannot set this up neither times nor allows test runs. It never falls back to sharing while both cards are visible.
+- **Dedicated mode** (two or more devices per rig). The judge measures on its devices, and agents' test runs use theirs, so neither waits for the other. On a CUDA rig, `THERMITE_GPU_INDEX` names the judge's cards and `THERMITE_DEV_GPU_INDEX` the agents' cards, each one card or a list (up to 8 of each).
+  - Each card's device node belongs to its own group. A test run cannot open a judge card, and a run being timed cannot open any card but its own, whatever environment either sets.
+  - Judge cards are a pool. Each has its own executor, its own timing user, its own CPU set (local to the card, disjoint from the others) and its own noise floor. Every comparison measures both arms on one card in one job, so cards are never compared with each other. A win screened on one card is confirmed on another. Builds run one at a time.
+  - Agents' cards are a pool too. A test run takes any free card and waits only when all are busy; a lane has one test run at a time.
+  - All judge cards of a rig are one model. A rig whose judge cards differ judges on the first only, and says so.
+  - The isolation check probes every judge card's user and every agents' card: each reaches its own card and is refused the others.
+  - A rig that cannot set this up neither times nor allows test runs. It never falls back to sharing while several cards are visible.
+  - Where control sets a rig up, Add a rig takes any number of GPUs and asks how many are the judge's: by default half, rounded up, and on a machine the lowest-numbered.

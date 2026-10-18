@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, chownSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import { log } from "../../common/env.ts";
-import { type GpuLayout, identityFor } from "./devices.ts";
+import { cardsOf, type GpuLayout, identityFor } from "./devices.ts";
 import { killScope, runSupervised, sweepRole } from "./process.ts";
 import { BrokerRequest, type BrokerResponse, type BrokerRequest as Req } from "./protocol.ts";
 import { IDS, insideRoot, type Role, RunRequest, roleIds } from "./runner.ts";
@@ -22,8 +22,8 @@ export interface BrokerServerOptions {
   gpuLayout?: GpuLayout | undefined;
   /** Puts the device nodes' groups and modes back if anything changed them (before each run). */
   assertDevices?: (() => void) | undefined;
-  /** The CPUs the `run` user's processes (timed runs) are pinned to; none when unset. */
-  runCpus?: string | undefined;
+  /** The CPUs each timing user's processes (run, run-1, ...) are pinned to; none when unset. */
+  runCpus?: Record<string, string> | undefined;
 }
 
 const LANE_ROLES: Role[] = Array.from({ length: IDS.maxLanes }, (_, i) => [
@@ -31,7 +31,8 @@ const LANE_ROLES: Role[] = Array.from({ length: IDS.maxLanes }, (_, i) => [
   `lane-${i + 1}-dev`,
   `agent-${i + 1}`,
 ]).flat();
-export const ALL_ROLES: Role[] = ["builder", "run", ...LANE_ROLES];
+const RUN_ROLES: Role[] = ["run", ...Array.from({ length: 7 }, (_, i) => `run-${i + 1}` as Role)];
+export const ALL_ROLES: Role[] = ["builder", ...RUN_ROLES, ...LANE_ROLES];
 
 /**
  * Changes a tree's owner with coreutils: `chown -R -P` never follows symlinks and walks trees of
@@ -57,7 +58,7 @@ function clearSetIdBits(dir: string): void {
 }
 
 /** Per-role process limits (RLIMIT_NPROC): builds may run parallel compilers. */
-const NPROC: Record<string, number> = { builder: 512, run: 256 };
+const NPROC: Record<string, number> = { builder: 512 };
 
 export async function handle(req: Req, opts: BrokerServerOptions): Promise<unknown> {
   switch (req.op) {
@@ -67,7 +68,13 @@ export async function handle(req: Req, opts: BrokerServerOptions): Promise<unkno
       if (r.disk) insideRoot(opts.scratchDir, r.disk.path);
       if (r.gpu && !/^lane-\d+$/.test(r.role))
         throw new Error(`role ${r.role} may not ask for the gpu group`);
-      const { uid, gid, groups, cuda } = identityFor(r.role, r.gpu === true, opts.gpuLayout);
+      if (r.devCard !== undefined && !r.gpu) throw new Error("devCard comes only with gpu");
+      const { uid, gid, groups, cuda } = identityFor(
+        r.role,
+        r.gpu === true,
+        opts.gpuLayout,
+        r.devCard ?? 0,
+      );
       const lane = /^lane-\d+$/.test(r.role);
       // A root process using CUDA (an operator's exec, say) can reset a node to 0666.
       opts.assertDevices?.();
@@ -91,7 +98,7 @@ export async function handle(req: Req, opts: BrokerServerOptions): Promise<unkno
         uid,
         gid,
         groups,
-        cpus: r.role === "run" ? opts.runCpus : undefined,
+        cpus: opts.runCpus?.[r.role],
         rssLimitBytes: r.rssLimitBytes,
         spareExe: r.spareExe,
         disk: r.disk,
@@ -132,7 +139,12 @@ export async function handle(req: Req, opts: BrokerServerOptions): Promise<unkno
       const { uid } = roleIds(req.role);
       if (req.gpu) {
         if (!/^lane-\d+$/.test(req.role)) throw new Error(`role ${req.role} has no dev runs`);
-        return killScope({ uid, gid: identityFor(req.role, true, opts.gpuLayout).gid });
+        // Its dev runs on any development card.
+        const cards = opts.gpuLayout ? cardsOf(opts.gpuLayout).devs.length : 1;
+        let killed = 0;
+        for (let k = 0; k < cards; k++)
+          killed += killScope({ uid, gid: identityFor(req.role, true, opts.gpuLayout, k).gid });
+        return killed;
       }
       const killed = killScope({ uid });
       // What its background work left in shared places goes with it.
