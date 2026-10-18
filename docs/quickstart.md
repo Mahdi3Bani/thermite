@@ -17,7 +17,7 @@ changes yourself.
 ## 1. Build and start the stack
 
 ```sh
-git clone https://github.com/<owner>/thermite.git
+git clone https://github.com/iammrduncan/thermite.git
 cd thermite
 npm ci
 npm run build
