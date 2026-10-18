@@ -74,9 +74,10 @@ a rig that keeps its own model. `THERMITE_MODEL_API` is `openai` (the default), 
 `THERMITE_OPENCODE_BIN` and `THERMITE_CLAUDE_BIN` name the OpenCode and Claude Code binaries when
 they are not `opencode` and `claude` on the PATH. Their older names, `QWEN_*`, are still read when the new ones are unset.
 
-The harness image has Claude Code only when it is built with the build argument
-`CLAUDE_CODE_VERSION` (for example `--build-arg CLAUDE_CODE_VERSION=2.1.302`): Claude Code is not
-open source, so it is downloaded at build time and not shipped in published images.
+The harness and supervisor images have Claude Code only when they are built with the build
+argument `CLAUDE_CODE_VERSION` (for example `--build-arg CLAUDE_CODE_VERSION=2.1.302`): Claude Code
+is not open source, so it is downloaded at build time and not shipped in published images. The
+harness needs it for agents on a Claude subscription, and the supervisor for advisors on one.
 
 ### Places and exports
 
@@ -110,4 +111,4 @@ open source, so it is downloaded at build time and not shipped in published imag
 | `THERMITE_INBOX_DIR`, `THERMITE_OUTBOX_DIR` | `/inbox`, `/outbox` | The harness's inbox (it writes imports there) and outbox (it reads exports) |
 | `THERMITE_RESULTS_REMOTE` | none | The results repository it pushes exports to. Unset: it commits locally only |
 | `THERMITE_RESULTS_KEY_FILE`, `THERMITE_RESULTS_KNOWN_HOSTS` | none | An SSH key and known hosts for the results repository and for fetching private sources |
-| `THERMITE_ADVISORS_FILE` | none | The advisors' configuration (teachers, combiner, auditor, review panel). Unset: none run |
+| `THERMITE_ADVISORS_FILE` | none | The advisors' configuration (teachers, combiner, auditor, review panel). A role given a model on control's Edit rig page uses that model instead. Unset, and no role given a model: none run |

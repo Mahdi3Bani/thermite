@@ -71,9 +71,13 @@ import { probeRepository } from "./repo-probe.ts";
 import { type RunpodFacts, readRunpod, runpodLine } from "./runpod.ts";
 import { keyHint, type SecretBox } from "./secrets.ts";
 import {
+  AGENT_ROLES,
+  type AgentRole,
   type Cluster,
   type ClusterRig,
   type ControlStore,
+  EFFORTS,
+  type Effort,
   fingerprint,
   type Harness,
   type JoinedRig,
@@ -3986,6 +3990,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     rig: string,
     choice: string,
     picked: Harness,
+    effort?: Effort | undefined,
   ): { ok: string } | { error: string } => {
     let harness = picked;
     const [pRaw, mRaw] = choice.split("|");
@@ -4017,8 +4022,14 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         error:
           "OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig.",
       };
-    store.assignRigModel(rig, { provider, model, harness });
-    store.audit("owner:ui", "rig_model_given", { rig, provider, model, harness });
+    store.assignRigModel(rig, { provider, model, harness, effort });
+    store.audit("owner:ui", "rig_model_given", {
+      rig,
+      provider,
+      model,
+      harness,
+      effort: effort ?? null,
+    });
     return {
       ok: `${rig} takes ${model} from "${provider}" under ${HARNESSES[harness]} within a minute, and checks it.`,
     };
@@ -4096,17 +4107,93 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     const sw = (p: (typeof PARTS)[number]) => `<div class="pt">
 <label class="sw"><input type="checkbox" name="${p.id}" value="1" data-part data-name="${esc(p.name)}"${s?.[p.id] ? " checked" : ""}${s ? "" : " disabled"}><span class="knob"></span></label>
 <div><div><b>${esc(p.name)}</b> <span class="pt-state ${s?.[p.id] ? "on" : "off"}">${s ? (s[p.id] ? "on" : "off") : "?"}</span></div><div class="muted small">${esc(p.does)}</div><div class="small pt-off"><b>When it is off:</b> ${esc(p.off)}</div>${p.id === "workers" ? `<label class="fd" style="max-width:220px;margin-top:8px">${infoLabel("Workers at a time", "How many agents work at the same time. Each one uses its own CPUs, memory and disk, and the same model.")}<input name="lanes" type="number" min="1" max="16" value="${s?.lanes ?? 1}"${s ? "" : " disabled"}></label>` : ""}</div></div>`;
-    const modelOptions = `<option value="">its own settings</option>${providers
-      .map(
-        (p) =>
-          `<optgroup label="${esc(p.name)}${p.type === "claude" ? " (Claude subscription: runs in Claude Code)" : ""}">${p.models
-            .map(
-              (m) =>
-                `<option value="${esc(`${encodeURIComponent(p.name)}|${encodeURIComponent(m.id)}`)}"${want?.provider === p.name && want.model === m.id ? " selected" : ""}>${p.type === "claude" ? "claude-code:" : ""}${esc(m.id)}</option>`,
-            )
-            .join("")}</optgroup>`,
-      )
-      .join("")}`;
+    /** Where a provider's models run: a subscription in Claude Code, OpenCode's own only in OpenCode. */
+    const kindOf = (p: ModelProvider) =>
+      p.type === "claude"
+        ? "claude"
+        : isOpencodeOwn(p) && (p.type === "opencode" || !p.key_sealed)
+          ? "opencode"
+          : "key";
+    /** Where one agent runs with a model of that kind (the client script says the same). */
+    const runsText = (role: AgentRole, kind: string) =>
+      kind === "claude"
+        ? "Claude Code, no tools"
+        : role === "planner"
+          ? kind === "opencode"
+            ? "OpenCode"
+            : "Pi"
+          : kind === "opencode"
+            ? "not for advisors: OpenCode only"
+            : "the supervisor, read-only tools";
+    /** A model list for one agent: the providers' models, each marked with where it runs. */
+    const optionsFor = (empty: string, picked: { provider: string; model: string } | undefined) =>
+      `<option value="" data-kind="">${esc(empty)}</option>${providers
+        .map(
+          (p) =>
+            `<optgroup label="${esc(p.name)}${p.type === "claude" ? " (Claude subscription: runs in Claude Code)" : ""}">${p.models
+              .map(
+                (m) =>
+                  `<option value="${esc(`${encodeURIComponent(p.name)}|${encodeURIComponent(m.id)}`)}" data-kind="${kindOf(p)}"${picked?.provider === p.name && picked.model === m.id ? " selected" : ""}>${p.type === "claude" ? "claude-code:" : ""}${esc(m.id)}</option>`,
+              )
+              .join("")}</optgroup>`,
+        )
+        .join("")}`;
+    const roles = store.roleModels(u.id);
+    const effortSelect = (name: string, picked: string | null | undefined) =>
+      `<select name="${name}" data-effort aria-label="effort">${[
+        ["", "default"],
+        ...EFFORTS.map((e) => [e, e]),
+      ]
+        .map(
+          ([v, t]) =>
+            `<option value="${v}"${(picked ?? "") === v ? " selected" : ""}>${t}</option>`,
+        )
+        .join("")}</select>`;
+    const providerKind = (name: string | undefined) => {
+      const p = name ? store.provider(name) : undefined;
+      return p ? kindOf(p) : "";
+    };
+    /** The first text of a role's "Runs in" cell; the client script keeps it current. */
+    const runsIn = (role: AgentRole) => {
+      const own = roles[role];
+      if (own) return runsText(role, providerKind(own.provider));
+      if (role !== "planner") return "the advisors file, if the rig has one";
+      const w = providerKind(want?.provider);
+      return w ? `as the workers: ${runsText(role, w)}` : "as the workers";
+    };
+    const ROLE_ROWS: { id: AgentRole; name: string; tip: string }[] = [
+      {
+        id: "planner",
+        name: "Planner",
+        tip: "Gives each worker its direction at the start of each epoch. A few calls per epoch.",
+      },
+      {
+        id: "teachers",
+        name: "Teacher pair",
+        tip: "Two advisors that read the recent work every hour and suggest directions, each with a source. Both use this model.",
+      },
+      {
+        id: "combiner",
+        name: "Combiner",
+        tip: "Joins the two teachers' advice into one set of directions.",
+      },
+      {
+        id: "auditor",
+        name: "Auditor",
+        tip: "Looks for a hidden flaw in a change before it can become the champion.",
+      },
+      {
+        id: "panel",
+        name: "Review panel",
+        tip: "Three reviewers that grade goals that need judgement. The judge's numbers never come from them. All three use this model.",
+      },
+    ];
+    const agentRows = `<div class="hd">Agent</div><div class="hd">Model</div><div class="hd">${infoLabel("Effort", "How long the model thinks before it answers. More effort: better answers, slower, and more of a subscription's window. Providers other than a Claude subscription take up to high.")}</div><div class="hd">${infoLabel("Runs in", "The program that runs the agent. A Claude subscription works only in Claude Code, Anthropic's own program. Advisors in Claude Code get no tools; advisors with an API key run in the supervisor with read-only tools: the campaign brief, a guarded web fetch and the knowledge base.")}</div>
+<div>${infoLabel("Workers", "The agents that change the code, one per lane. They run for many turns, so they use the most of a subscription.")}</div><select name="choice" data-role="workers" data-label="the workers' model">${optionsFor("its own settings", want)}</select>${effortSelect("effort", want?.effort)}<div class="runs-in"><select name="harness" data-harness aria-label="harness"><option value="pi"${!want?.harness || want.harness === "pi" ? " selected" : ""}>Pi</option><option value="opencode"${want?.harness === "opencode" ? " selected" : ""}>OpenCode v2</option><option value="claude-code"${want?.harness === "claude-code" ? " selected" : ""}>Claude Code</option></select></div>
+${ROLE_ROWS.map(
+  (r) =>
+    `<div>${infoLabel(r.name, r.tip)}</div><select name="role_${r.id}" data-role="${r.id}" data-label="the ${r.name.toLowerCase()}'s model">${optionsFor(r.id === "planner" ? "same as the workers" : "the rig's advisors file", roles[r.id])}</select>${effortSelect(`effort_${r.id}`, roles[r.id]?.effort)}<div class="runs-in" data-runs="${r.id}">${runsIn(r.id)}</div>`,
+).join("")}`;
     const placed = store.machineRig(u.id) ?? store.clusterRig(u.id);
     const where = placed
       ? "machine" in placed
@@ -4128,9 +4215,9 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
 <form id="edit-rig" method="post" action="/ui/rigs/${rName}/edit"><input type="hidden" name="csrf" value="${t}">
 <div class="sec"><h2>1 · Parts of the rig</h2><div class="card flat">${PARTS.map(sw).join("")}
 <div class="pt locked"><label class="sw"><input type="checkbox" checked disabled><span class="knob"></span></label><div><div><b>Supervisor</b> <span class="pt-state on">on</span></div><div class="muted small">It relays reports to control, fetches projects and kits, and does all git work for the rig.</div><div class="small pt-off"><b>Always on.</b> It connects the rig to control. Without it, control cannot see or steer the rig.</div></div></div></div></div>
-<div class="sec"><h2>2 · The agents</h2><div class="g3">
-<label class="fd">${infoLabel("Workers' model", "The model that the workers use, from Settings › Providers.")}<select name="choice">${modelOptions}</select></label>
-<label class="fd">${infoLabel("Harness", "The program that runs each worker: Pi, OpenCode v2 or Claude Code. OpenCode's own free models need OpenCode v2. A Claude subscription runs only in Claude Code, which control chooses for it.")}<select name="harness"><option value="pi"${!want?.harness || want.harness === "pi" ? " selected" : ""}>Pi</option><option value="opencode"${want?.harness === "opencode" ? " selected" : ""}>OpenCode v2</option><option value="claude-code"${want?.harness === "claude-code" ? " selected" : ""}>Claude Code</option></select></label>
+<div class="sec"><h2>2 · The agents</h2><p class="lead">The workers change the code. The planner gives each worker a direction, with the workers' model unless it has its own. The supervisor's advisors review the work: the teacher pair, the combiner, the auditor and the review panel. An advisor with no model here uses the rig's advisors file, and does not run without one. Models from a subscription show as claude-code:…. Control gives the rig a subscription's login only while one of its agents uses it.</p>
+<div class="card"><div class="roles">${agentRows}</div><div class="flag" id="share" hidden></div></div>
+<div class="g3" style="margin-top:14px">
 <label class="fd">${infoLabel("One trial lasts (minutes)", "How long a worker can work on one idea before it must submit, when the campaign sets no limit.")}<input name="trial_minutes" type="number" min="1" value="${s?.trial_minutes ?? ""}"${s ? "" : " disabled"}></label>
 <label class="fd">${infoLabel("Turns per trial", "How many model turns a worker can take in one trial. Empty: no limit.")}<input name="max_turns" type="number" min="1" value="${s?.max_turns ?? ""}" placeholder="no limit"${s ? "" : " disabled"}></label>
 </div></div>
@@ -4161,20 +4248,72 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
     const choice = String(f.choice ?? "");
     const harness: Harness =
       f.harness === "opencode" || f.harness === "claude-code" ? f.harness : "pi";
+    const effortOf = (k: string): Effort | undefined =>
+      EFFORTS.find((e) => e === String(f[k] ?? ""));
     const want = store.rigModels()[rig];
     const was = want
       ? `${encodeURIComponent(want.provider)}|${encodeURIComponent(want.model)}`
       : "";
-    if (choice !== was || (choice && harness !== want?.harness)) {
+    const effort = effortOf("effort");
+    if (
+      choice !== was ||
+      (choice && (harness !== want?.harness || (effort ?? null) !== (want?.effort ?? null)))
+    ) {
       if (!choice) {
         store.assignRigModel(rig, null);
         store.audit("owner:ui", "rig_model_given", { rig, provider: null, model: null });
         said.push("its own model settings");
       } else {
-        const given = giveRigModel(rig, choice, harness);
+        const given = giveRigModel(rig, choice, harness, effort);
         if ("error" in given) return back("error", given.error);
         said.push("a new model");
       }
+    }
+    // The other agents' models: each role follows the workers unless it has its own.
+    const roles = store.roleModels(rig);
+    for (const role of AGENT_ROLES) {
+      const raw = String(f[`role_${role}`] ?? "");
+      const roleEffort = effortOf(`effort_${role}`);
+      const cur = roles[role];
+      const curValue = cur
+        ? `${encodeURIComponent(cur.provider)}|${encodeURIComponent(cur.model)}`
+        : "";
+      if (raw === curValue && (roleEffort ?? null) === (cur?.effort ?? null)) continue;
+      if (!raw) {
+        store.assignRoleModel(rig, role, null);
+        store.audit("owner:ui", "agent_model_given", { rig, role, provider: null, model: null });
+        said.push(
+          role === "planner"
+            ? "the planner back to the workers' model"
+            : `the ${role} back to the rig's advisors file`,
+        );
+        continue;
+      }
+      const [pRaw, mRaw] = raw.split("|");
+      let provider = "";
+      let model = "";
+      try {
+        provider = decodeURIComponent(pRaw ?? "");
+        model = decodeURIComponent(mRaw ?? "");
+      } catch {}
+      const p = store.provider(provider);
+      if (!p?.models.some((m) => m.id === model))
+        return back("error", `That provider does not list that model (${role}).`);
+      // Advisors make single calls here; OpenCode's own models need OpenCode, which they don't run.
+      if (role !== "planner" && isOpencodeOwn(p) && (p.type === "opencode" || !p.key_sealed))
+        return back(
+          "error",
+          `The ${role} cannot use OpenCode's own models: they run only in OpenCode. Choose another model.`,
+        );
+      store.assignRoleModel(rig, role, { provider, model, effort: roleEffort });
+      store.audit("owner:ui", "agent_model_given", {
+        rig,
+        role,
+        provider,
+        model,
+        effort: roleEffort ?? null,
+      });
+      said.push(`a model for the ${role}`);
     }
     // The harness's settings: only what changed, as one signed command.
     const s = u.settings;

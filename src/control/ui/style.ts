@@ -196,6 +196,12 @@ details.menu > summary::-webkit-details-marker { display: none; }
 details.menu[open] > .menu-body { position: absolute; right: 0; top: 38px; z-index: 20; width: 320px; background: var(--popover); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; box-shadow: 0 12px 32px rgb(0 0 0 / 12%); display: flex; flex-direction: column; gap: 10px; }
 
 /* bars */
+.roles { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(220px, 1.6fr) minmax(110px, .7fr) minmax(170px, 1.2fr); gap: 8px 14px; align-items: center; }
+.roles .hd { font-size: 12px; font-weight: 600; color: var(--muted-foreground); }
+.roles select { height: 32px; width: 100%; border: 1px solid var(--input); border-radius: var(--control-radius); background: var(--card); font-size: 13px; padding: 0 8px; }
+@media (max-width: 900px) { .roles { grid-template-columns: 1fr 1fr; } .roles .hd { display: none; } }
+.runs-in { font-size: 12.5px; color: var(--muted-foreground); }
+.flag { border-left: 3px solid var(--warning-foreground); padding: 6px 0 6px 12px; margin: 12px 0 0; font-size: 13px; line-height: 1.5; }
 .use { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 22px; font-size: 13px; }
 .ubar { height: 8px; border-radius: 99px; background: var(--muted); overflow: hidden; margin: 4px 0 2px; }
 .ubar > div { height: 100%; background: var(--primary); border-radius: 99px; }

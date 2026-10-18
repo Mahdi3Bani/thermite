@@ -145,6 +145,17 @@ create table if not exists rig_model (
   model text not null,
   assigned_at text not null
 );
+-- The model of each of a rig's other agents (planner, teacher pair, combiner, auditor, review
+-- panel), when the owner gave one; a role with none follows the workers, or the rig's own settings.
+create table if not exists rig_role_model (
+  rig text not null,
+  role text not null check (role in ('planner', 'teachers', 'combiner', 'auditor', 'panel')),
+  provider text not null,
+  model text not null,
+  effort text,
+  assigned_at text not null,
+  primary key (rig, role)
+);
 -- Rigs enrolled through control (thermite rig add, or the API): each token only as its SHA-256.
 -- A rig in the rig tokens file needs no row. A retired rig's token stops working.
 create table if not exists rig_token (
@@ -346,6 +357,12 @@ export interface IngestReport {
 export type ProviderType = "openai" | "anthropic" | "opencode" | "claude";
 /** Where a rig's agents run: Pi, OpenCode v2, or Claude Code (the only one a Claude subscription allows). */
 export type Harness = "pi" | "opencode" | "claude-code";
+/** How hard an agent's model thinks: Claude Code's levels (other providers take up to high). */
+export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
+export const EFFORTS: Effort[] = ["low", "medium", "high", "xhigh", "max"];
+/** A rig's agents other than its workers, each of which may have its own model. */
+export type AgentRole = "planner" | "teachers" | "combiner" | "auditor" | "panel";
+export const AGENT_ROLES: AgentRole[] = ["planner", "teachers", "combiner", "auditor", "panel"];
 
 /** A model in a provider's list: its id, and its context window when the provider says it. */
 export interface ProviderModel {
@@ -649,6 +666,8 @@ export class ControlStore {
     );
     if (!rigModelCols.includes("harness"))
       this.db.exec("alter table rig_model add column harness text not null default 'pi'");
+    if (!rigModelCols.includes("effort"))
+      this.db.exec("alter table rig_model add column effort text");
     const machineRigCols = (this.db.prepare("pragma table_info(machine_rig)").all() as Row[]).map(
       (r) => r.name,
     );
@@ -1273,7 +1292,11 @@ export class ControlStore {
   /** Deletes a provider no rig uses. */
   deleteProvider(name: string): "deleted" | "in_use" | "missing" {
     if (!this.provider(name)) return "missing";
-    if (this.db.prepare("select 1 from rig_model where provider = ?").get(name)) return "in_use";
+    if (
+      this.db.prepare("select 1 from rig_model where provider = ?").get(name) ||
+      this.db.prepare("select 1 from rig_role_model where provider = ?").get(name)
+    )
+      return "in_use";
     this.db.prepare("delete from model_provider where name = ?").run(name);
     return "deleted";
   }
@@ -1284,7 +1307,12 @@ export class ControlStore {
    */
   assignRigModel(
     rig: string,
-    choice: { provider: string; model: string; harness?: Harness | undefined } | null,
+    choice: {
+      provider: string;
+      model: string;
+      harness?: Harness | undefined;
+      effort?: Effort | undefined;
+    } | null,
   ): void {
     if (choice === null) {
       this.db.prepare("delete from rig_model where rig = ?").run(rig);
@@ -1293,17 +1321,75 @@ export class ControlStore {
     if (!this.provider(choice.provider)) throw new Error(`no model provider ${choice.provider}`);
     this.db
       .prepare(
-        `insert into rig_model (rig, provider, model, harness, assigned_at) values (?, ?, ?, ?, ?)
+        `insert into rig_model (rig, provider, model, harness, effort, assigned_at) values (?, ?, ?, ?, ?, ?)
          on conflict (rig) do update set provider = excluded.provider, model = excluded.model,
-           harness = excluded.harness, assigned_at = excluded.assigned_at`,
+           harness = excluded.harness, effort = excluded.effort, assigned_at = excluded.assigned_at`,
       )
-      .run(rig, choice.provider, choice.model, choice.harness ?? "pi", new Date().toISOString());
+      .run(
+        rig,
+        choice.provider,
+        choice.model,
+        choice.harness ?? "pi",
+        choice.effort ?? null,
+        new Date().toISOString(),
+      );
   }
 
-  /** Each rig's provider, model and harness. */
-  rigModels(): Record<string, { provider: string; model: string; harness: Harness }> {
+  /** Gives one of a rig's other agents a model, or (null) has it follow the workers again. */
+  assignRoleModel(
+    rig: string,
+    role: AgentRole,
+    choice: { provider: string; model: string; effort?: Effort | undefined } | null,
+  ): void {
+    if (choice === null) {
+      this.db.prepare("delete from rig_role_model where rig = ? and role = ?").run(rig, role);
+      return;
+    }
+    if (!this.provider(choice.provider)) throw new Error(`no model provider ${choice.provider}`);
+    this.db
+      .prepare(
+        `insert into rig_role_model (rig, role, provider, model, effort, assigned_at) values (?, ?, ?, ?, ?, ?)
+         on conflict (rig, role) do update set provider = excluded.provider, model = excluded.model,
+           effort = excluded.effort, assigned_at = excluded.assigned_at`,
+      )
+      .run(
+        rig,
+        role,
+        choice.provider,
+        choice.model,
+        choice.effort ?? null,
+        new Date().toISOString(),
+      );
+  }
+
+  /** A rig's other agents' models, by role (roles with none are absent). */
+  roleModels(
+    rig: string,
+  ): Partial<Record<AgentRole, { provider: string; model: string; effort: Effort | null }>> {
     const rows = this.db
-      .prepare("select rig, provider, model, harness from rig_model")
+      .prepare("select role, provider, model, effort from rig_role_model where rig = ?")
+      .all(rig) as Row[];
+    return Object.fromEntries(
+      rows.map((r) => [
+        String(r.role),
+        {
+          provider: String(r.provider),
+          model: String(r.model),
+          effort: EFFORTS.includes(String(r.effort) as Effort)
+            ? (String(r.effort) as Effort)
+            : null,
+        },
+      ]),
+    );
+  }
+
+  /** Each rig's provider, model, harness and effort. */
+  rigModels(): Record<
+    string,
+    { provider: string; model: string; harness: Harness; effort?: Effort | undefined }
+  > {
+    const rows = this.db
+      .prepare("select rig, provider, model, harness, effort from rig_model")
       .all() as Row[];
     return Object.fromEntries(
       rows.map((r) => [
@@ -1315,6 +1401,9 @@ export class ControlStore {
             r.harness === "opencode" || r.harness === "claude-code"
               ? (r.harness as "opencode" | "claude-code")
               : ("pi" as const),
+          ...(EFFORTS.includes(String(r.effort) as Effort)
+            ? { effort: String(r.effort) as Effort }
+            : {}),
         },
       ]),
     );
@@ -1322,10 +1411,14 @@ export class ControlStore {
 
   rigModelFor(
     rig: string,
-  ): { provider: ModelProvider; model: string; harness: Harness } | undefined {
+  ):
+    | { provider: ModelProvider; model: string; harness: Harness; effort?: Effort | undefined }
+    | undefined {
     const c = this.rigModels()[rig];
     const provider = c ? this.provider(c.provider) : undefined;
-    return c && provider ? { provider, model: c.model, harness: c.harness } : undefined;
+    return c && provider
+      ? { provider, model: c.model, harness: c.harness, effort: c.effort }
+      : undefined;
   }
 
   events(rig: string, after: number, limit: number, ledgerId?: string | null): unknown[] {

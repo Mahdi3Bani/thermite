@@ -178,6 +178,87 @@ describe("control dashboard", () => {
     );
   });
 
+  test("Edit rig: a model and an effort for each agent; the planner's route reaches the harness, the advisors' reach the supervisor", async () => {
+    const s = await stack("owner_approval", {
+      providerFetch: (async () =>
+        Response.json({ data: [{ id: "claude-test" }], has_more: false })) as typeof fetch,
+    });
+    await s.relay();
+    const token = "sk-ant-oat01-roles-0001"; // public-check: allow (a made-up token for tests)
+    let page = await (await s.get("/ui/settings")).text();
+    const csrf = s.csrfFrom(page);
+    await s.post("/ui/settings/add", {
+      csrf,
+      type: "claude",
+      name: "claude-max",
+      claude_token: token,
+    });
+    await s.post("/ui/settings/providers", {
+      csrf,
+      name: "keyed",
+      type: "anthropic",
+      api_key: "sk-ant-api-roles",
+    });
+    page = await (await s.get("/ui/rigs/rig-a/edit")).text();
+    for (const role of ["planner", "teachers", "combiner", "auditor", "panel"])
+      assert.match(page, new RegExp(`name="role_${role}" data-role="${role}"`));
+    assert.match(page, /same as the workers/);
+    assert.match(page, /data-kind="claude"[^>]*>claude-code:opus-5\.5/);
+    const form: Record<string, string> = { csrf: s.csrfFrom(page), choice: "", harness: "pi" };
+    for (const k of ["judge", "workers", "planner", "auditor", "teachers", "review", "exports"])
+      form[k] = "1";
+    Object.assign(form, {
+      lanes: "1",
+      trial_minutes: "20",
+      max_turns: "",
+      promotion: "owner_approval",
+      choice: "keyed|claude-test",
+      effort: "medium",
+      role_planner: "claude-max|opus-5.5",
+      effort_planner: "xhigh",
+      role_auditor: "claude-max|opus-5.5",
+      effort_auditor: "max",
+      role_teachers: "keyed|claude-test",
+    });
+    const saved = await s.post("/ui/rigs/rig-a/edit", form);
+    assert.match(
+      decodeURIComponent(String(saved.headers.get("location"))),
+      /a model for the planner/,
+    );
+    assert.deepEqual(s.store.roleModels("rig-a").planner, {
+      provider: "claude-max",
+      model: "opus-5.5",
+      effort: "xhigh",
+    });
+    assert.equal(s.store.rigModels()["rig-a"]?.effort, "medium");
+    const asRig = (path: string) =>
+      s.control.request(path, { headers: { authorization: "Bearer rig-token-abcdef" } });
+    const mr = (await (await asRig("/v1/rigs/rig-a/model-route")).json()) as {
+      route: { type: string; reasoning: string | null };
+      planner: { type: string; harness: string; effort: string; api_key: string };
+    };
+    assert.equal(mr.route.type, "anthropic");
+    assert.equal(mr.route.reasoning, "medium");
+    assert.equal(mr.planner.type, "claude");
+    assert.equal(mr.planner.harness, "claude-code");
+    assert.equal(mr.planner.effort, "xhigh");
+    assert.equal(mr.planner.api_key, token);
+    const adv = (await (await asRig("/v1/rigs/rig-a/advisor-routes")).json()) as Record<
+      string,
+      { type: string; effort?: string; api_key: string } | null
+    >;
+    assert.equal(adv.auditor?.type, "claude");
+    assert.equal(adv.auditor?.effort, "max");
+    assert.equal(adv.teachers?.type, "anthropic");
+    assert.equal(adv.combiner, null);
+    assert.equal(adv.panel, null);
+    // A role set back to "same as the workers" loses its own model.
+    await s.post("/ui/rigs/rig-a/edit", { ...form, role_auditor: "", effort_auditor: "" });
+    assert.equal(s.store.roleModels("rig-a").auditor, undefined);
+    // A provider some role uses can't be deleted.
+    assert.equal(s.store.deleteProvider("claude-max"), "in_use");
+  });
+
   test("a provider's key goes in once on the settings page, sealed; its models are listed; only its rig's harness gets the key", async () => {
     // A fake provider: an OpenAI-compatible one that takes only its key, and Anthropic's API.
     const key = "test-key-never-shown-0001";
@@ -258,7 +339,10 @@ describe("control dashboard", () => {
       s.control.request("/v1/rigs/rig-a/model-route", {
         headers: { authorization: `Bearer ${token}` },
       });
-    assert.deepEqual(await (await routeOf("rig-token-abcdef")).json(), { route: null });
+    assert.deepEqual(await (await routeOf("rig-token-abcdef")).json(), {
+      route: null,
+      planner: null,
+    });
     const unlisted = await s.post("/ui/settings/rigs", {
       csrf,
       rig: "rig-a",
@@ -353,6 +437,14 @@ describe("control dashboard", () => {
     await s.relay();
     page = await (await s.get("/ui/settings")).text();
     assert.match(page, /Its agents run under OpenCode v2 with free-model-free from zen\./);
+    // A planner given OpenCode's own models runs through OpenCode too; cleared, it follows the workers.
+    s.store.assignRoleModel("rig-a", "planner", { provider: "zen", model: "free-model-free" });
+    assert.equal(await syncModelRoute(sync), "set");
+    assert.equal(s.env.service.models.planner()?.api, "opencode");
+    assert.equal(s.env.service.models.planner()?.harness, "opencode");
+    s.store.assignRoleModel("rig-a", "planner", null);
+    assert.equal(await syncModelRoute(sync), "set");
+    assert.equal(s.env.service.models.planner(), undefined);
     // A provider added as OpenAI-compatible at OpenCode's own endpoint, with its key, is OpenCode's
     // own too: under OpenCode it runs through OpenCode's built-in provider (no key sent); under Pi,
     // its key serves its paid models, and its free models are refused there.

@@ -17,7 +17,16 @@ import { metricsText } from "./metrics.ts";
 import { claudeModelName, isOpencodeOwn, providerBase } from "./providers.ts";
 import type { probeRepository } from "./repo-probe.ts";
 import { SecretBox } from "./secrets.ts";
-import { type ControlStore, fingerprint, type IngestReport, RIG_ID } from "./store.ts";
+import {
+  type AgentRole,
+  type ControlStore,
+  type Effort,
+  fingerprint,
+  type Harness,
+  type IngestReport,
+  type ModelProvider,
+  RIG_ID,
+} from "./store.ts";
 import { leaderboard, rigView } from "./views.ts";
 
 /**
@@ -367,72 +376,115 @@ export function createControlApi(
     );
   });
 
-  app.get("/v1/rigs/:rig/model-route", rigAuth, (c) => {
-    c.header("cache-control", "no-store");
-    const r = store.rigModelFor(c.req.param("rig"));
-    if (!r) return c.json({ route: null });
-    const p = r.provider;
+  /**
+   * A route as a rig receives it: the provider's endpoint and key (or a subscription's token, for
+   * Claude Code only), the model and the harness it runs in. Undefined when the key can't be opened.
+   */
+  const routeOf = (
+    p: ModelProvider,
+    model: string,
+    harness: Harness,
+    effort: Effort | null | undefined,
+  ): Record<string, unknown> | undefined => {
     let key = "";
     try {
       // OpenCode's own provider may have no key (its free models need none).
       if (p.key_sealed) key = secrets.open(p.key_sealed);
     } catch {
-      return c.json({ error: "the provider's key cannot be opened: enter it again" }, 409);
+      return undefined;
     }
-    const contextWindow = p.models.find((m) => m.id === r.model)?.context_window ?? 0;
+    const contextWindow = p.models.find((m) => m.id === model)?.context_window ?? 0;
     const base = providerBase(p.type, p.base_url);
     // A Claude subscription: its token, for Claude Code only, under Claude Code's model name.
     if (p.type === "claude")
-      return c.json({
-        route: {
-          name: p.name,
-          type: "claude",
-          harness: "claude-code",
-          version: p.version,
-          base_url: base,
-          model: claudeModelName(r.model),
-          context_window: contextWindow,
-          max_tokens: 0,
-          reasoning: null,
-          key_hint: p.key_hint,
-          revision: sha256Hex(
-            [p.name, "claude", p.version, r.model, contextWindow, p.key_sealed].join("\n"),
-          ).slice(0, 16),
-          api_key: key,
-        },
-      });
-    // OpenCode's own provider, under the OpenCode harness, runs through OpenCode's built-in one:
-    // it needs no key (its free models), so none is sent.
-    const native = r.harness === "opencode" && isOpencodeOwn(p);
-    if (native) key = "";
-    return c.json({
-      route: {
+      return {
         name: p.name,
-        type: native ? "opencode" : p.type === "opencode" ? "openai" : p.type,
-        harness: r.harness,
+        type: "claude",
+        harness: "claude-code",
         version: p.version,
         base_url: base,
-        model: r.model,
+        model: claudeModelName(model),
         context_window: contextWindow,
         max_tokens: 0,
         reasoning: null,
+        effort: effort ?? null,
         key_hint: p.key_hint,
-        // Changes with anything about the route, even a provider deleted and made again.
         revision: sha256Hex(
-          [
-            p.name,
-            p.type,
-            native,
-            r.harness,
-            p.version,
-            base,
-            r.model,
-            contextWindow,
-            p.key_sealed,
-          ].join("\n"),
+          [p.name, "claude", p.version, model, contextWindow, effort ?? "", p.key_sealed].join(
+            "\n",
+          ),
         ).slice(0, 16),
         api_key: key,
-      },
+      };
+    // OpenCode's own provider, under the OpenCode harness, runs through OpenCode's built-in one:
+    // it needs no key (its free models), so none is sent.
+    const native = harness === "opencode" && isOpencodeOwn(p);
+    if (native) key = "";
+    // Other providers take a reasoning effort up to high.
+    const reasoning = effort ? (effort === "xhigh" || effort === "max" ? "high" : effort) : null;
+    return {
+      name: p.name,
+      type: native ? "opencode" : p.type === "opencode" ? "openai" : p.type,
+      harness: harness === "claude-code" ? "pi" : harness,
+      version: p.version,
+      base_url: base,
+      model,
+      context_window: contextWindow,
+      max_tokens: 0,
+      reasoning,
+      key_hint: p.key_hint,
+      // Changes with anything about the route, even a provider deleted and made again.
+      revision: sha256Hex(
+        [
+          p.name,
+          p.type,
+          native,
+          harness,
+          p.version,
+          base,
+          model,
+          contextWindow,
+          reasoning ?? "",
+          p.key_sealed,
+        ].join("\n"),
+      ).slice(0, 16),
+      api_key: key,
+    };
+  };
+  /** A rig's other agent's route (planner or an advisor), when the owner gave it a model. */
+  const roleRouteOf = (rig: string, role: AgentRole) => {
+    const a = store.roleModels(rig)[role];
+    const p = a ? store.provider(a.provider) : undefined;
+    if (!a || !p) return null;
+    // A subscription runs in Claude Code; OpenCode's own service only through OpenCode (the
+    // planner can; the dashboard gives it no advisor); every other provider through Pi.
+    const opencodeOnly = isOpencodeOwn(p) && (p.type === "opencode" || !p.key_sealed);
+    const harness = p.type === "claude" ? "claude-code" : opencodeOnly ? "opencode" : "pi";
+    return routeOf(p, a.model, harness, a.effort) ?? null;
+  };
+
+  app.get("/v1/rigs/:rig/model-route", rigAuth, (c) => {
+    c.header("cache-control", "no-store");
+    const rig = c.req.param("rig");
+    const r = store.rigModelFor(rig);
+    const planner = roleRouteOf(rig, "planner");
+    if (!r) return c.json({ route: null, planner });
+    const route = routeOf(r.provider, r.model, r.harness, r.effort);
+    if (!route)
+      return c.json({ error: "the provider's key cannot be opened: enter it again" }, 409);
+    return c.json({ route, planner });
+  });
+
+  // The supervisor's advisors, by role, when the owner gave them models (each with its key or
+  // a subscription's token). A role with none keeps the supervisor's own configuration.
+  app.get("/v1/rigs/:rig/advisor-routes", rigAuth, (c) => {
+    c.header("cache-control", "no-store");
+    const rig = c.req.param("rig");
+    return c.json({
+      teachers: roleRouteOf(rig, "teachers"),
+      combiner: roleRouteOf(rig, "combiner"),
+      auditor: roleRouteOf(rig, "auditor"),
+      panel: roleRouteOf(rig, "panel"),
     });
   });
 
