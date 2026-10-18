@@ -520,6 +520,8 @@ async function main(): Promise<void> {
       if (!t.lastText) throw new Error(t.errors.at(-1) ?? "OpenCode gave no answer");
       return t.lastText;
     },
+    // The planner's own model, when control gave it one.
+    plannerModel: () => models.planner(),
     // The planner on a Claude subscription: Claude Code with no tools, as an unprivileged user.
     askClaude: async (m, prompt, signal) => {
       const t = await claudeOnce(m, prompt, once, { tools: "", timeoutMs: 300_000, signal });

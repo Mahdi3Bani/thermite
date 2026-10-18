@@ -209,13 +209,15 @@ export function createHarnessApi(
   // reads back which route is in use (never the key).
   app.get("/v1/model-route", supervisor, (c) =>
     service.models
-      ? c.json(service.models.info())
+      ? c.json({ ...service.models.info(), planner_revision: service.models.plannerRevision() })
       : c.json({ error: "no agents on this rig" }, 404),
   );
   app.put("/v1/model-route", supervisor, bodyLimit({ maxSize: 16 * 1024 }), async (c) => {
     if (!service.models) return c.json({ error: "no agents on this rig" }, 404);
-    const body = z.object({ route: ControlRoute.nullable() }).parse(await c.req.json());
-    return c.json(service.setModelRoute(body.route, "supervisor"));
+    const body = z
+      .object({ route: ControlRoute.nullable(), planner: ControlRoute.nullable().optional() })
+      .parse(await c.req.json());
+    return c.json(service.setModelRoute(body.route, "supervisor", body.planner));
   });
 
   app.get("/v1/snapshot", supervisor, (c) => {

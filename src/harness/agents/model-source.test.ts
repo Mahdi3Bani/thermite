@@ -37,6 +37,7 @@ describe("the agents' model source", () => {
     assert.deepEqual(cur, {
       api: undefined,
       harness: undefined,
+      effort: undefined,
       baseUrl: "https://models.example/v1",
       model: "m-1",
       apiKey: "sk-secret-0001",
@@ -58,5 +59,33 @@ describe("the agents' model source", () => {
     writeFileSync(file, JSON.stringify({ ...route, base_url: "file:///etc/passwd" }));
     assert.equal(new ModelSource(file, undefined).current(), undefined);
     assert.ok(!existsSync(file));
+  });
+
+  test("the planner's own route is kept beside the workers', and cleared to follow them again", () => {
+    const dir = mkdtempSync(join(tmpdir(), "thermite-planner-route-"));
+    const file = join(dir, "model-route.json");
+    const src = new ModelSource(file, env);
+    assert.equal(src.planner(), undefined);
+    assert.equal(src.plannerRevision(), null);
+    src.setPlanner({
+      ...route,
+      name: "claude-max",
+      type: "claude",
+      harness: "claude-code",
+      model: "claude-opus-5-5",
+      effort: "xhigh",
+      revision: "fedcba9876543210",
+    });
+    const p = src.planner();
+    assert.equal(p?.api, "claude");
+    assert.equal(p?.harness, "claude-code");
+    assert.equal(p?.effort, "xhigh");
+    assert.equal(src.plannerRevision(), "fedcba9876543210");
+    // Kept across a restart, in its own file.
+    assert.ok(existsSync(join(dir, "model-route-planner.json")));
+    assert.equal(new ModelSource(file, env).planner()?.model, "claude-opus-5-5");
+    src.setPlanner(null);
+    assert.equal(src.planner(), undefined);
+    assert.ok(!existsSync(join(dir, "model-route-planner.json")));
   });
 });

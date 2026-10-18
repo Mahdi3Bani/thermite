@@ -10,6 +10,7 @@ import {
 import { join } from "node:path";
 import { log, optionalSecretFromFile, requireEnv, secretFromFile } from "../common/env.ts";
 import { type AdviseState, adviseOnce, emptyAdviseState } from "./advise.ts";
+import { type ControlAdvisors, fetchControlAdvisors, mergeAdvisors } from "./advisor-routes.ts";
 import { AdvisorsConfig } from "./advisors.ts";
 import { type ChampionUpload, championsIn, uploadChampions } from "./champions.ts";
 import { type ExportState, exportOnce } from "./git-export.ts";
@@ -90,9 +91,24 @@ async function main(): Promise<void> {
     knownHostsFile,
   };
   const advisorsFile = env.THERMITE_ADVISORS_FILE;
-  const advisors = advisorsFile
+  const fileAdvisors = advisorsFile
     ? AdvisorsConfig.parse(JSON.parse(readFileSync(advisorsFile, "utf8")))
     : undefined;
+  // The roles control gives models (the owner's choice per rig) over the file's; read each round.
+  let controlAdvisors: ControlAdvisors = {};
+  let advisors = mergeAdvisors(fileAdvisors, controlAdvisors);
+  const refreshAdvisors = async () => {
+    if (controlUrl && controlToken) {
+      try {
+        controlAdvisors = await fetchControlAdvisors({ rig, controlUrl, controlToken });
+      } catch (err) {
+        // Control unreachable: the last roles it gave stay.
+        log("supervisor", "advisor routes unavailable", { error: String(err).slice(0, 300) });
+      }
+    }
+    advisors = mergeAdvisors(fileAdvisors, controlAdvisors);
+    return advisors;
+  };
   const advisePath = join(home, "advise-state.json");
   let adviseState: AdviseState = load(advisePath, emptyAdviseState());
   const reportPath = join(home, "report-state.json");
@@ -145,7 +161,14 @@ async function main(): Promise<void> {
   };
   // Advisors run on their own: a teacher round can take many minutes.
   const advising = async () => {
-    while (!stopping && advisors) {
+    while (!stopping) {
+      const advisors = await refreshAdvisors();
+      if (!advisors) {
+        // No role has an advisor: look again later (the owner may give one a model).
+        const until = Date.now() + Math.max(intervalMs, 30_000);
+        while (!stopping && Date.now() < until) await new Promise((r) => setTimeout(r, 250));
+        continue;
+      }
       const before = { ...adviseState.stats };
       supervisorLive.append({
         source: "supervisor",

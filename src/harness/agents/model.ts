@@ -29,6 +29,8 @@ export interface ModelConfig {
    * default applies. Thinking tokens count toward `maxTokens` on servers that think by default.
    */
   reasoning?: ReasoningEffort | undefined;
+  /** Claude Code's effort level, for a Claude subscription (--effort). */
+  effort?: "low" | "medium" | "high" | "xhigh" | "max" | undefined;
 }
 
 export function reasoningFromEnv(raw: string | undefined): ReasoningEffort | undefined {

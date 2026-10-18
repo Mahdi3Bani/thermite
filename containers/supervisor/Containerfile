@@ -8,6 +8,24 @@ RUN npm ci --no-fund --no-audit
 COPY src ./src
 RUN npm run build && npm prune --omit=dev --no-fund --no-audit
 
+# Claude Code, for advisors on a Claude subscription (only Anthropic's own program may use one):
+# downloaded when the image is built, and only when CLAUDE_CODE_VERSION names a version (off by
+# default: it is not open source). As in the harness image.
+FROM ${NODE_IMAGE} AS claude
+ARG CLAUDE_CODE_VERSION=
+ARG TARGETARCH
+RUN mkdir -p /out \
+ && if [ -n "$CLAUDE_CODE_VERSION" ]; then \
+      cd /tmp \
+      && npm pack --silent "@anthropic-ai/claude-code-linux-$([ "$TARGETARCH" = arm64 ] && echo arm64 || echo x64)@${CLAUDE_CODE_VERSION}" \
+      && tar -xzf anthropic-ai-claude-code-linux-*.tgz \
+      && bin="$(find package -maxdepth 2 -type f -name claude | head -n 1)" \
+      && test -n "$bin" \
+      && install -m 0755 "$bin" /out/claude \
+      && /out/claude --version \
+      && rm -rf /tmp/*; \
+    fi
+
 FROM ${NODE_IMAGE}
 # python3: for an operator's staging scripts, which put models and repo bundles into the inbox
 # before the supervisor starts (they run in this container).
@@ -19,6 +37,8 @@ COPY --from=build /src/package.json ./
 COPY --from=build /src/node_modules ./node_modules
 COPY --from=build /src/dist ./dist
 COPY containers/thermite /usr/local/bin/thermite
+# Claude Code, when the build asked for it (CLAUDE_CODE_VERSION); otherwise this copies nothing.
+COPY --from=claude /out/ /usr/local/bin/
 # The runtime user needs a passwd entry: ssh (git over SSH) refuses a uid without one, and finds
 # ~/.ssh from the entry's home, not from $HOME.
 RUN groupadd -g 10001 supervisor \

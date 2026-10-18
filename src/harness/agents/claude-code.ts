@@ -26,13 +26,15 @@ import type { SubmitOutcome, TrialResult, TrialSpec } from "./worker.ts";
  * (rate_limit_event); a full window ends the trial with the time it resets.
  */
 
-export const CLAUDE_BIN = process.env.THERMITE_CLAUDE_BIN ?? "claude";
+/** Claude Code's binary: THERMITE_CLAUDE_BIN, else `claude` on the PATH (read when used). */
+export const claudeBin = () => process.env.THERMITE_CLAUDE_BIN ?? "claude";
 
 /** Claude Code's executable as an absolute path (found on PATH), or undefined if it is not there. */
 export function claudeExe(): string | undefined {
-  if (CLAUDE_BIN.startsWith("/")) return CLAUDE_BIN;
+  const bin = claudeBin();
+  if (bin.startsWith("/")) return bin;
   for (const dir of (process.env.PATH ?? "").split(":")) {
-    const p = join(dir, CLAUDE_BIN);
+    const p = join(dir, bin);
     if (dir && existsSync(p)) return p;
   }
   return undefined;
@@ -283,7 +285,11 @@ export function claudeArgs(
     "",
     "--strict-mcp-config",
     ...(o.tools !== undefined ? ["--tools", o.tools] : []),
-    ...(m.reasoning && m.reasoning !== "off" ? ["--effort", m.reasoning] : []),
+    ...(m.effort
+      ? ["--effort", m.effort]
+      : m.reasoning && m.reasoning !== "off"
+        ? ["--effort", m.reasoning]
+        : []),
     ...(o.session ? ["--resume", o.session] : []),
   ];
 }
@@ -392,7 +398,7 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
       break;
     }
     const errorsBefore = tally.errors.length;
-    const exe = claudeExe() ?? CLAUDE_BIN;
+    const exe = claudeExe() ?? claudeBin();
     const running = deps.runner.run({
       role: spec.lane,
       // Its output goes to a file the harness follows while it runs.
@@ -541,7 +547,7 @@ export async function claudeOnce(
     }
     const r = await deps.runner.run({
       role,
-      argv: [claudeExe() ?? CLAUDE_BIN, "-p", prompt, ...claudeArgs(model, { tools: o.tools })],
+      argv: [claudeExe() ?? claudeBin(), "-p", prompt, ...claudeArgs(model, { tools: o.tools })],
       cwd: dir,
       env: claudeEnv({
         home: join(dir, "home"),

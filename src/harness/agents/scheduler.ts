@@ -54,6 +54,8 @@ export interface SchedulerOptions {
   askOpencode?:
     | ((model: ModelConfig, prompt: string, signal?: AbortSignal) => Promise<string>)
     | undefined;
+  /** The planner's own model route, when control gave the planner one. */
+  plannerModel?: (() => ModelConfig | undefined) | undefined;
   /** A planner call through Claude Code, for a Claude subscription (only Claude Code may use one). */
   askClaude?:
     | ((model: ModelConfig, prompt: string, signal?: AbortSignal) => Promise<string>)
@@ -575,7 +577,8 @@ export class Scheduler {
     this.watch();
     let p: Awaited<ReturnType<typeof plan>>;
     try {
-      const m = this.modelNow();
+      // The planner's own model when control gave it one; else the workers'.
+      const m = this.o.plannerModel?.() ?? this.modelNow();
       // OpenCode's own models are reached only through OpenCode; every other provider, through Pi.
       // A Claude subscription, only through Claude Code: without it the planner refuses the route.
       const ask =

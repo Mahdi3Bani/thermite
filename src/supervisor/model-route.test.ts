@@ -3,7 +3,10 @@ import { describe, test } from "node:test";
 import { syncModelRoute } from "./model-route.ts";
 
 /** A fake control and harness: control's reply is given; the harness records what it is handed. */
-function fakes(control: () => Response, harness: { source: string; revision?: string }) {
+function fakes(
+  control: () => Response,
+  harness: { source: string; revision?: string; planner_revision?: string },
+) {
   const handed: unknown[] = [];
   const fetchImpl: typeof fetch = async (input, init) => {
     const url = new URL(String(input));
@@ -42,14 +45,38 @@ describe("the supervisor's model route", () => {
       revision: "aaaaaaaa",
     });
     assert.equal(await syncModelRoute(changed.cfg), "set");
-    assert.deepEqual(changed.handed, [{ route }]);
+    assert.deepEqual(changed.handed, [{ route, planner: null }]);
     const none = fakes(() => Response.json({ route: null }), {
       source: "control",
       revision: "aaaaaaaa",
     });
     assert.equal(await syncModelRoute(none.cfg), "cleared");
-    assert.deepEqual(none.handed, [{ route: null }]);
+    assert.deepEqual(none.handed, [{ route: null, planner: null }]);
     const own = fakes(() => Response.json({ route: null }), { source: "environment" });
     assert.equal(await syncModelRoute(own.cfg), "unchanged");
+  });
+
+  test("the planner's own route is handed over when only it changed, and cleared when control drops it", async () => {
+    const route = { name: "r", version: 2, revision: "bbbbbbbb" };
+    const planner = { name: "claude-max", version: 1, revision: "cccccccc" };
+    const given = fakes(() => Response.json({ route, planner }), {
+      source: "control",
+      revision: "bbbbbbbb",
+    });
+    assert.equal(await syncModelRoute(given.cfg), "set");
+    assert.deepEqual(given.handed, [{ route, planner }]);
+    const same = fakes(() => Response.json({ route, planner }), {
+      source: "control",
+      revision: "bbbbbbbb",
+      planner_revision: "cccccccc",
+    });
+    assert.equal(await syncModelRoute(same.cfg), "unchanged");
+    const dropped = fakes(() => Response.json({ route, planner: null }), {
+      source: "control",
+      revision: "bbbbbbbb",
+      planner_revision: "cccccccc",
+    });
+    assert.equal(await syncModelRoute(dropped.cfg), "set");
+    assert.deepEqual(dropped.handed, [{ route, planner: null }]);
   });
 });

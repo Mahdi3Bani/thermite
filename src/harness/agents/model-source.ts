@@ -20,6 +20,8 @@ export const ControlRoute = z
     context_window: z.number().int().min(0).max(100_000_000),
     max_tokens: z.number().int().min(0).max(10_000_000),
     reasoning: z.enum(["none", "low", "medium", "high"]).nullable(),
+    /** Claude Code's effort level (a Claude subscription's route only). */
+    effort: z.enum(["low", "medium", "high", "xhigh", "max"]).nullable().optional(),
     key_hint: z.string().max(16),
     /** Changes whenever anything about the route does (control's digest of it). */
     revision: z.string().regex(/^[0-9a-f]{8,64}$/),
@@ -51,6 +53,7 @@ export interface ModelInfo {
  */
 export class ModelSource {
   private route: ControlRoute | undefined;
+  private plannerRoute: ControlRoute | undefined;
   private readonly file: string;
   private readonly fromEnv: ModelConfig | undefined;
 
@@ -63,6 +66,14 @@ export class ModelSource {
       } catch {
         // A broken file is dropped: the supervisor hands the route again on its next round.
         rmSync(file, { force: true });
+      }
+    }
+    const plannerFile = file.replace(/\.json$/, "-planner.json");
+    if (existsSync(plannerFile)) {
+      try {
+        this.plannerRoute = ControlRoute.parse(JSON.parse(readFileSync(plannerFile, "utf8")));
+      } catch {
+        rmSync(plannerFile, { force: true });
       }
     }
   }
@@ -80,7 +91,45 @@ export class ModelSource {
       contextWindow: r.context_window,
       maxTokens: r.max_tokens || 8192,
       reasoning: reasoningFromEnv(r.reasoning ?? undefined),
+      effort: r.effort ?? undefined,
     };
+  }
+
+  /** The planner's own route, when control gave the planner a model; else the workers'. */
+  planner(): ModelConfig | undefined {
+    const r = this.plannerRoute;
+    if (!r) return undefined;
+    return {
+      api:
+        r.type === "anthropic" || r.type === "opencode" || r.type === "claude" ? r.type : undefined,
+      harness: r.harness === "opencode" || r.harness === "claude-code" ? r.harness : undefined,
+      baseUrl: r.base_url.replace(/\/$/, ""),
+      model: r.model,
+      apiKey: r.api_key,
+      contextWindow: r.context_window,
+      maxTokens: r.max_tokens || 8192,
+      reasoning: reasoningFromEnv(r.reasoning ?? undefined),
+      effort: r.effort ?? undefined,
+    };
+  }
+
+  /** The planner's route's revision (none: the planner follows the workers' route). */
+  plannerRevision(): string | null {
+    return this.plannerRoute?.revision ?? null;
+  }
+
+  /** Takes or (null) clears the planner's own route; kept like the workers' route. */
+  setPlanner(route: ControlRoute | null): void {
+    const file = this.file.replace(/\.json$/, "-planner.json");
+    if (!route) {
+      rmSync(file, { force: true });
+      this.plannerRoute = undefined;
+      return;
+    }
+    const r = ControlRoute.parse(route);
+    writeFileSync(`${file}.tmp`, JSON.stringify(r), { mode: 0o600 });
+    renameSync(`${file}.tmp`, file);
+    this.plannerRoute = r;
   }
 
   info(): ModelInfo {

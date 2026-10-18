@@ -1,0 +1,128 @@
+import assert from "node:assert/strict";
+import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, test } from "node:test";
+import { fetchControlAdvisors, mergeAdvisors, runtimeOf } from "./advisor-routes.ts";
+import { AdvisorsConfig } from "./advisors.ts";
+
+const route = (o: Partial<Record<string, unknown>> = {}) => ({
+  name: "p",
+  type: "anthropic",
+  base_url: "https://api.anthropic.com",
+  model: "claude-test",
+  context_window: 0,
+  reasoning: "medium",
+  api_key: "key-in-memory",
+  ...o,
+});
+
+describe("advisors from control", () => {
+  test("a Claude subscription's role runs in Claude Code; an API key's runs here; OpenCode's own is skipped", () => {
+    assert.deepEqual(
+      runtimeOf(
+        route({ type: "claude", model: "claude-opus-5-5", effort: "max", api_key: "tok" }),
+        "auditor",
+      ),
+      {
+        name: "auditor",
+        runtime: "claude-code",
+        model: "claude-opus-5-5",
+        token: "tok",
+        effort: "max",
+        timeout_s: 1800,
+      },
+    );
+    const keyed = runtimeOf(route(), "teacher-1");
+    assert.equal(keyed?.runtime, "openai");
+    assert.equal(keyed?.runtime === "openai" && keyed.api, "anthropic");
+    assert.equal(keyed?.runtime === "openai" && keyed.api_key, "key-in-memory");
+    assert.equal(keyed?.runtime === "openai" && keyed.reasoning, "medium");
+    assert.equal(runtimeOf(route({ type: "opencode" }), "x"), undefined);
+  });
+
+  test("control's roles replace the file's; roles control leaves keep the file's", async () => {
+    const file = AdvisorsConfig.parse({
+      teachers: [{ name: "t", runtime: "cli", argv: ["x"], restricted: true }],
+      auditor: { name: "a", runtime: "cli", argv: ["y"], restricted: true },
+      teacher_minutes: 15,
+    });
+    const fake = (async (input: string | URL | Request) => {
+      assert.match(String(input), /\/v1\/rigs\/rig-a\/advisor-routes$/);
+      return Response.json({
+        teachers: route({ type: "claude", model: "claude-sonnet-5-5", api_key: "tok" }),
+        combiner: null,
+        auditor: null,
+        panel: route(),
+      });
+    }) as typeof fetch;
+    const control = await fetchControlAdvisors({
+      rig: "rig-a",
+      controlUrl: "http://control",
+      controlToken: "t",
+      fetchImpl: fake,
+    });
+    assert.deepEqual(
+      control.teachers?.map((t) => t.name),
+      ["teacher-1", "teacher-2"],
+    );
+    assert.equal(control.panel?.length, 3);
+    const merged = mergeAdvisors(file, control);
+    assert.equal(merged?.teachers[0]?.runtime, "claude-code");
+    assert.equal(merged?.auditor?.name, "a", "the file's auditor stays");
+    assert.equal(merged?.teacher_minutes, 15);
+    // No file and nothing from control: no advisors at all. An older control: its 404 changes nothing.
+    assert.equal(mergeAdvisors(undefined, {}), undefined);
+    const old = await fetchControlAdvisors({
+      rig: "rig-a",
+      controlUrl: "http://control",
+      controlToken: "t",
+      fetchImpl: (async () => new Response("no", { status: 404 })) as typeof fetch,
+    });
+    assert.deepEqual(old, {});
+  });
+
+  test("a Claude Code advisor gets the token only in its environment, no tools or settings, and its answer is read", async () => {
+    // A stand-in for Claude Code: it answers the audit with what it was given (never the token).
+    const dir = mkdtempSync(join(tmpdir(), "thermite-cc-adv-"));
+    const bin = join(dir, "claude");
+    writeFileSync(
+      bin,
+      `#!/usr/bin/env node
+let s = "";
+process.stdin.on("data", (d) => (s += d));
+process.stdin.on("end", () => {
+  const a = process.argv.slice(2);
+  const v = (f) => a[a.indexOf(f) + 1];
+  const said = ["token=" + (process.env.CLAUDE_CODE_OAUTH_TOKEN === "tok-advisor" ? "set" : "missing"), "tools=" + JSON.stringify(v("--tools")), "settings=" + JSON.stringify(v("--setting-sources")), "strict=" + a.includes("--strict-mcp-config"), "model=" + v("--model"), "effort=" + v("--effort"), "scrub=" + process.env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB, "prompt=" + s.includes("look at this change")].join(" ");
+  console.log(JSON.stringify({ type: "result", subtype: "success", is_error: false, result: JSON.stringify({ decision: "clear", reasons: said, citations: [] }) }));
+});
+`,
+    );
+    chmodSync(bin, 0o755);
+    process.env.THERMITE_CLAUDE_BIN = bin;
+    const { runAdvisor, AuditAnswer } = await import("./advisors.ts");
+    const { Type } = await import("@earendil-works/pi-ai");
+    // The binary's path is read when the module loads: this test file loads it here first.
+    const r = await runAdvisor({
+      runtime: {
+        name: "auditor",
+        runtime: "claude-code",
+        model: "claude-opus-5-5",
+        token: "tok-advisor",
+        effort: "high",
+        timeout_s: 30,
+      },
+      system: "You audit changes.",
+      prompt: "Please look at this change.",
+      schema: AuditAnswer,
+      answerSchema: Type.Object({}),
+    });
+    assert.equal(r.error, undefined, r.error);
+    assert.equal(r.output?.decision, "clear");
+    assert.equal(
+      r.output?.reasons,
+      'token=set tools="" settings="" strict=true model=claude-opus-5-5 effort=high scrub=1 prompt=true',
+    );
+  });
+});

@@ -6,6 +6,7 @@ import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type TSchema, Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
 import { StructuredDirective } from "../core/commands.ts";
+import { claudeBin, claudeExe } from "../harness/agents/claude-code.ts";
 import { buildModel } from "../harness/agents/model.ts";
 import { Fetcher, FetchRefused } from "../harness/research/fetcher.ts";
 
@@ -15,20 +16,28 @@ import { Fetcher, FetchRefused } from "../harness/research/fetcher.ts";
  * checked again by the harness: directives (with citations) steer the planner, an audit can
  * block a promotion but never pass one, and a panel pass still needs the owner.
  *
- * Runtimes (the operator's choice, per role): an OpenAI-compatible model route run here with read-only
- * tools (the campaign brief, a guarded web fetch, an optional knowledge-base search), or a
- * command-line agent (for example Claude Code or Codex) given the prompt on stdin and expected
- * to print one JSON object. Neither gets a shell or file tools from Thermite: the supervisor
- * holds git and model credentials, and anything an advisor reads may be prompt-injected.
+ * Runtimes (the operator's choice, per role, or the model control gives the role): an
+ * OpenAI-compatible or Anthropic model route run here with read-only tools (the campaign brief, a
+ * guarded web fetch, an optional knowledge-base search); Claude Code for a Claude subscription
+ * (only Claude Code may use one), with no tools; or a command-line agent given the prompt on
+ * stdin and expected to print one JSON object. None gets a shell or file tools from Thermite: the
+ * supervisor holds git and model credentials, and anything an advisor reads may be
+ * prompt-injected.
  */
 
 const Runtime = z.discriminatedUnion("runtime", [
   z.strictObject({
     name: z.string().min(1).max(60),
     runtime: z.literal("openai"),
+    /** The provider's API (Anthropic's Messages, or OpenAI-compatible: the default). */
+    api: z.enum(["openai", "anthropic"]).optional(),
     base_url: z.url(),
     model: z.string().min(1),
-    api_key_file: z.string().min(1),
+    /** The key: a file (configured), or in memory (a route control gave the role). */
+    api_key_file: z.string().min(1).optional(),
+    api_key: z.string().min(1).optional(),
+    /** Sent as reasoning_effort when set. */
+    reasoning: z.enum(["low", "medium", "high"]).optional(),
     context_window: z.number().int().positive().default(200_000),
     max_tokens: z.number().int().positive().default(8192),
     max_turns: z.number().int().positive().max(100).default(24),
@@ -49,6 +58,15 @@ const Runtime = z.discriminatedUnion("runtime", [
      */
     argv: z.array(z.string().min(1)).min(1),
     restricted: z.literal(true),
+    timeout_s: z.number().int().positive().max(7200).default(1800),
+  }),
+  z.strictObject({
+    name: z.string().min(1).max(60),
+    /** Claude Code with a Claude subscription's token (from control): no tools, no settings. */
+    runtime: z.literal("claude-code"),
+    model: z.string().min(1),
+    token: z.string().min(1),
+    effort: z.enum(["low", "medium", "high", "xhigh", "max"]).optional(),
     timeout_s: z.number().int().positive().max(7200).default(1800),
   }),
 ]);
@@ -162,6 +180,36 @@ export async function runAdvisor<S extends z.ZodType>(input: {
 }): Promise<AdvisorResult<z.infer<S>>> {
   const rt = input.runtime;
   if (rt.runtime === "cli") return runCli(rt, input.system, input.prompt, input.schema);
+  if (rt.runtime === "claude-code")
+    return runCli(
+      {
+        argv: [
+          claudeExe() ?? claudeBin(),
+          "-p",
+          "--output-format",
+          "json",
+          "--model",
+          rt.model,
+          "--tools",
+          "",
+          "--setting-sources",
+          "",
+          "--strict-mcp-config",
+          ...(rt.effort ? ["--effort", rt.effort] : []),
+        ],
+        timeout_s: rt.timeout_s,
+        // The token only in Claude Code's environment; no update checks or other traffic.
+        env: {
+          CLAUDE_CODE_OAUTH_TOKEN: rt.token,
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1",
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+          DISABLE_AUTOUPDATER: "1",
+        },
+      },
+      input.system,
+      input.prompt,
+      input.schema,
+    );
   const result: AdvisorResult<z.infer<S>> = {
     output: undefined,
     tokensIn: 0,
@@ -227,12 +275,17 @@ export async function runAdvisor<S extends z.ZodType>(input: {
       return { ...text("recorded"), terminate: true };
     },
   } as AgentTool);
+  const apiKey =
+    rt.api_key ?? (rt.api_key_file ? readFileSync(rt.api_key_file, "utf8").trim() : "");
+  if (!apiKey) return { ...result, error: `advisor ${rt.name} has no key` };
   const { models, model } = buildModel({
+    api: rt.api === "anthropic" ? "anthropic" : undefined,
     baseUrl: rt.base_url.replace(/\/$/, ""),
     model: rt.model,
-    apiKey: readFileSync(rt.api_key_file, "utf8").trim(),
+    apiKey,
     contextWindow: rt.context_window,
     maxTokens: rt.max_tokens,
+    reasoning: rt.reasoning,
   });
   const agent = new Agent({
     initialState: { systemPrompt: input.system, model, tools },
@@ -267,7 +320,7 @@ export async function runAdvisor<S extends z.ZodType>(input: {
 }
 
 function runCli<S extends z.ZodType>(
-  rt: Extract<AdvisorRuntime, { runtime: "cli" }>,
+  rt: { argv: string[]; timeout_s: number; env?: Record<string, string> | undefined },
   system: string,
   prompt: string,
   schema: S,
@@ -279,7 +332,7 @@ function runCli<S extends z.ZodType>(
       stdio: ["pipe", "pipe", "pipe"],
       cwd: home,
       detached: true,
-      env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: home },
+      env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: home, ...rt.env },
     });
     const killGroup = () => {
       try {

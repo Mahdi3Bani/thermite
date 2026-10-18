@@ -23,24 +23,32 @@ export async function syncModelRoute(
     headers: { authorization: `Bearer ${s.controlToken}` },
   });
   if (!res.ok) throw new Error(`control's model route: HTTP ${res.status}`);
-  const { route } = (await res.json()) as {
+  const { route, planner = null } = (await res.json()) as {
     route: { name: string; version: number; revision: string } | null;
+    /** The planner's own route, when the owner gave the planner a model (newer controls). */
+    planner?: { revision: string } | null;
   };
   const harness = { authorization: `Bearer ${s.harnessToken}` };
   const cur = await fetch(`${s.harnessUrl}/v1/model-route`, { headers: harness });
   if (cur.status === 404) return "no_agents";
   if (!cur.ok) throw new Error(`the harness's model route: HTTP ${cur.status}`);
-  const info = (await cur.json()) as { source: string; revision?: string };
+  const info = (await cur.json()) as {
+    source: string;
+    revision?: string;
+    planner_revision?: string | null;
+  };
+  const plannerSame = (info.planner_revision ?? null) === (planner?.revision ?? null);
   if (
-    route
+    plannerSame &&
+    (route
       ? info.source === "control" && info.revision === route.revision
-      : info.source !== "control"
+      : info.source !== "control")
   )
     return "unchanged";
   const put = await fetch(`${s.harnessUrl}/v1/model-route`, {
     method: "PUT",
     headers: { ...harness, "content-type": "application/json" },
-    body: JSON.stringify({ route }),
+    body: JSON.stringify({ route, planner }),
   });
   if (!put.ok) throw new Error(`handing the model route to the harness: HTTP ${put.status}`);
   log("supervisor", route ? "model route handed to the harness" : "model route cleared", {

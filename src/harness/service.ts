@@ -750,8 +750,13 @@ export class HarnessService {
    * Takes the model route control set for this rig, or (null) goes back to the rig's own
    * settings. The record names the route, never its key. New plans and trials use it.
    */
-  setModelRoute(route: ControlRoute | null, by: string): ModelInfo {
+  setModelRoute(
+    route: ControlRoute | null,
+    by: string,
+    planner?: ControlRoute | null | undefined,
+  ): ModelInfo {
     if (!this.models) throw new Error("this harness runs no agents");
+    if (planner !== undefined) this.models.setPlanner(planner);
     if (route) this.models.set(route);
     else this.models.clear();
     const info = this.models.info();
