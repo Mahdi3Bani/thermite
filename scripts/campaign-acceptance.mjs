@@ -4,7 +4,9 @@
 // on the page; control writes the kit, keeps it, stores the contract and signs the assignment.
 // The rig's supervisor fetches the project from the git server and the kit from control (with
 // the rig's token), the harness checks both by commit, and the run starts. Then the same kit,
-// uploaded as a .zip, starts a second campaign's try.
+// uploaded as a .zip, starts a second campaign's try. Last, the private path: control makes a
+// deploy key, an SSH server that accepts only that key serves the project, and a third campaign
+// from it is fetched by the rig with the key.
 // Usage: COMPOSE="podman compose" node scripts/campaign-acceptance.mjs (or "docker compose").
 import { execFileSync, spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -57,6 +59,7 @@ const daemon = spawn(
   { stdio: "ignore" },
 );
 const hostName = compose[0] === "docker" ? "host.docker.internal" : "host.containers.internal";
+const gitBox = "thermite-acc-git";
 const projectUrl = `git://${hostName}:${port}/tiny.git`;
 
 prepare();
@@ -252,10 +255,114 @@ try {
     uploadedTry?.body?.blocks === 2,
     uploadedTry?.body,
   );
+
+  // The private path. A stand-in Git host on control's network accepts only keys in its
+  // authorized_keys; control makes the deploy key in Providers and keeps its private half.
+  execFileSync(
+    compose[0],
+    ["build", "-q", "-t", "thermite-test-machine", "containers/test-machine"],
+    {
+      stdio: ["ignore", "ignore", "inherit"],
+    },
+  );
+  execFileSync(
+    compose[0],
+    ["run", "-d", "--name", gitBox, "--network", "thermite_control", "thermite-test-machine"],
+    { stdio: "ignore" },
+  );
+  execFileSync(compose[0], ["cp", join(root, "tiny.git"), `${gitBox}:/home/thermite/tiny.git`]);
+  execFileSync(compose[0], [
+    "exec",
+    gitBox,
+    "chown",
+    "-R",
+    "thermite:thermite",
+    "/home/thermite/tiny.git",
+  ]);
+  const privateUrl = `ssh://thermite@${gitBox}/home/thermite/tiny.git`;
+  const settingsPost = (path, form) =>
+    fetch(`${control}${path}`, {
+      method: "POST",
+      body: new URLSearchParams({ csrf, ...form }),
+      headers: { cookie },
+      redirect: "manual",
+    }).then((r) => decodeURIComponent(String(r.headers.get("location"))));
+  await settingsPost("/ui/settings/add", { type: "gitkey", name: "acc-deploy" });
+  const settings = await (await fetch(`${control}/ui/settings`, { headers: { cookie } })).text();
+  const deployKey = /<pre class="json"[^>]*>(ssh-ed25519 [A-Za-z0-9+/=]+[^<]*)<\/pre>/.exec(
+    settings,
+  )?.[1];
+  check(
+    "control made a deploy key and shows only its public half",
+    Boolean(deployKey) && !/PRIVATE KEY/.test(settings),
+    deployKey,
+  );
+  const before = await settingsPost("/ui/settings/git/acc-deploy/test", { url: privateUrl });
+  check(
+    "before the key is added, the private repository refuses control",
+    /could not read/.test(before),
+    before,
+  );
+  execFileSync(compose[0], [
+    "exec",
+    gitBox,
+    "sh",
+    "-c",
+    `printf '%s\\n' "$1" >> /home/thermite/.ssh/authorized_keys`,
+    "sh",
+    deployKey ?? "",
+  ]);
+  const after = await settingsPost("/ui/settings/git/acc-deploy/test", { url: privateUrl });
+  check(
+    "with the key added, control reads the private repository",
+    new RegExp(`reads .*${commit.slice(0, 7)}`).test(after),
+    after,
+  );
+  const fromPrivate = await fetch(`${control}/ui/campaigns/new`, {
+    method: "POST",
+    body: new URLSearchParams({
+      csrf,
+      draft: JSON.stringify({
+        ...draft,
+        campaign: "acc-private",
+        project: { ...draft.project, url: privateUrl, access: "acc-deploy", repo: "tiny-private" },
+      }),
+      rig: "local-1",
+      start_value: "try",
+    }),
+    headers: { cookie },
+    redirect: "manual",
+  });
+  check(
+    "control took a campaign from the private repository",
+    fromPrivate.status === 303 &&
+      /acc-private-try-1/.test(String(fromPrivate.headers.get("location"))),
+    { status: fromPrivate.status, location: fromPrivate.headers.get("location") },
+  );
+  const privateImport = await until(
+    "the rig fetches the private repository with the deploy key",
+    async () =>
+      (await events()).find(
+        (e) =>
+          e.kind === "import_verified" &&
+          e.subject === "repo_bundle" &&
+          e.body?.name === "tiny-private",
+      ),
+    300_000,
+    3000,
+  );
+  check(
+    "the supervisor fetched the private project with the key, and the harness verified it",
+    privateImport?.body?.commit === commit,
+    privateImport?.body,
+  );
 } catch (err) {
   check("acceptance run", false, String(err?.stack ?? err));
 } finally {
   daemon.kill();
+  try {
+    execFileSync(compose[0], ["rm", "-f", gitBox], { stdio: "ignore" });
+  } catch {}
   dc(composeEnv, "down", "-v");
 }
 const ok = results.every((r) => r.ok);
