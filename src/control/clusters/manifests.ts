@@ -9,8 +9,12 @@
 
 export interface ClusterRigPlan {
   rig: string;
-  /** created: control makes the namespace and its network rules; slot: it exists already. */
-  placement: "created" | "slot";
+  /**
+   * created: control makes the namespace and its network rules; slot: it exists already, with
+   * the operators' rules; joined: it exists already, and the operator applies the rig's objects
+   * with its network rules (join.ts).
+   */
+  placement: "created" | "slot" | "joined";
   namespace: string;
   controlUrl: string;
   images: { harness: string; supervisor: string };
@@ -254,7 +258,7 @@ export function clusterRigObjects(p: ClusterRigPlan, s: ClusterRigSecrets): Obj[
       ],
     }),
   );
-  if (p.placement === "created") {
+  if (p.placement === "created" || p.placement === "joined") {
     const cluster = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]; // public-check: allow (the RFC 1918 private ranges, not addresses of any network)
     objects.push(
       {

@@ -6,6 +6,7 @@ import type { SignedCommand } from "../core/commands.ts";
 import type { LiveEntry } from "../core/live.ts";
 import { currentEvent } from "../core/names.ts";
 import { Credential } from "./credential.ts";
+import type { JoinedSpec, JoinForm } from "./join.ts";
 
 /**
  * Control's store: rigs, the events they report, and command queues. A single control process
@@ -214,6 +215,18 @@ create table if not exists cluster (
   facts text,
   checked_at text,
   check_error text,
+  created_at text not null,
+  created_by text not null
+);
+-- Rigs the owner joins themself (join.ts): where, and the join command's hash, expiry and use.
+create table if not exists joined_rig (
+  rig text primary key,
+  form text not null check (form in ('machine', 'namespace')),
+  spec text not null,
+  join_sha256 text,
+  join_expires_at text,
+  join_used_at text,
+  status text not null,
   created_at text not null,
   created_by text not null
 );
@@ -444,6 +457,29 @@ export interface Cluster {
   check_error: string | null;
   created_at: string;
 }
+
+/** A rig the owner joins themself; never the join command itself, only whether one waits. */
+export interface JoinedRig {
+  rig: string;
+  form: JoinForm;
+  spec: JoinedSpec;
+  join_expires_at: string | null;
+  join_used_at: string | null;
+  status: string;
+  created_at: string;
+  created_by: string;
+}
+
+const joinedRigOf = (r: Row): JoinedRig => ({
+  rig: String(r.rig),
+  form: String(r.form) as JoinForm,
+  spec: JSON.parse(String(r.spec)) as JoinedSpec,
+  join_expires_at: r.join_expires_at === null ? null : String(r.join_expires_at),
+  join_used_at: r.join_used_at === null ? null : String(r.join_used_at),
+  status: String(r.status),
+  created_at: String(r.created_at),
+  created_by: String(r.created_by),
+});
 
 /** A GPU cloud as listed (never its key). */
 export interface GpuCloud {
@@ -1613,6 +1649,73 @@ export class ControlStore {
       ok: Number(r.ok) === 1,
       detail: r.detail === null ? null : String(r.detail),
     }));
+  }
+
+  // ---------------------------------------------------------------- joined rigs
+  addJoinedRig(r: { rig: string; form: JoinForm; spec: JoinedSpec; by: string }): void {
+    this.db
+      .prepare(
+        `insert into joined_rig (rig, form, spec, status, created_at, created_by)
+         values (?, ?, ?, 'waiting', ?, ?)`,
+      )
+      .run(r.rig, r.form, JSON.stringify(r.spec), new Date().toISOString(), r.by);
+    this.audit(r.by, "joined_rig_added", { rig: r.rig, form: r.form });
+  }
+
+  joinedRig(rig: string): JoinedRig | undefined {
+    const r = this.db.prepare("select * from joined_rig where rig = ?").get(rig) as Row | undefined;
+    return r ? joinedRigOf(r) : undefined;
+  }
+
+  /** A new join command for the rig (its hash); any earlier one stops working. */
+  setJoinToken(rig: string, sha256: string, expiresAt: string, by: string): void {
+    this.db
+      .prepare(
+        "update joined_rig set join_sha256 = ?, join_expires_at = ?, join_used_at = null where rig = ?",
+      )
+      .run(Credential.ofHash(sha256).hex, expiresAt, rig);
+    this.audit(by, "join_command_made", { rig, expires_at: expiresAt });
+  }
+
+  revokeJoinToken(rig: string, by: string): void {
+    this.db
+      .prepare(
+        "update joined_rig set join_sha256 = null, join_expires_at = null where rig = ? and join_used_at is null",
+      )
+      .run(rig);
+    this.audit(by, "join_command_revoked", { rig });
+  }
+
+  /**
+   * Uses the rig's join command, once: true when the token is its current one, unused and not
+   * expired; it then stops working.
+   */
+  useJoinToken(rig: string, token: string): boolean {
+    const r = this.db
+      .prepare(
+        "select join_sha256, join_expires_at, join_used_at, status from joined_rig where rig = ?",
+      )
+      .get(rig) as Row | undefined;
+    if (!r || r.join_sha256 === null || r.join_used_at !== null || r.status === "retired")
+      return false;
+    if (Date.parse(String(r.join_expires_at)) <= Date.now()) return false;
+    if (!Credential.ofHash(String(r.join_sha256)).matches(token)) return false;
+    const u = this.db
+      .prepare(
+        "update joined_rig set join_used_at = ? where rig = ? and join_sha256 = ? and join_used_at is null",
+      )
+      .run(new Date().toISOString(), rig, String(r.join_sha256));
+    if (Number(u.changes) !== 1) return false;
+    this.audit(`rig:${rig}`, "join_command_used", { rig });
+    return true;
+  }
+
+  setJoinedRig(rig: string, change: { status?: string; spec?: JoinedSpec }): void {
+    const cur = this.joinedRig(rig);
+    if (!cur) return;
+    this.db
+      .prepare("update joined_rig set status = ?, spec = ? where rig = ?")
+      .run(change.status ?? cur.status, JSON.stringify(change.spec ?? cur.spec), rig);
   }
 
   // ---------------------------------------------------------------- GPU clouds (RunPod)

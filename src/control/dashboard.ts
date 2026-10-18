@@ -25,6 +25,15 @@ import type { Credential } from "./credential.ts";
 import { newToken } from "./credential.ts";
 import { makeDeployKey } from "./git-keys.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
+import {
+  JOIN_HOURS,
+  type JoinedSpec,
+  type JoinForm,
+  joinCommand,
+  joinedCommands,
+  joinMachineScript,
+  joinNamespaceManifest,
+} from "./join.ts";
 import type { KitRepos } from "./kit-repos.ts";
 import { kitSummary, unpackKit } from "./kit-upload.ts";
 import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
@@ -55,6 +64,7 @@ import {
   type ControlStore,
   fingerprint,
   type Harness,
+  type JoinedRig,
   type Machine,
   type MachineRig,
   type ModelProvider,
@@ -1205,6 +1215,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     const u = vs.find((x) => x.id === c.req.param("rig"));
     const placed = store.machineRig(c.req.param("rig"));
     const onCluster = store.clusterRig(c.req.param("rig"));
+    const joined = store.joinedRig(c.req.param("rig"));
     const flashOk = c.req.query("ok");
     const flashError = c.req.query("error");
     const flash = flashError
@@ -1225,6 +1236,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         `<p class="run-said">Control is setting ${esc(onCluster.rig)} up on ${esc(onCluster.cluster)}. Its page fills in once the rig reports for the first time.</p>${flash}${clusterPlacedBlock(onCluster, csrf(c))}`,
         vs,
       );
+    if (!u && joined) return joinedPage(c, joined, flash);
     if (!u && placed)
       return page(
         c,
@@ -1435,7 +1447,7 @@ ${runsNow ? `<div class="block"><div class="head"><h2>At work</h2><span class="n
 </div><div class="side">
 <div class="block"><div class="head"><h2>What it runs on</h2></div>${h ? `<div class="card"><dl class="facts">${hw}</dl></div><details class="card flat matrix" data-k="hw-${esc(u.id)}" style="margin-top:10px"><summary>Every detail</summary>${hardwareCard(h, now)}</details>` : hardwareCard(h, now)}</div>
 <div class="block"><div class="head"><h2>The rig</h2></div><div class="card"><dl class="facts">${rigFacts}</dl>${sup ? `<div class="muted xs" style="margin-top:8px">The supervisor reports its figures itself (unsigned).</div>` : ""}</div></div>
-${placed ? placedBlock(placed, t) : ""}${onCluster ? clusterPlacedBlock(onCluster, t) : ""}
+${placed ? placedBlock(placed, t) : ""}${onCluster ? clusterPlacedBlock(onCluster, t) : ""}${joined ? joinedBlock(joined, t, undefined, true) : ""}
 <div class="block"><div class="head"><h2>Recent</h2><span class="right">newest first</span></div>${events}</div>
 </div></div>`,
       vs,
@@ -2513,6 +2525,7 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
     store.knownRig(rig) ||
     Boolean(store.machineRig(rig)) ||
     Boolean(store.clusterRig(rig)) ||
+    Boolean(store.joinedRig(rig)) ||
     views().some((u) => u.id === rig);
   /** GPUs of a machine that rigs control set up there use, by index. */
   const gpusInUse = (machine: string) =>
@@ -2547,10 +2560,14 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
     remove: "Removed from the machine",
     applied: "Its objects applied in the cluster: namespace, secret, volume, deployments",
     remove_cluster: "Removed from the cluster",
+    join_made: "Join command made",
+    join_revoked: "Join command revoked",
+    join_used: "Join command used: the rig fetched its files from control",
+    retired: "Retired: its token no longer works",
   };
   /** Waits for a new rig's first report, for at most 10 minutes; a setup event either way. */
-  const awaitFirstReport = async (rig: string, setStatus: (s: string) => void) => {
-    const deadline = Date.now() + 10 * 60_000;
+  const awaitFirstReport = async (rig: string, setStatus: (s: string) => void, minutes = 10) => {
+    const deadline = Date.now() + minutes * 60_000;
     while (Date.now() < deadline) {
       if (views().some((u) => u.id === rig)) {
         store.rigSetupEvent(rig, "first_report", true);
@@ -2563,7 +2580,7 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
       rig,
       "first_report",
       false,
-      "no report after 10 minutes: it may not have started",
+      `no report after ${minutes} minutes: it may not have started`,
     );
     setStatus("failed");
   };
@@ -2789,23 +2806,36 @@ ${
 </div></div>`;
       })
       .join("");
+    // Rigs you run yourself: one command where the rig goes, for places control can't reach.
+    const joinCards = `<label class="ch"><input type="radio" name="place" value="join:machine" style="margin:2px 8px 0 0"><span><b>A machine you set it up on yourself</b><br><span class="muted small">For a machine control can't reach over SSH, such as one behind NAT. You run one command there; it fetches the rig's files from control and starts it. Control can't reach the machine afterwards, so you stop and remove it there too.</span></span></label>
+<label class="ch"><input type="radio" name="place" value="join:namespace" style="margin:2px 8px 0 0"><span><b>A Kubernetes namespace you apply it to yourself</b><br><span class="muted small">For a cluster whose operators give Thermite no kubeconfig. You run one kubectl apply, with your own rights, in a namespace you have. Control holds no credential for the cluster.</span></span></label>`;
+    const joinSections = `<div data-place="join:machine" hidden><div class="g3">
+<label class="fd">${infoLabel("GPUs on the machine", "The numbers of the machine's NVIDIA GPUs the rig uses, as nvidia-smi lists them. Empty: none, the rig measures on the CPU. One GPU is shared by the judge and the agents; with two, the lower number is the judge's.")}<input name="j_gpus" maxlength="12" placeholder="empty, 0, or 0,1"></label>
+</div></div>
+<div data-place="join:namespace" hidden><div class="g3">
+<label class="fd">${infoLabel("Namespace", "The namespace the rig goes in. It must exist, and you need rights there to create deployments, services, secrets, volume claims and network policies.")}<input name="j_namespace" maxlength="63" placeholder="thermite-rig-1"></label>
+<label class="fd">${infoLabel("GPUs", "How many GPUs the rig's harness pod asks for. One is shared by the judge and the agents; two give each its own.")}<select name="j_k_gpus"><option value="0">none: the CPU</option><option value="1" selected>1</option><option value="2">2</option></select></label>
+<label class="fd">${infoLabel("GPUs through", "NVIDIA's device plugin (nvidia.com/gpu) or DRA (a device class), as the cluster offers them.")}<select name="j_mode"><option value="device-plugin">NVIDIA's device plugin</option><option value="dra">DRA: a device class you name</option></select></label>
+<label class="fd">${infoLabel("DRA device class", "Only for DRA: the device class the cluster offers, such as gpu.nvidia.com.")}<input name="j_class" maxlength="253" placeholder="gpu.nvidia.com"></label>
+<label class="fd">${infoLabel("Storage class", "The class for the rig's volume (its state, builds, inbox and outbox). Empty: the cluster's default.")}<input name="j_storage" maxlength="63" placeholder="the cluster's default"></label>
+<label class="fd">${infoLabel("Volume size (GB)", "The rig's volume: builds and model files can be large.")}<input name="j_size" value="100"></label>
+</div></div>`;
     const images = opts.rigImages;
     const blocked = !images
       ? "Control has no rig images configured (THERMITE_RIG_HARNESS_IMAGE, THERMITE_RIG_SUPERVISOR_IMAGE), so it can't set rigs up yet."
       : !opts.publicUrl
         ? "Control's address for rigs is not set (THERMITE_CONTROL_PUBLIC_URL), so a rig would not know where to report."
-        : !machines.length && !clusters.length
-          ? "No machine or cluster yet: add one under Settings › Providers."
-          : "";
+        : "";
     return page(
       c,
       { title: "Add a rig", crumbs: [{ href: "/ui/rigs", text: "Rigs" }], active: "rigs" },
-      `<p class="run-said">Choose where the rig runs. Control connects there with the credentials you gave it once, writes the rig's files and services, starts it and looks after it: stop, start, restart, remove. You never log in to the machine yourself.</p>
+      `<p class="run-said">Choose where the rig runs. On a machine or cluster control knows, control connects with the credentials you gave it once, writes the rig's files and services, starts it and looks after it: stop, start, restart, remove. Where control can't connect, you run one command it gives you.</p>
 ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not created.</b> ${esc(error)}</div>` : ""}${blocked ? `<div class="card warn" style="margin-bottom:16px">${esc(blocked)}</div>` : ""}
 <form id="add-rig" method="post" action="/ui/rigs/add" autocomplete="off"><input type="hidden" name="csrf" value="${t}">
 <div class="sec"><h2>1 · Where</h2><p class="lead">A machine or a cluster control knows. They are added, checked and prepared under <a href="/ui/settings">Settings › Providers</a>.</p>
-<div class="stack">${cards}${clusterCards}${cards || clusterCards ? "" : `<div class="card"><div class="empty">No machine or cluster yet.</div></div>`}<a class="ch" href="/ui/settings"><span><b>+ A new machine or cluster</b><br><span class="muted small">A Linux machine control can reach with an SSH key, or a Kubernetes cluster through a kubeconfig. Add it in Providers, then come back.</span></span></a></div></div>
-<div class="sec"><h2>2 · GPUs and resources</h2><p class="lead">As control last read the place. One GPU is shared by the judge and the agents; with two, the judge and the agents get one each (on a machine, the lower-numbered GPU is the judge's).</p>${gpuLists}${clusterSections}<div class="nc-does" id="gpu-note"></div></div>
+<div class="stack">${cards}${clusterCards}${cards || clusterCards ? "" : `<div class="card"><div class="empty">No machine or cluster yet.</div></div>`}<a class="ch" href="/ui/settings"><span><b>+ A new machine or cluster</b><br><span class="muted small">A Linux machine control can reach with an SSH key, or a Kubernetes cluster through a kubeconfig. Add it in Providers, then come back.</span></span></a></div>
+<p class="lead" style="margin-top:14px">Or run it yourself, where control can't connect:</p><div class="stack">${joinCards}</div></div>
+<div class="sec"><h2>2 · GPUs and resources</h2><p class="lead">As control last read the place. One GPU is shared by the judge and the agents; with two, the judge and the agents get one each (on a machine, the lower-numbered GPU is the judge's).</p>${gpuLists}${clusterSections}${joinSections}<div class="nc-does" id="gpu-note"></div></div>
 <div class="sec"><h2>3 · Name and start</h2><div class="g3">
 <label class="fd">${infoLabel("Rig name", "The rig's name in Thermite: lowercase letters, digits and dashes. It names the rig's runs, history and files, so it can't change later.")}<input name="rig" required maxlength="63" placeholder="gpu-box-1-a"></label>
 <label class="fd" style="grid-column:span 2">${infoLabel("Images", "The Thermite images control deploys, as set where control is deployed. A GPU rig uses the CUDA harness image.")}<span class="mono small">${images ? `${esc(images.harness)}${images.harnessCuda ? `<br>${esc(images.harnessCuda)} (GPU rigs)` : ""}<br>${esc(images.supervisor)}` : "none configured"}</span></label>
@@ -2821,6 +2851,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     const rig = String(f.rig ?? "").trim();
     const place = String(f.place ?? (f.machine ? `machine:${String(f.machine)}` : ""));
     if (place.startsWith("cluster:")) return addClusterRigFrom(c, f, rig, place.slice(8), fail);
+    if (place.startsWith("join:")) return addJoinedRigFrom(c, f, rig, place.slice(5), fail);
     const m = store.machine(place.startsWith("machine:") ? place.slice(8) : "");
     const gpus = [f.gpus ?? []]
       .flat()
@@ -2965,6 +2996,269 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     void deployClusterRig(store.clusterRig(rig) as ClusterRig, k, token.token).catch(() => {});
     return c.redirect(`/ui/rigs/${encodeURIComponent(rig)}`, 303);
   };
+  // ---------------------------------------------------------------- rigs you join yourself
+  // For a place control can't connect to (join.ts): control mints a one-time join command; run
+  // there, it fetches the rig's files or manifest from /v1/join. Control keeps only its hash.
+  const hhmm = (ms: number) => new Date(ms).toISOString().slice(11, 16);
+  const mintJoin = (rig: string): string => {
+    const t = newToken();
+    const expires = Date.now() + JOIN_HOURS * 3_600_000;
+    store.setJoinToken(rig, t.sha256, new Date(expires).toISOString(), "owner:ui");
+    store.rigSetupEvent(rig, "join_made", true, `works once, until ${hhmm(expires)} UTC`);
+    return t.token;
+  };
+  const JOIN_STATUS: Record<string, string> = {
+    waiting: "waiting for you to run the join command",
+    joining: "fetched its files; waiting for its first report",
+    running: "running",
+    failed: "no first report yet",
+    retired: "retired",
+  };
+  /** A rig you join yourself: where, the join command, and the commands control can't run. */
+  const joinedBlock = (r: JoinedRig, t: string, token?: string, reporting = false) => {
+    const rName = encodeURIComponent(r.rig);
+    const act = (action: string, label: string, extra = "", cls = "sm") =>
+      `<form class="inline" method="post" action="/ui/rigs/${rName}/join/${action}"><input type="hidden" name="csrf" value="${t}">${extra}<button class="${cls}">${label}</button></form>`;
+    const s = r.spec;
+    const now = Date.now();
+    const status =
+      reporting && (r.status === "joining" || r.status === "failed") ? "running" : r.status;
+    const expires = r.join_expires_at ? Date.parse(r.join_expires_at) : 0;
+    const machine = r.form === "machine";
+    const gpuList = machine ? (s.gpus as number[]) : [];
+    const gpuCount = machine ? gpuList.length : (s.gpus as number);
+    const gpus = machine
+      ? gpuList.length
+        ? gpuList
+            .map(
+              (g, i) =>
+                `GPU ${g}${gpuList.length === 2 ? (i === 0 ? " (judge)" : " (agents)") : " (shared)"}`,
+            )
+            .join(", ")
+        : "none: it measures on the CPU"
+      : gpuCount
+        ? `${gpuCount} through ${s.gpuMode === "dra" ? `DRA (${esc(s.deviceClass ?? "")})` : "NVIDIA's device plugin"}`
+        : "none: it measures on the CPU";
+    const cmd = token
+      ? joinCommand(r.form, {
+          controlUrl: opts.publicUrl ?? "",
+          rig: r.rig,
+          token,
+          namespace: s.namespace,
+        })
+      : "";
+    const joinCard =
+      status === "retired"
+        ? ""
+        : token
+          ? `<div class="card hl" style="margin-top:10px"><p class="sum">${machine ? "Run this on the machine, as the user the rig should run as. Root works too, but a user with rootless Podman is safer." : `Run this where kubectl reaches the cluster, with rights in the namespace ${esc(s.namespace)}.`}</p><pre class="json" style="white-space:pre-wrap;word-break:break-all">${esc(cmd)}</pre><div class="muted small">Shown once: copy it now. It works once, until ${hhmm(expires)} UTC. Control keeps only a hash of it, so it can't show it again; if you lose it, make a new one.</div></div>`
+          : !r.join_used_at && expires > now
+            ? `<div class="card" style="margin-top:10px"><div class="small">A join command waits, until ${hhmm(expires)} UTC. Control can't show it again.</div><div class="act" style="margin-top:8px">${act("new", "Make a new join command")}${act("revoke", "Revoke it")}</div></div>`
+            : `<div class="card" style="margin-top:10px"><div class="small">${r.join_used_at ? `The join command was used ${esc(ago(r.join_used_at, now))} ago. To set the rig up again, remove it there first (below), then make a new one; its old token then stops working.` : r.join_expires_at ? "The join command expired unused." : "No join command waits."}</div><div class="act" style="margin-top:8px">${act("new", "Make a new join command")}</div></div>`;
+    const needs = machine
+      ? `<div class="small" style="margin-top:10px"><b>What the machine needs.</b> The command checks these first and writes nothing if one is missing.<ul style="margin:4px 0 0 18px"><li>Linux with systemd, and Podman 4.4 or later.</li><li>For a user: lingering on, so the rig's services outlive your login: <code>sudo loginctl enable-linger $USER</code>.</li>${gpuCount ? `<li>NVIDIA's container toolkit, with a CDI spec: <code>sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml</code>.</li>` : ""}<li>A way to control (${esc(opts.publicUrl ?? "")}) and to the image registry. Control never connects to the machine.</li></ul></div>`
+      : `<div class="small" style="margin-top:10px"><b>What the namespace needs.</b><ul style="margin:4px 0 0 18px"><li>Your rights there to create deployments, services, secrets, volume claims and network policies${s.gpuMode === "dra" && gpuCount ? ", and resource claim templates" : ""}.</li><li>Its pods reach control (${esc(opts.publicUrl ?? "")}) and the image registry.</li></ul>The manifest has the rig's network rules: the harness reaches DNS and the internet, not the cluster, and only its supervisor reaches the harness.</div>`;
+    const cmds = joinedCommands(r.form, r.rig, s);
+    const pre = (label: string, text: string) =>
+      `<div class="small" style="margin-top:8px">${label}</div><pre class="json" style="white-space:pre-wrap;word-break:break-all">${esc(text)}</pre>`;
+    const yours =
+      status === "waiting"
+        ? ""
+        : `<details style="margin-top:10px"><summary class="small">Stop, start, restart or remove it: you run these there</summary><div class="muted small" style="margin-top:6px">Control can't reach this place, so these are yours to run${machine ? `, as ${s.root ? "root" : "the user the rig runs as"}` : ""}. Remove deletes the rig's ${machine ? "units, files and volumes" : "objects in the namespace"}; results it has not exported are lost.</div>${pre("Stop", cmds.stop)}${pre("Start", cmds.start)}${pre("Restart", cmds.restart)}${pre("Remove", cmds.remove)}</details>`;
+    const retire =
+      status === "retired"
+        ? ""
+        : `<details style="margin-top:8px"><summary class="small">Retire it</summary><div class="small muted" style="margin:6px 0">Its token stops working at once, so it can't report or take commands, and any join command stops working. Its files stay there until you remove them with the command above.</div>${act("retire", "Retire the rig", `<input name="confirm" placeholder="type: retire ${esc(r.rig)}" style="margin-right:6px">`, "sm danger")}</details>`;
+    return `<div class="block"><div class="head"><h2>You run it yourself</h2><span class="right">${esc(JOIN_STATUS[status] ?? status)}</span></div><div class="card"><dl class="facts"><dt>Where</dt><dd>${machine ? "a machine you set it up on" : `the namespace ${esc(s.namespace)}, applied by you`}</dd><dt>GPUs</dt><dd>${gpus}</dd>${machine ? "" : `<dt>Storage</dt><dd>${s.storageGi} GB${s.storageClass ? ` · ${esc(s.storageClass)}` : ""}</dd>`}<dt>Images</dt><dd class="mono small">${esc(s.images.harness)}<br>${esc(s.images.supervisor)}</dd></dl>${joinCard}
+<div class="tl" style="margin-top:10px">${setupSteps(r.rig) || `<div class="muted small">No step yet.</div>`}</div>${status === "waiting" ? needs : ""}${yours}${retire}</div></div>`;
+  };
+  /** The page of a joined rig that has not reported yet. */
+  const joinedPage = (c: Ctx, r: JoinedRig, flash: string, token?: string) =>
+    page(
+      c,
+      {
+        title: r.rig,
+        crumbs: [{ href: "/ui/rigs", text: "Rigs" }],
+        summary: `you run it yourself · ${esc(JOIN_STATUS[r.status] ?? r.status)}`,
+        active: "rigs",
+        // A page showing the join command never reloads itself: the command is shown once.
+        refresh: token ? 3600 : r.status === "joining" ? 5 : 30,
+      },
+      `<p class="run-said">${
+        r.status === "retired"
+          ? `${esc(r.rig)} is retired.`
+          : r.join_used_at
+            ? `${esc(r.rig)} fetched its files from control ${esc(ago(r.join_used_at, Date.now()))} ago. Its page fills in once it reports for the first time.`
+            : `Run the join command ${r.form === "machine" ? "on the machine" : "against the cluster"}. It fetches the rig's ${r.form === "machine" ? "files and services" : "objects"} from control and starts it; the page fills in once the rig reports for the first time.`
+      }</p>${flash}${joinedBlock(r, csrf(c), token)}`,
+    );
+  const DRA_CLASS = /^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$/;
+  /** Add a rig you join yourself: checks the choices, then shows its join command once. */
+  const addJoinedRigFrom = (
+    c: Ctx,
+    f: Record<string, unknown>,
+    rig: string,
+    form: string,
+    fail: (why: string) => Response,
+  ) => {
+    const one = (key: string) => {
+      const v = f[key];
+      return String(Array.isArray(v) ? v[0] : (v ?? "")).trim();
+    };
+    if (!opts.rigImages) return fail("Control has no rig images configured.");
+    if (!opts.publicUrl) return fail("Control's address for rigs is not set.");
+    if (!RIG_NAME.test(rig)) return fail("A rig's name is lowercase letters, digits and dashes.");
+    if (rigTaken(rig)) return fail(`There is a rig named ${rig} already.`);
+    if (form !== "machine" && form !== "namespace") return fail("Choose where the rig runs.");
+    const cuda = "Control has no CUDA harness image configured (THERMITE_RIG_HARNESS_CUDA_IMAGE).";
+    const imagesFor = (gpu: boolean) => ({
+      harness: gpu ? (opts.rigImages?.harnessCuda as string) : (opts.rigImages?.harness as string),
+      supervisor: opts.rigImages?.supervisor as string,
+    });
+    let spec: JoinedSpec;
+    if (form === "machine") {
+      const raw = one("j_gpus");
+      const gpus = raw
+        ? raw
+            .split(/[\s,]+/)
+            .filter(Boolean)
+            .map(Number)
+        : [];
+      if (gpus.some((g) => !Number.isInteger(g) || g < 0 || g > 63))
+        return fail("GPUs are the machine's GPU numbers, as nvidia-smi lists them: 0, or 0,1.");
+      if (new Set(gpus).size !== gpus.length) return fail("Name each GPU once.");
+      if (gpus.length > 2)
+        return fail(
+          "A rig takes one or two GPUs for now; rigs with more come with rigs of many GPUs.",
+        );
+      if (gpus.length && !opts.rigImages.harnessCuda) return fail(cuda);
+      spec = { gpus: gpus.sort((a, b) => a - b), images: imagesFor(gpus.length > 0) };
+    } else {
+      const namespace = one("j_namespace");
+      if (!NS.test(namespace)) return fail("Name the namespace the rig goes in.");
+      const gpus = Number(one("j_k_gpus") || "0");
+      if (!Number.isInteger(gpus) || gpus < 0 || gpus > 2)
+        return fail("A rig takes none, one or two GPUs for now; rigs with more come later.");
+      const dra = one("j_mode") === "dra";
+      const deviceClass = gpus && dra ? one("j_class") : undefined;
+      if (gpus && dra && !DRA_CLASS.test(deviceClass ?? ""))
+        return fail("Name the DRA device class, such as gpu.nvidia.com.");
+      const storageClass = one("j_storage") || undefined;
+      if (storageClass && !NS.test(storageClass)) return fail("That is not a storage class name.");
+      const storageGi = Number(one("j_size") || "100");
+      if (!Number.isInteger(storageGi) || storageGi < 1 || storageGi > 10_000)
+        return fail("The volume size is a whole number of GB, from 1 to 10000.");
+      if (gpus && !opts.rigImages.harnessCuda) return fail(cuda);
+      spec = {
+        gpus,
+        images: imagesFor(gpus > 0),
+        namespace,
+        gpuMode: deviceClass ? "dra" : "device-plugin",
+        deviceClass,
+        storageClass,
+        storageGi,
+      };
+    }
+    store.addJoinedRig({ rig, form: form as JoinForm, spec, by: "owner:ui" });
+    const token = mintJoin(rig);
+    return joinedPage(c, store.joinedRig(rig) as JoinedRig, "", token);
+  };
+  app.post("/ui/rigs/:rig/join/:action", async (c) => {
+    const r = store.joinedRig(c.req.param("rig"));
+    const action = c.req.param("action");
+    const back = (k: "ok" | "error", msg: string) =>
+      c.redirect(
+        `/ui/rigs/${encodeURIComponent(c.req.param("rig"))}?${k}=${encodeURIComponent(msg)}`,
+        303,
+      );
+    if (!r || r.status === "retired")
+      return back("error", "This is not a rig you run yourself, or it is retired.");
+    const f = await c.req.parseBody();
+    if (action === "new") return joinedPage(c, r, "", mintJoin(r.rig));
+    if (action === "revoke") {
+      store.revokeJoinToken(r.rig, "owner:ui");
+      store.rigSetupEvent(r.rig, "join_revoked", true);
+      return back("ok", "The join command no longer works.");
+    }
+    if (action === "retire") {
+      if (String(f.confirm ?? "").trim() !== `retire ${r.rig}`)
+        return back("error", `Type "retire ${r.rig}" to retire it.`);
+      store.revokeJoinToken(r.rig, "owner:ui");
+      if (store.enrolledRig(r.rig)) store.retireRig(r.rig, "owner:ui");
+      store.setJoinedRig(r.rig, { status: "retired" });
+      store.rigSetupEvent(r.rig, "retired", true);
+      return back(
+        "ok",
+        `${r.rig} is retired: its token no longer works. Remove its files there with the command on this page.`,
+      );
+    }
+    return back("error", "No such action.");
+  });
+  // The join command's request: no session, only the one-time join token. Control mints the rig's
+  // own token now, so the files it serves are the only copy of it.
+  app.get("/v1/join/:rig/:what", (c) => {
+    const rig = c.req.param("rig");
+    const what = c.req.param("what");
+    const r = store.joinedRig(rig);
+    const no = (status: 401 | 404 | 409, msg: string) =>
+      c.text(`thermite: ${msg}\n`, status, { "cache-control": "no-store" });
+    if (!r || what !== (r.form === "machine" ? "script" : "manifest"))
+      return no(404, "no such join command");
+    if (!opts.publicUrl) return no(409, "control's address for rigs is not set");
+    const token = (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "");
+    if (!store.useJoinToken(rig, token))
+      return no(
+        401,
+        "this join command does not work: it was used, revoked or expired. Make a new one on the rig's page in Thermite.",
+      );
+    const rigToken = newToken();
+    if (store.enrolledRig(rig)) store.rotateRigToken(rig, rigToken.sha256, `rig:${rig}`);
+    else store.enrollRig(rig, rigToken.sha256, "owner:ui");
+    const secrets = { controlToken: rigToken.token, harnessSupervisorToken: newToken().token };
+    const s = r.spec;
+    let body: string;
+    let detail: string;
+    if (r.form === "machine") {
+      const root = c.req.query("uid") === "0";
+      body = joinMachineScript(
+        {
+          rig,
+          controlUrl: opts.publicUrl,
+          images: s.images,
+          gpus: s.gpus as number[],
+          root,
+          controlPublicKey,
+          controlFingerprint: fingerprint(controlPublicKey),
+        },
+        secrets,
+      );
+      store.setJoinedRig(rig, { status: "joining", spec: { ...s, root } });
+      detail = root ? "as root" : "as a user, with rootless Podman";
+    } else {
+      body = joinNamespaceManifest(
+        {
+          rig,
+          namespace: s.namespace as string,
+          controlUrl: opts.publicUrl,
+          images: s.images,
+          gpus: s.gpus as number,
+          gpuMode: s.gpuMode ?? "device-plugin",
+          deviceClass: s.deviceClass,
+          storageClass: s.storageClass,
+          storageGi: s.storageGi ?? 100,
+          controlPublicKey,
+        },
+        secrets,
+      );
+      store.setJoinedRig(rig, { status: "joining" });
+      detail = `namespace ${s.namespace}`;
+    }
+    store.rigSetupEvent(rig, "join_used", true, detail);
+    // Pulling the images can take a while on a new machine: wait up to an hour.
+    void awaitFirstReport(rig, (st) => store.setJoinedRig(rig, { status: st }), 60).catch(() => {});
+    return c.text(body, 200, { "cache-control": "no-store" });
+  });
+
   app.post("/ui/rigs/:rig/cluster/:action", async (c) => {
     const r = store.clusterRig(c.req.param("rig"));
     const action = c.req.param("action");

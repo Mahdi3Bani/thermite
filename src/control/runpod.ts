@@ -2,8 +2,7 @@
  * RunPod as a place for rigs (Settings › Providers), read-only for now: control seals the
  * owner's API key and reads, with RunPod's REST API v2, the GPU types with their prices and
  * stock, the data centers, the network volumes and the account's pods. It starts nothing and
- * spends nothing; launching a rig on RunPod is a separate, owner-only step that comes after the
- * spike (plan: NEXT-WORK, RunPod).
+ * spends nothing; launching a rig on RunPod is a separate, owner-only step.
  */
 
 export const RUNPOD_API = "https://api.runpod.io";
