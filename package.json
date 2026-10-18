@@ -16,7 +16,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test --test-concurrency=1 \"src/**/*.test.ts\"",
+    "test": "node scripts/test.mjs",
     "check:public": "node scripts/check-public.mjs",
     "check": "npm run typecheck && npm run lint && npm test && npm run check:public",
     "dev:init": "node scripts/dev-init.mjs",

@@ -74,7 +74,7 @@ Run from the repository root before every commit, and report which ran and which
 - All the fast checks: `npm run check`. It runs, in order:
   - `npm run typecheck`
   - `npm run lint` (Biome; `npm run format` applies fixes)
-  - `npm test` (Node's test runner over `src/**/*.test.ts`, one file at a time: the judge tests time real processes, so they must not share the machine with other test files)
+  - `npm test` (Node's test runner over `src/**/*.test.ts`, one file at a time: the judge tests time real processes, so they must not share the machine with other test files). It gives the tests a temporary directory of their own and removes it afterwards; `node scripts/test.mjs <file>` runs one file the same way
   - `npm run check:public`: the public-content check over tracked and staged files. **Stage new files first**, or check them with `node scripts/check-public.mjs --untracked`. The private denylist it reads lives in `.internal/`.
 - Compose smoke, after changes to containers, compose, the APIs or the relay. It builds the images, starts control and one rig, assigns a campaign through control, submits a patch and checks the events reach control:
   - `COMPOSE="podman compose" npm run smoke:compose`
@@ -94,4 +94,5 @@ Run from the repository root before every commit, and report which ran and which
   - `COMPOSE="podman compose" node scripts/agents-acceptance.mjs`
 - Steering acceptance (M5), after changes to the supervisor's advisors, audits, propagation, reviews, the lifecycle drivers or full reset. It uses two rigs and a scripted host model; with Podman it also mounts the engine socket (`compose.lifecycle.yaml`) to test restarts. Allow about 20–30 minutes:
   - `COMPOSE="podman compose" node scripts/steering-acceptance.mjs`
+- Clean up after every local run. The compose scripts prune dangling images and trim the Podman VM when their stack comes down; after a run stopped by hand, do the same (`podman image prune -f`, `podman machine ssh sudo fstrim -a`), and never prune tagged images, which may be other projects'.
 - Repository hygiene: `git status --short`, `git diff --check` and `git diff --cached`. Read new untracked files directly, and verify relative documentation links and the `CLAUDE.md` import.

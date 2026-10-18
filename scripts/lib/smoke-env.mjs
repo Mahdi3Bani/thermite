@@ -17,9 +17,23 @@ export const sh = (cmd, args, opts = {}) =>
   execFileSync(cmd, args, { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"], ...opts });
 
 export function dc(env, ...args) {
-  return sh(compose[0], [...compose.slice(1), ...project, ...args], {
+  const out = sh(compose[0], [...compose.slice(1), ...project, ...args], {
     env: { ...process.env, ...env },
   });
+  if (args[0] === "down") cleanEngine();
+  return out;
+}
+
+/**
+ * After a stack comes down: remove the build layers it left (dangling images only; tagged images
+ * may be other projects') and, on a Podman machine, hand the freed disk back to the host.
+ */
+export function cleanEngine() {
+  try {
+    sh(compose[0], ["image", "prune", "-f"]);
+    if (compose[0] === "podman" && process.platform !== "linux")
+      sh("podman", ["machine", "ssh", "sudo", "fstrim", "-a"]);
+  } catch {}
 }
 
 export const secret = (n) => readFileSync(join(".dev", "secrets", n), "utf8").trim();
