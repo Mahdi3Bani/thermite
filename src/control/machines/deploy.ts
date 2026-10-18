@@ -14,8 +14,13 @@ export interface RigPlan {
   /** Control as the rig reaches it. */
   controlUrl: string;
   images: { harness: string; supervisor: string };
-  /** The machine's GPU indices the rig uses: none (CPU), one (shared) or two (judge, then dev). */
+  /**
+   * The machine's GPU indices the rig uses: none (CPU), one (shared by the judge and the agents)
+   * or several: the first judgeGpus for the judge, the rest for the agents' dev runs.
+   */
   gpus: number[];
+  /** With two or more GPUs, how many are the judge's (default: half, rounded up). */
+  judgeGpus?: number | undefined;
   /** Control logs in as root: system units and paths instead of the user's. */
   root: boolean;
   controlPublicKey: string;
@@ -30,6 +35,30 @@ export interface RigSecrets {
 }
 
 export const RIG_NAME = /^[a-z0-9][a-z0-9-]{0,62}$/;
+
+/** At most 8 judge GPUs and 8 for the agents (the harness image has users for that many). */
+export const MAX_RIG_GPUS = 16;
+
+/**
+ * The harness's GPU settings for a rig with `n` GPUs, as the container numbers them (0 to n-1,
+ * in the order given): none, one shared, or the first `judge` for the judge and the rest for the
+ * agents' dev runs. Default split: half for the judge, rounded up.
+ */
+export function gpuSplit(
+  n: number,
+  judge?: number | undefined,
+): { THERMITE_GPU_INDEX?: string; THERMITE_DEV_GPU_INDEX?: string } {
+  if (n > MAX_RIG_GPUS) throw new Error(`a rig takes at most ${MAX_RIG_GPUS} GPUs`);
+  if (n === 0) return {};
+  if (n === 1) return { THERMITE_GPU_INDEX: "0" };
+  const j = judge ?? Math.ceil(n / 2);
+  if (!Number.isInteger(j) || j < 1 || j > n - 1 || j > 8 || n - j > 8)
+    throw new Error(
+      `with ${n} GPUs the judge takes 1 to ${Math.min(8, n - 1)} of them, and the agents at most 8`,
+    );
+  const range = (a: number, b: number) => Array.from({ length: b - a }, (_, i) => a + i).join(",");
+  return { THERMITE_GPU_INDEX: range(0, j), THERMITE_DEV_GPU_INDEX: range(j, n) };
+}
 
 /** Where the rig's files and units live on the machine. */
 export function rigPaths(p: Pick<RigPlan, "rig" | "root">) {
@@ -66,10 +95,7 @@ export function rigUnits(p: RigPlan): Record<string, string> {
   const s = unitName(p.rig, "supervisor");
   const net = `thermite-${p.rig}`;
   const egress = `thermite-${p.rig}-egress`;
-  if (p.gpus.length > 2)
-    throw new Error(
-      "a rig takes at most two GPUs for now: rigs with more GPUs are not supported yet",
-    );
+  const split = gpuSplit(p.gpus.length, p.judgeGpus);
   const gpu = p.gpus.length > 0;
   const env = (pairs: Record<string, string>) =>
     Object.entries(pairs)
@@ -97,8 +123,7 @@ ContainerName=${h}
 ${env({
   THERMITE_RIG_ID: p.rig,
   THERMITE_TARGET: gpu ? "cuda-gpu" : "cpu",
-  ...(gpu ? { THERMITE_GPU_INDEX: "0" } : {}),
-  ...(p.gpus.length === 2 ? { THERMITE_DEV_GPU_INDEX: "1" } : {}),
+  ...split,
   THERMITE_CONTROL_PUBKEY_FILE: "/keys/control-signing.pub",
   THERMITE_SUPERVISOR_TOKEN_FILE: "/run/secrets/harness-supervisor-token",
 })}

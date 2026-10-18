@@ -510,6 +510,8 @@ export interface ClusterRig {
   placement: "created" | "slot";
   spec: {
     gpus: number;
+    /** With two or more GPUs, how many are the judge's. */
+    judgeGpus?: number | undefined;
     gpuMode: "device-plugin" | "dra";
     deviceClass?: string | undefined;
     node?: string | undefined;
@@ -550,6 +552,8 @@ export interface MachineRig {
   rig: string;
   machine: string;
   gpus: number[];
+  /** With two or more GPUs: how many (the lowest-numbered) are the judge's; the rest are the agents'. */
+  judge_gpus?: number | undefined;
   images: { harness: string; supervisor: string };
   root: boolean;
   /** deploying, running, stopped, failed, removed. */
@@ -562,6 +566,8 @@ const machineRigOf = (r: Row): MachineRig => ({
   rig: String(r.rig),
   machine: String(r.machine),
   gpus: JSON.parse(String(r.gpus)) as number[],
+  judge_gpus:
+    r.judge_gpus === null || r.judge_gpus === undefined ? undefined : Number(r.judge_gpus),
   images: JSON.parse(String(r.images)) as MachineRig["images"],
   root: Number(r.root) === 1,
   status: String(r.status),
@@ -640,6 +646,11 @@ export class ControlStore {
     );
     if (!rigModelCols.includes("harness"))
       this.db.exec("alter table rig_model add column harness text not null default 'pi'");
+    const machineRigCols = (this.db.prepare("pragma table_info(machine_rig)").all() as Row[]).map(
+      (r) => r.name,
+    );
+    if (!machineRigCols.includes("judge_gpus"))
+      this.db.exec("alter table machine_rig add column judge_gpus integer");
     if (!cols.includes("supervisor")) {
       this.db.exec("alter table rig add column supervisor text");
       this.db.exec("alter table rig add column supervisor_at text");
@@ -1592,13 +1603,14 @@ export class ControlStore {
   addMachineRig(r: Omit<MachineRig, "created_at" | "status">): void {
     this.db
       .prepare(
-        `insert into machine_rig (rig, machine, gpus, images, root, status, created_at, created_by)
-         values (?, ?, ?, ?, ?, 'deploying', ?, ?)`,
+        `insert into machine_rig (rig, machine, gpus, judge_gpus, images, root, status, created_at, created_by)
+         values (?, ?, ?, ?, ?, ?, 'deploying', ?, ?)`,
       )
       .run(
         r.rig,
         r.machine,
         JSON.stringify(r.gpus),
+        r.judge_gpus ?? null,
         JSON.stringify(r.images),
         r.root ? 1 : 0,
         new Date().toISOString(),

@@ -13,6 +13,7 @@ import { FAST_KERNEL, makeJudgeEnv } from "../testing/judge-env.ts";
 import { createControlApi } from "./api.ts";
 import { Credential } from "./credential.ts";
 import { ControlStore } from "./store.ts";
+import { deviceModeText } from "./ui/components.ts";
 
 /** Control with one rig whose harness runs the Node test kit; the relay is called directly. */
 const sha256 = (t: string) => createHash("sha256").update(t).digest("hex");
@@ -466,6 +467,18 @@ describe("control dashboard", () => {
     const page = await (await s.get("/ui/rigs/rig-a")).text();
     assert.match(page, /Tesla P100-PCIE-16GB/);
     assert.match(page, /one for the judge, one for agents' dev runs/);
+    const hw = s.env.service.hardware;
+    const card = (role: "judge" | "dev") => ({
+      ...(hw.devices[0] as (typeof hw.devices)[0]),
+      role,
+    });
+    assert.equal(
+      deviceModeText({
+        ...hw,
+        devices: [card("judge"), card("judge"), card("dev"), card("dev"), card("dev")],
+      }),
+      "2 for the judge, 3 for agents' dev runs",
+    );
     assert.match(page, /quota 6 CPU of the host's 48/);
     assert.match(page, /12 GiB limit/);
     // The short version comes first.

@@ -399,6 +399,14 @@ const DEVICE_MODES: Record<Hardware["device_mode"], string> = {
   dedicated: "one for the judge, one for agents' dev runs",
   none: "none: the judge measures on the CPU",
 };
+/** How the rig's devices are used, in words: with several cards, how many of each. */
+export function deviceModeText(h: Hardware): string {
+  if (h.device_mode !== "dedicated") return DEVICE_MODES[h.device_mode] ?? h.device_mode;
+  const judges = h.devices.filter((d) => d.role === "judge").length;
+  const devs = h.devices.filter((d) => d.role === "dev").length;
+  if (judges <= 1 && devs <= 1) return DEVICE_MODES.dedicated;
+  return `${judges} for the judge, ${devs} for agents' dev runs`;
+}
 const ROLES: Record<string, string> = {
   judge: "Judge",
   dev: "Dev runs",
@@ -432,7 +440,7 @@ export function hardwareCard(h: Hardware | null, now: number): string {
     .map((d) => `${esc(d.name)} ${esc(String(d.free_gib))} of ${esc(String(d.total_gib))} GiB free`)
     .join(" · ");
   return `<div class="card"><div class="stack" style="gap:10px">
-<div class="small"><span class="muted">Devices</span> ${esc(DEVICE_MODES[h.device_mode] ?? h.device_mode)}</div>
+<div class="small"><span class="muted">Devices</span> ${esc(deviceModeText(h))}</div>
 ${devices}
 <div class="grid2" style="gap:8px 16px">
 ${kv("CPU", cpu)}

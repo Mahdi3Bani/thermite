@@ -46,11 +46,22 @@ describe("a rig deployed on a machine", () => {
     assert.match(s, /^Environment=HARNESS_URL=http:\/\/thermite-gpu-box-1-a-harness:8700$/m);
     assert.match(s, /^Requires=thermite-gpu-box-1-a-harness\.service$/m);
     assert.match(u["thermite-gpu-box-1-a.network"] ?? "", /^Internal=true$/m);
-    // A CPU rig has no devices; more than two GPUs is refused for now.
+    // A CPU rig has no devices; more GPUs are split, the lowest-numbered for the judge.
     const cpu = rigUnits({ ...plan, gpus: [] })["thermite-gpu-box-1-a-harness.container"] ?? "";
     assert.match(cpu, /^Environment=THERMITE_TARGET=cpu$/m);
     assert.ok(!/AddDevice|GPU_INDEX/.test(cpu));
-    assert.throws(() => rigUnits({ ...plan, gpus: [0, 1, 2] }), /at most two GPUs/);
+    const four =
+      rigUnits({ ...plan, gpus: [2, 3, 5, 7], judgeGpus: 1 })[
+        "thermite-gpu-box-1-a-harness.container"
+      ] ?? "";
+    assert.match(four, /^Environment=THERMITE_GPU_INDEX=0$/m);
+    assert.match(four, /^Environment=THERMITE_DEV_GPU_INDEX=1,2,3$/m);
+    assert.match(four, /^AddDevice=nvidia.com\/gpu=7$/m);
+    assert.throws(() => rigUnits({ ...plan, gpus: [0, 1], judgeGpus: 2 }), /judge takes 1 to 1/);
+    assert.throws(
+      () => rigUnits({ ...plan, gpus: Array.from({ length: 17 }, (_, i) => i) }),
+      /at most 16 GPUs/,
+    );
   });
 
   test("the deploy script writes the tokens verbatim through stdin, refuses an existing rig, and starts the services", () => {

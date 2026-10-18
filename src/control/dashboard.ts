@@ -37,7 +37,13 @@ import {
 import type { KitRepos } from "./kit-repos.ts";
 import { kitSummary, unpackKit } from "./kit-upload.ts";
 import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
-import { deployScript, manageScript, RIG_NAME, type RigAction } from "./machines/deploy.ts";
+import {
+  deployScript,
+  MAX_RIG_GPUS,
+  manageScript,
+  RIG_NAME,
+  type RigAction,
+} from "./machines/deploy.ts";
 import {
   CHECK_SCRIPT,
   factsLine,
@@ -2592,6 +2598,30 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
           `<div class="tl-row"><span class="muted small">${esc(ago(e.at, Date.now()))} ago</span><span class="${e.ok ? "ok" : "bad"}">${e.ok ? "✓" : "✕"}</span><span>${esc(STEP_WORDS[e.step] ?? e.step)}${e.detail ? ` <span class="muted small">· ${esc(e.detail)}</span>` : ""}</span></div>`,
       )
       .join("");
+  /** How a rig's GPUs are used, in words: "2 for the judge, 2 for the agents", or shared. */
+  const splitWords = (n: number, judge?: number | undefined) => {
+    if (n < 2) return "shared by the judge and the agents";
+    const j = judge ?? Math.ceil(n / 2);
+    return `${j} for the judge, ${n - j} for the agents`;
+  };
+  /** Which of a machine rig's GPUs are the judge's (the first ones) and which the agents'. */
+  const gpuRoles = (gpus: number[], judge?: number | undefined) =>
+    gpus
+      .map((g, i) =>
+        gpus.length < 2
+          ? `GPU ${g} (shared)`
+          : `GPU ${g} (${i < (judge ?? Math.ceil(gpus.length / 2)) ? "judge" : "agents"})`,
+      )
+      .join(", ");
+  /** The judge's share of `n` GPUs from a form field: a number from 1 to n-1, or the default. */
+  const judgeShare = (raw: string, n: number): number | string | undefined => {
+    if (n < 2) return undefined;
+    if (!raw) return Math.ceil(n / 2);
+    const j = Number(raw);
+    if (!Number.isInteger(j) || j < 1 || j > n - 1 || j > 8 || n - j > 8)
+      return `With ${n} GPUs the judge takes 1 to ${Math.min(8, n - 1)} of them, and the agents at most 8.`;
+    return j;
+  };
   /** A rig control set up on a cluster: where, its setup history, and its controls. */
   const clusterPlacedBlock = (r: ClusterRig, t: string) => {
     const rName = encodeURIComponent(r.rig);
@@ -2603,7 +2633,7 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
         ? ""
         : `<div class="act" style="margin-top:10px">${r.status === "stopped" ? act("start", "Start its pods") : act("stop", "Stop its pods")}${act("restart", "Restart them")}</div>
 <details style="margin-top:8px"><summary class="small">Remove it from ${esc(r.cluster)}</summary><div class="small muted" style="margin:6px 0">${r.placement === "created" ? "Deletes its namespace, with everything in it," : "Deletes its deployments, service, volume claim and secret from the slot,"} and retires its token. Results it has not exported are lost.</div>${act("remove", "Remove the rig", `<input name="confirm" placeholder="type: remove ${esc(r.rig)}" style="margin-right:6px">`, "sm danger")}</details>`;
-    return `<div class="block"><div class="head"><h2>Set up by control</h2><span class="right">${esc(r.status)}</span></div><div class="card"><dl class="facts"><dt>Cluster</dt><dd><a href="/ui/settings">${esc(r.cluster)}</a> (Providers)</dd><dt>Namespace</dt><dd>${esc(r.namespace)} <span class="muted">(${r.placement === "created" ? "made by control" : "a slot"})</span></dd><dt>GPUs</dt><dd>${s.gpus ? `${s.gpus} through ${s.gpuMode === "dra" ? `DRA (${esc(s.deviceClass ?? "")})` : "NVIDIA's device plugin"}${s.gpus === 2 ? ": one for the judge, one for the agents" : ", shared by the judge and the agents"}` : "none: it measures on the CPU"}${s.node ? ` · on ${esc(s.node)}` : ""}</dd><dt>Storage</dt><dd>${s.storageGi} GB${s.storageClass ? ` · ${esc(s.storageClass)}` : ""}</dd><dt>Images</dt><dd class="mono small">${esc(s.images.harness)}<br>${esc(s.images.supervisor)}</dd></dl>
+    return `<div class="block"><div class="head"><h2>Set up by control</h2><span class="right">${esc(r.status)}</span></div><div class="card"><dl class="facts"><dt>Cluster</dt><dd><a href="/ui/settings">${esc(r.cluster)}</a> (Providers)</dd><dt>Namespace</dt><dd>${esc(r.namespace)} <span class="muted">(${r.placement === "created" ? "made by control" : "a slot"})</span></dd><dt>GPUs</dt><dd>${s.gpus ? `${s.gpus} through ${s.gpuMode === "dra" ? `DRA (${esc(s.deviceClass ?? "")})` : "NVIDIA's device plugin"}: ${splitWords(s.gpus, s.judgeGpus)}` : "none: it measures on the CPU"}${s.node ? ` · on ${esc(s.node)}` : ""}</dd><dt>Storage</dt><dd>${s.storageGi} GB${s.storageClass ? ` · ${esc(s.storageClass)}` : ""}</dd><dt>Images</dt><dd class="mono small">${esc(s.images.harness)}<br>${esc(s.images.supervisor)}</dd></dl>
 <div class="tl" style="margin-top:10px">${setupSteps(r.rig) || `<div class="muted small">No step yet.</div>`}</div>${manage}</div></div>`;
   };
   /** Sets a rig up on a cluster, in the background: one apply, then the first report. */
@@ -2621,6 +2651,7 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
           controlUrl: opts.publicUrl ?? "",
           images: r.spec.images,
           gpus: r.spec.gpus,
+          judgeGpus: r.spec.judgeGpus,
           gpuMode: r.spec.gpuMode,
           deviceClass: r.spec.deviceClass,
           node: r.spec.node,
@@ -2657,7 +2688,7 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
         ? ""
         : `<div class="act" style="margin-top:10px">${r.status === "stopped" ? act("start", "Start its services") : act("stop", "Stop its services")}${act("restart", "Restart them")}</div>
 <details style="margin-top:8px"><summary class="small">Remove it from ${esc(r.machine)}</summary><div class="small muted" style="margin:6px 0">Stops its services and deletes its units, files and volumes on the machine, and retires its token. Results it has not exported are lost.</div>${act("remove", "Remove the rig", `<input name="confirm" placeholder="type: remove ${esc(r.rig)}" style="margin-right:6px">`, "sm danger")}</details>`;
-    return `<div class="block"><div class="head"><h2>Set up by control</h2><span class="right">${esc(r.status)}</span></div><div class="card"><dl class="facts"><dt>Machine</dt><dd><a href="/ui/settings">${esc(r.machine)}</a> (Providers)</dd><dt>GPUs</dt><dd>${r.gpus.length ? r.gpus.map((g, i) => `GPU ${g}${r.gpus.length === 2 ? (i === 0 ? " (judge)" : " (agents)") : " (shared)"}`).join(", ") : "none: it measures on the CPU"}</dd><dt>Images</dt><dd class="mono small">${esc(r.images.harness)}<br>${esc(r.images.supervisor)}</dd></dl>
+    return `<div class="block"><div class="head"><h2>Set up by control</h2><span class="right">${esc(r.status)}</span></div><div class="card"><dl class="facts"><dt>Machine</dt><dd><a href="/ui/settings">${esc(r.machine)}</a> (Providers)</dd><dt>GPUs</dt><dd>${r.gpus.length ? gpuRoles(r.gpus, r.judge_gpus) : "none: it measures on the CPU"}</dd><dt>Images</dt><dd class="mono small">${esc(r.images.harness)}<br>${esc(r.images.supervisor)}</dd></dl>
 <div class="tl" style="margin-top:10px">${steps || `<div class="muted small">No step yet.</div>`}</div>${manage}</div></div>`;
   };
   /** Sets a rig up on a machine, in the background: each step becomes a setup event. */
@@ -2682,6 +2713,7 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
             controlUrl: opts.publicUrl ?? "",
             images: r.images,
             gpus: r.gpus,
+            judgeGpus: r.judge_gpus,
             root: r.root,
             controlPublicKey,
             controlFingerprint: fingerprint(controlPublicKey),
@@ -2775,16 +2807,17 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
         const restricted = !f.nodes.length;
         const plugin = restricted || f.nodes.some((n) => n.gpus > 0);
         const maxGpus = restricted
-          ? 2
+          ? 8
           : Math.min(
-              2,
-              Math.max(0, ...f.nodes.map((n) => n.gpus), f.device_classes.length ? 2 : 0),
+              MAX_RIG_GPUS,
+              Math.max(0, ...f.nodes.map((n) => n.gpus), f.device_classes.length ? 8 : 0),
             );
         const opt = (v: string, text: string, on = false) =>
           `<option value="${esc(v)}"${on ? " selected" : ""}>${esc(text)}</option>`;
         const def = f.storage_classes.find((s) => s.default)?.name;
         return `<div data-place="cluster:${kn}" hidden><div class="g3">
-<label class="fd">${infoLabel("GPUs", "How many GPUs the rig's harness pod asks for. One is shared by the judge and the agents; two give each its own.")}<select name="k_gpus__${kn}">${Array.from({ length: maxGpus + 1 }, (_, n) => opt(String(n), n === 0 ? "none: the CPU" : String(n), n === Math.min(1, maxGpus))).join("")}</select></label>
+<label class="fd">${infoLabel("GPUs", "How many GPUs the rig's harness pod asks for. One is shared by the judge and the agents; with more, you choose how many are the judge's and the rest are the agents'.")}<select name="k_gpus__${kn}">${Array.from({ length: maxGpus + 1 }, (_, n) => opt(String(n), n === 0 ? "none: the CPU" : String(n), n === Math.min(1, maxGpus))).join("")}</select></label>
+<label class="fd" data-judge-for="k_gpus__${kn}" hidden>${infoLabel("GPUs for the judge", "How many of the rig's GPUs the judge measures on; the rest are the agents' for their own test runs. More judge GPUs check more changes at once; more agent GPUs let more lanes test at once. Default: half, rounded up.")}<input name="k_judge__${kn}" inputmode="numeric" maxlength="2" placeholder="half"></label>
 <label class="fd">${infoLabel("GPUs through", "NVIDIA's device plugin (nvidia.com/gpu) or DRA (a device class), as the cluster offers them.")}<select name="k_mode__${kn}">${plugin ? opt("device-plugin", "NVIDIA's device plugin") : ""}${f.device_classes.map((d) => opt(`dra:${d}`, `DRA: ${d}`)).join("")}${restricted ? opt("dra", "DRA: a device class you name") : ""}${!plugin && !f.device_classes.length ? opt("device-plugin", "no GPUs offered") : ""}</select></label>
 ${restricted ? `<label class="fd">${infoLabel("DRA device class", "Only for DRA in a cluster whose classes control can't list: the device class the cluster's operators named, such as gpu.nvidia.com.")}<input name="k_class__${kn}" maxlength="253" placeholder="gpu.nvidia.com"></label>` : ""}
 <label class="fd">${infoLabel("Node", "Any lets Kubernetes choose. A fixed node keeps the rig on a known machine, which keeps timings comparable between runs.")}<select name="k_node__${kn}">${opt("", "any node with room")}${f.nodes
@@ -2810,11 +2843,13 @@ ${
     const joinCards = `<label class="ch"><input type="radio" name="place" value="join:machine" style="margin:2px 8px 0 0"><span><b>A machine you set it up on yourself</b><br><span class="muted small">For a machine control can't reach over SSH, such as one behind NAT. You run one command there; it fetches the rig's files from control and starts it. Control can't reach the machine afterwards, so you stop and remove it there too.</span></span></label>
 <label class="ch"><input type="radio" name="place" value="join:namespace" style="margin:2px 8px 0 0"><span><b>A Kubernetes namespace you apply it to yourself</b><br><span class="muted small">For a cluster whose operators give Thermite no kubeconfig. You run one kubectl apply, with your own rights, in a namespace you have. Control holds no credential for the cluster.</span></span></label>`;
     const joinSections = `<div data-place="join:machine" hidden><div class="g3">
-<label class="fd">${infoLabel("GPUs on the machine", "The numbers of the machine's NVIDIA GPUs the rig uses, as nvidia-smi lists them. Empty: none, the rig measures on the CPU. One GPU is shared by the judge and the agents; with two, the lower number is the judge's.")}<input name="j_gpus" maxlength="12" placeholder="empty, 0, or 0,1"></label>
+<label class="fd">${infoLabel("GPUs on the machine", "The numbers of the machine's NVIDIA GPUs the rig uses, as nvidia-smi lists them. Empty: none, the rig measures on the CPU. One GPU is shared by the judge and the agents; with more, the lowest-numbered are the judge's.")}<input name="j_gpus" maxlength="40" placeholder="empty, 0, or 0,1"></label>
+<label class="fd">${infoLabel("GPUs for the judge", "With two or more GPUs: how many the judge measures on (the lowest-numbered); the rest are the agents'. Default: half, rounded up.")}<input name="j_judge" inputmode="numeric" maxlength="2" placeholder="half"></label>
 </div></div>
 <div data-place="join:namespace" hidden><div class="g3">
 <label class="fd">${infoLabel("Namespace", "The namespace the rig goes in. It must exist, and you need rights there to create deployments, services, secrets, volume claims and network policies.")}<input name="j_namespace" maxlength="63" placeholder="thermite-rig-1"></label>
-<label class="fd">${infoLabel("GPUs", "How many GPUs the rig's harness pod asks for. One is shared by the judge and the agents; two give each its own.")}<select name="j_k_gpus"><option value="0">none: the CPU</option><option value="1" selected>1</option><option value="2">2</option></select></label>
+<label class="fd">${infoLabel("GPUs", "How many GPUs the rig's harness pod asks for. One is shared by the judge and the agents; with more, you choose how many are the judge's.")}<select name="j_k_gpus">${Array.from({ length: 9 }, (_, n) => `<option value="${n}"${n === 1 ? " selected" : ""}>${n === 0 ? "none: the CPU" : n}</option>`).join("")}</select></label>
+<label class="fd">${infoLabel("GPUs for the judge", "With two or more GPUs: how many the judge measures on; the rest are the agents'. Default: half, rounded up.")}<input name="j_k_judge" inputmode="numeric" maxlength="2" placeholder="half"></label>
 <label class="fd">${infoLabel("GPUs through", "NVIDIA's device plugin (nvidia.com/gpu) or DRA (a device class), as the cluster offers them.")}<select name="j_mode"><option value="device-plugin">NVIDIA's device plugin</option><option value="dra">DRA: a device class you name</option></select></label>
 <label class="fd">${infoLabel("DRA device class", "Only for DRA: the device class the cluster offers, such as gpu.nvidia.com.")}<input name="j_class" maxlength="253" placeholder="gpu.nvidia.com"></label>
 <label class="fd">${infoLabel("Storage class", "The class for the rig's volume (its state, builds, inbox and outbox). Empty: the cluster's default.")}<input name="j_storage" maxlength="63" placeholder="the cluster's default"></label>
@@ -2835,7 +2870,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
 <div class="sec"><h2>1 · Where</h2><p class="lead">A machine or a cluster control knows. They are added, checked and prepared under <a href="/ui/settings">Settings › Providers</a>.</p>
 <div class="stack">${cards}${clusterCards}${cards || clusterCards ? "" : `<div class="card"><div class="empty">No machine or cluster yet.</div></div>`}<a class="ch" href="/ui/settings"><span><b>+ A new machine or cluster</b><br><span class="muted small">A Linux machine control can reach with an SSH key, or a Kubernetes cluster through a kubeconfig. Add it in Providers, then come back.</span></span></a></div>
 <p class="lead" style="margin-top:14px">Or run it yourself, where control can't connect:</p><div class="stack">${joinCards}</div></div>
-<div class="sec"><h2>2 · GPUs and resources</h2><p class="lead">As control last read the place. One GPU is shared by the judge and the agents; with two, the judge and the agents get one each (on a machine, the lower-numbered GPU is the judge's).</p>${gpuLists}${clusterSections}${joinSections}<div class="nc-does" id="gpu-note"></div></div>
+<div class="sec"><h2>2 · GPUs and resources</h2><p class="lead">As control last read the place. One GPU is shared by the judge and the agents. With more, some are the judge's and the rest the agents': half each by default, and on a machine the lowest-numbered GPUs are the judge's.</p>${gpuLists}<label class="fd" id="judge-pick" hidden style="max-width:280px;margin-top:10px">${infoLabel("GPUs for the judge", "How many of the chosen GPUs the judge measures on: the lowest-numbered ones. The rest are the agents' for their own test runs. More judge GPUs check more changes at once; more agent GPUs let more lanes test at once. Default: half, rounded up.")}<input name="judge_gpus" inputmode="numeric" maxlength="2" placeholder="half"></label>${clusterSections}${joinSections}<div class="nc-does" id="gpu-note"></div></div>
 <div class="sec"><h2>3 · Name and start</h2><div class="g3">
 <label class="fd">${infoLabel("Rig name", "The rig's name in Thermite: lowercase letters, digits and dashes. It names the rig's runs, history and files, so it can't change later.")}<input name="rig" required maxlength="63" placeholder="gpu-box-1-a"></label>
 <label class="fd" style="grid-column:span 2">${infoLabel("Images", "The Thermite images control deploys, as set where control is deployed. A GPU rig uses the CUDA harness image.")}<span class="mono small">${images ? `${esc(images.harness)}${images.harnessCuda ? `<br>${esc(images.harnessCuda)} (GPU rigs)` : ""}<br>${esc(images.supervisor)}` : "none configured"}</span></label>
@@ -2870,10 +2905,9 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       if (!facts.gpus.some((x) => x.index === g)) return fail(`${m.name} has no GPU ${g}.`);
       if (used.has(g)) return fail(`GPU ${g} is used by rig ${used.get(g)}.`);
     }
-    if (gpus.length > 2)
-      return fail(
-        "A rig takes one or two GPUs for now; rigs with more come with rigs of many GPUs.",
-      );
+    if (gpus.length > MAX_RIG_GPUS) return fail(`A rig takes at most ${MAX_RIG_GPUS} GPUs.`);
+    const judge = judgeShare(String(f.judge_gpus ?? "").trim(), gpus.length);
+    if (typeof judge === "string") return fail(judge);
     if (gpus.length && !(facts.nvidia_ctk && facts.cdi))
       return fail(`${m.name} needs NVIDIA's container toolkit first: install it under Providers.`);
     if (gpus.length && !opts.rigImages.harnessCuda)
@@ -2886,7 +2920,15 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     };
     const token = newToken();
     store.enrollRig(rig, token.sha256, "owner:ui");
-    const placed = { rig, machine: m.name, gpus, images, root: facts.root, created_by: "owner:ui" };
+    const placed = {
+      rig,
+      machine: m.name,
+      gpus,
+      judge_gpus: judge,
+      images,
+      root: facts.root,
+      created_by: "owner:ui",
+    };
     store.addMachineRig(placed);
     store.rigSetupEvent(rig, "enrolled", true);
     const r = store.machineRig(rig) as MachineRig;
@@ -2914,8 +2956,10 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     const facts = k.facts as ClusterFacts | null;
     if (!facts || k.check_error) return fail(`${k.name} is not ready: check it under Providers.`);
     const gpus = Number(one("k_gpus") || "0");
-    if (!Number.isInteger(gpus) || gpus < 0 || gpus > 2)
-      return fail("A rig takes none, one or two GPUs for now; rigs with more come later.");
+    if (!Number.isInteger(gpus) || gpus < 0 || gpus > MAX_RIG_GPUS)
+      return fail(`A rig takes from none to ${MAX_RIG_GPUS} GPUs.`);
+    const judgeGpus = judgeShare(one("k_judge"), gpus);
+    if (typeof judgeGpus === "string") return fail(judgeGpus);
     // Control checks only what it could see: a slot's role may not list nodes, classes or storage.
     const mode = one("k_mode") || "device-plugin";
     const deviceClass = mode.startsWith("dra:")
@@ -2980,6 +3024,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       placement: k.placement,
       spec: {
         gpus,
+        judgeGpus,
         gpuMode: deviceClass ? "dra" : "device-plugin",
         deviceClass,
         node,
@@ -3029,15 +3074,10 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     const gpuCount = machine ? gpuList.length : (s.gpus as number);
     const gpus = machine
       ? gpuList.length
-        ? gpuList
-            .map(
-              (g, i) =>
-                `GPU ${g}${gpuList.length === 2 ? (i === 0 ? " (judge)" : " (agents)") : " (shared)"}`,
-            )
-            .join(", ")
+        ? gpuRoles(gpuList, s.judgeGpus)
         : "none: it measures on the CPU"
       : gpuCount
-        ? `${gpuCount} through ${s.gpuMode === "dra" ? `DRA (${esc(s.deviceClass ?? "")})` : "NVIDIA's device plugin"}`
+        ? `${gpuCount} through ${s.gpuMode === "dra" ? `DRA (${esc(s.deviceClass ?? "")})` : "NVIDIA's device plugin"}: ${splitWords(gpuCount, s.judgeGpus)}`
         : "none: it measures on the CPU";
     const cmd = token
       ? joinCommand(r.form, {
@@ -3127,18 +3167,19 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       if (gpus.some((g) => !Number.isInteger(g) || g < 0 || g > 63))
         return fail("GPUs are the machine's GPU numbers, as nvidia-smi lists them: 0, or 0,1.");
       if (new Set(gpus).size !== gpus.length) return fail("Name each GPU once.");
-      if (gpus.length > 2)
-        return fail(
-          "A rig takes one or two GPUs for now; rigs with more come with rigs of many GPUs.",
-        );
+      if (gpus.length > MAX_RIG_GPUS) return fail(`A rig takes at most ${MAX_RIG_GPUS} GPUs.`);
+      const judgeGpus = judgeShare(one("j_judge"), gpus.length);
+      if (typeof judgeGpus === "string") return fail(judgeGpus);
       if (gpus.length && !opts.rigImages.harnessCuda) return fail(cuda);
-      spec = { gpus: gpus.sort((a, b) => a - b), images: imagesFor(gpus.length > 0) };
+      spec = { gpus: gpus.sort((a, b) => a - b), judgeGpus, images: imagesFor(gpus.length > 0) };
     } else {
       const namespace = one("j_namespace");
       if (!NS.test(namespace)) return fail("Name the namespace the rig goes in.");
       const gpus = Number(one("j_k_gpus") || "0");
-      if (!Number.isInteger(gpus) || gpus < 0 || gpus > 2)
-        return fail("A rig takes none, one or two GPUs for now; rigs with more come later.");
+      if (!Number.isInteger(gpus) || gpus < 0 || gpus > 8)
+        return fail("A rig in a namespace takes from none to 8 GPUs.");
+      const judgeGpus = judgeShare(one("j_k_judge"), gpus);
+      if (typeof judgeGpus === "string") return fail(judgeGpus);
       const dra = one("j_mode") === "dra";
       const deviceClass = gpus && dra ? one("j_class") : undefined;
       if (gpus && dra && !DRA_CLASS.test(deviceClass ?? ""))
@@ -3151,6 +3192,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       if (gpus && !opts.rigImages.harnessCuda) return fail(cuda);
       spec = {
         gpus,
+        judgeGpus,
         images: imagesFor(gpus > 0),
         namespace,
         gpuMode: deviceClass ? "dra" : "device-plugin",
@@ -3226,6 +3268,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
           controlUrl: opts.publicUrl,
           images: s.images,
           gpus: s.gpus as number[],
+          judgeGpus: s.judgeGpus,
           root,
           controlPublicKey,
           controlFingerprint: fingerprint(controlPublicKey),
@@ -3242,6 +3285,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
           controlUrl: opts.publicUrl,
           images: s.images,
           gpus: s.gpus as number,
+          judgeGpus: s.judgeGpus,
           gpuMode: s.gpuMode ?? "device-plugin",
           deviceClass: s.deviceClass,
           storageClass: s.storageClass,

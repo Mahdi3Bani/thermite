@@ -120,12 +120,30 @@ describe("rigs on Kubernetes", () => {
       { name: "gpus", resourceClaimTemplateName: "thermite-k8s-a-1-gpus" },
     ]);
     assert.deepEqual(harness.containers[0]?.resources, { claims: [{ name: "gpus" }] });
-    // A CPU rig asks for nothing; more than two GPUs is refused for now.
+    // A CPU rig asks for nothing; more GPUs are split, half for the judge by default.
     const cpu = clusterRigObjects({ ...plan, gpus: 0 }, secrets) as Obj[];
     assert.ok(
       !JSON.stringify(cpu).includes("nvidia.com/gpu") && !JSON.stringify(cpu).includes("GPU_INDEX"),
     );
-    assert.throws(() => clusterRigObjects({ ...plan, gpus: 3 }, secrets), /at most two GPUs/);
+    const envOf = (objs: Obj[]) =>
+      Object.fromEntries(
+        (
+          pod(objs, "thermite-k8s-a-1-harness") as {
+            containers: { env: { name: string; value: string }[] }[];
+          }
+        ).containers[0]?.env.map((e) => [e.name, e.value]) ?? [],
+      );
+    const four = envOf(clusterRigObjects({ ...plan, gpus: 4 }, secrets) as Obj[]);
+    assert.equal(four.THERMITE_GPU_INDEX, "0,1");
+    assert.equal(four.THERMITE_DEV_GPU_INDEX, "2,3");
+    const three = envOf(clusterRigObjects({ ...plan, gpus: 3, judgeGpus: 1 }, secrets) as Obj[]);
+    assert.equal(three.THERMITE_GPU_INDEX, "0");
+    assert.equal(three.THERMITE_DEV_GPU_INDEX, "1,2");
+    assert.throws(
+      () => clusterRigObjects({ ...plan, gpus: 3, judgeGpus: 3 }, secrets),
+      /judge takes 1 to 2/,
+    );
+    assert.throws(() => clusterRigObjects({ ...plan, gpus: 17 }, secrets), /at most 16 GPUs/);
     assert.throws(
       () => clusterRigObjects({ ...plan, gpuMode: "dra", gpus: 1 }, secrets),
       /device class/,

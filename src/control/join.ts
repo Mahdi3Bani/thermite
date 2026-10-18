@@ -18,6 +18,8 @@ export type JoinForm = "machine" | "namespace";
 export interface JoinedSpec {
   /** machine: the machine's GPU indices; namespace: how many GPUs the harness pod asks for. */
   gpus: number[] | number;
+  /** With two or more GPUs, how many are the judge's (the rest are the agents'). */
+  judgeGpus?: number | undefined;
   images: { harness: string; supervisor: string };
   /** machine: whether the join ran as root (known once it has run). */
   root?: boolean | undefined;

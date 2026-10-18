@@ -169,9 +169,14 @@ describe("join a rig yourself: the dashboard and /v1/join", () => {
     );
     assert.match(
       await s.where(
-        await s.post("/ui/rigs/add", { place: "join:machine", rig: "box-a", j_gpus: "0,1,2" }),
+        await s.post("/ui/rigs/add", {
+          place: "join:machine",
+          rig: "box-a",
+          j_gpus: "0,1,2",
+          j_judge: "3",
+        }),
       ),
-      /one or two GPUs/,
+      /With 3 GPUs the judge takes 1 to 2 of them/,
     );
     const made = await s.post("/ui/rigs/add", {
       place: "join:machine",
@@ -232,6 +237,23 @@ describe("join a rig yourself: the dashboard and /v1/join", () => {
     );
     assert.equal(s.store.enrolledRig("box-a"), undefined);
     assert.match(await s.page("/ui/rigs/box-a"), /box-a is retired/);
+
+    // Four GPUs, one for the judge: the lowest-numbered is the judge's, the rest the agents'.
+    const four = await (
+      await s.post("/ui/rigs/add", {
+        place: "join:machine",
+        rig: "box-m",
+        j_gpus: "3,1,2,0",
+        j_judge: "1",
+      })
+    ).text();
+    assert.match(four, /GPU 0 \(judge\), GPU 1 \(agents\), GPU 2 \(agents\), GPU 3 \(agents\)/);
+    const units = await (
+      await s.fetchJoin("/v1/join/box-m/script?uid=1000", s.tokenOf(four))
+    ).text();
+    assert.match(units, /^Environment=THERMITE_GPU_INDEX=0$/m);
+    assert.match(units, /^Environment=THERMITE_DEV_GPU_INDEX=1,2,3$/m);
+    assert.match(units, /grep -qx 'nvidia.com\/gpu=3'/);
   });
 
   test("a namespace: the manifest is applied with the operator's rights; expired and revoked commands don't work", async () => {

@@ -1,3 +1,5 @@
+import { gpuSplit } from "../machines/deploy.ts";
+
 /**
  * A rig on a Kubernetes cluster, as the objects control applies with `kubectl apply -f -`: the
  * same two parts as the compose rig (harness and supervisor, each its own pod, so network rules
@@ -18,8 +20,10 @@ export interface ClusterRigPlan {
   namespace: string;
   controlUrl: string;
   images: { harness: string; supervisor: string };
-  /** GPUs for the rig: 0 (CPU), 1 (shared by the judge and agents) or 2 (judge, agents). */
+  /** GPUs for the rig: 0 (CPU), 1 (shared by the judge and agents) or several (split). */
   gpus: number;
+  /** With two or more GPUs, how many are the judge's (default: half, rounded up). */
+  judgeGpus?: number | undefined;
   /** How GPUs are asked for. */
   gpuMode: "device-plugin" | "dra";
   /** The DRA device class, when gpuMode is dra. */
@@ -73,10 +77,7 @@ const prepare = (image: string): Obj => ({
 
 /** The objects for one rig, in the order they are applied. */
 export function clusterRigObjects(p: ClusterRigPlan, s: ClusterRigSecrets): Obj[] {
-  if (p.gpus > 2)
-    throw new Error(
-      "a rig takes at most two GPUs for now: rigs with more GPUs are not supported yet",
-    );
+  const split = gpuSplit(p.gpus, p.judgeGpus);
   if (p.gpus > 0 && p.gpuMode === "dra" && !p.deviceClass)
     throw new Error("a DRA rig needs its device class");
   const n = clusterNames(p.rig);
@@ -190,8 +191,7 @@ export function clusterRigObjects(p: ClusterRigPlan, s: ClusterRigSecrets): Obj[
           env: env({
             THERMITE_RIG_ID: p.rig,
             THERMITE_TARGET: gpu ? "cuda-gpu" : "cpu",
-            ...(gpu ? { THERMITE_GPU_INDEX: "0" } : {}),
-            ...(p.gpus === 2 ? { THERMITE_DEV_GPU_INDEX: "1" } : {}),
+            ...split,
             THERMITE_CONTROL_PUBKEY_FILE: "/keys/control-signing.pub",
             THERMITE_SUPERVISOR_TOKEN_FILE: "/run/secrets/harness-supervisor-token",
           }),
