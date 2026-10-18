@@ -1,6 +1,6 @@
 /**
- * Whether a slot's network rules keep a rig's harness off the cluster (owner, decision 46:
- * refuse a slot where they don't). In a slot the cluster's operators write the rules, not
+ * Whether a slot's network rules keep a rig's harness off the cluster; control refuses a slot
+ * where they don't. In a slot the cluster's operators write the rules, not
  * control; the settled rule is that the harness reaches only DNS, the internet and its model.
  * NetworkPolicies add up: traffic is allowed if any policy that selects the pod allows it, and a
  * pod no egress policy selects may go anywhere. So the harness is kept off the cluster when some

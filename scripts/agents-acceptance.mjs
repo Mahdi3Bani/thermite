@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// M4 agents acceptance under compose, with a scripted OpenAI-compatible model on the host (the
+// M4 agents acceptance under compose, with a scripted OpenAI-compatible model on the host (a
 // real model route is not needed to check the machinery). One epoch on the smoke campaign:
 //   - the planner plans through the model and the plan is valid;
 //   - each lane's worker runs in its own process, edits its workspace as the lane's user through

@@ -272,7 +272,7 @@ try {
     "with a namespaced role, control may deploy into its slot and nowhere else",
     /thermite-slot-2: <span class="chip warn">control may not deploy here/.test(slots),
   );
-  // Decision 46: without a rule that keeps the harness off the cluster, the slot is refused.
+  // Without a rule that keeps the harness off the cluster, the slot is refused.
   check(
     "a slot whose network rules don't keep the harness off the cluster is refused",
     /thermite-slot-1: <span class="chip warn">refused: no network rule/.test(slots) &&

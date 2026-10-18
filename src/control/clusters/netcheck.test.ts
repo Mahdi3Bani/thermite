@@ -21,7 +21,7 @@ const policy = (name: string, podSelector: object, egress: object[]) => ({
   spec: { podSelector, policyTypes: ["Egress"], egress },
 });
 
-describe("a slot's network rules and the harness (decision 46)", () => {
+describe("a slot's network rules and the harness", () => {
   test("DNS plus the internet without the private ranges keeps the harness off the cluster", () => {
     const r = harnessKeptOffCluster(
       [

@@ -2954,7 +2954,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         store.clusterRigs(k.name).some((r) => r.namespace === namespace && r.status !== "removed")
       )
         return fail(`The slot ${namespace} is in use.`);
-      // Decision 46: refuse a slot whose rules don't keep this harness off the cluster.
+      // Refuse a slot whose rules don't keep this harness off the cluster.
       const net = await slotNetwork(kube, clusterTarget(k), namespace, {
         ...HARNESS_LABELS,
         "app.kubernetes.io/instance": rig,

@@ -455,8 +455,8 @@ describe("control dashboard", () => {
         pcie: "gen3 x16",
         vbios: null,
       })),
-      cpu: { model: "Example CPU", host: 56, usable: 56, quota: 4 },
-      memory: { host_mib: 257_000, limit_mib: 10_240 },
+      cpu: { model: "Example CPU", host: 48, usable: 48, quota: 6 },
+      memory: { host_mib: 192_000, limit_mib: 12_288 },
       disks: [{ name: "state", total_gib: 200, free_gib: 150 }],
       os: { kernel: "6.8", arch: "x64", node: "v22", image: null },
       toolchain: { cc: "cc 12", nvcc: null },
@@ -466,15 +466,15 @@ describe("control dashboard", () => {
     const page = await (await s.get("/ui/rigs/rig-a")).text();
     assert.match(page, /Tesla P100-PCIE-16GB/);
     assert.match(page, /one for the judge, one for agents' dev runs/);
-    assert.match(page, /quota 4 CPU of the host's 56/);
-    assert.match(page, /10 GiB limit/);
+    assert.match(page, /quota 6 CPU of the host's 48/);
+    assert.match(page, /12 GiB limit/);
     // The short version comes first.
     assert.match(page, /<h2>What it runs on<\/h2>/);
-    assert.match(page, /<dt>CPU<\/dt><dd>4 of the host/);
+    assert.match(page, /<dt>CPU<\/dt><dd>6 of the host/);
     assert.ok(!page.includes("<b>Evil card</b>"));
     assert.match(page, /&lt;b&gt;Evil card/);
     const list = await (await s.get("/ui/rigs")).text();
-    assert.match(list, /Tesla P100-PCIE-16GB · &lt;b&gt;Evil card&lt;\/b&gt; · 4 CPU · 10 GiB RAM/);
+    assert.match(list, /Tesla P100-PCIE-16GB · &lt;b&gt;Evil card&lt;\/b&gt; · 6 CPU · 12 GiB RAM/);
   });
 
   test("with only the token's hash, the owner signs in with the token, and the hash signs in no one", async () => {

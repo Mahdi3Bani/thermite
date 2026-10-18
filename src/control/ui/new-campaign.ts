@@ -3,7 +3,7 @@ import type { RigView } from "../views.ts";
 import { esc } from "./components.ts";
 
 /**
- * The new-campaign page (owner decision 38, from the approved mockup): a campaign from nothing
+ * The new-campaign page: a campaign from nothing
  * in five steps (aim, project, how to measure, where, review), with every setting beyond the
  * simple ones folded under Advanced and a description behind every label's info icon. The
  * page's script (/ui/assets/new-campaign.js) gathers the answers into one draft; control

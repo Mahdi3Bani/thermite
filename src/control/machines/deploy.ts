@@ -67,7 +67,9 @@ export function rigUnits(p: RigPlan): Record<string, string> {
   const net = `thermite-${p.rig}`;
   const egress = `thermite-${p.rig}-egress`;
   if (p.gpus.length > 2)
-    throw new Error("a rig with more than two GPUs comes with rigs of many GPUs (plan §6.2b)");
+    throw new Error(
+      "a rig takes at most two GPUs for now: rigs with more GPUs are not supported yet",
+    );
   const gpu = p.gpus.length > 0;
   const env = (pairs: Record<string, string>) =>
     Object.entries(pairs)

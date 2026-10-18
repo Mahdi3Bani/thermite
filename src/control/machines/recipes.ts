@@ -4,8 +4,7 @@ import { shq } from "./ssh.ts";
 
 /**
  * The only things control installs on a machine, and only when the owner says yes to that
- * install on that machine (decision 38: "Control must prompt and ask for permission to install,
- * and then do it if asked to"). Each recipe is a fixed script in Thermite's source; the page
+ * install on that machine: control asks first, and installs only what the owner allows. Each recipe is a fixed script in Thermite's source; the page
  * shows it exactly as it would run, and the owner's yes is bound to that exact script.
  */
 

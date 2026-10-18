@@ -163,14 +163,14 @@ describe("clusters in Providers and Add a rig", () => {
     const f = fakeCluster();
     const s = await control(f.k);
     assert.match(
-      await s.post("/ui/settings/add", { type: "k8s", name: "work", kubeconfig: "not yaml" }),
+      await s.post("/ui/settings/add", { type: "k8s", name: "k8s-a", kubeconfig: "not yaml" }),
       /not a kubeconfig/,
     );
     // A kubeconfig that would run a command or read a file inside control is refused.
     assert.match(
       await s.post("/ui/settings/add", {
         type: "k8s",
-        name: "work",
+        name: "k8s-a",
         kubeconfig: `${KUBECONFIG}# exec:`,
       }),
       /Not added: user "u" runs a command \(exec\) to log in.*cluster "c" reads a file \(certificate-authority\)/,
@@ -178,7 +178,7 @@ describe("clusters in Providers and Add a rig", () => {
     assert.match(
       await s.post("/ui/settings/add", {
         type: "k8s",
-        name: "work",
+        name: "k8s-a",
         kubeconfig: KUBECONFIG,
         context: "nope",
       }),
@@ -187,14 +187,14 @@ describe("clusters in Providers and Add a rig", () => {
     assert.match(
       await s.post("/ui/settings/add", {
         type: "k8s",
-        name: "work",
+        name: "k8s-a",
         kubeconfig: KUBECONFIG,
         placement: "created",
         namespace_pattern: "thermite-{rig}",
       }),
-      /"work" is added and checked/,
+      /"k8s-a" is added and checked/,
     );
-    const k = s.store.cluster("work");
+    const k = s.store.cluster("k8s-a");
     assert.equal(k?.context, "kind-thermite");
     assert.equal(s.secrets.open(k?.kubeconfig_sealed ?? ""), KUBECONFIG.trim());
     let page = await s.page("/ui/settings");
@@ -204,20 +204,20 @@ describe("clusters in Providers and Add a rig", () => {
     assert.ok(!page.includes("secret-kube-token-789"));
     // Add a rig offers it, with its GPUs, nodes and storage.
     const add = await s.page("/ui/rigs/add");
-    assert.match(add, /name="place" value="cluster:work"/);
-    assert.match(add, /name="k_gpus__work"/);
+    assert.match(add, /name="place" value="cluster:k8s-a"/);
+    assert.match(add, /name="k_gpus__k8s-a"/);
     assert.match(add, /NVIDIA&#39;s device plugin|NVIDIA's device plugin/);
     assert.equal(
       await s.post("/ui/rigs/add", {
-        place: "cluster:work",
-        rig: "wc-1",
-        k_gpus__work: "1",
-        k_mode__work: "device-plugin",
-        k_node__work: "gpu-node-1",
-        k_storage__work: "standard",
-        k_size__work: "50",
+        place: "cluster:k8s-a",
+        rig: "k8s-a-1",
+        "k_gpus__k8s-a": "1",
+        "k_mode__k8s-a": "device-plugin",
+        "k_node__k8s-a": "gpu-node-1",
+        "k_storage__k8s-a": "standard",
+        "k_size__k8s-a": "50",
       }),
-      "/ui/rigs/wc-1",
+      "/ui/rigs/k8s-a-1",
     );
     await new Promise((r) => setTimeout(r, 20));
     const apply = f.calls.find((c) => c.args[0] === "apply");
@@ -226,40 +226,40 @@ describe("clusters in Providers and Add a rig", () => {
       items: { kind: string; metadata: { name: string; namespace?: string } }[];
     };
     assert.equal(list.items[0]?.kind, "Namespace");
-    assert.equal(list.items[0]?.metadata.name, "thermite-wc-1");
+    assert.equal(list.items[0]?.metadata.name, "thermite-k8s-a-1");
     assert.match(apply?.stdin ?? "", /"nvidia.com\/gpu":1/);
     assert.match(apply?.stdin ?? "", /registry\.example\.com\/harness-cuda:1/);
-    assert.ok(s.store.enrolledRig("wc-1"));
-    page = await s.page("/ui/rigs/wc-1");
-    assert.match(page, /Control is setting wc-1 up on work/);
+    assert.ok(s.store.enrolledRig("k8s-a-1"));
+    page = await s.page("/ui/rigs/k8s-a-1");
+    assert.match(page, /Control is setting k8s-a-1 up on k8s-a/);
     assert.match(page, /Its objects applied in the cluster/);
     assert.match(page, /1 through NVIDIA&#39;s device plugin|1 through NVIDIA's device plugin/);
     // Stop and start scale its deployments; remove deletes its namespace and retires its token.
-    assert.match(await s.post("/ui/rigs/wc-1/cluster/stop", {}), /ok=Stopped/);
+    assert.match(await s.post("/ui/rigs/k8s-a-1/cluster/stop", {}), /ok=Stopped/);
     assert.ok(
       f.calls.some(
         (c) =>
           c.args.join(" ") ===
-          "scale deployment -n thermite-wc-1 -l app.kubernetes.io/instance=wc-1 --replicas=0",
+          "scale deployment -n thermite-k8s-a-1 -l app.kubernetes.io/instance=k8s-a-1 --replicas=0",
       ),
     );
     assert.match(
-      await s.post("/ui/rigs/wc-1/cluster/remove", { confirm: "remove wc" }),
-      /Type "remove wc-1"/,
+      await s.post("/ui/rigs/k8s-a-1/cluster/remove", { confirm: "remove k8s" }),
+      /Type "remove k8s-a-1"/,
     );
     assert.match(
-      await s.post("/ui/rigs/wc-1/cluster/remove", { confirm: "remove wc-1" }),
+      await s.post("/ui/rigs/k8s-a-1/cluster/remove", { confirm: "remove k8s-a-1" }),
       /ok=Removed from the cluster/,
     );
     assert.ok(
       f.calls.some(
         (c) =>
-          c.args.join(" ") === "delete namespace thermite-wc-1 --wait=false --ignore-not-found",
+          c.args.join(" ") === "delete namespace thermite-k8s-a-1 --wait=false --ignore-not-found",
       ),
     );
-    assert.equal(s.store.clusterRig("wc-1")?.status, "removed");
-    assert.equal(s.store.enrolledRig("wc-1"), undefined);
-    assert.match(await s.post("/ui/settings/clusters/work/delete", {}), /"work" is deleted/);
+    assert.equal(s.store.clusterRig("k8s-a-1")?.status, "removed");
+    assert.equal(s.store.enrolledRig("k8s-a-1"), undefined);
+    assert.match(await s.post("/ui/settings/clusters/k8s-a/delete", {}), /"k8s-a" is deleted/);
   });
 
   test("slots: only free slots control may use; nothing created outside the slot", async () => {
@@ -270,7 +270,7 @@ describe("clusters in Providers and Add a rig", () => {
     const s = await control(f.k);
     await s.post("/ui/settings/add", {
       type: "k8s",
-      name: "lab",
+      name: "k8s-b",
       kubeconfig: KUBECONFIG,
       placement: "slot",
       slots: "thermite-slot-1, thermite-slot-2, thermite-slot-3",
@@ -278,37 +278,37 @@ describe("clusters in Providers and Add a rig", () => {
     const page = await s.page("/ui/settings");
     assert.match(page, /thermite-slot-1: <span class="chip ok">free/);
     assert.match(page, /thermite-slot-2: <span class="chip warn">control may not deploy here/);
-    // Decision 46: a slot whose rules don't keep the harness off the cluster is refused.
+    // A slot whose rules don't keep the harness off the cluster is refused.
     assert.match(
       page,
       /thermite-slot-3: <span class="chip warn">refused: no network rule in the slot limits/,
     );
     assert.match(
       await s.post("/ui/rigs/add", {
-        place: "cluster:lab",
-        rig: "lab-3",
-        k_gpus__lab: "0",
-        k_slot__lab: "thermite-slot-3",
+        place: "cluster:k8s-b",
+        rig: "k8s-b-3",
+        "k_gpus__k8s-b": "0",
+        "k_slot__k8s-b": "thermite-slot-3",
       }),
       /Refused: in the slot thermite-slot-3, no network rule in the slot limits where the harness may connect/,
     );
     assert.match(
       await s.post("/ui/rigs/add", {
-        place: "cluster:lab",
-        rig: "lab-1",
-        k_gpus__lab: "0",
-        k_slot__lab: "thermite-slot-2",
+        place: "cluster:k8s-b",
+        rig: "k8s-b-1",
+        "k_gpus__k8s-b": "0",
+        "k_slot__k8s-b": "thermite-slot-2",
       }),
       /Choose a free slot/,
     );
     assert.equal(
       await s.post("/ui/rigs/add", {
-        place: "cluster:lab",
-        rig: "lab-1",
-        k_gpus__lab: "0",
-        k_slot__lab: "thermite-slot-1",
+        place: "cluster:k8s-b",
+        rig: "k8s-b-1",
+        "k_gpus__k8s-b": "0",
+        "k_slot__k8s-b": "thermite-slot-1",
       }),
-      "/ui/rigs/lab-1",
+      "/ui/rigs/k8s-b-1",
     );
     await new Promise((r) => setTimeout(r, 20));
     const list = JSON.parse(f.calls.find((c) => c.args[0] === "apply")?.stdin ?? "{}") as {
@@ -317,7 +317,7 @@ describe("clusters in Providers and Add a rig", () => {
     assert.ok(!list.items.some((o) => o.kind === "Namespace" || o.kind === "NetworkPolicy"));
     assert.ok(list.items.every((o) => o.metadata.namespace === "thermite-slot-1"));
     assert.match(
-      await s.post("/ui/rigs/lab-1/cluster/remove", { confirm: "remove lab-1" }),
+      await s.post("/ui/rigs/k8s-b-1/cluster/remove", { confirm: "remove k8s-b-1" }),
       /ok=Removed/,
     );
     assert.ok(

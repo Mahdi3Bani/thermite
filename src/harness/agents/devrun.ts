@@ -6,7 +6,7 @@ import type { Ledger } from "../ledger.ts";
 import { laneCacheEnv } from "./workspace.ts";
 
 /**
- * Agents' development runs on the measurement device (§6.2a). The judge goes first: a dev run
+ * Agents' development runs on the measurement device. The judge goes first: a dev run
  * waits while the judge has work queued or running, and the judge does not start a job while a
  * dev run holds the device. On a rig with a dedicated development card, neither waits for the
  * other: dev runs use their own card, and the broker keeps them off the judge's. A dev run on a

@@ -46,11 +46,11 @@ describe("a rig deployed on a machine", () => {
     assert.match(s, /^Environment=HARNESS_URL=http:\/\/thermite-gpu-box-1-a-harness:8700$/m);
     assert.match(s, /^Requires=thermite-gpu-box-1-a-harness\.service$/m);
     assert.match(u["thermite-gpu-box-1-a.network"] ?? "", /^Internal=true$/m);
-    // A CPU rig has no devices; more than two GPUs waits for rigs of many GPUs.
+    // A CPU rig has no devices; more than two GPUs is refused for now.
     const cpu = rigUnits({ ...plan, gpus: [] })["thermite-gpu-box-1-a-harness.container"] ?? "";
     assert.match(cpu, /^Environment=THERMITE_TARGET=cpu$/m);
     assert.ok(!/AddDevice|GPU_INDEX/.test(cpu));
-    assert.throws(() => rigUnits({ ...plan, gpus: [0, 1, 2] }), /more than two GPUs/);
+    assert.throws(() => rigUnits({ ...plan, gpus: [0, 1, 2] }), /at most two GPUs/);
   });
 
   test("the deploy script writes the tokens verbatim through stdin, refuses an existing rig, and starts the services", () => {

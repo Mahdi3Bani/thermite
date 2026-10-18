@@ -86,7 +86,7 @@ export const RunRequest = z.object({
     .max(64 * 1024 * 1024)
     .optional(),
   /**
-   * Run a lane's command with the gpu group (an agent's development run on the device, §6.2a).
+   * Run a lane's command with the gpu group (an agent's development run on the device).
    * Only lane roles may ask; the broker refuses it for any other role.
    */
   gpu: z.boolean().optional(),

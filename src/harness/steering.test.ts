@@ -171,7 +171,7 @@ describe("audits", () => {
   });
 
   test("a cleared audit follows the promotion policy, but large gains and declared flaws go to the owner", async () => {
-    // Above the absolute trigger: a clear still needs the owner (D8), whatever the policy.
+    // Above the absolute trigger: a clear still needs the owner, whatever the policy.
     const big = makeJudgeEnv({ contract: lowAudit });
     await big.service.applyCommand(big.assign);
     const large = await submit(big, FAST_KERNEL);

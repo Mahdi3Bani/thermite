@@ -24,7 +24,7 @@ export interface ClusterSlot {
   usable: boolean;
   /** A rig control set up there already, by its label. */
   used_by?: string | undefined;
-  /** Whether the slot's network rules keep a harness off the cluster (decision 46), and why. */
+  /** Whether the slot's network rules keep a harness off the cluster, and why. */
   network_ok?: boolean | undefined;
   network_why?: string | undefined;
 }

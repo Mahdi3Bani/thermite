@@ -4,9 +4,9 @@ import { clusterLine, parseNodes, parseStorageClasses } from "./facts.ts";
 import { asList, type ClusterRigPlan, clusterRigObjects } from "./manifests.ts";
 
 const plan: ClusterRigPlan = {
-  rig: "wc-a100-1",
+  rig: "k8s-a-1",
   placement: "created",
-  namespace: "thermite-wc-a100-1",
+  namespace: "thermite-k8s-a-1",
   controlUrl: "https://control.example.com/",
   images: {
     harness: "registry.example.com/harness-cuda:1",
@@ -43,7 +43,7 @@ describe("rigs on Kubernetes", () => {
       "NetworkPolicy",
       "NetworkPolicy",
     ]);
-    assert.ok(objs.slice(1).every((o) => o.metadata.namespace === "thermite-wc-a100-1"));
+    assert.ok(objs.slice(1).every((o) => o.metadata.namespace === "thermite-k8s-a-1"));
     assert.deepEqual(
       (find(objs, "Secret") as unknown as { stringData: Record<string, string> }).stringData,
       {
@@ -52,7 +52,7 @@ describe("rigs on Kubernetes", () => {
         "control-signing.pub": "PUBLIC KEY",
       },
     );
-    const harness = pod(objs, "thermite-wc-a100-1-harness") as {
+    const harness = pod(objs, "thermite-k8s-a-1-harness") as {
       containers: {
         env: { name: string; value: string }[];
         resources: unknown;
@@ -74,15 +74,15 @@ describe("rigs on Kubernetes", () => {
     ]);
     // The harness never sees control's token; the supervisor reports to control.
     assert.ok(!JSON.stringify(harness).includes("control-rig-token"));
-    const sup = pod(objs, "thermite-wc-a100-1-supervisor") as {
+    const sup = pod(objs, "thermite-k8s-a-1-supervisor") as {
       containers: { env: { name: string; value: string }[] }[];
     };
     const senv = Object.fromEntries(sup.containers[0]?.env.map((e) => [e.name, e.value]) ?? []);
     assert.equal(senv.CONTROL_URL, "https://control.example.com");
-    assert.equal(senv.HARNESS_URL, "http://thermite-wc-a100-1-harness:8700");
+    assert.equal(senv.HARNESS_URL, "http://thermite-k8s-a-1-harness:8700");
     // The two pods share one volume, so they stay on one node.
     assert.match(
-      JSON.stringify(pod(objs, "thermite-wc-a100-1-supervisor")),
+      JSON.stringify(pod(objs, "thermite-k8s-a-1-supervisor")),
       /kubernetes\.io\/hostname/,
     );
     assert.equal(JSON.parse(asList(objs)).kind, "List");
@@ -112,20 +112,20 @@ describe("rigs on Kubernetes", () => {
       JSON.stringify(find(objs, "ResourceClaimTemplate")),
       /"deviceClassName":"gpu.nvidia.com","count":1/,
     );
-    const harness = pod(objs, "thermite-wc-a100-1-harness") as {
+    const harness = pod(objs, "thermite-k8s-a-1-harness") as {
       resourceClaims: unknown;
       containers: { resources: unknown }[];
     };
     assert.deepEqual(harness.resourceClaims, [
-      { name: "gpus", resourceClaimTemplateName: "thermite-wc-a100-1-gpus" },
+      { name: "gpus", resourceClaimTemplateName: "thermite-k8s-a-1-gpus" },
     ]);
     assert.deepEqual(harness.containers[0]?.resources, { claims: [{ name: "gpus" }] });
-    // A CPU rig asks for nothing; more than two GPUs waits for rigs of many GPUs.
+    // A CPU rig asks for nothing; more than two GPUs is refused for now.
     const cpu = clusterRigObjects({ ...plan, gpus: 0 }, secrets) as Obj[];
     assert.ok(
       !JSON.stringify(cpu).includes("nvidia.com/gpu") && !JSON.stringify(cpu).includes("GPU_INDEX"),
     );
-    assert.throws(() => clusterRigObjects({ ...plan, gpus: 3 }, secrets), /more than two GPUs/);
+    assert.throws(() => clusterRigObjects({ ...plan, gpus: 3 }, secrets), /at most two GPUs/);
     assert.throws(
       () => clusterRigObjects({ ...plan, gpuMode: "dra", gpus: 1 }, secrets),
       /device class/,

@@ -74,7 +74,9 @@ const prepare = (image: string): Obj => ({
 /** The objects for one rig, in the order they are applied. */
 export function clusterRigObjects(p: ClusterRigPlan, s: ClusterRigSecrets): Obj[] {
   if (p.gpus > 2)
-    throw new Error("a rig with more than two GPUs comes with rigs of many GPUs (plan §6.2b)");
+    throw new Error(
+      "a rig takes at most two GPUs for now: rigs with more GPUs are not supported yet",
+    );
   if (p.gpus > 0 && p.gpuMode === "dra" && !p.deviceClass)
     throw new Error("a DRA rig needs its device class");
   const n = clusterNames(p.rig);
