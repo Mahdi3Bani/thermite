@@ -77,6 +77,8 @@ export interface TrialResult {
   tokensIn: number;
   tokensOut: number;
   error?: string | undefined;
+  /** The model's provider refused for now (a subscription's full usage window): not before this (ISO). */
+  retryAfter?: string | undefined;
 }
 
 const SYSTEM = `You are a research worker in an automated research harness. You get one assignment and

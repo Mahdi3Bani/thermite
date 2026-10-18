@@ -145,7 +145,9 @@ export function createHarnessApi(
       : service.proxyTokenValid(given);
     if (!ok) return c.json({ error: "unauthorized" }, 401);
     const m = service.models?.current();
-    if (!m || m.api === "opencode") return c.json({ error: "no provider to reach" }, 404);
+    // OpenCode's own models need no proxy; a Claude subscription is used only by Claude Code.
+    if (!m || m.api === "opencode" || m.api === "claude")
+      return c.json({ error: "no provider to reach" }, 404);
     const rest = c.req.path.slice("/v1/model-proxy/".length);
     const target = new URL(`${m.baseUrl}/${rest}${new URL(c.req.url).search}`);
     const headers: Record<string, string> = {};

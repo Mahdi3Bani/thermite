@@ -23,6 +23,25 @@ RUN cd /tmp \
  && install -m 0755 package/bin/opencode /usr/local/bin/opencode \
  && rm -rf /tmp/*
 
+# Claude Code, for a Claude subscription (only Anthropic's own program may use one): downloaded
+# when the image is built, and only when CLAUDE_CODE_VERSION names a version (off by default: it
+# is not open source, so the published images do not carry it). One pinned release's Linux
+# binary; npm checks the package against the registry's hash.
+FROM ${NODE_IMAGE} AS claude
+ARG CLAUDE_CODE_VERSION=
+ARG TARGETARCH
+RUN mkdir -p /out \
+ && if [ -n "$CLAUDE_CODE_VERSION" ]; then \
+      cd /tmp \
+      && npm pack --silent "@anthropic-ai/claude-code-linux-$([ "$TARGETARCH" = arm64 ] && echo arm64 || echo x64)@${CLAUDE_CODE_VERSION}" \
+      && tar -xzf anthropic-ai-claude-code-linux-*.tgz \
+      && bin="$(find package -maxdepth 2 -type f -name claude | head -n 1)" \
+      && test -n "$bin" \
+      && install -m 0755 "$bin" /out/claude \
+      && /out/claude --version \
+      && rm -rf /tmp/*; \
+    fi
+
 FROM ${BASE_IMAGE}
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 # git for the mirror; a C/C++ toolchain, CMake, Ninja and ccache for kit and lane builds of real
@@ -68,6 +87,8 @@ COPY --from=build /src/dist ./dist
 COPY --chmod=0755 containers/thermite /usr/local/bin/thermite
 # The OpenCode harness: its binary, and Thermite's tools for an agent's own shell.
 COPY --from=opencode /usr/local/bin/opencode /usr/local/bin/opencode
+# Claude Code, when the build asked for it (CLAUDE_CODE_VERSION); otherwise this copies nothing.
+COPY --from=claude /out/ /usr/local/bin/
 COPY --chmod=0755 containers/thermite-trial /usr/local/bin/thermite-trial
 # The smoke check's kits and projects (the rig_check smoke command builds them into a campaign).
 COPY kits ./checks/kits

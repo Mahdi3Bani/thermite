@@ -19,6 +19,7 @@ import {
   waitForFile,
 } from "../common/env.ts";
 import { generateSigningKeys } from "../core/commands.ts";
+import { claudeModelCheck, claudeOnce, runClaudeTrial } from "./agents/claude-code.ts";
 import { DevRuns } from "./agents/devrun.ts";
 import { modelConfigFromEnv } from "./agents/model.ts";
 import { checkModel } from "./agents/model-check.ts";
@@ -428,7 +429,9 @@ async function main(): Promise<void> {
       return m
         ? m.harness === "opencode"
           ? opencodeModelCheck(m, once)
-          : checkModel(m)
+          : m.harness === "claude-code"
+            ? claudeModelCheck(m, once)
+            : checkModel(m)
         : {
             ok: false,
             summary:
@@ -463,6 +466,32 @@ async function main(): Promise<void> {
     // Each trial runs in the harness the rig's route names: Pi (a worker process) or OpenCode.
     runTrial: (spec, signal) => {
       const m = model();
+      if (m?.harness === "claude-code")
+        return runClaudeTrial(spec, {
+          runner,
+          model: m,
+          apiUrl,
+          live: (entries) => {
+            for (const e of entries)
+              service.live.append({
+                source: `trial:${spec.trialId}`,
+                kind: e.kind,
+                text: e.text,
+                lane: spec.lane,
+                run: spec.run,
+              });
+          },
+          progress: (p) => service.trialProgress.set(spec.trialId, p),
+          submitted: () => service.trialSubmission(spec.trialId),
+          messages: () =>
+            service.takeMessages({ id: spec.trialId, run: spec.run, lane: spec.lane }),
+          // The subscription's windows, as Claude Code reports them: in the rig's report.
+          usage: (u) => {
+            service.subscriptionUsage = { ...u, at: new Date().toISOString() };
+          },
+          env: laneCacheEnv(paths.scratchDir, spec.lane),
+          signal,
+        });
       if (m?.harness !== "opencode")
         return spawnTrial({ kind: "code", spec }, runner, paths.scratchDir, port, signal, m);
       return runOpencodeTrial(spec, {
@@ -491,9 +520,28 @@ async function main(): Promise<void> {
       if (!t.lastText) throw new Error(t.errors.at(-1) ?? "OpenCode gave no answer");
       return t.lastText;
     },
+    // The planner on a Claude subscription: Claude Code with no tools, as an unprivileged user.
+    askClaude: async (m, prompt, signal) => {
+      const t = await claudeOnce(m, prompt, once, { tools: "", timeoutMs: 300_000, signal });
+      if (t.usage) service.subscriptionUsage = { ...t.usage, at: new Date().toISOString() };
+      const answer = t.result ?? t.lastText;
+      if (!answer) throw new Error(t.errors.at(-1) ?? "Claude Code gave no answer");
+      return answer;
+    },
     research,
-    runResearchTrial: (spec, signal) =>
-      spawnTrial({ kind: "research", spec }, runner, paths.scratchDir, port, signal, model()),
+    // Research workers run in Pi, which may not use a Claude subscription.
+    runResearchTrial: async (spec, signal) =>
+      model()?.api === "claude"
+        ? {
+            stopped: "error",
+            turns: 0,
+            toolCalls: 0,
+            tokensIn: 0,
+            tokensOut: 0,
+            error:
+              "research workers run in Pi, and a Claude subscription runs only in Claude Code: give this rig another model for research",
+          }
+        : spawnTrial({ kind: "research", spec }, runner, paths.scratchDir, port, signal, model()),
     devRuns,
     usdPerMTokIn: env.THERMITE_LLM_USD_PER_MTOK_IN
       ? Number(env.THERMITE_LLM_USD_PER_MTOK_IN)

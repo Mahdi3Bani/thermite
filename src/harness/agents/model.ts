@@ -13,11 +13,12 @@ export type ReasoningEffort = "off" | "low" | "medium" | "high";
 export interface ModelConfig {
   /**
    * The provider's API: OpenAI-compatible chat completions (the default), Anthropic's Messages,
-   * or OpenCode's own models (only the OpenCode harness reaches those).
+   * OpenCode's own models (only the OpenCode harness reaches those), or a Claude subscription
+   * (only Claude Code may use it; apiKey is then its token).
    */
-  api?: "openai" | "anthropic" | "opencode" | undefined;
-  /** The harness the agents run in: Pi, in-process (the default), or OpenCode v2. */
-  harness?: "pi" | "opencode" | undefined;
+  api?: "openai" | "anthropic" | "opencode" | "claude" | undefined;
+  /** The harness the agents run in: Pi, in-process (the default), OpenCode v2 or Claude Code. */
+  harness?: "pi" | "opencode" | "claude-code" | undefined;
   baseUrl: string;
   model: string;
   apiKey: string;
@@ -76,14 +77,30 @@ export function modelConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ModelC
   const apiKey = setting(env, MODEL_SETTINGS.apiKey);
   if (!baseUrl || !model || !apiKey) return undefined;
   const api = setting(env, MODEL_SETTINGS.api);
-  if (api !== undefined && api !== "openai" && api !== "anthropic" && api !== "opencode")
-    throw new Error(`THERMITE_MODEL_API must be openai, anthropic or opencode, not ${api}`);
+  if (
+    api !== undefined &&
+    api !== "openai" &&
+    api !== "anthropic" &&
+    api !== "opencode" &&
+    api !== "claude"
+  )
+    throw new Error(`THERMITE_MODEL_API must be openai, anthropic, opencode or claude, not ${api}`);
   const harness = setting(env, MODEL_SETTINGS.harness);
-  if (harness !== undefined && harness !== "pi" && harness !== "opencode")
-    throw new Error(`THERMITE_AGENT_HARNESS must be pi or opencode, not ${harness}`);
+  if (
+    harness !== undefined &&
+    harness !== "pi" &&
+    harness !== "opencode" &&
+    harness !== "claude-code"
+  )
+    throw new Error(`THERMITE_AGENT_HARNESS must be pi, opencode or claude-code, not ${harness}`);
+  // A Claude subscription runs only in Claude Code, and Claude Code only on one.
+  if ((api === "claude") !== (harness === "claude-code"))
+    throw new Error(
+      "a Claude subscription (THERMITE_MODEL_API=claude) runs only with THERMITE_AGENT_HARNESS=claude-code, and that harness only with it",
+    );
   return {
-    api: api === "anthropic" || api === "opencode" ? api : undefined,
-    harness: harness === "opencode" ? "opencode" : undefined,
+    api: api === "anthropic" || api === "opencode" || api === "claude" ? api : undefined,
+    harness: harness === "opencode" || harness === "claude-code" ? harness : undefined,
     baseUrl: baseUrl.replace(/\/$/, ""),
     model,
     apiKey,
@@ -100,7 +117,9 @@ export function modelConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ModelC
 export function modelEnv(cfg: ModelConfig): Record<string, string> {
   return {
     ...(cfg.api && cfg.api !== "openai" ? { THERMITE_MODEL_API: cfg.api } : {}),
-    ...(cfg.harness === "opencode" ? { THERMITE_AGENT_HARNESS: "opencode" } : {}),
+    ...(cfg.harness === "opencode" || cfg.harness === "claude-code"
+      ? { THERMITE_AGENT_HARNESS: cfg.harness }
+      : {}),
     THERMITE_MODEL_BASE_URL: cfg.baseUrl,
     THERMITE_MODEL: cfg.model,
     THERMITE_MODEL_API_KEY: cfg.apiKey,

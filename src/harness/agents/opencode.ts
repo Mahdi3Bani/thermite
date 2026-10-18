@@ -151,7 +151,7 @@ export function readOpencodeEvents(
 }
 
 /** Reads what a growing file gained since `from`: whole lines only. */
-function readNew(path: string, from: number): { lines: string[]; next: number } {
+export function readNew(path: string, from: number): { lines: string[]; next: number } {
   if (!existsSync(path)) return { lines: [], next: from };
   const size = statSync(path).size;
   if (size <= from) return { lines: [], next: from };
@@ -171,7 +171,7 @@ function readNew(path: string, from: number): { lines: string[]; next: number } 
   }
 }
 
-const SYSTEM = `You are a research worker in an automated research harness, working in a git repository
+export const SYSTEM = `You are a research worker in an automated research harness, working in a git repository
 in your current directory. You get one assignment and one trial. Read the code, make a focused
 change that follows your assignment, build and test it, then submit it exactly once:
 
@@ -217,7 +217,7 @@ export function breachError(
   return undefined;
 }
 
-const NUDGE =
+export const NUDGE =
   'You have not submitted yet. Keep working: make your change, build and test it, then run `thermite-trial submit --hypothesis "..."` once. If you find no change worth judging, say why in one sentence.';
 
 export interface OpencodeTrialDeps {

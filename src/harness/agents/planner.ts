@@ -283,6 +283,11 @@ async function callPlanner(
   context: string,
   signal?: AbortSignal,
 ): Promise<unknown> {
+  // Only Claude Code may use a Claude subscription: the planner never calls it itself.
+  if (cfg.api === "claude")
+    throw new Error(
+      "a Claude subscription runs only in Claude Code, and none is set up for the planner",
+    );
   const { models, model, thinkingLevel } = buildModel(cfg);
   let captured: unknown;
   const agent = new Agent({

@@ -3,28 +3,32 @@ import { z } from "zod";
 import { type ModelConfig, reasoningFromEnv } from "./model.ts";
 
 /** A model route as control hands it to the rig (through its supervisor), key included. */
-export const ControlRoute = z.strictObject({
-  name: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/),
-  /** The provider's API (the first version's routes had none: OpenAI-compatible). */
-  type: z.enum(["openai", "anthropic", "opencode"]).default("openai"),
-  /** The harness the agents run in (the first versions' routes had none: Pi). */
-  harness: z.enum(["pi", "opencode"]).default("pi"),
-  version: z.number().int().min(1),
-  base_url: z
-    .string()
-    .url()
-    .max(500)
-    .refine((u) => /^https?:\/\//.test(u), "an http or https URL"),
-  model: z.string().min(1).max(200),
-  context_window: z.number().int().min(0).max(100_000_000),
-  max_tokens: z.number().int().min(0).max(10_000_000),
-  reasoning: z.enum(["none", "low", "medium", "high"]).nullable(),
-  key_hint: z.string().max(16),
-  /** Changes whenever anything about the route does (control's digest of it). */
-  revision: z.string().regex(/^[0-9a-f]{8,64}$/),
-  /** OpenCode's own free models need none: an empty key. */
-  api_key: z.string().max(4096),
-});
+export const ControlRoute = z
+  .strictObject({
+    name: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/),
+    /** The provider's API (the first version's routes had none: OpenAI-compatible). */
+    type: z.enum(["openai", "anthropic", "opencode", "claude"]).default("openai"),
+    /** The harness the agents run in (the first versions' routes had none: Pi). */
+    harness: z.enum(["pi", "opencode", "claude-code"]).default("pi"),
+    version: z.number().int().min(1),
+    base_url: z
+      .string()
+      .url()
+      .max(500)
+      .refine((u) => /^https?:\/\//.test(u), "an http or https URL"),
+    model: z.string().min(1).max(200),
+    context_window: z.number().int().min(0).max(100_000_000),
+    max_tokens: z.number().int().min(0).max(10_000_000),
+    reasoning: z.enum(["none", "low", "medium", "high"]).nullable(),
+    key_hint: z.string().max(16),
+    /** Changes whenever anything about the route does (control's digest of it). */
+    revision: z.string().regex(/^[0-9a-f]{8,64}$/),
+    /** OpenCode's own free models need none: an empty key. A Claude subscription: its token. */
+    api_key: z.string().max(4096),
+  })
+  .refine((r) => (r.type === "claude") === (r.harness === "claude-code"), {
+    message: "a Claude subscription runs only in Claude Code, and Claude Code only on one",
+  });
 export type ControlRoute = z.input<typeof ControlRoute>;
 
 /** Which route the agents use, as the rig reports it (never the key). */
@@ -34,7 +38,7 @@ export interface ModelInfo {
   version?: number | undefined;
   revision?: string | undefined;
   /** The harness the agents run in. */
-  harness?: "pi" | "opencode" | undefined;
+  harness?: "pi" | "opencode" | "claude-code" | undefined;
   model?: string | undefined;
   base_url?: string | undefined;
   key_hint?: string | undefined;
@@ -67,8 +71,9 @@ export class ModelSource {
     const r = this.route;
     if (!r) return this.fromEnv;
     return {
-      api: r.type === "anthropic" || r.type === "opencode" ? r.type : undefined,
-      harness: r.harness === "opencode" ? "opencode" : undefined,
+      api:
+        r.type === "anthropic" || r.type === "opencode" || r.type === "claude" ? r.type : undefined,
+      harness: r.harness === "opencode" || r.harness === "claude-code" ? r.harness : undefined,
       baseUrl: r.base_url.replace(/\/$/, ""),
       model: r.model,
       apiKey: r.api_key,

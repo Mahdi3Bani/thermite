@@ -54,6 +54,10 @@ export interface SchedulerOptions {
   askOpencode?:
     | ((model: ModelConfig, prompt: string, signal?: AbortSignal) => Promise<string>)
     | undefined;
+  /** A planner call through Claude Code, for a Claude subscription (only Claude Code may use one). */
+  askClaude?:
+    | ((model: ModelConfig, prompt: string, signal?: AbortSignal) => Promise<string>)
+    | undefined;
   /** Runs one trial (in a child process in the harness; in-process in tests); abortable. */
   runTrial: (spec: TrialSpec, signal: AbortSignal) => Promise<TrialResult>;
   /** Research mode: the research service and its trial runner. */
@@ -226,6 +230,31 @@ export class Scheduler {
     const delay = Math.min(this.o.backoffBaseMs * 2 ** (k - 1), this.o.backoffMaxMs);
     return Math.max(0, Date.parse(recent[0].ended_at) + delay - Date.now());
   }
+
+  /**
+   * A subscription's usage window is full (a trial said until when): no new trials or plans on
+   * this rig until it resets. The agents wait; nothing pays for more (the owner's rule).
+   */
+  private waitingForLimit(run: string): boolean {
+    const r = this.ledger.db
+      .prepare(
+        "select json_extract(body, '$.until') as until from event where kind = 'agents_wait_for_limit' order by id desc limit 1",
+      )
+      .get() as { until: string | null } | undefined;
+    const until = r?.until ? Date.parse(r.until) : 0;
+    if (Date.now() >= until) return false;
+    if (this.limitNoted !== r?.until) {
+      this.limitNoted = r?.until ?? undefined;
+      this.o.service.live.append({
+        source: "planner",
+        kind: "status",
+        text: `agents wait for the subscription's usage window to reset at ${r?.until}`,
+        run,
+      });
+    }
+    return true;
+  }
+  private limitNoted: string | undefined;
 
   /** A run of errors across the run (a model outage): no new trials for a while. */
   private coolingDown(run: string): boolean {
@@ -548,11 +577,15 @@ export class Scheduler {
     try {
       const m = this.modelNow();
       // OpenCode's own models are reached only through OpenCode; every other provider, through Pi.
+      // A Claude subscription, only through Claude Code: without it the planner refuses the route.
       const ask =
         m?.api === "opencode" && this.o.askOpencode
           ? (prompt: string, sig?: AbortSignal) =>
               (this.o.askOpencode as NonNullable<SchedulerOptions["askOpencode"]>)(m, prompt, sig)
-          : undefined;
+          : m?.api === "claude" && this.o.askClaude
+            ? (prompt: string, sig?: AbortSignal) =>
+                (this.o.askClaude as NonNullable<SchedulerOptions["askClaude"]>)(m, prompt, sig)
+            : undefined;
       // The planner off on this rig: the fixed fallback plan, said so in the epoch's record.
       if (this.o.plannerOn && !this.o.plannerOn()) {
         const f = fallbackPlan(input);
@@ -638,6 +671,7 @@ export class Scheduler {
       return false;
     }
     if (this.coolingDown(inst.id)) return false;
+    if (this.waitingForLimit(inst.id)) return false;
     if (inst.contract.mode === "research") return this.researchTick(inst.id, inst.contract);
     const { id, contract } = inst;
     const perEpoch = contract.lanes.trials_per_epoch;
@@ -1018,6 +1052,12 @@ export class Scheduler {
         // The trial ends first (its token stops working), then its processes and dev runs.
         this.o.service.trialWorkspaces.delete(id);
         this.registry.finishTrial(id, { ...r, attempt: r.submitted?.attempt }, this.o.owner);
+        if (r.retryAfter)
+          this.ledger.appendEvent(this.o.owner, "agents_wait_for_limit", run, {
+            until: r.retryAfter,
+            trial: id,
+            reason: r.error ?? null,
+          });
         this.trialLine(
           id,
           run,

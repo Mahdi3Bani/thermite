@@ -195,6 +195,17 @@ export class HarnessService {
   readonly settings: RigSettingsStore;
   /** A rig configured with its GPU set: how many cards, and how many the judge has now. */
   gpuSplit?: { set: number; judge: number } | undefined;
+  /**
+   * A subscription's usage windows as its runtime last reported them (Claude Code's 5-hour and
+   * weekly windows), for the rig's report: no tokens, only percent used and reset times.
+   */
+  subscriptionUsage?:
+    | {
+        five_hour?: { utilization: number; resets_at: string } | undefined;
+        seven_day?: { utilization: number; resets_at: string } | undefined;
+        at: string;
+      }
+    | undefined;
   /** The promotion policy: what happens to a confirmed win (and to one an audit cleared). */
   get promotion(): "auto" | "owner_approval" {
     return this.settings.get().promotion;
@@ -1348,6 +1359,14 @@ export class HarnessService {
         // What runs on this rig and how (Edit rig).
         settings: this.settings.get(),
         ...(this.gpuSplit ? { gpu_split: this.gpuSplit } : {}),
+        ...(this.subscriptionUsage && this.models?.info().source !== "none"
+          ? {
+              subscription_usage: {
+                ...this.subscriptionUsage,
+                provider: this.models?.info().name ?? null,
+              },
+            }
+          : {}),
       },
       generated_at: this.clock().toISOString(),
       latest_event: this.ledger.latestEventId(),
