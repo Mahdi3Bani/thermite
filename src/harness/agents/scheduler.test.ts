@@ -767,6 +767,66 @@ describe("agent scheduler", () => {
     assert.equal(started, 1);
   });
 
+  test("after six failed trials the agents wait; a new model or a resume ends the wait at once", async () => {
+    const env = makeJudgeEnv({ lanes: { count: 2, trials_per_epoch: 10 } });
+    await env.service.applyCommand(env.assign);
+    let started = 0;
+    const scheduler = new Scheduler({
+      service: env.service,
+      runner: new LocalRunner(env.paths.scratchDir),
+      model: {
+        baseUrl: "http://127.0.0.1:9",
+        model: "m",
+        apiKey: "k",
+        contextWindow: 1,
+        maxTokens: 1,
+      },
+      owner: "s",
+      backoffBaseMs: 0,
+      runTrial: async () => {
+        started++;
+        return {
+          stopped: "error",
+          turns: 0,
+          toolCalls: 0,
+          tokensIn: 0,
+          tokensOut: 0,
+          error: "no model route configured",
+        };
+      },
+    });
+    const round = async () => {
+      await scheduler.tick();
+      await scheduler.idle();
+      // Distinct end times: the streak is ordered by when trials ended.
+      await new Promise((r) => setTimeout(r, 5));
+    };
+    for (let i = 0; i < 6 && started < 6; i++) await round();
+    assert.ok(started >= 6, `six trials failed (${started})`);
+    const failed = started;
+    await round();
+    await round();
+    assert.equal(started, failed, "the agents wait");
+    const run = (env.assign.envelope.payload as { run: string }).run;
+    assert.ok(
+      env.ledger.db
+        .prepare("select 1 from event where kind = 'agents_cooldown' and subject = ?")
+        .get(run),
+    );
+    // The owner gives the rig a model: the wait ends at once.
+    env.ledger.appendEvent("supervisor", "model_route_set", null, { model: "m2" });
+    await round();
+    assert.ok(started > failed, "a new model ends the wait");
+    // Six more failures, then a resume ends the wait too.
+    for (let i = 0; i < 6 && started < failed + 7; i++) await round();
+    const again = started;
+    await round();
+    assert.equal(started, again, "waiting again");
+    env.ledger.appendEvent("control:owner", "run_status", run, { status: "running", reason: null });
+    await round();
+    assert.ok(started > again, "a resume ends the wait");
+  });
+
   test("after a restart, trials a dead controller left open are closed and their lanes go on", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 2 } });
     await env.service.applyCommand(env.assign);

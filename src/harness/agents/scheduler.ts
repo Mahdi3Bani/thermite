@@ -258,13 +258,24 @@ export class Scheduler {
   }
   private limitNoted: string | undefined;
 
-  /** A run of errors across the run (a model outage): no new trials for a while. */
+  /**
+   * A run of errors across the run (a model outage): no new trials for a while. A new model
+   * route, or the owner resuming the run, after the last error ends the wait at once: the
+   * errors may have been the missing model.
+   */
   private coolingDown(run: string): boolean {
     const recent = this.registry.recentTrials(run, null, ERROR_STREAK);
     if (recent.length < ERROR_STREAK || !recent.every((t) => t.stopped === "error")) return false;
     const last = recent[0] as { ended_at: string; error: string | null };
     const until = Date.parse(last.ended_at) + COOLDOWN_MS;
     if (Date.now() >= until) return false;
+    const since = this.ledger.db
+      .prepare(
+        `select max(at) as at from event where at > ? and (kind = 'model_route_set'
+           or (kind = 'run_status' and subject = ? and json_extract(body, '$.status') = 'running'))`,
+      )
+      .get(last.ended_at, run) as { at: string | null } | undefined;
+    if (since?.at) return false;
     if (this.cooldownNoted !== last.ended_at) {
       this.cooldownNoted = last.ended_at;
       this.ledger.appendEvent(this.o.owner, "agents_cooldown", run, {
