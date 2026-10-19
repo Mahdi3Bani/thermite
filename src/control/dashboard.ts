@@ -1947,6 +1947,12 @@ ${placed ? placedBlock(placed, t) : ""}${onCluster ? clusterPlacedBlock(onCluste
   // secret box) and never shows it again; a rig receives a provider's key only when it is given
   // one of its models, through its supervisor's authenticated channel.
   const PROVIDER_NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+  /** A name as the owner typed it, made to fit the rule: lowercase, with dashes for spaces. */
+  const newName = (v: unknown) =>
+    String(v ?? "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "-");
   const TYPES: Record<ProviderType, string> = {
     openai: "OpenAI-compatible",
     anthropic: "Anthropic",
@@ -2160,7 +2166,7 @@ ${
     const models = "openai anthropic opencode";
     const addForm = `<form method="post" action="/ui/settings/add" class="form-grid" autocomplete="off" id="prov-add" data-says="${esc(JSON.stringify(ADD_SAYS))}"><input type="hidden" name="csrf" value="${t}">
 <label>${infoLabel("Type", `${TYPE_TIP} Git access lets rigs fetch private repositories: a deploy key control makes, or an HTTPS token you paste.`)}<select name="type" id="ptype"><optgroup label="Models by API key">${KEY_TYPES.map((x) => `<option value="${x}">${x === "opencode" ? "OpenCode (its own models)" : TYPES[x]}</option>`).join("")}</optgroup><optgroup label="Subscriptions"><option value="claude">Claude subscription (Pro or Max)</option><option value="chatgpt">ChatGPT subscription (Plus or Pro)</option></optgroup><optgroup label="Git access"><option value="gitkey">A deploy key (control makes it)</option><option value="gittoken">An access token (HTTPS)</option></optgroup><optgroup label="Where rigs run"><option value="ssh">A machine over SSH</option><option value="k8s">A Kubernetes cluster</option><option value="runpod">RunPod (a GPU cloud)</option></optgroup></select></label>
-<label>${infoLabel("Name", "How it shows in Thermite, and how rigs and campaigns refer to it: for example my-litellm or github-deploy. Lowercase letters, digits, dots and dashes.")}<input name="name" required maxlength="64" placeholder="for example my-litellm"></label>
+<label>${infoLabel("Name", "How it shows in Thermite, and how rigs and campaigns refer to it: for example my-litellm or github-deploy. Letters, digits, dots, dashes and underscores: capitals become lowercase and spaces become dashes.")}<input name="name" required maxlength="64" pattern="\\s*[A-Za-z0-9][A-Za-z0-9._ \\-]*\\s*" title="Letters, digits, dots, dashes, underscores and spaces" placeholder="for example my-litellm"></label>
 <label data-for="${models}">${infoLabel("Base URL", BASE_TIP)}<input name="base_url" maxlength="500" placeholder="https://…/v1 (Anthropic and OpenCode: empty for their own)"></label>
 <label data-for="${models}">${infoLabel("API key", "The provider's key. Control seals it at once and never shows it again. OpenCode: leave it empty for its free models.")}<input name="api_key" type="password" autocomplete="new-password" maxlength="4096" placeholder="never shown again"></label>
 <label data-for="gittoken" hidden>${infoLabel("Token", "An access token for the Git host, read-only if the host allows. Control seals it at once and never shows it again.")}<input name="token" type="password" autocomplete="new-password" maxlength="4096" placeholder="never shown again"></label>
@@ -2451,7 +2457,7 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
       .join("");
   const addCluster = async (c: Ctx, f: Record<string, unknown>) => {
     const fail = (m: string) => c.redirect(settingsUrl("error", m), 303);
-    const name = String(f.name ?? "").trim();
+    const name = newName(f.name);
     const kubeconfig = String(f.kubeconfig ?? "").trim();
     let context = String(f.context ?? "").trim();
     const placement = f.placement === "slot" ? "slot" : "created";
@@ -2597,7 +2603,7 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
       .join("");
   const addRunpod = async (c: Ctx, f: Record<string, unknown>) => {
     const fail = (m: string) => c.redirect(settingsUrl("error", m), 303);
-    const name = String(f.name ?? "").trim();
+    const name = newName(f.name);
     const key = String(f.runpod_key ?? "").trim();
     if (!ACCESS_NAME.test(name))
       return fail("A GPU cloud's name is lowercase letters, digits, dots and dashes.");
@@ -3605,7 +3611,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
   };
   const addMachine = async (c: Ctx, f: Record<string, unknown>) => {
     const fail = (m: string) => c.redirect(machineUrl("error", m), 303);
-    const name = String(f.name ?? "").trim();
+    const name = newName(f.name);
     const address = String(f.address ?? "").trim();
     const port = Number(String(f.port ?? "22").trim() || "22");
     const user = String(f.user ?? "").trim();
@@ -3776,7 +3782,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
   /** Git access added from the add form (or the older Git access form). */
   const addGit = (c: Ctx, f: Record<string, unknown>) => {
     const fail = (m: string) => c.redirect(settingsUrl("error", m), 303);
-    const name = String(f.name ?? "").trim();
+    const name = newName(f.name);
     if (!ACCESS_NAME.test(name))
       return fail("A Git access name is lowercase letters, digits, dots and dashes.");
     if (store.gitAccess(name)) return fail(`"${name}" exists already: delete it first.`);
@@ -3920,7 +3926,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
   // Sign in with ChatGPT: control starts the sign-in (it keeps the PKCE secret) and sends the
   // owner's browser to OpenAI's page. Signing in again to a provider keeps its client and host IDs.
   app.get("/ui/settings/chatgpt/start", (c) => {
-    const name = c.req.query("name");
+    const name = newName(c.req.query("name"));
     return c.redirect(chatgpt.start(name && PROVIDER_NAME.test(name) ? name : undefined), 302);
   });
   /**
@@ -3967,7 +3973,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
   /** A model provider added or changed. */
   const saveProvider = async (c: Ctx, f: Record<string, unknown>) => {
     const fail = (m: string) => c.redirect(settingsUrl("error", m), 303);
-    const name = String(f.name ?? "").trim();
+    const name = newName(f.name);
     if (!PROVIDER_NAME.test(name))
       return fail("A provider's name is lowercase letters, digits, dots, dashes and underscores.");
     const type = String(f.type ?? "") as ProviderType;
@@ -4187,7 +4193,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       id: "review",
       name: "Review panel",
       does: "It decides goals that code cannot check. Used only if the rig has one configured.",
-      off: "Those goals wait for your decision.",
+      off: "Those goals stay open: a goal that needs judgement is met only when the panel passes it and you accept it.",
     },
     {
       id: "exports",
@@ -4303,7 +4309,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         tip: "Three reviewers that grade goals that need judgement. The judge's numbers never come from them. All three use this model.",
       },
     ];
-    const agentRows = `<div class="hd">Agent</div><div class="hd">Model</div><div class="hd">${infoLabel("Effort", "How long the model thinks before it answers. More effort: better answers, slower, and more of a subscription's window. Providers other than a Claude subscription take up to high.")}</div><div class="hd">${infoLabel("Runs in", "The program that runs the agent. A Claude subscription works only in Claude Code, Anthropic's own program. Advisors in Claude Code get no tools; advisors with an API key run in the supervisor with read-only tools: the campaign brief, a guarded web fetch and the knowledge base.")}</div>
+    const agentRows = `<div class="hd">Agent</div><div class="hd">Model</div><div class="hd">${infoLabel("Effort", "How long the model thinks before it answers. More effort: better answers, slower, and more of a subscription's window. Providers other than a Claude subscription take up to high.")}</div><div class="hd">${infoLabel("Runs in", "The program that runs the agent. A Claude subscription works only in Claude Code, Anthropic's own program. Advisors in Claude Code get no tools; advisors with an API key run in the supervisor with read-only tools: the campaign brief, plus a guarded web fetch and the knowledge base only where the rig's advisors file sets them up.")}</div>
 <div>${infoLabel("Workers", "The agents that change the code, one per lane. They run for many turns, so they use the most of a subscription.")}</div><select name="choice" data-role="workers" data-label="the workers' model">${optionsFor("its own settings", want)}</select>${effortSelect("effort", want?.effort)}<div class="runs-in"><select name="harness" data-harness aria-label="harness"><option value="pi"${!want?.harness || want.harness === "pi" ? " selected" : ""}>Pi</option><option value="opencode"${want?.harness === "opencode" ? " selected" : ""}>OpenCode v2</option><option value="claude-code"${want?.harness === "claude-code" ? " selected" : ""}>Claude Code</option></select></div>
 ${ROLE_ROWS.map(
   (r) =>

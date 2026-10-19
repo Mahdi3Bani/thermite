@@ -189,4 +189,60 @@ describe("control over MCP", () => {
     assert.equal(r.status, 200);
     assert.match(await r.text(), /# TYPE thermite_rig_up gauge/);
   });
+
+  test("whoever runs control reads its log and its providers over MCP; no key in either; agents don't", async () => {
+    const store = new ControlStore(":memory:");
+    const control = createControlApi(
+      store,
+      {
+        admin: "admin-token-abcdef",
+        operator: "operator-token-abcdef",
+        agent: "agent-token-abcdef",
+        read: "read-token-abcdef",
+        rigs: {},
+      },
+      makeJudgeEnv().keys.privateKeyPem,
+    );
+    store.addGpuCloud({
+      name: "runpod",
+      kind: "runpod",
+      key_sealed: "sealed-cloud-key-000",
+      key_hint: "…9z9z",
+      by: "owner:ui",
+    });
+    store.setGpuCloudFacts("runpod", {
+      facts: { gpus: [{ id: "a4000", name: "RTX A4000", price_secure: 0.25 }], pods: [] },
+    });
+    store.audit("owner:ui", "refused", { path: "/ui/settings/add", why: "a name is lowercase" });
+    store.audit("control", "failed", { method: "GET", path: "/ui/x", status: 500, error: "boom" });
+
+    const operator = await connect(control, "operator-token-abcdef");
+    const providers = text(await operator.callTool({ name: "providers", arguments: {} }));
+    assert.equal(providers.gpu_clouds[0].name, "runpod");
+    assert.equal(providers.gpu_clouds[0].facts.gpus[0].price_secure, 0.25);
+    const log = text(await operator.callTool({ name: "control_log", arguments: {} }));
+    assert.deepEqual(
+      log.map((e: { action: string }) => e.action),
+      ["failed", "refused", "gpu_cloud_added"],
+      "MCP calls are left out unless asked for",
+    );
+    const refused = text(
+      await operator.callTool({ name: "control_log", arguments: { action: "refused" } }),
+    );
+    assert.equal(refused[0].body.why, "a name is lowercase");
+    const all = text(
+      await operator.callTool({ name: "control_log", arguments: { include_mcp: true } }),
+    );
+    assert.ok(all.some((e: { action: string }) => e.action === "mcp:providers"));
+    const seen = JSON.stringify([providers, all]);
+    // Only a key's last characters (its hint, as the dashboard shows it), never the key.
+    assert.ok(!seen.includes("sealed-cloud-key"), "never a key");
+
+    const reader = await connect(control, "read-token-abcdef");
+    assert.ok((await reader.listTools()).tools.some((t) => t.name === "control_log"));
+    const agent = await connect(control, "agent-token-abcdef");
+    const agentTools = (await agent.listTools()).tools.map((t) => t.name);
+    assert.ok(!agentTools.includes("control_log") && !agentTools.includes("providers"));
+    await Promise.all([operator.close(), reader.close(), agent.close()]);
+  });
 });

@@ -2292,11 +2292,19 @@ export class ControlStore {
     });
   }
 
-  listAudit(limit = 200): { at: string; actor: string; action: string; body: unknown }[] {
+  /** The newest audit entries; `action` keeps those whose action contains it, `mcp` MCP reads. */
+  listAudit(
+    limit = 200,
+    filter: { action?: string | undefined; mcp?: boolean | undefined } = {},
+  ): { at: string; actor: string; action: string; body: unknown }[] {
     return (
       this.db
-        .prepare("select at, actor, action, body from audit order by id desc limit ?")
-        .all(limit) as Row[]
+        .prepare(
+          `select at, actor, action, body from audit
+           where (? or action not like 'mcp:%') and instr(action, ?) > 0
+           order by id desc limit ?`,
+        )
+        .all(filter.mcp === false ? 0 : 1, filter.action ?? "", limit) as Row[]
     ).map((r) => ({
       at: String(r.at),
       actor: String(r.actor),

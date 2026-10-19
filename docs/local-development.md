@@ -239,6 +239,11 @@ claude mcp add --transport http thermite http://127.0.0.1:8800/mcp \
   --header "Authorization: Bearer $(cat .dev/secrets/control-operator-token)"
 ```
 
+Every token except an agent's also reads control itself, to find out why something didn't work:
+
+- `control_log`: control's audit log, newest first. It includes what the dashboard refused, with why (action `refused`), and requests that failed (action `failed`). Control also writes these to its output, one JSON line each.
+- `providers`: what control holds in Settings › Providers and what it last read from each, with the last error. It never shows a key, a token or a kubeconfig.
+
 ## The command line
 
 `thermite` validates contracts, starts runs, issues commands through control and submits patches. After `npm run build`, run it as `npx thermite` (or `node dist/cli/thermite.js`):

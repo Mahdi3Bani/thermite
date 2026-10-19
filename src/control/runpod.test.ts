@@ -149,8 +149,16 @@ describe("RunPod in Providers", () => {
       /Not added: RunPod refused the key/,
     );
     assert.equal(s.store.gpuCloud("runpod"), undefined);
+    // The refusal is kept in control's log, without the key.
+    const refusal = s.store.listAudit(10, { action: "refused" })[0]?.body as
+      | { path?: string; why?: string }
+      | undefined;
+    assert.equal(refusal?.path, "/ui/settings/add");
+    assert.match(String(refusal?.why), /RunPod refused the key/);
+    assert.ok(!JSON.stringify(s.store.listAudit(100)).includes("wrong-key-000000"));
+    // A name typed with capitals is taken in lowercase.
     assert.match(
-      await s.post("/ui/settings/add", { type: "runpod", name: "runpod", runpod_key: KEY }),
+      await s.post("/ui/settings/add", { type: "runpod", name: "RunPod", runpod_key: KEY }),
       /"runpod" is added and read/,
     );
     const g = s.store.gpuCloud("runpod");

@@ -2,6 +2,7 @@ import { createPublicKey, timingSafeEqual } from "node:crypto";
 import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
+import { log, redact } from "../common/env.ts";
 import { sha256Hex } from "../core/canonical.ts";
 import { COMMAND_KINDS, type CommandKind, reportBody, verifyJson } from "../core/commands.ts";
 import { LiveBatch, LiveEntry, liveBody } from "../core/live.ts";
@@ -239,6 +240,28 @@ export function createControlApi(
       err instanceof z.ZodError ? 400 : 500,
     ),
   );
+
+  // What fails goes to control's output and its audit log: the dashboard says why only once, in
+  // the page it sends back, and whoever debugs control reads it again over MCP (control_log).
+  app.use("*", async (c, next) => {
+    await next();
+    const path = new URL(c.req.url).pathname;
+    const status = c.res.status;
+    if (c.error || status >= 500) {
+      const error = redact(c.error?.message ?? `status ${status}`);
+      log("control", "request failed", { method: c.req.method, path, status, error });
+      store.audit("control", "failed", { method: c.req.method, path, status, error });
+      return;
+    }
+    if (!path.startsWith("/ui/") || c.req.method !== "POST") return;
+    const to = c.res.headers.get("location");
+    const why = to ? new URL(to, "http://control").searchParams.get("error") : null;
+    if (why || status >= 400) {
+      const reason = redact(why ?? `status ${status}`);
+      log("control", "refused", { path, why: reason });
+      store.audit("owner:ui", "refused", { path, why: reason });
+    }
+  });
 
   app.get("/v1/health", (c) => c.json({ ok: true }));
 

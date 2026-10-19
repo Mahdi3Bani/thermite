@@ -55,6 +55,19 @@ export async function waitForFile(path: string, timeoutMs: number): Promise<stri
   }
 }
 
+/**
+ * A message with what could be a credential taken out, for logs: a URL's user and password,
+ * a bearer token, and keys with a known prefix. Messages are written by Thermite's own code, so
+ * this guards against an echoed URL or key, not against anything a message could hold.
+ */
+export function redact(text: string): string {
+  return text
+    .replace(/(\/\/)[^/\s@]+@/g, "$1***@")
+    .replace(/\b(Bearer\s+)\S+/gi, "$1***")
+    .replace(/\b(sk-|rpa_|ghp_|gho_|ghs_|github_pat_|glpat-|xox[abp]-)[A-Za-z0-9_-]{6,}/g, "$1***")
+    .slice(0, 2000);
+}
+
 export function log(component: string, msg: string, fields: Record<string, unknown> = {}): void {
   process.stdout.write(
     `${JSON.stringify({ at: new Date().toISOString(), component, msg, ...fields })}\n`,
