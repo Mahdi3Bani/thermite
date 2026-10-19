@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { apiCall } from "./api-call.ts";
+import { RESEARCH_TOOLS, researchOutput, researchTool } from "./research-tools.ts";
 
 /**
  * `thermite-trial`: Thermite's tools for an agent that works through its own shell (the OpenCode
@@ -10,12 +11,14 @@ import { apiCall } from "./api-call.ts";
  *   thermite-trial submit --hypothesis TEXT [--claim TEXT] [--flaw TEXT]...
  *   thermite-trial dev-run [--timeout SECONDS] -- COMMAND...
  *   thermite-trial status ATTEMPT
+ *   thermite-trial research TOOL [WORDS...] [--FLAG VALUE]... [-]   (a research trial's tools)
  */
 
 const USAGE = `usage:
   thermite-trial submit --hypothesis TEXT [--claim TEXT] [--flaw TEXT]...
   thermite-trial dev-run [--timeout SECONDS] -- COMMAND...
-  thermite-trial status ATTEMPT`;
+  thermite-trial status ATTEMPT
+  thermite-trial research TOOL ... (thermite-trial research help lists them)`;
 
 export interface TrialCliEnv {
   harnessUrl: string;
@@ -55,8 +58,70 @@ export function patchOf(workspace: string, editablePaths: string[]): string {
   });
 }
 
-export async function trialCli(argv: string[], env: TrialCliEnv, call: Call): Promise<string> {
+/**
+ * A research tool's request from its command line: its words fill the tool's main field, flags
+ * fill the others, and `-` reads a JSON object of fields from stdin (a heredoc, so the shell
+ * changes nothing inside exact quotes). Returns the request, or what is wrong in words.
+ */
+export function researchRequest(
+  name: string,
+  args: string[],
+  stdin: string | undefined,
+): { op: string; body: Record<string, unknown> } | string {
+  const tool = researchTool(name);
+  if (!tool) return `error: no research tool "${name}"\n${researchHelp()}`;
+  const { flags, rest } = parseArgs(args);
+  const body: Record<string, unknown> = {};
+  const words = rest.filter((w) => w !== "-");
+  if (words.length) {
+    if (!tool.positional) return `error: ${name} takes no words; use:\n${tool.usage}`;
+    body[tool.positional] = words.join(" ");
+  }
+  for (const [flag, values] of Object.entries(flags)) {
+    const a = tool.args[flag];
+    if (!a) return `error: ${name} has no --${flag}; use:\n${tool.usage}`;
+    if (a.kind === "list") body[a.field] = values;
+    else if (a.kind === "number") {
+      const n = Number(values.at(-1));
+      if (!Number.isFinite(n)) return `error: --${flag} needs a number`;
+      body[a.field] = n;
+    } else body[a.field] = values.at(-1);
+  }
+  if (rest.includes("-")) {
+    let fields: unknown;
+    try {
+      fields = JSON.parse(stdin ?? "");
+    } catch (err) {
+      return `error: "-" reads a JSON object from stdin, and that was not one (${err instanceof Error ? err.message : String(err)}); use:\n${tool.usage}`;
+    }
+    if (!fields || typeof fields !== "object" || Array.isArray(fields))
+      return `error: "-" reads a JSON object from stdin; use:\n${tool.usage}`;
+    Object.assign(body, fields);
+  }
+  return { op: tool.op, body };
+}
+
+/** Every research command, with its use. */
+export function researchHelp(): string {
+  return `research tools:\n${RESEARCH_TOOLS.map((t) => `  ${t.usage.split("\n")[0]}`).join("\n")}`;
+}
+
+export async function trialCli(
+  argv: string[],
+  env: TrialCliEnv,
+  call: Call,
+  /** Reads stdin, only when a research command is given "-". */
+  stdin: () => Promise<string> = async () => "",
+): Promise<string> {
   const [cmd, ...args] = argv;
+  if (cmd === "research") {
+    const [name, ...rest] = args;
+    if (!name || name === "help" || name === "--help") return researchHelp();
+    const fromStdin = parseArgs(rest).rest.includes("-");
+    const req = researchRequest(name, rest, fromStdin ? await stdin() : undefined);
+    if (typeof req === "string") return req;
+    return researchOutput(await call("POST", `/v1/research/${req.op}`, req.body));
+  }
   const { flags, rest } = parseArgs(args);
   if (cmd === "submit") {
     const hypothesis = flags.hypothesis?.[0]?.trim();
@@ -108,8 +173,13 @@ async function main(): Promise<void> {
     if (r.status < 200 || r.status >= 300) throw new Error(`${r.status}: ${r.text.slice(0, 500)}`);
     return JSON.parse(r.text);
   };
+  const stdin = async () => {
+    const chunks: Buffer[] = [];
+    for await (const c of process.stdin) chunks.push(c as Buffer);
+    return Buffer.concat(chunks).toString("utf8");
+  };
   try {
-    const out = await trialCli(process.argv.slice(2), env, call);
+    const out = await trialCli(process.argv.slice(2), env, call, stdin);
     process.stdout.write(`${out}\n`);
     if (out.startsWith("error:") || out.startsWith("usage:")) process.exitCode = 2;
   } catch (err) {
