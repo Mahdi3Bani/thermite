@@ -66,7 +66,7 @@ Research workers build on what earlier trials learned, and a research campaign g
 
 | Goal | Status | Depends on |
 | --- | --- | --- |
-| [060 · A research folder agents can search and write](goals/060-research-folder.goal) | `IN_PROGRESS` | — |
+| [062 · A research folder agents can search and write](goals/062-research-folder.goal) | `IN_PROGRESS` | — |
 
 ### Rigs on RunPod
 

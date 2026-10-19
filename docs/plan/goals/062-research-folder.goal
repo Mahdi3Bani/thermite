@@ -1,5 +1,5 @@
 ---
-id: "060"
+id: "062"
 title: "A research folder agents can search and write"
 status: IN_PROGRESS
 version: "0.1.0"
@@ -9,7 +9,7 @@ created: 2026-10-19
 updated: 2026-10-19
 ---
 
-# 060 · A research folder agents can search and write
+# 062 · A research folder agents can search and write
 
 **Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Research mode
 
@@ -50,9 +50,9 @@ None.
 
 ## Progress
 
-- 2026-10-19: Goal written from the owner's direction.
+- 2026-10-19: Goal written from the owner's direction (first numbered 060, which another branch's goal already had).
 - 2026-10-19: Built: the folder (research/folder.ts), findings (`add_finding`, checked against verified claims, in the report), file tools for Pi workers, OpenCode trials in the lane's working area, the lanes' files saved and recorded at each trial's end, and the folder in the export with the final report. Unit tests cover each part. Not yet run in a real research campaign on a rig.
 
 ---
 
-Run with `/goal Complete docs/plan/goals/060-research-folder.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
+Run with `/goal Complete docs/plan/goals/062-research-folder.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

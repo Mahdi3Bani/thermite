@@ -53,7 +53,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 
 ### Research mode
 
-- [060](goals/060-research-folder.goal) A research folder agents can search and write · `IN_PROGRESS`
+- [062](goals/062-research-folder.goal) A research folder agents can search and write · `IN_PROGRESS`
 
 ### Rigs on RunPod
 

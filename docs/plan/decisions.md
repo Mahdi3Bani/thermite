@@ -28,7 +28,7 @@ Decisions that shape the whole product, newest last in each section. A decision 
 | 2026-10-17 | Test cases fit any kind of project. A case is a name and what makes it different. The score is a run's time, a rate, or a number that the check reports. |
 | 2026-10-17 | A "hidden test" is a case the judge uses only to confirm a change that already looks better, never while it screens. |
 | 2026-10-18 | A rig is a set of GPUs. Judge GPUs and agent GPUs are pools, and the split is set where a campaign is deployed. |
-| 2026-10-19 | Research workers search all of a run's research and write files. The harness builds a research folder from its records (read-only to workers), and each lane keeps a working area across its trials; the other lanes see a lane's files when its trial ends. A research run's output is its report plus the whole folder. Findings carry a summary and why they matter, and code checks them against verified claims. ([060](goals/060-research-folder.goal)) |
+| 2026-10-19 | Research workers search all of a run's research and write files. The harness builds a research folder from its records (read-only to workers), and each lane keeps a working area across its trials; the other lanes see a lane's files when its trial ends. A research run's output is its report plus the whole folder. Findings carry a summary and why they matter, and code checks them against verified claims. ([062](goals/062-research-folder.goal)) |
 
 ## Rigs and deployment
 
