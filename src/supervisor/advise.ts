@@ -124,11 +124,12 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
     ...(domains.length ? { fetchUrl: advisorFetcher(cfg.home, domains) } : {}),
     ...(domains.includes("*") ? {} : { kbSearch: kbTool(cfg.advisors) }),
   };
-  // A daily spending limit for all advisors of the rig.
+  // A daily spending limit for all advisors of the rig, when the owner set one.
   const day = new Date().toISOString().slice(0, 10);
   if (next.spend?.day !== day) next.spend = { day, usd: 0 };
   const spend = next.spend as { day: string; usd: number };
-  const overBudget = () => spend.usd >= cfg.advisors.max_usd_per_day;
+  const limit = cfg.advisors.max_usd_per_day;
+  const overBudget = () => limit !== undefined && spend.usd >= limit;
   const count = (r: { tokensIn: number; tokensOut: number; usd: number }) => {
     s.tokens_in += r.tokensIn;
     s.tokens_out += r.tokensOut;

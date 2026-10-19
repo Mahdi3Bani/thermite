@@ -246,6 +246,11 @@ describe("advisors", () => {
     assert.deepEqual(sent, [undefined, "low", "high"]);
   });
 
+  test("advisors have no spending limit unless the owner sets one", () => {
+    assert.equal(AdvisorsConfig.parse({}).max_usd_per_day, undefined);
+    assert.equal(AdvisorsConfig.parse({ max_usd_per_day: 5 }).max_usd_per_day, 5);
+  });
+
   test("a CLI agent's answer is found after its logs", () => {
     assert.deepEqual(lastJsonObject('log {"x": 1}\nmore\n{"a": {"b": 2}}\n'), { a: { b: 2 } });
     assert.equal(lastJsonObject("no json here"), undefined);

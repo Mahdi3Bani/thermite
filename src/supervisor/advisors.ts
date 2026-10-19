@@ -88,8 +88,11 @@ export const AdvisorsConfig = z.strictObject({
    * fetch never meet in one injected agent. The auditor fetches only from listed domains.
    */
   fetch_domains: z.array(z.string().min(1)).default([]),
-  /** Spending limit per day for all advisors of the rig (USD; from the runtimes' prices). */
-  max_usd_per_day: z.number().nonnegative().default(20),
+  /**
+   * Spending limit per day for all advisors of the rig (USD; from the runtimes' prices). None
+   * unless the owner sets one: Thermite sets no limits of its own.
+   */
+  max_usd_per_day: z.number().nonnegative().optional(),
   /** An optional knowledge-base MCP server the advisors may search (read only). */
   kb: z
     .strictObject({
