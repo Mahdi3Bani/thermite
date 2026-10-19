@@ -2,7 +2,7 @@
 
 Thermite is an autoresearch harness. Agents propose changes, and code they cannot touch measures, judges and keeps the best results. Many research campaigns run at once across a fleet of machines, and one control dashboard shows and steers all of them.
 
-**Status:** v1 is being built. These documents describe the design that v1 implements. Where something is planned rather than built, the page says so.
+**Status:** work is toward v0.1.0, the first public release. These documents describe the design that v1 implements. Where something is planned rather than built, the page says so. The [plan](plan/README.md) says what comes next.
 
 | Page | What it covers |
 | --- | --- |
@@ -16,7 +16,8 @@ Thermite is an autoresearch harness. Agents propose changes, and code they canno
 | [Contract reference](contract-reference.md) | Every contract field for the three modes, its default and what it means |
 | [Settings reference](settings-reference.md) | Every environment variable of control, the harness and the supervisor |
 | [Glossary](glossary.md) | The terms these pages use |
-| [Roadmap](roadmap.md) | What v1 delivers, in order |
+| [Roadmap](plan/roadmap.md) | Every goal, by version, in priority order |
+| [How Thermite is planned](plan/README.md) | The release plan, the settled decisions, and a goal for each roadmap item |
 | [Running locally](local-development.md) | Checks, the compose stack and the smoke test |
 
 ## The ideas in one minute
