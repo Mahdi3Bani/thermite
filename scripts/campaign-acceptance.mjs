@@ -64,7 +64,14 @@ const projectUrl = `git://${hostName}:${port}/tiny.git`;
 
 prepare();
 // Two calibration blocks: a try of the kit is the judge measuring the starting point on its own.
-const composeEnv = { THERMITE_POLL_SECONDS: "2", THERMITE_CALIBRATION_BLOCKS: "2" };
+const composeEnv = {
+  THERMITE_POLL_SECONDS: "2",
+  THERMITE_CALIBRATION_BLOCKS: "2",
+  // A model route for the rig's agents, so the run may start with them: control refuses agents on a
+  // rig with none. Nothing answers there, so they fail at once; the patches come from this script.
+  THERMITE_MODEL_BASE_URL: "http://127.0.0.1:9/v1",
+  THERMITE_MODEL: "no-model-here",
+};
 console.log("compose: build and start");
 dc(composeEnv, "up", "-d", "--build");
 try {
@@ -144,11 +151,10 @@ try {
     calibrated?.body?.blocks === 2,
     calibrated?.body,
   );
-  // Then the campaign itself, from its page's start form. Without agents: the rig has no model for
-  // them, and the patches below come from this script.
+  // Then the campaign itself, from its page's start form.
   const started = await fetch(`${control}/ui/campaigns/acc-tiny/runs`, {
     method: "POST",
-    body: new URLSearchParams({ csrf, rig: "local-1", agents: "off", promotion: "" }),
+    body: new URLSearchParams({ csrf, rig: "local-1", agents: "on", promotion: "" }),
     headers: { cookie },
     redirect: "manual",
   });
