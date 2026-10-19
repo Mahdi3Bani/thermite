@@ -67,7 +67,7 @@ The owner launches a GPU rig on RunPod from control, runs campaigns on it, and s
 | Goal | Status | Depends on |
 | --- | --- | --- |
 | [018 · RunPod spike](goals/018-runpod-spike.goal) | `IN_PROGRESS` | — |
-| [019 · A rig-only entry, with TLS](goals/019-rig-only-entry.goal) | `READY` | — |
+| [019 · Control reaches RunPod rigs through RunPod's proxy](goals/019-rig-only-entry.goal) | `IN_PROGRESS` | — |
 | [020 · A one-container rig image](goals/020-runpod-rig-image.goal) | `READY` | [018](goals/018-runpod-spike.goal) |
 | [021 · Enrollment codes](goals/021-enrollment-codes.goal) | `READY` | — |
 | [022 · Launch a rig on RunPod](goals/022-runpod-launch.goal) | `READY` | [010](goals/010-published-images.goal), [019](goals/019-rig-only-entry.goal), [020](goals/020-runpod-rig-image.goal), [021](goals/021-enrollment-codes.goal) |
@@ -93,7 +93,7 @@ The owner launches a GPU rig on RunPod from control, runs campaigns on it, and s
 | Decision | Options | Recommended | Goal |
 | --- | --- | --- | --- |
 | RunPod packaging | One combined image per pod, or two pods | One combined image | [020](goals/020-runpod-rig-image.goal) |
-| How rigs on other networks reach control | A public rig-only HTTPS entry, or a mesh VPN inside the pod | The rig-only entry | [019](goals/019-rig-only-entry.goal) |
+| How rigs on other networks reach control | A public rig-only HTTPS entry, or a mesh VPN inside the pod | Decided (2026-10-19): control connects to RunPod rigs through RunPod's proxy | [019](goals/019-rig-only-entry.goal) |
 | Who may launch on RunPod | The owner only, or also the operator token that agents use | The owner only | [022](goals/022-runpod-launch.goal) |
 | RunPod cloud | Secure cloud on demand first, or Community and spot as well | Secure cloud first | [022](goals/022-runpod-launch.goal) |
 | Where a pod's results go | The results repository or an upload to control, or a results repository only | Both | [024](goals/024-runpod-models-and-results.goal) |

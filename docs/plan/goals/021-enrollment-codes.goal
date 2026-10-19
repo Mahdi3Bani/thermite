@@ -15,11 +15,11 @@ updated: 2026-10-19
 
 ## What
 
-Control mints a rig ID and a one-time enrollment code for a launched pod. At first contact, the rig exchanges the code for its token. Control accepts the key of a rig it launched, bound to that code.
+Control mints a rig ID and a one-time enrollment code for a launched pod. Control connects to the pod (goal 019): its first signed request carries the code, and the pod answers with the public keys it made at its first start, bound to the code. Control pins those keys for the rig, and the code is spent.
 
 ## Why
 
-The long-lived rig token must never appear in RunPod's settings or console.
+No long-lived secret may appear in RunPod's settings or console, which show a pod's environment.
 
 ## Done when
 
@@ -28,7 +28,7 @@ The long-lived rig token must never appear in RunPod's settings or console.
 
 ## Decisions
 
-None yet.
+- 2026-10-19, owner: control connects to RunPod rigs (goal 019), so enrollment pins the pod's own keys instead of handing the pod a token.
 
 ## Open questions
 
