@@ -3,16 +3,23 @@ import { type TSchema, Type } from "@earendil-works/pi-ai";
 import type { LaneLimitValues } from "../../core/contract.ts";
 import { linkSession, type SessionLink } from "./live-session.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
-import { RESEARCH_SYSTEM, researchOutput, researchTool } from "./research-tools.ts";
+import { listFiles, readFile, removeFile, searchFiles, writeFile } from "./research-files.ts";
+import {
+  RESEARCH_SYSTEM,
+  type ResearchFolderPaths,
+  researchFolderNote,
+  researchOutput,
+  researchTool,
+} from "./research-tools.ts";
 import type { TrialResult } from "./worker.ts";
 import { keepGoing, withoutPastThinking } from "./worker.ts";
 
 /**
- * A research trial in Pi: a fresh agent session with research tools only, no shell and no files.
- * (In OpenCode, opencode.ts, the agent keeps its shell and files and runs the same tools as
- * commands.) Every research action goes through the harness's research service: the harness
- * fetches and archives, and code decides whether a claim is verified. The agent cannot end the
- * campaign; a trial just ends.
+ * A research trial in Pi: a fresh agent session with the research tools and file tools over its
+ * research folder, and no shell. (In OpenCode, opencode.ts, the agent keeps its shell and files
+ * and runs the same research tools as commands.) Every research action goes through the
+ * harness's research service: the harness fetches and archives, and code decides whether a claim
+ * or a finding holds. The agent cannot end the campaign; a trial just ends.
  */
 
 export interface ResearchTrialSpec {
@@ -27,6 +34,8 @@ export interface ResearchTrialSpec {
   maxTurns?: number | undefined;
   /** The lane's limits (an OpenCode trial runs under them; Pi's worker under its own). */
   limits?: LaneLimitValues | undefined;
+  /** The run's research folder and this lane's working area in it (the harness prepares both). */
+  folder?: ResearchFolderPaths | undefined;
 }
 
 export interface ResearchDeps {
@@ -101,13 +110,30 @@ export async function runResearchTrial(
       "propose_hypothesis",
       Type.Object({ text: Type.String(), supporting: Type.Optional(Type.Array(Type.String())) }),
     ),
+    tool(
+      "add_finding",
+      Type.Object({
+        text: Type.String({ description: "The finding, in one sentence." }),
+        summary: Type.String({ description: "What the claims show, and how." }),
+        why_it_matters: Type.String({ description: "Why it matters for the campaign." }),
+        supporting: Type.Array(Type.String(), { description: "The verified claims behind it." }),
+      }),
+    ),
     tool("update_section", Type.Object({ name: Type.String(), body: Type.String() })),
     tool("progress", Type.Object({})),
+    ...(spec.folder ? folderTools(spec.folder, result) : []),
   ];
 
   const { models, model, thinkingLevel } = buildModel(deps.model);
   const agent = new Agent({
-    initialState: { systemPrompt: RESEARCH_SYSTEM, model, tools, thinkingLevel },
+    initialState: {
+      systemPrompt: spec.folder
+        ? `${RESEARCH_SYSTEM}\n\n${researchFolderNote(spec.folder)} Use the file tools (list_files, read_file, search_files, write_file, remove_file) for it.`
+        : RESEARCH_SYSTEM,
+      model,
+      tools,
+      thinkingLevel,
+    },
     streamFn: models.streamSimple.bind(models),
     convertToLlm: withoutPastThinking,
     // One tool call at a time: each is a request to the harness, in the order the model chose.
@@ -152,4 +178,73 @@ export async function runResearchTrial(
     clearTimeout(wall);
   }
   return result;
+}
+
+/** The file tools over the research folder: each failure is an answer in words, not a crash. */
+function folderTools(folder: ResearchFolderPaths, result: TrialResult): AgentTool[] {
+  const fileTool = <P extends TSchema>(
+    name: string,
+    description: string,
+    parameters: P,
+    run: (p: Record<string, unknown>) => unknown,
+  ): AgentTool<P> => ({
+    name,
+    label: name,
+    description,
+    parameters,
+    execute: async (_id, params) => {
+      result.toolCalls++;
+      try {
+        return out(run(params as Record<string, unknown>));
+      } catch (err) {
+        return out(`error: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+  });
+  const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+  const num = (v: unknown) => (typeof v === "number" ? v : undefined);
+  return [
+    fileTool(
+      "list_files",
+      "List a directory of the research folder (relative paths; '.' is its top).",
+      Type.Object({ path: Type.Optional(Type.String()) }),
+      (p) => listFiles(folder, str(p.path) ?? "."),
+    ),
+    fileTool(
+      "read_file",
+      "Read a file of the research folder, from an offset in characters.",
+      Type.Object({
+        path: Type.String(),
+        offset: Type.Optional(Type.Number()),
+        length: Type.Optional(Type.Number()),
+      }),
+      (p) => readFile(folder, String(p.path), num(p.offset) ?? 0, num(p.length) ?? 20_000),
+    ),
+    fileTool(
+      "search_files",
+      "Search every file under a path of the research folder for lines with this text (case-insensitive), or matching it as a regular expression with regex true.",
+      Type.Object({
+        text: Type.String(),
+        path: Type.Optional(Type.String()),
+        regex: Type.Optional(Type.Boolean()),
+      }),
+      (p) => searchFiles(folder, String(p.text), { path: str(p.path), regex: p.regex === true }),
+    ),
+    fileTool(
+      "write_file",
+      "Write a file in your working area (its path from the folder's top); append true adds to its end.",
+      Type.Object({
+        path: Type.String(),
+        content: Type.String(),
+        append: Type.Optional(Type.Boolean()),
+      }),
+      (p) => writeFile(folder, String(p.path), String(p.content), p.append === true),
+    ),
+    fileTool(
+      "remove_file",
+      "Remove a file or directory in your working area.",
+      Type.Object({ path: Type.String() }),
+      (p) => removeFile(folder, String(p.path)),
+    ),
+  ] as AgentTool[];
 }

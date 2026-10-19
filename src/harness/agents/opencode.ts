@@ -7,7 +7,12 @@ import type { Role, Runner, RunOutcome } from "../broker/runner.ts";
 import type { TrialProgress } from "./live-session.ts";
 import type { ModelConfig } from "./model.ts";
 import type { RigCheckReport } from "./model-check.ts";
-import { RESEARCH_SYSTEM, researchCommands } from "./research-tools.ts";
+import {
+  RESEARCH_SYSTEM,
+  type ResearchFolderPaths,
+  researchCommands,
+  researchFolderNote,
+} from "./research-tools.ts";
 import type { ResearchTrialSpec } from "./research-worker.ts";
 import type { SubmitOutcome, TrialResult, TrialSpec } from "./worker.ts";
 
@@ -463,14 +468,21 @@ export async function runOpencodeTrial(
 }
 
 /** What a research worker in OpenCode is told about its tools, on top of the research brief. */
-export function researchPrompt(limits: LaneLimitValues, brief: string, minutes: number): string {
+export function researchPrompt(
+  limits: LaneLimitValues,
+  brief: string,
+  minutes: number,
+  folder: ResearchFolderPaths,
+): string {
   return `${RESEARCH_SYSTEM}
 
 Your research tools are commands you run with your shell tool:
 
 ${researchCommands()}
 
-Only pages fetched with "thermite-trial research fetch" are archived, and only archived sources can verify a claim: a page you read another way (your own web search, curl, a fetch from code) verifies nothing until you fetch it with that command. Your shell and files work in this trial's own directory, which is removed when the trial ends: keep what matters in notes, claims and report sections.
+Only pages fetched with "thermite-trial research fetch" are archived, and only archived sources can verify a claim: a page you read another way (your own web search, curl, a fetch from code) verifies nothing until you fetch it with that command.
+
+${researchFolderNote(folder)} Your shell starts in your working area; use grep, rg and your file tools on the folder.
 
 ${limitsNote(limits)}
 
@@ -480,9 +492,10 @@ This trial lasts ${minutes} minutes.`;
 }
 
 export interface OpencodeResearchDeps extends Omit<OpencodeTrialDeps, "submitted"> {
-  /** The trial's own area in the lane (owned by its user), and the directory it works in. */
+  /** The trial's own area in the lane (owned by its user): OpenCode's home, temporary files, events. */
   area: string;
-  workdir: string;
+  /** The run's research folder; the agent works in its lane's working area there. */
+  folder: ResearchFolderPaths;
 }
 
 /**
@@ -519,7 +532,7 @@ export async function runOpencodeResearchTrial(
   if (setupError) return { ...result, stopped: "error", error: setupError };
   const deadline = Date.now() + spec.wallMs;
   const minutes = Math.round(spec.wallMs / 60_000);
-  let message = researchPrompt(limits, spec.brief, minutes);
+  let message = researchPrompt(limits, spec.brief, minutes, deps.folder);
   let offset = 0;
   const pump = () => {
     const r = readNew(events, offset);
@@ -547,7 +560,7 @@ export async function runOpencodeResearchTrial(
       deps.runner,
       role,
       area,
-      deps.workdir,
+      deps.folder.work,
       env,
       [
         "run",

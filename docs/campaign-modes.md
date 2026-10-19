@@ -29,12 +29,21 @@ The contract lists the goals, each with a verifier. It also lists what does **no
 
 ## Research
 
-Workers research a topic for a set duration: hours or days. Their research tools are: search, fetch through an archiving fetcher, read, add a claim with exact quotes, propose hypotheses, update the report. In Pi, a worker has the research tools only, not a shell. In OpenCode, it keeps OpenCode's own tools (a shell, files and web search, in a directory removed when its trial ends) and runs the research tools as `thermite-trial research` commands. Rules for the run:
+Workers research a topic for a set duration: hours or days. Their research tools are: search, fetch through an archiving fetcher, read, add a claim with exact quotes, add a finding, propose hypotheses, update the report.
+
+Each run has a **research folder** that workers search and add to:
+
+- **Written by the harness from its records, read-only to workers:** every archived page as text, every claim (verified or draft), finding, hypothesis, note and report section, an index and the newest report. It is kept current while workers record.
+- **A working area for each lane:** syntheses, outlines, drafts, anything that helps. It is kept for the lane's next trial. When a trial ends, the harness saves the lane's files, records who wrote what and when, and shows them to the other lanes.
+
+In Pi, a worker has the research tools and file tools over the folder (list, read, search, write and remove in its own area), not a shell. In OpenCode, it keeps OpenCode's own tools (a shell, files and web search), starts in its lane's working area and runs the research tools as `thermite-trial research` commands. Rules for the run:
 
 - **A claim counts only if code confirms that its quote appears word for word in the archived source.** Unverifiable claims stay drafts.
 - **The harness keeps the work going until the minimum time has passed.** If an agent decides it is finished, it gets new sub-questions, primary sources to chase or contradictions to check.
 - **Novelty is tracked** (new sources and verified claims per hour), so a campaign that starts circling is redirected.
-- **Outputs:** an archived corpus, a ledger of verified claims, hypotheses with their evidence, open questions, regular digests and a final report.
+- **A finding counts only if every claim it cites is verified and every number in it is in those claims.** A finding has a summary and why it matters. Others stay draft findings.
+- **Files a worker writes are working material, not results.** Only claims and findings recorded through the research tools are checked and reported.
+- **Outputs:** the final report and the whole research folder (sources, claims, findings, hypotheses, notes and the lanes' files), plus regular digests. The folder goes into the export that carries the final report.
 
 ## What v1 does so far
 
@@ -53,8 +62,9 @@ Workers research a topic for a set duration: hours or days. Their research tools
   - "Not possible" is proposed by the harness, never by an agent, and only where the contract allows it. It needs the contract's number of refuted approach families, each with several judged attempts and no progress. Only the owner can accept it and end the campaign.
 - **Research:**
   - The archiving fetcher checks robots.txt (on every redirect too), rate and size limits. It checks addresses when it connects, so a name can't be pointed at a private address in between.
-  - A claim is verified only if its quotes are in the archive and every number it states is in its quotes. Only claims quoted from enough independent domains are reported as findings. Duplicate claims are folded together.
-  - Also: notes, hypotheses, report sections (shown as worker notes, never as findings), hourly digests with novelty figures, and a final report from the claim ledger.
+  - A claim is verified only if its quotes are in the archive and every number it states is in its quotes. Duplicate claims are folded together. The report shows verified claims from enough independent domains apart from those from a single domain.
+  - Findings are reported with their summary, why they matter and the verified claims behind them, and with how many of those claims come from enough independent domains. Draft findings are listed apart, with the reasons.
+  - Also: notes, hypotheses, report sections (shown as worker sections, never as findings), hourly digests with novelty figures, and a final report from the ledger.
   - The clock is controlled only by the harness and counts running time only.
   - Web search is not built in yet: workers follow the campaign's seed URLs and the links of archived pages.
   - Research planning is deterministic in v1. Lanes go to the least-covered questions, rotating between exploring, finding primary sources, checking contradictions and consolidating. When novelty falls, primary sources and contradictions come first.

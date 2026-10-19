@@ -100,7 +100,7 @@ describe("thermite-trial, Thermite's tools in an agent's own shell", () => {
       calls.push({ method, path, body });
       return path.endsWith("/stats") ? { sources: 2 } : "fetched text";
     };
-    // The same nine tools as Pi's research worker, each with its use for the prompt.
+    // The same ten tools as Pi's research worker, each with its use for the prompt.
     assert.deepEqual(
       RESEARCH_TOOLS.map((t) => t.name),
       [
@@ -111,6 +111,7 @@ describe("thermite-trial, Thermite's tools in an agent's own shell", () => {
         "add_claim",
         "add_note",
         "propose_hypothesis",
+        "add_finding",
         "update_section",
         "progress",
       ],
@@ -188,6 +189,17 @@ describe("thermite-trial, Thermite's tools in an agent's own shell", () => {
       },
     );
     assert.equal(read, false);
+    // A finding comes the same way.
+    const finding = {
+      text: "the kernel is faster",
+      summary: "two sources agree",
+      why_it_matters: "it decides the next experiments",
+      supporting: ["c-1", "c-2"],
+    };
+    assert.deepEqual(researchRequest("add_finding", ["-"], JSON.stringify(finding)), {
+      op: "finding",
+      body: finding,
+    });
     assert.match(
       String(researchRequest("add_claim", ["-"], "not json")),
       /^error: "-" reads a JSON object/,

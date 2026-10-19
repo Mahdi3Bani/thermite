@@ -39,6 +39,8 @@ export async function writeExport(input: {
   /** A full export (before a full reset): also the research archive, marked in the manifest. */
   full?: boolean | undefined;
   researchDir?: string | undefined;
+  /** A research run's folder (research/folder.ts): exported with the run's final report. */
+  researchFolder?: ((run: string) => { root: string; files: string[] }) | undefined;
 }): Promise<ExportResult> {
   const { ledger } = input;
   const since = ledger.lastExport()?.through_event ?? 0;
@@ -92,6 +94,28 @@ export async function writeExport(input: {
           const rel = `research/${run}/${f}`;
           mkdirSync(join(tmp, "research", run), { recursive: true });
           writeFileSync(join(tmp, rel), readFileSync(join(input.researchDir, run, f)));
+          researchRel.push(rel);
+        }
+      }
+    }
+
+    // A research campaign's output is its report and its whole folder: claims, findings, notes,
+    // sources and the lanes' files, exported once its final report is written.
+    if (input.researchFolder) {
+      const finished = new Set(
+        events.filter((e) => e.kind === "research_final").map((e) => String(e.subject)),
+      );
+      for (const run of finished) {
+        let folder: { root: string; files: string[] };
+        try {
+          folder = input.researchFolder(run);
+        } catch {
+          continue;
+        }
+        for (const f of folder.files) {
+          const rel = `research/${run}/folder/${f}`;
+          mkdirSync(dirname(join(tmp, rel)), { recursive: true });
+          writeFileSync(join(tmp, rel), readFileSync(join(folder.root, f)));
           researchRel.push(rel);
         }
       }

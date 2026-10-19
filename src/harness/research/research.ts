@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
+import { log } from "../../common/env.ts";
 import { canonicalJson } from "../../core/canonical.ts";
 import type { ResearchContract } from "../../core/contract.ts";
 import { parseDuration } from "../../core/duration.ts";
@@ -15,7 +16,10 @@ import { Fetcher, FetchRefused, htmlToText } from "./fetcher.ts";
  *   the harness itself fetched, and every number in the claim appears in its quotes; anything
  *   else stays a draft;
  * - a verified claim is corroborated when its quotes come from at least the contract's number of
- *   independent domains; only corroborated claims are reported as findings;
+ *   independent domains;
+ * - a finding is a worker's conclusion with a summary and why it matters; it is reported as a
+ *   finding only when every claim it cites is verified and every number in it appears in those
+ *   claims; anything else stays a draft finding;
  * - sources are deduplicated by URL and by content hash, claims by their text;
  * - reports show worker-written sections as notes, never as findings, and flag numbers in them
  *   that no verified claim supports;
@@ -58,23 +62,46 @@ export const ClaimInput = z.object({
   confidence: z.number().min(0).max(1).optional(),
 });
 
+export const FindingInput = z.object({
+  text: z.string().min(5).max(4000),
+  summary: z.string().min(5).max(8000),
+  why_it_matters: z.string().min(5).max(8000),
+  supporting: z.array(z.string().min(1)).min(1).max(50),
+});
+
 export class Research {
   private readonly ledger: Ledger;
   private readonly stateDir: string;
   private readonly fetchers = new Map<string, Fetcher>();
   private readonly allowPrivate: boolean;
   private readonly maxCorpusBytes: number;
+  /** Told after each change to a run's research (the research folder follows it). */
+  onChange: ((run: string) => void) | undefined;
 
   constructor(
     ledger: Ledger,
     stateDir: string,
-    opts: { allowPrivate?: boolean; maxCorpusBytes?: number } = {},
+    opts: {
+      allowPrivate?: boolean;
+      maxCorpusBytes?: number;
+      onChange?: ((run: string) => void) | undefined;
+    } = {},
   ) {
     this.ledger = ledger;
     this.stateDir = stateDir;
     this.allowPrivate = opts.allowPrivate ?? false;
     // No cap on the corpus unless one is configured (the owner's direction, 2026-10-15).
     this.maxCorpusBytes = opts.maxCorpusBytes ?? Number.POSITIVE_INFINITY;
+    this.onChange = opts.onChange;
+  }
+
+  /** A change is recorded: the folder follows; a failure there never fails the change. */
+  private changed(run: string): void {
+    try {
+      this.onChange?.(run);
+    } catch (err) {
+      log("harness", "research folder not updated", { run, error: String(err) });
+    }
   }
 
   /** Workers may act only on a running research campaign. */
@@ -190,6 +217,7 @@ export class Research {
       });
     });
     const row = this.get("select * from source where id = ?", id) as Row;
+    this.changed(run);
     return this.view(row, undefined, f.links);
   }
 
@@ -314,6 +342,7 @@ export class Research {
         question: c.question ?? null,
       });
     });
+    this.changed(run);
     return { claim: id, verified, problems };
   }
 
@@ -327,6 +356,7 @@ export class Research {
         canonicalJson(sources.slice(0, 20)),
         new Date().toISOString(),
       );
+    this.changed(run);
     return { note: Number(r.lastInsertRowid) };
   }
 
@@ -341,7 +371,70 @@ export class Research {
         "insert into hypothesis (id, run, lane, text, supporting, created_at) values (?, ?, ?, ?, ?, ?)",
       )
       .run(id, run, lane, text.slice(0, 2000), canonicalJson(ok), new Date().toISOString());
+    this.changed(run);
     return { hypothesis: id, supporting: ok, ignored: supporting.filter((c) => !known.has(c)) };
+  }
+
+  /**
+   * A finding: a worker's conclusion, with a summary and why it matters, citing verified claims.
+   * Code checks it: every cited claim must be a verified claim of this run, and every number in
+   * its text, summary and why must appear in those claims (their text or quotes). Otherwise it
+   * is kept as a draft finding, with the problems.
+   */
+  addFinding(run: string, lane: string | null, input: unknown) {
+    const f = FindingInput.parse(input);
+    const problems: string[] = [];
+    const cited = [...new Set(f.supporting)];
+    const claims: Row[] = [];
+    for (const id of cited) {
+      const cl = this.get("select * from claim where run = ? and id = ?", run, id);
+      if (!cl) problems.push(`no claim ${id}`);
+      else if (Number(cl.verified) !== 1) problems.push(`claim ${id} is a draft, not verified`);
+      else claims.push(cl);
+    }
+    const known = new Set(
+      claims.flatMap((cl) => [
+        ...numbersIn(String(cl.text)),
+        ...(JSON.parse(String(cl.quotes)) as { quote: string }[]).flatMap((q) =>
+          numbersIn(q.quote),
+        ),
+      ]),
+    );
+    for (const num of new Set([
+      ...numbersIn(f.text),
+      ...numbersIn(f.summary),
+      ...numbersIn(f.why_it_matters),
+    ])) {
+      if (!known.has(num)) problems.push(`the number ${num} is not in the claims it cites`);
+    }
+    const id = `f-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+    const supported = problems.length === 0;
+    this.ledger.tx(() => {
+      this.ledger.db
+        .prepare(
+          `insert into finding (id, run, lane, text, summary, why_it_matters, supporting, supported, problems, created_at)
+           values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          id,
+          run,
+          lane,
+          f.text,
+          f.summary,
+          f.why_it_matters,
+          canonicalJson(cited),
+          supported ? 1 : 0,
+          canonicalJson(problems),
+          new Date().toISOString(),
+        );
+      this.ledger.appendEvent(lane ?? "research", "finding_added", run, {
+        finding: id,
+        supported,
+        claims: cited.length,
+      });
+    });
+    this.changed(run);
+    return { finding: id, supported, problems };
   }
 
   updateSection(run: string, by: string | null, name: string, body: string) {
@@ -353,6 +446,7 @@ export class Research {
          on conflict (run, name) do update set body = excluded.body, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
       )
       .run(run, name, body.slice(0, 20_000), by ?? "worker", new Date().toISOString());
+    this.changed(run);
     return { section: name };
   }
 
@@ -419,6 +513,8 @@ export class Research {
       corroborated,
       drafts: n("select count(*) as n from claim where run = ? and verified = 0", run),
       hypotheses: n("select count(*) as n from hypothesis where run = ?", run),
+      findings: n("select count(*) as n from finding where run = ? and supported = 1", run),
+      draft_findings: n("select count(*) as n from finding where run = ? and supported = 0", run),
       questions: c.questions.map((q, i) => ({
         question: q,
         verified: n(
@@ -494,22 +590,52 @@ export class Research {
     };
     // Worker-written text cannot make its own headings: a line starting with # is shown as text.
     const fence = (body: string) => body.replace(/^(\s*)#/gm, "$1\\#");
+    const byId = new Map(claims.map((cl) => [String(cl.id), cl]));
+    const findings = this.all("select * from finding where run = ? order by created_at", run);
+    const finding = (f: Row) => {
+      const cited = (JSON.parse(String(f.supporting)) as string[])
+        .map((id) => byId.get(id))
+        .filter((cl): cl is Row => cl !== undefined);
+      const strong = cited.filter((cl) => corroborated.includes(cl)).length;
+      return [
+        `### ${fence(String(f.text)).replace(/\n+/g, " ")}`,
+        "",
+        fence(String(f.summary)),
+        "",
+        `Why it matters: ${fence(String(f.why_it_matters))}`,
+        "",
+        `Supported by ${cited.length} verified claims (${strong} from at least ${min} independent domains):`,
+        ...cited.map(cite),
+        "",
+      ];
+    };
     const lines = [
       `# ${c.title}`,
       "",
       `Topic: ${c.topic}`,
       `Report: ${kind}, ${new Date().toISOString()}. Elapsed ${(clock.elapsed_ms / 3_600_000).toFixed(2)} h of at least ${(clock.min_ms / 3_600_000).toFixed(2)} h.`,
-      `Corpus: ${stats.sources} sources from ${stats.domains} domains; ${stats.verified} verified claims (${stats.corroborated} from at least ${min} independent domains), ${stats.drafts} drafts (drafts are not findings).`,
+      `Corpus: ${stats.sources} sources from ${stats.domains} domains; ${stats.verified} verified claims (${stats.corroborated} from at least ${min} independent domains), ${stats.drafts} drafts; ${stats.findings} findings, ${stats.draft_findings} draft findings.`,
       `Last hour: ${stats.last_hour.sources} new sources, ${stats.last_hour.verified} newly verified claims, ${stats.last_hour.questions_covered} questions newly covered.`,
       "",
       "## Questions",
       ...stats.questions.map((q, i) => `${i + 1}. ${q.question} (${q.verified} verified claims)`),
       "",
-      `## Findings (verified, from at least ${min} independent domains)`,
+      "## Findings",
+      ...findings.filter((f) => Number(f.supported) === 1).flatMap(finding),
+      "",
+      `## Verified claims from at least ${min} independent domains`,
       ...corroborated.map(cite),
       "",
       "## Verified claims from a single domain",
       ...single.map(cite),
+      "",
+      "## Draft findings (not supported by verified claims)",
+      ...findings
+        .filter((f) => Number(f.supported) !== 1)
+        .map(
+          (f) =>
+            `- ${fence(String(f.text)).replace(/\n+/g, " ")} (${(JSON.parse(String(f.problems)) as string[]).join("; ")})`,
+        ),
       "",
       "## Hypotheses",
       ...this.all("select text, supporting from hypothesis where run = ?", run).map(
@@ -520,7 +646,7 @@ export class Research {
       "## Open questions",
       ...stats.questions.filter((q) => q.verified === 0).map((q) => `- ${q.question}`),
       "",
-      "## Worker notes (not verified; claims above are the findings)",
+      "## Worker sections (not verified; only the findings and claims above are checked)",
       ...sections.flatMap((s) => [`### ${s.name}`, fence(String(s.body)), ""]),
       ...(unsupported.length
         ? [
@@ -547,6 +673,7 @@ export class Research {
         },
       );
     });
+    this.changed(run);
     return { kind, body };
   }
 

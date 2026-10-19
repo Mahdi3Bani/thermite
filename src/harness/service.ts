@@ -206,6 +206,8 @@ export class HarnessService {
         at: string;
       }
     | undefined;
+  /** A research run's folder as files, for its export (main.ts sets it). */
+  researchFolder?: ((run: string) => { root: string; files: string[] }) | undefined;
   /** The promotion policy: what happens to a confirmed win (and to one an audit cleared). */
   get promotion(): "auto" | "owner_approval" {
     return this.settings.get().promotion;
@@ -1414,6 +1416,7 @@ export class HarnessService {
       rig: this.rig,
       actor,
       ...(opts.full ? { full: true, researchDir: join(this.paths.stateDir, "research") } : {}),
+      researchFolder: this.researchFolder,
     });
   }
 }

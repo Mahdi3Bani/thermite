@@ -894,7 +894,7 @@ export class Scheduler {
       "",
       `Your focus: ${a.focus}`,
       `Time: ${(clock.elapsed_ms / 3_600_000).toFixed(2)} h elapsed of at least ${(clock.min_ms / 3_600_000).toFixed(2)} h (the campaign continues after your trial).`,
-      `Corpus: ${stats.sources} sources, ${stats.verified} verified claims, ${stats.drafts} drafts.`,
+      `Corpus: ${stats.sources} sources, ${stats.verified} verified claims, ${stats.drafts} drafts, ${stats.findings} findings.`,
       contract.seeds.length ? `Starting URLs: ${contract.seeds.join(" ")}` : "",
       frontier.length ? `Links from archived sources not fetched yet: ${frontier.join(" ")}` : "",
       "",

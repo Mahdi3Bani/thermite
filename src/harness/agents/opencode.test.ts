@@ -280,7 +280,7 @@ describe("the OpenCode harness", () => {
     assert.equal(r.stopped, "no_submission");
   });
 
-  test("a research trial runs in its own directory as the lane, with the research commands, and ends when the agent stops", async () => {
+  test("a research trial runs in its lane's working area as the lane, with the research commands and the folder, and ends when the agent stops", async () => {
     const area = mkdtempSync(join(tmpdir(), "thermite-oc-"));
     const workdir = join(area, "work");
     mkdirSync(workdir);
@@ -309,7 +309,7 @@ describe("the OpenCode harness", () => {
         model: { ...model, api: "opencode", model: "glm-5.3-flash-free" },
         apiUrl: "http://127.0.0.1:8700",
         area,
-        workdir,
+        folder: { root: join(area, "folder"), work: workdir },
         live: () => undefined,
         progress: (p) => progress.push(p.turns),
         pollMs: 5,
@@ -332,6 +332,9 @@ describe("the OpenCode harness", () => {
     assert.ok(prompt.startsWith(RESEARCH_SYSTEM));
     assert.match(prompt, /thermite-trial research add_claim - <<'EOF'/);
     assert.match(prompt, /only archived sources can verify a claim/);
+    assert.match(prompt, /research folder, .*folder\. Start with INDEX\.md/);
+    assert.match(prompt, /Your own working area is .*work: write anything there/);
+    assert.match(prompt, /thermite-trial research add_finding - <<'EOF'/);
     assert.match(prompt, /Topic: 2-bit decoding/);
     assert.match(prompt, /This trial lasts 1 minutes/);
   });
@@ -393,7 +396,7 @@ describe("the OpenCode harness", () => {
           model,
           apiUrl: "http://h",
           area,
-          workdir: area,
+          folder: { root: area, work: area },
           live: () => undefined,
           progress: () => undefined,
           messages: () => {

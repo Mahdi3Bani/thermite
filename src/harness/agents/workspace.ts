@@ -69,18 +69,18 @@ export async function prepareWorkspace(input: {
 }
 
 /**
- * A research trial's area in its lane, for OpenCode: an empty directory to work in, owned by the
- * lane's user, removed when the trial ends (nothing in it outlives the trial).
+ * A research trial's own area in its lane, for OpenCode's home, temporary files and events: owned
+ * by the lane's user and removed when the trial ends. (The agent works in its lane's working
+ * area of the research folder, research/folder.ts, which outlives the trial.)
  */
 export async function prepareResearchArea(input: {
   runner: Runner;
   scratchDir: string;
   lane: Role;
-}): Promise<{ dir: string; workdir: string }> {
+}): Promise<{ dir: string }> {
   const dir = join(input.scratchDir, "lanes", input.lane, randomUUID());
-  const workdir = join(dir, "work");
-  mkdirSync(workdir, { recursive: true });
+  mkdirSync(dir, { recursive: true });
   // The controller follows the trial's output in its area (OpenCode writes its events there).
   await input.runner.handOver(dir, input.lane, { harnessReads: true });
-  return { dir, workdir };
+  return { dir };
 }

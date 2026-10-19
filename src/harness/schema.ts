@@ -597,4 +597,32 @@ export const MIGRATIONS: readonly (string | ((db: DatabaseSync) => void))[] = [
   `
   alter table run add column promotion text check (promotion in ('auto', 'owner_approval'));
   `,
+  // 12: research findings (a worker's conclusion, checked against verified claims) and the
+  // record of the files each lane wrote in its research folder.
+  `
+  create table finding (
+    id text primary key,
+    run text not null,
+    lane text,
+    text text not null,
+    summary text not null,
+    why_it_matters text not null,
+    supporting text not null default '[]',
+    supported integer not null,
+    problems text not null default '[]',
+    created_at text not null
+  );
+  create table research_file (
+    id integer primary key autoincrement,
+    run text not null,
+    lane text not null,
+    trial text,
+    path text not null,
+    change text not null check (change in ('written', 'removed')),
+    bytes integer,
+    sha256 text,
+    recorded_at text not null
+  );
+  create index research_file_run on research_file (run, lane, path);
+  `,
 ];

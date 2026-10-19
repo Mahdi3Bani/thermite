@@ -48,6 +48,7 @@ import { collectHardware } from "./hardware.ts";
 import { Judge, type PromotionPolicy, serial } from "./judge/judge.ts";
 import { Ledger } from "./ledger.ts";
 import { settlePropagations } from "./propagation.ts";
+import { ResearchFolder } from "./research/folder.ts";
 import { Research } from "./research/research.ts";
 import { RigSettingsStore } from "./rig-settings.ts";
 import { busyReason, isolationSelftest, isolationSummary } from "./selftest.ts";
@@ -324,11 +325,20 @@ async function main(): Promise<void> {
     unavailable: devCard?.error,
   });
 
+  // Each research run's folder: what it has learned, as files its workers search and add to.
+  const researchFolder = new ResearchFolder({
+    ledger,
+    scratchRoot: join(paths.scratchDir, "research"),
+    stateRoot: join(paths.stateDir, "research-work"),
+    runner,
+  });
   const research = new Research(ledger, paths.stateDir, {
     maxCorpusBytes: env.THERMITE_RESEARCH_MAX_MB
       ? Number(env.THERMITE_RESEARCH_MAX_MB) * 1024 * 1024
       : undefined,
+    onChange: (run) => void researchFolder.sync(run),
   });
+  service.researchFolder = (run) => researchFolder.exportFiles(run);
 
   // The route control sets for this rig: kept in the state directory, root only.
   const routeFile = join(paths.stateDir, "model-route.json");
@@ -558,9 +568,30 @@ async function main(): Promise<void> {
           tokensOut: 0,
           error: cannot,
         };
-      if (m?.harness !== "opencode")
-        return spawnTrial({ kind: "research", spec }, runner, paths.scratchDir, port, signal, m);
+      // The run's research folder, with the lane's working area given to the user the trial
+      // runs as: the worker's (Pi) or the lane's (OpenCode). Its files are saved when it ends.
+      const pi = m?.harness !== "opencode";
       const lane = spec.lane as Role;
+      const as = (pi ? spec.lane.replace(/^lane-/, "agent-") : spec.lane) as Role;
+      const folder = await researchFolder.prepareLane(spec.run, spec.lane, as);
+      const save = () =>
+        researchFolder.captureLane(spec.run, spec.lane, spec.trialId).catch((err) => {
+          log("harness", "research files not saved", { lane: spec.lane, error: String(err) });
+        });
+      if (pi) {
+        try {
+          return await spawnTrial(
+            { kind: "research", spec: { ...spec, folder } },
+            runner,
+            paths.scratchDir,
+            port,
+            signal,
+            m,
+          );
+        } finally {
+          await save();
+        }
+      }
       const area = await prepareResearchArea({ runner, scratchDir: paths.scratchDir, lane });
       try {
         return await runOpencodeResearchTrial(spec, {
@@ -568,7 +599,7 @@ async function main(): Promise<void> {
           model: m,
           apiUrl,
           area: area.dir,
-          workdir: area.workdir,
+          folder,
           live: (entries) => {
             for (const e of entries)
               service.live.append({
@@ -586,9 +617,11 @@ async function main(): Promise<void> {
           signal,
         });
       } finally {
-        // What the agent started from its shell ends with the trial, and so does its directory.
+        // What the agent started from its shell ends with the trial, and so does its own area;
+        // its working area in the folder is saved.
         await runner.killRole(lane).catch(() => 0);
         await runner.remove(area.dir).catch(() => undefined);
+        await save();
       }
     },
     devRuns,
