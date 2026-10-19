@@ -32,6 +32,8 @@ Each one is small, and a tester would hit it.
 ## Decisions
 
 - 2026-10-19, owner: Yes to making the lane limits agree.
+- 2026-10-19, owner: a research trial follows the agents' harness setting, like trials in the other modes.
+- 2026-10-19, owner: an OpenCode research worker keeps the same tools as a hill-climb worker, shell and files included. Research workers are meant to write files and search their own research ([060](060-research-folder.goal)). A claim is still verified only by the research service, which checks each quote against the archived sources.
 
 ## Open questions
 

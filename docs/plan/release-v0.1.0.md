@@ -2,7 +2,7 @@
 
 v0.1.0 is Thermite's first public release. A tester installs it from published images, runs agents on a sample project, adds rigs on their own machines or clusters, and launches GPU rigs on RunPod.
 
-It has three parts, then the release itself. The parts can run at the same time. The [roadmap](roadmap.md) shows what comes after it.
+It has four parts, then the release itself. The parts can run at the same time. The [roadmap](roadmap.md) shows what comes after it.
 
 ## Decided
 
@@ -60,6 +60,14 @@ A tester pulls images in place of building them, and every remote rig has images
 | [016 · Small fixes before the release](goals/016-small-fixes.goal) | `READY` | — |
 | [017 · Remove the legacy model names](goals/017-legacy-names.goal) | `READY` | — |
 
+### Research mode
+
+Research workers build on what earlier trials learned, and a research campaign gives its corpus, claims and findings, not only a report.
+
+| Goal | Status | Depends on |
+| --- | --- | --- |
+| [060 · A research folder agents can search and write](goals/060-research-folder.goal) | `READY` | — |
+
 ### Rigs on RunPod
 
 The owner launches a GPU rig on RunPod from control, runs campaigns on it, and stops paying when it is idle.
@@ -84,7 +92,7 @@ The owner launches a GPU rig on RunPod from control, runs campaigns on it, and s
 ## Order of work
 
 1. Goal 002 first, so CI runs on every push from now on.
-2. The three parts go on at the same time. In RunPod, the launcher (022) waits for the images (010), the rig-only entry (019), the rig image (020) and the enrollment codes (021).
+2. The four parts go on at the same time. In RunPod, the launcher (022) waits for the images (010), the rig-only entry (019), the rig image (020) and the enrollment codes (021).
 3. When every other goal is verified, goal 026 ships the release: the clean-machine tests, the full checks, the pull request into `main`, the changelog, the tag and the GitHub Release.
 4. Fixes from tester reports ship as 0.1.1, 0.1.2 and so on. New features go into v0.2.0.
 

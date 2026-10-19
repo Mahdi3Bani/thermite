@@ -1,0 +1,57 @@
+---
+id: "060"
+title: "A research folder agents can search and write"
+status: READY
+version: "0.1.0"
+part: "Research mode"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 060 · A research folder agents can search and write
+
+**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Research mode
+
+## What
+
+Each research run has a folder that its workers can search with ordinary tools (`grep`, `rg`, reading files) and write to.
+
+- **Built by the harness from its records, read-only to agents:**
+  - `sources/`: each archived page as text, with its URL and when it was fetched;
+  - `claims/`: one file per claim, with its quotes, sources, question, confidence, and whether it is verified or a draft;
+  - `notes/`, `hypotheses/`, `findings/` and `report/` (the report's sections).
+- **Writable by the workers:** a working area for synthesis, drafts and anything else that helps. It persists across trials. Each lane writes its own part; every lane reads all of it. The harness records who wrote what, and when.
+- **Findings as a record:** a statement, the verified claims that support it, a summary, and why it matters.
+- **The output** of a research campaign is the report plus the whole folder: claims, findings, notes and sources.
+- Pi and OpenCode workers get the same access: OpenCode through its shell and file tools, Pi through file tools limited to the folder.
+
+## Why
+
+Before this goal, all research lived behind the research service's tools. A worker could search the text of archived sources, but not its own claims, notes or hypotheses, and a new trial's brief gave only counts. Each trial started almost blind to what earlier trials had learned.
+
+## Done when
+
+- [ ] A research trial sees the folder, built from the harness's records, and can search all of it.
+- [ ] A worker's files persist to its lane's next trial and are visible to the other lanes.
+- [ ] Findings are recorded with their supporting claims, a summary and why they matter, and appear in the report.
+- [ ] A worker cannot change the folder's harness-built part, and a claim is verified only through the research service.
+- [ ] A finished research campaign exports the report and the folder.
+- [ ] Tests cover the folder's build, its permissions, persistence across trials and the export.
+
+## Decisions
+
+- 2026-10-19, owner: research workers write files and search all of the research so far; the output is the report plus all claims and findings, each finding with a summary and why it matters.
+- 2026-10-19: the harness stays the owner of research state and builds the folder from its records, so the settled decision on isolated workers holds: lanes share what they learn through the folder the harness builds, not through a live shared workspace. Claims and notes appear in the folder when they are recorded; a lane's own files appear to the other lanes when its trial ends.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the owner's direction.
+
+---
+
+Run with `/goal Complete docs/plan/goals/060-research-folder.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

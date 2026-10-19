@@ -51,6 +51,10 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [016](goals/016-small-fixes.goal) Small fixes before the release · `READY`
 - [017](goals/017-legacy-names.goal) Remove the legacy model names · `READY`
 
+### Research mode
+
+- [060](goals/060-research-folder.goal) A research folder agents can search and write · `READY`
+
 ### Rigs on RunPod
 
 - [018](goals/018-runpod-spike.goal) RunPod spike · `IN_PROGRESS`
