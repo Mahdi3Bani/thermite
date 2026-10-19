@@ -87,6 +87,10 @@ describe("a rig deployed on a machine", () => {
       `${secrets.controlToken}\n`,
     );
     assert.equal(statSync(dir).mode & 0o777, 0o700);
+    // The harness's controller (not the container's root) reads control's public key.
+    assert.equal(statSync(join(dir, "keys")).mode & 0o777, 0o755);
+    assert.equal(statSync(join(dir, "keys", "control-signing.pub")).mode & 0o777, 0o644);
+    assert.equal(statSync(join(dir, "secrets")).mode & 0o777, 0o700);
     assert.deepEqual(
       readdirSync(join(home, ".config/containers/systemd")).sort(),
       Object.keys(rigUnits(plan)).sort(),

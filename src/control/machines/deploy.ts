@@ -205,6 +205,9 @@ export function deployScript(p: RigPlan, secrets: RigSecrets): string {
     `mkdir -p ${q(`${dir}/secrets`)} ${q(`${dir}/keys`)} ${q(units)}`,
     // The directory keeps the files to its owner; the containers read them as their own users.
     `chmod 0700 ${q(dir)}`,
+    // Control's public key is no secret, and the harness's controller reads it as its own user
+    // (not the container's root): under umask 077 that user could not enter the keys folder.
+    `chmod 0755 ${q(`${dir}/keys`)}`,
     writeFile(q(`${dir}/secrets/control-rig-token`), secrets.controlToken, "0644"),
     writeFile(q(`${dir}/secrets/harness-supervisor-token`), secrets.harnessSupervisorToken, "0644"),
     writeFile(q(`${dir}/keys/control-signing.pub`), p.controlPublicKey, "0644"),
