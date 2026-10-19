@@ -1,40 +1,12 @@
 /**
  * The dashboard's only script, served from control itself (CSP script-src 'self'; nothing inline
- * runs). It refreshes pages in place and streams the live view. Live lines are built with DOM
- * text nodes only: rig data never becomes markup here either.
+ * runs). It streams the live view; pages never reload by themselves. Live lines are built with
+ * DOM text nodes only: rig data never becomes markup here either.
  */
 export const CLIENT_JS = `
 (() => {
   "use strict";
   const $ = (s, r = document) => r.querySelector(s);
-  const busy = () => {
-    const a = document.activeElement;
-    return (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) || document.querySelector("details.menu[open]");
-  };
-
-  // ------------------------------------------------ pages: refresh the content in place
-  const every = Number(document.body.dataset.refresh || "0");
-  if (every > 0) {
-    setInterval(async () => {
-      if (document.visibilityState !== "visible" || busy()) return;
-      try {
-        const res = await fetch(location.href, { credentials: "same-origin" });
-        if (!res.ok || res.redirected) return;
-        const doc = new DOMParser().parseFromString(await res.text(), "text/html");
-        // What the owner opened stays open: details with a data-k key keep their state.
-        const open = new Set([...document.querySelectorAll("details[data-k][open]")].map((d) => d.dataset.k));
-        for (const sel of ["#content", ".sidebar", ".statusbar"]) {
-          const now = $(sel), next = $(sel, doc);
-          if (!now || !next) continue;
-          const top = now.scrollTop;
-          now.replaceChildren(...next.childNodes);
-          now.scrollTop = top;
-        }
-        for (const d of document.querySelectorAll("details[data-k]")) if (open.has(d.dataset.k)) d.open = true;
-      } catch {}
-    }, every * 1000);
-  }
-
   // ------------------------------------------------ the live view
   const tr = $("#transcript");
   if (tr) {

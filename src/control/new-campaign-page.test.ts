@@ -191,7 +191,8 @@ describe("the new-campaign page", () => {
       await s.get("/ui/campaigns/matmul-speed?run=rig-a%2Fmatmul-speed-try-1")
     ).text();
     assert.match(waiting, /Starting rig-a\/matmul-speed-try-1/);
-    assert.match(waiting, /data-refresh="5"/);
+    assert.ok(!waiting.includes("data-refresh"), "pages never reload by themselves");
+    assert.match(waiting, /page from \d\d:\d\d:\d\d UTC<\/span><a href="" /);
     assert.match(waiting, /action="\/ui\/campaigns\/matmul-speed\/runs"/);
     const started = await s.post("/ui/campaigns/matmul-speed/runs", {
       csrf: s.csrf,

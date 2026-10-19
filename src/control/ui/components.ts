@@ -305,8 +305,6 @@ export interface Shell {
   now: number;
   /** A full-height content area without padding (the live view). */
   flush?: boolean | undefined;
-  /** Seconds between automatic refreshes of the content (0: none). */
-  refresh?: number | undefined;
 }
 
 export function shell(s: Shell, body: string): string {
@@ -341,7 +339,7 @@ export function shell(s: Shell, body: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(s.title)} · Thermite</title>
 <style>${STYLE}</style><script src="/ui/assets/app.js" defer></script></head>
-<body data-refresh="${s.refresh ?? 0}"><div class="app">
+<body><div class="app">
 <aside class="sidebar">
   <a class="brand" href="/ui"><span class="mark">Th</span>Thermite</a>
   <nav class="nav">
@@ -371,7 +369,7 @@ export function shell(s: Shell, body: string): string {
   <span class="spacer"></span>
   <span class="item">${running} running <span class="sub">runs</span></span>
   <span class="item">${jobs.leased} judging · ${jobs.queued} queued <span class="sub">judge</span></span>
-  <span class="item" id="live-state"><span class="dot ok pulse"></span><span class="sub">updated ${esc(new Date(s.now).toISOString().slice(11, 19))} UTC</span></span>
+  <span class="item" id="live-state"><span class="sub">page from ${esc(new Date(s.now).toISOString().slice(11, 19))} UTC</span><a href="" title="Load this page again with what control knows now">refresh</a></span>
 </footer></div></body></html>`;
 }
 

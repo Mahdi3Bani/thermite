@@ -155,7 +155,8 @@ import {
  * SameSite=Strict cookie. Sessions are kept in control's store (hashed), so a restart does not
  * sign the owner out; each use renews one, and a new admin token ends them all. Every form
  * carries a token derived from the session and the admin token (CSRF). The only
- * script is control's own (/ui/assets/app.js): it refreshes pages and streams the live view.
+ * script is control's own (/ui/assets/app.js): it streams the live view. Pages never reload by
+ * themselves: the status bar says when the page was made and has a refresh link.
  * The look follows Magnesium's design.
  */
 
@@ -372,7 +373,6 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
           rigs: vs,
           needs: needs(c, vs, now).filter((n) => n.kind !== "stale").length,
           now,
-          refresh: s.refresh ?? 15,
         },
         body,
       ),
@@ -1101,7 +1101,6 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           crumbs: [{ href: "/ui/campaigns", text: "Campaigns" }],
           summary: esc(title),
           active: "campaigns",
-          refresh: waiting ? 5 : undefined,
         },
         `${note}${
           waiting
@@ -1286,7 +1285,6 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           crumbs: [{ href: "/ui/rigs", text: "Rigs" }],
           summary: `on ${esc(onCluster.cluster)} · ${esc(onCluster.status)}`,
           active: "rigs",
-          refresh: onCluster.status === "deploying" || onCluster.status === "starting" ? 5 : 15,
         },
         `<p class="run-said">Control is setting ${esc(onCluster.rig)} up on ${esc(onCluster.cluster)}. Its page fills in once the rig reports for the first time.</p>${flash}${clusterPlacedBlock(onCluster, csrf(c))}`,
         vs,
@@ -1300,7 +1298,6 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           crumbs: [{ href: "/ui/rigs", text: "Rigs" }],
           summary: `on ${esc(placed.machine)} · ${esc(placed.status)}`,
           active: "rigs",
-          refresh: placed.status === "deploying" || placed.status === "starting" ? 5 : 15,
         },
         `<p class="run-said">Control is setting ${esc(placed.rig)} up on ${esc(placed.machine)}. Its page fills in once the rig reports for the first time.</p>${flash}${placedBlock(placed, csrf(c))}`,
         vs,
@@ -1585,7 +1582,6 @@ ${placed ? placedBlock(placed, t) : ""}${onCluster ? clusterPlacedBlock(onCluste
         title: "Live",
         summary: "what each rig's agents and judge are doing now",
         active: "live",
-        refresh: 10,
       },
       rows
         ? `<div class="stack" style="max-width:720px">${rows}</div>`
@@ -1710,7 +1706,6 @@ ${placed ? placedBlock(placed, t) : ""}${onCluster ? clusterPlacedBlock(onCluste
             : `${sources.length} sessions`,
         active: "live",
         flush: true,
-        refresh: 0,
       },
       `<aside class="sessions"><div class="section" style="margin-top:4px">Sessions</div>${list}</aside>
 <div class="transcript-wrap">${head}<div class="transcript" id="transcript" data-rig="${esc(u.id)}" data-source="${esc(source)}" data-after="${after}">${out.join("") || `<div class="empty">No live lines yet. They appear here as the rig's agents and judge work.</div>`}</div>${composer}</div>`,
@@ -3104,7 +3099,11 @@ ${
         : "";
     return page(
       c,
-      { title: "Add a rig", crumbs: [{ href: "/ui/rigs", text: "Rigs" }], active: "rigs" },
+      {
+        title: "Add a rig",
+        crumbs: [{ href: "/ui/rigs", text: "Rigs" }],
+        active: "rigs",
+      },
       `<p class="run-said">Choose where the rig runs. On a machine or cluster control knows, control connects with the credentials you gave it once, writes the rig's files and services, starts it and looks after it: stop, start, restart, remove. Where control can't connect, you run one command it gives you.</p>
 ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not created.</b> ${esc(error)}</div>` : ""}${blocked ? `<div class="card warn" style="margin-bottom:16px">${esc(blocked)}</div>` : ""}
 <form id="add-rig" method="post" action="/ui/rigs/add" autocomplete="off"><input type="hidden" name="csrf" value="${t}">
@@ -3363,7 +3362,6 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         summary: `you run it yourself · ${esc(JOIN_STATUS[r.status] ?? r.status)}`,
         active: "rigs",
         // A page showing the join command never reloads itself: the command is shown once.
-        refresh: token ? 3600 : r.status === "joining" ? 5 : 30,
       },
       `<p class="run-said">${
         r.status === "retired"
