@@ -488,6 +488,7 @@ pre.report { white-space: pre-wrap; font-family: var(--font-mono); font-size: 12
 .cards3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 @media (max-width: 900px) { .g2, .g3, .cards3 { grid-template-columns: 1fr; } }
 .ch { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 8px; font-size: 13px; line-height: 1.45; cursor: pointer; background: var(--card); }
+.ch > :only-child { grid-column: 1 / -1; }
 .ch:hover { border-color: color-mix(in srgb, var(--foreground) 30%, transparent); }
 .ch.on { border-color: var(--primary); background: var(--primary-surface); }
 .ch.dis { opacity: .5; cursor: not-allowed; }
