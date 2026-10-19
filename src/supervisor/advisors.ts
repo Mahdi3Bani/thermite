@@ -281,7 +281,7 @@ export async function runAdvisor<S extends z.ZodType>(input: {
   const apiKey =
     rt.api_key ?? (rt.api_key_file ? readFileSync(rt.api_key_file, "utf8").trim() : "");
   if (!apiKey) return { ...result, error: `advisor ${rt.name} has no key` };
-  const { models, model } = buildModel({
+  const { models, model, thinkingLevel } = buildModel({
     api: rt.api === "anthropic" || rt.api === "chatgpt" ? rt.api : undefined,
     baseUrl: rt.base_url.replace(/\/$/, ""),
     model: rt.model,
@@ -291,7 +291,8 @@ export async function runAdvisor<S extends z.ZodType>(input: {
     reasoning: rt.reasoning,
   });
   const agent = new Agent({
-    initialState: { systemPrompt: input.system, model, tools },
+    // The effort chosen for this advisor; without it the agent would never think.
+    initialState: { systemPrompt: input.system, model, thinkingLevel, tools },
     streamFn: models.streamSimple.bind(models),
     toolExecution: "sequential",
   });

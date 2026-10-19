@@ -5,12 +5,14 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import { Type } from "@earendil-works/pi-ai";
+import { z } from "zod";
 import { signEnvelope } from "../core/commands.ts";
 import { createHarnessApi } from "../harness/api.ts";
 import { startFakeModel } from "../testing/fake-model.ts";
 import { FAST_KERNEL, makeJudgeEnv } from "../testing/judge-env.ts";
 import { adviseOnce, emptyAdviseState } from "./advise.ts";
-import { AdvisorsConfig, lastJsonObject } from "./advisors.ts";
+import { AdvisorsConfig, lastJsonObject, runAdvisor } from "./advisors.ts";
 import { stageCommand } from "./staging.ts";
 
 const tokens = { supervisor: "sup-token", proposer: "prop-token" };
@@ -206,6 +208,42 @@ describe("advisors", () => {
     assert.equal(state.stats.reviews, 1, JSON.stringify(state.stats));
     const r = env.ledger.db.prepare("select panel_result, owner_decision from review").get();
     assert.deepEqual({ ...r }, { panel_result: "review_passed", owner_decision: null });
+  });
+
+  test("an advisor on an API key thinks at the effort chosen for it, and only then", async () => {
+    const sent: (string | undefined)[] = [];
+    const fake = await startFakeModel((req) => {
+      sent.push(req.reasoning_effort);
+      return { toolCalls: [{ name: "answer", args: { pass: true, reasons: "ok" } }] };
+    });
+    try {
+      for (const reasoning of [undefined, "low", "high"] as const) {
+        const r = await runAdvisor({
+          runtime: {
+            name: "panel-1",
+            runtime: "openai",
+            base_url: fake.url,
+            model: "m",
+            api_key: "k",
+            ...(reasoning ? { reasoning } : {}),
+            context_window: 200_000,
+            max_tokens: 8192,
+            max_turns: 24,
+            timeout_s: 60,
+            usd_per_mtok_in: 0,
+            usd_per_mtok_out: 0,
+          },
+          system: "Grade it.",
+          prompt: "The change.",
+          schema: z.strictObject({ pass: z.boolean(), reasons: z.string() }),
+          answerSchema: Type.Object({ pass: Type.Boolean(), reasons: Type.String() }),
+        });
+        assert.ok(r.output, r.error);
+      }
+    } finally {
+      await fake.close();
+    }
+    assert.deepEqual(sent, [undefined, "low", "high"]);
   });
 
   test("a CLI agent's answer is found after its logs", () => {
