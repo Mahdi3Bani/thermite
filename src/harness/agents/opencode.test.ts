@@ -12,8 +12,10 @@ import {
   opencodeConfig,
   opencodeModelId,
   readOpencodeEvents,
+  runOpencodeResearchTrial,
   runOpencodeTrial,
 } from "./opencode.ts";
+import { RESEARCH_SYSTEM } from "./research-tools.ts";
 import type { TrialSpec } from "./worker.ts";
 
 // OpenCode v2's JSON output, as the spike recorded it (trimmed).
@@ -276,5 +278,163 @@ describe("the OpenCode harness", () => {
     assert.ok(opencodeRuns[1]?.argv.includes("ses_1"));
     assert.match(String(opencodeRuns[2]?.argv.at(-1)), /owner: try the other loop/);
     assert.equal(r.stopped, "no_submission");
+  });
+
+  test("a research trial runs in its own directory as the lane, with the research commands, and ends when the agent stops", async () => {
+    const area = mkdtempSync(join(tmpdir(), "thermite-oc-"));
+    const workdir = join(area, "work");
+    mkdirSync(workdir);
+    const runs: RunRequest[] = [];
+    const runner = {
+      run: async (req: RunRequest): Promise<RunOutcome> => {
+        runs.push(req);
+        if (req.argv.includes("run"))
+          appendFileSync(String(req.env?.THERMITE_OPENCODE_EVENTS), `${EVENTS.join("\n")}\n`);
+        return { exitCode: 0, signal: null, killedFor: null, stdout: "", stderr: "" } as RunOutcome;
+      },
+      killRole: async () => 0,
+    } as unknown as Runner;
+    const progress: number[] = [];
+    const r = await runOpencodeResearchTrial(
+      {
+        trialId: "t-r1",
+        token: "tok",
+        run: "r-1",
+        lane: "lane-1",
+        brief: "# Research assignment\nTopic: 2-bit decoding",
+        wallMs: 60_000,
+      },
+      {
+        runner,
+        model: { ...model, api: "opencode", model: "glm-5.3-flash-free" },
+        apiUrl: "http://127.0.0.1:8700",
+        area,
+        workdir,
+        live: () => undefined,
+        progress: (p) => progress.push(p.turns),
+        pollMs: 5,
+      },
+    );
+    assert.equal(r.stopped, "finished");
+    assert.equal(r.error, undefined);
+    assert.equal(r.turns, 2);
+    assert.ok(progress.includes(2));
+    assert.ok(runs.every((x) => x.role === "lane-1"));
+    const oc = runs.filter((x) => x.argv.includes("run"));
+    assert.equal(oc.length, 1, "not continued: the agent stopped and no message waits");
+    const run = oc[0] as RunRequest;
+    assert.equal(run.cwd, workdir);
+    assert.equal(run.env?.HOME, join(area, "opencode-home"));
+    assert.equal(run.env?.THERMITE_TRIAL_AUTH, "trial.tok");
+    assert.equal(run.env?.THERMITE_WORKSPACE, undefined, "nothing to submit");
+    assert.ok(run.argv.includes("opencode/glm-5.3-flash-free"));
+    const prompt = String(run.argv.at(-1));
+    assert.ok(prompt.startsWith(RESEARCH_SYSTEM));
+    assert.match(prompt, /thermite-trial research add_claim - <<'EOF'/);
+    assert.match(prompt, /only archived sources can verify a claim/);
+    assert.match(prompt, /Topic: 2-bit decoding/);
+    assert.match(prompt, /This trial lasts 1 minutes/);
+  });
+
+  test("a research trial: a failure after some work and the owner's messages continue it; a failure before any work, or the turn cap, ends it", async () => {
+    const failed = JSON.stringify({ type: "error", error: { message: "429 rate limited" } });
+    const tool = JSON.stringify({
+      type: "tool_use",
+      sessionID: "ses_9",
+      part: { tool: "shell", state: { status: "completed", input: {}, output: "ok" } },
+    });
+    const step = JSON.stringify({
+      type: "step_finish",
+      sessionID: "ses_9",
+      part: { tokens: { input: 1, output: 1 } },
+    });
+    const trial = async (
+      outputs: string[][],
+      o: { messages?: string[]; maxTurns?: number; hang?: boolean } = {},
+    ) => {
+      const area = mkdtempSync(join(tmpdir(), "thermite-oc-"));
+      const runs: RunRequest[] = [];
+      let killed = 0;
+      let release: () => void = () => undefined;
+      const runner = {
+        run: async (req: RunRequest): Promise<RunOutcome> => {
+          runs.push(req);
+          if (req.argv.includes("run")) {
+            const lines = outputs[runs.filter((x) => x.argv.includes("run")).length - 1] ?? [];
+            appendFileSync(String(req.env?.THERMITE_OPENCODE_EVENTS), `${lines.join("\n")}\n`);
+            if (o.hang) await new Promise<void>((r) => (release = r));
+          }
+          return {
+            exitCode: 0,
+            signal: null,
+            killedFor: null,
+            stdout: "",
+            stderr: "",
+          } as RunOutcome;
+        },
+        killRole: async () => {
+          killed++;
+          release();
+          return 1;
+        },
+      } as unknown as Runner;
+      let messages = o.messages ?? [];
+      const r = await runOpencodeResearchTrial(
+        {
+          trialId: "t",
+          run: "r",
+          lane: "lane-2",
+          brief: "b",
+          wallMs: 60_000,
+          maxTurns: o.maxTurns,
+        },
+        {
+          runner,
+          model,
+          apiUrl: "http://h",
+          area,
+          workdir: area,
+          live: () => undefined,
+          progress: () => undefined,
+          messages: () => {
+            const m = messages;
+            messages = [];
+            return m;
+          },
+          pollMs: 5,
+        },
+      );
+      return {
+        r,
+        prompts: runs.filter((x) => x.argv.includes("run")).map((x) => String(x.argv.at(-1))),
+        killed,
+      };
+    };
+    const midway = await trial([
+      [tool, step, failed],
+      [tool, step],
+    ]);
+    assert.equal(midway.r.stopped, "finished");
+    assert.equal(midway.prompts.length, 2);
+    assert.match(
+      String(midway.prompts[1]),
+      /^The model call failed \(429 rate limited\)\. Continue/,
+    );
+    const early = await trial([[failed]]);
+    assert.equal(early.r.stopped, "error");
+    assert.equal(early.r.error, "429 rate limited");
+    assert.equal(early.prompts.length, 1);
+    const owner = await trial(
+      [
+        [tool, step],
+        [tool, step],
+      ],
+      { messages: ["look at Pascal too"] },
+    );
+    assert.equal(owner.prompts.length, 2);
+    assert.match(String(owner.prompts[1]), /owner: look at Pascal too/);
+    const capped = await trial([[tool, step, step, step]], { maxTurns: 2, hang: true });
+    assert.equal(capped.r.stopped, "turns");
+    assert.ok(capped.killed >= 1, "OpenCode stopped at the cap");
   });
 });

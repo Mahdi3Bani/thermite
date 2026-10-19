@@ -944,6 +944,7 @@ export class Scheduler {
               ? (laneLimits(contract).trialMinutes as number) * 60_000
               : this.o.trialWallMs,
             maxTurns: this.o.maxTurns,
+            limits: laneLimits(contract),
           },
           abort.signal,
         );

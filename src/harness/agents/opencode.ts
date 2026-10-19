@@ -7,19 +7,21 @@ import type { Role, Runner, RunOutcome } from "../broker/runner.ts";
 import type { TrialProgress } from "./live-session.ts";
 import type { ModelConfig } from "./model.ts";
 import type { RigCheckReport } from "./model-check.ts";
+import { RESEARCH_SYSTEM, researchCommands } from "./research-tools.ts";
+import type { ResearchTrialSpec } from "./research-worker.ts";
 import type { SubmitOutcome, TrialResult, TrialSpec } from "./worker.ts";
 
 /**
- * Trials, model checks and planner calls in OpenCode v2 instead of Pi. OpenCode runs headless with
- * its permissions approved (`--auto`) as the lane's own user, in the lane's workspace, under the
- * same memory, disk and time limits as the lane's commands: it has exactly the lane's access, and
- * none of the judge's. Its permission rules are not a boundary (its Code Mode reaches the network
- * whatever they say); the user it runs as is.
+ * Trials (hill-climb, goal and research), model checks and planner calls in OpenCode v2 instead
+ * of Pi. OpenCode runs headless with its permissions approved (`--auto`) as the lane's own user,
+ * in the lane's workspace, under the same memory, disk and time limits as the lane's commands: it
+ * has exactly the lane's access, and none of the judge's. Its permission rules are not a boundary
+ * (its Code Mode reaches the network whatever they say); the user it runs as is.
  *
- * Thermite's own tools are the `thermite-trial` command (submit, dev-run, status), which calls the
- * harness API with the trial's token. A provider's key never reaches the lane: OpenCode calls the
- * provider through the harness API's model proxy, which checks the trial's token and adds the key.
- * OpenCode's own models (its free ones) need no key.
+ * Thermite's own tools are the `thermite-trial` command (submit, dev-run, status, and a research
+ * trial's tools), which calls the harness API with the trial's token. A provider's key never
+ * reaches the lane: OpenCode calls the provider through the harness API's model proxy, which
+ * checks the trial's token and adds the key. OpenCode's own models (its free ones) need no key.
  */
 
 export const OPENCODE_BIN = process.env.THERMITE_OPENCODE_BIN ?? "opencode";
@@ -256,6 +258,66 @@ function runEnv(home: string, apiUrl: string, auth: string, extra: Record<string
   };
 }
 
+/** OpenCode's home, configuration and events file in a lane's area, made as the lane's user. */
+async function setUpInArea(
+  runner: Runner,
+  role: Role,
+  area: string,
+  model: ModelConfig,
+  proxyRoot: string,
+): Promise<string | undefined> {
+  const setup = await runner.run({
+    role,
+    // Relative to its own area: the lane may not walk the harness's directories by name.
+    argv: [
+      "sh",
+      "-c",
+      "mkdir -p opencode-home/.config/opencode opencode-tmp && cat > opencode-home/.config/opencode/opencode.jsonc && : > opencode-events.jsonl && chmod 0644 opencode-events.jsonl",
+    ],
+    cwd: area,
+    timeoutMs: 30_000,
+    stdin: JSON.stringify(opencodeConfig(model, proxyRoot)),
+    captureBytes: 4096,
+  });
+  return setup.exitCode === 0
+    ? undefined
+    : `could not set OpenCode up: ${setup.stderr.slice(-300)}`;
+}
+
+/** One `opencode run` as the lane, under its limits; its output goes to the events file. */
+function startInArea(
+  runner: Runner,
+  role: Role,
+  area: string,
+  cwd: string,
+  env: Record<string, string>,
+  args: string[],
+  o: { remaining: number; limits: LaneLimitValues },
+): Promise<RunOutcome> {
+  return runner.run({
+    role,
+    // Its output goes to a file the harness follows while it runs.
+    argv: [
+      "sh",
+      "-c",
+      'exec "$@" >> "$THERMITE_OPENCODE_EVENTS" 2>&1',
+      "sh",
+      // By its full path, so the broker knows OpenCode's processes from its commands'.
+      opencodeExe() ?? OPENCODE_BIN,
+      ...args,
+    ],
+    cwd,
+    env,
+    timeoutMs: o.remaining,
+    rssLimitBytes: o.limits.runRssMib * 1024 * 1024,
+    // Over the memory limit, OpenCode's commands are killed and OpenCode carries on, as a
+    // lane command under Pi would be; the trial ends only if OpenCode alone is over.
+    ...(opencodeExe() ? { spareExe: opencodeExe() } : {}),
+    disk: { path: area, limitBytes: o.limits.workspaceMib * 1024 * 1024 },
+    captureBytes: 4096,
+  });
+}
+
 /**
  * One worker trial in OpenCode: its home and configuration in the lane's own area, then
  * `opencode run` in the workspace until the agent submits or the trial's time ends. A run that
@@ -288,27 +350,8 @@ export async function runOpencodeTrial(
     TMPDIR: tmp,
     THERMITE_OPENCODE_EVENTS: events,
   };
-  // Its home and configuration, made as the lane's user in the lane's own area.
-  const setup = await deps.runner.run({
-    role: spec.lane,
-    // Relative to its own area: the lane may not walk the harness's directories by name.
-    argv: [
-      "sh",
-      "-c",
-      "mkdir -p opencode-home/.config/opencode opencode-tmp && cat > opencode-home/.config/opencode/opencode.jsonc && : > opencode-events.jsonl && chmod 0644 opencode-events.jsonl",
-    ],
-    cwd: area,
-    timeoutMs: 30_000,
-    stdin: JSON.stringify(opencodeConfig(deps.model, proxyRoot)),
-    captureBytes: 4096,
-  });
-  if (setup.exitCode !== 0) {
-    return {
-      ...result,
-      stopped: "error",
-      error: `could not set OpenCode up: ${setup.stderr.slice(-300)}`,
-    };
-  }
+  const setupError = await setUpInArea(deps.runner, spec.lane, area, deps.model, proxyRoot);
+  if (setupError) return { ...result, stopped: "error", error: setupError };
   const started = Date.now();
   const deadline = started + spec.wallMs;
   const minutes = Math.round(spec.wallMs / 60_000);
@@ -345,27 +388,9 @@ export async function runOpencodeTrial(
       ...(tally.session ? ["--session", tally.session] : ["--title", `trial ${spec.trialId}`]),
       message,
     ];
-    const running = deps.runner.run({
-      role: spec.lane,
-      // Its output goes to a file the harness follows while it runs.
-      argv: [
-        "sh",
-        "-c",
-        'exec "$@" >> "$THERMITE_OPENCODE_EVENTS" 2>&1',
-        "sh",
-        // By its full path, so the broker knows OpenCode's processes from its commands'.
-        opencodeExe() ?? OPENCODE_BIN,
-        ...args,
-      ],
-      cwd: spec.workspace,
-      env,
-      timeoutMs: remaining,
-      rssLimitBytes: limits.runRssMib * 1024 * 1024,
-      // Over the memory limit, OpenCode's commands are killed and OpenCode carries on, as a
-      // lane command under Pi would be; the trial ends only if OpenCode alone is over.
-      ...(opencodeExe() ? { spareExe: opencodeExe() } : {}),
-      disk: { path: area, limitBytes: limits.workspaceMib * 1024 * 1024 },
-      captureBytes: 4096,
+    const running = startInArea(deps.runner, spec.lane, area, spec.workspace, env, args, {
+      remaining,
+      limits,
     });
     let done = false;
     void running.finally(() => {
@@ -430,6 +455,169 @@ export async function runOpencodeTrial(
   } else if (result.stopped === "no_submission" && tally.errors.length) {
     result.error = tally.errors.at(-1);
   }
+  result.turns = tally.turns;
+  result.toolCalls = tally.toolCalls;
+  result.tokensIn = tally.tokensIn;
+  result.tokensOut = tally.tokensOut;
+  return result;
+}
+
+/** What a research worker in OpenCode is told about its tools, on top of the research brief. */
+export function researchPrompt(limits: LaneLimitValues, brief: string, minutes: number): string {
+  return `${RESEARCH_SYSTEM}
+
+Your research tools are commands you run with your shell tool:
+
+${researchCommands()}
+
+Only pages fetched with "thermite-trial research fetch" are archived, and only archived sources can verify a claim: a page you read another way (your own web search, curl, a fetch from code) verifies nothing until you fetch it with that command. Your shell and files work in this trial's own directory, which is removed when the trial ends: keep what matters in notes, claims and report sections.
+
+${limitsNote(limits)}
+
+${brief}
+
+This trial lasts ${minutes} minutes.`;
+}
+
+export interface OpencodeResearchDeps extends Omit<OpencodeTrialDeps, "submitted"> {
+  /** The trial's own area in the lane (owned by its user), and the directory it works in. */
+  area: string;
+  workdir: string;
+}
+
+/**
+ * One research trial in OpenCode: the same tools as a hill-climb trial (its shell, files and web
+ * search) plus the research tools as `thermite-trial research` commands, which reach the
+ * harness's research service with the trial's token. As in Pi, the trial ends when the agent
+ * stops, its time or turns run out, or it is stopped; a run cut short by a failure after some
+ * work, or with the owner's messages waiting, is continued in its session, twice at most.
+ */
+export async function runOpencodeResearchTrial(
+  spec: ResearchTrialSpec,
+  deps: OpencodeResearchDeps,
+): Promise<TrialResult> {
+  const role = spec.lane as Role;
+  const area = deps.area;
+  const events = join(area, "opencode-events.jsonl");
+  const tally = newTally();
+  const result: TrialResult = {
+    stopped: "finished",
+    turns: 0,
+    toolCalls: 0,
+    tokensIn: 0,
+    tokensOut: 0,
+  };
+  const limits = spec.limits ?? laneLimits({ lanes: { count: 1, trials_per_epoch: 1 } });
+  const auth = `trial.${spec.token ?? ""}`;
+  const proxyRoot = `${deps.apiUrl}/v1/model-proxy`;
+  const env = {
+    ...runEnv(join(area, "opencode-home"), deps.apiUrl, auth, deps.env ?? {}),
+    TMPDIR: join(area, "opencode-tmp"),
+    THERMITE_OPENCODE_EVENTS: events,
+  };
+  const setupError = await setUpInArea(deps.runner, role, area, deps.model, proxyRoot);
+  if (setupError) return { ...result, stopped: "error", error: setupError };
+  const deadline = Date.now() + spec.wallMs;
+  const minutes = Math.round(spec.wallMs / 60_000);
+  let message = researchPrompt(limits, spec.brief, minutes);
+  let offset = 0;
+  const pump = () => {
+    const r = readNew(events, offset);
+    offset = r.next;
+    const live = readOpencodeEvents(r.lines, tally);
+    if (live.length) deps.live(live);
+    if (r.lines.length)
+      deps.progress({
+        turns: tally.turns,
+        tool_calls: tally.toolCalls,
+        tokens_in: tally.tokensIn,
+        tokens_out: tally.tokensOut,
+      });
+  };
+  const capped = () => spec.maxTurns !== undefined && tally.turns >= spec.maxTurns;
+  for (let again = 0; ; again++) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      result.stopped = "wall";
+      break;
+    }
+    const errorsBefore = tally.errors.length;
+    const callsBefore = tally.toolCalls;
+    const running = startInArea(
+      deps.runner,
+      role,
+      area,
+      deps.workdir,
+      env,
+      [
+        "run",
+        "--standalone",
+        "--auto",
+        "--format",
+        "json",
+        "--model",
+        opencodeModelId(deps.model),
+        ...(tally.session ? ["--session", tally.session] : ["--title", `trial ${spec.trialId}`]),
+        message,
+      ],
+      { remaining, limits },
+    );
+    let done = false;
+    void running.finally(() => {
+      done = true;
+    });
+    while (!done) {
+      await new Promise((r) => setTimeout(r, deps.pollMs ?? 1000));
+      pump();
+      // A cap on the trial's turns (none unless configured) or a stop ends OpenCode at once.
+      if (deps.signal?.aborted || capped()) {
+        await deps.runner.killRole(role).catch(() => 0);
+        break;
+      }
+    }
+    const outcome = await running;
+    pump();
+    if (deps.signal?.aborted) {
+      result.stopped = "interrupted";
+      break;
+    }
+    if (capped()) {
+      result.stopped = "turns";
+      break;
+    }
+    const breach = breachError(outcome, limits);
+    if (breach) {
+      result.stopped = "error";
+      result.error = breach;
+      break;
+    }
+    if (outcome.killedFor === "timeout" || Date.now() >= deadline) {
+      result.stopped = "wall";
+      break;
+    }
+    const failed = tally.errors.length > errorsBefore;
+    // A run that failed before any work (its model unreachable, say) ends the trial; the
+    // scheduler's backoff decides when the lane tries again.
+    if (failed && tally.toolCalls === callsBefore) {
+      result.stopped = "error";
+      result.error = tally.errors.at(-1);
+      break;
+    }
+    if (outcome.exitCode !== 0 && !tally.session) {
+      result.stopped = "error";
+      result.error = `OpenCode exited ${outcome.exitCode ?? outcome.signal}: ${tally.notes.at(-1) ?? "no output"}`;
+      break;
+    }
+    const owner = deps.messages?.() ?? [];
+    if (again >= 2 || (!failed && !owner.length)) break;
+    message = [
+      ...(failed
+        ? [`The model call failed (${tally.errors.at(-1)}). Continue where you left off.`]
+        : ["Continue your research."]),
+      ...owner.map((m) => `A message from the campaign's owner: ${m}`),
+    ].join("\n\n");
+  }
+  if (result.stopped === "wall") result.error = `the trial reached its ${minutes}-minute limit`;
   result.turns = tally.turns;
   result.toolCalls = tally.toolCalls;
   result.tokensIn = tally.tokensIn;

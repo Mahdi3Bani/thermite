@@ -24,10 +24,15 @@ import { DevRuns } from "./agents/devrun.ts";
 import { modelConfigFromEnv } from "./agents/model.ts";
 import { checkModel } from "./agents/model-check.ts";
 import { ModelSource } from "./agents/model-source.ts";
-import { opencodeModelCheck, opencodeOnce, runOpencodeTrial } from "./agents/opencode.ts";
+import {
+  opencodeModelCheck,
+  opencodeOnce,
+  runOpencodeResearchTrial,
+  runOpencodeTrial,
+} from "./agents/opencode.ts";
 import { Scheduler } from "./agents/scheduler.ts";
 import { spawnTrial } from "./agents/spawn.ts";
-import { laneCacheEnv } from "./agents/workspace.ts";
+import { laneCacheEnv, prepareResearchArea } from "./agents/workspace.ts";
 import { createHarnessApi } from "./api.ts";
 import { BrokerClient } from "./broker/client.ts";
 import {
@@ -38,7 +43,7 @@ import {
   readLayout,
   runRole,
 } from "./broker/devices.ts";
-import { LocalRunner, type Runner } from "./broker/runner.ts";
+import { LocalRunner, type Role, type Runner } from "./broker/runner.ts";
 import { collectHardware } from "./hardware.ts";
 import { Judge, type PromotionPolicy, serial } from "./judge/judge.ts";
 import { Ledger } from "./ledger.ts";
@@ -531,16 +536,18 @@ async function main(): Promise<void> {
       return answer;
     },
     research,
-    // Research workers run in Pi, which may use neither a Claude subscription nor OpenCode's own
-    // (free) models: those work only inside Claude Code and OpenCode. Say so, in words.
+    // Research workers run in the harness the rig's route names: Pi (a worker process with the
+    // research tools only) or OpenCode (its own tools plus `thermite-trial research`). A Claude
+    // subscription runs only in Claude Code, and OpenCode's own (free) models only in OpenCode:
+    // say so, in words.
     runResearchTrial: async (spec, signal) => {
       const m = model();
       const cannot = !m
         ? "this rig has no model for its agents: give it one on its Edit rig page"
         : m.api === "claude"
-          ? "research workers run in Pi, and a Claude subscription runs only in Claude Code: give this rig another model for research"
-          : m.api === "opencode"
-            ? `research workers run in Pi, and ${m.model} is one of OpenCode's own models, which work only inside OpenCode: give this rig a model Pi can use for research`
+          ? "research workers run in Pi or OpenCode, and a Claude subscription runs only in Claude Code: give this rig another model for research"
+          : m.api === "opencode" && m.harness !== "opencode"
+            ? `${m.model} is one of OpenCode's own models, which work only inside OpenCode: set this rig's agents' harness to OpenCode on its Edit rig page`
             : undefined;
       if (cannot)
         return {
@@ -551,7 +558,38 @@ async function main(): Promise<void> {
           tokensOut: 0,
           error: cannot,
         };
-      return spawnTrial({ kind: "research", spec }, runner, paths.scratchDir, port, signal, m);
+      if (m?.harness !== "opencode")
+        return spawnTrial({ kind: "research", spec }, runner, paths.scratchDir, port, signal, m);
+      const lane = spec.lane as Role;
+      const area = await prepareResearchArea({ runner, scratchDir: paths.scratchDir, lane });
+      try {
+        return await runOpencodeResearchTrial(spec, {
+          runner,
+          model: m,
+          apiUrl,
+          area: area.dir,
+          workdir: area.workdir,
+          live: (entries) => {
+            for (const e of entries)
+              service.live.append({
+                source: `trial:${spec.trialId}`,
+                kind: e.kind,
+                text: e.text,
+                lane: spec.lane,
+                run: spec.run,
+              });
+          },
+          progress: (p) => service.trialProgress.set(spec.trialId, p),
+          messages: () =>
+            service.takeMessages({ id: spec.trialId, run: spec.run, lane: spec.lane }),
+          env: laneCacheEnv(paths.scratchDir, spec.lane),
+          signal,
+        });
+      } finally {
+        // What the agent started from its shell ends with the trial, and so does its directory.
+        await runner.killRole(lane).catch(() => 0);
+        await runner.remove(area.dir).catch(() => undefined);
+      }
     },
     devRuns,
     usdPerMTokIn: env.THERMITE_LLM_USD_PER_MTOK_IN
