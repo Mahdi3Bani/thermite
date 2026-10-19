@@ -1,0 +1,41 @@
+---
+id: "041"
+title: "Kits and rigs, explained"
+status: PROPOSED
+version: "0.4.0"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 041 · Kits and rigs, explained
+
+**Status:** `PROPOSED` · **Version:** [v0.4.0](../roadmap.md#v040)
+
+## What
+
+One docs page on what a kit is, what a rig is, and how they fit together.
+
+## Why
+
+New users mix them up.
+
+## Done when
+
+- [ ] The page is in the docs index, and the quick start links it.
+
+## Decisions
+
+- 2026-10-19, owner: From the owner's to-do list: kits compared with rigs.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the roadmap.
+
+---
+
+Run with `/goal Complete docs/plan/goals/041-kits-and-rigs-explained.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

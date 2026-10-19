@@ -1,0 +1,46 @@
+---
+id: "022"
+title: "Launch a rig on RunPod"
+status: READY
+version: "0.1.0"
+part: "Rigs on RunPod"
+depends_on: ["010", "019", "020", "021"]
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 022 · Launch a rig on RunPod
+
+**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Rigs on RunPod · **Depends on:** [010](010-published-images.goal), [019](019-rig-only-entry.goal), [020](020-runpod-rig-image.goal), [021](021-enrollment-codes.goal)
+
+## What
+
+A launch form: the GPU type and count (from RunPod's list, with prices), the cloud type, the data center, the storage and the image. The hourly price updates as you change them, and choices that cannot apply are hidden. With it, the rig's page shows the cost per hour and the spend so far. A spend limit and an idle stop apply only when the owner sets them. Launch also works over REST, MCP and the CLI.
+
+## Why
+
+Rigs on RunPod GPUs are the owner's priority feature: quantization, kernel and engine work on GPUs the owner does not own, paid by the hour.
+
+## Done when
+
+- [ ] A mockup was approved before the build.
+- [ ] The owner launches a rig from the dashboard. It enrolls and appears under Rigs with its price.
+- [ ] Spend is shown, and a set limit and a set idle stop both work.
+
+## Decisions
+
+- 2026-10-17, owner: The launch form hides choices that cannot apply, and the price follows every change. A RunPod rig's page is a normal rig page, with an event log.
+- 2026-10-15, owner: No default caps, so spend controls are fields that the owner fills in.
+
+## Open questions
+
+- Who may launch: the owner only (recommended), or also the operator token that agents use.
+- Cloud: Secure cloud on demand first (recommended); Community and spot later.
+
+## Progress
+
+- 2026-10-19: Goal written from the v0.1.0 release plan.
+
+---
+
+Run with `/goal Complete docs/plan/goals/022-runpod-launch.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

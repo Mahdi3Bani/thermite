@@ -1,0 +1,42 @@
+---
+id: "029"
+title: "Full API and MCP coverage"
+status: PROPOSED
+version: "0.2.0"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 029 · Full API and MCP coverage
+
+**Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020)
+
+## What
+
+Every dashboard action gets an API call and an MCP tool: Providers (add, check and delete, never echoing a secret), Add a rig and its lifecycle, Edit rig, New campaign, Try the kit, another run, reviews and endings. Owner-only actions stay owner-only. An OpenAPI file describes control and the harness. A test checks that every route is registered and that every dashboard action has a twin.
+
+## Why
+
+Other agents must be able to run Thermite through control without the dashboard.
+
+## Done when
+
+- [ ] The twin test passes.
+- [ ] An agent runs a campaign from start to end over MCP only.
+
+## Decisions
+
+- 2026-10-19, owner: Control needs full API and MCP coverage of its features, so other agents can work with it.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the roadmap.
+
+---
+
+Run with `/goal Complete docs/plan/goals/029-api-mcp-coverage.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

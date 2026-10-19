@@ -1,0 +1,45 @@
+---
+id: "010"
+title: "Published images and a release workflow"
+status: IN_PROGRESS
+version: "0.1.0"
+part: "Install from images"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 010 · Published images and a release workflow
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Install from images
+
+## What
+
+Each image carries its version and source commit, as OCI labels and in a variable the services report. On each tag, a workflow builds the control, harness and supervisor images for amd64 and arm64, and a CUDA harness image, and pushes them to GHCR. Claude Code stays out of published images.
+
+## Why
+
+Rigs on machines, on clusters and on RunPod pull images. Building from source takes about 20 minutes.
+
+## Done when
+
+- [ ] A tag publishes every image with its labels.
+- [ ] A fresh machine pulls them, and the CUDA harness passes the isolation self-test.
+- [ ] The images are public.
+
+## Decisions
+
+- 2026-10-18, owner: Claude Code is downloaded only when an image is built with that option. It is never in a published image.
+
+## Open questions
+
+- Making the GHCR packages public needs the owner's account.
+
+## Progress
+
+- 2026-10-19: Goal written from the v0.1.0 release plan.
+- 2026-10-19: A CUDA harness image is on GHCR, private for now. The release workflow is not written yet.
+
+---
+
+Run with `/goal Complete docs/plan/goals/010-published-images.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

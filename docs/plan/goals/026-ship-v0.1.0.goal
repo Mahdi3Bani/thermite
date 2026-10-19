@@ -1,0 +1,51 @@
+---
+id: "026"
+title: "Ship v0.1.0"
+status: READY
+version: "0.1.0"
+part: "The release"
+depends_on: ["002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022", "023", "024", "025"]
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 026 · Ship v0.1.0
+
+**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** The release · **Depends on:** [002](002-ci-and-repository-settings.goal), [003](003-advisors-no-default-cap.goal), [004](004-secret-scan.goal), [005](005-sample-project.goal), [006](006-docs-for-testers.goal), [007](007-known-limits.goal), [008](008-community-files.goal), [009](009-subscription-sign-in-tests.goal), [010](010-published-images.goal), [011](011-release-bundle.goal), [012](012-version-checks.goal), [013](013-thermite-doctor.goal), [014](014-quick-start-in-ci.goal), [015](015-log-paging.goal), [016](016-small-fixes.goal), [017](017-legacy-names.goal), [018](018-runpod-spike.goal), [019](019-rig-only-entry.goal), [020](020-runpod-rig-image.goal), [021](021-enrollment-codes.goal), [022](022-runpod-launch.goal), [023](023-runpod-lifecycle.goal), [024](024-runpod-models-and-results.goal), [025](025-runpod-tests-and-docs.goal)
+
+## What
+
+When every other v0.1.0 goal is verified:
+
+1. Test the quick start on clean machines, from the release bundle and from source: Linux with Docker, macOS with Docker Desktop, and macOS with Podman.
+2. Run the full checks and the acceptance suites the release touches, once.
+3. Open a pull request into `main`. Merge it when CI passes.
+4. Write the changelog.
+5. Tag `v0.1.0`. The tag publishes the images.
+6. Publish the GitHub Release, with notes on what works, the known limits and how to report a bug.
+
+## Why
+
+This is the first release that people outside the project can install and test.
+
+## Done when
+
+- [ ] `main` holds the release, and the tag and the images exist.
+- [ ] The release notes are published.
+
+## Decisions
+
+- 2026-10-19, owner: The first public release is v0.1.0. It holds the tester basics, published images and rigs on RunPod.
+- 2026-10-19, owner: The code moves to `main` only as the last step before the release.
+
+## Open questions
+
+- How the code reaches `main`: a pull request merged as a fast-forward (recommended), or a squash into one commit.
+
+## Progress
+
+- 2026-10-19: Goal written from the v0.1.0 release plan.
+
+---
+
+Run with `/goal Complete docs/plan/goals/026-ship-v0.1.0.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

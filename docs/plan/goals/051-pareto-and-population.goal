@@ -1,0 +1,41 @@
+---
+id: "051"
+title: "Pareto champions and population search"
+status: PROPOSED
+version: "later"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 051 · Pareto champions and population search
+
+**Status:** `PROPOSED` · **Version:** [later](../roadmap.md#later)
+
+## What
+
+Keep several best results that trade one metric for another, and let a campaign evolve a population in place of one champion.
+
+## Why
+
+Many real goals trade speed against memory, size or accuracy.
+
+## Done when
+
+- [ ] A campaign keeps a Pareto set, and the dashboard shows it.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the roadmap.
+
+---
+
+Run with `/goal Complete docs/plan/goals/051-pareto-and-population.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

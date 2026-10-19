@@ -1,0 +1,43 @@
+---
+id: "024"
+title: "Models into the pod, results out"
+status: READY
+version: "0.1.0"
+part: "Rigs on RunPod"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 024 · Models into the pod, results out
+
+**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Rigs on RunPod
+
+## What
+
+Model weights come by URL and checksum into the pod's volume or a network volume, with progress. An optional Hugging Face token for gated models is held by the supervisor. Champions and exports leave the pod before it ends.
+
+## Why
+
+Quantization and engine work need large models, and a pod's disk goes away when the pod ends.
+
+## Done when
+
+- [ ] A large model imports with progress and a checked hash.
+- [ ] A terminated pod's champion is on control or in the project's results repository.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+- Where results go: the project's results repository when it has one, otherwise an upload to control (recommended); or a results repository only.
+
+## Progress
+
+- 2026-10-19: Goal written from the v0.1.0 release plan.
+
+---
+
+Run with `/goal Complete docs/plan/goals/024-runpod-models-and-results.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

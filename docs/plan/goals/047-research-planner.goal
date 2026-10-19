@@ -1,0 +1,41 @@
+---
+id: "047"
+title: "A model planner for research mode"
+status: PROPOSED
+version: "0.5.0"
+depends_on: ["046"]
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 047 · A model planner for research mode
+
+**Status:** `PROPOSED` · **Version:** [v0.5.0](../roadmap.md#v050) · **Depends on:** [046](046-web-search.goal)
+
+## What
+
+A model plans which sources a research campaign reads next. Today research planning follows fixed rules.
+
+## Why
+
+Fixed rules cannot follow where a topic leads.
+
+## Done when
+
+- [ ] A research campaign's plan comes from the model, with the fixed rules as the fallback.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the roadmap.
+
+---
+
+Run with `/goal Complete docs/plan/goals/047-research-planner.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

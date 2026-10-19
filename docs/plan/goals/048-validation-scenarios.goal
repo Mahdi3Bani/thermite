@@ -1,0 +1,41 @@
+---
+id: "048"
+title: "Six validation scenarios"
+status: PROPOSED
+version: "0.5.0"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 048 · Six validation scenarios
+
+**Status:** `PROPOSED` · **Version:** [v0.5.0](../roadmap.md#v050)
+
+## What
+
+Six scenarios become acceptance tests: a worker that probes the hidden test; a gain that shows only behind an option; a worker note that calls the baseline broken while the metric improves; two lanes promoting against the same champion at once; a late judge bug that must invalidate earlier measurements; and a job still running when a turn ends.
+
+## Why
+
+Each one is a way that agent research goes wrong without anyone noticing.
+
+## Done when
+
+- [ ] Each scenario is in the acceptance suites and passes.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the roadmap.
+
+---
+
+Run with `/goal Complete docs/plan/goals/048-validation-scenarios.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

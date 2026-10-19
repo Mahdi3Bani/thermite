@@ -1,0 +1,41 @@
+---
+id: "053"
+title: "Planning across rigs"
+status: PROPOSED
+version: "later"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 053 · Planning across rigs
+
+**Status:** `PROPOSED` · **Version:** [later](../roadmap.md#later)
+
+## What
+
+One planner spreads a campaign's experiments over several rigs.
+
+## Why
+
+Today each run plans for its own rig only.
+
+## Done when
+
+- [ ] A campaign on two rigs gets distinct directions on each.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the roadmap.
+
+---
+
+Run with `/goal Complete docs/plan/goals/053-cross-rig-planning.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

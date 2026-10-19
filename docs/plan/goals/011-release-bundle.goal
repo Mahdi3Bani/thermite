@@ -1,0 +1,43 @@
+---
+id: "011"
+title: "A release bundle"
+status: READY
+version: "0.1.0"
+part: "Install from images"
+depends_on: ["010"]
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 011 · A release bundle
+
+**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Install from images · **Depends on:** [010](010-published-images.goal)
+
+## What
+
+Each release attaches one compose file that pins the images by digest, and a short readme. The quick start uses it: download, `compose up`, no build. Building from source stays for contributors.
+
+## Why
+
+A tester should start Thermite in minutes, without a build.
+
+## Done when
+
+- [ ] A tester starts control and a CPU rig from the bundle on Linux and on macOS with no build.
+- [ ] The quick start uses the bundle.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the v0.1.0 release plan.
+
+---
+
+Run with `/goal Complete docs/plan/goals/011-release-bundle.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

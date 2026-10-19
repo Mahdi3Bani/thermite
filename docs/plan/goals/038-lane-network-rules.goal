@@ -1,0 +1,41 @@
+---
+id: "038"
+title: "Keep lanes off the local network"
+status: PROPOSED
+version: "0.3.0"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 038 · Keep lanes off the local network
+
+**Status:** `PROPOSED` · **Version:** [v0.3.0](../roadmap.md#v030)
+
+## What
+
+Under compose, agents' code reaches the internet and the model, and not the local network. Landlock is on where the host allows it. The isolation self-test checks both.
+
+## Why
+
+This removes a known limit of v0.1.0.
+
+## Done when
+
+- [ ] A lane cannot reach a private address under compose, and the self-test fails when it can.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the roadmap.
+
+---
+
+Run with `/goal Complete docs/plan/goals/038-lane-network-rules.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

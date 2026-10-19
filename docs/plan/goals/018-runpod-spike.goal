@@ -1,0 +1,54 @@
+---
+id: "018"
+title: "RunPod spike"
+status: IN_PROGRESS
+version: "0.1.0"
+part: "Rigs on RunPod"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 018 · RunPod spike
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Rigs on RunPod
+
+## What
+
+Run the CUDA harness image on the cheapest RunPod GPU, and record:
+
+- whether the container runs as root with the default capabilities;
+- whether the broker can set device and temp-directory ownership;
+- whether the isolation self-test passes;
+- which RunPod variables are set, and whether a role can read them;
+- whether outbound HTTPS is open;
+- how noisy an A/A run is;
+- whether a stopped pod comes back with its GPU;
+- how long the image takes to pull and start.
+
+## Why
+
+The RunPod rig's design depends on these answers.
+
+## Done when
+
+- [ ] Each question has a recorded answer.
+- [ ] The design choices in goals 019 to 024 are confirmed or changed.
+
+## Decisions
+
+- 2026-10-18, owner: Go for the spike: about one hour of paid GPU time.
+- 2026-10-19, owner: Use the cheapest GPU. Test pods can be started from Providers, REST and MCP, so an agent can run a test later.
+
+## Open questions
+
+- Each paid launch needs the owner's OK.
+
+## Progress
+
+- 2026-10-19: Goal written from the v0.1.0 release plan.
+- 2026-10-19: Test pods start from Providers, REST and MCP. The spike run itself is next.
+
+---
+
+Run with `/goal Complete docs/plan/goals/018-runpod-spike.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

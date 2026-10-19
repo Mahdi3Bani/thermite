@@ -1,0 +1,42 @@
+---
+id: "020"
+title: "A one-container rig image"
+status: READY
+version: "0.1.0"
+part: "Rigs on RunPod"
+depends_on: ["018"]
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 020 · A one-container rig image
+
+**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Rigs on RunPod · **Depends on:** [018](018-runpod-spike.goal)
+
+## What
+
+RunPod runs one container per pod. A combined rig image runs the broker as root and starts the supervisor under its own user, beside the role users. It removes every setuid and setgid bit at build time, and it keeps RunPod's own variables from every role. The isolation self-test checks all of this.
+
+## Why
+
+The harness and the supervisor normally run in two containers. RunPod allows one.
+
+## Done when
+
+- [ ] The combined image passes the isolation self-test on RunPod and in CI.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+- Packaging: one combined image (recommended), or two pods.
+
+## Progress
+
+- 2026-10-19: Goal written from the v0.1.0 release plan.
+
+---
+
+Run with `/goal Complete docs/plan/goals/020-runpod-rig-image.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

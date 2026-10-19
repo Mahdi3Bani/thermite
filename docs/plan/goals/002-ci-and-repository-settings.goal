@@ -1,0 +1,45 @@
+---
+id: "002"
+title: "CI on every push, and repository settings"
+status: READY
+version: "0.1.0"
+part: "Tester basics"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 002 · CI on every push, and repository settings
+
+**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
+
+## What
+
+Run CI on every push to the development branch, not only on pull requests and `main`. Set up the GitHub repository for outside people: a ruleset on `main`, private vulnerability reporting, Dependabot, and correct topics.
+
+## Why
+
+The code moves to `main` only as the last step of the release. Without this change, CI would run for the first time at the very end.
+
+## Done when
+
+- [ ] CI runs on every push to the development branch and passes there.
+- [ ] `main` accepts changes only through pull requests that pass CI.
+- [ ] Private vulnerability reporting and Dependabot are on.
+- [ ] The repository's topics are spelled correctly.
+
+## Decisions
+
+- 2026-10-19, owner: Yes to the repository settings, as part of v0.1.0.
+
+## Open questions
+
+- The repository settings need the owner's GitHub account.
+
+## Progress
+
+- 2026-10-19: Goal written from the v0.1.0 release plan.
+
+---
+
+Run with `/goal Complete docs/plan/goals/002-ci-and-repository-settings.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

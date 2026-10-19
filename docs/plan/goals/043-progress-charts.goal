@@ -1,0 +1,42 @@
+---
+id: "043"
+title: "Progress charts"
+status: PROPOSED
+version: "0.4.0"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 043 · Progress charts
+
+**Status:** `PROPOSED` · **Version:** [v0.4.0](../roadmap.md#v040)
+
+## What
+
+A chart for each lane of the best result so far, with kept, reverted and crashed attempts as points, and a view of which attempt came from which.
+
+## Why
+
+The operator should see at a glance whether a campaign still makes progress.
+
+## Done when
+
+- [ ] A mockup was approved before the build.
+- [ ] The charts are on the run page.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the roadmap.
+
+---
+
+Run with `/goal Complete docs/plan/goals/043-progress-charts.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

@@ -1,0 +1,41 @@
+---
+id: "059"
+title: "Research results into a knowledge base"
+status: PROPOSED
+version: "later"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 059 · Research results into a knowledge base
+
+**Status:** `PROPOSED` · **Version:** [later](../roadmap.md#later)
+
+## What
+
+Research campaigns can export their corpus and findings to a knowledge base that the owner configures.
+
+## Why
+
+A research campaign's value is its corpus, and it should outlive the run.
+
+## Done when
+
+- [ ] A research campaign's corpus appears in a configured knowledge base.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the roadmap.
+
+---
+
+Run with `/goal Complete docs/plan/goals/059-knowledge-base-export.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

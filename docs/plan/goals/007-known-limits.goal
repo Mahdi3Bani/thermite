@@ -1,0 +1,53 @@
+---
+id: "007"
+title: "Known limits and the security model"
+status: READY
+version: "0.1.0"
+part: "Tester basics"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 007 · Known limits and the security model
+
+**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
+
+## What
+
+A docs page on what Thermite does not do yet, and what a tester must know before running it:
+
+- agents run code that a model wrote, on your machine;
+- under compose, that code can reach your local network;
+- there are no default caps, so set a stop time or a budget before you use a paid key;
+- RunPod GPUs are shared machines, so timing is noisier there;
+- research mode has no web search yet;
+- multi-day runs are not yet proven;
+- 0.x versions make no upgrade promise.
+
+With it, a short security model: what each part can reach and what it trusts.
+
+## Why
+
+Testers must know the risks before they start.
+
+## Done when
+
+- [ ] The page exists and is linked from the quick start and the README.
+- [ ] Each limit links to the goal that removes it.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the v0.1.0 release plan.
+
+---
+
+Run with `/goal Complete docs/plan/goals/007-known-limits.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

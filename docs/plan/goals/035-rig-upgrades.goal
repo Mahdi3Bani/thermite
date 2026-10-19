@@ -1,0 +1,41 @@
+---
+id: "035"
+title: "Upgrades from control"
+status: PROPOSED
+version: "0.3.0"
+depends_on: ["012"]
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 035 · Upgrades from control
+
+**Status:** `PROPOSED` · **Version:** [v0.3.0](../roadmap.md#v030) · **Depends on:** [012](012-version-checks.goal)
+
+## What
+
+A rig's page shows its version. An upgrade rolls the rig to control's version, then runs the isolation and smoke checks.
+
+## Why
+
+With published images, upgrading a fleet should be a button, not a session on each machine.
+
+## Done when
+
+- [ ] An upgrade works on machines and on clusters, and a failed check rolls the rig back.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the roadmap.
+
+---
+
+Run with `/goal Complete docs/plan/goals/035-rig-upgrades.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

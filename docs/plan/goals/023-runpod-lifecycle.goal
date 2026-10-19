@@ -1,0 +1,43 @@
+---
+id: "023"
+title: "Stop, start and terminate RunPod rigs"
+status: READY
+version: "0.1.0"
+part: "Rigs on RunPod"
+depends_on: ["022"]
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 023 · Stop, start and terminate RunPod rigs
+
+**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Rigs on RunPod · **Depends on:** [022](022-runpod-launch.goal)
+
+## What
+
+A `runpod` lifecycle driver beside the compose and Kubernetes ones: stop, start, terminate, restart and full reset, mapped to RunPod's API. Each change is an event in the rig's history. Terminate waits until the results have left the pod.
+
+## Why
+
+A rig you pay for by the hour must stop when it has no work, and it must not lose results when it ends.
+
+## Done when
+
+- [ ] Each action works against a fake RunPod API in CI, and once on RunPod.
+- [ ] Terminate refuses while exports are still pending.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the v0.1.0 release plan.
+
+---
+
+Run with `/goal Complete docs/plan/goals/023-runpod-lifecycle.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

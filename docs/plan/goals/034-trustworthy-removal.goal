@@ -1,0 +1,41 @@
+---
+id: "034"
+title: "Removal you can trust"
+status: PROPOSED
+version: "0.3.0"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 034 · Removal you can trust
+
+**Status:** `PROPOSED` · **Version:** [v0.3.0](../roadmap.md#v030)
+
+## What
+
+Removing a rig can run again after a partial failure, and it lists what stays: images, packages, data and the key line. It comes in tiers: the rig only, the rig and its data, or the machine's whole Thermite setup. Each install recipe records what it added.
+
+## Why
+
+Control installs and deploys on the owner's machines. It must be able to clean up after itself.
+
+## Done when
+
+- [ ] Each tier works on a local stand-in machine and cluster, including after a failure halfway.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the roadmap.
+
+---
+
+Run with `/goal Complete docs/plan/goals/034-trustworthy-removal.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

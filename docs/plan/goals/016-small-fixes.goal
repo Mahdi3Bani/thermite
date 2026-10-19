@@ -1,0 +1,46 @@
+---
+id: "016"
+title: "Small fixes before the release"
+status: READY
+version: "0.1.0"
+part: "Install from images"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 016 · Small fixes before the release
+
+**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Install from images
+
+## What
+
+- The supervisor's first model-route poll logs "fetch failed" at start: retry once, or soften the log.
+- Judge failure reasons are cut at 200 to 300 characters: keep more, with a bound.
+- The process limit per role is fixed at 256: make it a contract setting.
+- The OpenCode harness in research-mode trials: check it, and add it to the acceptance tests.
+- Lane limits disagree (the dashboard allows 16 lanes, the contract 64, and the image has 16 lane users): make them agree, and refuse what cannot run.
+
+## Why
+
+Each one is small, and a tester would hit it.
+
+## Done when
+
+- [ ] Each fix has a test or an acceptance check.
+
+## Decisions
+
+- 2026-10-19, owner: Yes to making the lane limits agree.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the v0.1.0 release plan.
+
+---
+
+Run with `/goal Complete docs/plan/goals/016-small-fixes.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

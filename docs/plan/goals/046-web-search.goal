@@ -1,0 +1,41 @@
+---
+id: "046"
+title: "Web search for research mode"
+status: PROPOSED
+version: "0.5.0"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 046 · Web search for research mode
+
+**Status:** `PROPOSED` · **Version:** [v0.5.0](../roadmap.md#v050)
+
+## What
+
+A search provider in Providers, used by research workers and, where the owner allows it, by advisors. Today research follows seed links only.
+
+## Why
+
+Research mode cannot build a sourced corpus without search.
+
+## Done when
+
+- [ ] A research campaign finds and cites sources through the provider.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+- The provider type: a search API key in Providers (recommended), a search service the owner hosts, or the supervisor searching on the harness's behalf.
+
+## Progress
+
+- 2026-10-19: Goal written from the roadmap.
+
+---
+
+Run with `/goal Complete docs/plan/goals/046-web-search.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

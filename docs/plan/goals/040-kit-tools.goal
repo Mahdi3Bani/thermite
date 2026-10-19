@@ -1,0 +1,41 @@
+---
+id: "040"
+title: "Kit tools"
+status: PROPOSED
+version: "0.4.0"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 040 · Kit tools
+
+**Status:** `PROPOSED` · **Version:** [v0.4.0](../roadmap.md#v040)
+
+## What
+
+`thermite kit new`, `kit test` and `kit validate` in the CLI, and a skill that helps an agent write a kit.
+
+## Why
+
+Writing a kit is the hardest step in starting a campaign on a new project.
+
+## Done when
+
+- [ ] A new kit for the sample project can be made, tested and validated with the CLI alone.
+
+## Decisions
+
+- 2026-10-19, owner: From the owner's to-do list: how to create a kit, and whether a skill should help.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the roadmap.
+
+---
+
+Run with `/goal Complete docs/plan/goals/040-kit-tools.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

@@ -1,0 +1,104 @@
+# Release plan: v0.1.0
+
+v0.1.0 is Thermite's first public release. A tester installs it from published images, runs agents on a sample project, adds rigs on their own machines or clusters, and launches GPU rigs on RunPod.
+
+It has three parts, then the release itself. The parts can run at the same time. The [roadmap](roadmap.md) shows what comes after it.
+
+## Decided
+
+- **2026-10-19:** v0.1.0 is the first public release. It holds the tester basics, install from published images, and rigs on RunPod.
+- **2026-10-19:** The code moves to `main` only as the last step before the release. Until then, work stays on the development branch.
+- **2026-10-19:** Advisors get no default spend limit. A limit applies only when someone sets one.
+- **2026-10-19:** SECURITY.md, CONTRIBUTING.md and the other community files ship with v0.1.0.
+- **2026-10-19:** The sample project lives in this repository, under `examples/`.
+- **2026-10-19:** The release also includes a troubleshooting page, an own-registry how-to, the harness image's toolchains, a split of the local development guide, lane limits that agree, a README screenshot and the repository settings.
+
+## What a tester gets
+
+**In v0.1.0:**
+
+- Control and a CPU rig on one machine, started from published images with one compose file. Building from source stays for contributors.
+- The rig checks from the dashboard, and `thermite doctor` for the machine.
+- A first agent campaign on the sample project, with a free model or the tester's own key.
+- The New campaign page, the Providers page, kits and all three campaign modes.
+- Rigs on the tester's own machines over SSH, and on their Kubernetes clusters.
+- Rigs on RunPod GPUs, launched, stopped and paid for from control.
+- A changelog, a known-limits page, a security policy and a contributor guide.
+
+**Later:** one Logs page and full API and MCP coverage (v0.2.0); safer managed rigs and lane network rules (v0.3.0); kit tools and clearer evidence (v0.4.0); web search and multi-day runs (v0.5.0). 0.x versions make no upgrade promise.
+
+## Goals
+
+### Tester basics
+
+A tester can run Thermite, knows the risks, and knows where to report a problem.
+
+| Goal | Status | Depends on |
+| --- | --- | --- |
+| [001 · Plans in public docs](goals/001-plans-in-public.goal) | `IN_PROGRESS` | — |
+| [002 · CI on every push, and repository settings](goals/002-ci-and-repository-settings.goal) | `READY` | — |
+| [003 · No default spend limit for advisors](goals/003-advisors-no-default-cap.goal) | `IN_PROGRESS` | — |
+| [004 · Scan the history for secrets](goals/004-secret-scan.goal) | `READY` | — |
+| [005 · A sample project in `examples/`](goals/005-sample-project.goal) | `READY` | — |
+| [006 · Docs for testers](goals/006-docs-for-testers.goal) | `READY` | — |
+| [007 · Known limits and the security model](goals/007-known-limits.goal) | `READY` | — |
+| [008 · Community files and contributor docs](goals/008-community-files.goal) | `READY` | — |
+| [009 · Real subscription sign-in tests](goals/009-subscription-sign-in-tests.goal) | `READY` | — |
+
+### Install from images
+
+A tester pulls images in place of building them, and every remote rig has images to pull.
+
+| Goal | Status | Depends on |
+| --- | --- | --- |
+| [010 · Published images and a release workflow](goals/010-published-images.goal) | `IN_PROGRESS` | — |
+| [011 · A release bundle](goals/011-release-bundle.goal) | `READY` | [010](goals/010-published-images.goal) |
+| [012 · Version checks between control and rigs](goals/012-version-checks.goal) | `READY` | [010](goals/010-published-images.goal) |
+| [013 · `thermite doctor`](goals/013-thermite-doctor.goal) | `READY` | — |
+| [014 · The quick start, tested in CI](goals/014-quick-start-in-ci.goal) | `READY` | [005](goals/005-sample-project.goal), [011](goals/011-release-bundle.goal) |
+| [015 · Log paging](goals/015-log-paging.goal) | `READY` | — |
+| [016 · Small fixes before the release](goals/016-small-fixes.goal) | `READY` | — |
+| [017 · Remove the legacy model names](goals/017-legacy-names.goal) | `READY` | — |
+
+### Rigs on RunPod
+
+The owner launches a GPU rig on RunPod from control, runs campaigns on it, and stops paying when it is idle.
+
+| Goal | Status | Depends on |
+| --- | --- | --- |
+| [018 · RunPod spike](goals/018-runpod-spike.goal) | `IN_PROGRESS` | — |
+| [019 · A rig-only entry, with TLS](goals/019-rig-only-entry.goal) | `READY` | — |
+| [020 · A one-container rig image](goals/020-runpod-rig-image.goal) | `READY` | [018](goals/018-runpod-spike.goal) |
+| [021 · Enrollment codes](goals/021-enrollment-codes.goal) | `READY` | — |
+| [022 · Launch a rig on RunPod](goals/022-runpod-launch.goal) | `READY` | [010](goals/010-published-images.goal), [019](goals/019-rig-only-entry.goal), [020](goals/020-runpod-rig-image.goal), [021](goals/021-enrollment-codes.goal) |
+| [023 · Stop, start and terminate RunPod rigs](goals/023-runpod-lifecycle.goal) | `READY` | [022](goals/022-runpod-launch.goal) |
+| [024 · Models into the pod, results out](goals/024-runpod-models-and-results.goal) | `READY` | — |
+| [025 · RunPod tests and how-to](goals/025-runpod-tests-and-docs.goal) | `READY` | [022](goals/022-runpod-launch.goal), [023](goals/023-runpod-lifecycle.goal), [024](goals/024-runpod-models-and-results.goal) |
+
+### The release
+
+| Goal | Status | Depends on |
+| --- | --- | --- |
+| [026 · Ship v0.1.0](goals/026-ship-v0.1.0.goal) | `READY` | every other goal |
+
+## Order of work
+
+1. Goal 002 first, so CI runs on every push from now on.
+2. The three parts go on at the same time. In RunPod, the launcher (022) waits for the images (010), the rig-only entry (019), the rig image (020) and the enrollment codes (021).
+3. When every other goal is verified, goal 026 ships the release: the clean-machine tests, the full checks, the pull request into `main`, the changelog, the tag and the GitHub Release.
+4. Fixes from tester reports ship as 0.1.1, 0.1.2 and so on. New features go into v0.2.0.
+
+## Open decisions
+
+| Decision | Options | Recommended | Goal |
+| --- | --- | --- | --- |
+| RunPod packaging | One combined image per pod, or two pods | One combined image | [020](goals/020-runpod-rig-image.goal) |
+| How rigs on other networks reach control | A public rig-only HTTPS entry, or a mesh VPN inside the pod | The rig-only entry | [019](goals/019-rig-only-entry.goal) |
+| Who may launch on RunPod | The owner only, or also the operator token that agents use | The owner only | [022](goals/022-runpod-launch.goal) |
+| RunPod cloud | Secure cloud on demand first, or Community and spot as well | Secure cloud first | [022](goals/022-runpod-launch.goal) |
+| Where a pod's results go | The results repository or an upload to control, or a results repository only | Both | [024](goals/024-runpod-models-and-results.goal) |
+| Terms in the community files | No contributor agreement, no sign-off, the Contributor Covenant; or a sign-off on every commit | The first | [008](goals/008-community-files.goal) |
+| Subscription sign-in tests | Before the tag, or ship as experimental | Before the tag | [009](goals/009-subscription-sign-in-tests.goal) |
+| How the code reaches `main` | A pull request merged as a fast-forward, or a squash | The fast-forward | [026](goals/026-ship-v0.1.0.goal) |
+
+Two steps need the owner's GitHub account: the repository settings ([002](goals/002-ci-and-repository-settings.goal)) and making the image packages public ([010](goals/010-published-images.goal)).

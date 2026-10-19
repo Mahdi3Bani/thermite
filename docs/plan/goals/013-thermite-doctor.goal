@@ -1,0 +1,43 @@
+---
+id: "013"
+title: "`thermite doctor`"
+status: READY
+version: "0.1.0"
+part: "Install from images"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 013 · `thermite doctor`
+
+**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Install from images
+
+## What
+
+One command checks the machine: the container engine and the compose tool, ports, disk, the clock, the GPU toolkit where there is a GPU, and whether control and the model can be reached. It says what is wrong and how to fix it.
+
+## Why
+
+Most first-run failures are in the machine, not in Thermite.
+
+## Done when
+
+- [ ] `thermite doctor` runs on Linux and macOS, and each check has a test.
+- [ ] The troubleshooting page uses it.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the v0.1.0 release plan.
+
+---
+
+Run with `/goal Complete docs/plan/goals/013-thermite-doctor.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

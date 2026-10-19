@@ -1,0 +1,41 @@
+---
+id: "039"
+title: "Cluster ranges and key rotation"
+status: PROPOSED
+version: "0.3.0"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 039 · Cluster ranges and key rotation
+
+**Status:** `PROPOSED` · **Version:** [v0.3.0](../roadmap.md#v030)
+
+## What
+
+Namespaces that control creates also exclude the cluster's own pod and service ranges, where control can read them. Control's sealing key can rotate: the newest key seals, and every listed key opens.
+
+## Why
+
+Clusters do not all use the common private ranges, and a key that cannot rotate cannot be replaced safely.
+
+## Done when
+
+- [ ] Both have tests, and the docs describe the rotation.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the roadmap.
+
+---
+
+Run with `/goal Complete docs/plan/goals/039-cluster-ranges-and-key-rotation.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

@@ -1,0 +1,41 @@
+---
+id: "056"
+title: "A Codex CLI harness"
+status: PROPOSED
+version: "later"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 056 · A Codex CLI harness
+
+**Status:** `PROPOSED` · **Version:** [later](../roadmap.md#later)
+
+## What
+
+Workers can run in the Codex CLI on Sign in with ChatGPT, as Claude Code runs on a Claude subscription.
+
+## Why
+
+Some owners will want OpenAI's own agent program.
+
+## Done when
+
+- [ ] A trial runs in the Codex CLI through the harness.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the roadmap.
+
+---
+
+Run with `/goal Complete docs/plan/goals/056-codex-harness.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

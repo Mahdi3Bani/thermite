@@ -1,0 +1,43 @@
+---
+id: "028"
+title: "Search every log and session"
+status: PROPOSED
+version: "0.2.0"
+depends_on: ["027"]
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 028 · Search every log and session
+
+**Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020) · **Depends on:** [027](027-logs-page.goal)
+
+## What
+
+Keep and search the logs and the agent sessions of every rig: trial transcripts, planner and advisor calls, supervisor and harness logs. Secrets are removed where the logs start. Design first: a store in control with an index, or shipping to an OpenTelemetry collector.
+
+## Why
+
+Debugging a campaign means reading what its agents did, across rigs.
+
+## Done when
+
+- [ ] The owner chose the design.
+- [ ] A search across rigs finds a trial's transcript.
+- [ ] How long logs are kept is configurable.
+
+## Decisions
+
+- 2026-10-19, owner: Thermite needs a way to process every log and to search every session from its rigs that grows with the fleet.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the roadmap.
+
+---
+
+Run with `/goal Complete docs/plan/goals/028-log-store.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

@@ -1,0 +1,41 @@
+---
+id: "052"
+title: "More target drivers"
+status: PROPOSED
+version: "later"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 052 · More target drivers
+
+**Status:** `PROPOSED` · **Version:** [later](../roadmap.md#later)
+
+## What
+
+Target drivers for things that are not a CPU or a GPU, such as a board on a serial port or a remote service.
+
+## Why
+
+Not every measurement runs on a CPU or a GPU.
+
+## Done when
+
+- [ ] At least one new driver passes the judge's acceptance tests.
+
+## Decisions
+
+- 2026-10-14, owner: Not all of the work will be GPU measurements. Some will measure a different kind of resource.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the roadmap.
+
+---
+
+Run with `/goal Complete docs/plan/goals/052-more-target-drivers.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

@@ -1,0 +1,44 @@
+---
+id: "017"
+title: "Remove the legacy model names"
+status: READY
+version: "0.1.0"
+part: "Install from images"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 017 · Remove the legacy model names
+
+**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Install from images
+
+## What
+
+Remove the old `QWEN_*` aliases of the model settings, the `thermite-qwen` provider ID and the `qwen-api-key` file migration. Change the Kubernetes namespace default from `ar-{rig}` to `thermite-{rig}`.
+
+## Why
+
+They are names from Thermite's first deployment, and they confuse new users.
+
+## Done when
+
+- [ ] No old name is read or documented.
+- [ ] A deployment that sets its namespace explicitly sees no change.
+
+## Decisions
+
+- 2026-10-18, owner: Remove them after the maintainers' own deployment switches to the new names.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the v0.1.0 release plan.
+- 2026-10-19: The namespace default can change now, because the maintainers' deployment sets its namespace explicitly. The model-name aliases wait until that deployment stops using them.
+
+---
+
+Run with `/goal Complete docs/plan/goals/017-legacy-names.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

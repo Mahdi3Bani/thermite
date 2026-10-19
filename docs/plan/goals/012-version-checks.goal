@@ -1,0 +1,44 @@
+---
+id: "012"
+title: "Version checks between control and rigs"
+status: READY
+version: "0.1.0"
+part: "Install from images"
+depends_on: ["010"]
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 012 · Version checks between control and rigs
+
+**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Install from images · **Depends on:** [010](010-published-images.goal)
+
+## What
+
+Control and every rig report their versions. Control shows a rig that is behind it, refuses a rig that it cannot work with, and shows a rig that stopped reporting as offline or stale.
+
+## Why
+
+With published images, control and its rigs will run different versions.
+
+## Done when
+
+- [ ] A rig on an older, compatible version shows a notice.
+- [ ] An incompatible rig is refused, with the reason.
+- [ ] Tests cover both cases and the offline state.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the v0.1.0 release plan.
+
+---
+
+Run with `/goal Complete docs/plan/goals/012-version-checks.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

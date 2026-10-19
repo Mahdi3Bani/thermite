@@ -1,0 +1,41 @@
+---
+id: "054"
+title: "Signed receipts and images"
+status: PROPOSED
+version: "later"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 054 · Signed receipts and images
+
+**Status:** `PROPOSED` · **Version:** [later](../roadmap.md#later)
+
+## What
+
+Signed judge receipts, SBOMs, image signatures and build provenance.
+
+## Why
+
+Results and images should be checkable by people who do not trust the machine that made them.
+
+## Done when
+
+- [ ] Receipts and images verify with a published key.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the roadmap.
+
+---
+
+Run with `/goal Complete docs/plan/goals/054-signed-artifacts.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

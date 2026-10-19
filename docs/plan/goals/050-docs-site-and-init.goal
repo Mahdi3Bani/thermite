@@ -1,0 +1,42 @@
+---
+id: "050"
+title: "A docs site, and a two-command start"
+status: PROPOSED
+version: "0.5.0"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 050 · A docs site, and a two-command start
+
+**Status:** `PROPOSED` · **Version:** [v0.5.0](../roadmap.md#v050)
+
+## What
+
+The docs as a website, with a settings reference built from the code. `thermite init`, `up`, `down`, `status` and `demo` start and run Thermite from the published images.
+
+## Why
+
+A docs site is easier to search, and two commands are easier than a compose file.
+
+## Done when
+
+- [ ] The site builds in CI and is published.
+- [ ] `thermite init && thermite up` gives a running control and rig.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the roadmap.
+
+---
+
+Run with `/goal Complete docs/plan/goals/050-docs-site-and-init.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

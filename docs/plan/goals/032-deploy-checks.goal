@@ -1,0 +1,41 @@
+---
+id: "032"
+title: "Checks before a rig is deployed"
+status: PROPOSED
+version: "0.3.0"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 032 · Checks before a rig is deployed
+
+**Status:** `PROPOSED` · **Version:** [v0.3.0](../roadmap.md#v030)
+
+## What
+
+A server-side dry run of a rig's manifests, before every deploy, that reports Pod Security levels, quota and admission webhooks in plain words. A warning before the judge gets a GPU that the cluster shares (time-slicing or MIG).
+
+## Why
+
+A deploy should fail before it starts, not halfway. Judge timing needs a GPU of its own.
+
+## Done when
+
+- [ ] Both checks run before each deploy, with tests on a local cluster.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the roadmap.
+
+---
+
+Run with `/goal Complete docs/plan/goals/032-deploy-checks.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

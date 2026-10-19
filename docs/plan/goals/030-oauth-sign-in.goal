@@ -1,0 +1,43 @@
+---
+id: "030"
+title: "Sign in with OAuth or OIDC"
+status: PROPOSED
+version: "0.2.0"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 030 · Sign in with OAuth or OIDC
+
+**Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020)
+
+## What
+
+The dashboard signs in through an OAuth or OIDC provider such as Logto, with roles taken from the provider's claims. MCP clients use OAuth, as MCP's authorization spec describes, in place of pasted bearer tokens. Tokens stay for scripts and rigs.
+
+## Why
+
+A lab that already runs an identity provider should not manage a separate set of tokens.
+
+## Done when
+
+- [ ] A mockup was approved before the build.
+- [ ] Sign-in through Logto works for the dashboard and for an MCP client.
+- [ ] The token path still works.
+
+## Decisions
+
+- 2026-10-19, owner: Thermite can use an OAuth provider such as Logto, and MCP can use it for OAuth.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the roadmap.
+
+---
+
+Run with `/goal Complete docs/plan/goals/030-oauth-sign-in.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

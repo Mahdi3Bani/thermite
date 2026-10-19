@@ -1,0 +1,42 @@
+---
+id: "014"
+title: "The quick start, tested in CI"
+status: READY
+version: "0.1.0"
+part: "Install from images"
+depends_on: ["005", "011"]
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 014 · The quick start, tested in CI
+
+**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Install from images · **Depends on:** [005](005-sample-project.goal), [011](011-release-bundle.goal)
+
+## What
+
+A CI job follows the quick start on a clean runner: start from the release bundle, run the rig checks, and run the sample campaign to its first verdict.
+
+## Why
+
+A broken quick start must fail the build, not a tester's first hour.
+
+## Done when
+
+- [ ] The job runs on every pull request and fails when the quick start breaks.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the v0.1.0 release plan.
+
+---
+
+Run with `/goal Complete docs/plan/goals/014-quick-start-in-ci.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

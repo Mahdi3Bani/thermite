@@ -1,0 +1,42 @@
+---
+id: "058"
+title: "Helm charts and an npm package"
+status: PROPOSED
+version: "later"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 058 · Helm charts and an npm package
+
+**Status:** `PROPOSED` · **Version:** [later](../roadmap.md#later)
+
+## What
+
+Helm charts for clusters that run through GitOps, and a `create-thermite` package for Node users.
+
+## Why
+
+Some teams deploy only through charts, and some start every tool from npm.
+
+## Done when
+
+- [ ] The charts install control and a rig on a local cluster.
+- [ ] `npm create thermite` starts a project.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the roadmap.
+
+---
+
+Run with `/goal Complete docs/plan/goals/058-helm-and-npm.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

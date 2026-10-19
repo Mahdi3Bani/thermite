@@ -1,0 +1,50 @@
+---
+id: "006"
+title: "Docs for testers"
+status: READY
+version: "0.1.0"
+part: "Tester basics"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 006 · Docs for testers
+
+**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
+
+## What
+
+Bring the docs up to what a first-time tester needs:
+
+- the quick start names v0.1.0, lists every worker harness (Pi, OpenCode, Claude Code) and gives disk and memory sizes;
+- a how-to for choosing a model: the free path first, then a model server on your own machine, then API keys, then subscriptions, with a warning to set a stop time or a budget before you use a paid key;
+- a troubleshooting page: failed checks, port clashes, the Podman VM's disk and memory, slow builds, a full reset, and where the logs are;
+- what the harness image contains, and how to extend it with `FROM`;
+- how to build the images and push them to your own registry;
+- a screenshot or short GIF of the dashboard in the README.
+
+## Why
+
+The model step and the first failure are where new testers stop.
+
+## Done when
+
+- [ ] Each page above exists and is linked from the docs index.
+- [ ] Each page was followed once on a clean machine.
+
+## Decisions
+
+- 2026-10-19, owner: Yes to the troubleshooting page, the own-registry how-to, the toolchain list and the screenshot.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the v0.1.0 release plan.
+
+---
+
+Run with `/goal Complete docs/plan/goals/006-docs-for-testers.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

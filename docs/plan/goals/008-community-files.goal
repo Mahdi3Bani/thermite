@@ -1,0 +1,44 @@
+---
+id: "008"
+title: "Community files and contributor docs"
+status: READY
+version: "0.1.0"
+part: "Tester basics"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 008 · Community files and contributor docs
+
+**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
+
+## What
+
+Add SECURITY.md (through GitHub's private vulnerability reporting), CONTRIBUTING.md, a code of conduct, issue templates and a pull request template. The bug report asks for the OS, the container engine, the compose tool, the rig-check results and the logs. Rewrite AGENTS.md and CONVENTIONS.md so every rule an outside contributor needs is public. Split `docs/local-development.md` into a contributor guide and operator how-tos.
+
+## Why
+
+Outside testers need a place to report problems and a way to send changes. Today the contributor docs send people to private files.
+
+## Done when
+
+- [ ] Each file exists, and GitHub shows the security policy and the templates.
+- [ ] No public document tells a contributor to read a private file.
+- [ ] `docs/local-development.md` is split, and the docs index links both parts.
+
+## Decisions
+
+- 2026-10-19, owner: The community files ship with v0.1.0.
+
+## Open questions
+
+- The terms in them. Proposed: no contributor agreement, no sign-off rule, and the Contributor Covenant as the code of conduct.
+
+## Progress
+
+- 2026-10-19: Goal written from the v0.1.0 release plan.
+
+---
+
+Run with `/goal Complete docs/plan/goals/008-community-files.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

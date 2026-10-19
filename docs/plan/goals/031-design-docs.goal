@@ -1,0 +1,41 @@
+---
+id: "031"
+title: "The design reasons, in public docs"
+status: PROPOSED
+version: "0.2.0"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 031 · The design reasons, in public docs
+
+**Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020)
+
+## What
+
+Move the design reasons from the maintainers' private v1 plan into the public docs where they are not there already: trust boundaries, data, the key flows, the objective contract, judging defaults, scheduling, deployment and observability.
+
+## Why
+
+Contributors need the reasons behind the design. After this goal, the private plan can retire completely.
+
+## Done when
+
+- [ ] Every section of the private v1 plan is in `docs/`, replaced by a goal, or recorded as dropped.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the roadmap.
+
+---
+
+Run with `/goal Complete docs/plan/goals/031-design-docs.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

@@ -1,0 +1,41 @@
+---
+id: "042"
+title: "A kit self-test"
+status: PROPOSED
+version: "0.4.0"
+depends_on: []
+created: 2026-10-19
+updated: 2026-10-19
+---
+
+# 042 · A kit self-test
+
+**Status:** `PROPOSED` · **Version:** [v0.4.0](../roadmap.md#v040)
+
+## What
+
+"Try the kit" also runs known-bad and tampering candidates, and checks that the judge rejects each one.
+
+## Why
+
+A kit that accepts a broken candidate makes every result after it worthless.
+
+## Done when
+
+- [ ] Try the kit reports each bad candidate as rejected, and a weak kit fails the try.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-19: Goal written from the roadmap.
+
+---
+
+Run with `/goal Complete docs/plan/goals/042-kit-self-test.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
