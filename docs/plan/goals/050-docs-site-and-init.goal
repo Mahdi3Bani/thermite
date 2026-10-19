@@ -1,6 +1,6 @@
 ---
 id: "050"
-title: "A docs site, and a two-command start"
+title: "A two-command start, and a generated settings reference"
 status: PROPOSED
 version: "0.5.0"
 depends_on: []
@@ -8,22 +8,22 @@ created: 2026-10-19
 updated: 2026-10-19
 ---
 
-# 050 · A docs site, and a two-command start
+# 050 · A two-command start, and a generated settings reference
 
 **Status:** `PROPOSED` · **Version:** [v0.5.0](../roadmap.md#v050)
 
 ## What
 
-The docs as a website, with a settings reference built from the code. `thermite init`, `up`, `down`, `status` and `demo` start and run Thermite from the published images.
+`thermite init`, `up`, `down`, `status` and `demo` start and run Thermite from the published images. The docs site's settings reference is generated from the code. The docs site itself is goal [060](060-docs-site.goal).
 
 ## Why
 
-A docs site is easier to search, and two commands are easier than a compose file.
+Two commands are easier than a compose file. A generated settings reference cannot drift from the code.
 
 ## Done when
 
-- [ ] The site builds in CI and is published.
 - [ ] `thermite init && thermite up` gives a running control and rig.
+- [ ] The settings reference is generated from the code, and CI fails when it is out of date.
 
 ## Decisions
 
@@ -36,6 +36,7 @@ None.
 ## Progress
 
 - 2026-10-19: Goal written from the roadmap.
+- 2026-10-19: The docs site moved to goal [060](060-docs-site.goal) in v0.1.0. This goal keeps the two-command start and the generated settings reference.
 
 ---
 

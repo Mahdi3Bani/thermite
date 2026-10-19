@@ -55,5 +55,6 @@ A goal is one deliverable that can be checked.
 - **Agents never judge.** Measurement, verdicts and promotion stay in code the agents cannot write.
 - **A mockup first.** A new screen, or a real change to one, is mocked up and shown to the owner before it is built. Every form label has a description.
 - **Plain words.** Cards, call-outs and reports use Simplified Technical English.
+- **Docs follow the code.** A goal that changes what Thermite does also updates the docs pages that describe it.
 - **The owner's OK first:** before paid GPU time, before changing a running deployment, and before anything that is hard to undo.
 - **The checks in [AGENTS.md](../../AGENTS.md#checks)** run before each commit.

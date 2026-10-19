@@ -35,7 +35,8 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [003](goals/003-advisors-no-default-cap.goal) No default spend limit for advisors · `VERIFIED`
 - [004](goals/004-secret-scan.goal) Scan the history for secrets · `READY`
 - [005](goals/005-sample-project.goal) A sample project in `examples/` · `READY`
-- [006](goals/006-docs-for-testers.goal) Docs for testers · `READY`
+- [060](goals/060-docs-site.goal) The documentation site · `READY`
+- [006](goals/006-docs-for-testers.goal) Docs for testers · `DROPPED`, merged into 060
 - [007](goals/007-known-limits.goal) Known limits and the security model · `READY`
 - [008](goals/008-community-files.goal) Community files and contributor docs · `READY`
 - [009](goals/009-subscription-sign-in-tests.goal) Real subscription sign-in tests · `READY`
@@ -104,7 +105,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 **Kits and evidence.** Kits are easier to write and to test before agents start, and each result shows clearer evidence. Proposed.
 
 - [040](goals/040-kit-tools.goal) Kit tools · `PROPOSED`
-- [041](goals/041-kits-and-rigs-explained.goal) Kits and rigs, explained · `PROPOSED`
+- [041](goals/041-kits-and-rigs-explained.goal) Kits and rigs, explained · `DROPPED`, merged into 060
 - [042](goals/042-kit-self-test.goal) A kit self-test · `PROPOSED`
 - [043](goals/043-progress-charts.goal) Progress charts · `PROPOSED`
 - [044](goals/044-comparable-results.goal) Comparable results · `PROPOSED`
@@ -118,7 +119,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [047](goals/047-research-planner.goal) A model planner for research mode · `PROPOSED`
 - [048](goals/048-validation-scenarios.goal) Six validation scenarios · `PROPOSED`
 - [049](goals/049-multi-day-test-fire.goal) The multi-day test fire · `PROPOSED`
-- [050](goals/050-docs-site-and-init.goal) A docs site, and a two-command start · `PROPOSED`
+- [050](goals/050-docs-site-and-init.goal) A two-command start, and a generated settings reference · `PROPOSED`
 
 ## Later
 

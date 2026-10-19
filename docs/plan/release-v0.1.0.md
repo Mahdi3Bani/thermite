@@ -12,6 +12,7 @@ It has four parts, then the release itself. The parts can run at the same time. 
 - **2026-10-19:** SECURITY.md, CONTRIBUTING.md and the other community files ship with v0.1.0.
 - **2026-10-19:** The sample project lives in this repository, under `examples/`.
 - **2026-10-19:** The release also includes a troubleshooting page, an own-registry how-to, the harness image's toolchains, a split of the local development guide, lane limits that agree, a README screenshot and the repository settings.
+- **2026-10-19:** The docs become a documentation site, built with Astro Starlight from `docs/_site/` and arranged by Diátaxis, with `llms.txt` and `llms-full.txt` for agents (goal 060).
 
 ## What a tester gets
 
@@ -23,6 +24,7 @@ It has four parts, then the release itself. The parts can run at the same time. 
 - The New campaign page, the Providers page, kits and all three campaign modes.
 - Rigs on the tester's own machines over SSH, and on their Kubernetes clusters.
 - Rigs on RunPod GPUs, launched, stopped and paid for from control.
+- A documentation site with tutorials, how-to guides, reference and explanation. Agents can read all of it through `llms.txt`.
 - A changelog, a known-limits page, a security policy and a contributor guide.
 
 **Later:** one Logs page and full API and MCP coverage (v0.2.0); safer managed rigs and lane network rules (v0.3.0); kit tools and clearer evidence (v0.4.0); web search and multi-day runs (v0.5.0). 0.x versions make no upgrade promise.
@@ -40,7 +42,8 @@ A tester can run Thermite, knows the risks, and knows where to report a problem.
 | [003 · No default spend limit for advisors](goals/003-advisors-no-default-cap.goal) | `VERIFIED` | — |
 | [004 · Scan the history for secrets](goals/004-secret-scan.goal) | `READY` | — |
 | [005 · A sample project in `examples/`](goals/005-sample-project.goal) | `READY` | — |
-| [006 · Docs for testers](goals/006-docs-for-testers.goal) | `READY` | — |
+| [060 · The documentation site](goals/060-docs-site.goal) | `READY` | — |
+| [006 · Docs for testers](goals/006-docs-for-testers.goal) | `DROPPED`, merged into 060 | — |
 | [007 · Known limits and the security model](goals/007-known-limits.goal) | `READY` | — |
 | [008 · Community files and contributor docs](goals/008-community-files.goal) | `READY` | — |
 | [009 · Real subscription sign-in tests](goals/009-subscription-sign-in-tests.goal) | `READY` | — |
@@ -118,5 +121,6 @@ The owner launches a GPU rig on RunPod from control, runs campaigns on it, and s
 | Terms in the community files | No contributor agreement, no sign-off, the Contributor Covenant; or a sign-off on every commit | The first | [008](goals/008-community-files.goal) |
 | Subscription sign-in tests | Before the tag, or ship as experimental | Before the tag | [009](goals/009-subscription-sign-in-tests.goal) |
 | How the code reaches `main` | A pull request merged as a fast-forward, or a squash | The fast-forward | [026](goals/026-ship-v0.1.0.goal) |
+| The docs site's address | The repository's GitHub Pages address, or a custom domain | GitHub Pages first | [060](goals/060-docs-site.goal) |
 
-Two steps need the owner's GitHub account: the repository settings ([002](goals/002-ci-and-repository-settings.goal)) and making the image packages public ([010](goals/010-published-images.goal)).
+Three steps need the owner's GitHub account: the repository settings ([002](goals/002-ci-and-repository-settings.goal)), making the image packages public ([010](goals/010-published-images.goal)) and turning on GitHub Pages ([060](goals/060-docs-site.goal)).

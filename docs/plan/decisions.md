@@ -75,3 +75,4 @@ Decisions that shape the whole product, newest last in each section. A decision 
 | 2026-10-19 | The first public release is v0.1.0. It holds the tester basics, published images and rigs on RunPod. The code moves to `main` only as the last step before it. |
 | 2026-10-19 | Advisors have no default spend limit. |
 | 2026-10-19 | The plans are public, in `docs/plan/`. Each roadmap item has a goal. A new idea becomes a new goal and goes into the roadmap by priority. |
+| 2026-10-19 | The documentation is a site built with Astro Starlight from `docs/_site/` and arranged by Diátaxis: tutorials, how-to guides, reference and explanation. It is written for an average person, and agents read it through `llms.txt` and `llms-full.txt`. Repository docs stay in `docs/`. |
