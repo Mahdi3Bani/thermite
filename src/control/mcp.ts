@@ -6,6 +6,7 @@ import { redact } from "../common/env.ts";
 import type { CommandKind } from "../core/commands.ts";
 import type { Credential } from "./credential.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
+import type { RunpodTests } from "./runpod-tests.ts";
 import type { ControlStore } from "./store.ts";
 import { leaderboard, rigView } from "./views.ts";
 
@@ -46,6 +47,8 @@ export interface McpOptions {
   read?: Credential | undefined;
   privateKeyPem: string;
   staleAfterMs: number;
+  /** Test pods on GPU clouds; without it the RunPod tools are not offered. */
+  runpodTests?: RunpodTests | undefined;
 }
 
 const json = (value: unknown) => ({
@@ -329,6 +332,72 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
         })),
       })),
     );
+
+    const tests = opts.runpodTests;
+    if (tests) {
+      server.registerTool(
+        "runpod_tests",
+        {
+          title: "RunPod test pods",
+          description:
+            "Test pods on a GPU cloud, newest first: where each is (phase), its GPU and price, its cost so far, and what it found in words (findings), with the probe's whole report. A test that is not active has had its pod removed.",
+          inputSchema: {
+            cloud: z.string().min(1).optional().describe("The GPU cloud's name in Providers"),
+            limit: z.number().int().min(1).max(50).default(5),
+          },
+        },
+        audited("runpod_tests", (a: { cloud?: string; limit: number }) =>
+          tests.list(a.cloud, a.limit),
+        ),
+      );
+      if (canCommand) {
+        server.registerTool(
+          "runpod_test_start",
+          {
+            title: "Start a RunPod test pod",
+            description:
+              "Spends money. Starts one pod of Thermite's CUDA harness image on a GPU cloud from Providers, to check that a rig can run there: root, capabilities, GPU device nodes, RunPod's variables, outbound HTTPS and Thermite's isolation self-test, then (by default) a stop and a start to see it gets its GPU back. Control removes the pod when the test ends; follow it with runpod_tests. One test per cloud at a time. Defaults: the cheapest GPU in stock on Secure cloud, control's test image, a 40 GB disk, no time limit.",
+            inputSchema: {
+              cloud: z.string().min(1).describe("The GPU cloud's name in Providers"),
+              gpu: z.string().min(1).optional().describe("A GPU type's id or name"),
+              cloud_type: z.enum(["SECURE", "COMMUNITY"]).optional(),
+              image: z.string().min(1).optional(),
+              disk_gb: z.number().int().min(10).max(2000).optional(),
+              restart: z.boolean().optional(),
+              stop_after_minutes: z
+                .number()
+                .min(5)
+                .optional()
+                .describe("Remove the pod after this many minutes whatever it is doing"),
+            },
+          },
+          audited(
+            "runpod_test_start",
+            (a: {
+              cloud: string;
+              gpu?: string;
+              cloud_type?: "SECURE" | "COMMUNITY";
+              image?: string;
+              disk_gb?: number;
+              restart?: boolean;
+              stop_after_minutes?: number;
+            }) => {
+              const { cloud, ...req } = a;
+              return tests.start(cloud, req, actor);
+            },
+          ),
+        );
+        server.registerTool(
+          "runpod_test_end",
+          {
+            title: "End a RunPod test pod",
+            description: "Ends a test now: control removes its pod. Returns the test as it ends.",
+            inputSchema: { id: z.string().min(1) },
+          },
+          audited("runpod_test_end", (a: { id: string }) => tests.end(a.id, actor)),
+        );
+      }
+    }
   }
 
   return server;

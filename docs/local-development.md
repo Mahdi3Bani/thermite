@@ -243,6 +243,7 @@ Every token except an agent's also reads control itself, to find out why somethi
 
 - `control_log`: control's audit log, newest first. It includes what the dashboard refused, with why (action `refused`), and requests that failed (action `failed`). Control also writes these to its output, one JSON line each.
 - `providers`: what control holds in Settings › Providers and what it last read from each, with the last error. It never shows a key, a token or a kubeconfig.
+- `runpod_tests`: test pods on a RunPod account, with their findings and cost. An operator's or the owner's token also has `runpod_test_start`, which spends money, and `runpod_test_end`.
 
 ## The command line
 

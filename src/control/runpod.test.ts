@@ -174,7 +174,7 @@ describe("RunPod in Providers", () => {
     );
     assert.match(page, /1 pod running: billed while they run/);
     assert.match(page, /kits: 50 GB in EU-RO-1/);
-    assert.match(page, /control only reads: it starts nothing/);
+    assert.match(page, /control starts only the test pods you ask for/);
     assert.match(
       await s.post("/ui/settings/add", { type: "runpod", name: "runpod", runpod_key: KEY }),
       /exists already/,

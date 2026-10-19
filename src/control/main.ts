@@ -7,6 +7,7 @@ import { createControlApi } from "./api.ts";
 import { Credential } from "./credential.ts";
 import { KitRepos } from "./kit-repos.ts";
 import { advanceResets, driverFromEnv } from "./lifecycle.ts";
+import { RunpodTests } from "./runpod-tests.ts";
 import { SecretBox } from "./secrets.ts";
 import { ControlStore } from "./store.ts";
 
@@ -67,6 +68,15 @@ async function main(): Promise<void> {
   // A rig is stale after 3 missed reports (the supervisor reports every 60 s by default).
   const staleAfterMs = Number(env.THERMITE_CONTROL_STALE_SECONDS ?? "180") * 1000;
   const driver = driverFromEnv(env);
+  // The key that seals model routes' API keys: its own file, made on first use. Mount it
+  // from a separate secret to keep it off the database's volume.
+  const secrets = SecretBox.fromFile(
+    env.THERMITE_CONTROL_SECRETS_KEY_FILE ?? join(dir, "secrets.key"),
+  );
+  // Test pods on GPU clouds, advanced by the loop below.
+  const runpodTests = new RunpodTests(store, secrets, {
+    image: env.THERMITE_RUNPOD_TEST_IMAGE || undefined,
+  });
   const server = serve({
     fetch: createControlApi(store, tokens, privateKeyPem, {
       staleAfterMs,
@@ -76,11 +86,8 @@ async function main(): Promise<void> {
       sessionDays: env.THERMITE_CONTROL_SESSION_DAYS
         ? Number(env.THERMITE_CONTROL_SESSION_DAYS)
         : undefined,
-      // The key that seals model routes' API keys: its own file, made on first use. Mount it
-      // from a separate secret to keep it off the database's volume.
-      secrets: SecretBox.fromFile(
-        env.THERMITE_CONTROL_SECRETS_KEY_FILE ?? join(dir, "secrets.key"),
-      ),
+      secrets,
+      runpodTests,
       // Kits written on the new-campaign page, kept as git repositories in control's state.
       kits: new KitRepos(join(dir, "kits")),
       // How rigs and the machines control sets rigs up on reach control.
@@ -114,8 +121,15 @@ async function main(): Promise<void> {
       log("control", "reset step error", { error: String(err) }),
     );
   }, 10_000);
+  // Test pods move on as their pods do; every path ends with the pod removed.
+  const tests = setInterval(() => {
+    runpodTests
+      .advance()
+      .catch((err) => log("control", "runpod test error", { error: String(err) }));
+  }, 15_000);
   const stop = () => {
     clearInterval(resets);
+    clearInterval(tests);
     server.close();
     process.exit(0);
   };

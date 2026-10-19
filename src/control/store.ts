@@ -253,6 +253,15 @@ create table if not exists gpu_cloud (
   created_at text not null,
   created_by text not null
 );
+-- Test pods control started on a GPU cloud: what was asked, the pod, and what it found.
+create table if not exists runpod_test (
+  id text primary key,
+  cloud text not null,
+  active integer not null,
+  state text not null,
+  created_at text not null,
+  created_by text not null
+);
 -- Rigs control set up on a cluster: where, how, and how it stands.
 create table if not exists cluster_rig (
   rig text primary key,
@@ -525,6 +534,25 @@ const gpuCloudOf = (r: Row): GpuCloud => ({
   checked_at: r.checked_at === null ? null : String(r.checked_at),
   check_error: r.check_error === null ? null : String(r.check_error),
   created_at: String(r.created_at),
+});
+
+/** A test pod as kept: its state is runpod-tests.ts's TestState. */
+export interface StoredRunpodTest {
+  id: string;
+  cloud: string;
+  active: boolean;
+  state: unknown;
+  created_at: string;
+  created_by: string;
+}
+
+const runpodTestOf = (r: Row): StoredRunpodTest => ({
+  id: String(r.id),
+  cloud: String(r.cloud),
+  active: Number(r.active) === 1,
+  state: JSON.parse(String(r.state)),
+  created_at: String(r.created_at),
+  created_by: String(r.created_by),
 });
 
 /** A rig control set up on a cluster; spec holds what it was deployed with (no secrets). */
@@ -1896,6 +1924,41 @@ export class ControlStore {
     const r = this.db.prepare("delete from gpu_cloud where name = ?").run(name);
     if (Number(r.changes)) this.audit(by, "gpu_cloud_deleted", { name });
     return Number(r.changes) > 0;
+  }
+
+  // ---------------------------------------------------------------- test pods on GPU clouds
+  addRunpodTest(t: { id: string; cloud: string; state: unknown; by: string }): void {
+    this.db
+      .prepare(
+        "insert into runpod_test (id, cloud, active, state, created_at, created_by) values (?, ?, 1, ?, ?, ?)",
+      )
+      .run(t.id, t.cloud, JSON.stringify(t.state), new Date().toISOString(), t.by);
+  }
+
+  /** Saves a test's state; `active` is false once its pod is gone. */
+  saveRunpodTest(id: string, state: unknown, active: boolean): void {
+    this.db
+      .prepare("update runpod_test set state = ?, active = ? where id = ?")
+      .run(JSON.stringify(state), active ? 1 : 0, id);
+  }
+
+  runpodTest(id: string): StoredRunpodTest | undefined {
+    const r = this.db.prepare("select * from runpod_test where id = ?").get(id) as Row | undefined;
+    return r ? runpodTestOf(r) : undefined;
+  }
+
+  /** Newest first; only those whose pod may still exist with `active`. */
+  runpodTests(
+    f: { cloud?: string | undefined; active?: boolean; limit?: number } = {},
+  ): StoredRunpodTest[] {
+    return (
+      this.db
+        .prepare(
+          `select * from runpod_test where (? is null or cloud = ?) and (? = 0 or active = 1)
+           order by created_at desc, id desc limit ?`,
+        )
+        .all(f.cloud ?? null, f.cloud ?? null, f.active ? 1 : 0, f.limit ?? 50) as Row[]
+    ).map(runpodTestOf);
   }
 
   // ---------------------------------------------------------------- clusters (Kubernetes)

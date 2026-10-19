@@ -18,6 +18,7 @@ import { mountMcp } from "./mcp.ts";
 import { metricsText } from "./metrics.ts";
 import { claudeModelName, isOpencodeOwn, providerBase } from "./providers.ts";
 import type { probeRepository } from "./repo-probe.ts";
+import { RunpodTests, type TestRequest } from "./runpod-tests.ts";
 import { SecretBox } from "./secrets.ts";
 import {
   type AgentRole,
@@ -192,6 +193,10 @@ export interface ControlOptions {
   clusterKubectl?: ClusterKubectl | undefined;
   /** How control reaches GPU clouds' APIs (tests give their own). */
   cloudFetch?: typeof fetch | undefined;
+  /** Test pods on GPU clouds; control's loop advances them (main.ts). Made here when not given. */
+  runpodTests?: RunpodTests | undefined;
+  /** The image a RunPod test pod runs when none is given (THERMITE_RUNPOD_TEST_IMAGE). */
+  runpodTestImage?: string | undefined;
 }
 
 export function createControlApi(
@@ -207,6 +212,9 @@ export function createControlApi(
   const secrets = opts.secrets ?? SecretBox.ephemeral();
   // ChatGPT subscriptions' logins: control alone renews them (the dashboard signs them in).
   const chatgpt = new ChatGPTLogins(store, secrets, opts.providerFetch);
+  const runpodTests =
+    opts.runpodTests ??
+    new RunpodTests(store, secrets, { fetch: opts.cloudFetch, image: opts.runpodTestImage });
   const opt = (t: string | Credential | undefined) =>
     t === undefined ? undefined : Credential.from(t);
   const creds = {
@@ -781,6 +789,38 @@ export function createControlApi(
     return v ? c.json(v) : c.json({ error: "not found" }, 404);
   });
 
+  // Test pods on a GPU cloud (the owner's token; MCP gives operators the same).
+  const TestBody = z.strictObject({
+    gpu: z.string().min(1).optional(),
+    cloud_type: z.enum(["SECURE", "COMMUNITY"]).optional(),
+    image: z.string().min(1).optional(),
+    disk_gb: z.number().int().optional(),
+    restart: z.boolean().optional(),
+    stop_after_minutes: z.number().positive().optional(),
+  });
+  app.get("/v1/gpu-clouds/:name/tests", admin, (c) =>
+    c.json(runpodTests.list(c.req.param("name"))),
+  );
+  app.post("/v1/gpu-clouds/:name/tests", admin, async (c) => {
+    const body: TestRequest = TestBody.parse(await c.req.json());
+    try {
+      return c.json(await runpodTests.start(c.req.param("name"), body, "owner:api"), 201);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 409);
+    }
+  });
+  app.get("/v1/gpu-cloud-tests/:id", admin, (c) => {
+    const t = runpodTests.view(c.req.param("id"));
+    return t ? c.json(t) : c.json({ error: "not found" }, 404);
+  });
+  app.post("/v1/gpu-cloud-tests/:id/end", admin, async (c) => {
+    try {
+      return c.json(await runpodTests.end(c.req.param("id"), "owner:api"));
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 404);
+    }
+  });
+
   app.get("/v1/commands/:id", admin, (c) => {
     const cmd = store.command(c.req.param("id"));
     return cmd ? c.json(cmd) : c.json({ error: "not found" }, 404);
@@ -804,6 +844,7 @@ export function createControlApi(
       rigImages: opts.rigImages,
       clusterKubectl: opts.clusterKubectl,
       cloudFetch: opts.cloudFetch,
+      runpodTests,
     }),
   );
   app.get("/", (c) => c.redirect("/ui", 302));
@@ -814,6 +855,7 @@ export function createControlApi(
     read: creds.read,
     privateKeyPem,
     staleAfterMs: opts.staleAfterMs,
+    runpodTests,
   });
 
   return app;

@@ -70,6 +70,7 @@ import {
 } from "./providers.ts";
 import { probeRepository } from "./repo-probe.ts";
 import { type RunpodFacts, readRunpod, runpodLine } from "./runpod.ts";
+import { cheapestGpu, DEFAULT_DISK_GB, type RunpodTests, type TestView } from "./runpod-tests.ts";
 import { keyHint, type SecretBox } from "./secrets.ts";
 import {
   AGENT_ROLES,
@@ -195,6 +196,8 @@ export interface DashboardOptions {
   clusterKubectl?: ClusterKubectl | undefined;
   /** How control reaches GPU clouds' APIs (tests give their own). */
   cloudFetch?: typeof fetch | undefined;
+  /** Test pods on GPU clouds (made by createControlApi). */
+  runpodTests?: RunpodTests | undefined;
 }
 
 /** The images a rig control sets up runs: the harness (CPU, and CUDA for GPU rigs), the supervisor. */
@@ -2184,7 +2187,7 @@ ${
 <div data-for="chatgpt" hidden class="card flat" style="grid-column:1/-1;padding:12px 14px"><b>Sign in with ChatGPT, then paste one address.</b> <span class="muted small">For your own use only: a Thermite that several people use takes API keys.</span><ol class="small" style="margin:8px 0 0 18px;line-height:1.7"><li>Press <b>Sign in with ChatGPT</b>. A ChatGPT page opens in a new tab. Sign in there and allow Thermite.</li><li>The tab then goes to an address that starts with <code>${esc(CHATGPT_REDIRECT)}</code> and shows an error. That is expected: the address is for an app on your own computer.</li><li>Copy that whole address from the tab's address bar, and paste it below.</li></ol><div class="act" style="margin-top:10px"><a class="btn sm" href="/ui/settings/chatgpt/start" target="_blank" rel="noopener">Sign in with ChatGPT ↗</a></div></div>
 <label data-for="chatgpt" hidden style="grid-column:1/-1">${infoLabel("The address the tab went to", `After the sign-in, the tab goes to an address that starts with ${CHATGPT_REDIRECT} and shows an error. Copy that whole address and paste it here. It holds a one-time code that control exchanges for the login; it works for a few minutes only.`)}<input name="chatgpt_url" maxlength="4096" placeholder="${esc(CHATGPT_REDIRECT)}?code=…"></label>
 <label data-for="chatgpt" hidden style="grid-column:1/-1">${infoLabel("Unattended use", "OpenAI asks apps to get your consent before they use your plan when you are not there. Thermite's agents work for hours without you: workers, the planner and the advisors, on the rigs you give its models.")}<span class="row small" style="gap:8px"><input type="checkbox" name="chatgpt_consent" value="1" style="height:auto;width:auto"> I allow Thermite's agents to use my ChatGPT plan when I am not there, for my own research.</span></label>
-<label data-for="runpod" hidden>${infoLabel("RunPod API key", "A key from RunPod's console (Settings, API Keys). Control seals it at once and never shows it again. For now control only reads with it; a read-only key is enough.")}<input name="runpod_key" type="password" autocomplete="new-password" maxlength="4096" placeholder="never shown again"></label>
+<label data-for="runpod" hidden>${infoLabel("RunPod API key", "A key from RunPod's console (Settings, API Keys). Control seals it at once and never shows it again. Control reads the account with it, and starts test pods only when you ask: for those the key must be allowed to write.")}<input name="runpod_key" type="password" autocomplete="new-password" maxlength="4096" placeholder="never shown again"></label>
 <label data-for="ssh" hidden style="grid-column:1/-1">${infoLabel("Private key", "The SSH private key for that user, without a passphrase. Control seals it at once and never shows it again. Leave it empty and control makes a key: add its public half, shown next, to the user's ~/.ssh/authorized_keys on the machine.")}<textarea name="private_key" class="mono" rows="4" maxlength="16384" placeholder="empty: control makes a key"></textarea></label>
 <div class="nc-does" id="pdo" style="grid-column:1/-1"><b>What happens.</b> ${ADD_SAYS.openai[1]}</div>
 <div class="form-end"><button class="primary" id="padd">${ADD_SAYS.openai[0]}</button></div></form>`;
@@ -2560,6 +2563,36 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
     LOW: "low",
     NONE: "none",
   };
+  // Test pods: the quick form, and each test with what it found.
+  const testPodForm = (gName: string, f: RunpodFacts | null, t: string) => {
+    const cheapest = f ? cheapestGpu(f, "SECURE") : undefined;
+    const options = (f?.gpus ?? [])
+      .filter((x) => x.secure || x.community)
+      .map(
+        (x) =>
+          `<option value="${esc(x.id)}" data-secure="${x.secure ? (x.price_secure ?? "") : ""}" data-community="${x.community ? (x.price_community ?? "") : ""}">${esc(x.name)} · ${x.memory_gb} GB · Secure ${x.secure ? usd(x.price_secure) : "–"}, Community ${x.community ? usd(x.price_community) : "–"}${x.availability ? ` · Secure stock ${esc(STOCK[x.availability] ?? x.availability)}` : ""}</option>`,
+      )
+      .join("");
+    return `<form method="post" action="/ui/settings/clouds/${gName}/test" class="form-grid" data-test-pod autocomplete="off" style="margin-top:10px"><input type="hidden" name="csrf" value="${t}">
+<label>${infoLabel("GPU", "The GPU type of the test pod. The cheapest in stock is enough: the test checks the platform, not speed.")}<select name="gpu"><option value="" data-secure="${cheapest?.price_secure ?? ""}" data-community="">${cheapest ? `The cheapest in stock: ${esc(cheapest.name)}` : "The cheapest in stock"}</option>${options}</select></label>
+<label>${infoLabel("Cloud", "Secure cloud runs in RunPod's own data centers. Community cloud runs on hosts other people rent out: cheaper, less predictable. Rigs whose judge times code belong on Secure.")}<select name="cloud_type"><option value="SECURE">Secure</option><option value="COMMUNITY">Community</option></select></label>
+<label style="grid-column:1/-1">${infoLabel("Image", "What the pod runs: Thermite's CUDA harness image, at a registry RunPod can pull from. Control's THERMITE_RUNPOD_TEST_IMAGE setting fills it in.")}<input name="image" required maxlength="300" value="${esc(opts.runpodTests?.defaultImage() ?? "")}" placeholder="for example ghcr.io/you/thermite-harness:1a2b3c4d5e6f-cuda"></label>
+<label>${infoLabel("Disk (GB)", "The pod's container disk, gone with the pod. The harness image needs about 15 GB.")}<input name="disk_gb" type="number" min="10" max="2000" value="${DEFAULT_DISK_GB}"></label>
+<label>${infoLabel("End it after (minutes)", "Optional. Control removes the pod after this many minutes, whatever the test is doing. Empty: the pod runs until the test ends, or until you end it here.")}<input name="stop_after_minutes" type="number" min="5" placeholder="no limit"></label>
+<label style="grid-column:1/-1">${infoLabel("Stop and start it again", "After the first report, control stops the pod and starts it again, to see that it gets its GPU back. RunPod can start a stopped pod without a GPU when someone took it meanwhile.")}<span class="row small" style="gap:8px"><input type="checkbox" name="restart" value="1" checked style="height:auto;width:auto"> Stop the pod after its report, start it again, and read its report once more</span></label>
+<div class="nc-does" style="grid-column:1/-1" data-test-say><b>What happens.</b> Control starts one pod of the image on the chosen GPU, billed by RunPod by the second. The pod checks root, capabilities, the GPU device nodes, RunPod's variables and outbound HTTPS, then runs Thermite's isolation self-test. Control reads its report, and removes the pod when the test ends.</div>
+<div class="form-end"><button>Start a test pod</button></div></form>`;
+  };
+  const testCard = (x: TestView, gName: string, t: string) =>
+    `<div class="card flat" style="margin-top:8px"><div><b>Test ${esc(x.id)}</b> · ${esc(x.gpu_name)}, ${x.cloud_type === "SECURE" ? "Secure" : "Community"} · ${usd(x.price_per_hr)}/h <span class="chip ${x.outcome === "passed" ? "ok" : x.outcome === "running" ? "info" : "warn"}">${esc(x.outcome)}</span></div>
+<div class="muted small">${esc(x.phase_words)} · cost ${x.active ? "so far " : ""}${usd(x.cost_usd)} · started ${esc(ago(x.started_at, Date.now()))} ago by ${esc(x.created_by)}${x.datacenter ? ` · ${esc(x.datacenter)}` : ""} · pod ${esc(x.pod_id)}</div>
+${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.length ? `<ul class="small" style="margin:6px 0 0 18px">${x.findings.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}${x.notes.length ? `<div class="muted small">${x.notes.map(esc).join(" ")}</div>` : ""}
+<div class="small" style="margin-top:6px"><a href="/ui/settings/clouds/${gName}/tests/${encodeURIComponent(x.id)}.json">The whole report (JSON)</a>${x.active ? ` <form class="inline" method="post" action="/ui/settings/clouds/${gName}/tests/${encodeURIComponent(x.id)}/end"><input type="hidden" name="csrf" value="${t}"><button class="sm danger">End it now: remove the pod</button></form>` : ""}</div></div>`;
+  const testSection = (gName: string, cloud: string, f: RunpodFacts | null, t: string) => {
+    const tests = opts.runpodTests?.list(cloud, 5) ?? [];
+    const busy = tests.some((x) => x.active);
+    return `<h4 style="margin:14px 0 4px">Test pods</h4><div class="muted small">A test pod checks that a rig can run on RunPod. One at a time.</div>${tests.map((x) => testCard(x, gName, t)).join("")}${busy ? "" : testPodForm(gName, f, t)}`;
+  };
   const cloudRows = (t: string) =>
     store
       .gpuClouds()
@@ -2594,9 +2627,9 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
           : "";
         return `<details class="dq${g.check_error ? " dq-bad" : ""}" data-k="cloud-${esc(g.name)}"><summary>
 <span class="dq-kind"><span class="kind r">GPU cloud</span></span>
-<span class="dq-main"><span class="dq-head">${esc(g.name)} <span class="muted" style="font-weight:400">· RunPod</span></span>${status}<span class="dq-sub"><span class="chip">key ${esc(g.key_hint)}</span><span class="chip info">control only reads: it starts nothing</span>${running.length ? `<span class="chip warn">${running.length} pod${running.length === 1 ? "" : "s"} running: billed while they run</span>` : ""}</span></span>
+<span class="dq-main"><span class="dq-head">${esc(g.name)} <span class="muted" style="font-weight:400">· RunPod</span></span>${status}<span class="dq-sub"><span class="chip">key ${esc(g.key_hint)}</span><span class="chip info">control starts only the test pods you ask for</span>${opts.runpodTests?.list(g.name, 1).some((x) => x.active) ? `<span class="chip warn">a test pod is running</span>` : ""}${running.length ? `<span class="chip warn">${running.length} pod${running.length === 1 ? "" : "s"} running: billed while they run</span>` : ""}</span></span>
 <span class="dq-side"><span class="dq-btns">${form("check", "Read again")}</span></span>
-</summary><div class="dq-body">${facts}
+</summary><div class="dq-body">${facts}${testSection(gName, g.name, f, t)}
 <form method="post" action="/ui/settings/clouds/${gName}/key" class="form-grid" autocomplete="off" style="margin-top:10px"><input type="hidden" name="csrf" value="${t}"><label>${infoLabel("New API key", "Control seals the new key, reads the account with it, and forgets the old one.")}<input name="runpod_key" type="password" autocomplete="new-password" maxlength="4096" placeholder="empty keeps the key ending ${esc(g.key_hint)}"></label><div class="form-end"><button>Replace the key</button></div></form>
 <div style="margin-top:10px">${form("delete", "Delete this GPU cloud", "sm danger")} <span class="muted small">Control forgets the key. Nothing at RunPod changes.</span></div></div></details>`;
       })
@@ -2657,8 +2690,69 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
     }
     return c.redirect(settingsUrl("ok", `"${name}" has its new key, and is read again.`), 303);
   });
+  app.post("/ui/settings/clouds/:name/test", async (c) => {
+    const name = c.req.param("name");
+    const f = await c.req.parseBody();
+    if (!opts.runpodTests) return c.redirect(settingsUrl("error", "Test pods are off."), 303);
+    const num = (v: unknown) => (String(v ?? "").trim() ? Number(String(v).trim()) : undefined);
+    try {
+      const x = await opts.runpodTests.start(
+        name,
+        {
+          gpu: String(f.gpu ?? "").trim() || undefined,
+          cloud_type: f.cloud_type === "COMMUNITY" ? "COMMUNITY" : "SECURE",
+          image: String(f.image ?? "").trim() || undefined,
+          disk_gb: num(f.disk_gb),
+          restart: f.restart === "1",
+          stop_after_minutes: num(f.stop_after_minutes),
+        },
+        "owner:ui",
+      );
+      return c.redirect(
+        settingsUrl(
+          "ok",
+          `Test ${x.id} started: a ${x.gpu_name} pod at ${usd(x.price_per_hr)}/h. Its report shows below when it comes.`,
+        ),
+        303,
+      );
+    } catch (err) {
+      return c.redirect(
+        settingsUrl("error", `No test pod: ${err instanceof Error ? err.message : String(err)}.`),
+        303,
+      );
+    }
+  });
+  app.post("/ui/settings/clouds/:name/tests/:id/end", async (c) => {
+    if (!opts.runpodTests) return c.redirect(settingsUrl("error", "Test pods are off."), 303);
+    try {
+      const x = await opts.runpodTests.end(c.req.param("id"), "owner:ui");
+      return c.redirect(
+        settingsUrl(
+          x.active ? "error" : "ok",
+          x.active
+            ? `Test ${x.id}: ${x.error ?? "the pod is not removed yet"}`
+            : `Test ${x.id} ended: the pod is removed.`,
+        ),
+        303,
+      );
+    } catch (err) {
+      return c.redirect(
+        settingsUrl("error", err instanceof Error ? err.message : String(err)),
+        303,
+      );
+    }
+  });
+  app.get("/ui/settings/clouds/:name/tests/:id{.+\\.json}", (c) => {
+    const x = opts.runpodTests?.view(c.req.param("id").replace(/\.json$/, ""));
+    return x && x.cloud === c.req.param("name") ? c.json(x) : c.json({ error: "not found" }, 404);
+  });
   app.post("/ui/settings/clouds/:name/delete", (c) => {
     const name = c.req.param("name");
+    if (opts.runpodTests?.list(name, 1).some((x) => x.active))
+      return c.redirect(
+        settingsUrl("error", "A test pod is running there: end it first, so its pod is removed."),
+        303,
+      );
     return c.redirect(
       store.deleteGpuCloud(name, "owner:ui")
         ? settingsUrl("ok", `"${name}" is deleted: control keeps nothing of its key.`)
