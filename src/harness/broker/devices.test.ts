@@ -8,6 +8,7 @@ import {
   devGroup,
   effectiveGpuLists,
   expectedNodeGroups,
+  fenceArgs,
   formatCpuList,
   type GpuLayout,
   identityFor,
@@ -102,6 +103,7 @@ describe("a dedicated development card", () => {
       gid: IDS.gpuGroup,
       groups: ctl,
       cuda: l.judge.uuid,
+      card: l.judge.node,
     });
     for (const [role, gpu] of [
       ["lane-2", true],
@@ -120,6 +122,48 @@ describe("a dedicated development card", () => {
     // Shared mode is unchanged: the gpu group for run and dev runs, nothing else.
     assert.deepEqual(identityFor("run", false), { uid: IDS.run.uid, gid: IDS.gpuGroup });
     assert.deepEqual(identityFor("lane-2", true), { uid: 10102, gid: IDS.gpuGroup });
+  });
+
+  test("the GPU fence: a role opens its own card and the shared nodes, or every node of the one shared card, or none", () => {
+    const l = plan();
+    const judgeNode = l.judge.node.replace("/dev/", "");
+    const devNode = l.dev.node.replace("/dev/", "");
+    assert.deepEqual(fenceArgs(identityFor("run", false, l)), ["--card", judgeNode, "--control"]);
+    assert.deepEqual(fenceArgs(identityFor("lane-2", true, l)), ["--card", devNode, "--control"]);
+    for (const role of ["builder", "lane-2", "agent-2"] as const) {
+      assert.deepEqual(fenceArgs(identityFor(role, false, l)), [], role);
+      assert.deepEqual(fenceArgs(identityFor(role, false)), [], `${role}, shared card`);
+    }
+    // One shared card: the roles in the gpu group reach all of it, so they need no fence.
+    assert.equal(fenceArgs(identityFor("run", false)), undefined);
+    assert.equal(fenceArgs(identityFor("lane-2", true)), undefined);
+    // The fence is the last step before the command, inside every other wrapper.
+    assert.deepEqual(
+      launch(
+        {
+          argv: ["make"],
+          uid: 10020,
+          gid: 10020,
+          nproc: 512,
+          cpus: "2-3",
+          fence: ["/usr/local/bin/thermite-devfence", "--"],
+        },
+        "/usr/bin/setpriv",
+        "/usr/bin/prlimit",
+        "/usr/bin/taskset",
+      ).argv,
+      [
+        "/usr/bin/prlimit",
+        "--nproc=512",
+        "--",
+        "/usr/bin/taskset",
+        "-c",
+        "2-3",
+        "/usr/local/bin/thermite-devfence",
+        "--",
+        "make",
+      ],
+    );
   });
 
   test("timed runs are pinned to the judge card's local CPUs that the container may use", () => {
@@ -205,18 +249,18 @@ describe("a dedicated development card", () => {
       "device:nvidia6": "reachable",
       "device:nvidiactl": "reachable",
       "device:nvidia-uvm": "reachable",
-      "device:nvidia7": "access",
+      "device:nvidia7": "open",
       "visible-gpus": "gpus",
     });
     assert.deepEqual(by("dev", l), {
       "device:nvidia7": "reachable",
       "device:nvidiactl": "reachable",
       "device:nvidia-uvm": "reachable",
-      "device:nvidia6": "access",
+      "device:nvidia6": "open",
       "visible-gpus": "gpus",
     });
     for (const layout of [l, undefined]) {
-      assert.ok(Object.values(by("other", layout)).every((op) => op === "access"));
+      assert.ok(Object.values(by("other", layout)).every((op) => op === "open"));
       assert.equal(Object.keys(by("other", layout)).length, NODES.length);
     }
     assert.deepEqual(by("judge"), {});
@@ -281,6 +325,7 @@ describe("a rig with several judge cards and several development cards", () => {
       gid: IDS.gpuJudgeBase + 1,
       groups: [IDS.gpuCtlGroup],
       cuda: "GPU-bbbbbbbb-0000-0000-0000-000000000000",
+      card: "/dev/nvidia1",
     });
     assert.equal(identityFor("run", false, l).cuda, "GPU-aaaaaaaa-0000-0000-0000-000000000000");
     assert.deepEqual(identityFor("lane-3", true, l, 1), {
@@ -288,6 +333,7 @@ describe("a rig with several judge cards and several development cards", () => {
       gid: IDS.gpuDevBase + 1,
       groups: [IDS.gpuCtlGroup],
       cuda: "GPU-dddddddd-0000-0000-0000-000000000000",
+      card: "/dev/nvidia3",
     });
     assert.equal(identityFor("lane-3", true, l).gid, IDS.gpuDevGroup);
     assert.throws(() => identityFor("run-2", false, l), /no judge card 3/);
@@ -303,13 +349,13 @@ describe("a rig with several judge cards and several development cards", () => {
       "device:nvidia1": "reachable",
       "device:nvidiactl": "reachable",
       "device:nvidia-uvm": "reachable",
-      "device:nvidia0": "access",
-      "device:nvidia2": "access",
-      "device:nvidia3": "access",
+      "device:nvidia0": "open",
+      "device:nvidia2": "open",
+      "device:nvidia3": "open",
       "visible-gpus": "gpus",
     });
     assert.equal(by("dev", 1)["device:nvidia3"], "reachable");
-    assert.equal(by("dev", 1)["device:nvidia2"], "access");
+    assert.equal(by("dev", 1)["device:nvidia2"], "open");
     assert.throws(() => deviceProbes(NODES4, "judge", l, 2), /no judge card 3/);
   });
 

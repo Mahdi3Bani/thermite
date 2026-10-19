@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { IDS, type Role, roleIds } from "./runner.ts";
 
 /**
@@ -124,9 +124,16 @@ export const LAYOUT_FILE = "gpu-layout.json";
  * the `gpu` group), or why it could not be established.
  */
 export type LayoutRecord =
-  | ({ ok: true } & GpuLayout)
-  | { ok: true; mode: "shared"; nodes: string[] }
+  | ({ ok: true; fence?: Fence } & GpuLayout)
+  | { ok: true; mode: "shared"; nodes: string[]; fence?: Fence }
   | { ok: false; mode: "dedicated" | "shared"; error: string };
+
+/**
+ * How roles are kept off the GPU's device nodes: by the nodes' groups, by the Landlock fence
+ * (thermite-devfence) as well, or by the fence alone where the nodes keep the owner and mode
+ * they came with (a container in a user namespace, as on some GPU clouds).
+ */
+export type Fence = "groups" | "groups+landlock" | "landlock";
 
 /** `00000000:3B:00.0` (nvidia-smi) to `0000:3b:00.0` (/proc/driver/nvidia/gpus). */
 export function procBusDir(bus: string): string {
@@ -237,6 +244,19 @@ export interface Identity {
   groups?: number[] | undefined;
   /** CUDA_VISIBLE_DEVICES for the process (only on a dedicated layout). */
   cuda?: string | undefined;
+  /** The role's own card's device node (only on a dedicated layout), for the GPU fence. */
+  card?: string | undefined;
+}
+
+/**
+ * The GPU fence's arguments for a role (thermite-devfence, before "--"). A role with a card of
+ * its own opens that card and the control nodes; a role in the gpu group (one shared card)
+ * opens every node, so it needs no fence; every other role opens no GPU node at all.
+ */
+export function fenceArgs(id: Identity): string[] | undefined {
+  if (id.card) return ["--card", basename(id.card), "--control"];
+  if (id.gid === IDS.gpuGroup) return undefined;
+  return [];
 }
 
 /**
@@ -261,12 +281,24 @@ export function identityFor(
   if (judgeCard !== undefined) {
     const c = judges[judgeCard];
     if (!c) throw new Error(`this rig has no judge card ${judgeCard + 1} for ${role}`);
-    return { uid: ids.uid, gid: judgeGroup(judgeCard), groups: [IDS.gpuCtlGroup], cuda: c.uuid };
+    return {
+      uid: ids.uid,
+      gid: judgeGroup(judgeCard),
+      groups: [IDS.gpuCtlGroup],
+      cuda: c.uuid,
+      card: c.node,
+    };
   }
   if (devUser) {
     const c = devs[devCard];
     if (!c) throw new Error(`this rig has no development card ${devCard + 1}`);
-    return { uid: ids.uid, gid: devGroup(devCard), groups: [IDS.gpuCtlGroup], cuda: c.uuid };
+    return {
+      uid: ids.uid,
+      gid: devGroup(devCard),
+      groups: [IDS.gpuCtlGroup],
+      cuda: c.uuid,
+      card: c.node,
+    };
   }
   return { uid: ids.uid, gid: ids.gid };
 }

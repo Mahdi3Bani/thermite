@@ -81,6 +81,22 @@ function tryDo(what: string, fn: () => void): void {
   }
 }
 
+/**
+ * The GPU fence (containers/harness/devfence.c): every role's command runs in a Landlock rule set
+ * that leaves out the device nodes the role may not open. Used wherever the kernel has Landlock;
+ * where the nodes keep the owner and mode they came with (a user namespace), it is the only fence.
+ */
+const FENCE = "/usr/local/bin/thermite-devfence";
+const fenceAbi = (() => {
+  try {
+    return Number(execFileSync(FENCE, ["--abi"], { encoding: "utf8" }).trim()) || 0;
+  } catch {
+    return 0;
+  }
+})();
+/** False when the device nodes kept another owner or mode: then only the fence holds. */
+let groupsHold = true;
+
 /** The supervisor's group: it reads exports from the shared outbox; roles may not. */
 const outboxGid = Number(env.THERMITE_OUTBOX_GID ?? "10001");
 
@@ -179,6 +195,8 @@ function deviceNodes(): string[] {
  * process run as root in this container would otherwise open it to every role.
  */
 function assertDevices(layout: GpuLayout | undefined): void {
+  // Nodes this container can't regroup stay as they are; the fence keeps roles off them.
+  if (!groupsHold) return;
   for (const { node, gid } of expectedNodeGroups(deviceNodes(), layout)) {
     tryDo(`keep the group of ${node}`, () => {
       const st = statSync(node);
@@ -279,10 +297,20 @@ function prepareDevices(lists: GpuLists): GpuLayout | undefined {
         return true;
       }
     });
-    const shared: LayoutRecord = wrong.length
-      ? { ok: false, mode: "shared", error: `${wrong.join(", ")} kept another owner or mode` }
-      : { ok: true, mode: "shared", nodes };
-    if (wrong.length) log("broker", "could not restrict the GPU's device nodes", { nodes: wrong });
+    groupsHold = wrong.length === 0;
+    const shared: LayoutRecord = !wrong.length
+      ? { ok: true, mode: "shared", nodes, fence: fenceAbi ? "groups+landlock" : "groups" }
+      : fenceAbi
+        ? { ok: true, mode: "shared", nodes, fence: "landlock" }
+        : { ok: false, mode: "shared", error: `${wrong.join(", ")} kept another owner or mode` };
+    if (wrong.length)
+      log(
+        "broker",
+        fenceAbi
+          ? "the GPU's device nodes kept their owner and mode: only the Landlock fence keeps roles off them"
+          : "could not restrict the GPU's device nodes",
+        { nodes: wrong, landlock_abi: fenceAbi },
+      );
     writeFileSync(layoutPath, `${JSON.stringify(shared)}\n`, { mode: 0o644 });
     chmodSync(layoutPath, 0o644);
     return undefined;
@@ -310,15 +338,33 @@ function prepareDevices(lists: GpuLists): GpuLayout | undefined {
       judgeIndices: parseIndexList(lists.judge, "THERMITE_GPU_INDEX"),
       devIndices: parseIndexList(lists.dev, "THERMITE_DEV_GPU_INDEX"),
     });
+    const kept: string[] = [];
     for (const { node, gid } of nodeGroups(layout)) {
-      chownSync(node, 0, gid);
-      chmodSync(node, 0o660);
+      try {
+        chownSync(node, 0, gid);
+        chmodSync(node, 0o660);
+      } catch {}
       const st = statSync(node);
       if (st.gid !== gid || (st.mode & 0o777) !== 0o660) {
-        throw new Error(`${node} kept group ${st.gid}, mode ${(st.mode & 0o777).toString(8)}`);
+        const why = `${node} kept group ${st.gid}, mode ${(st.mode & 0o777).toString(8)}`;
+        if (!fenceAbi) throw new Error(why);
+        kept.push(why);
       }
     }
-    record = { ok: true, ...layout };
+    groupsHold = kept.length === 0;
+    if (kept.length)
+      log(
+        "broker",
+        "device nodes kept their owner and mode: only the Landlock fence keeps roles off them",
+        {
+          nodes: kept,
+        },
+      );
+    record = {
+      ok: true,
+      ...layout,
+      fence: kept.length ? "landlock" : fenceAbi ? "groups+landlock" : "groups",
+    };
     log("broker", "dedicated cards", {
       judges: layout.judges.map((c) => c.node),
       devs: layout.devs.map((c) => c.node),
@@ -470,7 +516,9 @@ if (isRoot) {
     gpuLayout,
     assertDevices: () => assertDevices(gpuLayout),
     runCpus: chooseRunCpus(gpuLayout, lists),
+    fence: fenceAbi ? FENCE : undefined,
   };
+  log("broker", "GPU fence", { landlock_abi: fenceAbi, used: fenceAbi > 0 });
   // nvidia-smi as root (the bus query above) resets nvidia-uvm to 0666: put it back now.
   assertDevices(gpuLayout);
   setInterval(() => assertDevices(gpuLayout), 60_000).unref();

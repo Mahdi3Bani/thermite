@@ -23,6 +23,11 @@ export interface SupervisedRun {
   gid?: number | undefined;
   /** Supplementary groups (with uid and gid; set by setpriv, since spawn drops them). */
   groups?: number[] | undefined;
+  /**
+   * The GPU fence the command runs in (thermite-devfence and its arguments, ending in "--"): a
+   * Landlock rule set that keeps it off the device nodes it is not given.
+   */
+  fence?: readonly string[] | undefined;
   /** A CPU list the run is pinned to (taskset), for timing on a GPU's local CPUs. */
   cpus?: string | undefined;
   /** Kill when the role's resident memory exceeds this. */
@@ -307,14 +312,16 @@ const TASKSET = ["/usr/bin/taskset", "/bin/taskset"].find((p) => existsSync(p));
  * root to the role's user, groups and all, before anything of the role runs.
  */
 export function launch(
-  spec: Pick<SupervisedRun, "argv" | "uid" | "gid" | "groups" | "nproc" | "cpus">,
+  spec: Pick<SupervisedRun, "argv" | "uid" | "gid" | "groups" | "nproc" | "cpus" | "fence">,
   setpriv = SETPRIV,
   prlimit = PRLIMIT,
   taskset = TASKSET,
 ): { argv: string[]; uid?: number; gid?: number } {
   if (spec.cpus && !taskset)
     throw new Error("pinning a run to CPUs needs taskset, which this image lacks");
-  const pinned = spec.cpus && taskset ? [taskset, "-c", spec.cpus, ...spec.argv] : [...spec.argv];
+  // The fence is the last step before the command, so nothing of the role runs outside it.
+  const fenced = spec.fence?.length ? [...spec.fence, ...spec.argv] : [...spec.argv];
+  const pinned = spec.cpus && taskset ? [taskset, "-c", spec.cpus, ...fenced] : fenced;
   // A process limit for the role (a fork bomb stays small), set by prlimit before exec.
   const argv =
     spec.uid !== undefined && spec.nproc !== undefined && prlimit

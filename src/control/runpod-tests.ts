@@ -154,9 +154,16 @@ export function findings(s: TestState): string[] {
     Object.keys(chown).length === 0
       ? "No GPU device node was found to give to a group."
       : chownBad.length
-        ? `Giving the GPU device nodes to a group failed: ${chownBad.map(([k, v]) => `${k} ${String(v)}`).join(", ")}.`
+        ? `The GPU device nodes keep the owner and mode they came with (${chownBad.map(([k, v]) => `${k} ${String(v)}`).join(", ")}): only the GPU fence can keep roles off them.`
         : "The GPU device nodes can be given to a group, mode 0660.",
   );
+  const fence = obj(stepOf(r, "gpu_fence").value);
+  if (fence.landlock_abi !== undefined)
+    out.push(
+      Number(fence.landlock_abi) > 0
+        ? `Landlock ABI ${String(fence.landlock_abi)}: a fenced role's open of a card was ${String(fence.lane_opens_card)}.`
+        : "No Landlock here: the GPU fence can't work, so a rig would not time or run development runs.",
+    );
   const temp = obj(stepOf(r, "temp_modes").value);
   const tempBad = Object.entries(temp).filter(([, v]) => v !== "ok");
   out.push(
@@ -540,7 +547,9 @@ function viewOf(t: StoredRunpodTest, now: number): TestView {
           ? "failed"
           : selftest &&
               !f.some((x) =>
-                /^(Missing|Giving|Setting|Does not|nvidia-smi failed|A role's user can)/.test(x),
+                /^(Missing|Setting|Does not|nvidia-smi failed|A role's user can|No Landlock)|was OPENED/.test(
+                  x,
+                ),
               )
             ? "passed"
             : "failed",

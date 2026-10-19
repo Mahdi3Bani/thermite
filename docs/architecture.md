@@ -154,4 +154,8 @@ v1 ships drivers for CUDA GPUs and for CPUs. Others, such as serial-attached boa
   - The isolation check probes every judge card's user and every agents' card: each reaches its own card and is refused the others.
   - A rig that cannot set this up neither times nor allows test runs. It never falls back to sharing while several cards are visible.
   - Where control sets a rig up, Add a rig takes any number of GPUs and asks how many are the judge's: by default half, rounded up, and on a machine the lowest-numbered.
+- **The GPU fence.** Where the kernel has Landlock, the broker also starts every role's command in a Landlock rule set that leaves out the GPU device nodes the role may not open: all of them for the builder, a lane's plain commands and the agents, every card but its own for a run on a card of its own. Children keep it, and a path around it (`/proc/self/root/dev/...`) is refused too.
+  - Some GPU clouds run containers in a user namespace, where the device nodes keep the owner and mode they came with (open to everyone) and even root can't change them. There the fence alone keeps roles off the GPU, and the isolation check shows it.
+  - Without Landlock, and with nodes the broker can't regroup, the rig neither times nor allows test runs.
+  - The isolation check opens each node for real (and closes it), since access checks alone don't see the fence.
   - A rig is a set of GPUs, and what is deployed on it decides how they are used. A rig configured with its set (`THERMITE_GPUS`) keeps the judge's share as a setting: Edit rig changes it, and so does a campaign started on the rig (its advanced settings). The harness then restarts, and the broker regroups the cards before the controller starts again.

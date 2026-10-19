@@ -25,7 +25,7 @@ import { copyForRun } from "./judge/measure.ts";
 
 export interface Probe {
   name: string;
-  op: "read" | "list" | "write" | "access" | "create" | "readable" | "reachable" | "gpus";
+  op: "read" | "list" | "write" | "access" | "open" | "create" | "readable" | "reachable" | "gpus";
   path: string;
   /** For `gpus`: the only card UUIDs nvidia-smi may list, comma-separated. */
   expect?: string;
@@ -62,7 +62,9 @@ for (const p of probes) {
     else if (p.op === "list") fs.readdirSync(p.path);
     else if (p.op === "write") fs.writeFileSync(p.path, "tampered", { flag: "r+" });
     else if (p.op === "create") fs.writeFileSync(p.path + "/probe-" + process.getuid(), "x");
-    else if (p.op === "reachable") fs.accessSync(p.path, fs.constants.R_OK | fs.constants.W_OK);
+    // A device node is opened for real (and closed): file modes and the Landlock fence both
+    // act on opening, while access() sees only the modes.
+    else if (p.op === "reachable" || p.op === "open") fs.closeSync(fs.openSync(p.path, "r+"));
     else fs.accessSync(p.path, fs.constants.W_OK);
     out[p.name] = p.op === "readable" || p.op === "reachable" ? p.op : "ALLOWED";
   } catch (e) {
@@ -91,7 +93,7 @@ export function deviceProbes(
   layout?: GpuLayout | undefined,
   card = 0,
 ): Probe[] {
-  const refuse = (p: string): Probe => ({ name: `device:${p.slice(5)}`, op: "access", path: p });
+  const refuse = (p: string): Probe => ({ name: `device:${p.slice(5)}`, op: "open", path: p });
   const reach = (p: string): Probe => ({ name: `device:${p.slice(5)}`, op: "reachable", path: p });
   if (side === "other") return nodes.map(refuse);
   if (!layout) return [];

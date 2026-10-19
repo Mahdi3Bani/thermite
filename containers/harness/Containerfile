@@ -54,6 +54,11 @@ RUN apt-get update \
  && (command -v setpriv >/dev/null || apt-get install -y --no-install-recommends setpriv) \
  && command -v setpriv && command -v prlimit && command -v taskset \
  && rm -rf /var/lib/apt/lists/*
+# The GPU fence: the broker starts every role's command in a Landlock rule set that leaves out
+# the GPU device nodes the role may not open (containers/harness/devfence.c).
+COPY containers/harness/devfence.c /tmp/devfence.c
+RUN gcc -O2 -Wall -Wextra -Werror -o /usr/local/bin/thermite-devfence /tmp/devfence.c \
+ && rm /tmp/devfence.c
 # One user per role (src/harness/broker/runner.ts has the same ids). The broker runs each kind of
 # work as its own user; `run` and the lanes' development runs get the `gpu` group, which owns
 # the device nodes. With a dedicated development card, `gpudev` owns that card and `gpuctl` the

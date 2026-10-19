@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, chownSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import { log } from "../../common/env.ts";
-import { cardsOf, type GpuLayout, identityFor } from "./devices.ts";
+import { cardsOf, fenceArgs, type GpuLayout, identityFor } from "./devices.ts";
 import { killScope, runSupervised, sweepRole } from "./process.ts";
 import { BrokerRequest, type BrokerResponse, type BrokerRequest as Req } from "./protocol.ts";
 import { IDS, insideRoot, type Role, RunRequest, roleIds } from "./runner.ts";
@@ -24,6 +24,8 @@ export interface BrokerServerOptions {
   assertDevices?: (() => void) | undefined;
   /** The CPUs each timing user's processes (run, run-1, ...) are pinned to; none when unset. */
   runCpus?: Record<string, string> | undefined;
+  /** The GPU fence's program (thermite-devfence), where the kernel has Landlock; none: no fence. */
+  fence?: string | undefined;
 }
 
 const LANE_ROLES: Role[] = Array.from({ length: IDS.maxLanes }, (_, i) => [
@@ -69,12 +71,9 @@ export async function handle(req: Req, opts: BrokerServerOptions): Promise<unkno
       if (r.gpu && !/^lane-\d+$/.test(r.role))
         throw new Error(`role ${r.role} may not ask for the gpu group`);
       if (r.devCard !== undefined && !r.gpu) throw new Error("devCard comes only with gpu");
-      const { uid, gid, groups, cuda } = identityFor(
-        r.role,
-        r.gpu === true,
-        opts.gpuLayout,
-        r.devCard ?? 0,
-      );
+      const identity = identityFor(r.role, r.gpu === true, opts.gpuLayout, r.devCard ?? 0);
+      const { uid, gid, groups, cuda } = identity;
+      const fence = opts.fence ? fenceArgs(identity) : undefined;
       const lane = /^lane-\d+$/.test(r.role);
       // A root process using CUDA (an operator's exec, say) can reset a node to 0666.
       opts.assertDevices?.();
@@ -99,6 +98,7 @@ export async function handle(req: Req, opts: BrokerServerOptions): Promise<unkno
         gid,
         groups,
         cpus: opts.runCpus?.[r.role],
+        fence: fence && opts.fence ? [opts.fence, ...fence, "--"] : undefined,
         rssLimitBytes: r.rssLimitBytes,
         spareExe: r.spareExe,
         disk: r.disk,

@@ -10,9 +10,11 @@ const cards = Array.from({ length: n }, (_, i) => ({
   bus: `00000000:0${i + 1}:00.0`,
   node: `/dev/nvidia${i}`,
 }));
+// Opened for real, as the driver's library does: file modes and the GPU fence (Landlock) both act
+// on opening.
 const can = (p) => {
   try {
-    fs.accessSync(p, fs.constants.R_OK | fs.constants.W_OK);
+    fs.closeSync(fs.openSync(p, "r+"));
     return true;
   } catch {
     return false;

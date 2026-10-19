@@ -16,7 +16,14 @@ import { cleanEngine } from "./lib/smoke-env.mjs";
 
 const engine = (process.env.COMPOSE ?? "podman compose").split(" ")[0];
 const image = "localhost/thermite-harness:multigpu-check";
-const names = ["thermite-multigpu-a", "thermite-multigpu-b", "thermite-multigpu-c"];
+const names = [
+  "thermite-multigpu-a",
+  "thermite-multigpu-b",
+  "thermite-multigpu-c",
+  "thermite-multigpu-d",
+];
+/** Fake device nodes owned by the Podman VM's root, which a rootless container doesn't map. */
+const FOREIGN = "/var/tmp/thermite-multigpu-foreign-nodes";
 const sh = (args, opts = {}) =>
   execFileSync(engine, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...opts });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -31,12 +38,28 @@ const token = randomBytes(24).toString("base64url");
 const cleanup = () => {
   for (const n of names) spawnSync(engine, ["rm", "-f", n], { stdio: "ignore" });
   spawnSync(engine, ["rmi", "-f", image], { stdio: "ignore" });
+  if (foreignNodesPossible())
+    spawnSync(engine, ["machine", "ssh", `sudo rm -rf ${FOREIGN}`], { stdio: "ignore" });
   cleanEngine();
   rmSync(dir, { recursive: true, force: true });
 };
 
+/**
+ * Whether this engine can show a container device nodes it can't regroup, as a GPU cloud that
+ * runs containers in a user namespace does: rootless Podman on a machine VM, where files the VM's
+ * root owns appear as nobody's and chown fails.
+ */
+function foreignNodesPossible() {
+  if (engine !== "podman") return false;
+  const info = spawnSync(engine, ["info", "--format", "{{.Host.Security.Rootless}}"], {
+    encoding: "utf8",
+  });
+  if (info.stdout.trim() !== "true") return false;
+  return spawnSync(engine, ["machine", "inspect"], { stdio: "ignore" }).status === 0;
+}
+
 /** Starts the harness on fake GPUs with these settings (the judge's and agents' lists, or a set). */
-function start(name, gpuEnv) {
+function start(name, gpuEnv, extra = []) {
   return sh([
     "run",
     "-d",
@@ -54,6 +77,8 @@ function start(name, gpuEnv) {
     `THERMITE_RIG_ID=${name}`,
     "-e",
     "THERMITE_TARGET=cuda-gpu",
+    "-e",
+    "FAKE_GPUS=4",
     ...Object.entries(gpuEnv).flatMap(([k, v]) => ["-e", `${k}=${v}`]),
     "-e",
     "THERMITE_CALIBRATION_BLOCKS=0",
@@ -64,9 +89,8 @@ function start(name, gpuEnv) {
     "-e",
     `TEST_SUPERVISOR_TOKEN=${token}`,
     "-e",
-    "FAKE_GPUS=4",
-    "-e",
     "PATH=/opt/fake-gpu:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    ...extra,
     "-v",
     `${join(dir, "keys")}:/keys:ro`,
     "-v",
@@ -260,6 +284,63 @@ try {
     "a new split in the rig's settings regroups the cards at the next start: three judge cards, one agents' card",
     groupsOf(c),
   );
+
+  // Device nodes this container can't regroup, as on a GPU cloud that runs containers in a user
+  // namespace: owned by a user the container doesn't map, mode 0666. The broker can't give them
+  // to the gpu group; the GPU fence (Landlock) alone must keep every other role off them.
+  if (foreignNodesPossible()) {
+    const d = names[3];
+    const nodes = ["nvidia0", "nvidiactl", "nvidia-uvm"];
+    // podman machine ssh joins its arguments into one remote command line: quote it whole.
+    const nodeList = nodes.join(" ");
+    sh([
+      "machine",
+      "ssh",
+      `sudo sh -c 'rm -rf ${FOREIGN} && mkdir -p ${FOREIGN} && cd ${FOREIGN} && touch ${nodeList} && chown 0:0 ${nodeList} && chmod 666 ${nodeList}'`,
+    ]);
+    start(
+      d,
+      { FAKE_GPUS: "1" },
+      // SELinux labels off for this container only: the VM would otherwise refuse the files to
+      // every process, and the test must show the fence alone refusing the roles.
+      [
+        "--security-opt",
+        "label=disable",
+        ...nodes.flatMap((n) => ["-v", `${FOREIGN}/${n}:/dev/${n}`]),
+      ],
+    );
+    const only = await waitFor(
+      d,
+      "the GPU's device nodes kept their owner and mode: only the Landlock fence keeps roles off them",
+    );
+    const seen = sh(["exec", d, "stat", "-c", "%U %a", "/dev/nvidia0"]).trim();
+    check(
+      seen === "nobody 666" && only.landlock_abi > 0,
+      "nodes the container can't regroup (nobody's, 0666): the broker says only the fence holds",
+      `${seen}; ${JSON.stringify(only)}`,
+    );
+    await waitFor(d, "judge ready");
+    const selfD = spawnSync(engine, ["exec", d, "thermite", "selftest", "isolation", "--force"], {
+      encoding: "utf8",
+    });
+    let rd;
+    try {
+      rd = JSON.parse(selfD.stdout);
+    } catch {
+      rd = { ok: false, error: `${selfD.stdout}${selfD.stderr}`.slice(-1500) };
+    }
+    const fenced = ["builder", "lane-1", "agent-1"].map((r) => [
+      r,
+      rd.roles?.[r]?.["device:nvidia0"],
+    ]);
+    check(
+      rd.ok === true && fenced.every(([, v]) => String(v).startsWith("EACCES")),
+      "the isolation selftest passes with the fence alone: no other role opens the GPU",
+      JSON.stringify(fenced),
+    );
+  } else {
+    console.log("SKIP nodes a container can't regroup: needs rootless Podman on a machine VM");
+  }
 } catch (err) {
   console.error(err instanceof Error ? err.message : String(err));
   failed++;

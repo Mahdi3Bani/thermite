@@ -115,6 +115,22 @@ const LANE = 10101; // lane-1, as the image creates it
     }
     return out;
   });
+  // The GPU fence (thermite-devfence, a Landlock rule set): what the kernel offers, and whether a
+  // fenced lane-1 really can't open a card.
+  await step("gpu_fence", () => {
+    const abi = Number(run("/usr/local/bin/thermite-devfence", ["--abi"])) || 0;
+    const card = gpuNodes()[0];
+    let fenced = "no card node";
+    if (abi && card) {
+      try {
+        run("/usr/local/bin/thermite-devfence", ["--", process.execPath, "-e", "require('fs').closeSync(require('fs').openSync('/dev/" + card + "','r+'))"], { uid: LANE, gid: LANE, env: {} });
+        fenced = "OPENED";
+      } catch (e) {
+        fenced = /EACCES|permission denied/i.test(String(e.stderr || e.message)) ? "refused" : errText(e);
+      }
+    }
+    return { landlock_abi: abi, lane_opens_card: fenced };
+  });
   await step("temp_modes", () => {
     const out = {};
     for (const p of ["/tmp", "/dev/shm"]) {
