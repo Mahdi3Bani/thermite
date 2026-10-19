@@ -233,8 +233,18 @@ export function createControlApi(
     await next();
   };
   // A rig's token is in the rig tokens file, or was made by control when the rig was enrolled.
+  // A rig control reaches through a proxy has no token: its calls come in-process, from control's
+  // own end of the tunnel (src/control/tunnel.ts), which verified them. Only an in-process call
+  // can carry that binding; a request from the network never has it.
   const rigAuth: MiddlewareHandler = async (c, next) => {
     const rig = c.req.param("rig") ?? "";
+    const via = (c.env as { tunnelRig?: unknown } | undefined)?.tunnelRig;
+    if (typeof via === "string") {
+      if (via !== rig || !store.tunnelRig(rig)?.enrolled_at || store.rigRetired(rig))
+        return c.json({ error: "unauthorized" }, 401);
+      await next();
+      return;
+    }
     const token = bearer(c.req.header("authorization"));
     const expected = tokens.rigs[rig];
     const ok = expected !== undefined ? eq(token, expected) : store.rigTokenMatches(rig, token);

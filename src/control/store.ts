@@ -260,6 +260,26 @@ create table if not exists rig_retired (
   at text not null,
   by text not null
 );
+-- Rigs control reaches through a public proxy (a RunPod pod): the pod, the tunnel's sealed
+-- secrets, and the pod's keys once enrolled (docs/plan/goals/019-rig-only-entry.goal).
+create table if not exists tunnel_rig (
+  rig text primary key,
+  pod text not null,
+  url text not null,
+  prefix_sealed text not null,
+  box_private_sealed text not null,
+  box_public text not null,
+  code_sealed text not null,
+  code_expires_at text not null,
+  pod_sign_public text,
+  pod_box_public text,
+  enrolled_at text,
+  last_exchange_at text,
+  refused_total integer not null default 0,
+  error text,
+  created_at text not null,
+  created_by text not null
+);
 -- Test pods control started on a GPU cloud: what was asked, the pod, and what it found.
 create table if not exists runpod_test (
   id text primary key,
@@ -542,6 +562,50 @@ const gpuCloudOf = (r: Row): GpuCloud => ({
   check_error: r.check_error === null ? null : String(r.check_error),
   created_at: String(r.created_at),
 });
+
+/** A rig behind a public proxy, as listed: never its sealed secrets. */
+export interface TunnelRig {
+  rig: string;
+  pod: string;
+  url: string;
+  box_public: string;
+  code_expires_at: string;
+  pod_sign_public: string | null;
+  pod_box_public: string | null;
+  enrolled_at: string | null;
+  last_exchange_at: string | null;
+  refused_total: number;
+  error: string | null;
+  created_at: string;
+  created_by: string;
+}
+export interface TunnelSecrets {
+  prefix_sealed: string;
+  box_private_sealed: string;
+  code_sealed: string;
+}
+
+const tunnelRigOf = (r: Row): TunnelRig & TunnelSecrets => {
+  const opt = (v: unknown) => (v === null || v === undefined ? null : String(v));
+  return {
+    rig: String(r.rig),
+    pod: String(r.pod),
+    url: String(r.url),
+    prefix_sealed: String(r.prefix_sealed),
+    box_private_sealed: String(r.box_private_sealed),
+    box_public: String(r.box_public),
+    code_sealed: String(r.code_sealed),
+    code_expires_at: String(r.code_expires_at),
+    pod_sign_public: opt(r.pod_sign_public),
+    pod_box_public: opt(r.pod_box_public),
+    enrolled_at: opt(r.enrolled_at),
+    last_exchange_at: opt(r.last_exchange_at),
+    refused_total: Number(r.refused_total ?? 0),
+    error: opt(r.error),
+    created_at: String(r.created_at),
+    created_by: String(r.created_by),
+  };
+};
 
 /** A test pod as kept: its state is runpod-tests.ts's TestState. */
 export interface StoredRunpodTest {
@@ -1972,6 +2036,85 @@ export class ControlStore {
     );
   }
 
+  // ---------------------------------------------------------------- rigs behind a proxy
+  addTunnelRig(
+    t: Omit<
+      TunnelRig,
+      | "pod_sign_public"
+      | "pod_box_public"
+      | "enrolled_at"
+      | "last_exchange_at"
+      | "refused_total"
+      | "error"
+      | "created_at"
+    > & {
+      prefix_sealed: string;
+      box_private_sealed: string;
+      code_sealed: string;
+    },
+  ): void {
+    this.db
+      .prepare(
+        `insert into tunnel_rig (rig, pod, url, prefix_sealed, box_private_sealed, box_public,
+           code_sealed, code_expires_at, created_at, created_by)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        t.rig,
+        t.pod,
+        t.url,
+        t.prefix_sealed,
+        t.box_private_sealed,
+        t.box_public,
+        t.code_sealed,
+        t.code_expires_at,
+        new Date().toISOString(),
+        t.created_by,
+      );
+    this.audit(t.created_by, "tunnel_rig_added", { rig: t.rig, pod: t.pod, url: t.url });
+  }
+
+  tunnelRig(rig: string): (TunnelRig & TunnelSecrets) | undefined {
+    const r = this.db.prepare("select * from tunnel_rig where rig = ?").get(rig) as Row | undefined;
+    return r ? tunnelRigOf(r) : undefined;
+  }
+
+  tunnelRigs(): TunnelRig[] {
+    return (this.db.prepare("select * from tunnel_rig order by rig").all() as Row[]).map((r) => {
+      const {
+        prefix_sealed: _p,
+        box_private_sealed: _b,
+        code_sealed: _c,
+        ...rest
+      } = tunnelRigOf(r);
+      return rest;
+    });
+  }
+
+  /** Pins the pod's keys; refused once pinned (a second enrollment). */
+  pinTunnelRig(rig: string, sign: string, box: string): boolean {
+    const r = this.db
+      .prepare(
+        `update tunnel_rig set pod_sign_public = ?, pod_box_public = ?, enrolled_at = ?,
+           code_sealed = '', error = null
+         where rig = ? and enrolled_at is null`,
+      )
+      .run(sign, box, new Date().toISOString(), rig);
+    if (Number(r.changes)) this.audit("control", "tunnel_rig_enrolled", { rig });
+    return Number(r.changes) > 0;
+  }
+
+  /** After each exchange: when it was, what the pod refused since, and the last error. */
+  tunnelExchanged(rig: string, r: { refused?: number; error?: string | null }): void {
+    this.db
+      .prepare(
+        `update tunnel_rig set last_exchange_at = case when ? is null then last_exchange_at else ? end,
+           refused_total = refused_total + ?, error = ? where rig = ?`,
+      )
+      .run(r.error ? null : 1, new Date().toISOString(), r.refused ?? 0, r.error ?? null, rig);
+    if (r.refused) this.audit("control", "tunnel_refusals", { rig, refused: r.refused });
+  }
+
   // ---------------------------------------------------------------- test pods on GPU clouds
   addRunpodTest(t: { id: string; cloud: string; state: unknown; by: string }): void {
     this.db
@@ -2274,7 +2417,11 @@ export class ControlStore {
 
   /** Rigs that have a token but have not reported yet still accept commands. */
   knownRig(rig: string): boolean {
-    return this.configuredRigs.has(rig) || this.enrolledRig(rig) !== undefined;
+    return (
+      this.configuredRigs.has(rig) ||
+      this.enrolledRig(rig) !== undefined ||
+      Boolean(this.tunnelRig(rig)?.enrolled_at)
+    );
   }
 
   /** An enrolled rig's record, if it is enrolled and not retired. */
