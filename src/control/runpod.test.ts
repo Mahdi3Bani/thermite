@@ -10,7 +10,7 @@ const ADMIN = "admin-token-abcdef";
 const KEY = "rpa_test-key-0123456789abcdef";
 
 /** RunPod's API behind a fake fetch: what it answers to the right key, and every call it got. */
-function fakeRunpod(o: { down?: boolean; pods?: unknown[] } = {}) {
+function fakeRunpod(o: { down?: boolean; pods?: unknown[]; noBilling?: boolean } = {}) {
   const calls: { url: string; auth: string; method: string }[] = [];
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -21,6 +21,23 @@ function fakeRunpod(o: { down?: boolean; pods?: unknown[] } = {}) {
     if (o.down) throw new Error("getaddrinfo ENOTFOUND api.runpod.io");
     if (auth !== `Bearer ${KEY}`) return json({ error: "unauthorized" }, 401);
     const path = new URL(url).pathname;
+    if (path === "/v2/billing") {
+      if (o.noBilling) return json({ title: "Forbidden" }, 403);
+      const monthly = new URL(url).searchParams.get("bucketSize") === "month";
+      const today = new Date().toISOString().slice(0, 10);
+      const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+      return json(
+        monthly
+          ? { records: [], metadata: { totals: { totalAmount: 12.34 } } }
+          : {
+              records: [
+                { startTime: `${yesterday}T00:00:00Z`, totalAmount: 1.5 },
+                { startTime: `${today}T00:00:00Z`, totalAmount: 0.25 },
+              ],
+              metadata: { totals: { totalAmount: 1.75 } },
+            },
+      );
+    }
     if (path === "/v2/pods")
       return json({
         pods: o.pods ?? [
@@ -91,7 +108,7 @@ describe("RunPod reader", () => {
     );
     assert.equal(
       runpodLine(facts),
-      "2 GPU types · from $0.25/h (RTX A4000, Secure) · 1 data centers · 1 pod running, $0.69/h",
+      "2 GPU types · from $0.25/h (RTX A4000, Secure) · 1 data centers · 1 pod running, $0.69/h · $12.34 spent this month",
     );
   });
 
@@ -175,6 +192,12 @@ describe("RunPod in Providers", () => {
     assert.match(page, /1 pod running: billed while they run/);
     assert.match(page, /kits: 50 GB in EU-RO-1/);
     assert.match(page, /control starts only the test pods you ask for/);
+    // Spend, from RunPod's billing.
+    assert.match(page, /\$12\.34 spent this month/);
+    assert.match(
+      page,
+      /today <b>\$0\.25<\/b> · this month <b>\$12\.34<\/b> · last 30 days <b>\$1\.75<\/b>/,
+    );
     assert.match(
       await s.post("/ui/settings/add", { type: "runpod", name: "runpod", runpod_key: KEY }),
       /exists already/,
@@ -186,6 +209,14 @@ describe("RunPod in Providers", () => {
       /Kept the old key: RunPod refused the key/,
     );
     assert.equal(s.secrets.open(s.store.gpuCloud("runpod")?.key_sealed ?? ""), KEY);
+
+    // A key that may not read billing: the rest is read, and the spend says why.
+    const nb = await control(fakeRunpod({ noBilling: true }).f);
+    assert.match(
+      await nb.post("/ui/settings/add", { type: "runpod", name: "rp-nb", runpod_key: KEY }),
+      /"rp-nb" is added and read/,
+    );
+    assert.match(await nb.page("/ui/settings"), /RunPod refused this key for billing/);
 
     // RunPod can't be reached: the last read stays, with why.
     const down = await control(fakeRunpod({ down: true }).f);

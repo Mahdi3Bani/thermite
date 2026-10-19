@@ -5,6 +5,9 @@
  * is a test pod, when the owner or an operator asks for one (runpod-tests.ts).
  */
 
+import type { SecretBox } from "./secrets.ts";
+import type { ControlStore } from "./store.ts";
+
 export const RUNPOD_API = "https://api.runpod.io";
 
 export interface RunpodGpu {
@@ -25,6 +28,19 @@ export interface RunpodFacts {
   datacenters: { id: string; name: string; region: string }[];
   volumes: { id: string; name: string; size_gb: number; datacenter: string }[];
   pods: { id: string; name: string; status: string; cost_per_hr: number; gpus: number }[];
+  /** What the account spent, from RunPod's billing (USD); or why it could not be read. */
+  spend?: RunpodSpend | undefined;
+}
+
+export interface RunpodSpend {
+  /** Today so far, this month so far, and the last 30 days (today included), in USD. */
+  today: number | null;
+  month: number | null;
+  last30: number | null;
+  /** The last 7 days, oldest first: the day (YYYY-MM-DD, UTC) and what it cost. */
+  days: { day: string; usd: number }[];
+  /** Set when billing could not be read (a key without billing access, say). */
+  error?: string | undefined;
 }
 
 type Json = Record<string, unknown>;
@@ -197,6 +213,7 @@ export async function readRunpod(
   const dcs = (await get("/v2/catalog/datacenters")) ?? {};
   const vols = (await get("/v2/network-volumes")) ?? {};
   return {
+    spend: await readSpend(get),
     gpus: ((gpus.gpus as Json[]) ?? [])
       .map((g) => {
         const price = (g.price ?? {}) as Json;
@@ -233,6 +250,61 @@ export async function readRunpod(
   };
 }
 
+/**
+ * The account's spend from RunPod's billing API (GET /v2/billing: buckets of USD amounts across
+ * pods, serverless, storage and the rest). A key without billing access gets the rest of the read
+ * and a reason here.
+ */
+async function readSpend(get: (path: string) => Promise<Json | null>): Promise<RunpodSpend> {
+  try {
+    const days = (await get("/v2/billing?bucketSize=day&lastN=30")) ?? {};
+    const month = (await get("/v2/billing?bucketSize=month&lastN=1")) ?? {};
+    const records = ((days.records as Json[]) ?? [])
+      .map((r) => ({ day: str(r.startTime).slice(0, 10), usd: num(r.totalAmount) ?? 0 }))
+      .filter((r) => r.day)
+      .sort((a, b) => a.day.localeCompare(b.day));
+    const today = new Date().toISOString().slice(0, 10);
+    const totals = ((days.metadata as Json | undefined)?.totals ?? {}) as Json;
+    const monthTotals = ((month.metadata as Json | undefined)?.totals ?? {}) as Json;
+    return {
+      today: records.find((r) => r.day === today)?.usd ?? 0,
+      month: num(monthTotals.totalAmount),
+      last30: num(totals.totalAmount) ?? records.reduce((t, r) => t + r.usd, 0),
+      days: records.slice(-7),
+    };
+  } catch (err) {
+    return {
+      today: null,
+      month: null,
+      last30: null,
+      days: [],
+      error:
+        err instanceof Error && /refused the key/.test(err.message)
+          ? "RunPod refused this key for billing: give the key read access to billing to see spend"
+          : err instanceof Error
+            ? err.message
+            : String(err),
+    };
+  }
+}
+
+/** Reads every GPU cloud in Providers again (control's loop, every 15 minutes): prices, pods, spend. */
+export async function refreshGpuClouds(
+  store: ControlStore,
+  secrets: SecretBox,
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  for (const g of store.gpuClouds()) {
+    const sealed = store.gpuCloud(g.name)?.key_sealed;
+    if (!sealed) continue;
+    try {
+      store.setGpuCloudFacts(g.name, { facts: await readRunpod(secrets.open(sealed), fetchImpl) });
+    } catch (err) {
+      store.setGpuCloudFacts(g.name, { error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+}
+
 /** A short line about the account, for the Providers list. */
 export function runpodLine(f: RunpodFacts): string {
   const cheapest = f.gpus.find((g) => g.secure && g.price_secure !== null);
@@ -245,6 +317,7 @@ export function runpodLine(f: RunpodFacts): string {
     running.length
       ? `${running.length} pod${running.length === 1 ? "" : "s"} running, $${spend.toFixed(2)}/h`
       : "no pod running",
+    f.spend && f.spend.month !== null ? `$${f.spend.month.toFixed(2)} spent this month` : "",
   ]
     .filter(Boolean)
     .join(" · ");

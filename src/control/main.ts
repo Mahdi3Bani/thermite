@@ -7,6 +7,7 @@ import { createControlApi } from "./api.ts";
 import { Credential } from "./credential.ts";
 import { KitRepos } from "./kit-repos.ts";
 import { advanceResets, driverFromEnv } from "./lifecycle.ts";
+import { refreshGpuClouds } from "./runpod.ts";
 import { RunpodTests } from "./runpod-tests.ts";
 import { SecretBox } from "./secrets.ts";
 import { ControlStore } from "./store.ts";
@@ -127,9 +128,16 @@ async function main(): Promise<void> {
       .advance()
       .catch((err) => log("control", "runpod test error", { error: String(err) }));
   }, 15_000);
+  // GPU clouds' prices, pods and spend, read again every 15 minutes.
+  const clouds = setInterval(() => {
+    refreshGpuClouds(store, secrets).catch((err) =>
+      log("control", "gpu cloud read error", { error: String(err) }),
+    );
+  }, 15 * 60_000);
   const stop = () => {
     clearInterval(resets);
     clearInterval(tests);
+    clearInterval(clouds);
     server.close();
     process.exit(0);
   };

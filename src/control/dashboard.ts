@@ -2706,8 +2706,25 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
               )
               .join("")}</tbody></table></div>`
           : "";
+        const sp = f?.spend;
+        const tests = opts.runpodTests?.list(g.name, 200) ?? [];
+        const testCost = tests.reduce((t, x) => t + (x.cost_usd ?? 0), 0);
+        const spendFacts = sp
+          ? `<dt>${infoLabel("Spend", "What this RunPod account spent, from RunPod's billing: pods, storage and the rest, in US dollars. Read with the rest of the account, every 15 minutes and on Read again.")}</dt><dd>${
+              sp.error
+                ? `<span class="bad">${esc(sp.error)}</span>`
+                : `today <b>${usd(sp.today)}</b> · this month <b>${usd(sp.month)}</b> · last 30 days <b>${usd(sp.last30)}</b>${running.length ? ` · running now <b>${usd(running.reduce((t, x) => t + x.cost_per_hr, 0))}/h</b>` : ""}${
+                    sp.days.length
+                      ? `<br><span class="muted small">${sp.days.map((d) => `${esc(d.day.slice(5))} ${usd(d.usd)}`).join(" · ")}</span>`
+                      : ""
+                  }`
+            }</dd>`
+          : "";
+        const testFacts = tests.length
+          ? `<dt>${infoLabel("Thermite's test pods", "What the test pods started from this account cost, from their run times and RunPod's price for each.")}</dt><dd>${usd(Math.round(testCost * 100) / 100)} over ${tests.length} test${tests.length === 1 ? "" : "s"}</dd>`
+          : "";
         const facts = f
-          ? `<dl class="facts"><dt>Pods</dt><dd>${
+          ? `<dl class="facts">${spendFacts}${testFacts}<dt>Pods</dt><dd>${
               f.pods
                 .map(
                   (p) =>
