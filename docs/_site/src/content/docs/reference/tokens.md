@@ -13,7 +13,7 @@ Control knows people and programs by **tokens**: long random strings sent as `Au
 | Role | Setting | Dashboard | REST API | MCP |
 | --- | --- | --- | --- | --- |
 | **Owner** | `THERMITE_CONTROL_ADMIN_TOKEN_SHA256` or `THERMITE_CONTROL_ADMIN_TOKEN_FILE` (required) | Signs in. The only token that can | Every route | Every tool. Commands up to approving and declining promotions |
-| **Operator** | `THERMITE_CONTROL_OPERATOR_TOKEN_SHA256` or `_FILE` (optional) | No | No | Reads; steers; messages a run's agents; adds cluster rigs; starts and ends RunPod tests; reads control's log and providers |
+| **Operator** | `THERMITE_CONTROL_OPERATOR_TOKEN_SHA256` or `_FILE` (optional) | No | No | Reads; steers; messages a run's agents; adds cluster rigs; gives rigs' agents a model; starts and ends RunPod tests; reads control's log and providers |
 | **Agent** | `THERMITE_CONTROL_AGENT_TOKEN_SHA256` or `_FILE` (optional) | No | No | Reads and steers. No control log, no providers, no RunPod. Refused during a full reset |
 | **Reader** | `THERMITE_CONTROL_READ_TOKEN_SHA256` or `_FILE` (optional) | No | `/metrics` and `GET /v1/rigs/<rig>/live` only | Read tools, control's log, providers and RunPod tests (read only) |
 

@@ -27,7 +27,7 @@ Rigs on RunPod themselves are planned ([goals 019 to 025](https://github.com/iam
 2. Under **Add a provider**, choose **Type:** RunPod (a GPU cloud), a **Name** such as `runpod`, and paste the **RunPod API key**.
 3. Press **Add and read the account**.
 
-Control reads RunPod's GPU types with their prices and stock, its data centers, your network volumes and your pods. It starts nothing and spends nothing. The page says `"runpod" is added and read: see what control found below.` A key RunPod refuses is not kept: "Not added: …".
+Control reads RunPod's GPU types with their prices and stock, its data centers, your network volumes, your pods, and what your account spent, from RunPod's billing. It starts nothing and spends nothing. The page says `"runpod" is added and read: see what control found below.` A key RunPod refuses is not kept: "Not added: …". Control reads the account again every 15 minutes, and when you press **Read again** on its row.
 
 ## 2. Start a test pod
 
@@ -105,6 +105,7 @@ The card lists the findings in words. A good test reads like this:
 - If removing it fails, the card says "control could not remove pod …: …. It tries again.", and control keeps trying.
 - Without a limit, a pod that never reports keeps running, and keeps costing, until you end it.
 - The card's cost is control's count: RunPod's price per hour times the time the pod ran. RunPod's own bill is the final word; RunPod bills a pod while it runs, and storage while it exists.
+- The account's row shows that bill too. **Spend** gives what the account spent today, this month and in the last 30 days, what its running pods cost per hour, and the last 7 days one by one, all from RunPod's billing. **Thermite's test pods** adds up the cards' costs. The month's total is also on the account's line in the **Providers** list, such as `$12.40 spent this month`. If the key may not read billing, **Spend** says `RunPod refused this key for billing: give the key read access to billing to see spend`, and the rest of the row still shows.
 
 To be sure nothing is left, press **Read again** on the account's row: **Pods** should no longer list `thermite-test-t-1a2b3c4d`.
 

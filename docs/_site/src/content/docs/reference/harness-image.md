@@ -42,7 +42,7 @@ docker build -t thermite-harness -f containers/harness/Containerfile .
 | Node.js | The one in `NODE_IMAGE` (Node.js 22) | `/usr/local/bin/node`, copied from `NODE_IMAGE`. On another `BASE_IMAGE` only this binary is copied, without npm |
 | Thermite | This repository's build, with its production dependencies | `/opt/thermite` (`dist/`, `node_modules/`, `package.json`) |
 | `thermite` command | Thermite's command line | `/usr/local/bin/thermite`. See [Command line](command-line.md) |
-| `thermite-trial` | The tools an agent uses from its own shell under OpenCode or Claude Code: `submit`, `dev-run` and `status` | `/usr/local/bin/thermite-trial` |
+| `thermite-trial` | The tools an agent uses from its own shell under OpenCode or Claude Code: `submit`, `dev-run` and `status`, and a research worker's `research` commands under OpenCode | `/usr/local/bin/thermite-trial` |
 | OpenCode | `OPENCODE_VERSION`, 2.0.32 by default. Always installed. One of the [worker harnesses](glossary.md); Pi, the default one, is a library built into Thermite | `/usr/local/bin/opencode` |
 | Claude Code | `CLAUDE_CODE_VERSION`. Installed only when that argument names a version | `/usr/local/bin/claude` |
 | `thermite-devfence` | Built from `containers/harness/devfence.c` | `/usr/local/bin/thermite-devfence`. The GPU fence: it starts each role's command with the GPU device nodes it may not open left out, using the kernel's Landlock |

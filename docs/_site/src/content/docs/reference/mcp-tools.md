@@ -49,7 +49,7 @@ Control checks a token against the owner's first, then the operator's, the agent
 | `issue_command` | Yes, the owner's kinds | Yes, the operator's kinds | Yes, the agent's kinds | No |
 | `propagate_champion` | Yes | Yes | Yes | No |
 | `control_log`, `providers`, `runpod_tests` | Yes | Yes | No | Yes |
-| `add_cluster_rig`, `set_cluster_slots`, `runpod_test_start`, `runpod_test_end` | Yes | Yes | No | No |
+| `add_cluster_rig`, `set_rig_model`, `set_cluster_slots`, `runpod_test_start`, `runpod_test_end` | Yes | Yes | No | No |
 | `retire_rig`, `bring_back_rig` | Yes | No | No | No |
 
 ### Command kinds for each role
@@ -224,7 +224,7 @@ No inputs. Returns:
 | `git_access` | `{name, kind, fingerprint, username}` |
 | `machines` | `{name, address, port, user, host_key_trusted, facts, checked_at, check_error}` |
 | `clusters` | `{name, context, placement, namespace_pattern, slots, facts, checked_at, check_error}` |
-| `gpu_clouds` | `{name, kind, facts, checked_at, check_error}` |
+| `gpu_clouds` | `{name, kind, facts, checked_at, check_error}`. A RunPod account's `facts` include `spend`: `{today, month, last30, days}` in US dollars, `days` being the last 7 days as `{day, usd}`, or `error` when the key may not read billing |
 
 ### add_cluster_rig
 
@@ -273,6 +273,22 @@ It refuses with the same words as **Add a rig**:
 - `a rig needs at least 1.5 CPUs and 6 GiB of memory`
 - `The slot <namespace> allows <n> CPUs.`, `… allows <n> GiB of memory.` or `… allows <n> GB of storage.`
 - `Control has no CUDA harness image configured (THERMITE_RIG_HARNESS_CUDA_IMAGE).`
+
+### set_rig_model
+
+**Give a rig's agents a model.** Owner and operator.
+
+> As Edit rig does: the model a rig's agents use, from a model provider in Providers (see the providers tool for their models). The rig takes it within a minute and checks it. Harness default: what the model needs (OpenCode for OpenCode's free models, else Pi).
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `rig` | string | | The rig |
+| `provider` | string | | The model provider's name in **Providers** |
+| `model` | string | | A model id, as [`providers`](#providers) lists it under `models` |
+| `harness` | `pi` or `opencode`, optional | what the model needs: Claude Code for a Claude subscription, OpenCode v2 for OpenCode's free models, else Pi | The [worker harness](glossary.md) |
+| `effort` | `low`, `medium`, `high`, `xhigh` or `max`, optional | none | How long the model thinks, as **Effort** on **Edit rig** |
+
+It sets the workers' model for every run on the rig, as **Edit rig** does. Returns `{rig, model, said}`, where `said` is the dashboard's words: `<rig> takes <model> from "<provider>" under <harness> within a minute, and checks it.` Besides `mcp:set_rig_model`, the audit log records `rig_model_given` with the caller's actor. Errors: `no rig <rig>`, `That provider does not list that model.`, and `OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig.` (with `harness: "pi"`).
 
 ### set_cluster_slots
 
@@ -361,4 +377,4 @@ Control writes every tool call to its audit log before the tool runs, reads incl
 
 ## Not in MCP yet
 
-Some things the owner does on the dashboard or over REST have no tool yet: cancelling a command, accepting a review or a "not possible" ending, changing a rig's settings, restarting and resetting a rig, accepting a rig's key and enrolling a rig. They are planned in [goal 029](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/029-api-mcp-coverage.goal). MCP takes bearer tokens only; signing in with OAuth is [goal 030](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/030-oauth-sign-in.goal). `control_log` returns the newest 500 entries at most; paging is [goal 015](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/015-log-paging.goal).
+Some things the owner does on the dashboard or over REST have no tool yet: cancelling a command, accepting a review or a "not possible" ending, changing a rig's settings other than its agents' model (`set_rig_model`), restarting and resetting a rig, accepting a rig's key and enrolling a rig. They are planned in [goal 029](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/029-api-mcp-coverage.goal). MCP takes bearer tokens only; signing in with OAuth is [goal 030](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/030-oauth-sign-in.goal). `control_log` returns the newest 500 entries at most; paging is [goal 015](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/015-log-paging.goal).

@@ -35,7 +35,7 @@ Keep a few changes with known outcomes next to the kit, in a `candidates` folder
 
 Use one of:
 
-- **Try the kit first** on the **New campaign** page, or the **Start another run** card on a campaign's page with **a try of the kit: no agents**;
+- **Try the kit first** on the **New campaign** page, or the **Start another run** card on a campaign's page with **a try of the kit: no agents**. That card refuses a rig whose agents have no model, even for a try: there, use **Try the kit first** or the command line;
 - `--agents off` on the command line. Run `npx thermite` in your Thermite folder, after `npm ci` and `npm run build` (see [the command line](../../reference/command-line.md)). The example uses the owner's token file of the local stack, `.dev/secrets/control-admin-token`. If you made an owner's token of your own, use its file instead.
 
   ```sh

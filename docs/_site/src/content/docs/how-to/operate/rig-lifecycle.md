@@ -133,7 +133,7 @@ Over the REST API, with the owner's token: `POST /v1/rigs/<rig>/reset` with `{"c
 
 | Wiped | Kept |
 | --- | --- |
-| The harness's state: its ledger, git mirrors, kits, imports, models, builds, research archive, the **Edit rig** settings and the model route it was handed | The rig's signing key, so control still trusts it (no key to accept) |
+| The harness's state: its ledger, git mirrors, kits, imports, models, builds, research archive and research folders, the **Edit rig** settings and the model route it was handed | The rig's signing key, so control still trusts it (no key to accept) |
 | Its scratch space and outbox | Everything in the results repository, with the full export |
 | The supervisor's state: its copy of the results, its fetch caches, its known hosts for Git access, its advisors' records and the day's spending | Control's records: the rig's past events, its commands, champion patches and daily reports. The dashboard shows only what the rig records after the reset |
 | | Files outside the rig's state: the advisors file, its tokens, and its environment settings |

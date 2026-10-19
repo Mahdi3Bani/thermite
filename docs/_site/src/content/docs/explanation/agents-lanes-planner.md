@@ -90,6 +90,7 @@ A research campaign has no project to change and no judge to wait for, so its la
 
 - **Planning by fixed rules.** There is no planner call. Each epoch gives every lane a kind of task (explore, find primary sources, look for contradictions, or consolidate) and a question, the least-covered first. Directives still reorder or remove task kinds. A model planner for research is planned in [goal 047](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/047-research-planner.goal).
 - **Trials back to back.** A lane's trials run one after another without waiting for a verdict.
-- **Different tools.** Research workers fetch and archive pages, search what was archived, and record claims with exact quotes, which code then checks. They always run in Pi.
+- **Different tools.** Research workers fetch and archive pages, search what was archived, and record claims with exact quotes and findings, which code then checks. In Pi they have the research tools and file tools, and no shell. In OpenCode v2 they keep OpenCode's own tools and run the research tools as `thermite-trial research` commands. Claude Code doesn't run research workers.
+- **A folder that carries over.** Each run has a research folder. The harness writes what the run has learned into it from its records: the archived pages as text, every claim, finding, hypothesis and note, an index and the newest report. Each lane also has a working area there, kept for its next trial and shown to the other lanes when a trial ends. Every trial is still a fresh session; what carries over is files the harness keeps, not the agent's memory.
 
 [Campaign modes](campaign-modes.md) explains how research is checked and when it ends.

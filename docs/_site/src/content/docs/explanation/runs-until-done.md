@@ -44,7 +44,7 @@ Thermite uses three kinds of limits that never end a campaign:
 | --- | --- | --- |
 | A trial's time is up (20 minutes by default) | Pacing | The trial ends, and the lane's next trial starts fresh |
 | Trials keep achieving nothing | Pacing | The lane waits a little longer before each next trial, up to 10 minutes |
-| Many trials in a row end in errors, as in a model outage | Pacing | The agents rest for a while, then try again |
+| Many trials in a row end in errors, as in a model outage | Pacing | The agents rest for a while, then try again. A new model for the rig, or resuming the run, ends the rest at once |
 | A subscription's usage window is full | Pacing | The agents wait for it. Nothing pays for more |
 | A lane's last change is still with the judge | Back-pressure | The lane waits for the verdict |
 | Too many changes wait for the judge | Back-pressure | New trials wait until fewer are open |

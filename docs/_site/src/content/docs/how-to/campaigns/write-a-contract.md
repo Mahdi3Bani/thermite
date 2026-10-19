@@ -172,11 +172,14 @@ The judge first checks which goals the starting point already meets. If it meets
 
 - `project.repo` is required in every mode. A research campaign fetches no repository, so any short name does, such as `research`.
 - `min_duration` is required. The run ends after `max_duration` of running time, or after `min_duration` when there is no `max_duration`. Paused time doesn't count. Durations look like `30m`, `8h` or `2d`.
-- Every finding must answer one of the `questions`. There is no web search: agents start from the `seeds` and follow links.
+- A claim can name the question it answers. The report counts the verified claims for each of the `questions`, and lists a question with none as open. There is no web search: agents start from the `seeds` and follow links.
 - `scope.include_domains`, when not empty, limits fetching to those domains. `scope.exclude_domains` are never fetched.
-- `quality.min_independent_sources` (2): a verified claim counts as a finding when its quotes come from at least this many domains.
+- `quality.min_independent_sources` (2): the report lists a verified claim whose quotes come from at least this many domains apart from the others, and says for each finding how many of its claims do.
 
-A research campaign needs a model on the rig. Without one, no agent works and the run never ends. Its agents need a model with an API key, from an **OpenAI-compatible** or an **Anthropic** provider: with OpenCode's own free models, every trial ends at once with `no model route configured …`, and a Claude subscription doesn't work either ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)).
+A research campaign needs a model on the rig. Without one, no agent works and the run never ends; the **New campaign** page won't start agents on a rig that has none. Research workers run in Pi or OpenCode v2, never in Claude Code:
+
+- A Claude subscription can't serve them. Nothing stops the start, but every trial ends with `research workers run in Pi or OpenCode, and a Claude subscription runs only in Claude Code: give this rig another model for research` ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)).
+- OpenCode's own free models work when the rig's agents run in **OpenCode v2**. Where they would run in Pi, the dashboard refuses to start the run and says to set the agents' harness to OpenCode; a run started another way, such as with `thermite assign`, ends every trial with `… is one of OpenCode's own models, which work only inside OpenCode: set this rig's agents' harness to OpenCode on its Edit rig page`.
 
 ## 5. Validate it
 

@@ -218,7 +218,7 @@ A goal campaign ends when the success policy is met on two validations of the ch
 
 ## Research
 
-`"mode": "research"`: collect sources and verified claims on a topic for a set time. Research contracts have no `editable_paths` or cells, and use no kit. They need `min_duration`.
+`"mode": "research"`: collect sources, verified claims and findings on a topic for a set time. Research contracts have no `editable_paths` or cells, and use no kit. They need `min_duration`.
 
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -232,13 +232,13 @@ A goal campaign ends when the success policy is met on two validations of the ch
 | `report_cadence.digest_minutes` | integer ≥ 1 | 60 | Minutes between digests |
 | `report_cadence.report_hours` | number > 0 | 24 | Accepted, not used yet. A research run writes digests and one final report |
 | `quality.verbatim_quotes` | `true` | `true` | Always on: a claim counts only when every quote is found word for word in its archived source |
-| `quality.min_independent_sources` | integer ≥ 1 | 2 | Different domains a verified claim's quotes must come from for it to be a finding |
+| `quality.min_independent_sources` | integer ≥ 1 | 2 | Different domains a verified claim's quotes must come from to be listed as independently sourced. The report lists those claims apart from the rest, and says for each finding how many of its claims are |
 | `fetch_policy.respect_robots` | boolean | `true` | Whether fetches obey each site's `robots.txt` |
 | `fetch_policy.per_domain_per_minute` | integer ≥ 1 | 6 | Fetches per domain per minute. Further fetches wait; they are not refused |
 | `fetch_policy.max_bytes` | integer ≥ 1 | 5000000 | The largest response fetched, in bytes. A larger one is refused: `larger than <n> bytes` |
 | `fetch_policy.allow_logins` | `false` | `false` | Always off |
 
-A research run closes when its running time reaches `max_duration`, or `min_duration` when `max_duration` is not set. Time while the run is paused does not count. It then writes its final report.
+A research run closes when its running time reaches `max_duration`, or `min_duration` when `max_duration` is not set. Time while the run is paused does not count. It then writes its final report. A finding needs no contract field: code accepts one when every claim it cites is verified and every number in it appears in those claims ([Campaign modes](../explanation/campaign-modes.md#research)).
 
 ## Accepted, not used yet
 

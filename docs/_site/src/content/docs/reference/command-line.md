@@ -275,13 +275,14 @@ It reads where the broker's socket and the rig's directories are from `THERMITE_
 
 ## `thermite-trial`
 
-`thermite-trial` is in the harness image only (`/usr/local/bin/thermite-trial`, which runs `node /opt/thermite/dist/harness/agents/trial-cli.js`). A worker agent that works through its own shell, under OpenCode or Claude Code, uses it to submit its change, run a command on the device and read an attempt. It runs as the [lane](glossary.md)'s user, in the trial's workspace, with the trial's own token, which stops working when the trial ends.
+`thermite-trial` is in the harness image only (`/usr/local/bin/thermite-trial`, which runs `node /opt/thermite/dist/harness/agents/trial-cli.js`). A worker agent that works through its own shell, under OpenCode or Claude Code, uses it to submit its change, run a command on the device and read an attempt. A research worker under OpenCode uses its `research` commands. It runs as the [lane](glossary.md)'s user, in the trial's workspace (a research trial's: its lane's working area), with the trial's own token, which stops working when the trial ends.
 
 ```text
 usage:
   thermite-trial submit --hypothesis TEXT [--claim TEXT] [--flaw TEXT]...
   thermite-trial dev-run [--timeout SECONDS] -- COMMAND...
   thermite-trial status ATTEMPT
+  thermite-trial research TOOL ... (thermite-trial research help lists them)
 ```
 
 | Command | What it does | Prints |
@@ -289,6 +290,31 @@ usage:
 | `submit --hypothesis TEXT [--claim TEXT] [--flaw TEXT]...` | Stages and diffs only the trial's editable paths, then submits the change. The hypothesis and the claim are cut to 2000 characters, each flaw to 1000. Submitting ends the trial | `submitted <attempt>: <lifecycle>. The trial ends with this submission.`, with `; refused: <violations>` before the last sentence when the change broke a rule |
 | `dev-run [--timeout SECONDS] -- COMMAND...` | Runs the command on the measurement device, as a [development run](glossary.md), in the trial's workspace | The run's result as indented JSON |
 | `status ATTEMPT` | Shows one of this lane's attempts | The attempt as indented JSON |
+| `research TOOL [WORDS...] [--FLAG VALUE]... [-]` | Runs one of a research trial's tools (below) through the harness's research service. The words fill the tool's main field and the flags its others; `-` reads a JSON object of fields from standard input | The tool's answer: text as it is, anything else as JSON, cut at 14,000 characters |
+| `research help` | Lists the research tools | `research tools:` and each tool's use |
+
+The research tools are a Pi research worker's, without its file tools:
+
+| Tool | Words | Flags | What it does |
+| --- | --- | --- | --- |
+| `fetch` | `URL` | | Fetches a web page; the harness archives it and returns its text and links |
+| `read_source` | `SOURCE` | `--offset N`, `--length N` | Reads more of an archived source's text, from an offset |
+| `search` | `QUERY` | | Searches the web. Rigs have no web search yet, so it returns the reason |
+| `search_corpus` | `TEXT` | | Searches the archived sources for a piece of text, ignoring case |
+| `add_claim` | none | `--text`, `--question N`, `--confidence N`; the quotes only through `-` | Records a claim with exact quotes from archived sources. Unverified quotes leave it a draft. `question` is the index of the campaign question it answers, from 0 |
+| `add_note` | `TEXT` | `--source SOURCE`, repeated | Records a working note, with the sources it relies on |
+| `propose_hypothesis` | `TEXT` | `--supporting CLAIM`, repeated | Proposes a hypothesis, citing the verified claims that support it |
+| `add_finding` | none | none: every field through `-` | Records a finding: `text`, `summary`, `why_it_matters` and the `supporting` claims. Draft claims, or numbers not in those claims, leave it a draft |
+| `update_section` | none | `--name`, `--body` | Writes or replaces a section of the campaign report |
+| `progress` | none | | Shows the corpus, claims, question coverage and time remaining |
+
+A claim's quotes go through standard input, in a quoted heredoc so the shell changes nothing inside them:
+
+```sh
+thermite-trial research add_claim - <<'EOF'
+{"text": "the claim", "quotes": [{"source": "SOURCE", "quote": "exact words from it"}], "question": 0, "confidence": 0.8}
+EOF
+```
 
 It reads these settings, which the harness sets for each trial:
 
@@ -307,6 +333,9 @@ Everything it prints goes to standard output.
 | `error: there are no changes inside the editable paths (<paths>)` | `2` |
 | `error: dev-run needs a command after --` | `2` |
 | `error: status needs an attempt id` | `2` |
+| `error: no research tool "<name>"` and the list of tools | `2` |
+| `error: <tool> takes no words; use:`, `error: <tool> has no --<flag>; use:` or `error: "-" reads a JSON object from stdin…`, with the tool's use | `2` |
+| `error: --<flag> needs a number` | `2` |
 | The usage text, for an unknown command | `2` |
 | `error: <status>: <body>`, when the harness refuses the call | `1` |
 

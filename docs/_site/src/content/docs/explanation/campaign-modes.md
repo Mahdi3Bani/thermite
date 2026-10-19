@@ -11,9 +11,9 @@ A **campaign** is one piece of research: what to improve, reach or find out, and
 | | Hill climb | Goal | Research |
 | --- | --- | --- | --- |
 | The question | How far can this number go without breaking anything else? | Can the project reach these goals? | What can be learned about this question in this time? |
-| An agent's work | One change to the code | One change to the code | Reading sources and recording claims, with quotes |
-| What checks it | The judge, by timing the change against the champion with statistics | The judge, by each goal's own test; a person accepts goals that need judgement | Code that finds every quote, word for word, in a page the rig archived |
-| The best result | The champion: the best confirmed version | The champion: the version that meets the most goals | The verified claims and the report |
+| An agent's work | One change to the code | One change to the code | Reading sources and recording claims, with quotes, and findings |
+| What checks it | The judge, by timing the change against the champion with statistics | The judge, by each goal's own test; a person accepts goals that need judgement | Code that finds every quote, word for word, in a page the rig archived, and checks each finding against verified claims |
+| The best result | The champion: the best confirmed version | The champion: the version that meets the most goals | The findings, the verified claims and the report |
 | It ends when | Never on its own: you pause it | Every required goal is met, or you accept that they cannot be | Its time window is over |
 | The dashboard's headline | The best gain over the starting point | Goals met | Verified claims |
 
@@ -68,25 +68,46 @@ A goal campaign has no time limit of its own. Budgets pause it, as in any mode.
 
 A research campaign studies a topic for a set time. The contract gives the topic, the questions, starting URLs and which web sites to include or leave out. There is no project to change and no kit: the work is reading.
 
-**How the work is checked.** Workers fetch pages through the rig's archiving fetcher, which keeps a copy of everything it reads. By default it respects `robots.txt`. It limits how fast it fetches from each site and how large a page may be, and never fetches private or local addresses. A worker records a **claim** with exact quotes from those archived pages. Code then checks it:
+**How the work is checked.** Workers fetch pages through the rig's archiving fetcher, which keeps a copy of everything it reads. By default it respects `robots.txt`. It limits how fast it fetches from each site and how large a page may be, and never fetches private or local addresses. A page a worker reads any other way verifies nothing until it is fetched through the archiving fetcher. A worker records a **claim** with exact quotes from those archived pages. Code then checks it:
 
 - a claim is **verified** only if every quote appears word for word in the archived text, and every number in the claim appears in its quotes. Otherwise it stays a draft, with its problems listed;
-- a verified claim is a **finding** only if its quotes come from at least two different web sites. The contract can ask for more.
+- a verified claim whose quotes come from at least two different web sites counts as independently sourced. The contract can ask for more sites. The report lists these claims apart from those that rest on one site.
 
-Workers can also write notes, propose hypotheses that cite verified claims, and draft report sections. The report shows those sections as worker notes, never as findings.
+When verified claims together show something, a worker records a **finding**: the conclusion in one sentence, a summary, why it matters, and the verified claims behind it. Code checks a finding too. It counts only if every claim it cites is verified and every number in it appears in those claims. Otherwise it stays a **draft finding**, with its problems listed. The report gives each finding with its support, and says how many of its claims are independently sourced.
+
+Workers can also write notes, propose hypotheses that cite verified claims, and draft report sections. The report shows those sections as worker sections, never as findings, and flags any number in them that is in no archived source and no verified claim.
+
+**The research folder.** Each run has a folder of files that its workers search and add to. The harness writes most of it from its records and keeps it current while the workers record. The workers can read what the harness writes and the lanes' saved files, and change only their own lane's working area:
+
+```text
+INDEX.md          the questions, what is known so far, and where everything is
+REPORT.md         the newest report
+sources/          every archived page as text: the words a claim's quotes must match
+claims/ findings/ hypotheses/ notes/ report/
+                  every claim (verified or draft), finding, hypothesis, note and report section
+lanes/<lane>/     each lane's files, as they were when its last trial ended
+work/<lane>/      the lane's working area: syntheses, outlines, drafts, lists of what to read next
+```
+
+A lane's working area is kept for its next trial, so a worker builds on what the trials before it learned. When a trial ends, the harness saves the lane's files, records which trial wrote or removed each one and when, and shows them to the other lanes under `lanes/`. These files are working material, not results: only claims and findings recorded through the research tools are checked and reported.
+
+**What a worker has.** It depends on the rig's [worker harness](../reference/glossary.md), the program the agents run in:
+
+- **In Pi**, a worker has the research tools (fetch, read an archived source, search the archive, record a claim, a note, a hypothesis or a finding, write a report section, and see the progress) and file tools: list, read and search the folder, and write and remove files in its own working area. It has no shell.
+- **In OpenCode v2**, a worker keeps OpenCode's own tools, including its shell and files, as a hill-climb worker does. It starts in its lane's working area and runs the research tools as `thermite-trial research` commands.
+
+A Claude subscription runs only in Claude Code, which doesn't run research workers, so a research campaign needs another model. OpenCode's own free models work only when the agents run in OpenCode v2. A research campaign needs a model to do anything at all.
 
 **How the work is planned.** Research is planned by fixed rules, not by a model. Each round, every **lane** (one line of search, with one worker) gets a kind of task: explore, find primary sources, look for contradictions, or consolidate. The questions with the least coverage come first. When an hour passes with no new source and no newly verified claim, primary sources and contradictions come first. The report shows what was new in the last hour.
 
-**What it produces.** An archived collection of sources, a ledger of claims, hypotheses with their evidence, open questions, a digest every hour by default, and a final report.
+**What it produces.** The final report and the whole research folder: the archived sources, every claim, finding, hypothesis and note, and the lanes' files. A digest of the report comes every hour by default. The rig's export after the final report carries the folder ([Set up the results repository](../how-to/operate/results-repository.md#what-gets-pushed) says what reaches the repository).
 
-**When it ends.** When its time window is over. The window is the contract's maximum duration, or its minimum duration when no maximum is set. Only running time counts: time spent paused does not. When the time is up, the trials still running finish, the final report is written and the run is closed. The report has no pass or fail; it is what the claims support.
+**When it ends.** When its time window is over. The window is the contract's maximum duration, or its minimum duration when no maximum is set. Only running time counts: time spent paused does not. When the time is up, the trials still running finish, the final report is written and the run is closed. The report has no pass or fail; it is what the claims and findings support.
 
 Some things are not built yet:
 
-- Web search: workers start from the campaign's starting URLs and follow the links of pages already archived ([goal 046](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/046-web-search.goal)).
+- Web search in the research tools: workers start from the campaign's starting URLs and follow the links of pages already archived ([goal 046](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/046-web-search.goal)).
 - A model planner for research ([goal 047](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/047-research-planner.goal)).
-
-Research workers run in Pi, so a Claude subscription, which runs only in Claude Code, cannot run them. A research campaign needs a model to do anything at all.
 
 ## Choosing a mode
 

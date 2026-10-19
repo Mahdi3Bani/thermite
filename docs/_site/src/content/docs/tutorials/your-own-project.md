@@ -137,7 +137,8 @@ Fill in these fields, in the order the page shows them. Leave every field that t
 On **4 Where it runs**, the card for `local-1` is chosen. It shows the rig's hardware, `cpu · generic-cpu`, and after `agents:` the free model you gave it.
 
 1. **Agents working at once**: `1`
-2. Leave the rest as it is, and press **Next**.
+2. **The agents' model**: keep **the rig's model**. `local-1` goes on with the free model you gave it.
+3. Leave the rest as it is, and press **Next**.
 
 ## 8. Try the kit first
 
@@ -183,7 +184,7 @@ The change itself stays on the rig until the rig's next **export**: it copies th
 :::tip[If nothing waits for you after half an hour]
 Open **Live**, then **local-1**, to see what the agent is doing, and look at **What happened** on the **Overview** for trials that ended. A trial can end without a change; the next trial then tries again. A busy free model ends trials with `Rate limit exceeded. Please try again later.` If every trial ends that way, give `local-1` another free model, as under [What you need](#what-you-need). The next trial uses it.
 
-With OpenCode, **What happened** may say that the planner used `its fallback plan`. That is a known fault ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)): the run goes on with a simple plan.
+If **What happened** says that the planner used `its fallback plan`, the planner's call to the model failed, often because a free model was busy. The run goes on with a simple plan, and the next epoch asks the planner again.
 :::
 
 ## 11. Take the result home

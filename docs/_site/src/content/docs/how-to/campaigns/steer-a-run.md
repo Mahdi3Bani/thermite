@@ -11,7 +11,7 @@ You can steer a running campaign without touching its judge: pause or resume it,
 | Action | What it does |
 | --- | --- |
 | **Pause** | The agents' running [trials](../../reference/glossary.md) stop, and no new ones start. A stopped trial's work that it had not submitted is thrown away; changes already submitted stay. The judge finishes the job it is on; the run's other queued jobs wait until you resume |
-| **Resume** | New trials start again, and the planner plans the next round. Any other running run on that rig is paused: a rig runs one run at a time |
+| **Resume** | New trials start again, and the planner plans the next round. Agents resting after six failed trials in a row ([limits and pacing](../../reference/limits-and-pacing.md#trials-and-lanes)) start again at once. Any other running run on that rig is paused: a rig runs one run at a time |
 | **Reset workers** | Ends the running trials and the current round. The planner plans afresh, and every lane starts again from the champion. Nothing the judge decided is lost |
 | **Steer** | Tells the planner, from its next plan on, to avoid a direction, to try it, or to always assign it |
 | A message | Text for one lane, one trial, the planner or the rig's advisors |

@@ -53,7 +53,7 @@ The broker accepts only a few requests, such as running a command as a role or h
 
 A lane is one line of search ([Agents, lanes and the planner](agents-lanes-planner.md)). Lanes are kept apart from the judge and from each other:
 
-- **Its own workspace.** Each trial gets a fresh copy of the project, owned by the lane's user, inside a folder for that trial only. The lane never sees the harness's copy of the project, its history or another lane's work.
+- **Its own workspace.** Each trial gets a fresh copy of the project, owned by the lane's user, inside a folder for that trial only. The lane never sees the harness's copy of the project, its history or another lane's work. (A research run shares its lanes' files on purpose, through its [research folder](campaign-modes.md#research).)
 - **A token for one trial.** The worker's tools reach the workspace through the harness API, with a token bound to its run and lane. The API runs each request as the lane's user, only inside that trial's workspace, and the token stops working when the trial ends.
 - **Limits on everything it runs.** The lane's memory and disk limits cover everything its commands start ([Per-process and per-trial limits](../reference/limits-and-pacing.md#per-process-and-per-trial-limits)).
 - **The agent apart from its lane.** In Pi, the built-in [worker harness](../reference/glossary.md), the worker agent runs as `agent-N`, which can read none of the lane's files: its tools act through the API, as the lane's user. Its folder, with its trial's details and token, belongs to it alone. Under OpenCode or Claude Code, the agent program runs as the lane's own user, with the lane's access and none of the judge's.

@@ -39,7 +39,7 @@ The rig's **Model route** check tests exactly this. It sends one short request a
 
 ## Where the agents run
 
-Each agent runs inside a program that gives the model its tools: the **worker harness**. (The **harness** alone is something else: the rig's container that holds the judge and the agents.) You choose the worker harness in the block **Harness and model for each rig** on **Settings › Providers**, or in the **Runs in** column on a rig's **Edit rig** page:
+Each agent runs inside a program that gives the model its tools: the **worker harness**. (The **harness** alone is something else: the rig's container that holds the judge and the agents.) You choose the worker harness in the block **Harness and model for each rig** on **Settings › Providers**, in the **Runs in** column on a rig's **Edit rig** page, or under **The agents run in** when you choose the agents' model on the **New campaign** page:
 
 - **Pi**: Thermite's own built-in agent. It is the default.
 - **OpenCode v2**: the OpenCode coding agent, which is always in Thermite's harness image.
@@ -56,7 +56,7 @@ Not every model works in every worker harness. Thermite refuses these pairings w
 A Claude subscription always runs in Claude Code: when you choose one of its models, Thermite picks Claude Code for you.
 
 :::note[Research campaigns]
-In a research campaign, the workers always run in Pi, whatever worker harness you choose. A research campaign therefore needs a model that Pi can use: not a Claude subscription, and not OpenCode's own free models.
+Research workers run in Pi or OpenCode v2, never in Claude Code, so a research campaign can't use a Claude subscription. OpenCode's own free models serve a research campaign when the agents run in OpenCode v2. [Write a contract](../campaigns/write-a-contract.md#4-write-a-research-campaign) says what happens otherwise.
 :::
 
 ## 1. OpenCode's free models

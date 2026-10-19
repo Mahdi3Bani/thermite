@@ -193,6 +193,8 @@ A campaign appears on the **Campaigns** page (in the sidebar) once a rig reports
 | Review | panel `review_passed` or `review_failed`; owner `accepted` or `rejected` | A goal checked by a review panel counts as met only when the owner accepts it |
 | "Not possible" proposal | `accepted`, `rejected` | Accepting closes the run. Rejecting reopens the approach families it used |
 | Approach family | `live`, `exhausted` | A family becomes `exhausted` when a "not possible" proposal counts it as refuted |
+| Research claim | verified, draft | Verified when every quote is found word for word in its archived source and every number in the claim is in its quotes. A draft lists its problems |
+| Research finding | supported (a finding), draft | A finding counts when every claim it cites is verified and every number in it is in those claims. A draft finding lists its problems. See [Campaign modes](../explanation/campaign-modes.md#research) |
 | Epoch source | `planner`, `fallback` | Who planned the epoch: the planner model, or the fixed plan Thermite uses when the planner fails or is off |
 | Promotion policy | `auto`, `owner_approval` | Set for the run when it is assigned, or the rig's default |
 

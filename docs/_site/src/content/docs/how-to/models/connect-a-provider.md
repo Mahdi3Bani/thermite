@@ -60,6 +60,8 @@ This guide covers providers reached with an API key, or with no key for OpenCode
 
 The rig's row now says "Its agents run under Pi with my-model from my-litellm." Below it you see the model check's result, for example "Its model check passed 1m ago: my-model answered with a correct tool call in 3.2 s". Press **Check** to run it again.
 
+You can also give a rig its agents' model where you start a campaign, under **The agents' model** on the **New campaign** page ([Start a campaign from the dashboard](../campaigns/start-from-dashboard.md#4-where-it-runs)), or let an agent do it over MCP with [`set_rig_model`](../../reference/mcp-tools.md#set_rig_model). Both work like **Use** here.
+
 A failed check says `Its model check FAILED`, then why. With OpenCode's free models, two reasons are common:
 
 - `Rate limit exceeded. Please try again later.`: OpenCode limits free use. Press **Check** a few minutes later, or choose another model.

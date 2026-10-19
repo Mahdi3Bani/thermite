@@ -121,4 +121,4 @@ Many agents can share one plan, and so can several rigs. On **Edit rig**, a note
 | "The token has spaces or is too long: paste only what claude setup-token printed." | Paste the token alone, on one line. |
 | The model check fails right after you chose the model | Check that the rig's harness image was built with `CLAUDE_CODE_VERSION`. |
 | The model check fails with "the subscription's usage window is full until" a time | Wait for the reset, or use another model meanwhile. |
-| A research campaign's trials end with "research workers run in Pi, and a Claude subscription runs only in Claude Code: give this rig another model for research" | Research workers always run in Pi. Give the rig another model for research. |
+| A research campaign's trials end with "research workers run in Pi or OpenCode, and a Claude subscription runs only in Claude Code: give this rig another model for research" | Research workers run in Pi or OpenCode v2, never in Claude Code. Give the rig another model for research. |

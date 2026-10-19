@@ -13,7 +13,7 @@ The **New campaign** page starts a [campaign](../../reference/glossary.md) in fi
 - You are signed in to the dashboard with the owner's token.
 - A rig reports to control: on **Rigs**, in the sidebar on the left, it shows the green **Live** chip and a hardware line. The campaign measures on this rig's target, CPU or GPU.
 - Your project is in a git repository at an `https://` address, or in a private repository with Git access set up: see [Use a private repository](private-repository.md).
-- For agents to work, the rig needs a model: see [Connect a model provider](../models/connect-a-provider.md). Without one, the judge still works, but no agent starts.
+- For agents to work, the rig needs a model from a provider in **Settings › Providers**: see [Connect a model provider](../models/connect-a-provider.md). You can give the rig one in step 4. The page won't start agents on a rig without a model; **Try the kit first** and **Save without starting** work without one.
 - If the model uses a paid API key, set **Stop after (hours)** in step 4 under **Advanced**. See [Set a budget or a stop time](budget-and-stop-time.md).
 
 ## 1. Aim
@@ -110,16 +110,22 @@ A goal campaign made here can't end as "not possible": it runs until every goal 
 
 ### The question
 
-For research, step 3 asks for **Topic** (a sentence), **Questions** (one per line, up to 50; every finding must answer one), **Starting links** (pages agents start from, one per line) and **Run for at least**, such as `8h` or `2d`. The run ends after that much running time.
+For research, step 3 asks for **Topic** (a sentence), **Questions** (one per line, up to 50; the report counts the verified claims for each), **Starting links** (pages agents start from, one per line) and **Run for at least**, such as `8h` or `2d`. The run ends after that much running time.
 
 ## 4. Where it runs
 
-Choose the rig. Each card shows its hardware, whether it is idle, and its agents' model. A rig that is not reporting can't be chosen.
+Choose the rig. Each card shows its hardware, whether it is idle, and its agents' model after `agents:`, or `no model for its agents yet` in red. A rig that is not reporting can't be chosen.
 
 | Field | What it does |
 | --- | --- |
 | **Agents working at once** | 1 to 4 (2 unless changed). Despite its name, it sets how many [lanes](../../reference/glossary.md) the planner plans, not how many agents work at once. See the caution below |
+| **The agents' model** | **the rig's model** (the default) keeps the model the rig has. Or choose one of the models in **Providers**, listed by provider. It becomes the rig's model for every run on that rig, as on its **Edit rig** page. See the note below |
+| **The agents run in** | The [worker harness](../../reference/glossary.md), the program that runs the agents, for the model you chose: **what the model needs** (the default: OpenCode v2 for OpenCode's free models, Claude Code for a Claude subscription, else Pi), **OpenCode v2** or **Pi** |
 | **When a change is confirmed better** | **the rig's default**: the choice on the rig's **Edit rig** page, **Automatically** unless changed. Or **always keep it**, or **ask me every time**. See [Decide what waits for you](decide-what-waits.md#promotions) |
+
+:::note[A model the rig doesn't have yet]
+The rig takes a model you choose here within a minute, and checks it. Until then its agents could not work, so **Start the campaign** saves the campaign without starting it. The campaign's page says `Saved. rig-1 takes <model> within a minute. When the rig shows it, start the run here.` Keep that page's address: the **Campaigns** list shows the campaign only once a rig reports a run of it. When the rig's row under **Harness and model for each rig** on **Settings › Providers** says `Its agents run under` the harness `with` that model, come back to the campaign's page and press **Start the run** on its **Start a run** card. A model the rig already has starts the run at once.
+:::
 
 :::caution[How many agents work at once]
 The rig's **Workers at a time** decides it: on **Rigs**, open the rig, press **Edit rig**, and find it in the **Workers (agents)** row. It is 1 unless changed, so with the defaults the two lanes take turns, one trial at a time. Raise it for agents to work side by side ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)). The summary at **5 Review and start** counts lanes as agents too.
@@ -153,7 +159,10 @@ The **Campaigns** list shows a campaign only once a rig reports a run of it. A c
 - After **Start the campaign** or **Try the kit first**, the campaign's page says, for example, `Starting rig-1/sort-speed-1.` Wait a minute and press **refresh** in the status bar, the line along the bottom of the page: pages don't reload by themselves. The run then shows with its **Overview**, **Attempts**, **History** and **Steering** views.
 - A try's run is named like `sort-speed-try-1`, and its page says **A try of the kit.** When its results look right, use the **Start the campaign** card below it with **with agents**, and press **Start the run**. A rig runs one run at a time, so the new run pauses the try.
 - After **Save without starting**, the page says `Saved, with no run yet.` and offers **Start a run**.
-- If the page comes back at **Review and start** with **Not started: fix these first.**, fix each item in the list. Everything you typed is kept. A kit described here or uploaded is checked against the campaign here, before anything is saved.
+- If the page comes back at **Review and start** with **Not started: fix these first.**, fix each item in the list. Everything you typed is kept. A kit described here or uploaded is checked against the campaign here, before anything is saved. The items about the agents' model are:
+  - `rig-1 has no model for its agents, so they could not work: choose one under "The agents' model".`
+  - `OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig.` Choose **OpenCode v2** or **what the model needs** under **The agents run in**.
+  - For research, with one of OpenCode's free models and the agents in Pi: `… is one of OpenCode's free models, which work only inside OpenCode, and rig-1's agents would run in Pi: a research run there could not work. Set the agents' harness to OpenCode, or give the rig a model Pi can use.` Choose **OpenCode v2** under **The agents run in**, or another model.
 - If the run never shows, open **Commands** in the sidebar. The newest **assign campaign** row is **failed**, with the reason.
 
 | The reason starts with | What to do |
@@ -166,3 +175,5 @@ When nothing in the campaign must change, such as after you fixed the repository
 ## Start another run later
 
 The campaign's page has a **Start another run** card. Choose the **Rig** (rigs with other hardware are greyed out), **Agents**, **When a change is confirmed better** and **GPUs for the judge**, then press **Start the run**. It runs the latest saved version. See [Run a campaign on several rigs](several-rigs.md).
+
+This card has no model field. On a rig whose agents have no model, it refuses with `rig-1 has no model for its agents, so they could not work: give it one on its Edit rig page first.`, also for a try of the kit. For a research campaign, it refuses a rig whose agents would run OpenCode's free models in Pi, with the message above.

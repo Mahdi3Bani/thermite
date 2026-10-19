@@ -182,4 +182,4 @@ Over MCP, the owner's and the operator's tokens have two tools for clusters (see
 - `add_cluster_rig` adds a rig on a cluster in Providers, with the same checks as **Add a rig**. Its fields are `rig`, `cluster`, `slot`, `gpus`, `judge_gpus`, `gpu_mode` (`device-plugin` or `dra:<device class>`), `node`, `storage_class`, `storage_gb`, `cpus` and `memory_gib`. It answers with the rig's name and `"status": "deploying"`; follow the rig with `list_rigs`.
 - `set_cluster_slots` replaces the list of slots of a cluster that uses slots. A slot that holds a rig must stay in the list.
 
-Adding the cluster itself is done on the dashboard.
+Once the rig shows on **Rigs**, `set_rig_model` gives its agents a model from **Providers**, as **Edit rig** does. Adding the cluster itself is done on the dashboard.

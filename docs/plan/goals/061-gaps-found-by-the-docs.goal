@@ -79,7 +79,7 @@ The writers and verifiers of the documentation site (goal [060](060-docs-site.go
 
 - [ ] A change submitted by hand is described as "An agent changed …", and approving a held change on a rig with no auditor is recorded as "You overrode the audit" (`src/control/ui/**`).
 - [ ] The leaderboard counts a campaign's runs as rigs (`src/control/views.ts`).
-- [ ] A rig that has never reported shows an age counted from 1970: `No report for 20746 days`, also on its page and in **Needs you** (`src/control/ui/**`).
+- [x] Fixed in `5e4a7d6`. A rig that has never reported shows an age counted from 1970: `No report for 20746 days`, also on its page and in **Needs you** (`src/control/ui/**`).
 - [ ] Saving **Edit rig** is not all or nothing: it stops at the first refused role, and earlier roles stay saved (`src/control/dashboard.ts`).
 - [ ] Small rough edges: a cluster's **Nodes** fact shows raw memory (`8095856Ki`); a joined rig's steps list `✓ First report reached control` twice; the Providers header reads `1 models are read…`; the harness list shows **Pi** for a rig that runs OpenCode v2 from its own settings; a keyless provider's edit form shows `empty keeps the key ending ` with nothing after it; a short key shows as `key …`; Edit rig's message when roles go back to the advisors file repeats itself.
 - [ ] A run started with agents shows **Agents: None** until the planner has planned its first epoch, so it looks as if no agent will work (`src/control/ui/operator.ts`). Found by running tutorial 4.
@@ -98,6 +98,9 @@ The writers and verifiers of the documentation site (goal [060](060-docs-site.go
 
 ### New campaign
 
+- [ ] The campaign page's start card refuses a rig with no model even for "a try of the kit: no agents": the model check runs before the card reads the Agents choice (`src/control/dashboard.ts`).
+- [ ] New campaign decides whether to start at once from the model's name alone, so the same name from another provider starts the run before the rig has the new model (`src/control/new-campaign.ts`; worked out from the code).
+- [ ] The help for **Questions** says "Every finding must answer one of them", but findings name no question; only claims do (`src/control/ui/new-campaign.ts`).
 - [ ] The try's description says it "runs every case once", but a try of a hill climb measures the starting point's noise on the measured cases only and never runs a hidden case (`src/control/ui/new-campaign.ts`). Found by running tutorial 4.
 - [ ] Plurals on the page: "1 files" and "1 agent work" (`src/control/ui/new-campaign.ts`).
 - [ ] "Agents working at once" sets the contract's lane count, not how many agents work at once; that is the rig's **Workers at a time** (default 1), so with the defaults the lanes take turns (`src/control/campaign-builder.ts`, `src/harness/agents/scheduler.ts`).
@@ -138,6 +141,7 @@ The writers and verifiers of the documentation site (goal [060](060-docs-site.go
 
 ### Judge and agents
 
+- [ ] A Pi research worker's tool answers are cut at 14,000 characters of JSON, so `read_file`, which returns up to 20,000 characters, can never give its whole text (`src/harness/research/**`; worked out from the code).
 - [ ] The planner's fallback plan follows **avoid** and **always assign**, but a **try** only for a direction already in use; a new direction name in a **try** is ignored until the model planner runs (`src/harness/agents/planner.ts`).
 - [x] Fixed in `9a8f803`. Under the OpenCode harness the planner never plans: `askPlanner` replaces the sentence "Answer only by calling submit_plan once.", but `SYSTEM` breaks it over two lines, so the JSON instruction never reaches the model, both tries are refused, and every epoch uses the fallback plan after several minutes. No test reads the prompt (`src/harness/agents/planner.ts`). Found by running tutorial 2.
 - [ ] A model that answers "rate limit exceeded" ends each trial at once, and the next trial starts within seconds; a user expects the rig to wait before trying again (`src/harness/agents/scheduler.ts`). Found by running tutorial 2.
@@ -150,7 +154,7 @@ The writers and verifiers of the documentation site (goal [060](060-docs-site.go
 
 - [ ] **Effort** on Edit rig does nothing under OpenCode v2: its config and command line carry no reasoning effort (`src/harness/agents/opencode.ts`).
 - [ ] Edit rig offers the `xhigh` and `max` efforts for every provider, but only a Claude subscription takes them; the others get `high` (`src/control/api.ts`, `src/control/dashboard.ts`).
-- [ ] Research mode cannot use a Claude subscription or OpenCode's own free models, and nothing warns before the run starts (`src/harness/main.ts`).
+- [ ] Research mode cannot use a Claude subscription or OpenCode's own free models, and nothing warns before the run starts (`src/harness/main.ts`). Partly fixed: research trials run in OpenCode when the agents' harness is OpenCode, so its free models serve research there (`e8a557b`), and the dashboard refuses to start a research run where such a model would run in Pi (`301853e`, `d1d34e8`). Still open: a Claude subscription fails only at each trial, with nothing before the start.
 - [ ] The model check tests only the workers' model, not a planner or advisor model given on Edit rig (`src/harness/service.ts`).
 - [ ] A Claude model on an image without Claude Code fails the model check with the spawn's error, not a message that the image has no Claude Code (`src/harness/agents/claude-code.ts`).
 - [ ] An OpenAI-compatible provider needs an API key even when its model server needs none (`src/control/store.ts`, `src/harness/agents/model.ts`).
@@ -175,6 +179,8 @@ The writers and verifiers of the documentation site (goal [060](060-docs-site.go
 
 ### Results and propagation
 
+- [ ] A research run's folder rarely reaches the results repository: the harness puts it in the export that holds the final report, but the supervisor pushes `research/` files only from a full export (`src/harness/outbox.ts`, `src/supervisor/git-export.ts`).
+- [ ] A full reset of a rig with an unfinished research run would lose the lanes' working files, which no export holds yet (worked out from the code, not run).
 - [ ] A failed push shows only git's first line of output (`@@@@@@@@@`), so the reason is lost on **Rigs**, the rig's **Results** row and the supervisor's log (`src/supervisor/git-export.ts`).
 - [ ] The results deploy key needs a different file mode under Docker on Linux (readable by the supervisor's user) and Podman on a Mac (ssh refuses anything but 0600); the supervisor could copy the key into its own home with mode 0600 so one instruction fits every engine (`src/supervisor/git-export.ts`).
 - [ ] Rigs that control sets up have no results repository, so a full reset stops at `verifying`, a champion sent to or from such a rig waits until it expires after 24 hours, and a removed rig loses every result that control does not hold (`src/control/lifecycle.ts`, `src/supervisor/staging.ts`).
@@ -240,6 +246,7 @@ The docs describe only what exists. Each gap here is a place where a tester expe
 
 - 2026-10-19: Goal written from the gaps the docs writers and verifiers recorded.
 - 2026-10-19: Two items fixed on the development branch: rigs on machines that never reported (`4ec8705`), and the planner under OpenCode (`9a8f803`). The docs pages already describe the intended behaviour.
+- 2026-10-19: The development branch also fixed the age of a rig that never reported (`5e4a7d6`), and part of research on OpenCode's free models (`e8a557b`, `301853e`, `d1d34e8`). The docs pages now describe both, and the tutorials no longer call the planner under OpenCode a known fault.
 
 ---
 

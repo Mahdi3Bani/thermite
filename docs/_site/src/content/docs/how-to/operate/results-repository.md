@@ -116,7 +116,7 @@ Each rig has two branches. Commits are made by `thermite <thermite@localhost>`.
 | | `champions/<run>/<seq>.patch` and `.json` | Each published champion, as a patch from the run's starting commit |
 | | `events/<export>.jsonl` | The export's events, one per line |
 | | `exports/<export>.json` | The export's manifest: each file with its SHA-256 |
-| | `research/<run>/…` | A research run's archive, only in a full export (a full reset takes one) |
+| | `research/<run>/…` | Only from a full export (a full reset takes one): a research run's archive, and in `research/<run>/folder/` the [research folder](../../explanation/campaign-modes.md#research) of a run whose final report that export holds |
 | `thermite/<rig>/ledger` | `ledger.sqlite`, `manifest.json` | A copy of the rig's ledger, at most once a day, and with every full export. Held-out results are left out, so they never leave the rig |
 
 The attempts branch only grows: a file already published there is never replaced. The supervisor commits only files that the export's manifest lists, with the SHA-256 it lists. An export that fails that check is never pushed, and the **Results** row says `export … refused: …`.

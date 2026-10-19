@@ -34,7 +34,7 @@ The count also shows beside **Overview** in the sidebar, and as **Needs you** in
 | **Not possible?** | End this campaign as not possible? | The [harness](../../reference/glossary.md), the rig's container that holds the judge, proposes that a goal campaign's goals can't be reached | **End it: not possible**, **Keep going** |
 | **New key** | Accept this rig's new report key? | A rig reports with a key control has not pinned | **Accept this key** |
 | **Wipe** | Wipe this rig's state? | A full reset you started is ready for its last step | **Confirm the wipe**, **Cancel the reset** |
-| **Not reporting** | This rig stopped reporting | A rig has sent no report for a while | **Open the rig** |
+| **Not reporting** | This rig stopped reporting, or, for a rig that never reported, This rig has not reported yet | A rig has sent no report for a while. A new rig whose first key waits for you shows under **New key** instead | **Open the rig** |
 
 ### Promotions
 

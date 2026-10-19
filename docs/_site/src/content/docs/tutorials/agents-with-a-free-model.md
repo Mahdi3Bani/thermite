@@ -181,7 +181,7 @@ Then open **Campaigns** and choose the run `smoke-agents-1`. Its page starts wit
 :::tip[Nothing yet after half an hour?]
 - On **Live**, choose **Worker · lane-1**. If it is **working** and new lines keep coming, the agent is still on its idea: wait.
 - In **What happened**, a line that says `lane-1's trial` … `ended without a submission` gives the reason. A free model is sometimes busy: `Rate limit exceeded. Please try again later.` The next trial tries again. If every trial ends this way, give the rig another model whose name ends in `-free`, as in step 2, or pause the run (step 9) and resume it later.
-- With OpenCode, **What happened** may say that the planner used `its fallback plan`. That is a known fault ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)): the run goes on with a simple plan.
+- If **What happened** says that the planner used `its fallback plan`, the planner's call to the model failed, often because a free model was busy. The run goes on with a simple plan, and the next epoch asks the planner again.
 :::
 
 ### If a change waits for you

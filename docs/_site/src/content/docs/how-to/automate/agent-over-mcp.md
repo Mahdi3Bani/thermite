@@ -18,7 +18,7 @@ Control has an MCP server, so an AI agent such as Claude Code can watch rigs and
 
 | Token | Give it to | It may |
 | --- | --- | --- |
-| **Operator** | An agent that runs campaigns for you | Read everything; start, pause, resume, redirect and reset runs; export; run rig checks; send champions to other rigs; message a run's agents; read control's own log and providers; add rigs on a cluster and set a cluster's slots; start and end RunPod test pods, which costs money |
+| **Operator** | An agent that runs campaigns for you | Read everything; start, pause, resume, redirect and reset runs; export; run rig checks; send champions to other rigs; message a run's agents; read control's own log and providers; add rigs on a cluster and set a cluster's slots; give a rig's agents a model; start and end RunPod test pods, which costs money |
 | **Agent** | An agent that only coordinates runs | Read; start, pause, resume, redirect and reset runs; export; run rig checks; send champions to other rigs. Not control's log, providers or RunPod. While you fully reset a rig, `issue_command` refuses it for that rig |
 | **Reader** | An agent that only watches | Read, including control's log and providers |
 
@@ -26,7 +26,7 @@ The reader's token reads control's log and providers, and the agent's token does
 
 Give the agent the token with the least it needs: it acts with that token's rights, and nothing more. Don't give an agent the owner's token. The owner's token also approves and declines promotions over MCP, retires rigs, works on the whole REST API and signs in to the dashboard.
 
-Some things no token can do over MCP: approving a goal the review panel passed, ending a campaign as not possible, changing a rig's settings, accepting a rig's key and wiping a rig. A model is never the last word on what counts as a result; see [Why agents never judge](../../explanation/why-agents-never-judge.md). Approving and declining promotions is the owner's alone.
+Some things no token can do over MCP: approving a goal the review panel passed, ending a campaign as not possible, changing a rig's settings (apart from its agents' model), accepting a rig's key and wiping a rig. A model is never the last word on what counts as a result; see [Why agents never judge](../../explanation/why-agents-never-judge.md). Approving and declining promotions is the owner's alone.
 
 On the local stack, an operator's token is ready in `.dev/secrets/control-operator-token`, unless you replaced it with one of your own. For an agent's or a reader's token, see [Make and change tokens](../operate/tokens.md).
 
@@ -51,6 +51,7 @@ The [MCP tools reference](../../reference/mcp-tools.md) lists every tool, its in
 
 - **Look:** `list_rigs`, `get_run` (one run with its attempts and verdicts), `recent_events`, `leaderboard`, `rig_reports` (the supervisors' daily reports), `list_commands` and `command_status`.
 - **Act:** `issue_command` sends a [signed command](../../reference/signed-commands.md) to a rig, of a kind its token allows: `assign_campaign`, `pause_run`, `resume_run`, `redirect`, `reset_workers`, `export_now` or `rig_check`, and for an operator also `message_agent`. `propagate_champion` sends a champion to another rig's run of the same campaign.
+- **Set rigs up:** `add_cluster_rig` (as **Rigs › Add a rig** does on a Kubernetes cluster), `set_cluster_slots` (a cluster's pre-made slots) and `set_rig_model` (a rig's agents' model, as on **Edit rig**), with the same checks as those pages, for operator tokens. Retiring a rig (`retire_rig`, `bring_back_rig`) is the owner's.
 - **Debug:** `control_log` (control's audit log, with what it refused and why) and `providers` (what control holds in **Settings › Providers**, never a key), for operator and reader tokens.
 
 A command is queued, not done at once. `issue_command` returns the command's id. The agent then calls `command_status` until the status is `delivered`, `failed` or `rejected` with the rig's reason, or `expired`. `delivered` means the rig applied the command; a rig check's result comes later, in the rig's events.

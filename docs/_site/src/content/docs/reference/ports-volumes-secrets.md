@@ -113,7 +113,7 @@ A full reset empties the harness's state, scratch and outbox, keeping only the r
 
 | What | Where |
 | --- | --- |
-| The rig's files | `$HOME/.local/share/thermite/rigs/<rig>` for a user, `/var/lib/thermite/rigs/<rig>` for root. Mode 0700: only the rig's user may open it |
+| The rig's files | `$HOME/.local/share/thermite/rigs/<rig>` for a user, `/var/lib/thermite/rigs/<rig>` for root. Mode 0700: only the rig's user may open it. Its `keys/` folder is 0755, so that the harness's controller, which is not the container's root, can read control's public key |
 | The units | `$HOME/.config/containers/systemd` for a user, `/etc/containers/systemd` for root: `thermite-<rig>.network`, `thermite-<rig>-egress.network`, `thermite-<rig>-harness.container`, `thermite-<rig>-supervisor.container` |
 | The services | `thermite-<rig>-harness.service`, `thermite-<rig>-supervisor.service` |
 

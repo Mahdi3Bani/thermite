@@ -53,7 +53,7 @@ None of these ends research. A trial that ends at its time is followed by the la
 | Time to finish after a submission | 60 s | Fixed (OpenCode and Claude Code) |
 | Model call retries in a Pi trial | Waits of 5 s, doubling to 60 s. The trial ends after 6 failed calls in a row, 5 cut-off replies in a row, or a full context | Fixed |
 | A lane's wait after unproductive trials | 15 s, doubling for each one in a row, at most 10 minutes. Unproductive: an error, no submission, or an attempt that is `rejected_v0` or `duplicate` (research: an error) | Fixed |
-| A run's cool-down after 6 trials in a row end in errors | 30 minutes, with an `agents_cooldown` event | Fixed |
+| A run's cool-down after 6 trials in a row end in errors | 30 minutes, with an `agents_cooldown` event. A new model given to the rig, or the run resumed, after the last of those errors ends it at once | Fixed |
 | A full subscription usage window | Claude: no new trial or plan on the rig until the window resets. ChatGPT: 15 minutes, then try again | Fixed. Nothing buys more usage |
 
 ### Epochs and planning
@@ -87,6 +87,7 @@ None of these ends research. A trial that ends at its time is followed by the la
 | Live view lines sent to control | Every 3,000 ms | `THERMITE_LIVE_INTERVAL_MS` |
 | The model route checked on control | Every 30 s | `THERMITE_MODEL_ROUTE_POLL_SECONDS` |
 | A rig shown as not reporting | After 180 s without a report | `THERMITE_CONTROL_STALE_SECONDS` |
+| A GPU cloud in **Providers** read again: prices, pods and spend | Every 15 minutes, and on **Read again** | Fixed |
 | Teacher reviews of a run | Every 60 minutes | `teacher_minutes` in the advisors file |
 | An audit or review that failed | Tried again every 30 minutes, at most 5 times, then left to the owner | Fixed |
 | Research digests | Every 60 minutes | The contract's `report_cadence.digest_minutes` |
@@ -143,6 +144,7 @@ Memory is the sum over all the processes the build or run started, sampled every
 | Isolation check | 30 s for each role |
 | Smoke check | 3 hours for the whole check |
 | A research fetch | 30 s, at most 5 redirects, at most `fetch_policy.max_bytes` (5,000,000 by default) |
+| A research tool's answer | 14,000 characters when it is JSON, for a Pi worker's file tools too. A folder listing shows at most 500 entries, a folder search at most 200 lines |
 | One advisor call (`openai` runtime) | `max_turns` 24 and `timeout_s` 900, unless the advisors file sets them |
 | One advisor call (`cli` and `claude-code` runtimes) | `timeout_s` 1,800, unless the advisors file sets it |
 

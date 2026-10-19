@@ -61,7 +61,7 @@ The supervisor connects the rig to the outside. It runs five loops side by side,
 - **Reports:** it sends the harness's new events to control, pushes the rig's results to git and uploads each new champion's patch to control, once a minute by default.
 - **Commands:** it fetches control's pending commands, fetches any project, kit or champion they name, and hands them to the harness. It asks every 5 seconds by default, so a pause or a message lands quickly.
 - **Live view:** it sends the harness's newest live lines to control, for the rig's live view on the dashboard (**Live** in the sidebar).
-- **Model route:** it hands the harness the agents' model and key that the owner chose on control.
+- **Model route:** it hands the harness the agents' model and key chosen on control, by the owner or an operator's agent.
 - **Advisors:** it runs the teachers, the auditor and the review panel, but only those the rig is given, in an advisors file or as models on the rig's **Edit rig** page. [Supervision](supervision.md) explains them.
 
 The supervisor does all of the rig's git work. It holds no signing key: it carries commands in and reports out, but it cannot write either one. [Trust between control and rigs](trust.md) explains how that is checked, and [the settings reference](../reference/settings.md#how-often-it-talks-to-control) lists each loop's interval.

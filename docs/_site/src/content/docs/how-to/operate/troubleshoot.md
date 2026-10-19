@@ -178,9 +178,22 @@ Two causes are common on a laptop:
 
 ## Agents don't start
 
-- **You see:** the harness's log says `agents wait for a model route`, and no trials start.
+- **You see:** the harness's log says `agents wait for a model route`, and no trials start. Or the **New campaign** page won't start the run: `rig-1 has no model for its agents, so they could not work: choose one under "The agents' model".`
 - **Why:** the rig has no model yet.
-- **Do:** [connect a model provider](../models/connect-a-provider.md) and give the rig one of its models.
+- **Do:** [connect a model provider](../models/connect-a-provider.md) and give the rig one of its models, on **Settings › Providers** or under **The agents' model** on the **New campaign** page. If six trials in a row had already failed, the agents rest for 30 minutes; a new model, or resuming the run, ends that rest at once.
+
+## A research campaign's trials all end in errors
+
+- **You see:** each trial of a research run ends at once with an error that names the model.
+- **Why:** research workers run in Pi or OpenCode v2, and the rig's model can't serve them there:
+
+| The error | Do |
+| --- | --- |
+| `this rig has no model for its agents: give it one on its Edit rig page` | Give the rig a model: see [Agents don't start](#agents-dont-start) |
+| `research workers run in Pi or OpenCode, and a Claude subscription runs only in Claude Code: give this rig another model for research` | Give the rig a model from another provider |
+| `<model> is one of OpenCode's own models, which work only inside OpenCode: set this rig's agents' harness to OpenCode on its Edit rig page` | Set the workers' **Runs in** to **OpenCode v2** on **Edit rig** |
+
+The dashboard refuses to start a research run in the last case. A run started from the command line, or on a rig whose model changed after the start, can still meet it. See [Write a contract](../campaigns/write-a-contract.md#4-write-a-research-campaign).
 
 ## Something was refused
 
