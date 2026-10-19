@@ -323,6 +323,21 @@ describe("the new-campaign page", () => {
       });
     const refused = await (await send({})).text();
     assert.match(refused, /rig-a has no model for its agents, so they could not work/);
+    // Research workers run in Pi: OpenCode's free models can't serve a research run.
+    const research = await (
+      await s.post("/ui/campaigns/new", {
+        csrf: s.csrf,
+        draft: JSON.stringify(draft({ mode: "research", campaign: "rl-research" })),
+        rig: "rig-a",
+        start_value: "start",
+        agents_model: "zen|glm-5.3-flash-free",
+      })
+    ).text();
+    assert.match(
+      research,
+      /Research workers run in Pi, and glm-5\.3-flash-free is one of OpenCode/,
+    );
+    assert.equal(s.store.rigModels()["rig-a"], undefined, "the rig was given nothing");
     assert.equal(s.store.campaignVersions("matmul-speed").length, 0, "nothing created");
 
     // A model chosen on the page: the rig gets it, the campaign is saved, no run yet.

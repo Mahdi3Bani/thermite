@@ -971,6 +971,13 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     let startValue = String(f.start_value ?? "start");
     const chosen = String(f.agents_model ?? "").trim();
     let modelNote = "";
+    // Checked before the rig is given anything: research workers run in Pi.
+    const researchModel =
+      draft.mode === "research" && startValue === "start"
+        ? opencodeOnlyModel(rig, chosen || undefined)
+        : undefined;
+    if (researchModel)
+      return newCampaignPage(c, { draft, errors: [researchNeedsPi(rig.id, researchModel)] });
     if (chosen) {
       const given = giveRigModel(
         rig.id,
@@ -985,7 +992,8 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         startValue = "save";
         modelNote = `${rig.id} takes ${model} within a minute. When the rig shows it, start the run here.`;
       }
-    } else if (startValue === "start" && agentsModelMissing(rig))
+    }
+    if (!chosen && startValue === "start" && agentsModelMissing(rig))
       return newCampaignPage(c, {
         draft,
         errors: [
@@ -1027,6 +1035,35 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     );
   });
 
+  /**
+   * A rig whose agents' model works only inside OpenCode (OpenCode's free models): research
+   * workers run in Pi, so a research run there could not work. From control's record, else the
+   * rig's report.
+   */
+  const opencodeOnlyModel = (u: RigView, chosen?: string): string | undefined => {
+    let provider: ReturnType<typeof store.provider>;
+    let model: string | undefined;
+    if (chosen) {
+      const [pRaw, mRaw] = chosen.split("|");
+      provider = store.provider(decodeURIComponent(pRaw ?? ""));
+      model = decodeURIComponent(mRaw ?? "");
+    } else {
+      const given = store.rigModels()[u.id];
+      if (given) {
+        provider = store.provider(given.provider);
+        model = given.model;
+      } else if (u.model?.model) {
+        const fake = { type: "openai" as const, base_url: u.model.base_url ?? "" };
+        return isOpencodeOwn(fake) && u.model.model.endsWith("-free") ? u.model.model : undefined;
+      }
+    }
+    if (!provider || !model || !isOpencodeOwn(provider)) return undefined;
+    return provider.type === "opencode" || !provider.key_sealed || model.endsWith("-free")
+      ? model
+      : undefined;
+  };
+  const researchNeedsPi = (rig: string, model: string) =>
+    `Research workers run in Pi, and ${model} is one of OpenCode's free models, which work only inside OpenCode: a research run on ${rig} could not work. Give the rig a model Pi can use, or run a hill climb or a goal there.`;
   /** A rig whose agents have no model: none from control, and the rig reports none. */
   const agentsModelMissing = (u: RigView) => !store.rigModels()[u.id] && u.model?.source === "none";
   /** The harness a model needs when the owner leaves it to control. */
@@ -1104,6 +1141,10 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       return back(
         `${rig.id} has no model for its agents, so they could not work: give it one on its Edit rig page first.`,
       );
+    const mode = (store.campaignVersions(campaign)[0]?.contract as { mode?: string } | undefined)
+      ?.mode;
+    const researchModel = mode === "research" ? opencodeOnlyModel(rig) : undefined;
+    if (researchModel) return back(researchNeedsPi(rig.id, researchModel));
     const promotion = String(f.promotion ?? "");
     const split = splitFor(rig, String(f.judge_gpus ?? ""));
     if (typeof split === "string") return back(split);

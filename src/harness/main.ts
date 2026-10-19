@@ -531,19 +531,28 @@ async function main(): Promise<void> {
       return answer;
     },
     research,
-    // Research workers run in Pi, which may not use a Claude subscription.
-    runResearchTrial: async (spec, signal) =>
-      model()?.api === "claude"
-        ? {
-            stopped: "error",
-            turns: 0,
-            toolCalls: 0,
-            tokensIn: 0,
-            tokensOut: 0,
-            error:
-              "research workers run in Pi, and a Claude subscription runs only in Claude Code: give this rig another model for research",
-          }
-        : spawnTrial({ kind: "research", spec }, runner, paths.scratchDir, port, signal, model()),
+    // Research workers run in Pi, which may use neither a Claude subscription nor OpenCode's own
+    // (free) models: those work only inside Claude Code and OpenCode. Say so, in words.
+    runResearchTrial: async (spec, signal) => {
+      const m = model();
+      const cannot = !m
+        ? "this rig has no model for its agents: give it one on its Edit rig page"
+        : m.api === "claude"
+          ? "research workers run in Pi, and a Claude subscription runs only in Claude Code: give this rig another model for research"
+          : m.api === "opencode"
+            ? `research workers run in Pi, and ${m.model} is one of OpenCode's own models, which work only inside OpenCode: give this rig a model Pi can use for research`
+            : undefined;
+      if (cannot)
+        return {
+          stopped: "error",
+          turns: 0,
+          toolCalls: 0,
+          tokensIn: 0,
+          tokensOut: 0,
+          error: cannot,
+        };
+      return spawnTrial({ kind: "research", spec }, runner, paths.scratchDir, port, signal, m);
+    },
     devRuns,
     usdPerMTokIn: env.THERMITE_LLM_USD_PER_MTOK_IN
       ? Number(env.THERMITE_LLM_USD_PER_MTOK_IN)
