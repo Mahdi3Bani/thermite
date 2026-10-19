@@ -1,5 +1,6 @@
-# The fast checks on every pull request and on main, then the compose smoke test: control and one
-# rig built from this commit, a campaign assigned through control, a candidate judged.
+# The fast checks on every pull request and on main, the documentation site's build and checks, then
+# the compose smoke test: control and one rig built from this commit, a campaign assigned through
+# control, a candidate judged.
 name: ci
 
 on:
@@ -36,6 +37,26 @@ jobs:
       - run: npm test
       # Generic patterns only here; maintainers' checkouts add a private denylist.
       - run: npm run check:public
+
+  docs:
+    name: docs site
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            docs/_site/package-lock.json
+      # The root packages too: the docs check reads the real schemas from src/.
+      - run: npm ci
+      - run: npm run docs:install
+      # The build fails on a page without a type or description, and on a broken link.
+      - run: npm run docs:build
+      - run: npm run docs:check
 
   compose-smoke:
     needs: checks

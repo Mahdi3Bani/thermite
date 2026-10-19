@@ -1,0 +1,54 @@
+# The documentation site (docs/_site): built, checked and published to GitHub Pages from main.
+# Pull requests build and check it in ci.yml. Publishing needs GitHub Pages turned on, with
+# "GitHub Actions" as its source, in the repository's settings.
+name: docs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The pages show when each was last updated, from git.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            docs/_site/package-lock.json
+      # The root packages too: the docs check reads the real schemas from src/.
+      - run: npm ci
+      - run: npm run docs:install
+      - run: npm run docs:build
+      - run: npm run docs:check
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: .dev/site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v5

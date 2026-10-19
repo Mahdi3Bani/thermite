@@ -1,7 +1,7 @@
 ---
 id: "060"
 title: "The documentation site"
-status: READY
+status: IN_PROGRESS
 version: "0.1.0"
 part: "Tester basics"
 depends_on: []
@@ -11,7 +11,7 @@ updated: 2026-10-19
 
 # 060 · The documentation site
 
-**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
 
 ## What
 
@@ -166,6 +166,15 @@ The docs today are twelve dense pages, written for the people who built Thermite
 ## Progress
 
 - 2026-10-19: Goal written. It draws on the owner's request, the earlier private publishing plan's documentation section, and the current docs.
+- 2026-10-19: Work started from `7a2bc35`. Step 1 (inventory) and the Starlight skeleton run first.
+- 2026-10-19: Step 1 done. Five read-only agents inventoried control and the dashboard, the API, MCP and command line, the harness, the supervisor, and deployment and settings, with file and line evidence. Their notes are in the maintainers' working folder.
+- 2026-10-19: Step 2 built, waiting for the owner's review:
+  - the Starlight project with pinned versions (Astro 7.3.8, Starlight 0.42.6), the page schema, the link validator, `llms.txt` with every page, `llms-full.txt`, `llms-small.txt`, one file per section and a Markdown copy of each page;
+  - all 73 pages in the sidebar, as stubs where not yet written; the ten old user pages moved in with `git mv`;
+  - the home page, Start here and one finished page of each type: Your first run, Check a rig, Tokens and roles, Why agents never judge;
+  - `npm run docs:check`, a CI job and a GitHub Pages workflow;
+  - `docs/writing-docs.md`, the guide every writer follows.
+- 2026-10-19: Tutorial 1's steps ran from a fresh clone on a local Podman stack: the isolation check passed at start, and the smoke check passed with all 12 candidates judged as expected in about 100 seconds on a laptop CPU.
 
 ---
 

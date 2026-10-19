@@ -7,7 +7,7 @@
 ![Node.js 22.19+](https://img.shields.io/badge/node-%E2%89%A522.19-339933)
 [![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/3Qs2uejUf9)
 
-[Quick start](docs/quickstart.md) · [Documentation](docs/README.md) · [Architecture](docs/architecture.md) · [Roadmap](docs/plan/roadmap.md) · [Discord](https://discord.gg/3Qs2uejUf9)
+[Quick start](docs/_site/src/content/docs/tutorials/first-run.md) · [Documentation](docs/README.md) · [Architecture](docs/_site/src/content/docs/explanation/how-it-fits-together.md) · [Roadmap](docs/plan/roadmap.md) · [Discord](https://discord.gg/3Qs2uejUf9)
 
 Point Thermite at a project and a goal: make a kernel faster without breaking its tests, reach a list of goals, or research a topic for eight hours. It runs many agents in parallel, each trying one change at a time. A judge that the agents can't read or modify builds every change, times it, checks it and decides what counts. Wins are kept and built on. Losses are kept too, with the reason they lost. One dashboard, with a REST API and MCP, shows and steers every campaign on every machine.
 
@@ -34,7 +34,7 @@ flowchart LR
   Ledger --> Planner
 ```
 
-Each project comes with a **kit**: the judge's half of the project, which says how candidates are built, run, timed and checked. Agents never see it. The CPU smoke kit ships 12 known candidates, among them a real speed-up, a no-op, a timer edit, a reference fallback, NaN output, memory and disk exhaustion and an attempt to overwrite the champion; the judge acceptance test requires each one to get its expected verdict. [Kits](docs/kits.md) and [judging](docs/judging.md) explain the mechanism.
+Each project comes with a **kit**: the judge's half of the project, which says how candidates are built, run, timed and checked. Agents never see it. The CPU smoke kit ships 12 known candidates, among them a real speed-up, a no-op, a timer edit, a reference fallback, NaN output, memory and disk exhaustion and an attempt to overwrite the champion; the judge acceptance test requires each one to get its expected verdict. [Kits](docs/_site/src/content/docs/explanation/kits.md) and [judging](docs/_site/src/content/docs/explanation/why-agents-never-judge.md) explain the mechanism.
 
 ## Quick start
 
@@ -55,7 +55,7 @@ Building the images is the slow part of a first run. Then:
 2. Go to **Rigs › local-1 › Checks** and run **smoke**. The rig builds a small benchmark and submits known changes to its judge: a real speed-up, a no-op, broken builds and attempts to cheat. Each one gets its expected verdict in about ten minutes on a CPU.
 3. Add a model under **Settings › Providers** (any OpenAI-compatible endpoint with tool calling, Anthropic, or OpenCode), then start a campaign on your own project from **Campaigns › New campaign**.
 
-The [quick start](docs/quickstart.md) walks through every step, including taking the winning patch back to your project.
+The [quick start](docs/_site/src/content/docs/tutorials/first-run.md) walks through every step, including taking the winning patch back to your project.
 
 **Just want to look around?** `npm ci && node --experimental-strip-types scripts/dashboard-demo.ts` serves the dashboard with synthetic campaigns and rigs at <http://127.0.0.1:8810/ui>, with no containers. It prints the token to sign in with.
 
@@ -67,7 +67,7 @@ The [quick start](docs/quickstart.md) walks through every step, including taking
 | **Goal** | Every goal is met, or a goal is shown to be impossible. | Port a library to a new platform: it builds, matches its goldens and meets a speed target. |
 | **Research** | The time box ends. It builds a sourced corpus on a topic. | How do modern memory allocators keep tail latency low? |
 
-Details are in [campaign modes](docs/campaign-modes.md) and the [contract reference](docs/contract-reference.md).
+Details are in [campaign modes](docs/_site/src/content/docs/explanation/campaign-modes.md) and the [contract reference](docs/_site/src/content/docs/reference/contract.md).
 
 ## Architecture
 
@@ -93,18 +93,18 @@ flowchart TB
 - Rigs run under docker-compose or podman-compose on one machine. **Control** can also set rigs up on your own machines over SSH, or on a Kubernetes cluster.
 - **Target drivers** connect the judge to what is measured: CUDA GPUs and CPUs today.
 
-More in [architecture](docs/architecture.md).
+More in [architecture](docs/_site/src/content/docs/explanation/how-it-fits-together.md).
 
 ## Documentation
 
 | Read this | To |
 | --- | --- |
-| [Quick start](docs/quickstart.md) | Go from a clean clone to a campaign on your own project |
-| [Write a kit](docs/write-a-kit.md) | Teach the judge how to build, run and check your project |
-| [Judging and integrity](docs/judging.md) | See how results are accepted without trusting the agents |
-| [Settings reference](docs/settings-reference.md) | Configure control, the harness and the supervisor |
+| [Quick start](docs/_site/src/content/docs/tutorials/first-run.md) | Go from a clean clone to a campaign on your own project |
+| [Write a kit](docs/_site/src/content/docs/how-to/campaigns/write-a-kit.md) | Teach the judge how to build, run and check your project |
+| [Judging and integrity](docs/_site/src/content/docs/explanation/why-agents-never-judge.md) | See how results are accepted without trusting the agents |
+| [Settings reference](docs/_site/src/content/docs/reference/settings.md) | Configure control, the harness and the supervisor |
 | [Running locally](docs/local-development.md) | Run the checks, the compose stack and the acceptance tests |
-| [Glossary](docs/glossary.md) | Look up a term |
+| [Glossary](docs/_site/src/content/docs/reference/glossary.md) | Look up a term |
 
 ## Community and contributing
 

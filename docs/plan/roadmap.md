@@ -35,7 +35,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [003](goals/003-advisors-no-default-cap.goal) No default spend limit for advisors · `VERIFIED`
 - [004](goals/004-secret-scan.goal) Scan the history for secrets · `READY`
 - [005](goals/005-sample-project.goal) A sample project in `examples/` · `READY`
-- [060](goals/060-docs-site.goal) The documentation site · `READY`
+- [060](goals/060-docs-site.goal) The documentation site · `IN_PROGRESS`
 - [006](goals/006-docs-for-testers.goal) Docs for testers · `DROPPED`, merged into 060
 - [007](goals/007-known-limits.goal) Known limits and the security model · `READY`
 - [008](goals/008-community-files.goal) Community files and contributor docs · `READY`

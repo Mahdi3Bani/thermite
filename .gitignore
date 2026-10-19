@@ -6,3 +6,4 @@ coverage/
 *.log
 .DS_Store
 .dev/
+docs/_site/.astro/
