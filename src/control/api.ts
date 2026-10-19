@@ -239,6 +239,8 @@ export function createControlApi(
     const expected = tokens.rigs[rig];
     const ok = expected !== undefined ? eq(token, expected) : store.rigTokenMatches(rig, token);
     if (!ok) return c.json({ error: "unauthorized" }, 401);
+    // A retired rig is refused until the owner brings it back, whatever token it holds.
+    if (store.rigRetired(rig)) return c.json({ error: "this rig is retired in control" }, 403);
     await next();
   };
 
@@ -715,13 +717,26 @@ export function createControlApi(
     store.rotateRigToken(rig, t.sha256, "owner:api");
     return c.json({ rig, token: t.token });
   });
+  // Any rig: one control enrolled (its token ends), one in the rig tokens file (its token is
+  // refused while retired; take it out of the file too), or one that only ever reported.
   app.post("/v1/rigs/:rig/retire", admin, (c) => {
     const rig = c.req.param("rig");
-    const fixed = inFile(rig);
-    if (fixed) return c.json({ error: fixed }, 409);
-    if (!store.enrolledRig(rig)) return c.json({ error: `rig ${rig} is not enrolled` }, 404);
-    store.retireRig(rig, "owner:api");
-    return c.json({ rig, retired: true });
+    if (!store.rigs({ withRetired: true }).some((u) => u.id === rig) && !store.knownRig(rig))
+      return c.json({ error: `no rig ${rig}` }, 404);
+    store.retireAnyRig(rig, "owner:api");
+    return c.json({
+      rig,
+      retired: true,
+      ...(inFile(rig)
+        ? { note: "its token is in control's rig tokens file: remove it there too" }
+        : {}),
+    });
+  });
+  app.post("/v1/rigs/:rig/bring-back", admin, (c) => {
+    const rig = c.req.param("rig");
+    return store.bringBackRig(rig, "owner:api")
+      ? c.json({ rig, retired: false })
+      : c.json({ error: `rig ${rig} is not retired` }, 404);
   });
 
   // Metrics: the read token is enough (a scraper should not hold the owner's credential).

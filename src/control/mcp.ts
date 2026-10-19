@@ -333,6 +333,42 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
       })),
     );
 
+    // Retiring a rig that is gone, and bringing it back: the owner's, as on the dashboard.
+    if (role === "owner") {
+      server.registerTool(
+        "retire_rig",
+        {
+          title: "Retire a rig",
+          description:
+            "For a rig that is gone: it leaves the rig lists, its campaigns' views and the owner's queue, and control refuses its reports until it is brought back. A token control made for it ends. Its records stay. It stops nothing on the machine. The owner's token only.",
+          inputSchema: {
+            rig: z.string().min(1),
+            confirm: z.string().describe('"retire <rig>", as on the dashboard'),
+          },
+        },
+        audited("retire_rig", (a: { rig: string; confirm: string }) => {
+          if (a.confirm.trim() !== `retire ${a.rig}`)
+            throw new Error(`confirm with "retire ${a.rig}"`);
+          if (!store.rigs().some((u) => u.id === a.rig)) throw new Error(`no rig ${a.rig}`);
+          store.retireAnyRig(a.rig, actor);
+          return { rig: a.rig, retired: true };
+        }),
+      );
+      server.registerTool(
+        "bring_back_rig",
+        {
+          title: "Bring a retired rig back",
+          description:
+            "A retired rig shows again and its reports are taken again. A token control made for it stays ended. The owner's token only.",
+          inputSchema: { rig: z.string().min(1) },
+        },
+        audited("bring_back_rig", (a: { rig: string }) => {
+          if (!store.bringBackRig(a.rig, actor)) throw new Error(`${a.rig} is not retired`);
+          return { rig: a.rig, retired: false };
+        }),
+      );
+    }
+
     const tests = opts.runpodTests;
     if (tests) {
       server.registerTool(

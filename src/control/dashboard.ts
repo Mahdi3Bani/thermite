@@ -1195,6 +1195,30 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
   });
 
   // ---------------------------------------------------------------- rigs (Magnesium's Fleet)
+  // Retire a rig that is gone, whatever set it up; bring it back.
+  app.post("/ui/rigs/:rig/retire", async (c) => {
+    const rig = c.req.param("rig");
+    const back = (k: "ok" | "error", m: string) =>
+      c.redirect(`/ui/rigs/${encodeURIComponent(rig)}?${k}=${encodeURIComponent(m)}`, 303);
+    const f = await c.req.parseBody();
+    if (String(f.confirm ?? "").trim() !== `retire ${rig}`)
+      return back("error", `Type "retire ${rig}" to retire it.`);
+    if (!store.rigs().some((u) => u.id === rig)) return back("error", "No such rig.");
+    store.retireAnyRig(rig, "owner:ui");
+    return back(
+      "ok",
+      `${rig} is retired. ${store.enrolledRig(rig) ? "" : "If its token is in control's settings, take it out there too."}`.trim(),
+    );
+  });
+  app.post("/ui/rigs/:rig/bring-back", (c) => {
+    const rig = c.req.param("rig");
+    const ok = store.bringBackRig(rig, "owner:ui");
+    return c.redirect(
+      `/ui/rigs/${encodeURIComponent(rig)}?${ok ? "ok" : "error"}=${encodeURIComponent(ok ? `${rig} is back.` : `${rig} is not retired.`)}`,
+      303,
+    );
+  });
+
   app.get("/ui/rigs", (c) => {
     const now = Date.now();
     const vs = views();
@@ -1255,7 +1279,17 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         actions: `<a class="btn primary" href="/ui/rigs/add">Add a rig</a>`,
         active: "rigs",
       },
-      cards || `<div class="card"><div class="empty">No rig has reported yet.</div></div>`,
+      `${cards || `<div class="card"><div class="empty">No rig has reported yet.</div></div>`}${(() => {
+        const gone = store.retiredRigs();
+        return gone.length
+          ? `<div class="block" style="margin-top:20px"><div class="head"><h2>Retired</h2><span class="n">${gone.length}</span><span class="right">out of the lists; their records stay</span></div><div class="card flat">${gone
+              .map(
+                (r) =>
+                  `<div class="row" style="padding:6px 0"><a href="/ui/rigs/${encodeURIComponent(r.rig)}">${esc(r.rig)}</a><span class="muted small">retired ${esc(ago(r.at, now))} ago by ${esc(r.by)}</span></div>`,
+              )
+              .join("")}</div></div>`
+          : "";
+      })()}`,
       vs,
     );
   });
@@ -1277,6 +1311,20 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       : flashOk
         ? `<div class="card" style="margin-bottom:16px"><b class="ok">${esc(flashOk)}</b></div>`
         : "";
+    const retired = store.rigRetired(c.req.param("rig"));
+    if (!u && retired)
+      return page(
+        c,
+        {
+          title: c.req.param("rig"),
+          crumbs: [{ href: "/ui/rigs", text: "Rigs" }],
+          summary: `<span class="muted">retired</span>`,
+          active: "rigs",
+        },
+        `${flash}<div class="card"><p>Retired ${esc(ago(retired.at, now))} ago by ${esc(retired.by)}. It is out of the rig lists, its campaigns' pages and Needs you, and control refuses its reports. Its records stay.</p>
+<form method="post" action="/ui/rigs/${encodeURIComponent(c.req.param("rig"))}/bring-back" class="row" style="gap:8px"><input type="hidden" name="csrf" value="${csrf(c)}"><button>Bring it back</button><span class="muted small">It shows again, and its reports are taken again. A token control made for it stays ended: give it a new one if it needs one.</span></form></div>`,
+        vs,
+      );
     if (!u && onCluster)
       return page(
         c,
@@ -1477,7 +1525,11 @@ ${opts.driver ? `<form method="post" action="/ui/rigs/${encodeURIComponent(u.id)
 <div class="divider" style="margin:2px 0"></div>
 <form method="post" action="/ui/rigs/${encodeURIComponent(u.id)}/reset" class="stack" style="gap:8px"><input type="hidden" name="csrf" value="${t}">
 <div class="small"><b>Full reset.</b> <span class="muted">Pause, export, verify the push, then wipe after your confirmation.</span></div>
-<input name="confirm" placeholder="type: reset ${esc(u.id)}"><button class="danger" style="justify-content:center">Start the full reset</button></form></div></details>`;
+<input name="confirm" placeholder="type: reset ${esc(u.id)}"><button class="danger" style="justify-content:center">Start the full reset</button></form>
+<div class="divider" style="margin:2px 0"></div>
+<form method="post" action="/ui/rigs/${encodeURIComponent(u.id)}/retire" class="stack" style="gap:8px"><input type="hidden" name="csrf" value="${t}">
+<div class="small"><b>Retire it.</b> <span class="muted">For a rig that is gone: it leaves the rig lists, its campaigns' pages and Needs you, and control refuses its reports. Its records stay, and you can bring it back. It stops nothing on the machine.</span></div>
+<input name="confirm" placeholder="type: retire ${esc(u.id)}"><button class="danger" style="justify-content:center">Retire it</button></form></div></details>`;
     return page(
       c,
       {

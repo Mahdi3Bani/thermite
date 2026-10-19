@@ -253,6 +253,13 @@ create table if not exists gpu_cloud (
   created_at text not null,
   created_by text not null
 );
+-- Rigs the owner retired: they leave the lists and Needs you, and their reports are refused,
+-- until brought back. Their records stay.
+create table if not exists rig_retired (
+  rig text primary key,
+  at text not null,
+  by text not null
+);
 -- Test pods control started on a GPU cloud: what was asked, the pod, and what it found.
 create table if not exists runpod_test (
   id text primary key,
@@ -1171,14 +1178,19 @@ export class ControlStore {
     });
   }
 
-  rigs(): {
+  /** The rigs that reported, but not the retired ones unless asked for. */
+  rigs(opts: { withRetired?: boolean } = {}): {
     id: string;
     last_seen: string;
     last_cursor: number;
     ledger_id: string | null;
     summary: unknown;
   }[] {
-    return (this.db.prepare("select * from rig order by id").all() as Row[]).map((r) => ({
+    return (
+      this.db
+        .prepare(`select * from rig where ? or id not in (select rig from rig_retired) order by id`)
+        .all(opts.withRetired ? 1 : 0) as Row[]
+    ).map((r) => ({
       id: String(r.id),
       last_seen: String(r.last_seen),
       last_cursor: Number(r.last_cursor),
@@ -1926,6 +1938,40 @@ export class ControlStore {
     return Number(r.changes) > 0;
   }
 
+  // ---------------------------------------------------------------- retired rigs
+  /** Retires any rig: it leaves the lists, its reports are refused, a token control made ends. */
+  retireAnyRig(rig: string, by: string): void {
+    this.db
+      .prepare("insert or ignore into rig_retired (rig, at, by) values (?, ?, ?)")
+      .run(rig, new Date().toISOString(), by);
+    if (this.enrolledRig(rig)) this.retireRig(rig, by);
+    this.audit(by, "rig_retired", { rig });
+  }
+
+  /** Brings a retired rig back into the lists; a token control made for it stays ended. */
+  bringBackRig(rig: string, by: string): boolean {
+    const r = this.db.prepare("delete from rig_retired where rig = ?").run(rig);
+    if (Number(r.changes)) this.audit(by, "rig_brought_back", { rig });
+    return Number(r.changes) > 0;
+  }
+
+  rigRetired(rig: string): { at: string; by: string } | undefined {
+    const r = this.db.prepare("select at, by from rig_retired where rig = ?").get(rig) as
+      | Row
+      | undefined;
+    return r ? { at: String(r.at), by: String(r.by) } : undefined;
+  }
+
+  retiredRigs(): { rig: string; at: string; by: string }[] {
+    return (this.db.prepare("select * from rig_retired order by at desc").all() as Row[]).map(
+      (r) => ({
+        rig: String(r.rig),
+        at: String(r.at),
+        by: String(r.by),
+      }),
+    );
+  }
+
   // ---------------------------------------------------------------- test pods on GPU clouds
   addRunpodTest(t: { id: string; cloud: string; state: unknown; by: string }): void {
     this.db
@@ -2263,6 +2309,8 @@ export class ControlStore {
            rotated_at = null, retired_at = null`,
       )
       .run(rig, Credential.ofHash(tokenSha256).hex, new Date().toISOString(), by);
+    // Enrolled again under a retired name: it is back.
+    this.db.prepare("delete from rig_retired where rig = ?").run(rig);
     this.audit(by, "rig_enrolled", { rig });
   }
 

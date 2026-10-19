@@ -88,9 +88,13 @@ describe("rig enrollment through control", () => {
     const third = ((await (await enroll("cpu-1")).json()) as { token: string }).token;
     assert.equal((await asRig("cpu-1", second)).status, 401);
     assert.equal((await asRig("cpu-1", third)).status, 200);
-    // The file's rigs are not changed through the API.
+    // The file's rigs keep their tokens through the API, but can be retired: control then refuses
+    // the file's token until the rig is brought back.
     assert.equal((await post("/v1/rigs/rig-file/token")).status, 409);
-    assert.equal((await post("/v1/rigs/rig-file/retire")).status, 409);
+    assert.equal((await asRig("rig-file", "file-rig-token-abcdef")).status, 200);
+    assert.equal((await post("/v1/rigs/rig-file/retire")).status, 200);
+    assert.equal((await asRig("rig-file", "file-rig-token-abcdef")).status, 403);
+    assert.equal((await post("/v1/rigs/rig-file/bring-back")).status, 200);
     assert.equal((await asRig("rig-file", "file-rig-token-abcdef")).status, 200);
     // Every change is audited.
     const audit = JSON.stringify(store.db.prepare("select action from audit").all());

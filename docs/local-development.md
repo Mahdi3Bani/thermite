@@ -267,4 +267,6 @@ npx thermite rig add gpu-rig-1 --control https://control.example.com \
 
 The output directory gets the rig's control token, a token its harness and supervisor share, control's public key and its fingerprint, and the rig's name and control's address, with a README that maps each file to its setting. Tokens are written to files (mode 0600) and never printed; control keeps only their SHA-256.
 
-`thermite rig token <rig> … --out FILE` replaces an enrolled rig's token; the old one stops working at once. `thermite rig retire <rig> …` shuts a rig out; its history stays. Rigs listed in `THERMITE_CONTROL_RIG_TOKENS_FILE` keep working as before and are changed in that file.
+`thermite rig token <rig> … --out FILE` replaces an enrolled rig's token; the old one stops working at once. Rigs listed in `THERMITE_CONTROL_RIG_TOKENS_FILE` keep their tokens there.
+
+A rig that is gone can be retired, whatever set it up: from its page (Retire it, typed to confirm), `thermite rig retire <rig> …`, `POST /v1/rigs/<rig>/retire`, or the owner's MCP tool `retire_rig`. It leaves the rig lists, its campaigns' pages and Needs you, and control refuses its reports, even with a token from the file (take that out of the file too). A token control made for it ends. Its records stay, and it can be brought back from its page, `POST /v1/rigs/<rig>/bring-back` or `bring_back_rig`; enrolling it again also brings it back. Retiring stops nothing on the machine.
