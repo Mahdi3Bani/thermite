@@ -87,7 +87,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [032](goals/032-deploy-checks.goal) Checks before a rig is deployed · `PROPOSED`
 - [033](goals/033-slot-helper.goal) Slots made easy · `PROPOSED`
 - [034](goals/034-trustworthy-removal.goal) Removal you can trust · `PROPOSED`
-- [035](goals/035-rig-upgrades.goal) Upgrades from control · `PROPOSED`
+- [035](goals/035-rig-upgrades.goal) Upgrades from control · `IN_PROGRESS`
 - [036](goals/036-install-it-yourself.goal) "I will install it myself" · `PROPOSED`
 - [037](goals/037-gpu-compose.goal) GPU rigs under compose · `PROPOSED`
 - [038](goals/038-lane-network-rules.goal) Keep lanes off the local network · `PROPOSED`

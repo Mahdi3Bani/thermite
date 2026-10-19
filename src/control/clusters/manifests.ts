@@ -363,5 +363,16 @@ export function clusterRigObjects(p: ClusterRigPlan, s: ClusterRigSecrets): Obj[
   return objects;
 }
 
+/**
+ * The rig's two deployments alone, as an image update applies them: its secret (so its tokens),
+ * volume claim, service and network rules stay as they are. A stopped rig stays stopped.
+ */
+export function clusterRigDeployments(p: ClusterRigPlan, stopped = false): Obj[] {
+  // The secret is built with empty tokens and left out: nothing here reads or replaces it.
+  return clusterRigObjects(p, { controlToken: "", harnessSupervisorToken: "" })
+    .filter((o) => o.kind === "Deployment")
+    .map((o) => (stopped ? { ...o, spec: { ...(o.spec as Obj), replicas: 0 } } : o));
+}
+
 /** The objects as one document `kubectl apply -f -` reads (JSON is YAML). */
 export const asList = (items: Obj[]) => JSON.stringify({ apiVersion: "v1", kind: "List", items });

@@ -1,7 +1,7 @@
 ---
 id: "035"
 title: "Upgrades from control"
-status: PROPOSED
+status: IN_PROGRESS
 version: "0.3.0"
 depends_on: ["012"]
 created: 2026-10-19
@@ -10,7 +10,7 @@ updated: 2026-10-19
 
 # 035 · Upgrades from control
 
-**Status:** `PROPOSED` · **Version:** [v0.3.0](../roadmap.md#v030) · **Depends on:** [012](012-version-checks.goal)
+**Status:** `IN_PROGRESS` · **Version:** [v0.3.0](../roadmap.md#v030) · **Depends on:** [012](012-version-checks.goal)
 
 ## What
 
@@ -26,7 +26,7 @@ With published images, upgrading a fleet should be a button, not a session on ea
 
 ## Decisions
 
-None yet.
+- 2026-10-19: Rigs control set up on a cluster come first, because the lab's first slot rigs needed new images and control had no way to give them: "Update to these images" on the rig's page, and MCP's `update_rig_images`. Control applies the rig's two deployments again with the images it now deploys. The secret (so the rig's tokens), the volume claim, the service and the network rules stay, so the rig keeps its ledger, runs and key. Removing and adding the rig again would lose them.
 
 ## Open questions
 
@@ -35,6 +35,7 @@ None.
 ## Progress
 
 - 2026-10-19: Goal written from the roadmap.
+- 2026-10-19: First part built: a rig control set up on a cluster moves onto control's images, from its page or over MCP. Control waits for the new pods (each deployment's status, read with `get`; no watch right needed) and for a report from them, as setup events. A stopped rig stays stopped. Tests: the clusters UI tests, and the cluster acceptance on kind, where a slot rig moves to re-tagged images and reports again with its volume claim and secret unchanged. Not yet: the rig's version on its page, machines (SSH and joined rigs), the isolation and smoke checks after an upgrade, and rollback. After a newer harness has upgraded a ledger, an older image refuses it; a rollback then needs the ledger from before the upgrade.
 
 ---
 

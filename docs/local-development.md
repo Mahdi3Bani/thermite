@@ -245,7 +245,7 @@ Every token except an agent's also reads control itself, to find out why somethi
 - `providers`: what control holds in Settings › Providers and what it last read from each, with the last error. It never shows a key, a token or a kubeconfig.
 - `runpod_tests`: test pods on a RunPod account, with their findings and cost. An operator's or the owner's token also has `runpod_test_start`, which spends money, and `runpod_test_end`.
 
-The owner's and operators' tokens also set rigs up and give them models, through the same checks as the pages: `add_cluster_rig` (as Rigs › Add a rig, on a Kubernetes cluster; its CPUs, memory and volume default to the slot's quota), `set_cluster_slots` (a cluster's pre-made slots) and `set_rig_model` (a rig's agents' model, as on Edit rig). Retiring a rig (`retire_rig`, `bring_back_rig`) is the owner's.
+The owner's and operators' tokens also set rigs up and give them models, through the same checks as the pages: `add_cluster_rig` (as Rigs › Add a rig, on a Kubernetes cluster; its CPUs, memory and volume default to the slot's quota), `set_cluster_slots` (a cluster's pre-made slots), `update_rig_images` (a rig control set up on a cluster moves onto control's images, as on its page) and `set_rig_model` (a rig's agents' model, as on Edit rig). Retiring a rig (`retire_rig`, `bring_back_rig`) is the owner's.
 
 ## The command line
 

@@ -2261,6 +2261,15 @@ export class ControlStore {
     this.db.prepare("update cluster_rig set status = ? where rig = ?").run(status, rig);
   }
 
+  /** The images a rig on a cluster now runs, after an image update. */
+  setClusterRigImages(rig: string, images: ClusterRig["spec"]["images"]): void {
+    const r = this.clusterRig(rig);
+    if (!r) return;
+    this.db
+      .prepare("update cluster_rig set spec = ? where rig = ?")
+      .run(JSON.stringify({ ...r.spec, images }), rig);
+  }
+
   deleteMachine(name: string, by: string): boolean {
     const r = this.db.prepare("delete from machine where name = ?").run(name);
     if (Number(r.changes)) this.audit(by, "machine_deleted", { name });

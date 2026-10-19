@@ -38,6 +38,11 @@ export interface ControlActions {
     effort: "low" | "medium" | "high" | "xhigh" | "max" | undefined,
     by: string,
   ) => Promise<{ ok: string } | { error: string }>;
+  /**
+   * Moves a rig control set up on a cluster onto control's current images, keeping its volume and
+   * tokens (the rig's page, or MCP's update_rig_images).
+   */
+  updateRigImages?: (rig: string, by: string) => Promise<{ ok: string } | { error: string }>;
   /** Sets the slots of a cluster of pre-made slots and reads it again; an error in words. */
   setClusterSlots?: (cluster: string, slots: string[], by: string) => Promise<string | null>;
 }

@@ -6,7 +6,9 @@ import { execFileSync } from "node:child_process";
 //   created: an admin kubeconfig; control creates a namespace for the rig and its network rules;
 //   slot:    a kubeconfig for a service account with a Role in one pre-made namespace only, as a
 //            cluster's operators would give it; control deploys into that slot and nothing else.
-// Each rig is a CPU rig and must report to control; then it is stopped, started and removed.
+// Each rig is a CPU rig and must report to control; then it is stopped, started and removed. The
+// slot's rig is also moved onto new images (control restarted with other image tags): it must
+// report again from them, with its volume and secret unchanged.
 // Usage: COMPOSE="podman compose" node scripts/cluster-acceptance.mjs (Podman and kind needed).
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -34,12 +36,23 @@ const kind = (...a) =>
 const kc = (...a) => sh("kubectl", ["--context", `kind-${cluster}`, ...a]);
 const harnessImage = "docker.io/library/thermite-harness:latest";
 const supervisorImage = "docker.io/library/thermite-supervisor:latest";
+// The same images under another tag, as a later control would deploy them.
+const updated = (image) => image.replace(/:latest$/, ":accept-update");
+const controlData = "thermite-kind-control-data";
 const work = mkdtempSync(join(tmpdir(), "thermite-cluster-"));
 
 const cleanup = () => {
   try {
     sh("podman", ["rm", "-f", "-t", "3", ctl]);
   } catch {}
+  try {
+    sh("podman", ["volume", "rm", "-f", controlData]);
+  } catch {}
+  for (const image of [harnessImage, supervisorImage]) {
+    try {
+      sh("podman", ["rmi", updated(image)]);
+    } catch {}
+  }
   try {
     kind("delete", "cluster", "--name", cluster);
   } catch {}
@@ -55,12 +68,13 @@ try {
 } catch {}
 try {
   kind("create", "cluster", "--name", cluster, "--wait", "180s");
-  for (const image of [harnessImage, supervisorImage]) {
+  const load = (image) => {
     const tar = join(work, "image.tar");
     sh("podman", ["save", "-o", tar, image]);
     kind("load", "image-archive", tar, "--name", cluster);
     rmSync(tar);
-  }
+  };
+  for (const image of [harnessImage, supervisorImage]) load(image);
   // Control on kind's network, at an address in its subnet the pods can reach.
   const subnet = sh("podman", [
     "network",
@@ -74,41 +88,49 @@ try {
   if (!subnet) throw new Error("kind's network has no IPv4 /24 subnet");
   const ip = subnet.replace(/\.0\/24$/, ".250");
   const admin = secret("control-admin-token");
-  sh("podman", [
-    "run",
-    "-d",
-    "--name",
-    ctl,
-    "--network",
-    "kind",
-    "--ip",
-    ip,
-    "-p",
-    "127.0.0.1:8802:8800",
-    "-e",
-    "THERMITE_CONTROL_DIR=/var/lib/thermite-control",
-    "-e",
-    "THERMITE_CONTROL_LISTEN=0.0.0.0:8800",
-    "-e",
-    `THERMITE_CONTROL_ADMIN_TOKEN_SHA256=${createHash("sha256").update(admin).digest("hex")}`,
-    "-e",
-    `THERMITE_CONTROL_PUBLIC_URL=http://${ip}:8800`,
-    "-e",
-    `THERMITE_RIG_HARNESS_IMAGE=${harnessImage}`,
-    "-e",
-    `THERMITE_RIG_SUPERVISOR_IMAGE=${supervisorImage}`,
-    "docker.io/library/thermite-control:latest",
-  ]);
   const control = "http://127.0.0.1:8802";
-  await until("control answers", async () => (await fetch(`${control}/v1/health`)).ok, 120_000);
-  const login = await fetch(`${control}/ui/login`, {
-    method: "POST",
-    body: new URLSearchParams({ token: admin }),
-    redirect: "manual",
-  });
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0];
+  let cookie = "";
+  let csrf = "";
   const get = async (path) => (await fetch(`${control}${path}`, { headers: { cookie } })).text();
-  const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(await get("/ui/settings"))?.[1] ?? "";
+  /** Control from its image, deploying these rig images; its records on a volume of their own. */
+  const startControl = async (harness, supervisor) => {
+    sh("podman", [
+      "run",
+      "-d",
+      "--name",
+      ctl,
+      "--network",
+      "kind",
+      "--ip",
+      ip,
+      "-p",
+      "127.0.0.1:8802:8800",
+      "-v",
+      `${controlData}:/var/lib/thermite-control`,
+      "-e",
+      "THERMITE_CONTROL_DIR=/var/lib/thermite-control",
+      "-e",
+      "THERMITE_CONTROL_LISTEN=0.0.0.0:8800",
+      "-e",
+      `THERMITE_CONTROL_ADMIN_TOKEN_SHA256=${createHash("sha256").update(admin).digest("hex")}`,
+      "-e",
+      `THERMITE_CONTROL_PUBLIC_URL=http://${ip}:8800`,
+      "-e",
+      `THERMITE_RIG_HARNESS_IMAGE=${harness}`,
+      "-e",
+      `THERMITE_RIG_SUPERVISOR_IMAGE=${supervisor}`,
+      "docker.io/library/thermite-control:latest",
+    ]);
+    await until("control answers", async () => (await fetch(`${control}/v1/health`)).ok, 120_000);
+    const login = await fetch(`${control}/ui/login`, {
+      method: "POST",
+      body: new URLSearchParams({ token: admin }),
+      redirect: "manual",
+    });
+    cookie = (login.headers.get("set-cookie") ?? "").split(";")[0];
+    csrf = /name="csrf" value="([0-9a-f]+)"/.exec(await get("/ui/settings"))?.[1] ?? "";
+  };
+  await startControl(harnessImage, supervisorImage);
   const post = async (path, form) => {
     const r = await fetch(`${control}${path}`, {
       method: "POST",
@@ -118,15 +140,13 @@ try {
     });
     return decodeURIComponent(String(r.headers.get("location")));
   };
-  /** Adds a rig and waits until its page says its first report arrived (or a step failed). */
-  const rigUp = async (form, rig) => {
-    const made = await post("/ui/rigs/add", { ...form, rig });
-    if (made !== `/ui/rigs/${rig}`) return `not taken: ${made}`;
-    return until(
-      `${rig} reports`,
+  /** Waits until a rig's page shows this step done (or a step failed). */
+  const rigStep = (rig, done) =>
+    until(
+      `${rig}: ${done}`,
       async () => {
         const h = await get(`/ui/rigs/${rig}`);
-        if (/First report reached control/.test(h)) return "reported";
+        if (h.includes(done)) return "reported";
         const failed =
           /<span class="bad">✕<\/span><span>([^<]*)(?:<span class="muted small">· ([^<]*)<\/span>)?/.exec(
             h,
@@ -137,6 +157,11 @@ try {
       900_000,
       5000,
     ).catch((e) => String(e?.message ?? e));
+  /** Adds a rig and waits until its page says its first report arrived (or a step failed). */
+  const rigUp = async (form, rig) => {
+    const made = await post("/ui/rigs/add", { ...form, rig });
+    if (made !== `/ui/rigs/${rig}`) return `not taken: ${made}`;
+    return rigStep(rig, "First report reached control");
   };
 
   // ---------------------------------------------------------------- created namespaces
@@ -334,6 +359,54 @@ try {
     "slot-rig-1",
   );
   check("a rig in the slot was applied, started and reported", inSlot === "reported", inSlot);
+
+  // ---------------------------------------------------------------- new images for that rig
+  const kept = () =>
+    kc(
+      "get",
+      "pvc,secret",
+      "-n",
+      "thermite-slot-1",
+      "-l",
+      "app.kubernetes.io/instance=slot-rig-1",
+      "-o",
+      // The secret's version changes with its data; the claim's uid stays while it does.
+      "jsonpath={range .items[*]}{.kind}/{.metadata.uid}{' '}{end}{.items[?(@.kind=='Secret')].metadata.resourceVersion}",
+    ).trim();
+  const before = kept();
+  for (const image of [harnessImage, supervisorImage]) {
+    sh("podman", ["tag", image, updated(image)]);
+    load(updated(image));
+  }
+  sh("podman", ["rm", "-f", "-t", "10", ctl]);
+  await startControl(updated(harnessImage), updated(supervisorImage));
+  check(
+    "after control's own update, the rig's page offers control's new images",
+    /Update to these images/.test(await get("/ui/rigs/slot-rig-1")),
+  );
+  const moved = await post("/ui/rigs/slot-rig-1/cluster/images", {});
+  const again = /ok=slot-rig-1's pods restart on the new images/.test(moved)
+    ? await rigStep("slot-rig-1", "A report reached control from the new images")
+    : `not taken: ${moved}`;
+  const running = kc(
+    "get",
+    "deploy",
+    "-n",
+    "thermite-slot-1",
+    "-l",
+    "app.kubernetes.io/instance=slot-rig-1",
+    "-o",
+    "jsonpath={.items[*].spec.template.spec.containers[*].image}",
+  ).trim();
+  check(
+    "update images: the rig's new pods run them and report again",
+    again === "reported" && running === `${updated(harnessImage)} ${updated(supervisorImage)}`,
+    { again, running },
+  );
+  check("its volume claim and secret stay as they were", kept() === before && before !== "", {
+    before,
+    after: kept(),
+  });
   check(
     "remove takes its objects out of the slot, and leaves the slot",
     /ok=Removed from the cluster/.test(

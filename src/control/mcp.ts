@@ -429,6 +429,23 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
         ),
       );
     }
+    if (canCommand && actions?.updateRigImages) {
+      const update = actions.updateRigImages;
+      server.registerTool(
+        "update_rig_images",
+        {
+          title: "Update a rig's images",
+          description:
+            "For a rig control set up on a cluster: its pods restart on the images control now deploys, as the rig's page does. Its volume, tokens, runs and results stay; a trial in progress stops, and the harness plans it again. Follow it with the rig's setup events and list_rigs.",
+          inputSchema: { rig: z.string().min(1) },
+        },
+        audited("update_rig_images", async (a: { rig: string }) => {
+          const r = await update(a.rig, actor);
+          if ("error" in r) throw new Error(r.error);
+          return { rig: a.rig, said: r.ok };
+        }),
+      );
+    }
     if (canCommand && actions?.setClusterSlots) {
       const set = actions.setClusterSlots;
       server.registerTool(

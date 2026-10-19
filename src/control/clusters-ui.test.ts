@@ -86,6 +86,22 @@ function fakeCluster(
       const slot = /^auth can-i create deployments -n (\S+)$/.exec(a);
       if (slot) return ok(o.slots?.[slot[1] as string] ? "yes\n" : "no\n");
       if (args[0] === "get" && args[1] === "deployments") return ok("");
+      // A rig's two deployments, each running its newest pod.
+      if (args[0] === "get" && args[1] === "deployment")
+        return ok(
+          JSON.stringify({
+            items: args.slice(2, 4).map(() => ({
+              metadata: { generation: 2 },
+              spec: { replicas: 1 },
+              status: {
+                observedGeneration: 2,
+                replicas: 1,
+                updatedReplicas: 1,
+                availableReplicas: 1,
+              },
+            })),
+          }),
+        );
       const rq = /^get resourcequota -n (\S+) -o json$/.exec(a);
       if (rq) {
         const hard = o.quota?.[rq[1] as string];
@@ -128,9 +144,14 @@ function fakeCluster(
   return { k, calls };
 }
 
-async function control(k: ClusterKubectl) {
-  const store = new ControlStore(":memory:");
-  const secrets = SecretBox.ephemeral();
+/** Control over a fake cluster; `tag` names the rig images it deploys (another control, later). */
+async function control(
+  k: ClusterKubectl,
+  o: { store?: ControlStore; secrets?: SecretBox; tag?: string } = {},
+) {
+  const store = o.store ?? new ControlStore(":memory:");
+  const secrets = o.secrets ?? SecretBox.ephemeral();
+  const tag = o.tag ?? "1";
   const api = createControlApi(
     store,
     { admin: ADMIN, rigs: {} },
@@ -141,9 +162,9 @@ async function control(k: ClusterKubectl) {
       clusterKubectl: k,
       publicUrl: "https://control.example.com",
       rigImages: {
-        harness: "registry.example.com/harness:1",
-        harnessCuda: "registry.example.com/harness-cuda:1",
-        supervisor: "registry.example.com/supervisor:1",
+        harness: `registry.example.com/harness:${tag}`,
+        harnessCuda: `registry.example.com/harness-cuda:${tag}`,
+        supervisor: `registry.example.com/supervisor:${tag}`,
       },
     },
   );
@@ -341,6 +362,89 @@ describe("clusters in Providers and Add a rig", () => {
     );
   });
 
+  test("a rig moves onto the images control now deploys; its secret, volume and tokens stay", async () => {
+    const f = fakeCluster({ canCreateNamespaces: false, slots: { "thermite-slot-1": true } });
+    const before = await control(f.k);
+    await before.post("/ui/settings/add", {
+      type: "k8s",
+      name: "k8s-c",
+      kubeconfig: KUBECONFIG,
+      placement: "slot",
+      slots: "thermite-slot-1",
+    });
+    assert.equal(
+      await before.post("/ui/rigs/add", {
+        place: "cluster:k8s-c",
+        rig: "cpu-1",
+        "k_gpus__k8s-c": "0",
+        "k_slot__k8s-c": "thermite-slot-1",
+      }),
+      "/ui/rigs/cpu-1",
+    );
+    await new Promise((r) => setTimeout(r, 20));
+    assert.doesNotMatch(await before.page("/ui/rigs/cpu-1"), /Update to these images/);
+    assert.match(
+      await before.post("/ui/rigs/cpu-1/cluster/images", {}),
+      /ok=cpu-1 already runs control's images/,
+    );
+    // Control now deploys other images (after its own update): the rig's page offers them.
+    const s = await control(f.k, { store: before.store, secrets: before.secrets, tag: "2" });
+    let page = await s.page("/ui/rigs/cpu-1");
+    assert.match(page, /Control now deploys other images:.*registry\.example\.com\/harness:2/s);
+    assert.match(page, /Update to these images/);
+    f.calls.length = 0;
+    assert.match(
+      await s.post("/ui/rigs/cpu-1/cluster/images", {}),
+      /ok=cpu-1's pods restart on the new images/,
+    );
+    type Items = {
+      items: {
+        kind: string;
+        metadata: { namespace?: string };
+        spec?: { replicas?: number; template?: { spec?: { containers: { image: string }[] } } };
+      }[];
+    };
+    const applied = (): Items =>
+      JSON.parse(f.calls.find((c) => c.args[0] === "apply")?.stdin ?? "{}") as Items;
+    // Only the two deployments: the secret with its tokens, the volume claim and the service stay.
+    let list = applied();
+    assert.deepEqual(
+      list.items.map((o) => o.kind),
+      ["Deployment", "Deployment"],
+    );
+    assert.ok(list.items.every((o) => o.metadata.namespace === "thermite-slot-1"));
+    assert.deepEqual(
+      list.items.flatMap((d) => d.spec?.template?.spec?.containers.map((c) => c.image)),
+      ["registry.example.com/harness:2", "registry.example.com/supervisor:2"],
+    );
+    assert.deepEqual(s.store.clusterRig("cpu-1")?.spec.images, {
+      harness: "registry.example.com/harness:2",
+      supervisor: "registry.example.com/supervisor:2",
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    page = await s.page("/ui/rigs/cpu-1");
+    assert.match(
+      page,
+      /Its deployments applied with new images.*harness registry\.example\.com\/harness:1 → registry\.example\.com\/harness:2/s,
+    );
+    assert.match(page, /Its pods run the new images/);
+    assert.doesNotMatch(page, /Update to these images/);
+    // A stopped rig stays stopped: it runs the new images when it starts again.
+    assert.match(await s.post("/ui/rigs/cpu-1/cluster/stop", {}), /ok=Stopped/);
+    const later = await control(f.k, { store: s.store, secrets: s.secrets, tag: "3" });
+    f.calls.length = 0;
+    assert.match(
+      await later.post("/ui/rigs/cpu-1/cluster/images", {}),
+      /ok=cpu-1 runs the new images when it starts again/,
+    );
+    list = applied();
+    assert.deepEqual(
+      list.items.map((d) => d.spec?.replicas),
+      [0, 0],
+    );
+    assert.equal(later.store.clusterRig("cpu-1")?.status, "stopped");
+  });
+
   test("CPU slots: the quota sets the rig's CPUs and memory; slots added later; a rig added over MCP", async () => {
     const quota = { "limits.cpu": "6", "limits.memory": "24Gi", "requests.storage": "200Gi" };
     const f = fakeCluster({
@@ -472,6 +576,14 @@ describe("clusters in Providers and Add a rig", () => {
     const dropped = await call("set_cluster_slots", { cluster: "lab", slots: ["thermite-slot-3"] });
     assert.ok(dropped.error);
     assert.match(String(dropped.body.error), /thermite-slot-2 still holds a rig \(cpu-2\)/);
+    // An image update over MCP, as on the rig's page: nothing to do while the images match.
+    assert.deepEqual(await call("update_rig_images", { rig: "cpu-2" }), {
+      error: false,
+      body: { rig: "cpu-2", said: "cpu-2 already runs control's images." },
+    });
+    const unknown = await call("update_rig_images", { rig: "cpu-9" });
+    assert.ok(unknown.error);
+    assert.match(String(unknown.body.error), /Control didn't set cpu-9 up on a cluster/);
     await client.close();
   });
 });
