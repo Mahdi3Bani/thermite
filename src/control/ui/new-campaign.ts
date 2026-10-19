@@ -15,6 +15,8 @@ export interface NewCampaignPage {
   rigs: RigView[];
   /** Git access kept in Settings, for private repositories. */
   access?: GitAccess[] | undefined;
+  /** The providers' models the agents may use, by provider (value: "provider|model", encoded). */
+  models?: { group: string; options: { value: string; label: string }[] }[] | undefined;
   /** A draft sent back with mistakes, to fill the form again. */
   draft?: Record<string, unknown> | undefined;
   errors?: string[] | undefined;
@@ -85,7 +87,9 @@ export function newCampaignBody(p: NewCampaignPage): string {
             : "idle",
         u.model?.model
           ? `agents: ${esc(u.model.model)}${u.model.harness === "opencode" ? " (OpenCode v2)" : ""}`
-          : "",
+          : u.model?.source === "none"
+            ? `<span class="bad">no model for its agents yet</span>`
+            : "",
       ]
         .filter(Boolean)
         .join(" · ");
@@ -188,6 +192,17 @@ ${field("Run for at least", "Research keeps going this long, collecting and chec
 <div class="g2"><div>${rigChoices || `<div class="card"><div class="empty">No rig yet. Add one first.</div></div>`}</div></div>
 <div class="g3" style="margin-top:14px">
 ${field("Agents working at once", "How many agents work in parallel, each trying its own idea in its own copy of the code. More agents explore more ideas at once, and share the rig's CPUs, memory and model.", `<select name="lanes"><option>1</option><option selected>2</option><option>3</option><option>4</option></select>`)}
+${field(
+  "The agents' model",
+  "The model the rig's agents use, for every run on that rig, as on its Edit rig page. Empty: the model the rig has. A rig with no model can't start agents. A model the rig doesn't have yet reaches it within a minute: the campaign is then saved, and you start its run once the rig shows the model.",
+  `<select name="agents_model"><option value="">the rig's model</option>${(p.models ?? [])
+    .map(
+      (g) =>
+        `<optgroup label="${esc(g.group)}">${g.options.map((o) => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join("")}</optgroup>`,
+    )
+    .join("")}</select>`,
+)}
+${field("The agents run in", "The program that runs the agents. Empty: the one the model needs (OpenCode for OpenCode's free models, Claude Code for a Claude subscription, else Pi).", `<select name="agents_harness"><option value="">what the model needs</option><option value="opencode">OpenCode v2</option><option value="pi">Pi</option></select>`)}
 ${field("When a change is confirmed better", "What happens when the judge confirms a change beats the current best: keep it at once as the new best, or wait for you. The rig's default is set where the rig is deployed.", `<select name="promotion"><option value="">the rig's default</option><option value="auto">always keep it</option><option value="owner_approval">ask me every time</option></select>`)}
 </div>
 <details class="adv"><summary>Advanced</summary><div class="g3">

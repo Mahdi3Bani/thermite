@@ -850,7 +850,22 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         active: "campaigns",
         crumbs: [{ href: "/ui/campaigns", text: "Campaigns" }],
       },
-      newCampaignBody({ csrf: csrf(c), rigs: views(), access: store.gitAccessList(), ...extra }),
+      newCampaignBody({
+        csrf: csrf(c),
+        rigs: views(),
+        access: store.gitAccessList(),
+        models: store
+          .providers()
+          .filter((p) => p.models.length)
+          .map((p) => ({
+            group: p.name,
+            options: p.models.map((m) => ({
+              value: `${encodeURIComponent(p.name)}|${encodeURIComponent(m.id)}`,
+              label: `${modelPrefix(p.type)}${m.id}`,
+            })),
+          })),
+        ...extra,
+      }),
     );
   /** Git access for control's own lookups: the secret unsealed, host keys pinned per access. */
   const accessFor = (name: string | undefined) => {
@@ -952,6 +967,31 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     const promotion = String(f.promotion ?? "");
     const split = splitFor(rig, String(f.judge_gpus ?? ""));
     if (typeof split === "string") return newCampaignPage(c, { draft, errors: [split] });
+    // The agents' model: given here, or the rig's; agents never start on a rig with none.
+    let startValue = String(f.start_value ?? "start");
+    const chosen = String(f.agents_model ?? "").trim();
+    let modelNote = "";
+    if (chosen) {
+      const given = giveRigModel(
+        rig.id,
+        chosen,
+        harnessFor(chosen, String(f.agents_harness ?? "")),
+      );
+      if ("error" in given) return newCampaignPage(c, { draft, errors: [given.error] });
+      const [, mRaw] = chosen.split("|");
+      const model = decodeURIComponent(mRaw ?? "");
+      // Not on the rig yet: it arrives within a minute. Starting now would fail the first trials.
+      if (startValue === "start" && rig.model?.model !== model) {
+        startValue = "save";
+        modelNote = `${rig.id} takes ${model} within a minute. When the rig shows it, start the run here.`;
+      }
+    } else if (startValue === "start" && agentsModelMissing(rig))
+      return newCampaignPage(c, {
+        draft,
+        errors: [
+          `${rig.id} has no model for its agents, so they could not work: choose one under "The agents' model".`,
+        ],
+      });
     const uploadId = (draft.kit as { source?: string; upload?: string } | undefined)?.upload;
     const upload = uploadId ? await uploaded(uploadId).catch(() => undefined) : undefined;
     let r: ReturnType<typeof startCampaign>;
@@ -967,12 +1007,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           draft,
           rig: rig.id,
           target: { type: target.type, class: target.class },
-          start:
-            String(f.start_value ?? "start") === "save"
-              ? false
-              : String(f.start_value) === "try"
-                ? "try"
-                : true,
+          start: startValue === "save" ? false : startValue === "try" ? "try" : true,
           promotion: promotion === "auto" || promotion === "owner_approval" ? promotion : undefined,
           by: "owner:ui",
         },
@@ -985,11 +1020,30 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     return c.redirect(
       r.run
         ? `${campaignHref(r.campaign)}?run=${encodeURIComponent(runKey(rig.id, r.run))}`
-        : campaignHref(r.campaign),
+        : modelNote
+          ? `${campaignHref(r.campaign)}?ok=${encodeURIComponent(`Saved. ${modelNote}`)}`
+          : campaignHref(r.campaign),
       303,
     );
   });
 
+  /** A rig whose agents have no model: none from control, and the rig reports none. */
+  const agentsModelMissing = (u: RigView) => !store.rigModels()[u.id] && u.model?.source === "none";
+  /** The harness a model needs when the owner leaves it to control. */
+  const harnessFor = (choice: string, picked: string): Harness => {
+    if (picked === "opencode" || picked === "pi") return picked;
+    const [pRaw, mRaw] = choice.split("|");
+    const p = store.provider(decodeURIComponent(pRaw ?? ""));
+    const model = decodeURIComponent(mRaw ?? "");
+    if (p?.type === "claude") return "claude-code";
+    if (
+      p &&
+      isOpencodeOwn(p) &&
+      (p.type === "opencode" || !p.key_sealed || model.endsWith("-free"))
+    )
+      return "opencode";
+    return "pi";
+  };
   /**
    * The GPU split a campaign's deployment asks for on its rig (a rig is a set of GPUs; what is
    * deployed on it decides how they are used): undefined when it asks for none or the rig has it
@@ -1046,6 +1100,10 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       c.redirect(`${campaignHref(campaign)}?error=${encodeURIComponent(m)}`, 303);
     if (!opts.kits) return c.text("This control keeps no campaigns.", 404);
     if (!rig) return back("Choose a rig.");
+    if (agentsModelMissing(rig))
+      return back(
+        `${rig.id} has no model for its agents, so they could not work: give it one on its Edit rig page first.`,
+      );
     const promotion = String(f.promotion ?? "");
     const split = splitFor(rig, String(f.judge_gpus ?? ""));
     if (typeof split === "string") return back(split);
@@ -1081,9 +1139,12 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     const name = c.req.param("campaign");
     const k = campaignViews(vs).find((x) => x.name === name);
     const failed = c.req.query("error");
+    const okNote = c.req.query("ok");
     const note = failed
       ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not started.</b> ${esc(failed)}</div>`
-      : "";
+      : okNote
+        ? `<div class="card" style="margin-bottom:16px"><b class="ok">${esc(okNote)}</b></div>`
+        : "";
     if (!k) {
       // Saved on control, with no run reported yet: what was asked for, and a way to start one.
       const saved = store.campaignVersions(name);
@@ -2596,6 +2657,13 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
     return await checkClusterNow(name);
   };
   if (opts.actions) opts.actions.setClusterSlots = setClusterSlots;
+  if (opts.actions)
+    opts.actions.setRigModel = async (rig, provider, model, harness, effort, by) => {
+      if (!views().some((u) => u.id === rig)) return { error: `no rig ${rig}` };
+      const choice = `${encodeURIComponent(provider)}|${encodeURIComponent(model)}`;
+      const r = giveRigModel(rig, choice, harnessFor(choice, harness ?? ""), effort, by);
+      return "error" in r ? r : { ok: r.ok };
+    };
   app.post("/ui/settings/clusters/:name/slots", async (c) => {
     const name = c.req.param("name");
     const f = await c.req.parseBody();
@@ -4375,6 +4443,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     choice: string,
     picked: Harness,
     effort?: Effort | undefined,
+    by = "owner:ui",
   ): { ok: string } | { error: string } => {
     let harness = picked;
     const [pRaw, mRaw] = choice.split("|");
@@ -4407,7 +4476,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
           "OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig.",
       };
     store.assignRigModel(rig, { provider, model, harness, effort });
-    store.audit("owner:ui", "rig_model_given", {
+    store.audit(by, "rig_model_given", {
       rig,
       provider,
       model,

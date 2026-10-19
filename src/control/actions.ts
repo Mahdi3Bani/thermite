@@ -29,6 +29,15 @@ export interface ControlActions {
     r: ClusterRigRequest,
     by: string,
   ) => Promise<{ rig: string } | { error: string }>;
+  /** Gives a rig's agents a model from a provider, as Edit rig does; harness default: the model's. */
+  setRigModel?: (
+    rig: string,
+    provider: string,
+    model: string,
+    harness: "pi" | "opencode" | undefined,
+    effort: "low" | "medium" | "high" | "xhigh" | "max" | undefined,
+    by: string,
+  ) => Promise<{ ok: string } | { error: string }>;
   /** Sets the slots of a cluster of pre-made slots and reads it again; an error in words. */
   setClusterSlots?: (cluster: string, slots: string[], by: string) => Promise<string | null>;
 }

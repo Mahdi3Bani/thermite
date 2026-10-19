@@ -245,4 +245,39 @@ describe("control over MCP", () => {
     assert.ok(!agentTools.includes("control_log") && !agentTools.includes("providers"));
     await Promise.all([operator.close(), reader.close(), agent.close()]);
   });
+
+  test("an operator gives a rig's agents a model over MCP, as Edit rig does; a wrong model is refused", async () => {
+    const store = new ControlStore(":memory:");
+    const control = createControlApi(
+      store,
+      { admin: "admin-token-abcdef", operator: "operator-token-abcdef", rigs: {} },
+      makeJudgeEnv().keys.privateKeyPem,
+    );
+    store.db
+      .prepare(
+        "insert into rig (id, first_seen, last_seen, last_cursor, ledger_id, summary, report_at) values (?, ?, ?, 0, null, '{}', ?)",
+      )
+      .run("cpu-1", new Date().toISOString(), new Date().toISOString(), new Date().toISOString());
+    store.putProvider({ name: "zen", type: "opencode", base_url: "https://opencode.ai/zen/v1" });
+    store.setProviderModels("zen", [{ id: "deepseek-v4.1-flash-free" }]);
+    const operator = await connect(control, "operator-token-abcdef");
+    const r = text(
+      await operator.callTool({
+        name: "set_rig_model",
+        arguments: { rig: "cpu-1", provider: "zen", model: "deepseek-v4.1-flash-free" },
+      }),
+    );
+    assert.equal(r.model, "deepseek-v4.1-flash-free");
+    assert.deepEqual(store.rigModels()["cpu-1"], {
+      provider: "zen",
+      model: "deepseek-v4.1-flash-free",
+      harness: "opencode",
+    });
+    const wrong = (await operator.callTool({
+      name: "set_rig_model",
+      arguments: { rig: "cpu-1", provider: "zen", model: "no-such-model" },
+    })) as { isError?: boolean };
+    assert.ok(wrong.isError);
+    await operator.close();
+  });
 });

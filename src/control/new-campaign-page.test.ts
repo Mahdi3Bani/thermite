@@ -294,4 +294,61 @@ describe("the new-campaign page", () => {
     assert.equal(forged.status, 403);
     assert.equal(s.store.campaignVersions().length, 0);
   });
+
+  test("agents never start on a rig with no model: the page gives it one, saves the campaign, and starts once the rig has it", async () => {
+    const s = await stack();
+    // The rig reports that its agents have no model.
+    const model = (m: unknown) =>
+      s.store.db
+        .prepare(
+          "update rig set summary = json_set(summary, '$.model', json(?)) where id = 'rig-a'",
+        )
+        .run(JSON.stringify(m));
+    model({ source: "none", harness: "pi" });
+    s.store.putProvider({ name: "zen", type: "opencode", base_url: "https://opencode.ai/zen/v1" });
+    s.store.setProviderModels("zen", [
+      { id: "glm-5.3-flash-free" },
+      { id: "deepseek-v4.1-flash-free" },
+    ]);
+    const form = await (await s.get("/ui/campaigns/new")).text();
+    assert.match(form, /no model for its agents yet/);
+    assert.match(form, /<option value="zen\|glm-5\.3-flash-free">glm-5\.3-flash-free<\/option>/);
+    const send = (extra: Record<string, string>) =>
+      s.post("/ui/campaigns/new", {
+        csrf: s.csrf,
+        draft: JSON.stringify(draft()),
+        rig: "rig-a",
+        start_value: "start",
+        ...extra,
+      });
+    const refused = await (await send({})).text();
+    assert.match(refused, /rig-a has no model for its agents, so they could not work/);
+    assert.equal(s.store.campaignVersions("matmul-speed").length, 0, "nothing created");
+
+    // A model chosen on the page: the rig gets it, the campaign is saved, no run yet.
+    const saved = await send({ agents_model: "zen|glm-5.3-flash-free" });
+    assert.equal(saved.status, 303);
+    const to = decodeURIComponent(String(saved.headers.get("location")));
+    assert.match(
+      to,
+      /^\/ui\/campaigns\/matmul-speed\?ok=Saved\. rig-a takes glm-5\.3-flash-free within a minute/,
+    );
+    assert.deepEqual(s.store.rigModels()["rig-a"], {
+      provider: "zen",
+      model: "glm-5.3-flash-free",
+      harness: "opencode",
+    });
+    assert.match(await (await s.get(to)).text(), /rig-a takes glm-5\.3-flash-free within a minute/);
+
+    // Once the rig shows the model, the next campaign starts at once.
+    model({ source: "control", model: "glm-5.3-flash-free", harness: "opencode" });
+    const started = await s.post("/ui/campaigns/new", {
+      csrf: s.csrf,
+      draft: JSON.stringify(draft({ campaign: "matmul-speed-2" })),
+      rig: "rig-a",
+      start_value: "start",
+      agents_model: "zen|glm-5.3-flash-free",
+    });
+    assert.match(String(started.headers.get("location")), /\?run=rig-a%2Fmatmul-speed-2-/);
+  });
 });
