@@ -323,19 +323,28 @@ describe("the new-campaign page", () => {
       });
     const refused = await (await send({})).text();
     assert.match(refused, /rig-a has no model for its agents, so they could not work/);
-    // Research workers run in Pi: OpenCode's free models can't serve a research run.
+    // OpenCode's free models work only inside OpenCode: research workers in Pi can't use them.
+    const researchDraft = draft({
+      mode: "research",
+      campaign: "rl-research",
+      project: undefined,
+      kit: undefined,
+      score: undefined,
+      research: { topic: "RL harnesses", questions: ["Which is fastest?"], min_duration: "1h" },
+    });
     const research = await (
       await s.post("/ui/campaigns/new", {
         csrf: s.csrf,
-        draft: JSON.stringify(draft({ mode: "research", campaign: "rl-research" })),
+        draft: JSON.stringify(researchDraft),
         rig: "rig-a",
         start_value: "start",
         agents_model: "zen|glm-5.3-flash-free",
+        agents_harness: "pi",
       })
     ).text();
     assert.match(
       research,
-      /Research workers run in Pi, and glm-5\.3-flash-free is one of OpenCode/,
+      /glm-5\.3-flash-free is one of OpenCode's free models, which work only inside OpenCode, and rig-a's agents would run in Pi/,
     );
     assert.equal(s.store.rigModels()["rig-a"], undefined, "the rig was given nothing");
     assert.equal(s.store.campaignVersions("matmul-speed").length, 0, "nothing created");
@@ -365,5 +374,14 @@ describe("the new-campaign page", () => {
       agents_model: "zen|glm-5.3-flash-free",
     });
     assert.match(String(started.headers.get("location")), /\?run=rig-a%2Fmatmul-speed-2-/);
+    // In OpenCode they can: a research run on the same model starts.
+    const inOpencode = await s.post("/ui/campaigns/new", {
+      csrf: s.csrf,
+      draft: JSON.stringify(researchDraft),
+      rig: "rig-a",
+      start_value: "start",
+      agents_model: "zen|glm-5.3-flash-free",
+    });
+    assert.match(String(inOpencode.headers.get("location")), /\?run=rig-a%2Frl-research-/);
   });
 });

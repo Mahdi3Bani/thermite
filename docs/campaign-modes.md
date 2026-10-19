@@ -29,7 +29,7 @@ The contract lists the goals, each with a verifier. It also lists what does **no
 
 ## Research
 
-Workers research a topic for a set duration: hours or days. Their tools are research tools, not a shell: search, fetch through an archiving fetcher, read, add a claim with exact quotes, propose hypotheses, update the report. Rules for the run:
+Workers research a topic for a set duration: hours or days. Their research tools are: search, fetch through an archiving fetcher, read, add a claim with exact quotes, propose hypotheses, update the report. In Pi, a worker has the research tools only, not a shell. In OpenCode, it keeps OpenCode's own tools (a shell, files and web search, in a directory removed when its trial ends) and runs the research tools as `thermite-trial research` commands. Rules for the run:
 
 - **A claim counts only if code confirms that its quote appears word for word in the archived source.** Unverifiable claims stay drafts.
 - **The harness keeps the work going until the minimum time has passed.** If an agent decides it is finished, it gets new sub-questions, primary sources to chase or contradictions to check.

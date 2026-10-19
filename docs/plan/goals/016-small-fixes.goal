@@ -40,6 +40,7 @@ None.
 ## Progress
 
 - 2026-10-19: Goal written from the v0.1.0 release plan.
+- 2026-10-19: Research trials run in OpenCode when the agents' harness is OpenCode, so OpenCode's free models can serve a research run. The worker keeps OpenCode's own tools and runs the research tools as `thermite-trial research` commands. Unit tests cover the trial, the commands and control's check; the acceptance tests do not cover it yet.
 
 ---
 
