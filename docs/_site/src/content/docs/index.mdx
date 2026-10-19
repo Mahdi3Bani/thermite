@@ -23,6 +23,8 @@ hero:
 
 import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
 
+New to Thermite? [Start here](start-here.md). It says what you need, which pages to read first, and what words such as rig, lane and champion mean.
+
 ## What Thermite does
 
 You give Thermite a project and a way to measure it: make this program faster, make these tests pass, or find out what is known about a question. AI agents then work on it for as long as it takes. Each agent proposes a change. Thermite's judge, which the agents can neither see nor edit, builds the change, measures it and decides whether it counts.
@@ -33,8 +35,9 @@ You give Thermite a project and a way to measure it: make this program faster, m
     against the same reference, and keeps a record of why each one won or lost.
   </Card>
   <Card title="It keeps going" icon="rocket">
-    Nothing stops a campaign by default: no limit on turns, attempts, failures or time. It runs
-    until its goals are met, unless you set a budget.
+    Nothing stops a campaign by default: no limit on turns, attempts, failures or time. A goal
+    campaign ends when its goals are met. A hill climb runs until you pause it, or until a
+    [budget or stop time](how-to/campaigns/budget-and-stop-time.md) that you set.
   </Card>
   <Card title="Three kinds of research" icon="puzzle">
     Push a number up without breaking anything else. Work until a list of goals is met. Or research
@@ -46,9 +49,11 @@ You give Thermite a project and a way to measure it: make this program faster, m
   </Card>
 </CardGrid>
 
+![The dashboard's page for one campaign: two runs on two rigs, a decision that waits for the owner, the champion's gains over time and what each lane works on now](../../assets/screenshots/campaign.webp)
+
 ## Find your way
 
-The pages follow [Diátaxis](https://diataxis.fr/): each page does one job.
+There are four kinds of pages, and each one does one job:
 
 <CardGrid>
   <LinkCard

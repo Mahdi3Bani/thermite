@@ -6,140 +6,177 @@ sidebar:
   order: 4
 ---
 
-This guide takes a project you want a campaign to work on and gives it a kit: a tested, pinned recipe that the judge uses to build, run, time and check candidates. You need a git repository for the project, a way to build and run it non-interactively, and a way to tell a right answer from a wrong one. For what a kit is and why it is separate from the project, see [Kits](../../explanation/kits.md); every field used below is in the [kit reference](../../reference/kit-manifest.md).
+A [kit](../../reference/glossary.md) is the judge's recipe for your project: how to build a change, run it on test cases, time it and check its output. This guide gives your project a kit in its own repository, pinned by commit. Agents never see it.
 
-`kits/smoke-cpu` in this repository is a complete small kit. Copy its shape:
+[Kits](../../explanation/kits.md) explains why the kit lives outside the project, and the [kit manifest reference](../../reference/kit-manifest.md) has every field. For a first campaign, the **New campaign** page can write a simple kit for you: see [Start a campaign from the dashboard](start-from-dashboard.md).
 
-```text
-my-kit/
-  kit.json        the manifest
-  bench/build.sh  the build command, plus any driver sources the build compiles in
-  check.mjs       the judge-side check
-```
+## Before you start
 
-```json
+- The project in a git repository, and a way to build and run it with no one at the keyboard.
+- A way to tell a right answer from a wrong one, such as reference outputs or a slower reference implementation.
+- The target of the rigs that will measure it: `cpu` or `cuda-gpu`.
+
+`kits/smoke-cpu` in Thermite's repository is a complete small kit: `kit.json`, a `bench/` folder with its build script and sources, and `check.mjs`, the check. Its manifest:
+
+```json title="kit.json"
 {
   "schema_version": 1,
   "name": "smoke-cpu",
   "target": "cpu",
-  "build": { "copy": ["bench"], "command": ["sh", ".kit/bench/build.sh"], "outputs": ["out/bench"] },
+  "build": {
+    "copy": ["bench"],
+    "command": ["sh", ".kit/bench/build.sh"],
+    "outputs": ["out/bench"],
+    "timeout_s": 120,
+    "rss_mib": 1024,
+    "disk_mib": 256
+  },
   "cells": {
     "small": { "n": 128, "reps": 240, "seed": 11, "work": 1006632960 },
-    "held":  { "n": 192, "reps": 60,  "seed": 37, "work": 849346560 }
+    "large": { "n": 256, "reps": 40, "seed": 23, "work": 1342177280 },
+    "held": { "n": 192, "reps": 60, "seed": 37, "work": 849346560 }
   },
-  "run": { "command": ["{build:out/bench}", "{params}", "{out}"] },
+  "run": {
+    "command": ["{build:out/bench}", "{params}", "{out}"],
+    "timeout_s": 60,
+    "rss_mib": 256,
+    "disk_mib": 32
+  },
   "metrics": { "flops_per_s": { "unit": "FLOP/s", "work": "work" } },
-  "check": { "command": ["node", "{kit:check.mjs}", "{params_json}", "{out}"] }
+  "check": {
+    "command": ["node", "{kit:check.mjs}", "{params_json}", "{out}"],
+    "timeout_s": 60
+  }
 }
 ```
 
-## 1. Create the kit repository
+## 1. Make the kit repository
 
-Make a separate git repository for the kit. Keep it private if it will hold held-out inputs or reference outputs: anyone who can read the kit can read the held-out cells.
+Make a new git repository for the kit, apart from the project. Put a `kit.json` at its top with `schema_version` `1`, a `name` (lowercase letters, digits, dots, dashes and underscores) and the `target`. A rig refuses a kit with another target.
 
-Set `target` to the driver type of the rigs that will measure: `cpu` or `cuda-gpu`.
+Keep the kit's repository private if it holds reference outputs or held-out inputs. See [Use a private repository](private-repository.md).
 
 ## 2. Write the build
 
-The build command runs as the builder user, with the working directory set to a fresh export of the candidate's commit. The export has no `.git` directory. Kit paths listed in `build.copy` are copied into the tree under `.kit/`, so a build script at `bench/build.sh` in the kit runs as `sh .kit/bench/build.sh`.
+The judge builds each change in a fresh copy of its commit, with no `.git` folder, as a user of its own.
 
-- **List every result in `build.outputs`**, as paths relative to the source tree. Anything not listed is discarded.
-- **Make every output a regular file.** The build store refuses links. Versioned shared libraries are the usual trap, because `libfoo.so` and `libfoo.so.0` are symlinks. With CMake, configure with `-DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON`, or replace each link with a copy of its target at the end of the build.
-- **Make the outputs relocatable.** The store moves the build. Binaries that load the build's own libraries need an `$ORIGIN` run path, for example CMake's `-DCMAKE_BUILD_RPATH_USE_ORIGIN=ON`.
-- **Size the build to its limits.** Set `timeout_s`, `rss_mib` and `disk_mib` for a cold build on the rig, and cap parallel jobs to fit the memory limit. A heavy CUDA build may need minutes and several GiB.
+- `build.copy` lists kit paths to copy into the source tree under `.kit/`: `bench/build.sh` in the kit runs as `sh .kit/bench/build.sh`.
+- `build.command` is the program and its arguments, as a list. Placeholders don't work here.
+- `build.outputs` lists every result, relative to the source tree. The judge keeps exactly these, read-only, and throws the rest away.
+- Every output must be a plain file or folder: links are refused, at most 20,000 entries, 32 levels deep. Versioned shared libraries are the usual trap, because `libfoo.so` is a link: with CMake, set `-DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON`, or replace each link with a copy at the end of the build.
+- The judge moves the build, so binaries that load its own libraries need an `$ORIGIN` run path, for example CMake's `-DCMAKE_BUILD_RPATH_USE_ORIGIN=ON`.
+- Size the limits for a cold build: `timeout_s` (600 seconds unless set), `rss_mib` (4096) and `disk_mib` (4096). The disk limit covers the source tree too, and more than 50,000 files there also counts as over it.
+
+A build that fails, or lacks an output, makes the change `invalid`. A build stopped at a limit makes it `crash_candidate`.
 
 ## 3. Define the cells
 
-A cell is a named set of parameters for one run, such as a problem size, a seed or an input file name. Give each cell a numeric `work` value for every metric: the score is `work` divided by the run's wall time in seconds.
+A cell is one test case: a named set of parameters, such as a size, a seed or an input file's name. The dashboard calls a cell a **case**. Values are numbers, strings or `true`/`false`.
 
-Add the cells you intend to hold out. Give them parameters different enough from the visible cells that tuning to the visible ones does not carry over by accident. The contract, not the kit, says which cells count and which are held out.
+- Add the cells you will hold out, with parameters far enough from the others that tuning for the visible cells doesn't carry over. The contract says which cells count and which are held out.
+- For a rate metric, each cell needs a work value: the amount of work one run does, such as items sorted or floating-point operations. The cell parameter that holds it is the one the metric's `work` names.
 
-## 4. Write the run command
+## 4. Choose the metrics
 
-The run command executes one stored build on one cell, as the run user. Use the placeholders to reach the build, the cell's parameters, the output directory and the run's kit files.
+The judge works out each metric itself, never from what the program prints:
 
-- **Write outputs only to `{out}`,** as regular files.
-- **Ship run-time helpers with `run.copy`.** The run cannot read the kit directory. List the driver scripts and inputs the run needs in `run.copy`, and reach them as `{kit:run/driver.py}`. The judge copies them fresh into every run, read-only. Don't ship them through the build: the candidate's build scripts run in the same tree and could rewrite them. The run can read what `run.copy` lists, so never list references or held-out inputs there.
-- **Let the work dominate the time.** The judge times the whole process, including start-up and loading. Repeat the work, as the smoke kit's `reps` does, until it outweighs the fixed cost.
-- **Pin everything that varies.** Pass thread counts explicitly, sized to the rig's CPU quota rather than the host's CPU count. Turn off any automatic tuning that would change parameters between runs, and set seeds.
-- **Use only flags that this version of the project accepts.** Projects rename and remove flags. Run each command line once against the project's own build before the first dry run.
-- **Read models from `{models:<sha256>}`** when the run needs an imported model.
+| Metric | Write | The score |
+| --- | --- | --- |
+| A rate | `{"unit": "FLOP/s", "work": "work"}` | The cell's work value divided by the run's time on the judge's clock. The key `work` makes the metric a rate; its value names the cell parameter that holds the work, here a parameter that is also called `work` |
+| A time | `{"unit": "s", "from": "time"}` | The run's time on the judge's clock, in seconds |
+| A number the check works out | `{"unit": "%", "from": "check", "field": "accuracy"}` | The `accuracy` field of the check's JSON line |
 
-## 5. Write the check
+Every value must be above zero. A goal's `metric_threshold` must name one of these metrics: to use a number the check prints, declare it as a `from: "check"` metric.
 
-The check runs as the judge, from the kit directory, after every run that exits cleanly. It reads the judge's own copy of the parameters and the run's outputs, and prints one JSON object as the last line of its standard output:
+## 5. Write the run command
+
+The run command runs one stored build on one cell, as another user. It is timed as a whole, so start-up counts.
+
+| Placeholder | In the run |
+| --- | --- |
+| `{build}`, `{build:out/bench}` | The stored build, read-only, or one path in it |
+| `{params}` | A file with the cell's parameters as `key=value` lines |
+| `{params_json}` | The same, as JSON |
+| `{out}` | A folder for the run's results |
+| `{kit:run/driver.py}` | A kit file listed in `run.copy` |
+| `{models:<sha256>}` | A [model file](../../reference/glossary.md) the contract lists under `models`: a data file the project loads, such as weights |
+
+These are a `kit.json`'s placeholders. The **New campaign** page has a shorter set of its own (`{args}`, `{input}`, `{build}`, `{out}`, `{kit}`) for the kits it writes for you.
+
+- The run can't read the kit. List the driver scripts and inputs it needs in `run.copy` and reach them as `{kit:<path>}`: a `{kit:…}` path not under `run.copy` is refused. They are copied fresh and read-only into every run. Never list reference outputs or held-out inputs there. For a large input, such as a dataset or a model's weights, use a model file instead: the contract lists it with its SHA-256, the rig imports it once, and every run reads the same read-only file as `{models:<sha256>}`.
+- Write results only to `{out}`, as plain files: at most 10,000 entries.
+- Repeat the work until it takes much longer than starting up, as the smoke kit's `reps` does.
+- Pin what varies: pass thread counts sized to the rig's CPU share, turn off automatic tuning, and set seeds.
+- Size the limits: `timeout_s` (300 seconds), `rss_mib` (1024) and `disk_mib` (256), with the same 50,000-file rule as the build.
+
+A run stopped at a limit, or that exits with an error, makes the change `crash_candidate`.
+
+## 6. Write the check
+
+The check runs after every run that ended well, as the judge, in the kit's folder. There `{kit}` is the whole kit, `{params}` and `{params_json}` are the judge's own copies of the cell's parameters, and `{out}` holds the run's results. Its last line of output is one JSON object:
 
 ```json
 {"pass": false, "reasons": ["max abs error 0.31 above 0.002"], "max_err": 0.31}
 ```
 
-- **Recompute or compare.** Derive the expected answer from the parameters, or compare it with a reference kept in the kit. Treat nothing in `{out}` as trusted.
-- **Check that the candidate did the work.** If the project keeps a slow reference implementation, prove the fast path ran. The smoke kits count calls to the reference through a link-time wrap and fail the run if it was called.
-- **Put the cause first in each reason, and keep it short.** Workers see up to 600 characters of a verdict's reasons, and a goal report keeps about 300 characters for each failed cell. Lead with the error line, such as an exception's message, not with the last lines of a log.
-- **Report extra numbers as fields.** A goal with a `metric_threshold` can use any number the check reports, for example peak memory.
+A small check, which compares the run's `result.txt` with an answer kept in the kit's `expected/` folder for the cell's `input` parameter, with `"command": ["node", "{kit:check.mjs}", "{params_json}", "{out}"]`:
 
-## 6. Add verifiers for goal campaigns
+```js title="check.mjs"
+import { existsSync, readFileSync } from "node:fs";
 
-For each goal verified by code, add a verifier naming the cells that must all pass:
-
-```json
-"verifiers": { "correctness": { "cells": ["small", "held"] } }
+const [paramsFile, out] = process.argv.slice(2);
+const p = JSON.parse(readFileSync(paramsFile, "utf8"));
+const reasons = [];
+const result = `${out}/result.txt`;
+if (!existsSync(result)) reasons.push("no result.txt");
+else if (readFileSync(result, "utf8") !== readFileSync(`expected/${p.input}.txt`, "utf8"))
+  reasons.push(`wrong result for ${p.input}`);
+console.log(JSON.stringify({ pass: reasons.length === 0, reasons }));
 ```
 
-A goal that should be held out needs at least one visible cell and one held-out cell. A verifier whose cells are all held out never shows as met.
+`kits/smoke-cpu/check.mjs` is a fuller one: it works the right answer out from the parameters and proves that the fast path ran.
 
-**Gate expensive goals on cheap ones.** Give verifiers a `priority`, so the quick checks run first, and make a goal that cannot pass until another does require it. A model's perplexity cannot pass before the model loads:
+- The change passes only when `pass` is exactly `true`. The check's exit code doesn't count, only this line. A last line that isn't JSON fails with `check produced no result (exit <code>): …`. (A check written on the **New campaign** page is different: there the page turns its exit code into this line.)
+- Work out the right answer from the parameters, or compare with a reference kept in the kit. Trust nothing in `{out}`.
+- If the project keeps a slow reference implementation, prove the fast path ran. The smoke kits count calls to the reference and fail the run if it was called.
+- Put the cause first in each reason, and keep it short: agents see up to 600 characters of a verdict's reasons, and a goal check keeps 300 for each failed cell.
+- Report extra numbers as fields, such as `max_err` above. A `from: "check"` metric reads one.
 
-```json
+The check's time limit is `check.timeout_s` (120 seconds).
+
+## 7. Add verifiers for goal campaigns
+
+A goal campaign checks a goal with a verifier: the cells whose runs must all pass the check.
+
+```json title="kit.json (part)"
 "verifiers": {
-  "load":       { "cells": ["load"], "priority": 10 },
-  "perplexity": { "cells": ["ppl"], "priority": 20, "requires": ["load"] }
+  "load": { "cells": ["load"], "priority": 10 },
+  "perplexity": { "cells": ["ppl", "ppl-held"], "priority": 20, "requires": ["load"] }
 }
 ```
 
-A candidate that fails `load` then costs nothing for `perplexity`. Its goal is unmet with "not run", and the judge moves on to the next attempt. Leave independent goals ungated, such as one checking that an existing model is unchanged, so they still run and still catch regressions.
+- Lower `priority` runs first (100 unless set), so put cheap checks first.
+- A verifier that `requires` another runs only when that one passed. Otherwise its goal is unmet with `not run: it requires load, which did not pass`. Leave independent goals ungated, so they still run and catch regressions.
+- To hold a goal out, give its verifier at least one visible cell and one held-out cell. A verifier whose cells are all held out never counts as met.
 
-## 7. Pin the kit in the contract
+## 8. Commit it and pin it
 
-Commit the kit and name the commit in the contract's `project.kit`:
+Commit the kit, and write its full commit in the contract's `project.kit`:
 
-```json
-"project": { "repo": "my-project", "kit": { "repo": "my-kit", "commit": "<40-character commit>" } }
+```json title="contract.json (part)"
+"project": {
+  "repo": "project",
+  "kit": { "repo": "project-kit", "commit": "89abcdef0123456789abcdef0123456789abcdef" }
+}
 ```
 
-Check the contract with `thermite contract validate <file>`. Any later change to the kit is a new commit, so a new contract version, and every build is redone.
+A later change to the kit is a new commit, so a new contract version, and every build is made again.
 
-## 8. Send the kit to a rig
+There is no command that checks a `kit.json` on its own yet ([goal 040](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/040-kit-tools.goal)). Two places check one:
 
-The dashboard is the shortest way: on **Campaigns › New campaign**, under *How to measure*, choose **Upload a kit** and give it the kit as a `.zip`, `.tar.gz`, `.tgz` or `.tar` with `kit.json` at its top (or inside one top folder). Control unpacks it, refuses links, checks `kit.json`, and lists the kit's cases and scores: choose which cases to measure, which to keep as hidden tests, and which score to improve. Control keeps the kit as a git repository of its own, and rigs fetch it from control. **Try the kit first** then runs it with no agents, as in step 9. Choose **A kit in a repository** instead to use the kit's own repository.
+- **Upload a kit** on the **New campaign** page checks it as soon as you choose the file, and shows its cases and metrics, or a short message such as `kit.json: metrics.seconds: Invalid input`. Pack the committed kit with `git archive --format=tar.gz -o kit.tar.gz HEAD` in its repository, and choose `kit.tar.gz` there to check it early; you need not start the campaign. (A `tar` of the kit's folder made on a Mac adds hidden `._` files, and the page then says `the archive has no kit.json at its top`.)
+- A run's start checks the kit against its contract. It refuses with `kit <repo> at <commit> has no valid kit.json: …` and the problems as a list in JSON, or `the kit does not fit the contract: …` with each problem, such as `cells names cell large, which the kit does not have` or `the kit measures on cpu, and this rig's target is cuda-gpu`. Fix the kit or the contract, commit the kit again if you changed it, put its new commit in `project.kit`, and start the run again. [If it is refused](start-from-command-line.md#if-it-is-refused) has each case.
 
-From the command line, push the kit to a git repository the rig's supervisor can reach, then start a run through control:
+## 9. Test it, then use it
 
-```sh
-thermite assign --contract contract.json --run my-run-1 \
-  --seed https://git.example/my-project.git@<project commit> \
-  --kit https://git.example/my-kit.git --agents off \
-  --control <control URL> --token-file <owner token file> --rig <rig>
-```
-
-- The rig's supervisor fetches the project commit and the kit commit the contract pins. It puts them in the rig's inbox as bundles, and the harness checks that each holds its commit. Models the contract lists come from `--model NAME=URL`, and must match the contract's sha256.
-- The harness checks the kit against the contract before the run starts: the target, cells, metrics and verifiers the contract names. A mismatch fails the command with the reason.
-- If the fetch fails, the command fails with the reason (for example a wrong URL, or a repository without the commit).
-- A private repository needs a key. Started from the command line, the supervisor's own SSH key (`THERMITE_RESULTS_KEY_FILE`) must be allowed to read it. Started from the dashboard, the campaign can name Git access set up once in **Settings** instead: a deploy key control makes, or an HTTPS token, which only rigs whose campaigns use it receive.
-- A commit already on the rig, such as an earlier run's champion, needs no `--seed` URL: use `--seed-commit <commit>`. A kit already there needs no `--kit`.
-- `--print` shows the payload instead of issuing it, for an agent to send with control's MCP `issue_command`.
-
-With `--agents off`, the run is judge-only: the judge builds and measures, and no worker starts.
-
-Without network access, bundles can still be placed in the inbox by hand. `thermite assign-payload` then names them by their inbox paths.
-
-## 9. Test the kit without agents
-
-1. **Run known candidates.** Keep a few patches with known verdicts next to the kit, as `kits/smoke-cpu/candidates` does: a real improvement, a no-op, a broken change, and a fallback to the reference. On the judge-only run, submit each patch with `thermite submit` from inside the harness container, as the smoke scripts do, and confirm each gets the verdict you expect.
-2. **Read the dry run.** The judge-only run is seeded at the project's unmodified commit.
-   - In a goal campaign, the judge validates the seed and writes a goal report. Every goal should be met or unmet for the reason you expect, not because a run failed on its own.
-   - In a hill climb, the judge calibrates. Read the A/A noise it reports before choosing `min_effect`.
-
-If the unmodified project does not build, the judge records an infrastructure error and the dry run stops. A run that fails on a goal's cell shows up as an unmet goal, with the run's error as its reason. Either way, fix the kit, commit, and start again.
-
-You are done when the known candidates get their expected verdicts and the dry run's report fails or passes each goal for the reason you designed it to. Then assign the campaign again without `--agents off`.
+Check that the kit gives known changes the verdicts you expect: see [Test a kit with known candidates](test-a-kit.md). Then start the campaign with **A kit in a repository** or **Upload a kit** on the [New campaign page](start-from-dashboard.md), or with [`thermite assign --kit`](start-from-command-line.md).

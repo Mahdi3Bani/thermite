@@ -1,11 +1,127 @@
 ---
 title: "Configure advisors"
-description: "Turn on the teachers, the auditor and the review panel that watch over a rig's research."
+description: "Turn on the teachers, the combiner, the auditor and the review panel that watch over a rig's research."
 type: how-to
 sidebar:
   order: 4
 ---
 
-:::note[Being written]
-This page is on the documentation plan and is being written.
+A rig's supervisor can run **advisors**: models that watch the research but never judge it.
+
+- The **teacher pair** reads each running run's progress, every hour by default, and suggests directions, each with a source.
+- The **combiner** joins the two teachers' advice into one set of directions for the planner.
+- The **auditor** answers the judge's audits: it can block a change before it becomes the champion, never pass one on its own.
+- The **review panel** grades goals that code cannot check. A pass still needs your acceptance.
+
+No advisor runs until you give it a model. **Edit rig** also has a switch for each part, which is **on** by default; a switch only lets a role run once it has a model. [Supervision](../../explanation/supervision.md) explains what each one may and may not do.
+
+There are two ways to give them models, and you can mix them:
+
+- **On Edit rig**, a model from **Settings › Providers** for each role. This is the quickest way, and the only one for rigs that control sets up on a machine or a cluster, or that you join. But Thermite can't count what these models spend, so no spending limit applies to them.
+- **In the advisors file** on the rig. Only the file can turn on web fetch, a knowledge base and a spending limit. Thermite can give the file only to the local compose stack: control can't put one on the rigs it sets up ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)).
+
+A role given a model on **Edit rig** uses it, and the other roles keep what the file says.
+
+:::caution[Set a spending limit first]
+Advisors with a paid key spend money for as long as runs are running: nothing stops them by default. Set `max_usd_per_day` in the advisors file, with prices on each runtime (see [Spending](#spending)). Thermite can't count what models given on **Edit rig** spend, so watch those at your provider.
 :::
+
+## On Edit rig
+
+You need a provider on control. See [Connect a model provider](../models/connect-a-provider.md).
+
+1. Open **Rigs** in the sidebar, choose the rig, then press **Edit rig**.
+2. In **1 · Parts of the rig**, check that the switches **Teacher pair**, **Auditor** and **Review panel** are **on**. They are on by default, but a part with no model does nothing. **Teacher pair** also covers the combiner.
+3. In **2 · The agents**, choose a **Model** and an **Effort** for **Teacher pair**, **Combiner**, **Auditor** and **Review panel**. **Runs in** says where each will run:
+   - `the supervisor, read-only tools`: a model with an API key, or a ChatGPT subscription;
+   - `Claude Code, no tools`: a Claude subscription. The supervisor's image must be built with `CLAUDE_CODE_VERSION` for this (see [Use a Claude subscription](../models/claude-subscription.md));
+   - `not for advisors: OpenCode only`: OpenCode's own models, which advisors can't use. **Save changes** then refuses, for example with "The teachers cannot use OpenCode's own models: they run only in OpenCode. Choose another model."
+4. Press **Save changes**.
+
+The page says, for example, "Control sent a model for the teachers to rig-1. The rig takes the change in less than one minute." Both teachers use the model you chose. A review panel from **Edit rig** is always three reviewers with the same model; in the file, it is two or more. To go back to the file for a role, choose `the rig's advisors file`.
+
+## In the advisors file
+
+1. Write the file. This one uses one OpenAI-compatible endpoint for every role:
+   ```json title="advisors.json"
+   {
+     "teachers": [
+       { "name": "teacher-a", "runtime": "openai", "base_url": "https://llm.example.com/v1",
+         "model": "model-a", "api_key_file": "/etc/thermite/advisors/llm-key",
+         "usd_per_mtok_in": 3, "usd_per_mtok_out": 15 },
+       { "name": "teacher-b", "runtime": "openai", "base_url": "https://llm.example.com/v1",
+         "model": "model-b", "api_key_file": "/etc/thermite/advisors/llm-key",
+         "usd_per_mtok_in": 1, "usd_per_mtok_out": 5 }
+     ],
+     "combiner": { "name": "combiner", "runtime": "openai", "base_url": "https://llm.example.com/v1",
+       "model": "model-a", "api_key_file": "/etc/thermite/advisors/llm-key",
+       "usd_per_mtok_in": 3, "usd_per_mtok_out": 15 },
+     "auditor": { "name": "auditor", "runtime": "openai", "base_url": "https://llm.example.com/v1",
+       "model": "model-a", "api_key_file": "/etc/thermite/advisors/llm-key", "reasoning": "high",
+       "usd_per_mtok_in": 3, "usd_per_mtok_out": 15 },
+     "panel": [
+       { "name": "reviewer-a", "runtime": "openai", "base_url": "https://llm.example.com/v1",
+         "model": "model-a", "api_key_file": "/etc/thermite/advisors/llm-key",
+         "usd_per_mtok_in": 3, "usd_per_mtok_out": 15 },
+       { "name": "reviewer-b", "runtime": "openai", "base_url": "https://llm.example.com/v1",
+         "model": "model-b", "api_key_file": "/etc/thermite/advisors/llm-key",
+         "usd_per_mtok_in": 1, "usd_per_mtok_out": 5 }
+     ],
+     "teacher_minutes": 60,
+     "fetch_domains": ["arxiv.org", "github.com"],
+     "max_usd_per_day": 20
+   }
+   ```
+
+   Leave out a role to turn it off. A review panel needs at least two reviewers with different names: the file loads with one, but then each review fails with an `advisor error`. OpenCode's free models don't work in the file either, since they answer only OpenCode itself. The [advisors file reference](../../reference/advisors-file.md) has every field.
+
+2. Put the file and its key files in `.dev/advisors/`, which the local stack's supervisor sees as `/etc/thermite/advisors/`:
+
+   ```sh
+   cp advisors.json .dev/advisors/advisors.json
+   printf '%s\n' "<your API key>" > .dev/advisors/llm-key
+   ```
+
+3. Name the file in the supervisor's `THERMITE_ADVISORS_FILE` setting. On the local stack, add this line to a `.env` file next to `compose.yaml`:
+
+   ```sh
+   THERMITE_ADVISORS_FILE=/etc/thermite/advisors/advisors.json
+   ```
+
+4. Start the supervisor again with the setting: `docker compose up -d` (or `podman compose up -d`), with your `-f` options if you start the stack with override files.
+
+The supervisor reads the file only when it starts, so after each change run `docker compose restart supervisor`.
+
+:::caution[A mistake in the file stops the rig's reports]
+A file with a mistake stops the supervisor: its log has a `fatal` line with the reason, and it starts again and stops again until you fix the file. The supervisor is also the rig's link to control, so meanwhile the rig shows **Not reporting**. There is no command that checks the file first. At least check that it is valid JSON before you restart, for example with `node -e 'JSON.parse(require("fs").readFileSync(".dev/advisors/advisors.json", "utf8"))'`, then watch `docker compose logs supervisor`.
+:::
+
+### Other runtimes and options
+
+The example uses the `openai` runtime: a model API that the supervisor calls itself, with read-only tools. Add `"api": "anthropic"` for Anthropic's API. Two other runtimes exist:
+
+- `cli`: a command-line agent that you install in the supervisor's image. It runs as the supervisor's user, so its `argv` must turn off the agent's own shell and file tools, and the file must say `"restricted": true`: your statement that the `argv` does so.
+- `claude-code`: Claude Code with a Claude subscription. A subscription is easier to give on **Edit rig**, where control keeps its token.
+
+`fetch_domains` lists the sites that the teachers and the auditor may read, for papers and upstream code; leave it out for no web fetch. The optional `kb` field connects a [knowledge base](../../reference/glossary.md): a search service of your own over your notes or documents, reached over MCP, which the teachers may search but not change. The [advisors file reference](../../reference/advisors-file.md#runtimes) has every runtime's fields, and what each role may read and fetch.
+
+## Spending
+
+`max_usd_per_day` sets a limit for all advisors of the rig together, per day (UTC). There is no limit unless you set one.
+
+- The limit counts only `openai` runtimes in the file, from their `usd_per_mtok_in` and `usd_per_mtok_out` prices. Without prices, they count as free.
+- `cli` and `claude-code` advisors, and every model given on **Edit rig**, count as $0, so the limit never stops them.
+- When the day's total reaches the limit, the advisors skip their turns until the next UTC day. The research itself goes on.
+- The check comes before each role's turn, so a round can go a little past the limit.
+
+## Check that they work
+
+Wait a minute, then press **refresh** in the status bar, the line along the bottom of the rig's page:
+
+- The **Advisors** row of the **The rig** block shows `N teacher rounds · N directive sets · N audits · N errors · $N.NN` instead of `none configured`.
+- The rig's live view shows `advisor round started` and `advisor round done: …` lines when you choose **Supervisor** in its list. Open it with the **Live** button on the rig's page, or from **Live** in the sidebar.
+- When the teachers' advice reaches a run, its history says `A steering directive took effect.`
+
+A count of errors that grows means a role keeps failing. The supervisor's log has an `advisor error` line with the reason, such as `audit of …: advisor auditor has no key`.
+
+Messages you send to "the advisors (next brief)" from the live view go into the run's brief for a day, which the teachers and the combiner read. See [Steer a run](../campaigns/steer-a-run.md).

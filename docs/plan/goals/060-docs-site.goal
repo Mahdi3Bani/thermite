@@ -1,7 +1,7 @@
 ---
 id: "060"
 title: "The documentation site"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 part: "Tester basics"
 depends_on: []
@@ -11,7 +11,7 @@ updated: 2026-10-19
 
 # 060 · The documentation site
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
 
 ## What
 
@@ -125,23 +125,23 @@ The docs today are twelve dense pages, written for the people who built Thermite
 
 ## Done when
 
-- [ ] The owner approved the look and the page list. The approval is in Decisions.
-- [ ] `npm run docs:build` builds the site from `docs/_site/` with pinned versions, with no errors or warnings. The page schema and the link validator pass.
-- [ ] Every page on the approved list exists. Each has a title, a one-line description and one type, and sits in its type's section.
-- [ ] The inventory maps every feature built at the start commit to at least one page.
-- [ ] `npm run docs:check` passes. It checks:
+- [x] The owner approved the look and the page list. The approval is in Decisions.
+- [x] `npm run docs:build` builds the site from `docs/_site/` with pinned versions, with no errors or warnings. The page schema and the link validator pass.
+- [x] Every page on the approved list exists. Each has a title, a one-line description and one type, and sits in its type's section.
+- [x] The inventory maps every feature built at the start commit to at least one page.
+- [x] `npm run docs:check` passes. It checks:
   - that each page sits in the section of its type;
   - that `llms-full.txt` holds every page;
   - that every `thermite` command on a page exists;
   - that every setting a page names exists in the code, and that every setting the code reads is in the settings reference;
   - that every contract, `kit.json` and `advisors.json` example parses with the real schema.
-- [ ] The built site has `/llms.txt` in the [llms.txt format](https://llmstxt.org/), which leads an agent to every page, and `/llms-full.txt` with every page in full. Each page also has a Markdown copy at its address plus `.md`.
-- [ ] Search works in the built site with no outside service.
-- [ ] Each tutorial was followed end to end on a clean local stack, and each how-to guide that runs locally was followed once. Progress records what ran, and which pages need paid services or real hardware and were not run.
-- [ ] A fresh reader that saw only the built site found no step that it could not follow, or each of its findings is fixed.
-- [ ] The old user pages are moved, and no tracked file links to a moved page. `docs/README.md`, `README.md`, `AGENTS.md` and `CONVENTIONS.md` point to the site.
-- [ ] CI builds and checks the docs. A workflow deploys the site to GitHub Pages from `main`.
-- [ ] `npm run check` passes, and the public check passes over the new files.
+- [x] The built site has `/llms.txt` in the [llms.txt format](https://llmstxt.org/), which leads an agent to every page, and `/llms-full.txt` with every page in full. Each page also has a Markdown copy at its address plus `.md`.
+- [x] Search works in the built site with no outside service.
+- [x] Each tutorial was followed end to end on a clean local stack, and each how-to guide that runs locally was followed once. Progress records what ran, and which pages need paid services or real hardware and were not run.
+- [x] A fresh reader that saw only the built site found no step that it could not follow, or each of its findings is fixed.
+- [x] The old user pages are moved, and no tracked file links to a moved page. `docs/README.md`, `README.md`, `AGENTS.md` and `CONVENTIONS.md` point to the site.
+- [x] CI builds and checks the docs. A workflow deploys the site to GitHub Pages from `main`.
+- [x] `npm run check` passes, and the public check passes over the new files.
 
 ## Decisions
 
@@ -155,6 +155,11 @@ The docs today are twelve dense pages, written for the people who built Thermite
 - 2026-10-19, owner: The pages follow Diátaxis: tutorials, how-to guides, reference and explanation.
 - 2026-10-19, owner: The docs must be approachable for an average person. Agents read them through `llms.txt` and `llms-full.txt`.
 - 2026-10-19, owner: Subagents write the pages in parallel. This goal is written first and run with `/goal`.
+- 2026-10-19, owner: Approved the site's look and the 73-page list at step 2, so the writing can start.
+- 2026-10-19, owner: Gaps in Thermite found by this work go into one new goal, with a checklist worded for the public repository. Anything about security goes only to the maintainers' private notes. The docs describe only what exists.
+- 2026-10-19, owner: Tutorial 4 gets its own example: a goal contract for the smoke kit and project in `examples/contracts/`, checked with the real schema and run end to end.
+- 2026-10-19, owner: The contract reference lists fields that are accepted but not used yet, each marked so.
+- 2026-10-19, owner: To run tutorial 4 end to end, create a small public test repository on the owner's GitHub account; the owner deletes it afterwards.
 
 ## Open questions
 
@@ -175,6 +180,20 @@ The docs today are twelve dense pages, written for the people who built Thermite
   - `npm run docs:check`, a CI job and a GitHub Pages workflow;
   - `docs/writing-docs.md`, the guide every writer follows.
 - 2026-10-19: Tutorial 1's steps ran from a fresh clone on a local Podman stack: the isolation check passed at start, and the smoke check passed with all 12 candidates judged as expected in about 100 seconds on a laptop CPU.
+- 2026-10-19: Step 3 done. Nine writers wrote the 66 remaining pages from the inventories and the code, each with a file of evidence and a file of gaps.
+- 2026-10-19: Step 4, checking:
+  - **Against the code.** Fresh verifiers checked every page's claims against the code, ran a Diátaxis audit and read for plain words. They corrected about 175 claims, fixed the pages that mixed types, and took every description of a security weakness off the pages.
+  - **Fresh readers.** Two readers that saw only the built site tried every how-to guide (139 findings) and every tutorial, with the home page and Start here (45 findings). Six fixers fixed each finding or recorded why it needed no change, and made the pages agree with each other and with the code on the words they use.
+  - **Tutorials, run end to end** on a clean local stack (Podman, from a fresh clone, images from the build cache): 1 Your first run, about 5 minutes after the build; 2 Hand the work to agents, about 30 minutes with a free model; 3 Your first goal campaign, about 15 minutes, no model; 4 Your own project, about 30 minutes, against a throwaway public test repository. Each page was corrected to what happened. The tutorials' order is now 1, 2, 3 (goal campaign), 4 (own project).
+  - **How-to guides, followed once** on local stacks of their own:
+    - ran fully: tokens, the REST API, cancel a command, check a rig, accept a rig's key, the results repository (with a stand-in SSH Git host), stop, restart, retire and fully reset a rig, write a contract, test a kit, steer a run, budgets and stop times, take the result, run a campaign on several rigs, write a kit, install on one machine, push the images to your own registry (a local registry), extend the harness image;
+    - ran in part: let an agent run Thermite over MCP (with curl, not a client's settings), start a campaign from the command line, decide what waits for you (promotions only), configure advisors (with a scripted model), connect a provider, choose a model and give each agent its own model (free models were rate-limited; a stand-in model server did the rest), and troubleshoot (spot checks);
+    - through the repository's stand-ins: add a rig on a machine (the rig deploy acceptance), add a rig on a cluster (the cluster acceptance on kind), join a rig yourself (a stand-in machine, and a namespace on kind), give a rig several GPUs (the multi-GPU acceptance on fake GPUs);
+    - not run: test a GPU on RunPod (a paid service), the Claude and ChatGPT subscriptions (the owner's accounts), a private repository (a private repository on a Git host), and providers that need a paid key.
+  - **Gaps.** What the code lacks went into goal [061](061-gaps-found-by-the-docs.goal): 158 items. Two of them were code bugs found by running the guides, now fixed on the development branch: rigs on machines that never reported (`4ec8705`), and the planner under OpenCode (`9a8f803`). Security items went to the maintainers' private notes only.
+- 2026-10-19: Step 5 done. The old pages moved and every link in the repository points to them; `docs/README.md`, `README.md`, `AGENTS.md` and `CONVENTIONS.md` point to the site; `docs/local-development.md` keeps only the contributor material; CI builds and checks the site, and `.github/workflows/docs.yml` publishes it to GitHub Pages from `main`. A dashboard screenshot from the demo is in the README and on the home page, and `scripts/docs-screenshots.mjs` takes it again.
+
+- 2026-10-19: Verified. `npm run docs:build` builds with no errors or warnings; `npm run docs:check` passes for all 73 pages; `npm run check` passes (typecheck, lint, 367 tests, the public check). CI's docs job and the Pages workflow run for the first time when the code is pushed; turning GitHub Pages on needs the owner's account, and the first deploy follows the code's move to `main` (goal 026).
 
 ---
 

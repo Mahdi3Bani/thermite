@@ -6,6 +6,180 @@ sidebar:
   order: 3
 ---
 
-:::note[Being written]
-This page is on the documentation plan and is being written.
+Control can set [rigs](../../reference/glossary.md) up on a Kubernetes cluster with a kubeconfig you give it once. Each rig is two pods, its harness and its supervisor, which share one volume on one node. Control applies them, waits for the rig's first report, and later stops, starts and removes it.
+
+Control places each rig in one of two ways:
+
+- **A namespace control creates for each rig**, with the rig's own network rules. The kubeconfig needs rights to create namespaces.
+- **Slots**: namespaces the cluster's operators made for Thermite in advance, with their own quotas and network rules. Control only deploys into a free one.
+
+:::note[What these rigs don't have yet]
+Rigs that control sets up, on a machine, on a cluster or with a join command, get only the few settings listed in [Rigs that control sets up](../../reference/settings.md#rigs-that-control-sets-up). Compared with the local stack, they have:
+
+- **no results repository:** their exports stay in the rig's own volume, so removing the rig deletes them (control keeps the rig's events and its champions' patches). A [full reset](../operate/rig-lifecycle.md#fully-reset-a-rig) stops with "the rig has no results repository", and champions can't be [sent between rigs](../campaigns/several-rigs.md);
+- **no advisors file:** advisors come only from [Edit rig](../operate/advisors.md#on-edit-rig);
+- **no model prices,** so a contract's money budget (`budget.llm_usd`) counts nothing ([token prices](../campaigns/budget-and-stop-time.md#set-the-token-prices-for-model-spend));
+- **no proposer token,** so you can't [submit changes by hand](../campaigns/test-a-kit.md).
+
+[Goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal) lists these gaps.
 :::
+
+## Before you start
+
+- **Control is ready for rigs elsewhere:** its address (`THERMITE_CONTROL_PUBLIC_URL`) and the rig images, plus `THERMITE_RIG_HARNESS_CUDA_IMAGE` for GPU rigs. See [Let rigs on other machines reach control](one-machine.md#let-rigs-on-other-machines-reach-control).
+- **The cluster's pods can reach control's address** and pull the images. Control adds no image pull secret, so the nodes must be able to pull the images without one ([Push the images to your own registry](own-registry.md)).
+- **A kubeconfig** with everything written inside it: a `token`, or `client-certificate-data` and `client-key-data`, and `certificate-authority-data`. Control refuses a kubeconfig that runs a command to log in (`exec` or an auth-provider), reads files, or goes through a proxy (`proxy-url`).
+- **Rights for the kubeconfig:** for namespaces control creates, see [below](#what-created-namespaces-need); for slots, a role in each slot ([below](#what-a-slot-needs)).
+- **For GPUs:** NVIDIA's device plugin (`nvidia.com/gpu`), or a device class for DRA (Kubernetes' Dynamic Resource Allocation).
+
+### What created namespaces need
+
+Rights across the cluster, since the namespaces don't exist yet: to create and delete namespaces, and in them to create, change and delete deployments, services, secrets, persistent volume claims and network policies (and resource claim templates for DRA). Control also scales and restarts the deployments to stop, start and restart the rig. With rights to read nodes, storage classes and device classes, its check of the cluster shows them; without them it shows less. Control never reads pods.
+
+Thermite's own cluster test uses the cluster's admin kubeconfig for this placement, so there is no tested narrower role to copy. If the cluster's operators won't give control rights across the cluster, use slots.
+
+### What a slot needs
+
+The cluster's operators make each slot. Thermite's own cluster test gives control a service account in the slot, with these roles:
+
+```sh
+kubectl create serviceaccount thermite-control -n thermite-slot-1
+kubectl create role thermite-control -n thermite-slot-1 \
+  --verb=get,list,watch,create,update,patch,delete \
+  --resource=deployments.apps,services,persistentvolumeclaims,secrets,pods,resourceclaimtemplates.resource.k8s.io
+kubectl create rolebinding thermite-control -n thermite-slot-1 \
+  --role=thermite-control --serviceaccount=thermite-slot-1:thermite-control
+kubectl create role thermite-control-read -n thermite-slot-1 \
+  --verb=get,list --resource=networkpolicies.networking.k8s.io
+kubectl create rolebinding thermite-control-read -n thermite-slot-1 \
+  --role=thermite-control-read --serviceaccount=thermite-slot-1:thermite-control
+```
+
+For a user rather than a service account, give `--user=<the kubeconfig's user>` to the two `rolebinding` commands. With rights to read the slot's resource quota (add `resourcequotas` to the second role's `--resource`), control also fills in the rig's CPUs, memory and volume from it.
+
+Control writes no network rules in a slot, but it reads them. It refuses a slot unless some network rule selects the rig's harness pods (label `app.kubernetes.io/component: harness`), and every such rule lets them reach only DNS (port 53) or addresses outside the private (RFC 1918) ranges. Thermite's cluster test uses this rule. Its egress part is the same as the rule control writes in a namespace it creates:
+
+```yaml title="thermite-harness-net.yaml"
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: thermite-harness
+  namespace: thermite-slot-1
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: harness
+  policyTypes: [Egress]
+  egress:
+    - ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]   # the RFC 1918 ranges (public-check: allow)
+```
+
+If the slot has other rules, such as one that denies all traffic, they must still let the supervisor pod (label `app.kubernetes.io/component: supervisor`) reach control's address, the internet and the harness on port 8700.
+
+A helper that writes a slot's objects out for the operators is planned ([goal 033](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/033-slot-helper.goal)).
+
+## 1. Add the cluster
+
+1. Press the cog at the foot of the sidebar to open **Settings › Providers**.
+2. Under **Add a provider**, fill in:
+   - **Type:** A Kubernetes cluster
+   - **Name:** the name Thermite shows for it, such as `cluster-1`
+   - **Kubeconfig:** paste it
+   - **Context:** which context to use. Empty: its current context
+   - **Placement:** **A namespace control creates for each rig**, or **Slots the cluster's operators made**
+   - **Namespace for each rig** (created namespaces): `thermite-{rig}` by default. `{rig}` becomes the rig's name
+   - **Slots** (slots): the slot namespaces, separated by commas, such as `thermite-slot-1, thermite-slot-2`
+3. Press **Add and check the cluster**.
+
+Control reads the cluster and changes nothing. The page says `"cluster-1" is added and checked: see what control found below.` The cluster's row shows:
+
+- **Version** and **Nodes**, with each node's GPUs;
+- **GPUs**: NVIDIA's device plugin, DRA device classes, or neither;
+- **Storage**: the storage classes, with the default one marked;
+- **Placement**: "control may create namespaces", or each slot with "free", "used by rig …", "refused: …" or "control may not deploy here".
+
+A refused kubeconfig gives "Not added: …" with the reason.
+
+To change the slots later, edit **Slots** on the cluster's row and press **Save the slots**. Control reads each one again.
+
+## 2. Add the rig
+
+1. Open **Rigs** in the sidebar, then press **Add a rig**.
+2. Under **1 · Where**, choose **cluster-1 · Kubernetes**. A cluster that is not ready says why, for example "control may not create namespaces there" or "it has no free slot".
+3. Under **2 · GPUs and resources**:
+   - **GPUs**: how many the harness pod asks for. **none: the CPU**, one shared by the judge and the agents, or several. With several, **GPUs for the judge** sets the judge's share (half by default). See [Give a rig several GPUs](several-gpus.md).
+   - **GPUs through**: **NVIDIA's device plugin**, or **DRA:** and a device class. Where control can't read the cluster's nodes, as is common in a slot, choose **DRA: a device class you name** and name it in **DRA device class**, such as `gpu.nvidia.com`.
+   - **Node**: **any node with room**, or one node. A fixed node keeps timings comparable between runs.
+   - **Storage class** and **Volume size (GB)**: the rig's one volume, 100 GB by default. It holds the rig's state, builds, inbox and outbox.
+   - **CPUs** and **Memory (GiB)**: both or neither. At least 1.5 CPUs and 6 GiB; the supervisor takes half a CPU and 2 GiB of that, the harness the rest. Empty: the namespace's defaults apply.
+   - **Slot** (slots): one of the free slots. For created namespaces, **Namespace** shows the pattern control names it by, such as `thermite-{rig}`.
+4. Under **3 · Name and start**, give a **Rig name**: lowercase letters, digits and dashes. It can't change later.
+5. Press **Create the rig**.
+
+In a slot whose network rules don't keep the harness off the cluster, control refuses with "Refused: in the slot thermite-slot-1, …" and says why. Ask the cluster's operators for a rule like the [example above](#what-a-slot-needs).
+
+## 3. Watch it start
+
+You land on the rig's page: "Control is setting rig-1 up on cluster-1. Its page fills in once the rig reports for the first time." Its **Set up by control** block lists each step. Press **refresh** in the status bar (the line along the bottom of the page) to follow:
+
+- ✓ Enrolled with control: a token of its own
+- ✓ Its objects applied in the cluster: namespace, secret, volume, deployments
+- ✓ First report reached control
+
+Control waits up to 10 minutes for the first report, and the nodes pull the images in that time. If a large image takes longer, the step shows ✕ "no report after 10 minutes: it may not have started"; the rig's page still fills in when it reports.
+
+What control applies, all labelled `app.kubernetes.io/instance: rig-1`:
+
+| Object | Name |
+| --- | --- |
+| Namespace (created namespaces only) | `thermite-rig-1` |
+| Secret: the rig's tokens and control's public key | `thermite-rig-1` |
+| Persistent volume claim | `thermite-rig-1-data` |
+| Service for the harness | `thermite-rig-1-harness` |
+| Resource claim template (DRA only) | `thermite-rig-1-gpus` |
+| Deployments | `thermite-rig-1-harness` and `thermite-rig-1-supervisor` |
+| Network rules (created namespaces only) | `thermite-rig-1-harness-net` and `thermite-rig-1-supervisor-net` |
+
+In a namespace it creates, control's network rules let the harness reach only DNS and addresses outside the private ranges, and let only its supervisor reach the harness.
+
+### If it doesn't report
+
+Look at the rig's pods, with the rig's namespace (in a slot, the slot's):
+
+```sh
+kubectl get pods -n thermite-rig-1 -l app.kubernetes.io/instance=rig-1
+kubectl describe pods -n thermite-rig-1 -l app.kubernetes.io/instance=rig-1
+kubectl logs -n thermite-rig-1 deployment/thermite-rig-1-supervisor
+```
+
+| The pods show | Why | Do |
+| --- | --- | --- |
+| `Pending` | No node has room for the GPUs, CPUs or memory, or the volume claim is not bound. The events at the end of `describe` say which | Free room, or ask the operators. If the rig needs other choices, see below |
+| `ErrImagePull` or `ImagePullBackOff` | The nodes can't pull an image | Make the image pullable without signing in: [Push the images to your own registry](own-registry.md) |
+| `Running`, and still no report | The supervisor's log says why | [A rig is quiet](../operate/troubleshoot.md#a-rig-is-quiet) |
+
+Once the cause is fixed, the pods start and the rig reports by itself. If the rig needs other choices (another storage class, node or number of GPUs), remove it (below) and add a new one under a new name: a removed rig's name can't be used again.
+
+## Afterwards
+
+The rig's page keeps the **Set up by control** block: the cluster, the namespace ("made by control" or "a slot"), the GPUs, the storage and the images. Its buttons:
+
+- **Stop its pods** or **Start its pods** (the deployments scale to 0 or 1), and **Restart them**.
+- **Remove it from cluster-1**: type `remove rig-1` and press **Remove the rig**. Control deletes the namespace it created, or the rig's objects in the slot, and retires the rig's token. The rig's results go with its volume; control keeps only its events and its champions' patches, so [take the result](../campaigns/take-the-result.md) you need first. The page says `Removed from the cluster.`, and the rig stays in **Rigs** as not reporting. To take it off the rig lists too, use **Retire it** at the top of its page: type `retire rig-1` and press **Retire it**.
+
+Next, [check the rig](../operate/check-a-rig.md), then [give it a model](../models/connect-a-provider.md).
+
+## From an agent or a script
+
+Over MCP, the owner's and the operator's tokens have two tools for clusters (see [MCP tools](../../reference/mcp-tools.md)):
+
+- `add_cluster_rig` adds a rig on a cluster in Providers, with the same checks as **Add a rig**. Its fields are `rig`, `cluster`, `slot`, `gpus`, `judge_gpus`, `gpu_mode` (`device-plugin` or `dra:<device class>`), `node`, `storage_class`, `storage_gb`, `cpus` and `memory_gib`. It answers with the rig's name and `"status": "deploying"`; follow the rig with `list_rigs`.
+- `set_cluster_slots` replaces the list of slots of a cluster that uses slots. A slot that holds a rig must stay in the list.
+
+Adding the cluster itself is done on the dashboard.

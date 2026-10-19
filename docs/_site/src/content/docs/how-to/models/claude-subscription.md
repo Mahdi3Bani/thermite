@@ -6,6 +6,119 @@ sidebar:
   order: 3
 ---
 
-:::note[Being written]
-This page is on the documentation plan and is being written.
+If you pay for a Claude Pro or Max plan, Thermite's agents can work on that plan instead of a paid API key. Anthropic allows a subscription only in its own program, so these agents run inside **Claude Code**. You make a token on your own computer, paste it into the dashboard, and give a [rig](../../reference/glossary.md) one of its models.
+
+A subscription is for your own Thermite only. A Thermite that several people use takes API keys.
+
+:::note[Tested with stand-ins]
+Subscriptions are built, but Thermite's tests so far use a stand-in for Claude Code. A test with a real subscription is planned in [goal 009](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/009-subscription-sign-in-tests.goal).
 :::
+
+## Before you start
+
+- A Claude Pro or Max plan, and Node.js on your own computer.
+- A rig whose images have Claude Code in them. Thermite's images leave it out unless you build them with it: see step 2.
+
+## 1. Make a token
+
+On your own computer, not on the rig:
+
+1. Install Claude Code, if it is not installed:
+
+   ```sh
+   npm install -g @anthropic-ai/claude-code
+   ```
+
+2. Run `claude setup-token` and sign in with your Claude account in the browser.
+3. Copy the token it prints. It starts with `sk-ant-` and is good for one year.
+
+Control cannot open Anthropic's sign-in page for you, which is why you make the token yourself.
+
+## 2. Build the images with Claude Code
+
+Claude Code is not open source, so Thermite's images carry it only when you build them with the build option `CLAUDE_CODE_VERSION`. The harness image needs it for the workers and the planner. The supervisor image needs it for advisors on the subscription.
+
+1. Find the newest version of the package the build downloads:
+
+   ```sh
+   npm view @anthropic-ai/claude-code-linux-x64 version
+   ```
+
+   On an arm64 machine the build downloads `@anthropic-ai/claude-code-linux-arm64` instead.
+
+2. On the local stack, put the option in an override file next to `compose.yaml`, with that version:
+
+   ```yaml title="compose.claude.yaml"
+   services:
+     harness:
+       build:
+         args:
+           CLAUDE_CODE_VERSION: "<version>"
+     supervisor:
+       build:
+         args:
+           CLAUDE_CODE_VERSION: "<version>"
+   ```
+
+3. Build the images and start the stack with both files:
+
+   ```sh
+   docker compose -f compose.yaml -f compose.claude.yaml up -d --build   # or: podman compose -f … -f … up -d --build
+   ```
+
+Name this file in every later `up --build`, also when you update Thermite ([Stop, start and update](../install/one-machine.md#stop-start-and-update)), together with any other override file you use. A build without it leaves Claude Code out: `compose.yaml` has no setting for it yet ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)).
+
+For rigs that control sets up on your machines or clusters, build the images with the option and push them to a registry that is not public, since Claude Code is not open source. Control gives rigs no registry login, so the machines' Podman, or the cluster's nodes, must be able to pull from that registry on their own. See [Push the images to your own registry](../install/own-registry.md).
+
+## 3. Add the subscription
+
+1. Press the cog icon, **Settings**, at the foot of the sidebar. The **Providers** page opens.
+2. In **Add a provider**, set **Type** to **Claude subscription (Pro or Max)**.
+3. Enter a **Name**, for example `claude-max`.
+4. Paste the token into **Token from claude setup-token**. Its ⓘ says: "The long-lived token that Claude Code prints. Control seals it at once and never shows it again. Only Claude Code, Anthropic's own program, uses it on the rigs: Anthropic does not allow other programs to use a subscription."
+5. Press **Add the subscription**.
+
+The page shows `"claude-max" is saved: its 5 models run only in Claude Code. Choose one for a rig below.` Control makes no call to Anthropic with the token. Its list of models is fixed. `opus-5.5` and `opus-5.5[1m]` are the same model with the same context, so either one will do:
+
+| Model | Context |
+| --- | --- |
+| `claude-code:opus-5.5` | 1M tokens |
+| `claude-code:opus-5.5[1m]` | 1M tokens, the same model |
+| `claude-code:sonnet-5.5` | 1M tokens |
+| `claude-code:haiku-5.5` | 200k tokens |
+| `claude-code:fable-5.1` | 1M tokens |
+
+## 4. Give a rig one of its models
+
+1. In **Harness and model for each rig**, find the rig's row.
+2. Choose a model from the group "claude-max (Claude subscription: runs in Claude Code)". Thermite sets the [worker harness](../../reference/glossary.md), the program the agents run in, to **Claude Code** for you.
+3. Press **Use**.
+
+The page shows `rig-1 takes sonnet-5.5 from "claude-max" under Claude Code within a minute, and checks it.` After a minute, press **refresh** in the status bar, the line along the bottom of the page. The model check's result shows below the rig's row, for example "Its model check passed 1m ago: claude-sonnet-5-5 answered with a correct tool call in 6.1 s (Claude Code)".
+
+To give the planner or an advisor the subscription, and to set an effort, use **Edit rig**: see [Give each agent its own model](model-per-agent.md).
+
+Control gives a rig the token only while one of its agents uses the subscription.
+
+## Watch the usage windows
+
+A Claude plan has a 5-hour window and a weekly window. Open the subscription's row on **Providers** to see them: "5-hour window" and "Weekly window", each with how much is used and when it resets, as Claude Code on a rig last reported it. Before any agent uses the subscription, the row says "No usage reported yet".
+
+When a window is full, the trial (one worker's session) that hit it ends, and the rig's agents wait until the window resets. No new trial or plan starts on that rig until then. **Live** in the sidebar, the dashboard's view of the agents at work ([glossary](../../reference/glossary.md)), shows "agents wait for the subscription's usage window to reset at" and the time. Nothing pays for more: the agents simply continue after the reset.
+
+Many agents can share one plan, and so can several rigs. On **Edit rig**, a note says how many of the rig's agent sessions at a time can use the subscription. More workers at a time fill a window faster.
+
+## Replace or remove the token
+
+- **Replace it**: run `claude setup-token` again, open the subscription's row, paste the new token into **New token from claude setup-token**, and press **Replace the token**. The new token works at once. Do this before the old one's year ends.
+- **Remove the subscription**: press **Delete this subscription** in its row. If a rig or an agent still uses it, the row says "In use: give its rigs another model before deleting it." Give them another model first.
+
+## If something goes wrong
+
+| You see | What to do |
+| --- | --- |
+| "That is not a token from claude setup-token: it starts with sk-ant-." | Copy the token that `claude setup-token` printed, not another key. |
+| "The token has spaces or is too long: paste only what claude setup-token printed." | Paste the token alone, on one line. |
+| The model check fails right after you chose the model | Check that the rig's harness image was built with `CLAUDE_CODE_VERSION`. |
+| The model check fails with "the subscription's usage window is full until" a time | Wait for the reset, or use another model meanwhile. |
+| A research campaign's trials end with "research workers run in Pi, and a Claude subscription runs only in Claude Code: give this rig another model for research" | Research workers always run in Pi. Give the rig another model for research. |

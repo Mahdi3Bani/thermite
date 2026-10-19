@@ -1,11 +1,109 @@
 ---
 title: "Supervision"
-description: "What the teachers, the auditor and the review panel do, and what they cannot do."
+description: "What the teachers, the combiner, the auditor and the review panel do, what they produce, and what they can never do."
 type: explanation
 sidebar:
   order: 8
 ---
 
-:::note[Being written]
-This page is on the documentation plan and is being written.
-:::
+Each rig can run a few extra models, called **advisors**, that watch over the research. They give the planner advice, look hard at surprising results, and review goals that code cannot check. This page explains each one, and the limits that keep it an adviser and never a judge.
+
+Advisors run in the rig's **supervisor**, the container that connects the rig to everything outside it. They are off until you configure them. [Configure advisors](../how-to/operate/advisors.md) shows how, and the [advisors file reference](../reference/advisors-file.md) lists every field. Other words used here are in the [glossary](../reference/glossary.md).
+
+## The four roles
+
+| Advisor | When it acts | What it produces | What it cannot do |
+| --- | --- | --- | --- |
+| **Teacher pair** | On a schedule (hourly by default), for each running run | Recommendations for the planner, each with citations | Set a verdict, change a contract, or talk to workers |
+| **Combiner** | After the teachers | One set of directives merged from their reviews | Add a directive without a citation |
+| **Auditor** | When the judge holds a result for an audit | `clear`, `block` or `needs_owner`, with reasons | Pass a result. An audit can block, never pass |
+| **Review panel** | When a goal needs judgement | A pass or a fail from each reviewer | Meet a goal. Only the owner's acceptance does |
+
+```mermaid
+flowchart LR
+  subgraph Supervisor
+    T[Teacher pair] --> C[Combiner]
+    A[Auditor]
+    R[Review panel]
+  end
+  subgraph Harness
+    P[Planner]
+    J[Judge]
+  end
+  O((Owner))
+  C -- directives, with citations --> P
+  J -- result held for an audit --> A
+  A -- block --> X[Blocked]
+  A -- needs_owner --> O
+  A -- clear --> B[Back on its path:<br/>promoted, or waits for you]
+  J -- goal that needs judgement --> R
+  R -- pass --> O
+```
+
+## The teacher pair and the combiner
+
+Each **teacher** is a model that reviews one running run at a time. On its schedule, it gets the run's **brief**, which the harness builds from its ledger: the campaign, the champion, the approach families with their results, recent attempts and epochs, and the directives in force. It holds nothing from hidden test cases, and no worker text beyond each attempt's hypothesis. The owner's messages to **the advisors (next brief)**, sent from the rig's live view (**Live** in the sidebar, then the rig), are added.
+
+A teacher can also read outside sources: web pages from the domains that the advisors file allows, and a [knowledge base](../reference/glossary.md) (a search service over your own notes, reached over MCP) if one is configured. It answers with a summary and a list of recommendations. Each one is a directive, a rationale and **citations**: attempt ids from the brief, web addresses or paper ids.
+
+The **combiner** merges the teachers' reviews into one **directive set** for the planner. It is told to keep what both teachers support. Where they disagree, it may keep both views as `try` directives for different families, so different lanes explore each. Without a combiner, the recommendations of the first teacher that answered become the set.
+
+Citations are checked twice. The supervisor drops any directive without one, and the harness refuses a set with an uncited directive, too many notes, or a family that is both avoided and asked for. Each new set replaces the supervisor's previous one.
+
+Directives steer only the planner. Their reasons never reach the workers, and the owner's own directives come first. [Agents, lanes and the planner](agents-lanes-planner.md#directives) explains how the planner must follow them.
+
+## The auditor
+
+The judge holds a result back for an **audit** before it can become the champion when:
+
+- the agent that made the change declared known flaws;
+- in a hill climb, the gain is surprisingly large: above the contract's absolute trigger (15% by default), or well above the run's earlier confirmed gains;
+- in a goal campaign, the contract has an adversarial checklist. Then every promotion is audited.
+
+The **auditor** gets the change, the agent's hypothesis and declared flaws, the verdict, and the contract's lists of what does not count. It looks for ways the change could game the measurement, and answers in one of three ways:
+
+| Answer | What happens |
+| --- | --- |
+| `block` | The result is blocked. It does not become the champion unless the owner overrides the audit |
+| `needs_owner` | The result waits for the owner |
+| `clear` | The result goes back on the path it was on. Declared flaws, a gain above the absolute trigger, or a run where every promotion needs approval still wait for the owner. Otherwise it is promoted |
+
+So **an audit can block, never pass.** The auditor can stop a bad result, but a model alone never pushes a large or flawed result through. On a rig with no auditor, audits wait for the owner. [Decide what waits for you](../how-to/campaigns/decide-what-waits.md) shows those decisions.
+
+## The review panel
+
+Some goals can't be checked by code, such as the quality of a piece of documentation. Their test is a review. The **review panel** is two to five reviewers in the advisors file, each with a different name, or three reviewers of one model when you choose its model on **Edit rig**. They review the champion's change blind:
+
+- Each reviewer gets the goal, its criteria and the change from the seed. Nothing says which lane or model wrote it.
+- Every reviewer must answer. If one fails to answer, the review is tried again later, so a reviewer that crashed can't lose its vote.
+- The result is a pass only if every reviewer passes it, and only for the run's current champion.
+
+Even then, **the goal is met only when the owner accepts the review.** A panel's pass is advice. A new champion needs a new review.
+
+## What advisors can and cannot do
+
+Advisors advise; they never judge. That is the same rule as for the agents, and the same reasons apply ([Why agents never judge](why-agents-never-judge.md)). Code enforces it in several ways:
+
+- **A narrow channel.** An advisor's answer reaches the harness only as a directive set, an audit answer or a panel result. None of these can write a verdict, a champion or a contract, pause a run, or message a worker.
+- **Checked answers.** Every answer must match a strict format. The supervisor checks it, and the harness checks it again.
+- **No shell, no file tools.** Thermite gives no advisor a shell or file tools, because the supervisor holds the rig's keys, and anything an advisor reads may try to give it orders. Teachers can read the brief, and can fetch pages and search a knowledge base where the advisors file sets that up. The auditor can fetch pages from the domains you list. The combiner and the panel get no tools, and neither does any advisor that runs in Claude Code.
+- **Untrusted text stays data.** Advisors are told that fetched pages, changes and hypotheses are data, not instructions.
+- **Private and public never mix.** With an open web fetch (any domain), the teachers get no knowledge-base search, so private notes and the open web never meet in one agent. The auditor reads private changes, so it may fetch only from domains you list, never from any domain.
+
+An audit or review whose advisor fails is tried again a few times. After that, it waits for the owner.
+
+## Where you see their work
+
+- The rig's live view (**Live** in the sidebar, then the rig) shows each advisor round as it starts and ends.
+- A run's history says when a directive took effect, what the auditor decided, and what the review panel decided.
+- **Needs you**, on the **Overview** page, lists audits and reviews that wait for you.
+- The rig's page has an **Advisors** row with their counts and spending.
+- Once a day, the supervisor sends control a **daily report** that code writes, not a model: each open run's champion, recent verdicts, directions and directives, then the supervisor's exports and the advisors' work. It is on **Reports** in the sidebar, and over MCP with `rig_reports`.
+
+## Spending
+
+Advisors have **no spending limit by default**; like every limit in Thermite, it exists only when someone sets it ([Why Thermite runs until the job is done](runs-until-done.md)). To set one, put `max_usd_per_day` in the advisors file. When the day's cost reaches it, the advisors skip their work until the next day. The cost comes from the prices you give each advisor in that file, so the limit counts only advisors that have prices there ([Spending](../reference/advisors-file.md#spending) lists which). If an advisor uses a paid key, decide on a limit before you turn it on.
+
+## Choosing the models
+
+Each advisor role can have its own model, chosen on a rig's **Edit rig** page under **2 · The agents**. A role with no model there uses the rig's advisors file, and does not run without one. Under **1 · Parts of the rig**, a switch turns **Auditor**, **Teacher pair** and **Review panel** on or off; each is on by default, and an advisor runs only when it is both configured and switched on. [Give each agent its own model](../how-to/models/model-per-agent.md) shows how.

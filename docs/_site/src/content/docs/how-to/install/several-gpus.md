@@ -6,6 +6,69 @@ sidebar:
   order: 5
 ---
 
-:::note[Being written]
-This page is on the documentation plan and is being written.
+A [rig](../../reference/glossary.md) with one GPU shares it: while the judge measures, the agents' own test runs wait, so the judge's timings stay clean. With two or more GPUs, some are the judge's and the rest the agents', and neither waits for the other. This page shows every place the split is set. [Sharing a device](../../explanation/sharing-a-device.md) explains how to choose it.
+
+## The rules
+
+| GPUs on the rig | What happens |
+| --- | --- |
+| 0 | The rig measures on its CPUs |
+| 1 | The judge and the agents share it |
+| 2 to 16 | The first ones are the judge's, the rest the agents'. The judge takes 1 to 8, and the agents at most 8. Default: half for the judge, rounded up |
+
+- More judge GPUs check more changes at once. More agent GPUs let more lanes test at once.
+- The judge's GPUs must all be the same model. With different models, only the first one judges, and the rig's hardware report says so. Put different models in separate rigs.
+- Only NVIDIA GPUs are supported.
+
+## When you add the rig
+
+**Rigs › Add a rig**, under **2 · GPUs and resources**:
+
+| Where the rig goes | Choose the GPUs | Choose the judge's share |
+| --- | --- | --- |
+| A machine over SSH ([guide](rig-on-a-machine.md)) | Tick each GPU. The lowest-numbered are the judge's | **GPUs for the judge** |
+| A Kubernetes cluster ([guide](rig-on-a-cluster.md)) | **GPUs**: how many the harness pod asks for, and **GPUs through** | **GPUs for the judge** |
+| A machine you join yourself ([guide](join-a-rig.md)) | **GPUs on the machine**: their numbers as `nvidia-smi` lists them, such as `0,1,2,3` | **GPUs for the judge** |
+| A namespace you join yourself | **GPUs**: up to 8 | **GPUs for the judge** |
+
+Leave **GPUs for the judge** empty for half. The note under the fields says what you chose, for example "Judge: GPU 0, 1. Agents' test runs: GPU 2, 3. They never wait for each other."
+
+On a machine, a GPU that another rig control set up there already uses shows "used by rig …" and can't be ticked.
+
+## Change the split later
+
+Once a rig has its GPU set, three places change the judge's share. When the share changes, the rig's harness restarts to regroup the GPUs, so running trials and judge jobs start again.
+
+- **Edit rig**: on the rig's page press **Edit rig**, then under **4 · Where it runs** set **GPUs for the judge**. It says "Now: 2 for the judge, 2 for the agents." The box **What changes when you save** lists the restart. Press **Save changes**.
+- **New campaign**: under **Where it runs** › **Advanced**, **GPUs for the judge**.
+- **A campaign's page**: the **Start another run** form (**Start a run** on a campaign with no run yet) has **GPUs for the judge**.
+
+:::caution[A campaign changes the whole rig]
+The last two change the rig's split for every run on it, not just the new one, and the restart ends the trials and judge jobs of the other runs there too; they start again. Leave **GPUs for the judge** empty to keep the rig's current split.
 :::
+
+A rig without a GPU set of two or more has no such field on Edit rig. From a campaign it says "rig-1 has no GPU set to split: its GPUs are set where it is deployed."
+
+## The settings behind the split
+
+Control writes these settings on the harness of each rig it sets up. They are here for reference: Thermite ships no other way to run a GPU harness, and no guide covers running one by other means. Such a harness would need them set on its container:
+
+| Setting | Value |
+| --- | --- |
+| `THERMITE_TARGET` | `cuda-gpu` |
+| `THERMITE_GPUS` | The rig's GPU set, as the container numbers them: `0,1,2,3` |
+| `THERMITE_JUDGE_GPUS` | The judge's share of the set: `2`. Default: half, rounded up |
+
+With `THERMITE_GPUS`, Edit rig and campaigns can change the share later; their choice comes before `THERMITE_JUDGE_GPUS`.
+
+Instead, the cards can be named outright: `THERMITE_GPU_INDEX` for the judge (`0,1`) and `THERMITE_DEV_GPU_INDEX` for the agents (`2,3`). These lists come before `THERMITE_GPUS`, and then the split can't be changed from the dashboard. A card may not be in both lists, and every card the container sees must be in one of them.
+
+`THERMITE_RUN_CPUS` sets the CPUs timed runs are pinned to: `auto` (the default on a GPU rig: the CPUs close to each judge card), `off`, or a CPU list.
+
+The local compose stack has no GPU rig: its harness runs on the CPU ([goal 037](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/037-gpu-compose.goal) plans GPU rigs under compose).
+
+## Check the split
+
+- On the rig's page, **What it runs on** shows the **Judge** and **Dev runs** GPUs. With a shared GPU, **Dev runs** says "share the judge's device, and wait for it".
+- Open **Every detail** at the foot of the **What it runs on** block: its table lists each device with **Used by**: Judge, Dev runs, or Judge + dev runs.
+- The **Isolation** check's result names the layout, for example `devices: dedicated: judge …, development …`. Run it after a change ([Check a rig](../operate/check-a-rig.md)).

@@ -1,11 +1,228 @@
 ---
 title: "Your own project"
-description: "Start a campaign on a project of your own from the New campaign page, and take the best result home."
+description: "Put a small project of your own in a public repository, start a campaign on it from the New campaign page, and take the best result home as a patch."
 type: tutorial
 sidebar:
-  order: 3
+  order: 4
 ---
 
-:::note[Being written]
-This page is on the documentation plan and is being written.
+In this tutorial you give Thermite a project of your own. You put a small, deliberately slow C program in a repository of yours, describe on the dashboard how to build it, run it and check its answer, and let an agent make it faster. Then you approve the agent's change and apply it to your own copy of the project.
+
+At the end you'll know the whole path from a repository to a result you can keep, all from the dashboard. The same steps work for a real project.
+
+It takes half an hour to an hour, most of it waiting for the agent. New words are explained as they come, and the [glossary](../reference/glossary.md) has them all.
+
+## What you need
+
+- Everything from the first two tutorials, [Your first run](first-run.md) and [Hand the work to agents](agents-with-a-free-model.md): Thermite running, the dashboard signed in, and `local-1` with a free model from OpenCode. This tutorial uses that model.
+
+  Free models are often busy. Before you start, open **Settings**, find the row for `local-1` under **Harness and model for each rig**, and press **Check**. After a minute, press **refresh**. If the row says `Its model check FAILED`, for example with `Rate limit exceeded. Please try again later.`, choose another model whose name ends in `-free`, press **Use**, and wait until the check has `passed`, as in [step 3 of Hand the work to agents](agents-with-a-free-model.md#3-check-that-the-model-works).
+
+  If your rig uses a paid model instead, set **Stop after (hours)** under **Advanced** in step 7, so the campaign pauses itself after that many hours.
+
+- An account on a Git hosting service, such as GitHub, GitLab or Codeberg, where you can make a **public** repository, and git set up on your computer to push to it. Your rig fetches the project from there over `https`, and the agents send its code to the model's service as they work. For a private repository, see [Use a private repository](../how-to/campaigns/private-repository.md) after this tutorial.
+
+## 1. Make the project
+
+The program counts the prime numbers below a number, very slowly: to test each number, it tries every smaller number as a divisor. An agent will find faster ways.
+
+In a terminal, go to your home folder, and make the project and its first commit there:
+
+```sh
+cd ~
+mkdir primes
+cd primes
+cat > primes.c <<'EOF'
+#include <stdio.h>
+#include <stdlib.h>
+
+/* Counts the prime numbers below n, the slow way: it tries every divisor. */
+static int is_prime(int k) {
+  if (k < 2) return 0;
+  for (int d = 2; d < k; d++)
+    if (k % d == 0) return 0;
+  return 1;
+}
+
+int main(int argc, char **argv) {
+  int n = argc > 1 ? atoi(argv[1]) : 1000;
+  int count = 0;
+  for (int k = 2; k < n; k++) count += is_prime(k);
+  printf("%d\n", count);
+  return 0;
+}
+EOF
+git init -b main
+git add primes.c
+git commit -m "Count primes the slow way"
+```
+
+The last command prints a line that starts with `[main (root-commit)`.
+
+## 2. Put it in a public repository
+
+1. On your Git host's website, make a new, empty, **public** repository named `primes`. Don't let it add a README or any other file.
+2. Copy its `https` address. It looks like `https://git.example.com/you/primes.git`, with your host and your account in it. You give this address to Thermite in step 5.
+3. Push the project there. The empty repository's page shows the commands to push an existing repository. They look like these, with your own address in the first line:
+
+   ```sh
+   git remote add origin https://git.example.com/you/primes.git
+   git push -u origin main
+   ```
+
+   If your git pushes over SSH, the page gives an SSH address for the first line: use that one. Thermite still reads the repository from its `https` address.
+
+The repository's page on your host now shows `primes.c`.
+
+## 3. Write down the right answers
+
+The judge needs to know when the program's answer is right. You give it the answers in a file of their own, outside the project. The judge's check reads that file; the program that is timed never gets it.
+
+```sh
+cd ~
+mkdir primes-answers
+printf '100000 9592\n80000 7837\n' > primes-answers/expected.txt
+```
+
+Each line is a number and how many primes there are below it: 9,592 below 100,000, and 7,837 below 80,000.
+
+## 4. Name the campaign
+
+In the dashboard, open **Campaigns** and press **New campaign**. The page has five steps: **1 Aim**, **2 Project**, **3 How to measure**, **4 Where it runs** and **5 Review and start**. Each field's ⓘ says more about it.
+
+On **1 Aim**:
+
+1. Keep **Hillclimbing** chosen. A **hill climb** improves one measured number, here how long the program takes.
+2. **Campaign name**: `primes-speed`
+3. **Title**: `Count primes faster`
+4. Press **Next**.
+
+## 5. Point it at your project
+
+On **2 Project**:
+
+1. **Repository**: your repository's `https` address from step 2.
+2. **Start from**: `main`
+3. **Repository access**: keep **Public: no key**.
+4. Press **Look it up**. Control reads your repository and says `Found: main is at`, a short commit id, and how many files it has. Every run starts from exactly that commit.
+5. **Files the agents may change**: `primes.c`. A change to any other file is refused before it is built.
+6. Press **Next**.
+
+## 6. Tell the judge how to measure it
+
+On **3 How to measure**, keep **Describe it here** chosen. You are describing the **kit**: the judge's recipe for building your project, running it and checking each answer. Control writes the kit from what you type and keeps it.
+
+Fill in these fields, in the order the page shows them. Leave every field that this list doesn't name empty, such as **Input files**.
+
+1. **Run**: `{build}/primes {args} > {out}/result.txt`
+
+   `{build}` is the folder that holds what the build made, `{args}` is the test case's arguments, and `{out}` is a folder for the run's results.
+
+2. **Test cases**: in the first row, replace `default` with `100k` under **Name**, and set **Arguments** to `100000`. Press **Add a case**, and in the new row set **Name** to `80k`, **Arguments** to `80000`, and tick **Hidden test**.
+
+   The judge times every change on `100k`. It runs the hidden test, `80k`, only to double-check a change that already looks faster: the change must give the right answer there too, and must not be noticeably slower there.
+
+3. **The score**: keep **How long a run takes**. Keep **Smallest gain that counts (%)** at `5` and **Runs per case** at `3`.
+4. **Is it right?**: `grep -qxF "{args} $(cat {out}/result.txt)" {kit}/expected.txt`
+
+   After each run, this looks for the number and the program's answer, together, as one line of your answers file. `{kit}` is the folder with the files you add next. A run whose answer is wrong never wins, however fast it is.
+
+5. **Files for the check**: choose `expected.txt` from your `primes-answers` folder. Leave **the run reads these too** unticked, so the program never gets the answers.
+6. **Build**: `cc -O2 -o primes primes.c`
+7. **What the build makes**: `primes`
+8. Press **Next**.
+
+## 7. Choose where it runs
+
+On **4 Where it runs**, the card for `local-1` is chosen. It shows the rig's hardware, `cpu · generic-cpu`, and after `agents:` the free model you gave it.
+
+1. **Agents working at once**: `1`
+2. Leave the rest as it is, and press **Next**.
+
+## 8. Try the kit first
+
+On **5 Review and start**, a sentence sums up the campaign. It starts with `primes-speed will make its runs faster`, and it names `primes.c` as the only file to change and `local-1` as the rig.
+
+Press **Try the kit first**. This starts a run with no agents: the judge builds your project and runs it, so you see the kit work before an agent spends any time on it.
+
+The campaign's page opens and says `Starting local-1/primes-speed-try-1.` The rig fetches your project from your Git host and the kit from control, and checks both. Within a minute, press **refresh**. The run is there, with the note **A try of the kit.**
+
+A minute or two after you pressed **Try the kit first**, press **refresh** again. Under **Recent** you see `The judge measured the rig's noise:` and a small percentage. To learn that, the judge built your project and ran the `100k` case many times, and the check passed on every answer. Now the judge also knows how much your computer's timings vary on their own.
+
+:::tip[If the try failed]
+If **Recent** says instead that `The judge's job` failed, the end of the sentence says why. For example, `the check exited 1` means that an answer was not a line of `expected.txt`: check the answers file and the **Is it right?** command. If the run never appears, open **Commands** in the sidebar: the `assign campaign` line says why.
+
+To fix a field, open **New campaign** again. It starts empty: fill it in again with the same campaign name and the field fixed, and press **Try the kit first**. That saves the campaign as version 2, and tries it as `primes-speed-try-2`.
 :::
+
+## 9. Start the campaign
+
+Below the try, the block **Start the campaign** starts the real run.
+
+1. **Rig**: `local-1`
+2. **Agents**: **with agents**
+3. **When a change is confirmed better**: **ask me every time**. Every change the judge confirms will wait for you before it becomes the new best version.
+4. Press **Start the run**.
+
+The page still shows the try at first. After a minute, press **refresh**: the run `primes-speed-1` is **Running**, in a tab of its own. The try is now **Paused**, with `replaced by primes-speed-1`, because a rig runs one run at a time.
+
+As in [Hand the work to agents](agents-with-a-free-model.md#7-watch-the-agent-work), the planner works first: for a few minutes the run's **Now** block shows `planner` and `planning epoch 1`. Then the agent starts. Open **Live**, then **local-1**, and choose **Worker · lane-1** to watch it read `primes.c`, change it, build it and try it. Each trial lasts at most 20 minutes.
+
+## 10. Approve the agent's change
+
+The agent's first change usually reaches the judge within half an hour of **Start the run**. When the judge has confirmed it faster on fresh runs, it waits for you. **What happened** on the **Overview** says `confirmed faster on fresh runs`, and the Overview's first line says `1 needs you`. Under **Needs you**, the change has the label **Your decision** and the question `Make this change the new champion?`. The sidebar's **Overview** item shows a count too.
+
+1. Open the item. It shows what the agent says it did, which files it changed and by how many lines, what the judge found, and what each choice does.
+2. Read **Problems that the agent wrote**, if the item has them. Agents often note limits that don't matter here: when we ran this tutorial, the agent wrote that its new method uses some memory (`Uses O(n) memory`). That is no reason to refuse a faster program. If a problem says that the answers can be wrong, or that the change works only for the test cases, press **Reject it** instead, as in [Hand the work to agents](agents-with-a-free-model.md#if-a-change-waits-for-you).
+3. Press **Make it the champion**.
+
+The item says `You selected Make it the champion`. Press **refresh** after a few seconds: it says `The rig made the change champion #2.`, and it goes away after the rig's next report, in about a minute. The **champion** is the run's best version so far. Champion #1 was your project as you pushed it.
+
+The change itself stays on the rig until the rig's next **export**: it copies the run's results out of the harness, keeps them, and sends each new champion to control as a patch. You'll read the change line by line in the next step, before you keep it.
+
+:::tip[If nothing waits for you after half an hour]
+Open **Live**, then **local-1**, to see what the agent is doing, and look at **What happened** on the **Overview** for trials that ended. A trial can end without a change; the next trial then tries again. A busy free model ends trials with `Rate limit exceeded. Please try again later.` If every trial ends that way, give `local-1` another free model, as under [What you need](#what-you-need). The next trial uses it.
+
+With OpenCode, **What happened** may say that the planner used `its fallback plan`. That is a known fault ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)): the run goes on with a simple plan.
+:::
+
+## 11. Take the result home
+
+The rig exports its results every hour. To have them now:
+
+1. Open **Rigs**, then **local-1**, and press **Export now**. The page says `Control sent the command to local-1.`
+2. About a minute later, open **Campaigns**, choose the run `primes-speed-1`, and press **refresh**. Under **The run**, beside **Champion**, a link says `download champion #2 as a patch`, then `applies to` and the commit your campaign started from.
+3. Press the link. Your browser saves a file named like `primes-speed-1-champion-2-on-` and that commit, ending in `.patch`.
+
+Apply it to your project. In the terminal, with the file name your browser saved:
+
+```sh
+cd ~/primes
+git apply ~/Downloads/primes-speed-1-champion-2-on-1a2b3c4d.patch
+git diff
+```
+
+Your `main` branch is still at the commit the campaign started from, so the patch applies cleanly. `git diff` shows the agent's change to `primes.c`. When we ran this tutorial, the agent replaced the divisor loop with a sieve of Eratosthenes, which crosses out the multiples of each prime instead of testing every number. Read the change: the program should still count the primes, not print an answer it was told. If you like it, keep it with a commit:
+
+```sh
+git commit -am "Count primes faster, as Thermite's judge confirmed"
+```
+
+## 12. Pause the campaign
+
+The agent keeps looking for more speed until you stop it. On the run's page, in the line `Run primes-speed-1` at the top, press **Pause**, just right of the **Live** button. The agent's current trial stops too. Within a minute, after a **refresh**, the run shows **Paused**, the button says **Resume**, and the page says `Nothing new starts until it is resumed.`
+
+## What you did
+
+You put a project of your own in a repository, described its kit on the New campaign page, and tried the kit before any agent started. Then an agent made the program faster, you approved the change the judge confirmed, and you applied it to your own copy as a patch.
+
+This is the last tutorial. From here, the how-to guides help with your own projects, and the explanations say why Thermite works as it does.
+
+## Next
+
+- [Write a kit for your project](../how-to/campaigns/write-a-kit.md): kits for real projects, with their own scripts and cases.
+- [Start a campaign from the dashboard](../how-to/campaigns/start-from-dashboard.md): every field of the New campaign page.
+- [Use a private repository](../how-to/campaigns/private-repository.md): a project that isn't public.
+- [Decide what waits for you](../how-to/campaigns/decide-what-waits.md): which changes become the champion at once, and which wait.
+- [Take the result](../how-to/campaigns/take-the-result.md): every way to get a champion out of Thermite.
+- [Why the benchmark lives in a kit](../explanation/kits.md): why the measurement stays out of the agents' hands.

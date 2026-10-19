@@ -1,11 +1,41 @@
 ---
 title: "Where Thermite came from"
-description: "The lessons from long research campaigns that shaped Thermite."
+description: "The lessons from long research campaigns that shaped Thermite, and the part of Thermite that answers each one."
 type: explanation
 sidebar:
   order: 14
 ---
 
-:::note[Being written]
-This page is on the documentation plan and is being written.
-:::
+Thermite grew out of long-running hill-climbing campaigns on inference kernels: AI agents trying, change after change, to make the GPU code behind a model's answers run faster. Those campaigns taught a handful of lessons. Thermite is the system built around them, informed by published work on agent research systems and on evolutionary code search.
+
+Each lesson below is paired with the part of Thermite that answers it. The [glossary](../reference/glossary.md) explains the Thermite words used here.
+
+## Loops that stopped after a fixed number of failures
+
+A search for speed has long dry spells. A loop that stops after a fixed number of failures ends the search at the first long one, whether or not the next change would have worked.
+
+**In Thermite:** nothing ends research by default. There is no limit on turns, attempts, failures or time unless you set one. A lane whose trials end without a usable change waits a little longer before its next trial, up to ten minutes. After six trials in a row end in errors, the agents rest for half an hour. Then the work goes on. → [Why Thermite runs until the job is done](runs-until-done.md)
+
+## Useful experiments discarded because they didn't move one number
+
+A change that loses on the headline number can still hold an idea worth reading later, or worth trying again in another form. Throw it away and the idea is gone.
+
+**In Thermite:** every attempt's change is saved as a git ref before the judge even builds it, and the ledger keeps its verdict and the judge's reasons. Every attempt also goes into the rig's exports. Losses feed the next round of work too: the planner sees recent results from every lane, and each worker sees its own lane's recent attempts with the judge's findings. → [Why agents never judge](why-agents-never-judge.md) and [Agents, lanes and the planner](agents-lanes-planner.md)
+
+## Dashboards that vanished on restart
+
+When the record of a campaign lives in the process that shows it, a restart loses the history of what was tried.
+
+**In Thermite:** each rig keeps a ledger, a database that survives restarts and is the authority on what happened. Control keeps its own store of everything the rigs report. A rig keeps researching while control is down, and its reports catch up when control is back. → [How the parts fit together](how-it-fits-together.md)
+
+## Supervisors bolted on through a terminal
+
+Oversight added afterwards, by typing into a terminal, leaves no record of who asked for what, or why, and nothing stops it from overruling the measurements.
+
+**In Thermite:** every rig has a supervisor container built in. Its advisors, when the rig has them, steer the planner with directives that carry their reasons and citations, and an audit can hold a result back but never pass one. Every instruction a person gives goes through control as a signed, recorded command, from the dashboard, the REST API or MCP. None of them can set a verdict. → [Supervision](supervision.md) and [Steer a run](../how-to/campaigns/steer-a-run.md)
+
+## "The agent says it's faster" is not "it is faster"
+
+An agent's report of its own result is a claim, not a measurement. A change can even make the measurement itself wrong, for example by moving the timer.
+
+**In Thermite:** an agent never grades its own work. A judge that the agents can neither read nor change builds each change, times it against the champion on the same device, checks its output and confirms a win on fresh runs before it counts. → [Why agents never judge](why-agents-never-judge.md)

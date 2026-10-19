@@ -6,6 +6,99 @@ sidebar:
   order: 5
 ---
 
-:::note[Being written]
-This page is on the documentation plan and is being written.
+Before agents spend time or money, check the campaign's [kit](../../reference/glossary.md). Start a run with no agents (a try of the kit), read what the judge makes of the starting point, then submit a few changes whose right [verdicts](../../reference/verdicts.md) you already know. Thermite's own **Judge smoke** check does this for its smoke kits: see [Check a rig](../operate/check-a-rig.md).
+
+## Before you start
+
+- A kit and a contract that names it, or a campaign on the **New campaign** page. See [Write a kit for your project](write-a-kit.md).
+- To submit changes by hand: a rig whose harness, the rig's container that holds the judge, has a proposer token. The local stack from [Your first run](../../tutorials/first-run.md) has one, which the harness sees as `/run/secrets/harness-proposer-token`. Rigs that control sets up on machines or clusters, and rigs you join yourself, have none: there you can do the dry run (steps 2 and 3), but not submit changes.
+
+:::caution[GPU kits]
+A GPU kit can't be tested with known candidates yet. The local stack has only CPU rigs ([goal 037](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/037-gpu-compose.goal) plans a GPU one), a rig refuses a kit made for another target, and GPU rigs that control sets up have no proposer token. On a GPU rig, do the dry run (steps 2 and 3). Then start the campaign with **ask me every time** (`--promotion owner`), so that no change becomes the champion before you have read its verdict. [Goal 042](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/042-kit-self-test.goal) plans known bad candidates in **Try the kit first**.
 :::
+
+## 1. Make a set of known candidates
+
+Keep a few changes with known outcomes next to the kit, in a `candidates` folder, as `kits/smoke-cpu/candidates` does in Thermite's repository. Each candidate is a folder with the files it changes, laid out as in the project. A candidate that deletes a file needs `git rm` on that file in step 4. Write down what each should get. Cover at least:
+
+| Candidate | Expected verdict |
+| --- | --- |
+| A real improvement | `win_confirmed`, then it becomes the champion |
+| The same code with a renamed variable | `neutral`. On a rig noisier than `acceptance.equivalence_band` (0.005 unless set), `inconclusive`: raise the band |
+| A change that gives wrong answers | `invalid` |
+| A change that doesn't build | `invalid` |
+| A change that calls the slow reference | `invalid`, if your check proves the fast path ran |
+| A change to a file agents may not edit, or one that adds a forbidden line | `rejected_v0`: refused before building |
+| A change that uses far too much memory | `crash_candidate` |
+
+## 2. Start a run with no agents
+
+Use one of:
+
+- **Try the kit first** on the **New campaign** page, or the **Start another run** card on a campaign's page with **a try of the kit: no agents**;
+- `--agents off` on the command line. Run `npx thermite` in your Thermite folder, after `npm ci` and `npm run build` (see [the command line](../../reference/command-line.md)). The example uses the owner's token file of the local stack, `.dev/secrets/control-admin-token`. If you made an owner's token of your own, use its file instead.
+
+  ```sh
+  npx thermite assign --contract contract.json --run sort-speed-try-1 --agents off \
+    --seed https://git.example.com/you/project.git@0123456789abcdef0123456789abcdef01234567 \
+    --kit https://git.example.com/you/project-kit.git \
+    --control http://127.0.0.1:8800 --token-file .dev/secrets/control-admin-token --rig local-1
+  ```
+
+The run starts from the project's unchanged commit, and no agent starts.
+
+## 3. Read the dry run
+
+Open the run's page, and press **refresh** in the status bar, the line along the bottom of the page, now and then.
+
+- **A hill climb:** the judge times the starting point against itself, to learn how much the rig's timings vary. It does this when no other judge work waits, and again every 24 hours. **History** then says, for example, `The judge measured the rig's noise: ±1.84% per block.`, and **Steering › Agent figures** shows it as **Rig noise**. Choose a `min_effect` well above that noise. On a noisy rig, widen `acceptance.equivalence_band` too. This dry run doesn't run the held-out cells: the real improvement in step 5 is the first change they check.
+- **A goal campaign:** the judge builds the starting point and checks every goal. **History** says, for example, `The judge checked champion #1: 1 of 3 goals met.`, and the run's **Overview** lists each goal with why it is unmet. Each should be unmet for the reason you expect, not because a run failed.
+
+If the starting point does not build, or a run of it fails, **History** shows `The judge's job (…) failed: …` with the cause. Fix the kit, commit it, raise the contract's `version`, and start a new run. For a campaign made on the **New campaign** page, fill in the page again with the same **Campaign name** instead: that saves a new version. If the run never starts, open **Commands** in the sidebar for the reason: [If it is refused](start-from-command-line.md#if-it-is-refused) says what to do for each.
+
+## 4. Make a patch for each candidate
+
+Make each patch against the run's starting commit:
+
+```sh
+git clone https://git.example.com/you/project.git cand
+cd cand
+git checkout 0123456789abcdef0123456789abcdef01234567
+cp -R ~/src/project-kit/candidates/noop/. .
+git add -A
+git diff --cached --binary > ~/noop.patch
+git reset --hard -q && git clean -fdq
+```
+
+Repeat the last four lines for each candidate.
+
+## 5. Submit them
+
+On the local stack, copy each patch into the harness container and submit it there with the proposer token. Run these in your Thermite folder, with `podman compose` in place of `docker compose` if that is your tool:
+
+```sh
+docker compose exec -T harness sh -c 'cat > /tmp/noop.patch' < ~/noop.patch
+docker compose exec -T harness thermite submit --harness http://127.0.0.1:8700 \
+  --token-file /run/secrets/harness-proposer-token --run sort-speed-try-1 \
+  --patch-file /tmp/noop.patch --hypothesis "rename the accumulator"
+```
+
+The harness answers with the attempt's id and state, such as `{"attempt":"a-0123456789abcdef","lifecycle":"queued",…}`. A change the static checks refuse answers `"lifecycle":"rejected_v0"`, with the reasons under `violations`.
+
+Submit the real improvement last. Each patch applies to the current champion, so once the improvement wins, patches made against the starting commit may no longer apply.
+
+## 6. Read the verdicts
+
+Open the run's **Attempts** view. Each change shows its outcome. The dashboard learns a verdict with the rig's next report, within a minute: until then the change shows **Judging**, so press **refresh**. Open one for **What happened to it** and **The judge's reasons**. From the harness container, without the wait, `thermite status --harness http://127.0.0.1:8700 --token-file /run/secrets/harness-proposer-token --attempt <id>` prints its state and verdict.
+
+Two things can hold a winner back:
+
+- A confirmed gain above 15% always waits for you, after the rig's auditor if it has one, unless the contract raises `acceptance.audit.absolute`. See [Decide what waits for you](decide-what-waits.md).
+- With **ask me every time**, or `--promotion owner`, every confirmed win waits for you.
+
+## Check that the kit is ready
+
+- Each known candidate got the verdict you expected.
+- The dry run met or missed each goal for the reason you expected, or showed a noise well below `min_effect`.
+
+Then start the campaign with agents. For a campaign made on the **New campaign** page, use the **Start the campaign** card on the try's page, with **with agents**. For one started from the command line, assign a new run without `--agents off`: its try's page says to start the campaign below, but has no such card. A rig runs one run at a time, so the new run pauses the try.

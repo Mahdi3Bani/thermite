@@ -6,6 +6,106 @@ sidebar:
   order: 6
 ---
 
-:::note[Being written]
-This page is on the documentation plan and is being written.
-:::
+Control sets [rigs](../../reference/glossary.md) up from images it does not build: a machine or a cluster pulls them from a registry. Thermite has no published images yet ([goal 010](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/010-published-images.goal)), so you build them from the repository and push them to a registry of your own. Then you tell control their names.
+
+## Before you start
+
+- A clone of Thermite, and Docker or Podman, as in [Install Thermite on one machine](one-machine.md).
+- A registry your rigs can pull from **without signing in**, over HTTPS. Control passes no registry credentials: none to machines, no image pull secret to clusters, none to RunPod. A private registry that needs a sign-in doesn't work yet ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)), and Podman and Kubernetes nodes refuse a registry served over plain HTTP unless their own settings allow it, which control doesn't change.
+- Space for the builds. The CUDA harness image is large.
+
+## The images
+
+| Image | Built from | Who runs it |
+| --- | --- | --- |
+| Control | `containers/control/Containerfile` | You, on control's computer |
+| Harness | `containers/harness/Containerfile` | CPU rigs |
+| Harness, CUDA | The same file, with `BASE_IMAGE` set to a CUDA image | GPU rigs, and RunPod test pods |
+| Supervisor | `containers/supervisor/Containerfile` | Every rig |
+
+Name them as you like; control takes any full image reference. The examples use `registry.example.com/thermite/` and the first 12 characters of the commit as the tag.
+
+## 1. Build them
+
+Build from the repository's top folder: the images need its `package.json`, `src/`, `kits/`, `examples/` and `containers/`.
+
+```sh
+tag=$(git rev-parse --short=12 HEAD)
+r=registry.example.com/thermite
+docker build -t $r/thermite-control:$tag    -f containers/control/Containerfile .
+docker build -t $r/thermite-harness:$tag    -f containers/harness/Containerfile .
+docker build -t $r/thermite-supervisor:$tag -f containers/supervisor/Containerfile .
+```
+
+With Podman, use `podman build` the same way.
+
+For GPU rigs, build the harness again on a CUDA base:
+
+```sh
+docker build -t $r/thermite-harness:$tag-cuda \
+  --build-arg BASE_IMAGE=<a CUDA 12 development image> \
+  -f containers/harness/Containerfile .
+```
+
+Thermite names no tested CUDA base image yet ([goal 010](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/010-published-images.goal)). NVIDIA's own `nvidia/cuda` images have development tags on Ubuntu, but none has been named as tested. What the Containerfile needs from the base:
+
+- **CUDA 12.** The Containerfile notes that CUDA 13 dropped older GPU architectures. RunPod test pods ask for hosts that run CUDA 12.6 or later.
+- **A development image**, with `nvcc`: the GPU smoke check compiles CUDA code on the rig.
+- **Debian or Ubuntu based**, because the build installs its packages with `apt-get` from the base's own package lists: git, tini (the image's entry point), a C and C++ toolchain, CMake, Ninja, ccache, and Python 3 with numpy. Node.js and OpenCode are copied in, so the base needn't have them.
+
+### Build arguments
+
+| Argument | Images | Default | What it does |
+| --- | --- | --- | --- |
+| `BASE_IMAGE` | Harness | The Node.js image | The base of the final image: a CUDA image for GPU rigs |
+| `NODE_IMAGE` | All three | Node.js 22 on Debian bookworm, pinned by digest | Where Node.js comes from |
+| `OPENCODE_VERSION` | Harness | `2.0.32` | The OpenCode release the image carries |
+| `CLAUDE_CODE_VERSION` | Harness, supervisor | Empty: no Claude Code | Downloads that Claude Code release into the image, for a [Claude subscription](../models/claude-subscription.md) |
+| `KUBECTL_VERSION` | Control | `v1.37.1` | The kubectl control uses for clusters. It is checked against a pinned hash, so a different version fails the build |
+
+Claude Code is not open source, so Thermite's images leave it out by default. **Never push an image built with Claude Code to a public registry.** Since rigs can't sign in to a registry yet, such an image reaches a remote rig only from a registry that is not public and still needs no sign-in, such as one that only your own network reaches. Let that registry take pushes only from someone signed in.
+
+### Architectures
+
+The control image builds for amd64 and arm64 only. The harness and supervisor pick their downloads for arm64, or for x64 otherwise. Thermite has no multi-architecture build: build each image for the architecture of the machines that run it. Docker and Podman build for another one with `--platform`: on a Mac with Apple silicon, for example, add `--platform linux/amd64` for x86-64 machines.
+
+## 2. Push them
+
+```sh
+docker push $r/thermite-harness:$tag
+docker push $r/thermite-harness:$tag-cuda      # if you built it, for GPU rigs
+docker push $r/thermite-supervisor:$tag
+```
+
+With Podman, use `podman push` the same way. Podman refuses a registry served over plain HTTP (`server gave HTTP response to HTTPS client`), even one on your own computer, unless you add `--tls-verify=false`; rigs can't pull from such a registry anyway, as [Before you start](#before-you-start) says.
+
+Push the control image too if control runs from it elsewhere. The local compose stack builds its own images and pulls none.
+
+**Use a new tag for every build.** A machine pulls an image only when it does not have that tag already, and a cluster's pods use `IfNotPresent`. An image pushed again under an old tag never reaches a machine or node that has the old one.
+
+## 3. Tell control
+
+Set these on control, then restart it. With the compose stack, put the first three in `.env` and run `docker compose up -d`, with your `-f` options if you use [override files](one-machine.md#settings-and-override-files).
+
+| Setting | Image |
+| --- | --- |
+| `THERMITE_RIG_HARNESS_IMAGE` | The CPU harness |
+| `THERMITE_RIG_SUPERVISOR_IMAGE` | The supervisor. Control needs both of these to set rigs up |
+| `THERMITE_RIG_HARNESS_CUDA_IMAGE` | The CUDA harness, for GPU rigs |
+| `THERMITE_RUNPOD_TEST_IMAGE` | The CUDA harness, as RunPod test pods' default. `compose.yaml` does not pass this one to control: with the compose stack, set it in an override file ([example](one-machine.md#settings-and-override-files)) or type the image into the test form |
+
+```sh title=".env (part)"
+THERMITE_RIG_HARNESS_IMAGE=registry.example.com/thermite/thermite-harness:1a2b3c4d5e6f
+THERMITE_RIG_HARNESS_CUDA_IMAGE=registry.example.com/thermite/thermite-harness:1a2b3c4d5e6f-cuda
+THERMITE_RIG_SUPERVISOR_IMAGE=registry.example.com/thermite/thermite-supervisor:1a2b3c4d5e6f
+```
+
+**Rigs › Add a rig** now lists them under **Images**, and a new rig is set up from them. A GPU rig gets the CUDA harness.
+
+## What does not work yet
+
+- **Registry sign-in.** Control gives rigs no credentials for a private registry, so a machine's Podman, or a cluster's nodes, must pull the images without signing in.
+- **Moving a rig to new images.** A rig keeps the images it was set up with. Control can't upgrade it yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)): add a new rig from the new images.
+- **Versions reported by the images.** A rig's harness does not report which image it runs ([goal 010](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/010-published-images.goal)). For a rig control set up, its page shows the image names control used.
+
+To add your own tools to the harness, see [Extend the harness image](extend-harness-image.md).

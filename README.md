@@ -13,6 +13,8 @@ Point Thermite at a project and a goal: make a kernel faster without breaking it
 
 > **Status:** work is toward v0.1.0, the first public release. The judge, control, agents and supervision are built and pass their acceptance tests. See the [release plan](docs/plan/release-v0.1.0.md) and the [roadmap](docs/plan/roadmap.md).
 
+![The dashboard's page for one campaign: two runs on two rigs, a decision that waits for the owner, the champion's gains over time and what each lane works on now](docs/_site/src/assets/screenshots/campaign.webp)
+
 ## Why Thermite
 
 - **Agents propose; code judges.** An agent never grades its own work. It submits a change and a claim, and a judge it cannot modify measures the change. "The agent says it's faster" and "it is faster" stay separate.
@@ -20,7 +22,7 @@ Point Thermite at a project and a goal: make a kernel faster without breaking it
 - **No state lives in an agent.** Every agent call starts fresh, with context the harness builds from its record of what has been tried, measured and decided. A crashed or confused session loses nothing.
 - **Wide search, not early convergence.** Workers run in parallel without seeing each other's work. A stateless planner gives each one a different direction.
 - **Nothing useful is thrown away.** Each campaign builds on its best confirmed result, and keeps every losing attempt with its code and its verdict.
-- **People stay in charge.** Surprisingly large gains wait for an audit, and then for your approval. You can pause, redirect, reset and reassign any run from the dashboard, the API or an MCP client.
+- **People stay in charge.** Surprisingly large gains wait for an audit, and the largest also for your approval. You can pause, redirect, reset and reassign any run from the dashboard, the API or an MCP client.
 
 ## How a campaign runs
 

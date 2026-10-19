@@ -6,6 +6,141 @@ sidebar:
   order: 2
 ---
 
-:::note[Being written]
-This page is on the documentation plan and is being written.
-:::
+Send a [contract](../../reference/glossary.md) to a rig with `thermite assign`. Use this when you keep contracts in files, or script your campaigns.
+
+```sh
+npx thermite contract validate contract.json
+npx thermite assign --contract contract.json --run sort-speed-1 \
+  --seed https://git.example.com/you/project.git@0123456789abcdef0123456789abcdef01234567 \
+  --kit https://git.example.com/you/project-kit.git \
+  --control http://127.0.0.1:8800 --token-file .dev/secrets/control-admin-token --rig local-1
+```
+
+Run `npx thermite` in your Thermite folder, after `npm ci` and `npm run build` (see [the command line](../../reference/command-line.md)). The examples use the owner's token file of the local stack, `.dev/secrets/control-admin-token`. If you made an owner's token of your own, use its file instead. They also use the local stack's address, `http://127.0.0.1:8800`, and its rig `local-1`: for a control on another computer, use its address, such as `https://control.example.com`.
+
+## Before you start
+
+- A clone of Thermite with Node.js 22.19 or later. Thermite's images also have the command line, as `thermite`.
+- A contract file. See [Write a contract](write-a-contract.md).
+- For a hill climb or a goal campaign: the project and its [kit](../../reference/glossary.md) in git repositories the rig can fetch, and the kit's full commit in the contract's `project.kit`. See [Write a kit for your project](write-a-kit.md). The contract names the project only by a short name, `project.repo`; its address is given here, with `--seed`.
+- For a private project or kit: `thermite assign` has no option to name a [Git access](private-repository.md). See [If the repository is private](#if-the-repository-is-private).
+- The owner's token in a file. No other token works with these commands. See [Tokens and roles](../../reference/tokens.md).
+- A rig that reports to control. For agents to work, it needs a model: see [Connect a model provider](../models/connect-a-provider.md). If the model uses a paid key, put a limit in the contract first: see [Set a budget or a stop time](budget-and-stop-time.md).
+
+## 1. Validate the contract
+
+```sh
+npx thermite contract validate contract.json
+```
+
+A valid contract prints its mode, name, version and hash, such as `ok hill_climb sort-speed v1 sha256=5f0c…`. A hill climb or goal contract without `project.kit` also prints a warning that the judge can't measure it yet. A contract with mistakes prints each one as `<field>: <message>` and exits with status 1.
+
+## 2. Assign a run
+
+Run `thermite assign` as in the example at the top. Control signs the command and prints its id, such as `{"id":"3f6c1d2e-…","status":"pending"}`. The rig's [supervisor](../../reference/glossary.md) then fetches the two commits, and its [harness](../../reference/glossary.md), the rig's container that holds the judge and the agents, checks them and the kit before the run starts.
+
+| Option | What it does |
+| --- | --- |
+| `--contract F` | The contract file. Required |
+| `--run ID` | The new run's name: lowercase letters, digits, dots, dashes and underscores. It must be new on that rig. Required |
+| `--seed GIT_URL@COMMIT` | Where the project comes from, and the full commit to start from. Without `@COMMIT`, the contract's `project.commit`. The rig keeps the project under the contract's `project.repo` name |
+| `--seed-commit C` | Instead of `--seed`: a full commit already on the rig, such as an earlier run's champion |
+| `--kit GIT_URL` | Where the kit comes from. Its commit comes from the contract. Leave it out when the rig already has that kit commit |
+| `--model NAME=URL` | A [model file](../../reference/glossary.md) the contract lists under `models`: a data file your project loads, such as a model's weights, with the address to fetch it from. Only a file with the contract's sha256 reaches the harness. Repeat for each model |
+| `--agents off` | A run with no agents: only the judge works. See [Test a kit with known candidates](test-a-kit.md) |
+| `--promotion auto` or `owner` | `auto`: a confirmed win becomes the champion at once. `owner`: it waits for you. Unset: the rig's default |
+| `--control URL`, `--token-file F`, `--rig R` | Control's address, the owner's token file and the rig |
+| `--ttl MIN` | How long the command may wait to be delivered, in minutes: 60 unless set, at most 10080 |
+| `--print` | Print the payload instead of sending it |
+
+With neither `--seed` nor `--seed-commit`, the contract's `project.commit` must already be on the rig. A research campaign needs neither `--seed` nor `--kit`. The [command-line reference](../../reference/command-line.md#assign) has every option.
+
+## 3. Check that it started
+
+- On the dashboard, open **Commands** in the sidebar. The **assign campaign** row shows **delivered** once the harness took it, or **failed** with the reason: see [If it is refused](#if-it-is-refused).
+- Open **Campaigns**. The campaign shows once the rig reports its run, usually within a minute. Press **refresh** in the status bar, the line along the bottom of the page: pages don't reload by themselves.
+- From a script, ask control with the owner's token:
+
+  ```sh
+  curl -s -H "Authorization: Bearer $(cat .dev/secrets/control-admin-token)" \
+    http://127.0.0.1:8800/v1/commands/3f6c1d2e-…
+  ```
+
+  Its `status` is `pending`, `delivered`, `rejected`, `failed` or `expired`, and `outcome` holds the rig's answer.
+
+Assigning a run pauses the run that was running on that rig: a rig runs one run at a time. A campaign started this way has no **Start another run** card on the dashboard: assign each further run the same way.
+
+## Send it from an agent over MCP
+
+`--print` builds the payload without the control options:
+
+```sh
+npx thermite assign --contract contract.json --run sort-speed-1 \
+  --seed https://git.example.com/you/project.git@0123456789abcdef0123456789abcdef01234567 \
+  --kit https://git.example.com/you/project-kit.git --print
+```
+
+The agent sends it with the `issue_command` tool, kind `assign_campaign`, then polls `command_status` with the id. See [Let an agent run Thermite over MCP](../automate/agent-over-mcp.md).
+
+## Start it when the rig can't fetch
+
+Put the project and the kit in the rig's inbox yourself, as git bundles that hold the commits. This works for a private repository too. The inbox is `/inbox` in the rig's containers, and `.dev/inbox` in your Thermite folder on the local stack:
+
+```sh
+mkdir -p .dev/inbox/repos
+git -C ~/src/project bundle create "$PWD/.dev/inbox/repos/project.bundle" main
+git -C ~/src/project-kit bundle create "$PWD/.dev/inbox/repos/project-kit.bundle" main
+```
+
+For a rig elsewhere, make the bundles the same way, then copy them into its supervisor's container:
+
+```sh
+# A rig on a machine: on that machine, as the user the rig runs as
+podman exec thermite-rig-1-supervisor mkdir -p /inbox/repos
+podman cp project.bundle thermite-rig-1-supervisor:/inbox/repos/project.bundle
+
+# A rig on a Kubernetes cluster, in the rig's namespace
+POD=$(kubectl get pod -n <namespace> -o name \
+  -l app.kubernetes.io/instance=rig-1,app.kubernetes.io/component=supervisor | cut -d/ -f2)
+kubectl cp -n <namespace> project.bundle "$POD":/inbox/repos/project.bundle
+```
+
+Copy the kit's bundle the same way.
+
+Then `thermite assign-payload` names the bundles by their paths inside the inbox, and `thermite command` sends the payload. Use the contract's `project.repo` and `project.kit.repo` for `--seed-repo` and `--kit-repo`: the harness looks for the kit's commit under that name.
+
+```sh
+npx thermite assign-payload --contract contract.json --run sort-speed-1 \
+  --seed-repo project --seed-commit 0123456789abcdef0123456789abcdef01234567 --bundle repos/project.bundle \
+  --kit-repo project-kit --kit-commit 89abcdef0123456789abcdef0123456789abcdef \
+  --kit-bundle repos/project-kit.bundle > payload.json
+npx thermite command --control http://127.0.0.1:8800 --token-file .dev/secrets/control-admin-token \
+  --rig local-1 --kind assign_campaign --payload @payload.json
+```
+
+`assign-payload` has no `--promotion` option: such a run follows the rig's default.
+
+## If the repository is private
+
+`thermite assign` has no option to name a [Git access](private-repository.md): the **New campaign** page is the way made for it. From the command line, use one of:
+
+- the bundles above, which need no access on the rig;
+- a payload that names the Git access, sent with `thermite command`: see [Use a private repository](private-repository.md#from-the-command-line).
+
+## If it is refused
+
+The command line prints the first five; the others show on **Commands**.
+
+| You see | What to do |
+| --- | --- |
+| `give --control, --token-file and --rig to issue it, or --print to show it` | Add the three options, or `--print` |
+| `the seed commit must be a full commit id (40 or 64 hexadecimal characters)` | Give the whole commit after `@` |
+| `--kit given, but the contract names no project.kit` | Add `project.kit` to the contract |
+| `-> 401 {"error":"unauthorized"}` | Use the owner's token |
+| `bad assign_campaign payload: seed.repo: lowercase id` | Make the contract's `project.repo` a lowercase name, such as `my-project` |
+| `run <id> already exists` | Choose a new run name |
+| `contract <campaign> v<n> exists with other content` | You changed the contract: raise its `version` |
+| **pending**, then **expired** | The rig's supervisor is down, or a large fetch took longer than the command may wait: send it again with a longer `--ttl` |
+| **failed**, `staging: <address> has no commit <commit>`, or git's own error after `staging:` | The rig could not fetch the project or the kit. Check that the address works from the rig and that the commit is pushed there. For a private repository, see [If the repository is private](#if-the-repository-is-private). Then send the same command again: the run was never made |
+| **failed**, `the kit does not fit the contract: …` | The kit lacks a cell, metric or verifier the contract names, or measures on another target: each problem is named, such as `cells names cell large, which the kit does not have`. Correct the contract, or commit the kit again and put its new commit in `project.kit`. Then send it again, with a new `version` if this version already ran on the rig |
+| **failed**, `kit <repo> at <commit> has no valid kit.json: …` | Fix `kit.json` as the message says, commit it, and put the new commit in `project.kit`. See [Write a kit for your project](write-a-kit.md) |

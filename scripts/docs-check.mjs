@@ -108,11 +108,15 @@ function slugger() {
 }
 
 function headingText(markdown) {
-  return markdown
-    .replace(/`([^`]*)`/g, "$1")
-    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/[*_]/g, "")
-    .trim();
+  return (
+    markdown
+      .replace(/`([^`]*)`/g, "$1")
+      .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+      // Emphasis marks go; underscores inside words stay, as in Starlight's and GitHub's ids.
+      .replace(/\*+/g, "")
+      .replace(/(^|\s)_+|_+(\s|$)/g, "$1$2")
+      .trim()
+  );
 }
 
 const anchorsCache = new Map();
@@ -153,7 +157,7 @@ for (const page of pages) {
 
 function codeBlocks(text) {
   const blocks = [];
-  for (const match of text.matchAll(/^(\s*)```([^\n]*)\n([\s\S]*?)\n\1```/gm)) {
+  for (const match of text.matchAll(/^([ \t]*)```([^\n]*)\n([\s\S]*?)\n\1```/gm)) {
     const meta = match[2] ?? "";
     blocks.push({
       lang: meta.split(/\s/)[0] ?? "",
@@ -193,7 +197,8 @@ function checkCommandLine(page, text) {
   )) {
     const words = (match[1] ?? "").trim().split(/\s+/).filter(Boolean);
     const [first, second] = words;
-    if (!first || first.startsWith("<") || first === "...") continue;
+    // "thermite" can also be a name in a URL, a path or a git ref, not the command.
+    if (!first || first.startsWith("<") || first === "..." || /[/:.=(]/.test(first)) continue;
     const key = second && commands.has(`${first} ${second}`) ? `${first} ${second}` : first;
     if (!commands.has(key)) {
       const subs = [...commands.keys()].filter((name) => name.startsWith(`${first} `));

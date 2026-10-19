@@ -1,39 +1,118 @@
 ---
 title: "Glossary"
-description: "The words Thermite uses, in plain terms."
+description: "The words Thermite uses, each in a sentence or two, with the page that explains it."
 type: reference
 sidebar:
   order: 16
 ---
 
-Work is organized as **Campaign ▸ Run ▸ Lane ▸ Trial ▸ Attempt**. A campaign can have runs on several rigs, and a rig works on one run at a time. The dashboard follows the same order: campaigns first, then each run with its rig, lanes and attempts.
+Thermite's work is organized as **campaign › run › lane › trial › attempt**. A **campaign** says what to improve or achieve. A **run** is that campaign at work on one **rig**. Inside a run, each **lane** is one line of search, worked by a series of **trials**, and a trial may submit one change: an **attempt**. The **judge** gives every attempt a **verdict**. The dashboard follows the same order: campaigns first, then each run with its rig, lanes and attempts.
 
 | Term | Meaning |
 | --- | --- |
-| **Attempt** | One submitted change, preserved with its parent, diff, manifest and verdict |
-| **Audit** | A fresh-context review of a result before promotion: a surprisingly large gain, a change with declared flaws, or a goal campaign's adversarial checklist. It can hold a result back but never pass one |
-| **Campaign** | A mission with a versioned contract, a budget and a champion lineage. It runs in one of three modes |
-| **Champion** | The current accepted best in a run. Only confirmed results move it |
-| **Contract** | The versioned definition of what a campaign optimizes, guards, verifies or researches, and how it is judged |
-| **Control** | The central service with the dashboard, API, MCP and command queues |
-| **Cross-verified** | A result that another rig's judge has re-measured and accepted |
-| **Development run** | An agent's own run on the device, for testing and profiling. Never counted |
-| **Directive** | A recorded steering instruction, with citations: avoid, try, require, priorities, lane count, a note for the planner. It cannot change verdicts. Each epoch records which directives steered it |
-| **Fork round** | A scheduled point (a third and two thirds of the budget) where every lane starts again from the champion |
-| **Guard** | A metric that must not get worse while the primary metric improves |
-| **Harness** | The rig's research container: ledger, judge, planner, workers, executors |
-| **Judge** | The code that measures, decides verdicts and promotes. Agents cannot modify it |
-| **Kit** | A project's judge-side recipe for building, running, timing and checking candidates, with its references and hidden checks. Pinned by commit; agents never see it. See [Kits](../explanation/kits.md) |
-| **Lane** | One worker's line of search inside a run, with its own best candidate |
-| **Live view** | The dashboard's view of a rig's agent sessions and judge as they work. The owner can message everyone working, a lane, a worker, the planner or the advisors from it, and see who read each message; the judge takes no messages |
-| **Ledger** | The harness's authoritative record of everything that happened |
-| **Mode** | Hill climb, goal or research |
-| **Planner** | A stateless model call each epoch that assigns lanes their directions |
-| **Receipt** | A write-once record that pins what ran and under what conditions |
-| **Review panel** | Models that review a subjective goal blind, against its criteria. Their pass still needs the owner's acceptance |
-| **Rig** | One harness container plus one supervisor container, with its target. It works on one run at a time |
-| **Run** | A campaign running on one rig from a given starting point. Starting a run on a rig pauses the rig's other runs |
-| **Supervisor** | The rig's container for reporting, git, data, teaching, audits and command relay |
-| **Target** | What a campaign measures on (a GPU, a CPU set, a board), reached through a driver |
-| **Trial** | One worker session on a lane, started from fresh context. It may submit attempts |
-| **Verdict** | The judge's decision on an attempt, such as confirmed win, neutral, regression, trade-off or invalid |
+| **Advisor** | One of the models the supervisor runs to watch over the research: the teachers, the combiner, the auditor and the review panel. Advisors are off until you configure them: an advisor runs only when it has a model, from the advisors file or **Edit rig**. Its switch on **Edit rig** is on by default, but a switch alone runs nothing. See [Supervision](../explanation/supervision.md) and the [advisors file](advisors-file.md) |
+| **Agent** | An AI model at work inside a rig: a worker, the planner or an advisor. Agents propose; they never judge. See [Agents, lanes and the planner](../explanation/agents-lanes-planner.md) |
+| **Agent token** | A token for a coordinating agent over MCP: it may read and steer, but not message agents or approve anything. See [Tokens and roles](tokens.md) |
+| **Approach family** | A named direction of work, such as `loop-tiling`, that the planner assigns to lanes and that directives name. The planner makes up new ones as it plans; a directive may name a new one too, and the planner reads the directive's reasons to learn what it means. A name is 2 to 41 lowercase letters, digits and dashes. A family becomes *exhausted* when a "not possible" proposal counts it as refuted. See [Agents, lanes and the planner](../explanation/agents-lanes-planner.md#the-planner) |
+| **Attempt** | One submitted change. Thermite keeps every attempt with its parent, its change, its record and its verdict, even one that loses. See [Verdicts and states](verdicts.md) |
+| **Audit** | A second look at a result before it can become the champion: for a surprisingly large gain, a change whose agent declared flaws, or a goal campaign whose contract has an adversarial checklist. An audit can hold a result back, never pass one. See [Decide what waits for you](../how-to/campaigns/decide-what-waits.md#audits) |
+| **Auditor** | The advisor that answers audits: it clears a result, blocks it, or leaves it to the owner. Without one, audits wait for the owner. See [Supervision](../explanation/supervision.md#the-auditor) |
+| **Back-pressure** | Limits that hold new work until earlier work settles, such as at most 4 open attempts in a run. Work waits; nothing ends. See [Limits and pacing](limits-and-pacing.md#back-pressure) |
+| **Block** | One round of timing: every case runs for the change and for the champion, in a random order, on the same device. The judge decides from many blocks. See [Why agents never judge](../explanation/why-agents-never-judge.md) |
+| **Broker** | The part of the harness that runs as root and starts every build, run and agent command as its own user. See [Isolation inside a rig](../explanation/isolation.md) |
+| **Budget** | A cap a contract may set: wall-clock hours, device hours or model spending. None is set by default; when one is spent, the run is paused. See [Set a budget or a stop time](../how-to/campaigns/budget-and-stop-time.md) |
+| **Calibration** | The judge times the champion against itself (an A/A test) to learn how noisy the device is. A hill climb's later decisions never assume less noise than this. See [Limits and pacing](limits-and-pacing.md#the-judge) |
+| **Campaign** | One piece of research: what to improve or achieve, and how to judge it, set out in its contract. It runs in one of three modes. See [Campaign modes](../explanation/campaign-modes.md) |
+| **Cap** | A limit that can stop a campaign's agent work, such as a budget. Caps are off unless someone sets them. See [Limits and pacing](limits-and-pacing.md#caps) |
+| **Case** | The dashboard's word for a **cell**: one test case of the kit, such as one input size. The **New campaign** page lists them under **Test cases**. See [Kit manifest](kit-manifest.md) |
+| **CDI** | The Container Device Interface: a file that tells Podman which device files make up each GPU. NVIDIA's container toolkit writes it, and rigs on machines get their GPUs through it. See [Compatibility](compatibility.md) |
+| **Cell** | One test case the kit can measure, such as a matrix of a given size: a name and its parameters under `cells` in `kit.json`. The contract picks the cells a campaign is judged on, and the dashboard calls them **cases**. See [Kit manifest](kit-manifest.md) |
+| **Champion** | A run's best confirmed result so far. It starts as the seed (champion #1), and only the judge's confirmed verdicts replace it, each with the next number, so the first improvement is champion #2. See [How a change becomes the champion](../explanation/why-agents-never-judge.md#how-a-change-becomes-the-champion) |
+| **Champion patch** | A champion as a git patch against the seed, which you can download and apply to your project. See [Take the result](../how-to/campaigns/take-the-result.md) |
+| **Check (kit's)** | The kit's program that reads one run's output and says whether it passed, for example that the result is correct. It runs as part of the judge. In `kit.json`, a run passes only when the check's last line is a JSON object with `"pass": true`; a check described on the **New campaign** page passes when it exits 0. See [Kit manifest](kit-manifest.md#check-output) |
+| **Claim** | In a research campaign, a statement backed by exact quotes from sources the harness fetched. It counts as verified only when every quote is found word for word and every number in it appears in its quotes. See [Campaign modes](../explanation/campaign-modes.md#research) |
+| **Combiner** | The advisor that merges the two teachers' reviews into one set of directives. See [Supervision](../explanation/supervision.md#the-teacher-pair-and-the-combiner) |
+| **Confirmation** | The judge's second measurement of a change that looked better: fresh blocks, decided on that new data alone, plus the held-out cells. See [How a change becomes the champion](../explanation/why-agents-never-judge.md#how-a-change-becomes-the-champion) |
+| **Contract** | The file that says what a campaign must achieve and how it is judged: its mode, metrics or goals, editable paths, cases and limits. Each change gets a new version number. See [Contract](contract.md) and [Write a contract](../how-to/campaigns/write-a-contract.md) |
+| **Control** | The one central service that shows and steers every rig: the dashboard, the REST API, MCP and the command queues. See [How the parts fit together](../explanation/how-it-fits-together.md) |
+| **Cross-verified** | A champion that another rig's own judge measured and promoted, after it was sent there by propagation. See [Run a campaign on several rigs](../how-to/campaigns/several-rigs.md) |
+| **Development run** | An agent's own run of a command on the measuring device, to test or profile its change. It never counts as a result. See [Sharing a device](../explanation/sharing-a-device.md) |
+| **Device** | What a rig measures on: a GPU, or the rig's CPUs. A rig with several GPUs can give some to the judge and some to the agents. See [Sharing a device](../explanation/sharing-a-device.md) |
+| **Direction** | Another word for an approach family: the line of work the planner gives a lane for one epoch, such as `loop-tiling`. See [The planner](../explanation/agents-lanes-planner.md#the-planner) |
+| **Directive** | A recorded instruction that steers the planner, with its reasons and sources; it never changes a verdict. Its kinds are `avoid`, `try`, `mandate` (shown as **always assign** on the dashboard), `priority`, `lane_count` and `note`. See [Steer a run](../how-to/campaigns/steer-a-run.md) |
+| **DRA** | Dynamic Resource Allocation: a Kubernetes way to give pods devices, such as GPUs, through a device class like `gpu.nvidia.com`. A cluster rig gets its GPUs through DRA or through NVIDIA's device plugin. See [Add a rig on a Kubernetes cluster](../how-to/install/rig-on-a-cluster.md) |
+| **Duplicate** | An attempt that makes the same change as an earlier attempt of its run. It is kept but not judged again. See [Verdicts and states](verdicts.md#attempt-states) |
+| **Epoch** | One round of planning: the planner gives each lane a direction, and each lane runs its trials. See [Agents, lanes and the planner](../explanation/agents-lanes-planner.md) |
+| **Every detail** | The folded part of the **What it runs on** block on a rig's page. Open it for the rig's full hardware: each device with what uses it (**Used by**), and the CPUs, memory, disks and toolchain. See [Give a rig several GPUs](../how-to/install/several-gpus.md) |
+| **Export** | A bundle the harness writes every hour when anything new happened: new events, attempts, champion patches and a snapshot of the ledger. The supervisor pushes it to the results repository. See [Set up the results repository](../how-to/operate/results-repository.md#what-gets-pushed) |
+| **Fork round** | A point where every lane starts again from the champion. With a `budget.wall_hours`, at one third and two thirds of it; without one, every 20 epochs. See [Lane bests and fork rounds](../explanation/agents-lanes-planner.md#lane-bests-and-fork-rounds) |
+| **Full reset** | Wiping a rig's state after its results are safely exported, with the owner's confirmation. See [Stop, restart, remove or reset a rig](../how-to/operate/rig-lifecycle.md) |
+| **Gate** | The first step of judging a change in a hill climb: each case runs once, and the change must pass the kit's check. See [Verdicts and states](verdicts.md#attempt-states) |
+| **Goal** | In a goal campaign, one thing the result must achieve. A goal is checked by the kit's code, by a measured threshold, or by a review panel. See [Contract](contract.md#goal) |
+| **Goal campaign** | A campaign that works until its goals are met. See [Campaign modes](../explanation/campaign-modes.md) |
+| **GPU fence** | The broker's use of the Linux kernel's Landlock feature to stop each role from opening GPUs it may not use. See [Isolation inside a rig](../explanation/isolation.md#gpus-device-groups-and-the-fence) |
+| **Guard** | A metric that must not get worse while the main metric improves. See [Contract](contract.md) |
+| **Hard constraint** | A limit a change must meet, such as a metric's minimum. A change that breaks one is `infeasible`. See [Contract](contract.md#hill-climb) |
+| **Harness** | One of a rig's two containers: it holds the ledger, the judge, the planner, the workers and the broker. It is not the **worker harness**, the program a worker runs in. See [Harness image](harness-image.md) |
+| **Held-out cell** | A case the judge runs only at confirmation, never while screening, so no agent can tune a change to it. Its results never reach the agents. See [Hidden test cases](../explanation/kits.md#hidden-test-cases) |
+| **Hill climb** | A campaign that keeps improving a metric. It never ends on its own. See [Campaign modes](../explanation/campaign-modes.md) |
+| **Inbox and outbox** | Folders a rig's two containers share. The supervisor puts what it fetched in the inbox; the harness writes its exports to the outbox. See [Ports, volumes and secret files](ports-volumes-secrets.md) |
+| **Join command** | A one-time command you run on a machine or cluster to add a rig where control cannot connect. It works once, within an hour. See [Join a rig yourself](../how-to/install/join-a-rig.md) |
+| **Judge** | Code in the harness that builds, measures and checks every change and gives its verdict. Agents can neither read nor change it. See [Why agents never judge](../explanation/why-agents-never-judge.md) |
+| **Kit** | A project's recipe for the judge: how to build, run, time and check it, with its cases and hidden checks. It lives in its own repository, pinned by commit, and agents never see it. See [Why the benchmark lives in a kit](../explanation/kits.md) |
+| **Knowledge base** | A search service over your own notes or documents, reached over MCP, that a rig's teachers may search, read only. The `kb` field of the advisors file sets it up; without it there is none. See [Advisors file](advisors-file.md) |
+| **Lane** | One line of search inside a run, worked by one trial after another. Each lane has its own user and its own best result. See [Agents, lanes and the planner](../explanation/agents-lanes-planner.md) |
+| **Lane best** | A lane's own best win, measured against the current champion, that has not become the champion. The planner can tell a lane to build on it. See [Lane bests and fork rounds](../explanation/agents-lanes-planner.md#lane-bests-and-fork-rounds) |
+| **Ledger** | The harness's record of everything that happened on a rig: attempts, verdicts, champions, events. Every other view, such as the dashboard, is built from it. See [How the parts fit together](../explanation/how-it-fits-together.md) |
+| **Live** (a rig's status) | The green chip a rig shows on **Rigs** when it has reported within the last 180 seconds, by default. Otherwise the chip says **Not reporting**, or **Key to accept** while its key waits for the owner. See [Check a rig](../how-to/operate/check-a-rig.md) |
+| **Live** (the sidebar page) | The dashboard page that lists every rig with its live sessions. Open a rig there to see its live view. See [Steer a run](../how-to/campaigns/steer-a-run.md#send-the-agents-a-message) |
+| **Live view** | The dashboard's view of a rig's agents, judge and advisors as they work, which adds new lines by itself. Open it from **Live** in the sidebar, or with the **Live** button on a rig's page or beside a run. From it the owner can message a lane, a trial, the planner or the advisors; the judge takes no messages. See [Steer a run](../how-to/campaigns/steer-a-run.md#send-the-agents-a-message) |
+| **Machine** | A Linux computer with Podman that control can reach over SSH and set rigs up on. See [Add a rig on a machine over SSH](../how-to/install/rig-on-a-machine.md) |
+| **Mode** | The kind of campaign: hill climb, goal or research. See [Campaign modes](../explanation/campaign-modes.md) |
+| **Model file** | A data file your project loads that is not in its repository, such as a machine-learning model's weights. The contract lists each by name and SHA-256 under `models`, and the kit reaches it as `{models:<sha256>}`; it is not the AI model the agents use. See [Contract](contract.md) |
+| **Model route** | Where a rig's agents reach their model: the provider, the model, its key and the worker harness. Control gives it to the rig; without one, the rig's own settings can name a model. See [Connect a model provider](../how-to/models/connect-a-provider.md) |
+| **Needs you** | The dashboard's list of everything that waits for the owner: promotions, audits, reviews, "not possible" proposals, rig keys, wipes, and rigs that stopped reporting. It is on **Overview**, and its count shows beside **Overview** in the sidebar and in the status bar. See [Decide what waits for you](../how-to/campaigns/decide-what-waits.md) |
+| **"Not possible"** | In a goal campaign, a proposal that the goals cannot be met, made when enough approach families were tried and refuted. Only the owner can accept it, which closes the run. See [Decide what waits for you](../how-to/campaigns/decide-what-waits.md#not-possible-endings) |
+| **Operator token** | A token for an agent that runs campaigns for you over MCP: it may read, steer and message agents, but never approve. See [Tokens and roles](tokens.md) |
+| **Overview** | The first page in the dashboard's sidebar: the tallies, **Needs you**, **At work** and **What happened**. A run also has an **Overview** view, the first of its four views (**Overview**, **Attempts**, **History**, **Steering**) on its campaign's page. See [Your first run](../tutorials/first-run.md#4-sign-in) |
+| **Owner** | The person who holds the owner's token. Only the owner signs in to the dashboard and approves promotions, reviews and endings. See [Tokens and roles](tokens.md) |
+| **Pacing** | Limits that space work out, such as a trial's length or a wait after errors. Pacing never ends research. See [Limits and pacing](limits-and-pacing.md#pacing) |
+| **Planner** | A model call at the start of each epoch, with no memory of its own, that gives each lane its direction. Research campaigns are planned by fixed rules instead. See [The planner](../explanation/agents-lanes-planner.md#the-planner) |
+| **Promotion** | A change becoming the champion. The **promotion policy** says whether a confirmed win promotes at once (`auto`) or waits for the owner (`owner_approval`). See [Decide what waits for you](../how-to/campaigns/decide-what-waits.md#promotions) |
+| **Propagation** | Sending one rig's champion to another rig's run of the same campaign, where that rig's own judge measures it as an ordinary attempt. See [Run a campaign on several rigs](../how-to/campaigns/several-rigs.md) |
+| **Proposer** | A person or script that submits changes to a rig by hand, with the proposer token and `thermite submit`. See [Test a kit with known candidates](../how-to/campaigns/test-a-kit.md) |
+| **Provider** | Something Thermite uses, added once on the dashboard's **Providers** page: a model provider or subscription, a Git access, a machine, a cluster or a GPU cloud. See [Connect a model provider](../how-to/models/connect-a-provider.md) |
+| **Reader token** | A read-only token, for MCP and for scraping `/metrics`. See [Tokens and roles](tokens.md) |
+| **Receipt** | A record, written once, of what ran and under what conditions: one for each timed block, kept in the ledger. See [Why agents never judge](../explanation/why-agents-never-judge.md) |
+| **Research campaign** | A campaign that gathers sources and verified claims on a topic for a set time. See [Campaign modes](../explanation/campaign-modes.md) |
+| **Results repository** | A git repository where rigs push their exports. See [Set up the results repository](../how-to/operate/results-repository.md) |
+| **Review panel** | The advisors that review a subjective goal without seeing who made the change: two to five in the advisors file, or three with one model when chosen on **Edit rig**. A pass still needs the owner's acceptance. See [Supervision](../explanation/supervision.md#the-review-panel) |
+| **Rig** | Where the research happens: a harness container and a supervisor container, with the device they measure on. A rig works on one run at a time. See [Kits and rigs, side by side](../explanation/kits-and-rigs.md) |
+| **Rig check** | A test a rig runs on itself: model route, isolation or smoke. See [Rig checks](rig-checks.md) |
+| **Rig key** | The key a rig's harness signs its reports with. Control trusts it on first contact, or waits for the owner to accept it. See [Accept a rig's key](../how-to/operate/accept-a-rig-key.md) |
+| **Rig token** | The token a rig's supervisor uses with control, for its own rig only. See [Tokens and roles](tokens.md) |
+| **Role user** | The operating-system user each kind of work runs as inside the harness: `builder`, `run`, `lane-N`, `agent-N` and others. See [Harness image](harness-image.md#users-and-groups) |
+| **Run** | A campaign at work on one rig, from a starting commit. A run is running, paused or closed; starting a run on a rig pauses the rig's other runs. See [Verdicts and states](verdicts.md#run-states) |
+| **RunPod test pod** | A short test, paid by the hour, that starts the CUDA harness image on a RunPod GPU to see whether a rig could run there. See [Test a GPU on RunPod](../how-to/install/runpod-test.md) |
+| **Screen** | The judge's first timing of a change against the champion, in blocks, decided at set points. See [Verdicts and states](verdicts.md#hill-climb) |
+| **Seed** | The commit a run starts from. It is champion #1, and the champion patch applies to it. See [Take the result](../how-to/campaigns/take-the-result.md) |
+| **Sidebar** | The column on the left of every dashboard page: **Overview**, **Campaigns**, **Rigs**, **Live**, **Commands**, **Reports** and **Audit log**, with **Settings** (the cog) and **Sign out** at its foot. See [Your first run](../tutorials/first-run.md#4-sign-in) |
+| **Signed command** | An instruction from control to a rig, such as assigning or pausing a run, signed with control's key so the rig can check it. See [Signed commands](signed-commands.md) |
+| **Slot** | A Kubernetes namespace the cluster's operators made for Thermite, where control may set one rig up. See [Add a rig on a Kubernetes cluster](../how-to/install/rig-on-a-cluster.md) |
+| **Smoke check** | The rig check that runs known changes through the judge and expects each one's known verdict. See [Rig checks](rig-checks.md#smoke-check) |
+| **Stale** | A rig that has not reported for 180 seconds, by default. **Rigs** shows it as **Not reporting**, and the status bar counts it as stale. See [Troubleshoot](../how-to/operate/troubleshoot.md) |
+| **Static checks** | Checks made before a change is built: only editable paths, no forbidden patterns, no binary files, links or submodules. A change that fails is `rejected_v0`. See [Verdicts and states](verdicts.md#attempt-states) |
+| **Status bar** | The line along the bottom of every dashboard page: the rigs and how many are stale, **Needs you**, the runs at work and the judge's jobs. Pages never reload by themselves: its **refresh** link loads the page again. See [Check a rig](../how-to/operate/check-a-rig.md) |
+| **Supervisor** | A rig's second container, its link to the outside: it relays reports, commands and the live view to and from control, hands the harness its model route, does all git work, and runs the advisors. See [Supervision](../explanation/supervision.md) |
+| **Target** | What a rig measures on, reached through a driver: `cpu` or `cuda-gpu` in this version. A kit names the target it needs. See [Kits and rigs, side by side](../explanation/kits-and-rigs.md) |
+| **Teacher** | One of up to two advisors that review a run, every hour by default, and recommend directives with their sources. See [Supervision](../explanation/supervision.md#the-teacher-pair-and-the-combiner) |
+| **Token** | A long random string that identifies a person, an agent or a rig to control or to a harness. See [Tokens and roles](tokens.md) |
+| **Trial** | One worker's session in a lane, started from fresh context. It submits at most one attempt, and ends when it submits, when its time runs out, or when it stops. Not the same as a try of a kit. See [One trial](../explanation/agents-lanes-planner.md#one-trial) |
+| **Try** (of a kit) | A judge-only run with no agents, started with **Try the kit first** on the **New campaign** page, or with `thermite assign --agents off`: the judge builds the starting point and measures it, so you see the kit work before agents start. A hill climb's try times the starting point against itself on the visible cases; hidden cases are not run. See [Start a campaign from the dashboard](../how-to/campaigns/start-from-dashboard.md) |
+| **Verdict** | The judge's decision on an attempt, such as `win_confirmed`, `neutral`, `regress` or `invalid`. See [Verdicts and states](verdicts.md) |
+| **Worker** | The agent that works one trial in a lane: it reads and edits the project, builds and tests, and submits a change. See [One trial](../explanation/agents-lanes-planner.md#one-trial) |
+| **Worker harness** | The program a rig's workers run in, which gives the model its tools: Pi (built into the harness), OpenCode v2 or Claude Code. It is chosen in the **Runs in** column of **Edit rig**, or with `THERMITE_AGENT_HARNESS` for a rig that keeps its own model. See [Give each agent its own model](../how-to/models/model-per-agent.md) |
+
+## Older names
+
+Before 2026-10-15 a rig was called a **unit**, and a run an **instance**. Older ledgers and command-line flags with those names are still read under the new names.

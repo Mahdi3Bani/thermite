@@ -35,7 +35,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [003](goals/003-advisors-no-default-cap.goal) No default spend limit for advisors · `VERIFIED`
 - [004](goals/004-secret-scan.goal) Scan the history for secrets · `READY`
 - [005](goals/005-sample-project.goal) A sample project in `examples/` · `READY`
-- [060](goals/060-docs-site.goal) The documentation site · `IN_PROGRESS`
+- [060](goals/060-docs-site.goal) The documentation site · `VERIFIED`
 - [006](goals/006-docs-for-testers.goal) Docs for testers · `DROPPED`, merged into 060
 - [007](goals/007-known-limits.goal) Known limits and the security model · `READY`
 - [008](goals/008-community-files.goal) Community files and contributor docs · `READY`
@@ -86,6 +86,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [029](goals/029-api-mcp-coverage.goal) Full API and MCP coverage · `PROPOSED`
 - [030](goals/030-oauth-sign-in.goal) Sign in with OAuth or OIDC · `PROPOSED`
 - [031](goals/031-design-docs.goal) The design reasons, in public docs · `PROPOSED`
+- [061](goals/061-gaps-found-by-the-docs.goal) Gaps found by the docs work · `PROPOSED`
 
 ## v0.3.0
 
