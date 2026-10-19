@@ -47,7 +47,8 @@ The RunPod rig's design depends on these answers.
 ## Progress
 
 - 2026-10-19: Goal written from the v0.1.0 release plan.
-- 2026-10-19: Test pods start from Providers, REST and MCP. The spike run itself is next.
+- 2026-10-19: Test pods start from Providers, REST and MCP (`9041644`). The spike run itself is next.
+- 2026-10-19: The spike waits for two things: the maintainers' control to run a version with test pods (requested), and the harness image package to be public, so a pod can pull it.
 
 ---
 

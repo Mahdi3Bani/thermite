@@ -38,7 +38,7 @@ Rigs on machines, on clusters and on RunPod pull images. Building from source ta
 ## Progress
 
 - 2026-10-19: Goal written from the v0.1.0 release plan.
-- 2026-10-19: A CUDA harness image is on GHCR, private for now. The release workflow is not written yet.
+- 2026-10-19: A CUDA harness image (CUDA 12.6.3, built from `9041644`) was pushed to GHCR by hand. It stays private until the owner makes the package public. There is no release workflow and no release bundle yet.
 
 ---
 
