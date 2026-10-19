@@ -6,6 +6,7 @@ import { log, redact } from "../common/env.ts";
 import { sha256Hex } from "../core/canonical.ts";
 import { COMMAND_KINDS, type CommandKind, reportBody, verifyJson } from "../core/commands.ts";
 import { LiveBatch, LiveEntry, liveBody } from "../core/live.ts";
+import type { ControlActions } from "./actions.ts";
 import { CHATGPT_API, ChatGPTLogins } from "./chatgpt.ts";
 import type { ClusterKubectl } from "./clusters/kubectl.ts";
 import { Credential, newToken } from "./credential.ts";
@@ -212,6 +213,8 @@ export function createControlApi(
   const secrets = opts.secrets ?? SecretBox.ephemeral();
   // ChatGPT subscriptions' logins: control alone renews them (the dashboard signs them in).
   const chatgpt = new ChatGPTLogins(store, secrets, opts.providerFetch);
+  // Filled in by the dashboard, offered by MCP too.
+  const actions: ControlActions = {};
   const runpodTests =
     opts.runpodTests ??
     new RunpodTests(store, secrets, { fetch: opts.cloudFetch, image: opts.runpodTestImage });
@@ -870,6 +873,7 @@ export function createControlApi(
       clusterKubectl: opts.clusterKubectl,
       cloudFetch: opts.cloudFetch,
       runpodTests,
+      actions,
     }),
   );
   app.get("/", (c) => c.redirect("/ui", 302));
@@ -881,6 +885,7 @@ export function createControlApi(
     privateKeyPem,
     staleAfterMs: opts.staleAfterMs,
     runpodTests,
+    actions,
   });
 
   return app;

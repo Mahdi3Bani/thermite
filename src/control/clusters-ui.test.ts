@@ -12,7 +12,15 @@ const KUBECONFIG =
   "apiVersion: v1\nkind: Config\nusers: [{ name: u, user: { token: secret-kube-token-789 } }]\n";
 
 /** A cluster behind a fake kubectl: what it answers, and every call it got. */
-function fakeCluster(o: { canCreateNamespaces?: boolean; slots?: Record<string, boolean> } = {}) {
+function fakeCluster(
+  o: {
+    canCreateNamespaces?: boolean;
+    slots?: Record<string, boolean>;
+    /** Slots whose operators wrote the network rule (default: thermite-slot-1). */
+    ruled?: string[];
+    quota?: Record<string, Record<string, string>>;
+  } = {},
+) {
   const calls: { args: string[]; stdin?: string }[] = [];
   const ok = (stdout: string) => ({ code: 0, stdout, stderr: "" });
   const k: ClusterKubectl = {
@@ -78,36 +86,40 @@ function fakeCluster(o: { canCreateNamespaces?: boolean; slots?: Record<string, 
       const slot = /^auth can-i create deployments -n (\S+)$/.exec(a);
       if (slot) return ok(o.slots?.[slot[1] as string] ? "yes\n" : "no\n");
       if (args[0] === "get" && args[1] === "deployments") return ok("");
+      const rq = /^get resourcequota -n (\S+) -o json$/.exec(a);
+      if (rq) {
+        const hard = o.quota?.[rq[1] as string];
+        return ok(JSON.stringify({ items: hard ? [{ status: { hard } }] : [] }));
+      }
       // The operators' network rule in slot 1: DNS and the internet without private ranges.
       const np = /^get networkpolicy -n (\S+) -o json$/.exec(a);
       if (np)
         return ok(
           JSON.stringify({
-            items:
-              np[1] === "thermite-slot-1"
-                ? [
-                    {
-                      metadata: { name: "thermite-harness" },
-                      spec: {
-                        podSelector: { matchLabels: { "app.kubernetes.io/component": "harness" } },
-                        policyTypes: ["Egress"],
-                        egress: [
-                          { ports: [{ port: 53, protocol: "UDP" }] },
-                          {
-                            to: [
-                              {
-                                ipBlock: {
-                                  cidr: "0.0.0.0/0",
-                                  except: PRIVATE_RANGES,
-                                },
+            items: (o.ruled ?? ["thermite-slot-1"]).includes(np[1] as string)
+              ? [
+                  {
+                    metadata: { name: "thermite-harness" },
+                    spec: {
+                      podSelector: { matchLabels: { "app.kubernetes.io/component": "harness" } },
+                      policyTypes: ["Egress"],
+                      egress: [
+                        { ports: [{ port: 53, protocol: "UDP" }] },
+                        {
+                          to: [
+                            {
+                              ipBlock: {
+                                cidr: "0.0.0.0/0",
+                                except: PRIVATE_RANGES,
                               },
-                            ],
-                          },
-                        ],
-                      },
+                            },
+                          ],
+                        },
+                      ],
                     },
-                  ]
-                : [],
+                  },
+                ]
+              : [],
           }),
         );
       return ok("");
@@ -327,5 +339,139 @@ describe("clusters in Providers and Add a rig", () => {
           .startsWith("delete deployment,service,persistentvolumeclaim,secret -n thermite-slot-1"),
       ),
     );
+  });
+
+  test("CPU slots: the quota sets the rig's CPUs and memory; slots added later; a rig added over MCP", async () => {
+    const quota = { "limits.cpu": "6", "limits.memory": "24Gi", "requests.storage": "200Gi" };
+    const f = fakeCluster({
+      canCreateNamespaces: false,
+      slots: { "thermite-slot-2": true, "thermite-slot-3": true },
+      ruled: ["thermite-slot-2", "thermite-slot-3"],
+      quota: { "thermite-slot-2": quota, "thermite-slot-3": quota },
+    });
+    const store = new ControlStore(":memory:");
+    const api = createControlApi(
+      store,
+      { admin: ADMIN, operator: "operator-token-abcdef", rigs: {} },
+      generateSigningKeys().privateKeyPem,
+      {
+        staleAfterMs: 180_000,
+        secrets: SecretBox.ephemeral(),
+        clusterKubectl: f.k,
+        publicUrl: "https://control.example.com",
+        rigImages: {
+          harness: "registry.example.com/harness:1",
+          harnessCuda: "registry.example.com/harness-cuda:1",
+          supervisor: "registry.example.com/supervisor:1",
+        },
+      },
+    );
+    const login = await api.request("/ui/login", {
+      method: "POST",
+      body: new URLSearchParams({ token: ADMIN }),
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+    });
+    const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
+    const page = async (path: string) => (await api.request(path, { headers: { cookie } })).text();
+    const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(await page("/ui/settings"))?.[1] ?? "";
+    const post = async (path: string, form: Record<string, string>) =>
+      decodeURIComponent(
+        String(
+          (
+            await api.request(path, {
+              method: "POST",
+              body: new URLSearchParams({ csrf, ...form }),
+              headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+            })
+          ).headers.get("location"),
+        ),
+      );
+    await post("/ui/settings/add", {
+      type: "k8s",
+      name: "lab",
+      kubeconfig: KUBECONFIG,
+      placement: "slot",
+      slots: "thermite-slot-2",
+    });
+    // A slot added later, from the cluster's row: read again with its rules and quota.
+    assert.match(
+      await post("/ui/settings/clusters/lab/slots", { slots: "thermite-slot-2, thermite-slot-3" }),
+      /"lab" now has 2 slots, read again/,
+    );
+    const add = await page("/ui/rigs/add");
+    assert.match(add, /name="k_cpus__lab" inputmode="decimal" value="6"/);
+    assert.match(add, /name="k_mem__lab" inputmode="decimal" value="24"/);
+    assert.match(add, /name="k_size__lab" value="200"/);
+
+    // Over MCP, as an operator: a rig in each slot, sized by the quota.
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+    const { StreamableHTTPClientTransport } = await import(
+      "@modelcontextprotocol/sdk/client/streamableHttp.js"
+    );
+    const client = new Client({ name: "t", version: "1.0.0" });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL("http://control/mcp"), {
+        fetch: async (input, init) => {
+          const url = new URL(String(input));
+          const headers = new Headers(init?.headers);
+          headers.set("authorization", "Bearer operator-token-abcdef");
+          return api.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
+        },
+      }),
+    );
+    const call = async (name: string, args: Record<string, unknown>) => {
+      const r = (await client.callTool({ name, arguments: args })) as {
+        isError?: boolean;
+        content: { text: string }[];
+      };
+      return { error: r.isError === true, body: JSON.parse(r.content[0]?.text ?? "null") };
+    };
+    const tooBig = await call("add_cluster_rig", {
+      rig: "cpu-2",
+      cluster: "lab",
+      slot: "thermite-slot-2",
+      cpus: 8,
+      memory_gib: 24,
+    });
+    assert.ok(tooBig.error);
+    assert.match(String(tooBig.body.error), /The slot thermite-slot-2 allows 6 CPUs/);
+    const added = await call("add_cluster_rig", {
+      rig: "cpu-2",
+      cluster: "lab",
+      slot: "thermite-slot-2",
+    });
+    assert.deepEqual(added, { error: false, body: { rig: "cpu-2", status: "deploying" } });
+    await new Promise((r) => setTimeout(r, 20));
+    const list = JSON.parse(f.calls.find((c) => c.args[0] === "apply")?.stdin ?? "{}") as {
+      items: {
+        kind: string;
+        metadata: { name: string };
+        spec?: {
+          template?: {
+            spec?: {
+              containers: { name: string; resources?: unknown }[];
+              initContainers: { resources?: unknown }[];
+            };
+          };
+        };
+      }[];
+    };
+    const pods = list.items.filter((o) => o.kind === "Deployment");
+    const res = (name: string) =>
+      pods.flatMap((d) => d.spec?.template?.spec?.containers ?? []).find((c) => c.name === name)
+        ?.resources;
+    const both = (cpu: string, memory: string) => ({
+      requests: { cpu, memory },
+      limits: { cpu, memory },
+    });
+    assert.deepEqual(res("harness"), both("5500m", "22528Mi"));
+    assert.deepEqual(res("supervisor"), both("500m", "2048Mi"));
+    for (const d of pods)
+      assert.deepEqual(d.spec?.template?.spec?.initContainers[0]?.resources, both("250m", "256Mi"));
+    // The slot holding cpu-2 stays in the list.
+    const dropped = await call("set_cluster_slots", { cluster: "lab", slots: ["thermite-slot-3"] });
+    assert.ok(dropped.error);
+    assert.match(String(dropped.body.error), /thermite-slot-2 still holds a rig \(cpu-2\)/);
+    await client.close();
   });
 });

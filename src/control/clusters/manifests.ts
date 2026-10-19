@@ -32,7 +32,40 @@ export interface ClusterRigPlan {
   node?: string | undefined;
   storageClass?: string | undefined;
   storageGi: number;
+  /** The rig's CPUs and memory (a slot's quota, say); none: the namespace's defaults apply. */
+  resources?: { cpus: number; memoryGi: number } | undefined;
   controlPublicKey: string;
+}
+
+type Resources = { requests: Record<string, string>; limits: Record<string, string> };
+const amount = (cpus: number, mi: number): Resources => {
+  const cpu = `${Math.round(cpus * 1000)}m`;
+  const memory = `${Math.round(mi)}Mi`;
+  return { requests: { cpu, memory }, limits: { cpu, memory } };
+};
+/** The supervisor's fixed share of a rig: it relays, fetches and exports, and computes little. */
+export const SUPERVISOR_SHARE = { cpus: 0.5, memoryGi: 2 };
+
+/**
+ * A rig's CPUs and memory as its containers get them: the supervisor its small share, the
+ * harness the rest, and each pod's preparing step a little (a quota counts it as well). Requests
+ * equal limits, so the rig keeps what it was given.
+ */
+export function rigResources(r: { cpus: number; memoryGi: number }): {
+  harness: Resources;
+  supervisor: Resources;
+  prepare: Resources;
+} {
+  if (!(r.cpus >= 1.5) || !(r.memoryGi >= 6))
+    throw new Error("a rig needs at least 1.5 CPUs and 6 GiB of memory");
+  return {
+    harness: amount(
+      r.cpus - SUPERVISOR_SHARE.cpus,
+      (r.memoryGi - SUPERVISOR_SHARE.memoryGi) * 1024,
+    ),
+    supervisor: amount(SUPERVISOR_SHARE.cpus, SUPERVISOR_SHARE.memoryGi * 1024),
+    prepare: amount(0.25, 256),
+  };
 }
 
 export interface ClusterRigSecrets {
@@ -58,9 +91,10 @@ const labels = (rig: string, component?: "harness" | "supervisor") => ({
 });
 
 /** Prepares the shared volume's folders for both pods' users, as the compose images do. */
-const prepare = (image: string): Obj => ({
+const prepare = (image: string, resources?: Resources): Obj => ({
   name: "prepare",
   image,
+  ...(resources ? { resources } : {}),
   imagePullPolicy: "IfNotPresent",
   command: [
     "sh",
@@ -78,6 +112,7 @@ const prepare = (image: string): Obj => ({
 /** The objects for one rig, in the order they are applied. */
 export function clusterRigObjects(p: ClusterRigPlan, s: ClusterRigSecrets): Obj[] {
   const split = gpuSplit(p.gpus, p.judgeGpus);
+  const res = p.resources ? rigResources(p.resources) : undefined;
   if (p.gpus > 0 && p.gpuMode === "dra" && !p.deviceClass)
     throw new Error("a DRA rig needs its device class");
   const n = clusterNames(p.rig);
@@ -182,7 +217,7 @@ export function clusterRigObjects(p: ClusterRigPlan, s: ClusterRigSecrets): Obj[
     deployment("harness", {
       affinity: together,
       ...placement,
-      initContainers: [prepare(p.images.harness)],
+      initContainers: [prepare(p.images.harness, res?.prepare)],
       containers: [
         {
           name: "harness",
@@ -205,10 +240,13 @@ export function clusterRigObjects(p: ClusterRigPlan, s: ClusterRigSecrets): Obj[
           },
           resources:
             gpu && p.gpuMode === "device-plugin"
-              ? { limits: { "nvidia.com/gpu": p.gpus } }
+              ? {
+                  ...(res ? { requests: res.harness.requests } : {}),
+                  limits: { ...(res?.harness.limits ?? {}), "nvidia.com/gpu": p.gpus },
+                }
               : gpu
-                ? { claims: [{ name: "gpus" }] }
-                : {},
+                ? { ...(res?.harness ?? {}), claims: [{ name: "gpus" }] }
+                : (res?.harness ?? {}),
           volumeMounts: [
             { name: "data", mountPath: "/var/lib/thermite", subPath: "state" },
             { name: "data", mountPath: "/scratch", subPath: "scratch" },
@@ -230,7 +268,7 @@ export function clusterRigObjects(p: ClusterRigPlan, s: ClusterRigSecrets): Obj[
     deployment("supervisor", {
       affinity: together,
       ...placement,
-      initContainers: [prepare(p.images.harness)],
+      initContainers: [prepare(p.images.harness, res?.prepare)],
       securityContext: { runAsUser: 10001, runAsGroup: 10001 },
       containers: [
         {
@@ -245,6 +283,7 @@ export function clusterRigObjects(p: ClusterRigPlan, s: ClusterRigSecrets): Obj[
             THERMITE_CONTROL_TOKEN_FILE: "/run/secrets/control-rig-token",
           }),
           securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: ["ALL"] } },
+          ...(res ? { resources: res.supervisor } : {}),
           volumeMounts: [
             { name: "data", mountPath: "/var/lib/thermite-supervisor", subPath: "supervisor" },
             { name: "data", mountPath: "/inbox", subPath: "inbox" },

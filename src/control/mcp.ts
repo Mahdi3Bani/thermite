@@ -4,6 +4,7 @@ import type { Hono } from "hono";
 import { z } from "zod";
 import { redact } from "../common/env.ts";
 import type { CommandKind } from "../core/commands.ts";
+import type { ControlActions } from "./actions.ts";
 import type { Credential } from "./credential.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
 import type { RunpodTests } from "./runpod-tests.ts";
@@ -49,6 +50,8 @@ export interface McpOptions {
   staleAfterMs: number;
   /** Test pods on GPU clouds; without it the RunPod tools are not offered. */
   runpodTests?: RunpodTests | undefined;
+  /** Actions the dashboard carries out (actions.ts); MCP offers those it has. */
+  actions?: ControlActions | undefined;
 }
 
 const json = (value: unknown) => ({
@@ -332,6 +335,85 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
         })),
       })),
     );
+
+    // Rigs on clusters, as Add a rig and Providers do them: the owner and operators.
+    const actions = opts.actions;
+    if (canCommand && actions?.addClusterRig) {
+      const add = actions.addClusterRig;
+      server.registerTool(
+        "add_cluster_rig",
+        {
+          title: "Add a rig on a cluster",
+          description:
+            "Adds a rig on a Kubernetes cluster in Providers, as Rigs › Add a rig does, with the same checks, and sets it up in the background (follow it with list_rigs and the rig's setup events). For a cluster of slots, name a free slot. CPUs and memory default to what the slot's quota allows. The rig's first key may wait for the owner's acceptance.",
+          inputSchema: {
+            rig: z.string().min(1).describe("Lowercase letters, digits and dashes"),
+            cluster: z.string().min(1),
+            slot: z.string().min(1).optional(),
+            gpus: z.number().int().min(0).default(0),
+            judge_gpus: z.number().int().min(0).optional(),
+            gpu_mode: z.string().optional().describe('"device-plugin", or "dra:<device class>"'),
+            node: z.string().min(1).optional(),
+            storage_class: z.string().min(1).optional(),
+            storage_gb: z.number().int().min(1).optional(),
+            cpus: z.number().positive().optional(),
+            memory_gib: z.number().positive().optional(),
+          },
+        },
+        audited(
+          "add_cluster_rig",
+          async (a: {
+            rig: string;
+            cluster: string;
+            slot?: string;
+            gpus: number;
+            judge_gpus?: number;
+            gpu_mode?: string;
+            node?: string;
+            storage_class?: string;
+            storage_gb?: number;
+            cpus?: number;
+            memory_gib?: number;
+          }) => {
+            const r = await add(
+              {
+                rig: a.rig,
+                cluster: a.cluster,
+                slot: a.slot,
+                gpus: a.gpus,
+                judgeGpus: a.judge_gpus,
+                mode: a.gpu_mode,
+                node: a.node,
+                storageClass: a.storage_class,
+                storageGi: a.storage_gb,
+                cpus: a.cpus,
+                memoryGi: a.memory_gib,
+              },
+              actor,
+            );
+            if ("error" in r) throw new Error(r.error);
+            return { rig: r.rig, status: "deploying" };
+          },
+        ),
+      );
+    }
+    if (canCommand && actions?.setClusterSlots) {
+      const set = actions.setClusterSlots;
+      server.registerTool(
+        "set_cluster_slots",
+        {
+          title: "Set a cluster's slots",
+          description:
+            "For a cluster of pre-made slots in Providers: the namespaces control may use, one rig each. Control reads the cluster again, with each slot's network rules and quota. A slot that holds a rig must stay in the list.",
+          inputSchema: { cluster: z.string().min(1), slots: z.array(z.string().min(1)).min(1) },
+        },
+        audited("set_cluster_slots", async (a: { cluster: string; slots: string[] }) => {
+          const why = await set(a.cluster, a.slots, actor);
+          if (why) throw new Error(why);
+          return { cluster: a.cluster, slots: a.slots };
+        }),
+      );
+    }
 
     // Retiring a rig that is gone, and bringing it back: the owner's, as on the dashboard.
     if (role === "owner") {

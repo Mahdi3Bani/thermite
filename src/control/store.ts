@@ -641,6 +641,8 @@ export interface ClusterRig {
     node?: string | undefined;
     storageClass?: string | undefined;
     storageGi: number;
+    /** The rig's CPUs and memory; none: the namespace's defaults. */
+    resources?: { cpus: number; memoryGi: number } | undefined;
     images: { harness: string; supervisor: string };
   };
   status: string;
@@ -2190,6 +2192,12 @@ export class ControlStore {
 
   clusters(): Cluster[] {
     return (this.db.prepare("select * from cluster order by name").all() as Row[]).map(clusterOf);
+  }
+
+  /** A cluster of pre-made slots: the slots control may use. */
+  setClusterSlots(name: string, slots: string[], by: string): void {
+    this.db.prepare("update cluster set slots = ? where name = ?").run(JSON.stringify(slots), name);
+    this.audit(by, "cluster_slots_set", { name, slots });
   }
 
   setClusterFacts(name: string, r: { facts: unknown } | { error: string }): void {

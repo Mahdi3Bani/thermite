@@ -27,6 +27,61 @@ export interface ClusterSlot {
   /** Whether the slot's network rules keep a harness off the cluster, and why. */
   network_ok?: boolean | undefined;
   network_why?: string | undefined;
+  /** What the slot's quota allows a rig (limits, else requests), when control can read it. */
+  quota?:
+    | { cpus?: number | undefined; memoryGi?: number | undefined; storageGi?: number | undefined }
+    | undefined;
+}
+
+/** A Kubernetes quantity ("6", "5500m", "24Gi", "200G") in CPUs or GiB. */
+export function quantity(v: unknown, unit: "cpu" | "gi"): number | undefined {
+  const m = /^([0-9.]+)([a-zA-Z]*)$/.exec(String(v ?? "").trim());
+  if (!m) return undefined;
+  const n = Number(m[1]);
+  if (!Number.isFinite(n)) return undefined;
+  const suffix = m[2] ?? "";
+  if (unit === "cpu") return suffix === "m" ? n / 1000 : suffix === "" ? n : undefined;
+  const bytes: Record<string, number> = {
+    "": 1,
+    Ki: 2 ** 10,
+    Mi: 2 ** 20,
+    Gi: 2 ** 30,
+    Ti: 2 ** 40,
+    K: 1e3,
+    M: 1e6,
+    G: 1e9,
+    T: 1e12,
+  };
+  const b = bytes[suffix];
+  return b === undefined ? undefined : (n * b) / 2 ** 30;
+}
+
+/** The tightest of a slot's quotas, from `kubectl get resourcequota -o json`. */
+export function slotQuota(json: string): ClusterSlot["quota"] {
+  let items: {
+    status?: { hard?: Record<string, string> };
+    spec?: { hard?: Record<string, string> };
+  }[] = [];
+  try {
+    items = (JSON.parse(json) as { items?: typeof items }).items ?? [];
+  } catch {
+    return undefined;
+  }
+  const min = (vals: (number | undefined)[]) => {
+    const ok = vals.filter((x): x is number => x !== undefined);
+    return ok.length ? Math.min(...ok) : undefined;
+  };
+  const hard = items.map((q) => q.status?.hard ?? q.spec?.hard ?? {});
+  const pick = (keys: string[], unit: "cpu" | "gi") =>
+    min(hard.flatMap((h) => keys.map((k) => quantity(h[k], unit))));
+  const out = {
+    cpus: pick(["limits.cpu", "requests.cpu", "cpu"], "cpu"),
+    memoryGi: pick(["limits.memory", "requests.memory", "memory"], "gi"),
+    storageGi: pick(["requests.storage"], "gi"),
+  };
+  return out.cpus === undefined && out.memoryGi === undefined && out.storageGi === undefined
+    ? undefined
+    : out;
 }
 
 export interface ClusterFacts {
@@ -142,12 +197,14 @@ export async function checkCluster(
       "jsonpath={.items[0].metadata.labels.app\\.kubernetes\\.io/instance}",
     ]);
     const net = await slotNetwork(k, t, s, HARNESS_LABELS);
+    const quotas = await k.kubectl(t, ["get", "resourcequota", "-n", s, "-o", "json"]);
     out.slots.push({
       namespace: s,
       usable: can.stdout.trim() === "yes",
       used_by: used.code === 0 && used.stdout.trim() ? used.stdout.trim() : undefined,
       network_ok: net.ok,
       network_why: net.why,
+      quota: quotas.code === 0 ? slotQuota(quotas.stdout) : undefined,
     });
   }
   return out;

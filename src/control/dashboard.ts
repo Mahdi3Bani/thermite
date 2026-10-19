@@ -6,9 +6,11 @@ import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { getCookie, setCookie } from "hono/cookie";
 import { COMMAND_KINDS, type CommandKind, CommandPayloads } from "../core/commands.ts";
+import type { ClusterRigRequest, ControlActions } from "./actions.ts";
 import { CHATGPT_API, CHATGPT_REDIRECT, ChatGPTLogins } from "./chatgpt.ts";
 import {
   type ClusterFacts,
+  type ClusterSlot,
   checkCluster,
   clusterLine,
   HARNESS_LABELS,
@@ -21,7 +23,7 @@ import {
   kubeError,
   realKubectl,
 } from "./clusters/kubectl.ts";
-import { asList, clusterRigObjects } from "./clusters/manifests.ts";
+import { asList, clusterRigObjects, rigResources } from "./clusters/manifests.ts";
 import type { Credential } from "./credential.ts";
 import { newToken } from "./credential.ts";
 import { makeDeployKey } from "./git-keys.ts";
@@ -199,6 +201,8 @@ export interface DashboardOptions {
   cloudFetch?: typeof fetch | undefined;
   /** Test pods on GPU clouds (made by createControlApi). */
   runpodTests?: RunpodTests | undefined;
+  /** Actions MCP offers too: the dashboard fills them in (actions.ts). */
+  actions?: ControlActions | undefined;
 }
 
 /** The images a rig control sets up runs: the harness (CPU, and CUDA for GPU rigs), the supervisor. */
@@ -2499,6 +2503,10 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
 <span class="dq-main"><span class="dq-head">${esc(k.name)} <span class="muted" style="font-weight:400">· Kubernetes</span></span>${status}<span class="dq-sub"><span class="dq-where">${esc(k.context || "its current context")}</span><span class="dq-where">${esc(where)}</span><span class="dq-where">${rigsHere.length ? `runs ${rigsHere.map((r) => esc(r.rig)).join(", ")}` : "no rig yet"}</span></span></span>
 <span class="dq-side"><span class="dq-btns">${form("check", "Check again")}</span></span>
 </summary><div class="dq-body">${facts}${
+          k.placement === "slot"
+            ? `<form method="post" action="/ui/settings/clusters/${kName}/slots" class="form-grid" style="margin-top:10px"><input type="hidden" name="csrf" value="${t}"><label style="grid-column:1/-1">${infoLabel("Slots", "The namespaces the cluster's operators made for Thermite, which control may use, one rig each: names separated by commas or spaces. Control reads each one again when you save.")}<input name="slots" value="${esc(k.slots.join(", "))}"></label><div class="form-end"><button>Save the slots</button></div></form>`
+            : ""
+        }${
           rigsHere.length
             ? `<div class="muted small" style="margin-top:10px">In use by ${rigsHere.map((r) => esc(r.rig)).join(", ")}: remove those rigs before deleting it.</div>`
             : `<div style="margin-top:10px">${form("delete", "Delete this cluster", "sm danger")}</div>`
@@ -2566,6 +2574,40 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
     const why = await checkClusterNow(name);
     return c.redirect(
       why ? settingsUrl("error", `"${name}": ${why}`) : settingsUrl("ok", `Read "${name}" again.`),
+      303,
+    );
+  });
+  /** A cluster of slots gets a new list of slots, and is read again. */
+  const setClusterSlots = async (name: string, slots: string[], by: string) => {
+    const k = store.cluster(name);
+    if (!k) return "no such cluster";
+    if (k.placement !== "slot")
+      return `${name} puts rigs in namespaces control creates, not in slots`;
+    const bad = slots.find((x) => !NS.test(x));
+    if (bad) return `"${bad}" is not a namespace name`;
+    const using = store
+      .clusterRigs(name)
+      .filter((r) => r.status !== "removed" && !slots.includes(r.namespace));
+    if (using.length)
+      return `${using.map((r) => r.namespace).join(", ")} still holds a rig (${using.map((r) => r.rig).join(", ")}): keep it in the list`;
+    store.setClusterSlots(name, [...new Set(slots)], by);
+    return await checkClusterNow(name);
+  };
+  if (opts.actions) opts.actions.setClusterSlots = setClusterSlots;
+  app.post("/ui/settings/clusters/:name/slots", async (c) => {
+    const name = c.req.param("name");
+    const f = await c.req.parseBody();
+    const slots = String(f.slots ?? "")
+      .split(/[\s,]+/)
+      .filter(Boolean);
+    const why = await setClusterSlots(name, slots, "owner:ui");
+    return c.redirect(
+      why
+        ? settingsUrl("error", `"${name}": ${why}.`)
+        : settingsUrl(
+            "ok",
+            `"${name}" now has ${slots.length} slot${slots.length === 1 ? "" : "s"}, read again.`,
+          ),
       303,
     );
   });
@@ -2945,6 +2987,7 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
           node: r.spec.node,
           storageClass: r.spec.storageClass,
           storageGi: r.spec.storageGi,
+          resources: r.spec.resources,
           controlPublicKey,
         },
         { controlToken, harnessSupervisorToken: newToken().token },
@@ -3090,6 +3133,8 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
           slots: [],
         };
         const kn = esc(k.name);
+        // The free slots' quota fills in the rig's CPUs, memory and volume (the first free one's).
+        const freeQuota = f.slots.find((x) => x.usable && !x.used_by)?.quota;
         // A slot's role usually can't list nodes or device classes: then the choices are offered
         // as asked, and the cluster's own rules decide.
         const restricted = !f.nodes.length;
@@ -3115,7 +3160,9 @@ ${restricted ? `<label class="fd">${infoLabel("DRA device class", "Only for DRA 
           )
           .join("")}</select></label>
 <label class="fd">${infoLabel("Storage class", "The class for the rig's volume (its state, builds, inbox and outbox).")}<select name="k_storage__${kn}">${def ? "" : opt("", "the cluster's default")}${f.storage_classes.map((s) => opt(s.name, `${s.name}${s.default ? " (default)" : ""}`, s.name === def)).join("")}</select></label>
-<label class="fd">${infoLabel("Volume size (GB)", "The rig's volume: builds and model files can be large.")}<input name="k_size__${kn}" value="100"></label>
+<label class="fd">${infoLabel("Volume size (GB)", "The rig's volume: builds and model files can be large.")}<input name="k_size__${kn}" value="${freeQuota?.storageGi !== undefined ? Math.floor(freeQuota.storageGi) : 100}"></label>
+<label class="fd">${infoLabel("CPUs", "The rig's CPUs: the supervisor gets half a CPU, the harness the rest. Filled in from the slot's quota when control can read it; empty: the namespace's defaults apply.")}<input name="k_cpus__${kn}" inputmode="decimal" value="${freeQuota?.cpus ?? ""}" placeholder="the namespace's defaults"></label>
+<label class="fd">${infoLabel("Memory (GiB)", "The rig's memory: the supervisor gets 2 GiB, the harness the rest. Filled in from the slot's quota when control can read it; empty: the namespace's defaults apply.")}<input name="k_mem__${kn}" inputmode="decimal" value="${freeQuota?.memoryGi !== undefined ? Math.floor(freeQuota.memoryGi) : ""}" placeholder="the namespace's defaults"></label>
 ${
   k.placement === "slot"
     ? `<label class="fd">${infoLabel("Slot", "One of the free slots the cluster's operators made for Thermite.")}<select name="k_slot__${kn}">${f.slots
@@ -3228,18 +3275,17 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     return c.redirect(`/ui/rigs/${encodeURIComponent(rig)}`, 303);
   });
   /** Add a rig on a cluster: checks the choices, enrolls the rig, then applies its objects. */
-  const addClusterRigFrom = async (
-    c: Ctx,
-    f: Record<string, unknown>,
-    rig: string,
-    name: string,
-    fail: (why: string) => Response,
-  ) => {
-    const k = store.cluster(name);
-    const one = (key: string) => {
-      const v = f[`${key}__${name}`];
-      return String(Array.isArray(v) ? v[0] : (v ?? "")).trim();
-    };
+  /**
+   * Adds a rig on a cluster control knows and sets it up in the background: from Add a rig's
+   * form, or over MCP (add_cluster_rig). Says why in words when it can't.
+   */
+  const addClusterRig = async (
+    i: ClusterRigRequest,
+    by: string,
+  ): Promise<{ rig: string } | { error: string }> => {
+    const fail = (error: string) => ({ error });
+    const { rig } = i;
+    const k = store.cluster(i.cluster);
     if (!opts.rigImages) return fail("Control has no rig images configured.");
     if (!opts.publicUrl) return fail("Control's address for rigs is not set.");
     if (!RIG_NAME.test(rig)) return fail("A rig's name is lowercase letters, digits and dashes.");
@@ -3247,17 +3293,17 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     if (!k) return fail("Choose a machine or a cluster.");
     const facts = k.facts as ClusterFacts | null;
     if (!facts || k.check_error) return fail(`${k.name} is not ready: check it under Providers.`);
-    const gpus = Number(one("k_gpus") || "0");
+    const gpus = i.gpus;
     if (!Number.isInteger(gpus) || gpus < 0 || gpus > MAX_RIG_GPUS)
       return fail(`A rig takes from none to ${MAX_RIG_GPUS} GPUs.`);
-    const judgeGpus = judgeShare(one("k_judge"), gpus);
+    const judgeGpus = judgeShare(i.judgeGpus === undefined ? "" : String(i.judgeGpus), gpus);
     if (typeof judgeGpus === "string") return fail(judgeGpus);
     // Control checks only what it could see: a slot's role may not list nodes, classes or storage.
-    const mode = one("k_mode") || "device-plugin";
+    const mode = i.mode || "device-plugin";
     const deviceClass = mode.startsWith("dra:")
       ? mode.slice(4)
       : mode === "dra"
-        ? one("k_class")
+        ? i.deviceClass
         : undefined;
     if (gpus && mode === "dra" && !/^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$/.test(deviceClass ?? ""))
       return fail("Name the DRA device class, such as gpu.nvidia.com.");
@@ -3267,10 +3313,10 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       return fail(
         `No node of ${k.name} offers ${gpus} GPU${gpus === 1 ? "" : "s"} through the device plugin.`,
       );
-    const node = one("k_node") || undefined;
-    if (node && !facts.nodes.some((n) => n.name === node))
+    const node = i.node || undefined;
+    if (node && facts.nodes.length && !facts.nodes.some((n) => n.name === node))
       return fail(`${k.name} has no node ${node} that control can see.`);
-    const storageClass = one("k_storage") || undefined;
+    const storageClass = i.storageClass || undefined;
     if (
       storageClass &&
       facts.storage_classes.length &&
@@ -3278,14 +3324,16 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     )
       return fail(`${k.name} has no storage class ${storageClass}.`);
     if (storageClass && !NS.test(storageClass)) return fail("That is not a storage class name.");
-    const storageGi = Number(one("k_size") || "100");
+    const storageGi = i.storageGi ?? 100;
     if (!Number.isInteger(storageGi) || storageGi < 1 || storageGi > 10_000)
       return fail("The volume size is a whole number of GB, from 1 to 10000.");
     let namespace: string;
+    let slotQuota: ClusterSlot["quota"];
     if (k.placement === "slot") {
-      namespace = one("k_slot");
-      if (!facts.slots.some((s) => s.namespace === namespace && s.usable && !s.used_by))
-        return fail("Choose a free slot.");
+      namespace = i.slot ?? "";
+      const slot = facts.slots.find((s) => s.namespace === namespace && s.usable && !s.used_by);
+      if (!slot) return fail("Choose a free slot.");
+      slotQuota = slot.quota;
       if (
         store.clusterRigs(k.name).some((r) => r.namespace === namespace && r.status !== "removed")
       )
@@ -3303,12 +3351,32 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       namespace = k.namespace_pattern.replace("{rig}", rig);
       if (!NS.test(namespace)) return fail(`"${namespace}" is not a namespace name.`);
     }
+    // CPUs and memory: as given, else what the slot's quota allows; none: the namespace's defaults.
+    const cpus = i.cpus ?? slotQuota?.cpus;
+    const memoryGi = i.memoryGi ?? slotQuota?.memoryGi;
+    let resources: { cpus: number; memoryGi: number } | undefined;
+    if (cpus !== undefined || memoryGi !== undefined) {
+      if (cpus === undefined || memoryGi === undefined)
+        return fail("Give the rig both its CPUs and its memory, or neither.");
+      try {
+        rigResources({ cpus, memoryGi });
+      } catch (err) {
+        return fail(err instanceof Error ? err.message : String(err));
+      }
+      if (slotQuota?.cpus !== undefined && cpus > slotQuota.cpus + 1e-9)
+        return fail(`The slot ${namespace} allows ${slotQuota.cpus} CPUs.`);
+      if (slotQuota?.memoryGi !== undefined && memoryGi > slotQuota.memoryGi + 1e-9)
+        return fail(`The slot ${namespace} allows ${slotQuota.memoryGi} GiB of memory.`);
+      resources = { cpus, memoryGi };
+    }
+    if (slotQuota?.storageGi !== undefined && storageGi > slotQuota.storageGi + 1e-9)
+      return fail(`The slot ${namespace} allows ${slotQuota.storageGi} GB of storage.`);
     if (gpus && !opts.rigImages.harnessCuda)
       return fail(
         "Control has no CUDA harness image configured (THERMITE_RIG_HARNESS_CUDA_IMAGE).",
       );
     const token = newToken();
-    store.enrollRig(rig, token.sha256, "owner:ui");
+    store.enrollRig(rig, token.sha256, by);
     store.addClusterRig({
       rig,
       cluster: k.name,
@@ -3322,16 +3390,50 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         node,
         storageClass,
         storageGi,
+        resources,
         images: {
           harness: gpus ? (opts.rigImages.harnessCuda as string) : opts.rigImages.harness,
           supervisor: opts.rigImages.supervisor,
         },
       },
-      created_by: "owner:ui",
+      created_by: by,
     });
     store.rigSetupEvent(rig, "enrolled", true);
     void deployClusterRig(store.clusterRig(rig) as ClusterRig, k, token.token).catch(() => {});
-    return c.redirect(`/ui/rigs/${encodeURIComponent(rig)}`, 303);
+    return { rig };
+  };
+  if (opts.actions) opts.actions.addClusterRig = addClusterRig;
+  const addClusterRigFrom = async (
+    c: Ctx,
+    f: Record<string, unknown>,
+    rig: string,
+    name: string,
+    fail: (why: string) => Response,
+  ) => {
+    const one = (key: string) => {
+      const v = f[`${key}__${name}`];
+      return String(Array.isArray(v) ? v[0] : (v ?? "")).trim();
+    };
+    const num = (key: string) => (one(key) ? Number(one(key)) : undefined);
+    const r = await addClusterRig(
+      {
+        rig,
+        cluster: name,
+        slot: one("k_slot") || undefined,
+        gpus: Number(one("k_gpus") || "0"),
+        judgeGpus: one("k_judge") || undefined,
+        mode: one("k_mode") || "device-plugin",
+        deviceClass: one("k_class") || undefined,
+        node: one("k_node") || undefined,
+        storageClass: one("k_storage") || undefined,
+        storageGi: Number(one("k_size") || "100"),
+        cpus: num("k_cpus"),
+        memoryGi: num("k_mem"),
+      },
+      "owner:ui",
+    );
+    if ("error" in r) return fail(r.error);
+    return c.redirect(`/ui/rigs/${encodeURIComponent(r.rig)}`, 303);
   };
   // ---------------------------------------------------------------- rigs you join yourself
   // For a place control can't connect to (join.ts): control mints a one-time join command; run
