@@ -1150,7 +1150,8 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       c.redirect(`${campaignHref(campaign)}?error=${encodeURIComponent(m)}`, 303);
     if (!opts.kits) return c.text("This control keeps no campaigns.", 404);
     if (!rig) return back("Choose a rig.");
-    if (agentsModelMissing(rig))
+    const agents = String(f.agents ?? "on") !== "off";
+    if (agents && agentsModelMissing(rig))
       return back(
         `${rig.id} has no model for its agents, so they could not work: give it one on its Edit rig page first.`,
       );
@@ -1171,7 +1172,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           target: rig.hardware?.target
             ? { type: rig.hardware.target.type, class: rig.hardware.target.class }
             : undefined,
-          agents: String(f.agents ?? "on") !== "off",
+          agents,
           promotion: promotion === "auto" || promotion === "owner_approval" ? promotion : undefined,
           by: "owner:ui",
         },

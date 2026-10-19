@@ -144,16 +144,21 @@ try {
     calibrated?.body?.blocks === 2,
     calibrated?.body,
   );
-  // Then the campaign itself, from its page's start form.
+  // Then the campaign itself, from its page's start form. Without agents: the rig has no model for
+  // them, and the patches below come from this script.
   const started = await fetch(`${control}/ui/campaigns/acc-tiny/runs`, {
     method: "POST",
-    body: new URLSearchParams({ csrf, rig: "local-1", agents: "on", promotion: "" }),
+    body: new URLSearchParams({ csrf, rig: "local-1", agents: "off", promotion: "" }),
     headers: { cookie },
     redirect: "manual",
   });
-  check("the campaign's own run starts from its page", started.status === 303, {
-    location: started.headers.get("location"),
-  });
+  check(
+    "the campaign's own run starts from its page",
+    started.status === 303 && !/error=/.test(String(started.headers.get("location"))),
+    {
+      location: started.headers.get("location"),
+    },
+  );
   const created = await until(
     "the run starts on the rig",
     async () =>

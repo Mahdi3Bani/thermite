@@ -323,6 +323,24 @@ describe("the new-campaign page", () => {
       });
     const refused = await (await send({})).text();
     assert.match(refused, /rig-a has no model for its agents, so they could not work/);
+    // A try of the kit needs no model; neither does another run without agents, from its page.
+    const tried = await send({
+      draft: JSON.stringify(draft({ campaign: "matmul-try" })),
+      start_value: "try",
+    });
+    assert.match(String(tried.headers.get("location")), /\?run=rig-a%2Fmatmul-try-try-/);
+    const another = async (agents: string) =>
+      decodeURIComponent(
+        String(
+          (
+            await s.post("/ui/campaigns/matmul-try/runs", { csrf: s.csrf, rig: "rig-a", agents })
+          ).headers.get("location"),
+        ),
+      );
+    assert.match(await another("on"), /error=rig-a has no model for its agents/);
+    const without = await another("off");
+    assert.doesNotMatch(without, /error=/);
+    assert.match(without, /\?run=rig-a\/matmul-try-/);
     // OpenCode's free models work only inside OpenCode: research workers in Pi can't use them.
     const researchDraft = draft({
       mode: "research",
