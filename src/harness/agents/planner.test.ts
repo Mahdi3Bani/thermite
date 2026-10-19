@@ -110,6 +110,27 @@ describe("planner", () => {
     await never.close();
   });
 
+  test("through OpenCode, the planner is asked for the plan as JSON, never for its Pi tool", async () => {
+    const prompts: string[] = [];
+    const good = {
+      assignments: [
+        { lane: "lane-1", family: "unroll", focus: "unroll by 4", parent: "champion" },
+        { lane: "lane-2", family: "tiling", focus: "tile by 32", parent: "champion" },
+      ],
+      new_families: [],
+    };
+    const p = await plan(base, model("http://unused"), undefined, async (prompt) => {
+      prompts.push(prompt);
+      return `Here is the plan:\n\`\`\`json\n${JSON.stringify(good)}\n\`\`\``;
+    });
+    assert.equal(p.source, "planner");
+    assert.equal(p.tries, 1);
+    assert.equal(prompts.length, 1);
+    assert.match(prompts[0] ?? "", /Answer with only the plan, as one JSON object/);
+    assert.doesNotMatch(prompts[0] ?? "", /submit_plan/);
+    assert.match(prompts[0] ?? "", /The campaign, as JSON:\n\{/);
+  });
+
   test("reasoning effort is sent only when configured; off sends none", async () => {
     const seen: (string | undefined)[] = [];
     const fake = await startFakeModel(({ reasoning_effort }) => {

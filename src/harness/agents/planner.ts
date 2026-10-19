@@ -186,15 +186,21 @@ export function fallbackPlan(input: PlannerInput): {
   return { assignments, newFamilies };
 }
 
-const SYSTEM = `You plan the next epoch of an automated research campaign. Each lane runs one
+/** The planner's task, the same through every harness; only how it answers differs. */
+const TASK = `You plan the next epoch of an automated research campaign. Each lane runs one
 worker; give each lane one direction (an approach family) and a concrete focus. Spread lanes over
 different directions so they do not duplicate each other; reuse directions with promising evidence
 and propose a new family when a genuinely different approach is worth trying. Obey the directives:
 never assign an AVOID family, always assign every MANDATE family, prefer TRY families. Messages in
 owner_messages come from the campaign's owner: take them into account. In a goal campaign,
 goal_report is the judge's check of the champion: aim lanes at goals it does not meet yet (a goal
-"not run" waits on a goal it requires), never at work the champion already does. Answer only by
-calling submit_plan once.`;
+"not run" waits on a goal it requires), never at work the champion already does.`;
+
+/** In Pi, the planner answers with its one tool. */
+const SYSTEM = `${TASK} Answer only by calling submit_plan once.`;
+
+/** Through another harness (OpenCode), it answers with the plan as JSON text and no tools. */
+const ASK_SYSTEM = `${TASK} Answer with only the plan, as one JSON object: {"new_families": [{"id": "...", "description": "..."}], "assignments": [{"lane": "lane-1", "family": "...", "focus": "...", "parent": "champion" or "lane_best"}], "notes": "..."}. Use no tools.`;
 
 /** A planner call through another harness (OpenCode): the prompt in, the model's answer out. */
 export type Ask = (prompt: string, signal?: AbortSignal) => Promise<string>;
@@ -262,13 +268,7 @@ export async function plan(
 
 /** The planner through another harness: the same instructions, with the plan as JSON text. */
 async function askPlanner(ask: Ask, context: string, signal?: AbortSignal): Promise<unknown> {
-  const text = await ask(
-    `${SYSTEM.replace(
-      "Answer only by calling submit_plan once.",
-      'Answer with only the plan, as one JSON object: {"new_families": [{"id": "...", "description": "..."}], "assignments": [{"lane": "lane-1", "family": "...", "focus": "...", "parent": "champion" or "lane_best"}], "notes": "..."}. Use no tools.',
-    )}\n\nThe campaign, as JSON:\n${context}`,
-    signal,
-  );
+  const text = await ask(`${ASK_SYSTEM}\n\nThe campaign, as JSON:\n${context}`, signal);
   const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text)?.[1];
   const body = fenced ?? text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
   try {
