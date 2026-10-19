@@ -44,6 +44,15 @@ describe("retiring a rig that is gone", () => {
       );
     assert.match(await page("/ui"), /rig-a stopped reporting/);
     assert.match(await page("/ui/rigs/rig-a"), /Retire it/);
+    // A rig that never reported has no last report: "not yet", not days since 1970.
+    store.db
+      .prepare(
+        "insert into rig (id, first_seen, last_seen, last_cursor, ledger_id, summary, report_at) values (?, ?, ?, 0, null, '{}', ?)",
+      )
+      .run("rig-new", "2026-10-19T00:00:00Z", new Date(0).toISOString(), new Date(0).toISOString());
+    assert.match(await page("/ui/rigs/rig-new"), /rig-new has not reported yet\./);
+    assert.match(await page("/ui"), /rig-new has not reported yet/);
+    assert.ok(!(await page("/ui/rigs/rig-new")).includes("days"));
     assert.match(
       await post("/ui/rigs/rig-a/retire", { confirm: "retire rig-b" }),
       /Type "retire rig-a"/,
@@ -54,7 +63,7 @@ describe("retiring a rig that is gone", () => {
     );
     assert.ok(!(await page("/ui")).includes("rig-a stopped reporting"), "not in Needs you");
     const rigs = await page("/ui/rigs");
-    assert.match(rigs, /0 rigs/);
+    assert.match(rigs, /1 rig ·/, "only rig-new is listed");
     assert.match(rigs, /<h2>Retired<\/h2><span class="n">1<\/span>/);
     assert.match(await page("/ui/rigs/rig-a"), /Retired .* ago by owner:ui/);
     // Its token still matches the file, but control refuses it while it is retired.

@@ -633,7 +633,9 @@ export function needs(
         });
       }
     }
-    if (u.stale) {
+    // A rig whose first key waits for the owner has its own card above: not reporting is why.
+    const never = !(Date.parse(u.last_seen) > 0);
+    if (u.stale && !(never && key.pending)) {
       out.push({
         kind: "stale",
         rig: u.id,
@@ -642,14 +644,16 @@ export function needs(
           tone: "bad",
           ic: icon.x,
           kind: "Not reporting",
-          question: "This rig stopped reporting",
-          headline: `${esc(u.id)} stopped reporting`,
-          why: `No report for ${esc(span(u.last_seen, now))}; control cannot see its runs`,
+          question: never ? "This rig has not reported yet" : "This rig stopped reporting",
+          headline: never ? `${esc(u.id)} has not reported yet` : `${esc(u.id)} stopped reporting`,
+          why: never
+            ? "Its first report has not come in; control cannot see it yet"
+            : `No report for ${esc(span(u.last_seen, now))}; control cannot see its runs`,
           key: `stale-${u.id}`,
           u,
           since: u.last_seen,
           now,
-          facts: `<dt>What</dt><dd>No report for ${esc(span(u.last_seen, now))}. Its runs may still be working, but control cannot see them, and your commands wait until it reports again.</dd>
+          facts: `<dt>What</dt><dd>${never ? "No report yet." : `No report for ${esc(span(u.last_seen, now))}.`} Its runs may still be working, but control cannot see them, and your commands wait until it reports again.</dd>
 <dt>Check</dt><dd>The rig's supervisor and harness containers, and its network path to control.</dd>`,
           choices: [
             {

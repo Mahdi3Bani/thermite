@@ -330,6 +330,8 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
     }),
   );
   const csrf = (c: Ctx) => csrfOf(sessionOf(c) ?? "");
+  /** A rig that never reported (its first report may wait for its key): no last report time. */
+  const neverReported = (u: RigView) => !(Date.parse(u.last_seen) > 0);
   const views = (): RigView[] =>
     store
       .rigs()
@@ -1248,7 +1250,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
             : null;
         const said = [
           u.stale
-            ? `<b class="bad">No report for ${esc(span(u.last_seen, now))}.</b>`
+            ? `<b class="bad">${neverReported(u) ? "No report yet." : `No report for ${esc(span(u.last_seen, now))}.`}</b>`
             : `Reported ${esc(ago(u.last_seen, now))} ago.`,
           u.judge.now
             ? `The judge is ${jobHtml(u, u.judge.now)}${queued ? `, with ${queued} more queued` : ""}.`
@@ -1397,7 +1399,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     // The rig in a few sentences: is it reporting, what runs on it, its judge, what is wrong.
     const said = [
       u.stale
-        ? `<b class="bad">${esc(u.id)} has not reported for ${esc(span(u.last_seen, now))}.</b>`
+        ? `<b class="bad">${esc(u.id)} has ${neverReported(u) ? "not reported yet" : `not reported for ${esc(span(u.last_seen, now))}`}.</b>`
         : `${esc(u.id)} is live; it reported ${esc(ago(u.last_seen, now))} ago.`,
       live.length
         ? `It runs ${live.map((i) => `<a href="${runHref(u.id, i)}">${esc(i.campaign || i.id)} › ${esc(i.id)}</a>`).join(" and ")}.`
