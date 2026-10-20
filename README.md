@@ -51,7 +51,7 @@ docker compose run --rm init     # writes local tokens to .dev/
 docker compose up -d
 ```
 
-With Podman, write `podman compose` in place of `docker compose`. The first start downloads the images. Then:
+With Podman, write `podman compose` in place of `docker compose`. The first start downloads the images. To check the machine before the first `up`, run `npx thermite doctor` from the [command line](docs/_site/src/content/docs/how-to/install/one-machine.md#the-command-line), built from the source with Node.js and git: it checks Docker or Podman, compose, the port, disk and the clock, and says how to fix each problem ([Troubleshoot](docs/_site/src/content/docs/how-to/operate/troubleshoot.md#check-the-machine)). Then:
 
 1. Open <http://127.0.0.1:8800/ui> and sign in with the token in `.dev/secrets/control-admin-token`.
 2. Go to **Rigs › local-1 › Checks** and run **smoke**. The rig builds a small benchmark and submits known changes to its judge: a real speed-up, a no-op, broken builds and attempts to cheat. Each one gets its expected verdict in about ten minutes on a CPU.
