@@ -239,6 +239,8 @@ claude mcp add --transport http thermite http://127.0.0.1:8800/mcp \
   --header "Authorization: Bearer $(cat .dev/secrets/control-operator-token)"
 ```
 
+Every token can read a run's experiment queue with `run_queue`: up next in order, the lanes' ideas, what each lane is on, what was tried and with what result, the rules for the plan, the planner's hand-outs and the owner's messages with who read them. Tokens that steer change it with `issue_command` (`queue_add`, `queue_move`, `queue_drop`, `queue_accept`, `redirect`, `drop_directive`).
+
 Every token except an agent's also reads control itself, to find out why something didn't work:
 
 - `control_log`: control's audit log, newest first. It includes what the dashboard refused, with why (action `refused`), and requests that failed (action `failed`). Control also writes these to its output, one JSON line each.

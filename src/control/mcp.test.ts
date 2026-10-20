@@ -87,6 +87,13 @@ describe("control over MCP", () => {
     const readerTools = (await reader.listTools()).tools.map((t) => t.name);
     assert.ok(!readerTools.includes("issue_command"));
     assert.ok(readerTools.includes("list_rigs"));
+    // A reader sees a run's queue, its rules, hand-outs and messages (goal 064).
+    const queue = text(
+      await reader.callTool({ name: "run_queue", arguments: { rig: "rig-a", run: "js-1" } }),
+    );
+    assert.equal(queue.run, "js-1");
+    assert.deepEqual(queue.up_next, []);
+    assert.ok(Array.isArray(queue.rules));
     const audit = store.listAudit(100).map((a) => a.action);
     assert.ok(audit.includes("mcp:issue_command"));
     const denied = await control.request("/mcp", { method: "POST", body: "{}" });
