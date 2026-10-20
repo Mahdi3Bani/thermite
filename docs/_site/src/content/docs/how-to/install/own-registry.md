@@ -31,19 +31,21 @@ Build from the repository's top folder: the images need its `package.json`, `src
 
 ```sh
 tag=$(git rev-parse --short=12 HEAD)
+commit=$(git rev-parse HEAD)
 r=registry.example.com/thermite
-docker build -t $r/thermite-control:$tag    -f containers/control/Containerfile .
-docker build -t $r/thermite-harness:$tag    -f containers/harness/Containerfile .
-docker build -t $r/thermite-supervisor:$tag -f containers/supervisor/Containerfile .
+docker build -t $r/thermite-control:$tag    --build-arg THERMITE_COMMIT=$commit -f containers/control/Containerfile .
+docker build -t $r/thermite-harness:$tag    --build-arg THERMITE_COMMIT=$commit -f containers/harness/Containerfile .
+docker build -t $r/thermite-supervisor:$tag --build-arg THERMITE_COMMIT=$commit -f containers/supervisor/Containerfile .
 ```
 
-With Podman, use `podman build` the same way.
+With Podman, use `podman build` the same way. `THERMITE_COMMIT` puts the commit in each image: control and the rigs report it with Thermite's version, so the rig lists show which build each part runs ([Rig versions](../../reference/rest-api.md#rig-versions)). Without it they report the version alone.
 
 For GPU rigs, build the harness again on a CUDA base:
 
 ```sh
 docker build -t $r/thermite-harness:$tag-cuda \
   --build-arg BASE_IMAGE=<a CUDA 12 development image> \
+  --build-arg THERMITE_COMMIT=$commit \
   -f containers/harness/Containerfile .
 ```
 
@@ -62,6 +64,7 @@ Thermite names no tested CUDA base image yet ([goal 010](https://github.com/iamm
 | `OPENCODE_VERSION` | Harness | `2.0.32` | The OpenCode release the image carries |
 | `CLAUDE_CODE_VERSION` | Harness, supervisor | Empty: no Claude Code | Downloads that Claude Code release into the image, for a [Claude subscription](../models/claude-subscription.md) |
 | `KUBECTL_VERSION` | Control | `v1.37.1` | The kubectl control uses for clusters. It is checked against a pinned hash, so a different version fails the build |
+| `THERMITE_COMMIT` | All three | Empty: no commit | The source commit the image is built from, which the service reports with its version |
 
 Claude Code is not open source, so Thermite's images leave it out by default. **Never push an image built with Claude Code to a public registry.** Since rigs can't sign in to a registry yet, such an image reaches a remote rig only from a registry that is not public and still needs no sign-in, such as one that only your own network reaches. Let that registry take pushes only from someone signed in.
 

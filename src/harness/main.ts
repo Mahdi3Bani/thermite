@@ -394,7 +394,13 @@ async function main(): Promise<void> {
     hostname: host,
     port,
   });
-  log("harness", "listening", { rig, host, port, target: (await driver.identify()).id });
+  log("harness", "listening", {
+    rig,
+    host,
+    port,
+    target: (await driver.identify()).id,
+    build: service.build,
+  });
 
   const buildLock = serial();
   const executors = judging.map(

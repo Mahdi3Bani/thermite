@@ -4,6 +4,7 @@ import type { Hono } from "hono";
 import { z } from "zod";
 import { redact } from "../common/env.ts";
 import type { CommandKind } from "../core/commands.ts";
+import { type BuildInfo, buildInfo } from "../core/version.ts";
 import type { ControlActions } from "./actions.ts";
 import type { Credential } from "./credential.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
@@ -73,6 +74,10 @@ export interface McpOptions {
   read?: Credential | undefined;
   privateKeyPem: string;
   staleAfterMs: number;
+  /** A rig is offline after this long without a report. */
+  offlineAfterMs?: number | undefined;
+  /** Control's own build, which rigs' builds are compared with. */
+  control?: BuildInfo | undefined;
   /** Test pods on GPU clouds; without it the RunPod tools are not offered. */
   runpodTests?: RunpodTests | undefined;
   /** Actions the dashboard carries out (actions.ts); MCP offers those it has. */
@@ -112,7 +117,10 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
   const canCommand = role !== "reader";
   const kinds =
     role === "owner" ? OWNER_COMMANDS : role === "operator" ? OPERATOR_COMMANDS : AGENT_COMMANDS;
-  const server = new McpServer({ name: "thermite-control", version: "1.0.0" });
+  const server = new McpServer({
+    name: "thermite-control",
+    version: (opts.control ?? buildInfo()).version,
+  });
   const audited = <A>(tool: string, fn: (args: A) => unknown) => {
     return async (args: A) => {
       store.audit(actor, `mcp:${tool}`, args ?? {});
@@ -127,7 +135,11 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
     };
   };
   const view = (rig: string) => {
-    const v = rigView(store, rig, { staleAfterMs: opts.staleAfterMs });
+    const v = rigView(store, rig, {
+      staleAfterMs: opts.staleAfterMs,
+      offlineAfterMs: opts.offlineAfterMs,
+      control: opts.control,
+    });
     if (!v) throw new Error(`no rig ${rig}`);
     return v;
   };
@@ -137,7 +149,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
     {
       title: "List rigs",
       description:
-        "Every rig: live or stale, last report, and for each campaign run its mode, status, champion and relative gain over the baseline.",
+        "Every rig: reporting, stale or offline, last report, its Thermite versions against control's (behind, refused and why, or unknown), and for each campaign run its mode, status, champion and relative gain over the baseline.",
       inputSchema: {},
     },
     audited("list_rigs", () =>
@@ -145,8 +157,10 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
         const v = view(u.id);
         return {
           rig: v.id,
+          state: v.state,
           stale: v.stale,
           last_seen: v.last_seen,
+          version: v.version,
           jobs: v.jobs,
           runs: v.runs.map((i) => {
             const champ = i.champion.filter((c) => !c.reopened).at(-1);

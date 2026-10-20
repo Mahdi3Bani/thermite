@@ -31,10 +31,19 @@ curl -sS -H "$AUTH" "$CONTROL/v1/rigs"
 ```
 
 ```text
-{"rigs":[{"id":"rig-1","last_seen":"…","last_cursor":120,"ledger_id":"…","summary":{…}}],"enrolled":[…]}
+{"control":{"version":"0.2.0","commit":"…","protocol":1,"oldest_protocol":1},"rigs":[{"id":"rig-1","last_seen":"…","last_cursor":120,"ledger_id":"…","summary":{…},"state":"reporting","version":{"state":"behind","notice":"This rig runs an older Thermite than control: …","refused":null,"control":{…},"harness":{…},"supervisor":{…}}}],"enrolled":[…]}
 ```
 
-`rigs` holds every rig that has reported and is not retired. `enrolled` holds the rigs control made tokens for, even those that haven't reported yet, and those retired since (with `retired_at` set).
+`control` is control's own build. `rigs` holds every rig that has reported, or that control refuses, and is not retired. Each rig's `state` is `reporting`, `stale` or `offline`, and its `version` compares its harness's and supervisor's builds with control's: `behind` with a `notice` when the rig should get newer images, `refused` with the reason when control can't work with it. [Rig versions](../../reference/rest-api.md#rig-versions) lists every field. `enrolled` holds the rigs control made tokens for, even those that haven't reported yet, and those retired since (with `retired_at` set).
+
+To see only the rigs that need you, filter the answer, for example with `jq`:
+
+```sh
+curl -sS -H "$AUTH" "$CONTROL/v1/rigs" \
+  | jq -r '.rigs[] | select(.state != "reporting" or .version.notice != null) | "\(.id) \(.state) \(.version.state): \(.version.notice // "")"'
+```
+
+`thermite rig list` prints the same list as a table ([Command line](../../reference/command-line.md#rig-list)).
 
 ## Read one rig
 
@@ -42,7 +51,7 @@ curl -sS -H "$AUTH" "$CONTROL/v1/rigs"
 curl -sS -H "$AUTH" "$CONTROL/v1/rigs/rig-1/view"
 ```
 
-The answer is the rig's whole page as JSON: `stale` (true when it stopped reporting), `hardware`, `judge`, `jobs`, `checks` with each check's result, `model`, `settings`, its `runs` with their champions, attempts and verdicts, and `recent`, its newest 50 events. Each run also has `queue`, every experiment in its [experiment queue](../campaigns/choose-what-runs-next.md) with its state (`proposed`, `queued`, `assigned`, `done` or `dropped`) and, for those up next, its place; `handouts`, what the planner gave each lane and why; `rules`, the rules for its plan in force; `messages`, your messages to its agents and advisors, with who read each one and the advisors' answers; and `journal`, all its agents' field notes and research notes, oldest first. Reading a rig that control doesn't know answers `404 {"error":"not found"}`; a command to such a rig answers `500` instead ([Errors to expect](#errors-to-expect)). For all of a rig's events, page through `GET /v1/rigs/rig-1/events?after=<seq>&limit=500`.
+The answer is the rig's whole page as JSON: `state` (`reporting`, `stale` or `offline`), `stale` (true when it stopped reporting), `version` (its builds against control's, as in the list), `hardware`, `judge`, `jobs`, `checks` with each check's result, `model`, `settings`, its `runs` with their champions, attempts and verdicts, and `recent`, its newest 50 events. Each run also has `queue`, every experiment in its [experiment queue](../campaigns/choose-what-runs-next.md) with its state (`proposed`, `queued`, `assigned`, `done` or `dropped`) and, for those up next, its place; `handouts`, what the planner gave each lane and why; `rules`, the rules for its plan in force; `messages`, your messages to its agents and advisors, with who read each one and the advisors' answers; and `journal`, all its agents' field notes and research notes, oldest first. Reading a rig that control doesn't know answers `404 {"error":"not found"}`; a command to such a rig answers `500` instead ([Errors to expect](#errors-to-expect)). For all of a rig's events, page through `GET /v1/rigs/rig-1/events?after=<seq>&limit=500`.
 
 ## Issue a command and follow it
 

@@ -86,4 +86,77 @@ describe("thermite rig", () => {
       server.close();
     }
   });
+
+  test("list shows each rig's state and versions against control's, with what to do", async () => {
+    const keys = generateSigningKeys();
+    const store = new ControlStore(":memory:");
+    const api = createControlApi(
+      store,
+      { admin: "owner-token-abcdef", rigs: {} },
+      keys.privateKeyPem,
+      {
+        staleAfterMs: 180_000,
+        build: { version: "0.2.0", commit: "1a2b3c4d5e6f7a8b", protocol: 2, oldest_protocol: 1 },
+      },
+    );
+    // rig-old reports from an older, compatible build; rig-new never reported; rig-x is refused.
+    const report = { cursor: 0, next: 0, events: [], summary: {}, ledger_id: "l1" };
+    store.ingest({ rig: "rig-old", ...report, generated_at: new Date().toISOString() });
+    const old = { version: "0.1.0", commit: "abcdef0123456789", protocol: 1, oldest_protocol: 1 };
+    store.setRigBuild("rig-old", "harness", old);
+    store.setRigBuild("rig-old", "supervisor", old);
+    store.enrollRig("rig-new", "0".repeat(64), "owner:test");
+    store.setRigBuild("rig-x", "supervisor", { ...old, protocol: 0, oldest_protocol: 0 });
+    store.setRigRefusal(
+      "rig-x",
+      "Control cannot work with this rig: its supervisor speaks protocol 0.",
+    );
+    const server = serve({ fetch: api.fetch, hostname: "127.0.0.1", port: 0 });
+    await new Promise((r) => server.once("listening", r));
+    const control = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    try {
+      const dir = mkdtempSync(join(tmpdir(), "thermite-rig-"));
+      const ownerFile = join(dir, "owner-token");
+      writeFileSync(ownerFile, "owner-token-abcdef\n", { mode: 0o600 });
+      const cli = (...args: string[]) =>
+        run(process.execPath, ["--experimental-strip-types", "--no-warnings", CLI, ...args]);
+      const { stdout } = await cli("rig", "list", "--control", control, "--token-file", ownerFile);
+      const lines = stdout.split("\n");
+      assert.equal(lines[0], "control 0.2.0 (1a2b3c4d5e6f), protocol 2 (works with 1 to 2)");
+      assert.match(lines[1] ?? "", /^RIG\s+STATE\s+LAST REPORT\s+VERSION\s+HARNESS\s+SUPERVISOR$/);
+      assert.match(
+        lines[2] ?? "",
+        /^rig-old\s+reporting\s+\S+\s+behind\s+0\.1\.0 \(abcdef012345\)\s+0\.1\.0 \(abcdef012345\)$/,
+      );
+      assert.equal(
+        lines[3],
+        "  This rig runs an older Thermite than control: harness 0.1.0, supervisor 0.1.0. Control runs 0.2.0. Control still works with it. Update the rig's images.",
+      );
+      assert.match(lines[4] ?? "", /^rig-x\s+offline\s+never\s+refused\s+no version\s+0\.1\.0/);
+      assert.equal(
+        lines[5],
+        "  Control cannot work with this rig: its supervisor speaks protocol 0.",
+      );
+      assert.equal(lines[6], "rig-new: enrolled, no report yet");
+      const json = await cli(
+        "rig",
+        "list",
+        "--control",
+        control,
+        "--token-file",
+        ownerFile,
+        "--json",
+      );
+      const answer = JSON.parse(json.stdout) as { control: { version: string } };
+      assert.equal(answer.control.version, "0.2.0");
+      // The owner's token only.
+      writeFileSync(ownerFile, "not-the-token\n");
+      await assert.rejects(
+        cli("rig", "list", "--control", control, "--token-file", ownerFile),
+        /401/,
+      );
+    } finally {
+      server.close();
+    }
+  });
 });

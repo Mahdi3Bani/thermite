@@ -1,5 +1,6 @@
 import { log } from "../common/env.ts";
 import type { SignedCommand } from "../core/commands.ts";
+import { buildHeaders } from "../core/version.ts";
 
 /**
  * The supervisor's deterministic relay: report the harness's new events to control, then relay
@@ -57,6 +58,11 @@ async function call(
     body = { error: text.slice(0, 300) };
   }
   return { status: res.status, body };
+}
+
+/** A call to control carries the supervisor's build, so control can compare it with its own. */
+function toControl(init: RequestInit = {}): RequestInit {
+  return { ...init, headers: { ...buildHeaders(), ...(init.headers ?? {}) } };
 }
 
 const must = (r: Reply, what: string): Record<string, unknown> => {
@@ -123,7 +129,7 @@ export async function relayOnce(cfg: RelayConfig, state: RelayState): Promise<Re
           f,
           `${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/ingest`,
           cfg.controlToken,
-          { method: "POST", body: JSON.stringify(snap) },
+          toControl({ method: "POST", body: JSON.stringify(snap) }),
         );
         if (r.status === 409 && typeof r.body.expected_cursor === "number") {
           // Control has a different place in the stream (a gap, or a new ledger): go there.
@@ -167,6 +173,7 @@ export async function relayCommandsOnce(cfg: RelayConfig): Promise<void> {
         f,
         `${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/commands/pending`,
         cfg.controlToken,
+        toControl(),
       ),
       "pending commands",
     ) as { commands: SignedCommand[] };
@@ -180,10 +187,10 @@ export async function relayCommandsOnce(cfg: RelayConfig): Promise<void> {
             f,
             `${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/commands/${cmd.envelope.id}/ack`,
             cfg.controlToken,
-            {
+            toControl({
               method: "POST",
               body: JSON.stringify({ status: "failed", outcome: { error: staged.failed } }),
-            },
+            }),
           );
           log("supervisor", "command not relayed", { id: cmd.envelope.id, error: staged.failed });
           continue;
@@ -208,7 +215,7 @@ export async function relayCommandsOnce(cfg: RelayConfig): Promise<void> {
           f,
           `${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/commands/${cmd.envelope.id}/ack`,
           cfg.controlToken,
-          { method: "POST", body: JSON.stringify({ status, outcome: reported }) },
+          toControl({ method: "POST", body: JSON.stringify({ status, outcome: reported }) }),
         );
         log("supervisor", "relayed command", {
           id: cmd.envelope.id,

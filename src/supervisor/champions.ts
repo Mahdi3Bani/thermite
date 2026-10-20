@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { log } from "../common/env.ts";
+import { buildHeaders } from "../core/version.ts";
 
 const run = promisify(execFile);
 
@@ -64,6 +65,7 @@ export async function uploadChampions(
           headers: {
             authorization: `Bearer ${cfg.controlToken}`,
             "content-type": "application/octet-stream",
+            ...buildHeaders(),
           },
           body: new Uint8Array(stdout),
         },

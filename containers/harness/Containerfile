@@ -99,6 +99,10 @@ COPY --chmod=0755 containers/thermite-trial /usr/local/bin/thermite-trial
 COPY kits ./checks/kits
 COPY examples ./checks/examples
 ENV NODE_OPTIONS=--disable-warning=ExperimentalWarning
+# The source commit the image is built from (empty: not given). The harness reports it with
+# Thermite's version from package.json; control compares them with its own.
+ARG THERMITE_COMMIT=
+ENV THERMITE_COMMIT=${THERMITE_COMMIT}
 # The broker runs as root so it can start lane, builder and run processes as separate users. It
 # needs only CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETGID and SETUID (compose.yaml drops the rest).
 ENTRYPOINT ["/usr/bin/tini", "--"]

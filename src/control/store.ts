@@ -5,6 +5,7 @@ import { canonicalJson, sha256Hex } from "../core/canonical.ts";
 import type { SignedCommand } from "../core/commands.ts";
 import type { LiveEntry } from "../core/live.ts";
 import { currentEvent } from "../core/names.ts";
+import type { ReportedBuild } from "../core/version.ts";
 import { Credential } from "./credential.ts";
 import type { JoinedSpec, JoinForm } from "./join.ts";
 import { KnowledgeBase } from "./kb.ts";
@@ -260,6 +261,24 @@ create table if not exists rig_retired (
   rig text primary key,
   at text not null,
   by text not null
+);
+-- The build each part of a rig last reported (the harness in its signed report, the supervisor
+-- in its calls' headers), and since when. No row: the part reported none (a build before versions).
+create table if not exists rig_build (
+  rig text not null,
+  component text not null check (component in ('harness', 'supervisor')),
+  version text,
+  commit_sha text,
+  protocol integer,
+  oldest_protocol integer,
+  since text not null,
+  primary key (rig, component)
+);
+-- Rigs control refuses now because their protocol and control's do not meet, and why.
+create table if not exists rig_refusal (
+  rig text primary key,
+  reason text not null,
+  since text not null
 );
 -- Rigs control reaches through a public proxy (a RunPod pod): the pod, the tunnel's sealed
 -- secrets, and the pod's keys once enrolled (docs/plan/goals/019-rig-only-entry.goal).
@@ -759,6 +778,14 @@ function enrolledOf(r: Row): EnrolledRig {
     rotated_at: opt(r.rotated_at),
     retired_at: opt(r.retired_at),
   };
+}
+
+/** The two parts of a rig that report a build. */
+export type RigComponent = "harness" | "supervisor";
+
+/** A build a part of a rig reported, and since when control has seen it. */
+export interface StoredBuild extends ReportedBuild {
+  since: string;
 }
 
 /** A rig's name: what the lifecycle drivers accept (a Kubernetes namespace part, a compose name). */
@@ -2230,6 +2257,101 @@ export class ControlStore {
         by: String(r.by),
       }),
     );
+  }
+
+  // ---------------------------------------------------------------- builds and refusals
+  /** The build a part of the rig last reported, and since when; undefined when it reported none. */
+  rigBuild(rig: string, component: RigComponent): StoredBuild | undefined {
+    const r = this.db
+      .prepare("select * from rig_build where rig = ? and component = ?")
+      .get(rig, component) as Row | undefined;
+    if (!r) return undefined;
+    const num = (v: SQLInputValue | undefined) =>
+      v === null || v === undefined ? null : Number(v);
+    return {
+      version: r.version === null ? null : String(r.version),
+      commit: r.commit_sha === null ? null : String(r.commit_sha),
+      protocol: num(r.protocol),
+      oldest_protocol: num(r.oldest_protocol),
+      since: String(r.since),
+    };
+  }
+
+  /**
+   * Records the build a part of the rig reports (null: it reports none). Written only when it
+   * changes, so `since` is when control first saw it. True when it changed.
+   */
+  setRigBuild(rig: string, component: RigComponent, b: ReportedBuild | null): boolean {
+    const was = this.rigBuild(rig, component);
+    if (!b) {
+      if (!was) return false;
+      this.db.prepare("delete from rig_build where rig = ? and component = ?").run(rig, component);
+      return true;
+    }
+    if (
+      was &&
+      was.version === b.version &&
+      was.commit === b.commit &&
+      was.protocol === b.protocol &&
+      was.oldest_protocol === b.oldest_protocol
+    )
+      return false;
+    this.db
+      .prepare(
+        `insert or replace into rig_build (rig, component, version, commit_sha, protocol,
+           oldest_protocol, since) values (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        rig,
+        component,
+        b.version,
+        b.commit,
+        b.protocol,
+        b.oldest_protocol,
+        new Date().toISOString(),
+      );
+    return true;
+  }
+
+  /** Why control refuses the rig now, and since when; undefined when it does not. */
+  rigRefusal(rig: string): { reason: string; since: string } | undefined {
+    const r = this.db.prepare("select reason, since from rig_refusal where rig = ?").get(rig) as
+      | Row
+      | undefined;
+    return r ? { reason: String(r.reason), since: String(r.since) } : undefined;
+  }
+
+  /** The rigs control refuses now. */
+  refusedRigs(): string[] {
+    return (this.db.prepare("select rig from rig_refusal order by rig").all() as Row[]).map((r) =>
+      String(r.rig),
+    );
+  }
+
+  /**
+   * Refuses the rig for this reason, or (null) ends its refusal. Each new refusal and each end
+   * goes to the audit log once, not on every call the rig makes. A refused rig that never sent a
+   * report is listed (with no report: offline), so the owner sees why.
+   */
+  setRigRefusal(rig: string, reason: string | null, detail: Record<string, unknown> = {}): void {
+    const was = this.rigRefusal(rig);
+    if (reason === null) {
+      if (!was) return;
+      this.db.prepare("delete from rig_refusal where rig = ?").run(rig);
+      this.audit(`rig:${rig}`, "rig_refusal_ended", { was: was.reason, ...detail });
+      return;
+    }
+    if (was?.reason === reason) return;
+    const now = new Date().toISOString();
+    this.tx(() => {
+      this.db
+        .prepare("insert or replace into rig_refusal (rig, reason, since) values (?, ?, ?)")
+        .run(rig, reason, now);
+      this.db
+        .prepare("insert or ignore into rig (id, first_seen, last_seen) values (?, ?, ?)")
+        .run(rig, now, new Date(0).toISOString());
+      this.audit(`rig:${rig}`, "rig_refused", { reason, ...detail });
+    });
   }
 
   // ---------------------------------------------------------------- rigs behind a proxy

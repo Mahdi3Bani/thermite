@@ -1,5 +1,7 @@
 import { type Hardware, readHardware } from "../core/hardware.ts";
+import { type BuildInfo, buildInfo } from "../core/version.ts";
 import type { ControlStore } from "./store.ts";
+import { type RigVersions, rigVersions } from "./versions.ts";
 
 /**
  * Control's read model: what the dashboard, the API and MCP show. It is computed from the
@@ -307,10 +309,33 @@ function readGpuSplit(v: unknown): { set: number; judge: number } | null {
     : null;
 }
 
+/**
+ * Whether a rig reports: "reporting" within the stale window, "stale" after it, "offline" after
+ * the longer offline window. A rig that never sent a report is offline.
+ */
+export type ReportingState = "reporting" | "stale" | "offline";
+
+/** How long without a report makes a rig offline when control is given no other time. */
+export const OFFLINE_AFTER_MS = 900_000;
+
+export function reportingState(
+  lastSeen: string,
+  opts: { staleAfterMs: number; offlineAfterMs?: number | undefined; now?: number | undefined },
+): ReportingState {
+  const age = (opts.now ?? Date.now()) - Date.parse(lastSeen);
+  // Never before the stale window ends.
+  const offline = Math.max(opts.staleAfterMs, opts.offlineAfterMs ?? OFFLINE_AFTER_MS);
+  return !(age <= offline) ? "offline" : age > opts.staleAfterMs ? "stale" : "reporting";
+}
+
 export interface RigView {
   id: string;
   last_seen: string;
+  /** True when the rig is stale or offline. */
   stale: boolean;
+  state: ReportingState;
+  /** The rig's builds against control's: behind or ahead, refused and why, or unknown. */
+  version: RigVersions;
   ledger_id: string | null;
   summary: unknown;
   /** The supervisor's own figures (git sync, advisors); reported by the supervisor, unsigned. */
@@ -388,7 +413,14 @@ export function rigEvents(
 export function rigView(
   store: ControlStore,
   rig: string,
-  opts: { staleAfterMs: number; now?: number } = { staleAfterMs: 180_000 },
+  opts: {
+    staleAfterMs: number;
+    /** After this long without a report the rig is offline (default OFFLINE_AFTER_MS). */
+    offlineAfterMs?: number | undefined;
+    now?: number;
+    /** Control's own build, which the rig's are compared with (default: this process's). */
+    control?: BuildInfo | undefined;
+  } = { staleAfterMs: 180_000 },
 ): RigView | undefined {
   const u = store.rigs().find((x) => x.id === rig);
   if (!u) return undefined;
@@ -1008,6 +1040,8 @@ export function rigView(
     id: u.id,
     last_seen: u.last_seen,
     stale: now - Date.parse(u.last_seen) > opts.staleAfterMs,
+    state: reportingState(u.last_seen, { ...opts, now }),
+    version: rigVersions(store, u.id, opts.control ?? buildInfo()),
     ledger_id: u.ledger_id,
     summary: u.summary,
     supervisor: store.supervisor(u.id),

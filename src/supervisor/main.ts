@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { log, optionalSecretFromFile, requireEnv, secretFromFile } from "../common/env.ts";
+import { buildHeaders, buildInfo } from "../core/version.ts";
 import { type AdviseState, adviseOnce, emptyAdviseState, teachersCalled } from "./advise.ts";
 import { type ControlAdvisors, fetchControlAdvisors, mergeAdvisors } from "./advisor-routes.ts";
 import { AdvisorsConfig } from "./advisors.ts";
@@ -116,6 +117,7 @@ async function main(): Promise<void> {
   let reportState = load<{ lastDailyAt?: string }>(reportPath, {});
   log("supervisor", "starting", {
     rig,
+    build: buildInfo(),
     interval_ms: intervalMs,
     control: Boolean(controlUrl),
     results_remote: Boolean(remote),
@@ -140,7 +142,11 @@ async function main(): Promise<void> {
     if (!controlUrl || !controlToken) return;
     const res = await fetch(`${controlUrl}/v1/rigs/${encodeURIComponent(rig)}${path}`, {
       method: "POST",
-      headers: { authorization: `Bearer ${controlToken}`, "content-type": "application/json" },
+      headers: {
+        authorization: `Bearer ${controlToken}`,
+        "content-type": "application/json",
+        ...buildHeaders(),
+      },
       body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(`POST ${path} -> ${res.status}`);
