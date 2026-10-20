@@ -30,7 +30,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 
 ### Tester basics
 
-- [001](goals/001-plans-in-public.goal) Plans in public docs · `IN_PROGRESS`
+- [001](goals/001-plans-in-public.goal) Plans in public docs · `VERIFIED`
 - [002](goals/002-ci-and-repository-settings.goal) CI on every push, and repository settings · `READY`
 - [003](goals/003-advisors-no-default-cap.goal) No default spend limit for advisors · `VERIFIED`
 - [004](goals/004-secret-scan.goal) Scan the history for secrets · `READY`

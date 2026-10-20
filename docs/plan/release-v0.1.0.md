@@ -38,7 +38,7 @@ A tester can run Thermite, knows the risks, and knows where to report a problem.
 
 | Goal | Status | Depends on |
 | --- | --- | --- |
-| [001 · Plans in public docs](goals/001-plans-in-public.goal) | `IN_PROGRESS` | — |
+| [001 · Plans in public docs](goals/001-plans-in-public.goal) | `VERIFIED` | — |
 | [002 · CI on every push, and repository settings](goals/002-ci-and-repository-settings.goal) | `READY` | — |
 | [003 · No default spend limit for advisors](goals/003-advisors-no-default-cap.goal) | `VERIFIED` | — |
 | [004 · Scan the history for secrets](goals/004-secret-scan.goal) | `READY` | — |

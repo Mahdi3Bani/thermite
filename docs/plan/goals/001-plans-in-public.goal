@@ -1,17 +1,17 @@
 ---
 id: "001"
 title: "Plans in public docs"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 part: "Tester basics"
 depends_on: []
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # 001 · Plans in public docs
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
 
 ## What
 
@@ -23,10 +23,10 @@ The plans had spread over many private files with five separate ID series. One p
 
 ## Done when
 
-- [ ] `docs/plan/` holds the roadmap, the release plan, the decisions and one goal for each roadmap item.
-- [ ] AGENTS.md, CONVENTIONS.md, the README and the docs index point to `docs/plan/`.
-- [ ] The public-content check passes on every file.
-- [ ] After the new plans reach the development branch, the old private plan files are archived, and new ideas arrive only as goals.
+- [x] `docs/plan/` holds the roadmap, the release plan, the decisions and one goal for each roadmap item.
+- [x] AGENTS.md, CONVENTIONS.md, the README and the docs index point to `docs/plan/`.
+- [x] The public-content check passes on every file.
+- [x] After the new plans reach the development branch, the old private plan files are archived, and new ideas arrive only as goals.
 
 ## Decisions
 
@@ -40,6 +40,7 @@ None.
 
 - 2026-10-19: Goal written from the v0.1.0 release plan.
 - 2026-10-19: The plan files and the goals are written on a side branch. The cut-over waits until that branch merges.
+- 2026-10-20: The plans reached the development branch. `docs/plan/` holds the roadmap, the release plan, the decisions and a goal for each roadmap item; AGENTS.md, CONVENTIONS.md, the README and the docs index point to it; the public check passes. The maintainers archived their private plan files, and new ideas now arrive only as goals. Verified.
 
 ---
 
