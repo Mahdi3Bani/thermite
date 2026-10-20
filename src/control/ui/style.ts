@@ -666,7 +666,7 @@ details.menu > summary::-webkit-details-marker { display: none; }
 .qkind.avoid { background: var(--error-surface); color: var(--error-foreground); } .qkind.always { background: var(--success-surface); color: var(--success-foreground); } .qkind.try { background: var(--primary-surface); color: var(--info-foreground); }
 .qruleform { display: grid; grid-template-columns: 130px minmax(0, 1.2fr) minmax(0, 1fr) auto; gap: 8px; align-items: end; }
 @media (max-width: 760px) { .qruleform { grid-template-columns: minmax(0, 1fr); } }
-.qhands { padding: 4px 14px; }
+.qhands { padding: 4px 14px; margin-bottom: 22px; }
 .qhand { display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
 .qhand:last-child { border-bottom: 0; }
 .qhand .tm { font: 12px var(--font-mono); color: var(--muted-foreground); }
