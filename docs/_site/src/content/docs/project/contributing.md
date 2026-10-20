@@ -36,7 +36,7 @@ Run these from the repository root before each commit:
 | `node scripts/test.mjs <files>` | The test files your change touches. `npm test` runs them all, one file at a time |
 | `npm run check:public` | That no tracked or staged file holds private names (see below). Stage new files first, or run `node scripts/check-public.mjs --untracked` |
 
-`npm run check` runs the typecheck, the lint, every test and the public check, in that order. One test keeps an example in step: after a change to `examples/smoke-project`, or to `kits/smoke-cpu` outside its candidates, `src/harness/smoke-check.test.ts` fails until `examples/contracts/smoke-cpu-goal.json` names their new commits, and says which field to set to which commit. Continuous integration runs the same checks on Node.js 22 and 24 for every pull request and every push to `main`. It also builds and checks this site, and runs the compose smoke test with Docker.
+`npm run check` runs the typecheck, the lint, every test and the public check, in that order. One test keeps an example in step: after a change to `examples/smoke-project`, or to `kits/smoke-cpu` outside its candidates, `src/harness/smoke-check.test.ts` fails until `examples/contracts/smoke-cpu-goal.json` names their new commits, and says which field to set to which commit.
 
 Changes to some parts also need a test that starts containers. Each takes from a few minutes to half an hour:
 
@@ -52,6 +52,20 @@ Changes to some parts also need a test that starts containers. Each takes from a
 The campaign test serves a tiny project with `git daemon` and creates a campaign through the New campaign form, which starts a try of its kit. Then it starts the campaign's own run from the campaign's page, with the agents on. Its rig gets a model route that nothing answers, so the agents fail at once, and the script submits the changes itself. The cluster test sets rigs up on a local kind cluster, in a namespace control creates and in a pre-made slot. Then it restarts control with re-tagged images, moves the slot's rig onto them with **Update to these images**, and checks that the rig reports again from the new pods with its volume claim and secret unchanged.
 
 [AGENTS.md](https://github.com/iammrduncan/thermite/blob/main/AGENTS.md#checks) lists every acceptance test and when it is needed. These tests use local stand-ins only: a scripted model, a container with an SSH server, a local Kubernetes cluster in containers. They never touch a real host or cluster. The scripts clean up when their stack comes down. After a run that you stopped by hand, remove dangling images (`docker image prune -f` or `podman image prune -f`) and, with Podman on a Mac, trim its virtual machine's disk (`podman machine ssh sudo fstrim -a`). Never prune tagged images: they may belong to other projects.
+
+## What CI runs
+
+Continuous integration (`.github/workflows/ci.yml`) runs on every pull request, and on every push to `main` and to the development branch, `v1/build`. It has these jobs:
+
+| Job | What it runs |
+| --- | --- |
+| **checks (Node 22)**, **checks (Node 24)** | `npm ci`, the typecheck, the lint, every test and the public check, on each Node.js version |
+| **docs site** | `npm run docs:build` and `npm run docs:check` |
+| **compose-smoke** | The compose smoke test with Docker, after both **checks** jobs pass |
+
+A new commit on a pull request cancels the run for the commit before it. Every push to `main` or `v1/build` gets a whole run of its own.
+
+`.github/dependabot.yml` asks Dependabot for updates once a week: Thermite's packages, this site's packages and the GitHub Actions in the workflow. For each of the three, the minor and patch updates come together in one pull request. A major update comes alone, and so does every Starlight update, because Starlight is still 0.x.
 
 ## Work on the dashboard
 

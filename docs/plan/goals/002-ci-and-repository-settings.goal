@@ -1,17 +1,17 @@
 ---
 id: "002"
 title: "CI on every push, and repository settings"
-status: READY
+status: IN_PROGRESS
 version: "0.1.0"
 part: "Tester basics"
 depends_on: []
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # 002 · CI on every push, and repository settings
 
-**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
 
 ## What
 
@@ -34,11 +34,21 @@ The code moves to `main` only as the last step of the release. Without this chan
 
 ## Open questions
 
-- The repository settings need the owner's GitHub account.
+- The repository settings need the owner's GitHub account. The checklist in Progress says what to set.
+- Goal 026 merges the release into `main` as a fast-forward. GitHub's merge button cannot do that: **Rebase and merge** makes new commits. The ruleset below also refuses a plain `git push` to `main`. The owner picks one way:
+  - Add the **Repository admin** role to the ruleset's bypass list, with **Always allow**. When the release pull request's checks pass, push its commit to `main`; GitHub then marks the pull request merged. Admins can then also push to `main` without a pull request.
+  - Or keep the bypass list empty and use **Rebase and merge**. The history stays linear, but every commit gets a new ID.
 
 ## Progress
 
 - 2026-10-19: Goal written from the v0.1.0 release plan.
+- 2026-10-20: CI (`.github/workflows/ci.yml`) now runs on every push to `v1/build`, as well as on pull requests and pushes to `main`. A new commit on a pull request cancels the older run. Every push to `main` or `v1/build` gets a whole run of its own. The contributing page says what CI runs. The first box waits for a push to `v1/build` that shows every job green.
+- 2026-10-20: `.github/dependabot.yml` asks for weekly updates: npm at the root and in `docs/_site`, and GitHub Actions. Minor and patch updates come grouped. Starlight updates come alone, because Starlight is still 0.x. Dependabot reads this file only from the default branch, so the version updates start when the release reaches `main`.
+- 2026-10-20: The owner's steps, in the repository's settings on GitHub. Nothing in the repository changes them:
+  - [ ] **Ruleset on `main`:** Settings › Rules › Rulesets › New ruleset › New branch ruleset. Name: `main`. Enforcement status: **Active**. Target branches: **Include default branch**. Rules: **Restrict deletions**; **Block force pushes**; **Require a pull request before merging**, with 0 required approvals; **Require status checks to pass**, with **Require branches to be up to date before merging** and these checks: `checks (Node 22)`, `checks (Node 24)`, `docs site`, `compose-smoke`. Bypass list: see the open question.
+  - [ ] **Private vulnerability reporting:** Settings › Advanced Security › Private vulnerability reporting › **Enable**.
+  - [ ] **Dependabot alerts:** Settings › Advanced Security › Dependabot alerts › **Enable**.
+  - [ ] **Topics:** the repository's main page › **About** (the gear icon) › **Topics**. Remove `harnes`, which is misspelled; `harness` is already there. The topics after: `agent-tools`, `artificial-intelligence`, `auto-research`, `autonomous-agents`, `harness`, `harness-framework`, `llm`.
 
 ---
 

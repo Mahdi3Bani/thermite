@@ -1,19 +1,21 @@
-# The fast checks on every pull request and on main, the documentation site's build and checks, then
-# the compose smoke test: control and one rig built from this commit, a campaign assigned through
-# control, a candidate judged.
+# On every pull request and every push to main and to the development branch (v1/build): the fast
+# checks, the documentation site's build and checks, then the compose smoke test: control and one
+# rig built from this commit, a campaign assigned through control, a candidate judged.
 name: ci
 
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, v1/build]
 
 permissions:
   contents: read
 
+# A new commit on a pull request cancels the run before it. Every push to main or v1/build gets a
+# whole run of its own.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   checks:
