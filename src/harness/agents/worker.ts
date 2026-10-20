@@ -6,6 +6,8 @@ import type { Role, Runner } from "../broker/runner.ts";
 import { linkSession, type SessionLink } from "./live-session.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
 import { NOTE_TOOL, type NoteRequest, writeNote } from "./notes-tool.ts";
+import { researchAgentTools } from "./research-agent-tools.ts";
+import { CODE_RESEARCH_TOOLS, codeResearchNote } from "./research-tools.ts";
 
 /**
  * One worker trial: a fresh agent session (Pi) with Thermite's tools, in the lane's own
@@ -112,6 +114,8 @@ export interface TrialDeps {
   idea?(req: IdeaInput): Promise<{ experiment: string }>;
   /** A field note: written by this lane, in the run's journal. */
   note?(req: NoteRequest): Promise<{ note: number }>;
+  /** The research service (sources, claims and notes in the run's folder): one operation. */
+  research?(op: string, args: Record<string, unknown>): Promise<unknown>;
   /** The live view: the session's turns out, the owner's messages in. */
   link?: SessionLink | undefined;
 }
@@ -146,7 +150,9 @@ a smaller result. If you cannot make a useful change, explain why in your final 
 submitting. If you see another experiment worth trying that is not your assignment, propose it
 with the idea tool: the planner decides whether it is queued, and your trial goes on.
 
-${notesInstruction("with the note tool")}`;
+${notesInstruction("with the note tool")}
+
+${codeResearchNote("with the fetch tool")}`;
 
 function text(t: string) {
   return { content: [{ type: "text" as const, text: t }], details: {} };
@@ -323,6 +329,25 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
             writeNote(deps.note as NonNullable<TrialDeps["note"]>, p),
           ),
         ]
+      : []),
+    // Sources, claims and notes in the run's research folder, as a research trial records them.
+    ...(deps.research
+      ? researchAgentTools(
+          CODE_RESEARCH_TOOLS,
+          async (op, args) => {
+            // A submission ends the trial: nothing runs after it.
+            if (result.submitted) return "the trial ended with your submission";
+            try {
+              return await (deps.research as NonNullable<TrialDeps["research"]>)(op, args);
+            } catch (err) {
+              return `refused: ${err instanceof Error ? err.message : String(err)}`;
+            }
+          },
+          { run: spec.run, lane: spec.lane },
+          () => {
+            result.toolCalls++;
+          },
+        )
       : []),
     tool(
       "submit",

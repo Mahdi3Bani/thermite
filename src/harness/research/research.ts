@@ -6,8 +6,14 @@ import { log } from "../../common/env.ts";
 import { canonicalJson } from "../../core/canonical.ts";
 import type { ResearchContract } from "../../core/contract.ts";
 import { parseDuration } from "../../core/duration.ts";
+import { CODE_RESEARCH_TOOLS, researchTool } from "../agents/research-tools.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import { Fetcher, FetchRefused, htmlToText } from "./fetcher.ts";
+
+/** The research service's operations a hill-climb or goal run takes (its code trials' tools). */
+const CODE_OPS = new Set(CODE_RESEARCH_TOOLS.map((n) => researchTool(n)?.op ?? n));
+
+const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
 /**
  * Research mode's integrity rules, enforced by code (the research form of "agents never judge"):
@@ -104,12 +110,19 @@ export class Research {
     }
   }
 
-  /** Workers may act only on a running research campaign. */
-  requireRunning(run: string): void {
+  /**
+   * Workers may act only on a running run. A research run takes every operation; a hill-climb or
+   * goal run records sources, claims and notes (goal 065), and the rest belongs to research runs.
+   */
+  requireRunning(run: string, op?: string | undefined): void {
     const inst = this.ledger.getRun(run);
     if (!inst) throw new LedgerError("not_found", `no run ${run}`);
-    if (inst.mode !== "research") throw new LedgerError("invalid", `${run} is not research`);
     if (inst.status !== "running") throw new LedgerError("invalid", `run ${run} is ${inst.status}`);
+    if (inst.mode !== "research" && (op === undefined || !CODE_OPS.has(op)))
+      throw new LedgerError(
+        "invalid",
+        `a ${inst.mode.replace(/_/g, "-")} run records sources, claims and notes only (${CODE_RESEARCH_TOOLS.join(", ")}); the rest belongs to research runs`,
+      );
   }
 
   private contract(run: string): ResearchContract {
@@ -123,14 +136,22 @@ export class Research {
   private fetcher(run: string): Fetcher {
     let f = this.fetchers.get(run);
     if (!f) {
-      const c = this.contract(run);
+      // A research contract's fetch policy and scope; another run's are the policy's defaults
+      // (robots.txt respected, a polite rate per domain, a size bound per page), no scope.
+      const inst = this.ledger.getRun(run);
+      const c = inst ? this.ledger.getContract(inst.campaign, inst.version) : undefined;
+      const policy =
+        c?.mode === "research"
+          ? c.fetch_policy
+          : { respect_robots: true, per_domain_per_minute: 6, max_bytes: 5_000_000 };
+      const scope = c?.mode === "research" ? c.scope : { include_domains: [], exclude_domains: [] };
       f = new Fetcher(
         {
-          respectRobots: c.fetch_policy.respect_robots,
-          perDomainPerMinute: c.fetch_policy.per_domain_per_minute,
-          maxBytes: c.fetch_policy.max_bytes,
-          includeDomains: c.scope.include_domains,
-          excludeDomains: c.scope.exclude_domains,
+          respectRobots: policy.respect_robots,
+          perDomainPerMinute: policy.per_domain_per_minute,
+          maxBytes: policy.max_bytes,
+          includeDomains: scope.include_domains,
+          excludeDomains: scope.exclude_domains,
           allowPrivate: this.allowPrivate,
         },
         join(this.stateDir, "research", run),
@@ -209,11 +230,14 @@ export class Research {
           f.textPath,
           lane ?? "research",
         );
+      // Its address and title too, so a knowledge base can show what was read from events alone.
       this.ledger.appendEvent(lane ?? "research", "source_fetched", run, {
         source: id,
         domain: f.domain,
         status: f.status,
         bytes: f.bytes,
+        url: clip(f.url, 2000),
+        title: f.title ? clip(f.title, 500) : null,
       });
     });
     const row = this.get("select * from source where id = ?", id) as Row;
@@ -336,28 +360,54 @@ export class Research {
           c.confidence ?? null,
           new Date().toISOString(),
         );
+      // The claim's words and its first quote, bounded: the record of what the source says.
       this.ledger.appendEvent(lane ?? "research", "claim_added", run, {
         claim: id,
         verified,
         question: c.question ?? null,
+        text: clip(c.text, 500),
+        quote: clip(c.quotes[0]?.quote ?? "", 500),
       });
     });
     this.changed(run);
     return { claim: id, verified, problems };
   }
 
-  addNote(run: string, lane: string | null, text: string, sources: string[] = []) {
-    const r = this.ledger.db
-      .prepare("insert into note (run, lane, text, sources, created_at) values (?, ?, ?, ?, ?)")
-      .run(
-        run,
-        lane,
-        text.slice(0, 4000),
-        canonicalJson(sources.slice(0, 20)),
-        new Date().toISOString(),
-      );
+  /**
+   * A research note, with the sources it relies on. It is its own record (the research folder's
+   * notes/ and the report read it) and one `research_note` event with its text, so the knowledge
+   * base has it too. Field notes are another record (journal.ts).
+   */
+  addNote(
+    run: string,
+    lane: string | null,
+    text: string,
+    sources: string[] = [],
+    trial?: string | undefined,
+  ) {
+    const body = text.trim().slice(0, 4000);
+    if (!body) throw new LedgerError("invalid", "a note needs its text");
+    const cited = sources.slice(0, 20);
+    const first = cited.length
+      ? this.get("select url from source where run = ? and id = ?", run, cited[0] as string)
+      : undefined;
+    const id = this.ledger.tx(() => {
+      const r = this.ledger.db
+        .prepare("insert into note (run, lane, text, sources, created_at) values (?, ?, ?, ?, ?)")
+        .run(run, lane, body, canonicalJson(cited), new Date().toISOString());
+      const id = Number(r.lastInsertRowid);
+      this.ledger.appendEvent(lane ?? "research", "research_note", run, {
+        note: id,
+        by: lane ?? "research",
+        text: body,
+        sources: cited,
+        ...(first ? { url: String(first.url) } : {}),
+        ...(trial ? { trial } : {}),
+      });
+      return id;
+    });
     this.changed(run);
-    return { note: Number(r.lastInsertRowid) };
+    return { note: id };
   }
 
   proposeHypothesis(run: string, lane: string | null, text: string, supporting: string[] = []) {
@@ -427,10 +477,14 @@ export class Research {
           canonicalJson(problems),
           new Date().toISOString(),
         );
+      // The finding's statement, summary and why it matters, bounded.
       this.ledger.appendEvent(lane ?? "research", "finding_added", run, {
         finding: id,
         supported,
         claims: cited.length,
+        statement: clip(f.text, 1000),
+        summary: clip(f.summary, 1000),
+        why: clip(f.why_it_matters, 500),
       });
     });
     this.changed(run);

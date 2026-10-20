@@ -102,6 +102,8 @@ async function main(): Promise<void> {
     idea: (req) => call("POST", "/v1/trial/idea", req),
     // A field note: the trial's token decides the run, the lane and who wrote it.
     note: (req) => call("POST", "/v1/trial/note", req),
+    // Sources, claims and notes in the run's research folder (the trial decides the run).
+    research: (op, args) => call("POST", `/v1/research/${op}`, args),
     link,
   });
   process.stdout.write(`\n${JSON.stringify(result)}\n`);

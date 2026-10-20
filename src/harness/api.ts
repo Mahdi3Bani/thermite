@@ -555,9 +555,10 @@ export function createHarnessApi(
     const r = extras.research;
     if (!r) return c.json({ error: "research is not available" }, 404);
     const body = (await c.req.json()) as Record<string, unknown>;
-    // The trial decides where its work goes; run and lane in the body are ignored.
+    // The trial decides where its work goes; run and lane in the body are ignored. A hill-climb
+    // or goal trial records sources, claims and notes too (goal 065); the rest is research's.
     const { run, lane } = trial;
-    r.requireRunning(run);
+    r.requireRunning(run, c.req.param("op"));
     const s = (k: string) => String(body[k] ?? "");
     switch (c.req.param("op")) {
       case "fetch":
@@ -573,7 +574,7 @@ export function createHarnessApi(
       case "claim":
         return c.json(r.addClaim(run, lane, body));
       case "note":
-        return c.json(r.addNote(run, lane, s("text"), Strings.parse(body.sources)));
+        return c.json(r.addNote(run, lane, s("text"), Strings.parse(body.sources), trial.id));
       case "hypothesis":
         return c.json(r.proposeHypothesis(run, lane, s("text"), Strings.parse(body.supporting)));
       case "finding":

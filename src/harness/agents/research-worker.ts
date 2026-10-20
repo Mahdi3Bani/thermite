@@ -5,13 +5,14 @@ import { notesInstruction } from "../../core/journal.ts";
 import { linkSession, type SessionLink } from "./live-session.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
 import { NOTE_TOOL, type NoteRequest, writeNote } from "./notes-tool.ts";
+import { researchAgentTools } from "./research-agent-tools.ts";
 import { listFiles, readFile, removeFile, searchFiles, writeFile } from "./research-files.ts";
 import {
   RESEARCH_SYSTEM,
+  RESEARCH_TOOLS,
   type ResearchFolderPaths,
   researchFolderNote,
   researchOutput,
-  researchTool,
 } from "./research-tools.ts";
 import type { IdeaInput, TrialResult } from "./worker.ts";
 import { IDEA_TOOL, keepGoing, proposeIdea, withoutPastThinking } from "./worker.ts";
@@ -70,66 +71,15 @@ export async function runResearchTrial(
     tokensIn: 0,
     tokensOut: 0,
   };
-  const base = { run: spec.run, lane: spec.lane };
-  // The name, description and operation come from the list OpenCode's commands share.
-  const tool = <P extends TSchema>(name: string, parameters: P): AgentTool<P> => {
-    const t = researchTool(name);
-    if (!t) throw new Error(`no research tool ${name}`);
-    return {
-      name,
-      label: name,
-      description: t.description,
-      parameters,
-      execute: async (_id, params) => {
-        result.toolCalls++;
-        // The trial's own run and lane always win over anything in the model's arguments
-        // (the harness binds them again from the trial token).
-        return out(await deps.call(t.op, { ...(params as Record<string, unknown>), ...base }));
-      },
-    };
-  };
   const tools: AgentTool[] = [
-    tool("fetch", Type.Object({ url: Type.String() })),
-    tool(
-      "read_source",
-      Type.Object({
-        source: Type.String(),
-        offset: Type.Optional(Type.Number()),
-        length: Type.Optional(Type.Number()),
-      }),
+    ...researchAgentTools(
+      RESEARCH_TOOLS.map((t) => t.name),
+      deps.call,
+      { run: spec.run, lane: spec.lane },
+      () => {
+        result.toolCalls++;
+      },
     ),
-    tool("search", Type.Object({ query: Type.String() })),
-    tool("search_corpus", Type.Object({ text: Type.String() })),
-    tool(
-      "add_claim",
-      Type.Object({
-        text: Type.String(),
-        quotes: Type.Array(Type.Object({ source: Type.String(), quote: Type.String() })),
-        question: Type.Optional(
-          Type.Number({ description: "Index of the campaign question it answers (0-based)." }),
-        ),
-        confidence: Type.Optional(Type.Number()),
-      }),
-    ),
-    tool(
-      "add_note",
-      Type.Object({ text: Type.String(), sources: Type.Optional(Type.Array(Type.String())) }),
-    ),
-    tool(
-      "propose_hypothesis",
-      Type.Object({ text: Type.String(), supporting: Type.Optional(Type.Array(Type.String())) }),
-    ),
-    tool(
-      "add_finding",
-      Type.Object({
-        text: Type.String({ description: "The finding, in one sentence." }),
-        summary: Type.String({ description: "What the claims show, and how." }),
-        why_it_matters: Type.String({ description: "Why it matters for the campaign." }),
-        supporting: Type.Array(Type.String(), { description: "The verified claims behind it." }),
-      }),
-    ),
-    tool("update_section", Type.Object({ name: Type.String(), body: Type.String() })),
-    tool("progress", Type.Object({})),
     ...(spec.folder ? folderTools(spec.folder, result) : []),
     ...(deps.idea
       ? [

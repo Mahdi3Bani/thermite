@@ -9,6 +9,8 @@ import type { MessageInbox, TrialProgress } from "./live-session.ts";
 import type { ModelConfig } from "./model.ts";
 import type { RigCheckReport } from "./model-check.ts";
 import {
+  CODE_RESEARCH_TOOLS,
+  codeResearchNote,
   RESEARCH_SYSTEM,
   type ResearchFolderPaths,
   researchCommands,
@@ -202,6 +204,10 @@ ATTEMPT" shows how the judge decided an attempt; "thermite-trial idea TITLE [--w
 decides whether it is queued; your trial goes on).
 
 ${notesInstruction(`with "${NOTE_USAGE}" (KIND: observation, decision, surprise, question, lesson or note; TYPE: experiment, attempt, source, claim, finding, round, trial or message)`)}
+
+${codeResearchNote('with "thermite-trial research fetch URL"')} The research commands:
+
+${researchCommands(CODE_RESEARCH_TOOLS)}
 
 Your shell tool stops a command after two minutes unless you set its timeout: for a long build or
 test, set timeout to 0. What a command starts in the background runs until the trial ends.`;

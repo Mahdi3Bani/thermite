@@ -94,6 +94,11 @@ export class Knowledge {
     this.folderRoot = o.folderRoot;
   }
 
+  /** A run's research folder. */
+  folder(run: string): string {
+    return this.folderRoot(run);
+  }
+
   /** The knowledge/ folder of a run's research folder. */
   dir(run: string): string {
     return join(this.folderRoot(run), "knowledge");

@@ -799,8 +799,30 @@ export class Scheduler {
     const out: string[] = [];
     const background = briefingText(this.ledger.briefing(run));
     if (background) out.push(background);
+    const knowledge = this.o.service.knowledge;
+    try {
+      knowledge.show(run);
+    } catch (err) {
+      log("scheduler", "past research not shown", { run, error: String(err) });
+    }
     const past = this.pastResearch(run, reader);
     if (past) out.push(`# Past research\n${past}`);
+    // A code trial's run folder, once its trials recorded sources, claims or notes there (a
+    // research trial's instructions describe its folder).
+    const recorded = Number(
+      (
+        this.ledger.db
+          .prepare(
+            `select (select count(*) from source where run = ?) + (select count(*) from claim where run = ?)
+               + (select count(*) from note where run = ?) as n`,
+          )
+          .get(run, run, run) as { n: number }
+      ).n,
+    );
+    if (reader === "worker" && recorded > 0)
+      out.push(
+        `# The run's research folder\n${knowledge.folder(run)} holds the sources, claims and notes this run's workers recorded (sources/, claims/, notes/), kept current by the harness. Search it with shell commands (grep -r, cat) before you fetch a page again. You cannot change it.`,
+      );
     const { mine, others } = this.o.service.journal.forLane(run, lane);
     if (mine.length || others.length)
       out.push(
