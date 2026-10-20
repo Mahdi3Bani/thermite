@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { log, optionalSecretFromFile, requireEnv, secretFromFile } from "../common/env.ts";
-import { type AdviseState, adviseOnce, emptyAdviseState } from "./advise.ts";
+import { type AdviseState, adviseOnce, emptyAdviseState, teachersCalled } from "./advise.ts";
 import { type ControlAdvisors, fetchControlAdvisors, mergeAdvisors } from "./advisor-routes.ts";
 import { AdvisorsConfig } from "./advisors.ts";
 import { type ChampionUpload, championsIn, uploadChampions } from "./champions.ts";
@@ -159,6 +159,8 @@ async function main(): Promise<void> {
     } catch {}
     return lastSettings;
   };
+  // How often the pause between advisor rounds looks for a new owner's message to the teachers.
+  const ownerCheckMs = 5000;
   // Advisors run on their own: a teacher round can take many minutes.
   const advising = async () => {
     while (!stopping) {
@@ -170,11 +172,6 @@ async function main(): Promise<void> {
         continue;
       }
       const before = { ...adviseState.stats };
-      supervisorLive.append({
-        source: "supervisor",
-        kind: "status",
-        text: "advisor round started",
-      });
       try {
         // Only the roles both configured and switched on in the rig's settings (Edit rig).
         const on = await rigSettings();
@@ -186,16 +183,33 @@ async function main(): Promise<void> {
           panel: on.review ? advisors.panel : [],
         };
         adviseState = await adviseOnce(
-          { harnessUrl, harnessToken, home, advisors: active },
+          {
+            harnessUrl,
+            harnessToken,
+            home,
+            advisors: active,
+            // Each step of a round (a teacher's review, the directives and why, an audit, a
+            // review) is a line in the live view, with its run.
+            live: (line) => supervisorLive.append({ source: "supervisor", ...line }),
+          },
           adviseState,
         );
         save(advisePath, adviseState);
         const a = adviseState.stats;
-        supervisorLive.append({
-          source: "supervisor",
-          kind: "status",
-          text: `advisor round done: ${a.teacher_runs - before.teacher_runs} teacher runs, ${a.directive_sets - before.directive_sets} directive sets, ${a.audits - before.audits} audits, ${a.reviews - before.reviews} reviews, ${a.errors - before.errors} errors`,
-        });
+        const did = {
+          teachers: a.teacher_runs - before.teacher_runs,
+          sets: a.directive_sets - before.directive_sets,
+          audits: a.audits - before.audits,
+          reviews: a.reviews - before.reviews,
+          errors: a.errors - before.errors,
+        };
+        // A round that did nothing says nothing: the live view is for what happens.
+        if (Object.values(did).some((n) => n > 0))
+          supervisorLive.append({
+            source: "supervisor",
+            kind: "status",
+            text: `advisor round done: ${did.teachers} teacher runs, ${did.sets} directive sets, ${did.audits} audits, ${did.reviews} reviews, ${did.errors} errors`,
+          });
       } catch (err) {
         log("supervisor", "advisor loop error", { error: String(err) });
         supervisorLive.append({
@@ -204,8 +218,19 @@ async function main(): Promise<void> {
           text: `advisor round failed: ${String(err).slice(0, 300)}`,
         });
       }
+      // The pause between rounds ends early when the owner writes to the teacher pair: its
+      // round starts at once (checked every few seconds), not at the next hour.
       const until = Date.now() + Math.max(intervalMs, 30_000);
-      while (!stopping && Date.now() < until) await new Promise((r) => setTimeout(r, 250));
+      let checked = Date.now();
+      while (!stopping && Date.now() < until) {
+        await new Promise((r) => setTimeout(r, 250));
+        if (Date.now() - checked < ownerCheckMs || !advisors.teachers.length) continue;
+        checked = Date.now();
+        const called = await teachersCalled({ harnessUrl, harnessToken }, adviseState).catch(
+          () => false,
+        );
+        if (called && lastSettings.teachers) break;
+      }
     }
   };
   const advisingDone = advising();
