@@ -148,9 +148,10 @@ own timings are only for your guidance and never count. Keep changes inside the 
 are given. If you find a flaw in your own change, list it in known_flaws: hiding it is worse than
 a smaller result. If you cannot make a useful change, explain why in your final message without
 submitting. If you see another experiment worth trying that is not your assignment, propose it
-with the idea tool: the planner or the campaign's owner decides whether it is queued, and your trial goes on.
+with the idea tool: the planner decides whether it is queued, and your trial goes on.`;
 
-${notesInstruction("with the note tool")}
+/** Field notes, and sources, claims and notes from the web, for a code trial (goal 065). */
+const NOTES_AND_SOURCES = `${notesInstruction("with the note tool")}
 
 ${codeResearchNote("with the fetch tool")}`;
 
@@ -409,7 +410,12 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
 
   const { models, model, thinkingLevel } = buildModel(deps.model);
   const agent = new Agent({
-    initialState: { systemPrompt: SYSTEM, model, tools, thinkingLevel },
+    initialState: {
+      systemPrompt: `${SYSTEM}\n\n${NOTES_AND_SOURCES}`,
+      model,
+      tools,
+      thinkingLevel,
+    },
     streamFn: models.streamSimple.bind(models),
     convertToLlm: withoutPastThinking,
     // One tool call at a time: lane processes are killed by user when a tool finishes, so
