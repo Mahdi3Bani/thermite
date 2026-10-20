@@ -59,7 +59,7 @@ The two containers are split by what they are trusted with. The harness runs cod
 - **The ledger:** the rig's own database, and the authority on everything that happened: campaigns, runs, attempts, measurements, verdicts, champions, each run's experiment queue, the agents' field notes, each run's briefing from past research, and steering.
 - **The judge:** it builds each submitted change, measures it against the champion, gives the verdict and promotes winners.
 - **The scheduler and the planner:** they split each run into **lanes**, give each lane its next **experiment** from the run's queue, never the same one to two lanes, and start **trials**. A research run has no planner: a fixed method, the research plan, adds research tasks to the queue, and the record of each round says so (`plan: "research"`).
-- **Workers:** one fresh agent session per trial. Each runs in the rig's **worker harness**, the program that gives the model its tools (Pi, OpenCode v2 or Claude Code), and works in its own copy of the code.
+- **Workers:** one fresh agent session per trial. Each runs in the rig's **worker harness**, the program that gives the model its tools (Pi, OpenCode v2, Claude Code or Codex), and works in its own copy of the code.
 - **A small broker,** the only part that runs as root. It starts every other process as its own operating-system user, so no agent, build or measured run can read the judge's files.
 
 The judge, the scheduler and the exports run as separate loops, so a slow model call never holds up a measurement. The harness's API needs a token for everything but a health check, and the only part of Thermite that calls it from outside is the rig's own supervisor. The harness's own connections go out to its model endpoint and the internet.
@@ -160,7 +160,7 @@ Such a message never reaches the rig. Its sender gets control's reason at once (
 | --- | --- |
 | A lane with no trial running | In the brief of its next trial, once that trial's agent is at work |
 | A Pi worker | At its next step: when the model's current turn ends, before its next call to the model |
-| An OpenCode or Claude Code worker | When its current run of `opencode run` or `claude -p` ends without a submission. The harness then continues the session with the message. These programs take no message into a run that is under way, and a run goes on until the model stops by itself, the agent submits or the trial's time is up |
+| An OpenCode, Claude Code or Codex worker | When its current run of `opencode run`, `claude -p` or `codex exec` ends without a submission. The harness then continues the session with the message. These programs take no message into a run that is under way, and a run goes on until the model stops by itself, the agent submits or the trial's time is up |
 | Any worker, after it submits | It doesn't. A submission ends the trial, and the lane's next trial reads the message in its brief, where it can act on it |
 | The planner | In its next plan, if the model's plan is used. While the planner is off, its model can't be reached, or both its answers are refused, the message waits |
 | The teacher pair | In a round that starts at once, for a running run. Between rounds, the supervisor looks for new messages to the teachers every few seconds; a round already under way finishes first |

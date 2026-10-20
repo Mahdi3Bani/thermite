@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { z } from "zod";
-import { type ModelConfig, reasoningFromEnv } from "./model.ts";
+import { codexReaches, type ModelConfig, reasoningFromEnv } from "./model.ts";
 
 /** A model route as control hands it to the rig (through its supervisor), key included. */
 export const ControlRoute = z
@@ -9,7 +9,7 @@ export const ControlRoute = z
     /** The provider's API (the first version's routes had none: OpenAI-compatible). */
     type: z.enum(["openai", "anthropic", "opencode", "claude", "chatgpt"]).default("openai"),
     /** The harness the agents run in (the first versions' routes had none: Pi). */
-    harness: z.enum(["pi", "opencode", "claude-code"]).default("pi"),
+    harness: z.enum(["pi", "opencode", "claude-code", "codex"]).default("pi"),
     version: z.number().int().min(1),
     base_url: z
       .string()
@@ -33,6 +33,10 @@ export const ControlRoute = z
   })
   .refine((r) => (r.type === "claude") === (r.harness === "claude-code"), {
     message: "a Claude subscription runs only in Claude Code, and Claude Code only on one",
+  })
+  .refine((r) => r.harness !== "codex" || codexReaches(r.type), {
+    message:
+      "the Codex CLI speaks only OpenAI's Responses API: a ChatGPT sign-in or an OpenAI route",
   });
 export type ControlRoute = z.input<typeof ControlRoute>;
 
@@ -43,7 +47,7 @@ export interface ModelInfo {
   version?: number | undefined;
   revision?: string | undefined;
   /** The harness the agents run in. */
-  harness?: "pi" | "opencode" | "claude-code" | undefined;
+  harness?: "pi" | "opencode" | "claude-code" | "codex" | undefined;
   model?: string | undefined;
   base_url?: string | undefined;
   key_hint?: string | undefined;
@@ -101,7 +105,10 @@ export class ModelSource {
     const type = r.type ?? "openai";
     return {
       api: type === "openai" ? undefined : type,
-      harness: r.harness === "opencode" || r.harness === "claude-code" ? r.harness : undefined,
+      harness:
+        r.harness === "opencode" || r.harness === "claude-code" || r.harness === "codex"
+          ? r.harness
+          : undefined,
       baseUrl: r.base_url.replace(/\/$/, ""),
       model: r.model,
       apiKey: r.api_key,

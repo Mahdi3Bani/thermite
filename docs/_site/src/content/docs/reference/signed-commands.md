@@ -315,7 +315,7 @@ Each reader reads a message once: each lane, the planner and each advisor role. 
 | --- | --- |
 | A lane with no trial at work | In the brief of its next trial, once that trial's agent is at work: its first session line, or a model turn or tokens counted. If the trial fails before that, the lane's next trial gets the message. A message in a trial's brief is not given to it again during the trial |
 | A worker in Pi | At its next step: after its model's current turn |
-| A worker in OpenCode or Claude Code | When its current run ends without a submission. The harness then continues the session with the message |
+| A worker in OpenCode, Claude Code or Codex | When its current run ends without a submission. The harness then continues the session with the message |
 | A worker that has submitted | It does not read it: a submission ends the trial, and the lane's next trial reads the message in its brief |
 | The planner | At its next plan whose model's plan is used. While the planner is off, its model can't be reached, or code refuses its plan on both tries (the fixed rules give out the round's work), the message waits for the next plan |
 | The teacher pair | In its next round, once at least one teacher has given its review. For a running run, a message starts that round: between rounds the supervisor looks for one every 5 seconds, and a round under way finishes first. When the advisors have reached the day's [spending limit](advisors-file.md#spending), a message starts no round; the run's live view says once `the advisors reached the day's spending limit (<limit> USD): the teacher pair reads your message after midnight UTC` |

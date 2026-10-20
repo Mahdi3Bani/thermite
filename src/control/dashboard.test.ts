@@ -252,7 +252,10 @@ describe("control dashboard", () => {
     );
     assert.equal(calls.length, 0);
     const added = await add({ chatgpt_url: pasted, chatgpt_consent: "1" });
-    assert.match(where(added), /"chatgpt-pro" is signed in: its 1 model run in Pi or OpenCode v2/);
+    assert.match(
+      where(added),
+      /"chatgpt-pro" is signed in: its 1 model run in Pi, OpenCode v2 or Codex/,
+    );
     const exchange = calls.find((c) => c.form?.get("grant_type") === "authorization_code");
     assert.equal(exchange?.form?.get("client_id"), "oaiapp_test0001");
     assert.equal(exchange?.form?.get("code"), "code-1");
@@ -309,6 +312,46 @@ describe("control dashboard", () => {
     assert.equal(renewals()[0]?.form?.get("resource"), "https://api.openai.com/v1");
     assert.equal((await asRig()).route?.revision, a.route?.revision, "fresh: taken as it is");
     assert.equal(renewals().length, 1);
+    // The Codex CLI as the workers' harness, chosen on Edit rig: the route says so (a new
+    // revision), and the planner that follows the workers runs in Codex too.
+    let edit = await (await s.get("/ui/rigs/rig-a/edit")).text();
+    assert.match(edit, /<option value="codex">Codex<\/option>/);
+    const editForm = (harness: string) => ({
+      csrf: s.csrfFrom(edit),
+      choice: "chatgpt-pro|gpt-test",
+      harness,
+      lanes: "1",
+      trial_minutes: "20",
+      max_turns: "",
+      promotion: "owner_approval",
+      ...Object.fromEntries(
+        ["judge", "workers", "planner", "auditor", "teachers", "review", "exports"].map((k) => [
+          k,
+          "1",
+        ]),
+      ),
+    });
+    const toCodex = await s.post("/ui/rigs/rig-a/edit", editForm("codex"));
+    assert.match(decodeURIComponent(String(toCodex.headers.get("location"))), /a new model/);
+    assert.equal(s.store.rigModels()["rig-a"]?.harness, "codex");
+    const codexRoute = await asRig();
+    assert.equal(codexRoute.route?.harness, "codex");
+    assert.equal(codexRoute.route?.type, "chatgpt");
+    assert.notEqual(codexRoute.route?.revision, a.route?.revision);
+    edit = await (await s.get("/ui/rigs/rig-a/edit")).text();
+    assert.match(edit, /<option value="codex" selected>Codex<\/option>/);
+    assert.match(edit, /data-runs="planner">as the workers: Codex</);
+    page = await (await s.get("/ui/settings")).text();
+    assert.match(page, /<option value="codex" selected>Codex<\/option>/);
+    // Left to control, a ChatGPT sign-in keeps Pi.
+    await s.post("/ui/settings/rigs", { csrf, rig: "rig-a", choice: "chatgpt-pro|gpt-test" });
+    assert.equal(s.store.rigModels()["rig-a"]?.harness, "pi");
+    await s.post("/ui/settings/rigs", {
+      csrf,
+      rig: "rig-a",
+      choice: "chatgpt-pro|gpt-test",
+      harness: "opencode",
+    });
     // The harness gets it through its supervisor.
     s.env.service.models = new ModelSource(
       join(mkdtempSync(join(tmpdir(), "thermite-chatgpt-")), "model-route.json"),
@@ -411,6 +454,13 @@ describe("control dashboard", () => {
       effort: "xhigh",
     });
     assert.equal(s.store.rigModels()["rig-a"]?.effort, "medium");
+    // The Codex CLI speaks only OpenAI's Responses API: not with Anthropic's.
+    const noCodex = await s.post("/ui/rigs/rig-a/edit", { ...form, harness: "codex" });
+    assert.match(
+      decodeURIComponent(String(noCodex.headers.get("location"))),
+      /error=Codex runs only with a ChatGPT subscription or an OpenAI-compatible provider: choose Pi or OpenCode v2 for this provider\./,
+    );
+    assert.equal(s.store.rigModels()["rig-a"]?.harness, "pi");
     const asRig = (path: string) =>
       s.control.request(path, { headers: { authorization: "Bearer rig-token-abcdef" } });
     const mr = (await (await asRig("/v1/rigs/rig-a/model-route")).json()) as {

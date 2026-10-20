@@ -6,7 +6,7 @@ sidebar:
   order: 4
 ---
 
-If you pay for a ChatGPT Plus or Pro plan, Thermite's agents can work on that plan instead of a paid API key. You sign in with ChatGPT from the dashboard, and control keeps the login. Its models then run in **Pi** or **OpenCode v2**, the programs Thermite's agents work in.
+If you pay for a ChatGPT Plus or Pro plan, Thermite's agents can work on that plan instead of a paid API key. You sign in with ChatGPT from the dashboard, and control keeps the login. Its models then run in **Pi**, **OpenCode v2** or **Codex**, the programs Thermite's agents work in.
 
 A subscription is for your own Thermite only. A Thermite that several people use takes API keys.
 
@@ -36,15 +36,31 @@ Subscriptions are built, but Thermite's tests so far use stand-ins for OpenAI. A
 7. Tick **Unattended use**: "I allow Thermite's agents to use my ChatGPT plan when I am not there, for my own research." Its ⓘ says: "OpenAI asks apps to get your consent before they use your plan when you are not there. Thermite's agents work for hours without you: workers, the planner and the advisors, on the rigs you give its models."
 8. Press **Finish the sign-in**.
 
-The page shows `"chatgpt-pro" is signed in: its 6 models run in Pi or OpenCode v2. Choose one for a rig below.` with your name and count. Control reads the models from OpenAI's list for your plan, so which ones you get, and how many, depends on OpenAI. The subscription's row under **Providers** lists them as `chatgpt:` and the model's name.
+The page shows `"chatgpt-pro" is signed in: its 6 models run in Pi, OpenCode v2 or Codex. Choose one for a rig below.` with your name and count. Control reads the models from OpenAI's list for your plan, so which ones you get, and how many, depends on OpenAI. The subscription's row under **Providers** lists them as `chatgpt:` and the model's name.
 
 ## Give a rig one of its models
 
 1. In **Harness and model for each rig**, find the rig's row.
-2. Choose the [worker harness](../../reference/glossary.md), the program the agents run in: **Pi** or **OpenCode v2**. Claude Code does not take a ChatGPT subscription.
-3. Choose a model from the group "chatgpt-pro (ChatGPT subscription: Pi or OpenCode)", and press **Use**.
+2. Choose the [worker harness](../../reference/glossary.md), the program the agents run in: **Pi**, **OpenCode v2** or **Codex**. Codex is the Codex CLI, OpenAI's own program for agents; see [Run the agents in Codex](#run-the-agents-in-codex). Claude Code does not take a ChatGPT subscription.
+3. Choose a model from the group "chatgpt-pro (ChatGPT subscription: Pi, OpenCode or Codex)", and press **Use**.
 
 After a minute, press **refresh** in the status bar, the line along the bottom of the page. The model check's result shows below the rig's row. To give the planner or an advisor the subscription, use **Edit rig**: see [Give each agent its own model](model-per-agent.md).
+
+## Run the agents in Codex
+
+A ChatGPT subscription runs in Pi unless you choose another harness. To run the workers in the Codex CLI instead:
+
+1. On **Providers**, in the rig's row of **Harness and model for each rig**, choose **Codex** and the subscription's model, and press **Use**. On the rig's **Edit rig** page, it is **Codex** in the workers' **Runs in** column. An agent can do the same over MCP with [`set_rig_model`](../../reference/mcp-tools.md#set_rig_model) and `harness: "codex"`.
+2. After a minute, the model check runs in Codex. When it passes, its result says `<model> answered with a correct tool call in <seconds> s (Codex)`.
+
+Then:
+
+- Each worker's trial runs in Codex, as the lane's own user, and submits with [`thermite-trial`](../../reference/command-line.md#thermite-trial).
+- The planner runs in Codex too, unless you give it a model of its own on **Edit rig**. Its **Runs in** cell says "as the workers: Codex".
+- Research workers keep running in Pi, with the same model.
+- Codex never gets the subscription's token. It reaches OpenAI through the harness's proxy, with its trial's own token, and the proxy adds the token on the way out.
+
+The published harness images carry the Codex CLI. An image you build with an empty `CODEX_VERSION` does not ([build arguments](../../reference/settings.md#build-arguments)).
 
 ## How the login is kept
 
@@ -80,4 +96,5 @@ If a rig or an agent still uses the subscription, the row says "In use: give its
 | "ChatGPT did not allow the sign-in" and a reason | You declined, or ChatGPT refused. Sign in again and allow Thermite. |
 | "The address has no sign-in code in it." | Copy the whole address, including everything after `?`. |
 | "The sign-in failed:" and a reason | Control could not exchange the code for the login. Start again from **Sign in with ChatGPT ↗**. |
-| "Claude Code runs only with a Claude subscription here: choose Pi or OpenCode v2 for this provider." | Choose **Pi** or **OpenCode v2** for that rig. |
+| "Claude Code runs only with a Claude subscription here: choose Pi or OpenCode v2 for this provider." | Choose **Pi**, **OpenCode v2** or **Codex** for that rig. |
+| The model check fails right after you chose **Codex** | Check that the rig's harness image has the Codex CLI. The published images do; an image built with an empty `CODEX_VERSION` does not. |

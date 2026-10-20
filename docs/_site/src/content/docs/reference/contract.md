@@ -93,12 +93,12 @@ A [lane](glossary.md) is one worker's line of search. An epoch is one round of p
 | Field | Range | Default | Meaning |
 | --- | --- | --- | --- |
 | `run_timeout_s` | 10–7200 | none | Time limit, in seconds, for one command a worker runs. Without it, a command runs until it ends or the trial ends |
-| `run_rss_mib` | 256–16384 | 2048 | Memory, in MiB, for everything a lane runs at once, OpenCode or Claude Code included when the lane uses one |
+| `run_rss_mib` | 256–16384 | 2048 | Memory, in MiB, for everything a lane runs at once, OpenCode, Claude Code or Codex included when the lane uses one |
 | `workspace_mib` | 256–65536 | 2048 | Disk, in MiB, for the trial's workspace, build trees included. Each development run gets the same amount |
 | `dev_run_timeout_s` | 10–3600 | none on a development device of its own; 300 on a device the judge shares | Time limit, in seconds, for one development run |
 | `dev_run_rss_mib` | 256–16384 | 4096 | Memory, in MiB, for one development run |
 | `trial_minutes` | 1–1440 | the rig's trial length (20 minutes unless changed) | One trial's length, in minutes |
-| `processes` | 64–65536 | 256 | Processes and threads that each of a lane's users may have at once: the user of its commands (with OpenCode or Claude Code when the lane uses one), of its development runs, and of its Pi worker. At the limit, starting one more fails (`Resource temporarily unavailable`); nothing is stopped. Raise it for builds or tests that start many threads |
+| `processes` | 64–65536 | 256 | Processes and threads that each of a lane's users may have at once: the user of its commands (with OpenCode, Claude Code or Codex when the lane uses one), of its development runs, and of its Pi worker. At the limit, starting one more fails (`Resource temporarily unavailable`); nothing is stopped. Raise it for builds or tests that start many threads |
 
 A limit ends one command or one trial, never the campaign. [Limits and pacing](limits-and-pacing.md) lists every limit Thermite has.
 

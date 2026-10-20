@@ -6,6 +6,7 @@ import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { laneLimits } from "../core/contract.ts";
+import { CHATGPT_LIMIT_CODE } from "./agents/model.ts";
 import { ControlRoute } from "./agents/model-source.ts";
 import { Registry } from "./agents/registry.ts";
 import { laneCacheEnv } from "./agents/workspace.ts";
@@ -125,8 +126,8 @@ export function createHarnessApi(
 
   app.get("/v1/health", (c) => c.json({ ok: true, rig: service.rig }));
 
-  // The model proxy: OpenCode reaches the rig's provider through here, so the provider's key never
-  // reaches the lane. It takes a trial's token or one the harness minted for a check or a plan
+  // The model proxy: OpenCode and the Codex CLI reach the rig's provider through here, so the
+  // provider's key (or a ChatGPT sign-in's access token) never reaches the lane. It takes a trial's token or one the harness minted for a check or a plan
   // (as a bearer token, or as Anthropic's x-api-key), adds the real key and streams the answer.
   const openTrial = (token: string) => {
     try {
@@ -188,6 +189,38 @@ export function createHarnessApi(
     return await new Promise<Response>((resolve) => {
       const send = target.protocol === "https:" ? httpsRequest : httpRequest;
       const req = send(target, { method: c.req.method, headers, agent: false }, (res) => {
+        const status = res.statusCode ?? 502;
+        const out = new Headers();
+        for (const k of ["content-type", "cache-control"]) {
+          const v = res.headers[k];
+          if (typeof v === "string") out.set(k, v);
+        }
+        // A ChatGPT plan's refusal is read whole (an error's body is small): OpenAI's code in it
+        // says when the plan's usage is full, which a program that keeps only the error's message
+        // (the Codex CLI) would lose. The answer goes on as it came.
+        if (chatgpt && status >= 400) {
+          const parts: Buffer[] = [];
+          let size = 0;
+          res.on("data", (d: Buffer) => {
+            if (size >= 1024 * 1024) return;
+            parts.push(d);
+            size += d.length;
+          });
+          res.on("end", () => {
+            const all = Buffer.concat(parts);
+            if (all.toString("utf8").includes(CHATGPT_LIMIT_CODE)) service.noteUsageLimit();
+            resolve(new Response(new Uint8Array(all), { status, headers: out }));
+          });
+          res.on("error", (e) =>
+            resolve(
+              Response.json(
+                { error: `the provider's answer broke off: ${e.message}` },
+                { status: 502 },
+              ),
+            ),
+          );
+          return;
+        }
         const stream = new ReadableStream<Uint8Array>({
           start(ctrl) {
             res.on("data", (d: Buffer) => ctrl.enqueue(new Uint8Array(d)));
@@ -198,12 +231,7 @@ export function createHarnessApi(
             res.destroy();
           },
         });
-        const out = new Headers();
-        for (const k of ["content-type", "cache-control"]) {
-          const v = res.headers[k];
-          if (typeof v === "string") out.set(k, v);
-        }
-        resolve(new Response(stream, { status: res.statusCode ?? 502, headers: out }));
+        resolve(new Response(stream, { status, headers: out }));
       });
       req.on("error", (e) =>
         resolve(

@@ -22,6 +22,7 @@ import { isLegacyRule, researchDirectionRefusal } from "../core/directions.ts";
 import type { Hardware } from "../core/hardware.ts";
 import { type LiveKind, LiveLog, liveBody } from "../core/live.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
+import { CHATGPT_LIMIT_WAIT_MS } from "./agents/model.ts";
 import type { RigCheckReport } from "./agents/model-check.ts";
 import type { ControlRoute, ModelInfo, ModelSource } from "./agents/model-source.ts";
 import { Registry } from "./agents/registry.ts";
@@ -303,6 +304,28 @@ export class HarnessService {
         at: string;
       }
     | undefined;
+  /**
+   * When the model proxy last saw OpenAI say the ChatGPT plan's usage is full (ms). A program that
+   * keeps only an error's message (the Codex CLI) loses OpenAI's code; the proxy sees the answer.
+   */
+  private usageLimitAt: number | undefined;
+
+  /** The proxy saw OpenAI's answer that the ChatGPT plan's usage is full. */
+  noteUsageLimit(now = Date.now()): void {
+    this.usageLimitAt = now;
+  }
+
+  /**
+   * When agents may try the ChatGPT plan again, if the proxy saw it full at or after `since` (ms):
+   * OpenAI gives no reset time, so a fixed wait (CHATGPT_LIMIT_WAIT_MS). Undefined: it did not.
+   */
+  usageLimitSince(since: number): string | undefined {
+    const at = this.usageLimitAt;
+    return at !== undefined && at >= since
+      ? new Date(at + CHATGPT_LIMIT_WAIT_MS).toISOString()
+      : undefined;
+  }
+
   /** A research run's folder as files, for its export (main.ts sets it). */
   researchFolder?: ((run: string) => { root: string; files: string[] }) | undefined;
   /** The promotion policy: what happens to a confirmed win (and to one an audit cleared). */

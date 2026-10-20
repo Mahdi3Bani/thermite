@@ -445,6 +445,10 @@ describe("the new-campaign page", () => {
     const form = await (await s.get("/ui/campaigns/new")).text();
     assert.match(form, /no model for its agents yet/);
     assert.match(form, /<option value="zen\|glm-5\.3-flash-free">glm-5\.3-flash-free<\/option>/);
+    assert.match(
+      form,
+      /<select name="agents_harness">[\s\S]*?<option value="codex">Codex<\/option>/,
+    );
     const send = (extra: Record<string, string>) =>
       s.post("/ui/campaigns/new", {
         csrf: s.csrf,
@@ -533,5 +537,28 @@ describe("the new-campaign page", () => {
       agents_model: "zen|glm-5.3-flash-free",
     });
     assert.match(String(inOpencode.headers.get("location")), /\?run=rig-a%2Frl-research-/);
+    // The agents in the Codex CLI: only with a provider OpenAI's Responses API reaches.
+    const codexRefused = await (
+      await send({
+        draft: JSON.stringify(draft({ campaign: "matmul-codex" })),
+        agents_model: "zen|glm-5.3-flash-free",
+        agents_harness: "codex",
+      })
+    ).text();
+    assert.match(codexRefused, /Codex runs only with a ChatGPT subscription/);
+    s.store.putProvider({
+      name: "openai",
+      type: "openai",
+      base_url: "https://api.openai.com/v1",
+      key: { sealed: "s1:not-opened-here", hint: "…abcd" },
+    });
+    s.store.setProviderModels("openai", [{ id: "gpt-test" }]);
+    const inCodex = await send({
+      draft: JSON.stringify(draft({ campaign: "matmul-codex" })),
+      agents_model: "openai|gpt-test",
+      agents_harness: "codex",
+    });
+    assert.match(decodeURIComponent(String(inCodex.headers.get("location"))), /takes gpt-test/);
+    assert.equal(s.store.rigModels()["rig-a"]?.harness, "codex");
   });
 });

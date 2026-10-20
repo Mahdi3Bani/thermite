@@ -98,6 +98,18 @@ export interface SchedulerOptions {
         o?: { read?: string | undefined },
       ) => Promise<string>)
     | undefined;
+  /**
+   * A planner call through the Codex CLI, for a route whose agents run in Codex. `read`: a folder
+   * it may read and search (the run's past research), which its user may read and not change.
+   */
+  askCodex?:
+    | ((
+        model: ModelConfig,
+        prompt: string,
+        signal?: AbortSignal,
+        o?: { read?: string | undefined },
+      ) => Promise<string>)
+    | undefined;
   /** Runs one trial (in a child process in the harness; in-process in tests); abortable. */
   runTrial: (spec: TrialSpec, signal: AbortSignal) => Promise<TrialResult>;
   /** Research mode: the research service and its trial runner. */
@@ -650,6 +662,7 @@ export class Scheduler {
       const m = this.o.plannerModel?.() ?? this.modelNow();
       // OpenCode's own models are reached only through OpenCode; every other provider, through Pi.
       // A Claude subscription, only through Claude Code: without it the planner refuses the route.
+      // A route whose agents run in the Codex CLI plans in Codex too.
       const ask: Ask | undefined =
         m?.api === "opencode" && this.o.askOpencode
           ? (prompt, sig, o) =>
@@ -662,9 +675,13 @@ export class Scheduler {
           : m?.api === "claude" && this.o.askClaude
             ? (prompt, sig, o) =>
                 (this.o.askClaude as NonNullable<SchedulerOptions["askClaude"]>)(m, prompt, sig, o)
-            : undefined;
+            : m?.harness === "codex" && this.o.askCodex
+              ? (prompt, sig, o) =>
+                  (this.o.askCodex as NonNullable<SchedulerOptions["askCodex"]>)(m, prompt, sig, o)
+              : undefined;
       // The run's past research, read only: Pi's planner searches it with its tool; through
-      // OpenCode or Claude Code, the planner reads the run's knowledge/ files with its own tools.
+      // OpenCode, Claude Code or Codex, the planner reads the run's knowledge/ files with its own
+      // tools.
       const knowledge = this.o.service.knowledge;
       input.pastResearch = this.pastResearch(run, ask ? "files" : "tool");
       const past: PlannerPast | undefined = input.pastResearch

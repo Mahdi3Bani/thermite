@@ -28,7 +28,7 @@ A **rig** can check itself in three ways. Each check runs inside the rig's **har
 | `this rig cannot run the <check> check` | The rig has no such check. The isolation check needs the broker |
 | `the <check> check is still running` | Another check is running on this rig |
 | `not now: <n> open trial(s) and <m> judge job(s): pause the rig's runs and let the judge finish first (each probe kills its role's processes)` | Isolation or smoke on a busy rig. A rig is busy while a trial is open or a judge job is queued or running. A paused run's queued judge jobs count too |
-| `not now: a planner call is running: wait for it to end (each probe kills its role's processes)` | Isolation while the planner works in OpenCode or Claude Code, between two rounds of trials |
+| `not now: a planner call is running: wait for it to end (each probe kills its role's processes)` | Isolation while the planner works in OpenCode, Claude Code or Codex, between two rounds of trials |
 
 `"force": true` runs the isolation or smoke check on a busy rig anyway. Each isolation probe ends every process of the role it tests, so forcing it ends that work. The dashboard never forces a check.
 
@@ -51,6 +51,7 @@ The check sends one short request through the rig's model route, the same way it
 | Pi (built in) | Call the `echo` tool with the word |
 | OpenCode v2 | Run `echo <word>` with OpenCode's shell tool, so that the output holds the word |
 | Claude Code | Run `echo <word>` with its Bash tool, the only tool it is given |
+| Codex | Run `echo <word>` with the Codex CLI's shell tool, as the `model-check` user, through the harness's model proxy |
 
 The details record the model, the time in seconds, whether a tool was called, the tokens in and out, the last error and the reply's text (first 300 characters). With Pi they also record the base URL, the reply's stop reason, whether it held thinking, the context window and the reply limit. With OpenCode they also record the base URL, and with Claude Code the subscription's usage.
 
@@ -58,13 +59,14 @@ The details record the model, the time in seconds, whether a tool was called, th
 
 | Summary | Meaning |
 | --- | --- |
-| `<model> answered with a correct tool call in <s> s` | Passed (Pi). OpenCode and Claude Code add ` (OpenCode)` or ` (Claude Code)` |
+| `<model> answered with a correct tool call in <s> s` | Passed (Pi). OpenCode, Claude Code and Codex add ` (OpenCode)`, ` (Claude Code)` or ` (Codex)` |
 | `<model> failed the tool-call check: no answer in 120 s (is the model up?)` | No answer in time |
 | `<model> failed the tool-call check: it called the tool with "<x>", not "<word>"` | A tool call with the wrong word |
 | `<model> failed the tool-call check: no tool call: <error>` | The request failed with an error |
 | `<model> failed the tool-call check: no tool call (stop: <reason>); it wrote: <text>` | The model answered without calling the tool. `; it wrote: <text>` appears only when it wrote some text |
 | `<model> failed the tool-call check in OpenCode: <why>` | Failed in OpenCode. `<why>` is the last error, `its tool call did not print the word`, or `no tool call; it wrote: <text>` |
 | `<model> failed the tool-call check in Claude Code: <why>` | Failed in Claude Code. `<why>` can also be `the subscription's usage window is full until <time>` |
+| `<model> failed the tool-call check in Codex: <why>` | Failed in Codex. `<why>` is the last error, `its tool call did not print the word`, or `no tool call; it wrote: <text>` |
 | `no model route: set one on control's settings page (or in the rig's settings)` | The rig has no model route. See [Connect a model provider](../how-to/models/connect-a-provider.md) |
 
 ## Isolation check
@@ -86,8 +88,8 @@ It prints the whole report as JSON and exits with 1 when isolation does not hold
 | `builder` | The user that builds kits and candidates |
 | `run` | The user that runs timed runs on the first (or only) judge device |
 | `run-<i>` | The user of each further judge GPU, on a rig with dedicated GPUs |
-| `planner` | The user of planner calls under OpenCode or Claude Code |
-| `model-check` | The user of the model check under OpenCode or Claude Code |
+| `planner` | The user of planner calls under OpenCode, Claude Code or Codex |
+| `model-check` | The user of the model check under OpenCode, Claude Code or Codex |
 | `lane-1` | A lane's plain commands |
 | `lane-1+gpu` | A lane's development run on the device. On a rig with several development GPUs, once for each: `lane-1+gpu@2` and so on |
 | `lane-1-dev` | The development-run user |

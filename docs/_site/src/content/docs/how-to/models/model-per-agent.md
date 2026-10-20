@@ -30,9 +30,9 @@ The planner coordinates each run's experiment queue, the run's ordered list of t
    | **Review panel** | "Three reviewers that grade goals that need judgement. The judge's numbers never come from them. All three use this model." Set here, the panel is three reviewers on one model; the advisors file can set two to five. | **the rig's advisors file** |
 
 3. For each agent you want to change, choose a model in its **Model** list, and an **Effort** (see below).
-4. For the workers, also choose where they run, in the **Runs in** column: **Pi**, **OpenCode v2** or **Claude Code**. When you choose a Claude subscription's model, the page sets **Claude Code** for you.
+4. For the workers, also choose where they run, in the **Runs in** column: **Pi**, **OpenCode v2**, **Claude Code** or **Codex**. When you choose a Claude subscription's model, the page sets **Claude Code** for you. **Codex**, the Codex CLI, takes a ChatGPT subscription's model or one from an OpenAI-compatible provider: see [Run the agents in Codex](chatgpt-subscription.md#run-the-agents-in-codex).
 
-   For the other agents, **Runs in** shows where each one will run, for example "the supervisor, read-only tools" or "Claude Code, past research only".
+   For the other agents, **Runs in** shows where each one will run, for example "the supervisor, read-only tools" or "Claude Code, past research only". A planner with no model of its own follows the workers into Codex: "as the workers: Codex".
 
 5. Read the list under **What changes when you save**, at the foot of the page. It says each change in a sentence, such as "You change the auditor's model to my-model."
 6. Press **Save changes**.
@@ -64,7 +64,7 @@ A change to the rig's settings on this page, such as a switch in section **1 · 
 
 | Model from | Workers | Planner, with a model of its own | Advisors |
 | --- | --- | --- | --- |
-| An API key (OpenAI-compatible, Anthropic) or a ChatGPT subscription | Pi or OpenCode v2, as you choose | Pi | The supervisor, with read-only tools |
+| An API key (OpenAI-compatible, Anthropic) or a ChatGPT subscription | Pi or OpenCode v2, as you choose; Codex too for an OpenAI-compatible key or a ChatGPT subscription | Pi | The supervisor, with read-only tools |
 | OpenCode's own provider | OpenCode v2 only | OpenCode | Not allowed |
 | A Claude subscription | Claude Code | Claude Code, with no tools but read-only file tools for the run's past research | Claude Code, with no tools but a read-only search of the run's past research |
 
@@ -118,5 +118,6 @@ A refused change shows on the rig's page, in a card that starts with **Not done.
 | "That provider does not list that model." (or with a role in brackets) | Refresh the provider's models on **Providers**, or add the model by name there. |
 | "Claude Code runs only with a Claude subscription here: choose Pi or OpenCode v2 for this provider." | Set the workers' **Runs in** to **Pi** or **OpenCode v2**. |
 | "OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig." | Set the workers' **Runs in** to **OpenCode v2**. |
+| "Codex runs only with a ChatGPT subscription or an OpenAI-compatible provider: choose Pi or OpenCode v2 for this provider." | Set the workers' **Runs in** to **Pi** or **OpenCode v2**, or give them a model from a ChatGPT subscription or an OpenAI-compatible provider. |
 | "The auditor cannot use OpenCode's own models: they run only in OpenCode. Choose another model." (or another role) | Choose a model from another provider for that advisor. |
 | "This rig's harness is older: it does not report its settings and cannot take them." | The rig's images are older than control. The workers' model still works. On the local stack, build the images again ([Stop, start and update](../install/one-machine.md#stop-start-and-update)). A rig that control set up on a cluster moves onto newer images from its page: see [Move a rig onto new images](../operate/rig-lifecycle.md#a-rig-on-a-cluster). A rig on a machine, or one you joined, can't move yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)): add a new rig from newer images ([Push the images to your own registry](../install/own-registry.md)). |

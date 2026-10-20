@@ -274,6 +274,7 @@ const internalSettings = new Map([
   ["THERMITE_WORKSPACE", "the controller tells thermite-trial where the trial's workspace is"],
   ["THERMITE_OPENCODE_EVENTS", "the controller's event log path for an OpenCode trial"],
   ["THERMITE_CLAUDE_EVENTS", "the controller's event log path for a Claude Code trial"],
+  ["THERMITE_CODEX_EVENTS", "the controller's event log path for a Codex trial"],
   ["THERMITE_LANE_CACHE", "the controller gives each lane's commands its build cache"],
   ["THERMITE_PROBE_TOKEN", "control gives a RunPod test pod its report path"],
   ["THERMITE_PROBE_JS", "control gives a RunPod test pod its probe script"],

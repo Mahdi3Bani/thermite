@@ -23,6 +23,28 @@ RUN cd /tmp \
  && install -m 0755 package/bin/opencode /usr/local/bin/opencode \
  && rm -rf /tmp/*
 
+# The Codex CLI, OpenAI's open-source agent program (Apache-2.0), a worker harness for a ChatGPT
+# sign-in or an OpenAI-compatible key: one pinned release's Linux package (npm checks it against
+# the registry's hash), kept whole in /opt/codex (its binary finds its helpers beside it), with
+# the release's LICENSE and NOTICE (containers/harness/codex/; update them with the version).
+# Always in the image, as OpenCode is; an empty CODEX_VERSION builds an image without it.
+FROM ${NODE_IMAGE} AS codex
+ARG CODEX_VERSION=0.162.1
+ARG TARGETARCH
+COPY containers/harness/codex/ /tmp/codex-legal/
+RUN mkdir -p /out/opt \
+ && if [ -n "$CODEX_VERSION" ]; then \
+      triple="$([ "$TARGETARCH" = arm64 ] && echo aarch64 || echo x86_64)-unknown-linux-musl" \
+      && cd /tmp \
+      && npm pack --silent "@openai/codex@${CODEX_VERSION}-linux-$([ "$TARGETARCH" = arm64 ] && echo arm64 || echo x64)" \
+      && tar -xzf openai-codex-*.tgz \
+      && test -x "package/vendor/${triple}/bin/codex" \
+      && cp -a "package/vendor/${triple}" /out/opt/codex \
+      && install -m 0644 /tmp/codex-legal/LICENSE /tmp/codex-legal/NOTICE /out/opt/codex/ \
+      && /out/opt/codex/bin/codex --version \
+      && rm -rf /tmp/*; \
+    fi
+
 # Claude Code, for a Claude subscription (only Anthropic's own program may use one): downloaded
 # when the image is built, and only when CLAUDE_CODE_VERSION names a version (off by default: it
 # is not open source, so the published images do not carry it). One pinned release's Linux
@@ -66,7 +88,7 @@ RUN gcc -O2 -Wall -Wextra -Werror -o /usr/local/bin/thermite-devfence /tmp/devfe
 # number; the development users' entry here is `gpudev`, so a plain `runuser` never reaches the
 # judge's card. A rig with more cards uses gpu-j1..gpu-j7 for further judge cards (timed by run-1
 # to run-7) and gpu-d1..gpu-d7 for further development cards. Planner calls and model checks under
-# OpenCode or Claude Code run as `planner` and `model-check`, users no lane shares.
+# OpenCode, Claude Code or Codex run as `planner` and `model-check`, users no lane shares.
 RUN groupadd -g 10500 gpu && groupadd -g 10501 gpudev && groupadd -g 10502 gpuctl \
  && groupadd -g 10010 thermite && useradd -u 10010 -g thermite -M -d /nonexistent -s /usr/sbin/nologin thermite \
  && groupadd -g 10020 builder && useradd -u 10020 -g builder -M -d /nonexistent -s /usr/sbin/nologin builder \
@@ -97,6 +119,10 @@ COPY --chmod=0755 containers/thermite /usr/local/bin/thermite
 COPY --from=opencode /usr/local/bin/opencode /usr/local/bin/opencode
 # Claude Code, when the build asked for it (CLAUDE_CODE_VERSION); otherwise this copies nothing.
 COPY --from=claude /out/ /usr/local/bin/
+# The Codex harness, unless the build left it out (CODEX_VERSION empty): on the PATH as a link, so
+# the broker knows Codex's own process (its real path) from its commands'.
+COPY --from=codex /out/opt/ /opt/
+RUN if [ -x /opt/codex/bin/codex ]; then ln -s /opt/codex/bin/codex /usr/local/bin/codex; fi
 COPY --chmod=0755 containers/thermite-trial /usr/local/bin/thermite-trial
 # The smoke check's kits and projects (the rig_check smoke command builds them into a campaign).
 COPY kits ./checks/kits

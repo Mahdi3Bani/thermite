@@ -42,6 +42,7 @@ Who then uses the key depends on the worker harness:
 
 - **Pi**, the built-in worker harness, runs each worker as its own user, `agent-N`, with the key in its environment. The lane's commands run as another user, which can't read that environment.
 - **OpenCode v2** never gets the key. It reaches the provider through a proxy in the harness, with its trial's token. The proxy adds the key on the way out, and the trial's token stops working when the trial ends.
+- **Codex**, the Codex CLI, never gets the key either. Its configuration names one provider: the same proxy, with its trial's token. It runs as the lane's own user, with a home of its own and its approvals and sandbox off; the user it runs as is the boundary, as for OpenCode.
 - **The planner and the model check** use short-lived tokens for the same proxy, or the route itself inside the harness.
 - **Advisors** with a model from **Edit rig** get their key from control in the supervisor's memory, each round.
 
@@ -53,7 +54,7 @@ A subscription serves one person's own Thermite. A Thermite that several people 
 
 **A Claude subscription.** You get a token with `claude setup-token` on your own computer and paste it on **Providers**. Control seals it and makes no call to Anthropic with it, because Anthropic allows a subscription only in its own program, Claude Code. A rig gets the token only while one of its agents uses a Claude model. The harness keeps it with the model route in its private state, and passes it only to Claude Code. Claude Code starts with a home of its own, no setting sources and no MCP servers. An advisor on a Claude subscription runs in Claude Code with no tools at all.
 
-**A ChatGPT subscription.** Control runs the sign-in with OpenAI and seals the login. It is the only one that renews it, because OpenAI replaces the refresh token at each renewal: the refresh token never leaves control. A rig gets a one-hour access token with its route, renewed while it uses it. Workers reach OpenAI through the harness's proxy with their trial's token, so the hourly token itself stays in the harness, and the proxy lets it reach only OpenAI's `POST /responses` and `GET /models`. Deleting the provider signs Thermite out at OpenAI.
+**A ChatGPT subscription.** Control runs the sign-in with OpenAI and seals the login. It is the only one that renews it, because OpenAI replaces the refresh token at each renewal: the refresh token never leaves control. A rig gets a one-hour access token with its route, renewed while it uses it. Workers in OpenCode v2 or Codex reach OpenAI through the harness's proxy with their trial's token, so the hourly token itself stays in the harness, and the proxy lets it reach only OpenAI's `POST /responses` and `GET /models`. When OpenAI answers there that the plan's usage is full, the proxy notes it, so the agents wait even when their program keeps only the error's message. Deleting the provider signs Thermite out at OpenAI.
 
 [Use a Claude subscription](../how-to/models/claude-subscription.md) and [Use a ChatGPT subscription](../how-to/models/chatgpt-subscription.md) show the steps.
 

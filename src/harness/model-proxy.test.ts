@@ -167,4 +167,66 @@ describe("the model proxy", () => {
       p.server.close();
     }
   });
+
+  test("a ChatGPT plan's refusal goes on as it came, and the proxy notes a full plan for the agents that lose OpenAI's code", async () => {
+    const answers = [
+      { status: 429, code: "subscription_sharing_usage_limit_exceeded" },
+      { status: 500, code: "server_error" },
+    ];
+    const server = createServer((req, res) => {
+      req.resume();
+      req.on("end", () => {
+        const a = answers.shift() ?? { status: 200, code: "" };
+        res.writeHead(a.status, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: { message: "Refused for now.", code: a.code } }));
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    try {
+      const env = makeJudgeEnv();
+      const file = join(mkdtempSync(join(tmpdir(), "thermite-proxy-")), "model-route.json");
+      env.service.models = new ModelSource(file, undefined);
+      env.service.models.set({
+        name: "chatgpt-pro",
+        type: "chatgpt",
+        harness: "codex",
+        version: 1,
+        base_url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`,
+        model: "gpt-test",
+        context_window: 0,
+        max_tokens: 0,
+        reasoning: null,
+        key_hint: "…0001",
+        revision: "aaaaaaaa",
+        api_key: "access-token-one",
+      });
+      const api = createHarnessApi(env.service, { supervisor: "sup-token-abcdef" });
+      const ask = () =>
+        api.request("/v1/model-proxy/responses", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${env.service.mintProxyToken()}`,
+          },
+          body: JSON.stringify({ model: "gpt-test", input: "hi" }),
+        });
+      const before = Date.now();
+      assert.equal(env.service.usageLimitSince(before), undefined);
+      const full = await ask();
+      assert.equal(full.status, 429);
+      assert.match(await full.text(), /subscription_sharing_usage_limit_exceeded/);
+      const until = env.service.usageLimitSince(before);
+      assert.ok(until && Date.parse(until) >= before + 15 * 60_000, until);
+      // Not for a refusal seen before a run started, and not for another error.
+      assert.equal(env.service.usageLimitSince(Date.now() + 1), undefined);
+      const later = Date.now() + 1;
+      await new Promise((r) => setTimeout(r, 5));
+      const other = await ask();
+      assert.equal(other.status, 500);
+      assert.match(await other.text(), /server_error/);
+      assert.equal(env.service.usageLimitSince(later), undefined);
+    } finally {
+      server.close();
+    }
+  });
 });

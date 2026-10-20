@@ -61,7 +61,7 @@ Every agent role can write field notes, each in the way its runtime allows:
 
 | Writer | How it writes a note | Recorded as |
 | --- | --- | --- |
-| A lane's worker | `thermite-trial note` in OpenCode and Claude Code, or the `note` tool in Pi, in code and research trials. Its trial goes on | `lane-1`, `lane-2`, … |
+| A lane's worker | `thermite-trial note` in OpenCode, Claude Code and Codex, or the `note` tool in Pi, in code and research trials. Its trial goes on | `lane-1`, `lane-2`, … |
 | The planner | Notes in its answer, kept even when the plan itself is refused | `planner` |
 | The advisors | Notes in each answer: the teachers, the combiner, the auditor and each reviewer. The supervisor posts them after the review, audit or verdict | `teachers:<name>`, `auditor:<name>`, `panel:<name>` |
 
@@ -141,7 +141,7 @@ Past research reaches a run in three ways, and every agent of the run can search
 
 The briefing travels in the signed `assign_campaign` command that starts the run, and is fixed once the run exists. A run started over MCP can carry a briefing too; control then takes each item's words from its own record of the item, not from the caller. A run without agents, such as a try of a kit, has no briefs and no queue, so it takes neither.
 
-**A search for those who read no files.** The planner and the advisors (the teacher pair, the auditor and each panelist) search the same items with a read-only tool, `search_past_research`, and their brief has one line that says what the run's `knowledge/` folder holds. They read past research as the workers do; they can't write to it, because the tool only reads the harness's copy. A planner in OpenCode or Claude Code reads the folder's files with its own read tools instead, and an advisor in Claude Code gets the tool over MCP from its supervisor, as its only tool. A worker's brief has a line like it, which says where the folder is. Teachers that may fetch any web page get no search, no line and no briefing, in their prompt or from their `brief` tool; their brief keeps the run's field notes. A search beside an open fetch could carry another campaign's records out to any web address.
+**A search for those who read no files.** The planner and the advisors (the teacher pair, the auditor and each panelist) search the same items with a read-only tool, `search_past_research`, and their brief has one line that says what the run's `knowledge/` folder holds. They read past research as the workers do; they can't write to it, because the tool only reads the harness's copy. A planner in OpenCode, Claude Code or Codex reads the folder's files with its own read tools instead, and an advisor in Claude Code gets the tool over MCP from its supervisor, as its only tool. A worker's brief has a line like it, which says where the folder is. Teachers that may fetch any web page get no search, no line and no briefing, in their prompt or from their `brief` tool; their brief keeps the run's field notes. A search beside an open fetch could carry another campaign's records out to any web address.
 
 ## Data to weigh, never a verdict
 

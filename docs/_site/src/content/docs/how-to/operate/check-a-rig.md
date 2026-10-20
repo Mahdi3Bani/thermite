@@ -66,7 +66,7 @@ A busy rig refuses a check with `not now:` and the reason. The command accepts `
 | Model route **passed**: "*model* answered with a correct tool call in *n* s" | The model works for the agents | Nothing |
 | Model route **failed**: "*model* failed the tool-call check: no answer in 120 s (is the model up?)" | The model server did not answer | Check the server and the provider's base URL |
 | Model route **failed**: "… no tool call" | The model answered but did not call the tool | Choose a model that supports tool calling |
-| Model route **failed**: "*model* failed the tool-call check in OpenCode:" (or "in Claude Code:") and an error, such as "Rate limit exceeded. Please try again later." | The error comes from the model's provider. OpenCode's free models are sometimes busy | Run the check again later, or choose another model |
+| Model route **failed**: "*model* failed the tool-call check in OpenCode:" (or "in Claude Code:" or "in Codex:") and an error, such as "Rate limit exceeded. Please try again later." | The error comes from the model's provider. OpenCode's free models are sometimes busy | Run the check again later, or choose another model |
 | Model route **failed**: "no model route: …" | The rig has no model | [Connect a model provider](../models/connect-a-provider.md) |
 | Smoke **passed**: "smoke on smoke-cpu: all 12 candidates were judged as expected" | The judge works on this device | Nothing |
 | Smoke **failed**: "*k* of *n* candidates were judged otherwise" | Some known change got the wrong verdict | Read the names it lists, then see [Troubleshoot](troubleshoot.md) |

@@ -64,6 +64,7 @@ The release workflow builds the published CUDA harness on `docker.io/nvidia/cuda
 | `NODE_IMAGE` | All three | Node.js 22 on Debian bookworm, pinned by digest | Where Node.js comes from |
 | `OPENCODE_VERSION` | Harness | `2.0.32` | The OpenCode release the image carries |
 | `CLAUDE_CODE_VERSION` | Harness, supervisor | Empty: no Claude Code | Downloads that Claude Code release into the image, for a [Claude subscription](../models/claude-subscription.md) |
+| `CODEX_VERSION` | Harness | `0.162.1` | The Codex CLI release the image carries, for [agents in Codex](../models/chatgpt-subscription.md#run-the-agents-in-codex). Empty: no Codex CLI, and an image about 450 MB smaller |
 | `KUBECTL_VERSION` | Control | `v1.37.1` | The kubectl control uses for clusters. It is checked against a pinned hash, so a different version fails the build |
 | `THERMITE_COMMIT` | All three | Empty: no commit | The source commit the image is built from, which the service reports with its version |
 | `THERMITE_IMAGE_ID` | Harness | Empty | A name for this build, which the harness reports as its image and puts in each build's key, for example `--build-arg THERMITE_IMAGE_ID=$tag` |

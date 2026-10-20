@@ -35,7 +35,7 @@ For each release, the release workflow (`.github/workflows/release.yml`) builds 
 | Supervisor | `ghcr.io/iammrduncan/thermite-supervisor` | The version and the commit | amd64, arm64 |
 | One-container rig, CUDA | `ghcr.io/iammrduncan/thermite-rig` | The version and the commit, each with `-cuda` added: `0.1.0-cuda` | amd64 |
 
-The workflow builds the one-container rig image on the CUDA harness it built in the same run, named by that image's digest. The workflow sets no `CLAUDE_CODE_VERSION`, so no published image carries Claude Code. A release's `compose.yaml` names each image by its digest, not by a tag, and gives control the rig image as `THERMITE_RUNPOD_RIG_IMAGE`, the image a [rig launched on RunPod](rest-api.md#rigs-on-a-gpu-cloud) runs. Each image also has these labels (and, for an image of two architectures, the same annotations on its index):
+The workflow builds the one-container rig image on the CUDA harness it built in the same run, named by that image's digest. The workflow sets no `CLAUDE_CODE_VERSION`, so no published image carries Claude Code. The harness images carry OpenCode and the Codex CLI, both open source, at their default versions. A release's `compose.yaml` names each image by its digest, not by a tag, and gives control the rig image as `THERMITE_RUNPOD_RIG_IMAGE`, the image a [rig launched on RunPod](rest-api.md#rigs-on-a-gpu-cloud) runs. Each image also has these labels (and, for an image of two architectures, the same annotations on its index):
 
 | Label | Value |
 | --- | --- |
@@ -55,10 +55,11 @@ The workflow builds control, the harness images and the supervisor with `THERMIT
 | `BASE_IMAGE` | Harness | `NODE_IMAGE` | The harness's final base. GPU rigs set a CUDA 12.x development image: see [The CUDA harness](#the-cuda-harness) |
 | `OPENCODE_VERSION` | Harness | `2.0.32` | The OpenCode release installed |
 | `CLAUDE_CODE_VERSION` | Harness, supervisor | empty | A Claude Code release to install. Empty: Claude Code is not installed |
+| `CODEX_VERSION` | Harness | `0.162.1` | The Codex CLI release installed. Empty: the Codex CLI is not installed |
 | `KUBECTL_VERSION` | Control | `v1.37.1` | The kubectl release installed. Its sha256 is pinned for amd64 and arm64 only |
 | `THERMITE_COMMIT` | All three | empty | The source commit the image is built from. The image sets the environment variable of the same name, and the service reports it with Thermite's version: see [Rig versions](rest-api.md#rig-versions) |
 | `HARNESS_IMAGE` | One-container rig | none: required | The harness image the rig image is built on. The release workflow names the CUDA harness it built, by its digest. See [The one-container rig image](#the-one-container-rig-image) |
-| `TARGETARCH` | All three | set by the builder | Chooses the arm64 or x64 package of OpenCode, Claude Code and kubectl |
+| `TARGETARCH` | All three | set by the builder | Chooses the arm64 or x64 package of OpenCode, Claude Code, the Codex CLI and kubectl |
 | `THERMITE_IMAGE_ID` | Harness | empty | The image's identity, kept as the variable of the same name, which the harness reports. The release workflow sets it to the tag and the short commit |
 
 ## The harness image
@@ -70,9 +71,10 @@ The workflow builds control, the harness images and the supervisor with `THERMIT
 | Node.js | The one in `NODE_IMAGE` (Node.js 22) | `/usr/local/bin/node`, copied from `NODE_IMAGE`. On another `BASE_IMAGE` only this binary is copied, without npm |
 | Thermite | This repository's build, with its production dependencies | `/opt/thermite` (`dist/`, `node_modules/`, `package.json`) |
 | `thermite` command | Thermite's command line | `/usr/local/bin/thermite`. See [Command line](command-line.md) |
-| `thermite-trial` | The tools an agent uses from its own shell under OpenCode or Claude Code: `submit`, `dev-run`, `status`, `idea` and `note` (a [field note](knowledge-base.md#field-notes)), and the `research` commands: all ten for a research worker under OpenCode, and `fetch`, `read_source`, `search_corpus`, `add_claim` and `add_note` in a hill-climb or goal trial. See [Command line](command-line.md#thermite-trial) | `/usr/local/bin/thermite-trial` |
+| `thermite-trial` | The tools an agent uses from its own shell under OpenCode, Claude Code or Codex: `submit`, `dev-run`, `status`, `idea` and `note` (a [field note](knowledge-base.md#field-notes)), and the `research` commands: all ten for a research worker under OpenCode, and `fetch`, `read_source`, `search_corpus`, `add_claim` and `add_note` in a hill-climb or goal trial. See [Command line](command-line.md#thermite-trial) | `/usr/local/bin/thermite-trial` |
 | OpenCode | `OPENCODE_VERSION`, 2.0.32 by default. Always installed. One of the [worker harnesses](glossary.md); Pi, the default one, is a library built into Thermite. Pi gives its workers Thermite's tools directly: in a code trial `note`, `fetch`, `read_source`, `search_corpus`, `add_claim` and `add_note` beside its others, and in a research trial `note` beside the research tools | `/usr/local/bin/opencode` |
 | Claude Code | `CLAUDE_CODE_VERSION`. Installed only when that argument names a version | `/usr/local/bin/claude` |
+| Codex CLI | `CODEX_VERSION`, 0.162.1 by default. Installed unless that argument is empty. OpenAI's coding agent, under the Apache License 2.0; one of the [worker harnesses](glossary.md), for a ChatGPT subscription or an OpenAI-compatible provider. Its release's whole Linux package is kept, with its `LICENSE` and `NOTICE` | `/opt/codex`, with `/usr/local/bin/codex` linked to `/opt/codex/bin/codex` |
 | `thermite-devfence` | Built from `containers/harness/devfence.c` | `/usr/local/bin/thermite-devfence`. The GPU fence: it starts each role's command with the GPU device nodes it may not open left out, using the kernel's Landlock |
 | C and C++ toolchain | From the base image's apt repository; not pinned | `gcc`, `g++`, `libc6-dev`, `make`, `cmake`, `ninja-build`, `ccache` |
 | Python | From the base's apt repository; not pinned | `python3`, `python3-numpy` |
@@ -97,9 +99,9 @@ The broker runs each kind of work as its own user. The numbers are fixed in the 
 | `builder` | 10020 | `builder` (10020) | Kit builds of candidates and champions |
 | `run` | 10030 | `gpu` (10500) | Timed runs on the first judge device |
 | `run-1` … `run-7` | 10031 … 10037 | `gpu-j1` … `gpu-j7` (10511 … 10517) | Timed runs on judge GPUs 2 to 8 |
-| `planner` | 10040 | `planner` (10040) | Planner calls under OpenCode or Claude Code |
-| `model-check` | 10041 | `model-check` (10041) | The model check under OpenCode or Claude Code |
-| `lane-1` … `lane-16` | 10101 … 10116 | `lane-1` … `lane-16` (10101 … 10116) | A lane's commands and file tools; OpenCode and Claude Code sessions |
+| `planner` | 10040 | `planner` (10040) | Planner calls under OpenCode, Claude Code or Codex |
+| `model-check` | 10041 | `model-check` (10041) | The model check under OpenCode, Claude Code or Codex |
+| `lane-1` … `lane-16` | 10101 … 10116 | `lane-1` … `lane-16` (10101 … 10116) | A lane's commands and file tools; OpenCode, Claude Code and Codex sessions |
 | `lane-1-dev` … `lane-16-dev` | 10201 … 10216 | `gpudev` (10501) | A lane's development runs |
 | `agent-1` … `agent-16` | 10301 … 10316 | `agent-1` … `agent-16` (10301 … 10316) | A lane's Pi worker process |
 

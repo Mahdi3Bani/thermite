@@ -122,7 +122,7 @@ Choose the rig. Each card shows its hardware, whether it is idle, and its agents
 | --- | --- |
 | **Agents working at once** | 1 to 4 (2 unless changed). Despite its name, it sets how many [lanes](../../reference/glossary.md) the planner plans, not how many agents work at once. See the caution below |
 | **The agents' model** | **the rig's model** (the default) keeps the model the rig has. Or choose one of the models in **Providers**, listed by provider. It becomes the rig's model for every run on that rig, as on its **Edit rig** page. See the caution below |
-| **The agents run in** | The [worker harness](../../reference/glossary.md), the program that runs the agents, for the model you chose: **what the model needs** (the default: OpenCode v2 for OpenCode's free models, Claude Code for a Claude subscription, else Pi), **OpenCode v2** or **Pi**. Claude Code is not in the list: for a Claude subscription, keep **what the model needs** |
+| **The agents run in** | The [worker harness](../../reference/glossary.md), the program that runs the agents, for the model you chose: **what the model needs** (the default: OpenCode v2 for OpenCode's free models, Claude Code for a Claude subscription, else Pi), **OpenCode v2**, **Pi** or **Codex**. Codex, the Codex CLI, takes a ChatGPT subscription's model or one from an OpenAI-compatible provider. Claude Code is not in the list: for a Claude subscription, keep **what the model needs** |
 | **When a change is confirmed better** | **the rig's default**: the choice on the rig's **Edit rig** page, **Automatically** unless changed. Or **always keep it**, or **ask me every time**. See [Decide what waits for you](decide-what-waits.md#promotions) |
 
 :::caution[A model the rig doesn't run yet: Start only saves]
@@ -167,6 +167,7 @@ The **Campaigns** list shows a campaign only once a rig reports a run of it. A c
 - If the page comes back at **Review and start** with **Not started: fix these first.**, fix each item in the list. Everything you typed is kept. A kit described here or uploaded is checked against the campaign here, before anything is saved. The items about the agents' model are:
   - `rig-1 has no model for its agents, so they could not work: choose one under "The agents' model".`
   - `OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig.` Choose **OpenCode v2** or **what the model needs** under **The agents run in**.
+  - `Codex runs only with a ChatGPT subscription or an OpenAI-compatible provider: choose Pi or OpenCode v2 for this provider.` Choose another harness under **The agents run in**, or a model from a ChatGPT subscription or an OpenAI-compatible provider.
   - For research, with one of OpenCode's free models and the agents in Pi: `… is one of OpenCode's free models, which work only inside OpenCode, and rig-1's agents would run in Pi: a research run there could not work. Set the agents' harness to OpenCode, or give the rig a model Pi can use.` Choose **OpenCode v2** under **The agents run in**, or another model.
 - If the run never shows, open **Commands** in the sidebar. The newest **assign campaign** row is **failed**, with the reason.
 

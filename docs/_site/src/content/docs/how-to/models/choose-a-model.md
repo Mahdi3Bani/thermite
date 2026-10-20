@@ -13,9 +13,9 @@ Try the options in this order. Each one costs more, or needs more set-up, than t
 | Option | Costs | You need | Runs in |
 | --- | --- | --- | --- |
 | [OpenCode's free models](#1-opencodes-free-models) | Nothing | Nothing | OpenCode v2 only |
-| [A model server on your computer](#2-a-model-server-on-your-own-computer) | Nothing but your hardware | A server such as Ollama, vLLM or LiteLLM | Pi or OpenCode v2 |
-| [An API key](#3-an-api-key-from-a-provider) | The provider's prices | A key from an OpenAI-compatible provider or from Anthropic | Pi or OpenCode v2 |
-| [A subscription](#4-a-claude-or-chatgpt-subscription) | Your plan, nothing more | A Claude Pro or Max plan, or a ChatGPT Plus or Pro plan | Claude: Claude Code only. ChatGPT: Pi or OpenCode v2 |
+| [A model server on your computer](#2-a-model-server-on-your-own-computer) | Nothing but your hardware | A server such as Ollama, vLLM or LiteLLM | Pi or OpenCode v2; Codex when the server answers `/responses` |
+| [An API key](#3-an-api-key-from-a-provider) | The provider's prices | A key from an OpenAI-compatible provider or from Anthropic | Pi or OpenCode v2; Codex for OpenAI's own API |
+| [A subscription](#4-a-claude-or-chatgpt-subscription) | Your plan, nothing more | A Claude Pro or Max plan, or a ChatGPT Plus or Pro plan | Claude: Claude Code only. ChatGPT: Pi, OpenCode v2 or Codex |
 
 You connect every option on one dashboard page, **Settings › Providers**, and then give a [rig](../../reference/glossary.md) one of its models. [Connect a model provider](connect-a-provider.md) shows how.
 
@@ -44,6 +44,7 @@ Each agent runs inside a program that gives the model its tools: the **worker ha
 - **Pi**: Thermite's own built-in agent. It is the default.
 - **OpenCode v2**: the OpenCode coding agent, which is always in Thermite's harness image.
 - **Claude Code**: Anthropic's own program. It is in the image only when the image is built with it, and it runs only with a Claude subscription.
+- **Codex**: the Codex CLI, OpenAI's own coding agent. It is in Thermite's published harness images, and it runs with a ChatGPT subscription or an OpenAI-compatible provider whose server answers OpenAI's Responses API (`/responses`), as OpenAI's own API does. The planner follows the workers into Codex unless it has a model of its own.
 
 Not every model works in every worker harness. Thermite refuses these pairings when you save them:
 
@@ -51,12 +52,13 @@ Not every model works in every worker harness. Thermite refuses these pairings w
 | --- | --- |
 | Claude Code with any provider other than a Claude subscription | "Claude Code runs only with a Claude subscription here: choose Pi or OpenCode v2 for this provider." |
 | OpenCode's own models in Pi | "OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig." |
+| Codex with an Anthropic or OpenCode provider | "Codex runs only with a ChatGPT subscription or an OpenAI-compatible provider: choose Pi or OpenCode v2 for this provider." |
 | OpenCode's own models for an advisor | "The *role* cannot use OpenCode's own models: they run only in OpenCode. Choose another model." |
 
-A Claude subscription always runs in Claude Code: when you choose one of its models, Thermite picks Claude Code for you.
+A Claude subscription always runs in Claude Code: when you choose one of its models, Thermite picks Claude Code for you. A ChatGPT subscription runs in Pi unless you choose OpenCode v2 or Codex.
 
 :::note[Research campaigns]
-Research workers run in Pi or OpenCode v2, never in Claude Code, so a research campaign can't use a Claude subscription. OpenCode's own free models serve a research campaign when the agents run in OpenCode v2. [Write a contract](../campaigns/write-a-contract.md#4-write-a-research-campaign) says what happens otherwise.
+Research workers run in Pi or OpenCode v2, never in Claude Code, so a research campaign can't use a Claude subscription. On a rig whose workers run in Codex, research workers run in Pi with the same model. OpenCode's own free models serve a research campaign when the agents run in OpenCode v2. [Write a contract](../campaigns/write-a-contract.md#4-write-a-research-campaign) says what happens otherwise.
 :::
 
 ## 1. OpenCode's free models
@@ -93,7 +95,7 @@ Control seals each key as soon as you save it, never shows it again, and gives i
 If you already pay for a Claude or ChatGPT plan, its agents can work on that plan:
 
 - **Claude subscription (Pro or Max)**: you paste a token from `claude setup-token`. Its models run only in Claude Code, so the harness image must be built with Claude Code. See [Use a Claude subscription](claude-subscription.md).
-- **ChatGPT subscription (Plus or Pro)**: you sign in with ChatGPT from the dashboard. Its models run in Pi or OpenCode v2. See [Use a ChatGPT subscription](chatgpt-subscription.md).
+- **ChatGPT subscription (Plus or Pro)**: you sign in with ChatGPT from the dashboard. Its models run in Pi, OpenCode v2 or Codex. See [Use a ChatGPT subscription](chatgpt-subscription.md).
 
 A subscription is for your own Thermite only. A Thermite that several people use takes API keys. When a plan's usage is full, the agents wait for it; nothing pays for more.
 

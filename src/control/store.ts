@@ -488,8 +488,17 @@ export interface IngestReport {
  * "chatgpt" a ChatGPT subscription (its login from Sign in with ChatGPT, renewed by control).
  */
 export type ProviderType = "openai" | "anthropic" | "opencode" | "claude" | "chatgpt";
-/** Where a rig's agents run: Pi, OpenCode v2, or Claude Code (the only one a Claude subscription allows). */
-export type Harness = "pi" | "opencode" | "claude-code";
+/**
+ * Where a rig's agents run: Pi, OpenCode v2, Claude Code (the only one a Claude subscription
+ * allows) or the Codex CLI (a ChatGPT sign-in or an OpenAI-compatible key: OpenAI's Responses API).
+ */
+export type Harness = "pi" | "opencode" | "claude-code" | "codex";
+export const HARNESS_IDS: Harness[] = ["pi", "opencode", "claude-code", "codex"];
+/** A harness from a form or a row; anything else is Pi, the default. */
+export const harnessOf = (v: unknown): Harness =>
+  HARNESS_IDS.find((h) => h === v) ?? ("pi" as const);
+/** Whether the Codex CLI can reach a provider of this type (OpenAI's Responses API only). */
+export const codexTakes = (type: ProviderType): boolean => type === "chatgpt" || type === "openai";
 /** How hard an agent's model thinks: Claude Code's levels (other providers take up to high). */
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 export const EFFORTS: Effort[] = ["low", "medium", "high", "xhigh", "max"];
@@ -1947,10 +1956,7 @@ export class ControlStore {
         {
           provider: String(r.provider),
           model: String(r.model),
-          harness:
-            r.harness === "opencode" || r.harness === "claude-code"
-              ? (r.harness as "opencode" | "claude-code")
-              : ("pi" as const),
+          harness: harnessOf(r.harness),
           ...(EFFORTS.includes(String(r.effort) as Effort)
             ? { effort: String(r.effort) as Effort }
             : {}),
