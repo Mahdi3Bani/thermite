@@ -1,0 +1,52 @@
+---
+id: "066"
+title: "Rules name directions, picked with :direction:"
+status: READY
+version: "0.1.0"
+part: "Running campaigns"
+depends_on: ["064"]
+created: 2026-10-20
+updated: 2026-10-20
+---
+
+# 066 · Rules name directions, picked with `:direction:`
+
+**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+A rule for the plan always names a direction (an approach family). Rules in free words go away.
+
+- **The syntax:** a direction is written `:direction-name:`, wherever a rule is made: the Planner tab, a message to the planner, MCP and the CLI.
+- **The picker:** typing `:` on the Planner tab opens a list of the run's directions to pick from, as emoji pickers work in Slack, Discord or Claude Code.
+- **Removed:** the free-text Direction box and the `match` field of a rule (`StructuredDirective.match`, the dashboard's form, the planner's and the advisors' answers).
+- **What stays:** code enforces every rule each round, with or without the planner's model.
+
+## Why
+
+The owner, 2026-10-20: rules use direction names only. A rule in free words reaches only the planner's model and does nothing when no model answer comes. That split between two kinds of rule is confusing, and code can't enforce words.
+
+## Done when
+
+- [ ] Every rule names a direction, and `match` is gone from the commands, the planner, the advisors and the dashboard.
+- [ ] The Planner tab's rule box takes `:direction:`, with a picker of the run's directions on `:`, as in the approved mockup.
+- [ ] A rule naming an unknown direction is refused in plain words, or makes the direction (decided with the mockup).
+- [ ] Rules already in force with `match` words keep working or are shown as such until removed (decided with the mockup).
+- [ ] Tests cover the syntax, the picker's list, and the refusals.
+- [ ] The docs pages that describe rules follow.
+
+## Decisions
+
+- 2026-10-20, owner: "no. use directions name. Also I wasn't aware of tags like that and how its used in directions free form box. We should probably use a syntax for the tag and make that explicit on what tags are available such as :tag-name: and when you hit `:` it shows a list of tags available to use just like how in claude code or in discord/slack that shows you a list of emoji's you can use."
+
+## Open questions
+
+- Can a rule name a direction the run has not used yet (a new one), or only one in its registry?
+
+## Progress
+
+- 2026-10-20: Goal written from the owner's decision. A mockup comes first.
+
+---
+
+Run with `/goal Complete docs/plan/goals/066-direction-rules.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

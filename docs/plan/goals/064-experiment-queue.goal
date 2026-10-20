@@ -69,10 +69,12 @@ Today the plan exists only for the current round and is redone every round. Idea
 - 2026-10-20, owner, on the mockups: the Experiments tab is a list, not a board. A rule's direction is free text, not a pick list. One queue per run, with an option to copy a past run's untried experiments into a new run.
 - 2026-10-20: the queue is part of the run's research state, so it lives in the harness's ledger, as the settled decision on research state requires. The planner stays a fresh model call with no memory of its own: the queue is the memory, and the harness keeps it.
 
+- 2026-10-20, owner: rules use direction names only, typed `:direction-name:` with a picker; rules in free words go ([066](066-direction-rules.goal)). `thermite assign` gets an option to copy a past run's untried experiments, off unless asked for ([067](067-assign-queue-from.goal)).
+
 ## Open questions
 
 - Answered 2026-10-20 (see Decisions): a lane's idea waits for the planner, and the owner can queue or drop it first.
-- Free-word rules (`match`) apply only through the planner's model. Without it (none set, its answer refused, the planner off, or a research run), the fixed rules apply only rules that name a direction. Should code also match the words (for example, every word in the experiment's title or direction)?
+- Answered 2026-10-20 (see Decisions): code does not match free words; rules will name directions only ([066](066-direction-rules.goal)).
 
 ## Progress
 

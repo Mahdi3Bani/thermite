@@ -1,0 +1,53 @@
+---
+id: "068"
+title: "MCP servers for a campaign's agents, named by its kit"
+status: READY
+version: "0.1.0"
+part: "Running campaigns"
+depends_on: ["065"]
+created: 2026-10-20
+updated: 2026-10-20
+---
+
+# 068 · MCP servers for a campaign's agents, named by its kit
+
+**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+Outside knowledge bases become plain MCP tools.
+
+- **Settings:** the owner adds any MCP server to control, with OAuth or a key/secret for its auth. GBrain is added the same way as any other.
+- **Kits:** a kit says which MCP servers a campaign's agents use.
+- **What it replaces:** goal 065's "outside knowledge base" feature: copying campaign folders into it, and the teachers-only search grant.
+- **What stays:** Thermite's own knowledge base, with its folders per campaign, grants and past research (goal 065), is not affected.
+
+## Why
+
+The owner, 2026-10-20: outside knowledge bases should be plain MCP tools: add any MCP server in Settings (OAuth or key/secret), and let a kit say which ones a campaign's agents use; GBrain is added that way too.
+
+## Done when
+
+- [ ] Settings › Providers takes any MCP server, with OAuth or a key/secret, sealed as other secrets are, and a check of its tools, as in the approved mockup.
+- [ ] A kit names the MCP servers its campaign's agents use; the kit manifest and its check describe it.
+- [ ] The agents that may use them reach them under the network rules: which agents (workers, the planner, the advisors), through which component, and how the secret travels, are decided with the design. The harness reaches only DNS, the internet and its model endpoint today.
+- [ ] Goal 065's outside knowledge base feature (copies and the teachers' grant) is removed, with what happens to a deployment that has one set.
+- [ ] Tests cover settings, auth, a kit's servers, and that no secret appears in pages, logs or events.
+- [ ] The docs pages follow.
+
+## Decisions
+
+- 2026-10-20, owner: "This should simply just MCP tools granted to a system. We don't need anything special, but our settings should allow us to add MCP tools to the system with auth (either the oauth flow or key/secret etc) and kits should define what mcps should be used. Gbrain should be added this way as well."
+
+## Open questions
+
+- Which agents call the servers, and through what: the harness for workers, or the supervisor? This touches the settled network rules, so it may need a decision in [decisions.md](../decisions.md).
+- What happens to the copies of campaign folders already written to an outside knowledge base?
+
+## Progress
+
+- 2026-10-20: Goal written from the owner's decision. A design and a mockup come first.
+
+---
+
+Run with `/goal Complete docs/plan/goals/068-mcp-servers-for-agents.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

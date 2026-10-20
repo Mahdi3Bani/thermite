@@ -57,6 +57,9 @@ A tester sees what each run is doing, gives it work through one queue of experim
 | --- | --- | --- |
 | [064 · One experiment queue for each run; the planner coordinates it](goals/064-experiment-queue.goal) | `IN_PROGRESS` | 063 |
 | [065 · Journals and a research corpus from every campaign](goals/065-journals-and-corpus.goal) | `IN_PROGRESS` | 062, 064 |
+| [066 · Rules name directions, picked with `:direction:`](goals/066-direction-rules.goal) | `READY` | 064 |
+| [067 · `thermite assign` can copy a past run's untried experiments](goals/067-assign-queue-from.goal) | `READY` | 064 |
+| [068 · MCP servers for a campaign's agents, named by its kit](goals/068-mcp-servers-for-agents.goal) | `READY` | 065 |
 
 ### Install from images
 

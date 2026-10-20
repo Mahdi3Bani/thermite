@@ -66,10 +66,12 @@ Today most of what an agent learns ends with its trial. Only submitted attempts,
 - 2026-10-20, owner, on the Journal mockup: the journal is a field note, not a record of what was tried (the experiment log has that): observations, key decisions and the like, kept by the agents throughout the system.
 - 2026-10-20, owner, on the first mockups: "gbrain shouldn't be required. thermite should maintain its own kb system. gbrain is more a sync than anything and additional external context brought in." Each campaign keeps everything in its own folder in Thermite's knowledge base; the owner grants a campaign read access to other campaigns' folders, at any time.
 
+- 2026-10-20, owner, on whether control should sign the past research it sends to rigs: "This is probably overkill atm." and "overkill atm, keep it as it is with supervisor passing in." Not signed: the supervisor stays trusted for past research, as it is for the advisors' work.
+- 2026-10-20, owner, on how much of a journal a new campaign sees: "everything, keep it simple." Outside knowledge bases become plain MCP tools that a kit names ([068](068-mcp-servers-for-agents.goal)); that replaces this goal's outside knowledge base copies and the teachers' search grant.
+
 ## Open questions
 
-- Which outside knowledge bases come first after GBrain, and does control push to them or do they pull?
-- How much of a journal does a new campaign see: everything, or only what the planner selects?
+- Answered 2026-10-20 (see Decisions): outside knowledge bases become plain MCP tools ([068](068-mcp-servers-for-agents.goal)); a new campaign sees every note in the folders it may read.
 
 ## Progress
 
