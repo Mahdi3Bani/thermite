@@ -7,7 +7,9 @@
 //   - the judge decides both submissions; control reports the agents' figures;
 //   - a lane's background work runs on across its commands and a dev run, as in a shell;
 //   - no lane process outlives its trial;
-//   - control's model check reaches the model through the rig's route with a correct tool call.
+//   - control's model check reaches the model through the rig's route with a correct tool call;
+//   - under OpenCode, a hill-climb trial submits with thermite-trial, and a research run's trial
+//     runs the research tools as `thermite-trial research` commands.
 // Usage: COMPOSE="podman compose" node scripts/agents-acceptance.mjs
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -33,6 +35,31 @@ const NOOP = readFileSync("kits/smoke-cpu/candidates/noop/src/kernel/matmul.c", 
 let requests = 0;
 const setid = {};
 const background = {};
+/** What the OpenCode research trial's commands answered, as its tool results show. */
+const researchSeen = {};
+/** A tool result's text: OpenCode sends it as a string or as text parts. */
+const textOf = (c) =>
+  typeof c === "string"
+    ? c
+    : Array.isArray(c)
+      ? c.map((p) => (typeof p?.text === "string" ? p.text : "")).join("\n")
+      : String(c ?? "");
+
+/**
+ * The OpenCode research trial: each research tool as a shell command, in turn. Its fetch names
+ * this machine's scripted model, a private address, which the harness's fetcher must refuse.
+ */
+function researchSteps() {
+  const shell = (command) => ({ name: "shell", args: { command, timeout: 0 } });
+  return [
+    shell(`thermite-trial research fetch http://${hostName}:${port}/paper`),
+    shell("thermite-trial research add_note 'opencode research note: the fetch was refused'"),
+    shell(
+      `thermite-trial research update_section - <<'EOF'\n{"name": "opencode", "body": "Written with thermite-trial in OpenCode."}\nEOF`,
+    ),
+    shell("thermite-trial research progress"),
+  ];
+}
 
 /** A dashboard session: sign in with the admin token, keep the cookie, post forms. */
 async function dashboard() {
@@ -67,6 +94,12 @@ function script(messages, tools) {
     if (word) {
       if (tools) return { text: "done" };
       return { toolCalls: [{ name: "shell", args: { command: `echo ${word}` } }] };
+    }
+    // A research run's trial: the research prompt, OpenCode's own tools.
+    if (asked.includes("research worker in an automated research campaign")) {
+      researchSeen.prompt = true;
+      const step = researchSteps()[tools];
+      return step ? { toolCalls: [step] } : { text: "done for this trial" };
     }
     // A trial: first a command that takes the lane over its memory limit (the broker kills it
     // and spares OpenCode), then the change and its submission, then done.
@@ -197,12 +230,26 @@ const model = createServer((req, res) => {
       res.end(JSON.stringify({ data: [{ id: "scripted", context_length: 32768 }] }));
       return;
     }
+    // Anything else but a model call: the research fetch reached this machine, which the
+    // harness's fetcher must refuse before it connects.
+    if (req.method !== "POST") {
+      researchSeen.reachedPrivate = `${req.method} ${req.url}`;
+      res.writeHead(404).end();
+      return;
+    }
     requests++;
     const p = JSON.parse(body);
     for (const m of p.messages ?? []) {
       // The broker kills the whole command, shell and all; OpenCode's shell tool says so.
       if (m.role === "tool" && /Killed by SIGKILL/.test(JSON.stringify(m.content ?? "")))
         hogSeen.killed = true;
+      if (m.role === "tool") {
+        const out = textOf(m.content);
+        if (/refusing a private or local address/.test(out)) researchSeen.refused = true;
+        if (/"note":\s*\d+/.test(out)) researchSeen.note = true;
+        if (/"section":\s*"opencode"/.test(out)) researchSeen.section = true;
+        if (/"questions":\s*\[/.test(out)) researchSeen.progress = true;
+      }
       for (const hit of JSON.stringify(m.content ?? "").matchAll(/SETID-(BEFORE|AFTER) (\S+)/g))
         setid[hit[1]] = hit[2];
       for (const hit of JSON.stringify(m.content ?? "").matchAll(/BG-(STARTED|ALIVE) (yes|no)/g))
@@ -428,6 +475,66 @@ try {
       turns: ocTrial?.body.turns,
       memory_hog_killed: hogSeen.killed ?? false,
       keys: [...keysSeen].map((k) => k.slice(0, 16)),
+    },
+  );
+  // A research run under OpenCode: a research trial follows the agents' harness. Its worker keeps
+  // OpenCode's own tools and runs the research tools as `thermite-trial research` commands,
+  // which reach the harness's research service with the trial's token. Assigning it pauses
+  // smoke-1 (one running run per rig).
+  const { parseContract } = await import("../dist/core/contract.js");
+  const researchContract = parseContract({
+    schema_version: 1,
+    campaign: "opencode-research",
+    version: 1,
+    title: "Research through OpenCode",
+    mode: "research",
+    project: { repo: "research-notes" },
+    topic: "How a harness checks quotes against archived sources",
+    questions: ["What makes a quote verifiable?"],
+    lanes: { count: 1, trials_per_epoch: 1 },
+    min_duration: "30m",
+  });
+  if (!researchContract.ok) throw new Error(researchContract.errors.join("; "));
+  keysSeen.clear();
+  await command("assign_campaign", {
+    run: "research-oc",
+    contract: researchContract.contract,
+    contract_sha: researchContract.sha,
+    imports: [],
+  });
+  const researchTrial = await until(
+    "the OpenCode research trial's end",
+    async () =>
+      (await events()).find((e) => e.kind === "trial_finished" && e.subject === "research-oc"),
+    600_000,
+    3000,
+  );
+  // A research run goes on until its time is up: stop it here, before its next trial.
+  await command("pause_run", { run: "research-oc", reason: "acceptance: drain" });
+  const researchEvents = (await events()).filter((e) => e.subject === "research-oc");
+  const refusal = researchEvents.find((e) => e.kind === "fetch_refused");
+  const note = researchEvents.find((e) => e.kind === "research_note");
+  check(
+    "a research trial under OpenCode runs the research tools as thermite-trial commands, through the harness",
+    researchSeen.prompt === true &&
+      researchTrial.body.stopped === "finished" &&
+      Number(researchTrial.body.turns) >= 1 &&
+      // The fetch went through the harness's fetcher, which refused this machine's address.
+      researchSeen.refused === true &&
+      researchSeen.reachedPrivate === undefined &&
+      /private or local address/.test(String(refusal?.body.reason)) &&
+      // The note is the trial's, in the run's record; the section and progress answered.
+      note?.body.trial === researchTrial.body.trial &&
+      /opencode research note/.test(String(note?.body.text)) &&
+      researchSeen.note === true &&
+      researchSeen.section === true &&
+      researchSeen.progress === true &&
+      ![...keysSeen].some((k) => /Bearer (trial|proxy)\./.test(k)),
+    {
+      trial: researchTrial.body,
+      seen: researchSeen,
+      refusal: refusal?.body.reason,
+      note: note?.body,
     },
   );
   check(

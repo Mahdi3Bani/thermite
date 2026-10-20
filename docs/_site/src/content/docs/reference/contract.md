@@ -84,7 +84,7 @@ A [lane](glossary.md) is one worker's line of search. An epoch is one round of p
 
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `lanes.count` | integer, 1–64 | required when `lanes` is given; 2 when `lanes` is left out | Lanes planned in each epoch. A `lane_count` [directive](advisors-file.md#what-each-role-must-answer) can lower it. The harness has users for lanes 1 to 16 only, so a lane above 16 cannot run trials. How many trials run at the same time is the rig's own setting, **Workers at a time**, which is 1 unless it is changed: see [Settings](settings.md#the-rigs-settings) |
+| `lanes.count` | integer, 1–16 | required when `lanes` is given; 2 when `lanes` is left out | Lanes planned in each epoch. A `lane_count` [directive](advisors-file.md#what-each-role-must-answer) can lower it. A rig has users for lanes 1 to 16 only, so more is refused. How many trials run at the same time is the rig's own setting, **Workers at a time**, which is 1 unless it is changed: see [Settings](settings.md#the-rigs-settings) |
 | `lanes.trials_per_epoch` | integer ≥ 1 | 3 | Trials each lane runs in one epoch |
 | `lanes.limits` | object | none | What each lane may use. Every field is optional, and the defaults below apply to what is left out |
 
@@ -98,6 +98,7 @@ A [lane](glossary.md) is one worker's line of search. An epoch is one round of p
 | `dev_run_timeout_s` | 10–3600 | none on a development device of its own; 300 on a device the judge shares | Time limit, in seconds, for one development run |
 | `dev_run_rss_mib` | 256–16384 | 4096 | Memory, in MiB, for one development run |
 | `trial_minutes` | 1–1440 | the rig's trial length (20 minutes unless changed) | One trial's length, in minutes |
+| `processes` | 64–65536 | 256 | Processes and threads that each of a lane's users may have at once: the user of its commands (with OpenCode or Claude Code when the lane uses one), of its development runs, and of its Pi worker. At the limit, starting one more fails (`Resource temporarily unavailable`); nothing is stopped. Raise it for builds or tests that start many threads |
 
 A limit ends one command or one trial, never the campaign. [Limits and pacing](limits-and-pacing.md) lists every limit Thermite has.
 
@@ -270,12 +271,13 @@ These fields pass validation and become part of the contract and its hash, but n
 | `k_of_n needs 1 <= k <= number of goals` | `success.policy` is `k_of_n` and `k` is missing or larger than the number of goals |
 | `infeasibility.allowed requires min_refuted_approaches` | `infeasibility.allowed` is `true` without `min_refuted_approaches` |
 | `max_duration is shorter than min_duration` | Both are set, and `max_duration` is shorter |
+| `at most 16: a rig has users for lanes 1 to 16 only` | `lanes.count` is more than 16 |
 | `research campaigns need min_duration` | A research contract has no `min_duration` |
 | `hill_climb campaigns need a target` | A hill climb contract has no `target` |
 
 ## When a run is assigned
 
-The `assign_campaign` [signed command](signed-commands.md) carries the contract and its hash. The rig's harness refuses the command with one of these, and creates no run:
+The `assign_campaign` [signed command](signed-commands.md) carries the contract and its hash. Control does not sign one whose contract asks for more than 16 lanes: it answers `This contract asks for <n> lanes. A rig runs 16 at most: it has users for lanes 1 to 16 only. Set lanes.count to 16 or fewer.` The rig's harness refuses the command with one of these, and creates no run:
 
 | Message | Cause |
 | --- | --- |

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { startFakeModel } from "../../testing/fake-model.ts";
-import { modelConfigFromEnv } from "./model.ts";
+import { buildModel, type ModelConfig, modelConfigFromEnv } from "./model.ts";
 import { fallbackPlan, type PlannerInput, plan, plannerContext, validatePlan } from "./planner.ts";
 
 const base: PlannerInput = {
@@ -264,16 +264,14 @@ describe("planner", () => {
       () => modelConfigFromEnv({ ...env, THERMITE_MODEL_REASONING_EFFORT: "max" }),
       /must be/,
     );
-    // The old QWEN_* names are still read, and the new name wins when both are set.
-    const old = modelConfigFromEnv({
-      QWEN_BASE_URL: fake.url,
-      QWEN_MODEL: "old",
-      QWEN_API_KEY: "k",
-      QWEN_CONTEXT_WINDOW: "262144",
-      THERMITE_MODEL: "new",
-    });
-    assert.equal(old?.model, "new");
-    assert.equal(old?.contextWindow, 262144);
+    // Only the THERMITE_ names make a route: the names of Thermite's first deployment are gone.
+    const old = { QWEN_BASE_URL: fake.url, QWEN_MODEL: "old", QWEN_API_KEY: "k" };
+    assert.equal(modelConfigFromEnv(old), undefined);
+    const both = modelConfigFromEnv({ ...old, ...env, QWEN_CONTEXT_WINDOW: "262144" });
+    assert.equal(both?.model, "m");
+    assert.equal(both?.contextWindow, 0);
+    // An OpenAI-compatible route registers under a provider id named for what it is.
+    assert.equal(buildModel(both as ModelConfig).model.provider, "thermite-openai");
     await fake.close();
   });
 });

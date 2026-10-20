@@ -60,35 +60,27 @@ export function reasoningFromEnv(raw: string | undefined): ReasoningEffort | und
 
 /**
  * The model route's settings, by their names: THERMITE_MODEL_* (BASE_URL, the model's name as
- * THERMITE_MODEL, API_KEY, CONTEXT_WINDOW, MAX_TOKENS, REASONING_EFFORT). The QWEN_* names
- * they had before are still read, as aliases, when the new one is not set.
+ * THERMITE_MODEL, API_KEY, CONTEXT_WINDOW, MAX_TOKENS, REASONING_EFFORT, API) and the agents'
+ * harness, THERMITE_AGENT_HARNESS.
  */
 export const MODEL_SETTINGS = {
-  baseUrl: ["THERMITE_MODEL_BASE_URL", "QWEN_BASE_URL"],
-  model: ["THERMITE_MODEL", "QWEN_MODEL"],
-  apiKey: ["THERMITE_MODEL_API_KEY", "QWEN_API_KEY"],
-  contextWindow: ["THERMITE_MODEL_CONTEXT_WINDOW", "QWEN_CONTEXT_WINDOW"],
-  maxTokens: ["THERMITE_MODEL_MAX_TOKENS", "QWEN_MAX_TOKENS"],
-  reasoning: ["THERMITE_MODEL_REASONING_EFFORT", "QWEN_REASONING_EFFORT"],
-  api: ["THERMITE_MODEL_API", "QWEN_MODEL_API"],
-  harness: ["THERMITE_AGENT_HARNESS", "QWEN_AGENT_HARNESS"],
+  baseUrl: "THERMITE_MODEL_BASE_URL",
+  model: "THERMITE_MODEL",
+  apiKey: "THERMITE_MODEL_API_KEY",
+  contextWindow: "THERMITE_MODEL_CONTEXT_WINDOW",
+  maxTokens: "THERMITE_MODEL_MAX_TOKENS",
+  reasoning: "THERMITE_MODEL_REASONING_EFFORT",
+  api: "THERMITE_MODEL_API",
+  harness: "THERMITE_AGENT_HARNESS",
 } as const;
 
-/** Every variable name the model route may be read from (new names and their aliases). */
-export const MODEL_ENV_NAMES: string[] = Object.values(MODEL_SETTINGS).flat();
+/** Every variable name the model route is read from. */
+export const MODEL_ENV_NAMES: string[] = Object.values(MODEL_SETTINGS);
 
-let warnedAlias = false;
-function setting(env: NodeJS.ProcessEnv, names: readonly [string, string]): string | undefined {
-  const [current, alias] = names;
-  if (env[current] !== undefined && env[current] !== "") return env[current];
-  const old = env[alias];
-  if (old !== undefined && old !== "" && !warnedAlias) {
-    warnedAlias = true;
-    console.warn(
-      `${alias} and the other QWEN_* model settings are old names: use THERMITE_MODEL_* (${current})`,
-    );
-  }
-  return old;
+/** A setting's value; empty counts as not set. */
+function setting(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  const v = env[name];
+  return v === undefined || v === "" ? undefined : v;
 }
 
 export function modelConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ModelConfig | undefined {
@@ -160,7 +152,7 @@ export function modelEnv(cfg: ModelConfig): Record<string, string> {
 export function buildModel(cfg: ModelConfig) {
   if (cfg.api === "anthropic") return buildAnthropic(cfg);
   if (cfg.api === "chatgpt") return buildChatGPT(cfg);
-  const provider = "thermite-qwen";
+  const provider = "thermite-openai";
   const model: Model<"openai-completions"> = {
     id: cfg.model,
     name: cfg.model,

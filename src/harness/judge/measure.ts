@@ -14,6 +14,7 @@ import { runSupervised } from "../broker/process.ts";
 import { type Role, type Runner, type RunOutcome, walk } from "../broker/runner.ts";
 import { expandArgv, type Kit, paramsText } from "../kit.ts";
 import type { BuildManifest, BuildStore } from "./builds.ts";
+import { clipReason } from "./reasons.ts";
 
 /**
  * One timed run of one arm on one cell. The run user executes the arm's verified build with
@@ -117,7 +118,7 @@ export function copyForRun(kitDir: string, paths: readonly string[], dest: strin
 
 export async function runArm(ctx: MeasureContext, arm: Arm, cell: string): Promise<ArmRun> {
   const r = await runArmInner(ctx, arm, cell);
-  ctx.note?.(arm.name, cell, r.kind === "ok" ? "ok" : `${r.kind}: ${r.reason.slice(0, 300)}`);
+  ctx.note?.(arm.name, cell, r.kind === "ok" ? "ok" : `${r.kind}: ${r.reason}`);
   return r;
 }
 
@@ -169,14 +170,19 @@ async function runArmInner(ctx: MeasureContext, arm: Arm, cell: string): Promise
     if (outcome.exitCode !== 0) {
       return {
         kind: "crash",
-        reason: `exit ${outcome.exitCode ?? outcome.signal}: ${outcome.stderr.slice(-400)}`,
+        reason: clipReason(`exit ${outcome.exitCode ?? outcome.signal}: ${outcome.stderr}`),
         outcome,
       };
     }
     const problems = existsSync(out) ? outputProblems(out) : ["no output directory"];
     if (problems.length) {
       const check = { pass: false, reasons: problems, details: {} };
-      return { kind: "invalid", reason: `outputs refused: ${problems.join("; ")}`, check, outcome };
+      return {
+        kind: "invalid",
+        reason: clipReason(`outputs refused: ${problems.join("; ")}`),
+        check,
+        outcome,
+      };
     }
 
     const check = await runCheck(ctx, {
@@ -190,7 +196,7 @@ async function runArmInner(ctx: MeasureContext, arm: Arm, cell: string): Promise
     if (!check.pass) {
       return {
         kind: "invalid",
-        reason: check.reasons.join("; ") || "check failed",
+        reason: clipReason(check.reasons.join("; ")) || "check failed",
         check,
         outcome,
       };
@@ -248,7 +254,7 @@ async function runCheck(ctx: MeasureContext, vars: Record<string, string>): Prom
   } catch {
     return {
       pass: false,
-      reasons: [`check produced no result (exit ${r.exitCode}): ${r.stderr.slice(-300)}`],
+      reasons: [clipReason(`check produced no result (exit ${r.exitCode}): ${r.stderr}`)],
       details: {},
     };
   }

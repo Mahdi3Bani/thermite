@@ -5,6 +5,7 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { canonicalJson, sha256Hex } from "../core/canonical.ts";
 import type { Contract } from "../core/contract.ts";
 import { currentBody, currentEvent, eventKinds } from "../core/names.ts";
+import { clipReason, REASONS_CHARS } from "./judge/reasons.ts";
 import { MIGRATIONS } from "./schema.ts";
 
 /**
@@ -1024,7 +1025,7 @@ export class Ledger {
       // The interval and the judge's reasons, so a reader sees how sure the verdict is and why.
       ci_low: v.ciLow ?? null,
       ci_high: v.ciHigh ?? null,
-      reasons: v.reasons.slice(0, 1000),
+      reasons: clipReason(v.reasons, REASONS_CHARS),
       supersedes: v.supersedes ?? null,
     });
     return id;

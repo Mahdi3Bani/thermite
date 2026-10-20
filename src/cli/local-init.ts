@@ -115,10 +115,8 @@ export function localInit(root: string, owner?: Owner): LocalInitResult {
     give(rel);
   };
   for (const name of LOCAL_TOKEN_FILES) write(name, token());
-  // A local model route's key: a placeholder to replace for a real OpenAI-compatible endpoint
-  // (a key kept under the file's old name, qwen-api-key, carries over).
-  const oldKey = join(root, "secrets", "qwen-api-key");
-  write("model-api-key", existsSync(oldKey) ? readFileSync(oldKey, "utf8") : "local-placeholder");
+  // A local model route's key: a placeholder to replace for a real OpenAI-compatible endpoint.
+  write("model-api-key", "local-placeholder");
   const read = (name: string) => readFileSync(join(root, "secrets", name), "utf8").trim();
   const map = "secrets/control-rig-tokens.json";
   const fresh = !existsSync(join(root, map));

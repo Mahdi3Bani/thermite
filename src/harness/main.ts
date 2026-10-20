@@ -51,7 +51,7 @@ import { Ledger } from "./ledger.ts";
 import { settlePropagations } from "./propagation.ts";
 import { ResearchFolder } from "./research/folder.ts";
 import { Research } from "./research/research.ts";
-import { RigSettingsStore } from "./rig-settings.ts";
+import { lanesFromEnv, RigSettingsStore } from "./rig-settings.ts";
 import {
   busyReason,
   isolationSelftest,
@@ -222,7 +222,7 @@ async function main(): Promise<void> {
     {
       judge: true,
       workers: true,
-      lanes: Number(env.THERMITE_MAX_TRIALS ?? "1"),
+      lanes: lanesFromEnv(env.THERMITE_MAX_TRIALS),
       planner: true,
       auditor: true,
       teachers: true,
@@ -379,7 +379,6 @@ async function main(): Promise<void> {
             env.THERMITE_SUPERVISOR_TOKEN_FILE,
             env.THERMITE_PROPOSER_TOKEN_FILE,
             env.THERMITE_MODEL_API_KEY_FILE,
-            env.QWEN_API_KEY_FILE,
             // In one container with the supervisor (pull mode): the keys its tunnel signs with.
             env.THERMITE_TUNNEL_DIR ? join(env.THERMITE_TUNNEL_DIR, "keys.json") : undefined,
           ].filter((f): f is string => Boolean(f)),

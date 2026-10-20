@@ -118,7 +118,7 @@ COMPOSE="podman compose" npm run acceptance:judge
 
 ## Agents without a model
 
-`node scripts/agents-acceptance.mjs` checks the agent machinery without a real model: a scripted model on your machine plans one round and plays two workers, which edit, build, use the device and submit through the real harness image.
+`node scripts/agents-acceptance.mjs` checks the agent machinery without a real model: a scripted model on your machine plans one round and plays two workers, which edit, build, use the device and submit through the real harness image. Then the rig's agents move to OpenCode: a hill-climb trial submits with `thermite-trial`, and a research run's trial runs the research tools as `thermite-trial research` commands. Its fetch names your machine, so the harness's fetcher must refuse it as a private address; its note, report section and progress must come back from the harness.
 
 ## A long research run
 

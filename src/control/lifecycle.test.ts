@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -67,6 +67,32 @@ describe("deployment drivers", () => {
     assert.equal(auth, "Bearer sa-token");
     assert.ok(seen.includes("DELETE /api/v1/namespaces/ar-gpu-rig-1/pods/harness-abc"));
     await assert.rejects(d.restart("../kube-system", ["harness"]), /not a rig name/);
+    server.close();
+  });
+
+  test("Kubernetes from control's settings: thermite-{rig} by default, a set template kept", async () => {
+    const { server, seen } = fakeServer((method) =>
+      method === "GET" ? [200, { items: [{ metadata: { name: "harness-abc" } }] }] : [200, {}],
+    );
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const dir = mkdtempSync(join(tmpdir(), "thermite-k8s-"));
+    writeFileSync(join(dir, "token"), "sa-token\n");
+    writeFileSync(join(dir, "ca.crt"), "not used over http\n");
+    const env = {
+      THERMITE_K8S_API: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+      THERMITE_K8S_TOKEN_FILE: join(dir, "token"),
+      THERMITE_K8S_CA_FILE: join(dir, "ca.crt"),
+    };
+    // Not set, or set empty (compose passes an unset variable on as ""): the default.
+    for (const unset of [env, { ...env, THERMITE_K8S_NAMESPACE: "" }])
+      assert.deepEqual(await KubernetesDriver.inCluster(unset).restart("rig-1", ["harness"]), [
+        "thermite-rig-1/harness-abc",
+      ]);
+    // A deployment that names its namespaces keeps them, whatever the default.
+    const own = KubernetesDriver.inCluster({ ...env, THERMITE_K8S_NAMESPACE: "ar-{rig}" });
+    assert.deepEqual(await own.restart("rig-1", ["harness"]), ["ar-rig-1/harness-abc"]);
+    assert.ok(seen.includes("DELETE /api/v1/namespaces/thermite-rig-1/pods/harness-abc"));
+    assert.ok(seen.includes("DELETE /api/v1/namespaces/ar-rig-1/pods/harness-abc"));
     server.close();
   });
 

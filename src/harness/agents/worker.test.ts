@@ -874,6 +874,7 @@ describe("worker trial", () => {
       disk?: { limitBytes: number };
       env?: Record<string, string>;
       keepBackground?: boolean;
+      nproc?: number;
     }[] = [];
     const runner = Object.assign(Object.create(inner), {
       run: (req: Parameters<LocalRunner["run"]>[0]) => {
@@ -934,16 +935,20 @@ describe("worker trial", () => {
       run_rss_mib: 512,
       workspace_mib: 1024,
       dev_run_timeout_s: 45,
+      processes: 1024,
     });
     const r = await run({
       timeoutMs: 3_600_000,
       rssLimitBytes: 64 * 1024 ** 3,
       disk: { path: ws.dir, limitBytes: 64 * 1024 ** 3 },
+      nproc: 65_536,
     });
     assert.equal(r.status, 200);
     assert.equal(seen.at(-1)?.timeoutMs, 30_000);
     assert.equal(seen.at(-1)?.rssLimitBytes, 512 * 1024 ** 2);
     assert.equal(seen.at(-1)?.disk?.limitBytes, 1024 * 1024 ** 2);
+    // The process limit is the contract's, whatever the worker asks for.
+    assert.equal(seen.at(-1)?.nproc, 1024);
     // A command that asks for no limit still gets the contract's.
     assert.equal((await run({})).status, 200);
     assert.equal(seen.at(-1)?.timeoutMs, 30_000);
@@ -956,7 +961,12 @@ describe("worker trial", () => {
     assert.equal(d.status, 200);
     // The dev-run queue applies the limit (it alone knows whether the judge shares the device).
     assert.equal(devRequests.at(-1)?.input.timeout_s, 3600);
-    assert.deepEqual(devRequests.at(-1)?.limits, { rssMib: 4096, diskMib: 1024, timeoutS: 45 });
+    assert.deepEqual(devRequests.at(-1)?.limits, {
+      rssMib: 4096,
+      diskMib: 1024,
+      processes: 1024,
+      timeoutS: 45,
+    });
   });
 
   test("without a time limit in the contract, a lane command has none, and its background work runs on", async () => {
@@ -964,11 +974,13 @@ describe("worker trial", () => {
     assert.equal((await run({})).status, 200);
     assert.equal(seen.at(-1)?.timeoutMs, undefined);
     assert.equal(seen.at(-1)?.keepBackground, true);
+    // No process limit in the contract: the lane's users keep the default.
+    assert.equal(seen.at(-1)?.nproc, 256);
     assert.equal((await run({ timeoutMs: 90_000 })).status, 200);
     assert.equal(seen.at(-1)?.timeoutMs, 90_000, "an agent may still set its own");
     assert.equal((await dev({})).status, 200);
     assert.equal(devRequests.at(-1)?.input.timeout_s, undefined);
-    assert.deepEqual(devRequests.at(-1)?.limits, { rssMib: 4096, diskMib: 2048 });
+    assert.deepEqual(devRequests.at(-1)?.limits, { rssMib: 4096, diskMib: 2048, processes: 256 });
   });
 
   test("the isolation selftest refuses a rig with open trials or judge jobs", async () => {

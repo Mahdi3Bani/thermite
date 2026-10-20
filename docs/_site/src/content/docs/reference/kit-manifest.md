@@ -177,7 +177,7 @@ A kit described on the **New campaign** page is different: control wraps its che
 | `reasons` | list of text | Why the run failed. They are joined with `; ` into the verdict's reason; with none, the reason is `check failed` |
 | any other field | any | Details. A `from: "check"` metric reads its number from here |
 
-When the last line is not JSON, the run fails with `check produced no result (exit <code>): <last 300 characters of standard error>`.
+When the last line is not JSON, the run fails with `check produced no result (exit <code>): <standard error>`, shortened as [the reasons below](#outcomes) are.
 
 ## Outcomes
 
@@ -199,19 +199,21 @@ The reasons have these forms:
 | --- | --- |
 | Build | `build: ` and one of `build failed (exit <code>)`, `build outputs missing: <paths>`, `build killed (<timeout, memory or disk>)`, `build outputs refused: <problems>`, then the last 1,500 characters of the build's log |
 | Run ended for a limit | `killed: <timeout, memory or disk>` |
-| Run exited with an error | `exit <code>: <last 400 characters of standard error>` |
+| Run exited with an error | `exit <code>: <standard error>` |
 | Run outputs refused | `outputs refused: <problems>` |
 | Driver refused a value | `implausible: <problems>` |
+| Check failed | The check's `reasons`, joined with `; ` |
 
 In a goal campaign, a failed run on a verifier's cell makes that goal unmet, with the run's failure as its reason, whichever arm it was.
 
-Reasons are shortened where they are passed on:
+Each run's reason keeps at most 2,000 characters. A longer one keeps its first quarter and its last three quarters, with ` … ` where it was cut: the start says what failed, and the end of the standard error is where the error usually is. Reasons are shortened the same way where they are passed on:
 
 | Where | Characters kept |
 | --- | --- |
-| A failed cell in a goal report, for a verifier | 300 |
-| A failed cell in a goal report, for a metric threshold | 200 |
-| A verdict's reasons in a worker's brief | 600 |
+| One failed cell in a goal report, for a verifier or a metric threshold | 2,000 |
+| A verdict's reasons, in the ledger and as control gets them; a goal's reasons in a goal check | 4,000 |
+| A verdict's reasons in a worker's brief, for each of the lane's last attempts | 1,200 |
+| Each goal's reasons in the goal report a worker's brief and the planner get | 600 |
 | A build's log in the verdict | the last 1,500 |
 
 ## Build cache

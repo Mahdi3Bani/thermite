@@ -36,10 +36,8 @@ write("harness-supervisor-token", token());
 write("harness-proposer-token", token());
 write("harness2-supervisor-token", token());
 write("harness2-proposer-token", token());
-// A local model route's key: a placeholder to replace for a real OpenAI-compatible endpoint
-// (a key kept under the file's old name, qwen-api-key, carries over).
-const oldKey = join(secrets, "qwen-api-key");
-write("model-api-key", existsSync(oldKey) ? readFileSync(oldKey, "utf8") : "local-placeholder");
+// A local model route's key: a placeholder to replace for a real OpenAI-compatible endpoint.
+write("model-api-key", "local-placeholder");
 const read = (name) => readFileSync(join(secrets, name), "utf8").trim();
 writeFileSync(
   join(secrets, "control-rig-tokens.json"),

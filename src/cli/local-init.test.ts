@@ -70,12 +70,13 @@ describe("thermite local init", () => {
     assert.equal(JSON.parse(secret(root, "control-rig-tokens.json"))["local-1"], "changed-by-hand");
   });
 
-  test("carries a model key over from its old file name", () => {
+  test("writes the model key's placeholder whatever other key files the folder has", () => {
     const root = fresh();
     mkdirSync(join(root, "secrets"), { recursive: true });
+    // The file name Thermite's first deployment used: no longer read.
     writeFileSync(join(root, "secrets/qwen-api-key"), "sk-old-name");
     localInit(root);
-    assert.equal(secret(root, "model-api-key"), "sk-old-name");
+    assert.equal(secret(root, "model-api-key"), "local-placeholder");
   });
 
   test("makes the same layout as npm run dev:init", async () => {

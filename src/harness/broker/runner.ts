@@ -1,6 +1,7 @@
 import { chmodSync, lstatSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { z } from "zod";
+import { MAX_LANES } from "../../core/contract.ts";
 import { killScope, runSupervised, type SupervisedResult } from "./process.ts";
 
 /**
@@ -36,9 +37,11 @@ export const IDS = {
   laneDevBase: 10200,
   /** Each lane's worker agent process: its own user, with no access to the lane's files. */
   agentBase: 10300,
-  maxLanes: 16,
+  /** Lanes with users in the image: the most a contract or a rig's settings may ask for. */
+  maxLanes: MAX_LANES,
 } as const;
 
+/** The lane numbers below stop at IDS.maxLanes (src/core/lanes.test.ts checks it). */
 export const RoleSchema = z
   .string()
   .regex(
@@ -89,6 +92,11 @@ export const RunRequest = z.object({
    */
   spareExe: z.string().min(1).startsWith("/").optional(),
   disk: z.object({ path: z.string().min(1), limitBytes: z.number().int().positive() }).optional(),
+  /**
+   * The role's processes and threads at once (RLIMIT_NPROC): a contract's lanes.limits.processes
+   * for a lane's users. Unset: the broker's default for the role.
+   */
+  nproc: z.number().int().min(16).max(65_536).optional(),
   /** Written to the child's stdin (file contents for workers' file tools). */
   stdin: z
     .string()

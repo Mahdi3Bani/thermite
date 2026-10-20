@@ -25,6 +25,7 @@ import {
   goalDelta,
 } from "./decide.ts";
 import { type Arm, type ArmRun, type MeasureContext, runArm } from "./measure.ts";
+import { clipReason, REASONS_CHARS } from "./reasons.ts";
 
 /**
  * The judge: the only code that measures, decides verdicts and moves champions. It leases
@@ -181,7 +182,7 @@ export class Judge {
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       log("judge", "job failed", { job: job.id, kind: job.kind, error: reason });
-      this.note(`${job.kind} ${subject}: failed (${reason.slice(0, 300)})`, this.jobRun(job));
+      this.note(`${job.kind} ${subject}: failed (${clipReason(reason)})`, this.jobRun(job));
       this.infraFailure(job, reason);
       return true;
     }
@@ -271,14 +272,14 @@ export class Judge {
   private infraFailure(job: JobRow, reason: string): void {
     try {
       this.ledger.tx(() => {
-        this.ledger.completeJob(job.id, job.fence, "failed", { error: reason.slice(0, 2000) });
+        this.ledger.completeJob(job.id, job.fence, "failed", { error: clipReason(reason) });
         if (!job.attempt) return;
         const retries = Number(this.spec(job).retries ?? 0);
         this.ledger.recordVerdict({
           attempt: job.attempt,
           verdict: "crash_infra",
           dependsOnJobs: [job.id],
-          reasons: reason.slice(0, 2000),
+          reasons: clipReason(reason),
           judgedBy: this.o.owner,
         });
         if (retries < 1) {
@@ -335,7 +336,7 @@ export class Judge {
       });
     const b = await (this.o.buildLock ? this.o.buildLock(ensure) : ensure());
     this.note(
-      `build ${commit.slice(0, 12)}: ${b.ok ? "ok" : `failed (${b.reason.slice(0, 200)})`} in ${Math.round((Date.now() - started) / 1000)} s`,
+      `build ${commit.slice(0, 12)}: ${b.ok ? "ok" : `failed (${clipReason(b.reason)})`} in ${Math.round((Date.now() - started) / 1000)} s`,
       run,
     );
     return b;
@@ -604,7 +605,7 @@ export class Judge {
         attempt: job.attempt as string,
         verdict: err.verdict,
         dependsOnJobs: [job.id],
-        reasons: err.reason.slice(0, 4000),
+        reasons: clipReason(err.reason, REASONS_CHARS),
         judgedBy: this.o.owner,
       },
       lifecycle: "judged",
@@ -952,7 +953,7 @@ export class Judge {
               continue;
             }
             const r = await runArm(ctx, arm, cell);
-            if (r.kind !== "ok") failures.push(`${cell}: ${r.kind}: ${r.reason.slice(0, 300)}`);
+            if (r.kind !== "ok") failures.push(`${cell}: ${r.kind}: ${clipReason(r.reason)}`);
           }
           result = {
             ok: !failures.length,
@@ -1037,7 +1038,7 @@ export class Judge {
         for (let rep = 1; rep <= contract.threshold_reps; rep++) {
           const r = await runArm(ctx, arm, cell);
           if (r.kind !== "ok") {
-            failures.push(`${cell}: ${r.kind}: ${r.reason.slice(0, 200)}`);
+            failures.push(`${cell}: ${r.kind}: ${clipReason(r.reason)}`);
             break;
           }
           const value = r.metrics[v.metric] ?? r.check.details[v.metric];
@@ -1102,7 +1103,7 @@ export class Judge {
             job.id,
             commit,
             r.status,
-            r.reasons.slice(0, 4000),
+            clipReason(r.reasons, REASONS_CHARS),
             new Date().toISOString(),
           );
         if (updateStatus) {

@@ -16,9 +16,28 @@ export interface RouteSync {
   fetchImpl?: typeof fetch | undefined;
 }
 
-export async function syncModelRoute(
+export type RouteSyncResult = "unchanged" | "set" | "cleared" | "no_agents";
+
+/**
+ * One round of the supervisor's route poll. A failed sync is tried once more after `retryMs`:
+ * at start, control may not answer yet ("fetch failed"), and one retry keeps that out of the
+ * log. The retry's outcome stands for the round, so only a second failure reaches the caller,
+ * which logs it.
+ */
+export async function syncModelRouteRound(
   s: RouteSync,
-): Promise<"unchanged" | "set" | "cleared" | "no_agents"> {
+  retryMs: number,
+  wait: (ms: number) => Promise<void>,
+): Promise<RouteSyncResult> {
+  try {
+    return await syncModelRoute(s);
+  } catch {
+    await wait(retryMs);
+    return syncModelRoute(s);
+  }
+}
+
+export async function syncModelRoute(s: RouteSync): Promise<RouteSyncResult> {
   const fetch = s.fetchImpl ?? globalThis.fetch;
   const res = await fetch(`${s.controlUrl}/v1/rigs/${encodeURIComponent(s.rig)}/model-route`, {
     headers: { authorization: `Bearer ${s.controlToken}`, ...buildHeaders() },

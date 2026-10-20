@@ -30,7 +30,7 @@ A contract is frozen: to change anything, you write a new version. The [contract
 
 Optional, in every mode:
 
-- `lanes`: `count`, how many [lanes](../../reference/glossary.md) the planner plans (2 when `lanes` is left out), and `trials_per_epoch`, [trials](../../reference/glossary.md) per lane per round (3). How many trials run at the same time is the rig's **Workers at a time**, not `count`: see [Start a campaign from the dashboard](start-from-dashboard.md#4-where-it-runs). If you write `lanes`, write `count` in it. `lanes.limits` raises a lane's memory, disk and time limits.
+- `lanes`: `count`, how many [lanes](../../reference/glossary.md) the planner plans (2 when `lanes` is left out), and `trials_per_epoch`, [trials](../../reference/glossary.md) per lane per round (3). How many trials run at the same time is the rig's **Workers at a time**, not `count`: see [Start a campaign from the dashboard](start-from-dashboard.md#4-where-it-runs). If you write `lanes`, write `count` in it. `lanes.limits` raises a lane's memory, disk, time and process limits; `count` is 16 at most.
 - `budget`: `wall_hours`, `device_hours` and `llm_usd`. None is set unless you set it. See [Set a budget or a stop time](budget-and-stop-time.md).
 - `notes`: anything the planner and the workers should know.
 - `models`: [model files](../../reference/glossary.md) the project needs, each with its `name` and `sha256`: data files your project loads that are not in its repository, such as a model's weights.

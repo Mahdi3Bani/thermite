@@ -8,7 +8,7 @@ import {
 } from "node:crypto";
 import { z } from "zod";
 import { canonicalJson } from "./canonical.ts";
-import { CommitSchema, IdSchema, Sha256Schema } from "./contract.ts";
+import { CommitSchema, IdSchema, MAX_LANES, MAX_LANES_REASON, Sha256Schema } from "./contract.ts";
 
 /**
  * Control commands. Control signs every command with its Ed25519 key; the harness verifies
@@ -197,6 +197,7 @@ export type BriefingSeed = z.infer<typeof BriefingSeed>;
 /**
  * Who an owner's message (message_agent) may go to: everyone working, the planner, the advisors
  * (all of them, the teacher pair, the auditor or the review panel), a lane or a worker's trial.
+ * The lanes stop at MAX_LANES (lanes.test.ts checks it).
  */
 export const MESSAGE_TARGET =
   /^(all|planner|advisors|teachers|auditor|panel|lane-([1-9]|1[0-6])|trial:t-[0-9a-f]{8,32})$/;
@@ -336,7 +337,7 @@ export const CommandPayloads = {
   rig_settings: z.strictObject({
     judge: z.boolean().optional(),
     workers: z.boolean().optional(),
-    lanes: z.number().int().min(1).max(16).optional(),
+    lanes: z.number().int().min(1).max(MAX_LANES, MAX_LANES_REASON).optional(),
     planner: z.boolean().optional(),
     auditor: z.boolean().optional(),
     teachers: z.boolean().optional(),

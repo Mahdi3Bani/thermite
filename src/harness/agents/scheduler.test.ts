@@ -953,4 +953,54 @@ describe("agent scheduler", () => {
     assert.equal(env.ledger.db.prepare("select count(*) as n from epoch").get()?.n, 1);
     await fake.close();
   });
+
+  test("a lane's next brief shows the start and the end of the judge's reason for its crash", async () => {
+    const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 2 } });
+    await env.service.applyCommand(env.assign);
+    // No plan from the model: the fixed plan gives the lane its experiments.
+    const fake = await startFakeModel(() => ({ text: "no plan" }));
+    const noisy = `import { writeSync } from "node:fs";
+export function work() {
+  writeSync(2, "warning: noise\\n".repeat(400) + "fatal: index 42 is out of range\\n");
+  process.exit(3);
+}
+`;
+    const briefs: string[] = [];
+    const scheduler = new Scheduler({
+      service: env.service,
+      runner: new LocalRunner(env.paths.scratchDir),
+      model: { baseUrl: fake.url, model: "m", apiKey: "k", contextWindow: 32000, maxTokens: 2000 },
+      owner: "scheduler-test",
+      runTrial: async (spec) => {
+        briefs.push(spec.brief);
+        if (briefs.length > 1)
+          return { stopped: "no_submission", turns: 1, toolCalls: 0, tokensIn: 0, tokensOut: 0 };
+        const r = await env.service.submitForTrial(String(spec.token), {
+          patch_base64: env.patch(noisy),
+          hypothesis: "a crash with a long error output",
+          known_flaws: [],
+        });
+        return {
+          stopped: "submitted",
+          turns: 1,
+          toolCalls: 1,
+          tokensIn: 0,
+          tokensOut: 0,
+          submitted: { attempt: r.attempt, lifecycle: r.lifecycle },
+        };
+      },
+    });
+    assert.ok(await scheduler.tick());
+    await scheduler.idle();
+    await env.drain(); // the judge decides the crash
+    await scheduler.tick(); // the lane's second trial
+    await scheduler.idle();
+    assert.equal(briefs.length, 2);
+    const judge = /\. Judge: (exit 3: [^\n]*(?:\n[^\n-][^\n]*)*)/.exec(String(briefs[1]))?.[1];
+    assert.ok(judge, String(briefs[1]));
+    assert.match(judge, /^exit 3: warning: noise/);
+    assert.match(judge, /fatal: index 42 is out of range/);
+    assert.ok(judge.length <= 1200, `${judge.length} characters`);
+    await fake.close();
+  });
 });

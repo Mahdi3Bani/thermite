@@ -45,8 +45,8 @@ None of these ends research. A trial that ends at its time is followed by the la
 | What | Default | Set by |
 | --- | --- | --- |
 | A trial's length | 20 minutes | The contract's `lanes.limits.trial_minutes` (1 to 1,440), else **Edit rig** › **One trial lasts (minutes)** or `THERMITE_TRIAL_MINUTES` |
-| Trials at the same time on a rig | 1 | **Edit rig** › **Workers at a time** (1 to 16), or `THERMITE_MAX_TRIALS` |
-| Lanes planned per epoch | 2 | The contract's `lanes.count`. A redirect's `lane_count` can lower it |
+| Trials at the same time on a rig | 1 | **Edit rig** › **Workers at a time** (1 to 16), or `THERMITE_MAX_TRIALS` (1 to 16) |
+| Lanes planned per epoch | 2 | The contract's `lanes.count` (1 to 16). A redirect's `lane_count` can lower it |
 | Trials per lane per epoch | 3 | The contract's `lanes.trials_per_epoch` |
 | Reminders to a Pi worker | When 85% of the trial's time is used, 10 turns before a turn cap, and at 80% of the model's context window | Fixed |
 | Nudges when a worker stops without submitting | 2. An OpenCode or Claude Code worker is continued again for as long as the owner's messages wait for its trial and its last run made progress | Fixed (Pi, OpenCode and Claude Code). Then the trial ends; the trial's time limit still applies |
@@ -125,7 +125,7 @@ The [kit manifest](kit-manifest.md) sets these; the defaults apply when it does 
 | Run (`run`) | 300 s | 1,024 MiB | 256 MiB | 256 |
 | Check (`check`) | 120 s | none | none | none |
 
-Memory is the sum over all the processes the build or run started, sampled every 100 ms. Disk is the working directory, sampled every 500 ms; more than 50,000 files and folders, or more than 128 levels, also counts as over the disk limit. Only the last 64 KiB of output is kept.
+Memory is the sum over all the processes the build or run started, sampled every 100 ms. Disk is the working directory, sampled every 500 ms; more than 50,000 files and folders, or more than 128 levels, also counts as over the disk limit. Only the last 64 KiB of output is kept. Tasks are the processes and threads the build's or run's user may have at once (`RLIMIT_NPROC`); the kit does not set them.
 
 ### Lanes and agents
 
@@ -136,6 +136,7 @@ Memory is the sum over all the processes the build or run started, sampled every
 | The trial's workspace, build folders included | 2,048 MiB | `workspace_mib` (256 to 65,536) |
 | One development run | None on a development device of its own; 300 s on a device the judge shares | `dev_run_timeout_s` (10 to 3,600) |
 | Memory of one development run | 4,096 MiB | `dev_run_rss_mib` (256 to 16,384) |
+| Processes and threads at once, for each of a lane's users: its commands with OpenCode or Claude Code, its development runs, its Pi worker | 256. At the limit, starting one more fails with `Resource temporarily unavailable` | `processes` (64 to 65,536) |
 | A lane's build cache | 8 GB (`CCACHE_MAXSIZE`) | Fixed |
 | One file-tool call of a Pi worker | 30 s | Fixed |
 | Preparing a submission's patch | 60 s | Fixed |
@@ -159,7 +160,7 @@ Memory is the sum over all the processes the build or run started, sampled every
 
 | Limit | Value |
 | --- | --- |
-| Lanes | 16: the harness image has users for lanes 1 to 16. A contract's `lanes.count` accepts up to 64 |
+| Lanes | 16: the harness image has users for lanes 1 to 16. More is refused, with the reason `at most 16: a rig has users for lanes 1 to 16 only`, by a contract's `lanes.count`, **Workers at a time** on **Edit rig** and the **New campaign** page. Control does not sign an `assign_campaign` that asks for more, and a harness whose `THERMITE_MAX_TRIALS` is above 16 does not start ([Settings](settings.md#the-rigs-settings)) |
 | Judge and development GPUs | 8 of each |
 | GPUs on a rig control sets up on a machine or cluster | 16; 8 on a namespace joined with a join command |
 

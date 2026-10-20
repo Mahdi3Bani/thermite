@@ -244,6 +244,8 @@ const otherFiles = [
   ...walk(join(root, "scripts"), /\.(mjs|ts|sh)$/),
   ...["compose.yaml", "compose.lifecycle.yaml"].map((f) => join(root, f)),
 ].filter((f) => existsSync(f) && !f.endsWith("docs-check.mjs"));
+// QWEN_ was the model settings' prefix in Thermite's first deployment. The code reads none of
+// those names now, so a page that still names one fails as a setting the code does not read.
 const settingName = /\b(?:THERMITE|QWEN)_[A-Z0-9_]*[A-Z0-9]\b/g;
 const codeSettings = new Set();
 const settingPatterns = [];
@@ -264,7 +266,6 @@ const internalSettings = new Map([
   ["THERMITE_SUPERVISOR_TOKEN", "the broker passes the token's value to the harness's controller"],
   ["THERMITE_PROPOSER_TOKEN", "the broker passes the token's value to the harness's controller"],
   ["THERMITE_MODEL_API_KEY", "the broker passes the key's value to the harness's controller"],
-  ["QWEN_API_KEY", "the older name of the value the broker passes"],
   ["THERMITE_BROKER_SOCKET", "the broker tells the controller where its socket is"],
   ["THERMITE_HARNESS_URL", "the controller tells workers where the harness API is"],
   ["THERMITE_TRIAL_AUTH", "the controller gives a trial its token"],

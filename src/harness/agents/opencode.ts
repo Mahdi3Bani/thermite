@@ -385,6 +385,7 @@ function startInArea(
     // lane command under Pi would be; the trial ends only if OpenCode alone is over.
     ...(opencodeExe() ? { spareExe: opencodeExe() } : {}),
     disk: { path: area, limitBytes: o.limits.workspaceMib * 1024 * 1024 },
+    nproc: o.limits.processes,
     captureBytes: 4096,
   });
 }

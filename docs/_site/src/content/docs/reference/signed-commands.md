@@ -526,7 +526,7 @@ The rig's own settings, as on its **Edit rig** page. Only the fields that change
 | --- | --- | --- |
 | `judge` | boolean | The judge builds and measures. Off: changes wait in its queue |
 | `workers` | boolean | Workers start trials. Off: no new trial starts |
-| `lanes` | 1 to 16 | Trials at the same time |
+| `lanes` | 1 to 16 | Trials at the same time. More is refused with `at most 16: a rig has users for lanes 1 to 16 only` |
 | `planner` | boolean | The planner's model gives each lane its experiment at the start of each round. Off: lanes take the queued experiments in order, by fixed rules, with no model |
 | `auditor` | boolean | The supervisor's auditor runs, where configured |
 | `teachers` | boolean | The supervisor's teacher pair and combiner run, where configured |

@@ -65,7 +65,7 @@ Changes to some parts also need a test that starts containers. Each takes from a
 | Containers, compose, the APIs or the relay | `COMPOSE="docker compose" npm run smoke:compose` |
 | The judge, kits or the harness image | `COMPOSE="podman compose" npm run acceptance:judge` |
 | Control, the dashboard, MCP or the relay | `COMPOSE="podman compose" node scripts/control-acceptance.mjs` |
-| The workers, the planner or the scheduler | `COMPOSE="podman compose" node scripts/agents-acceptance.mjs` |
+| The workers, the planner, the scheduler, or the OpenCode harness in a hill-climb or research trial | `COMPOSE="podman compose" node scripts/agents-acceptance.mjs` |
 | The New campaign page, the campaign builder, a campaign's **Start a run**, kits kept on control, Git access or the supervisor's staging | `COMPOSE="podman compose" node scripts/campaign-acceptance.mjs` |
 | Rigs on Kubernetes, including moving a rig onto new images, or control's image | `COMPOSE="podman compose" node scripts/cluster-acceptance.mjs` |
 | The one-container rig image, the broker's start of the supervisor or the isolation selftest | `COMPOSE="podman compose" node scripts/rig-image-acceptance.mjs` |
