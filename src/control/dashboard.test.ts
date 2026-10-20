@@ -1577,6 +1577,13 @@ describe("control dashboard", () => {
     assert.match(page, /<a class="btn" href="\/ui\/live\?run=rig-a%2Fjs-1">/);
     assert.doesNotMatch(page, />Message<\/a>/);
     assert.doesNotMatch(page, /Restart the lanes/);
+    // Its Live: everyone working and the lanes are greyed out, and the box starts elsewhere.
+    const live = await (await s.get("/ui/live?run=rig-a%2Fjs-1")).text();
+    assert.match(
+      live,
+      /<option value="all" data-hint="[^"]*" disabled title="This run has no agents[^"]*">To everyone working<\/option>/,
+    );
+    assert.doesNotMatch(live, /<option value="all"[^>]* selected/);
   });
 });
 

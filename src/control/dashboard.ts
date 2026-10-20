@@ -38,7 +38,7 @@ import {
 import type { Credential } from "./credential.ts";
 import { newToken } from "./credential.ts";
 import { makeDeployKey } from "./git-keys.ts";
-import { issueCommand, nobodyReads, propagateChampion } from "./issue.ts";
+import { issueCommand, nobodyReads, propagateChampion, reviewsAGoal } from "./issue.ts";
 import {
   JOIN_HOURS,
   type JoinedSpec,
@@ -2277,13 +2277,15 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
                 : to === "panel"
                   ? "The review panel reads it before its next review and answers here"
                   : "The advisors read it and answer here";
-    const to = lanes.includes(w) || w === "planner" ? w : w === "advisors" ? "advisors" : "all";
+    // A run without agents has no one working: the box starts on the advisors.
+    const to =
+      lanes.includes(w) || w === "planner"
+        ? w
+        : w === "advisors" || r.has_agents === false
+          ? "advisors"
+          : "all";
     // The review panel reads only for a goal it reviews (a goal checked by review).
-    const contract = (store.campaignVersions(r.campaign || r.id)[0]?.contract ??
-      store.latestAssignments().get(r.campaign || r.id)?.payload.contract) as
-      | { goals?: { verify?: { type?: string } }[] }
-      | undefined;
-    const reviewed = (contract?.goals ?? []).some((g) => g.verify?.type === "review");
+    const reviewed = reviewsAGoal(store, r.campaign || r.id);
     // Who would read nothing: off on the rig, or not set up on its supervisor. Control refuses
     // a message to them with the same words (issue.ts).
     const off = (v: string) => nobodyReads(u, v, r);
@@ -2300,7 +2302,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
       r.status === "closed"
         ? `<div class="lcomposer off">This run has finished: its agents take no more messages.</div>`
         : `<form class="lcomposer" method="post" action="/ui/live/message"><input type="hidden" name="csrf" value="${csrf(c)}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(r.id)}"><input type="hidden" name="w" value="${esc(w)}">
-<select name="to" aria-label="To" class="lto">${opt("all", "To everyone working")}${lanes.map((l) => opt(l, `To ${l}`)).join("")}${opt("planner", "To the planner", off("planner"))}<optgroup label="Advisors">${opt("advisors", "To all advisors", off("advisors"))}${opt("teachers", "To the teachers", off("teachers"))}${opt("auditor", "To the auditor", off("auditor"))}${opt("panel", "To the review panel", off("panel") || (!reviewed ? "This run has no goal the review panel reviews." : ""))}</optgroup></select>
+<select name="to" aria-label="To" class="lto">${opt("all", "To everyone working", off("all"))}${lanes.map((l) => opt(l, `To ${l}`, off(l))).join("")}${opt("planner", "To the planner", off("planner"))}<optgroup label="Advisors">${opt("advisors", "To all advisors", off("advisors"))}${opt("teachers", "To the teachers", off("teachers"))}${opt("auditor", "To the auditor", off("auditor"))}${opt("panel", "To the review panel", off("panel") || (!reviewed ? "This run has no goal the review panel reviews." : ""))}</optgroup></select>
 <textarea name="text" rows="1" required data-words maxlength="4000" aria-label="Message" placeholder="${esc(hint(to))} · ⌘↩ sends"${c.req.query("compose") ? " autofocus" : ""}></textarea>
 <label class="lpin" title="Keep it in force: every new trial gets it too, until you remove it"><input type="checkbox" name="keep" value="1">📌</label>
 <button class="primary">${icon.send}Send</button></form>`;

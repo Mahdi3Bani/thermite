@@ -78,7 +78,25 @@ function checkedMessage(store: ControlStore, rig: string, payload: unknown): unk
   const r = u?.runs.find((x) => x.id === p.run);
   const why = u && r ? nobodyReads(u, String(p.to), r) : "";
   if (why) throw new Error(why);
+  // The run's campaign: as the rig reported it, or as control assigned it (before its report).
+  const campaign =
+    r?.campaign ||
+    (typeof p.run === "string" ? store.assignedCampaigns(rig).get(p.run) : undefined);
+  if (p.to === "panel" && campaign && !reviewsAGoal(store, campaign))
+    throw new Error("This run has no goal the review panel reviews, so nothing would read it.");
   return { ...p, text };
+}
+
+/**
+ * Whether a campaign's contract has a goal checked by review: the review panel reads only for
+ * one. From the version saved on control, or else the newest assignment.
+ */
+export function reviewsAGoal(store: ControlStore, campaign: string): boolean {
+  const contract = (store.campaignVersions(campaign)[0]?.contract ??
+    store.latestAssignments().get(campaign)?.payload.contract) as
+    | { goals?: { verify?: { type?: string } }[] }
+    | undefined;
+  return (contract?.goals ?? []).some((g) => g.verify?.type === "review");
 }
 
 /**

@@ -618,12 +618,13 @@ export class OutsideKbs {
       this.running.delete(key);
     }
     const before = copy.last_error;
-    // An item skipped is the last error of the sync that skipped it, with its ref.
+    // A skipped item is not a failed sync: it is in last_skipped (with its ref), and the copy
+    // reads as copying; last_error is only a sync that failed.
     this.db
       .prepare(
         "update outside_kb_copy set last_at = ?, last_written = ?, last_error = ? where kb = ? and campaign = ?",
       )
-      .run(new Date().toISOString(), written, error ?? skipped ?? null, name, campaign);
+      .run(new Date().toISOString(), written, error ?? null, name, campaign);
     // A new error is logged once, not every round it lasts.
     if (error && error !== before)
       log("control", "outside knowledge base sync failed", { kb: name, campaign, error });

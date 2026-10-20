@@ -110,6 +110,29 @@ describe("the owner's messages to agents", () => {
     });
     assert.equal(toLane.status, 201);
     assert.equal(toPlanner.status, 201);
+    // Refusals are the client's to fix: 400 with why (404 for an unknown rig), never 500.
+    const toPanel = await issue({
+      rig: "rig-a",
+      kind: "message_agent",
+      payload: { run: "smoke-1", to: "panel", text: "judge it strictly" },
+    });
+    assert.equal(toPanel.status, 400);
+    assert.match(
+      String(((await toPanel.json()) as { error: string }).error),
+      /no goal the review panel reviews/,
+    );
+    const empty = await issue({
+      rig: "rig-a",
+      kind: "message_agent",
+      payload: { run: "smoke-1", to: "lane-1", text: "   " },
+    });
+    assert.equal(empty.status, 400);
+    const nowhere = await issue({
+      rig: "rig-z",
+      kind: "message_agent",
+      payload: { run: "smoke-1", to: "lane-1", text: "x" },
+    });
+    assert.equal(nowhere.status, 404);
     await relayOnce(s.cfg, { cursor: 0 });
     const svc = s.env.service;
     assert.deepEqual(

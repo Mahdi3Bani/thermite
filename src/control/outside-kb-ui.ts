@@ -58,7 +58,7 @@ const syncWords = (s: OutsideKbCopy, now: number) => {
   const skipped = s.skipped
     ? ` · ${s.skipped} item${s.skipped === 1 ? "" : "s"} skipped, the server refused ${s.skipped === 1 ? "it" : "each"} ${SKIP_AFTER} syncs in a row${s.last_skipped ? ` (the last: ${esc(s.last_skipped)})` : ""}`
     : "";
-  return s.last_error && s.last_error !== s.last_skipped
+  return s.last_error
     ? `the last sync failed ${esc(ago(s.last_at, now))} ago: ${esc(s.last_error)}`
     : s.last_at
       ? `last sync ${esc(ago(s.last_at, now))} ago: ${s.last_written ?? 0} page${s.last_written === 1 ? "" : "s"} written · ${s.written} since it was switched on${skipped}`

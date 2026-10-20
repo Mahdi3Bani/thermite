@@ -303,7 +303,9 @@ describe("an outside knowledge base", () => {
       fake.pages.has(slug("note", "pn-3-1")) && fake.pages.has(slug("attempt", "pn-3-a-1")),
     );
     let copy = outside.copies()[0];
-    assert.equal(copy?.last_error, third.skipped);
+    // A skipped item is not a failed sync: the copy reads as copying.
+    assert.equal(copy?.last_error, null);
+    assert.equal(copy?.last_skipped, third.skipped);
     assert.equal(copy?.skipped, 1);
     assert.equal(copy?.held_seq, null);
     assert.ok(

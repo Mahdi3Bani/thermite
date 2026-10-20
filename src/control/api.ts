@@ -884,14 +884,21 @@ export function createControlApi(
     // A wipe goes only through the full reset (export, verified push, the owner's confirmation).
     if (body.kind === "wipe_state")
       return c.json({ error: "wipe_state is issued only by a full reset" }, 400);
-    const { id } = issueCommand(store, privateKeyPem, {
-      rig: body.rig,
-      kind: body.kind,
-      payload: body.payload,
-      ttlMinutes: body.ttl_minutes,
-      // The admin token is the owner's; who issued a command is control's to say, not the client's.
-      issuedBy: "owner:api",
-    });
+    let id: string;
+    try {
+      ({ id } = issueCommand(store, privateKeyPem, {
+        rig: body.rig,
+        kind: body.kind,
+        payload: body.payload,
+        ttlMinutes: body.ttl_minutes,
+        // The admin token is the owner's; who issued a command is control's to say, not the client's.
+        issuedBy: "owner:api",
+      }));
+    } catch (err) {
+      // A refused command (a bad payload, a message nothing would read) is the client's to fix.
+      const error = err instanceof Error ? err.message : String(err);
+      return c.json({ error }, error.startsWith("unknown rig") ? 404 : 400);
+    }
     return c.json({ id, status: "pending" }, 201);
   });
 
