@@ -1020,9 +1020,14 @@ describe("control dashboard", () => {
     const all = await (await s.get("/ui/campaigns/js-sum?run=rig-a%2Fjs-1&view=attempts")).text();
     assert.match(all, /drop the waste/);
     assert.doesNotMatch(all, /<svg class="chart"/);
+    // The rules for the plan are on the run's Planner tab (old steering links land there too).
+    assert.match(
+      await (await s.get("/ui/campaigns/js-sum?run=rig-a%2Fjs-1&view=planner")).text(),
+      /Rules for the plan/,
+    );
     assert.match(
       await (await s.get("/ui/campaigns/js-sum?run=rig-a%2Fjs-1&view=steering")).text(),
-      /Reset workers/,
+      /Rules for the plan/,
     );
     assert.match(await (await s.get("/ui/campaigns")).text(), /js-sum/);
     const after = await (await s.get("/ui")).text();
@@ -1329,13 +1334,25 @@ describe("control dashboard for an operator", () => {
       /vectorize the filter bank so a frame fits its time budget <a class="small" href="\/ui\/rigs\/rig-b\/live\?source=trial%3At-0a1b2c3d4e5f6071">watch<\/a><\/span><span class="br-when">1 h 3 min</,
     );
     assert.match(home, /4\/8 goals/);
-    // The lists say each campaign and rig in a sentence, then their runs as rows.
+    // Campaigns: what is at work now first, then what waits, then one row per campaign.
     const campaigns = await get("/ui/campaigns");
-    assert.match(campaigns, /Its best run meets 4 of 8 goals\. 1 run is at work\./);
+    assert.match(campaigns, /<h2>At work now<\/h2><span class="n">2<\/span>/);
+    assert.match(campaigns, /opus-simd › dec-2/);
+    assert.match(campaigns, /<h2>Waiting for you<\/h2>/);
     assert.match(
       campaigns,
-      /<b>dec-1 <span class="muted small">on rig-a<\/span><\/b><span class="muted small">moved to rig-b as dec-2<\/span>/,
+      /<b>opus-simd<\/b>[\s\S]*?<span class="kdot run">1 at work<\/span><span class="kdot pause">1 paused<\/span>/,
     );
+    assert.match(
+      campaigns,
+      /href="\/ui\/live\?run=rig-b%2Fdec-2&amp;compose=1"|href="\/ui\/live\?run=rig-b%2Fdec-2&compose=1"/,
+    );
+    // Filters and search are links and a plain form: they work without the script.
+    const paused = await get("/ui/campaigns?f=paused");
+    assert.doesNotMatch(paused, /<b>sum-speed<\/b>/);
+    const found = await get("/ui/campaigns?q=sum");
+    assert.match(found, /<b>sum-speed<\/b>/);
+    assert.doesNotMatch(found, /<b>opus-simd<\/b>/);
     const rigsList = await get("/ui/rigs");
     assert.match(
       rigsList,
@@ -1389,23 +1406,32 @@ describe("control dashboard for an operator", () => {
     assert.match(await get("/ui/rigs/rig-a/attempts/a-nope"), /No such attempt on this rig/);
   });
 
-  test("a run's views: overview, history in words, and steering that says what each control does", async () => {
+  test("a campaign and its run's views: at work, earlier runs, overview, history, planner", async () => {
     const { get } = await demo();
-    const run = await get("/ui/campaigns/opus-simd");
-    // The running run is shown first, not the paused one with decisions.
+    // The campaign: the run at work first, then the earlier runs in one table.
+    const camp = await get("/ui/campaigns/opus-simd");
+    assert.match(camp, /<h2>At work now<\/h2><span class="n">1<\/span>/);
+    assert.match(camp, /<h2>Earlier runs<\/h2><span class="n">1<\/span>/);
+    assert.match(camp, /<b>dec-1<\/b>/);
+    assert.match(camp, /moved to rig-b as dec-2/);
+    assert.doesNotMatch(camp, /<nav class="tabs"><a class="on"/);
+    // A run's own page: its tabs, and Restart the lanes under its menu.
+    const run = await get("/ui/campaigns/opus-simd?run=rig-b%2Fdec-2");
     assert.match(run, /id="rig-b\/dec-2"/);
     assert.match(run, /the judge's check of champion #1/);
     assert.match(run, /waiting on another goal/);
+    assert.match(run, /Restart the lanes/);
+    assert.match(run, /every lane starts again from the champion/);
     const history = await get("/ui/campaigns/opus-simd?run=rig-b%2Fdec-2&view=history");
     assert.match(
       history,
       /The planner planned epoch 1: lane-1 on filter-bank; lane-2 on range-decoder\./,
     );
-    const steering = await get("/ui/campaigns/sum-speed?run=rig-c%2Fsum-1&view=steering");
-    assert.match(steering, /The lanes' running trials stop and no new ones start/);
-    assert.match(steering, /every lane starts again from the champion/);
-    assert.match(steering, /blocked by the auditor/);
+    const planner = await get("/ui/campaigns/sum-speed?run=rig-c%2Fsum-1&view=planner");
+    assert.match(planner, /Rules for the plan/);
+    assert.match(planner, /Agent figures/);
     const attempts = await get("/ui/campaigns/sum-speed?run=rig-c%2Fsum-1&view=attempts");
+    assert.match(attempts, /blocked by the auditor/);
     assert.match(attempts, /waiting for your approval/);
     assert.match(attempts, /href="\/ui\/rigs\/rig-c\/attempts\/a-5b5b0001"/);
   });

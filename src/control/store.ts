@@ -2432,6 +2432,44 @@ export class ControlStore {
     for (let n = 1; ; n++) if (!taken.has(`${base}-${n}`)) return `${base}-${n}`;
   }
 
+  /**
+   * The newest assignment control signed for each campaign, on any rig: what a new run of a
+   * campaign assigned over the API, MCP or the CLI starts from. Failed and expired ones are left
+   * out.
+   */
+  latestAssignments(): Map<
+    string,
+    { rig: string; run: string; payload: Record<string, unknown>; issued_at: string }
+  > {
+    const rows = this.db
+      .prepare(
+        "select rig, signed, issued_at from command where kind = 'assign_campaign' and status in ('pending', 'delivered') order by issued_at desc",
+      )
+      .all() as { rig: string; signed: string; issued_at: string }[];
+    const out = new Map<
+      string,
+      { rig: string; run: string; payload: Record<string, unknown>; issued_at: string }
+    >();
+    for (const r of rows) {
+      try {
+        const payload = (
+          JSON.parse(r.signed) as { envelope?: { payload?: Record<string, unknown> } }
+        ).envelope?.payload;
+        const campaign = (payload?.contract as { campaign?: unknown } | undefined)?.campaign;
+        if (payload && typeof campaign === "string" && !out.has(campaign))
+          out.set(campaign, {
+            rig: r.rig,
+            run: String(payload.run ?? ""),
+            payload,
+            issued_at: r.issued_at,
+          });
+      } catch {
+        // not a command this store wrote
+      }
+    }
+    return out;
+  }
+
   /** Rigs that have a token but have not reported yet still accept commands. */
   knownRig(rig: string): boolean {
     return (

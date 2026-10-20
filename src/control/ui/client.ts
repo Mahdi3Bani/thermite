@@ -69,6 +69,43 @@ export const CLIENT_JS = `
   document.addEventListener("focusin", (ev) => { const i = ev.target.closest && ev.target.closest(".ii"); if (i) showTip(i); });
   document.addEventListener("focusout", hideTip);
 
+  // ------------------------------------------------ panels: open in place, close with Esc
+  // Links with data-open show the panel without a reload (they still work as links without
+  // this script); data-close hides it again.
+  document.addEventListener("click", (ev) => {
+    const open = ev.target.closest && ev.target.closest("[data-open]");
+    if (open) {
+      const el = $(open.dataset.open);
+      if (el) { ev.preventDefault(); el.hidden = false; const f = el.querySelector("input:not([type=hidden]):not([disabled]), select, textarea"); if (f) f.focus(); }
+      return;
+    }
+    const close = ev.target.closest && ev.target.closest("[data-close]");
+    if (close) { const w = close.closest(".drawer-wrap"); if (w) { ev.preventDefault(); w.hidden = true; } }
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") document.querySelectorAll(".drawer-wrap:not([hidden])").forEach((w) => (w.hidden = true));
+  });
+
+  // ------------------------------------------------ Start a run: the model pick and the summary
+  const start = $("form[data-start]");
+  if (start) {
+    const sum = start.querySelector("[data-start-sum]");
+    const pick = start.querySelector("[data-model-pick]");
+    const line = start.querySelector("[data-model-line]");
+    const update = () => {
+      const rig = start.querySelector("input[name=rig]:checked");
+      const agents = (start.querySelector("input[name=agents]:checked") || {}).value !== "off";
+      const has = rig ? rig.dataset.model : "";
+      const chosen = start.querySelector("select[name=agents_model]");
+      const picked = chosen && chosen.value ? decodeURIComponent(chosen.value.split("|")[1] || "") : "";
+      if (pick) pick.hidden = !agents || !!has;
+      if (line) line.textContent = has ? "The rig's agents, on " + has + "." : "This rig has no model for its agents yet: pick one below.";
+      if (sum) sum.textContent = rig ? "Starts a new run on " + rig.value + (agents ? ", with agents on " + (picked || has || "a model you pick") + "." : ", as a try: the judge only.") : "Choose a rig.";
+    };
+    start.addEventListener("change", update);
+    update();
+  }
+
   // ------------------------------------------------ the composer: Cmd/Ctrl+Enter sends
   const ta = $(".composer textarea");
   if (ta) ta.addEventListener("keydown", (ev) => {

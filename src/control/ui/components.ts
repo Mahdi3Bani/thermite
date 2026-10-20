@@ -132,11 +132,11 @@ export function campaignState(k: CampaignView): { text: string; cls: string; ico
 export const campaignHref = (name: string) => `/ui/campaigns/${encodeURIComponent(name)}`;
 /** A run's key on its campaign's page (run ids are unique per rig only). */
 export const runKey = (rig: string, run: string) => `${rig}/${run}`;
-/** A run's tab on its campaign's page, and one of its views. */
+/** A run's page (on its campaign's page), and one of its tabs. */
 export const runHref = (
   rig: string,
   i: Pick<RunView, "id" | "campaign">,
-  view: "overview" | "attempts" | "history" | "steering" = "overview",
+  view: "overview" | "attempts" | "history" | "planner" = "overview",
 ) =>
   `${campaignHref(i.campaign || i.id)}?run=${encodeURIComponent(runKey(rig, i.id))}${view === "overview" ? "" : `&view=${view}`}`;
 

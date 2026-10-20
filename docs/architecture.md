@@ -55,11 +55,9 @@ The supervisor is the rig's link to everything outside:
   - **Overview:** what needs the owner, what each running run is doing now, and what happened lately, in words.
     - Each decision shows what is decided, the evidence and why it waits, then what each choice does: promotions to approve, audits, reviews, "not possible" proposals, keys to accept and resets to confirm. The evidence is the change, what the judge found and the declared flaws.
     - Each running run shows its judge's job, its planner's latest plan, each lane's direction and last action, its latest verdict and its champion.
-  - **Campaigns:** each campaign with its runs on every rig. A campaign's page starts with a summary across its runs, plus a goals-by-run grid for goal campaigns. Below it, one tab per run shows that run alone, in four views:
-    - an overview: its decisions, what it is doing now, its goals, the champion chart, what happened and its latest attempts;
-    - all its attempts;
-    - its history, in words;
-    - its steering, where each control says what it does.
+  - **Campaigns:** the runs at work now first, then what waits for the owner, then one row per campaign: its runs by state, its best result, its last activity and its rigs. Filters (at work, paused, rig checks, all) and a search box narrow the list; the smoke checks control runs on each new rig are hidden unless asked for.
+    - A campaign's page: what it is for, its runs at work, what waits for the owner, and its earlier runs in one table (a paused run resumes from its row). **Start a run** opens a panel: where the run goes (rigs with other hardware can't take it; each shows free or busy and its agents' model), agents on or off (with a model to give a rig that has none), and more options. A campaign assigned over the API, MCP or the CLI starts again from its newest assignment.
+    - A run's page has four tabs: an overview (its decisions, what it is doing now, its goals, the champion chart, what happened and its latest attempts); all its attempts, with its audits and reviews; its history, in words; and the planner (the rules for the plan and the agent figures). Live, Message, Pause and, under ⋯, Restart the lanes sit in its header.
   - **Attempts:** each attempt has a page with the change, the judge's findings and its history.
   - **Rigs:** each rig's hardware, what its judge is doing, results export, advisors and signing key, and the runs it holds.
   - **Live:** each rig's agent sessions and judge as they work. The harness signs the lines its workers, planner and judge write, and the supervisor relays them every few seconds with its own lines, which are unsigned. The owner can message a worker's trial, a lane, the planner or the advisors from here, as a signed command. The judge is code and takes no messages.

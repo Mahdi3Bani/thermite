@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { generateSigningKeys, verifyCommand } from "../core/commands.ts";
 import type { CampaignDraft } from "./campaign-builder.ts";
+import { issueCommand } from "./issue.ts";
 import { KitRepos } from "./kit-repos.ts";
 import { startCampaign, startRun } from "./new-campaign.ts";
 import { ControlStore } from "./store.ts";
@@ -146,6 +147,78 @@ describe("starting a campaign from the page", () => {
       startRun(deps, { campaign: "nothing", rig: "rig-a", agents: true, by: "owner:ui" }).ok,
       false,
     );
+  });
+
+  test("a campaign assigned outside the page starts again from its newest assignment", () => {
+    const keys = generateSigningKeys();
+    const store = new ControlStore(":memory:");
+    store.setConfiguredRigs(["rig-a", "rig-b"]);
+    const kits = new KitRepos(mkdtempSync(join(tmpdir(), "thermite-kits-")));
+    const deps = { store, kits, privateKeyPem: keys.privateKeyPem };
+    // No version on control: nothing to start from yet.
+    const none = startRun(deps, {
+      campaign: "cli-made",
+      rig: "rig-b",
+      agents: true,
+      by: "owner:ui",
+    });
+    assert.equal(none.ok, false);
+    // An assignment issued over the API or the CLI.
+    const contract = { campaign: "cli-made", mode: "hill_climb", target: { type: "cpu" } };
+    const imports = [
+      {
+        kind: "repo_bundle",
+        path: "repos/p.bundle",
+        repo: "p",
+        commit: C,
+        source: { git: "https://git.example.com/p.git" },
+      },
+    ];
+    issueCommand(store, keys.privateKeyPem, {
+      rig: "rig-a",
+      kind: "assign_campaign",
+      payload: {
+        run: "cli-made-1",
+        contract,
+        contract_sha: "a".repeat(64),
+        seed: { repo: "p", commit: C },
+        imports,
+      },
+      issuedBy: "owner:mcp",
+    });
+    // Other hardware is refused, with why.
+    const gpu = startRun(deps, {
+      campaign: "cli-made",
+      rig: "rig-b",
+      target: { type: "cuda", class: "p100" },
+      agents: true,
+      by: "owner:ui",
+    });
+    assert.equal(gpu.ok, false);
+    if (!gpu.ok) assert.match(gpu.errors.join(" "), /measures on cpu/);
+    const r = startRun(deps, {
+      campaign: "cli-made",
+      rig: "rig-b",
+      target: { type: "cpu", class: "x" },
+      agents: true,
+      promotion: "owner_approval",
+      by: "owner:ui",
+    });
+    assert.ok(r.ok, JSON.stringify(!r.ok && r.errors));
+    if (!r.ok) return;
+    assert.equal(r.run, "cli-made-1");
+    const row = store.db.prepare("select rig, signed from command where id = ?").get(r.command) as {
+      rig: string;
+      signed: string;
+    };
+    assert.equal(row.rig, "rig-b");
+    const payload = (JSON.parse(row.signed) as { envelope: { payload: Record<string, unknown> } })
+      .envelope.payload;
+    assert.deepEqual(payload.contract, contract);
+    assert.deepEqual(payload.imports, imports);
+    assert.deepEqual(payload.seed, { repo: "p", commit: C });
+    assert.equal(payload.promotion, "owner_approval");
+    assert.equal(payload.run, "cli-made-1");
   });
 
   test("a draft with mistakes changes nothing and says why", () => {

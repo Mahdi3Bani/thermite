@@ -97,12 +97,21 @@ import {
   type ProviderType,
 } from "./store.ts";
 import { ADD_RIG_JS } from "./ui/add-rig-client.ts";
+import {
+  campaignFilter,
+  campaignsListBody,
+  earlierRuns,
+  isRigCheck,
+  lastActivity,
+  type StartRig,
+  startDrawer,
+  workCard,
+} from "./ui/campaigns.ts";
 import { CLIENT_JS } from "./ui/client.ts";
 import {
   ago,
   avatar,
   campaignHref,
-  campaignState,
   deltaCell,
   esc,
   fmtInt,
@@ -112,7 +121,6 @@ import {
   icon,
   kpi,
   meter,
-  modeAvatar,
   modeName,
   num,
   pct,
@@ -135,12 +143,11 @@ import {
   type Forms,
   goalState,
   jobHtml,
-  liveHref,
   type Need,
   needs as operatorNeeds,
   runBrief,
+  runLiveHref,
   runRow,
-  runStateHtml,
   timeline,
   waitingOn,
 } from "./ui/operator.ts";
@@ -175,7 +182,7 @@ const CSP =
   "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
 // biome-ignore lint/suspicious/noExplicitAny: any route's context
 type Ctx = Context<any, any, any>;
-type RunViewName = "overview" | "attempts" | "history" | "steering";
+type RunViewName = "overview" | "attempts" | "history" | "planner";
 
 export interface DashboardOptions {
   /** The owner's credential (the dashboard signs in with its token). */
@@ -486,45 +493,20 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
         : i.promotion === "owner_approval"
           ? "Promotion: <b>your approval</b>. Every confirmed win waits for you before it becomes the champion."
           : "Promotion: <b>the rig's default</b> (set where the rig is deployed). A run assigned with its own policy shows it here.";
-    const steer = `<div class="card"><div class="card-head"><span class="title">Steer this run</span><span class="right muted small">${i.directives} directive${i.directives === 1 ? "" : "s"} in force</span></div>
-<div class="small" style="margin-top:6px">${policy}</div>
+    // The planner's rules for this run (goal 064 lists them and adds the experiment queue).
+    const steer = `<div class="card"><div class="card-head"><span class="title">Rules for the plan</span><span class="right muted small">${i.directives} rule set${i.directives === 1 ? "" : "s"} in force</span></div>
+<div class="small muted" style="margin-top:6px">A rule tells the planner, from its next plan on, to avoid a direction, to try it, or to always give it a lane. It changes what lanes work on, never a verdict. To tell the agents something, use the message box in <a href="${runLiveHref(u.id, i.id)}">Live</a>.</div>
 <div class="dc-choices" style="border:0;padding-top:10px">
-${
-  i.status === "paused"
-    ? ctl(
-        cmdForm(c, {
-          rig: u.id,
-          kind: "resume_run",
-          fields: { run: i.id },
-          label: "Resume",
-          cls: "primary",
-          back,
-        }),
-        "New trials start again, and the planner plans the next epoch.",
-      )
-    : ctl(
-        cmdForm(c, {
-          rig: u.id,
-          kind: "pause_run",
-          fields: { run: i.id },
-          extra: `<input name="reason" placeholder="why (optional)" style="width:120px">`,
-          label: "Pause",
-          back,
-        }),
-        "The lanes' running trials stop and no new ones start. The judge still finishes the jobs already queued. Resume picks up from the same champion.",
-      )
-}
-${ctl(cmdForm(c, { rig: u.id, kind: "reset_workers", fields: { run: i.id }, label: "Reset workers", back }), "Ends the lanes' running trials now and the current epoch: the planner plans afresh, and every lane starts again from the champion. Nothing the judge decided is lost.")}
-${ctl(`<a class="btn" href="${liveHref(u.id)}">${icon.terminal}Live sessions</a>`, "Watch the agents and the judge as they work, and message a lane, a trial or the planner.")}
-${propagate}
 ${ctl(
   `<form class="inline" method="post" action="/ui/commands"><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(i.id)}"><input type="hidden" name="kind" value="redirect"><input type="hidden" name="back" value="${esc(back)}">
-<select name="directive"><option value="avoid">avoid</option><option value="try">try</option><option value="mandate">always assign</option></select>
-<input name="family" placeholder="direction" required style="width:120px"><input name="rationale" placeholder="why, with a source" required style="width:150px">
-<label class="muted small row"><input type="checkbox" name="add" value="1" style="height:auto"> keep my earlier ones</label><button>Steer</button></form>`,
-  "Tells the planner, from its next plan on, to avoid a direction family, to try it, or to always assign it. It cannot change a verdict. Unless you keep them, your earlier directives are replaced.",
+<select name="directive" aria-label="Rule"><option value="avoid">avoid</option><option value="try">try</option><option value="mandate">always give it a lane</option></select>
+<input name="family" placeholder="direction" required style="width:140px" aria-label="Direction"><input name="rationale" placeholder="why" required style="width:180px" aria-label="Why">
+<label class="muted small row"><input type="checkbox" name="add" value="1" style="height:auto"> keep my earlier rules</label><button>Add the rule</button></form>`,
+  "Unless you keep them, your earlier rules are replaced.",
 )}
-</div></div>`;
+${propagate}
+</div>
+<div class="small" style="margin-top:10px">${policy}</div></div>`;
     const audits = i.audits.slice(-8).reverse();
     const records = [
       audits.length
@@ -664,15 +646,15 @@ ${ctl(
       .join("");
     const body =
       view === "attempts"
-        ? `${i.attempts.length ? `<div class="card" style="margin-bottom:12px"><div class="card-head"><span class="title">How the judge decided</span><span class="right muted small">${i.attempts.length} attempts</span></div><div style="margin-top:10px">${stackBar(i.verdicts)}</div></div>` : ""}${laneCard}${attemptRows(u, i, newest.slice(0, 300), now)}${i.attempts.length > 300 ? `<div class="muted small" style="margin-top:8px">The newest 300 of ${i.attempts.length}.</div>` : ""}`
+        ? `${i.attempts.length ? `<div class="card" style="margin-bottom:12px"><div class="card-head"><span class="title">How the judge decided</span><span class="right muted small">${i.attempts.length} attempts</span></div><div style="margin-top:10px">${stackBar(i.verdicts)}</div></div>` : ""}${laneCard}${attemptRows(u, i, newest.slice(0, 300), now)}${i.attempts.length > 300 ? `<div class="muted small" style="margin-top:8px">The newest 300 of ${i.attempts.length}.</div>` : ""}${records}`
         : view === "history"
           ? timeline(
               i.timeline.map((e) => ({ u, e })),
               now,
               { limit: 400 },
             )
-          : view === "steering"
-            ? `<div class="block">${steer}</div>${records}${diagnostics}`
+          : view === "planner"
+            ? `<div class="block">${steer}</div>${diagnostics}`
             : `<p class="run-said">${said}</p>
 ${waiting ? `<div class="block" id="needs"><div class="head"><h2>Needs you</h2><span class="n">${waiting}</span></div><div class="dqs">${decisions.map((n) => n.html).join("")}</div></div>` : ""}
 <div class="cols run-cols"><div>
@@ -683,29 +665,8 @@ ${goals}${research}${ladder}
 <div class="block"><div class="head"><h2>The run</h2></div><div class="card"><dl class="facts">${settings}</dl></div></div>
 <div class="block"><div class="head"><h2>Recent</h2><span class="right"><a href="${runHref(u.id, i, "history")}">Full history</a></span></div>${recent}</div>
 </div></div>`;
-    const st = runState(i);
-    const quick =
-      i.status === "paused"
-        ? cmdForm(c, {
-            rig: u.id,
-            kind: "resume_run",
-            fields: { run: i.id },
-            label: "Resume",
-            back,
-          })
-        : i.status === "running"
-          ? cmdForm(c, {
-              rig: u.id,
-              kind: "pause_run",
-              fields: { run: i.id },
-              label: "Pause",
-              back,
-            })
-          : "";
     return `<section class="block" id="${esc(runKey(u.id, i.id))}">
-<div class="run-head">${modeAvatar(i.mode)}<div class="grow"><div class="run-title">Run ${esc(i.id)} <span class="muted small">on rig <a href="/ui/rigs/${encodeURIComponent(u.id)}">${esc(u.id)}</a>${u.stale ? ` <span class="bad">(not reporting)</span>` : ""}</span> <span class="label ${st.cls}">${st.icon}${esc(st.text)}</span></div></div>
-<div class="seg">${sub("overview", "Overview", waiting ? ` <span class="dot warn"></span>` : "")}${sub("attempts", "Attempts", ` <span class="muted">${i.attempts.length}</span>`)}${sub("history", "History")}${sub("steering", "Steering")}</div>
-<a class="btn" href="${liveHref(u.id)}">${icon.terminal}Live</a>${quick}</div>
+<nav class="tabs">${sub("overview", "Overview", waiting ? ` <span class="dot warn"></span>` : "")}${sub("attempts", "Attempts", ` <span class="muted">${i.attempts.length}</span>`)}${sub("history", "History")}${sub("planner", "Planner")}</nav>
 ${body}
 </section>`;
   };
@@ -732,12 +693,6 @@ ${body}
     return { value: String(Math.max(0, ...runs.map(claims))), sub: "verified claims" };
   };
   const rigList = (k: CampaignView) => [...new Set(k.runs.map((x) => x.rig.id))];
-  const runMetric = (i: RunView) =>
-    i.mode === "hill_climb"
-      ? pct((i.champion.filter((s) => !s.reopened).at(-1)?.cumulative ?? 1) - 1, 1)
-      : i.mode === "goal"
-        ? `${i.goals.filter((g) => g.status === "met").length}/${i.goals.length} goals`
-        : `${num((i.research as Record<string, unknown> | null)?.verified)} claims`;
 
   // ---------------------------------------------------------------- overview (Magnesium's Home)
   app.get("/ui", (c) => {
@@ -791,43 +746,42 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     const now = Date.now();
     const vs = views();
     const camps = campaignViews(vs);
-    // Each campaign in a sentence (its best run, what is at work, what waits), then its runs.
-    const cards = camps
-      .map((k) => {
-        const h = headline(k);
-        const live = k.runs.filter((x) => x.run.status === "running").length;
-        const waiting = k.runs.reduce((n, x) => n + waitingOn(x.run), 0);
-        const best = h.best;
-        const said = [
-          k.mode === "goal"
-            ? best?.goals.length
-              ? `Its best run meets ${best.goals.filter((g) => g.status === "met").length} of ${best.goals.length} goals.`
-              : "The judge has not checked its goals yet."
-            : k.mode === "hill_climb"
-              ? `Its best run is ${esc(h.value)} over where it started.`
-              : `${esc(h.value)} verified claims.`,
-          live ? `${live} run${live === 1 ? " is" : "s are"} at work.` : "No run is at work.",
-          waiting
-            ? `<b class="warn">${waiting} decision${waiting === 1 ? " waits" : "s wait"} for you.</b>`
-            : "",
-        ]
-          .filter(Boolean)
-          .join(" ");
-        return `<div class="card flat camp"><div class="camp-top">${modeAvatar(k.mode)}<div class="grow"><a class="camp-name" href="${campaignHref(k.name)}">${esc(k.name)}</a> <span class="muted small">${esc(modeName(k.mode))}</span><div class="small camp-said">${said}</div></div></div>${k.runs.map((x) => runRow(x.rig, x.run, now, "rig")).join("")}</div>`;
-      })
-      .join("");
+    const feed = needs(c, vs, now, "/ui/campaigns");
+    const waitingFor = (u: RigView, r: RunView) =>
+      feed.filter((n) => n.rig === u.id && n.run === r.id).length;
+    const atWork = vs.flatMap((u) =>
+      u.runs
+        .filter((r) => r.status === "running")
+        .map((r) => workCardFor(c, u, r, now, waitingFor(u, r), "/ui/campaigns")),
+    );
+    const waiting = vs
+      .flatMap((u) => u.runs.map((r) => ({ rig: u, run: r, n: waitingFor(u, r) })))
+      .filter((w) => w.n > 0);
     return page(
       c,
       {
         title: "Campaigns",
-        summary: `${camps.length} campaign${camps.length === 1 ? "" : "s"}; open one for its runs, lanes and attempts`,
+        summary: `${atWork.length} at work · ${waiting.reduce((a, w) => a + w.n, 0)} decision${waiting.reduce((a, w) => a + w.n, 0) === 1 ? " waits" : "s wait"} for you · ${camps.length} campaign${camps.length === 1 ? "" : "s"}`,
         active: "campaigns",
         actions: opts.kits
           ? `<a class="btn primary" href="/ui/campaigns/new">New campaign</a>`
           : undefined,
       },
-      cards ||
-        `<div class="card"><div class="empty">No campaign yet.${opts.kits ? ` <a href="/ui/campaigns/new">Start one.</a>` : ""}</div></div>`,
+      camps.length
+        ? campaignsListBody({
+            camps,
+            atWork,
+            waiting,
+            filter: campaignFilter(c.req.query("f")),
+            query: c.req.query("q") ?? "",
+            now,
+            best: (k) => {
+              const h = headline(k);
+              return `${h.value} ${h.sub.replace(" (best run)", "").replace("best gain over its baseline", "gain")}`;
+            },
+            about: (k) => aboutOf(k.name),
+          })
+        : `<div class="card"><div class="empty">No campaign yet.${opts.kits ? ` <a href="/ui/campaigns/new">Start one.</a>` : ""}</div></div>`,
       vs,
     );
   });
@@ -1120,26 +1074,65 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     });
 
   // ---------------------------------------------------------------- another run of a campaign
-  /** The form that starts a run of a campaign created here: which rig, with or without agents. */
-  const startRunCard = (c: Ctx, campaign: string, vs: RigView[], heading: string) => {
-    const versions = store.campaignVersions(campaign);
-    if (!versions.length || !opts.kits) return "";
-    const want = (versions[0]?.contract as { target?: { type?: string } } | undefined)?.target
-      ?.type;
-    const rigOptions = vs
-      .map((u) => {
-        const t = u.hardware?.target?.type;
-        const fits = !want || !t || t === want;
-        return `<option value="${esc(u.id)}"${fits ? "" : " disabled"}>${esc(u.id)}${t ? ` · ${esc(t)}` : ""}${fits ? "" : " (other hardware)"}${u.stale ? " · not reporting" : ""}</option>`;
-      })
-      .join("");
-    return `<div class="block"><div class="head"><h2>${esc(heading)}</h2><span class="right">version ${versions[0]?.version} · saved ${esc(ago(versions[0]?.created_at ?? "", Date.now()))} ago</span></div><div class="card"><form method="post" action="/ui/campaigns/${encodeURIComponent(campaign)}/runs" class="form-grid"><input type="hidden" name="csrf" value="${csrf(c)}">
-<label>${infoLabel("Rig", "Where the run goes. Rigs whose hardware differs from the kit's are greyed out.")}<select name="rig">${rigOptions}</select></label>
-<label>${infoLabel("Agents", "With agents: they propose changes and the judge measures each one. A try of the kit: no agents; the judge builds the starting point and runs every case on its own, so you see the kit work before anything else runs.")}<select name="agents"><option value="on">with agents</option><option value="off">a try of the kit: no agents</option></select></label>
-<label>${infoLabel("When a change is confirmed better", "Keep it at once as the new best, or wait for you. The rig's default is set where the rig is deployed.")}<select name="promotion"><option value="">the rig's default</option><option value="auto">always keep it</option><option value="owner_approval">ask me every time</option></select></label>
-<label>${infoLabel("GPUs for the judge", "For a rig with several GPUs: how many the judge measures on; the rest are the agents'. It changes the rig's split for every run on it, and the rig's harness restarts to apply it. Empty: the rig's current split.")}<input name="judge_gpus" inputmode="numeric" placeholder="the rig's current split"></label>
-<div class="form-end"><button class="primary">Start the run</button></div></form>
-<div class="nc-does"><b>What happens.</b> Control signs an assignment of version ${versions[0]?.version} to the rig; the rig fetches the project and the kit, checks both, and starts the run.</div></div></div>`;
+  /** Rigs for the Start a run panel: hardware, whether the campaign's kit fits, busy, the model. */
+  const startRigs = (campaign: string, vs: RigView[]): StartRig[] => {
+    const want =
+      (store.campaignVersions(campaign)[0]?.contract as { target?: { type?: string } } | undefined)
+        ?.target?.type ??
+      (
+        store.latestAssignments().get(campaign)?.payload.contract as
+          | { target?: { type?: string } }
+          | undefined
+      )?.target?.type;
+    const given = store.rigModels();
+    return vs.map((u) => {
+      const t = u.hardware?.target?.type;
+      const busy = u.runs.find((r) => r.status === "running");
+      return {
+        id: u.id,
+        hardware: u.hardware ? hardwareLine(u.hardware) : t ? t : "",
+        off:
+          want && t && t !== want
+            ? `Other hardware: this campaign is measured on ${want}, this rig on ${t}.`
+            : undefined,
+        busy: busy ? busy.id : undefined,
+        stale: u.stale,
+        model:
+          given[u.id]?.model ??
+          (u.model?.source !== "none" ? (u.model?.model ?? undefined) : undefined),
+      };
+    });
+  };
+  /** Whether control can start a run of a campaign: a saved version, or an earlier assignment. */
+  const startFrom = (campaign: string): string | undefined => {
+    const v = store.campaignVersions(campaign)[0];
+    if (v && opts.kits)
+      return `Control signs an assignment of version ${v.version} (saved ${esc(ago(v.created_at, Date.now()))} ago) to the rig; the rig fetches the project and the kit, checks both, and starts the run.`;
+    const past = store.latestAssignments().get(campaign);
+    if (past)
+      return `Control assigns the campaign again as it assigned ${esc(past.run)} on ${esc(past.rig)}: the same contract, starting point and imports, as a new run.`;
+    return undefined;
+  };
+  const startPanel = (c: Ctx, campaign: string, vs: RigView[], open: boolean) => {
+    const from = startFrom(campaign);
+    if (!from) return "";
+    return startDrawer({
+      campaign,
+      csrf: csrf(c),
+      open,
+      rigs: startRigs(campaign, vs),
+      models: store
+        .providers()
+        .filter((p) => p.models.length)
+        .map((p) => ({
+          group: p.name,
+          options: p.models.map((m) => ({
+            value: `${encodeURIComponent(p.name)}|${encodeURIComponent(m.id)}`,
+            label: `${modelPrefix(p.type)}${m.id}`,
+          })),
+        })),
+      from,
+    });
   };
   app.post("/ui/campaigns/:campaign/runs", async (c) => {
     const f = await c.req.parseBody();
@@ -1147,25 +1140,41 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     const vs = views();
     const rig = vs.find((u) => u.id === String(f.rig ?? ""));
     const back = (m: string) =>
-      c.redirect(`${campaignHref(campaign)}?error=${encodeURIComponent(m)}`, 303);
-    if (!opts.kits) return c.text("This control keeps no campaigns.", 404);
+      c.redirect(`${campaignHref(campaign)}?start=1&error=${encodeURIComponent(m)}`, 303);
+    if (!startFrom(campaign))
+      return c.text("Control has no saved version or earlier assignment of this campaign.", 404);
     if (!rig) return back("Choose a rig.");
     const agents = String(f.agents ?? "on") !== "off";
-    if (agents && agentsModelMissing(rig))
-      return back(
-        `${rig.id} has no model for its agents, so they could not work: give it one on its Edit rig page first.`,
-      );
-    const mode = (store.campaignVersions(campaign)[0]?.contract as { mode?: string } | undefined)
-      ?.mode;
-    const researchModel = mode === "research" ? opencodeOnlyModel(rig) : undefined;
+    const chosen = String(f.agents_model ?? "").trim();
+    const mode =
+      (store.campaignVersions(campaign)[0]?.contract as { mode?: string } | undefined)?.mode ??
+      (store.latestAssignments().get(campaign)?.payload.contract as { mode?: string } | undefined)
+        ?.mode;
+    const researchModel =
+      mode === "research" && agents ? opencodeOnlyModel(rig, chosen || undefined) : undefined;
     if (researchModel) return back(researchNeedsOpencode(rig.id, researchModel));
+    if (agents && chosen) {
+      // The rig gets the model first; it arrives within a minute, and the run starts after that.
+      const given = giveRigModel(rig.id, chosen, harnessFor(chosen, ""));
+      if ("error" in given) return back(given.error);
+      const model = decodeURIComponent(chosen.split("|")[1] ?? "");
+      if (rig.model?.model !== model)
+        return c.redirect(
+          `${campaignHref(campaign)}?ok=${encodeURIComponent(`${rig.id} takes ${model} within a minute. When the rig shows it, start the run again.`)}`,
+          303,
+        );
+    }
+    if (agents && !chosen && agentsModelMissing(rig))
+      return back(
+        `${rig.id} has no model for its agents, so they could not work: choose one under "The agents' model", or give it one on its Edit rig page.`,
+      );
     const promotion = String(f.promotion ?? "");
     const split = splitFor(rig, String(f.judge_gpus ?? ""));
     if (typeof split === "string") return back(split);
     let r: ReturnType<typeof startRun>;
     try {
       r = startRun(
-        { store, kits: opts.kits, privateKeyPem: opts.privateKeyPem },
+        { store, kits: opts.kits as KitRepos, privateKeyPem: opts.privateKeyPem },
         {
           campaign,
           rig: rig.id,
@@ -1188,6 +1197,30 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     );
   });
 
+  /** A run at work as a card: its brief, then Live, Message and Pause. */
+  const workCardFor = (
+    c: Ctx,
+    u: RigView,
+    r: RunView,
+    now: number,
+    waiting: number,
+    back: string,
+  ) =>
+    workCard(
+      runBrief(store, u, r, now, { heading: true }),
+      `<a class="btn sm" href="${runLiveHref(u.id, r.id)}">${icon.terminal}Live</a><a class="btn sm" href="${runLiveHref(u.id, r.id, "&compose=1")}">Message</a>${cmdForm(c, { rig: u.id, kind: "pause_run", fields: { run: r.id }, label: "Pause", cls: "sm ghost", back })}`,
+      waiting,
+    );
+
+  /** What a campaign is for, from its contract on control: its title, topic or objective. */
+  const aboutOf = (name: string): string => {
+    const contract = (store.campaignVersions(name)[0]?.contract ??
+      store.latestAssignments().get(name)?.payload.contract) as
+      | { title?: string; topic?: string; objective?: { description?: string } }
+      | undefined;
+    return contract?.title ?? contract?.topic ?? contract?.objective?.description ?? "";
+  };
+
   app.get("/ui/campaigns/:campaign", (c) => {
     const now = Date.now();
     const vs = views();
@@ -1200,6 +1233,11 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       : okNote
         ? `<div class="card" style="margin-bottom:16px"><b class="ok">${esc(okNote)}</b></div>`
         : "";
+    const canStart = Boolean(startFrom(name));
+    const startBtn = canStart
+      ? `<a class="btn primary" href="${campaignHref(name)}?start=1" data-open="#start">${icon.play}Start a run</a>`
+      : undefined;
+    const drawer = startPanel(c, name, vs, c.req.query("start") === "1");
     if (!k) {
       // Saved on control, with no run reported yet: what was asked for, and a way to start one.
       const saved = store.campaignVersions(name);
@@ -1215,103 +1253,146 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           vs,
         );
       const waiting = c.req.query("run");
-      const title = (saved[0]?.contract as { title?: string } | undefined)?.title ?? name;
       return page(
         c,
         {
           title: name,
           crumbs: [{ href: "/ui/campaigns", text: "Campaigns" }],
-          summary: esc(title),
+          summary: esc(aboutOf(name)),
           active: "campaigns",
+          actions: startBtn,
         },
         `${note}${
           waiting
             ? `<div class="card" style="margin-bottom:16px"><b>Starting ${esc(waiting)}.</b> <span class="muted">The rig fetches the project and the kit and checks both; the run shows here once the rig reports it, usually within a minute.</span></div>`
-            : `<div class="card" style="margin-bottom:16px"><div class="empty">Saved, with no run yet.</div></div>`
-        }${startRunCard(c, name, vs, "Start a run")}`,
+            : `<div class="card" style="margin-bottom:16px"><div class="empty">Saved, with no run yet. <a href="${campaignHref(name)}?start=1" data-open="#start">Start a run.</a></div></div>`
+        }${drawer}`,
         vs,
       );
     }
-    const st = campaignState(k);
-    const rigs = rigList(k);
     const h = headline(k);
-    // The selected run: from the link, else a running one, else the one that needs the owner.
-    const urgent = ["Approval", "Decision", "Review", "Audit"];
-    const sel =
-      k.runs.find((x) => runKey(x.rig.id, x.run.id) === c.req.query("run")) ??
-      k.runs.find((x) => x.run.status === "running") ??
-      urgent
-        .map((u) => k.runs.find((x) => runState(x.run).text === u))
-        .find((x) => x !== undefined) ??
-      (k.runs[0] as CampaignView["runs"][number]);
-    const qv = c.req.query("view");
-    const view: RunViewName =
-      qv === "attempts" || qv === "steering" || qv === "history" ? qv : "overview";
-    // Across runs: one row per run, then (goal campaigns) the goals by run.
-    const board = leaderboard(store, { staleAfterMs: opts.staleAfterMs })[k.name] ?? [];
-    const verified = new Map(board.map((r) => [runKey(r.rig, r.run), r.verified_by]));
-    const gainOf = (i: RunView) =>
-      (i.champion.filter((s) => !s.reopened).at(-1)?.cumulative ?? 1) - 1;
-    const best = Math.max(0.0001, ...k.runs.map((x) => gainOf(x.run)));
-    const winKind = k.mode === "goal" ? "goal_progress" : "win_confirmed";
-    const summaryRows = k.runs
-      .map(({ rig, run }) => {
-        const on = rig.id === sel.rig.id && run.id === sel.run.id;
-        const last = run.attempts.at(-1)?.updated_at;
-        const v = verified.get(runKey(rig.id, run.id)) ?? [];
-        const head =
-          k.mode === "hill_climb"
-            ? meter("", pct(gainOf(run), 1), gainOf(run) / best, "primary")
-            : esc(runMetric(run));
-        return `<tr${on ? ` class="on"` : ""}><td><a href="${runHref(rig.id, run)}"><b>${esc(run.id)}</b></a></td><td>${avatar(rig.id)} ${esc(rig.id)}${rig.stale ? ` <span class="bad xs">stale</span>` : ""}</td><td>${runStateHtml(run)}</td><td style="width:30%">${head}</td><td class="num">${run.attempts.length}</td><td class="num">${run.attempts.filter((a) => a.verdict === winKind).length}</td><td class="num muted">${last ? `${esc(ago(last, now))} ago` : ""}</td>${k.mode === "hill_climb" ? `<td>${v.length ? `<span class="pill ok">${icon.check}${esc(v.join(", "))}</span>` : `<span class="muted small">not yet</span>`}</td>` : ""}</tr>`;
-      })
-      .join("");
-    const summary =
-      k.runs.length > 1
-        ? `<div class="card flat"><table><thead><tr><th>Run</th><th>Rig</th><th>State</th><th>${esc(h.sub.replace(" (best run)", ""))}</th><th class="num">Attempts</th><th class="num">${k.mode === "goal" ? "Progress" : "Wins"}</th><th class="num">Last attempt</th>${k.mode === "hill_climb" ? "<th>Cross-verified</th>" : ""}</tr></thead><tbody>${summaryRows}</tbody></table></div>`
-        : "";
-    const goalNames = [...new Set(k.runs.flatMap((x) => x.run.goals.map((g) => g.goal)))];
-    const goalMatrix =
-      k.mode === "goal" && k.runs.length > 1 && goalNames.length
-        ? `<details class="card flat matrix" data-k="matrix-${esc(k.name)}" style="margin-top:12px"><summary>Goals by run <span class="muted small">which run's champion meets which goal</span></summary><table><thead><tr><th>Goal</th>${k.runs.map((x) => `<th class="goalcell">${esc(x.run.id)}</th>`).join("")}</tr></thead><tbody>${goalNames
-            .map(
-              (g) =>
-                `<tr><td>${esc(g)}</td>${k.runs
-                  .map((x) => {
-                    const s2 = x.run.goals.find((y) => y.goal === g)?.status;
-                    return s2 === "met"
-                      ? `<td class="goalcell ok" title="met">✓</td>`
-                      : s2 === "unmet"
-                        ? `<td class="goalcell bad" title="unmet">✕</td>`
-                        : `<td class="goalcell muted" title="${esc(s2 ?? "not validated")}">·</td>`;
-                  })
-                  .join("")}</tr>`,
-            )
-            .join("")}</tbody></table></details>`
-        : "";
-    const tabs =
-      k.runs.length > 1
-        ? `<nav class="tabs">${k.runs
-            .map(({ rig, run }) => {
-              const rs = runState(run);
-              const on = rig.id === sel.rig.id && run.id === sel.run.id;
-              return `<a class="${on ? "on" : ""}" href="${runHref(rig.id, run, view)}"><span class="dot ${rs.cls === "info" ? "ok" : rs.cls === "muted" ? "" : rs.cls}"></span>${esc(run.id)}<span class="sub">${esc(rig.id)}</span></a>`;
+    const feed = needs(c, vs, now, campaignHref(name));
+    const waitingFor = (u: RigView, r: RunView) =>
+      feed.filter((n) => n.rig === u.id && n.run === r.id).length;
+
+    // ---------------------------------------- one run's page
+    const wanted = c.req.query("run");
+    const sel = wanted ? k.runs.find((x) => runKey(x.rig.id, x.run.id) === wanted) : undefined;
+    if (sel) {
+      const qv = c.req.query("view");
+      const view: RunViewName =
+        qv === "attempts" || qv === "history"
+          ? qv
+          : qv === "planner" || qv === "steering"
+            ? "planner"
+            : "overview";
+      const st = runState(sel.run);
+      const back = runHref(sel.rig.id, sel.run, view);
+      const quick =
+        sel.run.status === "paused"
+          ? cmdForm(c, {
+              rig: sel.rig.id,
+              kind: "resume_run",
+              fields: { run: sel.run.id },
+              label: "Resume",
+              back,
             })
-            .join("")}</nav>`
+          : sel.run.status === "running"
+            ? cmdForm(c, {
+                rig: sel.rig.id,
+                kind: "pause_run",
+                fields: { run: sel.run.id },
+                label: "Pause",
+                back,
+              })
+            : "";
+      const more =
+        sel.run.status === "running"
+          ? `<details class="menu"><summary class="btn" title="More">⋯</summary><div class="menu-pop">${cmdForm(c, { rig: sel.rig.id, kind: "reset_workers", fields: { run: sel.run.id }, label: "Restart the lanes", back })}<div class="muted small">Ends the lanes' running trials now and the current epoch: every lane starts again from the champion. Nothing the judge decided is lost.</div></div></details>`
+          : "";
+      return page(
+        c,
+        {
+          title: sel.run.id,
+          crumbs: [
+            { href: "/ui/campaigns", text: "Campaigns" },
+            { href: campaignHref(name), text: name },
+          ],
+          summary: `on <a href="/ui/rigs/${encodeURIComponent(sel.rig.id)}">${esc(sel.rig.id)}</a>${sel.rig.stale ? ` <span class="bad">(not reporting)</span>` : ""} · ${esc(modeName(sel.run.mode))} · <span class="label ${st.cls}">${st.icon}${esc(st.text)}</span>`,
+          active: "campaigns",
+          actions: `<a class="btn" href="${runLiveHref(sel.rig.id, sel.run.id)}">${icon.terminal}Live</a><a class="btn" href="${runLiveHref(sel.rig.id, sel.run.id, "&compose=1")}">Message</a>${quick}${more}`,
+        },
+        `${note}${
+          /-try-\d+$/.test(sel.run.id)
+            ? `<div class="card hl" style="margin-bottom:12px"><b>A try of the kit.</b> No agents work on this run: the judge builds the starting point and runs every case on its own. When the results look right, <a href="${campaignHref(name)}?start=1">start the campaign</a>.</div>`
+            : ""
+        }${runSection(c, sel.rig, sel.run, vs, now, view)}`,
+        vs,
+      );
+    }
+
+    // ---------------------------------------- the campaign
+    const running = k.runs.filter((x) => x.run.status === "running");
+    const earlier = k.runs
+      .filter((x) => x.run.status !== "running")
+      .sort((a, b) => lastActivity(b.run).localeCompare(lastActivity(a.run)));
+    const waitingRuns = k.runs
+      .map((x) => ({ ...x, n: waitingFor(x.rig, x.run) }))
+      .filter((x) => x.n > 0);
+    const bestRun = h.best;
+    const goals =
+      k.mode === "goal" && bestRun?.goals.length
+        ? `<div class="kgoals">${bestRun.goals
+            .map((g) => {
+              const s2 = goalState(g);
+              return `<span class="kgoal ${s2.tone}" title="${esc(g.goal)}: ${esc(s2.word)}">${s2.tone === "ok" ? "✓ " : ""}${esc(g.goal)}</span>`;
+            })
+            .join("")}</div>`
         : "";
+    const about = aboutOf(name);
+    const rigs = rigList(k);
     return page(
       c,
       {
         title: k.name,
         crumbs: [{ href: "/ui/campaigns", text: "Campaigns" }],
-        summary: `${esc(modeName(k.mode))} · ${k.runs.length} run${k.runs.length > 1 ? "s" : ""} on ${esc(rigs.join(", "))} · <span class="${st.cls}">${esc(st.text)}</span> · ${esc(h.value)} ${esc(h.sub)}`,
+        summary: `${esc(isRigCheck(k.name) ? "rig check" : modeName(k.mode))} · ${k.runs.length} run${k.runs.length === 1 ? "" : "s"}${running.length ? ` · ${running.length} at work` : ""} · ${esc(h.value)} ${esc(h.sub)}`,
         active: "campaigns",
+        actions: startBtn,
       },
-      `${note}${summary ? `<div class="block" style="margin-bottom:8px">${summary}${goalMatrix}</div>` : ""}${tabs}${
-        /-try-\d+$/.test(sel.run.id)
-          ? `<div class="card hl" style="margin-bottom:12px"><b>A try of the kit.</b> No agents work on this run: the judge builds the starting point and runs every case on its own. Its results are below. When they look right, start the campaign below.</div>`
+      `${note}${
+        about || goals
+          ? `<div class="card khead"><div>${about ? `<div class="small muted">What it is for</div>` : `<div class="small muted">Goals of its best run</div>`}${about ? `<div class="kabout-big">${esc(about)}</div>` : ""}${goals}</div><div class="small muted right">on ${esc(rigs.join(", "))}${bestRun ? `<br>best: ${esc(bestRun.id)}, ${esc(h.value)} ${esc(h.sub)}` : ""}</div></div>`
           : ""
-      }${runSection(c, sel.rig, sel.run, vs, now, view)}${startRunCard(c, k.name, vs, /-try-\d+$/.test(sel.run.id) ? "Start the campaign" : "Start another run")}`,
+      }
+<div class="block"><div class="head"><h2>At work now</h2><span class="n">${running.length}</span></div>${
+        running.length
+          ? `<div class="kwork one">${running.map((x) => workCardFor(c, x.rig, x.run, now, waitingFor(x.rig, x.run), campaignHref(name))).join("")}</div>`
+          : `<div class="card"><div class="empty">No run is at work.${canStart ? ` <a href="${campaignHref(name)}?start=1" data-open="#start">Start one.</a>` : ""}</div></div>`
+      }</div>
+${waitingRuns.map((w) => `<div class="kneed">${icon.warn}<span class="grow"><b>${w.n} decision${w.n === 1 ? " waits" : "s wait"} for you</b> in ${esc(w.run.id)} on ${esc(w.rig.id)}.</span><a class="btn sm" href="${runHref(w.rig.id, w.run)}#needs">Review</a></div>`).join("")}
+${
+  earlier.length
+    ? `<div class="block"><div class="head"><h2>Earlier runs</h2><span class="n">${earlier.length}</span><span class="right">paused and finished, newest first; open one for its attempts and history</span></div>${earlierRuns(
+        earlier.map((x) => ({
+          ...x,
+          result: "",
+          action:
+            x.run.status === "paused"
+              ? cmdForm(c, {
+                  rig: x.rig.id,
+                  kind: "resume_run",
+                  fields: { run: x.run.id },
+                  label: "Resume",
+                  cls: "sm",
+                  back: campaignHref(name),
+                })
+              : "",
+        })),
+        now,
+      )}</div>`
+    : ""
+}${drawer}`,
       vs,
     );
   });

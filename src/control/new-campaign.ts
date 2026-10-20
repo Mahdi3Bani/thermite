@@ -122,6 +122,47 @@ export interface RunInput {
   by: string;
 }
 
+/**
+ * A run of a campaign assigned over the API, MCP or the CLI (no version saved on control): the
+ * newest assignment again, with the same contract, starting point and imports, as a new run.
+ */
+function againLikeBefore(
+  deps: Deps,
+  input: RunInput,
+): { ok: true; campaign: string; run: string; command: string } | { ok: false; errors: string[] } {
+  const past = deps.store.latestAssignments().get(input.campaign);
+  if (!past)
+    return {
+      ok: false,
+      errors: [
+        `${input.campaign} has no saved version and no earlier assignment on control to start from`,
+      ],
+    };
+  const contract = past.payload.contract as { target?: { type?: string } } | undefined;
+  if (input.target && contract?.target?.type && contract.target.type !== input.target.type)
+    return {
+      ok: false,
+      errors: [
+        `${input.rig} measures on ${input.target.type}, and this campaign's kit measures on ${contract.target.type}: choose a rig with that hardware`,
+      ],
+    };
+  const name = input.agents ? input.campaign : `${input.campaign.slice(0, 54)}-try`;
+  const run = deps.store.nextRunName(input.rig, name);
+  const { run: _old, agents: _agents, promotion: _promotion, ...rest } = past.payload;
+  const issued = issueCommand(deps.store, deps.privateKeyPem, {
+    rig: input.rig,
+    kind: "assign_campaign",
+    payload: {
+      ...rest,
+      run,
+      ...(input.agents ? {} : { agents: false }),
+      ...(input.promotion ? { promotion: input.promotion } : {}),
+    },
+    issuedBy: input.by,
+  });
+  return { ok: true, campaign: input.campaign, run, command: issued.id };
+}
+
 /** Starts a run of a stored campaign version on a rig: its own run, or a try with no agents. */
 export function startRun(
   deps: Deps,
@@ -130,6 +171,7 @@ export function startRun(
   const versions = deps.store.campaignVersions(input.campaign);
   const v =
     input.version === undefined ? versions[0] : versions.find((x) => x.version === input.version);
+  if (!v && input.version === undefined) return againLikeBefore(deps, input);
   if (!v) return { ok: false, errors: [`no saved version of ${input.campaign} to run`] };
   const contract = v.contract as {
     mode: string;
