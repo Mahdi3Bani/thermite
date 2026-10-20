@@ -473,7 +473,7 @@ const SETTING_PART: Record<string, string> = {
 };
 
 /** A change to a rig's settings (Edit rig) in words: "the planner off, 3 lanes". */
-export function settingsText(change: Record<string, unknown>): string {
+function settingsText(change: Record<string, unknown>): string {
   return Object.entries(change)
     .map(([k, v]) => {
       const n = Number(v);
