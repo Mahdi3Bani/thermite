@@ -16,7 +16,8 @@ export const EDIT_RIG_JS = `
     return lb ? lb.firstChild.textContent.trim().toLowerCase() : el.name;
   };
   // Where each agent runs, from the model chosen for it (a Claude subscription: Claude Code only).
-  // The planner follows the workers' model; an advisor with none uses the rig's advisors file.
+  // The planner follows the workers' model, and their harness when it is Codex; an advisor with
+  // none uses the rig's advisors file.
   const runsIn = () => {
     const kindOf = (sel) => (sel.selectedOptions[0] && sel.selectedOptions[0].dataset.kind) || "";
     const text = (role, kind) => kind === "claude" ? "Claude Code, past research only" : role === "planner" ? (kind === "opencode" ? "OpenCode" : "Pi") : kind === "opencode" ? "not for advisors: OpenCode only" : "the supervisor, read-only tools";
@@ -25,6 +26,7 @@ export const EDIT_RIG_JS = `
     const wKind = workers ? kindOf(workers) : "";
     if (harness && wKind === "claude") harness.value = "claude-code";
     if (harness && wKind === "chatgpt" && harness.value === "claude-code") harness.value = "pi";
+    const asWorkers = harness && harness.value === "codex" && wKind !== "claude" ? "Codex" : text("planner", wKind);
     const lanes = Number((form.querySelector('[name="lanes"]') || {}).value) || 1;
     const sessions = { workers: lanes, teachers: 2, panel: 3 };
     let claude = 0;
@@ -35,7 +37,7 @@ export const EDIT_RIG_JS = `
       const kind = own || (role === "planner" ? wKind : "");
       const cell = form.querySelector('[data-runs="' + role + '"]');
       if (cell)
-        cell.textContent = own ? text(role, own) : role !== "planner" ? "the advisors file, if the rig has one" : wKind ? "as the workers: " + text(role, wKind) : "as the workers";
+        cell.textContent = own ? text(role, own) : role !== "planner" ? "the advisors file, if the rig has one" : wKind ? "as the workers: " + asWorkers : "as the workers";
       if (kind === "claude") claude += sessions[role] || 1;
       if (kind === "chatgpt") chatgpt += sessions[role] || 1;
     }

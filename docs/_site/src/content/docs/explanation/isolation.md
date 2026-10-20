@@ -19,8 +19,8 @@ Inside the harness, every kind of work runs as its own Unix user. These are **ro
 | `thermite` | The controller: the ledger, the judge, the planner and scheduler, and the harness API |
 | `builder` | The judge's builds of each change, under the kit's limits |
 | `run` | The judge's timed runs of a change. On a rig with several judge GPUs, each further card has a timing user of its own |
-| `planner` | The planner's calls, when it runs in OpenCode or Claude Code |
-| `model-check` | The model check, when it runs in OpenCode or Claude Code |
+| `planner` | The planner's calls, when it runs in OpenCode, Claude Code or Codex |
+| `model-check` | The model check, when it runs in OpenCode, Claude Code or Codex |
 | `lane-1` … `lane-16` | One lane's commands and file tools. On a GPU, a lane's development runs also run as its user, with the device's group added |
 | `agent-1` … `agent-16` | One lane's worker agent process, when it runs in Pi, the built-in worker harness |
 
@@ -61,7 +61,7 @@ A lane is one line of search ([Agents, lanes and the planner](agents-lanes-plann
 - **One shared folder, written by the harness.** What the lanes share on purpose is the run's research folder: the pages fetched for any lane, the claims and research notes any lane recorded, and the past research under `knowledge/` ([Campaign modes](campaign-modes.md#research-in-every-mode)). The controller writes it from its records, as its own user: every lane reads and searches it, and no lane can change what the controller wrote. In a research run, each lane also has a working area of its own there, which only that lane writes, and the other lanes see its files when its trial ends ([Research](campaign-modes.md#research)). Each worker's brief also carries the run's newest decisions and lessons from other lanes, the planner and the advisors, marked as data.
 - **A token for one trial.** The worker's tools reach the workspace through the harness API, with a token bound to its run and lane. The API runs each request as the lane's user, only inside that trial's workspace, and the token stops working when the trial ends.
 - **Limits on everything it runs.** The lane's memory and disk limits cover everything its commands start ([Per-process and per-trial limits](../reference/limits-and-pacing.md#per-process-and-per-trial-limits)).
-- **The agent apart from its lane.** In Pi, the built-in [worker harness](../reference/glossary.md), the worker agent runs as `agent-N`, which can read none of the lane's files: its tools act through the API, as the lane's user. Its folder, with its trial's details and token, belongs to it alone. Under OpenCode or Claude Code, the agent program runs as the lane's own user, with the lane's access and none of the judge's.
+- **The agent apart from its lane.** In Pi, the built-in [worker harness](../reference/glossary.md), the worker agent runs as `agent-N`, which can read none of the lane's files: its tools act through the API, as the lane's user. Its folder, with its trial's details and token, belongs to it alone. Under OpenCode, Claude Code or Codex, the agent program runs as the lane's own user, with the lane's access and none of the judge's.
 - **Web pages through the harness.** A worker's research tools, such as `fetch` in Pi or `thermite-trial research fetch`, are calls to the harness API with the trial's token. The controller fetches the page itself, refuses private and local addresses, and archives the page in the run's research folder, where every lane can read it.
 
 ## The judge's files

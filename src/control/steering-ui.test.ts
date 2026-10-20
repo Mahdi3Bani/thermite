@@ -701,7 +701,7 @@ describe("Live's lanes", () => {
     );
   });
 
-  test("the box says when each program's workers read a message: Pi at its next step, OpenCode and Claude Code when their run ends", async () => {
+  test("the box says when each program's workers read a message: Pi at its next step, OpenCode, Claude Code and Codex when their run ends", async () => {
     const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
     const s = await stack(env.service, env.keys.privateKeyPem);
     await env.service.applyCommand(env.assign);
@@ -734,6 +734,7 @@ describe("Live's lanes", () => {
     ];
     assert.deepEqual(await hints("opencode"), atRunEnd);
     assert.deepEqual(await hints("claude-code"), atRunEnd);
+    assert.deepEqual(await hints("codex"), atRunEnd);
   });
 });
 

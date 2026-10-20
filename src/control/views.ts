@@ -373,7 +373,7 @@ export interface RigModelView {
   base_url: string | null;
   key_hint: string | null;
   /** The harness its agents run in. */
-  harness: "pi" | "opencode" | "claude-code";
+  harness: "pi" | "opencode" | "claude-code" | "codex";
 }
 
 /** Reads a report's model route loosely: anything malformed is dropped, never trusted. */
@@ -390,7 +390,10 @@ export function readModelInfo(x: unknown): RigModelView | null {
     model: str(o.model),
     base_url: str(o.base_url),
     key_hint: str(o.key_hint),
-    harness: o.harness === "opencode" || o.harness === "claude-code" ? o.harness : "pi",
+    harness:
+      o.harness === "opencode" || o.harness === "claude-code" || o.harness === "codex"
+        ? o.harness
+        : "pi",
   };
 }
 

@@ -8,7 +8,7 @@ sidebar:
 
 The harness image is where your project is built, timed and changed: the judge's builds and timed runs and the agents' commands all run inside it. If your project needs a tool the image lacks, such as another compiler or a library, build your own image `FROM` Thermite's harness image and add it.
 
-The image already has a C and C++ toolchain (`gcc`, `g++`, `make`), CMake, Ninja, ccache, Python 3 with numpy, git, Node.js and OpenCode. A CUDA image also has what its base carries, such as `nvcc`. The CPU image is Debian bookworm; a CUDA image has its base's system. The [harness image reference](../../reference/harness-image.md) lists it in full.
+The image already has a C and C++ toolchain (`gcc`, `g++`, `make`), CMake, Ninja, ccache, Python 3 with numpy, git, Node.js, OpenCode and the Codex CLI. A CUDA image also has what its base carries, such as `nvcc`. The CPU image is Debian bookworm; a CUDA image has its base's system. The [harness image reference](../../reference/harness-image.md) lists it in full.
 
 ## Before you start
 

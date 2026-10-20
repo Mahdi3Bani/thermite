@@ -29,7 +29,7 @@ Thermite's limits are of four kinds. Only a cap can stop a run's work, and only 
 | `min_duration`, `max_duration` | A research contract | `min_duration` is required | The research campaign closes after `max_duration` of running time (paused time does not count), or after `min_duration` when `max_duration` is not set: `the research window is over`. Other modes ignore both |
 | `max_usd_per_day` | The [advisors file](advisors-file.md) | None | The advisors skip their work until the next day (UTC), and a message to the teacher pair starts no round until then. Research goes on. It counts only advisors with prices set |
 | `THERMITE_RESEARCH_MAX_MB` | The harness's settings | None | A run's fetches are refused, in any mode: `the corpus is full (<n> MiB archived)`. Its other tools go on |
-| Turns per trial (`max_turns`) | **Edit rig**, or `THERMITE_MAX_TURNS` | None | One trial ends after that many model replies. The lane's next trial starts afresh |
+| Turns per trial (`max_turns`) | **Edit rig**, or `THERMITE_MAX_TURNS` | None | One trial ends after that many model replies. The Codex CLI does not report its replies, so in Codex each message and each tool call counts as one. The lane's next trial starts afresh |
 | A RunPod test's stop time (`stop_after_minutes`) | **End it after (minutes)** on the test pod form, REST or MCP | None | The test pod is removed. At least 5 minutes. A test spends money: see [Test a GPU on RunPod](../how-to/install/runpod-test.md) |
 
 - **A paused run waits.** The judge works only on running runs, so a paused run's queued judge jobs stay queued until it is resumed.
@@ -49,8 +49,8 @@ None of these ends research. A trial that ends at its time is followed by the la
 | Lanes planned per epoch | 2 | The contract's `lanes.count` (1 to 16). A redirect's `lane_count` can lower it |
 | Trials per lane per epoch | 3 | The contract's `lanes.trials_per_epoch` |
 | Reminders to a Pi worker | When 85% of the trial's time is used, 10 turns before a turn cap, and at 80% of the model's context window | Fixed |
-| Nudges when a worker stops without submitting | 2. An OpenCode or Claude Code worker is continued again for as long as the owner's messages wait for its trial and its last run made progress | Fixed (Pi, OpenCode and Claude Code). Then the trial ends; the trial's time limit still applies |
-| Time to finish after a submission | 5 s after the submission is recorded, the lane's agent is stopped. Its closing reply is not waited for, and a note or idea it has not written by then is not recorded | Fixed (OpenCode and Claude Code; Pi stops at once: no tool call runs after its submission) |
+| Nudges when a worker stops without submitting | 2. An OpenCode, Claude Code or Codex worker is continued again for as long as the owner's messages wait for its trial and its last run made progress | Fixed (Pi, OpenCode, Claude Code and Codex). Then the trial ends; the trial's time limit still applies |
+| Time to finish after a submission | 5 s after the submission is recorded, the lane's agent is stopped. Its closing reply is not waited for, and a note or idea it has not written by then is not recorded | Fixed (OpenCode, Claude Code and Codex; Pi stops at once: no tool call runs after its submission) |
 | Model call retries in a Pi trial | Waits of 5 s, doubling to 60 s. The trial ends after 6 failed calls in a row, 5 cut-off replies in a row, or a full context | Fixed |
 | A lane's wait after unproductive trials | 15 s, doubling for each one in a row, at most 10 minutes. Unproductive: an error, no submission, or an attempt that is `rejected_v0` or `duplicate` (research: an error) | Fixed |
 | A run's cool-down after 6 trials in a row end in errors | 30 minutes, with an `agents_cooldown` event. A new model given to the rig, or the run resumed, after the last of those errors ends it at once | Fixed |
@@ -64,7 +64,7 @@ The dashboard calls an epoch a **round**.
 | --- | --- | --- |
 | Epoch cap | 3 hours. With `budget.wall_hours`, 6% of it, between 30 minutes and 3 hours | An epoch ends when every lane's trials are done and settled, or at the cap once no trial runs |
 | Fork rounds | Every 20 epochs (epochs 21, 41, …). With `budget.wall_hours`, at one third and two thirds of it | Every lane starts again from the champion |
-| Planner call | 180 s with Pi; 300 s with OpenCode or Claude Code | A failed or timed-out call, or an answer that code refuses, is tried once more; a refused answer goes back with its problems. After a second failure, with no model, or with the planner turned off, lanes take queued experiments by the fixed rules (the [fallback](glossary.md)). Planner trouble never pauses research. A research run makes no planner call: its research plan fills the queue |
+| Planner call | 180 s with Pi; 300 s with OpenCode, Claude Code or Codex | A failed or timed-out call, or an answer that code refuses, is tried once more; a refused answer goes back with its problems. After a second failure, with no model, or with the planner turned off, lanes take queued experiments by the fixed rules (the [fallback](glossary.md)). Planner trouble never pauses research. A research run makes no planner call: its research plan fills the queue |
 | Goal campaign: wait for the goal report | Up to 2 hours, or until 3 checks of the champion failed | Then the epoch is planned without it |
 
 ### The judge
@@ -132,11 +132,11 @@ Memory is the sum over all the processes the build or run started, sampled every
 | Limit | Default | Set in the contract's `lanes.limits` |
 | --- | --- | --- |
 | One command a lane runs (a build, a test) | None: it runs until it ends or the trial ends | `run_timeout_s` (10 to 7,200) |
-| Memory of everything a lane runs at once, OpenCode and Claude Code included | 2,048 MiB | `run_rss_mib` (256 to 16,384) |
+| Memory of everything a lane runs at once, OpenCode, Claude Code and Codex included | 2,048 MiB | `run_rss_mib` (256 to 16,384) |
 | The trial's workspace, build folders included | 2,048 MiB | `workspace_mib` (256 to 65,536) |
 | One development run | None on a development device of its own; 300 s on a device the judge shares | `dev_run_timeout_s` (10 to 3,600) |
 | Memory of one development run | 4,096 MiB | `dev_run_rss_mib` (256 to 16,384) |
-| Processes and threads at once, for each of a lane's users: its commands with OpenCode or Claude Code, its development runs, its Pi worker | 256. At the limit, starting one more fails with `Resource temporarily unavailable` | `processes` (64 to 65,536) |
+| Processes and threads at once, for each of a lane's users: its commands with OpenCode, Claude Code or Codex, its development runs, its Pi worker | 256. At the limit, starting one more fails with `Resource temporarily unavailable` | `processes` (64 to 65,536) |
 | A lane's build cache | 8 GB (`CCACHE_MAXSIZE`) | Fixed |
 | One file-tool call of a Pi worker | 30 s | Fixed |
 | Preparing a submission's patch | 60 s | Fixed |

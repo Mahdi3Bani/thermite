@@ -506,7 +506,7 @@ It reads where the broker's socket and the rig's directories are from `THERMITE_
 
 ## `thermite-trial`
 
-`thermite-trial` is in the harness image only (`/usr/local/bin/thermite-trial`, which runs `node /opt/thermite/dist/harness/agents/trial-cli.js`). A worker agent that works through its own shell, under OpenCode or Claude Code, uses it to submit its change, run a command on the device, read an attempt, propose an idea for the run's [experiment queue](signed-commands.md#queue_add), keep [field notes](knowledge-base.md#field-notes), and record the sources it reads with five of its `research` commands. A research worker under OpenCode uses all its `research` commands, and may propose ideas and keep field notes too. It runs as the [lane](glossary.md)'s user, in the trial's workspace (a research trial's: its lane's working area), with the trial's own token, which stops working when the trial ends.
+`thermite-trial` is in the harness image only (`/usr/local/bin/thermite-trial`, which runs `node /opt/thermite/dist/harness/agents/trial-cli.js`). A worker agent that works through its own shell, under OpenCode, Claude Code or Codex, uses it to submit its change, run a command on the device, read an attempt, propose an idea for the run's [experiment queue](signed-commands.md#queue_add), keep [field notes](knowledge-base.md#field-notes), and record the sources it reads with five of its `research` commands. A research worker under OpenCode uses all its `research` commands, and may propose ideas and keep field notes too. It runs as the [lane](glossary.md)'s user, in the trial's workspace (a research trial's: its lane's working area), with the trial's own token, which stops working when the trial ends.
 
 ```text
 usage:

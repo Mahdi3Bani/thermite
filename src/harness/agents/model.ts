@@ -33,8 +33,11 @@ export interface ModelConfig {
    * Responses API; apiKey is then a one-hour access token that control renews).
    */
   api?: "openai" | "anthropic" | "opencode" | "claude" | "chatgpt" | undefined;
-  /** The harness the agents run in: Pi, in-process (the default), OpenCode v2 or Claude Code. */
-  harness?: "pi" | "opencode" | "claude-code" | undefined;
+  /**
+   * The harness the agents run in: Pi, in-process (the default), OpenCode v2, Claude Code or the
+   * Codex CLI (OpenAI's Responses API only: a ChatGPT sign-in or an OpenAI-compatible route).
+   */
+  harness?: "pi" | "opencode" | "claude-code" | "codex" | undefined;
   baseUrl: string;
   model: string;
   apiKey: string;
@@ -49,6 +52,15 @@ export interface ModelConfig {
   effort?: "low" | "medium" | "high" | "xhigh" | "max" | undefined;
   /** The key at the time of each call, when it is renewed while the route stays (a ChatGPT sign-in). */
   keyNow?: (() => string) | undefined;
+}
+
+/**
+ * Whether the Codex CLI can reach a provider of this API. It speaks only OpenAI's Responses API:
+ * a ChatGPT sign-in, or an OpenAI-compatible route whose server answers /responses (OpenAI's own
+ * does). Never Anthropic's API, OpenCode's own models or a Claude subscription.
+ */
+export function codexReaches(api: string | undefined): boolean {
+  return api === undefined || api === "openai" || api === "chatgpt";
 }
 
 export function reasoningFromEnv(raw: string | undefined): ReasoningEffort | undefined {
@@ -105,20 +117,30 @@ export function modelConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ModelC
     harness !== undefined &&
     harness !== "pi" &&
     harness !== "opencode" &&
-    harness !== "claude-code"
+    harness !== "claude-code" &&
+    harness !== "codex"
   )
-    throw new Error(`THERMITE_AGENT_HARNESS must be pi, opencode or claude-code, not ${harness}`);
+    throw new Error(
+      `THERMITE_AGENT_HARNESS must be pi, opencode, claude-code or codex, not ${harness}`,
+    );
   // A Claude subscription runs only in Claude Code, and Claude Code only on one.
   if ((api === "claude") !== (harness === "claude-code"))
     throw new Error(
       "a Claude subscription (THERMITE_MODEL_API=claude) runs only with THERMITE_AGENT_HARNESS=claude-code, and that harness only with it",
+    );
+  if (harness === "codex" && !codexReaches(api))
+    throw new Error(
+      "the Codex CLI speaks only OpenAI's Responses API: THERMITE_AGENT_HARNESS=codex needs THERMITE_MODEL_API chatgpt or openai",
     );
   return {
     api:
       api === "anthropic" || api === "opencode" || api === "claude" || api === "chatgpt"
         ? api
         : undefined,
-    harness: harness === "opencode" || harness === "claude-code" ? harness : undefined,
+    harness:
+      harness === "opencode" || harness === "claude-code" || harness === "codex"
+        ? harness
+        : undefined,
     baseUrl: baseUrl.replace(/\/$/, ""),
     model,
     apiKey,
@@ -135,7 +157,7 @@ export function modelConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ModelC
 export function modelEnv(cfg: ModelConfig): Record<string, string> {
   return {
     ...(cfg.api && cfg.api !== "openai" ? { THERMITE_MODEL_API: cfg.api } : {}),
-    ...(cfg.harness === "opencode" || cfg.harness === "claude-code"
+    ...(cfg.harness === "opencode" || cfg.harness === "claude-code" || cfg.harness === "codex"
       ? { THERMITE_AGENT_HARNESS: cfg.harness }
       : {}),
     THERMITE_MODEL_BASE_URL: cfg.baseUrl,

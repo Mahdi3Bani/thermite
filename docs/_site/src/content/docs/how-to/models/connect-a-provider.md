@@ -52,7 +52,7 @@ This guide covers providers reached with an API key, or with no key for OpenCode
 ## Give a rig one of its models
 
 1. In **Harness and model for each rig**, find the rig's row.
-2. Choose the **worker harness**, the program the agents run in: **Pi**, **OpenCode v2** or **Claude Code**. Pi is the default. [Choose a model](choose-a-model.md#where-the-agents-run) says which worker harness works with which provider.
+2. Choose the **worker harness**, the program the agents run in: **Pi**, **OpenCode v2**, **Claude Code** or **Codex**. Pi is the default. **Codex**, the Codex CLI, takes an OpenAI-compatible provider whose server answers OpenAI's Responses API (`/responses`), as OpenAI's own API does. [Choose a model](choose-a-model.md#where-the-agents-run) says which worker harness works with which provider.
 3. Choose the model. The list groups the models by provider. A group marked "OpenCode harness only" needs **OpenCode v2**. Without a key, OpenCode serves only the models whose names end in `-free`.
 4. Press **Use**.
 
@@ -110,6 +110,7 @@ Errors show in a card that starts with **Not done.**
 | "…could not list its models: no answer in 15 s" or "could not reach it to list its models" | Control cannot reach the address. For a server on your computer, use `host.docker.internal`, not `localhost`. |
 | "OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig." | Choose **OpenCode v2** for that rig. |
 | "Claude Code runs only with a Claude subscription here: choose Pi or OpenCode v2 for this provider." | Choose **Pi** or **OpenCode v2**. |
+| "Codex runs only with a ChatGPT subscription or an OpenAI-compatible provider: choose Pi or OpenCode v2 for this provider." | Choose **Pi** or **OpenCode v2** for an Anthropic or OpenCode provider. |
 
 The provider is saved even when its list fails. Fix the cause, then press **Refresh models**.
 
@@ -126,7 +127,7 @@ A rig can also take its model from its own settings, the `THERMITE_MODEL_*` vari
 | `THERMITE_MODEL_MAX_TOKENS` | The longest reply, thinking included. Default `8192` |
 | `THERMITE_MODEL_REASONING_EFFORT` | `none`, `low`, `medium` or `high`. Unset: nothing is sent |
 | `THERMITE_MODEL_API` | `openai` (the default), `anthropic`, `opencode`, `claude` or `chatgpt` |
-| `THERMITE_AGENT_HARNESS` | `pi` (the default), `opencode` or `claude-code` |
+| `THERMITE_AGENT_HARNESS` | `pi` (the default), `opencode`, `claude-code` or `codex` |
 
 The rig needs the base URL, the model and a key, or its agents have no model. On the local stack, set the first two in your shell or in a `.env` file next to `compose.yaml`, put the key in `.dev/secrets/model-api-key`, and start the stack again, with your `-f` options if you use [override files](../install/one-machine.md#settings-and-override-files):
 

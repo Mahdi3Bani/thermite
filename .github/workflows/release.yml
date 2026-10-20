@@ -9,7 +9,8 @@
 # pushes nothing out and makes no release: the bundle is kept as the run's artifact. (A run by hand
 # needs this file on the default branch; the push to the development branch does not.)
 #
-# The images never carry Claude Code: no build here sets CLAUDE_CODE_VERSION.
+# The images never carry Claude Code: no build here sets CLAUDE_CODE_VERSION. The harness images
+# carry OpenCode and the Codex CLI, both open source, at their Containerfile's pinned versions.
 name: release
 
 on:

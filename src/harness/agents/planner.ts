@@ -482,7 +482,7 @@ const SYSTEM = `${TASK} Answer only by calling submit_plan once.`;
 const ASK_SYSTEM = `${TASK} Answer with only the plan, as one JSON object: {"assignments": [{"lane": "lane-1", "experiment": "an id from queue.up_next or queue.proposed, or the ref of one you add", "parent": "champion" or "lane_best", "why": "..."}], "add": [{"ref": "new-1", "title": "...", "details": "...", "family": "...", "why": "...", "position": "top", "end" or an index}], "move": [{"id": "...", "position": "top", "end" or an index, "why": "..."}], "drop": [{"id": "...", "why": "..."}], "accept": [{"id": "...", "why": "..."}], "rules": [{"kind": "avoid", "try" or "mandate", "family": "..." or "match": "...", "rationale": "...", "from_message": 1}], "journal": [{"kind": "observation", "decision", "surprise", "question", "lesson" or "note", "text": "...", "about": {"type": "experiment", "id": "..."}}], "notes": "..."}. Leave out the lists you do not need. Use no tools.`;
 
 /**
- * A planner call through another harness (OpenCode, Claude Code): the prompt in, the model's
+ * A planner call through another harness (OpenCode, Claude Code, Codex): the prompt in, the model's
  * answer out. `read`: a folder the planner may read and search (its past research), read only.
  */
 export type Ask = (

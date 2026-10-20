@@ -20,6 +20,7 @@ import {
 } from "../common/env.ts";
 import { generateSigningKeys } from "../core/commands.ts";
 import { claudeModelCheck, claudeOnce, runClaudeTrial } from "./agents/claude-code.ts";
+import { codexModelCheck, codexOnce, runCodexTrial } from "./agents/codex.ts";
 import { DevRuns } from "./agents/devrun.ts";
 import { modelConfigFromEnv } from "./agents/model.ts";
 import { checkModel } from "./agents/model-check.ts";
@@ -450,7 +451,7 @@ async function main(): Promise<void> {
   service.models = models;
   const model = () => models.current();
   // Rig checks control can ask for: the model route, and the isolation selftest under the broker.
-  // OpenCode (the worker harness a rig may choose) reaches the harness API on loopback.
+  // OpenCode and Codex (worker harnesses a rig may choose) reach the harness API on loopback.
   const apiUrl = `http://127.0.0.1:${port}`;
   const once = {
     runner,
@@ -466,7 +467,9 @@ async function main(): Promise<void> {
           ? opencodeModelCheck(m, once)
           : m.harness === "claude-code"
             ? claudeModelCheck(m, once)
-            : checkModel(m)
+            : m.harness === "codex"
+              ? codexModelCheck(m, once)
+              : checkModel(m)
         : {
             ok: false,
             summary:
@@ -503,9 +506,24 @@ async function main(): Promise<void> {
     maxTurns: settings.get().max_turns ?? undefined,
     workersOn: () => settings.get().workers,
     plannerOn: () => settings.get().planner,
-    // Each trial runs in the harness the rig's route names: Pi (a worker process) or OpenCode.
+    // Each trial runs in the harness the rig's route names: Pi (a worker process), OpenCode,
+    // Claude Code or Codex.
     runTrial: (spec, signal) => {
       const m = model();
+      if (m?.harness === "codex")
+        return runCodexTrial(spec, {
+          runner,
+          model: m,
+          apiUrl,
+          live: (entries) => service.trialReport(trialOf(spec), { entries }),
+          progress: (progress) => service.trialReport(trialOf(spec), { progress }),
+          submitted: () => service.trialSubmission(spec.trialId),
+          messages: service.trialInbox({ id: spec.trialId, run: spec.run, lane: spec.lane }),
+          // A full ChatGPT plan, as the model proxy saw OpenAI say it.
+          usageLimitSince: (since) => service.usageLimitSince(since),
+          env: laneCacheEnv(paths.scratchDir, spec.lane),
+          signal,
+        });
       if (m?.harness === "claude-code")
         return runClaudeTrial(spec, {
           runner,
@@ -565,9 +583,23 @@ async function main(): Promise<void> {
       if (!answer) throw new Error(t.errors.at(-1) ?? "Claude Code gave no answer");
       return answer;
     },
+    // The planner of a route whose agents run in Codex: Codex as the planner's own user, through
+    // the model proxy with a credential minted for the call; with past research, the prompt names
+    // the run's knowledge/ folder, which every agent user may read and none may change.
+    askCodex: async (m, prompt, signal) => {
+      const t = await codexOnce(m, prompt, once, {
+        role: PLANNER_ROLE,
+        timeoutMs: 300_000,
+        signal,
+      });
+      if (!t.lastText) throw new Error(t.errors.at(-1) ?? "Codex gave no answer");
+      return t.lastText;
+    },
     research,
     // Research workers run in the harness the rig's route names: Pi (a worker process with the
-    // research tools only) or OpenCode (its own tools plus `thermite-trial research`). A Claude
+    // research tools only) or OpenCode (its own tools plus `thermite-trial research`); a route
+    // whose code trials run in Codex runs its research workers in Pi, which reaches the same
+    // provider (a ChatGPT sign-in or an OpenAI-compatible route). A Claude
     // subscription runs only in Claude Code, and OpenCode's own (free) models only in OpenCode:
     // say so, in words.
     runResearchTrial: async (spec, signal) => {

@@ -738,12 +738,12 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
         {
           title: "Give a rig's agents a model",
           description:
-            "As Edit rig does: the model a rig's agents use, from a model provider in Providers (see the providers tool for their models). The rig takes it within a minute and checks it. Harness default: what the model needs (OpenCode for OpenCode's free models, else Pi).",
+            "As Edit rig does: the model a rig's agents use, from a model provider in Providers (see the providers tool for their models). The rig takes it within a minute and checks it. Harness default: what the model needs (Claude Code for a Claude subscription, OpenCode for OpenCode's free models, else Pi). codex runs the workers and the planner in the Codex CLI: only with a ChatGPT subscription or an OpenAI-compatible provider.",
           inputSchema: {
             rig: z.string().min(1),
             provider: z.string().min(1),
             model: z.string().min(1),
-            harness: z.enum(["pi", "opencode"]).optional(),
+            harness: z.enum(["pi", "opencode", "codex"]).optional(),
             effort: z.enum(["low", "medium", "high", "xhigh", "max"]).optional(),
           },
         },
@@ -753,7 +753,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
             rig: string;
             provider: string;
             model: string;
-            harness?: "pi" | "opencode";
+            harness?: "pi" | "opencode" | "codex";
             effort?: "low" | "medium" | "high" | "xhigh" | "max";
           }) => {
             const r = await give(a.rig, a.provider, a.model, a.harness, a.effort, actor);

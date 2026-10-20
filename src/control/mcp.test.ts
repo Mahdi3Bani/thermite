@@ -436,6 +436,34 @@ describe("control over MCP", () => {
       arguments: { rig: "cpu-1", provider: "zen", model: "no-such-model" },
     })) as { isError?: boolean };
     assert.ok(wrong.isError);
+    // The Codex CLI, for a provider OpenAI's Responses API reaches; never for OpenCode's own.
+    store.putProvider({
+      name: "openai",
+      type: "openai",
+      base_url: "https://api.openai.com/v1",
+      key: { sealed: "s1:not-opened-here", hint: "…abcd" },
+    });
+    store.setProviderModels("openai", [{ id: "gpt-test" }]);
+    const codex = text(
+      await operator.callTool({
+        name: "set_rig_model",
+        arguments: { rig: "cpu-1", provider: "openai", model: "gpt-test", harness: "codex" },
+      }),
+    );
+    assert.match(String(codex.said), /cpu-1 takes gpt-test from "openai" under Codex/);
+    assert.equal(store.rigModels()["cpu-1"]?.harness, "codex");
+    const notCodex = await operator.callTool({
+      name: "set_rig_model",
+      arguments: {
+        rig: "cpu-1",
+        provider: "zen",
+        model: "deepseek-v4.1-flash-free",
+        harness: "codex",
+      },
+    });
+    assert.equal(notCodex.isError, true);
+    assert.match(JSON.stringify(notCodex), /Codex runs only with a ChatGPT subscription/);
+    assert.equal(store.rigModels()["cpu-1"]?.harness, "codex", "the refused call changed nothing");
     await operator.close();
   });
 });

@@ -441,17 +441,17 @@ It refuses with the same words as **Add a rig**:
 
 **Give a rig's agents a model.** Owner and operator.
 
-> As Edit rig does: the model a rig's agents use, from a model provider in Providers (see the providers tool for their models). The rig takes it within a minute and checks it. Harness default: what the model needs (OpenCode for OpenCode's free models, else Pi).
+> As Edit rig does: the model a rig's agents use, from a model provider in Providers (see the providers tool for their models). The rig takes it within a minute and checks it. Harness default: what the model needs (Claude Code for a Claude subscription, OpenCode for OpenCode's free models, else Pi). codex runs the workers and the planner in the Codex CLI: only with a ChatGPT subscription or an OpenAI-compatible provider.
 
 | Input | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `rig` | string | | The rig |
 | `provider` | string | | The model provider's name in **Providers** |
 | `model` | string | | A model id, as [`providers`](#providers) lists it under `models` |
-| `harness` | `pi` or `opencode`, optional | what the model needs: Claude Code for a Claude subscription, OpenCode v2 for OpenCode's free models, else Pi | The [worker harness](glossary.md) |
+| `harness` | `pi`, `opencode` or `codex`, optional | what the model needs: Claude Code for a Claude subscription, OpenCode v2 for OpenCode's free models, else Pi (a ChatGPT subscription too) | The [worker harness](glossary.md). `codex`: the Codex CLI, for a ChatGPT subscription or an OpenAI-compatible provider; the planner then runs in it too, unless it has a model of its own |
 | `effort` | `low`, `medium`, `high`, `xhigh` or `max`, optional | none | How long the model thinks, as **Effort** on **Edit rig** |
 
-It sets the workers' model for every run on the rig, as **Edit rig** does. Returns `{rig, model, said}`, where `said` is the dashboard's words: `<rig> takes <model> from "<provider>" under <harness> within a minute, and checks it.` Besides `mcp:set_rig_model`, the audit log records `rig_model_given` with the caller's actor. Errors: `no rig <rig>`, `That provider does not list that model.`, and `OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig.` (with `harness: "pi"`).
+It sets the workers' model for every run on the rig, as **Edit rig** does. Returns `{rig, model, said}`, where `said` is the dashboard's words: `<rig> takes <model> from "<provider>" under <harness> within a minute, and checks it.` Besides `mcp:set_rig_model`, the audit log records `rig_model_given` with the caller's actor. Errors: `no rig <rig>`, `That provider does not list that model.`, `OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig.` (with `harness: "pi"` or `"codex"`), and `Codex runs only with a ChatGPT subscription or an OpenAI-compatible provider: choose Pi or OpenCode v2 for this provider.` (with `harness: "codex"` and an Anthropic or OpenCode provider). A Claude subscription's model runs in Claude Code whatever `harness` says.
 
 ### cluster_rig
 

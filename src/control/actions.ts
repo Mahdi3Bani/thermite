@@ -34,7 +34,7 @@ export interface ControlActions {
     rig: string,
     provider: string,
     model: string,
-    harness: "pi" | "opencode" | undefined,
+    harness: "pi" | "opencode" | "codex" | undefined,
     effort: "low" | "medium" | "high" | "xhigh" | "max" | undefined,
     by: string,
   ) => Promise<{ ok: string } | { error: string }>;

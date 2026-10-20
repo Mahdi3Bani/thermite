@@ -111,11 +111,13 @@ import {
   type Cluster,
   type ClusterRig,
   type ControlStore,
+  codexTakes,
   cursorOf,
   EFFORTS,
   type Effort,
   fingerprint,
   type Harness,
+  harnessOf,
   type JoinedRig,
   type Machine,
   type MachineRig,
@@ -1146,9 +1148,13 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     `${model} is one of OpenCode's free models, which work only inside OpenCode, and ${rig}'s agents would run in Pi: a research run there could not work. Set the agents' harness to OpenCode, or give the rig a model Pi can use.`;
   /** A rig whose agents have no model: none from control, and the rig reports none. */
   const agentsModelMissing = (u: RigView) => !store.rigModels()[u.id] && u.model?.source === "none";
-  /** The harness a model needs when the owner leaves it to control. */
+  /**
+   * The harness a model needs when the owner leaves it to control: Claude Code for a Claude
+   * subscription, OpenCode for OpenCode's free models, else Pi (a ChatGPT sign-in too, unless the
+   * owner picks Codex).
+   */
   const harnessFor = (choice: string, picked: string): Harness => {
-    if (picked === "opencode" || picked === "pi") return picked;
+    if (picked === "opencode" || picked === "pi" || picked === "codex") return picked;
     const [pRaw, mRaw] = choice.split("|");
     const p = store.provider(decodeURIComponent(pRaw ?? ""));
     const model = decodeURIComponent(mRaw ?? "");
@@ -2313,10 +2319,11 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
           .join("")}</div></details>`
       : "";
     // The message box: who it goes to, and when they read it (the placeholder says).
-    // When they read it depends on the agents' harness: Pi between steps; OpenCode and Claude
-    // Code when their current run ends (or in the lane's next trial).
+    // When they read it depends on the agents' harness: Pi between steps; OpenCode, Claude Code
+    // and Codex when their current run ends (or in the lane's next trial). A research run's
+    // workers on a Codex rig run in Pi.
     const harness = u.model?.harness;
-    const pi = harness === "pi";
+    const pi = harness === "pi" || (research && harness === "codex");
     const when =
       harness === undefined
         ? "when it can (this rig hasn't said which program runs its agents)"
@@ -2854,6 +2861,7 @@ ${notice}${box}</section></div>`,
     pi: "Pi",
     opencode: "OpenCode v2",
     "claude-code": "Claude Code",
+    codex: "Codex",
   };
   const TYPE_TIP =
     "What kind of provider it is. OpenAI-compatible covers most model servers (vLLM, LiteLLM, OpenRouter, Ollama). Anthropic is Anthropic's own API. OpenCode is OpenCode's own service, whose free models need the OpenCode harness.";
@@ -2998,7 +3006,7 @@ ${
       const pName = encodeURIComponent(p.name);
       const status = p.models_error
         ? `<span class="dq-why bad">${esc(p.models_error)}</span>`
-        : `<span class="dq-why">${p.models.length} model${p.models.length === 1 ? "" : "s"} · runs in Pi or OpenCode v2 · control renews the login</span>`;
+        : `<span class="dq-why">${p.models.length} model${p.models.length === 1 ? "" : "s"} · runs in Pi, OpenCode v2 or Codex · control renews the login</span>`;
       return `<details class="dq${p.models_error ? " dq-bad" : ""}" data-k="provider-${esc(p.name)}"><summary>
 <span class="dq-kind"><span class="kind m">Subscription</span></span>
 <span class="dq-main"><span class="dq-head">${esc(p.name)} <span class="muted" style="font-weight:400">· ChatGPT subscription</span></span>${status}<span class="dq-sub"><span class="chip">sign-in ${esc(p.key_hint)}</span><span class="dq-where">${rigs.length ? `used by ${rigs.map((x) => esc(x)).join(", ")}` : "no rig uses it"}</span></span></span>
@@ -3081,7 +3089,7 @@ ${outsideKbAddFields()}
         .filter((p) => p.models.length)
         .map(
           (p) =>
-            `<optgroup label="${esc(p.name)}${p.type === "claude" ? " (Claude subscription: runs in Claude Code)" : p.type === "chatgpt" ? " (ChatGPT subscription: Pi or OpenCode)" : p.type === "opencode" ? " (OpenCode harness only)" : isOpencodeOwn(p) ? " (free models: OpenCode harness only)" : ""}">${p.models
+            `<optgroup label="${esc(p.name)}${p.type === "claude" ? " (Claude subscription: runs in Claude Code)" : p.type === "chatgpt" ? " (ChatGPT subscription: Pi, OpenCode or Codex)" : p.type === "opencode" ? " (OpenCode harness only)" : isOpencodeOwn(p) ? " (free models: OpenCode harness only)" : ""}">${p.models
               .map(
                 (m) =>
                   `<option value="${esc(`${encodeURIComponent(p.name)}|${encodeURIComponent(m.id)}`)}"${want?.provider === p.name && want.model === m.id ? " selected" : ""}>${modelPrefix(p.type)}${esc(m.id)}</option>`,
@@ -3129,7 +3137,7 @@ ${outsideKbAddFields()}
         active: "settings",
         crumbs: [{ href: "/ui/settings", text: "Settings" }],
       },
-      `<p class="run-said">Providers are what Thermite uses: model providers serve the agents' models, Git access lets rigs fetch private repositories, machines, clusters and GPU clouds are where rigs run, and an outside knowledge base (optional) gets copies of campaign folders and gives advisors outside context. Add each once with its key. Control seals every key, never shows it again, and gives a rig only what it uses. Then choose, for each rig, the harness its agents run in (Pi or OpenCode v2) and their model.</p>
+      `<p class="run-said">Providers are what Thermite uses: model providers serve the agents' models, Git access lets rigs fetch private repositories, machines, clusters and GPU clouds are where rigs run, and an outside knowledge base (optional) gets copies of campaign folders and gives advisors outside context. Add each once with its key. Control seals every key, never shows it again, and gives a rig only what it uses. Then choose, for each rig, the harness its agents run in (Pi, OpenCode v2, Claude Code or Codex) and their model.</p>
 ${note}
 <div class="block"><div class="head"><h2>Providers</h2><span class="n">${providers.length + gitCount}</span><span class="right">models are read from each provider itself</span></div>${providers.length + gitCount ? `<div class="dqs">${providerRows}${gitRows(t)}${machineRows(t)}${clusterRows(t)}${cloudRows(t)}${outsideKbRows(outsideKb, t, now)}</div>` : `<div class="card"><div class="empty">No provider yet: add one below.</div></div>`}</div>
 <div class="block"><div class="head"><h2>Add a provider</h2></div><div class="card">${addForm}</div></div>
@@ -5348,7 +5356,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         ? settingsUrl("error", `"${name}" is signed in, but ${listError}.`)
         : settingsUrl(
             "ok",
-            `"${name}" is signed in: its ${n} model${n === 1 ? "" : "s"} run in Pi or OpenCode v2. Choose one for a rig below.`,
+            `"${name}" is signed in: its ${n} model${n === 1 ? "" : "s"} run in Pi, OpenCode v2 or Codex. Choose one for a rig below.`,
           ),
       303,
     );
@@ -5469,8 +5477,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     const f = await c.req.parseBody();
     const rig = String(f.rig ?? "");
     const choice = String(f.choice ?? "");
-    const harness: Harness =
-      f.harness === "opencode" || f.harness === "claude-code" ? f.harness : "pi";
+    const harness = harnessOf(f.harness);
     if (!store.rigs().some((x) => x.id === rig))
       return c.redirect(settingsUrl("error", "No such rig."), 303);
     if (!choice) {
@@ -5514,6 +5521,12 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       return {
         error:
           "Claude Code runs only with a Claude subscription here: choose Pi or OpenCode v2 for this provider.",
+      };
+    // The Codex CLI speaks only OpenAI's Responses API.
+    if (harness === "codex" && !codexTakes(p.type))
+      return {
+        error:
+          "Codex runs only with a ChatGPT subscription or an OpenAI-compatible provider: choose Pi or OpenCode v2 for this provider.",
       };
     // OpenCode's free models (and a keyless OpenCode provider) need its own client.
     if (
@@ -5664,6 +5677,8 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       if (own) return runsText(role, providerKind(own.provider));
       if (role !== "planner") return "the advisors file, if the rig has one";
       const w = providerKind(want?.provider);
+      // Workers in Codex: the planner that follows them plans in Codex too.
+      if (w && want?.harness === "codex") return "as the workers: Codex";
       return w ? `as the workers: ${runsText(role, w)}` : "as the workers";
     };
     const ROLE_ROWS: { id: AgentRole; name: string; tip: string }[] = [
@@ -5693,8 +5708,8 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         tip: "Three reviewers that grade goals that need judgement. The judge's numbers never come from them. All three use this model.",
       },
     ];
-    const agentRows = `<div class="hd">Agent</div><div class="hd">Model</div><div class="hd">${infoLabel("Effort", "How long the model thinks before it answers. More effort: better answers, slower, and more of a subscription's window. Providers other than a Claude subscription take up to high.")}</div><div class="hd">${infoLabel("Runs in", "The program that runs the agent. A Claude subscription works only in Claude Code, Anthropic's own program. Agents in Claude Code get no tools but a read-only search of the run's past research. Advisors with an API key run in the supervisor with read-only tools: the campaign brief and the search of past research, plus a guarded web fetch and the knowledge base only where the rig's advisors file sets them up.")}</div>
-<div>${infoLabel("Workers", "The agents that change the code, one per lane. They run for many turns, so they use the most of a subscription.")}</div><select name="choice" data-role="workers" data-label="the workers' model">${optionsFor("its own settings", want)}</select>${effortSelect("effort", want?.effort)}<div class="runs-in"><select name="harness" data-harness aria-label="harness"><option value="pi"${!want?.harness || want.harness === "pi" ? " selected" : ""}>Pi</option><option value="opencode"${want?.harness === "opencode" ? " selected" : ""}>OpenCode v2</option><option value="claude-code"${want?.harness === "claude-code" ? " selected" : ""}>Claude Code</option></select></div>
+    const agentRows = `<div class="hd">Agent</div><div class="hd">Model</div><div class="hd">${infoLabel("Effort", "How long the model thinks before it answers. More effort: better answers, slower, and more of a subscription's window. Providers other than a Claude subscription take up to high.")}</div><div class="hd">${infoLabel("Runs in", "The program that runs the agent. A Claude subscription works only in Claude Code, Anthropic's own program. Codex, OpenAI's own program, works with a ChatGPT subscription or an OpenAI-compatible key; the planner that follows the workers runs in it too. Agents in Claude Code get no tools but a read-only search of the run's past research. Advisors with an API key run in the supervisor with read-only tools: the campaign brief and the search of past research, plus a guarded web fetch and the knowledge base only where the rig's advisors file sets them up.")}</div>
+<div>${infoLabel("Workers", "The agents that change the code, one per lane. They run for many turns, so they use the most of a subscription.")}</div><select name="choice" data-role="workers" data-label="the workers' model">${optionsFor("its own settings", want)}</select>${effortSelect("effort", want?.effort)}<div class="runs-in"><select name="harness" data-harness aria-label="harness"><option value="pi"${!want?.harness || want.harness === "pi" ? " selected" : ""}>Pi</option><option value="opencode"${want?.harness === "opencode" ? " selected" : ""}>OpenCode v2</option><option value="claude-code"${want?.harness === "claude-code" ? " selected" : ""}>Claude Code</option><option value="codex"${want?.harness === "codex" ? " selected" : ""}>Codex</option></select></div>
 ${ROLE_ROWS.map(
   (r) =>
     `<div>${infoLabel(r.name, r.tip)}</div><select name="role_${r.id}" data-role="${r.id}" data-label="the ${r.name.toLowerCase()}'s model">${optionsFor(r.id === "planner" ? "same as the workers" : "the rig's advisors file", roles[r.id])}</select>${effortSelect(`effort_${r.id}`, roles[r.id]?.effort)}<div class="runs-in" data-runs="${r.id}">${runsIn(r.id)}</div>`,
@@ -5751,8 +5766,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
     const said: string[] = [];
     // The workers' model: as in Providers.
     const choice = String(f.choice ?? "");
-    const harness: Harness =
-      f.harness === "opencode" || f.harness === "claude-code" ? f.harness : "pi";
+    const harness = harnessOf(f.harness);
     const effortOf = (k: string): Effort | undefined =>
       EFFORTS.find((e) => e === String(f[k] ?? ""));
     const want = store.rigModels()[rig];

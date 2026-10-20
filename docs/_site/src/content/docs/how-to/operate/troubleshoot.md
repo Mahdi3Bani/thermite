@@ -268,7 +268,7 @@ The dashboard refuses to start a research run with agents in the last case. A ru
 ### A message shows, but nobody reads it
 
 - **You see:** your message shows in **Live**, but no "✓ … read your message" line follows.
-- **Why:** each agent reads a message at a set time, and the box's placeholder says when. An OpenCode or Claude Code worker, for example, reads it only when its model stops by itself, which can take many minutes; the auditor and the review panel only with their next audit or review. [When each agent reads it](../campaigns/steer-a-run.md#when-each-agent-reads-it) gives each reader's timing.
+- **Why:** each agent reads a message at a set time, and the box's placeholder says when. An OpenCode, Claude Code or Codex worker, for example, reads it only when its model stops by itself, which can take many minutes; the auditor and the review panel only with their next audit or review. [When each agent reads it](../campaigns/steer-a-run.md#when-each-agent-reads-it) gives each reader's timing.
 - **Do:** wait. To have every new trial of a lane, or of all lanes, read a message, keep it in force with 📌 when you send it.
 
 ### A change to the queue or a rule didn't take

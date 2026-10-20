@@ -39,6 +39,7 @@ import { SecretBox } from "./secrets.ts";
 import {
   type AgentRole,
   type ControlStore,
+  codexTakes,
   cursorOf,
   type Effort,
   fingerprint,
@@ -616,7 +617,7 @@ export function createControlApi(
       return {
         name: p.name,
         type: "chatgpt",
-        harness: harness === "opencode" ? "opencode" : "pi",
+        harness: harness === "opencode" || harness === "codex" ? harness : "pi",
         version: p.version,
         base_url: CHATGPT_API,
         model,
@@ -668,7 +669,9 @@ export function createControlApi(
     return {
       name: p.name,
       type: native ? "opencode" : p.type === "opencode" ? "openai" : p.type,
-      harness: harness === "claude-code" ? "pi" : harness,
+      // Codex speaks only OpenAI's Responses API: an OpenAI-compatible key's provider.
+      harness:
+        harness === "claude-code" || (harness === "codex" && !codexTakes(p.type)) ? "pi" : harness,
       version: p.version,
       base_url: base,
       model,
