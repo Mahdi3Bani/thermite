@@ -168,6 +168,35 @@ export const CLIENT_JS = `
     update();
   }
 
+  // ------------------------------------------------ the experiment queue: drag to reorder
+  // A dropped experiment's new place goes to the rig as a signed owner command (queue_move),
+  // through the same form post as the buttons; the page then shows the rig's order.
+  const ql = $("#qlist");
+  if (ql) {
+    let dragged = null;
+    const csrfIn = $("form.qadd input[name=csrf]");
+    const send = (el) => {
+      const pos = [...ql.querySelectorAll(".qi")].indexOf(el);
+      const body = new URLSearchParams({ csrf: csrfIn ? csrfIn.value : "", rig: el.dataset.rig, run: el.dataset.run, kind: "queue_move", id: el.dataset.id, position: String(pos), back: location.pathname + location.search });
+      fetch("/ui/commands", { method: "POST", body, credentials: "same-origin" }).then(() => {
+        ql.querySelectorAll(".qn").forEach((n, i) => (n.textContent = String(i + 1)));
+      });
+    };
+    ql.querySelectorAll(".qi").forEach((el) => {
+      el.addEventListener("dragstart", () => { dragged = el; el.classList.add("drag"); });
+      el.addEventListener("dragend", () => { el.classList.remove("drag"); ql.querySelectorAll(".over").forEach((x) => x.classList.remove("over")); });
+      el.addEventListener("dragover", (ev) => { ev.preventDefault(); el.classList.add("over"); });
+      el.addEventListener("dragleave", () => el.classList.remove("over"));
+      el.addEventListener("drop", (ev) => { ev.preventDefault(); el.classList.remove("over"); if (dragged && dragged !== el) { ql.insertBefore(dragged, el); send(dragged); } });
+    });
+  }
+  // The Tried table's filters.
+  document.querySelectorAll("#qf [data-qf]").forEach((b) => b.addEventListener("click", () => {
+    const want = b.dataset.qf.split(" ");
+    document.querySelectorAll("#qf [data-qf]").forEach((x) => x.classList.toggle("on", x === b));
+    document.querySelectorAll("#qtried tr").forEach((t) => (t.hidden = !(want[0] === "all" || want.includes(t.dataset.r))));
+  }));
+
   // ------------------------------------------------ the composer: Cmd/Ctrl+Enter sends
   const ta = $(".composer textarea");
   if (ta) ta.addEventListener("keydown", (ev) => {

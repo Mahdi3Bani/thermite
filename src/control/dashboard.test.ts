@@ -1023,11 +1023,11 @@ describe("control dashboard", () => {
     // The rules for the plan are on the run's Planner tab (old steering links land there too).
     assert.match(
       await (await s.get("/ui/campaigns/js-sum?run=rig-a%2Fjs-1&view=planner")).text(),
-      /Rules for the plan/,
+      /<h2>Rules<\/h2>/,
     );
     assert.match(
       await (await s.get("/ui/campaigns/js-sum?run=rig-a%2Fjs-1&view=steering")).text(),
-      /Rules for the plan/,
+      /<h2>Rules<\/h2>/,
     );
     assert.match(await (await s.get("/ui/campaigns")).text(), /js-sum/);
     const after = await (await s.get("/ui")).text();
@@ -1560,8 +1560,11 @@ describe("control dashboard for an operator", () => {
       history,
       /The planner planned round 1: lane-1 on filter-bank; lane-2 on range-decoder\./,
     );
+    const experiments = await get("/ui/campaigns/sum-speed?run=rig-c%2Fsum-1&view=experiments");
+    assert.match(experiments, /<h2>Up next<\/h2>/);
+    assert.match(experiments, /Add an experiment/);
     const planner = await get("/ui/campaigns/sum-speed?run=rig-c%2Fsum-1&view=planner");
-    assert.match(planner, /Rules for the plan/);
+    assert.match(planner, /<h2>Rules<\/h2>/);
     assert.match(planner, /Agent figures/);
     const attempts = await get("/ui/campaigns/sum-speed?run=rig-c%2Fsum-1&view=attempts");
     assert.match(attempts, /blocked by the auditor/);

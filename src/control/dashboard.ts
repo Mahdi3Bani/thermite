@@ -153,6 +153,7 @@ import {
   waitingOn,
 } from "./ui/operator.ts";
 import { PROVIDERS_JS } from "./ui/providers-client.ts";
+import { experimentsTab, plannerTab } from "./ui/queue.ts";
 import { STYLE } from "./ui/style.ts";
 import { auditReason, clip, jobText, runStatusText, signed, span } from "./ui/words.ts";
 import {
@@ -183,7 +184,7 @@ const CSP =
   "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
 // biome-ignore lint/suspicious/noExplicitAny: any route's context
 type Ctx = Context<any, any, any>;
-type RunViewName = "overview" | "attempts" | "history" | "planner";
+type RunViewName = "overview" | "experiments" | "attempts" | "history" | "planner";
 
 export interface DashboardOptions {
   /** The owner's credential (the dashboard signs in with its token). */
@@ -657,8 +658,38 @@ ${propagate}
               { limit: 400 },
             )
           : view === "planner"
-            ? `<div class="block">${steer}</div>${diagnostics}`
-            : `<p class="run-said">${said}</p>
+            ? plannerTab({
+                u,
+                r: i,
+                now,
+                csrf: t,
+                back,
+                cmd: (f) => cmdForm(c, f),
+                model: u.model
+                  ? u.model.source === "none"
+                    ? "No model: the lanes take the queue in order and keep to the rules."
+                    : `${u.model.model} (the agents' model; Edit rig can give the planner its own)`
+                  : "Not reported by this rig's harness.",
+                figures: diagnostics,
+                propagate,
+              })
+            : view === "experiments"
+              ? experimentsTab({
+                  u,
+                  r: i,
+                  now,
+                  csrf: t,
+                  back,
+                  cmd: (f) => cmdForm(c, f),
+                  families: [
+                    ...new Set([
+                      ...i.queue.map((x) => x.family),
+                      ...i.trials.map((x) => x.family ?? ""),
+                      ...(i.epoch?.assignments.map((a) => a.family) ?? []),
+                    ]),
+                  ].filter(Boolean),
+                })
+              : `<p class="run-said">${said}</p>
 ${waiting ? `<div class="block" id="needs"><div class="head"><h2>Needs you</h2><span class="n">${waiting}</span></div><div class="dqs">${decisions.map((n) => n.html).join("")}</div></div>` : ""}
 <div class="cols run-cols"><div>
 ${goals}${research}${ladder}
@@ -669,7 +700,7 @@ ${goals}${research}${ladder}
 <div class="block"><div class="head"><h2>Recent</h2><span class="right"><a href="${runHref(u.id, i, "history")}">Full history</a></span></div>${recent}</div>
 </div></div>`;
     return `<section class="block" id="${esc(runKey(u.id, i.id))}">
-<nav class="tabs">${sub("overview", "Overview", waiting ? ` <span class="dot warn"></span>` : "")}${sub("attempts", "Attempts", ` <span class="muted">${i.attempts.length}</span>`)}${sub("history", "History")}${sub("planner", "Planner")}</nav>
+<nav class="tabs">${sub("overview", "Overview", waiting ? ` <span class="dot warn"></span>` : "")}${sub("experiments", "Experiments", ` <span class="muted">${i.queue.filter((x) => x.state === "queued").length} up next</span>`)}${sub("attempts", "Attempts", ` <span class="muted">${i.attempts.length}</span>`)}${sub("history", "History")}${sub("planner", "Planner")}</nav>
 ${body}
 </section>`;
   };
@@ -1284,7 +1315,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     if (sel) {
       const qv = c.req.query("view");
       const view: RunViewName =
-        qv === "attempts" || qv === "history"
+        qv === "attempts" || qv === "history" || qv === "experiments"
           ? qv
           : qv === "planner" || qv === "steering"
             ? "planner"
@@ -1988,9 +2019,17 @@ ${box}</section></div>`,
     const rig = String(f.rig ?? "");
     const run = String(f.run ?? "");
     const w = String(f.w ?? "");
+    // From the Planner tab, back there; from Live, to the same filter.
+    const from = String(f.back ?? "");
     const back = (more = "") =>
       c.redirect(
-        runLiveHref(rig, run, `${w && w !== "all" ? `&w=${encodeURIComponent(w)}` : ""}${more}`),
+        from.startsWith("/ui/")
+          ? `${from}${from.includes("?") ? "&" : "?"}${more ? more.slice(1) : `sent=${encodeURIComponent("Sent. The planner reads it when it next gives out work.")}`}`
+          : runLiveHref(
+              rig,
+              run,
+              `${w && w !== "all" ? `&w=${encodeURIComponent(w)}` : ""}${more}`,
+            ),
         303,
       );
     const to = String(f.to ?? "all");
@@ -5279,7 +5318,8 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
     const kind = String(f.kind) as CommandKind;
     if (!COMMAND_KINDS.includes(kind)) return c.text("unknown command", 400);
     const run = String(f.run ?? "");
-    const payloads: Partial<Record<CommandKind, unknown>> = {
+    // Kinds the rig's harness doesn't know yet are refused above (COMMAND_KINDS).
+    const payloads: Partial<Record<string, unknown>> = {
       pause_run: { run, reason: String(f.reason || "paused from the dashboard") },
       resume_run: { run },
       reset_workers: { run },
@@ -5294,13 +5334,40 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
         directives: [
           {
             kind: String(f.directive ?? "avoid"),
-            family: String(f.family ?? ""),
+            // A direction's name as it is; anything else as words the planner matches.
+            ...(() => {
+              const d = String(f.match ?? f.family ?? "").trim();
+              return /^[a-z0-9][a-z0-9-]{1,40}$/.test(d) ? { family: d } : { match: d };
+            })(),
             rationale: String(f.rationale ?? ""),
             citations: [],
           },
         ],
         replace: f.add !== "1",
       },
+      // The experiment queue (goal 064).
+      queue_add: {
+        run,
+        title: String(f.title ?? "").trim(),
+        ...(String(f.family ?? "").trim() ? { family: String(f.family).trim() } : {}),
+        ...(String(f.why ?? "").trim() ? { why: String(f.why).trim() } : {}),
+        position: f.position === "end" ? "end" : "top",
+      },
+      queue_move: {
+        run,
+        id: String(f.id ?? ""),
+        position:
+          f.position === "top" || f.position === "end"
+            ? f.position
+            : Math.max(0, Math.trunc(Number(f.position)) || 0),
+      },
+      queue_drop: {
+        run,
+        id: String(f.id ?? ""),
+        why: String(f.why ?? "").trim() || "dropped by the owner",
+      },
+      queue_accept: { run, id: String(f.id ?? "") },
+      drop_directive: { run, id: Number(f.id) },
     };
     if (!(kind in payloads)) return c.text("this command is not available from the dashboard", 400);
     try {

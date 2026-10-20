@@ -191,6 +191,54 @@ export interface RunView {
   >;
   /** The run's events, oldest first (at most the latest 400): the timeline's source. */
   timeline: StoredEvent[];
+  /** The rules for the plan in force (directives): who set each, when, and the rule. */
+  rules: { id: number; author: string; at: string; body: Record<string, unknown> }[];
+  /** The experiment queue (goal 064): every experiment, with its state; up next in order. */
+  queue: ExperimentView[];
+  /** The planner's hand-outs, newest last (at most 50): what went to which lane, and why. */
+  handouts: {
+    at: string;
+    round: number | null;
+    by: string;
+    assignments: { lane: string; experiment: string | null; why: string }[];
+    notes: string;
+  }[];
+  /** The owner's messages to the run's agents (goal 063), newest last, with who read them. */
+  messages: MessageView[];
+}
+
+/** One experiment in a run's queue: what to try, who added it and why, and what became of it. */
+export interface ExperimentView {
+  id: string;
+  title: string;
+  details: string;
+  family: string;
+  why: string;
+  by: string;
+  state: "proposed" | "queued" | "assigned" | "done" | "dropped";
+  /** Its place among the queued ones (0 first); null once it left the queue. */
+  position: number | null;
+  lane: string | null;
+  trial: string | null;
+  attempt: string | null;
+  result: string | null;
+  dropped_why: string | null;
+  dropped_by: string | null;
+  from_run: string | null;
+  at: string;
+  updated_at: string;
+}
+
+/** The owner's message to a run's agents: to whom, kept in force or not, who read it, answers. */
+export interface MessageView {
+  id: number;
+  to: string;
+  text: string;
+  keep: boolean;
+  unkept: boolean;
+  at: string;
+  reads: { by: string; trial: string | null; at: string }[];
+  answers: { role: string; text: string; at: string }[];
 }
 
 /** The rig's own settings as its harness reports them. */
@@ -373,6 +421,10 @@ export function rigView(
         trials: [],
         at_work: {},
         timeline: [],
+        rules: [],
+        queue: [],
+        handouts: [],
+        messages: [],
       };
       runs.set(id, v);
     }
@@ -733,12 +785,88 @@ export function rigView(
         break;
       }
       case "directive": {
-        inst(String(e.subject)).directives++;
+        const v = inst(String(e.subject));
+        v.directives++;
+        v.rules.push({
+          id: Number(b.id),
+          author: e.actor,
+          at: e.at,
+          body: (b.body as Record<string, unknown> | null) ?? {},
+        });
         break;
       }
-      case "directives_superseded": {
+      case "directives_superseded":
+      case "directive_dropped": {
         const v = inst(String(e.subject));
-        v.directives = Math.max(0, v.directives - (Array.isArray(b.ids) ? b.ids.length : 0));
+        const ids = new Set(
+          (Array.isArray(b.ids) ? b.ids : [b.id]).map((x) => Number(x)).filter(Number.isFinite),
+        );
+        v.directives = Math.max(0, v.directives - ids.size);
+        v.rules = v.rules.filter((r) => !ids.has(r.id));
+        break;
+      }
+      // ---------------------------------------- the experiment queue (goal 064)
+      case "experiment_added":
+      case "experiment_accepted":
+      case "experiment_moved":
+      case "experiment_edited":
+      case "experiment_dropped":
+      case "experiment_assigned":
+      case "experiment_finished": {
+        queueEvent(inst(String(e.subject)), e);
+        break;
+      }
+      case "planner_handout": {
+        const v = inst(String(e.subject));
+        v.handouts.push({
+          at: e.at,
+          round: Number.isFinite(Number(b.round)) ? Number(b.round) : null,
+          by: e.actor,
+          assignments: (Array.isArray(b.assignments) ? b.assignments : []).map((a) => {
+            const x = (a ?? {}) as Record<string, unknown>;
+            return {
+              lane: String(x.lane ?? ""),
+              experiment: typeof x.experiment === "string" ? x.experiment : null,
+              why: String(x.why ?? ""),
+            };
+          }),
+          notes: String(b.notes ?? ""),
+        });
+        if (v.handouts.length > 50) v.handouts.shift();
+        break;
+      }
+      // ---------------------------------------- the owner's messages (goal 063)
+      case "agent_message": {
+        const v = inst(String(e.subject));
+        if (typeof b.id !== "number" && !Number.isFinite(Number(b.id))) break;
+        v.messages.push({
+          id: Number(b.id),
+          to: String(b.to ?? ""),
+          text: String(b.text ?? ""),
+          keep: b.keep === true,
+          unkept: false,
+          at: e.at,
+          reads: [],
+          answers: [],
+        });
+        if (v.messages.length > 200) v.messages.shift();
+        break;
+      }
+      case "agent_message_read":
+      case "agent_message_unkept":
+      case "advisor_answer": {
+        const v = inst(String(e.subject));
+        const m = v.messages.find((x) => x.id === Number(b.message));
+        if (!m) break;
+        if (e.kind === "agent_message_unkept") m.unkept = true;
+        else if (e.kind === "advisor_answer")
+          m.answers.push({ role: String(b.role ?? ""), text: String(b.text ?? ""), at: e.at });
+        else
+          m.reads.push({
+            by: String(b.by ?? ""),
+            trial: typeof b.trial === "string" ? b.trial : null,
+            at: e.at,
+          });
         break;
       }
       case "job_queued": {
@@ -922,4 +1050,103 @@ export function campaignViews(vs: RigView[]): CampaignView[] {
         ? 1
         : 2;
   return [...by.values()].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+}
+
+/**
+ * One queue event on a run's view (goal 064). The queued experiments keep their order in
+ * `position` (0 first); an experiment leaves the order when it is assigned, done or dropped.
+ */
+function queueEvent(v: RunView, e: StoredEvent): void {
+  const b = (e.body ?? {}) as Record<string, unknown>;
+  const id = String(b.id ?? "");
+  if (!id) return;
+  const str = (k: string) => (typeof b[k] === "string" ? (b[k] as string) : undefined);
+  let x = v.queue.find((q) => q.id === id);
+  const order = () =>
+    v.queue
+      .filter((q) => q.state === "queued")
+      .sort((a, z) => (a.position ?? 0) - (z.position ?? 0));
+  const place = (it: ExperimentView, pos: unknown) => {
+    const rest = order().filter((q) => q !== it);
+    const at =
+      pos === "top"
+        ? 0
+        : typeof pos === "number" && Number.isFinite(pos)
+          ? Math.max(0, Math.min(rest.length, Math.trunc(pos)))
+          : rest.length;
+    rest.splice(at, 0, it);
+    rest.forEach((q, i) => {
+      q.position = i;
+    });
+  };
+  const leave = (it: ExperimentView) => {
+    it.position = null;
+    order()
+      .filter((q) => q !== it)
+      .forEach((q, i) => {
+        q.position = i;
+      });
+  };
+  if (e.kind === "experiment_added") {
+    if (x) return;
+    x = {
+      id,
+      title: str("title") ?? id,
+      details: str("details") ?? "",
+      family: str("family") ?? "",
+      why: str("why") ?? "",
+      by: str("by") ?? e.actor,
+      state: b.state === "proposed" ? "proposed" : "queued",
+      position: null,
+      lane: str("lane") ?? null,
+      trial: null,
+      attempt: null,
+      result: null,
+      dropped_why: null,
+      dropped_by: null,
+      from_run: str("from_run") ?? null,
+      at: e.at,
+      updated_at: e.at,
+    };
+    v.queue.push(x);
+    if (x.state === "queued") place(x, b.position);
+    return;
+  }
+  if (!x) return;
+  x.updated_at = e.at;
+  switch (e.kind) {
+    case "experiment_accepted":
+      x.state = "queued";
+      place(x, b.position);
+      break;
+    case "experiment_moved":
+      if (x.state === "queued") place(x, b.position);
+      break;
+    case "experiment_edited":
+      x.title = str("title") ?? x.title;
+      x.details = str("details") ?? x.details;
+      x.family = str("family") ?? x.family;
+      x.why = str("why") ?? x.why;
+      break;
+    case "experiment_dropped":
+      leave(x);
+      x.state = "dropped";
+      x.dropped_why = str("why") ?? null;
+      x.dropped_by = str("by") ?? e.actor;
+      break;
+    case "experiment_assigned":
+      leave(x);
+      x.state = "assigned";
+      x.lane = str("lane") ?? x.lane;
+      x.trial = str("trial") ?? x.trial;
+      break;
+    case "experiment_finished":
+      leave(x);
+      x.state = "done";
+      x.trial = str("trial") ?? x.trial;
+      x.lane = str("lane") ?? x.lane;
+      x.attempt = str("attempt") ?? null;
+      x.result = str("result") ?? str("stopped") ?? null;
+      break;
+  }
 }
