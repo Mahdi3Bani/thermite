@@ -185,7 +185,7 @@ None of these ends research. Nothing limits how many experiments a run's [experi
 | Its why | Up to 2,000 characters. Dropping an experiment needs a why of 1 to 2,000 characters |
 | A place in the queue | `top`, `end`, or an index from 0 to 100,000 among the queued experiments, 0 first. An index past the last puts it last |
 | A lane's idea | One request of at most 64 KiB. No limit on how many |
-| Experiments copied into a new run by **Start a run** (`assign_campaign`'s `queue`) | 500. **Start a run** copies at most the first 500: the run's experiments up next, in order, then its lanes' ideas. A command with more is refused. With **Agents** off, it copies none |
+| Experiments copied into a new run by **Start a run** or `thermite assign --queue-from` (`assign_campaign`'s `queue`) | 500. Both copy at most the first 500: the run's experiments up next, in order, then its lanes' ideas. A command with more is refused. With **Agents** off, **Start a run** copies none, and `thermite assign` refuses `--queue-from` |
 | The planner's answer | At most 20 experiments added, 40 moves, 40 drops, 40 ideas accepted, 5 rules and 8 new families |
 | A teacher's or the combiner's answer | Up to 10 experiments and 10 moves, each with a why. One that doesn't fit is left out; a list of more than 50 is ignored. Its review still counts |
 | The auditor's answer | One check |

@@ -99,6 +99,7 @@ import {
   listModels,
   providerBase,
 } from "./providers.ts";
+import { untriedOf } from "./queue-copy.ts";
 import { probeRepository } from "./repo-probe.ts";
 import { type RunpodFacts, readRunpod, runpodLine } from "./runpod.ts";
 import { cheapestGpu, DEFAULT_DISK_GB, type RunpodTests, type TestView } from "./runpod-tests.ts";
@@ -1245,27 +1246,12 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         })),
     });
   };
-  /** A run's untried experiments, in queue order then its lanes' ideas: a new run's first queue. */
+  /** The untried experiments of the run Start a run names: a new run's first queue. */
   const untried = (vs: RigView[], key: string): QueueSeed[] => {
     const x = vs
       .flatMap((u) => u.runs.map((r) => ({ u, r })))
       .find((y) => runKey(y.u.id, y.r.id) === key);
-    if (!x) return [];
-    const q = x.r.queue;
-    return [
-      ...q
-        .filter((e) => e.state === "queued")
-        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0)),
-      ...q.filter((e) => e.state === "proposed"),
-    ].map((e) => ({
-      title: e.title,
-      ...(e.details ? { details: e.details } : {}),
-      ...(e.family ? { family: e.family } : {}),
-      ...(e.why ? { why: e.why } : {}),
-      by: e.by,
-      state: e.state === "proposed" ? "proposed" : "queued",
-      from: { run: x.r.id, id: e.id },
-    }));
+    return x ? untriedOf(x.r) : [];
   };
   app.post("/ui/campaigns/:campaign/runs", async (c) => {
     const f = await c.req.parseBody();

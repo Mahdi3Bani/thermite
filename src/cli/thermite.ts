@@ -21,13 +21,18 @@ const USAGE = `usage: thermite <command> [options]
                                       the only part control's deployment needs
   assign --contract F --run ID [--seed GIT_URL[@COMMIT] | --seed-commit C] [--kit GIT_URL]
          [--model NAME=URL ...] [--direction D] [--agents off] [--promotion auto|owner]
+         [--queue-from [RIG/]RUN]
          (--control URL --token-file F --rig R [--ttl MIN] | --print)
                                       start a run. The rig's supervisor fetches the project and
                                       kit commits from their repositories, and models from their
                                       URLs, before the harness checks them. --seed-commit names a
                                       commit already on the rig (an earlier run's result); a kit
-                                      already there needs no --kit. --print shows the payload
-                                      (for issue_command over MCP) instead of issuing it
+                                      already there needs no --kit. --queue-from starts the new
+                                      run's queue with a past run's untried experiments, read
+                                      from control (on --rig unless RIG/ is given; it needs
+                                      --control and --token-file, with --print too). --print
+                                      shows the payload (for issue_command over MCP) instead of
+                                      issuing it
   assign-payload --contract F --run ID --seed-repo R --seed-commit C --bundle PATH
                  [--bundle-sha256 H] [--kit-repo R --kit-commit C --kit-bundle PATH
                  [--kit-bundle-sha256 H]] [--model NAME=SHA256:PATH ...] [--direction D] [--agents off]
@@ -57,6 +62,13 @@ function fail(msg: string): never {
 
 function readJsonArg(value: string): unknown {
   return JSON.parse(value.startsWith("@") ? readFileSync(value.slice(1), "utf8") : value);
+}
+
+async function get(url: string, token: string): Promise<unknown> {
+  const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
+  const text = await res.text();
+  if (!res.ok) fail(`${url} -> ${res.status} ${text}`);
+  return JSON.parse(text);
 }
 
 async function post(url: string, token: string, body: unknown): Promise<unknown> {
@@ -200,6 +212,7 @@ async function main(argv: string[]): Promise<void> {
           direction: { type: "string" },
           agents: { type: "string" },
           promotion: { type: "string" },
+          "queue-from": { type: "string" },
           control: { type: "string" },
           "token-file": { type: "string" },
           rig: { type: "string" },
@@ -214,6 +227,22 @@ async function main(argv: string[]): Promise<void> {
         fail("--promotion is auto or owner");
       if (!values.print && (!values.control || !values["token-file"] || !values.rig))
         fail("give --control, --token-file and --rig to issue it, or --print to show it");
+      // A past run's untried experiments (goal 067), from control's records of that run.
+      const queueFrom = values["queue-from"];
+      let past: { rig: string; run: string } | undefined;
+      if (queueFrom !== undefined) {
+        // As the harness refuses it: nothing would take the experiments of a run without agents.
+        if (values.agents === "off")
+          fail("a run without agents has no queue: leave out --queue-from");
+        if (!values.control || !values["token-file"])
+          fail("--queue-from reads the past run from control: give --control and --token-file");
+        const slash = queueFrom.indexOf("/");
+        const run = queueFrom.slice(slash + 1);
+        const rig = slash >= 0 ? queueFrom.slice(0, slash) : values.rig;
+        if (!run || (slash >= 0 && !rig)) fail("--queue-from names a run: RUN or RIG/RUN");
+        if (!rig) fail("--queue-from RUN is a run on --rig: give --rig, or RIG/RUN");
+        past = { rig, run };
+      }
       const r = parseContract(JSON.parse(readFileSync(values.contract, "utf8")));
       if (!r.ok) fail(r.errors.join("\n"));
       const contract = r.contract;
@@ -278,6 +307,21 @@ async function main(argv: string[]): Promise<void> {
           source: { url: m.slice(eq + 1) },
         });
       }
+      // The same seed as Start a run: up next in order, then the lanes' ideas, at most 500, with
+      // the words and authors control's records hold for this contract's campaign, as over MCP.
+      let queue: unknown[] = [];
+      if (past) {
+        const control = (values.control as string).replace(/\/$/, "");
+        const from = (await get(
+          `${control}/v1/rigs/${encodeURIComponent(past.rig)}/runs/${encodeURIComponent(past.run)}/untried?campaign=${encodeURIComponent(contract.campaign)}`,
+          readFileSync(values["token-file"] as string, "utf8").trim(),
+        )) as { queue: unknown[] };
+        queue = from.queue;
+        if (!queue.length)
+          process.stderr.write(
+            `${past.run} on ${past.rig} has no untried experiments: the new run's queue starts empty\n`,
+          );
+      }
       const payload = {
         run: values.run,
         contract,
@@ -290,6 +334,7 @@ async function main(argv: string[]): Promise<void> {
           ? { promotion: values.promotion === "owner" ? "owner_approval" : "auto" }
           : {}),
         imports,
+        ...(queue.length ? { queue } : {}),
       };
       if (values.print) {
         process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);

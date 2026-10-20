@@ -58,7 +58,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [064](goals/064-experiment-queue.goal) One experiment queue for each run; the planner coordinates it · `IN_PROGRESS`
 - [065](goals/065-journals-and-corpus.goal) Journals and a research corpus from every campaign · `IN_PROGRESS`
 - [066](goals/066-direction-rules.goal) Rules name directions, picked with `:direction:` · `READY`
-- [067](goals/067-assign-queue-from.goal) `thermite assign` can copy a past run's untried experiments · `READY`
+- [067](goals/067-assign-queue-from.goal) `thermite assign` can copy a past run's untried experiments · `VERIFIED`
 - [068](goals/068-mcp-servers-for-agents.goal) MCP servers for a campaign's agents, named by its kit · `READY`
 
 ### Research mode

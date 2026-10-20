@@ -19,6 +19,7 @@ import { mountMcp } from "./mcp.ts";
 import { metricsText } from "./metrics.ts";
 import { OutsideKbs } from "./outside-kb.ts";
 import { claudeModelName, isOpencodeOwn, providerBase } from "./providers.ts";
+import { copiedFromRecords, untriedOf } from "./queue-copy.ts";
 import type { probeRepository } from "./repo-probe.ts";
 import { RunpodTests, type TestRequest } from "./runpod-tests.ts";
 import { SecretBox } from "./secrets.ts";
@@ -933,6 +934,25 @@ export function createControlApi(
   app.get("/v1/rigs/:rig/view", admin, (c) => {
     const v = rigView(store, c.req.param("rig"), { staleAfterMs: opts.staleAfterMs });
     return v ? c.json(v) : c.json({ error: "not found" }, 404);
+  });
+
+  // A past run's untried experiments as a new run's first queue (goal 067): what Start a run
+  // copies, at most 500, with the words and authors control's records hold, as MCP takes them
+  // for the new run's campaign (`campaign`; the past run's own when not given).
+  app.get("/v1/rigs/:rig/runs/:run/untried", admin, (c) => {
+    const rig = c.req.param("rig");
+    const run = c.req.param("run");
+    const v = rigView(store, rig, { staleAfterMs: opts.staleAfterMs });
+    if (!v) return c.json({ error: `no rig ${rig}` }, 404);
+    const r = v.runs.find((x) => x.id === run);
+    if (!r) return c.json({ error: `no run ${run} on ${rig}` }, 404);
+    const campaign = c.req.query("campaign") || r.campaign || "";
+    return c.json({
+      rig,
+      run,
+      campaign: r.campaign,
+      queue: copiedFromRecords(store, campaign, untriedOf(r).slice(0, 500)),
+    });
   });
 
   // Test pods on a GPU cloud (the owner's token; MCP gives operators the same).
