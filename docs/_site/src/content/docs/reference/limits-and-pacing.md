@@ -89,6 +89,7 @@ The dashboard calls an epoch a **round**.
 | Live view lines sent to control | Every 3,000 ms | `THERMITE_LIVE_INTERVAL_MS` |
 | The model route checked on control | Every 30 s | `THERMITE_MODEL_ROUTE_POLL_SECONDS` |
 | A rig shown as not reporting | After 180 s without a report | `THERMITE_CONTROL_STALE_SECONDS` |
+| A rig shown as offline in the REST API, MCP and `thermite rig list` | After 900 s without a report, never before it is stale | `THERMITE_CONTROL_OFFLINE_SECONDS` |
 | A GPU cloud in **Providers** read again: prices, pods and spend | Every 15 minutes, and on **Read again** | Fixed |
 | Advisor rounds | 60 s after the last round ended, never less than 30 s, unless a new owner's message to the teacher pair ends the wait (below) | `THERMITE_POLL_SECONDS` |
 | Teacher reviews of a run | Every 60 minutes, and soon after the owner writes to the teacher pair, or to all the advisors, of a running run | `teacher_minutes` in the advisors file |

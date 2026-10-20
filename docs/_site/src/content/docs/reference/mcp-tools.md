@@ -30,7 +30,7 @@ The answer holds the tool's result as JSON text, here the five newest [signed co
 | --- | --- |
 | Address | `/mcp` on control, for example `http://127.0.0.1:8800/mcp` locally |
 | Transport | Streamable HTTP. Stateless: each request stands alone, with no session, and the answer is JSON, not an event stream |
-| Server name and version | `thermite-control`, `1.0.0` |
+| Server name and version | `thermite-control`, and control's Thermite version, such as `0.1.0` |
 | Sign-in | `Authorization: Bearer <token>`: the owner's, an operator's, an agent's or a reader's token. [Tokens and roles](tokens.md#people-and-agents) says how each is made |
 | No token, or an unknown one | HTTP 401 `{"error":"unauthorized"}` |
 | `Accept` header | A client must accept both `application/json` and `text/event-stream`. Otherwise the answer is HTTP 406 `Not Acceptable: Client must accept both application/json and text/event-stream`. MCP clients send this themselves |
@@ -86,9 +86,9 @@ Tools are listed in the order the server offers them. Each description is quoted
 
 **List rigs.** All roles.
 
-> Every rig: live or stale, last report, and for each campaign run its mode, status, champion and relative gain over the baseline.
+> Every rig: reporting, stale or offline, last report, its Thermite versions against control's (behind, refused and why, or unknown), and for each campaign run its mode, status, champion and relative gain over the baseline.
 
-No inputs. Returns `[{rig, stale, last_seen, jobs, runs}]`, where each run is `{run, campaign, mode, status, champion_seq, gain_over_baseline, verdicts, pending_promotions}`. It lists the rigs that have reported and are not retired.
+No inputs. Returns `[{rig, state, stale, last_seen, version, jobs, runs}]`, where each run is `{run, campaign, mode, status, champion_seq, gain_over_baseline, verdicts, pending_promotions}`. `state` is `reporting`, `stale` or `offline`, and `stale` is true for the last two. `version` is `{state, notice, refused, control, harness, supervisor}`: the rig's builds against control's, `behind` with a notice to update the rig's images, or `refused` with the reason control refuses its reports and commands. [Rig versions](rest-api.md#rig-versions) describes each field. It lists the rigs that have reported, or that control refuses, and are not retired.
 
 ### get_run
 
@@ -226,6 +226,7 @@ Returns `{id}`. Errors:
 
 - `<rig> is being reset by the owner` (the agent's token only)
 - `unknown rig <rig>`
+- `Control sends no commands to <rig>.` and the reason, for a rig control [refuses](rest-api.md#when-control-refuses-a-rig)
 - `bad <kind> payload: <field>: <message>`, with `payload` in place of a field for a rule about the whole payload, such as `bad queue_edit payload: payload: change at least one of title, details, family and why`
 - for `message_agent`, `Write a message first.` and the refusals of a message that nothing on the rig would read, such as `The planner is off on this rig (Edit rig), so nothing would read it.`: [`message_agent`](signed-commands.md#message_agent) lists them
 - `the <kind> command is too large to deliver`

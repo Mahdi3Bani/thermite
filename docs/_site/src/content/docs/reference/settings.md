@@ -35,7 +35,8 @@ The "Secret" column says whether a value is secret: **no**; a **path to a secret
 | `THERMITE_CONTROL_DIR` | path | `/var/lib/thermite-control` | directory with secrets | Control's state: its store (`control.db`, which also holds [Thermite's knowledge base](knowledge-base.md)), its command-signing key pair (`control-signing.key` and `.pub`, made at first start), the secrets key when `THERMITE_CONTROL_SECRETS_KEY_FILE` is not set, and the kits written on the **New campaign** page (`kits/`) |
 | `THERMITE_CONTROL_PUBKEY_EXPORT` | path | not set | no | A second place to write control's command-signing public key, so that rigs can verify [signed commands](signed-commands.md). The local compose file writes it to a volume the harness reads |
 | `THERMITE_CONTROL_SECRETS_KEY_FILE` | path | `secrets.key` in `THERMITE_CONTROL_DIR`, made on first use | path to a secret | The key that encrypts what control keeps for you: model providers' keys and sign-ins, Git access, GPU cloud keys, machines' SSH keys, cluster kubeconfigs and outside knowledge bases' tokens. It must hold a 32-byte key in base64. Without the same key, the stored secrets cannot be read |
-| `THERMITE_CONTROL_STALE_SECONDS` | seconds | `180` | no | A rig that has sent no report for this long shows as stale |
+| `THERMITE_CONTROL_STALE_SECONDS` | seconds | `180` | no | A rig that has sent no report for this long shows as stale: **Not reporting** on the dashboard, `stale` in the [rig lists](rest-api.md#reporting-stale-and-offline) |
+| `THERMITE_CONTROL_OFFLINE_SECONDS` | seconds | `900` | no | A rig that has sent no report for this long is `offline` in the rig lists of the REST API, MCP and `thermite rig list`. A value below `THERMITE_CONTROL_STALE_SECONDS` counts as that value |
 | `THERMITE_CONTROL_SESSION_DAYS` | days | `30` | no | How long an unused dashboard sign-in lasts |
 
 ### Tokens
@@ -283,9 +284,11 @@ The harness warns once when it reads a `QWEN_` name: `<older name> and the other
 
 | Service | Passed from your shell or `.env`, with its default | Fixed in `compose.yaml` |
 | --- | --- | --- |
-| control | `THERMITE_CONTROL_STALE_SECONDS` (180); `THERMITE_CONTROL_PUBLIC_URL`, `THERMITE_RIG_HARNESS_IMAGE`, `THERMITE_RIG_HARNESS_CUDA_IMAGE`, `THERMITE_RIG_SUPERVISOR_IMAGE`, `THERMITE_CONTROL_REQUIRE_KEY_ACCEPT`, `THERMITE_CONTROL_SESSION_DAYS` and `THERMITE_LIFECYCLE` (all empty) | `THERMITE_CONTROL_DIR`, `THERMITE_CONTROL_LISTEN`, `THERMITE_CONTROL_ADMIN_TOKEN_FILE`, `THERMITE_CONTROL_OPERATOR_TOKEN_FILE`, `THERMITE_CONTROL_RIG_TOKENS_FILE`, `THERMITE_CONTROL_PUBKEY_EXPORT` (`/keys/control-signing.pub`), `THERMITE_COMPOSE_PROJECT`, `THERMITE_COMPOSE_SERVICES` |
+| control | `THERMITE_CONTROL_STALE_SECONDS` (180); `THERMITE_CONTROL_OFFLINE_SECONDS` (900); `THERMITE_CONTROL_PUBLIC_URL`, `THERMITE_RIG_HARNESS_IMAGE`, `THERMITE_RIG_HARNESS_CUDA_IMAGE`, `THERMITE_RIG_SUPERVISOR_IMAGE`, `THERMITE_CONTROL_REQUIRE_KEY_ACCEPT`, `THERMITE_CONTROL_SESSION_DAYS` and `THERMITE_LIFECYCLE` (all empty) | `THERMITE_CONTROL_DIR`, `THERMITE_CONTROL_LISTEN`, `THERMITE_CONTROL_ADMIN_TOKEN_FILE`, `THERMITE_CONTROL_OPERATOR_TOKEN_FILE`, `THERMITE_CONTROL_RIG_TOKENS_FILE`, `THERMITE_CONTROL_PUBKEY_EXPORT` (`/keys/control-signing.pub`), `THERMITE_COMPOSE_PROJECT`, `THERMITE_COMPOSE_SERVICES` |
 | harness | `THERMITE_PROMOTION` (`auto`); `THERMITE_CALIBRATION_BLOCKS` (6); `THERMITE_MODEL_BASE_URL`, `THERMITE_MODEL` and `THERMITE_MODEL_REASONING_EFFORT` (empty); `THERMITE_MODEL_CONTEXT_WINDOW` (0); `THERMITE_MODEL_MAX_TOKENS` (8192); `THERMITE_MAX_TRIALS` (1); `THERMITE_TRIAL_MINUTES` (20); `THERMITE_MAX_TURNS`, `THERMITE_RESEARCH_MAX_MB`, `THERMITE_LLM_USD_PER_MTOK_IN` and `THERMITE_LLM_USD_PER_MTOK_OUT` (empty); `THERMITE_EXPORT_MINUTES` (60) | `THERMITE_RIG_ID` (`local-1`), `THERMITE_TARGET` (`cpu`), `THERMITE_CONTROL_PUBKEY_FILE`, `THERMITE_SUPERVISOR_TOKEN_FILE`, `THERMITE_PROPOSER_TOKEN_FILE`, `THERMITE_MODEL_API_KEY_FILE` |
 | supervisor | `THERMITE_POLL_SECONDS` (60); `THERMITE_COMMAND_POLL_SECONDS` (5); `THERMITE_MODEL_ROUTE_POLL_SECONDS` (30); `THERMITE_LIVE_INTERVAL_MS` (3000); `THERMITE_RESULTS_REMOTE` (`file:///results/results.git`, a repository on a shared volume); `THERMITE_ADVISORS_FILE` (empty) | `THERMITE_RIG_ID` (`local-1`), `HARNESS_URL`, `CONTROL_URL`, `THERMITE_HARNESS_TOKEN_FILE`, `THERMITE_CONTROL_TOKEN_FILE` |
+
+Each service's build also takes `THERMITE_COMMIT` from your shell or `.env` (empty), as the [build argument](#build-arguments) of the same name: for example `THERMITE_COMMIT=$(git rev-parse HEAD) docker compose build`.
 
 The defaults match the code's, except `THERMITE_RESULTS_REMOTE`, which the code leaves unset. The second rig of the `two-rigs` profile (`harness-2` and `supervisor-2`, rig `local-2`) takes the same settings, except that its harness does not pass `THERMITE_RESEARCH_MAX_MB` or the two prices.
 
@@ -321,6 +324,7 @@ The images take these build arguments. [Harness image](harness-image.md) says wh
 | `OPENCODE_VERSION` | harness | `2.0.32` | The OpenCode version installed |
 | `CLAUDE_CODE_VERSION` | harness, supervisor | empty: Claude Code is not installed | The Claude Code version to download at build time, for agents or advisors on a Claude subscription |
 | `KUBECTL_VERSION` | control | `v1.37.1` | The kubectl version installed, checked against a pinned checksum |
+| `THERMITE_COMMIT` | control, harness, supervisor | empty | The source commit the image is built from: 7 to 64 hexadecimal characters, such as the output of `git rev-parse HEAD`. The image sets the environment variable of the same name, and the service reports it with Thermite's version from `package.json` ([Rig versions](rest-api.md#rig-versions)). Empty, or anything else: the service reports no commit |
 
 ## Set by Thermite itself
 

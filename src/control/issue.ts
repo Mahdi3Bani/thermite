@@ -118,6 +118,9 @@ export function issueCommand(
   if (!store.rigs().some((u) => u.id === input.rig) && !store.knownRig(input.rig)) {
     throw new Error(`unknown rig ${input.rig}`);
   }
+  // A rig control refuses would never fetch it: say why now, not when it expires.
+  const refused = store.rigRefusal(input.rig);
+  if (refused) throw new Error(`Control sends no commands to ${input.rig}. ${refused.reason}`);
   const parsed = CommandPayloads[input.kind].safeParse(
     input.kind === "message_agent"
       ? checkedMessage(store, input.rig, input.payload)

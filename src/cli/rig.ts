@@ -50,3 +50,77 @@ Keep secrets/ private. A lost or leaked token is replaced with \`thermite rig to
     writeFileSync(join(dir, name), text, { mode, flag: "wx" });
   return files.map(([name]) => name);
 }
+
+/** A build as control's rig list gives it. */
+interface ListedBuild {
+  version: string | null;
+  commit: string | null;
+  protocol: number | null;
+  oldest_protocol?: number | null;
+}
+
+/** What control answers for its rig list (GET /v1/rigs). An older control sends no versions. */
+export interface RigList {
+  control?: ListedBuild;
+  rigs: {
+    id: string;
+    last_seen: string;
+    state?: string;
+    version?: {
+      state: string;
+      notice: string | null;
+      harness: ListedBuild | null;
+      supervisor: ListedBuild | null;
+    };
+  }[];
+  enrolled?: { rig: string; retired_at: string | null }[];
+}
+
+const short = (b: ListedBuild | null | undefined) =>
+  b?.version ? `${b.version}${b.commit ? ` (${b.commit.slice(0, 12)})` : ""}` : "no version";
+
+/**
+ * The rig list as `thermite rig list` prints it: control's build, then each rig with whether it
+ * reports, its last report, its version against control's and each part's build, and under it
+ * what the owner should know. Enrolled rigs that never reported come last.
+ */
+export function formatRigList(list: RigList): string {
+  const c = list.control;
+  const works =
+    c && typeof c.oldest_protocol === "number" && c.oldest_protocol !== c.protocol
+      ? ` (works with ${c.oldest_protocol} to ${c.protocol})`
+      : "";
+  const lines = [
+    c
+      ? `control ${short(c)}, protocol ${c.protocol}${works}`
+      : "control: no version (control is older than version checks)",
+  ];
+  const rows = [["RIG", "STATE", "LAST REPORT", "VERSION", "HARNESS", "SUPERVISOR"]];
+  const notes = new Map<number, string>();
+  for (const u of list.rigs) {
+    if (u.version?.notice) notes.set(rows.length, u.version.notice);
+    rows.push([
+      u.id,
+      u.state ?? "unknown",
+      Date.parse(u.last_seen) > 0 ? u.last_seen : "never",
+      u.version?.state ?? "unknown",
+      short(u.version?.harness),
+      short(u.version?.supervisor),
+    ]);
+  }
+  const width = (i: number) => Math.max(...rows.map((r) => (r[i] ?? "").length));
+  rows.forEach((r, n) => {
+    lines.push(
+      r
+        .map((cell, i) => cell.padEnd(width(i)))
+        .join("  ")
+        .trimEnd(),
+    );
+    const note = notes.get(n);
+    if (note) lines.push(`  ${note}`);
+  });
+  const listed = new Set(list.rigs.map((u) => u.id));
+  for (const e of list.enrolled ?? [])
+    if (!e.retired_at && !listed.has(e.rig)) lines.push(`${e.rig}: enrolled, no report yet`);
+  return `${lines.join("\n")}\n`;
+}

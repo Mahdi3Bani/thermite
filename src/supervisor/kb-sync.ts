@@ -1,4 +1,5 @@
 import { KbSync } from "../core/kb.ts";
+import { buildHeaders } from "../core/version.ts";
 
 /**
  * Past research for each running run (goal 065). Control keeps Thermite's knowledge base: a
@@ -90,7 +91,7 @@ export async function syncKnowledgeOnce(
         const after = out.state.cursors[run.id] ?? 0;
         const res = await f(
           `${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/kb?run=${encodeURIComponent(run.id)}&after=${after}`,
-          { headers: { authorization: `Bearer ${cfg.controlToken}` } },
+          { headers: { authorization: `Bearer ${cfg.controlToken}`, ...buildHeaders() } },
         );
         // Nothing for this run: control did not assign it (left alone for an hour), or has not
         // heard of it from the rig yet (asked again next time).

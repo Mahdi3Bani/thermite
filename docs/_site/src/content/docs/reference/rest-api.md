@@ -50,6 +50,7 @@ Request bodies are JSON, except a champion's patch, which is sent as raw bytes.
 | 401 | `{"error":"unauthorized"}` | No token, a wrong token, or a token that may not call the route |
 | 400 | `{"error":"invalid request"}` | The body does not match the route's schema. The schema's own message is not sent back. Control writes it to its output and to its audit log, as action `failed` |
 | 403 | `{"error":"this rig is retired in control"}` | A rig-facing route, called for a retired rig |
+| 409 | `{"error":"Control cannot work with this rig: …"}` | A rig-facing route, called for a rig whose protocol control cannot work with. See [Rig versions](#rig-versions) |
 | 403, 404, 409, 422 | `{"error":"<why>"}` | Route by route, as the tables below say |
 | 500 | `{"error":"<why>"}` | A refusal while control does the work, such as a refused propagation or a reset in the wrong state. It does not always mean a fault in control. A command that control refuses (`POST /v1/commands`) answers 400 with the reason, or 404 for an unknown rig |
 
@@ -71,8 +72,8 @@ All of these take the owner's token, except where the table says otherwise. `<ri
 
 | Route | Token | What it does | Request | Answer |
 | --- | --- | --- | --- | --- |
-| `GET /v1/rigs` | Owner | Lists the rigs that have reported and are not retired, and every rig enrolled through control | None | `{"rigs":[{id, last_seen, last_cursor, ledger_id, summary}], "enrolled":[{rig, created_at, created_by, rotated_at, retired_at}]}`. `enrolled` includes retired rigs |
-| `GET /v1/rigs/<rig>/view` | Owner | One rig as the dashboard sees it: hardware, judge, runs with their champions and attempts, goals, audits, checks, model and settings | None | `{id, last_seen, stale, ledger_id, summary, supervisor, hardware, jobs, runs, recent, judge, checks, model, settings, gpu_split}`. `recent` is the newest 50 events, newest first. Each run has the fields the MCP tool [`get_run`](mcp-tools.md#get_run) returns, among them `queue` (every experiment of its experiment queue, with its state and place, as [`run_queue`](mcp-tools.md#run_queue) describes them), `rules` (the rules for its plan), `handouts` (the planner's newest 50 hand-outs, oldest first), `messages` (the owner's messages, with who read them) and `journal` (every note its agents wrote, oldest first: see [`get_run`](mcp-tools.md#get_run)). 404 `{"error":"not found"}` |
+| `GET /v1/rigs` | Owner | Lists the rigs that have reported, or that control refuses, and are not retired; every rig enrolled through control; and control's own build | None | `{"control":{version, commit, protocol, oldest_protocol}, "rigs":[{id, last_seen, last_cursor, ledger_id, summary, state, version}], "enrolled":[{rig, created_at, created_by, rotated_at, retired_at}]}`. `state` is `reporting`, `stale` or `offline`, and `version` is the rig's builds against control's: see [Rig versions](#rig-versions). A rig that never sent a report has `last_seen` `1970-01-01T00:00:00.000Z`. `enrolled` includes retired rigs |
+| `GET /v1/rigs/<rig>/view` | Owner | One rig as the dashboard sees it: hardware, judge, runs with their champions and attempts, goals, audits, checks, model and settings | None | `{id, last_seen, stale, state, version, ledger_id, summary, supervisor, hardware, jobs, runs, recent, judge, checks, model, settings, gpu_split}`. `stale` is true when `state` is `stale` or `offline`. `recent` is the newest 50 events, newest first. Each run has the fields the MCP tool [`get_run`](mcp-tools.md#get_run) returns, among them `queue` (every experiment of its experiment queue, with its state and place, as [`run_queue`](mcp-tools.md#run_queue) describes them), `rules` (the rules for its plan), `handouts` (the planner's newest 50 hand-outs, oldest first), `messages` (the owner's messages, with who read them) and `journal` (every note its agents wrote, oldest first: see [`get_run`](mcp-tools.md#get_run)). 404 `{"error":"not found"}` |
 | `GET /v1/rigs/<rig>/events` | Owner | The rig's events, in the order control received them | `after`: control's sequence number, default 0. `limit`, default 500 | `{"events":[{seq, ledger_id, id, at, actor, kind, subject, body}]}`, oldest first |
 | `GET /v1/rigs/<rig>/live` | Owner or reader | The live log: what the planner, the judge, each trial and the supervisor are doing now | `after`: control's line id; without it, the newest lines. `source`: `planner`, `judge`, `supervisor` or `trial:<id>`. `limit`, default 500 | `{"sources":[{source, lane, run, last_at, lines, ended}], "entries":[{id, seq, at, source, kind, text, lane, run, signed}]}`, entries oldest first. `signed` is false for the supervisor's own lines |
 | `GET /v1/leaderboard` | Owner | For each campaign, each run's champion, its gain over its own baseline and the rigs whose judges cross-verified it | None | `{"campaigns":{"<campaign>":[{rig, run, mode, status, champion_seq, gain, verified_by}]}}` |
@@ -87,7 +88,7 @@ A live line's `kind` is `text`, `thinking`, `tool`, `result`, `message`, `status
 
 | Route | Token | What it does | Request | Answer |
 | --- | --- | --- | --- | --- |
-| `POST /v1/commands` | Owner | Signs a command and queues it for a rig. Control records `owner:api` as its issuer | `{rig, kind, payload, ttl_minutes}`. `kind` is any kind except `wipe_state`. `ttl_minutes` is 1 to 10080, default 60 | 201 `{"id":"<id>","status":"pending"}`. 400 `wipe_state is issued only by a full reset`, `bad <kind> payload: <field>: <message>`, `the <kind> command is too large to deliver`, or, for a `message_agent`, `Write a message first.` or why nothing on the rig would read it, such as `The planner is off on this rig (Edit rig), so nothing would read it.` or `This run has no goal the review panel reviews, so nothing would read it.` ([`message_agent`](signed-commands.md#message_agent) lists them). 404 `unknown rig <rig>` |
+| `POST /v1/commands` | Owner | Signs a command and queues it for a rig. Control records `owner:api` as its issuer | `{rig, kind, payload, ttl_minutes}`. `kind` is any kind except `wipe_state`. `ttl_minutes` is 1 to 10080, default 60 | 201 `{"id":"<id>","status":"pending"}`. 400 `wipe_state is issued only by a full reset`, `bad <kind> payload: <field>: <message>`, `the <kind> command is too large to deliver`, or, for a `message_agent`, `Write a message first.` or why nothing on the rig would read it, such as `The planner is off on this rig (Edit rig), so nothing would read it.` or `This run has no goal the review panel reviews, so nothing would read it.` ([`message_agent`](signed-commands.md#message_agent) lists them). 404 `unknown rig <rig>`. 400 `Control sends no commands to <rig>.` and the reason, for a rig control [refuses](#rig-versions) |
 | `GET /v1/commands` | Owner | The newest commands, with their status and outcome | `limit`, default 100 | `{"commands":[{id, rig, kind, issued_by, issued_at, status, acked_at, outcome}]}`, newest first |
 | `GET /v1/commands/<id>` | Owner | One command's status and outcome | None | `{"status":"…","outcome":…}`. 404 `{"error":"not found"}` |
 | `POST /v1/commands/<id>/cancel` | Owner | Withdraws a command that is still pending | None | `{"cancelled":true}`. 404 `{"error":"no such pending command"}` |
@@ -103,6 +104,7 @@ A live line's `kind` is `text`, `thinking`, `tool`, `result`, `message`, `status
 - `champion seq <n> is not published yet (it is published with the rig's next export)`
 - `<to_run> runs <campaign>, not <campaign>`
 - `the target works on <repo>, the champion is in <repo>`
+- `Control sends no commands to <rig>.` and the reason, when control [refuses](#rig-versions) the receiving rig
 
 [Run a campaign on several rigs](../how-to/campaigns/several-rigs.md) says when to propagate.
 
@@ -199,7 +201,7 @@ The last part of the path must match the join's form, `script` for a machine and
 
 ## Routes used by rigs
 
-Each rig's supervisor calls these with the rig's own token, for its own rig only. Scripts do not call them. [Trust between control and rigs](../explanation/trust.md) explains the signatures they check.
+Each rig's supervisor calls these with the rig's own token, for its own rig only. Scripts do not call them. [Trust between control and rigs](../explanation/trust.md) explains the signatures they check. Each call carries the supervisor's build in headers, and each answers 409 with the reason while control refuses the rig: see [Rig versions](#rig-versions).
 
 | Route | What it does | Request | Answer |
 | --- | --- | --- | --- |
@@ -230,6 +232,64 @@ Each rig's supervisor calls these with the rig's own token, for its own rig only
 | 409 | `a gap in the event stream`, with `expected_cursor` |
 | 409 | `a report older than the newest one taken` |
 | 409 | `report from the future` (more than 5 minutes ahead of control's clock) |
+| 409 | `Control cannot work with this rig: …`, when the harness's build in the report, or the supervisor's, has a protocol control cannot work with ([Rig versions](#rig-versions)) |
+
+## Rig versions
+
+Control, each rig's harness and each rig's supervisor report their builds, and control compares the rig's with its own. A build is Thermite's version (from `package.json`), the source commit the image was built from, and the protocol: the version of the contract between control and a rig. This release speaks protocol 1.
+
+- **The harness** puts its build in its signed report's summary, as `build`: `{version, commit, protocol, oldest_protocol}`.
+- **The supervisor** sends its build in headers on every call to control:
+
+| Header | Value |
+| --- | --- |
+| `x-thermite-version` | Thermite's version, such as `0.1.0` |
+| `x-thermite-commit` | The source commit, when the image was built with `THERMITE_COMMIT` ([build arguments](settings.md#build-arguments)). Left out otherwise |
+| `x-thermite-protocol` | The protocol it speaks |
+| `x-thermite-oldest-protocol` | The oldest protocol of the other side it works with |
+
+A part that sends no build is from before version checks: its build is unknown. For the supervisor, that is a report, a supervisor-figures call or a command fetch without the headers. A malformed value counts as not sent. Control records each part's build when it changes, with `since`, the time it first saw it.
+
+`GET /v1/rigs`, `GET /v1/rigs/<rig>/view`, the MCP tool [`list_rigs`](mcp-tools.md#list_rigs) and [`thermite rig list`](command-line.md#rig-list) give each rig's `version`:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `state` | string | `current`, `behind`, `ahead`, `unknown` or `refused`, as below |
+| `notice` | string or null | What to know and do, in plain words. Null when the rig runs control's version |
+| `refused` | `{reason, since}` or null | Why control refuses the rig, and since when |
+| `control` | `{version, commit, protocol, oldest_protocol}` | Control's own build. `commit` is null when control's image was built without one |
+| `harness`, `supervisor` | `{version, commit, protocol, oldest_protocol, since}` or null | What each part last reported. Null when it reports no build. A part it did not send, or sent malformed, is null |
+
+| `state` | When | `notice` |
+| --- | --- | --- |
+| `current` | Both parts run control's version. Their commits may differ | Null |
+| `behind` | A part runs an older version than control, and control works with it | `This rig runs an older Thermite than control: harness 0.1.0, supervisor 0.1.0. Control runs 0.2.0. Control still works with it. Update the rig's images.` |
+| `unknown` | A part sends no version, or one that is not a semantic version | `The rig's harness and supervisor send no version. Their images are older than version checks. Control still works with it.` |
+| `ahead` | A part runs a newer version than control, and control works with it | `This rig runs a newer Thermite than control: … Control still works with it. Update control.` |
+| `refused` | A part's protocol and control's do not meet | The reason, as below |
+
+Versions compare as semantic versions: `0.2.0` is after `0.1.9`, and `0.2.0-rc.1` is before `0.2.0`. When the parts differ, `refused` comes first, then `behind`, `unknown`, `ahead` and `current`.
+
+### When control refuses a rig
+
+Control refuses a rig only when it knows both protocols and they do not meet. A build with no protocol is never refused. A part's protocol does not meet control's when:
+
+- it is older than the oldest protocol control works with: `Control cannot work with this rig: its supervisor speaks protocol 1, and control works with protocols 2 to 3. Update the rig's images.`;
+- or the oldest protocol it works with is newer than control's: `Control cannot work with this rig: its harness works with protocol 4 or later, and control speaks protocol 3. Update control.`
+
+While control refuses a rig:
+
+- every route the rig calls answers 409 with the reason, so control takes none of its reports and it fetches no commands. Its supervisor's log has the reason in its `relay error` and `command relay error` lines;
+- `POST /v1/commands`, `POST /v1/propagate`, the MCP tools that issue commands and the dashboard refuse commands for it with `Control sends no commands to <rig>.` and the reason;
+- the rig is in `GET /v1/rigs` even if it never reported (then its `state` is `offline`).
+
+Control writes `rig_refused` to its audit log when it starts to refuse a rig, or refuses it for another reason, with the reason and the builds of control and of each part; and `rig_refusal_ended` when the rig reports a build it works with. When control starts, it checks each refused rig again against its own build.
+
+A new release keeps working with the protocol before its own, so an update of control never cuts off the rigs that still run the release before it.
+
+### Reporting, stale and offline
+
+A rig's `state` says whether it reports: `reporting` after a report within `THERMITE_CONTROL_STALE_SECONDS` (180 s by default), `stale` after that, and `offline` after `THERMITE_CONTROL_OFFLINE_SECONDS` (900 s by default) without a report. A rig that never sent a report is `offline`. See [Settings](settings.md#address-and-state).
 
 ## The harness's API for proposers
 
@@ -273,7 +333,7 @@ Control writes one entry for each of these to its audit log. `GET /v1/audit`, th
 | Requests | `failed` (a request that ended in an error), `refused` (a dashboard action control turned down, with the page's path and why, including a message to the agents that control refused before signing it, which the page shows as **Not sent.**; an MCP call it turned down, with `tool: "mcp:<tool>"` and why, a refused message included; or a `POST /v1/commands` it refused, with `path`, `kind` and why), `mcp:<tool>` (every MCP tool call, with its inputs) |
 | Sign-in | `login`, `login_throttled` |
 | Commands | `command_issued`, `command_acked`, `command_expired`, `command_cancelled` |
-| Rigs and keys | `rig_enrolled`, `rig_token_rotated`, `rig_retired`, `rig_brought_back`, `rig_key_pinned`, `rig_key_changed`, `rig_key_accepted`, `report_rejected`, `report_refused`, `git_access_handed` |
+| Rigs and keys | `rig_enrolled`, `rig_token_rotated`, `rig_retired`, `rig_brought_back`, `rig_key_pinned`, `rig_key_changed`, `rig_key_accepted`, `report_rejected`, `report_refused`, `rig_refused` and `rig_refusal_ended` (by `rig:<rig>`: control started or stopped refusing the rig for its protocol, with the reason and the builds; see [Rig versions](#rig-versions)), `git_access_handed` |
 | Joins | `joined_rig_added`, `join_command_made`, `join_command_revoked`, `join_command_used` |
 | Restart and reset | `restart`, `reset_requested`, `reset_step` |
 | Providers | `model_provider_added`, `model_provider_changed`, `model_provider_deleted`, `model_provider_model_added`, `rig_model_given`, `agent_model_given`, `git_access_added`, `git_access_deleted`, `git_access_token_replaced`, `gpu_cloud_added`, `gpu_cloud_deleted`, `gpu_cloud_key_replaced` |

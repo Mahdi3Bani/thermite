@@ -15,6 +15,7 @@ import {
   type TunnelKeys,
   verifyRequest,
 } from "../core/tunnel.ts";
+import { BUILD_HEADERS } from "../core/version.ts";
 
 /**
  * The rig's end of the tunnel, for a rig control reaches through a public proxy (a RunPod pod:
@@ -77,8 +78,14 @@ const MAX_PER_SECOND = 20;
 const MAX_HOLD_MS = 25_000;
 /** A call control has not answered is offered again after this long. */
 const REOFFER_MS = 5_000;
-/** Headers of the supervisor's calls carried to control (never its token). */
-const CARRIED = ["content-type", "accept", "git-protocol", "content-encoding"];
+/** Headers of the supervisor's calls carried to control (never its token): its build too. */
+const CARRIED = [
+  "content-type",
+  "accept",
+  "git-protocol",
+  "content-encoding",
+  ...Object.values(BUILD_HEADERS),
+];
 
 /** This rig's keys: made once, then read back (the supervisor's file, mode 0600). */
 export function podKeys(path: string): TunnelKeys {

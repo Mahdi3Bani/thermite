@@ -5,7 +5,7 @@ name: thermite
 
 services:
   control:
-    build: { context: ., dockerfile: containers/control/Containerfile }
+    build: { context: ., dockerfile: containers/control/Containerfile, args: { THERMITE_COMMIT: "${THERMITE_COMMIT:-}" } }
     environment:
       THERMITE_CONTROL_DIR: /var/lib/thermite-control
       THERMITE_CONTROL_LISTEN: 0.0.0.0:8800
@@ -16,6 +16,7 @@ services:
       THERMITE_CONTROL_RIG_TOKENS_FILE: /run/secrets/control-rig-tokens
       THERMITE_CONTROL_PUBKEY_EXPORT: /keys/control-signing.pub
       THERMITE_CONTROL_STALE_SECONDS: "${THERMITE_CONTROL_STALE_SECONDS:-180}"
+      THERMITE_CONTROL_OFFLINE_SECONDS: "${THERMITE_CONTROL_OFFLINE_SECONDS:-900}"
       # Control's address as rigs and the machines it sets rigs up on reach it.
       THERMITE_CONTROL_PUBLIC_URL: "${THERMITE_CONTROL_PUBLIC_URL:-}"
       # The images control deploys rigs from on machines (Rigs › Add a rig).
@@ -46,7 +47,7 @@ services:
     restart: unless-stopped
 
   harness:
-    build: { context: ., dockerfile: containers/harness/Containerfile }
+    build: { context: ., dockerfile: containers/harness/Containerfile, args: { THERMITE_COMMIT: "${THERMITE_COMMIT:-}" } }
     environment:
       THERMITE_RIG_ID: local-1
       THERMITE_TARGET: cpu
@@ -90,7 +91,7 @@ services:
     restart: unless-stopped
 
   supervisor:
-    build: { context: ., dockerfile: containers/supervisor/Containerfile }
+    build: { context: ., dockerfile: containers/supervisor/Containerfile, args: { THERMITE_COMMIT: "${THERMITE_COMMIT:-}" } }
     environment:
       THERMITE_RIG_ID: local-1
       HARNESS_URL: http://harness:8700
@@ -124,7 +125,7 @@ services:
   # A second rig for multi-rig checks: `docker compose --profile two-rigs up`.
   harness-2:
     profiles: [two-rigs]
-    build: { context: ., dockerfile: containers/harness/Containerfile }
+    build: { context: ., dockerfile: containers/harness/Containerfile, args: { THERMITE_COMMIT: "${THERMITE_COMMIT:-}" } }
     environment:
       THERMITE_RIG_ID: local-2
       THERMITE_TARGET: cpu
@@ -160,7 +161,7 @@ services:
 
   supervisor-2:
     profiles: [two-rigs]
-    build: { context: ., dockerfile: containers/supervisor/Containerfile }
+    build: { context: ., dockerfile: containers/supervisor/Containerfile, args: { THERMITE_COMMIT: "${THERMITE_COMMIT:-}" } }
     environment:
       THERMITE_RIG_ID: local-2
       HARNESS_URL: http://harness-2:8700

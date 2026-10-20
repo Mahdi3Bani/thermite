@@ -18,6 +18,7 @@ import { promisify } from "node:util";
 import { log } from "../common/env.ts";
 import { type GitAuth, withGitAuth } from "../common/git-auth.ts";
 import type { SignedCommand } from "../core/commands.ts";
+import { buildHeaders } from "../core/version.ts";
 import { sshCommand } from "./git-export.ts";
 
 /**
@@ -296,7 +297,7 @@ async function gitAccessFromControl(cfg: StagingConfig, name: string): Promise<G
     throw new Error(`Git access ${name}: this supervisor has no control to ask`);
   const res = await fetch(
     `${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/git-access/${encodeURIComponent(name)}`,
-    { headers: { authorization: `Bearer ${cfg.controlToken}` } },
+    { headers: { authorization: `Bearer ${cfg.controlToken}`, ...buildHeaders() } },
   );
   if (!res.ok) throw new Error(`Git access ${name}: control answered ${res.status}`);
   const g = (await res.json()) as {

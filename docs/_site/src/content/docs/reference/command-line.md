@@ -60,6 +60,10 @@ usage: thermite <command> [options]
                                       give an enrolled rig a new token (the old one stops working)
   rig retire RIG --control URL --token-file F
                                       shut an enrolled rig out of control; its history stays
+  rig list --control URL --token-file F [--json]
+                                      list the rigs (owner's token): reporting, stale or
+                                      offline, and each one's Thermite version against
+                                      control's, with what to do when it is behind or refused
   command --control URL --token-file F --rig U --kind K --payload JSON|@file [--ttl MIN]
                                       issue a signed command through control (admin token)
   submit --harness URL --token-file F --run ID --patch-file P --hypothesis TEXT
@@ -74,7 +78,7 @@ usage: thermite <command> [options]
 
 - **Options.** Each option takes its value as the next word or after `=`. In `token new`, `assign`, `assign-payload`, `rig`, `command`, `submit` and `status`, an option the command does not know, or a word it does not expect, ends the command with Node's own message and exit code 2.
 - **Older option names.** `--instance` is read as `--run`, and `--unit` as `--rig`. These are the names from before runs and rigs were renamed.
-- **Control's token.** The commands that talk to control (`assign`, `command`, `rig add`, `rig token`, `rig retire`) send the contents of `--token-file`, trimmed, as `Authorization: Bearer <token>`. Only the owner's token works on these routes; any other token gets `401 {"error":"unauthorized"}`. See [Tokens and roles](tokens.md).
+- **Control's token.** The commands that talk to control (`assign`, `command`, `rig add`, `rig token`, `rig retire`, `rig list`) send the contents of `--token-file`, trimmed, as `Authorization: Bearer <token>`. Only the owner's token works on these routes; any other token gets `401 {"error":"unauthorized"}`. See [Tokens and roles](tokens.md).
 - **Control's address.** `--control` is control's base address, such as `https://control.example.com`. A trailing `/` is removed.
 - **Refusals.** When control or the harness refuses a request, the command prints `<url> -> <status> <body>` on standard error and exits 2. `status` is the exception: see [below](#status). A request body that does not match the route gives `400 {"error":"invalid request"}`; a command that control refuses before signing it gives `400` with the reason (for example a payload that does not fit its kind, or a message that nothing would read), or `404` for an unknown rig; another refusal from inside control gives `500` with the reason. The [REST API reference](rest-api.md) lists the routes.
 
@@ -224,6 +228,28 @@ It prints `RIG has a new token, in FILE; its old token no longer works`. An exis
 ### `rig retire`
 
 `thermite rig retire RIG --control URL --token-file F` retires a rig (`POST /v1/rigs/RIG/retire`): its token stops working, and its history stays on control. It works on any rig control knows: enrolled, listed in the rig tokens file, or one that has reported. It prints `RIG is retired: its token no longer works`. A rig control does not know gives `404 {"error":"no rig <rig>"}`.
+
+### `rig list`
+
+`thermite rig list --control URL --token-file F` lists the rigs (`GET /v1/rigs`): whether each one reports, and its Thermite version against control's. `--json` prints control's answer as it is instead.
+
+```text
+control 0.2.0 (1a2b3c4d5e6f), protocol 1
+RIG    STATE      LAST REPORT               VERSION  HARNESS               SUPERVISOR
+rig-1  reporting  2026-10-20T12:00:00.000Z  behind   0.1.0 (abcdef012345)  0.1.0 (abcdef012345)
+  This rig runs an older Thermite than control: harness 0.1.0, supervisor 0.1.0. Control runs 0.2.0. Control still works with it. Update the rig's images.
+rig-2  offline    never                     refused  no version            0.1.0
+  Control cannot work with this rig: its supervisor speaks protocol 0, and control works with protocol 1. Update the rig's images.
+rig-3: enrolled, no report yet
+```
+
+- **The first line** is control's build: its version, the first 12 characters of its commit when its image has one, and its protocol. `(works with 1 to 2)` follows when control works with older protocols too.
+- **`STATE`** is `reporting`, `stale` or `offline`. **`LAST REPORT`** is `never` for a rig that never sent one.
+- **`VERSION`** is `current`, `behind`, `ahead`, `unknown` or `refused`. Under a rig that is not `current`, an indented line says what to know and do.
+- **`HARNESS`** and **`SUPERVISOR`** are the version each part reports, with its commit, or `no version` for a part from before version checks.
+- **Enrolled rigs** that never reported come last.
+
+[Rig versions](rest-api.md#rig-versions) says what each state means and when control refuses a rig. Against a control from before version checks, the first line is `control: no version (control is older than version checks)`, and each rig's state and version are `unknown`.
 
 ### `command`
 

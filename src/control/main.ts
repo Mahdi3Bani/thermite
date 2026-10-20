@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { serve } from "@hono/node-server";
 import { log, optionalSecretFromFile, parseListen } from "../common/env.ts";
 import { generateSigningKeys } from "../core/commands.ts";
+import { buildInfo } from "../core/version.ts";
 import { createControlApi } from "./api.ts";
 import { Credential } from "./credential.ts";
 import { KitRepos } from "./kit-repos.ts";
@@ -69,6 +70,8 @@ async function main(): Promise<void> {
   const { host, port } = parseListen(env.THERMITE_CONTROL_LISTEN ?? "0.0.0.0:8800");
   // A rig is stale after 3 missed reports (the supervisor reports every 60 s by default).
   const staleAfterMs = Number(env.THERMITE_CONTROL_STALE_SECONDS ?? "180") * 1000;
+  // Offline after 15 minutes without a report (never before it is stale).
+  const offlineAfterMs = Number(env.THERMITE_CONTROL_OFFLINE_SECONDS ?? "900") * 1000;
   const driver = driverFromEnv(env);
   // The key that seals model routes' API keys: its own file, made on first use. Mount it
   // from a separate secret to keep it off the database's volume.
@@ -84,6 +87,7 @@ async function main(): Promise<void> {
   const server = serve({
     fetch: createControlApi(store, tokens, privateKeyPem, {
       staleAfterMs,
+      offlineAfterMs,
       driver,
       // Optional: the owner accepts each rig's first report key (no trust on first use).
       requireKeyAcceptance: env.THERMITE_CONTROL_REQUIRE_KEY_ACCEPT === "1",
@@ -113,6 +117,7 @@ async function main(): Promise<void> {
   log("control", "listening", {
     host,
     port,
+    build: buildInfo(),
     rigs: Object.keys(tokens.rigs),
     enrolled: store
       .enrolledRigs()

@@ -5,7 +5,7 @@ import { parseArgs } from "node:util";
 import { newToken } from "../control/credential.ts";
 import { generateSigningKeys } from "../core/commands.ts";
 import { CommitSchema, parseContract } from "../core/contract.ts";
-import { type Enrolled, writeRigFiles } from "./rig.ts";
+import { type Enrolled, formatRigList, type RigList, writeRigFiles } from "./rig.ts";
 
 /**
  * The thermite command line: contract checks, key generation, issuing commands through control,
@@ -40,6 +40,10 @@ const USAGE = `usage: thermite <command> [options]
                                       give an enrolled rig a new token (the old one stops working)
   rig retire RIG --control URL --token-file F
                                       shut an enrolled rig out of control; its history stays
+  rig list --control URL --token-file F [--json]
+                                      list the rigs (owner's token): reporting, stale or
+                                      offline, and each one's Thermite version against
+                                      control's, with what to do when it is behind or refused
   command --control URL --token-file F --rig U --kind K --payload JSON|@file [--ttl MIN]
                                       issue a signed command through control (admin token)
   submit --harness URL --token-file F --run ID --patch-file P --hypothesis TEXT
@@ -310,6 +314,28 @@ async function main(argv: string[]): Promise<void> {
       return;
     }
     case "rig": {
+      if (rest[0] === "list") {
+        const { values } = parseArgs({
+          args: rest.slice(1),
+          options: {
+            control: { type: "string" },
+            "token-file": { type: "string" },
+            json: { type: "boolean" },
+          },
+        });
+        if (!values.control || !values["token-file"]) fail(USAGE);
+        const res = await fetch(`${values.control.replace(/\/$/, "")}/v1/rigs`, {
+          headers: {
+            authorization: `Bearer ${readFileSync(values["token-file"], "utf8").trim()}`,
+          },
+        });
+        const text = await res.text();
+        if (!res.ok) fail(`${values.control}/v1/rigs -> ${res.status} ${text}`);
+        process.stdout.write(
+          values.json ? `${text}\n` : formatRigList(JSON.parse(text) as RigList),
+        );
+        return;
+      }
       const [sub, rig, ...args] = rest;
       const { values } = parseArgs({
         args,
