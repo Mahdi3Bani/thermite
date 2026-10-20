@@ -61,7 +61,15 @@ export const LenientNotes = z
       if (!x || typeof x !== "object") return [];
       const o = x as Record<string, unknown>;
       const text = typeof o.text === "string" ? o.text.trim().slice(0, NOTE_MAX).trim() : "";
-      const about = NoteAbout.safeParse(o.about);
+      const a = o.about as { type?: unknown; id?: unknown } | undefined;
+      const about = NoteAbout.safeParse(
+        a && typeof a === "object"
+          ? {
+              type: typeof a.type === "string" ? a.type.trim().toLowerCase() : a.type,
+              id: typeof a.id === "number" ? String(a.id) : a.id,
+            }
+          : undefined,
+      );
       const n = NoteInput.safeParse({
         kind: typeof o.kind === "string" ? o.kind.trim().toLowerCase() : o.kind,
         text,
