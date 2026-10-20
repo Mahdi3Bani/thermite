@@ -12,8 +12,8 @@
 //     runs the research tools as `thermite-trial research` commands.
 // Usage: COMPOSE="podman compose" node scripts/agents-acceptance.mjs
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { createServer } from "node:http";
 import { join } from "node:path";
+import { hostName as containersHost, scriptedModel } from "./lib/scripted-model.mjs";
 import {
   api,
   assign,
@@ -32,7 +32,6 @@ import {
 
 const GOOD = readFileSync("kits/smoke-cpu/candidates/good/src/kernel/matmul.c", "utf8");
 const NOOP = readFileSync("kits/smoke-cpu/candidates/noop/src/kernel/matmul.c", "utf8");
-let requests = 0;
 const setid = {};
 const background = {};
 /** What the OpenCode research trial's commands answered, as its tool results show. */
@@ -213,33 +212,16 @@ function script(messages, tools) {
   return steps[done] ? { toolCalls: [steps[done]] } : { text: "done" };
 }
 
-/** The keys the model was asked with (a route set on control's settings page brings its own). */
 /** Whether the OpenCode trial's memory hog came back killed (the lane's memory limit). */
 const hogSeen = {};
-const keysSeen = new Set();
-const model = createServer((req, res) => {
-  keysSeen.add(String(req.headers.authorization ?? ""));
-  let body = "";
-  req.on("data", (d) => {
-    body += d;
-  });
-  req.on("end", () => {
-    // The provider's model list, as control reads it.
-    if (req.method === "GET" && req.url === "/v1/models") {
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ data: [{ id: "scripted", context_length: 32768 }] }));
-      return;
-    }
-    // Anything else but a model call: the research fetch reached this machine, which the
-    // harness's fetcher must refuse before it connects.
-    if (req.method !== "POST") {
-      researchSeen.reachedPrivate = `${req.method} ${req.url}`;
-      res.writeHead(404).end();
-      return;
-    }
-    requests++;
-    const p = JSON.parse(body);
-    for (const m of p.messages ?? []) {
+const model = await scriptedModel(script, {
+  // Anything else but a model call: the research fetch reached this machine, which the
+  // harness's fetcher must refuse before it connects.
+  other: (req) => {
+    researchSeen.reachedPrivate = `${req.method} ${req.url}`;
+  },
+  observe: (messages) => {
+    for (const m of messages) {
       // The broker kills the whole command, shell and all; OpenCode's shell tool says so.
       if (m.role === "tool" && /Killed by SIGKILL/.test(JSON.stringify(m.content ?? "")))
         hogSeen.killed = true;
@@ -255,41 +237,12 @@ const model = createServer((req, res) => {
       for (const hit of JSON.stringify(m.content ?? "").matchAll(/BG-(STARTED|ALIVE) (yes|no)/g))
         background[hit[1]] = hit[2];
     }
-    const turn = script(p.messages ?? [], p.tools ?? []);
-    const id = `c${requests}`;
-    const chunk = (delta, finish) =>
-      `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created: 0, model: p.model, choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
-    res.writeHead(200, { "content-type": "text/event-stream" });
-    res.write(chunk({ role: "assistant", content: turn.text ?? "" }, null));
-    for (const [i, t] of (turn.toolCalls ?? []).entries()) {
-      res.write(
-        chunk(
-          {
-            tool_calls: [
-              {
-                index: i,
-                id: `${id}_${i}`,
-                type: "function",
-                function: { name: t.name, arguments: JSON.stringify(t.args) },
-              },
-            ],
-          },
-          null,
-        ),
-      );
-    }
-    res.write(chunk({}, turn.toolCalls?.length ? "tool_calls" : "stop"));
-    res.write(
-      `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created: 0, model: p.model, choices: [], usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 } })}\n\n`,
-    );
-    res.end("data: [DONE]\n\n");
-  });
+  },
 });
-await new Promise((r) => model.listen(0, "0.0.0.0", r));
-const port = model.address().port;
-const hostName = (process.env.COMPOSE ?? "podman compose").startsWith("docker")
-  ? "host.docker.internal"
-  : "host.containers.internal";
+/** The keys the model was asked with (a route set on control's settings page brings its own). */
+const keysSeen = model.keys;
+const port = model.port;
+const hostName = containersHost();
 
 const composeEnv = {
   THERMITE_POLL_SECONDS: "2",
@@ -577,7 +530,7 @@ try {
     /^-.....s/.test(setid.BEFORE ?? "") && /^-.....x/.test(setid.AFTER ?? ""),
     setid,
   );
-  check("the model was asked (planner and workers)", requests >= 11, requests);
+  check("the model was asked (planner and workers)", model.requests >= 11, model.requests);
 } catch (err) {
   failed = true;
   check("acceptance run", false, String(err?.stack ?? err));
