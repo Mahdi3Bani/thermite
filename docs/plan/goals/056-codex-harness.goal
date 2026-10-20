@@ -1,7 +1,7 @@
 ---
 id: "056"
 title: "A Codex CLI harness"
-status: READY
+status: VERIFIED
 version: "0.1.0"
 part: "Running campaigns"
 depends_on: []
@@ -11,7 +11,7 @@ updated: 2026-10-20
 
 # 056 · A Codex CLI harness
 
-**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
 
 ## What
 
@@ -23,23 +23,25 @@ Some owners will want OpenAI's own agent program.
 
 ## Done when
 
-- [ ] A trial runs in the Codex CLI through the harness, on Sign in with ChatGPT, as trials run in Claude Code on a Claude subscription.
-- [ ] Edit rig, `set_rig_model` and the rig's settings offer Codex as a harness for a ChatGPT sign-in, beside Pi and OpenCode.
-- [ ] The planner and the model check run under it too, with the same isolation as the other harnesses, and the acceptance tests cover it with a stand-in.
+- [x] A trial runs in the Codex CLI through the harness, on Sign in with ChatGPT, as trials run in Claude Code on a Claude subscription.
+- [x] Edit rig, `set_rig_model` and the rig's settings offer Codex as a harness for a ChatGPT sign-in, beside Pi and OpenCode.
+- [x] The planner and the model check run under it too, with the same isolation as the other harnesses, and the acceptance tests cover it with a stand-in.
 
 ## Decisions
 
 - 2026-10-20, owner: a ChatGPT sign-in should also run workers in the Codex CLI, not only in Pi and OpenCode. The goal moves into v0.1.0.
+- 2026-10-20, builder (the lead's brief asked for this choice and its reason): the Codex CLI is always in the harness image, as OpenCode is, not a build option as Claude Code is. It is open source (Apache-2.0), so published images may carry it with its `LICENSE` and `NOTICE`; the decision of 2026-10-18 kept Claude Code out only because it is not open source. A tester who signs in with ChatGPT can then choose Codex on a published rig without building an image. The cost is about 450 MB more in each harness image (the release's whole Linux package, which its binary needs beside it). `CODEX_VERSION` (0.162.1) pins the release; an empty value builds a smaller image without it.
+- 2026-10-20, builder: Codex reaches the model only through the harness's model proxy. Its configuration names one provider, the proxy, over OpenAI's Responses API, with the trial's token (or a token minted for a check or a plan). The ChatGPT access token or a provider's key never reaches the lane, unlike a Claude subscription's token, which only Claude Code may carry. Codex 0.162 speaks only the Responses API, so it takes a ChatGPT sign-in or an OpenAI-compatible provider; Anthropic and OpenCode providers are refused with a reason. A ChatGPT sign-in keeps Pi as its default harness.
+- 2026-10-20, builder: Codex runs as the lane's own user with its approvals and its own sandbox off (its sandbox would cut its commands off the harness API), a home of its own, no hosted web search, analytics, update checks or history file, and no project execution-policy rules. The planner runs in Codex when it follows the workers' model; a planner with its own model keeps the harness its provider needs. Research workers on a Codex rig run in Pi with the same model, as Claude Code runs none.
+- 2026-10-20, builder: the model proxy notes OpenAI's "plan full" answer (`subscription_sharing_usage_limit_exceeded`) itself, because Codex keeps only an error's message. A Codex trial that meets it then waits 15 minutes, as Pi's and OpenCode's do.
 
 ## Open questions
 
-None.
+- The real Codex CLI has not run against Thermite's configuration here: the tests use a stand-in, and nothing was downloaded. A trial with the real Codex CLI on a real ChatGPT sign-in belongs with the owner's real subscription tests ([009](009-subscription-sign-in-tests.goal)).
 
 ## Progress
 
 - 2026-10-19: Goal written from the roadmap.
 - 2026-10-20: Moved into v0.1.0 at the owner's word, after the owner signed in with ChatGPT on control.
-
----
-
-Run with `/goal Complete docs/plan/goals/056-codex-harness.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
+- 2026-10-20: Built. The harness runs trials, planner calls and the model check in the Codex CLI (`src/harness/agents/codex.ts`): `codex exec --json` as the lane's user (the planner's and the model check's own users outside a trial), its prompt on stdin, its events followed in the lane's area, resumed with `codex exec resume` for nudges and the owner's messages, a turn cap counted from its messages and tool calls, the lane's memory, disk and process limits, and `thermite-trial` for its submission. Control offers Codex in **Edit rig**'s **Runs in**, in **Harness and model for each rig** on **Providers**, in **The agents run in** on **New campaign**, in `set_rig_model`'s `harness` and in `THERMITE_AGENT_HARNESS`, and sends `harness: "codex"` in the route. The harness image installs Codex 0.162.1 (`CODEX_VERSION`). Unit tests: `codex.test.ts`, the proxy's full-plan note, the dashboard, MCP, New campaign and steering tests. A stand-in (`containers/test-codex`) and `scripts/codex-acceptance.mjs` run the model check, the planner and a trial through the real harness image against a scripted Responses provider. Pages: choose a model, the ChatGPT subscription how-to (Run the agents in Codex), Edit rig, connect a provider, settings, MCP, REST, harness image, rig checks, limits, who holds your keys, isolation, and the other pages that list the harnesses.
+- 2026-10-20: Verified. `scripts/codex-acceptance.mjs` passed under Podman compose (8 of 8 checks, about a minute once the images were built): the model check passed in Codex as `model-check`; the planner planned through Codex as `planner` (uid 10040) with a minted proxy credential; the trial ran as `lane-1` (uid 10101) with its own home, approvals and sandbox off, reached the provider through the proxy with the trial's token, and submitted with `thermite-trial`; the provider saw only its own key, on `POST /v1/responses`; the key showed in no page, event or record. The compose test uses an OpenAI-compatible provider, because control's sign-in with OpenAI has no stand-in there; the ChatGPT route with Codex is covered by the unit tests (control's route, the trial on a ChatGPT route, and the proxy's ChatGPT rules and full-plan note).
