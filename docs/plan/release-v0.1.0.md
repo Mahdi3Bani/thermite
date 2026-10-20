@@ -13,6 +13,7 @@ It has four parts, then the release itself. The parts can run at the same time. 
 - **2026-10-19:** The sample project lives in this repository, under `examples/`.
 - **2026-10-19:** The release also includes a troubleshooting page, an own-registry how-to, the harness image's toolchains, a split of the local development guide, lane limits that agree, a README screenshot and the repository settings.
 - **2026-10-19:** The docs become a documentation site, built with Astro Starlight from `docs/_site/` and arranged by Diátaxis, with `llms.txt` and `llms-full.txt` for agents (goal 060).
+- **2026-10-20:** The owner took the recommended answer to each open decision, except the docs site's address: the site will be served from Cloudflare, under a domain the owner chooses, and the owner deploys it later. The answers are in the table below and in each goal.
 
 ## What a tester gets
 
@@ -112,18 +113,18 @@ The owner launches a GPU rig on RunPod from control, runs campaigns on it, and s
 3. When every other goal is verified, goal 026 ships the release: the clean-machine tests, the full checks, the pull request into `main`, the changelog, the tag and the GitHub Release.
 4. Fixes from tester reports ship as 0.1.1, 0.1.2 and so on. New features go into v0.2.0.
 
-## Open decisions
+## Decisions made from the open questions
 
-| Decision | Options | Recommended | Goal |
-| --- | --- | --- | --- |
-| RunPod packaging | One combined image per pod, or two pods | One combined image | [020](goals/020-runpod-rig-image.goal) |
-| How rigs on other networks reach control | A public rig-only HTTPS entry, or a mesh VPN inside the pod | Decided (2026-10-19): control connects to RunPod rigs through RunPod's proxy | [019](goals/019-rig-only-entry.goal) |
-| Who may launch on RunPod | The owner only, or also the operator token that agents use | The owner only | [022](goals/022-runpod-launch.goal) |
-| RunPod cloud | Secure cloud on demand first, or Community and spot as well | Secure cloud first | [022](goals/022-runpod-launch.goal) |
-| Where a pod's results go | The results repository or an upload to control, or a results repository only | Both | [024](goals/024-runpod-models-and-results.goal) |
-| Terms in the community files | No contributor agreement, no sign-off, the Contributor Covenant; or a sign-off on every commit | The first | [008](goals/008-community-files.goal) |
-| Subscription sign-in tests | Before the tag, or ship as experimental | Before the tag | [009](goals/009-subscription-sign-in-tests.goal) |
-| How the code reaches `main` | A pull request merged as a fast-forward, or a squash | The fast-forward | [026](goals/026-ship-v0.1.0.goal) |
-| The docs site's address | The repository's GitHub Pages address, or a custom domain | GitHub Pages first | [060](goals/060-docs-site.goal) |
+| Decision | Answer | Goal |
+| --- | --- | --- |
+| RunPod packaging | One combined image per pod (2026-10-20) | [020](goals/020-runpod-rig-image.goal) |
+| How rigs on other networks reach control | Control connects to RunPod rigs through RunPod's proxy (2026-10-19) | [019](goals/019-rig-only-entry.goal) |
+| Who may launch on RunPod | The owner only (2026-10-20) | [022](goals/022-runpod-launch.goal) |
+| RunPod cloud | Secure cloud on demand first; Community and spot later (2026-10-20) | [022](goals/022-runpod-launch.goal) |
+| Where a pod's results go | The project's results repository when it has one, otherwise an upload to control (2026-10-20) | [024](goals/024-runpod-models-and-results.goal) |
+| Terms in the community files | No contributor agreement, no sign-off rule, the Contributor Covenant (2026-10-20) | [008](goals/008-community-files.goal) |
+| Subscription sign-in tests | Before the tag (2026-10-20) | [009](goals/009-subscription-sign-in-tests.goal) |
+| How the code reaches `main` | A pull request merged as a fast-forward (2026-10-20) | [026](goals/026-ship-v0.1.0.goal) |
+| The docs site's address | Cloudflare, under the owner's domain; the owner deploys it after the release work (2026-10-20) | [060](goals/060-docs-site.goal) |
 
-Three steps need the owner's GitHub account: the repository settings ([002](goals/002-ci-and-repository-settings.goal)), making the image packages public ([010](goals/010-published-images.goal)) and turning on GitHub Pages ([060](goals/060-docs-site.goal)).
+One step needs the owner's GitHub account: the repository settings ([002](goals/002-ci-and-repository-settings.goal)). The image packages are public ([010](goals/010-published-images.goal)).

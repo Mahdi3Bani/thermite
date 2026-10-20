@@ -6,7 +6,7 @@ version: "0.1.0"
 part: "Rigs on RunPod"
 depends_on: ["010", "019", "020", "021"]
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # 022 · Launch a rig on RunPod
@@ -31,11 +31,12 @@ Rigs on RunPod GPUs are the owner's priority feature: quantization, kernel and e
 
 - 2026-10-17, owner: The launch form hides choices that cannot apply, and the price follows every change. A RunPod rig's page is a normal rig page, with an event log.
 - 2026-10-15, owner: No default caps, so spend controls are fields that the owner fills in.
+- 2026-10-20, owner: Only the owner may launch, as recommended. The operator token that agents use may not.
+- 2026-10-20, owner: Secure cloud on demand first, as recommended. Community and spot come later.
 
 ## Open questions
 
-- Who may launch: the owner only (recommended), or also the operator token that agents use.
-- Cloud: Secure cloud on demand first (recommended); Community and spot later.
+None.
 
 ## Progress
 

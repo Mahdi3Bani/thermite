@@ -6,7 +6,7 @@ version: "0.1.0"
 part: "Rigs on RunPod"
 depends_on: ["018"]
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # 020 · A one-container rig image
@@ -27,11 +27,11 @@ The harness and the supervisor normally run in two containers. RunPod allows one
 
 ## Decisions
 
-None yet.
+- 2026-10-20, owner: One combined image per pod, as recommended.
 
 ## Open questions
 
-- Packaging: one combined image (recommended), or two pods.
+None.
 
 ## Progress
 

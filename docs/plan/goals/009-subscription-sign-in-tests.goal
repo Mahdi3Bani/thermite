@@ -6,7 +6,7 @@ version: "0.1.0"
 part: "Tester basics"
 depends_on: []
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # 009 · Real subscription sign-in tests
@@ -30,10 +30,11 @@ Subscriptions are built, but they are tested only against stand-ins.
 
 - 2026-10-18, owner: Subscriptions come before the first release.
 - 2026-10-18, owner: A subscription serves only its owner's own Thermite. A Thermite that several people use takes API keys.
+- 2026-10-20, owner: The tests run before the tag, as recommended.
 
 ## Open questions
 
-- Test before the tag (recommended), or ship subscriptions marked as experimental.
+None.
 
 ## Progress
 

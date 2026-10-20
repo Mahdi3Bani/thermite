@@ -6,7 +6,7 @@ version: "0.1.0"
 part: "Install from images"
 depends_on: []
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # 010 · Published images and a release workflow
@@ -30,15 +30,17 @@ Rigs on machines, on clusters and on RunPod pull images. Building from source ta
 ## Decisions
 
 - 2026-10-18, owner: Claude Code is downloaded only when an image is built with that option. It is never in a published image.
+- 2026-10-20, owner: The image packages are public.
 
 ## Open questions
 
-- Making the GHCR packages public needs the owner's account.
+None.
 
 ## Progress
 
 - 2026-10-19: Goal written from the v0.1.0 release plan.
 - 2026-10-19: A CUDA harness image (CUDA 12.6.3, built from `9041644`) was pushed to GHCR by hand. It stays private until the owner makes the package public. There is no release workflow and no release bundle yet.
+- 2026-10-20: The harness image package pulls without signing in. Control's and the supervisor's packages are not on GHCR yet; the release workflow publishes them, and each must then pull without signing in.
 
 ---
 

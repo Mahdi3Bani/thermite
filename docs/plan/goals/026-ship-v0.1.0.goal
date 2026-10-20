@@ -37,10 +37,11 @@ This is the first release that people outside the project can install and test.
 
 - 2026-10-19, owner: The first public release is v0.1.0. It holds the tester basics, published images and rigs on RunPod.
 - 2026-10-19, owner: The code moves to `main` only as the last step before the release.
+- 2026-10-20, owner: The code reaches `main` through a pull request merged as a fast-forward, as recommended.
 
 ## Open questions
 
-- How the code reaches `main`: a pull request merged as a fast-forward (recommended), or a squash into one commit.
+None.
 
 ## Progress
 

@@ -5,7 +5,7 @@ Thermite's plans are public. Four kinds of file hold them:
 | File | What it holds |
 | --- | --- |
 | [roadmap.md](roadmap.md) | Every goal, grouped by version, in priority order. One line each. |
-| [release-v0.1.0.md](release-v0.1.0.md) | The plan for the next release: its scope, its goals, its open decisions and the steps to ship it. |
+| [release-v0.1.0.md](release-v0.1.0.md) | The plan for the next release: its scope, its goals, its decisions and the steps to ship it. |
 | [decisions.md](decisions.md) | Settled decisions that shape the whole product, with dates. |
 | [goals/](goals/) | One goal per roadmap item: what it delivers, why, when it is done, its decisions and its progress. |
 

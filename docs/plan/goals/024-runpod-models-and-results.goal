@@ -6,7 +6,7 @@ version: "0.1.0"
 part: "Rigs on RunPod"
 depends_on: []
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # 024 · Models into the pod, results out
@@ -28,11 +28,11 @@ Quantization and engine work need large models, and a pod's disk goes away when 
 
 ## Decisions
 
-None yet.
+- 2026-10-20, owner: As recommended: results go to the project's results repository when it has one, otherwise as an upload to control.
 
 ## Open questions
 
-- Where results go: the project's results repository when it has one, otherwise an upload to control (recommended); or a results repository only.
+None.
 
 ## Progress
 

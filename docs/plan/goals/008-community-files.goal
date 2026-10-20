@@ -6,7 +6,7 @@ version: "0.1.0"
 part: "Tester basics"
 depends_on: []
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # 008 · Community files and contributor docs
@@ -30,10 +30,11 @@ Outside testers need a place to report problems and a way to send changes. Today
 ## Decisions
 
 - 2026-10-19, owner: The community files ship with v0.1.0.
+- 2026-10-20, owner: The terms, as recommended: no contributor agreement, no sign-off rule, and the Contributor Covenant as the code of conduct.
 
 ## Open questions
 
-- The terms in them. Proposed: no contributor agreement, no sign-off rule, and the Contributor Covenant as the code of conduct.
+None.
 
 ## Progress
 

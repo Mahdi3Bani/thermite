@@ -6,7 +6,7 @@ version: "0.1.0"
 part: "Tester basics"
 depends_on: []
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # 060 · The documentation site
@@ -140,7 +140,7 @@ The docs today are twelve dense pages, written for the people who built Thermite
 - [x] Each tutorial was followed end to end on a clean local stack, and each how-to guide that runs locally was followed once. Progress records what ran, and which pages need paid services or real hardware and were not run.
 - [x] A fresh reader that saw only the built site found no step that it could not follow, or each of its findings is fixed.
 - [x] The old user pages are moved, and no tracked file links to a moved page. `docs/README.md`, `README.md`, `AGENTS.md` and `CONVENTIONS.md` point to the site.
-- [x] CI builds and checks the docs. A workflow deploys the site to GitHub Pages from `main`.
+- [x] CI builds and checks the docs. (A workflow deployed the site to GitHub Pages from `main` until 2026-10-20; the owner deploys it on Cloudflare instead.)
 - [x] `npm run check` passes, and the public check passes over the new files.
 
 ## Decisions
@@ -160,11 +160,11 @@ The docs today are twelve dense pages, written for the people who built Thermite
 - 2026-10-19, owner: Tutorial 4 gets its own example: a goal contract for the smoke kit and project in `examples/contracts/`, checked with the real schema and run end to end.
 - 2026-10-19, owner: The contract reference lists fields that are accepted but not used yet, each marked so.
 - 2026-10-19, owner: To run tutorial 4 end to end, create a small public test repository on the owner's GitHub account; the owner deletes it afterwards.
+- 2026-10-20, owner: The site will be served from Cloudflare, under a domain the owner chooses, and the owner deploys it later. Until then the site is built and checked here and not published. The GitHub Pages workflow goes.
 
 ## Open questions
 
 - **Starlight upgrades.** Starlight is still 0.x, so a minor version can break things. Recommended: pin exact versions, and upgrade on purpose, one version at a time.
-- **The address.** Recommended: the repository's GitHub Pages address until a domain is chosen. Turning Pages on needs the owner's GitHub account.
 - **The old pages.** Recommended: move them with `git mv`, so each page has one source. Copies left in `docs/` would drift.
 - **Merged goals.** This goal takes in goal 006 (Docs for testers) and goal 041 (Kits and rigs, explained): their pages are on the list above, and the owner's choices in 006 carry over. Both are marked `DROPPED` as merged. Goal 050 keeps only the two-command start and a generated settings reference.
 
@@ -219,6 +219,7 @@ The docs today are twelve dense pages, written for the people who built Thermite
   The screenshots are taken again from the demo, which now has a made-up queue and field notes for one run. The README and home page show a run's page.
 
   Code gaps found on the way went to the development session as they came up. Most are fixed on the branch; the rest wait for its next batch. Security items went to the maintainers' private notes only.
+- 2026-10-20: The GitHub Pages workflow (`.github/workflows/docs.yml`) is removed, by the owner's decision above. CI still builds and checks the site on every pull request and on `main`.
 
 ---
 
