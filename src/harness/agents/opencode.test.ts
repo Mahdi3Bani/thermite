@@ -187,6 +187,59 @@ describe("the OpenCode harness", () => {
     assert.ok(live.includes("tool") && live.includes("text"));
   });
 
+  test("after a submission the run is stopped soon: the agent's closing reply is not waited for", async () => {
+    const area = mkdtempSync(join(tmpdir(), "thermite-oc-"));
+    mkdirSync(join(area, "repo"));
+    let submittedAt = 0;
+    let killedAt = 0;
+    let stop: () => void = () => undefined;
+    const runner = {
+      run: async (req: RunRequest): Promise<RunOutcome> => {
+        if (req.argv.includes("run")) {
+          submittedAt = Date.now();
+          // The agent goes on writing its closing reply until its processes are stopped.
+          await new Promise<void>((r) => {
+            stop = r;
+          });
+          return { exitCode: null, signal: "SIGKILL", killedFor: null } as unknown as RunOutcome;
+        }
+        return { exitCode: 0, signal: null, killedFor: null, stdout: "", stderr: "" } as RunOutcome;
+      },
+      killRole: async () => {
+        killedAt ||= Date.now();
+        stop();
+        return 1;
+      },
+    } as unknown as Runner;
+    const r = await runOpencodeTrial(
+      {
+        trialId: "t-1",
+        token: "tok",
+        run: "r-1",
+        lane: "lane-1",
+        workspace: join(area, "repo"),
+        workspaceRoot: area,
+        parentCommit: "c".repeat(40),
+        editablePaths: ["src/**"],
+        brief: "Make it faster.",
+        wallMs: 60_000,
+      },
+      {
+        runner,
+        model,
+        apiUrl: "http://127.0.0.1:8700",
+        live: () => undefined,
+        progress: () => undefined,
+        submitted: () => (submittedAt ? { attempt: "a-1", lifecycle: "queued" } : undefined),
+        pollMs: 5,
+        afterSubmitMs: 50,
+      },
+    );
+    assert.equal(r.stopped, "submitted");
+    assert.ok(killedAt - submittedAt >= 50, "the submit command gets its moment to finish");
+    assert.ok(killedAt - submittedAt < 2_000, `stopped ${killedAt - submittedAt} ms after it`);
+  });
+
   test("a memory or disk limit that stops OpenCode is named, with its figures", async () => {
     const limits = laneLimits({
       lanes: { count: 2, trials_per_epoch: 1, limits: { run_rss_mib: 4096, workspace_mib: 16384 } },

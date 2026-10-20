@@ -212,6 +212,44 @@ describe("Claude Code", () => {
     assert.ok(seen.length > 0, "the subscription's windows were reported");
   });
 
+  test("after a submission the run is stopped soon: the agent's closing reply is not waited for", async () => {
+    const a = area();
+    let submittedAt = 0;
+    let killedAt = 0;
+    let stop: () => void = () => undefined;
+    const runner = {
+      run: async (req: RunRequest): Promise<RunOutcome> => {
+        if (req.argv.includes("-p")) {
+          submittedAt = Date.now();
+          // The agent goes on writing its closing reply until its processes are stopped.
+          await new Promise<void>((r) => {
+            stop = r;
+          });
+          return { exitCode: null, signal: "SIGKILL", killedFor: null } as unknown as RunOutcome;
+        }
+        return { exitCode: 0, signal: null, killedFor: null, stdout: "", stderr: "" } as RunOutcome;
+      },
+      killRole: async () => {
+        killedAt ||= Date.now();
+        stop();
+        return 1;
+      },
+    } as unknown as Runner;
+    const r = await runClaudeTrial(spec(a, join(a, "repo")), {
+      runner,
+      model,
+      apiUrl: "http://127.0.0.1:8700",
+      live: () => undefined,
+      progress: () => undefined,
+      submitted: () => (submittedAt ? { attempt: "a-1", lifecycle: "queued" } : undefined),
+      pollMs: 5,
+      afterSubmitMs: 50,
+    });
+    assert.equal(r.stopped, "submitted");
+    assert.ok(killedAt - submittedAt >= 50, "the submit command gets its moment to finish");
+    assert.ok(killedAt - submittedAt < 2_000, `stopped ${killedAt - submittedAt} ms after it`);
+  });
+
   test("an owner's message waiting when a run ends without a submission resumes the session with it, and is read there; after a submission it waits for the lane's next trial", async () => {
     const inbox = (texts: string[]) => {
       let waiting = texts.map((text, i) => ({ id: i + 1, text }));

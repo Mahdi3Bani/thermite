@@ -8,6 +8,7 @@ import type { MessageInbox, TrialProgress } from "./live-session.ts";
 import type { ModelConfig } from "./model.ts";
 import type { RigCheckReport } from "./model-check.ts";
 import {
+  AFTER_SUBMIT_MS,
   ASK_ROLE,
   breachError,
   CarriedMessages,
@@ -331,6 +332,8 @@ export interface ClaudeTrialDeps {
   env?: Record<string, string> | undefined;
   signal?: AbortSignal | undefined;
   pollMs?: number | undefined;
+  /** How long the run goes on after a submission (AFTER_SUBMIT_MS; tests make it short). */
+  afterSubmitMs?: number | undefined;
 }
 
 /**
@@ -451,9 +454,11 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
         await deps.runner.killRole(spec.lane).catch(() => 0);
         break;
       }
+      // A submission ends the trial: its command finishes, and the agent's next reply is not waited for.
       if (deps.submitted()) {
         submittedAt ??= Date.now();
-        if (Date.now() - submittedAt > 60_000) await deps.runner.killRole(spec.lane).catch(() => 0);
+        if (Date.now() - submittedAt >= (deps.afterSubmitMs ?? AFTER_SUBMIT_MS))
+          await deps.runner.killRole(spec.lane).catch(() => 0);
       } else if (maxTurns !== undefined && tally.turns >= maxTurns && !capped) {
         capped = true;
         await deps.runner.killRole(spec.lane).catch(() => 0);

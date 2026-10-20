@@ -241,6 +241,14 @@ export function breachError(
   return undefined;
 }
 
+/**
+ * A submission ends the trial (OpenCode or Claude Code): the submit command gets this long to
+ * finish and its result to be recorded, then the lane's processes are stopped. The submission is
+ * in the ledger before the harness sees it, so stopping cuts off only the agent's closing reply,
+ * which would keep the lane busy (a slow model's took about 40 s) for nothing.
+ */
+export const AFTER_SUBMIT_MS = 5_000;
+
 export const NUDGE =
   'You have not submitted yet. Keep working: make your change, build and test it, then run `thermite-trial submit --hypothesis "..."` once. If you find no change worth judging, say why in one sentence.';
 
@@ -305,6 +313,8 @@ export interface OpencodeTrialDeps {
   signal?: AbortSignal | undefined;
   /** How often the output is read (tests make it short). */
   pollMs?: number | undefined;
+  /** How long the run goes on after a submission (AFTER_SUBMIT_MS; tests make it short). */
+  afterSubmitMs?: number | undefined;
 }
 
 /** The environment of an OpenCode run: its home, Thermite's command and how to reach the API. */
@@ -471,10 +481,11 @@ export async function runOpencodeTrial(
         await deps.runner.killRole(spec.lane).catch(() => 0);
         break;
       }
-      // A submission ends the trial: the agent gets a minute to finish its last reply.
+      // A submission ends the trial: its command finishes, and the agent's next reply is not waited for.
       if (deps.submitted()) {
         submittedAt ??= Date.now();
-        if (Date.now() - submittedAt > 60_000) await deps.runner.killRole(spec.lane).catch(() => 0);
+        if (Date.now() - submittedAt >= (deps.afterSubmitMs ?? AFTER_SUBMIT_MS))
+          await deps.runner.killRole(spec.lane).catch(() => 0);
       }
     }
     const outcome = await running;
