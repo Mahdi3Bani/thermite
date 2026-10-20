@@ -104,6 +104,7 @@ export const KB_EVENT_KINDS = [
   "verdict",
   "source_fetched",
   "claim_added",
+  "hypothesis_added",
   "finding_added",
   "research_final",
   "research_digest",
@@ -422,6 +423,27 @@ export function indexEvent(t: KbIndexTarget, e: KbEvent): void {
         e.at,
       );
       return;
+    // A hypothesis: a research worker's proposed explanation, with the verified claims for it.
+    case "hypothesis_added": {
+      const supporting = Array.isArray(b.supporting) ? b.supporting.map(String) : [];
+      t.put(
+        run,
+        "hypothesis",
+        ref(b.hypothesis),
+        {
+          title: clip(str(b.text), 300) || `hypothesis ${str(b.hypothesis)}`,
+          body: lines([
+            str(b.text),
+            supporting.length
+              ? `Supporting claims: ${supporting.join(", ")}`
+              : "No verified claim supports it yet.",
+          ]),
+          by: str(b.lane) || e.actor,
+        },
+        e.at,
+      );
+      return;
+    }
     case "finding_added":
       t.put(
         run,

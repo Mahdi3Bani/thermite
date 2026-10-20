@@ -304,7 +304,7 @@ export async function runAdvisor<S extends z.ZodType>(input: {
         kinds: Type.Optional(
           Type.Array(Type.String(), {
             description:
-              "Only these kinds: run, trial, experiment, attempt, note, doc, source, claim, finding, report",
+              "Only these kinds: run, trial, experiment, attempt, note, doc, source, claim, hypothesis, finding, report",
           }),
         ),
         limit: Type.Optional(Type.Number({ description: `How many items, 1 to ${SEARCH_MAX}` })),

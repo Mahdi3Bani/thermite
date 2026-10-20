@@ -419,11 +419,20 @@ export class Research {
     );
     const ok = supporting.filter((c) => known.has(c));
     const id = `h-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
-    this.ledger.db
-      .prepare(
-        "insert into hypothesis (id, run, lane, text, supporting, created_at) values (?, ?, ?, ?, ?, ?)",
-      )
-      .run(id, run, lane, text.slice(0, 2000), canonicalJson(ok), new Date().toISOString());
+    this.ledger.tx(() => {
+      this.ledger.db
+        .prepare(
+          "insert into hypothesis (id, run, lane, text, supporting, created_at) values (?, ?, ?, ?, ?, ?)",
+        )
+        .run(id, run, lane, text.slice(0, 2000), canonicalJson(ok), new Date().toISOString());
+      // So the campaign's folder in the knowledge base holds the run's hypotheses too.
+      this.ledger.appendEvent(lane ?? "research", "hypothesis_added", run, {
+        hypothesis: id,
+        lane: lane ?? null,
+        text: text.slice(0, 2000),
+        supporting: ok,
+      });
+    });
     this.changed(run);
     return { hypothesis: id, supporting: ok, ignored: supporting.filter((c) => !known.has(c)) };
   }

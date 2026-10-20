@@ -54,7 +54,7 @@ export async function servePastSearch(search: PastSearch): Promise<PastSearchSer
             .max(10)
             .optional()
             .describe(
-              "Only these kinds: run, trial, experiment, attempt, note, doc, source, claim, finding, report",
+              "Only these kinds: run, trial, experiment, attempt, note, doc, source, claim, hypothesis, finding, report",
             ),
           limit: z.number().int().min(1).max(SEARCH_MAX).optional().describe("How many items"),
         },

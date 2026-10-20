@@ -14,10 +14,15 @@ export const KbKind = z.enum([
   "doc",
   "source",
   "claim",
+  "hypothesis",
   "finding",
   "report",
 ]);
 export type KbKind = z.infer<typeof KbKind>;
+
+/** A kind's plural, as folders and counts say it: notes, hypotheses. */
+export const kbPlural = (kind: string): string =>
+  kind === "hypothesis" ? "hypotheses" : `${kind}s`;
 
 /** One item of a campaign's folder, as control sends it. */
 export const KbItemWire = z.object({

@@ -219,6 +219,30 @@ describe("past research, synced from control into the run's folder", () => {
     assert.deepEqual(readdirSync(join(s.dir, "escape", "notes")), ["r--up--x.md"]);
   });
 
+  test("each kind has its folder, and the README counts each", async () => {
+    const s = await setup([]);
+    const kinds = ["run", "trial", "doc", "hypothesis", "source"] as const;
+    s.env.service.writeKnowledge(
+      RUN,
+      kinds.map((kind, i) => item(i + 1, { kind, ref: `${kind}-1`, sub: null })),
+    );
+    assert.deepEqual(readdirSync(join(s.dir, "kernels")).sort(), [
+      "docs",
+      "hypotheses",
+      "runs",
+      "sources",
+      "trials",
+    ]);
+    const readme = readFileSync(join(s.dir, "README.md"), "utf8");
+    assert.match(readme, /- hypotheses\/: 1\n/);
+    assert.match(readme, /- docs\/: 1\n/);
+    assert.equal(
+      s.env.service.knowledge.summary(RUN)?.counts.hypothesis,
+      1,
+      "counted under its own kind",
+    );
+  });
+
   test("a harness that cannot take the items leaves the cursor, so they come again", async () => {
     const s = await setup([item(1), item(2)]);
     s.down(true);

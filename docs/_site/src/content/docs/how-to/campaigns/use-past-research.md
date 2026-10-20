@@ -12,7 +12,7 @@ The words this page uses:
 
 - A **field note** is a short note an agent writes while it works: an observation, a decision and why, a surprise, an open question or a lesson. The workers, the planner and the [advisors](../../reference/glossary.md) write them. What was tried, and its result, is not a field note: the [experiment queue](choose-what-runs-next.md) keeps that.
 - A run's **journal** is its field notes.
-- **Thermite's knowledge base** is kept by control, with one **folder** for each campaign. A folder holds everything the campaign's runs produce: the runs and their trials, field notes and research notes, the documents lanes write, experiments with their results, attempts with their verdicts, sources with the text that was read, claims, findings and reports. Each item keeps its campaign, rig, run, who wrote it and when.
+- **Thermite's knowledge base** is kept by control, with one **folder** for each campaign. A folder holds everything the campaign's runs produce: the runs and their trials, field notes and research notes, the documents lanes write, experiments with their results, attempts with their verdicts, sources with the text that was read, claims, hypotheses, findings and reports. Each item keeps its campaign, rig, run, who wrote it and when.
 - A **grant** lets one campaign's agents read another campaign's folder. A campaign always reads its own.
 - **Past research** is what a run's agents get from the folders their campaign may read.
 - A **briefing** is the background you pick from past research when you start a run. Every agent's brief shows it.
@@ -57,7 +57,7 @@ At the side:
 
    **Campaign folders** lists one folder for each campaign. Each row shows the campaign's name, its mode and how many items it holds, such as `hill climb · 113 items`, what they are, such as `2 runs · 5 field notes · 8 experiments · 100 attempts`, and when it last changed. `read by:` names the campaigns that may read this folder, or says `none yet`; `reads:` names the folders its own agents read besides it, or says `only its own`. The name opens the campaign's **Knowledge** section.
 2. Under **Search the knowledge base**, write words in **Words**, such as `vector loads`. Every word must be in an item's title or text. Leave it empty for the newest items.
-3. To narrow the search, choose a **Kind** (runs, trials, experiments, attempts, notes, documents, sources, claims, findings or reports) or a **Folder**. **search it**, on a folder's row, does the same for that folder.
+3. To narrow the search, choose a **Kind** (runs, trials, experiments, attempts, notes, documents, sources, claims, hypotheses, findings or reports) or a **Folder**. **search it**, on a folder's row, does the same for that folder.
 4. Press **Search**.
 
 The results come newest first, up to 100. Each shows its kind, such as `Experiment` or `Field note (decision)`, its title, its campaign, run and writer, and, for an experiment, what became of it, such as `tried: attempt a-0123456789abcdef (submitted), regress (-3.10%)`. Press a result to read its text, and the address of its source when it has one. With no match, the list says `Nothing matches.`; with 100 results, `The newest 100 matches. Add words or a filter to see others.`

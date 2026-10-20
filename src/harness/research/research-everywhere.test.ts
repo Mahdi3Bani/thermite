@@ -69,6 +69,13 @@ describe("research in every mode", () => {
       title: "Kernel notes",
       text: (bodies(env, "source_fetched").at(-1) as { text: string }).text,
     });
+    // A hypothesis is an event too, with the verified claims it rests on.
+    research.proposeHypothesis("r-1", "lane-1", "Reads dominate.", ["c-none"]);
+    const h = bodies(env, "hypothesis_added").at(-1) as Record<string, unknown>;
+    assert.equal(h.lane, "lane-1");
+    assert.equal(h.text, "Reads dominate.");
+    assert.deepEqual(h.supporting, [], "only verified claims of the run");
+    assert.match(String(h.hypothesis), /^h-[0-9a-f]{12}$/);
     // The text that was read, as the archive keeps it: the folder holds the source itself.
     const text = String((bodies(env, "source_fetched").at(-1) as { text: string }).text);
     assert.ok(text.includes(QUOTE), "the page's text, with the words a claim quotes");

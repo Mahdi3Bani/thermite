@@ -102,7 +102,7 @@ Control keeps **Thermite's knowledge base** in its own store. Each campaign has 
 - field notes and research notes;
 - documents: the text files lanes write in their working areas of the run's research folder;
 - sources, with the text that was read, and claims with their quotes;
-- findings, and a research run's reports.
+- a research run's hypotheses, findings and reports.
 
 Each item keeps where it came from: its campaign, its rig and run, who wrote it, and when.
 

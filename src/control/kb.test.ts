@@ -509,11 +509,17 @@ test("a folder holds everything a run produces: the run, its trials, its documen
     ],
     // A document never recorded as one: its removal adds nothing.
     ["lane-1", "research_doc", "rs-1", { lane: "lane-1", path: "data.bin", change: "removed" }],
+    [
+      "lane-1",
+      "hypothesis_added",
+      "rs-1",
+      { hypothesis: "h-1", lane: "lane-1", text: "Loads bound the kernel.", supporting: ["c-1"] },
+    ],
   ]);
   const kb = store.kb();
   const f = kb.folder("kernel-survey");
-  assert.deepEqual(f.counts, { doc: 1, run: 1, source: 1, trial: 1 });
-  const one = (kind: "run" | "trial" | "doc" | "source") => {
+  assert.deepEqual(f.counts, { doc: 1, hypothesis: 1, run: 1, source: 1, trial: 1 });
+  const one = (kind: "run" | "trial" | "doc" | "source" | "hypothesis") => {
     const [x] = kb.search("", ["kernel-survey"], { kinds: [kind] });
     assert.ok(x, kind);
     return x;
@@ -563,8 +569,13 @@ test("a folder holds everything a run produces: the run, its trials, its documen
     doc.body,
     "# Outline\nLoads first, then tiling.\nRemoved: lane-1 took it out of its working area in trial t-2.",
   );
+  // A hypothesis, with the verified claims for it.
+  const hypothesis = one("hypothesis");
+  assert.equal(hypothesis.ref, "h-1");
+  assert.equal(hypothesis.by, "lane-1");
+  assert.equal(hypothesis.body, "Loads bound the kernel.\nSupporting claims: c-1");
   // Each item keeps its origin: the rig and run, who wrote it, and when.
-  for (const x of [run, trial, source, doc]) {
+  for (const x of [run, trial, source, doc, hypothesis]) {
     assert.equal(x.rig, "rig-r");
     assert.equal(x.run, "rs-1");
     assert.equal(x.campaign, "kernel-survey");
