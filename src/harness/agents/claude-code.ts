@@ -43,11 +43,21 @@ export const claudeBin = () => process.env.THERMITE_CLAUDE_BIN ?? "claude";
 export const NO_CLAUDE_CODE =
   "this rig's harness image has no Claude Code: build the image with the Claude Code option (CLAUDE_CODE_VERSION), or give the rig another harness on Edit rig";
 
-/** Why Claude Code exited, in words: a missing program says so, rather than the shell's note. */
-export function claudeExitWords(code: number | string | null, note: string): string {
+/** What to say when Claude Code can't isolate the agent's commands: bubblewrap is missing. */
+export const NO_BUBBLEWRAP =
+  "Claude Code needs bubblewrap to keep the agent's commands away from its sign-in, and this rig's image has none: rebuild the image from a newer Thermite, or install bubblewrap in it";
+
+/**
+ * Why Claude Code exited, in words. A missing program says so, rather than the shell's note. Its
+ * own `error:` line, anywhere in its output, comes before the last line (Bun prints the source
+ * around an error after it).
+ */
+export function claudeExitWords(code: number | string | null, note: string, output = ""): string {
   if ((code === 126 || code === 127) && /claude: (No such file or directory|not found)/.test(note))
     return NO_CLAUDE_CODE;
-  return `Claude Code exited ${code}: ${note}`;
+  const own = /(?:^|\n)\s*error: ([^\n]+)/.exec(output)?.[1]?.trim();
+  if (/bubblewrap is required/.test(own ?? note)) return NO_BUBBLEWRAP;
+  return `Claude Code exited ${code}: ${own ?? note}`;
 }
 
 /** Claude Code's executable as an absolute path (found on PATH), or undefined if it is not there. */
@@ -518,6 +528,7 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
       result.error = claudeExitWords(
         outcome.exitCode ?? outcome.signal,
         tally.notes.at(-1) ?? "no output",
+        tally.notes.join("\n"),
       );
       break;
     }
@@ -608,7 +619,11 @@ export async function claudeOnce(
       tally.errors.push(`no answer in ${Math.round(o.timeoutMs / 1000)} s`);
     else if (r.exitCode !== 0 && !tally.errors.length)
       tally.errors.push(
-        claudeExitWords(r.exitCode ?? r.signal, tally.notes.at(-1) ?? r.stderr.slice(-300)),
+        claudeExitWords(
+          r.exitCode ?? r.signal,
+          tally.notes.at(-1) ?? r.stderr.slice(-300),
+          `${tally.notes.join("\n")}\n${r.stderr}`,
+        ),
       );
   } finally {
     o.signal?.removeEventListener("abort", kill);

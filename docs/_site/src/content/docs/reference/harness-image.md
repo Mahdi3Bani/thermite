@@ -78,6 +78,7 @@ The workflow builds control, the harness images and the supervisor with `THERMIT
 | `thermite-devfence` | Built from `containers/harness/devfence.c` | `/usr/local/bin/thermite-devfence`. The GPU fence: it starts each role's command with the GPU device nodes it may not open left out, using the kernel's Landlock |
 | C and C++ toolchain | From the base image's apt repository; not pinned | `gcc`, `g++`, `libc6-dev`, `make`, `cmake`, `ninja-build`, `ccache` |
 | Python | From the base's apt repository; not pinned | `python3`, `python3-numpy` |
+| Sandbox for Claude Code | From the base's apt repository; not pinned | `bubblewrap`: Claude Code runs the agent's commands in it, with no sign-in in their environment. It uses unprivileged user namespaces, not a setuid bit |
 | Other packages | From the base's apt repository; not pinned | `git`, `tini`, `ca-certificates`. The build fails unless `setpriv`, `prlimit` and `taskset` exist |
 | Smoke kits and projects | This repository's `kits/` and `examples/` | `/opt/thermite/checks/kits`, `/opt/thermite/checks/examples`. The [smoke check](rig-checks.md#smoke-check) uses them |
 
@@ -146,7 +147,7 @@ At start the broker also closes `/tmp`, `/var/tmp` and `/dev/shm` to the roles (
 | Part | Detail |
 | --- | --- |
 | Base | `NODE_IMAGE` |
-| Packages | `git`, `openssh-client`, `tini`, `ca-certificates`, `python3` |
+| Packages | `git`, `openssh-client`, `tini`, `ca-certificates`, `python3`, `bubblewrap` (Claude Code runs an advisor's commands in it, with no sign-in in their environment) |
 | Thermite | `/opt/thermite`, and the `thermite` command at `/usr/local/bin/thermite` |
 | Claude Code | `/usr/local/bin/claude`, only when built with `CLAUDE_CODE_VERSION`. Advisors on a Claude subscription need it |
 | User | `supervisor`, uid and gid 10001, home `/var/lib/thermite-supervisor/home`, where `ssh` keeps `~/.ssh` |

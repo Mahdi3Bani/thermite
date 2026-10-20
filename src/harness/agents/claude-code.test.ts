@@ -9,6 +9,7 @@ import {
   claudeArgs,
   claudeExitWords,
   claudeModelCheck,
+  NO_BUBBLEWRAP,
   NO_CLAUDE_CODE,
   newClaudeTally,
   readClaudeEvents,
@@ -368,6 +369,13 @@ describe("Claude Code", () => {
     );
     assert.equal(claudeExitWords(127, "sh: claude: not found"), NO_CLAUDE_CODE);
     assert.equal(claudeExitWords(1, "something else"), "Claude Code exited 1: something else");
+    // Its own error line wins over the source Bun prints after it.
+    const bun = `error: bubblewrap is required for subprocess env scrubbing and isolation. Install with: sudo apt-get install -y bubblewrap\n  at hGo (/$bunfs/root/chunk.js:11:7202)\n managed settings, or set CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=0`;
+    assert.equal(claudeExitWords(1, " managed settings, or set X=0", bun), NO_BUBBLEWRAP);
+    assert.equal(
+      claudeExitWords(1, "  at x (y.js:1:2)", "error: Not logged in\n  at x (y.js:1:2)"),
+      "Claude Code exited 1: Not logged in",
+    );
   });
 
   test("a Claude subscription goes only with Claude Code, in a route or in the environment", () => {
