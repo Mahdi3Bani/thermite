@@ -169,7 +169,7 @@ Each experiment in `queue` has these fields:
 | `state` | `queued` or `proposed` | `queued`: up next. `proposed`: a lane's idea, which stays an idea in the new run |
 | `from` | `{run, id}` | The run and the experiment it was copied from |
 
-Over MCP, control does not keep the caller's words for a copied experiment. It takes `title`, `details`, `family`, `why` and `by` from its own record of the experiment that `from` names: the rigs' signed events, with every edit applied. A field that the record does not have is left out. When control has no record of that experiment (no rig reported it, or more than one did), the experiment keeps the caller's words, and its `by` is `copied`.
+Over MCP, control does not keep the caller's words for a copied experiment that it can take from its own record. It takes `title`, `details`, `family`, `why` and `by` from its record of the experiment that `from` names: the rigs' signed events, with every edit applied. A field that the record does not have is left out. It does this only when the run that `from` names is [filed](knowledge-base.md#campaign-folders) in the folder of the new run's campaign (`contract.campaign`), or of a campaign whose folder that campaign may read ([Grants](knowledge-base.md#grants)). Any other experiment keeps the caller's words, and its `by` is `copied`: one that control has no record of (no rig reported it, or more than one did), and one from a run in any other folder, or in none.
 
 Each item in `briefing` has these fields:
 

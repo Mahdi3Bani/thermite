@@ -106,6 +106,8 @@ Each item keeps where it came from: its campaign, its rig and run, who wrote it,
 
 Control builds the folders from the events in the rigs' reports, which each rig's harness signs and control checks before it takes one: the same events that a run's pages on the dashboard are built from. It updates the folders after each report it takes. No agent writes to a folder. An agent's note or claim reaches its campaign's folder only as an event in its run's ledger, carried in the rig's report.
 
+Which folder a run's items go in is control's choice, made from its own record of what it assigned: the folder of the campaign that control assigned that run on that rig. The campaign that the rig's events name counts only for a run that control did not assign, such as a rig check's smoke run, and only when control has assigned that campaign to no rig. [Which folder a run goes in](../reference/knowledge-base.md#which-folder-a-run-goes-in) has the rules.
+
 Control is the natural place for it. It already gathers every rig's reports, so one folder holds all of a campaign's runs, on every rig, and its items stay after a rig's full reset. Nothing outside Thermite is needed. On this point the owner was clear: "gbrain shouldn't be required. thermite should maintain its own kb system."
 
 The **Knowledge** page in the dashboard's sidebar lists every folder, with its counts, its runs, who reads it and what it reads, and searches the folders by words, kind and folder. Each campaign's page has a **Knowledge** section for its own folder. Over MCP, the owner's and the operator's tokens can list and search the folders too (`kb_folders` and `kb_search`); an agent's or a reader's token has neither tool.
@@ -137,7 +139,7 @@ Past research reaches a run in three ways.
 
 The briefing travels in the signed `assign_campaign` command that starts the run, and is fixed once the run exists. A run started over MCP can carry a briefing too; control then takes each item's words from its own record of the item, not from the caller. A run without agents, such as a try of a kit, has no briefs and no queue, so it takes neither.
 
-**One line for those who read no files.** The planner and the teacher pair don't read files, so their brief has one line that says what the run's `knowledge/` folder holds (its counts, and the folders they came from) and that the workers search it before starting. A worker's brief has a line like it, which says where the folder is.
+**One line for those who read no files.** The planner and the teacher pair don't read files, so their brief has one line that says what the run's `knowledge/` folder holds (its counts, and the folders they came from) and that the workers search it before starting. A worker's brief has a line like it, which says where the folder is. Teachers that may fetch any web page get neither this line nor the briefing, in their prompt or from their `brief` tool; their brief keeps the run's field notes.
 
 ## Data to weigh, never a verdict
 
