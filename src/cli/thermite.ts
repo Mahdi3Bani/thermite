@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { newToken } from "../control/credential.ts";
 import { generateSigningKeys } from "../core/commands.ts";
 import { CommitSchema, parseContract } from "../core/contract.ts";
-import { type Enrolled, writeRigFiles } from "./rig.ts";
+import { chooseOwner, localInit, parentOwner } from "./local-init.ts";
+import { type Enrolled, formatRigList, type RigList, writeRigFiles } from "./rig.ts";
 
 /**
  * The thermite command line: contract checks, key generation, issuing commands through control,
@@ -21,13 +22,18 @@ const USAGE = `usage: thermite <command> [options]
                                       the only part control's deployment needs
   assign --contract F --run ID [--seed GIT_URL[@COMMIT] | --seed-commit C] [--kit GIT_URL]
          [--model NAME=URL ...] [--direction D] [--agents off] [--promotion auto|owner]
+         [--queue-from [RIG/]RUN]
          (--control URL --token-file F --rig R [--ttl MIN] | --print)
                                       start a run. The rig's supervisor fetches the project and
                                       kit commits from their repositories, and models from their
                                       URLs, before the harness checks them. --seed-commit names a
                                       commit already on the rig (an earlier run's result); a kit
-                                      already there needs no --kit. --print shows the payload
-                                      (for issue_command over MCP) instead of issuing it
+                                      already there needs no --kit. --queue-from starts the new
+                                      run's queue with a past run's untried experiments, read
+                                      from control (on --rig unless RIG/ is given; it needs
+                                      --control and --token-file, with --print too). --print
+                                      shows the payload (for issue_command over MCP) instead of
+                                      issuing it
   assign-payload --contract F --run ID --seed-repo R --seed-commit C --bundle PATH
                  [--bundle-sha256 H] [--kit-repo R --kit-commit C --kit-bundle PATH
                  [--kit-bundle-sha256 H]] [--model NAME=SHA256:PATH ...] [--direction D] [--agents off]
@@ -40,12 +46,20 @@ const USAGE = `usage: thermite <command> [options]
                                       give an enrolled rig a new token (the old one stops working)
   rig retire RIG --control URL --token-file F
                                       shut an enrolled rig out of control; its history stays
+  rig list --control URL --token-file F [--json]
+                                      list the rigs (owner's token): reporting, stale or
+                                      offline, and each one's Thermite version against
+                                      control's, with what to do when it is behind or refused
   command --control URL --token-file F --rig U --kind K --payload JSON|@file [--ttl MIN]
                                       issue a signed command through control (admin token)
   submit --harness URL --token-file F --run ID --patch-file P --hypothesis TEXT
          [--known-flaw TEXT ...]      submit a patch as a proposer
   status --harness URL --token-file F --attempt ID
                                       show an attempt's lifecycle and verdict
+  local init DIR                      make DIR, the local compose stack's .dev folder: random
+                                      tokens in DIR/secrets, the inbox, the outbox and the
+                                      advisors' folder. Files that exist are kept. Run as root,
+                                      it gives what it makes to the owner of DIR's parent folder
   selftest isolation [--force]        inside the harness container, as root, with the rig idle: check that role
                                       users cannot reach the ledger, kits, builds or secrets
 `;
@@ -57,6 +71,13 @@ function fail(msg: string): never {
 
 function readJsonArg(value: string): unknown {
   return JSON.parse(value.startsWith("@") ? readFileSync(value.slice(1), "utf8") : value);
+}
+
+async function get(url: string, token: string): Promise<unknown> {
+  const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
+  const text = await res.text();
+  if (!res.ok) fail(`${url} -> ${res.status} ${text}`);
+  return JSON.parse(text);
 }
 
 async function post(url: string, token: string, body: unknown): Promise<unknown> {
@@ -200,6 +221,7 @@ async function main(argv: string[]): Promise<void> {
           direction: { type: "string" },
           agents: { type: "string" },
           promotion: { type: "string" },
+          "queue-from": { type: "string" },
           control: { type: "string" },
           "token-file": { type: "string" },
           rig: { type: "string" },
@@ -214,6 +236,22 @@ async function main(argv: string[]): Promise<void> {
         fail("--promotion is auto or owner");
       if (!values.print && (!values.control || !values["token-file"] || !values.rig))
         fail("give --control, --token-file and --rig to issue it, or --print to show it");
+      // A past run's untried experiments (goal 067), from control's records of that run.
+      const queueFrom = values["queue-from"];
+      let past: { rig: string; run: string } | undefined;
+      if (queueFrom !== undefined) {
+        // As the harness refuses it: nothing would take the experiments of a run without agents.
+        if (values.agents === "off")
+          fail("a run without agents has no queue: leave out --queue-from");
+        if (!values.control || !values["token-file"])
+          fail("--queue-from reads the past run from control: give --control and --token-file");
+        const slash = queueFrom.indexOf("/");
+        const run = queueFrom.slice(slash + 1);
+        const rig = slash >= 0 ? queueFrom.slice(0, slash) : values.rig;
+        if (!run || (slash >= 0 && !rig)) fail("--queue-from names a run: RUN or RIG/RUN");
+        if (!rig) fail("--queue-from RUN is a run on --rig: give --rig, or RIG/RUN");
+        past = { rig, run };
+      }
       const r = parseContract(JSON.parse(readFileSync(values.contract, "utf8")));
       if (!r.ok) fail(r.errors.join("\n"));
       const contract = r.contract;
@@ -278,6 +316,21 @@ async function main(argv: string[]): Promise<void> {
           source: { url: m.slice(eq + 1) },
         });
       }
+      // The same seed as Start a run: up next in order, then the lanes' ideas, at most 500, with
+      // the words and authors control's records hold for this contract's campaign, as over MCP.
+      let queue: unknown[] = [];
+      if (past) {
+        const control = (values.control as string).replace(/\/$/, "");
+        const from = (await get(
+          `${control}/v1/rigs/${encodeURIComponent(past.rig)}/runs/${encodeURIComponent(past.run)}/untried?campaign=${encodeURIComponent(contract.campaign)}`,
+          readFileSync(values["token-file"] as string, "utf8").trim(),
+        )) as { queue: unknown[] };
+        queue = from.queue;
+        if (!queue.length)
+          process.stderr.write(
+            `${past.run} on ${past.rig} has no untried experiments: the new run's queue starts empty\n`,
+          );
+      }
       const payload = {
         run: values.run,
         contract,
@@ -290,6 +343,7 @@ async function main(argv: string[]): Promise<void> {
           ? { promotion: values.promotion === "owner" ? "owner_approval" : "auto" }
           : {}),
         imports,
+        ...(queue.length ? { queue } : {}),
       };
       if (values.print) {
         process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
@@ -310,6 +364,28 @@ async function main(argv: string[]): Promise<void> {
       return;
     }
     case "rig": {
+      if (rest[0] === "list") {
+        const { values } = parseArgs({
+          args: rest.slice(1),
+          options: {
+            control: { type: "string" },
+            "token-file": { type: "string" },
+            json: { type: "boolean" },
+          },
+        });
+        if (!values.control || !values["token-file"]) fail(USAGE);
+        const res = await fetch(`${values.control.replace(/\/$/, "")}/v1/rigs`, {
+          headers: {
+            authorization: `Bearer ${readFileSync(values["token-file"], "utf8").trim()}`,
+          },
+        });
+        const text = await res.text();
+        if (!res.ok) fail(`${values.control}/v1/rigs -> ${res.status} ${text}`);
+        process.stdout.write(
+          values.json ? `${text}\n` : formatRigList(JSON.parse(text) as RigList),
+        );
+        return;
+      }
       const [sub, rig, ...args] = rest;
       const { values } = parseArgs({
         args,
@@ -435,15 +511,35 @@ async function main(argv: string[]): Promise<void> {
       process.stdout.write(`${await res.text()}\n`);
       return;
     }
+    case "local": {
+      const [sub, dir, ...extra] = rest;
+      if (sub !== "init" || !dir || extra.length) fail(USAGE);
+      const root = resolve(dir);
+      const owner = chooseOwner(process.getuid?.(), parentOwner(root));
+      const { made, kept } = localInit(root, owner);
+      const name = basename(root);
+      for (const rel of made)
+        process.stdout.write(`made ${rel === "." ? name : `${name}/${rel}`}\n`);
+      if (owner && made.length)
+        process.stdout.write(
+          `gave what it made to ${owner.uid}:${owner.gid}, the owner of the folder that holds ${name}\n`,
+        );
+      process.stdout.write(
+        `local init: ${name} ready (${made.length} made, ${kept.length} kept)\n`,
+      );
+      return;
+    }
     case "selftest": {
       if (rest[0] !== "isolation") fail(USAGE);
-      const { isolationSelftest } = await import("../harness/selftest.ts");
+      const { isolationSelftest, oneContainerTargets } = await import("../harness/selftest.ts");
       const { effectiveGpuLists, savedJudgeGpus } = await import("../harness/broker/devices.ts");
       const env = process.env;
       const secretFiles = [
         env.THERMITE_SUPERVISOR_TOKEN_FILE,
         env.THERMITE_PROPOSER_TOKEN_FILE,
         env.THERMITE_MODEL_API_KEY_FILE,
+        // In one container with the supervisor (pull mode): the keys its tunnel signs with.
+        env.THERMITE_TUNNEL_DIR ? join(env.THERMITE_TUNNEL_DIR, "keys.json") : undefined,
       ].filter((f): f is string => Boolean(f));
       const report = await isolationSelftest({
         socketPath: join(env.THERMITE_BROKER_DIR ?? "/run/thermite", "broker.sock"),
@@ -456,6 +552,8 @@ async function main(argv: string[]): Promise<void> {
           effectiveGpuLists(env, savedJudgeGpus(env.THERMITE_STATE_DIR ?? "/var/lib/thermite"))
             .dev !== undefined,
         force: rest.includes("--force"),
+        // The one-container rig image (THERMITE_ONE_CONTAINER): the supervisor's places too.
+        oneContainer: oneContainerTargets(env),
       });
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
       if (!report.ok) process.exit(1);

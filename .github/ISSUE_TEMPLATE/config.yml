@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security problem
+    url: https://github.com/iammrduncan/thermite/security/advisories/new
+    about: Report it privately, never in a public issue. SECURITY.md says what to include.
+  - name: Ask a question
+    url: https://discord.gg/3Qs2uejUf9
+    about: Questions, ideas and results go to Thermite's Discord.

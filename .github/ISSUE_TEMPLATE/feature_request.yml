@@ -1,0 +1,36 @@
+name: Feature request
+description: Ask for something that Thermite does not do yet.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the idea. First look at the [roadmap](https://github.com/iammrduncan/thermite/blob/main/docs/plan/roadmap.md) and the [known limits](https://github.com/iammrduncan/thermite/blob/main/docs/_site/src/content/docs/reference/known-limits.md): it may be planned already. To talk an idea over first, use [Discord](https://discord.gg/3Qs2uejUf9).
+  - type: textarea
+    id: goal
+    attributes:
+      label: What you want to do
+      description: The task or the result you want, in your own words. Say why it matters to you.
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: What you do now
+      description: How you do it today, if you can, and what makes that hard.
+    validations:
+      required: false
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: What you suggest
+      description: How Thermite could do it. For a change to a screen, a sketch helps.
+    validations:
+      required: false
+  - type: textarea
+    id: other
+    attributes:
+      label: Anything else
+      description: Links, examples, or other ways to do it that you thought of.
+    validations:
+      required: false

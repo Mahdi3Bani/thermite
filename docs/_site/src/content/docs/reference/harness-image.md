@@ -1,12 +1,12 @@
 ---
 title: "Harness image"
-description: "What the harness, supervisor and control images contain: base images, toolchains, users and groups, paths and build arguments."
+description: "What the harness, supervisor and control images and the one-container rig image contain: base images, toolchains, users and groups, paths and build arguments."
 type: reference
 sidebar:
   order: 13
 ---
 
-Thermite runs as three container images. The **harness** image holds a rig's judge, broker and agents; the **supervisor** image is the rig's link to the outside; the **control** image is the central service. This page lists what each one contains. [Extend the harness image](../how-to/install/extend-harness-image.md) adds your project's tools, and [Push the images to your own registry](../how-to/install/own-registry.md) builds them. The [glossary](glossary.md) explains the terms.
+Thermite runs as three container images. The **harness** image holds a rig's judge, broker and agents; the **supervisor** image is the rig's link to the outside; the **control** image is the central service. A fourth, the **one-container rig image**, puts a rig's harness and supervisor in one container, for hosts that run one container per machine, such as RunPod. This page lists what each one contains. [Extend the harness image](../how-to/install/extend-harness-image.md) adds your project's tools, and [Push the images to your own registry](../how-to/install/own-registry.md) builds them. The [glossary](glossary.md) explains the terms.
 
 Each image is built from the repository's root, from its own file:
 
@@ -15,12 +15,36 @@ Each image is built from the repository's root, from its own file:
 | Harness | `containers/harness/Containerfile` |
 | Supervisor | `containers/supervisor/Containerfile` |
 | Control | `containers/control/Containerfile` |
+| One-container rig | `containers/rig/Containerfile`, on a harness image built first |
 
 ```sh
 docker build -t thermite-harness -f containers/harness/Containerfile .
 ```
 
-`podman build` takes the same arguments. Under compose, `docker compose build` builds all three. No image is published yet: [goal 010](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/010-published-images.goal) plans that.
+`podman build` takes the same arguments. In a checkout of the source code, `docker compose build` builds all three.
+
+## Published images
+
+For each release, the release workflow (`.github/workflows/release.yml`) builds the images from these files and pushes them to GitHub's container registry, under the repository owner's name:
+
+| Image | Name | Tags | Architectures |
+| --- | --- | --- | --- |
+| Control | `ghcr.io/iammrduncan/thermite-control` | The version, such as `0.1.0`, and the first 12 characters of the commit | amd64, arm64 |
+| Harness, CPU | `ghcr.io/iammrduncan/thermite-harness` | The same | amd64, arm64 |
+| Harness, CUDA | `ghcr.io/iammrduncan/thermite-harness` | The same, each with `-cuda` added: `0.1.0-cuda` | amd64 |
+| Supervisor | `ghcr.io/iammrduncan/thermite-supervisor` | The same | amd64, arm64 |
+
+The workflow sets no `CLAUDE_CODE_VERSION`, so no published image carries Claude Code. A release's `compose.yaml` names each image by its digest, not by a tag. Each image also has these labels (and, for an image of two architectures, the same annotations on its index):
+
+| Label | Value |
+| --- | --- |
+| `org.opencontainers.image.source` | The repository, `https://github.com/iammrduncan/thermite`. GitHub links each package to the repository by it |
+| `org.opencontainers.image.version` | The release's version, such as `0.1.0` |
+| `org.opencontainers.image.revision` | The full commit the image was built from |
+| `org.opencontainers.image.title`, `org.opencontainers.image.description` | The image's name and what it is |
+| `org.opencontainers.image.licenses` | `MIT` |
+
+The workflow builds each image with `THERMITE_COMMIT` set to the full commit, so each service reports that commit with the version in its `package.json` ([Rig versions](rest-api.md#rig-versions)). It builds the harness images with `THERMITE_IMAGE_ID` too, set to the image's tag and short commit, such as `0.1.0-cuda+1a2b3c4d5e6f`: the harness reports it as its image in the rig's hardware report, which the rig's page shows, and puts it in every build's key ([Build cache](kit-manifest.md#build-cache)). In an image built from a checkout without these arguments, both are empty, which counts as not set.
 
 ## Build arguments
 
@@ -31,7 +55,10 @@ docker build -t thermite-harness -f containers/harness/Containerfile .
 | `OPENCODE_VERSION` | Harness | `2.0.32` | The OpenCode release installed |
 | `CLAUDE_CODE_VERSION` | Harness, supervisor | empty | A Claude Code release to install. Empty: Claude Code is not installed |
 | `KUBECTL_VERSION` | Control | `v1.37.1` | The kubectl release installed. Its sha256 is pinned for amd64 and arm64 only |
+| `THERMITE_COMMIT` | All three | empty | The source commit the image is built from. The image sets the environment variable of the same name, and the service reports it with Thermite's version: see [Rig versions](rest-api.md#rig-versions) |
+| `HARNESS_IMAGE` | One-container rig | none: required | The harness image the rig image is built on. See [The one-container rig image](#the-one-container-rig-image) |
 | `TARGETARCH` | All three | set by the builder | Chooses the arm64 or x64 package of OpenCode, Claude Code and kubectl |
+| `THERMITE_IMAGE_ID` | Harness | empty | The image's identity, kept as the variable of the same name, which the harness reports. The release workflow sets it to the tag and the short commit |
 
 ## The harness image
 
@@ -55,7 +82,7 @@ On the default base, the apt packages are Debian 12 ("bookworm") packages. The b
 
 ### The CUDA harness
 
-GPU rigs need the same image built on a CUDA 12.x development image, with `--build-arg BASE_IMAGE=<image>`. The image's comment says why 12.x: CUDA 13 dropped older GPU architectures. A development image is needed because the CUDA smoke kit builds with `nvcc`. The repository names no exact CUDA image tag. RunPod test pods ask for hosts with CUDA 12.6 or later.
+GPU rigs need the same image built on a CUDA 12.x development image, with `--build-arg BASE_IMAGE=<image>`. The image's comment says why 12.x: CUDA 13 dropped older GPU architectures. A development image is needed because the CUDA smoke kit builds with `nvcc`. The release workflow builds the published CUDA harness on `docker.io/nvidia/cuda:12.6.3-devel-ubuntu22.04`, pinned by its digest, so its apt packages are Ubuntu 22.04's. RunPod test pods ask for hosts with CUDA 12.6 or later.
 
 The CPU image has no `nvcc`, so it cannot build GPU kits. Control finds the CUDA image through `THERMITE_RIG_HARNESS_CUDA_IMAGE` (rigs it sets up, and the image it moves a cluster rig with GPUs onto) and `THERMITE_RUNPOD_TEST_IMAGE` (test pods). Compose runs CPU rigs only.
 
@@ -91,7 +118,7 @@ The [isolation check](rig-checks.md#isolation-check) tests these users, and [Iso
 - **As root.** The image sets no user. The broker needs root to start each role as its user, and stops at start with `fatal: not root, so roles cannot be separated` otherwise. Compose, the machine units and the cluster manifests keep only the capabilities `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `KILL`, `SETGID` and `SETUID`, and forbid gaining new privileges.
 - **What a role's process sees.** Builds and timed runs get only `PATH`, `LANG=C.UTF-8`, `HOME` and `TMPDIR` (both the run's own directory) and `USER`, plus `CUDA_VISIBLE_DEVICES` on a rig with dedicated GPUs. Other `ENV` lines in a derived image do not reach them. A lane's commands also get their build cache: `THERMITE_LANE_CACHE` and `CCACHE_DIR` (both the lane's cache folder) and `CCACHE_MAXSIZE=8G`.
 - **Port:** 8700, the harness API (`THERMITE_LISTEN`). No port is published.
-- **Also set:** `NODE_OPTIONS=--disable-warning=ExperimentalWarning`.
+- **Also set:** `NODE_OPTIONS=--disable-warning=ExperimentalWarning`, and `THERMITE_COMMIT` and `THERMITE_IMAGE_ID` from their build arguments (see [Published images](#published-images)).
 
 ### Paths
 
@@ -119,6 +146,86 @@ At start the broker also closes `/tmp`, `/var/tmp` and `/dev/shm` to the roles (
 | Paths it owns | `/var/lib/thermite-supervisor` (its state), `/results`. `/outbox` is 10010:10001, 2750 |
 | Entry point | `tini`, then `node /opt/thermite/dist/supervisor/main.js` |
 | Ports | None |
+
+## The one-container rig image
+
+A RunPod pod runs one container. The one-container rig image runs a rig's harness and its supervisor in it. The broker runs as root, as in the harness image, and also starts the supervisor under the supervisor's own user, beside the role users. Nothing launches it yet: [goal 022](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/022-runpod-launch.goal) adds rigs on RunPod, and [goal 019](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/019-rig-only-entry.goal) the port control connects to.
+
+It is the harness image with the supervisor added. Build the harness image first, on a CUDA 12.x base for a GPU pod, and name it in `HARNESS_IMAGE`. The CPU harness image works the same, for a test:
+
+```sh
+podman build -t thermite-harness -f containers/harness/Containerfile .
+podman build -t thermite-rig --build-arg HARNESS_IMAGE=localhost/thermite-harness \
+  -f containers/rig/Containerfile .
+```
+
+### What it adds to the harness image
+
+| Part | Detail |
+| --- | --- |
+| Thermite | Nothing: the harness image's `/opt/thermite` already holds the supervisor's code |
+| Packages | `openssh-client`, as in the supervisor image, for Git over SSH |
+| User | `supervisor`, uid and gid 10001, home `/var/lib/thermite-supervisor/home`, as in the supervisor image. `/var/lib/thermite-supervisor` and its `home` are mode 0700 |
+| Set-id files | None. The build removes every setuid and setgid bit after the last package, and fails if one is left. RunPod does not stop a process from gaining privileges through such a file (`no_new_privs` is off there), so a role could otherwise run a setuid program as its owner |
+| `thermite-rig-start` | `/usr/local/bin/thermite-rig-start`, the entry point. See [How it starts](#how-it-starts) |
+| Entry point | `thermite-rig-start`, then `tini`, then `node /opt/thermite/dist/harness/broker.js` |
+| Port | 8000 (`EXPOSE 8000`), the port control is to connect to through RunPod's proxy. Nothing listens on it yet ([goal 019](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/019-rig-only-entry.goal)) |
+
+### Settings the image sets
+
+The launch gives the rest: `THERMITE_RIG_ID`, `THERMITE_CONTROL_PUBKEY` and the rig's other [settings](settings.md).
+
+| Variable | Value | Effect |
+| --- | --- | --- |
+| `THERMITE_ONE_CONTAINER` | `1` | The broker also prepares and starts the supervisor. The harness waits for control's key as long as it takes. The isolation check also checks the container as a whole |
+| `THERMITE_STATE_DIR` | `/workspace/thermite/harness` | The harness's state, on RunPod's volume (mounted at `/workspace`, kept when a pod stops) |
+| `THERMITE_OUTBOX_DIR` | `/workspace/thermite/outbox` | The outbox, read by both parts |
+| `THERMITE_INBOX_DIR` | `/workspace/thermite/inbox` | The inbox, read by both parts |
+| `THERMITE_SUPERVISOR_HOME` | `/workspace/thermite/supervisor` | The supervisor's state |
+| `THERMITE_SUPERVISOR_TOKEN_FILE` | `/workspace/thermite/secrets/supervisor-token` | The token between the two parts, made at first start |
+| `THERMITE_CONTROL_PUBKEY_FILE` | `/etc/thermite/control-signing.pub` | Where the broker writes control's key, and both parts read it |
+| `THERMITE_LISTEN` | `127.0.0.1:8700` | The harness API answers on loopback only |
+| `HARNESS_URL` | `http://127.0.0.1:8700` | The supervisor reaches the harness there |
+| `THERMITE_TUNNEL_PORT` | `8000` | The port of control's connection. Nothing reads it yet ([goal 019](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/019-rig-only-entry.goal)) |
+
+### How it starts
+
+1. `thermite-rig-start` removes every `RUNPOD_` variable from the environment: RunPod's API key, the pod's ID and the others. It passes the pod's ID on as `THERMITE_POD_ID`, unless that is set already, for the supervisor's connection to control ([goal 019](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/019-rig-only-entry.goal)). Then it starts `tini`, so no process of the rig has RunPod's variables, PID 1 included.
+2. The broker, as root, prepares the harness's places as in the harness image, and the supervisor's:
+   - its state folder, `THERMITE_SUPERVISOR_HOME`: the supervisor's, mode 0700, with a folder `tmp` emptied at every start. `/tmp` is closed to the supervisor, as to the roles;
+   - the inbox: the supervisor's, with the controller's group `thermite`, mode 2750;
+   - the token the supervisor uses on the harness API: made at first start in `THERMITE_SUPERVISOR_TOKEN_FILE` (root's, 0600, in a folder of mode 0700), and copied at every start to `harness-token` in the supervisor's state folder (the supervisor's, 0600);
+   - control's command-signing public key: taken from `THERMITE_CONTROL_PUBKEY` (PEM, or PEM in base64) and written by root to `THERMITE_CONTROL_PUBKEY_FILE`, mode 0644.
+3. As the supervisor's user, started the way the supervisor is, it tries to open each GPU device node. It records what happened in `supervisor.json` in its socket's folder, for the isolation check.
+4. It starts the supervisor as `supervisor` (10001), with no_new_privs (`setpriv --no-new-privs`), and in the GPU fence with no card where the kernel has Landlock: neither the supervisor nor a program it starts (an advisor's) can open the GPU. Then it starts the controller as `thermite`, as in the harness image.
+
+Without `THERMITE_CONTROL_PUBKEY`, or with a value that is not an Ed25519 public key, the broker logs why and writes no key. The harness then waits for the key file, and logs `waiting for control's public key` at once and every 10 minutes after. It does not stop and start again.
+
+The supervisor's environment is the broker's, without RunPod's variables and without the harness's secret files, with `HOME` (its passwd home), `TMPDIR` (its `tmp`), `USER=supervisor` and `THERMITE_HARNESS_TOKEN_FILE` set. The roles get what they get in the harness image. The controller gets no `RUNPOD_` variable either, in every image.
+
+### Restarts and stops
+
+| When | The broker |
+| --- | --- |
+| The controller exits | Does what it does in the harness image: ends the controller's processes and every role's, and starts it again |
+| The supervisor exits | Ends whatever the supervisor started (its process group and every process of its user), logs `supervisor exited; restarting`, and starts it again |
+| A part exits again soon | Waits 2 seconds before the next start, then twice as long each time, up to 30 seconds. After a run of more than a minute it waits 1 second |
+| It gets `SIGTERM` or `SIGINT`, as when the pod stops | Passes the signal to both parts and starts neither again. Once both have ended, it ends every role's processes, logs `stopped` and exits with the controller's exit code |
+
+### Paths
+
+| Path | What | Owner and mode |
+| --- | --- | --- |
+| `/workspace/thermite/harness` | The harness's state | As `/var/lib/thermite` in the harness image |
+| `/workspace/thermite/outbox` | Exports for the supervisor | `thermite` with the supervisor's group (10010:10001), 2750 |
+| `/workspace/thermite/inbox` | What the supervisor fetched for the harness | `supervisor` with group `thermite` (10001:10010), 2750 |
+| `/workspace/thermite/supervisor` | The supervisor's state, its `harness-token` and its `tmp` | `supervisor`, 0700 |
+| `/workspace/thermite/secrets` | Root's copy of the token between the two parts | root, 0700 |
+| `/etc/thermite/control-signing.pub` | Control's key from the launch | root, 0644 |
+| `/run/thermite/supervisor.json` | The broker's record of the supervisor's user, fence and GPU access | root, 0644, in the broker's folder (root and group `thermite`, 0750) |
+| `/scratch` | As in the harness image, on the container's own disk | root, 0755 |
+
+The [isolation check](rig-checks.md#the-one-container-image) checks the supervisor, set-id files and RunPod's variables in this image too.
 
 ## The control image
 

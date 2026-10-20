@@ -1,4 +1,5 @@
 import { log } from "../common/env.ts";
+import { buildHeaders } from "../core/version.ts";
 
 /**
  * The agents' model route comes from control: the owner sets it on the settings page, and control
@@ -39,7 +40,7 @@ export async function syncModelRouteRound(
 export async function syncModelRoute(s: RouteSync): Promise<RouteSyncResult> {
   const fetch = s.fetchImpl ?? globalThis.fetch;
   const res = await fetch(`${s.controlUrl}/v1/rigs/${encodeURIComponent(s.rig)}/model-route`, {
-    headers: { authorization: `Bearer ${s.controlToken}` },
+    headers: { authorization: `Bearer ${s.controlToken}`, ...buildHeaders() },
   });
   if (!res.ok) throw new Error(`control's model route: HTTP ${res.status}`);
   const { route, planner = null } = (await res.json()) as {

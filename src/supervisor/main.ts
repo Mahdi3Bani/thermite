@@ -7,8 +7,9 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { log, optionalSecretFromFile, requireEnv, secretFromFile } from "../common/env.ts";
+import { buildHeaders, buildInfo } from "../core/version.ts";
 import { type AdviseState, adviseOnce, emptyAdviseState, teachersCalled } from "./advise.ts";
 import { type ControlAdvisors, fetchControlAdvisors, mergeAdvisors } from "./advisor-routes.ts";
 import { AdvisorsConfig } from "./advisors.ts";
@@ -21,6 +22,7 @@ import { RelayError, type RelayState, relayCommandsOnce, relayOnce } from "./rel
 import { dailyReport } from "./report.ts";
 import { stageCommand } from "./staging.ts";
 import { waitForHarness } from "./startup.ts";
+import { startPullMode } from "./tunnel-pod.ts";
 
 function load<T>(path: string, fallback: T): T {
   return existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as T) : fallback;
@@ -45,8 +47,15 @@ async function main(): Promise<void> {
   const rig = requireEnv("THERMITE_RIG_ID");
   const harnessUrl = requireEnv("HARNESS_URL").replace(/\/$/, "");
   const harnessToken = secretFromFile("THERMITE_HARNESS_TOKEN_FILE");
-  const controlUrl = env.CONTROL_URL?.replace(/\/$/, "");
-  const controlToken = optionalSecretFromFile("THERMITE_CONTROL_TOKEN_FILE");
+  // Pull mode (a rig on RunPod): this rig never connects to control. Control connects to the
+  // tunnel's port; the supervisor's calls go to the tunnel's local port and wait there for it.
+  const pull = await startPullMode(env, rig, home);
+  const controlUrl = pull?.controlUrl ?? env.CONTROL_URL?.replace(/\/$/, "");
+  const controlToken = pull?.controlToken ?? optionalSecretFromFile("THERMITE_CONTROL_TOKEN_FILE");
+  // A full reset keeps the tunnel's keys and enrollment: control's trust in the pod stays.
+  const keepOnWipe = new Set(
+    (pull?.dirs ?? []).filter((d) => dirname(d) === home).map((d) => basename(d)),
+  );
   const remote = env.THERMITE_RESULTS_REMOTE || undefined;
   const sshKeyFile = env.THERMITE_RESULTS_KEY_FILE || undefined;
   const knownHostsFile = env.THERMITE_RESULTS_KNOWN_HOSTS || undefined;
@@ -116,8 +125,10 @@ async function main(): Promise<void> {
   let reportState = load<{ lastDailyAt?: string }>(reportPath, {});
   log("supervisor", "starting", {
     rig,
+    build: buildInfo(),
     interval_ms: intervalMs,
     control: Boolean(controlUrl),
+    pull_mode: Boolean(pull),
     results_remote: Boolean(remote),
     advisors: advisors
       ? {
@@ -140,7 +151,11 @@ async function main(): Promise<void> {
     if (!controlUrl || !controlToken) return;
     const res = await fetch(`${controlUrl}/v1/rigs/${encodeURIComponent(rig)}${path}`, {
       method: "POST",
-      headers: { authorization: `Bearer ${controlToken}`, "content-type": "application/json" },
+      headers: {
+        authorization: `Bearer ${controlToken}`,
+        "content-type": "application/json",
+        ...buildHeaders(),
+      },
       body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(`POST ${path} -> ${res.status}`);
@@ -357,7 +372,7 @@ async function main(): Promise<void> {
       // (relay cursor, export record, local results repository, advisor records) and restarts.
       log("supervisor", "wiping the supervisor's state (full reset)");
       for (const name of readdirSync(home))
-        rmSync(join(home, name), { recursive: true, force: true });
+        if (!keepOnWipe.has(name)) rmSync(join(home, name), { recursive: true, force: true });
       process.exit(0);
     }
     try {

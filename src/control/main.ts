@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { serve } from "@hono/node-server";
 import { log, optionalSecretFromFile, parseListen } from "../common/env.ts";
 import { generateSigningKeys } from "../core/commands.ts";
+import { buildInfo } from "../core/version.ts";
 import { createControlApi } from "./api.ts";
 import { Credential } from "./credential.ts";
 import { KitRepos } from "./kit-repos.ts";
@@ -12,6 +13,7 @@ import { refreshGpuClouds } from "./runpod.ts";
 import { RunpodTests } from "./runpod-tests.ts";
 import { SecretBox } from "./secrets.ts";
 import { ControlStore } from "./store.ts";
+import { ControlTunnels } from "./tunnel.ts";
 
 /** Control service entry point. Generates its signing key on first start. */
 async function main(): Promise<void> {
@@ -69,6 +71,8 @@ async function main(): Promise<void> {
   const { host, port } = parseListen(env.THERMITE_CONTROL_LISTEN ?? "0.0.0.0:8800");
   // A rig is stale after 3 missed reports (the supervisor reports every 60 s by default).
   const staleAfterMs = Number(env.THERMITE_CONTROL_STALE_SECONDS ?? "180") * 1000;
+  // Offline after 15 minutes without a report (never before it is stale).
+  const offlineAfterMs = Number(env.THERMITE_CONTROL_OFFLINE_SECONDS ?? "900") * 1000;
   const driver = driverFromEnv(env);
   // The key that seals model routes' API keys: its own file, made on first use. Mount it
   // from a separate secret to keep it off the database's volume.
@@ -81,9 +85,12 @@ async function main(): Promise<void> {
   });
   // Outside knowledge bases (optional): copies of campaign folders, synced by the loop below.
   const outsideKb = new OutsideKbs(store, store.kb(), secrets);
+  // Rigs in pull mode (on RunPod): control connects to each, in the loop below.
+  const tunnels = new ControlTunnels(store, secrets, privateKeyPem);
   const server = serve({
     fetch: createControlApi(store, tokens, privateKeyPem, {
       staleAfterMs,
+      offlineAfterMs,
       driver,
       // Optional: the owner accepts each rig's first report key (no trust on first use).
       requireKeyAcceptance: env.THERMITE_CONTROL_REQUIRE_KEY_ACCEPT === "1",
@@ -93,6 +100,7 @@ async function main(): Promise<void> {
       secrets,
       runpodTests,
       outsideKb,
+      tunnels,
       // Kits written on the new-campaign page, kept as git repositories in control's state.
       kits: new KitRepos(join(dir, "kits")),
       // How rigs and the machines control sets rigs up on reach control.
@@ -113,6 +121,7 @@ async function main(): Promise<void> {
   log("control", "listening", {
     host,
     port,
+    build: buildInfo(),
     rigs: Object.keys(tokens.rigs),
     enrolled: store
       .enrolledRigs()
@@ -132,6 +141,11 @@ async function main(): Promise<void> {
       .advance()
       .catch((err) => log("control", "runpod test error", { error: String(err) }));
   }, 15_000);
+  // Rigs in pull mode: each rig's next exchange starts as soon as its last one ends (an exchange
+  // waits up to 20 s at the pod for the rig's calls), each failing rig after its retry time.
+  const pulls = setInterval(() => {
+    tunnels.advance().catch((err) => log("control", "pull mode error", { error: String(err) }));
+  }, 250);
   // GPU clouds' prices, pods and spend, read again every 15 minutes.
   const clouds = setInterval(() => {
     refreshGpuClouds(store, secrets).catch((err) =>
@@ -155,6 +169,7 @@ async function main(): Promise<void> {
   const stop = () => {
     clearInterval(resets);
     clearInterval(tests);
+    clearInterval(pulls);
     clearInterval(clouds);
     clearInterval(outsideSync);
     server.close();

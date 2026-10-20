@@ -6,11 +6,11 @@ sidebar:
   order: 6
 ---
 
-Control sets [rigs](../../reference/glossary.md) up from images it does not build: a machine or a cluster pulls them from a registry. Thermite has no published images yet ([goal 010](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/010-published-images.goal)), so you build them from the repository and push them to a registry of your own. Then you tell control their names.
+Control sets [rigs](../../reference/glossary.md) up from images it does not build: a machine or a cluster pulls them from a registry. Each release publishes Thermite's images on `ghcr.io`, and a release's `compose.yaml` gives them to control already ([Published images](../../reference/harness-image.md#published-images)). Build and push images of your own when you change them, for example to [add your project's tools](extend-harness-image.md) or Claude Code, or when your rigs can't reach `ghcr.io`. Then you tell control their names.
 
 ## Before you start
 
-- A clone of Thermite, and Docker or Podman, as in [Install Thermite on one machine](one-machine.md).
+- A clone of Thermite's source code (`git clone https://github.com/iammrduncan/thermite.git`), and Docker or Podman.
 - A registry your rigs can pull from **without signing in**, over HTTPS. Control passes no registry credentials: none to machines, no image pull secret to clusters, none to RunPod. A private registry that needs a sign-in doesn't work yet ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)), and Podman and Kubernetes nodes refuse a registry served over plain HTTP unless their own settings allow it, which control doesn't change.
 - Space for the builds. The CUDA harness image is large.
 
@@ -31,23 +31,25 @@ Build from the repository's top folder: the images need its `package.json`, `src
 
 ```sh
 tag=$(git rev-parse --short=12 HEAD)
+commit=$(git rev-parse HEAD)
 r=registry.example.com/thermite
-docker build -t $r/thermite-control:$tag    -f containers/control/Containerfile .
-docker build -t $r/thermite-harness:$tag    -f containers/harness/Containerfile .
-docker build -t $r/thermite-supervisor:$tag -f containers/supervisor/Containerfile .
+docker build -t $r/thermite-control:$tag    --build-arg THERMITE_COMMIT=$commit -f containers/control/Containerfile .
+docker build -t $r/thermite-harness:$tag    --build-arg THERMITE_COMMIT=$commit -f containers/harness/Containerfile .
+docker build -t $r/thermite-supervisor:$tag --build-arg THERMITE_COMMIT=$commit -f containers/supervisor/Containerfile .
 ```
 
-With Podman, use `podman build` the same way.
+With Podman, use `podman build` the same way. `THERMITE_COMMIT` puts the commit in each image: control and the rigs report it with Thermite's version, so the rig lists show which build each part runs ([Rig versions](../../reference/rest-api.md#rig-versions)). Without it they report the version alone.
 
 For GPU rigs, build the harness again on a CUDA base:
 
 ```sh
 docker build -t $r/thermite-harness:$tag-cuda \
   --build-arg BASE_IMAGE=<a CUDA 12 development image> \
+  --build-arg THERMITE_COMMIT=$commit \
   -f containers/harness/Containerfile .
 ```
 
-Thermite names no tested CUDA base image yet ([goal 010](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/010-published-images.goal)). NVIDIA's own `nvidia/cuda` images have development tags on Ubuntu, but none has been named as tested. What the Containerfile needs from the base:
+The release workflow builds the published CUDA harness on `docker.io/nvidia/cuda:12.6.3-devel-ubuntu22.04`, pinned by its digest in `.github/workflows/release.yml`. Use the same base, or another one that has what the Containerfile needs:
 
 - **CUDA 12.** The Containerfile notes that CUDA 13 dropped older GPU architectures. RunPod test pods ask for hosts that run CUDA 12.6 or later.
 - **A development image**, with `nvcc`: the GPU smoke check compiles CUDA code on the rig.
@@ -62,12 +64,14 @@ Thermite names no tested CUDA base image yet ([goal 010](https://github.com/iamm
 | `OPENCODE_VERSION` | Harness | `2.0.32` | The OpenCode release the image carries |
 | `CLAUDE_CODE_VERSION` | Harness, supervisor | Empty: no Claude Code | Downloads that Claude Code release into the image, for a [Claude subscription](../models/claude-subscription.md) |
 | `KUBECTL_VERSION` | Control | `v1.37.1` | The kubectl control uses for clusters. It is checked against a pinned hash, so a different version fails the build |
+| `THERMITE_COMMIT` | All three | Empty: no commit | The source commit the image is built from, which the service reports with its version |
+| `THERMITE_IMAGE_ID` | Harness | Empty | A name for this build, which the harness reports as its image and puts in each build's key, for example `--build-arg THERMITE_IMAGE_ID=$tag` |
 
 Claude Code is not open source, so Thermite's images leave it out by default. **Never push an image built with Claude Code to a public registry.** Since rigs can't sign in to a registry yet, such an image reaches a remote rig only from a registry that is not public and still needs no sign-in, such as one that only your own network reaches. Let that registry take pushes only from someone signed in.
 
 ### Architectures
 
-The control image builds for amd64 and arm64 only. The harness and supervisor pick their downloads for arm64, or for x64 otherwise. Thermite has no multi-architecture build: build each image for the architecture of the machines that run it. Docker and Podman build for another one with `--platform`: on a Mac with Apple silicon, for example, add `--platform linux/amd64` for x86-64 machines.
+The control image builds for amd64 and arm64 only. The harness and supervisor pick their downloads for arm64, or for x64 otherwise. The release workflow builds the published images for both architectures at once, with Docker Buildx. A plain `docker build` or `podman build` makes one: build each image for the architecture of the machines that run it. Docker and Podman build for another one with `--platform`: on a Mac with Apple silicon, for example, add `--platform linux/amd64` for x86-64 machines.
 
 ## 2. Push them
 
@@ -79,7 +83,7 @@ docker push $r/thermite-supervisor:$tag
 
 With Podman, use `podman push` the same way. Podman refuses a registry served over plain HTTP (`server gave HTTP response to HTTPS client`), even one on your own computer, unless you add `--tls-verify=false`; rigs can't pull from such a registry anyway, as [Before you start](#before-you-start) says.
 
-Push the control image too if control runs from it elsewhere. The local compose stack builds its own images and pulls none.
+Push the control image too if control runs from it elsewhere. The compose stack of a checkout builds its own images and pulls none; a release's pulls the published images.
 
 **Use a new tag for every build.** A machine pulls an image only when it does not have that tag already, and a cluster's pods use `IfNotPresent`. An image pushed again under an old tag never reaches a machine or node that has the old one. Control also offers a rig on a cluster new images only when their names differ from the ones it runs.
 
@@ -108,6 +112,6 @@ A rig that control set up on a cluster keeps the images it runs until you move i
 
 - **Registry sign-in.** Control gives rigs no credentials for a private registry, so a machine's Podman, or a cluster's nodes, must pull the images without signing in.
 - **Moving other rigs to new images.** A rig that control set up on a machine, or one you joined yourself (on a machine or in a namespace), keeps the images it was set up with. Control can't move it yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)): add a new rig from the new images. Rigs that control set up on a cluster can move, as above.
-- **Versions reported by the images.** A rig's harness does not report which image it runs ([goal 010](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/010-published-images.goal)). For a rig control set up, its page shows the image names control used.
+- **Version checks.** A rig's harness reports `THERMITE_IMAGE_ID` as its image, when the build set it, and the rig's page shows it. Control does not compare it with its own version yet ([goal 012](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/012-version-checks.goal)). For a rig control set up, its page also shows the image names control used.
 
 To add your own tools to the harness, see [Extend the harness image](extend-harness-image.md).

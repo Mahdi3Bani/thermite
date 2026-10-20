@@ -1,6 +1,6 @@
 ---
 title: "Trust between control and rigs"
-description: "How signed commands, signed reports and pinned keys let control and its rigs trust each other through the supervisor in between."
+description: "How signed commands, signed reports and pinned keys let control and its rigs trust each other through the supervisor in between, and how control reaches a rig in pull mode through a public proxy."
 type: explanation
 sidebar:
   order: 10
@@ -77,7 +77,7 @@ The harness signs every report it gives the supervisor: each page of new events,
 4. it does not come from a record the rig has left behind, such as one from before a full reset;
 5. it is not older than the newest report control has taken, and not dated in the future.
 
-So the supervisor cannot forge a report, replay an old one, or drop events from the middle of the stream. Only the harness's signed reports make a rig show **Live** on the dashboard's **Rigs** page. A champion patch that the supervisor uploads is kept only if its SHA-256 matches the one in the rig's signed record of that champion. A run's **Live** view is for watching the work as it happens; the record of what happened is these signed events. The same goes for a run's experiment queue: control builds the **Experiments** and **Planner** tabs from the signed events alone. So does Thermite's knowledge base: every item in a campaign's folder comes from an event in a rig's signed report ([below](#the-knowledge-base-grants-and-outside-knowledge-bases)). When a new run copies another run's untried experiments, from **Start a run** or over MCP, control takes each one's title, details, direction, why and author from its own record of the experiment it was copied from, not from what an MCP caller wrote. Over MCP, control takes that record only from a run of the new run's campaign, or of a campaign whose folder the new run's campaign may read. Any other experiment keeps the caller's words, marked `copied` as its author.
+So the supervisor cannot forge a report, replay an old one, or drop events from the middle of the stream. Only the harness's signed reports make a rig show **Live** on the dashboard's **Rigs** page. A champion patch that the supervisor uploads is kept only if its SHA-256 matches the one in the rig's signed record of that champion. A run's **Live** view is for watching the work as it happens; the record of what happened is these signed events. The same goes for a run's experiment queue: control builds the **Experiments** and **Planner** tabs from the signed events alone. So does Thermite's knowledge base: every item in a campaign's folder comes from an event in a rig's signed report ([below](#the-knowledge-base-grants-and-outside-knowledge-bases)). When a new run copies another run's untried experiments, from **Start a run**, over MCP or with `thermite assign --queue-from`, control takes each one's title, details, direction, why and author from its own record of the experiment it was copied from, not from what an MCP caller wrote. Over MCP, control takes that record only from a run of the new run's campaign, or of a campaign whose folder the new run's campaign may read. Any other experiment keeps the caller's words, marked `copied` as its author. `--queue-from` follows the same rule: an experiment from a run of any other campaign keeps the words control shows for it, marked `copied`.
 
 ## Pinning the rig's key
 
@@ -91,15 +91,69 @@ The owner accepts a key by its **fingerprint**: the first 16 hexadecimal charact
 
 ## Rigs dial out
 
-Control never connects to a running rig. The supervisor makes every connection, out to control. It asks for pending commands every few seconds, and fetches the agents' model route and sends live lines, reports and its own figures, each on its own schedule ([How often it talks to control](../reference/settings.md#how-often-it-talks-to-control)).
+Control never connects to a running rig, except to a rig in pull mode ([below](#rigs-in-pull-mode)). The supervisor makes every connection, out to control. It asks for pending commands every few seconds, and fetches the agents' model route and sends live lines, reports and its own figures, each on its own schedule ([How often it talks to control](../reference/settings.md#how-often-it-talks-to-control)).
 
-The supervisor listens on no port. The harness publishes no port to the outside, and every part of its API except a health check needs a token. The supervisor uses a **rig token** with control, which works only on its own rig's routes, and a retired rig is refused whatever token it holds.
+Outside pull mode, the supervisor listens on no port. The harness publishes no port to the outside, and every part of its API except a health check needs a token. The supervisor uses a **rig token** with control, which works only on its own rig's routes, and a retired rig is refused whatever token it holds.
 
 So a rig can run where nothing can reach it, such as behind a home router or a firewall, as long as it can reach control. And **rigs keep researching when control is down**: commands wait at control, and reports catch up when it is back.
 
-Control does connect to machines and clusters, over SSH or with kubectl, to set a rig up, start it, stop it and remove it, and to move a rig on a cluster onto new images, reading its deployments' status while it waits for them. It never uses those connections to talk to the running rig. What control did there, step by step, is for the people who run control: over MCP, `rig_setup` shows it to the owner's, operators' and readers' tokens, never to an agent's token, and only the owner and operators see each step's details. Rigs on RunPod, which control would reach through RunPod's proxy, are being built in [goal 019](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/019-rig-only-entry.goal).
+Control does connect to machines and clusters, over SSH or with kubectl, to set a rig up, start it, stop it and remove it, and to move a rig on a cluster onto new images, reading its deployments' status while it waits for them. It never uses those connections to talk to the running rig. What control did there, step by step, is for the people who run control: over MCP, `rig_setup` shows it to the owner's, operators' and readers' tokens, never to an agent's token, and only the owner and operators see each step's details.
 
 Some things reach a rig without a command: the agents' model route, the advisors' models, the Git access for a private repository, the past research for its running runs, and, with the advisors' models, any outside knowledge base whose search the owner gave a campaign that control assigned to the rig. The supervisor fetches each from control with its rig token when it needs it ([Who holds your keys](who-holds-your-keys.md)).
+
+## Rigs in pull mode
+
+A rig on RunPod runs in **pull mode**: it never connects to control, and control connects to it. Control can then stay private, with nothing of where it runs opened to the internet, even on a laptop behind a home router, and no tunnel or VPN to set up first. The rig's supervisor serves one port, which RunPod's HTTP proxy makes reachable at `https://<pod>-<port>.proxy.runpod.net`. Control connects there, takes the rig's reports and delivers its commands, model routes and other settings. Rigs under compose, on machines and on clusters keep dialing out as above: the mode belongs to each rig. Launching a rig on RunPod from control comes with [goal 022](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/022-runpod-launch.goal).
+
+The supervisor makes the same calls as on any rig, to a port of its own on `127.0.0.1`. Each call waits there. In each **exchange**, control hands over its answers to the calls it took last time and takes the calls that wait now, then answers each one itself, as that rig, on the same routes and with the same checks as for a rig that dials out. Only the routes a rig may use for itself are answered. An exchange with nothing to take waits at the pod for up to 20 seconds, so a call does not wait for a timer.
+
+```mermaid
+sequenceDiagram
+  participant C as Control
+  participant P as RunPod's proxy
+  participant S as Supervisor, in the pod
+  C->>P: enroll: control's key, a proof of the code, the rig's settings (signed)
+  P->>S: passes it on
+  S-->>C: the pod's public keys, bound to the code (signed)
+  C->>C: pins the pod's keys, and the code is spent
+  C->>S: exchange: answers to the rig's last calls (signed, sealed)
+  S-->>C: the calls that wait now: reports, acknowledgements, requests (signed, sealed)
+  C->>C: answers each call as that rig
+```
+
+### What the proxy can and cannot do
+
+RunPod's proxy ends TLS, so it, and the network it runs on, could read, change, delay, drop or replay whatever passes. Anyone can also send requests to a pod's address: a pod's ID is no secret, and it shows in RunPod's console, API and logs. Pull mode leaves the proxy only bytes to move:
+
+- **Control signs every request** with its command-signing key, in the same format as a signed command, over the method, the path, the rig, the pod, the time, a random nonce and the SHA-256 of the body. The pod refuses a request whose time is more than 60 seconds from its own clock, a nonce it has seen in the last 5 minutes (it keeps them on disk, so a restart does not forget them), and a request for another rig or pod.
+- **The pod signs every answer** with a key of its own, over the request's nonce, the status and the SHA-256 of the answer. Control drops any answer that does not verify against the keys it pinned for the rig: a changed answer, or an old one replayed for a new request. A call whose answer was dropped is offered again, so it costs only a retry.
+- **Bodies are sealed** both ways to the other side's key (X25519, HKDF-SHA256 and AES-256-GCM, a fresh key for each message). Commands, reports, model routes with their API keys, Git access and past research cross the proxy only sealed.
+- **What travels inside is checked as on every rig.** The harness still signs its reports, and control still pins the harness's report key; the harness still checks control's signature on every command.
+
+### Only control gets an answer
+
+Every request that control did not sign gets the same empty 404, and changes nothing on the pod: a wrong path, a missing or wrong signature, a stale time, a replay, another rig or pod. A request to a path other than the pod's random 256-bit path is refused before its body is read. The same goes for a lane inside the pod. A lane is a user in the same container, so it can reach both ports directly: the public port treats it as anyone else, and the supervisor's own port on `127.0.0.1` takes only the supervisor's token, a random value that lives in the supervisor's memory, and answers anything else with the same 404. The pod's keys are in a directory only the supervisor's user can open, and the [isolation self-test](../reference/rig-checks.md) checks that no role can read them.
+
+The server is small. It takes `POST` on two paths, enroll and exchange. A request from control is at most 1 MiB, and a larger answer crosses in parts over several exchanges. Headers must arrive within 10 seconds and the whole request within 60; it holds at most 4 connections and takes at most 20 requests a second.
+
+The pod counts what it refused and reports the count in the next exchange. The rig's page on the dashboard shows the total under **Pull mode**, as **Refused requests**, and control's audit log records each report of refusals (`tunnel_refusals`). With no enrollment, keys that do not verify, or a clock more than 60 seconds off, the pod answers nothing, and the rig's page says what control's last attempt found.
+
+### Enrollment
+
+RunPod's console and API show a pod's environment, so no long-lived secret goes there. For each pod, control mints the rig: its ID, a random path, a key of its own for the rig (what the pod sends is sealed to it) and a **one-time enrollment code**. The pod's environment gets those public values, the SHA-256 of control's command-signing public key, and the code ([the settings](../reference/settings.md#pull-mode)).
+
+1. At its first start, the pod makes its own keys: one to sign its answers and one that control seals to. They stay in its state, readable only by the supervisor's user.
+2. Control's first request brings control's public key, a proof that control holds the code, and the rig's settings. The pod takes the key only if its SHA-256 is the one in its environment, and the request only if it is signed with that key. The proof is an HMAC bound to the rig, the pod and the request's nonce, so the code itself never crosses the network.
+3. The pod answers with its public keys and its own proof of the code. Control checks the proof and the answer's signature, and pins the keys. The code is spent at control.
+4. Control's first exchange is sealed to the pinned key. When it arrives, the enrollment is complete at the pod too: the code is spent there, and the pod writes control's key and the rig's settings where the harness reads them. The harness starts on them and checks every command against control's key, as on every rig.
+
+A wrong code is refused by the pod, and nothing is pinned. A second enrollment is refused at both ends, also after the pod restarts. A code expires only when the launch sets an expiry: then an expired code is refused at both ends. A full reset keeps the pod's keys and its enrollment, so control's trust in the pod survives it.
+
+RunPod puts its own API key in every pod's environment. The supervisor takes it out of its environment at start, with the enrollment code, so nothing the supervisor starts inherits them, and Thermite never uses it on the pod: control holds its own RunPod key.
+
+### What the design trusts
+
+RunPod hosts the pod, so it is trusted with what runs there, but not with what crosses its proxy: it never sees a model key, a command or a report in plain text. A RunPod host that is itself hostile can read the pod's memory and disk, which no design inside the pod prevents. Choose RunPod's Secure cloud for work that must stay private.
 
 ## The knowledge base, grants and outside knowledge bases
 
@@ -133,3 +187,4 @@ The supervisor carries work into a run as well as out of it. Through its route t
 | Pass an audit or accept a goal | An audit can only block, and only the owner accepts a goal ([Supervision](supervision.md)) |
 | Drop an experiment, give a lane its work, remove a rule, or bring back a rule the owner removed | Its one route to a run's queue only adds and moves experiments for the teacher pair and the auditor, recorded as theirs. What it adds is work to try, which the judge measures like any other change. Its rules replace only the advisors' own last set, and the harness leaves out any rule the owner removed |
 | Pass a line in Live off as the owner's message, a read receipt or an advisor's answer | Its own lines reach control unsigned, and Live shows an unsigned line as a plain log line |
+| Change the version its harness reports | The harness's build rides in its signed report. The supervisor sends only its own build, in headers. Control uses both to show a rig that is behind and to refuse one it can't work with, never for a verdict ([Rig versions](../reference/rest-api.md#rig-versions)) |

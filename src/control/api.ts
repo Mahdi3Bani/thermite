@@ -6,6 +6,7 @@ import { log, redact } from "../common/env.ts";
 import { sha256Hex } from "../core/canonical.ts";
 import { COMMAND_KINDS, type CommandKind, reportBody, verifyJson } from "../core/commands.ts";
 import { LiveBatch, LiveEntry, liveBody } from "../core/live.ts";
+import { type BuildInfo, buildFromHeaders, buildInfo, readBuild } from "../core/version.ts";
 import type { ControlActions } from "./actions.ts";
 import { CHATGPT_API, ChatGPTLogins } from "./chatgpt.ts";
 import type { ClusterKubectl } from "./clusters/kubectl.ts";
@@ -19,12 +20,14 @@ import { mountMcp } from "./mcp.ts";
 import { metricsText } from "./metrics.ts";
 import { OutsideKbs } from "./outside-kb.ts";
 import { claudeModelName, isOpencodeOwn, providerBase } from "./providers.ts";
+import { copiedFromRecords, untriedOf } from "./queue-copy.ts";
 import type { probeRepository } from "./repo-probe.ts";
 import { RunpodTests, type TestRequest } from "./runpod-tests.ts";
 import { SecretBox } from "./secrets.ts";
 import {
   type AgentRole,
   type ControlStore,
+  cursorOf,
   type Effort,
   fingerprint,
   type Harness,
@@ -32,7 +35,9 @@ import {
   type ModelProvider,
   RIG_ID,
 } from "./store.ts";
-import { leaderboard, rigView } from "./views.ts";
+import { ControlTunnels } from "./tunnel.ts";
+import { checkRig, recheckRefusals, rigVersions } from "./versions.ts";
+import { leaderboard, reportingState, rigView } from "./views.ts";
 
 /**
  * Control HTTP API (v1 core). Admin tokens issue commands and read everything; each rig's token
@@ -168,6 +173,10 @@ const AckBody = z.object({
 export interface ControlOptions {
   /** A rig is stale after this long without a report (3 missed 60 s polls). */
   staleAfterMs: number;
+  /** A rig is offline after this long without a report (THERMITE_CONTROL_OFFLINE_SECONDS). */
+  offlineAfterMs?: number | undefined;
+  /** Control's own build, which rigs' builds are compared with (tests give their own). */
+  build?: BuildInfo | undefined;
   /** Restarts containers (Kubernetes or compose); none configured: restarts are refused. */
   driver?: DeploymentDriver | undefined;
   /** Hold every rig's first report key for the owner's acceptance (no trust on first use). */
@@ -200,6 +209,11 @@ export interface ControlOptions {
   /** The image a RunPod test pod runs when none is given (THERMITE_RUNPOD_TEST_IMAGE). */
   runpodTestImage?: string | undefined;
   /**
+   * Rigs in pull mode, which control connects to; control's loop advances them (main.ts). Made
+   * here when not given. Their calls are answered by this API, in-process.
+   */
+  tunnels?: ControlTunnels | undefined;
+  /**
    * Outside knowledge bases (optional); control's loop syncs their copies (main.ts). Made here
    * when not given.
    */
@@ -214,6 +228,14 @@ export function createControlApi(
 ): Hono {
   const app = new Hono();
   store.setConfiguredRigs(Object.keys(tokens.rigs));
+  const control = opts.build ?? buildInfo();
+  // A rig refused by an earlier control may work with this one.
+  recheckRefusals(store, control);
+  const viewOpts = {
+    staleAfterMs: opts.staleAfterMs,
+    offlineAfterMs: opts.offlineAfterMs,
+    control,
+  };
 
   const owner = Credential.from(tokens.admin);
   const secrets = opts.secrets ?? SecretBox.ephemeral();
@@ -225,6 +247,24 @@ export function createControlApi(
     opts.runpodTests ??
     new RunpodTests(store, secrets, { fetch: opts.cloudFetch, image: opts.runpodTestImage });
   const outsideKb = opts.outsideKb ?? new OutsideKbs(store, store.kb(), secrets);
+  // A rig in pull mode makes the same calls as any rig; control's end of the tunnel brings them
+  // here in-process, bound to the rig whose signed answer carried them.
+  const tunnels = opts.tunnels ?? new ControlTunnels(store, secrets, privateKeyPem);
+  tunnels.serveWith((rig, call) =>
+    Promise.resolve(
+      app.request(
+        call.path,
+        {
+          method: call.method,
+          headers: call.headers,
+          ...(call.method === "GET" || call.method === "HEAD"
+            ? {}
+            : { body: new Uint8Array(call.body) }),
+        },
+        { tunnelRig: rig },
+      ),
+    ),
+  );
   const opt = (t: string | Credential | undefined) =>
     t === undefined ? undefined : Credential.from(t);
   const creds = {
@@ -252,15 +292,26 @@ export function createControlApi(
     if (typeof via === "string") {
       if (via !== rig || !store.tunnelRig(rig)?.enrolled_at || store.rigRetired(rig))
         return c.json({ error: "unauthorized" }, 401);
-      await next();
-      return;
+    } else {
+      const token = bearer(c.req.header("authorization"));
+      const expected = tokens.rigs[rig];
+      const ok = expected !== undefined ? eq(token, expected) : store.rigTokenMatches(rig, token);
+      if (!ok) return c.json({ error: "unauthorized" }, 401);
+      // A retired rig is refused until the owner brings it back, whatever token it holds.
+      if (store.rigRetired(rig)) return c.json({ error: "this rig is retired in control" }, 403);
     }
-    const token = bearer(c.req.header("authorization"));
-    const expected = tokens.rigs[rig];
-    const ok = expected !== undefined ? eq(token, expected) : store.rigTokenMatches(rig, token);
-    if (!ok) return c.json({ error: "unauthorized" }, 401);
-    // A retired rig is refused until the owner brings it back, whatever token it holds.
-    if (store.rigRetired(rig)) return c.json({ error: "this rig is retired in control" }, 403);
+    // The supervisor's build, from its headers. A supervisor that sends none on the calls every
+    // build makes is from before version checks: unknown, and never refused for it.
+    const route = c.req.path.slice(`/v1/rigs/${encodeURIComponent(rig)}/`.length);
+    const supervisorBuild = buildFromHeaders((h) => c.req.header(h));
+    if (supervisorBuild || ["ingest", "supervisor", "commands/pending"].includes(route))
+      store.setRigBuild(rig, "supervisor", supervisorBuild);
+    // A report brings its harness's build: the ingest route checks that one, once it verifies.
+    const refused =
+      route === "ingest"
+        ? checkRig(store, rig, control, { harness: null, endRefusal: false })
+        : checkRig(store, rig, control);
+    if (refused) return c.json({ error: refused }, 409);
     await next();
   };
 
@@ -334,6 +385,12 @@ export function createControlApi(
     }
     if (Date.parse(body.generated_at) > Date.now() + 5 * 60_000)
       return c.json({ error: "report from the future" }, 409);
+    // The harness's build, from the signed summary of a fresh report (none from a harness before
+    // version checks): recorded, and the report refused while its protocol and control's do not
+    // meet. A replayed old report never gets this far, so it cannot change the recorded build.
+    store.setRigBuild(rig, "harness", readBuild((body.summary as { build?: unknown })?.build));
+    const refused = checkRig(store, rig, control);
+    if (refused) return c.json({ error: refused }, 409);
     const added = store.ingest(body as IngestReport);
     // Into the knowledge base now, while this report's ledger is the rig's (it reads only a rig's
     // current ledger). After a failure the next report or read catches up.
@@ -776,7 +833,18 @@ export function createControlApi(
     return c.json({ ok: true });
   });
 
-  app.get("/v1/rigs", admin, (c) => c.json({ rigs: store.rigs(), enrolled: store.enrolledRigs() }));
+  app.get("/v1/rigs", admin, (c) =>
+    c.json({
+      control,
+      rigs: store.rigs().map((u) => ({
+        ...u,
+        state: reportingState(u.last_seen, viewOpts),
+        version: rigVersions(store, u.id, control),
+      })),
+      enrolled: store.enrolledRigs(),
+      pull: store.tunnelRigs(),
+    }),
+  );
 
   // Enrollment: control makes a rig's token, shows it once and keeps only its SHA-256, so a new
   // rig needs no change to control's deployment and no restart.
@@ -912,13 +980,45 @@ export function createControlApi(
     c.json({ commands: store.listCommands(clampLimit(c.req.query("limit"), 100)) }),
   );
 
-  app.get("/v1/audit", admin, (c) =>
-    c.json({ audit: store.listAudit(clampLimit(c.req.query("limit"), 200)) }),
-  );
+  // A page of the audit log, newest first; older and newer are the cursors for the next pages.
+  app.get("/v1/audit", admin, (c) => {
+    const raw = { before: c.req.query("before"), after: c.req.query("after") };
+    const before = cursorOf(raw.before);
+    const after = cursorOf(raw.after);
+    // A cursor that is not a number (a script's "null") is refused: the newest page again would loop.
+    if (
+      (raw.before !== undefined && before === undefined) ||
+      (raw.after !== undefined && after === undefined)
+    )
+      return c.json({ error: "before and after are whole numbers" }, 400);
+    if (before !== undefined && after !== undefined)
+      return c.json({ error: "give before or after, not both" }, 400);
+    const p = store.auditPage(clampLimit(c.req.query("limit"), 200), {}, { before, after });
+    return c.json({ audit: p.entries, older: p.older, newer: p.newer });
+  });
 
   app.get("/v1/rigs/:rig/view", admin, (c) => {
-    const v = rigView(store, c.req.param("rig"), { staleAfterMs: opts.staleAfterMs });
+    const v = rigView(store, c.req.param("rig"), viewOpts);
     return v ? c.json(v) : c.json({ error: "not found" }, 404);
+  });
+
+  // A past run's untried experiments as a new run's first queue (goal 067): what Start a run
+  // copies, at most 500, with the words and authors control's records hold, as MCP takes them
+  // for the new run's campaign (`campaign`; the past run's own when not given).
+  app.get("/v1/rigs/:rig/runs/:run/untried", admin, (c) => {
+    const rig = c.req.param("rig");
+    const run = c.req.param("run");
+    const v = rigView(store, rig, { staleAfterMs: opts.staleAfterMs });
+    if (!v) return c.json({ error: `no rig ${rig}` }, 404);
+    const r = v.runs.find((x) => x.id === run);
+    if (!r) return c.json({ error: `no run ${run} on ${rig}` }, 404);
+    const campaign = c.req.query("campaign") || r.campaign || "";
+    return c.json({
+      rig,
+      run,
+      campaign: r.campaign,
+      queue: copiedFromRecords(store, campaign, untriedOf(r).slice(0, 500)),
+    });
   });
 
   // Test pods on a GPU cloud (the owner's token; MCP gives operators the same).
@@ -989,6 +1089,8 @@ export function createControlApi(
     read: creds.read,
     privateKeyPem,
     staleAfterMs: opts.staleAfterMs,
+    offlineAfterMs: opts.offlineAfterMs,
+    control,
     runpodTests,
     actions,
     outsideKb,

@@ -1,15 +1,21 @@
-import { type ChildProcess, execFileSync, spawn } from "node:child_process";
+import { type ChildProcess, execFileSync, spawn, spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import {
   chmodSync,
   chownSync,
+  closeSync,
   existsSync,
+  fchmodSync,
+  fchownSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
   rmSync,
   statSync,
   writeFileSync,
+  writeSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,7 +37,20 @@ import {
   savedJudgeGpus,
   shareCpus,
 } from "./broker/devices.ts";
-import { killScope } from "./broker/process.ts";
+import {
+  controlKeyPem,
+  isRunpodVariable,
+  oneContainer,
+  restartAfter,
+  SUPERVISOR_RECORD,
+  type SupervisorPaths,
+  type SupervisorRecord,
+  supervisorArgv,
+  supervisorEnv,
+  supervisorGpu,
+  supervisorPaths,
+} from "./broker/one-container.ts";
+import { killScope, SETPRIV } from "./broker/process.ts";
 import { IDS, roleIds } from "./broker/runner.ts";
 import { ALL_ROLES, startBrokerServer } from "./broker/server.ts";
 
@@ -47,12 +66,19 @@ import { ALL_ROLES, startBrokerServer } from "./broker/server.ts";
  *   (broker/devices.ts);
  * - serves the broker socket, through which the controller runs work as separate users;
  * - runs the controller as `thermite` and restarts it if it exits, after killing anything a
- *   role left running.
+ *   role left running;
+ * - in the one-container rig image (THERMITE_ONE_CONTAINER=1, broker/one-container.ts), also
+ *   prepares the supervisor's places and its token, writes control's key from the launch, and
+ *   runs the supervisor as its own user, restarting it if it exits.
+ *
+ * No process it starts gets RunPod's variables (RUNPOD_*). On SIGTERM or SIGINT it passes the
+ * signal on and exits when every part it started has ended.
  *
  * Run as a non-root user (local development), it only starts the controller.
  */
 
 const controller = fileURLToPath(new URL("./main.js", import.meta.url));
+const supervisorMain = fileURLToPath(new URL("../supervisor/main.js", import.meta.url));
 const env = process.env;
 const stateDir = env.THERMITE_STATE_DIR ?? "/var/lib/thermite";
 const scratchDir = env.THERMITE_SCRATCH_DIR ?? "/scratch";
@@ -63,6 +89,8 @@ const isRoot = process.getuid?.() === 0;
 const WIPE_MARKER = "WIPE_REQUESTED";
 const NOT_BEFORE_FILE = "NOT_BEFORE";
 const { uid: TU, gid: TG } = IDS.thermite;
+const { uid: SU, gid: SG } = IDS.supervisor;
+const withSupervisor = oneContainer(env);
 
 /** Secret files whose values the controller needs. The *_FILE variables never reach it. */
 const SECRET_VARS: Record<string, string> = {
@@ -386,8 +414,23 @@ function killRoles(): number {
 }
 
 let child: ChildProcess | undefined;
+let supervisor: ChildProcess | undefined;
 let stopping = false;
 let restarts = 0;
+let supervisorRestarts = 0;
+/** The controller's exit code when it ended on a stop: the broker exits with it. */
+let stopCode = 0;
+
+const running = (c: ChildProcess | undefined): c is ChildProcess =>
+  c !== undefined && c.exitCode === null && c.signalCode === null;
+
+/** On a stop: exit once every part has ended, leaving no role process behind. */
+function finishIfStopped(): void {
+  if (running(child) || running(supervisor)) return;
+  if (isRoot) killRoles();
+  log("broker", "stopped", { code: stopCode });
+  process.exit(stopCode);
+}
 
 /**
  * A full reset's wipe, requested by the controller (a marker in the state directory): done here,
@@ -442,6 +485,11 @@ function wipeIfMarked(): boolean {
 let beforeStart: (() => Record<string, string | undefined>) | undefined;
 
 function startController(extraEnv: Record<string, string>): void {
+  // A restart that falls due during a stop does not happen.
+  if (stopping) {
+    finishIfStopped();
+    return;
+  }
   if (isRoot) {
     try {
       // Directories are prepared again only after a wipe (never the socket: it is in use).
@@ -453,7 +501,7 @@ function startController(extraEnv: Record<string, string>): void {
   const startedAt = Date.now();
   const childEnv: Record<string, string> = {};
   for (const [k, v] of Object.entries(env)) {
-    if (v !== undefined && !(k in SECRET_VARS)) childEnv[k] = v;
+    if (v !== undefined && !(k in SECRET_VARS) && !isRunpodVariable(k)) childEnv[k] = v;
   }
   for (const [k, v] of Object.entries(beforeStart?.() ?? {})) {
     if (v === undefined) delete childEnv[k];
@@ -470,38 +518,206 @@ function startController(extraEnv: Record<string, string>): void {
     // Its own process group: worker processes it starts join it, so they end with it.
     detached: true,
   });
-  child.on("exit", (code, signal) => {
+  const proc = child;
+  proc.on("exit", (code, signal) => {
     // Worker processes of a dead controller must not live on (they would keep calling the model
     // and the API while new trials run): kill the controller's whole process group.
     try {
-      if (child?.pid) process.kill(-child.pid, "SIGKILL");
+      if (proc.pid) process.kill(-proc.pid, "SIGKILL");
     } catch {
       // the group is already gone
     }
-    if (stopping) process.exit(code ?? 0);
+    if (stopping) {
+      stopCode = code ?? 0;
+      finishIfStopped();
+      return;
+    }
     if (isRoot) {
       const killed = killRoles();
       if (killed) log("broker", "killed role processes left by the controller", { killed });
     }
-    const ranMs = Date.now() - startedAt;
-    restarts = ranMs > 60_000 ? 0 : restarts + 1;
-    const delay = Math.min(30_000, 1000 * 2 ** Math.min(restarts, 5));
-    log("broker", "controller exited; restarting", { code, signal, delay_ms: delay });
-    setTimeout(() => startController(extraEnv), delay);
+    const next = restartAfter(Date.now() - startedAt, restarts);
+    restarts = next.restarts;
+    log("broker", "controller exited; restarting", { code, signal, delay_ms: next.delayMs });
+    setTimeout(() => startController(extraEnv), next.delayMs);
   });
+}
+
+/**
+ * The one-container rig image: the supervisor's state and temporary directory (its own, closed
+ * to every other user), the inbox it shares with the controller, the token it uses on the harness
+ * API (made once and kept by root; the supervisor gets a copy in its home at every start), and
+ * control's key from the launch. Runs at start, before the secrets are read and before anything
+ * else runs, so nothing can swap a path in the supervisor's home for a link meanwhile.
+ */
+function prepareOneContainer(): SupervisorPaths {
+  const paths = supervisorPaths(env);
+  mkdirSync(paths.home, { recursive: true });
+  if (statSync(paths.home).uid !== SU) {
+    execFileSync("chown", ["-R", "-P", `${SU}:${SG}`, paths.home], { stdio: "ignore" });
+  }
+  chmodSync(paths.home, 0o700);
+  rmSync(paths.tmp, { recursive: true, force: true });
+  mkdirSync(paths.tmp, { mode: 0o700 });
+  chownSync(paths.tmp, SU, SG);
+  // The inbox: the supervisor writes, the controller's group reads (setgid keeps the group on
+  // what is added); roles are in neither.
+  mkdirSync(paths.inbox, { recursive: true });
+  const inbox = statSync(paths.inbox);
+  if (inbox.uid !== SU || inbox.gid !== TG) {
+    execFileSync("chown", ["-R", "-P", `${SU}:${TG}`, paths.inbox], { stdio: "ignore" });
+  }
+  chmodSync(paths.inbox, 0o2750);
+  // The token the supervisor uses on the harness API: root's copy is the harness's secret file.
+  const rootToken = env.THERMITE_SUPERVISOR_TOKEN_FILE;
+  if (!rootToken) {
+    log("broker", "fatal: the one-container image needs THERMITE_SUPERVISOR_TOKEN_FILE");
+    process.exit(1);
+  }
+  if (!existsSync(rootToken)) {
+    mkdirSync(dirname(rootToken), { recursive: true, mode: 0o700 });
+    chmodSync(dirname(rootToken), 0o700);
+    writeFileSync(rootToken, randomBytes(32).toString("hex"), { mode: 0o600, flag: "wx" });
+    log("broker", "made the token between the supervisor and the harness", { file: rootToken });
+  }
+  const token = readFileSync(rootToken, "utf8").trim();
+  // The supervisor's copy: a new file (whatever was at the path goes), owned by it, 0600.
+  rmSync(paths.tokenFile, { recursive: true, force: true });
+  const fd = openSync(paths.tokenFile, "wx", 0o600);
+  try {
+    fchownSync(fd, SU, SG);
+    fchmodSync(fd, 0o600);
+    writeSync(fd, token);
+  } finally {
+    closeSync(fd);
+  }
+  // Control's command-signing key, public, from the launch. Without it the harness waits.
+  const keyFile = env.THERMITE_CONTROL_PUBKEY_FILE;
+  if (env.THERMITE_CONTROL_PUBKEY && keyFile) {
+    try {
+      const pem = controlKeyPem(env.THERMITE_CONTROL_PUBKEY);
+      mkdirSync(dirname(keyFile), { recursive: true });
+      rmSync(keyFile, { force: true });
+      writeFileSync(keyFile, pem, { mode: 0o644, flag: "wx" });
+      log("broker", "wrote control's public key from the launch", { file: keyFile });
+    } catch (err) {
+      log("broker", "control's public key from the launch is not usable; the harness waits", {
+        file: keyFile,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  } else if (!keyFile || !existsSync(keyFile)) {
+    log("broker", "no control key yet: the harness waits for it", { file: keyFile ?? null });
+  }
+  return paths;
+}
+
+/** The supervisor's command, once it runs as its user (one-container.ts: supervisorArgv). */
+const supervisorCommand = (command: string[]): string[] =>
+  supervisorArgv(command, { setpriv: SETPRIV, fence: fenceAbi ? FENCE : undefined });
+
+/**
+ * Records how the supervisor runs, for the isolation selftest: its user, the fence, and what its
+ * user meets opening the GPU's device nodes, tried now as it is started. Again after the cards
+ * are regrouped.
+ */
+function recordSupervisor(paths: SupervisorPaths): void {
+  const gpu = supervisorGpu(deviceNodes(), process.execPath, (command) => {
+    const argv = supervisorCommand(command);
+    const r = spawnSync(argv[0] as string, argv.slice(1), {
+      uid: SU,
+      gid: SG,
+      cwd: paths.tmp,
+      env: { PATH: env.PATH ?? "/usr/local/bin:/usr/bin:/bin" },
+      encoding: "utf8",
+      timeout: 30_000,
+    });
+    return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr || String(r.error ?? "") };
+  });
+  const record: SupervisorRecord = {
+    uid: SU,
+    gid: SG,
+    fence: fenceAbi ? "landlock" : "none",
+    gpu,
+    home: paths.home,
+    at: new Date().toISOString(),
+  };
+  const path = join(socketDir, SUPERVISOR_RECORD);
+  writeFileSync(path, `${JSON.stringify(record)}\n`, { mode: 0o644 });
+  chmodSync(path, 0o644);
+  log("broker", "the supervisor's user and the GPU", { fence: record.fence, gpu });
+}
+
+/**
+ * The supervisor, as its own user (one-container image only), in its own process group. When it
+ * exits, whatever it started (an advisor's program) ends too, and it starts again.
+ */
+function startSupervisor(paths: SupervisorPaths): void {
+  if (stopping) {
+    finishIfStopped();
+    return;
+  }
+  const startedAt = Date.now();
+  const argv = supervisorCommand([process.execPath, supervisorMain]);
+  const proc = spawn(argv[0] as string, argv.slice(1), {
+    stdio: "inherit",
+    cwd: paths.home,
+    env: supervisorEnv(env, paths, Object.keys(SECRET_VARS)),
+    uid: SU,
+    gid: SG,
+    detached: true,
+  });
+  supervisor = proc;
+  let ended = false;
+  const end = (code: number | null, signal: string | null, error?: string) => {
+    if (ended) return;
+    ended = true;
+    try {
+      if (proc.pid) process.kill(-proc.pid, "SIGKILL");
+    } catch {
+      // the group is already gone
+    }
+    killScope({ uid: SU });
+    if (stopping) {
+      finishIfStopped();
+      return;
+    }
+    const next = restartAfter(Date.now() - startedAt, supervisorRestarts);
+    supervisorRestarts = next.restarts;
+    log("broker", "supervisor exited; restarting", {
+      code,
+      signal,
+      ...(error ? { error } : {}),
+      delay_ms: next.delayMs,
+    });
+    setTimeout(() => startSupervisor(paths), next.delayMs);
+  };
+  proc.on("exit", (code, signal) => end(code, signal));
+  proc.on("error", (err) => end(null, null, err.message));
 }
 
 for (const sig of ["SIGTERM", "SIGINT"] as const) {
   process.on(sig, () => {
     stopping = true;
-    if (child?.exitCode === null) child.kill(sig);
-    else process.exit(0);
+    log("broker", "stopping", { signal: sig });
+    const parts = [child, supervisor].filter(running);
+    for (const part of parts) part.kill(sig);
+    if (!parts.length) finishIfStopped();
   });
+}
+
+if (withSupervisor && !isRoot) {
+  log("broker", "fatal: the one-container image must run as root", {
+    hint: "the broker starts the supervisor and each role as users of their own",
+  });
+  process.exit(1);
 }
 
 if (isRoot) {
   prepareDirectories();
   prepareSocket();
+  // Before the secrets are read: a token it makes is read with them.
+  const pod = withSupervisor ? prepareOneContainer() : undefined;
   setInterval(prepareOutbox, 60_000).unref();
   const secrets = readSecrets();
   let lists = currentLists();
@@ -522,6 +738,7 @@ if (isRoot) {
   setInterval(() => assertDevices(gpuLayout), 60_000).unref();
   const killed = killRoles();
   if (killed) log("broker", "killed leftover role processes at start", { killed });
+  if (pod) recordSupervisor(pod);
   beforeStart = () => {
     const next = currentLists();
     if (next.judge !== lists.judge || next.dev !== lists.dev) {
@@ -534,6 +751,7 @@ if (isRoot) {
       serverOpts.gpuLayout = gpuLayout;
       serverOpts.runCpus = chooseRunCpus(gpuLayout, lists);
       assertDevices(gpuLayout);
+      if (pod) recordSupervisor(pod);
     }
     // The controller reads the lists as if configured so.
     return { THERMITE_GPU_INDEX: lists.judge, THERMITE_DEV_GPU_INDEX: lists.dev };
@@ -543,6 +761,8 @@ if (isRoot) {
     chownSync(socketPath, 0, TG);
     chmodSync(socketPath, 0o660);
     log("broker", "serving", { socket: socketPath, separated: true });
+    // The supervisor first: the controller's isolation check at start looks for it.
+    if (pod) startSupervisor(pod);
     startController({ ...secrets, THERMITE_BROKER_SOCKET: socketPath });
   });
 } else if (env.THERMITE_ALLOW_UNSEPARATED === "1") {

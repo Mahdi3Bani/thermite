@@ -100,6 +100,7 @@ import {
   listModels,
   providerBase,
 } from "./providers.ts";
+import { untriedOf } from "./queue-copy.ts";
 import { probeRepository } from "./repo-probe.ts";
 import { type RunpodFacts, readRunpod, runpodLine } from "./runpod.ts";
 import { cheapestGpu, DEFAULT_DISK_GB, type RunpodTests, type TestView } from "./runpod-tests.ts";
@@ -110,6 +111,7 @@ import {
   type Cluster,
   type ClusterRig,
   type ControlStore,
+  cursorOf,
   EFFORTS,
   type Effort,
   fingerprint,
@@ -119,6 +121,7 @@ import {
   type MachineRig,
   type ModelProvider,
   type ProviderType,
+  type TunnelRig,
 } from "./store.ts";
 import { ADD_RIG_JS } from "./ui/add-rig-client.ts";
 import {
@@ -413,6 +416,11 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
   /** Pause, with an optional reason the run keeps (it shows wherever the run's state does). */
   const pauseMenu = (c: Ctx, rig: string, run: string, back: string, cls = "") =>
     `<details class="menu"><summary class="btn${cls ? ` ${cls}` : ""}">Pause</summary><div class="menu-pop">${cmdForm(c, { rig, kind: "pause_run", fields: { run }, label: "Pause the run", cls: "sm", back, extra: `<input name="reason" maxlength="500" placeholder="why (optional)" aria-label="Why" style="width:100%;margin-bottom:6px">` })}<div class="muted small">The lanes' running trials stop and no new ones start. Its jobs waiting for the judge wait until you resume, so the judge's time goes to running runs. Resume picks up from the same champion.</div></div></details>`;
+  /** ⋯ with Restart the lanes, for a running run with agents (the run's header and Live's). */
+  const moreMenu = (c: Ctx, rig: string, r: RunView, back: string, cls = "") =>
+    r.status === "running" && r.has_agents !== false
+      ? `<details class="menu"><summary class="btn${cls ? ` ${cls}` : ""}" title="More">⋯</summary><div class="menu-pop">${cmdForm(c, { rig, kind: "reset_workers", fields: { run: r.id }, label: "Restart the lanes", cls, back })}<div class="muted small">Ends the lanes' running trials now and the current round: every lane starts again from the champion. Nothing the judge decided is lost.</div></div></details>`
+      : "";
   const forms = (c: Ctx): Forms => ({
     cmd: (f) => cmdForm(c, f),
     csrf: csrf(c),
@@ -1245,27 +1253,12 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         })),
     });
   };
-  /** A run's untried experiments, in queue order then its lanes' ideas: a new run's first queue. */
+  /** The untried experiments of the run Start a run names: a new run's first queue. */
   const untried = (vs: RigView[], key: string): QueueSeed[] => {
     const x = vs
       .flatMap((u) => u.runs.map((r) => ({ u, r })))
       .find((y) => runKey(y.u.id, y.r.id) === key);
-    if (!x) return [];
-    const q = x.r.queue;
-    return [
-      ...q
-        .filter((e) => e.state === "queued")
-        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0)),
-      ...q.filter((e) => e.state === "proposed"),
-    ].map((e) => ({
-      title: e.title,
-      ...(e.details ? { details: e.details } : {}),
-      ...(e.family ? { family: e.family } : {}),
-      ...(e.why ? { why: e.why } : {}),
-      by: e.by,
-      state: e.state === "proposed" ? "proposed" : "queued",
-      from: { run: x.r.id, id: e.id },
-    }));
+    return x ? untriedOf(x.r) : [];
   };
   app.post("/ui/campaigns/:campaign/runs", async (c) => {
     const f = await c.req.parseBody();
@@ -1516,10 +1509,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
             : "";
       // A run without agents (a try, a rig check) has no one to message and no lanes to restart.
       const agents = sel.run.has_agents !== false;
-      const more =
-        sel.run.status === "running" && agents
-          ? `<details class="menu"><summary class="btn" title="More">⋯</summary><div class="menu-pop">${cmdForm(c, { rig: sel.rig.id, kind: "reset_workers", fields: { run: sel.run.id }, label: "Restart the lanes", back })}<div class="muted small">Ends the lanes' running trials now and the current round: every lane starts again from the champion. Nothing the judge decided is lost.</div></div></details>`
-          : "";
+      const more = moreMenu(c, sel.rig.id, sel.run, back);
       return page(
         c,
         {
@@ -1863,6 +1853,7 @@ ${
     const placed = store.machineRig(c.req.param("rig"));
     const onCluster = store.clusterRig(c.req.param("rig"));
     const joined = store.joinedRig(c.req.param("rig"));
+    const pulled = store.tunnelRig(c.req.param("rig"));
     const flashOk = c.req.query("ok");
     const flashError = c.req.query("error");
     const flash = flashError
@@ -1897,6 +1888,18 @@ ${
         vs,
       );
     if (!u && joined) return joinedPage(c, joined, flash);
+    if (!u && pulled)
+      return page(
+        c,
+        {
+          title: pulled.rig,
+          crumbs: [{ href: "/ui/rigs", text: "Rigs" }],
+          summary: `pull mode · ${pulled.enrolled_at ? "enrolled" : "not enrolled"}`,
+          active: "rigs",
+        },
+        `<p class="run-said">Control connects to ${esc(pulled.rig)} through RunPod's proxy. Its page fills in once the rig reports for the first time.</p>${flash}${pullBlock(pulled, now)}`,
+        vs,
+      );
     if (!u && placed)
       return page(
         c,
@@ -1966,6 +1969,9 @@ ${
         ? `<b class="bad">Its ${failed.map(([, n]) => n.toLowerCase()).join(" and ")} check${failed.length > 1 ? "s" : ""} failed.</b>`
         : "",
       key.pending ? `<b class="warn">Its report key waits for your acceptance.</b>` : "",
+      pulled?.error
+        ? `<b class="bad">Control's last connection to its pod failed: ${esc(pulled.error)}</b>`
+        : "",
     ]
       .filter(Boolean)
       .join(" ");
@@ -2110,7 +2116,7 @@ ${runsNow ? `<div class="block"><div class="head"><h2>At work</h2><span class="n
 </div><div class="side">
 <div class="block"><div class="head"><h2>What it runs on</h2></div>${h ? `<div class="card"><dl class="facts">${hw}</dl></div><details class="card flat matrix" data-k="hw-${esc(u.id)}" style="margin-top:10px"><summary>Every detail</summary>${hardwareCard(h, now)}</details>` : hardwareCard(h, now)}</div>
 <div class="block"><div class="head"><h2>The rig</h2></div><div class="card"><dl class="facts">${rigFacts}</dl>${sup ? `<div class="muted xs" style="margin-top:8px">The supervisor reports its figures itself (unsigned).</div>` : ""}</div></div>
-${placed ? placedBlock(placed, t) : ""}${onCluster ? clusterPlacedBlock(onCluster, t) : ""}${joined ? joinedBlock(joined, t, undefined, true) : ""}
+${placed ? placedBlock(placed, t) : ""}${onCluster ? clusterPlacedBlock(onCluster, t) : ""}${joined ? joinedBlock(joined, t, undefined, true) : ""}${pulled ? pullBlock(pulled, now) : ""}
 <div class="block"><div class="head"><h2>Recent</h2><span class="right">newest first</span></div>${events}</div>
 </div></div>`,
       vs,
@@ -2324,7 +2330,8 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
     const st = runState(r);
     const head = `<div class="lhead"><button class="ghost sm lnav-btn" type="button" title="Show or hide the list of runs" aria-label="Runs">☰</button>${modeAvatar(r.mode)}<span class="t">${esc(r.id)}</span><span class="label ${st.cls}">${st.icon}${esc(st.text)}</span><span class="lmeta">${meta}</span><a class="btn sm" href="${runHref(u.id, r)}">Open the run</a>${
       r.status === "running"
-        ? pauseMenu(c, u.id, r.id, runLiveHref(u.id, r.id), "sm")
+        ? pauseMenu(c, u.id, r.id, runLiveHref(u.id, r.id), "sm") +
+          moreMenu(c, u.id, r, runLiveHref(u.id, r.id), "sm")
         : r.status === "paused"
           ? cmdForm(c, {
               rig: u.id,
@@ -2596,17 +2603,27 @@ ${notice}${box}</section></div>`,
 
   app.get("/ui/audit", (c) => {
     const now = Date.now();
-    const rows = store
-      .listAudit(300)
+    // 300 entries a page, newest first; Older and Newer page through every entry (goal 015).
+    const before = cursorOf(c.req.query("before"));
+    const p = store.auditPage(
+      300,
+      {},
+      before !== undefined ? { before } : { after: cursorOf(c.req.query("after")) },
+    );
+    const rows = p.entries
       .map(
         (x) =>
           `<tr><td class="muted nowrap">${esc(ago(x.at, now))} ago</td><td>${esc(x.actor)}</td><td><b>${esc(x.action.replace(/_/g, " "))}</b> <span class="muted xs">${esc(x.action)}</span></td><td class="clip"><code class="muted">${esc(JSON.stringify(x.body).slice(0, 200))}</code></td></tr>`,
       )
       .join("");
+    const links = [
+      p.newer !== null ? `<a href="/ui/audit?after=${p.newer}">Newer</a>` : "",
+      p.older !== null ? `<a href="/ui/audit?before=${p.older}">Older</a>` : "",
+    ].filter(Boolean);
     return page(
       c,
       { title: "Audit log", summary: "who did what through control", active: "audit" },
-      `<div class="card flat"><table><thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table></div>`,
+      `<div class="card flat"><table><thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Detail</th></tr></thead><tbody>${rows || `<tr><td colspan="4" class="empty">No entry here.</td></tr>`}</tbody></table></div>${links.length ? `<div class="pager">${links.join("")}</div>` : ""}`,
     );
   });
 
@@ -3799,6 +3816,22 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
               : "";
     return `<div class="block"><div class="head"><h2>Set up by control</h2><span class="right">${esc(r.status)}</span></div><div class="card"><dl class="facts"><dt>Cluster</dt><dd><a href="/ui/settings">${esc(r.cluster)}</a> (Providers)</dd><dt>Namespace</dt><dd>${esc(r.namespace)} <span class="muted">(${r.placement === "created" ? "made by control" : "a slot"})</span></dd><dt>GPUs</dt><dd>${s.gpus ? `${s.gpus} through ${s.gpuMode === "dra" ? `DRA (${esc(s.deviceClass ?? "")})` : "NVIDIA's device plugin"}: ${splitWords(s.gpus, s.judgeGpus)}` : "none: it measures on the CPU"}${s.node ? ` · on ${esc(s.node)}` : ""}</dd><dt>Storage</dt><dd>${s.storageGi} GB${s.storageClass ? ` · ${esc(s.storageClass)}` : ""}</dd><dt>Images</dt><dd class="mono small">${esc(s.images.harness)}<br>${esc(s.images.supervisor)}</dd></dl>
 <div class="tl" style="margin-top:10px">${setupSteps(r.rig) || `<div class="muted small">No step yet.</div>`}</div>${manage}${update}</div></div>`;
+  };
+  /** A rig in pull mode: its pod, its enrollment, control's last connection and the refusals. */
+  const pullBlock = (r: TunnelRig, now: number) => {
+    const state = !r.pod
+      ? "waiting for its pod"
+      : r.enrolled_at
+        ? "enrolled"
+        : "waiting for enrollment";
+    const enrollment = r.enrolled_at
+      ? `Enrolled ${esc(ago(r.enrolled_at, now))} ago. Control pinned the pod's keys, and the code is spent.`
+      : r.code_expires_at
+        ? Date.parse(r.code_expires_at) < now
+          ? `<span class="bad">The code expired ${esc(ago(r.code_expires_at, now))} ago. Launch the rig again.</span>`
+          : `Not yet. The code expires in ${esc(span(new Date(now).toISOString(), Date.parse(r.code_expires_at)))}.`
+        : "Not yet. The code does not expire.";
+    return `<div class="block"><div class="head"><h2>Pull mode</h2><span class="right">${esc(state)}</span></div><div class="card"><p class="small" style="margin-top:0">Control connects to this rig through RunPod's proxy. The rig never connects to control. The pod answers only requests that control signed.</p><dl class="facts"><dt>Pod</dt><dd>${r.pod ? esc(r.pod) : `<span class="muted">not launched yet</span>`}</dd>${r.url ? `<dt>Address</dt><dd class="mono small">${esc(r.url)}</dd>` : ""}<dt>Enrollment</dt><dd>${enrollment}</dd><dt>Last exchange</dt><dd>${r.last_exchange_at ? `${esc(ago(r.last_exchange_at, now))} ago` : `<span class="muted">none yet</span>`}</dd><dt>Refused requests</dt><dd>${r.refused_total}${r.refused_total ? ` <span class="muted small">Requests that control did not sign. The pod gave each one an empty 404.</span>` : ""}</dd>${r.error ? `<dt>Last error</dt><dd class="bad">${esc(r.error)}</dd>` : ""}</dl></div></div>`;
   };
   /** What a rig control set up on a cluster is deployed with, with its images or others. */
   const clusterPlan = (r: ClusterRig, images = r.spec.images) => ({

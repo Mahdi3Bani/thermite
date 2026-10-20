@@ -1,7 +1,7 @@
 ---
 id: "020"
 title: "A one-container rig image"
-status: READY
+status: IN_PROGRESS
 version: "0.1.0"
 part: "Rigs on RunPod"
 depends_on: ["018"]
@@ -11,7 +11,7 @@ updated: 2026-10-20
 
 # 020 · A one-container rig image
 
-**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Rigs on RunPod · **Depends on:** [018](018-runpod-spike.goal)
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Rigs on RunPod · **Depends on:** [018](018-runpod-spike.goal)
 
 ## What
 
@@ -36,6 +36,10 @@ None.
 ## Progress
 
 - 2026-10-19: Goal written from the v0.1.0 release plan.
+- 2026-10-20: Built. `containers/rig/Containerfile` is the harness image (named in `HARNESS_IMAGE`; CUDA for pods, CPU for tests) with the supervisor's `openssh-client` and user added; its build removes every setuid and setgid bit and fails if one is left. Its entry point, `thermite-rig-start`, removes every `RUNPOD_` variable before `tini` starts, and passes the pod's ID on as `THERMITE_POD_ID`. With `THERMITE_ONE_CONTAINER=1` the broker (root) prepares the supervisor's places on the volume (`/workspace/thermite/...`), makes the harness token once, writes control's key from the launch, and starts the supervisor as uid 10001 with no_new_privs and in the GPU fence with no card. It restarts either part after an exit and ends both cleanly on a stop. No process it starts gets a `RUNPOD_` variable, in every image. The isolation selftest gains `pid1-environ` and `runpod-variables` probes for every role, the supervisor's places in this image, and container checks: the supervisor's user, its GPU access, set-id files and RunPod's variables. Docs: the image reference, the isolation explanation, rig checks, settings and contributing.
+- 2026-10-20: Checks. Unit tests for the broker's parts, the entry point and the selftest's new checks. `scripts/rig-image-acceptance.mjs` passed under rootless Podman: the image started as RunPod starts it (root, default capabilities, no no-new-privileges, RunPod's eight variables made up), with GPU device nodes the container could not regroup (nobody's, 0666). The selftest passed, from the controller at start and as root; the fence alone kept the other roles and the supervisor off the nodes; a killed supervisor and a killed controller started again; a stop ended both with exit code 0 in 5 s. CI now runs the same script with Docker; it has not run there yet.
+- 2026-10-20: For goals 019 and 021, the contract with this image: control's command-signing public key comes with the launch in `THERMITE_CONTROL_PUBKEY` (PEM, or PEM in base64); the broker writes it as root to `THERMITE_CONTROL_PUBKEY_FILE` (`/etc/thermite/control-signing.pub`), where both parts read it, and without it the harness waits without restarting. The supervisor's public port is `THERMITE_TUNNEL_PORT` (8000, `EXPOSE`d), the pod's ID is in `THERMITE_POD_ID`, and the supervisor's keys belong in `THERMITE_SUPERVISOR_HOME` (0700, its own). Nothing reads the port yet.
+- 2026-10-20: Left: the selftest on RunPod, with the second spike run (goal 018, a paid launch that needs the owner's OK), and the first CI run.
 
 ---
 

@@ -254,6 +254,36 @@ describe("control over MCP", () => {
       undefined,
       "an agent may not speak for the owner",
     );
+    // The queue and the removal of rules are the owner's: an operator changes them for the
+    // owner; an agent may add rules, but never changes the queue or removes a rule.
+    const queued = () =>
+      store
+        .listCommands(100)
+        .filter((c) => c.kind.startsWith("queue_") || c.kind === "drop_directive").length;
+    assert.ok(
+      await issue(operator, "queue_add", { run: "js-1", title: "unroll the loop" }),
+      "the operator may add an experiment",
+    );
+    assert.equal(queued(), 1);
+    const id = "x-000000000000";
+    for (const [kind, payload] of [
+      ["queue_add", { run: "js-1", title: "tile the loop" }],
+      ["queue_move", { run: "js-1", id, position: "top" }],
+      ["queue_edit", { run: "js-1", id, why: "fewer branches" }],
+      ["queue_drop", { run: "js-1", id, why: "slower twice" }],
+      ["queue_accept", { run: "js-1", id }],
+      ["drop_directive", { run: "js-1", id: 1 }],
+    ] as const)
+      assert.equal(await issue(agent, kind, payload), undefined, `an agent may not ${kind}`);
+    assert.equal(queued(), 1, "nothing the agent sent was signed");
+    assert.ok(
+      await issue(agent, "redirect", {
+        run: "js-1",
+        directives: [{ kind: "avoid", family: "loop-tiling", rationale: "slower twice" }],
+        replace: false,
+      }),
+      "an agent may add a rule",
+    );
     // The owner signs in with the token whose hash control holds.
     const owner = await connect(control, "admin-token-abcdef");
     assert.ok((await owner.listTools()).tools.some((t) => t.name === "issue_command"));
@@ -312,20 +342,56 @@ describe("control over MCP", () => {
     const providers = text(await operator.callTool({ name: "providers", arguments: {} }));
     assert.equal(providers.gpu_clouds[0].name, "runpod");
     assert.equal(providers.gpu_clouds[0].facts.gpus[0].price_secure, 0.25);
-    const log = text(await operator.callTool({ name: "control_log", arguments: {} }));
+    type Page = {
+      entries: { id: number; action: string }[];
+      older: number | null;
+      newer: number | null;
+    };
+    const log: Page = text(await operator.callTool({ name: "control_log", arguments: {} }));
     assert.deepEqual(
-      log.map((e: { action: string }) => e.action),
+      log.entries.map((e) => e.action),
       ["failed", "refused", "gpu_cloud_added"],
       "MCP calls are left out unless asked for",
     );
+    assert.deepEqual([log.older, log.newer], [null, null], "one page holds them all");
     const refused = text(
       await operator.callTool({ name: "control_log", arguments: { action: "refused" } }),
     );
-    assert.equal(refused[0].body.why, "a name is lowercase");
-    const all = text(
+    assert.equal(refused.entries[0].body.why, "a name is lowercase");
+    const all: Page = text(
       await operator.callTool({ name: "control_log", arguments: { include_mcp: true } }),
     );
-    assert.ok(all.some((e: { action: string }) => e.action === "mcp:providers"));
+    assert.ok(all.entries.some((e) => e.action === "mcp:providers"));
+    // Paging (goal 015): a page at a time, older then newer, every entry once, filters kept.
+    for (let i = 0; i < 5; i++) store.audit("owner:ui", `step_${i}`, { i });
+    const call = async (args: Record<string, unknown>): Promise<Page> =>
+      text(await operator.callTool({ name: "control_log", arguments: { limit: 3, ...args } }));
+    const newest = await call({});
+    assert.deepEqual(
+      newest.entries.map((e) => e.action),
+      ["step_4", "step_3", "step_2"],
+    );
+    assert.equal(newest.newer, null);
+    const older = await call({ before: newest.older });
+    assert.deepEqual(
+      older.entries.map((e) => e.action),
+      ["step_1", "step_0", "failed"],
+      "MCP calls stay out of every page",
+    );
+    const oldest = await call({ before: older.older });
+    assert.deepEqual(
+      oldest.entries.map((e) => e.action),
+      ["refused", "gpu_cloud_added"],
+    );
+    assert.equal(oldest.older, null);
+    const back = await call({ after: oldest.newer });
+    assert.deepEqual(back.entries, older.entries, "newer goes back to the same page");
+    const refusedPaging = await operator.callTool({
+      name: "control_log",
+      arguments: { before: 5, after: 1 },
+    });
+    assert.equal(refusedPaging.isError, true);
+    assert.equal(text(refusedPaging).error, "give before or after, not both");
     const seen = JSON.stringify([providers, all]);
     // Only a key's last characters (its hint, as the dashboard shows it), never the key.
     assert.ok(!seen.includes("sealed-cloud-key"), "never a key");

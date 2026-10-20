@@ -15,7 +15,7 @@ This page lists what Thermite needs and what it has been tested with. Each row s
 | Your computer, for the `thermite` command, the tests and the scripts | 22.19 or later (`engines` in `package.json`). The agent libraries need it | CI runs the type check, lint and tests on Node.js 22 and 24 |
 | Inside the images | The Node.js 22 of `node:22-bookworm-slim`, pinned by digest. The exact 22.x release is whatever that digest holds | Every image build |
 
-The images build their own copy of Thermite, so the compose stack needs Node.js on your computer only for `npm run dev:init`, the command line and the test scripts.
+The images carry their own copy of Thermite, so a release's compose stack needs no Node.js on your computer. Node.js is needed only for the command line, and in a checkout of the source code for `npm run dev:init` and the test scripts.
 
 ## Operating systems
 
@@ -46,7 +46,7 @@ Installs need `sudo` without a password. See [Add a rig on a machine over SSH](.
 | podman-compose | Supported | The compose smoke test takes it (`COMPOSE="podman-compose"`). Not in CI |
 | Podman on a machine that hosts rigs | 4.4 or later, for its Quadlet units | The rig deploy acceptance, on Fedora 41's Podman. Neither the join script nor setting up over SSH checks the version: the join script checks only that Podman is there |
 
-No minimum version of Docker, Docker Compose, Podman or podman-compose is stated or checked for the compose stack. `compose.yaml` uses secrets from files, profiles, internal networks, `extra_hosts` with `host-gateway`, dropped and added capabilities, `no-new-privileges`, restart policies and `${VAR:-default}` defaults.
+No minimum version of Docker, Docker Compose, Podman or podman-compose is stated or checked for the compose stack. `compose.yaml` uses secrets from files, profiles, internal networks, `extra_hosts` with `host-gateway`, dropped and added capabilities, `no-new-privileges`, restart policies and `${VAR:-default}` defaults. A release's compose file uses the same, images pinned by digest alone (`name@sha256:…`), and `network_mode: none` for its `init` service, which you start with `compose run --rm`.
 
 Two acceptance tests need Podman and refuse Docker: rig deploy and cluster. [Install Thermite on one machine](../how-to/install/one-machine.md) gives the commands for each tool.
 
@@ -71,7 +71,7 @@ See [Add a rig on a Kubernetes cluster](../how-to/install/rig-on-a-cluster.md).
 | GPU vendor | NVIDIA only: `nvidia-smi`, `/dev/nvidia*` device nodes, CDI on machines, the device plugin or dynamic resource allocation on clusters | |
 | GPUs on one rig | Up to 8 for the judge and 8 for the agents. Up to 16 on a rig control sets up on a machine or cluster; 8 on a joined namespace | The multi-GPU acceptance, with four fake GPUs (plain files and a stand-in `nvidia-smi`) |
 | Several judge GPUs | They must be the same model. Otherwise only the first one judges, and the rig's hardware report says why | Not tested |
-| CUDA | A CUDA 12.x development image as the harness's base. The repository names no exact image. CUDA 13 dropped older architectures. RunPod test pods ask for hosts with CUDA 12.6 or later | No test in the repository. A RunPod test pod checks one real GPU host: see [Test a GPU on RunPod](../how-to/install/runpod-test.md) |
+| CUDA | A CUDA 12.x development image as the harness's base. The published CUDA harness is built on `nvidia/cuda:12.6.3-devel-ubuntu22.04`, pinned by digest in the release workflow. CUDA 13 dropped older architectures. RunPod test pods ask for hosts with CUDA 12.6 or later | No test in the repository. A RunPod test pod checks one real GPU host: see [Test a GPU on RunPod](../how-to/install/runpod-test.md) |
 | GPU architecture of the CUDA smoke kit | Built for `sm_60` | |
 | NVIDIA driver | No minimum is stated or checked. A machine's check reports the driver and CUDA versions | Not tested |
 | NVIDIA container toolkit | 1.20.1-1 when control installs it, with a CDI specification for Podman | Not tested: the machines acceptance installs only Podman |
@@ -84,18 +84,25 @@ Without Landlock, and with device nodes that cannot be given their own groups, a
 
 | Image | Architectures | How it is tested |
 | --- | --- | --- |
-| Control | amd64 and arm64. Its build stops on any other: `kubectl` is pinned for these two only | CI builds it on amd64 (GitHub's `ubuntu-24.04` runners) |
-| Harness | amd64 and arm64. It installs the arm64 package of OpenCode and Claude Code on arm64, and the x64 package on any other architecture | CI builds it on amd64 |
-| Supervisor | Not stated. Claude Code, when built in, comes as its arm64 or x64 package | CI builds it on amd64 |
+| Control | amd64 and arm64. Its build stops on any other: `kubectl` is pinned for these two only | CI builds it on amd64 (GitHub's `ubuntu-24.04` runners). The release workflow builds it for amd64 and arm64 |
+| Harness, CPU | amd64 and arm64. It installs the arm64 package of OpenCode and Claude Code on arm64, and the x64 package on any other architecture | CI builds it on amd64. The release workflow builds it for amd64 and arm64 |
+| Harness, CUDA | amd64 | The release workflow builds it for amd64 only |
+| Supervisor | amd64 and arm64. Claude Code, when built in, comes as its arm64 or x64 package | CI builds it on amd64. The release workflow builds it for amd64 and arm64 |
 
-No test in the repository builds the images for more than one architecture. [Push the images to your own registry](../how-to/install/own-registry.md) builds them yourself, and [Harness image](harness-image.md) lists what each contains.
+The release workflow builds the arm64 images under emulation, on amd64 runners; no test runs them. Each published image of control, the CPU harness and the supervisor is one name for both architectures, and Docker or Podman pulls the one that fits the machine. [Push the images to your own registry](../how-to/install/own-registry.md) builds them yourself, and [Harness image](harness-image.md) lists what each contains.
 
 ## Control and rig versions
 
-Control and its rigs do not compare their versions. Control can move a rig it set up on a cluster onto the images it now deploys (**Update to these images** on the rig's page); rigs on machines and joined rigs keep their images ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
+Control, each rig's harness and each rig's supervisor report their Thermite version, the commit their image was built from, and their protocol: the version of the contract between control and a rig. Control compares each rig's with its own. The REST API, MCP's `list_rigs` and `thermite rig list` show a rig as `behind` when it runs an older version that control still works with, with a notice to update its images. [Rig versions](rest-api.md#rig-versions) gives every field and message. The dashboard does not show versions yet ([goal 012](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/012-version-checks.goal)).
+
+Control can move a rig it set up on a cluster onto the images it now deploys (**Update to these images** on the rig's page); rigs on machines and joined rigs keep their images ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
 
 | Case | What happens | How it is tested |
 | --- | --- | --- |
+| A rig runs a build from before version checks | It reports no version. Control shows its version as `unknown`, and never refuses it for that: its reports and commands go through as before | `src/control/versions.test.ts` |
+| A rig runs an older version, on a protocol control works with | Control takes its reports and sends it commands, and marks it `behind` | `src/control/versions.test.ts` |
+| A rig's protocol and control's do not meet | Control refuses its reports and commands, and says why in the rig lists, in the audit log (`rig_refused`) and in its supervisor's log. When the rig reports a build control works with, the refusal ends | `src/control/versions.test.ts` |
+| Control is updated | A new release keeps working with the protocol before its own, so an update of control never cuts off the rigs on the release before it. At start, control checks the rigs it refused again | `src/core/version.test.ts` and `src/control/versions.test.ts` |
 | A rig's harness is older than control | It refuses a command kind it does not have with `malformed command`, and a payload its own schema does not allow with `bad payload: …`. A harness from before messages could be kept in force refuses `unkeep_message` and a `message_agent` to `all`, `teachers`, `auditor` or `panel`, and drops `keep` from other messages, which then are not kept in force; its message lines carry no message number, so a run's **Live** shows them without **To …**, and it writes no read lines. A harness from before the experiment queue refuses `queue_add`, `queue_move`, `queue_edit`, `queue_drop`, `queue_accept` and `drop_directive` with `malformed command`, refuses a rule in your own words with `bad payload: directives.<i>: Unrecognized key: "match"`, and starts a run with an empty queue whatever `assign_campaign`'s `queue` holds | Not tested |
 | A harness opens a ledger an older harness wrote | It upgrades the ledger. The owner's messages from before read receipts count as read by the lane or the planner they were delivered to, and a message to the advisors as read by each of them, so none is given again | The harness's tests |
 | A harness opens a ledger a newer harness upgraded | It refuses the ledger, and the harness does not start: `this ledger is at schema version <n>, newer than this code's <m>: run a newer Thermite, or restore the ledger from before the upgrade`. A rig moved back onto an older image can hit this | The harness's tests |
@@ -105,5 +112,5 @@ Control and its rigs do not compare their versions. Control can move a rig it se
 - The oldest Docker, Docker Compose, Podman or podman-compose that runs the compose stack.
 - The oldest Kubernetes that runs a rig, and whether GPU rigs work on a real cluster.
 - The oldest NVIDIA driver that works.
-- Windows, and arm64 images.
+- Windows, and whether the arm64 images work: no test runs them.
 - How much memory and disk the stack needs. Lane build caches can reach 8 GB each. A cluster rig with resources set needs at least 1.5 CPUs and 6 GiB of memory.

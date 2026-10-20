@@ -1,0 +1,248 @@
+# Thermite @@VERSION@@: the control service and one rig (a harness and a supervisor, on the CPU),
+# from the published images, each pinned by its digest. Nothing is built.
+# Works with `docker compose`, `podman compose` and podman-compose.
+#
+#   docker compose run --rm init    # first: makes .dev/ next to this file, with your tokens
+#   docker compose up -d
+#
+# Then open http://127.0.0.1:8800/ui and sign in with the token in .dev/secrets/control-admin-token.
+# The source, the documentation and the other releases: @@REPO_URL@@
+#
+# This file is made by the release workflow from containers/release/compose.template.yaml.
+name: thermite
+
+services:
+  # Makes .dev/ next to this file: random tokens in .dev/secrets/, the inbox and the advisors'
+  # folder, as `npm run dev:init` does in a checkout. It keeps every file that is there already,
+  # and gives what it makes to the owner of this folder. Run it before the first `up`, and again
+  # after you take a newer release. It has no network.
+  init:
+    image: @@CONTROL_IMAGE@@
+    command: ["thermite", "local", "init", "/work/.dev"]
+    user: "0:0"
+    volumes:
+      - .:/work
+    network_mode: none
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
+    security_opt: ["no-new-privileges:true"]
+    restart: "no"
+
+  control:
+    image: @@CONTROL_IMAGE@@
+    environment:
+      THERMITE_CONTROL_DIR: /var/lib/thermite-control
+      THERMITE_CONTROL_LISTEN: 0.0.0.0:8800
+      # Locally the owner's token is a file; deployed, give only its hash instead
+      # (THERMITE_CONTROL_ADMIN_TOKEN_SHA256, from `thermite token new`).
+      THERMITE_CONTROL_ADMIN_TOKEN_FILE: /run/secrets/control-admin-token
+      THERMITE_CONTROL_OPERATOR_TOKEN_FILE: /run/secrets/control-operator-token
+      THERMITE_CONTROL_RIG_TOKENS_FILE: /run/secrets/control-rig-tokens
+      THERMITE_CONTROL_PUBKEY_EXPORT: /keys/control-signing.pub
+      THERMITE_CONTROL_STALE_SECONDS: "${THERMITE_CONTROL_STALE_SECONDS:-180}"
+      THERMITE_CONTROL_OFFLINE_SECONDS: "${THERMITE_CONTROL_OFFLINE_SECONDS:-900}"
+      # Control's address as rigs and the machines it sets rigs up on reach it.
+      THERMITE_CONTROL_PUBLIC_URL: "${THERMITE_CONTROL_PUBLIC_URL:-}"
+      # The images control deploys rigs from on machines (Rigs › Add a rig): this release's.
+      THERMITE_RIG_HARNESS_IMAGE: "${THERMITE_RIG_HARNESS_IMAGE:-@@HARNESS_IMAGE@@}"
+      THERMITE_RIG_HARNESS_CUDA_IMAGE: "${THERMITE_RIG_HARNESS_CUDA_IMAGE:-@@HARNESS_CUDA_IMAGE@@}"
+      THERMITE_RIG_SUPERVISOR_IMAGE: "${THERMITE_RIG_SUPERVISOR_IMAGE:-@@SUPERVISOR_IMAGE@@}"
+      # "1": the owner accepts each rig's first report key on the dashboard.
+      THERMITE_CONTROL_REQUIRE_KEY_ACCEPT: "${THERMITE_CONTROL_REQUIRE_KEY_ACCEPT:-}"
+      THERMITE_CONTROL_SESSION_DAYS: "${THERMITE_CONTROL_SESSION_DAYS:-}"
+      # How often control copies campaign folders to outside knowledge bases (0: only Sync now).
+      THERMITE_OUTSIDE_KB_SYNC_SECONDS: "${THERMITE_OUTSIDE_KB_SYNC_SECONDS:-300}"
+      # Restarts through the container engine (off by default; see the repository's
+      # compose.lifecycle.yaml).
+      THERMITE_LIFECYCLE: "${THERMITE_LIFECYCLE:-}"
+      THERMITE_COMPOSE_PROJECT: thermite
+      THERMITE_COMPOSE_SERVICES: '{"local-1":{"harness":"harness","supervisor":"supervisor"},"local-2":{"harness":"harness-2","supervisor":"supervisor-2"}}'
+
+    volumes:
+      - control-state:/var/lib/thermite-control
+      - control-pub:/keys
+    secrets: [control-admin-token, control-operator-token, control-rig-tokens]
+    ports: ["127.0.0.1:${THERMITE_CONTROL_PORT:-8800}:8800"]
+    networks: [control]
+    # Control lists model providers' models: a provider on this machine is at host.docker.internal
+    # (with Podman, host.containers.internal too).
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
+  harness:
+    image: @@HARNESS_IMAGE@@
+    environment:
+      THERMITE_RIG_ID: local-1
+      THERMITE_TARGET: cpu
+      THERMITE_CONTROL_PUBKEY_FILE: /keys/control-signing.pub
+      THERMITE_SUPERVISOR_TOKEN_FILE: /run/secrets/harness-supervisor-token
+      THERMITE_PROPOSER_TOKEN_FILE: /run/secrets/harness-proposer-token
+      # The promotion policy is the operator's call; locally it is auto.
+      THERMITE_PROMOTION: "${THERMITE_PROMOTION:-auto}"
+      THERMITE_CALIBRATION_BLOCKS: "${THERMITE_CALIBRATION_BLOCKS:-6}"
+      # The model route for agents (empty: agents off): an OpenAI-compatible endpoint with tool
+      # calling, its URL ending in /v1. The key comes from a secret file. A server on this
+      # machine is http://host.docker.internal:PORT/v1 (Podman: host.containers.internal too).
+      THERMITE_MODEL_BASE_URL: "${THERMITE_MODEL_BASE_URL:-}"
+      THERMITE_MODEL: "${THERMITE_MODEL:-}"
+      THERMITE_MODEL_API_KEY_FILE: /run/secrets/model-api-key
+      THERMITE_MODEL_CONTEXT_WINDOW: "${THERMITE_MODEL_CONTEXT_WINDOW:-0}"
+      THERMITE_MODEL_MAX_TOKENS: "${THERMITE_MODEL_MAX_TOKENS:-8192}"
+      THERMITE_MODEL_REASONING_EFFORT: "${THERMITE_MODEL_REASONING_EFFORT:-}"
+      THERMITE_MAX_TRIALS: "${THERMITE_MAX_TRIALS:-1}"
+      THERMITE_TRIAL_MINUTES: "${THERMITE_TRIAL_MINUTES:-20}"
+      THERMITE_MAX_TURNS: "${THERMITE_MAX_TURNS:-}"
+      THERMITE_RESEARCH_MAX_MB: "${THERMITE_RESEARCH_MAX_MB:-}"
+      THERMITE_LLM_USD_PER_MTOK_IN: "${THERMITE_LLM_USD_PER_MTOK_IN:-}"
+      THERMITE_LLM_USD_PER_MTOK_OUT: "${THERMITE_LLM_USD_PER_MTOK_OUT:-}"
+      THERMITE_EXPORT_MINUTES: "${THERMITE_EXPORT_MINUTES:-60}"
+    # A model server on this machine (native Linux Docker lacks the name otherwise).
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    volumes:
+      - harness-state:/var/lib/thermite
+      - harness-scratch:/scratch
+      - ./.dev/inbox:/inbox:ro
+      - outbox:/outbox
+      - control-pub:/keys:ro
+    secrets: [harness-supervisor-token, harness-proposer-token, model-api-key]
+    # No published ports: only the rig's supervisor reaches the harness.
+    networks: [rig, egress]
+    # The broker's needs only: separate users for roles, ownership of scratch, killing leftovers.
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETGID, SETUID]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
+  supervisor:
+    image: @@SUPERVISOR_IMAGE@@
+    environment:
+      THERMITE_RIG_ID: local-1
+      HARNESS_URL: http://harness:8700
+      CONTROL_URL: http://control:8800
+      THERMITE_POLL_SECONDS: "${THERMITE_POLL_SECONDS:-60}"
+      # Commands (pause, messages, checks) are fetched on their own, shorter interval.
+      THERMITE_COMMAND_POLL_SECONDS: "${THERMITE_COMMAND_POLL_SECONDS:-5}"
+      THERMITE_MODEL_ROUTE_POLL_SECONDS: "${THERMITE_MODEL_ROUTE_POLL_SECONDS:-30}"
+      THERMITE_LIVE_INTERVAL_MS: "${THERMITE_LIVE_INTERVAL_MS:-3000}"
+      # How often past research comes from control into each running run's knowledge/ (0: off).
+      THERMITE_KB_SYNC_SECONDS: "${THERMITE_KB_SYNC_SECONDS:-180}"
+      THERMITE_HARNESS_TOKEN_FILE: /run/secrets/harness-supervisor-token
+      THERMITE_CONTROL_TOKEN_FILE: /run/secrets/control-rig-token
+      # Locally, both rigs' supervisors push to one results repository on a shared volume.
+      THERMITE_RESULTS_REMOTE: "${THERMITE_RESULTS_REMOTE:-file:///results/results.git}"
+      # Teacher pair, combiner, auditor and review panel (off unless a config file is given).
+      THERMITE_ADVISORS_FILE: "${THERMITE_ADVISORS_FILE:-}"
+    volumes:
+      - supervisor-home:/var/lib/thermite-supervisor
+      - ./.dev/inbox:/inbox
+      - outbox:/outbox:ro
+      - results:/results
+      - ./.dev/advisors:/etc/thermite/advisors:ro
+    secrets: [harness-supervisor-token, control-rig-token]
+    networks: [rig, control, egress]
+    depends_on: [harness, control]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
+  # A second rig: `docker compose --profile two-rigs up -d`.
+  harness-2:
+    profiles: [two-rigs]
+    image: @@HARNESS_IMAGE@@
+    environment:
+      THERMITE_RIG_ID: local-2
+      THERMITE_TARGET: cpu
+      THERMITE_CONTROL_PUBKEY_FILE: /keys/control-signing.pub
+      THERMITE_SUPERVISOR_TOKEN_FILE: /run/secrets/harness2-supervisor-token
+      THERMITE_PROPOSER_TOKEN_FILE: /run/secrets/harness2-proposer-token
+      THERMITE_PROMOTION: "${THERMITE_PROMOTION:-auto}"
+      THERMITE_CALIBRATION_BLOCKS: "${THERMITE_CALIBRATION_BLOCKS:-6}"
+      # The same model route as the first rig.
+      THERMITE_MODEL_BASE_URL: "${THERMITE_MODEL_BASE_URL:-}"
+      THERMITE_MODEL: "${THERMITE_MODEL:-}"
+      THERMITE_MODEL_API_KEY_FILE: /run/secrets/model-api-key
+      THERMITE_MODEL_CONTEXT_WINDOW: "${THERMITE_MODEL_CONTEXT_WINDOW:-0}"
+      THERMITE_MODEL_MAX_TOKENS: "${THERMITE_MODEL_MAX_TOKENS:-8192}"
+      THERMITE_MODEL_REASONING_EFFORT: "${THERMITE_MODEL_REASONING_EFFORT:-}"
+      THERMITE_MAX_TRIALS: "${THERMITE_MAX_TRIALS:-1}"
+      THERMITE_TRIAL_MINUTES: "${THERMITE_TRIAL_MINUTES:-20}"
+      THERMITE_MAX_TURNS: "${THERMITE_MAX_TURNS:-}"
+      THERMITE_EXPORT_MINUTES: "${THERMITE_EXPORT_MINUTES:-60}"
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    volumes:
+      - harness2-state:/var/lib/thermite
+      - harness2-scratch:/scratch
+      - ./.dev/inbox:/inbox:ro
+      - outbox2:/outbox
+      - control-pub:/keys:ro
+    secrets: [harness2-supervisor-token, harness2-proposer-token, model-api-key]
+    networks: [rig2, egress]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETGID, SETUID]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
+  supervisor-2:
+    profiles: [two-rigs]
+    image: @@SUPERVISOR_IMAGE@@
+    environment:
+      THERMITE_RIG_ID: local-2
+      HARNESS_URL: http://harness-2:8700
+      CONTROL_URL: http://control:8800
+      THERMITE_POLL_SECONDS: "${THERMITE_POLL_SECONDS:-60}"
+      # Commands (pause, messages, checks) are fetched on their own, shorter interval.
+      THERMITE_COMMAND_POLL_SECONDS: "${THERMITE_COMMAND_POLL_SECONDS:-5}"
+      THERMITE_MODEL_ROUTE_POLL_SECONDS: "${THERMITE_MODEL_ROUTE_POLL_SECONDS:-30}"
+      THERMITE_LIVE_INTERVAL_MS: "${THERMITE_LIVE_INTERVAL_MS:-3000}"
+      THERMITE_KB_SYNC_SECONDS: "${THERMITE_KB_SYNC_SECONDS:-180}"
+      THERMITE_HARNESS_TOKEN_FILE: /run/secrets/harness2-supervisor-token
+      THERMITE_CONTROL_TOKEN_FILE: /run/secrets/control-rig-token-2
+      THERMITE_RESULTS_REMOTE: "${THERMITE_RESULTS_REMOTE:-file:///results/results.git}"
+      THERMITE_ADVISORS_FILE: "${THERMITE_ADVISORS_FILE:-}"
+    volumes:
+      - supervisor2-home:/var/lib/thermite-supervisor
+      - ./.dev/inbox:/inbox
+      - outbox2:/outbox:ro
+      - results:/results
+      - ./.dev/advisors:/etc/thermite/advisors:ro
+    secrets: [harness2-supervisor-token, control-rig-token-2]
+    networks: [rig2, control, egress]
+    depends_on: [harness-2, control]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
+networks:
+  rig: { internal: true }
+  rig2: { internal: true }
+  control: {}
+  egress: {}
+
+volumes:
+  control-state: {}
+  control-pub: {}
+  harness-state: {}
+  harness-scratch: {}
+  outbox: {}
+  supervisor-home: {}
+  harness2-state: {}
+  harness2-scratch: {}
+  outbox2: {}
+  supervisor2-home: {}
+  results: {}
+
+# The init service writes these files; `docker compose up` needs them there first.
+secrets:
+  control-admin-token: { file: ./.dev/secrets/control-admin-token }
+  control-operator-token: { file: ./.dev/secrets/control-operator-token }
+  control-rig-tokens: { file: ./.dev/secrets/control-rig-tokens.json }
+  control-rig-token: { file: ./.dev/secrets/control-rig-token }
+  harness-supervisor-token: { file: ./.dev/secrets/harness-supervisor-token }
+  harness-proposer-token: { file: ./.dev/secrets/harness-proposer-token }
+  # A model route's key (the init service writes a placeholder).
+  model-api-key: { file: ./.dev/secrets/model-api-key }
+  control-rig-token-2: { file: ./.dev/secrets/control-rig-token-2 }
+  harness2-supervisor-token: { file: ./.dev/secrets/harness2-supervisor-token }
+  harness2-proposer-token: { file: ./.dev/secrets/harness2-proposer-token }

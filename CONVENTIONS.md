@@ -1,6 +1,6 @@
 # Thermite conventions
 
-These are review rules for Thermite's code and records. [AGENTS.md](AGENTS.md) is the agent entry point, and `CLAUDE.md` imports it. The design reasons behind these rules are in the [documentation](docs/README.md).
+These are review rules for Thermite's code and records, for maintainers and outside contributors alike. [CONTRIBUTING.md](CONTRIBUTING.md) is the contributor's entry point. [AGENTS.md](AGENTS.md) is the agent entry point, and `CLAUDE.md` imports it. The design reasons behind these rules are in the [documentation](docs/README.md).
 
 ## Authority and evidence
 
@@ -74,6 +74,6 @@ These are review rules for Thermite's code and records. [AGENTS.md](AGENTS.md) i
 ## Research and work records
 
 - Plans, goals and decisions are public, in [docs/plan/](docs/plan/README.md).
-- Store research, reviews and agent work logs that name a particular deployment under `.internal/`. Preserve earlier records rather than replacing history with a summary.
+- Store research, reviews and agent work logs that name a particular deployment under `.internal/` in your own checkout, never in tracked files. Preserve earlier records rather than replacing history with a summary.
 - For repository and web evidence, record the source, retrieval date and revision.
 - `.internal/` is git-ignored. It is not a public archive and not a backup.

@@ -132,8 +132,11 @@ export function issueCommand(
   if (!store.rigs().some((u) => u.id === input.rig) && !store.knownRig(input.rig)) {
     throw new Error(`unknown rig ${input.rig}`);
   }
-  const refused = input.kind === "assign_campaign" ? assignRefusal(input.payload) : "";
-  if (refused) throw new Error(refused);
+  // A rig control refuses would never fetch it: say why now, not when it expires.
+  const refused = store.rigRefusal(input.rig);
+  if (refused) throw new Error(`Control sends no commands to ${input.rig}. ${refused.reason}`);
+  const unrunnable = input.kind === "assign_campaign" ? assignRefusal(input.payload) : "";
+  if (unrunnable) throw new Error(unrunnable);
   const parsed = CommandPayloads[input.kind].safeParse(
     input.kind === "message_agent"
       ? checkedMessage(store, input.rig, input.payload)

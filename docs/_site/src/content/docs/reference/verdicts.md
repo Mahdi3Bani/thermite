@@ -229,6 +229,8 @@ The filter chips above the table each show a count, and group the results by the
 | **Research finished** | `finished: its research is in the run's notes`. Shown only when there are some |
 | **No attempt or dropped** | `no attempt`, `no attempt: <reason>`, `<attempt>: not judged yet` and `dropped by <who>: <why>` |
 
+Beside the chips, two lists narrow the rows further: **Every direction** (the **Direction** column) and **Anyone added it** (the **Added by** column). Each offers only the values in the table. The chip and both lists apply together.
+
 ## Other states
 
 | Thing | States | Meaning |

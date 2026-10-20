@@ -13,8 +13,9 @@ Stuck, or found something wrong? This page says where to ask, and what to put in
 | You want to | Go to |
 | --- | --- |
 | Ask a question, share an idea or a result | [Thermite's Discord](https://discord.gg/3Qs2uejUf9) |
-| Report a bug, or ask for a feature | [GitHub issues](https://github.com/iammrduncan/thermite/issues). Search the open issues first: someone may have reported it already |
-| Report a security problem | Not a public issue, and not a public Discord channel. A security policy with private reporting through GitHub is planned in [goal 008](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/008-community-files.goal) |
+| Report a bug, or ask for a feature | [GitHub issues](https://github.com/iammrduncan/thermite/issues). Search the open issues first: someone may have reported it already. The bug report form asks for what is [below](#what-to-put-in-a-report) |
+| Report a security problem | Privately, through GitHub's private vulnerability reporting, as the [security policy](https://github.com/iammrduncan/thermite/blob/main/SECURITY.md) says. Not a public issue, and not a public Discord channel. First check [Known limits](../reference/known-limits.md): it lists what the design does not cover yet |
+| Report a problem with someone's conduct | Privately to the maintainers, as the [code of conduct](https://github.com/iammrduncan/thermite/blob/main/CODE_OF_CONDUCT.md) says |
 
 Before you report a problem, try [Troubleshoot](../how-to/operate/troubleshoot.md). It covers failed checks, port clashes, the Podman virtual machine's disk and memory, and slow builds.
 

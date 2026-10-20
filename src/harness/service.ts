@@ -20,6 +20,7 @@ import {
 import { type Contract, contractSha, parseContract } from "../core/contract.ts";
 import type { Hardware } from "../core/hardware.ts";
 import { type LiveKind, LiveLog, liveBody } from "../core/live.ts";
+import { type BuildInfo, buildInfo } from "../core/version.ts";
 import type { RigCheckReport } from "./agents/model-check.ts";
 import type { ControlRoute, ModelInfo, ModelSource } from "./agents/model-source.ts";
 import { Registry } from "./agents/registry.ts";
@@ -244,6 +245,12 @@ export class HarnessService {
   private readonly rigKeys: KeyPairPem | undefined;
   /** What the rig runs on, collected at start; it rides in every report's summary. */
   hardware: Hardware | undefined;
+  /**
+   * The harness's build (its Thermite version and commit, and the protocol it speaks): it rides
+   * in every report's summary, so control can mark a rig that is behind and refuse one whose
+   * protocol it cannot work with.
+   */
+  build: BuildInfo | undefined = buildInfo();
   /** Commands being applied right now, so a concurrent re-send cannot run one twice. */
   private readonly inFlight = new Set<string>();
   /** Trials whose submission is being recorded right now. */
@@ -1349,8 +1356,9 @@ export class HarnessService {
   }
 
   /**
-   * An advisor's additions and moves for a run's queue (the supervisor, for the teacher pair,
-   * the auditor or the review panel): each recorded with the role as who made it. Each move is
+   * An advisor's additions and moves for a run's queue (the supervisor, for the teacher pair or
+   * the auditor; the review panel judges goals and has no way into the queue): each recorded
+   * with the role as who made it. Each move is
    * applied on its own; one that is refused (an unknown id, an experiment no longer queued) is
    * said in words and the others still apply.
    */
@@ -1738,6 +1746,7 @@ export class HarnessService {
       summary: {
         ...(this.ledger.summary() as Record<string, unknown>),
         ...(this.hardware ? { hardware: this.hardware } : {}),
+        ...(this.build ? { build: this.build } : {}),
         // Which model route the agents use (its name and the key's hint, never the key).
         ...(this.models ? { model: this.models.info() } : {}),
         // What runs on this rig and how (Edit rig).

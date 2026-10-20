@@ -1,0 +1,248 @@
+# Releases. On a tag v*, it builds the control, harness (CPU and CUDA) and supervisor images from
+# their Containerfiles and pushes them to GitHub's container registry, tagged with the version and
+# the commit. Then it writes the release bundle, a compose file that pins those images by digest
+# and a short readme (scripts/release-bundle.ts), and attaches both to a draft GitHub Release.
+#
+# Run by hand (Actions › release › Run workflow), or on a push to the development branch that
+# changes the images or this release path, it builds the same images and the same bundle, but
+# pushes nothing and makes no release: the bundle is kept as the run's artifact. (A run by hand
+# needs this file on the default branch; the push to the development branch does not.)
+#
+# The images never carry Claude Code: no build here sets CLAUDE_CODE_VERSION.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+    # A dry run. Paths are not checked for tags, so every v* tag still releases.
+    branches: [v1/build]
+    paths:
+      - .github/workflows/release.yml
+      - containers/**
+      - scripts/release-bundle.ts
+      - src/release/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Only a pushed tag publishes. A run by hand builds and checks without pushing.
+  PUSH: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+  # The CUDA harness's base: CUDA 12 (CUDA 13 dropped older GPU architectures), a development
+  # image (the GPU smoke kit compiles with nvcc) on Ubuntu, pinned by its digest.
+  CUDA_BASE_IMAGE: docker.io/nvidia/cuda:12.6.3-devel-ubuntu22.04@sha256:d49bb8a4ff97fb5fe477947a3f02aa8c0a53eae77e11f00ec28618a0bcaa2ad1
+
+jobs:
+  version:
+    name: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      registry: ${{ steps.version.outputs.registry }}
+      commit: ${{ steps.version.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        name: Read the version, and check the tag against package.json
+        run: |
+          pkg=$(node -p 'require("./package.json").version')
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            version="${GITHUB_REF_NAME#v}"
+            case "$version" in
+              "$pkg" | "$pkg"-*) ;;
+              *)
+                echo "::error::The tag $GITHUB_REF_NAME does not match package.json's version $pkg."
+                exit 1
+                ;;
+            esac
+          else
+            version="$pkg"
+          fi
+          # Image names are lowercase; an owner's name may not be.
+          owner=$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "registry=ghcr.io/$owner" >> "$GITHUB_OUTPUT"
+          echo "commit=$(printf '%s' "$GITHUB_SHA" | cut -c1-12)" >> "$GITHUB_OUTPUT"
+          echo "Version $version, images under ghcr.io/$owner, push: $PUSH"
+
+  images:
+    name: image ${{ matrix.key }}
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - key: control
+            repository: thermite-control
+            containerfile: containers/control/Containerfile
+            platforms: linux/amd64,linux/arm64
+            suffix: ""
+            cuda: false
+            description: "Thermite's control service: the dashboard, the REST API and MCP."
+          - key: harness
+            repository: thermite-harness
+            containerfile: containers/harness/Containerfile
+            platforms: linux/amd64,linux/arm64
+            suffix: ""
+            cuda: false
+            description: "Thermite's harness for CPU rigs: the judge, the broker and the agents."
+          # The CUDA harness: the same Containerfile on a CUDA base, in the same package as the
+          # CPU harness, with tags that end in -cuda.
+          - key: harness-cuda
+            repository: thermite-harness
+            containerfile: containers/harness/Containerfile
+            platforms: linux/amd64
+            suffix: "-cuda"
+            cuda: true
+            description: "Thermite's harness for GPU rigs (CUDA 12.6): the judge, the broker and the agents."
+          - key: supervisor
+            repository: thermite-supervisor
+            containerfile: containers/supervisor/Containerfile
+            platforms: linux/amd64,linux/arm64
+            suffix: ""
+            cuda: false
+            description: "Thermite's supervisor: a rig's link to control, and its git work."
+    steps:
+      - uses: actions/checkout@v4
+      # The CUDA base is several gigabytes: make room on the runner's disk first.
+      - name: Make room for the CUDA image
+        if: matrix.cuda
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+      # arm64 images are built under emulation.
+      - uses: docker/setup-qemu-action@v3
+        if: contains(matrix.platforms, 'arm64')
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: env.PUSH == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Tags: the version (0.1.0) and the commit's first 12 characters, each with the CUDA suffix
+      # for the CUDA harness. Labels and annotations: the source repository, which links each
+      # package to this repository, and the version and commit.
+      - id: meta
+        uses: docker/metadata-action@v5
+        env:
+          DOCKER_METADATA_SHORT_SHA_LENGTH: "12"
+          # A multi-platform image is an index, and the registry reads the index's annotations.
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: ${{ matrix.cuda && 'manifest' || 'manifest,index' }}
+        with:
+          images: ${{ needs.version.outputs.registry }}/${{ matrix.repository }}
+          flavor: |
+            latest=false
+            suffix=${{ matrix.suffix }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=sha,prefix=,format=short
+          labels: |
+            org.opencontainers.image.title=${{ matrix.repository }}
+            org.opencontainers.image.description=${{ matrix.description }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=MIT
+          annotations: |
+            org.opencontainers.image.title=${{ matrix.repository }}
+            org.opencontainers.image.description=${{ matrix.description }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=MIT
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.containerfile }}
+          platforms: ${{ matrix.platforms }}
+          # Every image reports THERMITE_COMMIT with the version in package.json, and control
+          # compares rigs' builds with its own. THERMITE_IMAGE_ID is the image's tag and commit:
+          # the harness reports it, and puts it in each build's key. Control's and the
+          # supervisor's files do not use it.
+          build-args: |
+            THERMITE_COMMIT=${{ github.sha }}
+            THERMITE_IMAGE_ID=${{ needs.version.outputs.version }}${{ matrix.suffix }}+${{ needs.version.outputs.commit }}
+            ${{ matrix.cuda && format('BASE_IMAGE={0}', env.CUDA_BASE_IMAGE) || '' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          # An image either way, so the build reports its digest; pushed only for a tag.
+          outputs: type=image,push=${{ env.PUSH }}
+          cache-from: type=gha,scope=${{ matrix.key }}
+          # The CUDA layers would crowd everything else out of the cache.
+          cache-to: ${{ !matrix.cuda && format('type=gha,mode=max,scope={0}', matrix.key) || '' }}
+      - name: Keep the image's digest for the bundle
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          case "$DIGEST" in
+            sha256:*) ;;
+            *) echo "::error::The build reported no image digest."; exit 1 ;;
+          esac
+          mkdir -p digests
+          printf '%s\n' "$DIGEST" > "digests/${{ matrix.key }}"
+          echo "${{ matrix.key }}: $DIGEST"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.key }}
+          path: digests/${{ matrix.key }}
+          if-no-files-found: error
+          retention-days: 7
+
+  bundle:
+    name: release bundle
+    needs: [version, images]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: digest-*
+          path: digests
+          merge-multiple: true
+      # The script needs no packages: only Node.js and the files in the repository.
+      - name: Write the bundle from the images' digests
+        run: |
+          node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/release-bundle.ts \
+            --version '${{ needs.version.outputs.version }}' \
+            --registry '${{ needs.version.outputs.registry }}' \
+            --repo-url '${{ github.server_url }}/${{ github.repository }}' \
+            --digests digests --out bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-bundle
+          path: bundle/
+          if-no-files-found: error
+      # A draft: a maintainer reads it, then publishes it. A run again for the same tag replaces
+      # the files of the release it made before.
+      - name: Attach the bundle to a draft release
+        if: env.PUSH == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" bundle/compose.yaml bundle/README.md --clobber
+          else
+            gh release create "$TAG" --draft --verify-tag --title "Thermite $TAG" \
+              --notes-file bundle/README.md bundle/compose.yaml bundle/README.md
+          fi

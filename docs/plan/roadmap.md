@@ -30,35 +30,35 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 
 ### Tester basics
 
-- [001](goals/001-plans-in-public.goal) Plans in public docs · `IN_PROGRESS`
-- [002](goals/002-ci-and-repository-settings.goal) CI on every push, and repository settings · `READY`
+- [001](goals/001-plans-in-public.goal) Plans in public docs · `VERIFIED`
+- [002](goals/002-ci-and-repository-settings.goal) CI on every push, and repository settings · `IN_PROGRESS`
 - [003](goals/003-advisors-no-default-cap.goal) No default spend limit for advisors · `VERIFIED`
-- [004](goals/004-secret-scan.goal) Scan the history for secrets · `READY`
+- [004](goals/004-secret-scan.goal) Scan the history for secrets · `IN_PROGRESS`
 - [005](goals/005-sample-project.goal) A sample project in `examples/` · `READY`
 - [060](goals/060-docs-site.goal) The documentation site · `VERIFIED`
 - [006](goals/006-docs-for-testers.goal) Docs for testers · `DROPPED`, merged into 060
-- [007](goals/007-known-limits.goal) Known limits and the security model · `READY`
-- [008](goals/008-community-files.goal) Community files and contributor docs · `READY`
+- [007](goals/007-known-limits.goal) Known limits and the security model · `VERIFIED`
+- [008](goals/008-community-files.goal) Community files and contributor docs · `IN_PROGRESS`
 - [009](goals/009-subscription-sign-in-tests.goal) Real subscription sign-in tests · `READY`
-- [063](goals/063-scan-and-steer.goal) Campaigns, runs and live views you can scan; steering as one message box · `IN_PROGRESS`
+- [063](goals/063-scan-and-steer.goal) Campaigns, runs and live views you can scan; steering as one message box · `VERIFIED`
 
 ### Install from images
 
 - [010](goals/010-published-images.goal) Published images and a release workflow · `IN_PROGRESS`
-- [011](goals/011-release-bundle.goal) A release bundle · `READY`
-- [012](goals/012-version-checks.goal) Version checks between control and rigs · `READY`
+- [011](goals/011-release-bundle.goal) A release bundle · `IN_PROGRESS`
+- [012](goals/012-version-checks.goal) Version checks between control and rigs · `IN_PROGRESS`
 - [013](goals/013-thermite-doctor.goal) `thermite doctor` · `READY`
 - [014](goals/014-quick-start-in-ci.goal) The quick start, tested in CI · `READY`
-- [015](goals/015-log-paging.goal) Log paging · `READY`
+- [015](goals/015-log-paging.goal) Log paging · `VERIFIED`
 - [016](goals/016-small-fixes.goal) Small fixes before the release · `IN_PROGRESS`
 - [017](goals/017-legacy-names.goal) Remove the legacy model names · `VERIFIED`
 
 ### Running campaigns
 
-- [064](goals/064-experiment-queue.goal) One experiment queue for each run; the planner coordinates it · `IN_PROGRESS`
+- [064](goals/064-experiment-queue.goal) One experiment queue for each run; the planner coordinates it · `VERIFIED`
 - [065](goals/065-journals-and-corpus.goal) Journals and a research corpus from every campaign · `IN_PROGRESS`
 - [066](goals/066-direction-rules.goal) Rules name directions, picked with `:direction:` · `READY`
-- [067](goals/067-assign-queue-from.goal) `thermite assign` can copy a past run's untried experiments · `READY`
+- [067](goals/067-assign-queue-from.goal) `thermite assign` can copy a past run's untried experiments · `VERIFIED`
 - [068](goals/068-mcp-servers-for-agents.goal) MCP servers for a campaign's agents, named by its kit · `READY`
 
 ### Research mode
@@ -69,8 +69,8 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 
 - [018](goals/018-runpod-spike.goal) RunPod spike · `IN_PROGRESS`
 - [019](goals/019-rig-only-entry.goal) Control reaches RunPod rigs through RunPod's proxy · `IN_PROGRESS`
-- [020](goals/020-runpod-rig-image.goal) A one-container rig image · `READY`
-- [021](goals/021-enrollment-codes.goal) Enrollment codes · `READY`
+- [020](goals/020-runpod-rig-image.goal) A one-container rig image · `IN_PROGRESS`
+- [021](goals/021-enrollment-codes.goal) Enrollment codes · `VERIFIED`
 - [022](goals/022-runpod-launch.goal) Launch a rig on RunPod · `READY`
 - [023](goals/023-runpod-lifecycle.goal) Stop, start and terminate RunPod rigs · `READY`
 - [024](goals/024-runpod-models-and-results.goal) Models into the pod, results out · `READY`

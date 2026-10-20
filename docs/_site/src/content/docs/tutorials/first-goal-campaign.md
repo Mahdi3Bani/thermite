@@ -15,18 +15,26 @@ It takes about fifteen minutes. New words are explained as they come, and the [g
 ## What you need
 
 - Everything from [Your first run](first-run.md): Thermite running on your computer, the dashboard signed in, and **Judge smoke** passed on `local-1`. This tutorial uses the smoke project and kit that the smoke check left on the rig.
-- A terminal in the `thermite` folder.
+- **Node.js** 22.19 or later, and **git**, for Thermite's command line.
 
 A rig works on one run at a time, so starting a run pauses any other run on `local-1`. If you did [Hand the work to agents](agents-with-a-free-model.md), its run stays paused; that is expected.
 
 ## 1. Install Thermite's command line
 
-You start the campaign from the command line. If you did [Hand the work to agents](agents-with-a-free-model.md), this is already done, and doing it again is harmless:
+You start the campaign from the command line. It comes with Thermite's source code, in a folder `thermite-source` beside your `thermite` folder. If you did [Hand the work to agents](agents-with-a-free-model.md), you made that folder in its step 4: open a terminal in it, and go on to step 2.
+
+Otherwise, go to the folder that holds your `thermite` folder, and do it now:
 
 ```sh
+cd ..
+git clone --branch v0.1.0 https://github.com/iammrduncan/thermite.git thermite-source
+cd thermite-source
+ln -s ../thermite/.dev .dev
 npm ci
 npm run build
 ```
+
+`v0.1.0` is the release your `compose.yaml` names in its first line, `# Thermite 0.1.0`; use yours, with a `v` before it. The link lets the command line read your tokens from `.dev/`, as the commands on this page do. Run every command on this page in the `thermite-source` folder, except the one that opens a shell in step 6: it runs in your `thermite` folder.
 
 ## 2. Read the example contract
 
@@ -129,7 +137,7 @@ The change is the one the smoke check confirmed in your first run: it loops over
 
 You submit it from inside the rig's harness container, where the agents work too. You submit as a **proposer**: someone who submits changes by hand, with `thermite submit` and the harness's proposer token. The harness listens on port 8700 inside its container, and has no port open to your computer: only the rig's supervisor reaches it from outside.
 
-1. Open a shell in the harness container:
+1. In a terminal in your `thermite` folder, open a shell in the harness container:
 
    ```sh
    docker compose exec harness sh     # Docker

@@ -90,6 +90,18 @@ The broker needs a few of root's powers: to change files' owners and permissions
 
 The **supervisor**, which holds the rig's git keys, its token for control, the advisors' keys and the token of any outside knowledge base its teachers may search, runs in a separate container that no role is part of. It listens on no port. The two containers share only the harness API, which the supervisor reaches with a token of its own; an inbox the supervisor fills and the harness can only read; and an outbox the harness fills and only the supervisor's group can read. [Who holds your keys](who-holds-your-keys.md) follows each secret.
 
+### One container, on RunPod
+
+A RunPod pod runs one container, so the [one-container rig image](../reference/harness-image.md#the-one-container-rig-image) puts the supervisor in the harness's container. The supervisor is then one more user beside the roles, and the same means keep the roles from it: its folder and its token are its own user's, closed to everyone else, and only the controller's group reads the inbox it fills. It runs with no way to gain privileges, and in the GPU fence with no card, so neither it nor an advisor's program it starts can use the GPU the judge times on.
+
+A pod is less closed than the containers Thermite sets up itself, and the image makes up for the difference:
+
+- **Privileges.** RunPod lets a process gain privileges through a setuid program, so the image has none: its build removes every setuid and setgid bit.
+- **RunPod's variables.** RunPod puts its own variables in the container's environment, an API key among them. The image's entry point removes them before anything else starts, so no process of the rig has them.
+- **The GPU's device files.** On RunPod they keep the owner and permissions they came with, open to everyone, and the broker cannot change them. The GPU fence alone keeps every role but the GPU's own off them.
+
+The isolation self-test checks all three, and the supervisor's user, in that image.
+
 ## The isolation self-test
 
 The **isolation self-test** runs every time the harness starts, while nothing else is running yet, and control shows the result with the rig's hardware. You can also run it as a rig check ([Check a rig](../how-to/operate/check-a-rig.md)), or with `thermite selftest isolation` as root inside the harness container.

@@ -277,15 +277,6 @@ const internalSettings = new Map([
   ["THERMITE_LANE_CACHE", "the controller gives each lane's commands its build cache"],
   ["THERMITE_PROBE_TOKEN", "control gives a RunPod test pod its report path"],
   ["THERMITE_PROBE_JS", "control gives a RunPod test pod its probe script"],
-  ["THERMITE_TUNNEL_PREFIX", "launch values for tunnel rigs, which nothing starts yet (goal 019)"],
-  [
-    "THERMITE_TUNNEL_CONTROL_BOX",
-    "launch values for tunnel rigs, which nothing starts yet (goal 019)",
-  ],
-  [
-    "THERMITE_TUNNEL_ENROLL_CODE",
-    "launch values for tunnel rigs, which nothing starts yet (goal 019)",
-  ],
 ]);
 
 function checkSettings(page, texts) {

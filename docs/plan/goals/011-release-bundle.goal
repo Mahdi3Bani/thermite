@@ -1,17 +1,17 @@
 ---
 id: "011"
 title: "A release bundle"
-status: READY
+status: IN_PROGRESS
 version: "0.1.0"
 part: "Install from images"
 depends_on: ["010"]
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # 011 · A release bundle
 
-**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Install from images · **Depends on:** [010](010-published-images.goal)
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Install from images · **Depends on:** [010](010-published-images.goal)
 
 ## What
 
@@ -24,7 +24,7 @@ A tester should start Thermite in minutes, without a build.
 ## Done when
 
 - [ ] A tester starts control and a CPU rig from the bundle on Linux and on macOS with no build.
-- [ ] The quick start uses the bundle.
+- [x] The quick start uses the bundle.
 
 ## Decisions
 
@@ -37,6 +37,10 @@ None.
 ## Progress
 
 - 2026-10-19: Goal written from the v0.1.0 release plan.
+- 2026-10-20: The bundle is built. The release workflow (goal 010) runs `scripts/release-bundle.ts` after the push: it fills `containers/release/compose.template.yaml` and `containers/release/README.template.md` with the pushed images' digests (`name@sha256:…`, which Docker and Podman both pull) and attaches `compose.yaml` and `README.md` to a draft GitHub Release; a run by hand keeps them as an artifact. The template is the repository's `compose.yaml` with images in place of builds, the release's images as control's rig image defaults, and an `init` service. `src/release/bundle.test.ts` fails when the template drifts from `compose.yaml`, and the script refuses a drifted template or a version that does not match `package.json`.
+- 2026-10-20: The tokens without a checkout: `compose up` needs `.dev/secrets/` before it creates the containers, so the bundle's `init` service (`docker compose run --rm init`, then `up -d`) runs the new `thermite local init`. It makes the same `.dev/` as `npm run dev:init` (a unit test compares them), keeps every file, has no network, and, as root for another user's folder (Docker on Linux), gives what it makes to that folder's owner. podman-compose drops services outside the active profiles, so `init` has no profile; `up` runs it again harmlessly.
+- 2026-10-20: Pages: the quick start (`tutorials/first-run.md`) and the install page (`how-to/install/one-machine.md`) use the bundle: download `compose.yaml`, `run --rm init`, `up -d`. The later tutorials and the guides build the command line from a source checkout beside the bundle, with the bundle's `.dev/` linked in. Building from source moved to the contributor guide (`docs/local-development.md`), with a section on releases. The README's quick start uses the bundle too.
+- 2026-10-20: A local check on macOS with Podman: a bundle made by the script, with locally built images in place of the published ones, ran `init` (17 files made, then 9 kept), started control, the harness and the supervisor, and `local-1` reported to control. Left: the same with the published images, once the first tag is pushed, on Linux and on macOS.
 
 ---
 

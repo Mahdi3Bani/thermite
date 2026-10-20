@@ -1,0 +1,92 @@
+name: Bug report
+description: Something in Thermite does not work as it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the report. Search the [open issues](https://github.com/iammrduncan/thermite/issues) first: someone may have reported it already.
+
+        - **A security problem?** Don't use this form. Report it privately, as [SECURITY.md](https://github.com/iammrduncan/thermite/blob/main/SECURITY.md) says.
+        - **This issue is public.** Before you paste logs or screenshots, remove your keys, tokens, host names, addresses and private repository names.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, and what Thermite did. Copy messages exactly, such as a card on the dashboard or a failed command's outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: What you expected Thermite to do.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to make it happen
+      description: The steps, from a running Thermite, that show the problem.
+      placeholder: |
+        1. Open Rigs › local-1.
+        2. Press Run it beside Judge smoke.
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Thermite version
+      description: The release, or the commit you built from (`git log -1 --oneline`).
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: The operating system and its version, such as Ubuntu 24.04 or macOS 15.
+    validations:
+      required: true
+  - type: input
+    id: engine
+    attributes:
+      label: Container engine
+      description: Docker or Podman, and its version (`docker --version` or `podman --version`).
+    validations:
+      required: true
+  - type: input
+    id: compose
+    attributes:
+      label: Compose tool
+      description: "`docker compose`, `podman compose` or podman-compose, and its version. Write none if you don't use compose."
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where the rig runs
+      options:
+        - The local compose stack
+        - A machine that control set up over SSH
+        - A Kubernetes cluster
+        - A rig that I joined myself
+        - A RunPod test pod
+        - The problem is not about a rig
+    validations:
+      required: true
+  - type: textarea
+    id: checks
+    attributes:
+      label: The rig's check results
+      description: On the dashboard, open Rigs and then the rig. Run its three checks (Model route, Isolation, Judge smoke), and copy the sentence that each one shows. Say whether the rig has GPUs.
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: The logs from around the time of the problem, such as `docker compose logs control harness supervisor`. [Getting help](https://github.com/iammrduncan/thermite/blob/main/docs/_site/src/content/docs/project/getting-help.md#get-the-logs) says where to find them. Remove anything private first.
+      render: text
+    validations:
+      required: false

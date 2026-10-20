@@ -1,0 +1,34 @@
+# The secret scan's settings (gitleaks 8.30.1; CI pins the version). The scan uses gitleaks'
+# default rules. Each allowlist below skips one fake, key-shaped value that the tests or scripts
+# use: a finding is skipped only when its rule, its file and its exact value all match.
+# A new fake value gets its own entry here, never a wider pattern.
+title = "Thermite secret scan"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "The made-up RunPod key in control's RunPod tests"
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = ['''^src/control/runpod(-tests)?\.test\.ts$''']
+regexes = ['''^rpa_test-key-0123456789abcdef$''']
+
+[[allowlists]]
+description = "The made-up model route key in an older agents acceptance script"
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = ['''^scripts/agents-acceptance\.mjs$''']
+regexes = ['''^route-key-acceptance-0001$''']
+
+# Control makes deploy keys at run time. The source holds only the armour lines around a key, as
+# two constants on adjacent lines, and no key. The pattern matches those two lines and nothing
+# between them.
+[[allowlists]]
+description = "The armour constants of the deploy-key maker, with no key between them"
+condition = "AND"
+targetRules = ["private-key"]
+paths = ['''^src/control/git-keys\.ts$''']
+regexes = [
+  '''^-----BEGIN OPENSSH PRIVATE KEY-----"; // public-check: allow \(armour only\)\nconst END = "-----END OPENSSH PRIVATE KEY-----$''',
+]

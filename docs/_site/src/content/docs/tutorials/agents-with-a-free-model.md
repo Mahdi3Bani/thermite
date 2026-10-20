@@ -15,7 +15,9 @@ It takes half an hour to an hour, most of it waiting. An agent may work for up t
 ## What you need
 
 - Everything from [Your first run](first-run.md): Thermite running on your computer, the dashboard signed in, and **Judge smoke** passed on `local-1`. The smoke check left the smoke project and its kit on the rig, and this tutorial uses them.
+- **Node.js** 22.19 or later, and **git**, for Thermite's command line (step 4).
 - An internet connection. The free models run on OpenCode's own service. You need no account and no key. The model sees the code the agents read, which here is only the smoke project.
+- A look at [Known limits](../reference/known-limits.md), if you haven't read it yet. From this tutorial on, agents run the code that a model writes, on your computer.
 
 ## 1. Add OpenCode as a model provider
 
@@ -54,24 +56,39 @@ The rig's own page shows the same result: open **Rigs**, then `local-1`, and und
 
 ## 4. Install Thermite's command line
 
-You start this campaign from the command line. In the `thermite` folder from [Your first run](first-run.md), install Thermite's packages and build it:
+You start this campaign from the command line. It comes with Thermite's source code, and you build it once, in a folder of its own beside your `thermite` folder. This step needs **Node.js** 22.19 or later and **git**.
 
-```sh
-npm ci
-npm run build
-```
+1. Go to the folder that holds your `thermite` folder. Get the source code of your Thermite version, and build its command line:
 
-Then check that the command line runs:
+   ```sh
+   cd ..
+   git clone --branch v0.1.0 https://github.com/iammrduncan/thermite.git thermite-source
+   cd thermite-source
+   npm ci
+   npm run build
+   ```
 
-```sh
-npx thermite help
-```
+   `v0.1.0` is the release your `compose.yaml` names in its first line, `# Thermite 0.1.0`. If yours names another one, put a `v` before it and use it in place of `v0.1.0`.
 
-It prints `usage: thermite <command> [options]`, then a list of commands. Run `npx thermite` in your `thermite` folder like this from now on; [Command line](../reference/command-line.md) describes every command.
+2. Link your tokens into the new folder, so the command line finds them where this page says:
+
+   ```sh
+   ln -s ../thermite/.dev .dev
+   ```
+
+3. Check that the command line runs:
+
+   ```sh
+   npx thermite help
+   ```
+
+   It prints `usage: thermite <command> [options]`, then a list of commands.
+
+From now on, run `npx thermite` in your `thermite-source` folder; [Command line](../reference/command-line.md) describes every command. The `docker compose` commands still run in your `thermite` folder.
 
 ## 5. Write the campaign's contract
 
-A **contract** says what a campaign must achieve and how the judge decides. Save this as `contract.json` in the `thermite` folder:
+A **contract** says what a campaign must achieve and how the judge decides. Save this as `contract.json` in the `thermite-source` folder:
 
 ```json title="contract.json"
 {
@@ -112,7 +129,7 @@ A **contract** says what a campaign must achieve and how the judge decides. Save
 
 You don't need every line. What matters here:
 
-- `project`: the smoke project and its **kit**, the judge's recipe for building, running and checking it. Each is pinned to the exact commit that the smoke check made from files in Thermite's image. The same files always make the same commits, so your `thermite` folder holds the commits your own rig has: the file `examples/contracts/smoke-cpu-goal.json` names them in its `project` block. The kit's commit also starts the name of the smoke check's campaign in [Your first run](first-run.md), such as `rig-check-smoke-cpu-69c3d2f6`. If either commit differs from the ones above, copy the `project` block from `examples/contracts/smoke-cpu-goal.json` into your `contract.json`.
+- `project`: the smoke project and its **kit**, the judge's recipe for building, running and checking it. Each is pinned to the exact commit that the smoke check made from files in Thermite's image. The same files always make the same commits, so your `thermite-source` folder, at the same version as your images, holds the commits your own rig has: the file `examples/contracts/smoke-cpu-goal.json` names them in its `project` block. The kit's commit also starts the name of the smoke check's campaign in [Your first run](first-run.md), such as `rig-check-smoke-cpu-69c3d2f6`. If either commit differs from the ones above, copy the `project` block from `examples/contracts/smoke-cpu-goal.json` into your `contract.json`.
 - `objective`: make `flops_per_s`, the matrix multiply's speed, higher. A change must be at least 10% faster (`min_effect` is 0.1) to count.
 - `cells`: the kit's test cases, which the dashboard calls cases. The judge measures every change on `small` and `large`, and keeps `held` back as a hidden test, run only to double-check a change that already looks better.
 - `editable_paths` and `forbidden_patterns`: the agent may change only files in `src/kernel/`, and may not add a line that matches one of these patterns, such as a call to a timer. A change that breaks either rule is refused before it is built.
@@ -149,12 +166,12 @@ For the first few minutes, while the planner works, the card's `lanes` line says
 Open **Commands** in the sidebar. The `assign campaign` line shows **failed**, and its outcome says why. If it says that a kit commit or a seed commit (the project commit a run starts from) is not in `smoke-cpu-kit` or `smoke-cpu-project`, there are two causes:
 
 - The smoke check has not run on this rig. Run **Judge smoke** (step 6 of [Your first run](first-run.md)), then the same command again.
-- Your version of Thermite makes other commits than the ones on this page. Copy the `project` block from `examples/contracts/smoke-cpu-goal.json` in your `thermite` folder into `contract.json`, as step 5 says, then run the command again.
+- Your version of Thermite makes other commits than the ones on this page. Copy the `project` block from `examples/contracts/smoke-cpu-goal.json` in your `thermite-source` folder into `contract.json`, as step 5 says, then run the command again.
 :::
 
 ## 7. Watch the agent work
 
-Open **Live** in the sidebar. It shows the run at work, `smoke-agents-1`. The list on its left, **At work**, holds every run at work: here, only this one. In a narrow window that list is hidden, and **☰** in the header shows it. In the header above the lines, the run's name is followed by **Running**, then `local-1` (the rig) and how the run stands: its round and its gain so far. On the right are the buttons **Open the run** and **Pause**.
+Open **Live** in the sidebar. It shows the run at work, `smoke-agents-1`. The list on its left, **At work**, holds every run at work: here, only this one. In a narrow window that list is hidden, and **☰** in the header shows it. In the header above the lines, the run's name is followed by **Running**, then `local-1` (the rig) and how the run stands: its round and its gain so far. On the right are the buttons **Open the run**, **Pause** and **⋯**, which holds **Restart the lanes**.
 
 Under the header is a row of filters, which choose whose lines you see:
 

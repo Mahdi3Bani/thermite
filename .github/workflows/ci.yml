@@ -1,19 +1,22 @@
-# The fast checks on every pull request and on main, the documentation site's build and checks, then
-# the compose smoke test: control and one rig built from this commit, a campaign assigned through
-# control, a candidate judged.
+# On every pull request and every push to main and to the development branch (v1/build): the fast
+# checks, the documentation site's build and checks, a secret scan of the history, then the compose
+# smoke test: control and one rig built from this commit, a campaign assigned through control, a
+# candidate judged. Beside it, the one-container rig image's acceptance.
 name: ci
 
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, v1/build]
 
 permissions:
   contents: read
 
+# A new commit on a pull request cancels the run before it. Every push to main or v1/build gets a
+# whole run of its own.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   checks:
@@ -58,6 +61,32 @@ jobs:
       - run: npm run docs:build
       - run: npm run docs:check
 
+  # gitleaks over the whole history of the commit under test: its default rules, and the allowlists
+  # for the made-up keys in .gitleaks.toml. Findings are printed with their values redacted.
+  secrets:
+    name: secret scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GITLEAKS_VERSION: "8.30.1"
+      # gitleaks_8.30.1_linux_x64.tar.gz, from gitleaks_8.30.1_checksums.txt in the release.
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks
+        run: |
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/$archive"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/$archive" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" gitleaks
+      - name: Scan the history
+        run: |
+          "$RUNNER_TEMP/gitleaks" git . --config .gitleaks.toml --redact --no-banner --verbose \
+            --log-opts="--full-history HEAD"
+
   compose-smoke:
     needs: checks
     runs-on: ubuntu-24.04
@@ -70,5 +99,21 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run smoke:compose
+        env:
+          COMPOSE: docker compose
+
+  # The one-container rig image (RunPod's), built on the CPU harness image and started as RunPod
+  # starts it: its isolation selftest, restarts and a clean stop.
+  rig-image:
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      # The script needs Node.js only: the images build Thermite themselves.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node scripts/rig-image-acceptance.mjs
         env:
           COMPOSE: docker compose

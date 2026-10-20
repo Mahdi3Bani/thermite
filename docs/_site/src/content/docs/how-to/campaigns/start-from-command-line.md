@@ -20,7 +20,7 @@ Run `npx thermite` in your Thermite folder, after `npm ci` and `npm run build` (
 
 ## Before you start
 
-- A clone of Thermite with Node.js 22.19 or later. Thermite's images also have the command line, as `thermite`.
+- Thermite's command line, built from a clone of its source code with Node.js 22.19 or later ([the command line](../install/one-machine.md#the-command-line)). Thermite's images also have the command line, as `thermite`.
 - A contract file. See [Write a contract](write-a-contract.md).
 - For a hill climb or a goal campaign: the project and its [kit](../../reference/glossary.md) in git repositories the rig can fetch. The contract names each by a short name, and the kit by its full commit too; the addresses are given here, with `--seed` and `--kit`. See [Write a kit for your project](write-a-kit.md).
 
@@ -57,6 +57,7 @@ Run `thermite assign` as in the example at the top. Control signs the command an
 | `--model NAME=URL` | A [model file](../../reference/glossary.md) the contract lists under `models`: a data file your project loads, such as a model's weights, with the address to fetch it from. Only a file with the contract's sha256 reaches the harness. Repeat for each model |
 | `--agents off` | A run with no agents: only the judge works. See [Test a kit with known candidates](test-a-kit.md) |
 | `--promotion auto` or `owner` | `auto`: a confirmed win becomes the champion at once. `owner`: it waits for you. Unset: the rig's default |
+| `--queue-from RUN` | Start the new run's queue with the untried experiments of an earlier run on the same rig, or `RIG/RUN` on another rig. Off unless you give it. See [Start further runs](#start-further-runs) |
 | `--control URL`, `--token-file F`, `--rig R` | Control's address, the owner's token file and the rig |
 | `--ttl MIN` | How long the command may wait to be delivered, in minutes: 60 unless set, at most 10080 |
 | `--print` | Print the payload instead of sending it |
@@ -78,9 +79,19 @@ With neither `--seed` nor `--seed-commit`, the contract's `project.commit` must 
 
 ## Start further runs
 
-Assign each further run the same way, with a new `--run` name. Or open the campaign's page on the dashboard and press **Start a run**: choose the rig under **Where it runs**, **Agents** **On** or **Off: a try**, and press **Start the run**. The page is `/ui/campaigns/<name>`, such as `http://127.0.0.1:8800/ui/campaigns/sort-speed`. It opens once the **assign campaign** row on **Commands** is **pending** or **delivered**, even before the rig reports the run. Until the rig does, the **Campaigns** list doesn't show the campaign, and the page says `Assigned to a rig over the API, MCP or the CLI; no run of it reports now.` A campaign saved from the dashboard's **New campaign** page says `Saved on control, with no run yet.` instead.
+Assign each further run the same way, with a new `--run` name. To start its [experiment queue](choose-what-runs-next.md) with what an earlier run had not tried yet, add `--queue-from` and that run's name:
 
-Control assigns the campaign again as it assigned its newest run, with the same contract, starting commit and imports, as a new run named `<campaign>-<n>`, or `<campaign>-try-<n>` without agents, with the first number not yet used on that rig, such as `sort-speed-2`. **Agents**, and **When a change is confirmed better** under **More options**, come from the panel, not from the old assignment. With **Agents** **On**, **Experiments to start with** can copy another run's untried experiments into the new run's queue: see [Choose what a run tries next](choose-what-runs-next.md#start-a-run-from-another-runs-untried-experiments). **From past research** can add experiments, and background for the agents' briefs, from the folders the campaign may read in Thermite's knowledge base: see [Use past research in a new run](use-past-research.md#start-a-run-from-past-research). `thermite assign` has no option for either: send a payload with `thermite command` instead, as that page shows. A run on another rig needs that rig to get the project and the kit the same way: see [Run a campaign on several rigs](several-rigs.md).
+```sh
+npx thermite assign --contract contract.json --run sort-speed-2 \
+  --seed-commit 0123456789abcdef0123456789abcdef01234567 --queue-from sort-speed-1 \
+  --control http://127.0.0.1:8800 --token-file .dev/secrets/control-admin-token --rig local-1
+```
+
+The new run's queue starts with `sort-speed-1`'s experiments up next, in their order, then its lanes' ideas, at most 500, as **Start a run** copies them. The command reads them from control, with each one's words and author from control's records, so it needs `--control` and `--token-file` even with `--print`. For a run on another rig, write `rig-2/sort-speed-1`. A run without agents (`--agents off`) can't take them. Without `--queue-from`, the new run's queue starts empty and the planner fills it.
+
+Or open the campaign's page on the dashboard and press **Start a run**: choose the rig under **Where it runs**, **Agents** **On** or **Off: a try**, and press **Start the run**. The page is `/ui/campaigns/<name>`, such as `http://127.0.0.1:8800/ui/campaigns/sort-speed`. It opens once the **assign campaign** row on **Commands** is **pending** or **delivered**, even before the rig reports the run. Until the rig does, the **Campaigns** list doesn't show the campaign, and the page says `Assigned to a rig over the API, MCP or the CLI; no run of it reports now.` A campaign saved from the dashboard's **New campaign** page says `Saved on control, with no run yet.` instead.
+
+Control assigns the campaign again as it assigned its newest run, with the same contract, starting commit and imports, as a new run named `<campaign>-<n>`, or `<campaign>-try-<n>` without agents, with the first number not yet used on that rig, such as `sort-speed-2`. **Agents**, and **When a change is confirmed better** under **More options**, come from the panel, not from the old assignment. With **Agents** **On**, **Experiments to start with** can copy another run's untried experiments into the new run's queue: see [Choose what a run tries next](choose-what-runs-next.md#start-a-run-from-another-runs-untried-experiments). **From past research** can add experiments, and background for the agents' briefs, from the folders the campaign may read in Thermite's knowledge base: see [Use past research in a new run](use-past-research.md#start-a-run-from-past-research). `thermite assign` has no option for past research: send a payload with `thermite command` instead, as that page shows. A run on another rig needs that rig to get the project and the kit the same way: see [Run a campaign on several rigs](several-rigs.md).
 
 ## Send it from an agent over MCP
 
@@ -148,6 +159,8 @@ The command line itself prints a refusal from its own checks or from control. A 
 | `give --control, --token-file and --rig to issue it, or --print to show it` | The terminal | Add the three options, or `--print` |
 | `the seed commit must be a full commit id (40 or 64 hexadecimal characters)` | The terminal | Give the whole commit after `@` |
 | `--kit given, but the contract names no project.kit` | The terminal | Add `project.kit` to the contract |
+| `a run without agents has no queue: leave out --queue-from` | The terminal | Leave out `--queue-from`, or `--agents off` |
+| `-> 404 {"error":"no run sort-speed-1 on local-1"}` | The terminal | Check the run's name and its rig on the campaign's page, and write `RIG/RUN` for a run on another rig |
 | `-> 401 {"error":"unauthorized"}` | The terminal | Use the owner's token |
 | `bad assign_campaign payload: seed.repo: lowercase id` | The terminal | Make the contract's `project.repo` a lowercase name, such as `my-project` |
 | **failed**, `run <id> already exists` | **Commands** | Choose a new run name |

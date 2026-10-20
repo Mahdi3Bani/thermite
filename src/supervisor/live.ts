@@ -1,4 +1,5 @@
 import { LiveLog } from "../core/live.ts";
+import { buildHeaders } from "../core/version.ts";
 
 /**
  * The live relay: every few seconds, the harness's newest live-log lines (signed by the harness)
@@ -48,7 +49,11 @@ export async function relayLiveOnce(
   if (!batch.entries.length && !own.entries.length && batch.log_id === state.logId) return state;
   const res = await f(`${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/live`, {
     method: "POST",
-    headers: { authorization: `Bearer ${cfg.controlToken}`, "content-type": "application/json" },
+    headers: {
+      authorization: `Bearer ${cfg.controlToken}`,
+      "content-type": "application/json",
+      ...buildHeaders(),
+    },
     body: JSON.stringify({
       batch,
       supervisor: { log_id: supervisorLive.id, entries: own.entries },

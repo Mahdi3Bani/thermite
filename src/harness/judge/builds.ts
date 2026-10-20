@@ -82,7 +82,8 @@ export class BuildStore {
         }
       };
       this.toolchain = canonicalJson({
-        image: process.env.THERMITE_IMAGE_ID ?? null,
+        // Empty, as in an image built from a checkout, counts as not set.
+        image: process.env.THERMITE_IMAGE_ID || null,
         cc: version("cc", ["--version"]) ?? null,
         nvcc: version("nvcc", ["--version"]) ?? null,
       });

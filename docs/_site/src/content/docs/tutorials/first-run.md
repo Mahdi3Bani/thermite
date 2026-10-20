@@ -10,51 +10,55 @@ In this tutorial you start Thermite on your own computer, sign in to its dashboa
 
 At the end you'll have a running Thermite and you'll have seen its central idea at work: a change counts only when a judge the agents can't touch says it does.
 
-It takes about half an hour. Most of that is the first build of Thermite's container images, which you only wait for once.
+It takes about twenty minutes. You build nothing: Thermite comes as ready-made container images, which your computer downloads the first time.
 
 ## What you need
 
-- A computer running Linux or macOS, with a few CPU cores, a few gigabytes of free memory and several gigabytes of free disk. Thermite's three images take about 2 GB, and building them needs room of its own. With Podman on a Mac, that space must be free in Podman's virtual machine.
+- A computer running Linux or macOS, with a few CPU cores, a few gigabytes of free memory and several gigabytes of free disk. Thermite's three images take about 2 GB. With Podman on a Mac, that space must be free in Podman's virtual machine.
 - **Docker** with Docker Compose, or **Podman** with `podman compose`. These run Thermite's parts as containers. `podman compose` hands the work to a compose program, `docker-compose` or `podman-compose`, so install one of them too. On a Mac, Podman runs the containers in a small virtual machine, which must be started (`podman machine start`).
-- **Node.js** 22.19 or later, and **git**.
+- `curl`, which macOS and most Linux systems already have, and an internet connection.
+
+Thermite's agents run code that an AI model writes, on your computer. This tutorial uses no agents, but read [Known limits](../reference/known-limits.md) before you give Thermite a model: it says what that code can reach, and why to set a budget before you use a paid key. [The security model](../explanation/security-model.md) says what each part of Thermite can reach and what it trusts.
 
 ## 1. Get Thermite
 
-Open a terminal and copy Thermite to your computer:
+Open a terminal. Make a folder for Thermite, and download the compose file of Thermite's latest release into it:
 
 ```sh
-git clone https://github.com/iammrduncan/thermite.git
+mkdir thermite
 cd thermite
+curl -fsSLO https://github.com/iammrduncan/thermite/releases/latest/download/compose.yaml
 ```
+
+The folder now holds one file, `compose.yaml`. It says which containers make up Thermite and which images they run. Its first line names the release, such as `# Thermite 0.1.0`. Each image is pinned to the exact build of that release, so every computer that uses this file runs the same Thermite.
 
 ## 2. Make your local tokens
 
-Thermite uses **tokens**, long random passwords, so that only you can steer it. Make a set for this computer:
+Thermite uses **tokens**, long random passwords, so that only you can steer it. Make a set for this computer. Use the line for your container tool:
 
 ```sh
-npm run dev:init
+docker compose run --rm init     # Docker
+podman compose run --rm init     # Podman
 ```
 
-You see a line that ends with `.dev ready`. The tokens are now in the folder `.dev/secrets/`, which git ignores, so they stay on your computer.
-
-This step needs only Node.js. Thermite's own packages are for its command line, which you install in [Hand the work to agents](agents-with-a-free-model.md), so you don't need `npm ci` yet.
+The first time, this downloads Thermite's control image. Then it lists each file it makes, and its last line is `local init: .dev ready (17 made, 0 kept)`. The tokens are now in the folder `.dev/secrets/`, in your `thermite` folder. They stay on your computer. Keep the folder: Thermite reads its tokens from there every time it starts.
 
 ## 3. Start Thermite
 
-Build Thermite's images and start them. Use the line for your container tool:
+Start Thermite's containers:
 
 ```sh
-docker compose up -d --build     # Docker
-podman compose up -d --build     # Podman
+docker compose up -d             # Docker
+podman compose up -d             # Podman
 ```
 
-The first time, this builds three images and can take 20 minutes or more. Later starts take seconds. When it finishes, check that three containers are up:
+The first time, this downloads the other two images, which can take a few minutes. Later starts take seconds. When it finishes, check that three containers are up:
 
 ```sh
 docker compose ps                # or: podman compose ps
 ```
 
-You see three lines, one each for `control`, `harness` and `supervisor`, and each one's status starts with `Up`. They are the two halves of Thermite:
+You see three lines, one each for `control`, `harness` and `supervisor`, and each one's status starts with `Up`. If a fourth line, `init`, says `Exited (0)`, that is the token step of step 2: it stops when its work is done. The three are the two halves of Thermite:
 
 - **control** is the one place you watch and steer everything from: the dashboard, its API and MCP.
 - **harness** and **supervisor** together make a **rig**: the place where research happens. The harness holds the judge and the agents. The supervisor is the rig's link to control. This rig is called `local-1`.
@@ -146,7 +150,7 @@ That is Thermite's central rule: **agents propose, and code they cannot touch de
 
 ## 8. Stop or keep Thermite
 
-Thermite can keep running in the background. To stop it:
+Thermite can keep running in the background. To stop it, run this in your `thermite` folder:
 
 ```sh
 docker compose down              # or: podman compose down

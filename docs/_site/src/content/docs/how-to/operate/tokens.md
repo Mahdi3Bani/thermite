@@ -17,10 +17,10 @@ Control knows people and programs by **tokens**: long random strings, each with 
 
 ## Before you start
 
-- The `thermite` command line on your computer. Run `npx thermite` in your Thermite folder, after `npm ci` and `npm run build` (see [the command line](../../reference/command-line.md)).
+- The `thermite` command line on your computer. Run `npx thermite` in the folder you built it in (see [the command line](../install/one-machine.md#the-command-line)).
 - A way to change control's settings and restart it. On the local stack, that is your compose tool.
 
-The local stack already has an owner's token and an operator's token: `npm run dev:init` wrote them to `.dev/secrets/control-admin-token` and `.dev/secrets/control-operator-token`, and `compose.yaml` gives them to control as files. Make the others yourself.
+The local stack already has an owner's token and an operator's token: the `init` container (or, in a checkout of the source code, `npm run dev:init`) wrote them to `.dev/secrets/control-admin-token` and `.dev/secrets/control-operator-token`, and `compose.yaml` gives them to control as files. Make the others yourself.
 
 ## 1. Make a token
 
@@ -135,11 +135,11 @@ Each rig has its own token, which its supervisor uses to report to control. The 
 
   For a rig control set up, **Restart them** on the rig's page then restarts the supervisor.
 
-- **Rigs in control's rig tokens file** (`THERMITE_CONTROL_RIG_TOKENS_FILE`), such as the local stack's `local-1` and `local-2`, keep their tokens there. `rig token` refuses them with `rig local-1 has its token in control's rig tokens file; change it there`. Change the token in both places, then restart control and the rig's supervisor. On the local stack, `npm run dev:init` makes a new token for a missing file and writes the tokens file again:
+- **Rigs in control's rig tokens file** (`THERMITE_CONTROL_RIG_TOKENS_FILE`), such as the local stack's `local-1` and `local-2`, keep their tokens there. `rig token` refuses them with `rig local-1 has its token in control's rig tokens file; change it there`. Change the token in both places, then restart control and the rig's supervisor. On the local stack, the `init` container makes a new token for a missing file and writes the tokens file again (in a checkout of the source code, `npm run dev:init` does the same):
 
   ```sh
   rm .dev/secrets/control-rig-token
-  npm run dev:init
+  docker compose run --rm init
   docker compose up -d --force-recreate control supervisor
   ```
 

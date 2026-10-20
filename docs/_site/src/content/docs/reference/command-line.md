@@ -20,8 +20,8 @@ The first prints `ok`, the contract's mode, name, version and SHA-256. The secon
 
 | Where | How to run it | Used there for |
 | --- | --- | --- |
-| Your computer, in a clone of the repository | `npx thermite <command>`, after `npm ci` and `npm run build`. It runs `dist/cli/thermite.js` and needs Node.js 22.19 or later | Contracts, tokens, starting runs, commands, enrolling rigs |
-| Control's image | `thermite` (`/usr/local/bin/thermite`, which runs `node /opt/thermite/dist/cli/thermite.js`) | The same commands, from inside control's container |
+| Your computer, in a clone of the repository | `npx thermite <command>`, after `npm ci` and `npm run build`. It runs `dist/cli/thermite.js` and needs Node.js 22.19 or later. With a release's compose stack, link its `.dev/` folder into the clone, as [the command line](../how-to/install/one-machine.md#the-command-line) shows | Contracts, tokens, starting runs, commands, enrolling rigs |
+| Control's image | `thermite` (`/usr/local/bin/thermite`, which runs `node /opt/thermite/dist/cli/thermite.js`) | The same commands, from inside control's container. A release's `init` service runs `local init` from this image |
 | The supervisor's image | `thermite`, the same wrapper | The same commands |
 | The harness image | `thermite`, the same wrapper, and `thermite-trial` | `submit` and `status` against the harness at `http://127.0.0.1:8700`; `selftest isolation`, which must run there, as root |
 
@@ -41,13 +41,18 @@ usage: thermite <command> [options]
                                       the only part control's deployment needs
   assign --contract F --run ID [--seed GIT_URL[@COMMIT] | --seed-commit C] [--kit GIT_URL]
          [--model NAME=URL ...] [--direction D] [--agents off] [--promotion auto|owner]
+         [--queue-from [RIG/]RUN]
          (--control URL --token-file F --rig R [--ttl MIN] | --print)
                                       start a run. The rig's supervisor fetches the project and
                                       kit commits from their repositories, and models from their
                                       URLs, before the harness checks them. --seed-commit names a
                                       commit already on the rig (an earlier run's result); a kit
-                                      already there needs no --kit. --print shows the payload
-                                      (for issue_command over MCP) instead of issuing it
+                                      already there needs no --kit. --queue-from starts the new
+                                      run's queue with a past run's untried experiments, read
+                                      from control (on --rig unless RIG/ is given; it needs
+                                      --control and --token-file, with --print too). --print
+                                      shows the payload (for issue_command over MCP) instead of
+                                      issuing it
   assign-payload --contract F --run ID --seed-repo R --seed-commit C --bundle PATH
                  [--bundle-sha256 H] [--kit-repo R --kit-commit C --kit-bundle PATH
                  [--kit-bundle-sha256 H]] [--model NAME=SHA256:PATH ...] [--direction D] [--agents off]
@@ -60,12 +65,20 @@ usage: thermite <command> [options]
                                       give an enrolled rig a new token (the old one stops working)
   rig retire RIG --control URL --token-file F
                                       shut an enrolled rig out of control; its history stays
+  rig list --control URL --token-file F [--json]
+                                      list the rigs (owner's token): reporting, stale or
+                                      offline, and each one's Thermite version against
+                                      control's, with what to do when it is behind or refused
   command --control URL --token-file F --rig U --kind K --payload JSON|@file [--ttl MIN]
                                       issue a signed command through control (admin token)
   submit --harness URL --token-file F --run ID --patch-file P --hypothesis TEXT
          [--known-flaw TEXT ...]      submit a patch as a proposer
   status --harness URL --token-file F --attempt ID
                                       show an attempt's lifecycle and verdict
+  local init DIR                      make DIR, the local compose stack's .dev folder: random
+                                      tokens in DIR/secrets, the inbox, the outbox and the
+                                      advisors' folder. Files that exist are kept. Run as root,
+                                      it gives what it makes to the owner of DIR's parent folder
   selftest isolation [--force]        inside the harness container, as root, with the rig idle: check that role
                                       users cannot reach the ledger, kits, builds or secrets
 ```
@@ -74,7 +87,7 @@ usage: thermite <command> [options]
 
 - **Options.** Each option takes its value as the next word or after `=`. In `token new`, `assign`, `assign-payload`, `rig`, `command`, `submit` and `status`, an option the command does not know, or a word it does not expect, ends the command with Node's own message and exit code 2.
 - **Older option names.** `--instance` is read as `--run`, and `--unit` as `--rig`. These are the names from before runs and rigs were renamed.
-- **Control's token.** The commands that talk to control (`assign`, `command`, `rig add`, `rig token`, `rig retire`) send the contents of `--token-file`, trimmed, as `Authorization: Bearer <token>`. Only the owner's token works on these routes; any other token gets `401 {"error":"unauthorized"}`. See [Tokens and roles](tokens.md).
+- **Control's token.** The commands that talk to control (`assign`, `command`, `rig add`, `rig token`, `rig retire`, `rig list`) send the contents of `--token-file`, trimmed, as `Authorization: Bearer <token>`. Only the owner's token works on these routes; any other token gets `401 {"error":"unauthorized"}`. See [Tokens and roles](tokens.md).
 - **Control's address.** `--control` is control's base address, such as `https://control.example.com`. A trailing `/` is removed.
 - **Refusals.** When control or the harness refuses a request, the command prints `<url> -> <status> <body>` on standard error and exits 2. `status` is the exception: see [below](#status). A request body that does not match the route gives `400 {"error":"invalid request"}`; a command that control refuses before signing it gives `400` with the reason (for example a payload that does not fit its kind, or a message that nothing would read), or `404` for an unknown rig; another refusal from inside control gives `500` with the reason. The [REST API reference](rest-api.md) lists the routes.
 
@@ -140,6 +153,7 @@ The hash is what control's settings take; the token itself stays with you. See [
 | `--direction D` | No | | Text kept with the run as `direction`. Thermite does not act on it |
 | `--agents on\|off` | No | `on` | `off` starts a judge-only run: no worker agents, the judge still works |
 | `--promotion auto\|owner` | No | The rig's own setting | The run's promotion rule. `owner` is sent as `owner_approval`: every confirmed win waits for the owner |
+| `--queue-from [RIG/]RUN` | No | Off: the new run's queue starts empty | A past run whose untried experiments start the new run's [experiment queue](../how-to/campaigns/choose-what-runs-next.md). `RUN` alone is a run on `--rig`; `RIG/RUN` names its rig. They are read from control, so it needs `--control` and `--token-file`, with `--print` too. See [below](#copy-a-past-runs-untried-experiments) |
 | `--control URL` | To send it | | Control's address |
 | `--token-file F` | To send it | | A file with the owner's token |
 | `--rig R` | To send it | | The rig that runs it |
@@ -147,6 +161,18 @@ The hash is what control's settings take; the token itself stays with you. See [
 | `--print` | Instead of the four above | | Print the payload as indented JSON and send nothing. The output is what the MCP tool `issue_command` takes as `payload` |
 
 `--seed` and `--seed-commit` together are refused. For a research contract, the run has no seed and no kit, and `--seed`, `--seed-commit` and `--kit` are not used.
+
+#### Copy a past run's untried experiments
+
+`--queue-from` puts the same experiments in the payload's `queue` as **Copy the untried experiments of** in a campaign's **Start a run** panel: the past run's experiments up next, in their order, then its lanes' ideas, at most 500. The tried and dropped ones stay with their run. The command reads them from control (`GET /v1/rigs/<rig>/runs/<run>/untried`, see [the REST API](rest-api.md#rigs-and-their-history)) before it sends or prints anything. Control takes each one's title, details, direction, why and author from its own records of the past run, with every edit, as for a copied experiment over MCP. That holds for a run of the contract's campaign, or of a campaign whose folder it may read; any other run's experiments keep their words, with the author `copied`. Each one names where it came from, as `from: {run, id}`.
+
+```sh
+npx thermite assign --contract contract.json --run sort-speed-3 --seed-commit 0123456789abcdef0123456789abcdef01234567 \
+  --queue-from sort-speed-2 \
+  --control https://control.example.com --token-file ~/thermite-owner-token --rig rig-1
+```
+
+A past run with nothing untried leaves the queue empty: the command says `<run> on <rig> has no untried experiments: the new run's queue starts empty` on standard error, sends no `queue`, and goes on.
 
 The imports it adds to the payload:
 
@@ -168,6 +194,11 @@ Sent, it prints control's answer on one line, such as `{"id":"<command id>","sta
 | `--model <arg>: expected NAME=URL for a model the contract lists` | No `=`, or a name the contract's `models` does not list |
 | `--agents is on or off` | Another value |
 | `--promotion is auto or owner` | Another value |
+| `a run without agents has no queue: leave out --queue-from` | `--queue-from` with `--agents off`. The harness refuses such a payload the same way |
+| `--queue-from reads the past run from control: give --control and --token-file` | `--queue-from` without either |
+| `--queue-from RUN is a run on --rig: give --rig, or RIG/RUN` | `--queue-from` with a run alone and no `--rig` |
+| `--queue-from names a run: RUN or RIG/RUN` | An empty run or rig name, such as `rig-1/` |
+| `<url> -> 404 {"error":"no run <run> on <rig>"}` | Control has no such run on that rig; `no rig <rig>` for a rig it does not know |
 
 ### `assign-payload`
 
@@ -225,6 +256,28 @@ It prints `RIG has a new token, in FILE; its old token no longer works`. An exis
 
 `thermite rig retire RIG --control URL --token-file F` retires a rig (`POST /v1/rigs/RIG/retire`): its token stops working, and its history stays on control. It works on any rig control knows: enrolled, listed in the rig tokens file, or one that has reported. It prints `RIG is retired: its token no longer works`. A rig control does not know gives `404 {"error":"no rig <rig>"}`.
 
+### `rig list`
+
+`thermite rig list --control URL --token-file F` lists the rigs (`GET /v1/rigs`): whether each one reports, and its Thermite version against control's. `--json` prints control's answer as it is instead.
+
+```text
+control 0.2.0 (1a2b3c4d5e6f), protocol 1
+RIG    STATE      LAST REPORT               VERSION  HARNESS               SUPERVISOR
+rig-1  reporting  2026-10-20T12:00:00.000Z  behind   0.1.0 (abcdef012345)  0.1.0 (abcdef012345)
+  This rig runs an older Thermite than control: harness 0.1.0, supervisor 0.1.0. Control runs 0.2.0. Control still works with it. Update the rig's images.
+rig-2  offline    never                     refused  no version            0.1.0
+  Control cannot work with this rig: its supervisor speaks protocol 0, and control works with protocol 1. Update the rig's images.
+rig-3: enrolled, no report yet
+```
+
+- **The first line** is control's build: its version, the first 12 characters of its commit when its image has one, and its protocol. `(works with 1 to 2)` follows when control works with older protocols too.
+- **`STATE`** is `reporting`, `stale` or `offline`. **`LAST REPORT`** is `never` for a rig that never sent one.
+- **`VERSION`** is `current`, `behind`, `ahead`, `unknown` or `refused`. Under a rig that is not `current`, an indented line says what to know and do.
+- **`HARNESS`** and **`SUPERVISOR`** are the version each part reports, with its commit, or `no version` for a part from before version checks.
+- **Enrolled rigs** that never reported come last.
+
+[Rig versions](rest-api.md#rig-versions) says what each state means and when control refuses a rig. Against a control from before version checks, the first line is `control: no version (control is older than version checks)`, and each rig's state and version are `unknown`.
+
 ### `command`
 
 `thermite command` sends any [signed command](signed-commands.md) through control (`POST /v1/commands`) and prints control's answer on one line, such as `{"id":"<command id>","status":"pending"}`.
@@ -268,6 +321,20 @@ It prints the harness's answer on one line: `{"attempt":"<id>","lifecycle":"queu
 `thermite status --harness URL --token-file F --attempt ID` prints what the harness knows of an attempt (`GET /v1/attempts/ID`): `attempt`, `run`, `lifecycle`, `commit`, `v0` and `verdict`. The token is the proposer's or the supervisor's.
 
 It prints the harness's answer whatever its HTTP status, and exits 0 even when the harness answers with an error such as `no attempt <id>`.
+
+### `local init`
+
+`thermite local init DIR` makes `DIR`, the `.dev` folder that the local compose stack reads, and keeps every file that is there already. A release's compose file runs it in its `init` service as `thermite local init /work/.dev`, with the folder of `compose.yaml` mounted at `/work`. In a checkout of the source code, `npm run dev:init` makes the same folder without a build. It needs no network.
+
+| What | Mode | Made |
+| --- | --- | --- |
+| `secrets/`, `outbox/`, `advisors/` | 0755 | When missing |
+| `inbox/`, `inbox/repos/`, `inbox/models/` | 0777, set again at every run | When missing. The supervisor writes into the inbox as its own user |
+| `secrets/control-admin-token`, `control-operator-token`, `control-rig-token`, `control-rig-token-2`, `harness-supervisor-token`, `harness-proposer-token`, `harness2-supervisor-token`, `harness2-proposer-token` | 0644 | When missing: 24 random bytes each, base64url-encoded |
+| `secrets/model-api-key` | 0644 | When missing: `local-placeholder` |
+| `secrets/control-rig-tokens.json` | 0644 | At every run, from the two rig tokens: `{"local-1": …, "local-2": …}` |
+
+Run as root, when the folder that holds `DIR` belongs to another user, it gives what it makes to that user and group, and says so. It prints `made` and the path of each folder and file it made, never a token, then `local init: <name> ready (<n> made, <m> kept)`, where `<name>` is the last part of `DIR`. Without `DIR`, it prints the usage text on standard error and exits 2.
 
 ### `selftest isolation`
 

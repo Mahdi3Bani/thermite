@@ -59,4 +59,30 @@ describe("rig hardware", () => {
     assert.deepEqual(readHardware(JSON.parse(JSON.stringify(h))), JSON.parse(JSON.stringify(h)));
     assert.equal(readHardware({ devices: "x" }), null);
   });
+
+  test("reports the image a release built, and none for an empty id", async () => {
+    const dir = mkdtempSync(`${tmpdir()}/thermite-hw-`);
+    const image = async () =>
+      (
+        await collectHardware({
+          driver: new CpuDriver("generic-cpu"),
+          deviceMode: "shared",
+          stateDir: dir,
+          scratchDir: dir,
+        })
+      ).os.image;
+    const before = process.env.THERMITE_IMAGE_ID;
+    try {
+      process.env.THERMITE_IMAGE_ID = "0.1.0-cuda+1a2b3c4d5e6f";
+      assert.equal(await image(), "0.1.0-cuda+1a2b3c4d5e6f");
+      // An image built from a checkout has the variable, empty.
+      process.env.THERMITE_IMAGE_ID = "";
+      assert.equal(await image(), null);
+      delete process.env.THERMITE_IMAGE_ID;
+      assert.equal(await image(), null);
+    } finally {
+      if (before === undefined) delete process.env.THERMITE_IMAGE_ID;
+      else process.env.THERMITE_IMAGE_ID = before;
+    }
+  });
 });

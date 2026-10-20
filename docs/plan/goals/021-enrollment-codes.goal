@@ -1,17 +1,17 @@
 ---
 id: "021"
 title: "Enrollment codes"
-status: READY
+status: VERIFIED
 version: "0.1.0"
 part: "Rigs on RunPod"
 depends_on: []
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # 021 · Enrollment codes
 
-**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Rigs on RunPod
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Rigs on RunPod
 
 ## What
 
@@ -23,12 +23,35 @@ No long-lived secret may appear in RunPod's settings or console, which show a po
 
 ## Done when
 
-- [ ] A launched rig enrolls once with its code. A second use is refused.
-- [ ] Tests cover expiry and reuse.
+- [x] A launched rig enrolls once with its code. A second use is refused.
+- [x] Tests cover expiry and reuse.
 
 ## Decisions
 
 - 2026-10-19, owner: control connects to RunPod rigs (goal 019), so enrollment pins the pod's own keys instead of handing the pod a token.
+- 2026-10-20, lead: the pod gets no control key in advance (the RunPod spike, goal 018). Control's key and the rig's settings arrive through enrollment; the launch names control's key by its SHA-256 only.
+- 2026-10-20, lead, from the owner's rule of no default caps: a code expires only when the launch sets an expiry. Then an expired code is refused at both ends.
+- 2026-10-20, builder: the code never crosses the network. Control's request carries an HMAC proof of the code, bound to the rig, the pod and the request's nonce, and the pod's answer binds its keys to the code the same way. The code is spent at control when it pins the keys, and at the pod when control's first exchange arrives, sealed to the pinned key (goal 019, departures 3 and 5).
+
+### What goal 022 calls
+
+`ControlTunnels` in `src/control/tunnel.ts`, the instance control's API and loop share (`createControlApi`'s `tunnels` option; `main.ts` makes it):
+
+- `mint({ by, rig?, port?, codeTtlMs?, config? })` before the pod is created. It returns `{ rig, port, env }`: the rig's ID (`rp-` and 8 hexadecimal characters when none is given), the port to expose as HTTP (8790 unless given), and the pod's whole environment for pull mode: `THERMITE_RIG_ID`, `THERMITE_TUNNEL_PORT`, `THERMITE_TUNNEL_PREFIX`, `THERMITE_TUNNEL_CONTROL_KEY_SHA256`, `THERMITE_TUNNEL_CONTROL_BOX`, `THERMITE_TUNNEL_ENROLL_CODE`, and `THERMITE_TUNNEL_ENROLL_UNTIL` only with `codeTtlMs`. `config` is the rig's settings, from the names in `POD_CONFIG_ENV` (`src/core/tunnel.ts`: the target, its class, the GPU lists and split, workers, trial minutes, promotion), with values of letters, digits and `. _ , : -`.
+- `attach(rig, podId, url?)` once RunPod has made the pod. The address defaults to RunPod's proxy address for the pod's port. Refused once the rig is enrolled.
+- Nothing more: control's loop enrolls the pod and exchanges with it from then on. The rig's record (`store.tunnelRig(rig)`, and `pull` in `GET /v1/rigs`) shows its pod, its enrollment, its last exchange, the refusals and the last error.
+
+### What goal 020's image relies on
+
+- **Start the supervisor first, in pull mode.** It needs the launch's environment (above) and `RUNPOD_POD_ID`, which RunPod sets. It takes `THERMITE_TUNNEL_ENROLL_CODE` and `RUNPOD_API_KEY` out of its own environment at start; keep both from every role too.
+- **Keep the supervisor's state on the pod's volume**: `THERMITE_SUPERVISOR_HOME`, or `THERMITE_TUNNEL_DIR` alone. `THERMITE_TUNNEL_DIR` (default `<home>/tunnel`, mode 0700, the supervisor's user only) holds the pod's keys (`keys.json`, 0600), its enrollment and the nonces it has seen. If it is lost, the pod makes new keys and control refuses them.
+- **Enrollment writes three public files** to `THERMITE_TUNNEL_ENROLLED_DIR` (default `<home>/enrolled`, mode 0755, files 0644), each whole (written to a temporary name, then renamed):
+  - `rig.json`: `{ rig, pod, control_key_sha256, enrolled_at, config: { env } }`;
+  - `rig.env`: `THERMITE_RIG_ID=<rig>`, then one `NAME=value` line for each setting in `config.env`, values that a shell takes as they are;
+  - `control.pub`: control's command-signing public key (PEM). It is written last, so once it exists the other two are complete.
+- **How the harness learns it may start:** `control.pub` exists. The image's entry point waits for it, exports `rig.env`, and then starts the broker with `THERMITE_CONTROL_PUBKEY_FILE` set to that `control.pub` (the broker reads the GPU settings when it starts, so they must be in its environment). After a restart of an enrolled pod, the supervisor writes the three files again at start, so they may live on a disk that does not survive.
+- **Give the harness `THERMITE_TUNNEL_DIR`** with the supervisor's value: the isolation self-test then checks that no role can read `keys.json`.
+- **Ports:** expose `THERMITE_TUNNEL_PORT` (8790) as HTTP. The supervisor's own port for its calls is on `127.0.0.1`, chosen at start. The harness's API should listen on `127.0.0.1` only.
 
 ## Open questions
 
@@ -37,6 +60,7 @@ None.
 ## Progress
 
 - 2026-10-19: Goal written from the v0.1.0 release plan.
+- 2026-10-20: Built with goal 019. Control mints the rig and its code (`ControlTunnels.mint`), names its pod (`attach`), enrolls it once, and pins its keys; the pod spends the code at control's first exchange and leaves control's key and the rig's settings for the harness. Tests in `src/control/tunnel.test.ts`, against a pod started from the launch values control minted: a code works once (a second enrollment is refused at control and at the pod, also after a restart); a wrong code is refused by the pod and nothing is pinned; an expired code is refused at both ends only when an expiry was set, and a code with none still enrolls 30 days later; the pinned keys are the pod's own; control's database holds the code, the path and its private keys only sealed, and the code never crosses the proxy. The first launch on RunPod is goal 022's ("It enrolls and appears under Rigs"). Pages: Trust between control and rigs (Enrollment), Settings (Pull mode), Ports, volumes and secret files, the glossary.
 
 ---
 

@@ -31,10 +31,19 @@ curl -sS -H "$AUTH" "$CONTROL/v1/rigs"
 ```
 
 ```text
-{"rigs":[{"id":"rig-1","last_seen":"…","last_cursor":120,"ledger_id":"…","summary":{…}}],"enrolled":[…]}
+{"control":{"version":"0.2.0","commit":"…","protocol":1,"oldest_protocol":1},"rigs":[{"id":"rig-1","last_seen":"…","last_cursor":120,"ledger_id":"…","summary":{…},"state":"reporting","version":{"state":"behind","notice":"This rig runs an older Thermite than control: …","refused":null,"control":{…},"harness":{…},"supervisor":{…}}}],"enrolled":[…]}
 ```
 
-`rigs` holds every rig that has reported and is not retired. `enrolled` holds the rigs control made tokens for, even those that haven't reported yet, and those retired since (with `retired_at` set).
+`control` is control's own build. `rigs` holds every rig that has reported, or that control refuses, and is not retired. Each rig's `state` is `reporting`, `stale` or `offline`, and its `version` compares its harness's and supervisor's builds with control's: `behind` with a `notice` when the rig should get newer images, `refused` with the reason when control can't work with it. [Rig versions](../../reference/rest-api.md#rig-versions) lists every field. `enrolled` holds the rigs control made tokens for, even those that haven't reported yet, and those retired since (with `retired_at` set).
+
+To see only the rigs that need you, filter the answer, for example with `jq`:
+
+```sh
+curl -sS -H "$AUTH" "$CONTROL/v1/rigs" \
+  | jq -r '.rigs[] | select(.state != "reporting" or .version.notice != null) | "\(.id) \(.state) \(.version.state): \(.version.notice // "")"'
+```
+
+`thermite rig list` prints the same list as a table ([Command line](../../reference/command-line.md#rig-list)).
 
 ## Read one rig
 
@@ -42,7 +51,7 @@ curl -sS -H "$AUTH" "$CONTROL/v1/rigs"
 curl -sS -H "$AUTH" "$CONTROL/v1/rigs/rig-1/view"
 ```
 
-The answer is the rig's whole page as JSON: `stale` (true when it stopped reporting), `hardware`, `judge`, `jobs`, `checks` with each check's result, `model`, `settings`, its `runs` with their champions, attempts and verdicts, and `recent`, its newest 50 events. Each run also has `queue`, every experiment in its [experiment queue](../campaigns/choose-what-runs-next.md) with its state (`proposed`, `queued`, `assigned`, `done` or `dropped`) and, for those up next, its place; `handouts`, what the planner gave each lane and why; `rules`, the rules for its plan in force; `messages`, your messages to its agents and advisors, with who read each one and the advisors' answers; and `journal`, all its agents' field notes and research notes, oldest first. Reading a rig that control doesn't know answers `404 {"error":"not found"}`; a command to such a rig answers `500` instead ([Errors to expect](#errors-to-expect)). For all of a rig's events, page through `GET /v1/rigs/rig-1/events?after=<seq>&limit=500`.
+The answer is the rig's whole page as JSON: `state` (`reporting`, `stale` or `offline`), `stale` (true when it stopped reporting), `version` (its builds against control's, as in the list), `hardware`, `judge`, `jobs`, `checks` with each check's result, `model`, `settings`, its `runs` with their champions, attempts and verdicts, and `recent`, its newest 50 events. Each run also has `queue`, every experiment in its [experiment queue](../campaigns/choose-what-runs-next.md) with its state (`proposed`, `queued`, `assigned`, `done` or `dropped`) and, for those up next, its place; `handouts`, what the planner gave each lane and why; `rules`, the rules for its plan in force; `messages`, your messages to its agents and advisors, with who read each one and the advisors' answers; and `journal`, all its agents' field notes and research notes, oldest first. Reading a rig that control doesn't know answers `404 {"error":"not found"}`; a command to such a rig answers `500` instead ([Errors to expect](#errors-to-expect)). For all of a rig's events, page through `GET /v1/rigs/rig-1/events?after=<seq>&limit=500`.
 
 ## Issue a command and follow it
 
@@ -54,7 +63,7 @@ curl -sS -H "$AUTH" -H 'content-type: application/json' \
   "$CONTROL/v1/commands"
 ```
 
-It answers `{"id":"<command id>","status":"pending"}`: control has signed the command and queued it for the rig. Add `"ttl_minutes"` to change how long it may wait for the rig (60 minutes by default, 7 days at most). [Signed commands](../../reference/signed-commands.md) lists every kind and its payload. For example, `message_agent` with `{"run":"run-1","to":"all","text":"…"}` writes to everyone working in the run, and `unkeep_message` removes a message you kept in force; [Steer a run](../campaigns/steer-a-run.md) says who reads what. Control refuses a message with no words, or one that nothing would read, with `500` and the reason, such as `{"error":"Write a message first."}`: see [If a message doesn't arrive](../campaigns/steer-a-run.md#if-a-message-doesnt-arrive). `queue_add` with `{"run":"run-1","title":"Unroll the dequantize loop by 4","position":"top"}` puts an experiment at the top of the run's queue, and `queue_move`, `queue_edit`, `queue_drop`, `queue_accept` and `drop_directive` change it further; [Choose what a run tries next](../campaigns/choose-what-runs-next.md#from-the-command-line-and-over-mcp) gives a payload for each. An `assign_campaign` sent here keeps its copied experiments (`queue`) and its background from past research (`briefing`) as you give them; over MCP, control takes their words from its own records instead ([Use past research in a new run](../campaigns/use-past-research.md)).
+It answers `{"id":"<command id>","status":"pending"}`: control has signed the command and queued it for the rig. Add `"ttl_minutes"` to change how long it may wait for the rig (60 minutes by default, 7 days at most). [Signed commands](../../reference/signed-commands.md) lists every kind and its payload. For example, `message_agent` with `{"run":"run-1","to":"all","text":"…"}` writes to everyone working in the run, and `unkeep_message` removes a message you kept in force; [Steer a run](../campaigns/steer-a-run.md) says who reads what. Control refuses a message with no words, or one that nothing would read, with `500` and the reason, such as `{"error":"Write a message first."}`: see [If a message doesn't arrive](../campaigns/steer-a-run.md#if-a-message-doesnt-arrive). `queue_add` with `{"run":"run-1","title":"Unroll the dequantize loop by 4","position":"top"}` puts an experiment at the top of the run's queue, and `queue_move`, `queue_edit`, `queue_drop`, `queue_accept` and `drop_directive` change it further; [Choose what a run tries next](../campaigns/choose-what-runs-next.md#from-the-command-line-and-over-mcp) gives a payload for each. An `assign_campaign` sent here keeps its copied experiments (`queue`) and its background from past research (`briefing`) as you give them; over MCP, control takes their words from its own records instead ([Use past research in a new run](../campaigns/use-past-research.md)). To copy a past run's untried experiments with control's own words, as **Start a run** does, first ask for them with `GET /v1/rigs/rig-1/runs/run-1/untried?campaign=<campaign>`, and put the answer's `queue` in the payload ([the route](../../reference/rest-api.md#rigs-and-their-history)).
 
 Follow it with its id:
 
@@ -64,7 +73,7 @@ curl -sS -H "$AUTH" "$CONTROL/v1/commands/<command id>"
 
 Within seconds the status becomes `delivered`, and `outcome` holds the rig's answer. Other statuses are `rejected` or `failed`, with the rig's reason in `outcome`, and `expired`. `GET /v1/commands?limit=20` lists the newest commands of every rig. A command still `pending` can be [cancelled](../operate/cancel-a-command.md).
 
-The `thermite` command line uses the same route. Run `npx thermite` in your Thermite folder, after `npm ci` and `npm run build` (see [the command line](../../reference/command-line.md)):
+The `thermite` command line uses the same route. Run `npx thermite` in the folder you built it in (see [the command line](../install/one-machine.md#the-command-line)):
 
 ```sh
 npx thermite command --control "$CONTROL" --token-file .dev/secrets/control-admin-token \

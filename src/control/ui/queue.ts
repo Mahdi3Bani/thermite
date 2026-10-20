@@ -138,11 +138,30 @@ export function experimentsTab(o: {
     .map((x) => {
       const res = triedResult(r, x);
       counts[res.cls]++;
-      return `<tr data-r="${res.cls}"><td><b>${esc(x.title)}</b>${x.why ? `<div class="muted xs">${esc(clip(x.why, 160))}</div>` : ""}</td><td class="qdir">${esc(x.family)}</td><td>${src(x.by)}</td><td class="muted small">${esc([x.lane, x.trial ? `trial ${x.trial.slice(0, 10)}` : ""].filter(Boolean).join(" · ") || "·")}</td><td><span class="qres ${res.cls}">${esc(res.text)}</span></td><td class="muted small nowrap">${esc(ago(x.updated_at, o.now))} ago</td></tr>`;
+      return `<tr data-r="${res.cls}" data-d="${esc(x.family)}" data-b="${esc(byLabel(x.by).text)}"><td><b>${esc(x.title)}</b>${x.why ? `<div class="muted xs">${esc(clip(x.why, 160))}</div>` : ""}</td><td class="qdir">${esc(x.family)}</td><td>${src(x.by)}</td><td class="muted small">${esc([x.lane, x.trial ? `trial ${x.trial.slice(0, 10)}` : ""].filter(Boolean).join(" · ") || "·")}</td><td><span class="qres ${res.cls}">${esc(res.text)}</span></td><td class="muted small nowrap">${esc(ago(x.updated_at, o.now))} ago</td></tr>`;
     })
     .join("");
   const chip = (key: string, label: string, n: number) =>
     `<button type="button" class="fchip${key === "all" ? " on" : ""}" data-qf="${key}">${esc(label)} <span class="n">${n}</span></button>`;
+  // The other two filters: the directions tried, and who added them (as Added by says).
+  const pick = (attr: string, label: string, all: string, values: string[]) =>
+    `<select class="qsel" ${attr} aria-label="${esc(label)}"><option value="">${esc(all)}</option>${[
+      ...new Set(values.filter(Boolean)),
+    ]
+      .sort((a, b) => a.localeCompare(b))
+      .map((v) => `<option value="${esc(v)}">${esc(v)}</option>`)
+      .join("")}</select>`;
+  const picks = `${pick(
+    "data-qd",
+    "Direction",
+    "Every direction",
+    tried.map((x) => x.family),
+  )}${pick(
+    "data-qb",
+    "Added by",
+    "Anyone added it",
+    tried.map((x) => byLabel(x.by).text),
+  )}`;
   return `<div class="qcols"><div>
 <div class="head"><h2>Up next</h2><span class="n">${up.length}</span><span class="right">in order; the planner gives the top ones to free lanes, never the same one to two lanes</span></div>
 ${add}
@@ -154,7 +173,7 @@ ${add}
 <div class="block" style="margin-top:26px" id="tried"><div class="head"><h2>Tried</h2><span class="n">${tried.length}</span><span class="right">every experiment that ended, with its result, newest first</span></div>
 ${
   tried.length
-    ? `<div class="ktools" id="qf">${chip("all", "All", tried.length)}${chip("win wait", "Wins", counts.win + counts.wait)}${chip("loss", "Not better", counts.loss)}${chip("broken", "Broken or blocked", counts.broken)}${chip("flat", "Other results", counts.flat)}${counts.done ? chip("done", "Research finished", counts.done) : ""}${chip("none", "No attempt or dropped", counts.none)}</div>
+    ? `<div class="ktools" id="qf">${chip("all", "All", tried.length)}${chip("win wait", "Wins", counts.win + counts.wait)}${chip("loss", "Not better", counts.loss)}${chip("broken", "Broken or blocked", counts.broken)}${chip("flat", "Other results", counts.flat)}${counts.done ? chip("done", "Research finished", counts.done) : ""}${chip("none", "No attempt or dropped", counts.none)}${picks}</div>
 <div class="card flat"><table class="ktable"><thead><tr><th>Experiment</th><th>Direction</th><th>Added by</th><th>Where</th><th>Result</th><th>When</th></tr></thead><tbody id="qtried">${triedRows}</tbody></table></div>`
     : `<div class="card"><div class="empty">Nothing tried yet.</div></div>`
 }</div>`;
@@ -202,14 +221,46 @@ export function plannerTab(o: {
         : undefined;
     return `<div class="qrule"><span class="qkind ${esc(word)}">${esc(word)}</span><div><b>${esc(said)}</b> <span class="muted small">· set by</span> ${src(x.author)} <span class="muted xs">${esc(ago(x.at, o.now))} ago</span><div class="muted small">${esc(String(x.body.rationale ?? ""))}${fromMsg ? ` <span class="muted">(from your message: “${esc(clip(fromMsg.text, 120))}”)</span>` : ""}</div></div>${o.cmd({ rig: u.id, kind: "drop_directive", fields: { run: r.id, id: String(x.id) }, label: "Remove", cls: "sm ghost", back: o.back })}</div>`;
   };
-  const handouts = r.handouts
-    .slice()
-    .reverse()
+  const entry = (at: string, html: string) =>
+    `<div class="qhand"><span class="tm">${esc(at.slice(11, 16))}</span><div>${html}</div></div>`;
+  const handed = r.handouts.map((h) => ({
+    at: h.at,
+    html: `${h.round !== null ? `<b>Round ${h.round}</b>: ` : ""}${h.assignments.length ? `<ul>${h.assignments.map((a) => `<li><b>${esc(a.lane)}</b>: ${esc(r.queue.find((x) => x.id === a.experiment)?.title ?? a.experiment ?? "")}${a.why ? ` <span class="muted">· ${esc(a.why)}</span>` : ""}</li>`).join("")}</ul>` : ""}${h.notes ? `<div class="muted small">${esc(clip(h.notes, 400))}</div>` : ""}`,
+  }));
+  // The planner's own changes to the queue and the rules it set, each with its reason. A copy
+  // back in the queue after its trial stopped is not a change of the planner's: History has it.
+  const changed = (r.timeline ?? [])
+    .filter((e) => e.actor === "planner" && !e.body.requeued_from)
+    .map((e) => {
+      const b = e.body;
+      const x = r.queue.find((y) => y.id === String(b.id));
+      const t = `“${esc(clip(x?.title ?? String(b.title ?? b.id ?? ""), 160))}”`;
+      const why = (w: unknown) =>
+        typeof w === "string" && w ? ` <span class="muted">· ${esc(clip(w, 300))}</span>` : "";
+      const d = (b.body ?? {}) as Record<string, unknown>;
+      const said =
+        e.kind === "experiment_added" && b.state !== "proposed"
+          ? `Added ${t} to the queue${why(b.why)}`
+          : e.kind === "experiment_accepted"
+            ? `Queued ${esc(x ? byLabel(x.by).text : "the idea")} ${t}${why(b.why)}`
+            : e.kind === "experiment_moved"
+              ? `Moved ${t} to ${typeof b.position === "number" ? `place ${b.position + 1}` : `the ${esc(String(b.position))}`}${why(b.why)}`
+              : e.kind === "experiment_dropped"
+                ? `Dropped ${t}${why(b.why)}`
+                : e.kind === "directive"
+                  ? `Set the rule ${esc(String(d.kind ?? ""))} ${esc(String(d.family ?? d.match ?? d.value ?? ""))}${why(d.rationale)}${
+                      typeof d.from_message === "number"
+                        ? ` <span class="muted">(from your message: “${esc(clip(r.messages.find((m) => m.id === d.from_message)?.text ?? `#${d.from_message}`, 120))}”)</span>`
+                        : ""
+                    }`
+                  : "";
+      return { at: e.at, html: said };
+    })
+    .filter((c) => c.html);
+  const handouts = [...handed, ...changed]
+    .sort((a, b) => b.at.localeCompare(a.at))
     .slice(0, 30)
-    .map(
-      (h) =>
-        `<div class="qhand"><span class="tm">${esc(h.at.slice(11, 16))}</span><div>${h.round !== null ? `<b>Round ${h.round}</b>: ` : ""}${h.assignments.length ? `<ul>${h.assignments.map((a) => `<li><b>${esc(a.lane)}</b>: ${esc(r.queue.find((x) => x.id === a.experiment)?.title ?? a.experiment ?? "")}${a.why ? ` <span class="muted">· ${esc(a.why)}</span>` : ""}</li>`).join("")}</ul>` : ""}${h.notes ? `<div class="muted small">${esc(clip(h.notes, 400))}</div>` : ""}</div></div>`,
-    )
+    .map((c) => entry(c.at, c.html))
     .join("");
   return `<div class="qcols"><div>
 <div class="head"><h2>Rules</h2><span class="n">${r.rules.length}</span><span class="right">the planner keeps these when it gives out work; a rule changes what lanes work on, never a verdict</span></div>
@@ -219,7 +270,7 @@ export function plannerTab(o: {
 <label class="sfd">${infoLabel("Direction", "In your own words: a direction this run has used, a kind of change (anything with shared memory), or a file. The planner's model applies words to every experiment they match. Without its model (none set, its answer refused, the planner off, or a research run) only a rule that names a direction applies: one word with hyphens, such as memory-layout.")}<input name="match" required maxlength="200" placeholder="for example: anything that uses shared memory"></label>
 <label class="sfd">${infoLabel("Why", "Kept with the rule and shown to the planner.")}<input name="rationale" required maxlength="2000" placeholder="for example: measured slower twice"></label>
 <button class="primary">Add the rule</button></form></div></details>
-<div class="head" style="margin-top:26px"><h2>What the planner did</h2><span class="right">each hand-out: what went to which lane, and why</span></div>
+<div class="head" style="margin-top:26px"><h2>What the planner did</h2><span class="right">each hand-out, and each change it made to the queue or the rules, with why</span></div>
 <div class="card qhands">${handouts || `<div class="empty">${research ? "A research run sets its rounds with a fixed method; its hand-outs show here." : "No hand-out yet."}</div>`}</div>
 ${o.figures}
 </div><div class="qside">

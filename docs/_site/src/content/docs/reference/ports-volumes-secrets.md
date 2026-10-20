@@ -14,7 +14,9 @@ This page lists where each part of Thermite listens, which networks join them, w
 | --- | --- | --- | --- |
 | 8800/tcp | Control: the dashboard (`/ui`), the REST API (`/v1`), MCP (`/mcp`) and `/metrics` | People, scripts and agents; every rig's supervisor | `THERMITE_CONTROL_LISTEN`, default `0.0.0.0:8800` |
 | 8700/tcp | The harness API | The rig's own supervisor. Inside the harness container, its workers and tools on `127.0.0.1` | `THERMITE_LISTEN`, default `0.0.0.0:8700` |
-| none | The supervisor | It listens on no port. It connects out to its harness and to control | |
+| none | The supervisor | Outside pull mode it listens on no port. It connects out to its harness and to control | |
+| 8790/tcp | The supervisor of a rig in [pull mode](../explanation/trust.md#rigs-in-pull-mode), on every interface | Control alone, through RunPod's proxy, under a random path. Everything else gets an empty 404 | `THERMITE_TUNNEL_PORT`, `8790` in control's launch values |
+| A free port on `127.0.0.1` | The supervisor in pull mode: its own calls to control wait there for control's next exchange | The supervisor alone: the port takes only a token that lives in the supervisor's memory, and answers anything else with an empty 404 | Chosen at start |
 | 22/tcp, or the machine's own | A machine's SSH server | Control, to check the machine and set rigs up on it | The machine's **SSH port** on the Providers page, 22 by default |
 | The cluster's API server | Kubernetes | Control's `kubectl`, to set rigs up on a cluster, and later to stop, start, restart, update or remove them | The cluster's kubeconfig |
 | 8000/tcp | A RunPod test pod's probe | Control, through RunPod's proxy, at an address with a random token in its path | Fixed |
@@ -50,7 +52,7 @@ Two Unix sockets matter too:
 | `control` | Normal | `control`, `supervisor`, `supervisor-2` |
 | `egress` | Normal: the way out | `harness`, `supervisor`, `harness-2`, `supervisor-2` |
 
-The harness is not on the `control` network. Control and the harness also get the host name `host.docker.internal`, so they can reach a model server on the host.
+The harness is not on the `control` network. Control and the harness also get the host name `host.docker.internal`, so they can reach a model server on the host. A release's compose file also has an `init` service, which makes the local tokens: it has no network at all (`network_mode: none`).
 
 ### Machines
 
@@ -85,13 +87,13 @@ In a **slot**, a namespace the cluster's operators made for Thermite, the operat
 | Harness | `/inbox` | Read-only: project and kit bundles and models the supervisor fetched |
 | Harness | `/outbox` | Exports, written by the harness |
 | Harness | `/keys` | Read-only: control's public key |
-| Supervisor | `/var/lib/thermite-supervisor` | Its relay and export state, where each run's past research sync is (`kb-state.json`), its local results repository (`results.git/`), its fetch caches, advisor records and the `ssh` home (`home/`) |
+| Supervisor | `/var/lib/thermite-supervisor` | Its relay and export state, where each run's past research sync is (`kb-state.json`), its local results repository (`results.git/`), its fetch caches, advisor records and the `ssh` home (`home/`). In pull mode also `tunnel/` (`THERMITE_TUNNEL_DIR`, 0700: the pod's keys, its enrollment and the nonces it has seen) and `enrolled/` (`THERMITE_TUNNEL_ENROLLED_DIR`: `control.pub`, `rig.json` and `rig.env` for the harness) |
 | Supervisor | `/inbox` | Read and write: what it fetches for the harness |
 | Supervisor | `/outbox` | Read-only: the harness's exports |
 | Supervisor | `/results` | Compose only: the local results repository the rigs share |
 | Supervisor | `/etc/thermite/advisors` | Compose only, read-only: the advisors file, if there is one |
 
-A full reset empties the harness's state, scratch and outbox, keeping only the rig's report key, and the supervisor's home. Control's knowledge base keeps the items the rig's runs reported before. See [Stop, restart, remove or reset a rig](../how-to/operate/rig-lifecycle.md).
+A full reset empties the harness's state, scratch and outbox, keeping only the rig's report key, and the supervisor's home, keeping only a pull mode rig's `tunnel/` and `enrolled/`. Control's knowledge base keeps the items the rig's runs reported before. See [Stop, restart, remove or reset a rig](../how-to/operate/rig-lifecycle.md).
 
 ### Compose volumes
 
@@ -106,8 +108,9 @@ A full reset empties the harness's state, scratch and outbox, keeping only the r
 | `supervisor-home`, `supervisor2-home` | supervisor, supervisor-2 | `/var/lib/thermite-supervisor` | read-write |
 | `results` | both supervisors | `/results` | read-write. The default results repository is `file:///results/results.git` |
 | `./.dev/advisors` (a folder) | both supervisors | `/etc/thermite/advisors` | read-only |
+| `.` (the folder that holds `compose.yaml`) | init, in a release's compose file | `/work` | read-write. It runs as root, with only the capabilities `CHOWN`, `DAC_OVERRIDE` and `FOWNER` |
 
-`npm run dev:init` makes the `.dev/` folders. `docker compose down -v` removes the named volumes; without `-v` they keep their state.
+The `init` service makes the `.dev/` folders, next to `compose.yaml`: it runs `thermite local init` with that folder mounted at `/work`. In a checkout of the source code, `npm run dev:init` makes the same folders. `docker compose down -v` removes the named volumes; without `-v` they keep their state.
 
 ### Machines
 
@@ -156,8 +159,10 @@ A test pod has one container disk: 40 GB unless set, 10 to 2,000 GB. Control rem
 | The proposer token | Harness | `THERMITE_PROPOSER_TOKEN_FILE` | Optional: lets a person or script submit changes with `thermite submit` |
 | The model key | Harness | `THERMITE_MODEL_API_KEY_FILE` | The agents' model key, when the rig's own settings give the model. A model from control comes with its key instead |
 | The rig's control token | Supervisor | `THERMITE_CONTROL_TOKEN_FILE` | The rig's token for control |
-| Control's public key | Harness | `THERMITE_CONTROL_PUBKEY_FILE` | Checks every command's signature. The harness waits up to 120 s for it at start |
+| Control's public key | Harness | `THERMITE_CONTROL_PUBKEY_FILE` | Checks every command's signature. The harness waits up to 120 s for it at start. In pull mode, enrollment writes it (`control.pub` in `THERMITE_TUNNEL_ENROLLED_DIR`) |
 | The rig's report key | Harness | `ledger/rig-signing.key` in its state, 0600 | Signs the rig's reports. Made on first start |
+| The pod's keys | Supervisor, in pull mode | `keys.json` in `THERMITE_TUNNEL_DIR`, 0600 | Sign the pod's answers to control and open what control seals to the pod. Made on first start; control pins their public halves at enrollment |
+| The enrollment code | Supervisor, in pull mode | `THERMITE_TUNNEL_ENROLL_CODE` in the pod's environment | A one-time code. It never crosses the network, and the first enrollment spends it. The supervisor takes it out of its own environment at start |
 | The results repository key | Supervisor | `THERMITE_RESULTS_KEY_FILE`, `THERMITE_RESULTS_KNOWN_HOSTS` | Optional: an SSH deploy key that can write to the results repository, and its host key. See [Set up the results repository](../how-to/operate/results-repository.md) |
 | A knowledge base token | Supervisor | `kb.token_file` in the [advisors file](advisors-file.md) | Optional |
 | An outside knowledge base's token | Control | Entered in **Settings › Providers**, kept sealed in `control.db` | Optional. Control hands it, with the advisors' models, to the supervisor of each rig it assigned a campaign that may search that knowledge base; the supervisor keeps it in memory. See [Outside knowledge bases](knowledge-base.md#outside-knowledge-bases) |
@@ -168,7 +173,7 @@ At start, the harness's broker reads its secret files as root, gives their value
 
 | Way of running | Files | Mounted at |
 | --- | --- | --- |
-| Compose | `npm run dev:init` writes them to `.dev/secrets/`: `control-admin-token`, `control-operator-token`, `control-rig-tokens.json`, `control-rig-token`, `harness-supervisor-token`, `harness-proposer-token`, `model-api-key`, and the second rig's `control-rig-token-2`, `harness2-supervisor-token`, `harness2-proposer-token` | `/run/secrets/<name>` (`control-rig-tokens.json` as `control-rig-tokens`), each only in the containers that use it |
+| Compose | The `init` service (`docker compose run --rm init`), or `npm run dev:init` in a checkout, writes them to `.dev/secrets/`, mode 0644: `control-admin-token`, `control-operator-token`, `control-rig-tokens.json`, `control-rig-token`, `harness-supervisor-token`, `harness-proposer-token`, `model-api-key`, and the second rig's `control-rig-token-2`, `harness2-supervisor-token`, `harness2-proposer-token` | `/run/secrets/<name>` (`control-rig-tokens.json` as `control-rig-tokens`), each only in the containers that use it |
 | `thermite rig add --out DIR` | `secrets/control-rig-token` and `secrets/harness-supervisor-token` (0600, in a 0700 folder); `keys/control-signing.pub` and `keys/control-signing.fingerprint`; `rig.env` with `THERMITE_RIG_ID` and `CONTROL_URL`; `README.txt` | Wherever your own deployment puts them |
 | Machines (over SSH or a join command) | `secrets/control-rig-token`, `secrets/harness-supervisor-token`, `keys/control-signing.pub`, `keys/control-signing.fingerprint`, in the rig's folder | `/run/secrets/<name>` and `/keys`, read-only |
 | Kubernetes | A Secret `thermite-<rig>` with `control-rig-token`, `harness-supervisor-token` and `control-signing.pub` | Each key as its own read-only file, at `/run/secrets/<name>` or `/keys/control-signing.pub` |

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { buildHeaders } from "../core/version.ts";
 import { type AdvisorRuntime, AdvisorsConfig, OutsideKbGrant } from "./advisors.ts";
 
 /**
@@ -78,7 +79,7 @@ export async function fetchControlAdvisors(o: {
 }): Promise<ControlAdvisors> {
   const res = await (o.fetchImpl ?? fetch)(
     `${o.controlUrl}/v1/rigs/${encodeURIComponent(o.rig)}/advisor-routes`,
-    { headers: { authorization: `Bearer ${o.controlToken}` } },
+    { headers: { authorization: `Bearer ${o.controlToken}`, ...buildHeaders() } },
   );
   // An older control has no such endpoint: its rigs keep their own configuration.
   if (res.status === 404) return {};

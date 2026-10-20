@@ -1,6 +1,6 @@
-# Running Thermite locally
+# Contributor guide: running Thermite locally
 
-This page is for people working on Thermite itself: the checks, the compose stack you develop against, the dashboard demo and the acceptance tests. To **use** Thermite, start with the documentation site: [Your first run](_site/src/content/docs/tutorials/first-run.md), then the [how-to guides](_site/src/content/docs/how-to/install/one-machine.md).
+This is the guide for people working on Thermite itself: the checks, the compose stack you develop against, the dashboard demo and the acceptance tests. [CONTRIBUTING.md](../CONTRIBUTING.md) has the essentials: the terms, how to send a change and the rules every change keeps. [CONVENTIONS.md](../CONVENTIONS.md) has the design rules that every review checks. To **use** Thermite, start with the documentation site: [Your first run](_site/src/content/docs/tutorials/first-run.md), then the [how-to guides](_site/src/content/docs/how-to/install/one-machine.md).
 
 Thermite runs the same images under docker-compose, podman-compose and Kubernetes. Locally, one compose stack starts the control service and one rig (a harness and a supervisor), with the CPU target.
 
@@ -16,17 +16,27 @@ npm ci
 npm run check            # typecheck, lint, tests, public-content check
 ```
 
-CI (`.github/workflows/ci.yml`) runs the same checks on Node 22 and 24 for every pull request and push to `main`, builds and checks the documentation site, then runs the compose smoke test with Docker. [AGENTS.md](../AGENTS.md#checks) lists every check and when each one is needed.
+CI (`.github/workflows/ci.yml`) runs on every pull request and every push to `main` and to the development branch, `v1/build`. It runs the same checks on Node 22 and 24, builds and checks the documentation site, scans the whole history for secrets with gitleaks (the allowlists for made-up keys are in `.gitleaks.toml`), then runs the compose smoke test with Docker. [What CI runs](_site/src/content/docs/project/contributing.md#what-ci-runs) describes each job, and [AGENTS.md](../AGENTS.md#checks) lists every check and when each one is needed.
 
 The documentation site has its own build and checks: see [Writing the documentation](writing-docs.md).
 
-## The compose stack
+## The compose stack, built from source
+
+Users install Thermite from a release: its `compose.yaml` runs the published images, and nothing is built ([Install Thermite on one machine](_site/src/content/docs/how-to/install/one-machine.md)). To work on Thermite, build the images from your clone instead. The repository's own `compose.yaml` does that:
 
 ```sh
+git clone https://github.com/iammrduncan/thermite.git
+cd thermite
+npm ci
 npm run dev:init         # writes local tokens to .dev/ (git-ignored)
 npm run build            # the command line on your computer: npx thermite
 docker compose up -d --build     # or: podman compose up -d --build
 ```
+
+- `npm run dev:init` needs only Node.js, not `npm ci`. It writes the same `.dev/` folder as a release's `init` service (`thermite local init`), and keeps every file that exists. A unit test (`src/cli/local-init.test.ts`) checks that both make the same files and modes.
+- The first build takes 20 minutes or more; later starts take seconds. After `git pull`, run `npm run dev:init` and `docker compose up -d --build` again.
+- `THERMITE_COMMIT=$(git rev-parse HEAD) docker compose build` gives the images their commit, which each service reports.
+- With Claude Code in the images (`compose.claude.yaml`, from [Use a Claude subscription](_site/src/content/docs/how-to/models/claude-subscription.md)), name that file in every `up --build`.
 
 The stack, its settings and how to operate it are described on the site:
 
@@ -135,6 +145,27 @@ COMPOSE="podman compose" npm run acceptance:judge
 
 - **New campaign** (`scripts/campaign-acceptance.mjs`) creates a campaign through the New campaign form, which starts a try of its kit, then starts the campaign's own run from the campaign's page (**Start a run**) with the agents on. The rig gets a model route that nothing answers (`THERMITE_MODEL_BASE_URL=http://127.0.0.1:9/v1`), so control lets the agents start and they fail at once; the script submits the changes itself.
 - **Clusters on kind** (`scripts/cluster-acceptance.mjs`) keeps control's records on a Podman volume. After the slot's rig reports, it tags both rig images `:accept-update`, loads them into kind and restarts control with them. Then it checks that the rig's page offers **Update to these images**, that the rig's new pods run those images and report again, and that its volume claim and secret are unchanged. The update is tried on the slot's CPU rig only.
+
+## Releases
+
+A release is made from a tag. `.github/workflows/release.yml` runs on every tag that starts with `v`:
+
+1. **Version.** It takes the version from the tag (`v0.1.0` gives `0.1.0`) and stops unless it is `package.json`'s version, or a pre-release of it such as `0.1.0-rc.1`.
+2. **Images.** It builds four images from their Containerfiles and pushes them to `ghcr.io/<owner>/`: `thermite-control`, `thermite-harness` (CPU) and `thermite-supervisor` for amd64 and arm64 (arm64 under QEMU), and the CUDA harness for amd64, in the `thermite-harness` package with tags that end in `-cuda`. Its base, `nvidia/cuda:12.6.3-devel-ubuntu22.04`, is pinned by digest in the workflow. Each image is tagged with the version and the commit's first 12 characters, and labelled with the source repository, the version and the commit. Every build gets `THERMITE_COMMIT`, and the harness builds `THERMITE_IMAGE_ID`. No build sets `CLAUDE_CODE_VERSION`.
+3. **Bundle.** `scripts/release-bundle.ts` fills in `containers/release/compose.template.yaml` and `containers/release/README.template.md` with the images' digests, and the workflow attaches `compose.yaml` and `README.md` to a **draft** GitHub Release. A maintainer reads the draft and publishes it.
+
+The template is the repository's `compose.yaml` with `image:` lines in place of `build:` lines, this release's images as control's rig image defaults, and an `init` service that runs `thermite local init`. `src/release/bundle.test.ts` fails when the two drift apart, and the script refuses to write a bundle from a template that has drifted: a change to `compose.yaml`'s services goes into the template in the same commit.
+
+To test the workflow without a tag, run it by hand: **Actions › release › Run workflow**. It builds every image and the bundle, pushes nothing and makes no release, and keeps the bundle as the run's artifact `release-bundle`. To make a bundle on your computer from digests you have:
+
+```sh
+mkdir -p digests   # one file per image: control, harness, harness-cuda, supervisor, each with sha256:…
+node --experimental-strip-types scripts/release-bundle.ts --version 0.1.0 \
+  --registry ghcr.io/iammrduncan --repo-url https://github.com/iammrduncan/thermite \
+  --digests digests --out bundle
+```
+
+New GHCR packages start private. After the first release, a maintainer makes each package public in its settings, so that rigs and testers can pull it without signing in.
 
 ## Clean up
 

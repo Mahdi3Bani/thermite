@@ -23,7 +23,7 @@ Settings that belong to one campaign live in its [contract](contract.md) or in t
 - **Addresses.** A `_LISTEN` setting is `host:port`. An empty host means every interface (`0.0.0.0`). A bad value stops the service with `bad listen address <value>`.
 - **Logs.** Every service writes one JSON object per line to its output: `{"at", "component", "msg", ...}`.
 
-The "Secret" column says whether a value is secret: **no**; a **path to a secret** (the file must be kept private); a **hash** (safe to keep in plain configuration); or a **directory with secrets** (a volume that holds keys).
+The "Secret" column says whether a value is secret: **no**; a **path to a secret** (the file must be kept private); a **hash** (safe to keep in plain configuration); a **directory with secrets** (a volume that holds keys); or a **one-time code**, which is good for one enrollment only.
 
 ## Control
 
@@ -35,7 +35,8 @@ The "Secret" column says whether a value is secret: **no**; a **path to a secret
 | `THERMITE_CONTROL_DIR` | path | `/var/lib/thermite-control` | directory with secrets | Control's state: its store (`control.db`, which also holds [Thermite's knowledge base](knowledge-base.md)), its command-signing key pair (`control-signing.key` and `.pub`, made at first start), the secrets key when `THERMITE_CONTROL_SECRETS_KEY_FILE` is not set, and the kits written on the **New campaign** page (`kits/`) |
 | `THERMITE_CONTROL_PUBKEY_EXPORT` | path | not set | no | A second place to write control's command-signing public key, so that rigs can verify [signed commands](signed-commands.md). The local compose file writes it to a volume the harness reads |
 | `THERMITE_CONTROL_SECRETS_KEY_FILE` | path | `secrets.key` in `THERMITE_CONTROL_DIR`, made on first use | path to a secret | The key that encrypts what control keeps for you: model providers' keys and sign-ins, Git access, GPU cloud keys, machines' SSH keys, cluster kubeconfigs and outside knowledge bases' tokens. It must hold a 32-byte key in base64. Without the same key, the stored secrets cannot be read |
-| `THERMITE_CONTROL_STALE_SECONDS` | seconds | `180` | no | A rig that has sent no report for this long shows as stale |
+| `THERMITE_CONTROL_STALE_SECONDS` | seconds | `180` | no | A rig that has sent no report for this long shows as stale: **Not reporting** on the dashboard, `stale` in the [rig lists](rest-api.md#reporting-stale-and-offline) |
+| `THERMITE_CONTROL_OFFLINE_SECONDS` | seconds | `900` | no | A rig that has sent no report for this long is `offline` in the rig lists of the REST API, MCP and `thermite rig list`. A value below `THERMITE_CONTROL_STALE_SECONDS` counts as that value |
 | `THERMITE_CONTROL_SESSION_DAYS` | days | `30` | no | How long an unused dashboard sign-in lasts |
 
 ### Tokens
@@ -108,8 +109,17 @@ The harness container runs a **broker**, which runs as root and starts the other
 | `THERMITE_RIG_ID` | string | required | no | The rig's name, as control knows it |
 | `THERMITE_TARGET` | `cpu` or `cuda-gpu` | `cpu` | no | The [target](glossary.md) driver. Anything else stops the harness with `no target driver <value>; this build has cpu and cuda-gpu` |
 | `THERMITE_TARGET_CLASS` | string | `generic-cpu` on `cpu`, `cuda-gpu` on `cuda-gpu` | no | A name for the kind of device. The dashboard shows it with the rig's hardware, and the **New campaign** page and the smoke check copy it into the contracts they write. Nothing compares it |
-| `THERMITE_CONTROL_PUBKEY_FILE` | path | required | no | Control's command-signing public key, to verify signed commands. The harness waits up to 120 seconds for the file to appear, then stops with `timed out waiting for <path>` |
+| `THERMITE_CONTROL_PUBKEY_FILE` | path | required | no | Control's command-signing public key, to verify signed commands. The harness waits up to 120 seconds for the file to appear, then stops with `timed out waiting for <path>`. With `THERMITE_ONE_CONTAINER=1` it waits as long as it takes, and logs `waiting for control's public key` at once and every 10 minutes |
 | `THERMITE_LISTEN` | `host:port` | `0.0.0.0:8700` | no | Where the harness serves its API, for the rig's supervisor, a proposer's `thermite submit` and the agents' tools. Rigs that control sets up expect port 8700 |
+
+### The one-container rig image
+
+The [one-container rig image](harness-image.md#the-one-container-rig-image) sets `THERMITE_ONE_CONTAINER` itself, with the places it uses. The broker then also reads the supervisor's `THERMITE_SUPERVISOR_HOME` and `THERMITE_INBOX_DIR`, to prepare them, and the isolation selftest probes them.
+
+| Variable | Type | Default | Secret | Meaning |
+| --- | --- | --- | --- | --- |
+| `THERMITE_ONE_CONTAINER` | `1` | off | no | `1`: the rig's supervisor runs in this container. The broker prepares its places and its token, writes control's key from `THERMITE_CONTROL_PUBKEY`, and starts it as its own user. A broker that is not root then stops with `fatal: the one-container image must run as root`, and one without `THERMITE_SUPERVISOR_TOKEN_FILE` with `fatal: the one-container image needs THERMITE_SUPERVISOR_TOKEN_FILE` |
+| `THERMITE_CONTROL_PUBKEY` | PEM, or PEM in base64 | not set | no | Control's command-signing public key, given at launch. With `THERMITE_ONE_CONTAINER=1` the broker writes it to `THERMITE_CONTROL_PUBKEY_FILE`. A value that is not an Ed25519 public key is not written: the broker logs `control's public key from the launch is not usable; the harness waits` |
 
 ### GPUs and CPUs
 
@@ -191,9 +201,10 @@ A Claude subscription and Claude Code go only together. Any other pairing stops 
 | `THERMITE_OUTBOX_GID` | group id | `10001` | no | The supervisor's group, which may read the outbox |
 | `THERMITE_EXPORT_MINUTES` | minutes | `60` | no | How often the harness exports its results. Fractions work |
 | `THERMITE_BROKER_DIR` | path | `/run/thermite` | no | The directory of the broker's socket, `broker.sock` |
+| `THERMITE_TUNNEL_DIR` | path | not set | no | Only where the harness shares its container with a supervisor in [pull mode](#pull-mode): the supervisor's tunnel directory. The isolation self-test then checks that no role can read the keys in it |
 | `THERMITE_CHECKS_DIR` | path | `/opt/thermite/checks` in the image; outside it, the checkout | no | Where the [smoke check](rig-checks.md) finds its kits and projects |
 | `THERMITE_ALLOW_UNSEPARATED` | `1` | off | no | `1`: when the harness container does not run as root, the broker starts the harness anyway, with no separate users for the roles. Meant for development only. Without it, a broker that is not root stops with `fatal: not root, so roles cannot be separated` |
-| `THERMITE_IMAGE_ID` | string | not set | no | Reported as the image in the rig's hardware report and in each build's toolchain record. Thermite's images do not set it yet ([goal 010](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/010-published-images.goal)) |
+| `THERMITE_IMAGE_ID` | string | the image's: set in the published harness images, such as `0.1.0+1a2b3c4d5e6f`; empty in an image built from a checkout | no | Reported as the image in the rig's hardware report and in each build's toolchain record. Empty counts as not set. See [Published images](harness-image.md#published-images) |
 
 ## Supervisor
 
@@ -206,6 +217,24 @@ A Claude subscription and Claude Code go only together. Any other pairing stops 
 | `THERMITE_HARNESS_TOKEN_FILE` | path | required | path to a secret | The supervisor's token for the harness: the same token as the harness's `THERMITE_SUPERVISOR_TOKEN_FILE` |
 | `CONTROL_URL` | URL | not set | no | Control's address. Not set: the supervisor reports nowhere and fetches no commands |
 | `THERMITE_CONTROL_TOKEN_FILE` | path | not set | path to a secret | The rig's token for control. Without it the supervisor still starts, but sends control nothing and fetches nothing from it: no reports, commands, live view, model, advisors' models or past research |
+
+### Pull mode
+
+In [pull mode](../explanation/trust.md#rigs-in-pull-mode), the supervisor never connects to control: control connects to it. A rig on RunPod runs this way. Control makes the launch values below for each rig, as public material and one one-time code; launching a rig on RunPod from control comes with [goal 022](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/022-runpod-launch.goal). A missing or bad value stops the supervisor at start: `pull mode needs <NAME>`, `THERMITE_TUNNEL_PORT must be a port number, not <value>`, `THERMITE_TUNNEL_CONTROL_BOX is not a public key`, `THERMITE_TUNNEL_CONTROL_KEY_SHA256 must be 64 hexadecimal characters` or `THERMITE_TUNNEL_ENROLL_UNTIL must be an ISO time`.
+
+| Variable | Type | Default | Secret | Meaning |
+| --- | --- | --- | --- | --- |
+| `THERMITE_TUNNEL_PORT` | port | not set: no pull mode | no | Turns pull mode on. The supervisor serves this port, on every interface, for control alone. `CONTROL_URL` and `THERMITE_CONTROL_TOKEN_FILE` are not read: the supervisor's calls to control go to a port of its own on `127.0.0.1` and wait there for control. Control's launch values set it to `8790` |
+| `THERMITE_TUNNEL_POD` | string | `RUNPOD_POD_ID`, which RunPod sets in every pod | no | The pod's ID. Every request from control names it, and a request for another pod is refused |
+| `THERMITE_TUNNEL_PREFIX` | 64 hexadecimal characters | required in pull mode | no | A launch value: the random path the port answers under. A request to any other path is refused before its body is read |
+| `THERMITE_TUNNEL_CONTROL_KEY_SHA256` | SHA-256 | required in pull mode | hash | A launch value: the SHA-256 of control's command-signing public key. Control's first request brings the key; the pod takes it only if its SHA-256 is this one |
+| `THERMITE_TUNNEL_CONTROL_BOX` | base64 | required in pull mode | no | A launch value: the rig's public key at control (X25519, on one line). What the pod sends control is sealed to it |
+| `THERMITE_TUNNEL_ENROLL_CODE` | 64 hexadecimal characters | required in pull mode | one-time code | A launch value: the enrollment code. It never crosses the network: each side proves that it holds it. The supervisor takes it out of its own environment at start, so nothing it starts inherits it. The pod's first enrollment spends it |
+| `THERMITE_TUNNEL_ENROLL_UNTIL` | ISO time | not set: the code does not expire | no | A launch value, only when the launch set an expiry: after this time the pod refuses to enroll |
+| `THERMITE_TUNNEL_DIR` | path | `tunnel` in `THERMITE_SUPERVISOR_HOME` | directory with secrets | The pod's own keys (made at its first start, file `keys.json`, mode 0600), its enrollment, and the request nonces it has seen. Mode 0700. A full reset keeps it, so control's trust in the pod stays. Give the harness the same value: its isolation self-test then checks that no role can read the keys |
+| `THERMITE_TUNNEL_ENROLLED_DIR` | path | `enrolled` in `THERMITE_SUPERVISOR_HOME` | no | Where enrollment leaves public files for the harness: control's key (`control.pub`), and the rig's settings from control (`rig.json`, and `rig.env` as `NAME=value` lines). `control.pub` is written last. A full reset keeps it |
+
+In pull mode the supervisor also takes `RUNPOD_API_KEY`, which RunPod puts in a pod's environment, out of its own environment. Thermite never uses it on the pod: control holds its own RunPod key.
 
 ### How often it talks to control
 
@@ -243,9 +272,10 @@ The `thermite` command takes control's or the harness's address and a token file
 
 Only `thermite selftest isolation`, which runs inside the harness container, reads variables. It reads the harness's own settings, with the same defaults:
 
-- the secret files it checks no role can read: `THERMITE_SUPERVISOR_TOKEN_FILE`, `THERMITE_PROPOSER_TOKEN_FILE` and `THERMITE_MODEL_API_KEY_FILE`;
+- the secret files it checks no role can read: `THERMITE_SUPERVISOR_TOKEN_FILE`, `THERMITE_PROPOSER_TOKEN_FILE` and `THERMITE_MODEL_API_KEY_FILE`, and, when `THERMITE_TUNNEL_DIR` is set, the pull mode keys in it (`keys.json`);
 - the places: `THERMITE_BROKER_DIR`, `THERMITE_STATE_DIR`, `THERMITE_SCRATCH_DIR` and `THERMITE_OUTBOX_DIR`;
-- the GPU settings: `THERMITE_GPU_INDEX`, `THERMITE_DEV_GPU_INDEX`, `THERMITE_GPUS` and `THERMITE_JUDGE_GPUS`.
+- the GPU settings: `THERMITE_GPU_INDEX`, `THERMITE_DEV_GPU_INDEX`, `THERMITE_GPUS` and `THERMITE_JUDGE_GPUS`;
+- in the one-container rig image, `THERMITE_ONE_CONTAINER`, and the supervisor's places it probes: `THERMITE_SUPERVISOR_HOME` and `THERMITE_INBOX_DIR`.
 
 ## Rigs that control sets up
 
@@ -271,15 +301,17 @@ The model settings have only the names in [The rig's own model](#the-rigs-own-mo
 
 ## The compose file
 
-`compose.yaml` runs control and one rig on one machine. It passes some settings from your shell or a `.env` file next to it, and fixes the rest. A setting it does not list needs an edit to the compose file.
+`compose.yaml` runs control and one rig on one machine: the repository's builds the images from the source code, and a release's runs the published images. It passes some settings from your shell or a `.env` file next to it, and fixes the rest. A setting it does not list needs an edit to the compose file.
 
 | Service | Passed from your shell or `.env`, with its default | Fixed in `compose.yaml` |
 | --- | --- | --- |
-| control | `THERMITE_CONTROL_STALE_SECONDS` (180); `THERMITE_CONTROL_PUBLIC_URL`, `THERMITE_RIG_HARNESS_IMAGE`, `THERMITE_RIG_HARNESS_CUDA_IMAGE`, `THERMITE_RIG_SUPERVISOR_IMAGE`, `THERMITE_CONTROL_REQUIRE_KEY_ACCEPT`, `THERMITE_CONTROL_SESSION_DAYS` and `THERMITE_LIFECYCLE` (all empty) | `THERMITE_CONTROL_DIR`, `THERMITE_CONTROL_LISTEN`, `THERMITE_CONTROL_ADMIN_TOKEN_FILE`, `THERMITE_CONTROL_OPERATOR_TOKEN_FILE`, `THERMITE_CONTROL_RIG_TOKENS_FILE`, `THERMITE_CONTROL_PUBKEY_EXPORT` (`/keys/control-signing.pub`), `THERMITE_COMPOSE_PROJECT`, `THERMITE_COMPOSE_SERVICES` |
+| control | `THERMITE_CONTROL_STALE_SECONDS` (180); `THERMITE_CONTROL_OFFLINE_SECONDS` (900); `THERMITE_CONTROL_PUBLIC_URL`, `THERMITE_RIG_HARNESS_IMAGE`, `THERMITE_RIG_HARNESS_CUDA_IMAGE`, `THERMITE_RIG_SUPERVISOR_IMAGE`, `THERMITE_CONTROL_REQUIRE_KEY_ACCEPT`, `THERMITE_CONTROL_SESSION_DAYS` and `THERMITE_LIFECYCLE` (all empty) | `THERMITE_CONTROL_DIR`, `THERMITE_CONTROL_LISTEN`, `THERMITE_CONTROL_ADMIN_TOKEN_FILE`, `THERMITE_CONTROL_OPERATOR_TOKEN_FILE`, `THERMITE_CONTROL_RIG_TOKENS_FILE`, `THERMITE_CONTROL_PUBKEY_EXPORT` (`/keys/control-signing.pub`), `THERMITE_COMPOSE_PROJECT`, `THERMITE_COMPOSE_SERVICES` |
 | harness | `THERMITE_PROMOTION` (`auto`); `THERMITE_CALIBRATION_BLOCKS` (6); `THERMITE_MODEL_BASE_URL`, `THERMITE_MODEL` and `THERMITE_MODEL_REASONING_EFFORT` (empty); `THERMITE_MODEL_CONTEXT_WINDOW` (0); `THERMITE_MODEL_MAX_TOKENS` (8192); `THERMITE_MAX_TRIALS` (1); `THERMITE_TRIAL_MINUTES` (20); `THERMITE_MAX_TURNS`, `THERMITE_RESEARCH_MAX_MB`, `THERMITE_LLM_USD_PER_MTOK_IN` and `THERMITE_LLM_USD_PER_MTOK_OUT` (empty); `THERMITE_EXPORT_MINUTES` (60) | `THERMITE_RIG_ID` (`local-1`), `THERMITE_TARGET` (`cpu`), `THERMITE_CONTROL_PUBKEY_FILE`, `THERMITE_SUPERVISOR_TOKEN_FILE`, `THERMITE_PROPOSER_TOKEN_FILE`, `THERMITE_MODEL_API_KEY_FILE` |
 | supervisor | `THERMITE_POLL_SECONDS` (60); `THERMITE_COMMAND_POLL_SECONDS` (5); `THERMITE_MODEL_ROUTE_POLL_SECONDS` (30); `THERMITE_LIVE_INTERVAL_MS` (3000); `THERMITE_RESULTS_REMOTE` (`file:///results/results.git`, a repository on a shared volume); `THERMITE_ADVISORS_FILE` (empty) | `THERMITE_RIG_ID` (`local-1`), `HARNESS_URL`, `CONTROL_URL`, `THERMITE_HARNESS_TOKEN_FILE`, `THERMITE_CONTROL_TOKEN_FILE` |
 
-The defaults match the code's, except `THERMITE_RESULTS_REMOTE`, which the code leaves unset. The second rig of the `two-rigs` profile (`harness-2` and `supervisor-2`, rig `local-2`) takes the same settings, except that its harness does not pass `THERMITE_RESEARCH_MAX_MB` or the two prices.
+Each service's build in the repository's `compose.yaml` also takes `THERMITE_COMMIT` from your shell or `.env` (empty), as the [build argument](#build-arguments) of the same name: for example `THERMITE_COMMIT=$(git rev-parse HEAD) docker compose build`.
+
+The defaults match the code's, except `THERMITE_RESULTS_REMOTE`, which the code leaves unset. A release's `compose.yaml` passes the same settings with the same defaults, with one difference: `THERMITE_RIG_HARNESS_IMAGE`, `THERMITE_RIG_HARNESS_CUDA_IMAGE` and `THERMITE_RIG_SUPERVISOR_IMAGE` default to that release's published images, pinned by digest. It builds nothing, so it takes no `THERMITE_COMMIT`: the published images carry their commit already. The second rig of the `two-rigs` profile (`harness-2` and `supervisor-2`, rig `local-2`) takes the same settings, except that its harness does not pass `THERMITE_RESEARCH_MAX_MB` or the two prices.
 
 These two are read only by the compose files, never by Thermite's code:
 
@@ -313,6 +345,9 @@ The images take these build arguments. [Harness image](harness-image.md) says wh
 | `OPENCODE_VERSION` | harness | `2.0.32` | The OpenCode version installed |
 | `CLAUDE_CODE_VERSION` | harness, supervisor | empty: Claude Code is not installed | The Claude Code version to download at build time, for agents or advisors on a Claude subscription |
 | `KUBECTL_VERSION` | control | `v1.37.1` | The kubectl version installed, checked against a pinned checksum |
+| `THERMITE_IMAGE_ID` | harness | empty | The image's identity, kept as the environment variable of the same name ([above](#places-exports-and-the-broker)). The release workflow sets it to the image's tag and short commit, such as `0.1.0-cuda+1a2b3c4d5e6f` |
+| `THERMITE_COMMIT` | control, harness, supervisor | empty | The source commit the image is built from: 7 to 64 hexadecimal characters, such as the output of `git rev-parse HEAD`. The image sets the environment variable of the same name, and the service reports it with Thermite's version from `package.json` ([Rig versions](rest-api.md#rig-versions)). Empty, or anything else: the service reports no commit |
+| `HARNESS_IMAGE` | one-container rig | none: required | The harness image the one-container rig image is built on |
 
 ## Set by Thermite itself
 

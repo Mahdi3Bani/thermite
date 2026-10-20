@@ -5,6 +5,8 @@ import { canonicalJson, sha256Hex } from "../core/canonical.ts";
 import type { SignedCommand } from "../core/commands.ts";
 import type { LiveEntry } from "../core/live.ts";
 import { currentEvent } from "../core/names.ts";
+import { PodConfig } from "../core/tunnel.ts";
+import type { ReportedBuild } from "../core/version.ts";
 import { Credential } from "./credential.ts";
 import type { JoinedSpec, JoinForm } from "./join.ts";
 import { KnowledgeBase } from "./kb.ts";
@@ -261,17 +263,38 @@ create table if not exists rig_retired (
   at text not null,
   by text not null
 );
--- Rigs control reaches through a public proxy (a RunPod pod): the pod, the tunnel's sealed
--- secrets, and the pod's keys once enrolled (docs/plan/goals/019-rig-only-entry.goal).
+-- The build each part of a rig last reported (the harness in its signed report, the supervisor
+-- in its calls' headers), and since when. No row: the part reported none (a build before versions).
+create table if not exists rig_build (
+  rig text not null,
+  component text not null check (component in ('harness', 'supervisor')),
+  version text,
+  commit_sha text,
+  protocol integer,
+  oldest_protocol integer,
+  since text not null,
+  primary key (rig, component)
+);
+-- Rigs control refuses now because their protocol and control's do not meet, and why.
+create table if not exists rig_refusal (
+  rig text primary key,
+  reason text not null,
+  since text not null
+);
+-- Rigs in pull mode, which control connects to through a public proxy (a RunPod pod): the pod
+-- once launched, the tunnel's sealed secrets, the one-time enrollment code (spent: ''), the
+-- rig's settings, and the pod's keys once enrolled (docs/plan/goals/019-rig-only-entry.goal).
 create table if not exists tunnel_rig (
   rig text primary key,
-  pod text not null,
-  url text not null,
+  pod text,
+  url text,
+  port integer not null,
   prefix_sealed text not null,
   box_private_sealed text not null,
   box_public text not null,
   code_sealed text not null,
-  code_expires_at text not null,
+  code_expires_at text,
+  config text not null,
   pod_sign_public text,
   pod_box_public text,
   enrolled_at text,
@@ -474,6 +497,21 @@ export interface Decision {
   outcome: { accepted?: boolean; result?: Record<string, unknown> | null } | null;
 }
 
+/** One entry of control's audit log. Its id is the cursor that pages through the log. */
+export interface AuditEntry {
+  id: number;
+  at: string;
+  actor: string;
+  action: string;
+  body: unknown;
+}
+
+/** Which audit entries a list keeps: `action` those whose action contains it; `mcp` false, no MCP calls. */
+export interface AuditFilter {
+  action?: string | undefined;
+  mcp?: boolean | undefined;
+}
+
 /** A machine as listed (never its key). Host keys are known_hosts lines. */
 export interface Machine {
   name: string;
@@ -564,13 +602,19 @@ const gpuCloudOf = (r: Row): GpuCloud => ({
   created_at: String(r.created_at),
 });
 
-/** A rig behind a public proxy, as listed: never its sealed secrets. */
+/** A rig in pull mode, as listed: never its sealed secrets. */
 export interface TunnelRig {
   rig: string;
-  pod: string;
-  url: string;
+  /** The pod and control's address for it, once launched. */
+  pod: string | null;
+  url: string | null;
+  /** The port the pod serves for control. */
+  port: number;
   box_public: string;
-  code_expires_at: string;
+  /** When the enrollment code expires; null: it does not. */
+  code_expires_at: string | null;
+  /** The rig's settings, given to the pod at enrollment. */
+  config: PodConfig;
   pod_sign_public: string | null;
   pod_box_public: string | null;
   enrolled_at: string | null;
@@ -590,13 +634,15 @@ const tunnelRigOf = (r: Row): TunnelRig & TunnelSecrets => {
   const opt = (v: unknown) => (v === null || v === undefined ? null : String(v));
   return {
     rig: String(r.rig),
-    pod: String(r.pod),
-    url: String(r.url),
+    pod: opt(r.pod),
+    url: opt(r.url),
+    port: Number(r.port),
     prefix_sealed: String(r.prefix_sealed),
     box_private_sealed: String(r.box_private_sealed),
     box_public: String(r.box_public),
     code_sealed: String(r.code_sealed),
-    code_expires_at: String(r.code_expires_at),
+    code_expires_at: opt(r.code_expires_at),
+    config: PodConfig.parse(JSON.parse(String(r.config))),
     pod_sign_public: opt(r.pod_sign_public),
     pod_box_public: opt(r.pod_box_public),
     enrolled_at: opt(r.enrolled_at),
@@ -746,6 +792,14 @@ function enrolledOf(r: Row): EnrolledRig {
   };
 }
 
+/** The two parts of a rig that report a build. */
+export type RigComponent = "harness" | "supervisor";
+
+/** A build a part of a rig reported, and since when control has seen it. */
+export interface StoredBuild extends ReportedBuild {
+  since: string;
+}
+
 /** A rig's name: what the lifecycle drivers accept (a Kubernetes namespace part, a compose name). */
 export const RIG_ID = /^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$/;
 
@@ -759,6 +813,19 @@ export class ControlStore {
     this.db = new DatabaseSync(path);
     this.db.exec("pragma busy_timeout = 5000; pragma journal_mode = wal;");
     renameUnitsToRigs(this.db);
+    // The first table of rigs in pull mode (2026-10-19) had no launch port and needed its pod
+    // up front; nothing launched one. An empty one makes way, a filled one is kept aside.
+    const tunnelCols = (this.db.prepare("pragma table_info(tunnel_rig)").all() as Row[]).map(
+      (r) => r.name,
+    );
+    if (tunnelCols.length && !tunnelCols.includes("port")) {
+      const n = this.db.prepare("select count(*) as n from tunnel_rig").get() as Row;
+      this.db.exec(
+        Number(n.n)
+          ? "alter table tunnel_rig rename to tunnel_rig_2026_10_19"
+          : "drop table tunnel_rig",
+      );
+    }
     this.db.exec(SCHEMA);
     const cols = (this.db.prepare("pragma table_info(rig)").all() as Row[]).map((r) => r.name);
     if (!cols.includes("pubkey")) this.db.exec("alter table rig add column pubkey text");
@@ -2217,17 +2284,107 @@ export class ControlStore {
     );
   }
 
-  // ---------------------------------------------------------------- rigs behind a proxy
+  // ---------------------------------------------------------------- builds and refusals
+  /** The build a part of the rig last reported, and since when; undefined when it reported none. */
+  rigBuild(rig: string, component: RigComponent): StoredBuild | undefined {
+    const r = this.db
+      .prepare("select * from rig_build where rig = ? and component = ?")
+      .get(rig, component) as Row | undefined;
+    if (!r) return undefined;
+    const num = (v: SQLInputValue | undefined) =>
+      v === null || v === undefined ? null : Number(v);
+    return {
+      version: r.version === null ? null : String(r.version),
+      commit: r.commit_sha === null ? null : String(r.commit_sha),
+      protocol: num(r.protocol),
+      oldest_protocol: num(r.oldest_protocol),
+      since: String(r.since),
+    };
+  }
+
+  /**
+   * Records the build a part of the rig reports (null: it reports none). Written only when it
+   * changes, so `since` is when control first saw it. True when it changed.
+   */
+  setRigBuild(rig: string, component: RigComponent, b: ReportedBuild | null): boolean {
+    const was = this.rigBuild(rig, component);
+    if (!b) {
+      if (!was) return false;
+      this.db.prepare("delete from rig_build where rig = ? and component = ?").run(rig, component);
+      return true;
+    }
+    if (
+      was &&
+      was.version === b.version &&
+      was.commit === b.commit &&
+      was.protocol === b.protocol &&
+      was.oldest_protocol === b.oldest_protocol
+    )
+      return false;
+    this.db
+      .prepare(
+        `insert or replace into rig_build (rig, component, version, commit_sha, protocol,
+           oldest_protocol, since) values (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        rig,
+        component,
+        b.version,
+        b.commit,
+        b.protocol,
+        b.oldest_protocol,
+        new Date().toISOString(),
+      );
+    return true;
+  }
+
+  /** Why control refuses the rig now, and since when; undefined when it does not. */
+  rigRefusal(rig: string): { reason: string; since: string } | undefined {
+    const r = this.db.prepare("select reason, since from rig_refusal where rig = ?").get(rig) as
+      | Row
+      | undefined;
+    return r ? { reason: String(r.reason), since: String(r.since) } : undefined;
+  }
+
+  /** The rigs control refuses now. */
+  refusedRigs(): string[] {
+    return (this.db.prepare("select rig from rig_refusal order by rig").all() as Row[]).map((r) =>
+      String(r.rig),
+    );
+  }
+
+  /**
+   * Refuses the rig for this reason, or (null) ends its refusal. Each new refusal and each end
+   * goes to the audit log once, not on every call the rig makes. A refused rig that never sent a
+   * report is listed (with no report: offline), so the owner sees why.
+   */
+  setRigRefusal(rig: string, reason: string | null, detail: Record<string, unknown> = {}): void {
+    const was = this.rigRefusal(rig);
+    if (reason === null) {
+      if (!was) return;
+      this.db.prepare("delete from rig_refusal where rig = ?").run(rig);
+      this.audit(`rig:${rig}`, "rig_refusal_ended", { was: was.reason, ...detail });
+      return;
+    }
+    if (was?.reason === reason) return;
+    const now = new Date().toISOString();
+    this.tx(() => {
+      this.db
+        .prepare("insert or replace into rig_refusal (rig, reason, since) values (?, ?, ?)")
+        .run(rig, reason, now);
+      this.db
+        .prepare("insert or ignore into rig (id, first_seen, last_seen) values (?, ?, ?)")
+        .run(rig, now, new Date(0).toISOString());
+      this.audit(`rig:${rig}`, "rig_refused", { reason, ...detail });
+    });
+  }
+
+  // ---------------------------------------------------------------- rigs in pull mode
+  /** A rig minted for a pod about to be launched; its pod comes later (attachTunnelPod). */
   addTunnelRig(
-    t: Omit<
+    t: Pick<
       TunnelRig,
-      | "pod_sign_public"
-      | "pod_box_public"
-      | "enrolled_at"
-      | "last_exchange_at"
-      | "refused_total"
-      | "error"
-      | "created_at"
+      "rig" | "port" | "box_public" | "code_expires_at" | "config" | "created_by"
     > & {
       prefix_sealed: string;
       box_private_sealed: string;
@@ -2236,23 +2393,35 @@ export class ControlStore {
   ): void {
     this.db
       .prepare(
-        `insert into tunnel_rig (rig, pod, url, prefix_sealed, box_private_sealed, box_public,
-           code_sealed, code_expires_at, created_at, created_by)
+        `insert into tunnel_rig (rig, port, prefix_sealed, box_private_sealed, box_public,
+           code_sealed, code_expires_at, config, created_at, created_by)
          values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         t.rig,
-        t.pod,
-        t.url,
+        t.port,
         t.prefix_sealed,
         t.box_private_sealed,
         t.box_public,
         t.code_sealed,
         t.code_expires_at,
+        JSON.stringify(t.config),
         new Date().toISOString(),
         t.created_by,
       );
-    this.audit(t.created_by, "tunnel_rig_added", { rig: t.rig, pod: t.pod, url: t.url });
+    this.audit(t.created_by, "tunnel_rig_added", {
+      rig: t.rig,
+      code_expires_at: t.code_expires_at,
+    });
+  }
+
+  /** The pod a rig in pull mode runs in, and control's address for it; refused once enrolled. */
+  attachTunnelPod(rig: string, pod: string, url: string): boolean {
+    const r = this.db
+      .prepare("update tunnel_rig set pod = ?, url = ? where rig = ? and enrolled_at is null")
+      .run(pod, url, rig);
+    if (Number(r.changes)) this.audit("control", "tunnel_rig_pod", { rig, pod, url });
+    return Number(r.changes) > 0;
   }
 
   tunnelRig(rig: string): (TunnelRig & TunnelSecrets) | undefined {
@@ -2272,7 +2441,7 @@ export class ControlStore {
     });
   }
 
-  /** Pins the pod's keys; refused once pinned (a second enrollment). */
+  /** Pins the pod's keys and spends the code; refused once pinned (a second enrollment). */
   pinTunnelRig(rig: string, sign: string, box: string): boolean {
     const r = this.db
       .prepare(
@@ -2828,24 +2997,59 @@ export class ControlStore {
   }
 
   /** The newest audit entries; `action` keeps those whose action contains it, `mcp` MCP reads. */
-  listAudit(
+  listAudit(limit = 200, filter: AuditFilter = {}): AuditEntry[] {
+    return this.auditPage(limit, filter).entries;
+  }
+
+  /**
+   * One page of the audit log, newest first (goal 015). With no cursor, the newest entries;
+   * `before` keeps those older than it, `after` those newer. `older` and `newer` are the cursors
+   * for the next page each way: give `older` as `before`, `newer` as `after`. Null when no entry
+   * that matches is left that way.
+   */
+  auditPage(
     limit = 200,
-    filter: { action?: string | undefined; mcp?: boolean | undefined } = {},
-  ): { at: string; actor: string; action: string; body: unknown }[] {
-    return (
-      this.db
-        .prepare(
-          `select at, actor, action, body from audit
-           where (? or action not like 'mcp:%') and instr(action, ?) > 0
-           order by id desc limit ?`,
-        )
-        .all(filter.mcp === false ? 0 : 1, filter.action ?? "", limit) as Row[]
+    filter: AuditFilter = {},
+    cursor: { before?: number | undefined; after?: number | undefined } = {},
+  ): { entries: AuditEntry[]; older: number | null; newer: number | null } {
+    const match = "(? or action not like 'mcp:%') and instr(action, ?) > 0";
+    const args = [filter.mcp === false ? 0 : 1, filter.action ?? ""] as const;
+    const { before, after } = cursor;
+    const rows = (
+      after !== undefined
+        ? (
+            this.db
+              .prepare(
+                `select id, at, actor, action, body from audit where ${match} and id > ? order by id limit ?`,
+              )
+              .all(...args, after, limit) as Row[]
+          )
+            // The entries just after the cursor, shown newest first like every page.
+            .reverse()
+        : (this.db
+            .prepare(
+              `select id, at, actor, action, body from audit where ${match} and id < ? order by id desc limit ?`,
+            )
+            .all(...args, before ?? Number.MAX_SAFE_INTEGER, limit) as Row[])
     ).map((r) => ({
+      id: Number(r.id),
       at: String(r.at),
       actor: String(r.actor),
       action: String(r.action),
       body: JSON.parse(String(r.body)),
     }));
+    const any = (where: string, id: number) =>
+      this.db
+        .prepare(`select 1 from audit where ${match} and id ${where} ? limit 1`)
+        .get(...args, id) !== undefined;
+    // The edges of this page; an empty page has them at its cursor.
+    const hi = rows[0]?.id ?? (before !== undefined ? Math.max(0, before - 1) : after);
+    const lo = rows.at(-1)?.id ?? (after !== undefined ? after + 1 : before);
+    return {
+      entries: rows,
+      older: lo !== undefined && any("<", lo) ? lo : null,
+      newer: hi !== undefined && any(">", hi) ? hi : null,
+    };
   }
 
   /** The body of the newest audit entry by this actor with this action, if there is one. */
@@ -2864,6 +3068,12 @@ export class ControlStore {
       ? { status: String(r.status), outcome: r.outcome ? JSON.parse(String(r.outcome)) : null }
       : undefined;
   }
+}
+
+/** An audit page's cursor from a query string: a whole number of 0 or more, or none. */
+export function cursorOf(raw: string | undefined): number | undefined {
+  const n = raw === undefined || raw === "" ? Number.NaN : Number(raw);
+  return Number.isSafeInteger(n) && n >= 0 ? n : undefined;
 }
 
 /** A short fingerprint of a public key, for the dashboard and the audit log. */

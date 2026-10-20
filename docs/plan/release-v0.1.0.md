@@ -38,17 +38,17 @@ A tester can run Thermite, knows the risks, and knows where to report a problem.
 
 | Goal | Status | Depends on |
 | --- | --- | --- |
-| [001 · Plans in public docs](goals/001-plans-in-public.goal) | `IN_PROGRESS` | — |
-| [002 · CI on every push, and repository settings](goals/002-ci-and-repository-settings.goal) | `READY` | — |
+| [001 · Plans in public docs](goals/001-plans-in-public.goal) | `VERIFIED` | — |
+| [002 · CI on every push, and repository settings](goals/002-ci-and-repository-settings.goal) | `IN_PROGRESS` | — |
 | [003 · No default spend limit for advisors](goals/003-advisors-no-default-cap.goal) | `VERIFIED` | — |
-| [004 · Scan the history for secrets](goals/004-secret-scan.goal) | `READY` | — |
+| [004 · Scan the history for secrets](goals/004-secret-scan.goal) | `IN_PROGRESS` | — |
 | [005 · A sample project in `examples/`](goals/005-sample-project.goal) | `READY` | — |
 | [060 · The documentation site](goals/060-docs-site.goal) | `VERIFIED` | — |
 | [006 · Docs for testers](goals/006-docs-for-testers.goal) | `DROPPED`, merged into 060 | — |
-| [007 · Known limits and the security model](goals/007-known-limits.goal) | `READY` | — |
-| [008 · Community files and contributor docs](goals/008-community-files.goal) | `READY` | — |
+| [007 · Known limits and the security model](goals/007-known-limits.goal) | `VERIFIED` | — |
+| [008 · Community files and contributor docs](goals/008-community-files.goal) | `IN_PROGRESS` | — |
 | [009 · Real subscription sign-in tests](goals/009-subscription-sign-in-tests.goal) | `READY` | — |
-| [063 · Campaigns, runs and live views you can scan; steering as one message box](goals/063-scan-and-steer.goal) | `IN_PROGRESS` | — |
+| [063 · Campaigns, runs and live views you can scan; steering as one message box](goals/063-scan-and-steer.goal) | `VERIFIED` | — |
 
 ### Running campaigns
 
@@ -56,10 +56,10 @@ A tester sees what each run is doing, gives it work through one queue of experim
 
 | Goal | Status | Depends on |
 | --- | --- | --- |
-| [064 · One experiment queue for each run; the planner coordinates it](goals/064-experiment-queue.goal) | `IN_PROGRESS` | 063 |
+| [064 · One experiment queue for each run; the planner coordinates it](goals/064-experiment-queue.goal) | `VERIFIED` | 063 |
 | [065 · Journals and a research corpus from every campaign](goals/065-journals-and-corpus.goal) | `IN_PROGRESS` | 062, 064 |
 | [066 · Rules name directions, picked with `:direction:`](goals/066-direction-rules.goal) | `READY` | 064 |
-| [067 · `thermite assign` can copy a past run's untried experiments](goals/067-assign-queue-from.goal) | `READY` | 064 |
+| [067 · `thermite assign` can copy a past run's untried experiments](goals/067-assign-queue-from.goal) | `VERIFIED` | 064 |
 | [068 · MCP servers for a campaign's agents, named by its kit](goals/068-mcp-servers-for-agents.goal) | `READY` | 065 |
 
 ### Install from images
@@ -69,11 +69,11 @@ A tester pulls images in place of building them, and every remote rig has images
 | Goal | Status | Depends on |
 | --- | --- | --- |
 | [010 · Published images and a release workflow](goals/010-published-images.goal) | `IN_PROGRESS` | — |
-| [011 · A release bundle](goals/011-release-bundle.goal) | `READY` | [010](goals/010-published-images.goal) |
-| [012 · Version checks between control and rigs](goals/012-version-checks.goal) | `READY` | [010](goals/010-published-images.goal) |
+| [011 · A release bundle](goals/011-release-bundle.goal) | `IN_PROGRESS` | [010](goals/010-published-images.goal) |
+| [012 · Version checks between control and rigs](goals/012-version-checks.goal) | `IN_PROGRESS` | [010](goals/010-published-images.goal) |
 | [013 · `thermite doctor`](goals/013-thermite-doctor.goal) | `READY` | — |
 | [014 · The quick start, tested in CI](goals/014-quick-start-in-ci.goal) | `READY` | [005](goals/005-sample-project.goal), [011](goals/011-release-bundle.goal) |
-| [015 · Log paging](goals/015-log-paging.goal) | `READY` | — |
+| [015 · Log paging](goals/015-log-paging.goal) | `VERIFIED` | — |
 | [016 · Small fixes before the release](goals/016-small-fixes.goal) | `IN_PROGRESS` | — |
 | [017 · Remove the legacy model names](goals/017-legacy-names.goal) | `VERIFIED` | — |
 
@@ -93,8 +93,8 @@ The owner launches a GPU rig on RunPod from control, runs campaigns on it, and s
 | --- | --- | --- |
 | [018 · RunPod spike](goals/018-runpod-spike.goal) | `IN_PROGRESS` | — |
 | [019 · Control reaches RunPod rigs through RunPod's proxy](goals/019-rig-only-entry.goal) | `IN_PROGRESS` | — |
-| [020 · A one-container rig image](goals/020-runpod-rig-image.goal) | `READY` | [018](goals/018-runpod-spike.goal) |
-| [021 · Enrollment codes](goals/021-enrollment-codes.goal) | `READY` | — |
+| [020 · A one-container rig image](goals/020-runpod-rig-image.goal) | `IN_PROGRESS` | [018](goals/018-runpod-spike.goal) |
+| [021 · Enrollment codes](goals/021-enrollment-codes.goal) | `VERIFIED` | — |
 | [022 · Launch a rig on RunPod](goals/022-runpod-launch.goal) | `READY` | [010](goals/010-published-images.goal), [019](goals/019-rig-only-entry.goal), [020](goals/020-runpod-rig-image.goal), [021](goals/021-enrollment-codes.goal) |
 | [023 · Stop, start and terminate RunPod rigs](goals/023-runpod-lifecycle.goal) | `READY` | [022](goals/022-runpod-launch.goal) |
 | [024 · Models into the pod, results out](goals/024-runpod-models-and-results.goal) | `READY` | — |
