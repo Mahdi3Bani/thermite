@@ -331,10 +331,11 @@ Control checks every message before it signs it, wherever it comes from: a run's
 | `A research run has no conclusions to review.` | `panel`, in a research run |
 | `The teacher pair is off on this rig (Edit rig), so nothing would read it.`, and the same with `auditor` or `review panel` | `teachers`, `auditor` or `panel`, with that role switched off on **Edit rig** |
 | `This rig's supervisor has no teacher pair set up, so nothing would read it.`, and the same with `auditor` or `review panel` | `teachers`, `auditor` or `panel`, when the rig's supervisor reports that it has no such role |
+| `This run has no goal the review panel reviews, so nothing would read it.` | `panel`, when the run's contract has no goal checked by review |
 | `This rig's supervisor has no advisors set up, so nothing would read it.` | `advisors`, when the supervisor reports none of the three roles |
 | `No advisor would read it.`, followed by the reason for each role, in the order teacher pair, auditor, review panel | `advisors`, when each of the three roles has one of the reasons above |
 
-Over the REST API and `thermite command`, a refusal is `500 {"error":"<message>"}`, written to control's audit log as `failed`. Over MCP, `issue_command` answers `{"error":"<message>"}` with `isError: true`, written as `refused`. On the dashboard it shows as **Not sent.** and the message (below), written as `refused`. A run's **Live** also greys out each recipient that control would refuse, with the same words when you point at it, and its message box asks for words before it sends: "Write a message first."
+Over the REST API and `thermite command`, a refusal is `400 {"error":"<message>"}`. Over MCP, `issue_command` answers `{"error":"<message>"}` with `isError: true`, written as `refused`. On the dashboard it shows as **Not sent.** and the message (below), written as `refused`. A run's **Live** also greys out each recipient that control would refuse, with the same words when you point at it (on a run without agents that includes everyone working and the lanes, and the box starts on the advisors), and its message box asks for words before it sends: "Write a message first."
 
 Control refuses `keep` with any other `to` before signing: `bad message_agent payload: keep: only a message to everyone working (all) or to a lane can be kept in force`. The harness checks again when it applies the command. It refuses a message in these cases, and records no message:
 

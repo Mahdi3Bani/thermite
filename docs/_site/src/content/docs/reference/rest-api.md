@@ -87,7 +87,7 @@ A live line's `kind` is `text`, `thinking`, `tool`, `result`, `message`, `status
 
 | Route | Token | What it does | Request | Answer |
 | --- | --- | --- | --- | --- |
-| `POST /v1/commands` | Owner | Signs a command and queues it for a rig. Control records `owner:api` as its issuer | `{rig, kind, payload, ttl_minutes}`. `kind` is any kind except `wipe_state`. `ttl_minutes` is 1 to 10080, default 60 | 201 `{"id":"<id>","status":"pending"}`. 400 `wipe_state is issued only by a full reset`. 500 `unknown rig <rig>`, `bad <kind> payload: <field>: <message>`, `the <kind> command is too large to deliver`, or, for a `message_agent`, `Write a message first.` or why nothing on the rig would read it, such as `The planner is off on this rig (Edit rig), so nothing would read it.` ([`message_agent`](signed-commands.md#message_agent) lists them) |
+| `POST /v1/commands` | Owner | Signs a command and queues it for a rig. Control records `owner:api` as its issuer | `{rig, kind, payload, ttl_minutes}`. `kind` is any kind except `wipe_state`. `ttl_minutes` is 1 to 10080, default 60 | 201 `{"id":"<id>","status":"pending"}`. 400 `wipe_state is issued only by a full reset`, `bad <kind> payload: <field>: <message>`, `the <kind> command is too large to deliver`, or, for a `message_agent`, `Write a message first.` or why nothing on the rig would read it, such as `The planner is off on this rig (Edit rig), so nothing would read it.` or `This run has no goal the review panel reviews, so nothing would read it.` ([`message_agent`](signed-commands.md#message_agent) lists them). 404 `unknown rig <rig>` |
 | `GET /v1/commands` | Owner | The newest commands, with their status and outcome | `limit`, default 100 | `{"commands":[{id, rig, kind, issued_by, issued_at, status, acked_at, outcome}]}`, newest first |
 | `GET /v1/commands/<id>` | Owner | One command's status and outcome | None | `{"status":"…","outcome":…}`. 404 `{"error":"not found"}` |
 | `POST /v1/commands/<id>/cancel` | Owner | Withdraws a command that is still pending | None | `{"cancelled":true}`. 404 `{"error":"no such pending command"}` |
@@ -270,7 +270,7 @@ Control writes one entry for each of these to its audit log. `GET /v1/audit`, th
 
 | Group | Actions |
 | --- | --- |
-| Requests | `failed` (a request that ended in an error, such as a message to the agents that control refused over the REST API), `refused` (a dashboard action control turned down, with the page's path and why, including a message to the agents that control refused before signing it, which the page shows as **Not sent.**; or an MCP call it turned down, with `tool: "mcp:<tool>"` and why, a refused message included), `mcp:<tool>` (every MCP tool call, with its inputs) |
+| Requests | `failed` (a request that ended in an error), `refused` (a dashboard action control turned down, with the page's path and why, including a message to the agents that control refused before signing it, which the page shows as **Not sent.**; or an MCP call it turned down, with `tool: "mcp:<tool>"` and why, a refused message included), `mcp:<tool>` (every MCP tool call, with its inputs) |
 | Sign-in | `login`, `login_throttled` |
 | Commands | `command_issued`, `command_acked`, `command_expired`, `command_cancelled` |
 | Rigs and keys | `rig_enrolled`, `rig_token_rotated`, `rig_retired`, `rig_brought_back`, `rig_key_pinned`, `rig_key_changed`, `rig_key_accepted`, `report_rejected`, `report_refused`, `git_access_handed` |
