@@ -355,7 +355,8 @@ describe("Claude Code", () => {
     assert.match(r.summary, /Claude Code/);
     const call = runs.find((x) => x.argv.includes("-p")) as RunRequest;
     assert.equal(call.argv[call.argv.indexOf("--tools") + 1], "Bash");
-    assert.equal(call.role, "agent-16");
+    // The model check's own user: never a lane's, whose cleanup could kill it (or it theirs).
+    assert.ok(runs.every((x) => x.role === "model-check"));
   });
 
   test("a Claude subscription goes only with Claude Code, in a route or in the environment", () => {

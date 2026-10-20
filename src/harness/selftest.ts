@@ -30,7 +30,8 @@ import {
   type SupervisorRecord,
   supervisorPaths,
 } from "./broker/one-container.ts";
-import { IDS, type Role, walk } from "./broker/runner.ts";
+import { listProcesses, type Proc } from "./broker/process.ts";
+import { IDS, type Role, roleIds, walk } from "./broker/runner.ts";
 import { copyForRun } from "./judge/measure.ts";
 
 /**
@@ -539,6 +540,48 @@ export function busyReason(stateDir: string): string | undefined {
   }
 }
 
+/** The users of agent calls outside trials, which the ledger does not show as open. */
+const CALL_ROLES: { role: Role; what: string }[] = [
+  { role: "planner", what: "a planner call" },
+  { role: "model-check", what: "a model check" },
+];
+
+/**
+ * Why probing now would kill a planner call or a model check, if it would: a process of its user
+ * is running. Each probe kills its role's processes, as every run does.
+ */
+export function callsBusy(procs: Pick<Proc, "uid">[]): string | undefined {
+  const live = CALL_ROLES.filter(({ role }) => procs.some((p) => p.uid === roleIds(role).uid));
+  if (!live.length) return undefined;
+  return `${live.map((c) => c.what).join(" and ")} ${live.length > 1 ? "are" : "is"} running: wait for ${live.length > 1 ? "them" : "it"} to end (each probe kills its role's processes)`;
+}
+
+/** Why the isolation selftest should not probe now: open trials or judge jobs, or a live call. */
+export function isolationBusy(
+  stateDir: string,
+  procs: () => Pick<Proc, "uid">[] = listProcesses,
+): string | undefined {
+  return busyReason(stateDir) ?? callsBusy(procs());
+}
+
+/**
+ * The roles probed by default: the builder, each judge card's timing user, the planner's and the
+ * model check's users, and lane 1's users (every lane's are made the same way).
+ */
+export function probedRoles(judgeCards = 1): Role[] {
+  return [
+    "builder",
+    "run",
+    // Each further judge card's timing user.
+    ...Array.from({ length: Math.max(0, judgeCards - 1) }, (_, i) => runRole(i + 1)),
+    "planner",
+    "model-check",
+    "lane-1",
+    "lane-1-dev",
+    "agent-1",
+  ] as Role[];
+}
+
 export async function isolationSelftest(opts: {
   socketPath: string;
   stateDir: string;
@@ -555,7 +598,7 @@ export async function isolationSelftest(opts: {
   /** The one-container rig image (oneContainerTargets): the supervisor shares the container. */
   oneContainer?: OneContainerTargets | undefined;
 }): Promise<IsolationReport> {
-  const busy = opts.force ? undefined : busyReason(opts.stateDir);
+  const busy = opts.force ? undefined : isolationBusy(opts.stateDir);
   if (busy) throw new Error(`the rig is busy: ${busy}; rerun with --force to probe anyway`);
   const skipped: string[] = [];
   // First, as it waits for a supervisor that is still starting.
@@ -642,17 +685,7 @@ export async function isolationSelftest(opts: {
           : "shared";
 
   const client = new BrokerClient(opts.socketPath);
-  const roles =
-    opts.roles ??
-    ([
-      "builder",
-      "run",
-      // Each further judge card's timing user.
-      ...(cards?.judges.slice(1).map((_, i) => runRole(i + 1)) ?? []),
-      "lane-1",
-      "lane-1-dev",
-      "agent-1",
-    ] as Role[]);
+  const roles = opts.roles ?? probedRoles(cards?.judges.length ?? 1);
   // A lane's development run is the lane's user with the device group: probed as itself too,
   // once on each development card.
   const subjects = roles.flatMap((role) =>

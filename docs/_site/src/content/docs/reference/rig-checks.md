@@ -28,6 +28,7 @@ A **rig** can check itself in three ways. Each check runs inside the rig's **har
 | `this rig cannot run the <check> check` | The rig has no such check. The isolation check needs the broker |
 | `the <check> check is still running` | Another check is running on this rig |
 | `not now: <n> open trial(s) and <m> judge job(s): pause the rig's runs and let the judge finish first (each probe kills its role's processes)` | Isolation or smoke on a busy rig. A rig is busy while a trial is open or a judge job is queued or running. A paused run's queued judge jobs count too |
+| `not now: a planner call is running: wait for it to end (each probe kills its role's processes)` | Isolation while the planner works in OpenCode or Claude Code, between two rounds of trials |
 
 `"force": true` runs the isolation or smoke check on a busy rig anyway. Each isolation probe ends every process of the role it tests, so forcing it ends that work. The dashboard never forces a check.
 
@@ -76,7 +77,7 @@ The selftest also runs from a shell inside the harness container, as root:
 thermite selftest isolation --force
 ```
 
-It prints the whole report as JSON and exits with 1 when isolation does not hold. Without `--force` it refuses a busy rig with `the rig is busy: <reason>; rerun with --force to probe anyway`.
+It prints the whole report as JSON and exits with 1 when isolation does not hold. Each probe stops every process of its role's user, so without `--force` it refuses a busy rig with `the rig is busy: <reason>; rerun with --force to probe anyway`. The rig is busy while trials or judge jobs are open (`<n> open trial(s) and <m> judge job(s): …`), or while a process of the `planner` or `model-check` user runs (`a planner call is running: wait for it to end (each probe kills its role's processes)`, and the same for `a model check`). The check from control waits the same way: control says `not now:` and the reason.
 
 ### Roles probed
 
@@ -85,6 +86,8 @@ It prints the whole report as JSON and exits with 1 when isolation does not hold
 | `builder` | The user that builds kits and candidates |
 | `run` | The user that runs timed runs on the first (or only) judge device |
 | `run-<i>` | The user of each further judge GPU, on a rig with dedicated GPUs |
+| `planner` | The user of planner calls under OpenCode or Claude Code |
+| `model-check` | The user of the model check under OpenCode or Claude Code |
 | `lane-1` | A lane's plain commands |
 | `lane-1+gpu` | A lane's development run on the device. On a rig with several development GPUs, once for each: `lane-1+gpu@2` and so on |
 | `lane-1-dev` | The development-run user |

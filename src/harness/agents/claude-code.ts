@@ -9,9 +9,9 @@ import type { ModelConfig } from "./model.ts";
 import type { RigCheckReport } from "./model-check.ts";
 import {
   AFTER_SUBMIT_MS,
-  ASK_ROLE,
   breachError,
   CarriedMessages,
+  CHECK_ROLE,
   limitsNote,
   NUDGE,
   ownerLines,
@@ -536,8 +536,9 @@ export interface ClaudeOnceDeps {
 }
 
 /**
- * One prompt through Claude Code outside a trial (a model check, a planner call), as an
- * unprivileged agent user in a fresh directory, removed afterwards. `tools` "" gives it none.
+ * One prompt through Claude Code outside a trial (a model check, a planner call), as `role` (the
+ * planner's or the model check's own user) in a fresh directory, removed afterwards. `tools` ""
+ * gives it none.
  */
 export async function claudeOnce(
   model: ModelConfig,
@@ -547,10 +548,10 @@ export async function claudeOnce(
     tools: string;
     timeoutMs: number;
     signal?: AbortSignal | undefined;
-    role?: Role | undefined;
+    role: Role;
   },
 ): Promise<ClaudeTally> {
-  const role = o.role ?? ASK_ROLE;
+  const role = o.role;
   const parent = join(deps.scratchDir, "lanes", "claude-ask");
   mkdirSync(parent, { recursive: true, mode: 0o711 });
   chmodSync(parent, 0o711);
@@ -614,7 +615,7 @@ export async function claudeModelCheck(
     model,
     `Use your Bash tool to run exactly this command: echo ${word}\nThen reply with only the word it printed.`,
     deps,
-    { tools: "Bash", timeoutMs },
+    { tools: "Bash", timeoutMs, role: CHECK_ROLE },
   );
   const seconds = Math.round((Date.now() - started) / 100) / 10;
   const called = t.tools.some((x) => x.ok && x.output.includes(word));

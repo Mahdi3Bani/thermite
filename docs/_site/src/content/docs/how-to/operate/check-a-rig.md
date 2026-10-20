@@ -74,6 +74,6 @@ A busy rig refuses a check with `not now:` and the reason. The command accepts `
 | Isolation **failed**: "isolation does NOT hold (devices: …): *role* *probe*: ALLOWED; …" | A role reached something it must not (`ALLOWED`), or was refused something it needs (`UNREADABLE`, `UNREACHABLE`, `WRONG GPUS`) | Pause the rig's runs and start none on it until the check passes. Look up each probe in the [rig checks reference](../../reference/rig-checks.md#isolation-check), then see [Troubleshoot](troubleshoot.md#the-isolation-check-failed) |
 | Isolation **failed**: "… the device setup failed" | The rig's split of GPUs between the judge and the agents could not be set up | Pause the rig's runs, and check its GPU settings: see [Troubleshoot](troubleshoot.md#the-isolation-check-failed) |
 | "the *check* check is still running" | A check is still running on the rig, this one or another: a rig runs one check at a time | Wait for it, then run yours |
-| "not now: …" | The rig is busy: it names the open trials and judge jobs | Make the rig idle as in [Before you start](#before-you-start), then run the check again |
+| "not now: …" | The rig is busy: it names the open trials and judge jobs, or a planner call that is running | Make the rig idle as in [Before you start](#before-you-start), or wait a few minutes for the planner call to end, then run the check again |
 
 The rig's harness container also runs the isolation check on its own each time it starts, before it does anything else, so a rig's page usually already shows a recent result.

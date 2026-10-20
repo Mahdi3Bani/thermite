@@ -7,10 +7,14 @@ import { laneLimits } from "../../core/contract.ts";
 import type { Runner, RunOutcome, RunRequest } from "../broker/runner.ts";
 import {
   breachError,
+  CHECK_ROLE,
   limitsNote,
   newTally,
   opencodeConfig,
+  opencodeModelCheck,
   opencodeModelId,
+  opencodeOnce,
+  PLANNER_ROLE,
   readOpencodeEvents,
   runOpencodeResearchTrial,
   runOpencodeTrial,
@@ -128,6 +132,63 @@ describe("the OpenCode harness", () => {
     assert.equal(anthropic.providers.thermite.settings.baseURL, "http://h/v1/model-proxy/v1");
     // No key appears in a configuration: the proxy adds it.
     assert.ok(!JSON.stringify([own, openai, anthropic]).includes('"k"'));
+  });
+
+  test("a model check and a planner call each run as a user of their own, never a lane's", async () => {
+    const runs: RunRequest[] = [];
+    const handed: string[] = [];
+    const killed: string[] = [];
+    let during: (() => void) | undefined;
+    const runner = {
+      run: async (req: RunRequest): Promise<RunOutcome> => {
+        runs.push(req);
+        if (req.argv[1] === "run") during?.();
+        // The model's shell call prints the word the check asked for.
+        const word = /echo (thermite-[a-z0-9]+)/.exec(req.argv.join(" "))?.[1] ?? "";
+        const out =
+          req.argv[1] === "run" ? EVENTS.join("\n").replace('"ok\\n"', `"${word}\\n"`) : "";
+        return {
+          exitCode: 0,
+          signal: null,
+          killedFor: null,
+          stdout: out,
+          stderr: "",
+        } as RunOutcome;
+      },
+      killRole: async (role: string) => {
+        killed.push(role);
+        return 0;
+      },
+      handOver: async (_dir: string, role: string) => {
+        handed.push(role);
+      },
+      remove: async () => undefined,
+    } as unknown as Runner;
+    const deps = {
+      runner,
+      apiUrl: "http://127.0.0.1:8700",
+      scratchDir: mkdtempSync(join(tmpdir(), "thermite-oc-ask-")),
+      mintProxyToken: () => "proxy",
+    };
+    const check = await opencodeModelCheck(model, deps);
+    assert.equal(check.ok, true, check.summary);
+    assert.ok(runs.length >= 2 && runs.every((r) => r.role === "model-check"));
+    assert.deepEqual(handed, ["model-check"]);
+    assert.deepEqual(killed, []);
+    runs.length = 0;
+    handed.length = 0;
+    // A planner call cancelled while OpenCode runs kills the planner's processes only.
+    const ctrl = new AbortController();
+    during = () => ctrl.abort();
+    await opencodeOnce(model, "plan", deps, {
+      role: PLANNER_ROLE,
+      timeoutMs: 1000,
+      signal: ctrl.signal,
+    });
+    assert.ok(runs.length >= 2 && runs.every((r) => r.role === "planner"));
+    assert.deepEqual(handed, ["planner"]);
+    assert.deepEqual(killed, ["planner"]);
+    assert.notEqual(PLANNER_ROLE, CHECK_ROLE);
   });
 
   test("a trial runs as the lane's user, follows the output, and ends with the submission", async () => {

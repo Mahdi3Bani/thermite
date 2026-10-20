@@ -34,7 +34,7 @@ const LANE_ROLES: Role[] = Array.from({ length: IDS.maxLanes }, (_, i) => [
   `agent-${i + 1}`,
 ]).flat();
 const RUN_ROLES: Role[] = ["run", ...Array.from({ length: 7 }, (_, i) => `run-${i + 1}` as Role)];
-export const ALL_ROLES: Role[] = ["builder", ...RUN_ROLES, ...LANE_ROLES];
+export const ALL_ROLES: Role[] = ["builder", ...RUN_ROLES, "planner", "model-check", ...LANE_ROLES];
 
 /**
  * Changes a tree's owner with coreutils: `chown -R -P` never follows symlinks and walks trees of

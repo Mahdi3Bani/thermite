@@ -96,9 +96,11 @@ The broker runs each kind of work as its own user. The numbers are fixed in the 
 | `builder` | 10020 | `builder` (10020) | Kit builds of candidates and champions |
 | `run` | 10030 | `gpu` (10500) | Timed runs on the first judge device |
 | `run-1` … `run-7` | 10031 … 10037 | `gpu-j1` … `gpu-j7` (10511 … 10517) | Timed runs on judge GPUs 2 to 8 |
+| `planner` | 10040 | `planner` (10040) | Planner calls under OpenCode or Claude Code |
+| `model-check` | 10041 | `model-check` (10041) | The model check under OpenCode or Claude Code |
 | `lane-1` … `lane-16` | 10101 … 10116 | `lane-1` … `lane-16` (10101 … 10116) | A lane's commands and file tools; OpenCode and Claude Code sessions |
 | `lane-1-dev` … `lane-16-dev` | 10201 … 10216 | `gpudev` (10501) | A lane's development runs |
-| `agent-1` … `agent-16` | 10301 … 10316 | `agent-1` … `agent-16` (10301 … 10316) | A lane's Pi worker process. `agent-16` also runs the model check and planner calls under OpenCode or Claude Code |
+| `agent-1` … `agent-16` | 10301 … 10316 | `agent-1` … `agent-16` (10301 … 10316) | A lane's Pi worker process |
 
 | Group | gid | Owns |
 | --- | --- | --- |
@@ -109,6 +111,8 @@ The broker runs each kind of work as its own user. The numbers are fixed in the 
 | `gpu-d1` … `gpu-d7` | 10521 … 10527 | Development GPUs 2 to 8 |
 
 The broker sets each process's groups by number when it starts it: a development run, for example, gets its device's group. The users have no home and no login shell. These numbers set the limits of a rig: 16 lanes, and 8 judge plus 8 development GPUs.
+
+No two kinds of work share a user. When a user's work ends, the broker stops what that user still runs, so a shared user would let one task's cleanup stop another's work. So a planner call and a model check each have a user of their own, apart from every lane's, also at 16 lanes.
 
 The [isolation check](rig-checks.md#isolation-check) tests these users, and [Isolation inside a rig](../explanation/isolation.md) explains them.
 

@@ -27,6 +27,7 @@ import { ModelSource } from "./agents/model-source.ts";
 import {
   opencodeModelCheck,
   opencodeOnce,
+  PLANNER_ROLE,
   runOpencodeResearchTrial,
   runOpencodeTrial,
 } from "./agents/opencode.ts";
@@ -53,6 +54,7 @@ import { Research } from "./research/research.ts";
 import { lanesFromEnv, RigSettingsStore } from "./rig-settings.ts";
 import {
   busyReason,
+  isolationBusy,
   isolationSelftest,
   isolationSummary,
   oneContainerTargets,
@@ -356,7 +358,8 @@ async function main(): Promise<void> {
   if (env.THERMITE_BROKER_SOCKET) {
     const socketPath = env.THERMITE_BROKER_SOCKET;
     service.rigChecks.isolation = {
-      notNow: () => busyReason(paths.stateDir),
+      // Open trials or judge jobs, or a planner call: each probe kills its role's processes.
+      notNow: () => isolationBusy(paths.stateDir),
       run: async ({ force }) => {
         const report = await isolationSelftest({
           socketPath,
@@ -533,16 +536,21 @@ async function main(): Promise<void> {
         signal,
       });
     },
-    // The planner through OpenCode: its own tools; with past research, the prompt names the
-    // run's knowledge/ folder, which every agent user may read and none may change.
+    // The planner through OpenCode, as the planner's own user: its own tools; with past research,
+    // the prompt names the run's knowledge/ folder, which every agent user may read and none may
+    // change.
     askOpencode: async (m, prompt, signal) => {
-      const t = await opencodeOnce(m, prompt, once, 300_000, signal);
+      const t = await opencodeOnce(m, prompt, once, {
+        role: PLANNER_ROLE,
+        timeoutMs: 300_000,
+        signal,
+      });
       if (!t.lastText) throw new Error(t.errors.at(-1) ?? "OpenCode gave no answer");
       return t.lastText;
     },
     // The planner's own model, when control gave it one.
     plannerModel: () => models.planner(),
-    // The planner on a Claude subscription: Claude Code as an unprivileged user, with no tools,
+    // The planner on a Claude subscription: Claude Code as the planner's own user, with no tools,
     // or with the read-only file tools when it has past research to read (the run's knowledge/,
     // which every agent user may read and none may change).
     askClaude: async (m, prompt, signal, o) => {
@@ -550,6 +558,7 @@ async function main(): Promise<void> {
         tools: o?.read ? "Read,Grep,Glob" : "",
         timeoutMs: 300_000,
         signal,
+        role: PLANNER_ROLE,
       });
       if (t.usage) service.subscriptionUsage = { ...t.usage, at: new Date().toISOString() };
       const answer = t.result ?? t.lastText;

@@ -802,8 +802,13 @@ export async function opencodeAsk(prompt: string, deps: OpencodeAskDeps): Promis
   return tally;
 }
 
-/** The unprivileged user model checks and planner calls run as (lanes rarely reach 16). */
-export const ASK_ROLE: Role = "agent-16";
+/**
+ * The unprivileged users planner calls and model checks run as, under OpenCode or Claude Code.
+ * Each has a user of its own, apart from every lane's and from each other's: a run ends by
+ * killing its user's processes, so a shared user would let one call's cleanup kill the other's.
+ */
+export const PLANNER_ROLE: Role = "planner";
+export const CHECK_ROLE: Role = "model-check";
 
 export interface OpencodeOnceDeps {
   runner: Runner;
@@ -812,13 +817,12 @@ export interface OpencodeOnceDeps {
   mintProxyToken(): string;
 }
 
-/** One prompt through OpenCode in a fresh directory of ASK_ROLE's, removed afterwards. */
+/** One prompt through OpenCode as `role`, in a fresh directory of its own, removed afterwards. */
 export async function opencodeOnce(
   model: ModelConfig,
   prompt: string,
   deps: OpencodeOnceDeps,
-  timeoutMs: number,
-  signal?: AbortSignal,
+  o: { role: Role; timeoutMs: number; signal?: AbortSignal | undefined },
 ): Promise<OpencodeTally> {
   // OpenCode finds its home by name, so the directory must be reachable by name: under the lanes'
   // area, not the controller's own (which only its processes may walk).
@@ -827,17 +831,17 @@ export async function opencodeOnce(
   chmodSync(parent, 0o711);
   const dir = join(parent, randomUUID());
   mkdirSync(dir, { mode: 0o700 });
-  await deps.runner.handOver(dir, ASK_ROLE);
+  await deps.runner.handOver(dir, o.role);
   try {
     return await opencodeAsk(prompt, {
       runner: deps.runner,
       model,
       apiUrl: deps.apiUrl,
       proxyAuth: deps.mintProxyToken(),
-      role: ASK_ROLE,
+      role: o.role,
       dir,
-      timeoutMs,
-      signal,
+      timeoutMs: o.timeoutMs,
+      signal: o.signal,
     });
   } finally {
     await deps.runner.remove(dir).catch(() => undefined);
@@ -859,7 +863,7 @@ export async function opencodeModelCheck(
     model,
     `Use your shell tool to run exactly this command: echo ${word}\nThen reply with only the word it printed.`,
     deps,
-    timeoutMs,
+    { role: CHECK_ROLE, timeoutMs },
   );
   const seconds = Math.round((Date.now() - started) / 100) / 10;
   const called = t.tools.some((x) => x.ok && x.output.includes(word));
