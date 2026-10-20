@@ -109,7 +109,13 @@ const whoOf = (e: LiveEntry, name: (source: string, lane?: string | null) => str
  */
 export function liveEntryHtml(
   e: LiveEntry,
-  o: { showWho: boolean; name: (source: string, lane?: string | null) => string; now?: number },
+  o: {
+    showWho: boolean;
+    name: (source: string, lane?: string | null) => string;
+    now?: number;
+    /** Agents' text as paragraphs, with **bold** and `code` (the run's Live page). */
+    md?: boolean;
+  },
 ): string {
   const t = liveTime(e.at, o.now);
   const who = o.showWho ? whoOf(e, o.name) : "";
@@ -121,7 +127,12 @@ export function liveEntryHtml(
     case "status":
       return row("lv-status", `<span>${esc(e.text)}</span>`);
     case "text":
-      return row("lv-text", `<div class="lv-said">${esc(e.text)}</div>`);
+      return row(
+        "lv-text",
+        o.md
+          ? `<div class="lv-md">${mdLite(e.text)}</div>`
+          : `<div class="lv-said">${esc(e.text)}</div>`,
+      );
     case "thinking":
       return row(
         "lv-think",
@@ -176,6 +187,115 @@ export function liveLinesHtml(
     }
     out.push(liveEntryHtml(e, o));
     open = e.kind === "tool" ? out.length - 1 : -1;
+  }
+  return out.join("");
+}
+
+/** An agent's text, escaped, as paragraphs with **bold**, `code` and line breaks. */
+export function mdLite(text: string): string {
+  return text
+    .trim()
+    .split(/\n{2,}/)
+    .map(
+      (p) =>
+        `<p>${esc(p)
+          .replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
+          .replace(/`([^`\n]+)`/g, "<code>$1</code>")
+          .replace(/\n/g, "<br>")}</p>`,
+    )
+    .join("");
+}
+
+/** The filters a line belongs to on a run's Live page: its lane, planner, judge, advisors, you. */
+export function whoTags(e: LiveEntry): string {
+  const tags = new Set<string>();
+  const to = /^Owner to ([^:]+): /.exec(e.text)?.[1];
+  if (e.kind === "message") {
+    tags.add("you");
+    if (to) {
+      if (/^lane-\d+$/.test(to)) tags.add(to);
+      else if (to === "planner") tags.add("planner");
+      else if (["advisors", "teachers", "auditor", "panel"].includes(to)) tags.add("advisors");
+      else if (to === "all") tags.add("all");
+      return [...tags].join(" ");
+    }
+  }
+  if (e.source.startsWith("trial:")) tags.add(e.lane ?? "lanes");
+  else if (e.source === "planner") tags.add("planner");
+  else if (e.source === "judge") tags.add("judge");
+  else if (e.source === "supervisor") tags.add("advisors");
+  return [...tags].join(" ");
+}
+
+/** Who a line is from on a run's Live page: its lane, the planner, the judge or the advisors. */
+export const runSourceName = (source: string, lane?: string | null) =>
+  source === "planner"
+    ? "planner"
+    : source === "judge"
+      ? "judge"
+      : source === "supervisor"
+        ? "advisors"
+        : (lane ?? "worker");
+
+const RECIPIENT: Record<string, string> = {
+  all: "everyone working",
+  planner: "the planner",
+  advisors: "all the advisors",
+  teachers: "the teachers",
+  auditor: "the auditor",
+  panel: "the review panel",
+};
+
+/**
+ * One line on a run's Live page: tagged with the filters it belongs to (data-who) and its source
+ * (data-src, so a result joins its own call). A trial's start and end read as dividers, the
+ * owner's message as "To …", and a worker receiving it as a read receipt.
+ */
+export function runEntryHtml(e: LiveEntry, now?: number): string {
+  const who = whoTags(e);
+  const tag = (html: string) =>
+    html.replace(
+      /^<div class="lv-row /,
+      `<div data-who="${esc(who)}" data-src="${esc(e.source)}" class="lv-row `,
+    );
+  const lane = e.lane ?? "";
+  if (e.kind === "status") {
+    const start = /^(?:research )?trial on ([^:]+): ([\s\S]*)$/.exec(e.text);
+    if (start)
+      return `<div class="lv-div" data-who="${esc(who)}" data-src="${esc(e.source)}" data-id="${e.id}"><span><b>${esc(start[1] ?? lane)}</b> · trial started · ${esc(clip(start[2] ?? "", 180))}</span></div>`;
+    const end = /^trial ended:? ?([\s\S]*)$/.exec(e.text);
+    if (end)
+      return `<div class="lv-div" data-who="${esc(who)}" data-src="${esc(e.source)}" data-id="${e.id}"><span><b>${esc(lane || "trial")}</b> · trial ended${end[1] ? ` · ${esc(clip(end[1], 160))}` : ""}</span></div>`;
+  }
+  if (e.kind === "message") {
+    const to = /^Owner to ([^:]+): ([\s\S]*)$/.exec(e.text);
+    if (to)
+      return `<div class="lv-row lv-you" data-who="${esc(who)}" data-src="${esc(e.source)}" data-id="${e.id}">${liveTime(e.at, now)}<div class="lv-body"><div class="you"><b>To ${esc(RECIPIENT[to[1] ?? ""] ?? to[1] ?? "")}:</b> ${esc(to[2] ?? "")}</div></div></div>`;
+    const read = /^Owner: ([\s\S]*)$/.exec(e.text);
+    if (read)
+      return `<div class="lv-row lv-read" data-who="${esc(`${who} ${lane}`.trim())}" data-src="${esc(e.source)}" data-id="${e.id}">${liveTime(e.at, now)}<div class="lv-body"><span class="muted">✓ ${esc(runSourceName(e.source, e.lane))} read your message: “${esc(clip(read[1] ?? "", 120))}”</span></div></div>`;
+  }
+  return tag(liveEntryHtml(e, { showWho: true, name: runSourceName, now, md: true }));
+}
+
+/** A run's lines in order, each result joined to its own source's open call. */
+export function runLinesHtml(entries: LiveEntry[], now?: number): string {
+  const out: string[] = [];
+  const open = new Map<string, number>();
+  for (const e of entries) {
+    const at = open.get(e.source);
+    if (e.kind === "result" && at !== undefined) {
+      const j = resultJoin(e);
+      out[at] = (out[at] as string)
+        .replace('<span class="lv-hint"></span>', `<span class="lv-hint">${j.hint}</span>`)
+        .replace("</pre></details>", `</pre>${j.body}</details>`)
+        .replace('data-open="1"', "");
+      open.delete(e.source);
+      continue;
+    }
+    out.push(runEntryHtml(e, now));
+    if (e.kind === "tool") open.set(e.source, out.length - 1);
+    else open.delete(e.source);
   }
   return out.join("");
 }

@@ -121,6 +121,7 @@ import {
   icon,
   kpi,
   meter,
+  modeAvatar,
   modeName,
   num,
   pct,
@@ -132,7 +133,7 @@ import {
   stackBar,
 } from "./ui/components.ts";
 import { EDIT_RIG_JS } from "./ui/edit-rig-client.ts";
-import { liveEntryHtml, liveLinesHtml, resultJoin } from "./ui/live.ts";
+import { liveEntryHtml, liveLinesHtml, resultJoin, runEntryHtml, runLinesHtml } from "./ui/live.ts";
 import { infoLabel, newCampaignBody } from "./ui/new-campaign.ts";
 import { NEW_CAMPAIGN_JS } from "./ui/new-campaign-client.ts";
 import {
@@ -1821,30 +1822,191 @@ ${placed ? placedBlock(placed, t) : ""}${onCluster ? clusterPlacedBlock(onCluste
     return c.redirect(`/ui/rigs/${encodeURIComponent(c.req.param("rig"))}`, 303);
   });
 
-  // ---------------------------------------------------------------- live sessions (Magnesium's Session)
+  // ---------------------------------------------------------------- live, one run at a time (goal 063)
+  /**
+   * Live: the runs at work on the left; one run's stream in the middle, with filters for each
+   * lane, the planner, the judge, the advisors and the owner's own messages; under it, one
+   * message box that writes to the lane being watched.
+   */
   app.get("/ui/live", (c) => {
     const vs = views();
     const now = Date.now();
-    const rows = vs
-      .map((u) => {
-        const srcs = store.liveSources(u.id);
-        return `<a class="card tight row" style="text-decoration:none" href="/ui/rigs/${encodeURIComponent(u.id)}/live"><span class="dot ${u.stale ? "bad" : "ok"}"></span><b>${esc(u.id)}</b><span class="muted small grow">${srcs.length ? `${srcs.length} sessions · last line ${esc(ago(srcs[0]?.last_at, now))} ago` : "no live lines yet"}</span>${icon.terminal}</a>`;
-      })
-      .join("");
+    const all = vs.flatMap((u) => u.runs.map((r) => ({ u, r })));
+    const atWork = all.filter((x) => x.r.status === "running");
+    const wanted = c.req.query("run");
+    const sel =
+      (wanted ? all.find((x) => runKey(x.u.id, x.r.id) === wanted) : undefined) ?? atWork[0];
+    const day = now - 24 * 3600_000;
+    const ended = all
+      .filter((x) => x.r.status !== "running" && Date.parse(lastActivity(x.r)) > day)
+      .sort((a, b) => lastActivity(b.r).localeCompare(lastActivity(a.r)));
+    const idle = vs.filter((u) => !u.runs.some((r) => r.status === "running"));
+    const runLink = (x: { u: RigView; r: RunView }, sub: string, cls = "") =>
+      `<a class="lr${sel && x.u.id === sel.u.id && x.r.id === sel.r.id ? " on" : ""}${cls}" href="${runLiveHref(x.u.id, x.r.id)}"><span class="t">${x.r.status === "running" ? `<span class="dot ok pulse"></span>` : ""}${esc(x.r.id)}</span><span class="s">${sub}</span></a>`;
+    const nav = `<nav class="lruns" aria-label="Runs">
+<div class="hd">At work</div>${atWork.map((x) => runLink(x, `${esc(x.u.id)} · ${esc(modeName(x.r.mode))} · ${Object.keys(x.r.at_work).length} working${waitingOn(x.r) ? ` · <span class="warn">${waitingOn(x.r)} wait for you</span>` : ""}`)).join("") || `<div class="lempty">No run is at work.</div>`}
+${idle.length ? `<div class="hd">Idle rigs</div>${idle.map((u) => `<a class="lr idle" href="/ui/rigs/${encodeURIComponent(u.id)}"><span class="t">${esc(u.id)}</span><span class="s">no run at work${u.stale ? " · not reporting" : ""}</span></a>`).join("")}` : ""}
+${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? " open" : ""}><summary class="hd">Ended in the last day (${ended.length})</summary>${ended.map((x) => runLink(x, `${esc(x.u.id)} · ${esc(x.r.status)}`, " idle")).join("")}</details>` : ""}
+</nav>`;
+    if (!sel)
+      return page(
+        c,
+        { title: "Live", summary: "no run at work", active: "live", flush: true },
+        `<div class="lwrap">${nav}<section class="lcol"><div class="empty" style="margin:auto">No run to watch yet. Runs show here as soon as a rig reports one.</div></section></div>`,
+        vs,
+      );
+    const { u, r } = sel;
+    const research = r.mode === "research";
+    const trials = store.liveTrials(u.id).filter((t) => t.run === r.id);
+    const lanes = [
+      ...new Set([
+        ...Object.keys(r.at_work),
+        ...(r.epoch?.assignments.map((a) => a.lane) ?? []),
+        ...trials.map((t) => t.lane).filter((l): l is string => !!l),
+      ]),
+    ].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    const lines = store.liveRunTail(u.id, r.id, 600);
+    const after = lines.at(-1)?.id ?? 0;
+    const w = c.req.query("w") || "all";
+    // The filters: everyone, each lane (working or not), the planner, the judge, the advisors, you.
+    const chip = (key: string, label: string, title = "", working = false) =>
+      `<a class="lchip${w === key ? " on" : ""}" data-w="${esc(key)}" href="${runLiveHref(u.id, r.id, key === "all" ? "" : `&w=${encodeURIComponent(key)}`)}"${title ? ` title="${esc(title)}"` : ""}>${working ? `<span class="dot ok"></span>` : ""}${esc(label)}</a>`;
+    const chips = [
+      chip("all", "Everyone"),
+      ...lanes.map((l) => {
+        const work = r.at_work[l];
+        return chip(
+          l,
+          l,
+          work ? `${work.family}: ${work.focus}` : "between trials",
+          Boolean(work) && r.status === "running",
+        );
+      }),
+      ...(research ? [] : [chip("planner", "Planner")]),
+      ...(research ? [] : [chip("judge", "Judge")]),
+      chip("advisors", "Advisors"),
+      chip("you", "You", "your messages, and who read them"),
+    ].join("");
+    // The message box: who it goes to, and when they read it (the placeholder says).
+    const hint = (to: string) =>
+      to === "all"
+        ? research
+          ? "Each agent reads it at its next step"
+          : "Each agent reads it at its next step; the planner at its next plan"
+        : to.startsWith("lane-")
+          ? `${to}${r.at_work[to] ? ` (on ${r.at_work[to]?.family})` : ""} reads it at its next step`
+          : to === "planner"
+            ? "The planner reads it when it plans the next round"
+            : to === "teachers"
+              ? "The teachers read it in their next round and answer here"
+              : to === "auditor"
+                ? "The auditor reads it before its next audit and answers here"
+                : to === "panel"
+                  ? "The review panel reads it before its next review and answers here"
+                  : "The advisors read it and answer here";
+    const to = lanes.includes(w) || w === "planner" ? w : w === "advisors" ? "advisors" : "all";
+    const opt = (v: string, label: string, off = "") =>
+      `<option value="${esc(v)}" data-hint="${esc(hint(v))}"${v === to ? " selected" : ""}${off ? ` disabled title="${esc(off)}"` : ""}>${esc(label)}</option>`;
+    const box =
+      r.status === "closed"
+        ? `<div class="lcomposer off">This run has finished: its agents take no more messages.</div>`
+        : `<form class="lcomposer" method="post" action="/ui/live/message"><input type="hidden" name="csrf" value="${csrf(c)}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(r.id)}"><input type="hidden" name="w" value="${esc(w)}">
+<select name="to" aria-label="To" class="lto">${opt("all", "To everyone working")}${lanes.map((l) => opt(l, `To ${l}`)).join("")}${opt("planner", "To the planner", research ? "A research run plans its rounds with a fixed method: it has no planner to message." : "")}<optgroup label="Advisors">${opt("advisors", "To all advisors")}${opt("teachers", "To the teachers")}${opt("auditor", "To the auditor", research ? "A research run has no attempts to audit." : "")}${opt("panel", "To the review panel", research ? "A research run has no conclusions to review." : "")}</optgroup></select>
+<textarea name="text" rows="1" required maxlength="4000" aria-label="Message" placeholder="${esc(hint(to))} · ⌘↩ sends"${c.req.query("compose") ? " autofocus" : ""}></textarea>
+<label class="lpin" title="Keep it in force: every new trial gets it too, until you remove it"><input type="checkbox" name="keep" value="1">📌</label>
+<button class="primary">${icon.send}Send</button></form>`;
+    const meta = [
+      esc(u.id),
+      r.epoch ? `round ${r.epoch.n}` : "",
+      research
+        ? `${num((r.research as Record<string, unknown> | null)?.verified)} verified claims`
+        : r.mode === "goal"
+          ? `${r.goals.filter((g) => g.status === "met").length} of ${r.goals.length} goals met`
+          : signed((r.champion.filter((x) => !x.reopened).at(-1)?.cumulative ?? 1) - 1),
+      waitingOn(r)
+        ? `<a class="warn" href="${runHref(u.id, r)}#needs">${waitingOn(r)} wait${waitingOn(r) === 1 ? "s" : ""} for you</a>`
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    const st = runState(r);
+    const head = `<div class="lhead"><button class="ghost sm lnav-btn" type="button" title="Show or hide the list of runs" aria-label="Runs">☰</button>${modeAvatar(r.mode)}<span class="t">${esc(r.id)}</span><span class="label ${st.cls}">${st.icon}${esc(st.text)}</span><span class="lmeta">${meta}</span><a class="btn sm" href="${runHref(u.id, r)}">Open the run</a>${
+      r.status === "running"
+        ? cmdForm(c, {
+            rig: u.id,
+            kind: "pause_run",
+            fields: { run: r.id },
+            label: "Pause",
+            cls: "sm",
+            back: runLiveHref(u.id, r.id),
+          })
+        : r.status === "paused"
+          ? cmdForm(c, {
+              rig: u.id,
+              kind: "resume_run",
+              fields: { run: r.id },
+              label: "Resume",
+              cls: "sm",
+              back: runLiveHref(u.id, r.id),
+            })
+          : ""
+    }</div>`;
     return page(
       c,
       {
         title: "Live",
-        summary: "what each rig's agents and judge are doing now",
+        summary: `${atWork.length} run${atWork.length === 1 ? "" : "s"} at work`,
         active: "live",
+        flush: true,
       },
-      rows
-        ? `<div class="stack" style="max-width:720px">${rows}</div>`
-        : `<div class="card"><div class="empty">No rig has reported yet.</div></div>`,
+      `<div class="lwrap" id="lwrap">${nav}<section class="lcol">${head}<div class="lchips">${chips}<span class="grow"></span><button class="lchip on lfollow" type="button" aria-pressed="true" title="Follow new lines">↓ Follow</button></div>
+<div class="transcript lstream" id="transcript" data-rig="${esc(u.id)}" data-run="${esc(r.id)}" data-w="${esc(w)}" data-after="${after}">${runLinesHtml(lines, now) || `<div class="empty">No live lines yet. They appear here as the run's agents and judge work.</div>`}</div>
+${box}</section></div>`,
       vs,
     );
   });
 
+  app.get("/ui/live.json", (c) => {
+    const after = Math.max(0, Math.trunc(Number(c.req.query("after") ?? "0")) || 0);
+    const [rig, run] = String(c.req.query("run") ?? "").split("/");
+    if (!rig || !run) return c.json({ entries: [] });
+    const now = Date.now();
+    const entries = store.liveRun(rig, run, after, 500).map((e) => ({
+      id: e.id,
+      kind: e.kind,
+      src: e.source,
+      html: runEntryHtml(e, now),
+      ...(e.kind === "result" ? { join: resultJoin(e) } : {}),
+    }));
+    return c.json({ entries });
+  });
+
+  app.post("/ui/live/message", async (c) => {
+    const f = await c.req.parseBody();
+    const rig = String(f.rig ?? "");
+    const run = String(f.run ?? "");
+    const w = String(f.w ?? "");
+    const back = (more = "") =>
+      c.redirect(
+        runLiveHref(rig, run, `${w && w !== "all" ? `&w=${encodeURIComponent(w)}` : ""}${more}`),
+        303,
+      );
+    const to = String(f.to ?? "all");
+    const keep = String(f.keep ?? "") === "1" && (to === "all" || to.startsWith("lane-"));
+    try {
+      issueCommand(store, opts.privateKeyPem, {
+        rig,
+        kind: "message_agent",
+        payload: { run, to, text: String(f.text ?? "").trim(), ...(keep ? { keep: true } : {}) },
+        issuedBy: "owner:ui",
+      });
+    } catch (err) {
+      return back(`&error=${encodeURIComponent(err instanceof Error ? err.message : String(err))}`);
+    }
+    return back();
+  });
+
+  // ---------------------------------------------------------------- one rig's sessions, every run
   const sourceName = (s: string, lane?: string | null) =>
     s === "planner"
       ? "Planner"

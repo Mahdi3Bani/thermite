@@ -817,7 +817,7 @@ export function runBrief(
           : "";
       row(
         lane,
-        `${esc(clip(what, 200))}${t ? ` <a class="small" href="${liveHref(u.id, t.source)}">watch</a>` : ""}${last}`,
+        `${esc(clip(what, 200))}${t ? ` <a class="small" href="${runLiveHref(u.id, r.id, `&w=${encodeURIComponent(lane)}`)}">watch</a>` : ""}${last}`,
         esc(span(work?.since ?? t?.started_at ?? null, now)),
       );
     } else {

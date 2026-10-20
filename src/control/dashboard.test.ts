@@ -1179,6 +1179,139 @@ describe("control dashboard", () => {
     const cmd = s.store.listCommands(5).find((c) => c.kind === "message_agent");
     assert.equal(cmd?.issued_by, "owner:ui");
   });
+
+  test("Live for one run: filters for each lane, the judge and you; one message box", async () => {
+    const s = await stack();
+    await s.env.service.applyCommand(s.env.assign);
+    await s.relay();
+    const at = new Date().toISOString();
+    s.store.addLive(
+      "rig-a",
+      "log-2",
+      [
+        {
+          seq: 1,
+          at,
+          source: "trial:t-0123456789abcdef",
+          kind: "status",
+          text: "trial on lane-1: closed-form, try the closed form",
+          lane: "lane-1",
+          run: "js-1",
+        },
+        {
+          seq: 2,
+          at,
+          source: "trial:t-0123456789abcdef",
+          kind: "text",
+          text: "I'll try **the closed form** first.\n\nThen `n(n+1)/2`.",
+          lane: "lane-1",
+          run: "js-1",
+        },
+        {
+          seq: 3,
+          at,
+          source: "trial:t-0123456789abcdef",
+          kind: "tool",
+          text: 'run {"command":"npm test"}',
+          lane: "lane-1",
+          run: "js-1",
+        },
+        {
+          seq: 4,
+          at,
+          source: "trial:t-fedcba9876543210",
+          kind: "tool",
+          text: 'read {"path":"src/sum.js"}',
+          lane: "lane-2",
+          run: "js-1",
+        },
+        {
+          seq: 5,
+          at,
+          source: "trial:t-0123456789abcdef",
+          kind: "result",
+          text: 'run (1200 ms): {"exit":0,"stdout":"ok"}',
+          lane: "lane-1",
+          run: "js-1",
+        },
+        {
+          seq: 6,
+          at,
+          source: "supervisor",
+          kind: "message",
+          text: "Owner to lane-1: keep it simple",
+          run: "js-1",
+        },
+        {
+          seq: 7,
+          at,
+          source: "trial:t-0123456789abcdef",
+          kind: "message",
+          text: "Owner: keep it simple",
+          lane: "lane-1",
+          run: "js-1",
+        },
+        { seq: 8, at, source: "judge", kind: "log", text: "evaluate a-1: started", run: "js-1" },
+        {
+          seq: 9,
+          at,
+          source: "trial:t-9999999999999999",
+          kind: "text",
+          text: "another run's line",
+          lane: "lane-1",
+          run: "other-1",
+        },
+      ],
+      true,
+    );
+    const html = await (await s.get("/ui/live?run=rig-a%2Fjs-1&w=lane-1")).text();
+    // Only this run's lines; a trial's start reads as a divider; the agent's text as paragraphs.
+    assert.doesNotMatch(html, /another run's line/);
+    assert.match(html, /<b>lane-1<\/b> · trial started · closed-form, try the closed form/);
+    assert.match(
+      html,
+      /<p>I'll try <b>the closed form<\/b> first\.<\/p><p>Then <code>n\(n\+1\)\/2<\/code>\.<\/p>/,
+    );
+    // A result joins its own lane's call, not the other lane's call in between.
+    assert.match(
+      html,
+      /data-src="trial:t-0123456789abcdef" class="lv-row lv-tool"[\s\S]*?npm test[\s\S]*?1\.2 s · exit 0/,
+    );
+    // The owner's message and the lane reading it; the filter it belongs to.
+    assert.match(
+      html,
+      /data-who="you lane-1"[^>]*><span class="lv-t"[^>]*>[^<]*<\/span><div class="lv-body"><div class="you"><b>To lane-1:<\/b> keep it simple/,
+    );
+    assert.match(html, /✓ lane-1 read your message: “keep it simple”/);
+    // Filters: everyone, each lane, planner, judge, advisors, you; the box writes to the lane watched.
+    assert.match(html, /<a class="lchip on" data-w="lane-1"/);
+    assert.match(html, /data-w="judge"/);
+    assert.match(html, /data-w="you"/);
+    assert.match(
+      html,
+      /<option value="lane-1" data-hint="lane-1[^"]*reads it at its next step" selected>/,
+    );
+    assert.match(html, /<optgroup label="Advisors">/);
+    // The feed for this run only, each line tagged.
+    const json = (await (await s.get("/ui/live.json?run=rig-a/js-1&after=0")).json()) as {
+      entries: { src: string; html: string }[];
+    };
+    assert.equal(json.entries.length, 8);
+    assert.ok(json.entries.every((e) => e.html.includes("data-who=")));
+    // Sending from the box: a signed owner command to the lane, back to the same filter.
+    const sent = await s.post("/ui/live/message", {
+      csrf: s.csrfFrom(html),
+      rig: "rig-a",
+      run: "js-1",
+      to: "lane-1",
+      text: "now try the loop",
+      w: "lane-1",
+    });
+    assert.equal(sent.status, 303);
+    assert.equal(sent.headers.get("location"), "/ui/live?run=rig-a%2Fjs-1&w=lane-1");
+    const cmd = s.store.listCommands(5).find((c) => c.kind === "message_agent");
+    assert.equal(cmd?.issued_by, "owner:ui");
+  });
 });
 
 /** Control over the demo seed (no harness): three rigs with decisions waiting and runs at work. */
@@ -1331,7 +1464,7 @@ describe("control dashboard for an operator", () => {
     );
     assert.match(
       home,
-      /vectorize the filter bank so a frame fits its time budget <a class="small" href="\/ui\/rigs\/rig-b\/live\?source=trial%3At-0a1b2c3d4e5f6071">watch<\/a><\/span><span class="br-when">1 h 3 min</,
+      /vectorize the filter bank so a frame fits its time budget <a class="small" href="\/ui\/live\?run=rig-b%2Fdec-2&w=lane-1">watch<\/a><\/span><span class="br-when">1 h 3 min</,
     );
     assert.match(home, /4\/8 goals/);
     // Campaigns: what is at work now first, then what waits, then one row per campaign.

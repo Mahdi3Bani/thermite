@@ -918,6 +918,52 @@ export class ControlStore {
     }));
   }
 
+  /**
+   * One run's live lines after `after`, oldest first: its trials', planner's and judge's lines,
+   * plus the judge's and the supervisor's lines that name no run.
+   */
+  liveRun(
+    rig: string,
+    run: string,
+    after: number,
+    limit: number,
+  ): (LiveEntry & { id: number; signed: boolean })[] {
+    const rows = this.db
+      .prepare(
+        `select * from rig_live where rig = ? and id > ?
+           and (run = ? or (run is null and source in ('judge', 'supervisor')))
+         order by id limit ?`,
+      )
+      .all(rig, after, run, limit) as Row[];
+    return rows.map((r) => ({
+      id: Number(r.id),
+      seq: Number(r.seq),
+      at: String(r.at),
+      source: String(r.source),
+      kind: String(r.kind) as LiveEntry["kind"],
+      text: String(r.text),
+      ...(r.lane ? { lane: String(r.lane) } : {}),
+      ...(r.run ? { run: String(r.run) } : {}),
+      signed: Number(r.signed) === 1,
+    }));
+  }
+
+  /** One run's newest live lines, newest last (for the Live page's first view). */
+  liveRunTail(
+    rig: string,
+    run: string,
+    limit: number,
+  ): (LiveEntry & { id: number; signed: boolean })[] {
+    const top = this.db
+      .prepare(
+        `select id from rig_live where rig = ?
+           and (run = ? or (run is null and source in ('judge', 'supervisor')))
+         order by id desc limit 1 offset ?`,
+      )
+      .get(rig, run, limit) as { id: number } | undefined;
+    return this.liveRun(rig, run, top?.id ?? 0, limit);
+  }
+
   /** The newest live lines of a rig, newest last (for a page's first view). */
   liveTail(
     rig: string,

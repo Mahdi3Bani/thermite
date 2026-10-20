@@ -10,15 +10,26 @@ export const CLIENT_JS = `
   // ------------------------------------------------ the live view
   const tr = $("#transcript");
   if (tr) {
-    const rig = tr.dataset.rig, source = tr.dataset.source || "";
+    const rig = tr.dataset.rig, source = tr.dataset.source || "", run = tr.dataset.run || "";
     let after = Number(tr.dataset.after || "0");
+    let follow = true;
     const near = () => tr.scrollHeight - tr.scrollTop - tr.clientHeight < 120;
     tr.scrollTop = tr.scrollHeight;
+    // A run's page shows one filter at a time: everyone, a lane, the planner, the judge, the
+    // advisors or the owner's own messages (data-who on each line).
+    const shows = (el) => {
+      const w = tr.dataset.w || "all";
+      const who = (el.dataset.who || "").split(" ");
+      return w === "all" || who.includes(w) || who.includes("all");
+    };
+    const filter = () => { for (const el of tr.children) if (el.dataset && el.dataset.who !== undefined) el.hidden = !shows(el); };
+    if (run) filter();
     // Each line comes formatted from control (ui/live.ts, escaped there). A result joins the
-    // tool call just before it: its time, exit code and first line go into the call's row.
+    // tool call before it: on a run's page, the open call of its own source.
     const add = (e) => {
-      const last = tr.lastElementChild;
-      const open = last && last.querySelector("details[data-open]");
+      const open = run
+        ? [...tr.querySelectorAll('[data-src="' + CSS.escape(e.src || "") + '"] details[data-open]')].pop()
+        : (tr.lastElementChild && tr.lastElementChild.querySelector("details[data-open]"));
       if (e.kind === "result" && e.join && open) {
         open.removeAttribute("data-open");
         const hint = open.querySelector(".lv-hint");
@@ -29,16 +40,20 @@ export const CLIENT_JS = `
       const empty = tr.querySelector(".empty");
       if (empty) empty.remove();
       tr.insertAdjacentHTML("beforeend", e.html);
+      const el = tr.lastElementChild;
+      if (run && el && el.dataset && el.dataset.who !== undefined) el.hidden = !shows(el);
     };
     const poll = async () => {
       if (document.visibilityState !== "visible") return;
       try {
         const q = new URLSearchParams({ after: String(after) });
-        if (source) q.set("source", source);
-        const res = await fetch("/ui/rigs/" + encodeURIComponent(rig) + "/live.json?" + q, { credentials: "same-origin" });
+        let url;
+        if (run) { q.set("run", rig + "/" + run); url = "/ui/live.json?" + q; }
+        else { if (source) q.set("source", source); url = "/ui/rigs/" + encodeURIComponent(rig) + "/live.json?" + q; }
+        const res = await fetch(url, { credentials: "same-origin" });
         if (!res.ok) return;
         const body = await res.json();
-        const stick = near();
+        const stick = follow && near();
         for (const e of body.entries || []) { add(e); after = Math.max(after, e.id); }
         if (stick && (body.entries || []).length) tr.scrollTop = tr.scrollHeight;
         const st = $("#live-state .sub");
@@ -46,6 +61,53 @@ export const CLIENT_JS = `
       } catch {}
     };
     setInterval(poll, 2000);
+
+    // The filters and the message box go together: the lane you watch is the one you write to.
+    const box = $("form.lcomposer");
+    const sel = box && box.querySelector("select[name=to]");
+    const ta = box && box.querySelector("textarea");
+    const hint = () => {
+      const o = sel && sel.selectedOptions[0];
+      if (ta && o) ta.placeholder = (o.dataset.hint || "") + " · ⌘↩ sends";
+    };
+    const view = (w) => {
+      tr.dataset.w = w;
+      document.querySelectorAll(".lchip[data-w]").forEach((c) => c.classList.toggle("on", c.dataset.w === w));
+      const wi = box && box.querySelector("input[name=w]");
+      if (wi) wi.value = w;
+      filter();
+      const u = new URL(location.href);
+      if (w === "all") u.searchParams.delete("w"); else u.searchParams.set("w", w);
+      history.replaceState(null, "", u);
+      tr.scrollTop = tr.scrollHeight;
+    };
+    document.querySelectorAll(".lchip[data-w]").forEach((c) => c.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      const w = c.dataset.w;
+      view(w);
+      if (sel && w !== "judge" && w !== "you") {
+        const opt = [...sel.options].find((o) => o.value === w && !o.disabled);
+        if (opt) { sel.value = w; hint(); }
+      }
+    }));
+    if (sel) sel.addEventListener("change", () => {
+      hint();
+      const t = sel.value;
+      const w = ["advisors", "teachers", "auditor", "panel"].includes(t) ? "advisors" : t;
+      if (document.querySelector('.lchip[data-w="' + CSS.escape(w) + '"]')) view(w);
+    });
+    const fb = $(".lfollow");
+    if (fb) fb.addEventListener("click", () => { follow = !follow; fb.classList.toggle("on", follow); fb.setAttribute("aria-pressed", String(follow)); if (follow) tr.scrollTop = tr.scrollHeight; });
+    const nb = $(".lnav-btn");
+    const wrap = $("#lwrap");
+    if (nb && wrap) nb.addEventListener("click", () => wrap.classList.toggle(matchMedia("(max-width: 1180px)").matches ? "open" : "closed"));
+    if (ta) {
+      const grow = () => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight + 2, 160) + "px"; };
+      ta.addEventListener("input", grow);
+      ta.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); box.requestSubmit(); }
+      });
+    }
   }
 
   // ------------------------------------------------ info icons: a label's description on hover
