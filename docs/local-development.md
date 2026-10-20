@@ -144,6 +144,9 @@ Workers and the planner run when the harness has a model route: an OpenAI-compat
 - A role given a model on control's Edit rig page uses that model instead of this file. A Claude subscription's model runs in Claude Code with no tools (the supervisor image needs `CLAUDE_CODE_VERSION`); an API key's model runs as an `openai` runtime.
 - No runtime gets a shell or file tools from Thermite.
 - Web fetch is off unless `fetch_domains` lists domains. With `"*"` (any public site), the knowledge-base search is left out of the same agent, and the auditor fetches only from listed domains.
+- An outside knowledge base (optional, such as GBrain) is set once in control's Providers: its MCP URL, its token, its search tool and, for copies, its write tool. On a campaign's page you choose, for that campaign:
+  - **Copy to it:** control writes each new or changed item of the campaign's folder there as a page, with its origin in the front matter.
+  - **Outside context:** the campaign's advisors may search it. Control gives the URL, the token and the tool with the advisors' routes, only to the supervisors of rigs that run or ran that campaign. Workers never call it.
 - `max_usd_per_day`, when you set it, caps what all advisors of a rig spend in a day. Without it there is no limit. It counts only what it can price: set `usd_per_mtok_in` and `usd_per_mtok_out` on each `openai` runtime, or the cap never trips. A `cli` runtime's spend is not counted, nor is a model given on Edit rig.
 - What they produce is checked twice, by the supervisor and by the harness:
   - directives need citations;

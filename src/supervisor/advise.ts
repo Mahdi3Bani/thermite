@@ -82,19 +82,17 @@ export function emptyAdviseState(): AdviseState {
   };
 }
 
-function kbTool(cfg: AdvisorsConfig): AdvisorTools["kbSearch"] {
-  const kb = cfg.kb;
-  if (!kb) return undefined;
-  return async (query) => {
+/** One knowledge base's search over MCP, read only; the token is a bearer header, never in the URL. */
+function mcpSearch(url: string, token: () => string, tool: string) {
+  return async (query: string) => {
     const client = new Client({ name: "thermite-supervisor", version: "1.0.0" });
-    const token = readFileSync(kb.token_file, "utf8").trim();
     await client.connect(
-      new StreamableHTTPClientTransport(new URL(kb.mcp_url), {
-        requestInit: { headers: { authorization: `Bearer ${token}` } },
+      new StreamableHTTPClientTransport(new URL(url), {
+        requestInit: { headers: { authorization: `Bearer ${token()}` } },
       }),
     );
     try {
-      const r = await client.callTool({ name: kb.tool, arguments: { query } });
+      const r = await client.callTool({ name: tool, arguments: { query } });
       return r.content;
     } finally {
       await client.close();
@@ -102,9 +100,43 @@ function kbTool(cfg: AdvisorsConfig): AdvisorTools["kbSearch"] {
   };
 }
 
+/**
+ * The knowledge-base search for the advisors of one campaign's runs: the rig's own (the advisors
+ * file's `kb`), and each outside knowledge base control granted that campaign. Several are
+ * searched together, each answer under its name. None: no search.
+ */
+export function kbSearchFor(
+  cfg: Pick<AdvisorsConfig, "kb" | "outside_kb">,
+  campaign: string | undefined,
+): AdvisorTools["kbSearch"] {
+  const searches: { name: string; search: (query: string) => Promise<unknown> }[] = [];
+  const kb = cfg.kb;
+  if (kb)
+    searches.push({
+      name: "kb",
+      search: mcpSearch(kb.mcp_url, () => readFileSync(kb.token_file, "utf8").trim(), kb.tool),
+    });
+  for (const o of cfg.outside_kb ?? [])
+    if (campaign && o.campaigns.includes(campaign))
+      searches.push({ name: o.name, search: mcpSearch(o.mcp_url, () => o.token, o.tool) });
+  const [one] = searches;
+  if (!one) return undefined;
+  if (searches.length === 1) return one.search;
+  return (query) =>
+    Promise.all(
+      searches.map(async (s) => ({
+        knowledge_base: s.name,
+        results: await s
+          .search(query)
+          .catch((err) => `failed: ${err instanceof Error ? err.message : String(err)}`),
+      })),
+    );
+}
+
 /** A run as the harness lists it, with the owner's messages each advisor role has not read. */
 interface RunRow {
   id: string;
+  campaign?: string;
   status: string;
   owner_messages_waiting?: { teachers?: number[]; auditor?: number[]; panel?: number[] };
 }
@@ -186,11 +218,28 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
     next.tries[key] = (next.tries[key] ?? 0) + 1;
   };
   // Web fetch only for listed domains; with an open fetch ("*"), no knowledge-base search in the
-  // same agent, so private notes and the open web never meet in one injectable context.
+  // same agent, so private notes and the open web never meet in one injectable context. An
+  // outside knowledge base's search goes only to the advisors of the campaigns granted it.
   const domains = cfg.advisors.fetch_domains;
-  const tools: AdvisorTools = {
-    ...(domains.length ? { fetchUrl: advisorFetcher(cfg.home, domains) } : {}),
-    ...(domains.includes("*") ? {} : { kbSearch: kbTool(cfg.advisors) }),
+  const fetchUrl = domains.length ? advisorFetcher(cfg.home, domains) : undefined;
+  const toolsFor = (campaign: string | undefined): AdvisorTools => ({
+    ...(fetchUrl ? { fetchUrl } : {}),
+    ...(domains.includes("*") ? {} : { kbSearch: kbSearchFor(cfg.advisors, campaign) }),
+  });
+  // A run's campaign, from the harness's list (read once a round, and only when control granted
+  // outside knowledge bases). A list that can't be read gives no campaign: no outside search.
+  let campaigns: Map<string, string> | undefined;
+  const campaignOf = async (run: string | undefined): Promise<string | undefined> => {
+    if (!run || !cfg.advisors.outside_kb?.length) return undefined;
+    if (!campaigns) {
+      try {
+        const { runs } = (await api("GET", "/v1/runs")) as { runs: RunRow[] };
+        campaigns = new Map(runs.map((r) => [r.id, r.campaign ?? ""]));
+      } catch {
+        return undefined;
+      }
+    }
+    return campaigns.get(run) || undefined;
   };
   // A daily spending limit for all advisors of the rig, when the owner set one.
   const day = new Date().toISOString().slice(0, 10);
@@ -332,7 +381,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           run: inst.id,
           brief,
           tools: {
-            ...tools,
+            ...toolsFor(inst.campaign || (await campaignOf(inst.id))),
             brief: () => api("GET", `/v1/brief?run=${encodeURIComponent(inst.id)}`),
           },
         });
@@ -399,7 +448,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         const r = await auditOne({
           config: cfg.advisors,
           pkg: { ...pkg, owner_messages: owner },
-          tools,
+          tools: toolsFor(await campaignOf(pkg.run)),
         });
         count(r);
         if (!r.output) {

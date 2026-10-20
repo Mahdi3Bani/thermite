@@ -1,4 +1,5 @@
-import { type AdvisorRuntime, AdvisorsConfig } from "./advisors.ts";
+import { z } from "zod";
+import { type AdvisorRuntime, AdvisorsConfig, OutsideKbGrant } from "./advisors.ts";
 
 /**
  * The advisors' models that control gives a rig (the owner's choice for each role on the rig's
@@ -7,6 +8,10 @@ import { type AdvisorRuntime, AdvisorsConfig } from "./advisors.ts";
  * subscription's role runs in Claude Code; an API-key route or a ChatGPT sign-in runs here with
  * read-only tools (a sign-in's access token lasts an hour; control's routes are read each round).
  * OpenCode's own models need OpenCode, which advisors do not run, so such a route is skipped.
+ *
+ * Control also gives the outside knowledge bases (goal 065) the owner granted to campaigns this
+ * rig runs, each with its token and those campaigns: their search goes only to the advisors of
+ * those campaigns' runs. They replace any control gave before; the advisors file's own `kb` stays.
  */
 
 /** A route as control hands it (see the harness's ControlRoute); its key stays in memory. */
@@ -26,9 +31,11 @@ export interface ControlAdvisors {
   combiner?: AdvisorRuntime | undefined;
   auditor?: AdvisorRuntime | undefined;
   panel?: AdvisorRuntime[] | undefined;
+  outside_kb?: OutsideKbGrant[] | undefined;
 }
 
 const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+const OutsideKbList = z.array(OutsideKbGrant).max(50);
 
 /** One role's runtime from its route, or undefined when advisors can't run it. */
 export function runtimeOf(route: AdvisorRoute, name: string): AdvisorRuntime | undefined {
@@ -76,7 +83,8 @@ export async function fetchControlAdvisors(o: {
   // An older control has no such endpoint: its rigs keep their own configuration.
   if (res.status === 404) return {};
   if (!res.ok) throw new Error(`control's advisor routes: HTTP ${res.status}`);
-  const r = (await res.json()) as Record<string, AdvisorRoute | null>;
+  const body = (await res.json()) as Record<string, unknown>;
+  const r = body as Record<string, AdvisorRoute | null>;
   const many = (route: AdvisorRoute | null | undefined, base: string, n: number) => {
     if (!route) return undefined;
     const list = Array.from({ length: n }, (_, i) => runtimeOf(route, `${base}-${i + 1}`)).filter(
@@ -89,6 +97,9 @@ export async function fetchControlAdvisors(o: {
     combiner: r.combiner ? runtimeOf(r.combiner, "combiner") : undefined,
     auditor: r.auditor ? runtimeOf(r.auditor, "auditor") : undefined,
     panel: many(r.panel, "reviewer", 3),
+    // An older control sends none, and a list this supervisor can't read gives none: an empty
+    // list, so no search stays from before.
+    outside_kb: OutsideKbList.safeParse(body.outside_kb ?? []).data ?? [],
   };
 }
 
@@ -104,6 +115,7 @@ export function mergeAdvisors(
     combiner: control.combiner ?? base.combiner,
     auditor: control.auditor ?? base.auditor,
     panel: control.panel ?? base.panel,
+    outside_kb: control.outside_kb ?? base.outside_kb,
   };
   return merged.teachers.length || merged.combiner || merged.auditor || merged.panel.length
     ? merged
