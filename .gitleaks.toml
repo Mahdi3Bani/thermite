@@ -8,10 +8,10 @@ title = "Thermite secret scan"
 useDefault = true
 
 [[allowlists]]
-description = "The made-up RunPod key in control's RunPod tests"
+description = "The made-up RunPod key in control's RunPod tests and the fake RunPod API"
 condition = "AND"
 targetRules = ["generic-api-key"]
-paths = ['''^src/control/runpod(-tests|-rigs)?\.test\.ts$''']
+paths = ['''^src/control/runpod(-tests|-rigs)?\.test\.ts$''', '''^src/testing/fake-runpod\.ts$''']
 regexes = ['''^rpa_test-key-0123456789abcdef$''']
 
 [[allowlists]]
