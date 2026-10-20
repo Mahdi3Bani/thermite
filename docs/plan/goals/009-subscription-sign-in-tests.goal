@@ -39,6 +39,9 @@ None.
 ## Progress
 
 - 2026-10-19: Goal written from the v0.1.0 release plan.
+- 2026-10-20: The owner signed in on the maintainers' control: a Claude subscription and Sign in with ChatGPT. Both list their models in Providers.
+  - **ChatGPT:** a rig given `gpt-5.6-luna` under Pi passed the model check, with a correct tool call in 2.9 s.
+  - **Claude:** the model check failed only because that rig's harness image has no Claude Code (it is built without the option). The shell's note (`claude: No such file or directory`) now reads as the reason and the fix (`claudeExitWords`). Left: the Claude check on an image built with Claude Code, a trial on each, and a usage limit.
 
 ---
 

@@ -7,7 +7,9 @@ import type { Runner, RunOutcome, RunRequest } from "../broker/runner.ts";
 import {
   CLAUDE_SYSTEM,
   claudeArgs,
+  claudeExitWords,
   claudeModelCheck,
+  NO_CLAUDE_CODE,
   newClaudeTally,
   readClaudeEvents,
   runClaudeTrial,
@@ -357,6 +359,15 @@ describe("Claude Code", () => {
     assert.equal(call.argv[call.argv.indexOf("--tools") + 1], "Bash");
     // The model check's own user: never a lane's, whose cleanup could kill it (or it theirs).
     assert.ok(runs.every((x) => x.role === "model-check"));
+  });
+
+  test("an image without Claude Code says so, not the shell's note", () => {
+    assert.equal(
+      claudeExitWords(126, "thermite-devfence: claude: No such file or directory\n"),
+      NO_CLAUDE_CODE,
+    );
+    assert.equal(claudeExitWords(127, "sh: claude: not found"), NO_CLAUDE_CODE);
+    assert.equal(claudeExitWords(1, "something else"), "Claude Code exited 1: something else");
   });
 
   test("a Claude subscription goes only with Claude Code, in a route or in the environment", () => {

@@ -39,6 +39,17 @@ import type { SubmitOutcome, TrialResult, TrialSpec } from "./worker.ts";
 /** Claude Code's binary: THERMITE_CLAUDE_BIN, else `claude` on the PATH (read when used). */
 export const claudeBin = () => process.env.THERMITE_CLAUDE_BIN ?? "claude";
 
+/** What to say when the image has no Claude Code: it is in an image only when built with it. */
+export const NO_CLAUDE_CODE =
+  "this rig's harness image has no Claude Code: build the image with the Claude Code option (CLAUDE_CODE_VERSION), or give the rig another harness on Edit rig";
+
+/** Why Claude Code exited, in words: a missing program says so, rather than the shell's note. */
+export function claudeExitWords(code: number | string | null, note: string): string {
+  if ((code === 126 || code === 127) && /claude: (No such file or directory|not found)/.test(note))
+    return NO_CLAUDE_CODE;
+  return `Claude Code exited ${code}: ${note}`;
+}
+
 /** Claude Code's executable as an absolute path (found on PATH), or undefined if it is not there. */
 export function claudeExe(): string | undefined {
   const bin = claudeBin();
@@ -504,7 +515,10 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
     }
     if (outcome.exitCode !== 0 && !tally.session) {
       result.stopped = "error";
-      result.error = `Claude Code exited ${outcome.exitCode ?? outcome.signal}: ${tally.notes.at(-1) ?? "no output"}`;
+      result.error = claudeExitWords(
+        outcome.exitCode ?? outcome.signal,
+        tally.notes.at(-1) ?? "no output",
+      );
       break;
     }
     // Continued twice to get a submission, and then for as long as the owner's messages wait
@@ -594,7 +608,7 @@ export async function claudeOnce(
       tally.errors.push(`no answer in ${Math.round(o.timeoutMs / 1000)} s`);
     else if (r.exitCode !== 0 && !tally.errors.length)
       tally.errors.push(
-        `Claude Code exited ${r.exitCode ?? r.signal}: ${tally.notes.at(-1) ?? r.stderr.slice(-300)}`,
+        claudeExitWords(r.exitCode ?? r.signal, tally.notes.at(-1) ?? r.stderr.slice(-300)),
       );
   } finally {
     o.signal?.removeEventListener("abort", kill);
