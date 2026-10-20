@@ -1,15 +1,30 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import { generateBoxKeys, keySha256, publicKeyLine } from "../../core/tunnel.ts";
+import { pullModeOptions } from "../../supervisor/tunnel-pod.ts";
 import {
-  controlKeyPem,
+  ENROLLED_MAX_BYTES,
   isRunpodVariable,
+  isSupervisorOnly,
   OPEN_NODES_JS,
   oneContainer,
+  parseRigEnv,
+  pullMode,
+  readEnrollment,
+  readSupervisorFile,
   restartAfter,
   SUPERVISOR_PASSWD_HOME,
   supervisorArgv,
@@ -17,6 +32,7 @@ import {
   supervisorGpu,
   supervisorPaths,
   withoutRunpod,
+  writeControlKey,
 } from "./one-container.ts";
 
 // RunPod's variables as the first spike found them (names only; the values are made up).
@@ -41,7 +57,7 @@ describe("the one-container rig image", () => {
 
   test("RunPod's variables are left out of an environment", () => {
     assert.equal(isRunpodVariable("RUNPOD_API_KEY"), true);
-    assert.equal(isRunpodVariable("THERMITE_POD_ID"), false);
+    assert.equal(isRunpodVariable("THERMITE_TUNNEL_POD"), false);
     const env = withoutRunpod({ ...RUNPOD, PATH: "/bin", GONE: undefined });
     assert.deepEqual(env, { PATH: "/bin" });
   });
@@ -51,7 +67,8 @@ describe("the one-container rig image", () => {
       ...RUNPOD,
       PATH: "/usr/bin",
       THERMITE_RIG_ID: "rig-1",
-      THERMITE_POD_ID: "pod-1",
+      THERMITE_TUNNEL_POD: "pod-1",
+      THERMITE_TUNNEL_ENROLL_CODE: "c".repeat(64),
       THERMITE_SUPERVISOR_HOME: "/workspace/thermite/supervisor",
       THERMITE_INBOX_DIR: "/workspace/thermite/inbox",
       THERMITE_SUPERVISOR_TOKEN_FILE: "/workspace/thermite/secrets/supervisor-token",
@@ -77,7 +94,9 @@ describe("the one-container rig image", () => {
     assert.equal(env.TMPDIR, paths.tmp);
     assert.equal(env.USER, "supervisor");
     assert.equal(env.THERMITE_RIG_ID, "rig-1");
-    assert.equal(env.THERMITE_POD_ID, "pod-1");
+    // Pull mode's launch values are the supervisor's: the code is spent at its enrollment.
+    assert.equal(env.THERMITE_TUNNEL_POD, "pod-1");
+    assert.equal(env.THERMITE_TUNNEL_ENROLL_CODE, "c".repeat(64));
     // Defaults: the supervisor image's places.
     assert.equal(supervisorPaths({}).home, "/var/lib/thermite-supervisor");
     assert.equal(supervisorPaths({}).inbox, "/inbox");
@@ -132,20 +151,6 @@ describe("the one-container rig image", () => {
     assert.ok(OPEN_NODES_JS.includes("r+"), "it opens each node for reading and writing");
   });
 
-  test("control's key from the launch: an Ed25519 public key in PEM or base64", () => {
-    const pem = generateKeyPairSync("ed25519")
-      .publicKey.export({ type: "spki", format: "pem" })
-      .toString();
-    assert.equal(controlKeyPem(pem), pem);
-    assert.equal(controlKeyPem(Buffer.from(pem).toString("base64")), pem);
-    assert.equal(controlKeyPem(`\n${Buffer.from(pem).toString("base64")}\n`), pem);
-    const rsa = generateKeyPairSync("rsa", { modulusLength: 2048 })
-      .publicKey.export({ type: "spki", format: "pem" })
-      .toString();
-    assert.throws(() => controlKeyPem(rsa), /rsa key; control signs with Ed25519/);
-    assert.throws(() => controlKeyPem("not a key"), /not a public key/);
-  });
-
   test("a part that exits soon waits longer each time, up to 30 seconds", () => {
     let r = 0;
     const delays: number[] = [];
@@ -157,6 +162,169 @@ describe("the one-container rig image", () => {
     assert.deepEqual(delays, [2000, 4000, 8000, 16000, 30000, 30000, 30000]);
     // After a long run it starts again after a second.
     assert.deepEqual(restartAfter(120_000, 5), { restarts: 0, delayMs: 1000 });
+  });
+});
+
+describe("pull mode in the one-container image: what root takes from enrollment", () => {
+  const me = process.getuid?.() ?? 0;
+  const pem = (type: "ed25519" | "x25519" = "ed25519") =>
+    generateKeyPairSync(type as "ed25519")
+      .publicKey.export({ type: "spki", format: "pem" })
+      .toString();
+  const control = pem();
+  /** The files as the supervisor writes them (src/supervisor/tunnel-pod.ts). */
+  const enrolled = (files: { key?: string; env?: string }) => {
+    const dir = mkdtempSync(join(tmpdir(), "enrolled-"));
+    if (files.env !== undefined) writeFileSync(join(dir, "rig.env"), files.env);
+    if (files.key !== undefined) writeFileSync(join(dir, "control.pub"), files.key);
+    return dir;
+  };
+  const read = (dir: string, sha = keySha256(control)) =>
+    readEnrollment({ dir, rig: "rp-1a2b3c4d", controlKeySha256: sha, owner: me });
+  const ENV = "THERMITE_RIG_ID=rp-1a2b3c4d\nTHERMITE_TARGET=cuda-gpu\nTHERMITE_GPUS=0,1\n";
+
+  test("pull mode is THERMITE_TUNNEL_PORT; its launch values reach the supervisor alone", () => {
+    assert.equal(pullMode({ THERMITE_TUNNEL_PORT: "8790" }), true);
+    assert.equal(pullMode({ THERMITE_TUNNEL_PORT: "" }), false);
+    assert.equal(pullMode({}), false);
+    for (const k of [
+      "THERMITE_TUNNEL_ENROLL_CODE",
+      "THERMITE_TUNNEL_PREFIX",
+      "THERMITE_TUNNEL_PORT",
+      "THERMITE_TUNNEL_CONTROL_BOX",
+      "THERMITE_TUNNEL_POD",
+      "THERMITE_TUNNEL_ENROLLED_DIR",
+    ])
+      assert.equal(isSupervisorOnly(k), true, k);
+    // The controller's isolation check reads these two; neither is secret.
+    assert.equal(isSupervisorOnly("THERMITE_TUNNEL_DIR"), false);
+    assert.equal(isSupervisorOnly("THERMITE_TUNNEL_CONTROL_KEY_SHA256"), false);
+    assert.equal(isSupervisorOnly("THERMITE_RIG_ID"), false);
+  });
+
+  test("waiting until control.pub is there; then ready, with the settings by name", () => {
+    assert.deepEqual(read(enrolled({})), { state: "waiting" });
+    assert.deepEqual(read(enrolled({ env: ENV })), { state: "waiting" });
+    assert.deepEqual(read(enrolled({ key: control, env: ENV })), {
+      state: "ready",
+      controlKeyPem: control,
+      settings: { THERMITE_TARGET: "cuda-gpu", THERMITE_GPUS: "0,1" },
+    });
+    // The launch's hash may come in capitals.
+    assert.equal(
+      read(enrolled({ key: control, env: ENV }), keySha256(control).toUpperCase()).state,
+      "ready",
+    );
+  });
+
+  test("a key other than the one the launch named is refused, whatever the supervisor writes", () => {
+    const other = pem();
+    assert.deepEqual(read(enrolled({ key: other, env: ENV })), {
+      state: "refused",
+      why: "control.pub is not the key the launch named by its SHA-256",
+    });
+    assert.match(
+      (read(enrolled({ key: pem("x25519"), env: ENV })) as { why: string }).why,
+      /not an Ed25519 public key/,
+    );
+    assert.match(
+      (read(enrolled({ key: "junk", env: ENV })) as { why: string }).why,
+      /not a public key/,
+    );
+    assert.deepEqual(read(enrolled({ key: control })), {
+      state: "refused",
+      why: "rig.env is missing",
+    });
+  });
+
+  test("rig.env is data: only the settings control gives, each once, with plain values", () => {
+    const rig = "rp-1a2b3c4d";
+    assert.deepEqual(parseRigEnv(`THERMITE_RIG_ID=${rig}\n`, rig), { settings: {} });
+    assert.deepEqual(parseRigEnv(`\nTHERMITE_RIG_ID=${rig}\n\nTHERMITE_MAX_TRIALS=4\n`, rig), {
+      settings: { THERMITE_MAX_TRIALS: "4" },
+    });
+    const refused = (text: string) => (parseRigEnv(text, rig) as { refused?: string }).refused;
+    // Names a launch can't give: the broker's own places, a secret's file, the loader.
+    for (const line of [
+      "THERMITE_STATE_DIR=/tmp/x",
+      "THERMITE_CONTROL_PUBKEY_FILE=/tmp/key",
+      "LD_PRELOAD=/tmp/x.so",
+      "PATH=/tmp",
+      "export THERMITE_TARGET=cpu",
+      "=cpu",
+      "THERMITE_TARGET",
+    ])
+      assert.match(
+        refused(`THERMITE_RIG_ID=${rig}\n${line}\n`) ?? "",
+        /line 2 is not a setting/,
+        line,
+      );
+    // Values a shell would expand, or that are not one plain word.
+    for (const value of ["$(id)", "`id`", "a b", "cpu;id", "", "x".repeat(101)])
+      assert.match(
+        refused(`THERMITE_RIG_ID=${rig}\nTHERMITE_TARGET=${value}\n`) ?? "",
+        /THERMITE_TARGET is not letters, digits/,
+        value,
+      );
+    assert.match(
+      refused(`THERMITE_RIG_ID=${rig}\nTHERMITE_GPUS=0\nTHERMITE_GPUS=1\n`) ?? "",
+      /twice/,
+    );
+    assert.match(refused("THERMITE_RIG_ID=rp-other\n") ?? "", /not for this rig/);
+    assert.match(refused("THERMITE_TARGET=cpu\n") ?? "", /not for this rig/);
+  });
+
+  test("files root reads must be the supervisor's own plain files, not links, FIFOs or large", () => {
+    const dir = mkdtempSync(join(tmpdir(), "enrolled-"));
+    writeFileSync(join(dir, "plain"), "x");
+    assert.deepEqual(readSupervisorFile(join(dir, "plain"), me), { text: "x" });
+    assert.deepEqual(readSupervisorFile(join(dir, "none"), me), { missing: true });
+    assert.deepEqual(readSupervisorFile(join(dir, "plain"), me + 1), {
+      refused: `it belongs to uid ${me}, not the supervisor`,
+    });
+    // A link to a file only root may read (here: any file) is not followed.
+    symlinkSync(join(dir, "plain"), join(dir, "link"));
+    assert.deepEqual(readSupervisorFile(join(dir, "link"), me), { refused: "it is a link" });
+    // A FIFO with no writer would block a plain read for ever.
+    const fifo = join(dir, "fifo");
+    if (spawnSync("mkfifo", [fifo]).status === 0)
+      assert.deepEqual(readSupervisorFile(fifo, me), { refused: "it is not a plain file" });
+    mkdirSync(join(dir, "folder"));
+    assert.deepEqual(readSupervisorFile(join(dir, "folder"), me), {
+      refused: "it is not a plain file",
+    });
+    writeFileSync(join(dir, "large"), "x".repeat(ENROLLED_MAX_BYTES + 1));
+    assert.match(
+      (readSupervisorFile(join(dir, "large"), me) as { refused: string }).refused,
+      /larger than/,
+    );
+    // In readEnrollment, a linked control.pub is refused too.
+    const linked = enrolled({ env: ENV });
+    writeFileSync(join(linked, "real.pub"), control);
+    symlinkSync(join(linked, "real.pub"), join(linked, "control.pub"));
+    assert.deepEqual(read(linked), { state: "refused", why: "control.pub: it is a link" });
+  });
+
+  test("root's copy of the key: written whole, mode 0644, in a folder of its own", () => {
+    const dir = join(mkdtempSync(join(tmpdir(), "etc-")), "thermite");
+    const file = join(dir, "control-signing.pub");
+    writeControlKey(file, control, me);
+    assert.equal(readFileSync(file, "utf8"), control);
+    assert.equal(statSync(file).mode & 0o777, 0o644);
+    assert.equal(statSync(dir).mode & 0o777, 0o755);
+    // Again: the new key replaces the old one whole.
+    const next = pem();
+    writeControlKey(file, next, me);
+    assert.equal(readFileSync(file, "utf8"), next);
+    // A folder of another user's is never written in.
+    assert.throws(() => writeControlKey(file, control, me + 1), /not a folder of root's own/);
+    // Nor is one that is a link.
+    const linkDir = join(mkdtempSync(join(tmpdir(), "etc-")), "thermite");
+    symlinkSync(dir, linkDir);
+    assert.throws(
+      () => writeControlKey(join(linkDir, "control-signing.pub"), control, me),
+      /not a folder of root's own/,
+    );
   });
 });
 
@@ -181,23 +349,37 @@ describe("the entry point removes RunPod's variables", () => {
     return JSON.parse(r.stdout) as Record<string, string>;
   };
 
-  test("no RUNPOD_ variable reaches what it starts; the pod's ID goes on as THERMITE_POD_ID", () => {
+  test("no RUNPOD_ variable reaches what it starts; the pod's ID goes on as THERMITE_TUNNEL_POD", () => {
     const env = run({ PATH: "/usr/bin:/bin", ...RUNPOD, THERMITE_RIG_ID: "rig-1" });
     assert.deepEqual(
       Object.keys(env).filter((k) => k.startsWith("RUNPOD_")),
       [],
     );
-    assert.equal(env.THERMITE_POD_ID, "pod-1");
+    assert.equal(env.THERMITE_TUNNEL_POD, "pod-1");
     assert.equal(env.THERMITE_RIG_ID, "rig-1");
+    // What pull mode reads: the supervisor finds its pod with RunPod's variable gone.
+    const o = pullModeOptions(
+      {
+        ...env,
+        THERMITE_TUNNEL_PORT: "8790",
+        THERMITE_TUNNEL_PREFIX: "a".repeat(64),
+        THERMITE_TUNNEL_CONTROL_KEY_SHA256: "b".repeat(64),
+        THERMITE_TUNNEL_CONTROL_BOX: publicKeyLine(generateBoxKeys().boxPublicPem),
+        THERMITE_TUNNEL_ENROLL_CODE: "c".repeat(64),
+      },
+      "rig-1",
+      "/workspace/thermite/supervisor",
+    );
+    assert.equal(o?.pod, "pod-1");
   });
 
-  test("a THERMITE_POD_ID given at launch stays, and none is made up without a pod", () => {
+  test("a THERMITE_TUNNEL_POD given at launch stays, and none is made up without a pod", () => {
     assert.equal(
-      run({ PATH: "/usr/bin:/bin", RUNPOD_POD_ID: "pod-1", THERMITE_POD_ID: "given" })
-        .THERMITE_POD_ID,
+      run({ PATH: "/usr/bin:/bin", RUNPOD_POD_ID: "pod-1", THERMITE_TUNNEL_POD: "given" })
+        .THERMITE_TUNNEL_POD,
       "given",
     );
-    assert.equal(run({ PATH: "/usr/bin:/bin" }).THERMITE_POD_ID, undefined);
+    assert.equal(run({ PATH: "/usr/bin:/bin" }).THERMITE_TUNNEL_POD, undefined);
   });
 
   test("a value that looks like a RunPod line is left as it is", () => {

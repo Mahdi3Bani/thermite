@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { generateKeyPairSync } from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import { keySha256 } from "../core/tunnel.ts";
 import { SUPERVISOR_RECORD } from "./broker/one-container.ts";
 import {
   containerChecks,
+  controlKeyCheck,
+  enrollCodeCheck,
   type IsolationReport,
   isFailure,
   isolationSummary,
@@ -156,6 +160,65 @@ describe("the one-container image's checks of the container", () => {
         inboxDir: "/workspace/thermite/inbox",
       },
     );
+    // Pull mode: the key the harness trusts, and the SHA-256 the launch named.
+    assert.deepEqual(
+      oneContainerTargets({
+        THERMITE_ONE_CONTAINER: "1",
+        THERMITE_CONTROL_PUBKEY_FILE: "/etc/thermite/control-signing.pub",
+        THERMITE_TUNNEL_CONTROL_KEY_SHA256: "a".repeat(64),
+      })?.controlKey,
+      { file: "/etc/thermite/control-signing.pub", sha256: "a".repeat(64) },
+    );
+  });
+
+  test("the enrollment code: only root's processes and the supervisor's own may hold it", () => {
+    const code = { THERMITE_TUNNEL_ENROLL_CODE: "c".repeat(64) };
+    const clean = fakeProc([
+      { pid: 1, ppid: 0, env: code },
+      { pid: 2, ppid: 1, env: code },
+      { pid: 7, ppid: 2, argv: SUPERVISOR, uid: 10001, gid: 10001, env: code },
+      // What the supervisor starts, after taking the code out of its environment.
+      { pid: 8, ppid: 7, uid: 10001, gid: 10001, env: { PATH: "/bin" } },
+      { pid: 9, ppid: 2, uid: 10010, gid: 10010, env: { THERMITE_TUNNEL_DIR: "/t" } },
+    ]);
+    assert.equal(enrollCodeCheck(clean), "none (read 5 of 5 processes)");
+    const leaked = fakeProc([
+      { pid: 1, ppid: 0 },
+      { pid: 9, ppid: 1, uid: 10010, gid: 10010, env: code },
+      { pid: 11, ppid: 1, uid: 10001, gid: 10001, env: code },
+    ]);
+    assert.equal(
+      enrollCodeCheck(leaked),
+      "FOUND THERMITE_TUNNEL_ENROLL_CODE in pid 9 (uid 10010), pid 11 (uid 10001)",
+    );
+  });
+
+  test("control's key for the harness: root's, closed to other writers, the launch's", () => {
+    const me = process.getuid?.() ?? 0;
+    const top = mkdtempSync(join(tmpdir(), "etc-"));
+    chmodSync(top, 0o755);
+    const dir = join(top, "thermite");
+    mkdirSync(dir, { mode: 0o755 });
+    const file = join(dir, "control-signing.pub");
+    const keys = generateKeyPairSync("ed25519");
+    const pem = keys.publicKey.export({ type: "spki", format: "pem" }).toString();
+    const sha = keySha256(pem);
+    const check = (s = sha, uid = me) => controlKeyCheck(file, s, { rootUid: uid, top });
+    assert.match(check(), /^MISSING: /);
+    writeFileSync(file, pem, { mode: 0o644 });
+    assert.equal(check(), "root's, the key the launch named");
+    assert.equal(check("0".repeat(64)), "WRONG: it is not the key the launch named by its SHA-256");
+    assert.match(
+      check(sha, me + 1),
+      /^WRONG: .* is uid \d+, mode 644: another user could change it/,
+    );
+    chmodSync(file, 0o664);
+    assert.match(check(), /^WRONG: .*control-signing.pub is uid \d+, mode 664/);
+    chmodSync(file, 0o644);
+    chmodSync(dir, 0o777);
+    assert.match(check(), /^WRONG: .*thermite is uid \d+, mode 777/);
+    chmodSync(dir, 0o755);
+    assert.equal(isFailure(check()), false);
   });
 
   test("the supervisor runs as its own user with no_new_privs", async () => {
@@ -222,7 +285,7 @@ describe("the one-container image's checks of the container", () => {
     assert.equal(runpodCheck(leaked), "FOUND RUNPOD_API_KEY (pid 11)");
   });
 
-  test("all four together, as the selftest reports them", async () => {
+  test("all of them together, as the selftest reports them", async () => {
     const proc = fakeProc([
       { pid: 1, ppid: 0 },
       { pid: 7, ppid: 1, argv: SUPERVISOR, uid: 10001, gid: 10001, nnp: true },
@@ -244,7 +307,18 @@ describe("the one-container image's checks of the container", () => {
       "supervisor-gpu": "no GPU node (fence: none)",
       "setid-files": "none",
       "runpod-variables": "none (read 2 of 2 processes)",
+      "enroll-code": "none (read 2 of 2 processes)",
     });
     assert.equal(Object.values(checks).some(isFailure), false);
+    // Pull mode adds the key the harness trusts: here missing, which fails the selftest.
+    const pull = await containerChecks({
+      brokerDir: broker,
+      procDir: proc,
+      rootDir: root,
+      waitMs: 0,
+      controlKey: { file: join(root, "control-signing.pub"), sha256: "a".repeat(64) },
+    });
+    assert.match(pull["control-key"] ?? "", /^MISSING: /);
+    assert.equal(isFailure(pull["control-key"] ?? ""), true);
   });
 });

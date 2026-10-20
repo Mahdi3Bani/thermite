@@ -123,6 +123,7 @@ In the [one-container rig image](harness-image.md#the-one-container-rig-image), 
 | `supervisor-token` | Read | The supervisor's copy of its token for the harness API |
 | `inbox-list` | List | The inbox, which the supervisor fills for the controller |
 | `supervisor-environ` | Read | The environment of the supervisor's process. Skipped when no supervisor runs |
+| `control-key-write` | Write | Root's copy of control's key, which the harness trusts. In pull mode only |
 
 ### Probes that must succeed
 
@@ -144,6 +145,8 @@ In the [one-container rig image](harness-image.md#the-one-container-rig-image) (
 | `supervisor-gpu` | `refused` or `no GPU node`, with the fence: `(fence: landlock)` or `(fence: none)` | What the supervisor's user met opening each GPU device node, started the way the supervisor is. The broker tries it when it starts, and again when it regroups the cards, and records it in `supervisor.json` in its socket's folder |
 | `setid-files` | `none` | No setuid or setgid file on the container's own filesystem. Other mounts and the scratch folder are left out. `none (<n> folders not readable)` counts the folders the selftest's user could not list |
 | `runpod-variables` | `none (read <n> of <m> processes)` | No `RUNPOD_` variable in the environment of PID 1 or any process started under it. A shell opened in the container from outside is left out. Without `CAP_SYS_PTRACE` a process can read only the environments of its own user's processes: as root, PID 1 and the broker; as the controller, its own |
+| `enroll-code` | `none (read <n> of <m> processes)` | No process of the rig started with pull mode's enrollment code (`THERMITE_TUNNEL_ENROLL_CODE`), but root's and the supervisor's own first process. The supervisor takes the code out of its environment at start, so nothing it starts has it, and the controller never gets it |
+| `control-key` | `root's, the key the launch named` | In pull mode only (`THERMITE_TUNNEL_CONTROL_KEY_SHA256` set): the key the harness trusts, `THERMITE_CONTROL_PUBKEY_FILE`, is a plain file, and it and every folder above it are root's and writable by no other user, so neither the supervisor nor a role can change it. Its SHA-256 is the one the launch named |
 
 ### Results
 
@@ -154,10 +157,10 @@ Each probe's result is the error the operation met (refused, as it must be), `re
 | `ALLOWED` | A probe that must be refused succeeded |
 | `UNREADABLE <error>`, `UNREACHABLE <error>` | A probe that must succeed was refused |
 | `WRONG GPUS <ids>` | `nvidia-smi` showed other cards than the role's own |
-| `FOUND <what>` | Something that must not be there: a RunPod variable, or a set-id file |
+| `FOUND <what>` | Something that must not be there: a RunPod variable, the enrollment code, or a set-id file |
 | `OPENED <nodes>` | The supervisor's user opened a GPU device node |
-| `WRONG USER: <ids>`, `WRONG: <why>` | The supervisor runs as another user or group, or can gain privileges |
-| `MISSING: <what>` | No supervisor process, or no record of it from the broker |
+| `WRONG USER: <ids>`, `WRONG: <why>` | The supervisor runs as another user or group, or can gain privileges; or control's key for the harness is not root's alone, or not the launch's |
+| `MISSING: <what>` | No supervisor process, no record of it from the broker, or no key for the harness in pull mode |
 | `failed: <error>` | The probe script itself failed, or a probe could not run |
 
 | Summary | Meaning |

@@ -68,7 +68,7 @@ Changes to some parts also need a test that starts containers. Each takes from a
 | The workers, the planner, the scheduler, or the OpenCode harness in a hill-climb or research trial | `COMPOSE="podman compose" node scripts/agents-acceptance.mjs` |
 | The New campaign page, the campaign builder, a campaign's **Start a run**, kits kept on control, Git access or the supervisor's staging | `COMPOSE="podman compose" node scripts/campaign-acceptance.mjs` |
 | Rigs on Kubernetes, including moving a rig onto new images, or control's image | `COMPOSE="podman compose" node scripts/cluster-acceptance.mjs` |
-| The one-container rig image, the broker's start of the supervisor or the isolation selftest | `COMPOSE="podman compose" node scripts/rig-image-acceptance.mjs` |
+| The one-container rig image, the broker's start of the supervisor, its wait for enrollment or the isolation selftest | `COMPOSE="podman compose" node scripts/rig-image-acceptance.mjs` |
 
 The campaign test serves a tiny project with `git daemon` and creates a campaign through the New campaign form, which starts a try of its kit. Then it starts the campaign's own run from the campaign's page, with the agents on. Its rig gets a model route that nothing answers, so the agents fail at once, and the script submits the changes itself. The cluster test sets rigs up on a local kind cluster, in a namespace control creates and in a pre-made slot. Then it restarts control with re-tagged images, moves the slot's rig onto them with **Update to these images**, and checks that the rig reports again from the new pods with its volume claim and secret unchanged.
 
@@ -84,7 +84,7 @@ Continuous integration (`.github/workflows/ci.yml`) runs on every pull request, 
 | **docs site** | `npm run docs:build` and `npm run docs:check` |
 | **secret scan** | gitleaks over the whole history of the commit (see below) |
 | **compose-smoke** | The compose smoke test with Docker, after both **checks** jobs pass |
-| **rig image** | Builds the one-container rig image and runs its isolation self-test with Docker (`scripts/rig-image-acceptance.mjs`) |
+| **rig image** | Builds the one-container rig image, enrolls it in pull mode from control's code in the script, and runs its isolation self-test with Docker (`scripts/rig-image-acceptance.mjs`) |
 
 A new commit on a pull request cancels the run for the commit before it. Every push to `main` or `v1/build` gets a whole run of its own.
 

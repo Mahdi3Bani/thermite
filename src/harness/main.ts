@@ -43,7 +43,6 @@ import {
   readLayout,
   runRole,
 } from "./broker/devices.ts";
-import { oneContainer } from "./broker/one-container.ts";
 import { LocalRunner, type Role, type Runner } from "./broker/runner.ts";
 import { collectHardware } from "./hardware.ts";
 import { Judge, type PromotionPolicy, serial } from "./judge/judge.ts";
@@ -83,19 +82,11 @@ async function main(): Promise<void> {
   };
   for (const d of [paths.stateDir, paths.scratchDir, paths.outboxDir])
     mkdirSync(d, { recursive: true });
-  // In the one-container rig image control's key comes with the launch, or later: the harness
-  // waits for it as long as it takes, rather than exit and be restarted again and again.
-  const keyFile = requireEnv("THERMITE_CONTROL_PUBKEY_FILE");
-  const controlPublicKeyPem = oneContainer(env)
-    ? await waitForFile(keyFile, undefined, {
-        waiting: (ms) =>
-          log("harness", "waiting for control's public key", {
-            file: keyFile,
-            waited_s: Math.round(ms / 1000),
-          }),
-        sayEveryMs: 10 * 60_000,
-      })
-    : await waitForFile(keyFile, 120_000);
+  // In pull mode the broker starts the harness only once root has put control's key here.
+  const controlPublicKeyPem = await waitForFile(
+    requireEnv("THERMITE_CONTROL_PUBKEY_FILE"),
+    120_000,
+  );
   const tokens = {
     // The broker passes secret values in the environment (it alone can read the files).
     supervisor: env.THERMITE_SUPERVISOR_TOKEN || secretFromFile("THERMITE_SUPERVISOR_TOKEN_FILE"),

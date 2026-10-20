@@ -29,8 +29,9 @@ RUN find / -xdev -type f -perm /6000 -exec chmod ug-s {} + \
 COPY --chmod=0755 containers/rig/thermite-rig-start /usr/local/bin/thermite-rig-start
 # THERMITE_ONE_CONTAINER: the broker also starts the supervisor. The state of both parts is on
 # RunPod's volume (/workspace, kept when the pod stops); scratch stays on the container's disk.
-# The harness API answers on loopback only. Control's public key comes with the launch
-# (THERMITE_CONTROL_PUBKEY); the broker writes it where both parts read it.
+# The harness API answers on loopback only. Pull mode: control connects to the supervisor's port;
+# the supervisor's enrollment brings control's key, and root gives the harness its own copy of it
+# (THERMITE_CONTROL_PUBKEY_FILE, in a folder only root writes) once its SHA-256 is the launch's.
 ENV THERMITE_ONE_CONTAINER=1 \
     THERMITE_STATE_DIR=/workspace/thermite/harness \
     THERMITE_OUTBOX_DIR=/workspace/thermite/outbox \
@@ -40,8 +41,10 @@ ENV THERMITE_ONE_CONTAINER=1 \
     THERMITE_CONTROL_PUBKEY_FILE=/etc/thermite/control-signing.pub \
     THERMITE_LISTEN=127.0.0.1:8700 \
     HARNESS_URL=http://127.0.0.1:8700 \
-    THERMITE_TUNNEL_PORT=8000
-# The port control is to reach the supervisor on, through RunPod's proxy (goal 019).
-EXPOSE 8000
+    THERMITE_TUNNEL_PORT=8790 \
+    THERMITE_TUNNEL_DIR=/workspace/thermite/supervisor/tunnel \
+    THERMITE_TUNNEL_ENROLLED_DIR=/workspace/thermite/supervisor/enrolled
+# The port control connects to, through RunPod's proxy (the launch exposes it as HTTP).
+EXPOSE 8790
 ENTRYPOINT ["/usr/local/bin/thermite-rig-start", "/usr/bin/tini", "--"]
 CMD ["node", "/opt/thermite/dist/harness/broker.js"]

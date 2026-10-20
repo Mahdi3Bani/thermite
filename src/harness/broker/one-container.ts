@@ -1,5 +1,25 @@
 import { createPublicKey } from "node:crypto";
-import { join } from "node:path";
+import {
+  chmodSync,
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join } from "node:path";
+import {
+  ENROLLED_FILES,
+  keySha256,
+  POD_CONFIG_ENV,
+  POD_CONFIG_VALUE,
+  sameHex,
+} from "../../core/tunnel.ts";
 
 /**
  * The one-container rig image (containers/rig/Containerfile): a rig's harness and supervisor in
@@ -137,24 +157,154 @@ export function supervisorGpu(
 }
 
 /**
- * Control's command-signing public key as the launch gives it (THERMITE_CONTROL_PUBKEY): PEM, or
- * PEM in base64. Returns it as PEM; anything that is not an Ed25519 public key is refused.
+ * Pull mode (THERMITE_TUNNEL_PORT; the one-container image sets it): control connects to the
+ * supervisor, and the supervisor's enrollment brings control's key and the rig's settings. The
+ * controller then starts only once the pod is enrolled (awaitEnrollment in broker.ts).
  */
-export function controlKeyPem(value: string): string {
-  const text = value.includes("-----BEGIN")
-    ? value
-    : Buffer.from(value.trim(), "base64").toString("utf8");
-  let key: ReturnType<typeof createPublicKey>;
+export function pullMode(env: Env): boolean {
+  return Boolean(env.THERMITE_TUNNEL_PORT);
+}
+
+/**
+ * Pull mode's launch values reach the supervisor alone: the enrollment code above all. The
+ * controller keeps two public ones, for its isolation check: the tunnel's folder (no role may
+ * read the pod's keys) and the SHA-256 of control's key (the key it trusts must be that one).
+ */
+const CONTROLLER_TUNNEL_VARS = new Set([
+  "THERMITE_TUNNEL_DIR",
+  "THERMITE_TUNNEL_CONTROL_KEY_SHA256",
+]);
+export const isSupervisorOnly = (name: string): boolean =>
+  name.startsWith("THERMITE_TUNNEL_") && !CONTROLLER_TUNNEL_VARS.has(name);
+
+/** The names rig.env may set: the rig's ID, and the settings control gives a rig at enrollment. */
+export const ENROLLED_SETTINGS: readonly string[] = ["THERMITE_RIG_ID", ...POD_CONFIG_ENV];
+
+/** The most a file enrollment leaves may hold: a public key, or a few settings. */
+export const ENROLLED_MAX_BYTES = 16 * 1024;
+
+type Read = { text: string } | { missing: true } | { refused: string };
+
+/**
+ * Reads a file the supervisor wrote, as data: a plain file of the supervisor's own (`owner`),
+ * not a link, of at most ENROLLED_MAX_BYTES. A link, a FIFO or another user's file is refused, so
+ * the supervisor can never make root read what it could not read itself.
+ */
+export function readSupervisorFile(path: string, owner: number): Read {
+  let fd: number;
   try {
-    key = createPublicKey(text);
-  } catch {
-    throw new Error("THERMITE_CONTROL_PUBKEY is not a public key in PEM, or PEM in base64");
+    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return { missing: true };
+    return { refused: code === "ELOOP" ? "it is a link" : `it can't be opened (${code})` };
   }
-  if (key.asymmetricKeyType !== "ed25519")
-    throw new Error(
-      `THERMITE_CONTROL_PUBKEY is an ${key.asymmetricKeyType} key; control signs with Ed25519`,
-    );
-  return key.export({ type: "spki", format: "pem" }).toString();
+  try {
+    const st = fstatSync(fd);
+    if (!st.isFile()) return { refused: "it is not a plain file" };
+    if (st.uid !== owner) return { refused: `it belongs to uid ${st.uid}, not the supervisor` };
+    if (st.size > ENROLLED_MAX_BYTES)
+      return { refused: `it is larger than ${ENROLLED_MAX_BYTES} bytes` };
+    const buf = Buffer.alloc(st.size);
+    let n = 0;
+    while (n < buf.length) {
+      const got = readSync(fd, buf, n, buf.length - n, n);
+      if (got === 0) break;
+      n += got;
+    }
+    return { text: buf.subarray(0, n).toString("utf8") };
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * The rig's settings in rig.env, as data: one `NAME=value` line each, only the names in
+ * ENROLLED_SETTINGS, each once, with values a shell takes as they are; and the rig's ID must be
+ * the launch's. Returns the settings without the rig's ID. Nothing is ever run or expanded.
+ */
+export function parseRigEnv(
+  text: string,
+  rig: string,
+): { settings: Record<string, string> } | { refused: string } {
+  const settings: Record<string, string> = {};
+  for (const [i, line] of text.split("\n").entries()) {
+    if (line === "") continue;
+    const eq = line.indexOf("=");
+    const name = eq > 0 ? line.slice(0, eq) : "";
+    if (!ENROLLED_SETTINGS.includes(name))
+      return { refused: `rig.env line ${i + 1} is not a setting control gives a rig` };
+    if (name in settings) return { refused: `rig.env sets ${name} twice` };
+    const value = line.slice(eq + 1);
+    if (!POD_CONFIG_VALUE.test(value))
+      return { refused: `rig.env: ${name} is not letters, digits and . _ , : -` };
+    settings[name] = value;
+  }
+  if (settings.THERMITE_RIG_ID !== rig) return { refused: `rig.env is not for this rig (${rig})` };
+  const { THERMITE_RIG_ID: _rig, ...rest } = settings;
+  return { settings: rest };
+}
+
+/** What the supervisor's enrollment left, as root reads it. */
+export type Enrollment =
+  | { state: "waiting" }
+  | { state: "refused"; why: string }
+  | { state: "ready"; controlKeyPem: string; settings: Record<string, string> };
+
+/**
+ * What enrollment left in `dir` (THERMITE_TUNNEL_ENROLLED_DIR), read by root before the
+ * controller starts: control's key, which must be an Ed25519 key whose SHA-256 is the one the
+ * launch named, and the rig's settings (parseRigEnv). Waiting while `control.pub` is not there:
+ * the supervisor writes it last.
+ */
+export function readEnrollment(o: {
+  dir: string;
+  rig: string;
+  controlKeySha256: string;
+  /** The supervisor's uid: the files must be its own. */
+  owner: number;
+}): Enrollment {
+  const refused = (why: string): Enrollment => ({ state: "refused", why });
+  const key = readSupervisorFile(join(o.dir, ENROLLED_FILES.controlKey), o.owner);
+  if ("missing" in key) return { state: "waiting" };
+  if ("refused" in key) return refused(`${ENROLLED_FILES.controlKey}: ${key.refused}`);
+  let pem: string;
+  try {
+    const k = createPublicKey(key.text);
+    if (k.asymmetricKeyType !== "ed25519")
+      return refused(`${ENROLLED_FILES.controlKey} is not an Ed25519 public key`);
+    pem = k.export({ type: "spki", format: "pem" }).toString();
+  } catch {
+    return refused(`${ENROLLED_FILES.controlKey} is not a public key`);
+  }
+  if (!sameHex(keySha256(pem), o.controlKeySha256.toLowerCase()))
+    return refused(`${ENROLLED_FILES.controlKey} is not the key the launch named by its SHA-256`);
+  const env = readSupervisorFile(join(o.dir, ENROLLED_FILES.env), o.owner);
+  if ("missing" in env) return refused(`${ENROLLED_FILES.env} is missing`);
+  if ("refused" in env) return refused(`${ENROLLED_FILES.env}: ${env.refused}`);
+  const parsed = parseRigEnv(env.text, o.rig);
+  if ("refused" in parsed) return refused(parsed.refused);
+  return { state: "ready", controlKeyPem: pem, settings: parsed.settings };
+}
+
+/**
+ * Root's copy of control's key, the only one the harness reads (THERMITE_CONTROL_PUBKEY_FILE):
+ * written whole to a new file in a folder of root's own that is not a link, mode 0644, then
+ * renamed into place. Neither the supervisor nor a role can write the file or its folder. `uid`
+ * is root's (tests give their own).
+ */
+export function writeControlKey(file: string, pem: string, uid = 0): void {
+  const dir = dirname(file);
+  mkdirSync(dir, { recursive: true, mode: 0o755 });
+  const st = lstatSync(dir);
+  if (!st.isDirectory() || st.uid !== uid)
+    throw new Error(`${dir} is not a folder of root's own: control's key is not written there`);
+  chmodSync(dir, 0o755);
+  const tmp = `${file}.tmp`;
+  rmSync(tmp, { force: true });
+  writeFileSync(tmp, pem, { mode: 0o644, flag: "wx" });
+  chmodSync(tmp, 0o644);
+  renameSync(tmp, file);
 }
 
 /**

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { log } from "../common/env.ts";
 import {
   controlCodeProof,
+  ENROLLED_FILES,
   EnrollRequest,
   ExchangeIn,
   enrollmentProof,
@@ -12,6 +13,7 @@ import {
   keySha256,
   open,
   type PodConfig,
+  podTunnelDirs,
   publicKeyFromLine,
   type RequestHead,
   sameHex,
@@ -135,16 +137,6 @@ export function podKeys(dir: string): TunnelKeys {
   writeFileSync(path, JSON.stringify(keys), { mode: 0o600, flag: "wx" });
   return keys;
 }
-
-/** The files enrollment leaves for the harness. */
-export const ENROLLED_FILES = {
-  /** Control's command-signing public key (the harness's THERMITE_CONTROL_PUBKEY_FILE). */
-  controlKey: "control.pub",
-  /** The rig and its settings from control, as JSON. */
-  rig: "rig.json",
-  /** The same settings as `NAME=value` lines, for a shell to export. */
-  env: "rig.env",
-} as const;
 
 function readBody(req: IncomingMessage, limit: number): Promise<Buffer | undefined> {
   return new Promise((resolve) => {
@@ -599,8 +591,7 @@ export function pullModeOptions(
     controlBoxPublicPem,
     enrollCode: need("THERMITE_TUNNEL_ENROLL_CODE"),
     enrollUntil: Number.isFinite(until) ? until : undefined,
-    dir: env.THERMITE_TUNNEL_DIR || join(home, "tunnel"),
-    enrolledDir: env.THERMITE_TUNNEL_ENROLLED_DIR || join(home, "enrolled"),
+    ...podTunnelDirs(env, home),
     publicPort: port,
     localPort: 0,
     localToken: randomBytes(32).toString("base64url"),

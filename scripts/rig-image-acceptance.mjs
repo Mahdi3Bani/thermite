@@ -1,10 +1,18 @@
 #!/usr/bin/env node
 // The one-container rig image (containers/rig/Containerfile), as a RunPod pod runs it, on this
 // machine: built on the CPU harness image, started as root with the engine's default capabilities
-// and without no-new-privileges, and given RunPod's variables (made up). Then:
+// and without no-new-privileges, and given RunPod's variables (made up) and the launch values
+// control mints for pull mode. Control runs in this process and connects to the pod's port, as
+// it would through RunPod's proxy. Then:
+//   - the harness waits for enrollment; once control has enrolled the pod, root checks control's
+//     key against the launch's SHA-256 and gives the harness its own copy, and the rig's
+//     settings from control reach the controller, but not the enrollment code;
+//   - the rig's reports reach control through control's pulls only;
 //   - the isolation selftest passes, both the harness's own check at start and one run as root,
 //     with the container checks (the supervisor's user, its GPU access, set-id files, RunPod's
-//     variables) and the supervisor's places probed for every role;
+//     variables, the enrollment code, control's key) and the supervisor's places probed for
+//     every role;
+//   - a key the supervisor writes after enrollment changes nothing the harness trusts;
 //   - a supervisor or a controller that exits starts again;
 //   - a stop ends both parts cleanly, with exit code 0.
 // With rootless Podman on a machine VM it also gives the container GPU device nodes it can't
@@ -15,6 +23,14 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
 import { cleanEngine } from "./lib/smoke-env.mjs";
+
+// Control's side, in this process (Node.js strips the types of these files).
+const { createControlApi } = await import("../src/control/api.ts");
+const { SecretBox } = await import("../src/control/secrets.ts");
+const { ControlStore } = await import("../src/control/store.ts");
+const { ControlTunnels } = await import("../src/control/tunnel.ts");
+const { generateSigningKeys } = await import("../src/core/commands.ts");
+const { keySha256 } = await import("../src/core/tunnel.ts");
 
 const engine = (process.env.COMPOSE ?? "podman compose").split(" ")[0];
 const harnessImage = "localhost/thermite-harness:rig-image-check";
@@ -44,7 +60,10 @@ function foreignNodesPossible() {
 }
 const foreign = foreignNodesPossible();
 
+/** Control's pulls from the pod, once it is launched. */
+let pump;
 const cleanup = () => {
+  clearInterval(pump);
   spawnSync(engine, ["rm", "-f", name], { stdio: "ignore" });
   spawnSync(engine, ["rmi", "-f", rigImage, harnessImage], { stdio: "ignore" });
   if (foreign) spawnSync(engine, ["machine", "ssh", `sudo rm -rf ${FOREIGN}`], { stdio: "ignore" });
@@ -76,8 +95,9 @@ async function waitFor(msg, ms = 180_000, nth = 1) {
   }
   throw new Error(`no "${msg}" (${nth}) in ${ms / 1000} s\n${logs().slice(-4000)}`);
 }
-/** Runs a Node.js snippet in the container as root and returns its output. */
-const inside = (code) => sh(["exec", name, "node", "-e", code]).trim();
+/** Runs a Node.js snippet in the container as root (or as `user`) and returns its output. */
+const inside = (code, user) =>
+  sh(["exec", ...(user ? ["--user", user] : []), name, "node", "-e", code]).trim();
 const pidsOf = (script) =>
   inside(
     `const fs=require("fs");const out=[];for(const p of fs.readdirSync("/proc")){if(!/^\\d+$/.test(p))continue;try{const a=fs.readFileSync("/proc/"+p+"/cmdline","utf8").split("\\0");if((a[1]||"").endsWith(${JSON.stringify(script)}))out.push(Number(p))}catch{}}console.log(JSON.stringify(out))`,
@@ -133,10 +153,28 @@ try {
       `sudo sh -c 'rm -rf ${FOREIGN} && mkdir -p ${FOREIGN} && cd ${FOREIGN} && touch ${list} && chown 0:0 ${list} && chmod 666 ${list}'`,
     ]);
   }
-  const controlKey = generateKeyPairSync("ed25519").publicKey.export({
-    type: "spki",
-    format: "pem",
+  // Control mints the rig, its one-time code and the pod's launch values, as a launch does.
+  const controlKeys = generateSigningKeys();
+  const store = new ControlStore(":memory:");
+  const secrets = SecretBox.ephemeral();
+  const tunnels = new ControlTunnels(store, secrets, controlKeys.privateKeyPem);
+  createControlApi(
+    store,
+    { admin: "an-admin-token-for-the-test", rigs: {} },
+    controlKeys.privateKeyPem,
+    {
+      staleAfterMs: 180_000,
+      secrets,
+      tunnels,
+    },
+  );
+  const rig = "rig-image-check";
+  const minted = tunnels.mint({
+    by: "owner:test",
+    rig,
+    config: { THERMITE_TARGET_CLASS: "rig-image-check" },
   });
+  check(minted.port === 8790, "control's launch values use the image's port", String(minted.port));
   // RunPod's eight variables, as the first spike found them; the values are made up.
   const runpod = {
     RUNPOD_API_KEY: "made-up-key-for-the-test",
@@ -153,12 +191,14 @@ try {
     "-d",
     "--name",
     name,
-    "-e",
-    "THERMITE_RIG_ID=rig-image-check",
-    "-e",
-    `THERMITE_CONTROL_PUBKEY=${Buffer.from(controlKey).toString("base64")}`,
+    // RunPod's proxy reaches the pod's port; here control reaches it on this machine.
+    "-p",
+    "127.0.0.1::8790",
     "-e",
     "THERMITE_CALIBRATION_BLOCKS=0",
+    "-e",
+    "THERMITE_POLL_SECONDS=5",
+    ...Object.entries(minted.env).flatMap(([k, v]) => ["-e", `${k}=${v}`]),
     ...Object.entries(runpod).flatMap(([k, v]) => ["-e", `${k}=${v}`]),
     ...(foreign
       ? [
@@ -171,16 +211,63 @@ try {
       : []),
     rigImage,
   ]);
-  await waitFor("judge ready");
+  // Before enrollment: the supervisor serves the port, the harness waits.
+  await waitFor("waiting for enrollment: the harness starts once control has enrolled the pod");
   const supervisorUp = await waitFor("waiting for the harness").catch(() => undefined);
   check(Boolean(supervisorUp) || pidsOf("dist/supervisor/main.js") !== "[]", "the supervisor runs");
-  const tokenMade = logLines("made the token between the supervisor and the harness").length;
-  const keyWritten = logLines("wrote control's public key from the launch").length;
-  check(tokenMade === 1 && keyWritten === 1, "the broker made the token and wrote control's key");
+  await sleep(3000);
+  check(pidsOf("dist/harness/main.js") === "[]", "the harness does not start before enrollment");
+  const keyFile = "/etc/thermite/control-signing.pub";
   check(
-    !logs().includes("made-up-key-for-the-test"),
-    "RunPod's API key appears nowhere in the rig's output",
+    spawnSync(engine, ["exec", name, "test", "-e", keyFile]).status !== 0,
+    "no key for the harness before enrollment",
   );
+
+  // Control connects to the pod and enrolls it, then exchanges with it as its loop does.
+  const port = sh(["port", name, "8790/tcp"]).trim().split("\n")[0].split(":").at(-1);
+  tunnels.attach(rig, "pod-test", `http://127.0.0.1:${port}`);
+  pump = setInterval(() => {
+    tunnels.advance(1000).catch((err) => console.error(`pull: ${String(err)}`));
+  }, 500);
+  await waitFor("enrolled: the harness starts with control's key from enrollment", 120_000);
+  check(Boolean(store.tunnelRig(rig)?.enrolled_at), "control enrolled the pod and pinned its keys");
+  await waitFor("judge ready");
+  const tokenMade = logLines("made the token between the supervisor and the harness").length;
+  check(tokenMade === 1, "the broker made the token between the two parts once");
+  const keyNow = () => ({
+    sha: keySha256(sh(["exec", name, "cat", keyFile])),
+    stat: sh(["exec", name, "stat", "-c", "%U %a", keyFile]).trim(),
+  });
+  const given = keyNow();
+  check(
+    given.sha === keySha256(controlKeys.publicKeyPem) && given.stat === "root 644",
+    "root gave the harness its own copy of control's key, the one the launch named",
+    given.stat,
+  );
+  // The controller's environment, read as its own user: control's settings, not the code.
+  const controller = JSON.parse(pidsOf("dist/harness/main.js"))[0];
+  const ctlEnv = inside(
+    `process.stdout.write(require("fs").readFileSync("/proc/${controller}/environ","latin1").split("\\0").map(kv=>kv.split("=")[0]+(kv.startsWith("THERMITE_TARGET_CLASS=")?"="+kv.split("=")[1]:"")).join("\\n"))`,
+    "10010:10010",
+  ).split("\n");
+  check(
+    ctlEnv.includes("THERMITE_TARGET_CLASS=rig-image-check") &&
+      !ctlEnv.some((k) => /^(THERMITE_TUNNEL_(ENROLL_CODE|PREFIX|PORT)|RUNPOD_)/.test(k)),
+    "the controller has the rig's settings from control, and no code, path or RunPod variable",
+    ctlEnv.filter((k) => k.startsWith("THERMITE_TUNNEL") || k.startsWith("RUNPOD")).join(", "),
+  );
+  check(
+    !logs().includes("made-up-key-for-the-test") &&
+      !logs().includes(minted.env.THERMITE_TUNNEL_ENROLL_CODE),
+    "RunPod's API key and the enrollment code appear nowhere in the rig's output",
+  );
+  // The rig's reports reach control, through control's pulls only.
+  let reported = false;
+  for (let i = 0; i < 60 && !reported; i++) {
+    reported = store.rigs().some((r) => r.id === rig);
+    if (!reported) await sleep(2000);
+  }
+  check(reported, "the rig's reports reach control through control's pulls");
 
   if (foreign) {
     const seen = sh(["exec", name, "stat", "-c", "%U %a", "/dev/nvidia0"]).trim();
@@ -198,7 +285,9 @@ try {
   const startContainer = atStart?.detail?.container ?? {};
   check(
     startContainer["supervisor-user"] === "uid 10001, gid 10001, no_new_privs" &&
-      /^none \(read [1-9]/.test(startContainer["runpod-variables"] ?? ""),
+      /^none \(read [1-9]/.test(startContainer["runpod-variables"] ?? "") &&
+      /^none \(read [1-9]/.test(startContainer["enroll-code"] ?? "") &&
+      startContainer["control-key"] === "root's, the key the launch named",
     "it checked the container, from the controller's side too",
     JSON.stringify(startContainer),
   );
@@ -230,6 +319,12 @@ try {
     c["runpod-variables"],
   );
   check(
+    /^none \(read [1-9]/.test(c["enroll-code"] ?? "") &&
+      c["control-key"] === "root's, the key the launch named",
+    "only root and the supervisor had the code; the harness's key is root's and the launch's",
+    `${c["enroll-code"]}; ${c["control-key"]}`,
+  );
+  check(
     foreign
       ? c["supervisor-gpu"] === "refused (fence: landlock)"
       : (c["supervisor-gpu"] ?? "").startsWith("no GPU node"),
@@ -243,6 +338,7 @@ try {
     "supervisor-token",
     "inbox-list",
     "supervisor-environ",
+    "control-key-write",
   ];
   const leaks = Object.entries(roles).flatMap(([role, r]) => [
     ...mustRefuse.filter((p) => !/^E[A-Z]+$/.test(r[p] ?? "")).map((p) => `${role} ${p}: ${r[p]}`),
@@ -281,10 +377,23 @@ try {
     "a supervisor that exits starts again",
     `${before} -> ${after}`,
   );
+  // A supervisor that writes another key after enrollment changes nothing the harness trusts:
+  // root copied the key once, at this start, after checking it.
+  const otherKey = generateKeyPairSync("ed25519").publicKey.export({ type: "spki", format: "pem" });
+  inside(
+    `require("fs").writeFileSync("${STATE}/supervisor/enrolled/control.pub", ${JSON.stringify(otherKey)})`,
+    "10001:10001",
+  );
   kill("dist/harness/main.js");
   await waitFor("controller exited; restarting", 30_000);
   await waitFor("judge ready", 180_000, 2);
   check(true, "a controller that exits starts again");
+  const kept = keyNow();
+  check(
+    kept.sha === given.sha && kept.stat === "root 644",
+    "a key the supervisor writes later is not the one the harness trusts",
+    kept.stat,
+  );
 
   // A stop ends both parts, and the container exits with 0.
   const t0 = Date.now();

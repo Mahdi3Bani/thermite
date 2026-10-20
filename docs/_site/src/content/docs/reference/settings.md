@@ -109,17 +109,16 @@ The harness container runs a **broker**, which runs as root and starts the other
 | `THERMITE_RIG_ID` | string | required | no | The rig's name, as control knows it |
 | `THERMITE_TARGET` | `cpu` or `cuda-gpu` | `cpu` | no | The [target](glossary.md) driver. Anything else stops the harness with `no target driver <value>; this build has cpu and cuda-gpu` |
 | `THERMITE_TARGET_CLASS` | string | `generic-cpu` on `cpu`, `cuda-gpu` on `cuda-gpu` | no | A name for the kind of device. The dashboard shows it with the rig's hardware, and the **New campaign** page and the smoke check copy it into the contracts they write. Nothing compares it |
-| `THERMITE_CONTROL_PUBKEY_FILE` | path | required | no | Control's command-signing public key, to verify signed commands. The harness waits up to 120 seconds for the file to appear, then stops with `timed out waiting for <path>`. With `THERMITE_ONE_CONTAINER=1` it waits as long as it takes, and logs `waiting for control's public key` at once and every 10 minutes |
+| `THERMITE_CONTROL_PUBKEY_FILE` | path | required | no | Control's command-signing public key, to verify signed commands. The harness waits up to 120 seconds for the file to appear, then stops with `timed out waiting for <path>`. In the one-container rig image in pull mode, the broker writes it from enrollment before it starts the harness |
 | `THERMITE_LISTEN` | `host:port` | `0.0.0.0:8700` | no | Where the harness serves its API, for the rig's supervisor, a proposer's `thermite submit` and the agents' tools. Rigs that control sets up expect port 8700 |
 
 ### The one-container rig image
 
-The [one-container rig image](harness-image.md#the-one-container-rig-image) sets `THERMITE_ONE_CONTAINER` itself, with the places it uses. The broker then also reads the supervisor's `THERMITE_SUPERVISOR_HOME` and `THERMITE_INBOX_DIR`, to prepare them, and the isolation selftest probes them.
+The [one-container rig image](harness-image.md#the-one-container-rig-image) sets `THERMITE_ONE_CONTAINER` itself, with the places it uses. The broker then also reads the supervisor's `THERMITE_SUPERVISOR_HOME` and `THERMITE_INBOX_DIR`, to prepare them, and the isolation selftest probes them. In [pull mode](#pull-mode), which the image turns on, the broker also reads `THERMITE_TUNNEL_ENROLLED_DIR` and `THERMITE_TUNNEL_CONTROL_KEY_SHA256`, and starts the harness once the pod is enrolled ([How it starts](harness-image.md#how-it-starts)).
 
 | Variable | Type | Default | Secret | Meaning |
 | --- | --- | --- | --- | --- |
-| `THERMITE_ONE_CONTAINER` | `1` | off | no | `1`: the rig's supervisor runs in this container. The broker prepares its places and its token, writes control's key from `THERMITE_CONTROL_PUBKEY`, and starts it as its own user. A broker that is not root then stops with `fatal: the one-container image must run as root`, and one without `THERMITE_SUPERVISOR_TOKEN_FILE` with `fatal: the one-container image needs THERMITE_SUPERVISOR_TOKEN_FILE` |
-| `THERMITE_CONTROL_PUBKEY` | PEM, or PEM in base64 | not set | no | Control's command-signing public key, given at launch. With `THERMITE_ONE_CONTAINER=1` the broker writes it to `THERMITE_CONTROL_PUBKEY_FILE`. A value that is not an Ed25519 public key is not written: the broker logs `control's public key from the launch is not usable; the harness waits` |
+| `THERMITE_ONE_CONTAINER` | `1` | off | no | `1`: the rig's supervisor runs in this container. The broker prepares its places and its token, and starts it as its own user. A broker that is not root then stops with `fatal: the one-container image must run as root`, and one without `THERMITE_SUPERVISOR_TOKEN_FILE` with `fatal: the one-container image needs THERMITE_SUPERVISOR_TOKEN_FILE`. With `THERMITE_TUNNEL_PORT` set too, it starts the harness only once root has checked control's key from enrollment against the launch's SHA-256 and copied it to `THERMITE_CONTROL_PUBKEY_FILE` |
 
 ### GPUs and CPUs
 
@@ -225,14 +224,14 @@ In [pull mode](../explanation/trust.md#rigs-in-pull-mode), the supervisor never 
 | Variable | Type | Default | Secret | Meaning |
 | --- | --- | --- | --- | --- |
 | `THERMITE_TUNNEL_PORT` | port | not set: no pull mode | no | Turns pull mode on. The supervisor serves this port, on every interface, for control alone. `CONTROL_URL` and `THERMITE_CONTROL_TOKEN_FILE` are not read: the supervisor's calls to control go to a port of its own on `127.0.0.1` and wait there for control. Control's launch values set it to `8790` |
-| `THERMITE_TUNNEL_POD` | string | `RUNPOD_POD_ID`, which RunPod sets in every pod | no | The pod's ID. Every request from control names it, and a request for another pod is refused |
+| `THERMITE_TUNNEL_POD` | string | `RUNPOD_POD_ID`, which RunPod sets in every pod | no | The pod's ID. Every request from control names it, and a request for another pod is refused. The one-container rig image's entry point sets it from `RUNPOD_POD_ID`, which it then removes |
 | `THERMITE_TUNNEL_PREFIX` | 64 hexadecimal characters | required in pull mode | no | A launch value: the random path the port answers under. A request to any other path is refused before its body is read |
 | `THERMITE_TUNNEL_CONTROL_KEY_SHA256` | SHA-256 | required in pull mode | hash | A launch value: the SHA-256 of control's command-signing public key. Control's first request brings the key; the pod takes it only if its SHA-256 is this one |
 | `THERMITE_TUNNEL_CONTROL_BOX` | base64 | required in pull mode | no | A launch value: the rig's public key at control (X25519, on one line). What the pod sends control is sealed to it |
 | `THERMITE_TUNNEL_ENROLL_CODE` | 64 hexadecimal characters | required in pull mode | one-time code | A launch value: the enrollment code. It never crosses the network: each side proves that it holds it. The supervisor takes it out of its own environment at start, so nothing it starts inherits it. The pod's first enrollment spends it |
 | `THERMITE_TUNNEL_ENROLL_UNTIL` | ISO time | not set: the code does not expire | no | A launch value, only when the launch set an expiry: after this time the pod refuses to enroll |
 | `THERMITE_TUNNEL_DIR` | path | `tunnel` in `THERMITE_SUPERVISOR_HOME` | directory with secrets | The pod's own keys (made at its first start, file `keys.json`, mode 0600), its enrollment, and the request nonces it has seen. Mode 0700. A full reset keeps it, so control's trust in the pod stays. Give the harness the same value: its isolation self-test then checks that no role can read the keys |
-| `THERMITE_TUNNEL_ENROLLED_DIR` | path | `enrolled` in `THERMITE_SUPERVISOR_HOME` | no | Where enrollment leaves public files for the harness: control's key (`control.pub`), and the rig's settings from control (`rig.json`, and `rig.env` as `NAME=value` lines). `control.pub` is written last. A full reset keeps it |
+| `THERMITE_TUNNEL_ENROLLED_DIR` | path | `enrolled` in `THERMITE_SUPERVISOR_HOME` | no | Where enrollment leaves public files: control's key (`control.pub`), and the rig's settings from control (`rig.json`, and `rig.env` as `NAME=value` lines). `control.pub` is written last. In the one-container rig image, root checks them and gives the harness its own copy of the key. A full reset keeps it |
 
 In pull mode the supervisor also takes `RUNPOD_API_KEY`, which RunPod puts in a pod's environment, out of its own environment. Thermite never uses it on the pod: control holds its own RunPod key.
 
@@ -276,7 +275,7 @@ Two commands read variables. `thermite doctor` reads `THERMITE_CONTROL_PORT`, th
 - the secret files it checks no role can read: `THERMITE_SUPERVISOR_TOKEN_FILE`, `THERMITE_PROPOSER_TOKEN_FILE` and `THERMITE_MODEL_API_KEY_FILE`, and, when `THERMITE_TUNNEL_DIR` is set, the pull mode keys in it (`keys.json`);
 - the places: `THERMITE_BROKER_DIR`, `THERMITE_STATE_DIR`, `THERMITE_SCRATCH_DIR` and `THERMITE_OUTBOX_DIR`;
 - the GPU settings: `THERMITE_GPU_INDEX`, `THERMITE_DEV_GPU_INDEX`, `THERMITE_GPUS` and `THERMITE_JUDGE_GPUS`;
-- in the one-container rig image, `THERMITE_ONE_CONTAINER`, and the supervisor's places it probes: `THERMITE_SUPERVISOR_HOME` and `THERMITE_INBOX_DIR`.
+- in the one-container rig image, `THERMITE_ONE_CONTAINER`, and the supervisor's places it probes: `THERMITE_SUPERVISOR_HOME` and `THERMITE_INBOX_DIR`; in pull mode also `THERMITE_CONTROL_PUBKEY_FILE` and `THERMITE_TUNNEL_CONTROL_KEY_SHA256`, to check the key the harness trusts.
 
 ## Rigs that control sets up
 

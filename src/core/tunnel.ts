@@ -11,6 +11,7 @@ import {
   randomBytes,
   timingSafeEqual,
 } from "node:crypto";
+import { join } from "node:path";
 import { z } from "zod";
 import { canonicalJson } from "./canonical.ts";
 import { signJson, verifyJson } from "./commands.ts";
@@ -244,7 +245,8 @@ export const POD_CONFIG_ENV = [
 ] as const;
 
 /** A value a shell can take as it is: letters, digits and `. _ , : -`. */
-const SafeValue = z.string().regex(/^[A-Za-z0-9._,:-]{1,100}$/, "letters, digits and . _ , : -");
+export const POD_CONFIG_VALUE = /^[A-Za-z0-9._,:-]{1,100}$/;
+const SafeValue = z.string().regex(POD_CONFIG_VALUE, "letters, digits and . _ , : -");
 
 /** The rig's settings, as control signs them in its enrollment request. */
 export const PodConfig = z.strictObject({
@@ -321,4 +323,35 @@ export interface PodLaunchEnv {
   THERMITE_TUNNEL_ENROLL_CODE: string;
   /** Only when the owner set an expiry for the code: an ISO time. */
   THERMITE_TUNNEL_ENROLL_UNTIL?: string;
+}
+
+/**
+ * The files enrollment leaves on the pod, all public, each written whole: `rig.json`, then
+ * `rig.env`, then `control.pub`, so once `control.pub` is there the other two are complete.
+ */
+export const ENROLLED_FILES = {
+  /**
+   * Control's command-signing public key. In the one-container rig image, root checks it against
+   * the launch's SHA-256 and gives the harness a copy of its own (src/harness/broker.ts).
+   */
+  controlKey: "control.pub",
+  /** The rig and its settings from control, as JSON. */
+  rig: "rig.json",
+  /** The rig's ID and its settings, as `NAME=value` lines whose values a shell takes as they are. */
+  env: "rig.env",
+} as const;
+
+/**
+ * A pod's folders in pull mode: its private state (its keys, its enrollment, the nonces it has
+ * seen), and the folder enrollment leaves its public files in. Both are in the supervisor's home
+ * unless set.
+ */
+export function podTunnelDirs(
+  env: Record<string, string | undefined>,
+  home: string,
+): { dir: string; enrolledDir: string } {
+  return {
+    dir: env.THERMITE_TUNNEL_DIR || join(home, "tunnel"),
+    enrolledDir: env.THERMITE_TUNNEL_ENROLLED_DIR || join(home, "enrolled"),
+  };
 }

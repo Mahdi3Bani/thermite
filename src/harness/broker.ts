@@ -20,6 +20,7 @@ import {
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { log } from "../common/env.ts";
+import { podTunnelDirs } from "../core/tunnel.ts";
 import {
   effectiveGpuLists,
   expectedNodeGroups,
@@ -38,9 +39,11 @@ import {
   shareCpus,
 } from "./broker/devices.ts";
 import {
-  controlKeyPem,
   isRunpodVariable,
+  isSupervisorOnly,
   oneContainer,
+  pullMode,
+  readEnrollment,
   restartAfter,
   SUPERVISOR_RECORD,
   type SupervisorPaths,
@@ -49,6 +52,7 @@ import {
   supervisorEnv,
   supervisorGpu,
   supervisorPaths,
+  writeControlKey,
 } from "./broker/one-container.ts";
 import { killScope, SETPRIV } from "./broker/process.ts";
 import { IDS, roleIds } from "./broker/runner.ts";
@@ -68,11 +72,14 @@ import { ALL_ROLES, startBrokerServer } from "./broker/server.ts";
  * - runs the controller as `thermite` and restarts it if it exits, after killing anything a
  *   role left running;
  * - in the one-container rig image (THERMITE_ONE_CONTAINER=1, broker/one-container.ts), also
- *   prepares the supervisor's places and its token, writes control's key from the launch, and
- *   runs the supervisor as its own user, restarting it if it exits.
+ *   prepares the supervisor's places and its token, and runs the supervisor as its own user,
+ *   restarting it if it exits. In pull mode it starts the controller only once the supervisor's
+ *   enrollment has brought control's key: it checks the key against the launch's SHA-256 and
+ *   gives the harness a copy of its own, and takes the rig's settings from control as data.
  *
- * No process it starts gets RunPod's variables (RUNPOD_*). On SIGTERM or SIGINT it passes the
- * signal on and exits when every part it started has ended.
+ * No process it starts gets RunPod's variables (RUNPOD_*), and only the supervisor gets pull
+ * mode's launch values. On SIGTERM or SIGINT it passes the signal on and exits when every part
+ * it started has ended.
  *
  * Run as a non-root user (local development), it only starts the controller.
  */
@@ -501,7 +508,8 @@ function startController(extraEnv: Record<string, string>): void {
   const startedAt = Date.now();
   const childEnv: Record<string, string> = {};
   for (const [k, v] of Object.entries(env)) {
-    if (v !== undefined && !(k in SECRET_VARS) && !isRunpodVariable(k)) childEnv[k] = v;
+    if (v !== undefined && !(k in SECRET_VARS) && !isRunpodVariable(k) && !isSupervisorOnly(k))
+      childEnv[k] = v;
   }
   for (const [k, v] of Object.entries(beforeStart?.() ?? {})) {
     if (v === undefined) delete childEnv[k];
@@ -545,13 +553,29 @@ function startController(extraEnv: Record<string, string>): void {
 
 /**
  * The one-container rig image: the supervisor's state and temporary directory (its own, closed
- * to every other user), the inbox it shares with the controller, the token it uses on the harness
- * API (made once and kept by root; the supervisor gets a copy in its home at every start), and
- * control's key from the launch. Runs at start, before the secrets are read and before anything
- * else runs, so nothing can swap a path in the supervisor's home for a link meanwhile.
+ * to every other user), the inbox it shares with the controller, and the token it uses on the
+ * harness API (made once and kept by root; the supervisor gets a copy in its home at every
+ * start). In pull mode, the harness's copy of control's key from an earlier start goes: it is
+ * made again from this start's enrollment. Runs at start, before the secrets are read and before
+ * anything else runs, so nothing can swap a path in the supervisor's home for a link meanwhile.
  */
 function prepareOneContainer(): SupervisorPaths {
   const paths = supervisorPaths(env);
+  if (pullMode(env)) {
+    const missing = [
+      "THERMITE_RIG_ID",
+      "THERMITE_CONTROL_PUBKEY_FILE",
+      "THERMITE_TUNNEL_CONTROL_KEY_SHA256",
+    ].filter((k) => !env[k]);
+    if (missing.length || !/^[0-9a-fA-F]{64}$/.test(env.THERMITE_TUNNEL_CONTROL_KEY_SHA256 ?? "")) {
+      log("broker", "fatal: pull mode needs the launch's values", {
+        missing,
+        hint: "THERMITE_TUNNEL_CONTROL_KEY_SHA256 is 64 hexadecimal characters",
+      });
+      process.exit(1);
+    }
+    rmSync(env.THERMITE_CONTROL_PUBKEY_FILE as string, { force: true });
+  }
   mkdirSync(paths.home, { recursive: true });
   if (statSync(paths.home).uid !== SU) {
     execFileSync("chown", ["-R", "-P", `${SU}:${SG}`, paths.home], { stdio: "ignore" });
@@ -591,25 +615,65 @@ function prepareOneContainer(): SupervisorPaths {
   } finally {
     closeSync(fd);
   }
-  // Control's command-signing key, public, from the launch. Without it the harness waits.
-  const keyFile = env.THERMITE_CONTROL_PUBKEY_FILE;
-  if (env.THERMITE_CONTROL_PUBKEY && keyFile) {
-    try {
-      const pem = controlKeyPem(env.THERMITE_CONTROL_PUBKEY);
-      mkdirSync(dirname(keyFile), { recursive: true });
-      rmSync(keyFile, { force: true });
-      writeFileSync(keyFile, pem, { mode: 0o644, flag: "wx" });
-      log("broker", "wrote control's public key from the launch", { file: keyFile });
-    } catch (err) {
-      log("broker", "control's public key from the launch is not usable; the harness waits", {
-        file: keyFile,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  } else if (!keyFile || !existsSync(keyFile)) {
-    log("broker", "no control key yet: the harness waits for it", { file: keyFile ?? null });
-  }
   return paths;
+}
+
+/** While the controller waits for enrollment, the broker says so at once and this often. */
+const SAY_EVERY_MS = 10 * 60_000;
+
+/**
+ * Pull mode in the one-container image: the controller starts once the pod is enrolled. Root
+ * reads what the supervisor's enrollment left (one-container.ts: readEnrollment), checks
+ * control's key against the SHA-256 the launch named, and gives the harness a copy of its own,
+ * so the supervisor never chooses the key the harness trusts. It takes the rig's settings from
+ * control by name, as data, into the environment the controller starts with. Resolves false
+ * when the broker is stopped first.
+ */
+async function awaitEnrollment(paths: SupervisorPaths): Promise<boolean> {
+  const dir = podTunnelDirs(env, paths.home).enrolledDir;
+  const keyFile = env.THERMITE_CONTROL_PUBKEY_FILE as string;
+  const started = Date.now();
+  let said = -Infinity;
+  let lastWhy = "";
+  while (!stopping) {
+    const e = readEnrollment({
+      dir,
+      rig: env.THERMITE_RIG_ID as string,
+      controlKeySha256: env.THERMITE_TUNNEL_CONTROL_KEY_SHA256 as string,
+      owner: SU,
+    });
+    if (e.state === "ready") {
+      writeControlKey(keyFile, e.controlKeyPem);
+      for (const [k, v] of Object.entries(e.settings)) env[k] = v;
+      log("broker", "enrolled: the harness starts with control's key from enrollment", {
+        file: keyFile,
+        settings: Object.keys(e.settings),
+      });
+      return true;
+    }
+    const waited = Date.now() - started;
+    const why = e.state === "refused" ? e.why : "";
+    if (why !== lastWhy || waited - said >= SAY_EVERY_MS) {
+      said = waited;
+      lastWhy = why;
+      if (why)
+        log("broker", "refused what enrollment left: the harness waits", {
+          why,
+          waited_s: Math.round(waited / 1000),
+        });
+      else
+        log(
+          "broker",
+          "waiting for enrollment: the harness starts once control has enrolled the pod",
+          {
+            dir,
+            waited_s: Math.round(waited / 1000),
+          },
+        );
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  return false;
 }
 
 /** The supervisor's command, once it runs as its user (one-container.ts: supervisorArgv). */
@@ -739,9 +803,11 @@ if (isRoot) {
   const killed = killRoles();
   if (killed) log("broker", "killed leftover role processes at start", { killed });
   if (pod) recordSupervisor(pod);
+  let target = env.THERMITE_TARGET;
   beforeStart = () => {
     const next = currentLists();
-    if (next.judge !== lists.judge || next.dev !== lists.dev) {
+    const regroup = next.judge !== lists.judge || next.dev !== lists.dev;
+    if (regroup) {
       log("broker", "the rig's GPU split changed: regrouping the cards", {
         judge: next.judge,
         dev: next.dev ?? null,
@@ -749,9 +815,13 @@ if (isRoot) {
       lists = next;
       gpuLayout = prepareDevices(lists);
       serverOpts.gpuLayout = gpuLayout;
-      serverOpts.runCpus = chooseRunCpus(gpuLayout, lists);
       assertDevices(gpuLayout);
       if (pod) recordSupervisor(pod);
+    }
+    // A target from enrollment's settings (pull mode) may pin timed runs where none were.
+    if (regroup || env.THERMITE_TARGET !== target) {
+      target = env.THERMITE_TARGET;
+      serverOpts.runCpus = chooseRunCpus(gpuLayout, lists);
     }
     // The controller reads the lists as if configured so.
     return { THERMITE_GPU_INDEX: lists.judge, THERMITE_DEV_GPU_INDEX: lists.dev };
@@ -761,9 +831,23 @@ if (isRoot) {
     chownSync(socketPath, 0, TG);
     chmodSync(socketPath, 0o660);
     log("broker", "serving", { socket: socketPath, separated: true });
-    // The supervisor first: the controller's isolation check at start looks for it.
+    const start = () => startController({ ...secrets, THERMITE_BROKER_SOCKET: socketPath });
+    // The supervisor first: in pull mode its enrollment brings control's key; and the
+    // controller's isolation check at start looks for it.
     if (pod) startSupervisor(pod);
-    startController({ ...secrets, THERMITE_BROKER_SOCKET: socketPath });
+    if (pod && pullMode(env))
+      awaitEnrollment(pod).then(
+        (enrolled) => {
+          if (enrolled) start();
+        },
+        (err) => {
+          log("broker", "fatal: could not give the harness control's key from enrollment", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+          process.exit(1);
+        },
+      );
+    else start();
   });
 } else if (env.THERMITE_ALLOW_UNSEPARATED === "1") {
   log("broker", "not root: starting the controller WITHOUT user separation (explicitly allowed)");
