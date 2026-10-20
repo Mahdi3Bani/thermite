@@ -23,7 +23,7 @@ The code moves to `main` only as the last step of the release. Without this chan
 
 ## Done when
 
-- [ ] CI runs on every push to the development branch and passes there.
+- [x] CI runs on every push to the development branch and passes there.
 - [ ] `main` accepts changes only through pull requests that pass CI.
 - [ ] Private vulnerability reporting and Dependabot are on.
 - [ ] The repository's topics are spelled correctly.
@@ -49,6 +49,7 @@ The code moves to `main` only as the last step of the release. Without this chan
   - [ ] **Private vulnerability reporting:** Settings › Advanced Security › Private vulnerability reporting › **Enable**.
   - [ ] **Dependabot alerts:** Settings › Advanced Security › Dependabot alerts › **Enable**.
   - [ ] **Topics:** the repository's main page › **About** (the gear icon) › **Topics**. Remove `harnes`, which is misspelled; `harness` is already there. The topics after: `agent-tools`, `artificial-intelligence`, `auto-research`, `autonomous-agents`, `harness`, `harness-framework`, `llm`.
+- 2026-10-20: CI run 39479049337 on `v1/build` (85b4de0) passed every job: both checks, the docs site, the secret scan, the compose smoke, the quick start, the rig image and RunPod. The other boxes are the owner's repository settings.
 
 ---
 

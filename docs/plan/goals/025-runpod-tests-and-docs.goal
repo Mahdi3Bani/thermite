@@ -23,7 +23,7 @@ The RunPod path must be tested without paid GPU time on every change.
 
 ## Done when
 
-- [ ] CI covers launch, enrollment, stop, start and terminate against the fake API.
+- [x] CI covers launch, enrollment, stop, start and terminate against the fake API.
 - [ ] The paid run is recorded in Progress.
 - [x] The how-to is in the docs index.
 
@@ -45,6 +45,7 @@ None.
 - 2026-10-20: **The paid run, written, not run.** `scripts/runpod-paid-acceptance.mjs --control URL --token-file F --gpu G --spend-limit USD --i-accept-the-cost` launches one pod through control and checks the launch on Secure cloud, enrollment, reports, the isolation check at start, that requests to `https://<pod>-8790.proxy.runpod.net` from outside all get the same empty 404, the stop with its export on control, the start (or RunPod's plain refusal when no GPU is free), and the terminate. On a failure it stops the pod and says how to end it. It needs the owner's OK to spend; record its output here.
 - 2026-10-20: **The how-to.** [Run a rig on RunPod](../../_site/src/content/docs/how-to/install/runpod-rig.md), in the install how-tos and in Start here: the account in Providers, the image, the launch over the command line, REST and MCP (the dashboard has no form yet, as it says), limits, stop, start, restart, results, terminate and the full reset.
 - 2026-10-20: Left: the first CI run of the `runpod` job, and the paid run.
+- 2026-10-20: The `runpod` job passed on GitHub (CI run 39479049337 on `v1/build` (85b4de0)). Left: the paid run, with the owner's OK.
 
 ---
 

@@ -33,7 +33,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [001](goals/001-plans-in-public.goal) Plans in public docs · `VERIFIED`
 - [002](goals/002-ci-and-repository-settings.goal) CI on every push, and repository settings · `IN_PROGRESS`
 - [003](goals/003-advisors-no-default-cap.goal) No default spend limit for advisors · `VERIFIED`
-- [004](goals/004-secret-scan.goal) Scan the history for secrets · `IN_PROGRESS`
+- [004](goals/004-secret-scan.goal) Scan the history for secrets · `VERIFIED`
 - [005](goals/005-sample-project.goal) A sample project in `examples/` · `IN_PROGRESS`
 - [060](goals/060-docs-site.goal) The documentation site · `VERIFIED`
 - [006](goals/006-docs-for-testers.goal) Docs for testers · `DROPPED`, merged into 060
@@ -48,7 +48,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [011](goals/011-release-bundle.goal) A release bundle · `IN_PROGRESS`
 - [012](goals/012-version-checks.goal) Version checks between control and rigs · `IN_PROGRESS`
 - [013](goals/013-thermite-doctor.goal) `thermite doctor` · `VERIFIED`
-- [014](goals/014-quick-start-in-ci.goal) The quick start, tested in CI · `IN_PROGRESS`
+- [014](goals/014-quick-start-in-ci.goal) The quick start, tested in CI · `VERIFIED`
 - [015](goals/015-log-paging.goal) Log paging · `VERIFIED`
 - [016](goals/016-small-fixes.goal) Small fixes before the release · `VERIFIED`
 - [017](goals/017-legacy-names.goal) Remove the legacy model names · `VERIFIED`

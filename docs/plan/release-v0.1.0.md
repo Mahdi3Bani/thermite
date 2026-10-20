@@ -41,7 +41,7 @@ A tester can run Thermite, knows the risks, and knows where to report a problem.
 | [001 · Plans in public docs](goals/001-plans-in-public.goal) | `VERIFIED` | — |
 | [002 · CI on every push, and repository settings](goals/002-ci-and-repository-settings.goal) | `IN_PROGRESS` | — |
 | [003 · No default spend limit for advisors](goals/003-advisors-no-default-cap.goal) | `VERIFIED` | — |
-| [004 · Scan the history for secrets](goals/004-secret-scan.goal) | `IN_PROGRESS` | — |
+| [004 · Scan the history for secrets](goals/004-secret-scan.goal) | `VERIFIED` | — |
 | [005 · A sample project in `examples/`](goals/005-sample-project.goal) | `IN_PROGRESS` | — |
 | [060 · The documentation site](goals/060-docs-site.goal) | `VERIFIED` | — |
 | [006 · Docs for testers](goals/006-docs-for-testers.goal) | `DROPPED`, merged into 060 | — |
@@ -72,7 +72,7 @@ A tester pulls images in place of building them, and every remote rig has images
 | [011 · A release bundle](goals/011-release-bundle.goal) | `IN_PROGRESS` | [010](goals/010-published-images.goal) |
 | [012 · Version checks between control and rigs](goals/012-version-checks.goal) | `IN_PROGRESS` | [010](goals/010-published-images.goal) |
 | [013 · `thermite doctor`](goals/013-thermite-doctor.goal) | `VERIFIED` | — |
-| [014 · The quick start, tested in CI](goals/014-quick-start-in-ci.goal) | `IN_PROGRESS` | [005](goals/005-sample-project.goal), [011](goals/011-release-bundle.goal) |
+| [014 · The quick start, tested in CI](goals/014-quick-start-in-ci.goal) | `VERIFIED` | [005](goals/005-sample-project.goal), [011](goals/011-release-bundle.goal) |
 | [015 · Log paging](goals/015-log-paging.goal) | `VERIFIED` | — |
 | [016 · Small fixes before the release](goals/016-small-fixes.goal) | `VERIFIED` | — |
 | [017 · Remove the legacy model names](goals/017-legacy-names.goal) | `VERIFIED` | — |

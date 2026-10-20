@@ -1,17 +1,19 @@
 ---
 id: "014"
 title: "The quick start, tested in CI"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 part: "Install from images"
 depends_on: ["005", "011"]
 created: 2026-10-19
 updated: 2026-10-20
+- 2026-10-20: The `quick-start` job passed on GitHub with Docker in 8 min 13 s (CI run 39479049337 on `v1/build` (85b4de0)). The fast test that reads the pages runs on every pull request. Verified.
+
 ---
 
 # 014 · The quick start, tested in CI
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Install from images · **Depends on:** [005](005-sample-project.goal), [011](011-release-bundle.goal)
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Install from images · **Depends on:** [005](005-sample-project.goal), [011](011-release-bundle.goal)
 
 ## What
 
@@ -23,7 +25,7 @@ A broken quick start must fail the build, not a tester's first hour.
 
 ## Done when
 
-- [ ] The job runs on every pull request and fails when the quick start breaks.
+- [x] The job runs on every pull request and fails when the quick start breaks.
 
 ## Decisions
 
