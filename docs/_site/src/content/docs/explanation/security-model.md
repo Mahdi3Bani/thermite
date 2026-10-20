@@ -83,7 +83,7 @@ The harness's network depends on where the rig runs. Its supervisor needs the in
 | **A machine**, set up by control over SSH or joined by you | The same as compose: the rig's `egress` Podman network leads to the internet and to the machine's local network | Its port is not published on the machine |
 | **Kubernetes**, in a namespace that control creates or that you join | DNS, and addresses outside the private ranges of RFC 1918, by the network rules that control adds. The cluster's network plugin must enforce them | Only its supervisor, on port 8700 |
 | **Kubernetes**, in a slot that the cluster's operators made | What the operators' network rules allow. Control refuses a slot unless those rules keep the harness off the private ranges | What the operators' rules allow |
-| **RunPod** | Rigs on RunPod are not built yet ([goals 019 to 025](https://github.com/iammrduncan/thermite/blob/main/docs/plan/roadmap.md#rigs-on-runpod)). Today control starts only short test pods there (below) | |
+| **RunPod**, a one-container rig that control launched | DNS and the internet. Thermite adds no network rules in a pod, so code that a lane runs can reach any outside address | Nothing from outside: the harness's API answers only inside the pod. The supervisor serves one port, through RunPod's proxy, and answers only control's signed requests; anything else gets the same empty 404 ([Rigs in pull mode](trust.md#rigs-in-pull-mode)) |
 
 On Kubernetes, neither of a rig's pods gets a service-account token. Nothing in them calls the cluster's API: control starts, stops and updates the rig.
 
