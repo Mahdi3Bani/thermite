@@ -1,9 +1,10 @@
 import { randomBytes } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import { serve } from "@hono/node-server";
+import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL, SEARCH_MAX } from "../harness/knowledge.ts";
 
@@ -36,8 +37,31 @@ export interface PastSearchServer {
 }
 
 /** Starts the search's MCP server on a free local port. Close it when the call ends. */
-export async function servePastSearch(search: PastSearch): Promise<PastSearchServer> {
+export function servePastSearch(search: PastSearch): Promise<PastSearchServer> {
+  return serveAdvisorTools({ pastSearch: search });
+}
+
+/**
+ * An advisor's MCP servers for one call of Claude Code (goal 068): each server the run's kit
+ * gives the advisors, as the supervisor serves it on localhost (each call goes through the
+ * supervisor, which holds the sign-in), and the past-research search when there is one.
+ */
+export interface AdvisorServers {
+  servers: string[];
+  serverFor(server: string): Server;
+}
+
+/**
+ * Starts the advisor's local MCP servers on a free port: the past-research search at /mcp, and
+ * each MCP server the advisor gets at /mcp/<name>. Claude Code is given them alone, and
+ * permission for their tools only. Close it when the call ends.
+ */
+export async function serveAdvisorTools(o: {
+  pastSearch?: PastSearch | undefined;
+  mcp?: AdvisorServers | undefined;
+}): Promise<PastSearchServer> {
   const token = randomBytes(24).toString("hex");
+  const search = o.pastSearch;
   const build = () => {
     const server = new McpServer({ name: "thermite-past-research", version: "1.0.0" });
     server.registerTool(
@@ -62,7 +86,7 @@ export async function servePastSearch(search: PastSearch): Promise<PastSearchSer
       },
       async (a) => {
         try {
-          const found = await search(a.query, { kinds: a.kinds, limit: a.limit });
+          const found = await (search as PastSearch)(a.query, { kinds: a.kinds, limit: a.limit });
           return { content: [{ type: "text" as const, text: JSON.stringify(found) }] };
         } catch (err) {
           return {
@@ -80,28 +104,50 @@ export async function servePastSearch(search: PastSearch): Promise<PastSearchSer
     return server;
   };
   const app = new Hono();
-  app.all("/mcp", async (c) => {
+  const serving = (make: () => McpServer | Server) => async (c: Context) => {
     if (c.req.header("authorization") !== `Bearer ${token}`)
       return c.json({ error: "unauthorized" }, 401);
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,
     });
-    await build().connect(transport);
+    await make().connect(transport);
     return transport.handleRequest(c.req.raw);
-  });
+  };
+  if (search) app.all("/mcp", serving(build));
+  const mcp = o.mcp;
+  if (mcp)
+    app.all("/mcp/:server", async (c) => {
+      const name = c.req.param("server");
+      if (!mcp.servers.includes(name)) return c.json({ error: "not found" }, 404);
+      return serving(() => mcp.serverFor(name))(c);
+    });
   const server = await new Promise<ReturnType<typeof serve>>((resolve) => {
     const s = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" }, () => resolve(s));
   });
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/mcp`;
+  const headers = { Authorization: `Bearer ${token}` };
   const config = {
     mcpServers: {
-      [PAST_MCP_SERVER]: { type: "http", url, headers: { Authorization: `Bearer ${token}` } },
+      ...(search ? { [PAST_MCP_SERVER]: { type: "http", url, headers } } : {}),
+      ...Object.fromEntries(
+        (mcp?.servers ?? []).map((s) => [
+          s,
+          { type: "http", url: `${url}/${encodeURIComponent(s)}`, headers },
+        ]),
+      ),
     },
   };
   return {
     url,
-    args: ["--mcp-config", JSON.stringify(config), "--allowedTools", PAST_MCP_TOOL],
+    args: [
+      "--mcp-config",
+      JSON.stringify(config),
+      "--allowedTools",
+      ...(search ? [PAST_MCP_TOOL] : []),
+      // A server's name allows each of its tools.
+      ...(mcp?.servers ?? []).map((s) => `mcp__${s}`),
+    ],
     close: () =>
       new Promise<void>((r) => {
         (server as unknown as { closeAllConnections?: () => void }).closeAllConnections?.();

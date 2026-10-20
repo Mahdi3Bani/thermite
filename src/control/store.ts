@@ -557,6 +557,12 @@ function providerOf(r: Row): ModelProvider {
 export interface CampaignSources {
   project?: { url: string; access?: string | undefined; repo: string; commit: string } | undefined;
   kit?: { control: string } | { git: string; access?: string | undefined } | undefined;
+  /**
+   * The MCP servers the campaign's kit names (goal 068), with the agents that get each one: as
+   * control wrote or read them into a kit it keeps, or as the page read them from a kit in a
+   * repository (the rig's harness checks them against the kit's kit.json).
+   */
+  mcp_servers?: unknown;
 }
 
 /** A decision the owner sent to a rig, and the rig's answer once it came. */

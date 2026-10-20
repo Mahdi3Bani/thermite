@@ -137,11 +137,129 @@ export const NEW_CAMPAIGN_JS = `
     const list = $("#kit-files-list"); list.textContent = files.map((f) => f.name + (f.run ? " (the run reads it)" : "")).join(", ");
     e.target.value = "";
   });
+  // ------------------------------------------------ MCP servers for the agents (goal 068)
+  const WHO = ["workers", "planner", "advisors"];
+  const research = () => (choice.mode || "hill_climb") === "research";
+  const repoKitOn = () => !research() && (choice.kit || "here") === "repo";
+  const blockOf = (prefix) => $('[data-mcp-block="' + prefix + '"]');
+  const mcpBlock = () => blockOf(research() ? "r" : "k");
+  // A kit in a repository: the servers its kit.json names, as control read them (null: not read).
+  let repoKit = { key: "", list: null, said: "" };
+  const rowOf = (blk, name) => $$(".sopt[data-srv]", blk).find((o) => o.dataset.srv === name);
+  /** The servers ticked in a block: each with its agents and, only when narrowed, their tools. */
+  const picked = (blk) => (blk ? $$(".sopt[data-srv]", blk) : []).filter((o) => $("[data-srv-on]", o).checked).map((o) => {
+    const agents = WHO.filter((k) => $('[data-who="' + k + '"]', o).checked);
+    const rows = $$("tr[data-tool]", o);
+    const tools = {};
+    for (const k of agents) {
+      if (!rows.length) continue;
+      const on = rows.filter((tr) => $('[data-tool-who="' + k + '"]', tr).checked).map((tr) => tr.dataset.tool);
+      if (on.length < rows.length) tools[k] = on;
+    }
+    return { name: o.dataset.srv, agents, ...(Object.keys(tools).length ? { tools } : {}) };
+  });
+  const mcpList = () => (repoKitOn() ? repoKit.list : picked(mcpBlock()));
+  /** Ticks a block's servers, agents and tools as a list says (a draft sent back, an uploaded kit). */
+  const restoreMcp = (blk, list) => {
+    if (!blk || !Array.isArray(list)) return;
+    for (const o of $$(".sopt[data-srv]", blk)) {
+      const u = list.find((x) => x.name === o.dataset.srv);
+      $("[data-srv-on]", o).checked = !!u;
+      for (const k of WHO) $('[data-who="' + k + '"]', o).checked = !!u && u.agents.includes(k);
+      for (const tr of $$("tr[data-tool]", o))
+        for (const k of WHO) {
+          const only = u && u.tools && u.tools[k];
+          $('[data-tool-who="' + k + '"]', tr).checked = !only || only.includes(tr.dataset.tool);
+        }
+    }
+  };
+  const andList = (xs) => (xs.length > 1 ? xs.slice(0, -1).join(", ") + " and " + xs[xs.length - 1] : xs[0] || "");
+  const line = (cls, text) => { const s = document.createElement(cls === "bad" ? "b" : "span"); s.className = cls; s.textContent = text + " "; return s; };
+  const mcpUpdate = () => {
+    for (const blk of $$("[data-mcp-block]")) {
+      const repo = blk.dataset.mcpBlock === "k" && repoKitOn();
+      $$("[data-mk-kit]", blk).forEach((el) => (el.hidden = el.dataset.mkKit !== (repo ? "repo" : "here")));
+      for (const o of $$(".sopt[data-srv]", blk)) {
+        const on = $("[data-srv-on]", o).checked;
+        $(".mcp-who", o).classList.toggle("off", !on);
+        for (const x of $$("input[data-tool-who]", o)) x.disabled = !on || !$('[data-who="' + x.dataset.toolWho + '"]', o).checked;
+      }
+      const list = repo ? repoKit.list : picked(blk);
+      const known = (n) => !!rowOf(blk, n);
+      const toolsOf = (n) => Number((rowOf(blk, n) || { dataset: {} }).dataset.tools || 0);
+      const bad = (n) => (rowOf(blk, n) || { dataset: {} }).dataset.bad === "1";
+      const part = (k) => {
+        const s = (list || []).filter((x) => x.agents.includes(k) && known(x.name));
+        const n = s.reduce((t, x) => t + (x.tools && x.tools[k] ? x.tools[k].length : toolsOf(x.name)), 0);
+        const get = k === "planner" ? " gets " : " get ";
+        return s.length ? "the " + k + get + n + " tool" + (n === 1 ? "" : "s") + " from " + andList(s.map((x) => x.name)) : "the " + k + get + "none";
+      };
+      const sum = $("[data-mcp-sum]", blk);
+      sum.replaceChildren();
+      if (list === null) sum.textContent = repoKit.said;
+      else if (!list.length) sum.textContent = "No MCP server: the agents have only Thermite's own tools.";
+      else {
+        const t = WHO.map(part).join("; ");
+        sum.append(t.charAt(0).toUpperCase() + t.slice(1) + ". ");
+        for (const x of list) {
+          if (!known(x.name)) sum.append(line("bad", x.name + " is not in Settings: this campaign can't start until it is."));
+          else if (bad(x.name)) sum.append(line("warn", x.name + " doesn't work now: fix it in Settings, or the agents go on without it."));
+          if (!x.agents.length) sum.append(line("bad", "Choose the agents that get " + x.name + ", or untick it."));
+          for (const k of x.agents) if (x.tools && x.tools[k] && !x.tools[k].length) sum.append(line("bad", "The " + k + " get no tool of " + x.name + ": give them one, or untick " + k + "."));
+        }
+      }
+      $("[data-mcp-json]", blk).textContent = JSON.stringify({ mcp_servers: list || [] }, null, 2);
+      const box = $("[data-mcp-repo-list]", blk);
+      if (!box) continue;
+      box.replaceChildren();
+      $("[data-mcp-repo-said]", blk).textContent = repoKit.list
+        ? "Read from the kit's kit.json at commit " + repoKit.key.split("@").pop().slice(0, 7) + ". To change them, change kit.json in the kit's repository."
+        : "Fill in the kit's repository and its commit: control reads the servers from its kit.json. To change them, change kit.json in the kit's repository.";
+      for (const x of repoKit.list || []) {
+        const found = known(x.name);
+        const row = document.createElement("div"); row.className = "ck";
+        const res = document.createElement("span"); res.className = "ck-res";
+        const chip = document.createElement("span"); chip.className = "chip " + (found ? "ok" : "bad"); chip.textContent = found ? "✓ found" : "✕ missing"; res.append(chip);
+        const main = document.createElement("span"); main.className = "ck-main";
+        const head = document.createElement("span"); const b = document.createElement("b"); b.textContent = x.name;
+        const who = document.createElement("span"); who.className = "muted small"; who.textContent = " for the " + x.agents.join(", ");
+        head.append(b, who);
+        const st = document.createElement("span"); st.className = "ck-sum" + (found ? "" : " bad");
+        st.textContent = found ? "In Settings · " + toolsOf(x.name) + " tools" + (bad(x.name) ? " · it doesn't work now" : "") : "Not in Settings. Add an MCP server named " + x.name + " in Settings, or this campaign can't start.";
+        main.append(head, st);
+        const act = document.createElement("span");
+        if (!found) { const a = document.createElement("a"); a.className = "btn sm"; a.href = "/ui/settings#add-mcp"; a.textContent = "Add it in Settings"; act.append(a); }
+        row.append(res, main, act); box.append(row);
+      }
+    }
+  };
+  // A server ticked now goes to the workers until other agents are chosen.
+  form.addEventListener("change", (e) => {
+    const s = e.target.closest && e.target.closest("[data-srv-on]");
+    if (s && s.checked) { const o = s.closest(".sopt"); if (!$("[data-who]:checked", o)) $('[data-who="workers"]', o).checked = true; update(); }
+  });
+  // A kit in a repository: control reads its kit.json once the repository and commit are given.
+  const readRepoKit = async () => {
+    const url = val("kit_url"), commit = val("kit_commit"), key = url + "@" + commit;
+    if (!url || !/^[0-9a-f]{40}$/.test(commit) || key === repoKit.key) return;
+    repoKit = { key, list: null, said: "Reading the kit's kit.json…" };
+    update();
+    try {
+      const res = await fetch("/ui/campaigns/new/kit-repo?" + new URLSearchParams({ url, commit, access: val("kit_access") }), { credentials: "same-origin" });
+      const j = await res.json();
+      repoKit = res.ok ? { key, list: j.mcp_servers, said: "" } : { key, list: null, said: j.error || "Control could not read the kit's kit.json." };
+    } catch { repoKit = { key, list: null, said: "Control could not reach the kit's repository." }; }
+    update();
+  };
+  for (const n of ["kit_url", "kit_commit", "kit_access"]) form.elements[n]?.addEventListener("change", readRepoKit);
+
   // ------------------------------------------------ an uploaded kit: control checks it and says what it holds
   let upKit = null;
   const option = (value, text) => { const o = document.createElement("option"); o.value = value; o.textContent = text; return o; };
   const showKit = (j, pick) => {
     upKit = j;
+    // Its MCP servers, as its kit.json names them, ticked here: control keeps the kit, so they can change.
+    if (!pick) restoreMcp(blockOf("k"), j.mcp_servers || []);
     form.elements.kit_upload.value = j.id;
     $("#up-kit").hidden = false;
     const n = j.cells.length;
@@ -188,8 +306,12 @@ export const NEW_CAMPAIGN_JS = `
     if (num("wall_hours")) d.wall_hours = num("wall_hours");
     if (mode === "research") {
       d.research = { topic: val("topic"), questions: lines("questions"), seeds: lines("seeds"), min_duration: val("min_duration") };
+      d.mcp_servers = picked(blockOf("r"));
       return d;
     }
+    // The kit's MCP servers: ticked here, or read from a kit in a repository.
+    const servers = mcpList();
+    if (servers) d.mcp_servers = servers;
     const url = val("project_url");
     d.project = { url, ...(val("project_access") ? { access: val("project_access") } : {}), ref: val("project_ref") || undefined, commit: found ? found.commit : undefined, repo: repoName(url), ...(folder() ? { folder: folder() } : {}), editable_paths: lines("editable_paths"), forbidden_patterns: lines("forbidden_patterns") };
     if ((choice.kit || "here") === "here") {
@@ -235,6 +357,7 @@ export const NEW_CAMPAIGN_JS = `
 
   // ------------------------------------------------ what the page says back
   const update = () => {
+    mcpUpdate();
     const mode = choice.mode || "hill_climb";
     $$("[data-modes]").forEach((el) => (el.hidden = !el.dataset.modes.split(" ").includes(mode)));
     $$("[data-kit]").forEach((el) => (el.hidden = el.dataset.kit !== (choice.kit || "here")));
@@ -290,6 +413,9 @@ export const NEW_CAMPAIGN_JS = `
     if (back.research) { set("topic", back.research.topic); set("questions", back.research.questions); set("seeds", back.research.seeds); set("min_duration", back.research.min_duration); }
     $$('.ch[data-group="mode"]').forEach((c) => { c.classList.toggle("on", c.dataset.value === back.mode); });
     choice.mode = back.mode;
+    // The MCP servers as they were chosen (a kit in a repository: as its kit.json named them).
+    if (back.kit && back.kit.source === "repo") repoKit = Array.isArray(back.mcp_servers) ? { key: back.kit.url + "@" + back.kit.commit, list: back.mcp_servers, said: "" } : repoKit;
+    else restoreMcp(blockOf(back.mode === "research" ? "r" : "k"), back.mcp_servers);
   }
   go(form.dataset.step || "aim");
   update();

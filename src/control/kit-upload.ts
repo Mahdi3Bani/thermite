@@ -13,6 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, relative, sep } from "node:path";
 import { promisify } from "node:util";
+import type { McpUse } from "../core/mcp.ts";
 import { type Kit, KitSchema } from "../harness/kit.ts";
 
 const run = promisify(execFile);
@@ -52,6 +53,8 @@ export function kitSummary(k: Kit): {
   /** Each metric: how the judge works it out, and in words. */
   metrics: Record<string, { kind: "rate" | "time" | "check"; about: string }>;
   verifiers: string[];
+  /** The MCP servers its kit.json names (goal 068), with the agents that get each. */
+  mcp_servers: McpUse[];
 } {
   return {
     name: k.name,
@@ -68,6 +71,7 @@ export function kitSummary(k: Kit): {
       ]),
     ),
     verifiers: Object.keys(k.verifiers),
+    mcp_servers: k.mcp_servers ?? [],
   };
 }
 

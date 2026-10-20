@@ -10,7 +10,9 @@ import {
 import { basename, dirname, join } from "node:path";
 import { log, optionalSecretFromFile, requireEnv, secretFromFile } from "../common/env.ts";
 import { untoldKinds } from "../core/kb.ts";
+import type { McpUse } from "../core/mcp.ts";
 import { buildHeaders, buildInfo } from "../core/version.ts";
+import { McpGateway } from "../harness/mcp-gateway.ts";
 import { type AdviseState, adviseOnce, emptyAdviseState, teachersCalled } from "./advise.ts";
 import { type ControlAdvisors, fetchControlAdvisors, mergeAdvisors } from "./advisor-routes.ts";
 import { AdvisorsConfig } from "./advisors.ts";
@@ -19,6 +21,7 @@ import { type UploadState, uploadExportsOnce } from "./export-upload.ts";
 import { type ExportState, exportOnce } from "./git-export.ts";
 import { emptyKbSyncState, type KbSyncState, syncKnowledgeOnce } from "./kb-sync.ts";
 import { type LiveRelayState, relayLiveOnce, supervisorLive } from "./live.ts";
+import { syncMcpServers } from "./mcp-sync.ts";
 import { ModelDownloads } from "./model-download.ts";
 import { syncModelRouteRound } from "./model-route.ts";
 import { RelayError, type RelayState, relayCommandsOnce, relayOnce } from "./relay.ts";
@@ -122,6 +125,33 @@ async function main(): Promise<void> {
     remote,
     sshKeyFile,
     knownHostsFile,
+  };
+  // The advisors' MCP servers (goal 068): the supervisor calls them for the advisors, with the
+  // sign-in control gives it (kept in memory), and tells the harness when one fails or comes back.
+  const advisorMcpUses = new Map<string, McpUse[]>();
+  const advisorMcp = {
+    uses: advisorMcpUses,
+    gateway: new McpGateway({
+      uses: (run) => advisorMcpUses.get(run) ?? [],
+      record: (run, kind, body) => {
+        void fetch(`${harnessUrl}/v1/mcp-events`, {
+          method: "POST",
+          headers: { authorization: `Bearer ${harnessToken}`, "content-type": "application/json" },
+          body: JSON.stringify({
+            run,
+            server: body.server,
+            ok: kind === "mcp_server_back",
+            ...(typeof body.error === "string" ? { error: body.error } : {}),
+          }),
+        })
+          .then((res) => {
+            if (!res.ok) log("supervisor", "MCP event not recorded", { run, status: res.status });
+          })
+          .catch((err) => log("supervisor", "MCP event not recorded", { run, error: String(err) }));
+      },
+      say: (_source, run, text) =>
+        supervisorLive.append({ source: "supervisor", kind: "status", text, run }),
+    }),
   };
   const advisorsFile = env.THERMITE_ADVISORS_FILE;
   const fileAdvisors = advisorsFile
@@ -241,6 +271,7 @@ async function main(): Promise<void> {
             // Each step of a round (a teacher's review, the directives and why, an audit, a
             // review) is a line in the live view, with its run.
             live: (line) => supervisorLive.append({ source: "supervisor", ...line }),
+            mcp: advisorMcp,
           },
           adviseState,
         );
@@ -338,6 +369,29 @@ async function main(): Promise<void> {
     while (!stopping && !wipeRequested && Date.now() < until)
       await new Promise((r) => setTimeout(r, 250));
   };
+  // The MCP servers control gives the rig (goal 068), read on the same beat: the harness gets
+  // its workers' and planner's share, and the advisors' share stays here, in memory.
+  let mcpFailing = false;
+  const syncMcp = async () => {
+    try {
+      const r = await syncMcpServers({
+        rig,
+        controlUrl: controlUrl as string,
+        controlToken: controlToken as string,
+        harnessUrl,
+        harnessToken,
+      });
+      advisorMcp.gateway.set(
+        r.servers.filter((c) => c.agents.includes("advisors")),
+        r.unavailable,
+      );
+      mcpFailing = false;
+    } catch (err) {
+      // Control or the harness unreachable: the servers they gave last stay.
+      if (!mcpFailing) log("supervisor", "MCP servers error", { error: String(err).slice(0, 300) });
+      mcpFailing = true;
+    }
+  };
   const routing = async () => {
     let failing = false;
     while (!stopping && controlUrl && controlToken && routeMs > 0) {
@@ -353,6 +407,7 @@ async function main(): Promise<void> {
         if (!failing) log("supervisor", "model route error", { error: String(err) });
         failing = true;
       }
+      await syncMcp();
       await pause(routeMs);
     }
   };

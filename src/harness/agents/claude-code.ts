@@ -5,6 +5,7 @@ import { laneLimits } from "../../core/contract.ts";
 import { type LiveKind, summarizeArgs } from "../../core/live.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import type { MessageInbox, TrialProgress } from "./live-session.ts";
+import { claudeMcpConfig, type McpAccess, mcpLine } from "./mcp-tools.ts";
 import type { ModelConfig } from "./model.ts";
 import type { RigCheckReport } from "./model-check.ts";
 import {
@@ -302,7 +303,12 @@ export function claudeModelId(m: ModelConfig): string {
 /** The flags every headless Claude Code run here has: no settings, no MCP, permissions bypassed. */
 export function claudeArgs(
   m: ModelConfig,
-  o: { tools?: string | undefined; session?: string | undefined },
+  o: {
+    tools?: string | undefined;
+    session?: string | undefined;
+    /** A file with the MCP servers it may use (at the harness's gateway), and only those. */
+    mcpConfig?: string | undefined;
+  },
 ) {
   return [
     "--output-format",
@@ -315,6 +321,7 @@ export function claudeArgs(
     "--setting-sources",
     "",
     "--strict-mcp-config",
+    ...(o.mcpConfig ? ["--mcp-config", o.mcpConfig] : []),
     ...(o.tools !== undefined ? ["--tools", o.tools] : []),
     ...(m.effort
       ? ["--effort", m.effort]
@@ -392,15 +399,24 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
     THERMITE_WORKSPACE: spec.workspace,
     THERMITE_CLAUDE_EVENTS: events,
   };
+  // The MCP servers the run's kit gives its workers (goal 068), at the harness's gateway with
+  // the trial's own token: in a file only the lane reads.
+  const mcp = claudeMcpConfig(
+    spec.mcpServers?.length
+      ? { apiUrl: deps.apiUrl, auth: `trial.${spec.token ?? ""}`, servers: spec.mcpServers }
+      : undefined,
+  );
+  const mcpFile = mcp ? join(home, "mcp.json") : undefined;
   const setup = await deps.runner.run({
     role: spec.lane,
     argv: [
       "sh",
       "-c",
-      "mkdir -p claude-home claude-tmp && : > claude-events.jsonl && chmod 0644 claude-events.jsonl",
+      `mkdir -p claude-home claude-tmp && : > claude-events.jsonl && chmod 0644 claude-events.jsonl${mcp ? " && umask 077 && cat > claude-home/mcp.json" : ""}`,
     ],
     cwd: area,
     timeoutMs: 30_000,
+    ...(mcp ? { stdin: mcp } : {}),
     captureBytes: 4096,
   });
   if (setup.exitCode !== 0)
@@ -413,7 +429,7 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
   const deadline = started + spec.wallMs;
   const minutes = Math.round(spec.wallMs / 60_000);
   const maxTurns = spec.maxTurns;
-  let message = `${CLAUDE_SYSTEM}\n\n${limitsNote(limits).replace(/OpenCode/g, "Claude Code")}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. This trial lasts ${minutes} minutes${maxTurns !== undefined ? ` and at most ${maxTurns} turns (each model reply is one)` : ""}. Submit before it ends.`;
+  let message = `${CLAUDE_SYSTEM}${mcp ? `\n\n${mcpLine(spec.mcpServers)}` : ""}\n\n${limitsNote(limits).replace(/OpenCode/g, "Claude Code")}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. This trial lasts ${minutes} minutes${maxTurns !== undefined ? ` and at most ${maxTurns} turns (each model reply is one)` : ""}. Submit before it ends.`;
   let offset = 0;
   const carried = new CarriedMessages(deps.messages);
   const pump = () => {
@@ -452,7 +468,7 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
         exe,
         "-p",
         message,
-        ...claudeArgs(deps.model, { session: tally.session }),
+        ...claudeArgs(deps.model, { session: tally.session, mcpConfig: mcpFile }),
       ],
       cwd: spec.workspace,
       env,
@@ -574,6 +590,8 @@ export async function claudeOnce(
     timeoutMs: number;
     signal?: AbortSignal | undefined;
     role: Role;
+    /** The MCP servers the call may use, and the gateway's credential for them (a planner's). */
+    mcp?: Omit<McpAccess, "apiUrl"> | undefined;
   },
 ): Promise<ClaudeTally> {
   const role = o.role;
@@ -587,11 +605,15 @@ export async function claudeOnce(
   const kill = () => void deps.runner.killRole(role).catch(() => 0);
   o.signal?.addEventListener("abort", kill, { once: true });
   try {
+    const mcp = claudeMcpConfig(
+      o.mcp?.servers.length ? { apiUrl: deps.apiUrl, ...o.mcp } : undefined,
+    );
     const setup = await deps.runner.run({
       role,
-      argv: ["sh", "-c", "mkdir -p home tmp"],
+      argv: ["sh", "-c", `mkdir -p home tmp${mcp ? " && umask 077 && cat > home/mcp.json" : ""}`],
       cwd: dir,
       timeoutMs: 30_000,
+      ...(mcp ? { stdin: mcp } : {}),
       captureBytes: 4096,
     });
     if (setup.exitCode !== 0) {
@@ -600,7 +622,15 @@ export async function claudeOnce(
     }
     const r = await deps.runner.run({
       role,
-      argv: [claudeExe() ?? claudeBin(), "-p", prompt, ...claudeArgs(model, { tools: o.tools })],
+      argv: [
+        claudeExe() ?? claudeBin(),
+        "-p",
+        prompt,
+        ...claudeArgs(model, {
+          tools: o.tools,
+          mcpConfig: mcp ? join(dir, "home", "mcp.json") : undefined,
+        }),
+      ],
       cwd: dir,
       env: claudeEnv({
         home: join(dir, "home"),

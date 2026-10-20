@@ -1,5 +1,5 @@
 import type { KbFolder, KbItem, KbKind } from "../kb.ts";
-import { isOutside, JOURNAL_KINDS } from "../kb.ts";
+import { JOURNAL_KINDS } from "../kb.ts";
 import type { JournalNoteView, RigView, RunView } from "../views.ts";
 import { ago, campaignHref, esc, fmtInt, runHref } from "./components.ts";
 import { infoLabel } from "./new-campaign.ts";
@@ -207,7 +207,7 @@ ${
 <div class="card qcard"><h3>This run's corpus</h3><div class="jstat">${stat("Field notes", field.length)}${stat("Notes", notes.length)}${stat("Sources read", o.counts.source ?? 0)}${stat("Experiments tried", tried)}${o.counts.claim ? stat("Claims", o.counts.claim) : ""}${stat("Findings", o.counts.finding ?? 0)}</div><div class="small muted">Everything here goes into the run's export, with the final report.</div></div>
 ${
   r.campaign
-    ? `<div class="card qcard"><h3>The campaign's folder</h3><div class="small">Everything here goes into <b>${esc(r.campaign)}</b>'s folder in Thermite's knowledge base, with its run, agent and time.</div><div class="small muted">${others.length ? `Its agents also read: ${others.map((f) => `<b>${esc(isOutside(f) ? f.slice(8) : f)}</b>${isOutside(f) ? " (outside context)" : ""}`).join(", ")}.` : "Its agents read only this campaign's folder."}</div><a class="btn sm ghost" href="${campaignHref(r.campaign)}#knowledge" style="justify-self:start">What it can read</a></div>`
+    ? `<div class="card qcard"><h3>The campaign's folder</h3><div class="small">Everything here goes into <b>${esc(r.campaign)}</b>'s folder in Thermite's knowledge base, with its run, agent and time.</div><div class="small muted">${others.length ? `Its agents also read: ${others.map((f) => `<b>${esc(f)}</b>`).join(", ")}.` : "Its agents read only this campaign's folder."}</div><a class="btn sm ghost" href="${campaignHref(r.campaign)}#knowledge" style="justify-self:start">What it can read</a></div>`
     : ""
 }
 <div class="card qcard"><h3>Notes</h3>${
@@ -256,7 +256,7 @@ export function knowledgePage(o: {
   result: (x: KbItem) => string | null;
 }): string {
   const folderRow = (f: KbFolder) => {
-    const reads = f.reads.map((x) => (isOutside(x) ? `${x.slice(8)} (outside)` : x));
+    const reads = f.reads;
     return `<div class="kfold" id="folder-${esc(f.campaign)}"><span class="kfic">📁</span><div><a href="${campaignHref(f.campaign)}#knowledge"><b>${esc(f.campaign)}</b></a> <span class="muted small">${esc(o.mode(f.campaign))} · ${fmtInt(f.items)} item${f.items === 1 ? "" : "s"}</span><div class="small muted">${esc(folderLine(f))}</div></div><div class="small muted">${f.updated_at ? `updated ${esc(ago(f.updated_at, o.now))} ago` : "no items yet"}<div><a href="/ui/knowledge?folder=${encodeURIComponent(f.campaign)}#search">search it</a></div></div><div class="small"><div>read by: <b>${esc(f.read_by.join(", ") || "none yet")}</b></div><div class="muted">reads: ${esc(reads.join(", ") || "only its own")}</div></div></div>`;
   };
   const filtered = Boolean(o.q.trim() || o.kind || o.folder);
@@ -296,8 +296,7 @@ export function campaignKnowledge(o: {
   const stat = (k: string, v: number) => `<span>${esc(k)}</span><b>${fmtInt(v)}</b>`;
   const readRow = (name: string) => {
     const x = byName.get(name);
-    const outside = isOutside(name);
-    return `<div class="readrow"><span>${outside ? "🌐" : "📁"}</span><div><b>${esc(outside ? name.slice(8) : name)}</b> <span class="muted small">${outside ? "outside knowledge base, read as outside context" : x ? `${esc(o.mode(name))} · ${fmtInt(x.items)} items${x.updated_at ? ` · ${esc(ago(x.updated_at, o.now))} ago` : ""}` : "no items yet"}</span></div><form class="inline" method="post" action="${action("revoke")}"><input type="hidden" name="csrf" value="${esc(o.csrf)}"><input type="hidden" name="reads" value="${esc(name)}"><button class="sm ghost">Remove</button></form></div>`;
+    return `<div class="readrow"><span>📁</span><div><b>${esc(name)}</b> <span class="muted small">${x ? `${esc(o.mode(name))} · ${fmtInt(x.items)} items${x.updated_at ? ` · ${esc(ago(x.updated_at, o.now))} ago` : ""}` : "no items yet"}</span></div><form class="inline" method="post" action="${action("revoke")}"><input type="hidden" name="csrf" value="${esc(o.csrf)}"><input type="hidden" name="reads" value="${esc(name)}"><button class="sm ghost">Remove</button></form></div>`;
   };
   const addable = o.folders.filter(
     (x) => x.campaign !== o.campaign && !f.reads.includes(x.campaign),

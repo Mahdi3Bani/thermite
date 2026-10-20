@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
+import type { McpConnect } from "../common/mcp-client.ts";
 import { sha256Hex } from "../core/canonical.ts";
 import {
   CommandPayloads,
@@ -21,6 +22,7 @@ import { type Contract, contractSha, parseContract } from "../core/contract.ts";
 import { isLegacyRule, researchDirectionRefusal } from "../core/directions.ts";
 import type { Hardware } from "../core/hardware.ts";
 import { type LiveKind, LiveLog, liveBody } from "../core/live.ts";
+import { canonicalUses, type McpUse, McpUses, sameUses, usesWords } from "../core/mcp.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import { CHATGPT_LIMIT_WAIT_MS } from "./agents/model.ts";
 import type { RigCheckReport } from "./agents/model-check.ts";
@@ -43,6 +45,7 @@ import { Journal, NOTES_ARE_DATA, notesData } from "./journal.ts";
 import { type Kit, KitSchema, kitProblems } from "./kit.ts";
 import { briefingData, Knowledge, pastResearchLine } from "./knowledge.ts";
 import { type Ledger, LedgerError } from "./ledger.ts";
+import { type McpCaller, McpGateway } from "./mcp-gateway.ts";
 import { type AdvisorRole, messageText, OwnerMessages } from "./messages.ts";
 import { writeExport } from "./outbox.ts";
 import { receivePropagation } from "./propagation.ts";
@@ -291,6 +294,11 @@ export class HarnessService {
   readonly journal: Journal;
   /** Past research in each run's research folder (knowledge/), as the supervisor syncs it. */
   readonly knowledge: Knowledge;
+  /**
+   * The MCP servers the runs' kits name (goal 068): workers and the planner call them through
+   * here; their sign-in, from control by way of the supervisor, stays in this process's memory.
+   */
+  readonly mcp: McpGateway;
   /** A rig configured with its GPU set: how many cards, and how many the judge has now. */
   gpuSplit?: { set: number; judge: number } | undefined;
   /**
@@ -347,6 +355,8 @@ export class HarnessService {
     targetType?: string | undefined;
     /** The rig's settings; none: defaults in memory, with this promotion policy. */
     settings?: RigSettingsStore | undefined;
+    /** How the MCP gateway reaches MCP servers (tests give their own). */
+    mcpConnect?: McpConnect | undefined;
   }) {
     this.rigKeys = input.rigKeys;
     this.targetType = input.targetType;
@@ -384,6 +394,15 @@ export class HarnessService {
     this.knowledge = new Knowledge({
       stateRoot: join(this.paths.stateDir, "knowledge"),
       folderRoot: (run) => folderRootOf(join(this.paths.scratchDir, "research"), run),
+    });
+    this.mcp = new McpGateway({
+      uses: (run) => this.mcpUses(run),
+      // A server that fails or comes back: in the run's history, once each time.
+      record: (run, kind, body) => {
+        this.ledger.appendEvent("harness", kind, run, body);
+      },
+      say: (source, run, text) => this.live.append({ source, kind: "status", text, run }),
+      connect: input.mcpConnect,
     });
   }
 
@@ -769,6 +788,7 @@ export class HarnessService {
     }
     // The kit is checked against the contract now, not when the judge first needs it.
     const kitRef = contract.mode !== "research" ? contract.project.kit : undefined;
+    let named: McpUse[] = [];
     if (kitRef) {
       const mirror = this.mirrorFor(`kit-${kitRef.repo}`);
       if (!(await hasCommit(mirror, kitRef.commit))) {
@@ -787,7 +807,15 @@ export class HarnessService {
       const problems = kitProblems(contract, kit, this.targetType);
       if (problems.length)
         throw new Error(`the kit does not fit the contract: ${problems.join("; ")}`);
+      named = kit.mcp_servers ?? [];
     }
+    // The MCP servers the kit names (a research contract's), as the signed command says them:
+    // control gives the rig only those servers, so the two must agree.
+    if (contract.mode === "research") named = contract.mcp_servers ?? [];
+    if (!sameUses(named, p.mcp_servers))
+      throw new Error(
+        `the ${contract.mode === "research" ? "contract" : "kit"} names the MCP servers ${usesWords(named)}, and the assignment names ${usesWords(p.mcp_servers)}: start the run from control, which reads the kit's servers, or give the kit's mcp_servers in the assignment`,
+      );
     // A project in one folder of its repository starts from that folder: the run's first
     // champion is the folder's own commit, made from the signed commit (git.ts, folderCommit).
     const folder = contract.mode !== "research" ? contract.project.folder : undefined;
@@ -820,6 +848,10 @@ export class HarnessService {
         briefing: p.briefing?.map((b) => ({ text: b.text, from: b.from })),
         actor: by,
       });
+      // The MCP servers the run's agents use, and which agents get each: what the gateway and
+      // the advisors read from now on (goal 068).
+      if (named.length)
+        this.ledger.appendEvent(by, "mcp_servers", p.run, { servers: canonicalUses(named) });
       // Another run's untried experiments start this run's queue, in order, each with who added
       // it, why, its state and where it came from.
       for (const s of p.queue ?? [])
@@ -846,6 +878,13 @@ export class HarnessService {
       ...(p.queue?.length ? { queue: p.queue.length } : {}),
       ...(p.briefing?.length ? { briefing: p.briefing.length } : {}),
     };
+  }
+
+  /** The MCP servers a run's kit names, with the agents that get each (none: an empty list). */
+  mcpUses(run: string): McpUse[] {
+    return (
+      McpUses.safeParse(this.ledger.latestEventBody("mcp_servers", run)?.servers ?? []).data ?? []
+    );
   }
 
   /**
@@ -967,6 +1006,24 @@ export class HarnessService {
   proxyTokenValid(token: string): boolean {
     const until = this.proxyTokens.get(token);
     return until !== undefined && until >= Date.now();
+  }
+
+  /** Credentials the MCP gateway takes besides trials' tokens: the planner's, one per plan. */
+  private mcpTokens = new Map<string, { caller: McpCaller; until: number }>();
+
+  /** A credential for the MCP gateway, bound to one run and kind of agent, that lasts `ms`. */
+  mintMcpToken(caller: McpCaller, ms = 15 * 60_000): string {
+    const now = Date.now();
+    for (const [t, v] of this.mcpTokens) if (v.until < now) this.mcpTokens.delete(t);
+    const token = `mcp.${randomBytes(24).toString("hex")}`;
+    this.mcpTokens.set(token, { caller, until: now + ms });
+    return token;
+  }
+
+  /** Who a gateway credential is for, while it lasts. */
+  mcpTokenCaller(token: string): McpCaller | undefined {
+    const v = this.mcpTokens.get(token);
+    return v && v.until >= Date.now() ? v.caller : undefined;
   }
 
   /** A trial's submission, once it has one: its attempt and where the attempt stands. */

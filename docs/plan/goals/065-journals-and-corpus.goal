@@ -136,6 +136,8 @@ Today most of what an agent learns ends with its trial. Only submitted attempts,
 
 - 2026-10-20: Item kinds a rig does not know (found by the v0.1.0 builders). A rig on an older build failed the whole sync page when control sent `trial`, `doc` or `hypothesis` items, and its cursor never moved, so that run got no more past research. Now the supervisor reads control's answer item by item (`readKbSync` in `core/kb.ts`): an item of a kind the build does not know is left out and counted, the rest go to the harness, and the cursor moves on. The supervisor logs `past research of an unknown kind left out` once for each kind, with the count, and keeps the kinds in `kb-state.json`; when an update teaches the build one of them, every run's cursor starts again from 0, so the items left out arrive. The harness's `POST /v1/kb` does the same (`skipped` in its answer), in case such an item reaches it. An item of a known kind that is malformed still fails. Tests: `src/supervisor/kb-sync.test.ts` (left out, the cursor moves, each kind told once, the sync from 0 after an update; the harness leaves out and logs once). Pages: Knowledge base › What syncs and how often, Compatibility. Rigs already running a build without this fix still stop at such items until their images are updated.
 
+- 2026-10-20: Goal 068 removed this goal's outside knowledge base (the copies of campaign folders, the teachers' search grant, `THERMITE_OUTSIDE_KB_SYNC_SECONDS`). At the update each outside knowledge base becomes an ordinary MCP server with its token, and a kit names it. Thermite's own knowledge base is unchanged.
+
 ---
 
 Run with `/goal Complete docs/plan/goals/065-journals-and-corpus.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

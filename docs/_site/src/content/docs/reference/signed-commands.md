@@ -156,6 +156,7 @@ Starts a run of a campaign on the rig. On a [rig launched on RunPod](rest-api.md
 | `promotion` | `auto` or `owner_approval` | the rig's own setting | The run's promotion rule |
 | `queue` | up to 500 experiments, each as below | none | Experiments to start the new run's [experiment queue](#queue_add) with, in order: usually another run's untried ones |
 | `briefing` | up to 200 items, each as below | none | Background from past research for every agent's brief, in order: findings, claims, notes and reports from [the knowledge base](knowledge-base.md#briefings) |
+| `mcp_servers` | the kit's [`mcp_servers`](kit-manifest.md#mcp-servers) list | none | The MCP servers the run's kit names (a research contract's, for a research run), with the agents that get each. Control fills it in from a kit it keeps, from the page's reading of a kit in a repository, or from a research contract, and refuses a server **Settings** lacks. The harness refuses the run when it differs from what the kit names. Control gives the rig only the servers its runs name |
 
 Each experiment in `queue` has these fields:
 

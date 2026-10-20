@@ -3,6 +3,7 @@ import { type TSchema, Type } from "@earendil-works/pi-ai";
 import type { LaneLimitValues } from "../../core/contract.ts";
 import { notesInstruction } from "../../core/journal.ts";
 import { linkSession, type SessionLink } from "./live-session.ts";
+import { mcpAgentTools, mcpLine } from "./mcp-tools.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
 import { NOTE_TOOL, type NoteRequest, writeNote } from "./notes-tool.ts";
 import { researchAgentTools } from "./research-agent-tools.ts";
@@ -14,7 +15,7 @@ import {
   researchFolderNote,
   researchOutput,
 } from "./research-tools.ts";
-import type { IdeaInput, TrialResult } from "./worker.ts";
+import type { IdeaInput, McpForAgent, TrialResult } from "./worker.ts";
 import { IDEA_TOOL, keepGoing, proposeIdea, withoutPastThinking } from "./worker.ts";
 
 /**
@@ -39,6 +40,8 @@ export interface ResearchTrialSpec {
   limits?: LaneLimitValues | undefined;
   /** The run's research folder and this lane's working area in it (the harness prepares both). */
   folder?: ResearchFolderPaths | undefined;
+  /** The MCP servers the run's kit gives its workers (goal 068), by name (see TrialSpec). */
+  mcpServers?: string[] | undefined;
 }
 
 export interface ResearchDeps {
@@ -50,6 +53,8 @@ export interface ResearchDeps {
   idea?: ((req: IdeaInput) => Promise<{ experiment: string }>) | undefined;
   /** A field note, written by this lane in the run's journal (the note tool). */
   note?: ((req: NoteRequest) => Promise<{ note: number }>) | undefined;
+  /** The MCP tools the run's kit gives its workers (goal 068), through the harness's gateway. */
+  mcp?: McpForAgent | undefined;
 }
 
 /** A research worker's field notes, told apart from its research notes. */
@@ -115,6 +120,15 @@ export async function runResearchTrial(
           } as AgentTool,
         ]
       : []),
+    ...(deps.mcp
+      ? mcpAgentTools(
+          deps.mcp.tools,
+          (s, t, a) => (deps.mcp as McpForAgent).call(s, t, a),
+          () => {
+            result.toolCalls++;
+          },
+        )
+      : []),
   ];
 
   const { models, model, thinkingLevel } = buildModel(deps.model);
@@ -124,7 +138,7 @@ export async function runResearchTrial(
         spec.folder
           ? `${RESEARCH_SYSTEM}\n\n${researchFolderNote(spec.folder)} Use the file tools (list_files, read_file, search_files, write_file, remove_file) for it.`
           : RESEARCH_SYSTEM
-      }${deps.idea ? "\n\nTo propose another research task for the run's queue, use the idea tool: the planner or the campaign's owner decides whether it is queued, and your trial goes on." : ""}`,
+      }${deps.idea ? "\n\nTo propose another research task for the run's queue, use the idea tool: the planner or the campaign's owner decides whether it is queued, and your trial goes on." : ""}${deps.mcp?.tools.length ? `\n\n${mcpLine([...new Set(deps.mcp.tools.map((t) => t.server))])}` : ""}`,
       model,
       tools,
       thinkingLevel,

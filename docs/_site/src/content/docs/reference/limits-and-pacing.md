@@ -98,7 +98,8 @@ The dashboard calls an epoch a **round**.
 | A new owner's message to the teacher pair, or to all the advisors, looked for between advisor rounds | Every 5 s, when the rig has teachers and its **Teacher pair** switch is on. Finding one ends the wait, and the next round starts, unless the advisors' spending for the day has reached `max_usd_per_day`; a round under way finishes first | Fixed |
 | An audit or review that failed | Tried again every 30 minutes, at most 5 times, then left to the owner | Fixed |
 | Past research synced into each running run's `knowledge/` folder | Every 180 s. A run that control says it did not assign, such as a rig check's run, is asked about again 1 hour later, or once it has stopped running and runs again | `THERMITE_KB_SYNC_SECONDS`. `0` turns it off. The hour is fixed |
-| Campaign folders copied to outside knowledge bases | Every 300 s for each copy switched on, at once when a copy is switched on, and on **Sync now** | `THERMITE_OUTSIDE_KB_SYNC_SECONDS`. `0` turns the timer off; **Sync now** still works |
+| A rig's MCP servers, from control to its supervisor and harness | Every 30 s, with the model route. Control renews an OAuth or client sign-in when less than 5 minutes of its access token are left | `THERMITE_MODEL_ROUTE_POLL_SECONDS` |
+| An MCP server's tool list, as the harness and the supervisor keep it | Read again at the first use after 5 minutes, or when the server's sign-in changes | Fixed |
 | Research digests | Every 60 minutes | The contract's `report_cadence.digest_minutes` |
 | Research fetches | 6 a minute for each domain: a fetch waits, it is never refused for this | A research run: the contract's `fetch_policy.per_domain_per_minute`. A hill-climb or goal run: fixed |
 
@@ -215,7 +216,10 @@ None of these ends anything. Nothing limits how many [field notes](knowledge-bas
 | Search words | The first 8 words of 2 or more characters; at most 300 characters in all |
 | Search results | The **Knowledge** page 100; **Start a run** › **From past research** 40; `kb_search` 1 to 100, default 20 |
 | A run's sync of past research | Pages of up to 500 items from control, posted to the harness in parts of at most 8 MiB. The harness takes at most 32 MiB in one request |
-| A copy to an outside knowledge base | 100 items at a time, one page each, until the folder is written. A page the outside server refuses stops the sync, and each later sync tries it once more; after 3 refusals in a row it is skipped, and the copy goes on |
+| A kit's MCP servers | At most 20, each named once |
+| An MCP server's tools | At most 1,000 read from one server; control keeps each one's description to 1,000 characters |
+| One MCP call by an agent | Connecting 30 s, listing tools 30 s, a tool call 120 s: one that takes longer is a failure, the agent gets a tool error, and the run goes on. In Pi, an answer's text is cut at 30,000 characters. A call through the harness's gateway is at most 4 MiB |
+| An OAuth sign-in | 15 minutes from **Sign in** to the server sending the browser back; each sign-in's state is good once |
 
 ## Control's own limits
 

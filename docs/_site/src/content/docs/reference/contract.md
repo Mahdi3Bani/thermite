@@ -228,6 +228,7 @@ A goal campaign ends when the success policy is met on two validations of the ch
 | `topic` | text | required | What to research. Briefs and reports show it |
 | `questions` | list of text, at least one | required | The questions. Claims name the question they answer by its place in this list, from 0, and the plan works on the least-covered questions first |
 | `seeds` | list of URLs | `[]` | Starting pages, given to workers in their brief. With no web search, workers follow links from these |
+| `mcp_servers` | list | none | The MCP servers the campaign's agents use, as a kit's [`mcp_servers`](kit-manifest.md#mcp-servers) names them: a research campaign has no kit. The **New campaign** page writes it from **The question** › **MCP servers for the agents**. Control refuses to start a run that names a server **Settings** lacks |
 | `scope.include_domains` | list of domain names, in lowercase | `[]` | When not empty, only these domains and their subdomains are fetched. Others are refused with `outside the campaign's domains: <host>` |
 | `scope.exclude_domains` | list of domain names, in lowercase | `[]` | These domains and their subdomains are never fetched: `excluded domain <host>` |
 | `scope.source_types` | list of text | `[]` | Accepted, not used yet |

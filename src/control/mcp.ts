@@ -10,7 +10,7 @@ import { type BuildInfo, buildInfo } from "../core/version.ts";
 import type { ControlActions } from "./actions.ts";
 import type { Credential } from "./credential.ts";
 import { issueWaking, propagateChampion } from "./issue.ts";
-import { briefingSeedOf, isOutside, type KbKind } from "./kb.ts";
+import { briefingSeedOf, type KbKind } from "./kb.ts";
 import {
   advanceResets,
   cancelReset,
@@ -18,7 +18,8 @@ import {
   type DeploymentDriver,
   type RunpodDriver,
 } from "./lifecycle.ts";
-import type { OutsideKbs } from "./outside-kb.ts";
+import { redirectUriOf, ServerBody, serverJson } from "./mcp-server-routes.ts";
+import type { McpServers } from "./mcp-servers.ts";
 import { copiedFromRecords } from "./queue-copy.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
 import {
@@ -29,6 +30,7 @@ import {
   type RunpodRigs,
 } from "./runpod-rigs.ts";
 import type { RunpodTests } from "./runpod-tests.ts";
+import { keyHint } from "./secrets.ts";
 import { type StartRunBody, startRunAnswer, startRunFields, startRunRequest } from "./start-run.ts";
 import type { ControlStore } from "./store.ts";
 import { campaignModes, leaderboard, rigView } from "./views.ts";
@@ -106,8 +108,12 @@ export interface McpOptions {
   driver?: DeploymentDriver | undefined;
   /** Actions the dashboard carries out (actions.ts); MCP offers those it has. */
   actions?: ControlActions | undefined;
-  /** Outside knowledge bases (goal 065): kb_grant and kb_revoke grant their search with them. */
-  outsideKb?: OutsideKbs | undefined;
+  /** MCP servers for the agents (goal 068): the owner manages them here too. */
+  mcpServers?: McpServers | undefined;
+  /** Control's address as the owner reaches it: where a server's sign-in page sends the browser back. */
+  publicUrl?: string | undefined;
+  /** The MCP request's own address: control's address when publicUrl is not set. */
+  requestUrl?: string | undefined;
 }
 
 const json = (value: unknown) => ({
@@ -145,9 +151,13 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
     name: "thermite-control",
     version: (opts.control ?? buildInfo()).version,
   });
-  const audited = <A>(tool: string, fn: (args: A) => unknown) => {
+  /** A tool whose call is in the audit log; `hide`: arguments that are secrets, logged as their last four characters. */
+  const audited = <A>(tool: string, fn: (args: A) => unknown, hide: string[] = []) => {
     return async (args: A) => {
-      store.audit(actor, `mcp:${tool}`, args ?? {});
+      const logged: Record<string, unknown> = { ...((args ?? {}) as Record<string, unknown>) };
+      for (const k of hide)
+        if (typeof logged[k] === "string") logged[k] = `given (${keyHint(String(logged[k]))})`;
+      store.audit(actor, `mcp:${tool}`, logged);
       try {
         return json(await fn(args));
       } catch (err) {
@@ -464,36 +474,19 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
   if (role === "owner" || role === "operator") {
     const grantInput = {
       campaign: z.string().min(1).describe("The campaign whose agents read"),
-      reads: z
-        .string()
-        .min(1)
-        .describe(
-          "The other campaign whose folder they read, or outside:<name> for an outside knowledge base",
-        ),
+      reads: z.string().min(1).describe("The other campaign whose folder they read"),
     };
-    /** An outside knowledge base's name in a grant (outside:<name>), if it names one. */
-    const outsideName = (reads: string) =>
-      isOutside(reads) ? reads.slice("outside:".length) : undefined;
     server.registerTool(
       "kb_grant",
       {
         title: "Let a campaign read another's folder",
         description:
-          "From now on, the campaign's agents may search and read the other campaign's folder in Thermite's knowledge base; they never write to it. Its runs at work receive the folder at their supervisor's next sync, and new runs start with it. A campaign always reads its own folder. reads: outside:<name> instead lets the campaign's teacher pair search that outside knowledge base (read only), as the campaign page's Let its advisors search it does.",
+          "From now on, the campaign's agents may search and read the other campaign's folder in Thermite's knowledge base; they never write to it. Its runs at work receive the folder at their supervisor's next sync, and new runs start with it. A campaign always reads its own folder.",
         inputSchema: grantInput,
       },
       audited("kb_grant", (a: { campaign: string; reads: string }) => {
         const known = campaigns();
         if (!known.has(a.campaign)) throw new Error(`no campaign ${a.campaign}`);
-        const outside = outsideName(a.reads);
-        if (outside !== undefined) {
-          // The outside knowledge base's own grant code, audited there.
-          if (!opts.outsideKb?.get(outside))
-            throw new Error(`no outside knowledge base ${outside}`);
-          const granted = !store.kb().reads(a.campaign).includes(a.reads);
-          if (granted) opts.outsideKb.setRead(outside, a.campaign, true, actor);
-          return { granted, reads: store.kb().reads(a.campaign) };
-        }
         if (!known.has(a.reads)) throw new Error(`no campaign ${a.reads}`);
         if (a.campaign === a.reads)
           throw new Error("a campaign always reads its own folder: name another campaign");
@@ -507,19 +500,10 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
       {
         title: "Stop a campaign reading another's folder",
         description:
-          "The campaign's agents no longer read the other campaign's folder. New runs start without it. reads: outside:<name> ends the teacher pair's search of that outside knowledge base.",
+          "The campaign's agents no longer read the other campaign's folder. New runs start without it.",
         inputSchema: grantInput,
       },
       audited("kb_revoke", (a: { campaign: string; reads: string }) => {
-        const outside = outsideName(a.reads);
-        if (outside !== undefined) {
-          if (!store.kb().reads(a.campaign).includes(a.reads))
-            throw new Error(`${a.campaign} does not search the outside knowledge base ${outside}`);
-          // Its own grant code, audited there; a grant left from one no longer set, in the folders.
-          if (!opts.outsideKb?.setRead(outside, a.campaign, false, actor))
-            store.kb().revoke(a.campaign, a.reads);
-          return { revoked: true, reads: store.kb().reads(a.campaign) };
-        }
         if (!store.kb().revoke(a.campaign, a.reads))
           throw new Error(`${a.campaign} does not read ${a.reads}`);
         store.audit(actor, "kb_revoke", { campaign: a.campaign, reads: a.reads });
@@ -849,6 +833,146 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
       );
     }
 
+    // MCP servers for the agents (goal 068): the owner's, as in Settings › Providers.
+    const mcp = opts.mcpServers;
+    if (mcp) {
+      server.registerTool(
+        "mcp_servers",
+        {
+          title: "MCP servers",
+          description:
+            "The MCP servers in Settings › Providers: each one's address, how it signs in, its state, its last error, its tools (with whether each only reads) and the kits that name it. Never a key, a client secret or a sign-in: only a secret's last four characters.",
+          inputSchema: {},
+        },
+        audited("mcp_servers", () => ({ servers: mcp.list().map((s) => serverJson(store, s)) })),
+      );
+    }
+    if (mcp && role === "owner") {
+      const auth = z.enum(["oauth", "key", "client", "none"]);
+      server.registerTool(
+        "mcp_server_add",
+        {
+          title: "Add an MCP server",
+          description:
+            "Adds an MCP server to Settings, for the kits that name it. auth: oauth (answers with sign_in_url: open it in a browser and allow Thermite; the server's page sends the browser back to control), key (header, default Authorization, and secret: the header's whole value, such as Bearer and the token), client (client_id and client_secret: control gets a token with them) or none (a public server). url: https, or http for localhost only. Control seals each secret, never shows it again, and reads the server's tools; it calls none of them. The owner's token only.",
+          inputSchema: ServerBody.shape,
+        },
+        audited(
+          "mcp_server_add",
+          async (a: z.infer<typeof ServerBody>) => {
+            if (mcp.get(a.name.trim()))
+              throw new Error(`There is a server named ${a.name} already.`);
+            mcp.put({ ...a, auth: auth.parse(a.auth) }, actor);
+            const name = a.name.trim();
+            if (a.auth === "oauth") {
+              const { url } = await mcp.startSignIn(
+                name,
+                redirectUriOf(opts.publicUrl, opts.requestUrl ?? "http://localhost"),
+                actor,
+              );
+              return {
+                server: serverJson(store, mcp.get(name) as NonNullable<ReturnType<typeof mcp.get>>),
+                sign_in_url: url,
+              };
+            }
+            const why = await mcp.check(name);
+            return {
+              server: serverJson(store, mcp.get(name) as NonNullable<ReturnType<typeof mcp.get>>),
+              ...(why ? { check_error: why } : {}),
+            };
+          },
+          ["secret", "client_secret"],
+        ),
+      );
+      server.registerTool(
+        "mcp_server_change",
+        {
+          title: "Change an MCP server",
+          description:
+            "Changes a server's address, header, client ID, scopes or secrets. A secret left out is kept, except for another address or another way to sign in, which need it again. Then control reads its tools again. The owner's token only.",
+          inputSchema: ServerBody.partial({ url: true, auth: true }).shape,
+        },
+        audited(
+          "mcp_server_change",
+          async (a: Partial<z.infer<typeof ServerBody>> & { name: string }) => {
+            const old = mcp.get(a.name);
+            if (!old) throw new Error(`Settings has no server named ${a.name}.`);
+            mcp.put(
+              {
+                ...a,
+                url: a.url ?? old.url,
+                auth: auth.parse(a.auth ?? old.auth),
+                header: a.header ?? old.header ?? undefined,
+                client_id: a.client_id ?? old.client_id ?? undefined,
+                scope: a.scope ?? old.scope ?? undefined,
+              },
+              actor,
+            );
+            const now = mcp.get(a.name);
+            if (now?.auth === "oauth" && !now.signed_in)
+              return { server: serverJson(store, now), sign_in: "needed: call mcp_server_sign_in" };
+            const why = await mcp.check(a.name);
+            return {
+              server: serverJson(store, mcp.get(a.name) as NonNullable<ReturnType<typeof mcp.get>>),
+              ...(why ? { check_error: why } : {}),
+            };
+          },
+          ["secret", "client_secret"],
+        ),
+      );
+      server.registerTool(
+        "mcp_server_check",
+        {
+          title: "Read an MCP server's tools again",
+          description:
+            "Control reads the server's tools again with its sign-in, and keeps them with its state. It calls no tool. The owner's token only.",
+          inputSchema: { name: z.string().min(1) },
+        },
+        audited("mcp_server_check", async (a: { name: string }) => {
+          if (!mcp.get(a.name)) throw new Error(`Settings has no server named ${a.name}.`);
+          const why = await mcp.check(a.name);
+          return {
+            server: serverJson(store, mcp.get(a.name) as NonNullable<ReturnType<typeof mcp.get>>),
+            ...(why ? { check_error: why } : {}),
+          };
+        }),
+      );
+      server.registerTool(
+        "mcp_server_sign_in",
+        {
+          title: "Sign in to an MCP server",
+          description:
+            "For a server that signs in with OAuth: the address of its sign-in page. Open it in a browser within 15 minutes and allow Thermite; the page sends the browser back to control, which seals the sign-in and renews it. The owner's token only.",
+          inputSchema: { name: z.string().min(1) },
+        },
+        audited("mcp_server_sign_in", async (a: { name: string }) =>
+          mcp.startSignIn(
+            a.name,
+            redirectUriOf(opts.publicUrl, opts.requestUrl ?? "http://localhost"),
+            actor,
+          ),
+        ),
+      );
+      server.registerTool(
+        "mcp_server_delete",
+        {
+          title: "Delete an MCP server",
+          description:
+            "Control forgets the server and its secrets. Nothing changes on the server. Refused while a kit names it: take it out of those kits first. The owner's token only.",
+          inputSchema: { name: z.string().min(1) },
+        },
+        audited("mcp_server_delete", (a: { name: string }) => {
+          const r = mcp.delete(a.name, actor);
+          if (r === "missing") throw new Error(`Settings has no server named ${a.name}.`);
+          if (r !== "deleted")
+            throw new Error(
+              `${r.named_by.join(" and ")} name it. Take it out of those kits first.`,
+            );
+          return { deleted: true };
+        }),
+      );
+    }
+
     // Retiring a rig that is gone, and bringing it back: the owner's, as on the dashboard.
     if (role === "owner") {
       server.registerTool(
@@ -1144,7 +1268,7 @@ export function mountMcp(app: Hono, store: ControlStore, opts: McpOptions): void
       agent: "agent:mcp",
       reader: "reader:mcp",
     }[role];
-    const server = buildServer(store, opts, actor, role);
+    const server = buildServer(store, { ...opts, requestUrl: c.req.url }, actor, role);
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,

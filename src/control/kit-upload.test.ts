@@ -21,6 +21,8 @@ describe("a kit uploaded on the new-campaign page", () => {
       cells: ["small", "large", "held"],
       metrics: { flops_per_s: { kind: "rate", about: "a rate (FLOP/s)" } },
       verifiers: [],
+      // Its kit.json names no MCP server.
+      mcp_servers: [],
     });
     // A zip with the kit inside one top folder works too.
     const wrapped = join(dir, "wrapped");

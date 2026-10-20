@@ -32,7 +32,7 @@ The planner coordinates each run's experiment queue, the run's ordered list of t
 3. For each agent you want to change, choose a model in its **Model** list, and an **Effort** (see below).
 4. For the workers, also choose where they run, in the **Runs in** column: **Pi**, **OpenCode v2**, **Claude Code** or **Codex**. When you choose a Claude subscription's model, the page sets **Claude Code** for you. **Codex**, the Codex CLI, takes a ChatGPT subscription's model or one from an OpenAI-compatible provider: see [Run the agents in Codex](chatgpt-subscription.md#run-the-agents-in-codex).
 
-   For the other agents, **Runs in** shows where each one will run, for example "the supervisor, read-only tools" or "Claude Code, past research only". A planner with no model of its own follows the workers into Codex: "as the workers: Codex".
+   For the other agents, **Runs in** shows where each one will run, for example "the supervisor, read-only tools" or "Claude Code, past research and the kit's MCP tools only". A planner with no model of its own follows the workers into Codex: "as the workers: Codex".
 
 5. Read the list under **What changes when you save**, at the foot of the page. It says each change in a sentence, such as "You change the auditor's model to my-model."
 6. Press **Save changes**.
@@ -74,7 +74,7 @@ Where the workers run also sets when they read a message you send them from **Li
 
 The advisors' read-only tools are the campaign's brief and a search of the run's past research, plus a guarded web fetch and a knowledge base where the rig's advisors file sets them up. A knowledge base is a search service of your own, reached over MCP, that the teachers may search but not change: see the `kb` field in the [advisors file reference](../../reference/advisors-file.md#top-level).
 
-The teacher pair can also search an [outside knowledge base](../operate/outside-knowledge-base.md): one you add on **Settings › Providers**, then allow for a campaign with **Let its advisors search it** on the campaign's page. This works for teachers given a model on this page too, from an API key or a ChatGPT subscription. Teachers on a Claude subscription run with no tools, and the other advisors never get this search. On a rig whose advisors file lets advisors fetch any web page (`fetch_domains` `"*"`), no advisor gets it.
+The advisors can also call the tools of the [MCP servers](../campaigns/give-agents-mcp-tools.md) that a run's kit gives them: the teacher pair, the auditor and the review panel, given a model on this page or in the advisors file. On an API key or a ChatGPT subscription each tool is one of theirs, and on a Claude subscription Claude Code reaches each server through the supervisor. On a rig whose advisors file lets advisors fetch any web page (`fetch_domains` `"*"`), no advisor gets them.
 
 ## Effort
 

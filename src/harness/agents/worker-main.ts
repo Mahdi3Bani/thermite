@@ -1,11 +1,13 @@
 import { readFileSync } from "node:fs";
+import type { McpCallResult } from "../../common/mcp-client.ts";
+import type { McpToolInfo } from "../../core/mcp.ts";
 import type { Runner, RunOutcome, RunRequest } from "../broker/runner.ts";
 import { apiCall } from "./api-call.ts";
 import type { TrialProgress } from "./live-session.ts";
 import { modelConfigFromEnv } from "./model.ts";
 import { runResearchTrial } from "./research-worker.ts";
 import type { AnyTrial } from "./spawn.ts";
-import { runTrial, type TrialSpec } from "./worker.ts";
+import { type McpForAgent, runTrial, type TrialSpec } from "./worker.ts";
 
 /**
  * A worker trial in its own process (one per trial), run as its lane's agent user. It reaches
@@ -66,8 +68,37 @@ async function main(): Promise<void> {
     read: (ids: number[]) => call("POST", "/v1/trial/messages/read", { ids }),
     progress: (p: TrialProgress) => call("POST", "/v1/trial/live", { entries: [], progress: p }),
   };
+  // The MCP tools the run's kit gives its workers (goal 068), as the harness's gateway lists them
+  // for this trial. A list that can't be read gives none: the trial goes on with its own tools.
+  let mcp: McpForAgent | undefined;
+  if (trial.spec.mcpServers?.length) {
+    try {
+      const listed = (await call("GET", "/v1/mcp-tools")) as { tools: McpToolInfo[] };
+      if (listed.tools.length)
+        mcp = {
+          tools: listed.tools,
+          call: async (server, tool, args) =>
+            (await call("POST", "/v1/mcp-call", {
+              server,
+              tool,
+              arguments: args,
+            })) as McpCallResult,
+        };
+    } catch (err) {
+      // Said in the live view; the trial goes on with its own tools.
+      await link
+        .live([
+          {
+            kind: "status",
+            text: `the MCP tools could not be listed (${String(err).slice(0, 300)}): this trial goes on without them`,
+          },
+        ])
+        .catch(() => undefined);
+    }
+  }
   if (trial.kind === "research") {
     const result = await runResearchTrial(trial.spec, {
+      mcp,
       model,
       call: (op, args) => call("POST", `/v1/research/${op}`, args),
       link,
@@ -105,6 +136,7 @@ async function main(): Promise<void> {
     // Sources, claims and notes in the run's research folder (the trial decides the run).
     research: (op, args) => call("POST", `/v1/research/${op}`, args),
     link,
+    mcp,
   });
   process.stdout.write(`\n${JSON.stringify(result)}\n`);
 }

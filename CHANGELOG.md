@@ -30,6 +30,7 @@ Each release of Thermite, newest first. Versions 0.x make no upgrade promise: re
 - Campaigns, runs and Live per run, built for scanning. The owner messages the agents and the advisors from one message box, and sees who read each message.
 - One experiment queue for each run. The planner coordinates it. The owner, the advisors and the lanes add to it, and `thermite assign --queue-from` copies another run's untried experiments.
 - Field notes from the workers, the planner and the advisors. Thermite keeps its own knowledge base, with a folder for each campaign, and the owner grants which campaigns may read which folders. Workers, the planner and the advisors can search what they may read.
+- MCP servers for the agents. The owner adds a server once in Settings, with an OAuth sign-in, a key, a client ID and secret, or none; control seals the secret and reads the server's tools. A campaign's kit names its servers, the agents that get each, and, when narrowed, their tools. Workers and the planner call them through the rig's harness, the advisors through its supervisor; no agent sees a secret, and a server that fails does not stop a run.
 
 ### Operate
 
@@ -39,5 +40,6 @@ Each release of Thermite, newest first. Versions 0.x make no upgrade promise: re
 
 ### Removed
 
+- The outside knowledge base: its copies of campaign folders, the advisors' search grant and `THERMITE_OUTSIDE_KB_SYNC_SECONDS`. At the update, each one becomes an MCP server with its token, and a kit names it.
 - The old `QWEN_*` names of the model settings, the `thermite-qwen` provider ID and the `qwen-api-key` file migration. Use the `THERMITE_MODEL_*` settings.
 - The Kubernetes namespace default `ar-{rig}`. It is now `thermite-{rig}`; a rig with a namespace set keeps it.

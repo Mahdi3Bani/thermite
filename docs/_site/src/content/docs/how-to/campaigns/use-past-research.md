@@ -79,7 +79,7 @@ If control can't add it, the **Knowledge** section says **Not changed.** and why
 
 To stop it, press **Remove** beside the folder under **Can read from**. The page says `sort-speed's agents no longer read merge-speed's folder. Runs at work drop it at their next sync.` New runs start without it. Experiments and a briefing that a run already took from that folder stay with the run.
 
-You can add and remove folders at any time, also while runs are at work. Under **Can read from** you may also find an outside knowledge base that the campaign's teacher pair may search, marked `outside knowledge base, read as outside context`. **Remove** beside it ends that search, and the page says, for example, `sort-speed's advisors no longer search the outside knowledge base "team-brain", from their next round.` See [Connect an outside knowledge base](../operate/outside-knowledge-base.md).
+You can add and remove folders at any time, also while runs are at work. Another knowledge base you run, such as GBrain, is not a folder here: a campaign's kit names it as an MCP server ([Give agents MCP tools](give-agents-mcp-tools.md)).
 
 ### What the agents then see
 
@@ -141,10 +141,10 @@ The [MCP tools](../../reference/mcp-tools.md) for the knowledge base:
 | --- | --- | --- |
 | [`kb_folders`](../../reference/mcp-tools.md#kb_folders) | The owner's and an operator's | Lists the folders, each with its mode, its counts by kind, its runs, its newest change, `read_by` (the campaigns granted to read it) and `reads` (the folders it reads besides its own) |
 | [`kb_search`](../../reference/mcp-tools.md#kb_search) | The owner's and an operator's | Takes `q` (the words), and optionally `campaigns` (the folders to search; every folder when left out), `kinds` and `limit` (1 to 100, 20 unless set). Returns the matching items, newest first, each with its `id`, `campaign`, `rig`, `run`, `kind`, `ref`, `title`, `body`, `by` and, for an experiment, its `result` |
-| [`kb_grant`](../../reference/mcp-tools.md#kb_grant) | The owner's and an operator's | Takes `campaign` and `reads`, as **Add** does: from now on, `campaign`'s agents may read the folder of `reads`. With `reads` set to `outside:<name>`, it lets the campaign's teacher pair search that [outside knowledge base](../operate/outside-knowledge-base.md) instead, as **Let its advisors search it** does |
+| [`kb_grant`](../../reference/mcp-tools.md#kb_grant) | The owner's and an operator's | Takes `campaign` and `reads`, as **Add** does: from now on, `campaign`'s agents may read the folder of `reads` |
 | [`kb_revoke`](../../reference/mcp-tools.md#kb_revoke) | The owner's and an operator's | Takes the same, as **Remove** does |
 
-The agent's and the reader's tokens don't have these tools. `kb_grant` refuses `no campaign <name>`, `a campaign always reads its own folder: name another campaign`, and `no outside knowledge base <name>` for an `outside:` name that isn't set in **Providers**. `kb_revoke` refuses `<campaign> does not read <reads>`, or `<campaign> does not search the outside knowledge base <name>`.
+The agent's and the reader's tokens don't have these tools. `kb_grant` refuses `no campaign <name>`, and `a campaign always reads its own folder: name another campaign`. `kb_revoke` refuses `<campaign> does not read <reads>`.
 
 To start another run of a campaign that control keeps, call [`start_run`](../../reference/mcp-tools.md#start_run) with `past`: the `id` of each item that `kb_search` returned, such as `{"campaign": "sort-speed", "rig": "rig-1", "past": [12, 40]}`. It takes them as **From past research** does: experiments join the queue, and findings, claims, notes and reports go to the briefing, each with control's own words for it. It refuses an item from a folder the campaign may not read: `An item from past research is not one this campaign may read and start from: search again.` From the command line, `thermite run start sort-speed --rig rig-1 --past 12 --past 40` does the same with the owner's token: see [Start a run from a script or an agent](start-from-dashboard.md#start-a-run-from-a-script-or-an-agent).
 

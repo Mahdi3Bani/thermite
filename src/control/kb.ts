@@ -148,9 +148,6 @@ const SINCE_READING_1 = [
   "hypothesis_added",
 ];
 
-/** An outside knowledge base in a campaign's grants (goal 065, optional): not a folder here. */
-export const isOutside = (folder: string) => folder.startsWith("outside:");
-
 export class KnowledgeBase {
   private readonly db: DatabaseSync;
 
@@ -481,7 +478,7 @@ export class KnowledgeBase {
     );
   }
 
-  /** The folders a campaign reads besides its own (campaigns, or "outside:<name>"). */
+  /** The folders a campaign reads besides its own. */
   reads(campaign: string): string[] {
     return (
       this.db
@@ -492,7 +489,7 @@ export class KnowledgeBase {
 
   /** The campaign folders a campaign's agents may read: its own first, then those granted. */
   readable(campaign: string): string[] {
-    return [campaign, ...this.reads(campaign).filter((f) => !isOutside(f) && f !== campaign)];
+    return [campaign, ...this.reads(campaign).filter((f) => f !== campaign)];
   }
 
   /** The campaigns granted to read this one's folder. */
@@ -519,7 +516,7 @@ export class KnowledgeBase {
             )
             .run(campaign, reads, by, new Date().toISOString()).changes,
         ) > 0;
-      if (!added || isOutside(reads)) return added;
+      if (!added) return added;
       const n = Number(
         (
           this.db.prepare("select count(*) as n from kb_item where campaign = ?").get(reads) as {
@@ -647,7 +644,7 @@ export class KnowledgeBase {
     return `${m[1] === "Dropped" ? "dropped" : "tried"}: ${m[2]}${verdict ? `, ${verdict.replace(/_/g, " ")}` : ""}`;
   }
 
-  /** Items of the given folders changed after a seq, in seq order (an outside copy's cursor). */
+  /** Items of the given folders changed after a seq, in seq order. */
   changedAfter(campaigns: string[], after: number, limit = SYNC_PAGE): KbItem[] {
     if (!campaigns.length) return [];
     return (

@@ -47,7 +47,7 @@ usage: thermite <command> [options]
                                       the only part control's deployment needs
   assign --contract F --run ID [--seed GIT_URL[@COMMIT] | --seed-commit C] [--kit GIT_URL]
          [--model NAME=URL ...] [--direction D] [--agents off] [--promotion auto|owner]
-         [--queue-from [RIG/]RUN]
+         [--queue-from [RIG/]RUN] [--mcp-servers JSON|@file]
          (--control URL --token-file F --rig R [--ttl MIN] | --print)
                                       start a run. The rig's supervisor fetches the project and
                                       kit commits from their repositories, and models from their
@@ -56,9 +56,11 @@ usage: thermite <command> [options]
                                       already there needs no --kit. --queue-from starts the new
                                       run's queue with a past run's untried experiments, read
                                       from control (on --rig unless RIG/ is given; it needs
-                                      --control and --token-file, with --print too). --print
-                                      shows the payload (for issue_command over MCP) instead of
-                                      issuing it
+                                      --control and --token-file, with --print too).
+                                      --mcp-servers gives the MCP servers the kit's kit.json
+                                      names, as in kit.json; the rig refuses a run whose list
+                                      differs. --print shows the payload (for issue_command over
+                                      MCP) instead of issuing it
   assign-payload --contract F --run ID --seed-repo R --seed-commit C --bundle PATH
                  [--bundle-sha256 H] [--kit-repo R --kit-commit C --kit-bundle PATH
                  [--kit-bundle-sha256 H]] [--model NAME=SHA256:PATH ...] [--direction D] [--agents off]
@@ -123,6 +125,29 @@ usage: thermite <command> [options]
                                       experiments (on --rig unless RIG/ is given); --past adds
                                       items of Thermite's knowledge base by id. It prints the new
                                       run and its command id; a stopped RunPod pod starts first
+  mcp list --control URL --token-file F [--json]
+                                      the MCP servers in Settings (owner's token): each one's
+                                      sign-in, state, last error, tools and the kits that name
+                                      it. No secret, only its last four characters
+  mcp add NAME --url URL --auth oauth|key|client|none [--header H] [--secret-file F]
+          [--client-id ID] [--client-secret-file F] [--scope S] --control URL --token-file F
+                                      add an MCP server (owner's token). key: --secret-file
+                                      holds the header's whole value (Bearer and the token);
+                                      client: --client-id and --client-secret-file. Control
+                                      seals each secret and reads the server's tools. oauth:
+                                      prints the sign-in page's address: open it and allow
+                                      Thermite
+  mcp change NAME [--url URL] [--header H] [--secret-file F] [--client-id ID]
+          [--client-secret-file F] [--scope S] --control URL --token-file F
+                                      change a server; a secret left out is kept, except for
+                                      another address, which needs it again
+  mcp check NAME --control URL --token-file F
+                                      read the server's tools again (it calls none)
+  mcp sign-in NAME --control URL --token-file F
+                                      print the address of an OAuth server's sign-in page
+  mcp delete NAME --control URL --token-file F
+                                      forget a server and its secrets; refused while a kit
+                                      names it
   command --control URL --token-file F --rig U --kind K --payload JSON|@file [--ttl MIN]
                                       issue a signed command through control (admin token).
                                       assign_campaign and resume_run on a RunPod rig whose pod
@@ -254,6 +279,7 @@ The hash is what control's settings take; the token itself stays with you. See [
 | `--agents on\|off` | No | `on` | `off` starts a judge-only run: no worker agents, the judge still works |
 | `--promotion auto\|owner` | No | The rig's own setting | The run's promotion rule. `owner` is sent as `owner_approval`: every confirmed win waits for the owner |
 | `--queue-from [RIG/]RUN` | No | Off: the new run's queue starts empty | A past run whose untried experiments start the new run's [experiment queue](../how-to/campaigns/choose-what-runs-next.md). `RUN` alone is a run on `--rig`; `RIG/RUN` names its rig. They are read from control, so it needs `--control` and `--token-file`, with `--print` too. See [below](#copy-a-past-runs-untried-experiments) |
+| `--mcp-servers JSON\|@file` | When the kit names MCP servers | None | The MCP servers the kit's `kit.json` names, as it names them ([`mcp_servers`](kit-manifest.md#mcp-servers)): the JSON list itself, or `@` and a file that holds it. Sent as the command's `mcp_servers`. Control refuses a server **Settings** lacks, and the rig refuses the run when the list differs from `kit.json`'s. A research contract's own `mcp_servers` are sent without it |
 | `--control URL` | To send it | | Control's address |
 | `--token-file F` | To send it | | A file with the owner's token |
 | `--rig R` | To send it | | The rig that runs it |
@@ -475,6 +501,38 @@ It prints control's answer on one line, such as `{"started":true,"campaign":"sor
 | `--token-file F` | Yes | | A file with the owner's token |
 
 Before it sends anything, it ends with exit code 2 and one of these: `--rig names the rig the run starts on`, `--agents is on or off`, `--promotion is auto or owner`, `--provider and --model go together: the agents' model is one of a provider's models`, `--queue-from names a run: RUN or RIG/RUN`, `--judge-gpus takes a whole number, not "…"` or `--past takes a whole number, not "…"`. Control's refusals come back as `<url> -> <status> <body>` with the words of **Start a run**, such as `-> 409 {"error":"rig-1 has no model for its agents, so they could not work: …"}`: [Campaigns](rest-api.md#campaigns) lists them. MCP's [`start_run`](mcp-tools.md#start_run) does the same with an operator's token too.
+
+### `mcp`
+
+The MCP servers in **Settings › Providers**, with the owner's token ([Manage MCP servers](../how-to/operate/mcp-servers.md)). Every subcommand takes `--control URL` and `--token-file F`. A secret comes from a file, never from the command line, where other users of the machine could see it.
+
+```sh
+thermite mcp add gbrain --url https://brain.example.com/mcp --auth key --secret-file brain.secret \
+  --control https://control.example.com --token-file ~/.thermite/owner-token
+```
+
+| Command | Route | What it prints |
+| --- | --- | --- |
+| `thermite mcp list` | `GET /v1/mcp-servers` | One line for each server, `<name>  <auth> <secret's last four characters>  <status>  <n> tools  <url>  named by <kits>`, then its last error and its tools, a tool that may write marked `(writes)`. `no MCP server in Settings` when there is none. `--json` prints the route's answer |
+| `thermite mcp add NAME --url URL --auth KIND` | `POST /v1/mcp-servers` | The server's lines, then `its tools were not read: <why>` when they could not be read, or, for `--auth oauth`, `open this address within 15 minutes and allow Thermite:` and the address of its sign-in page |
+| `thermite mcp change NAME` | `PUT /v1/mcp-servers/NAME` | The server's lines, and `its tools were not read: <why>` when they could not be read |
+| `thermite mcp check NAME` | `POST /v1/mcp-servers/NAME/check` | The same |
+| `thermite mcp sign-in NAME` | `POST /v1/mcp-servers/NAME/sign-in` | `open this address within 15 minutes and allow Thermite:` and the address |
+| `thermite mcp delete NAME` | `DELETE /v1/mcp-servers/NAME` | `NAME is deleted: control keeps nothing of its secrets` |
+
+The options of `add` and `change`:
+
+| Option | Meaning |
+| --- | --- |
+| `--url URL` | The server's MCP address: `https://`, or `http://` for `localhost` only |
+| `--auth oauth\|key\|client\|none` | How it signs Thermite in. Required for `add` |
+| `--header H` | `key`: the header the key goes in. Default `Authorization` |
+| `--secret-file F` | `key`: a file with the header's whole value, such as `Bearer` and the token |
+| `--client-id ID` | `client`, or `oauth` for a server that does not register clients by itself |
+| `--client-secret-file F` | `client`: a file with the client secret |
+| `--scope S` | The scopes to ask for, separated by spaces |
+
+A refused request ends the command with the route's answer, such as `… -> 409 {"error":"q4-gemv-kit names it. Take it out of that kit first.","named_by":["q4-gemv-kit"]}` (exit 2).
 
 ### `command`
 

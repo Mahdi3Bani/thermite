@@ -557,11 +557,13 @@ async function main(): Promise<void> {
     // The planner through OpenCode, as the planner's own user: its own tools; with past research,
     // the prompt names the run's knowledge/ folder, which every agent user may read and none may
     // change.
-    askOpencode: async (m, prompt, signal) => {
+    askOpencode: async (m, prompt, signal, o) => {
       const t = await opencodeOnce(m, prompt, once, {
         role: PLANNER_ROLE,
         timeoutMs: 300_000,
         signal,
+        // The MCP servers the run's kit gives the planner, at the gateway (goal 068).
+        mcp: o?.mcp,
       });
       if (!t.lastText) throw new Error(t.errors.at(-1) ?? "OpenCode gave no answer");
       return t.lastText;
@@ -577,6 +579,7 @@ async function main(): Promise<void> {
         timeoutMs: 300_000,
         signal,
         role: PLANNER_ROLE,
+        mcp: o?.mcp,
       });
       if (t.usage) service.subscriptionUsage = { ...t.usage, at: new Date().toISOString() };
       const answer = t.result ?? t.lastText;
@@ -586,11 +589,13 @@ async function main(): Promise<void> {
     // The planner of a route whose agents run in Codex: Codex as the planner's own user, through
     // the model proxy with a credential minted for the call; with past research, the prompt names
     // the run's knowledge/ folder, which every agent user may read and none may change.
-    askCodex: async (m, prompt, signal) => {
+    askCodex: async (m, prompt, signal, o) => {
       const t = await codexOnce(m, prompt, once, {
         role: PLANNER_ROLE,
         timeoutMs: 300_000,
         signal,
+        // The MCP servers the run's kit gives the planner, at the gateway (goal 068).
+        mcp: o?.mcp,
       });
       if (!t.lastText) throw new Error(t.errors.at(-1) ?? "Codex gave no answer");
       return t.lastText;

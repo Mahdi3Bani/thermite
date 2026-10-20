@@ -442,7 +442,7 @@ pre.report { white-space: pre-wrap; font-family: var(--font-mono); font-size: 12
 .ii:hover, .ii:focus { background: var(--foreground); color: var(--background); border-color: var(--foreground); outline: none; }
 #tip { position: fixed; z-index: 50; max-width: 340px; padding: 10px 12px; border-radius: 8px; background: var(--foreground); color: var(--background); font-size: 12.5px; line-height: 1.45; box-shadow: 0 6px 24px rgba(0,0,0,.18); pointer-events: none; display: none; }
 /* The new-campaign page. */
-#nc [hidden], #prov-add [hidden] { display: none !important; }
+#nc [hidden], #prov-add [hidden], #mcp-add [hidden] { display: none !important; }
 .gr { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 14px; border-bottom: 1px solid var(--border); font-size: 13px; cursor: pointer; }
 .gr:last-child { border-bottom: 0; } .gr.used { color: var(--muted-foreground); cursor: not-allowed; }
 #add-rig [hidden] { display: none !important; }
@@ -584,6 +584,25 @@ details.menu > summary::-webkit-details-marker { display: none; }
 .sopt .sd { display: block; font-size: 12px; color: var(--muted-foreground); margin-top: 2px; }
 .sopt .sr { font-size: 12px; white-space: nowrap; }
 .sgrid { display: grid; gap: 14px; }
+/* MCP servers (goal 068): their tools in Settings, and the kit's servers on the new-campaign page */
+.tools { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.tools th { text-align: left; font-weight: 600; font-size: 12px; color: var(--muted-foreground); padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.tools td { padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.tools tr:last-child td { border-bottom: 0; }
+.tools td:first-child { font-family: var(--font-mono); white-space: nowrap; width: 1%; }
+.more-tools summary { cursor: pointer; margin-top: 6px; }
+.mcp-pick { display: grid; gap: 6px; }
+.mcp-pick .sopt { grid-template-columns: 18px minmax(0, 1fr) auto; cursor: default; }
+.mcp-pick .sopt:has(input:checked) { border-color: var(--border); background: var(--card); }
+.mcp-pick .sopt:has(> input[data-srv-on]:checked) { border-color: var(--primary); background: var(--primary-surface); }
+.mcp-who { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.mcp-who label { display: inline-flex; gap: 5px; align-items: center; height: 24px; padding: 0 9px; border: 1px solid var(--input); border-radius: 999px; font-size: 12px; background: var(--card); cursor: pointer; }
+.mcp-who label:has(input:checked) { border-color: var(--primary); background: var(--primary-surface); }
+.mcp-who input { height: auto; width: auto; margin: 0; }
+.mcp-who.off { opacity: .45; pointer-events: none; }
+.mcp-adv { margin-top: 8px; }
+.mcp-tools td input { height: auto; width: auto; margin: 0; }
+.mcp-tools td:not(:first-child):not(:nth-child(2)), .mcp-tools th:not(:first-child):not(:nth-child(2)) { text-align: center; width: 1%; }
 /* Live, one run at a time: the stream gets the room */
 .lwrap { display: grid; grid-template-columns: 230px minmax(0, 1fr); width: 100%; min-height: 0; position: relative; }
 .lwrap.closed { grid-template-columns: minmax(0, 1fr); } .lwrap.closed .lruns { display: none; }

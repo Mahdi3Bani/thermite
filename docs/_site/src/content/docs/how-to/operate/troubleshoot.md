@@ -1,12 +1,12 @@
 ---
 title: "Troubleshoot"
-description: "Check the machine with thermite doctor, then find out why a check failed, a port clashes, a build is slow, a rig is quiet, a message goes unread, a queue change doesn't take, past research or an outside knowledge base doesn't work, or a sign-in bounces back, and where the logs are."
+description: "Check the machine with thermite doctor, then find out why a check failed, a port clashes, a build is slow, a rig is quiet, a message goes unread, a queue change doesn't take, past research or an MCP server doesn't work, or a sign-in bounces back, and where the logs are."
 type: how-to
 sidebar:
   order: 9
 ---
 
-Find the problem you see, then follow what to do. On a new machine, or when Thermite won't start, [check the machine](#check-the-machine) first. The problems are in five groups: [install and sign-in](#install-and-sign-in), [rigs](#rigs), [starting a campaign](#starting-a-campaign), [runs: trials, messages and the queue](#runs-trials-messages-and-the-queue), and [past research and outside knowledge bases](#past-research-and-outside-knowledge-bases). A [rig](../../reference/glossary.md) is two containers: the harness, which holds the judge and the agents, and the supervisor, its link to control. Most problems leave a line in a log, so [Where the logs are](#where-the-logs-are) comes next. Most commands below are for the local compose stack; with Podman, write `podman compose` where they say `docker compose`. For a rig on a machine or a cluster, the table below gives the commands that read its logs, and the entries say what to read there.
+Find the problem you see, then follow what to do. On a new machine, or when Thermite won't start, [check the machine](#check-the-machine) first. The problems are in five groups: [install and sign-in](#install-and-sign-in), [rigs](#rigs), [starting a campaign](#starting-a-campaign), [runs: trials, messages and the queue](#runs-trials-messages-and-the-queue), and [past research and MCP servers](#past-research-and-mcp-servers). A [rig](../../reference/glossary.md) is two containers: the harness, which holds the judge and the agents, and the supervisor, its link to control. Most problems leave a line in a log, so [Where the logs are](#where-the-logs-are) comes next. Most commands below are for the local compose stack; with Podman, write `podman compose` where they say `docker compose`. For a rig on a machine or a cluster, the table below gives the commands that read its logs, and the entries say what to read there.
 
 ## Check the machine
 
@@ -308,7 +308,7 @@ A reason about one experiment names its state, then the rule: `only queued exper
 - **Why:** the lanes took experiments from the queue in order, by fixed rules: they skip directions that an **Avoid** rule names, and take those that an **Always** rule, then a **Try** rule, names first. Every rule names a direction, so the fixed rules keep them all; only an old rule in words, marked `words`, needs the planner's model. A new direction that a **Try** rule names waits for the model to design it. See [Directions](../campaigns/choose-what-runs-next.md#directions).
 - **Do:** nothing is lost: the run goes on. If it happens every round, open the run's **Planner** tab. The **The planner** card names the planner's model, or says `No model: the lanes take the queue in order and keep to the rules.`, and counts the rounds, such as `12 rounds so far: 10 planned by the model, 2 in queue order by the fixed rules …`. Give the planner a model on **Edit rig**, or switch it on there ([Give each agent its own model](../models/model-per-agent.md)).
 
-## Past research and outside knowledge bases
+## Past research and MCP servers
 
 ### A run gets no past research
 
@@ -320,24 +320,32 @@ A reason about one experiment names its state, then the rule: `only queued exper
   - **The sync failed.** `past research sync error` names each run with its error, once until a sync works again, such as `<run>: control's knowledge base: HTTP` and the status control answered.
   - **Control couldn't index the rig's reports.** The **Audit log** has a `kb_failed` entry with the error, and control's log has `knowledge base catch-up failed`. Control tries again with the rig's next report.
 
-### An outside knowledge base fails its check
+### An MCP server fails its check
 
-- **You see:** on **Settings › Providers**, the row of an [outside knowledge base](outside-knowledge-base.md) shows a reason in red. After **Add it and read its tools**, **Save and check** or **Check**, the page says **Not done.** and, for example, `"team-brain" is kept, but it has no tool "search" to search.`
-- **Why and do:** control connected to the server with the token and read its tool list, or tried to:
+- **You see:** on **Settings › Providers**, in **MCP servers**, the server's row is red and says why. After **Add and read its tools**, **Save and read its tools** or **Read tools again**, the block says **Not done.** and, for example, `gbrain is kept, but the server answered 401: check the key.`
+- **Why and do:** control signed in to the server and read its tools, or tried to:
 
 | The reason | Do |
 | --- | --- |
-| `could not read its tool list:` and the error | Control could not connect, or the server refused the token. Check the **MCP URL**: the server's streamable HTTP address, as control reaches it. Then paste the token again in **New token** and press **Save and check** |
-| `it has no tool "search" to search` | Set **Search tool** to the name of the server's search tool |
-| `it has no tool "put_page" to write pages` | Set **Write tool** to the name of the server's tool that writes a page, or leave it empty for no copies |
-| `its tool "put_page" takes no slug and content` | That tool can't write Thermite's pages: control calls it with a `slug` and a `content`. Choose another tool, or leave **Write tool** empty |
-| `its token cannot be opened: enter it again` | Control can't open the sealed token, for example after its secrets key changed. Paste the token in **New token** and press **Save and check** |
+| `the server answered 401: check the key` (or `the client secret`, `the sign-in`) | The server refused the sign-in. Paste the key again in **New value**, or the secret in **New client secret**, and press **Save and read its tools**. For OAuth, press **Sign in again ↗** |
+| `can't read its tools:` and the error | Control could not connect, or the server did not answer as an MCP server. Check the **MCP URL**: the server's streamable HTTP or SSE address, as control reaches it |
+| `its key cannot be opened: enter it again` | Control can't open the sealed key, for example after its secrets key changed. Paste the value in **New value** |
+| `Its token could not be opened at the update. Enter the key again.` | A server made from an outside knowledge base at the update to 0.1.0 whose token control could not open. Paste `Bearer` and the token in **New value** |
+| `the server gave no token for its client ID and secret:` and the server's error | Check **Client ID**, **New client secret** and **Scopes** against the server's settings |
+| `The sign-in ended. Sign in again.` | The server refused to renew the OAuth sign-in. Press **Sign in again ↗** |
+| `The server does not register clients by itself. Register Thermite on the server, then give its client ID here.` | Register Thermite as a client on the server, with the callback `/v1/mcp-oauth/callback` on control's address, and put its client ID in **Client ID** |
+| `This sign-in is not known, or was used already. Start it again.` or `This sign-in took more than 15 minutes. Start it again.` | Press **Sign in again ↗**, and finish on the server's page within 15 minutes |
 
-### A copy to an outside knowledge base fails
+### An MCP server fails during a run
 
-- **You see:** on the campaign's page, under **Outside knowledge bases**, the line **Copy to team-brain** says `on · the last sync failed 4m ago:` and the error. On **Settings › Providers**, the knowledge base's row is red, and its copy shows **failing**. Control's log has `outside knowledge base sync failed`, once for each new error.
-- **Why:** when the server refuses a page, the error is `it refused the page for note 3 of sort-speed-1:` and the server's reason. The copy stops at the page the server refused, and the next sync starts again from it, so the pages after it wait. When the server refuses the same page three syncs in a row, control skips it, writes the rest, and no longer calls the sync failed: the line says `last sync …` with the pages written, then `· 1 item skipped, the server refused it 3 syncs in a row` and the last one skipped, and the **Audit log** has an `outside_kb_item_skipped` entry. A skipped page is not written later on its own; it is written again only when its item changes. Other errors are the server's or the connection's, or one of the check's reasons above.
-- **Do:** fix the cause on the server, or in the knowledge base's row on **Providers**. Then press **Sync now** on the campaign's page. It says `12 pages written to "team-brain".`, or `2 pages written, then the sync failed:` and the error. `Not synced: a sync of this folder is running.` means a sync is on its way: wait and press **refresh**.
+- **You see:** in a run's **Live** view, `the MCP server gbrain failed: <why>. The workers go on without it.` (or the planner, or the advisors). The run's history has an `mcp_server_failed` event with the server, the kind of agent and the reason. An agent's call came back as a tool error, `The MCP server gbrain failed: <why>. Go on without it.`, or `The MCP server gbrain can't be used now: <why>. Go on without it.` when the rig never got the server.
+- **Why:** the server did not answer, refused the call, or the rig has no sign-in for it: `control can't sign in to it: …` (its sign-in ended, its key can't be opened), or `Settings has no MCP server of that name now` (it was deleted after the run started). A rig gets a server's sign-in on the same beat as its model route, every 30 seconds.
+- **Do:** nothing stops: the run goes on, and the agents work without the server's tools. Fix the server on **Settings** (its row says why), and the next call that works records `mcp_server_back` and says `the MCP server gbrain works again.` in **Live**. An advisor with `fetch_domains` `"*"` gets no MCP server at all, by design: see [Advisors file](../../reference/advisors-file.md#mcp-servers).
+
+### A run does not start: the kit names an MCP server
+
+- **You see:** `The kit names the MCP server paper-search, and Settings has no server of that name. Add an MCP server named paper-search in Settings › Providers, or take it out of the kit. Then start the campaign again.`; or, on **Commands**, a failed `assign_campaign` whose outcome says `the kit names the MCP servers …, and the assignment names …`.
+- **Do:** add the server in **Settings** with that exact name, or take it out of the kit. A run assigned with `thermite assign` or over MCP needs the kit's list in its `mcp_servers` ([Give agents MCP tools](../campaigns/give-agents-mcp-tools.md#3-start-the-run)).
 
 ## Something was refused
 

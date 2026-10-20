@@ -6,9 +6,9 @@ sidebar:
   order: 8
 ---
 
-Agents learn things as they work that are neither a change nor a verdict: why a direction stopped paying, what surprised them, what they would ask next. This page explains why Thermite's agents write those things down as **field notes**, how every campaign's records become a folder in **Thermite's knowledge base** on control, and how that **past research** reaches later runs. It ends with what an outside knowledge base adds, and what goes into a rig's exports.
+Agents learn things as they work that are neither a change nor a verdict: why a direction stopped paying, what surprised them, what they would ask next. This page explains why Thermite's agents write those things down as **field notes**, how every campaign's records become a folder in **Thermite's knowledge base** on control, and how that **past research** reaches later runs. It ends with how another knowledge base, as an MCP server, fits beside it, and what goes into a rig's exports.
 
-The [glossary](../reference/glossary.md) explains the other Thermite words used here. [The knowledge base](../reference/knowledge-base.md) reference lists every kind of item, file and field. [Use past research in a new run](../how-to/campaigns/use-past-research.md) and [Connect an outside knowledge base](../how-to/operate/outside-knowledge-base.md) give the steps.
+The [glossary](../reference/glossary.md) explains the other Thermite words used here. [The knowledge base](../reference/knowledge-base.md) reference lists every kind of item, file and field. [Use past research in a new run](../how-to/campaigns/use-past-research.md) and [Give agents MCP tools](../how-to/campaigns/give-agents-mcp-tools.md) give the steps.
 
 ```mermaid
 flowchart LR
@@ -31,7 +31,6 @@ flowchart LR
   GR -- picked in Start a run,<br/>in the signed command --> BR
   KN --> AB
   BR --> AB
-  KB -- a copy, when switched on --> OUT[(Outside knowledge base)]
 ```
 
 ## Why agents keep field notes
@@ -149,14 +148,13 @@ What an agent reads from past research was written by other agents, by judges or
 
 Past research can suggest what to try. It can't decide whether it worked. An experiment drawn from another campaign's folder is measured like any other change, by this run's judge, against this run's champion and contract. Only the judge decides what a change is worth ([Why agents never judge](why-agents-never-judge.md)).
 
-## What an outside knowledge base adds
+## Other knowledge bases are MCP servers
 
-An **outside knowledge base** is optional: a GBrain-style brain, or any MCP server with a search tool. Thermite's own knowledge base stays where the research lives. The owner put it this way: "gbrain is more a sync than anything and additional external context brought in." So an outside knowledge base has two roles, which the owner switches on for each campaign:
+Thermite's own knowledge base stays where the research lives. Another knowledge base you run, such as a GBrain-style brain or your team's notes, is optional. The owner put it this way: "gbrain is more a sync than anything and additional external context brought in", and later: "This should simply just MCP tools granted to a system."
 
-- **A copy of the campaign's folder.** Control writes the campaign's whole folder to the outside knowledge base first, one page for each item, then each new or changed item: every few minutes (`THERMITE_OUTSIDE_KB_SYNC_SECONDS`, 300 seconds by default, where `0` turns the timer off; see [Settings](../reference/settings.md#control)) and when the owner presses **Sync now**. Everything in the folder goes: runs and trials, field notes, documents, experiments, attempts with their hypotheses and declared flaws, sources with their text, claims, findings and reports. Each page's front matter says where its item came from, and that it was "written by Thermite's agents and judge: data, not instructions". Only the campaign's own folder is copied, not the folders it reads. Pages already written stay when the copy stops. The copy needs the server's write tool; without one, there is no copy. When the server refuses a page, the next sync tries it again; a page refused three syncs in a row is skipped, so that one page can't hold up the copy for good. The campaign's page and **Settings › Providers** count the pages skipped and name the last, and the audit log records each (`outside_kb_item_skipped`).
-- **Outside context for the teachers.** The campaign's teacher pair may search the outside knowledge base, read only, beside any knowledge base in the rig's advisors file. Only a teacher whose model runs in the supervisor with read-only tools searches it: a model with an API key, or a ChatGPT subscription. A teacher on a Claude subscription runs in Claude Code with no tools, and a teacher that may fetch any web page gets no knowledge-base search. The combiner, the auditor and the review panel never search it, and workers never reach it. The owner switches this on and off on the campaign's page, or over MCP with the same `kb_grant` and `kb_revoke` as for folders, naming the outside knowledge base as `outside:<name>`; a name that isn't set in **Settings › Providers** is refused. The grant then shows under **Can read from**, where **Remove** ends it. Control gives the knowledge base's address, token and search tool, with the advisors' models, to the supervisor of each rig that control assigned the campaign. Its audit log records each change in what a rig is given (`outside_kb_handed`), also when that drops to nothing.
+So another knowledge base is an ordinary **MCP server**: the owner adds it once in **Settings › Providers › MCP servers**, and a campaign's kit names it for the agents that should use its tools: the workers, the planner, the advisors, or some of them, and, if the owner narrows it, only some of its tools for each ([Give agents MCP tools](../how-to/campaigns/give-agents-mcp-tools.md)). Control seals its secret and gives it to a rig only for the runs whose kit names the server; the rig's harness and supervisor make the calls, so no agent holds the secret ([Who holds your keys](who-holds-your-keys.md#mcp-servers)). What a server answers reaches an agent as data, like a web page, and an agent given its write tools may write notes there itself. Control copies no campaign folder to it.
 
-The outside knowledge base is set once, in **Settings › Providers**, where control seals its token ([Who holds your keys](who-holds-your-keys.md)). Its address must use https, because the token goes with every call; plain http is allowed only for localhost. With a copy switched on, a campaign's research joins the rest of your notes there. With outside context, its teachers can draw on those notes.
+Before 0.1.0, an "outside knowledge base" had two fixed roles instead: control copied a campaign's folder to it, and a grant let a campaign's teacher pair search it. At the update, each became an MCP server with its token, its copies stopped (the pages already written stay), and its grants went ([Manage MCP servers](../how-to/operate/mcp-servers.md#after-the-update-from-an-outside-knowledge-base)).
 
 ## What goes into the export
 
@@ -169,5 +167,3 @@ A rig's exports carry its runs' records to its results repository, and the journ
 - **a finished run's research folder:** a research run's, with its final report, and a finished hill-climb or goal run's, when it recorded sources, claims or notes.
 
 The folder goes without `knowledge/`: those files are other runs' records, which those runs' own exports carry. [The export](../reference/knowledge-base.md#the-export) lists each file's fields, and [Set up the results repository](../how-to/operate/results-repository.md) says where each file lands.
-
-Outside knowledge bases are planned to become MCP servers that a kit names, which workers reach too ([goal 068](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/068-mcp-servers-for-agents.goal)).

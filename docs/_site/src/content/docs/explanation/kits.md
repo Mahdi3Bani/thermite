@@ -38,6 +38,8 @@ A kit is a git repository with a manifest, `kit.json`, and whatever scripts the 
 
 Goal campaigns add **verifiers**: named sets of cells. A goal that names a verifier is met when every cell in it passes the check. Verifiers can be ordered, and **gated**: one runs only once the verifiers it requires have passed, so a change that fails a basic goal doesn't spend the judge's time on goals that depend on it.
 
+A kit can also name **MCP servers**: tools from outside Thermite, such as a knowledge base or a code host, that the campaign's workers, planner or advisors may call ([Give agents MCP tools](../how-to/campaigns/give-agents-mcp-tools.md)). They belong in the kit because they are part of how the campaign is run, chosen once with the benchmark and pinned with it by commit. The judge never uses them, so they can't change a measurement. The kit names a server by its name in control's **Settings**, never with a secret: a campaign whose kit names a server **Settings** lacks can't start.
+
 ## How the judge uses a kit
 
 ```mermaid

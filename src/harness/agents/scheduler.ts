@@ -16,11 +16,13 @@ import { NOTES_ARE_DATA, notesData, notesText } from "../journal.ts";
 import { clipReason } from "../judge/reasons.ts";
 import { briefingText, pastResearchLine } from "../knowledge.ts";
 import type { Ledger } from "../ledger.ts";
+import type { McpCaller } from "../mcp-gateway.ts";
 import { messageText, type OwnerMessage } from "../messages.ts";
 import type { Experiment } from "../queue.ts";
 import type { Research } from "../research/research.ts";
 import type { HarnessService } from "../service.ts";
 import { Coordinator, focusOf, type Handout, PLANNER, resultOf } from "./coordinator.ts";
+import { mcpAgentTools } from "./mcp-tools.ts";
 import { type ModelConfig, usageLimitRetry } from "./model.ts";
 import {
   type Ask,
@@ -29,6 +31,7 @@ import {
   type GoalReport,
   lanesOf,
   type PlannerInput,
+  type PlannerMcp,
   type PlannerPast,
   plan,
   toDesign,
@@ -64,6 +67,15 @@ const SETTLED = new Set([
 ]);
 const KEEP = new Set(["win_screened", "win_confirmed"]);
 
+/**
+ * A planner call through another harness: a folder it may read (its past research), and the MCP
+ * servers it may call with the gateway's credential made for this call (goal 068).
+ */
+export interface PlannerCallOptions {
+  read?: string | undefined;
+  mcp?: { auth: string; servers: string[] } | undefined;
+}
+
 export interface SchedulerOptions {
   service: HarnessService;
   runner: Runner;
@@ -81,7 +93,7 @@ export interface SchedulerOptions {
         model: ModelConfig,
         prompt: string,
         signal?: AbortSignal,
-        o?: { read?: string | undefined },
+        o?: PlannerCallOptions,
       ) => Promise<string>)
     | undefined;
   /** The planner's own model route, when control gave the planner one. */
@@ -95,7 +107,7 @@ export interface SchedulerOptions {
         model: ModelConfig,
         prompt: string,
         signal?: AbortSignal,
-        o?: { read?: string | undefined },
+        o?: PlannerCallOptions,
       ) => Promise<string>)
     | undefined;
   /**
@@ -107,7 +119,7 @@ export interface SchedulerOptions {
         model: ModelConfig,
         prompt: string,
         signal?: AbortSignal,
-        o?: { read?: string | undefined },
+        o?: PlannerCallOptions,
       ) => Promise<string>)
     | undefined;
   /** Runs one trial (in a child process in the harness; in-process in tests); abortable. */
@@ -662,6 +674,19 @@ export class Scheduler {
       const m = this.o.plannerModel?.() ?? this.modelNow();
       // OpenCode's own models are reached only through OpenCode; every other provider, through Pi.
       // A Claude subscription, only through Claude Code: without it the planner refuses the route.
+      // The MCP servers the run's kit gives the planner (goal 068), through the gateway: Pi's
+      // tools call it in this process; another harness gets a credential made for the call.
+      const caller: McpCaller = { run, kind: "planner", source: "planner" };
+      const mcpServers = this.o.service.mcp.given(run, "planner").map((g) => g.name);
+      const withMcp = (o: Parameters<Ask>[2]): PlannerCallOptions | undefined =>
+        o
+          ? {
+              read: o.read,
+              ...(o.mcp?.length
+                ? { mcp: { auth: this.o.service.mintMcpToken(caller), servers: o.mcp } }
+                : {}),
+            }
+          : undefined;
       // A route whose agents run in the Codex CLI plans in Codex too.
       const ask: Ask | undefined =
         m?.api === "opencode" && this.o.askOpencode
@@ -670,15 +695,35 @@ export class Scheduler {
                 m,
                 prompt,
                 sig,
-                o,
+                withMcp(o),
               )
           : m?.api === "claude" && this.o.askClaude
             ? (prompt, sig, o) =>
-                (this.o.askClaude as NonNullable<SchedulerOptions["askClaude"]>)(m, prompt, sig, o)
+                (this.o.askClaude as NonNullable<SchedulerOptions["askClaude"]>)(
+                  m,
+                  prompt,
+                  sig,
+                  withMcp(o),
+                )
             : m?.harness === "codex" && this.o.askCodex
               ? (prompt, sig, o) =>
-                  (this.o.askCodex as NonNullable<SchedulerOptions["askCodex"]>)(m, prompt, sig, o)
+                  (this.o.askCodex as NonNullable<SchedulerOptions["askCodex"]>)(
+                    m,
+                    prompt,
+                    sig,
+                    withMcp(o),
+                  )
               : undefined;
+      const mcp: PlannerMcp | undefined = mcpServers.length
+        ? {
+            servers: mcpServers,
+            tools: ask
+              ? []
+              : mcpAgentTools((await this.o.service.mcp.tools(caller)).tools, (s, t, a) =>
+                  this.o.service.mcp.call(caller, s, t, a),
+                ),
+          }
+        : undefined;
       // The run's past research, read only: Pi's planner searches it with its tool; through
       // OpenCode, Claude Code or Codex, the planner reads the run's knowledge/ files with its own
       // tools.
@@ -699,7 +744,7 @@ export class Scheduler {
           assignments: f.assignments,
           newFamilies: f.newFamilies,
         };
-      } else p = await plan(input, m, ctrl.signal, ask, past);
+      } else p = await plan(input, m, ctrl.signal, ask, past, mcp);
     } finally {
       this.planning = undefined;
     }
@@ -1359,6 +1404,7 @@ export class Scheduler {
               : this.o.trialWallMs,
             maxTurns: this.o.maxTurns,
             limits: laneLimits(contract),
+            mcpServers: this.o.service.mcp.given(run, "workers").map((g) => g.name),
           },
           abort.signal,
         );
@@ -1488,6 +1534,8 @@ export class Scheduler {
             wallMs: limits.trialMinutes ? limits.trialMinutes * 60_000 : this.o.trialWallMs,
             maxTurns: this.o.maxTurns,
             limits,
+            // The MCP servers the run's kit gives its workers (goal 068).
+            mcpServers: this.o.service.mcp.given(run, "workers").map((g) => g.name),
           },
           abort.signal,
         );

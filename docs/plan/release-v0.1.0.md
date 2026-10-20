@@ -61,7 +61,7 @@ A tester sees what each run is doing, gives it work through one queue of experim
 | [065 · Journals and a research corpus from every campaign](goals/065-journals-and-corpus.goal) | `VERIFIED` | 062, 064 |
 | [066 · Rules name directions, picked with `:direction:`](goals/066-direction-rules.goal) | `IN_PROGRESS` | 064 |
 | [067 · `thermite assign` can copy a past run's untried experiments](goals/067-assign-queue-from.goal) | `VERIFIED` | 064 |
-| [068 · MCP servers for a campaign's agents, named by its kit](goals/068-mcp-servers-for-agents.goal) | `READY` | 065 |
+| [068 · MCP servers for a campaign's agents, named by its kit](goals/068-mcp-servers-for-agents.goal) | `VERIFIED` | 065 |
 | [056 · A Codex CLI harness](goals/056-codex-harness.goal) | `VERIFIED` | — |
 
 ### Install from images

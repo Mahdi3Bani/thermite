@@ -89,7 +89,7 @@ This card has no **Better is** or **Smallest gain that counts (%)** of its own: 
 2. Set **Smallest gain that counts (%)**.
 3. Choose **A kit in a repository**. Fill in **Kit repository**, **Kit repository access**, **Kit commit** (the full commit), **Cases to measure** and **Hidden tests** (case names separated by spaces), and **The kit's metric** (a metric name from its `kit.json`).
 
-For a goal campaign, do only step 3, without **The kit's metric**. Control doesn't open this kit: the rig checks it when the run starts.
+For a goal campaign, do only step 3, without **The kit's metric**. Control reads only the MCP servers that this kit's `kit.json` names ([below](#mcp-servers-for-the-agents)); the rig checks the kit when the run starts.
 
 ### Upload a kit
 
@@ -110,9 +110,18 @@ A goal campaign has a **Goals** table. Each row has **The goal**, **Checked by**
 
 A goal campaign made here can't end as "not possible": it runs until every goal is met, or until you stop it. See [Decide what waits for you](decide-what-waits.md#not-possible-endings).
 
+### MCP servers for the agents
+
+The last part of **How to measure** gives the campaign's agents tools from outside Thermite: the MCP servers in **Settings › Providers**, such as a knowledge base or a code host. Skip it and the agents have only Thermite's own tools.
+
+1. Tick a server. The workers get it at once; choose the agents that get it: **Workers**, **Planner**, **Advisors**.
+2. Optional: open **Advanced: its tools for each kind of agent** under the server, and untick a tool for the agents that should not call it. Tools that change something on the server are marked **writes**.
+
+The line under the list says what each kind of agent gets, such as `The workers get 31 tools from gbrain; the planner gets none; the advisors get 31 tools from gbrain.`, and warns of a server that doesn't work now, of one with no agents, and of a kind of agent left with no tool. **What goes into kit.json** shows the list. A kit described here gets it in its `kit.json`. An uploaded kit's list starts as its `kit.json` has it, and a change is written into the kit control keeps. For **A kit in a repository**, the list is read from the kit's `kit.json` once you fill in **Kit repository** and **Kit commit**, each server marked `✓ found` or `✕ missing`, with **Add it in Settings** for a missing one; change it in the kit's repository. [Give agents MCP tools](give-agents-mcp-tools.md) says more.
+
 ### The question
 
-For research, step 3 asks for **Topic** (a sentence), **Questions** (one per line, up to 50; the report counts the verified claims for each), **Starting links** (pages agents start from, one per line) and **Run for at least**, such as `8h` or `2d`. A run made here ends after that much running time; time while it is paused doesn't count.
+For research, step 3 asks for **Topic** (a sentence), **Questions** (one per line, up to 50; the report counts the verified claims for each), **Starting links** (pages agents start from, one per line) and **Run for at least**, such as `8h` or `2d`. A run made here ends after that much running time; time while it is paused doesn't count. **MCP servers for the agents** is on this step too, as [above](#mcp-servers-for-the-agents); control writes the servers into the campaign's contract.
 
 ## 4. Where it runs
 

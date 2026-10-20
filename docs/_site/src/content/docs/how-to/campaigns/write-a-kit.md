@@ -159,6 +159,19 @@ A goal campaign checks a goal with a verifier: the cells whose runs must all pas
 - A verifier that `requires` another runs only when that one passed. Otherwise its goal is unmet with `not run: it requires load, which did not pass`. Leave independent goals ungated, so they still run and catch regressions.
 - To hold a goal out, give its verifier at least one visible cell and one held-out cell. A verifier whose cells are all held out never counts as met.
 
+### Optional: name the MCP servers its agents use
+
+To give the campaign's agents tools from outside Thermite, name MCP servers that are in control's **Settings**, by name, with the agents that get each. `tools` narrows a server to some of its tools for one kind of agent ([Give agents MCP tools](give-agents-mcp-tools.md)).
+
+```json title="kit.json (part)"
+"mcp_servers": [
+  { "name": "gbrain", "agents": ["workers", "planner"] },
+  { "name": "docs-search", "agents": ["workers"], "tools": { "workers": ["get-library-docs"] } }
+]
+```
+
+The judge never uses them, and no secret goes in the kit. A campaign whose kit names a server that **Settings** lacks can't start.
+
 ## 8. Commit it and pin it
 
 Commit the kit, and write its full commit in the contract's `project.kit`:

@@ -6,7 +6,7 @@ sidebar:
   order: 14
 ---
 
-Thermite needs secrets to work: API keys for model providers, logins for subscriptions, SSH keys and kubeconfigs for the places rigs run, access to private repositories, tokens for outside knowledge bases, and tokens for people, programs and rigs. This page follows each kind of secret: where it is kept, where it travels, and who can read it.
+Thermite needs secrets to work: API keys for model providers, logins for subscriptions, SSH keys and kubeconfigs for the places rigs run, access to private repositories, the sign-ins of MCP servers, and tokens for people, programs and rigs. This page follows each kind of secret: where it is kept, where it travels, and who can read it.
 
 The design follows a few rules:
 
@@ -25,14 +25,15 @@ flowchart LR
   S -- Git access, for one fetch --> G[(Git host)]
   H -- key in its environment --> W["Pi worker<br/>(agent-N)"]
   H -- key added by the proxy --> P[Model provider]
+  H -- sign-in added by the gateway --> X[MCP server]
   C -. SSH key, kubeconfig .-> M[Machines and clusters]
 ```
 
 ## Control's sealed store
 
-Everything you add on the dashboard's **Settings › Providers** page is **sealed**: model provider keys, subscription logins, Git access, SSH keys, kubeconfigs, RunPod keys and the tokens of outside knowledge bases. Control encrypts each one with AES-256-GCM, under a key kept in a separate file, outside its database. A copy of the database alone reveals no secret, and a sealed value that was changed fails to open. The [ports, volumes and secret files reference](../reference/ports-volumes-secrets.md#secret-files) says where each file lives.
+Everything you add on the dashboard's **Settings › Providers** page is **sealed**: model provider keys, subscription logins, Git access, SSH keys, kubeconfigs, RunPod keys, and MCP servers' keys, client secrets and sign-ins. Control encrypts each one with AES-256-GCM, under a key kept in a separate file, outside its database. A copy of the database alone reveals no secret, and a sealed value that was changed fails to open. The [ports, volumes and secret files reference](../reference/ports-volumes-secrets.md#secret-files) says where each file lives.
 
-The dashboard shows only a hint of each key: its last four characters, such as `key …abcd`. No page, REST route or MCP tool shows you a key again. The MCP tool `providers` lists what control holds without any key, token or kubeconfig.
+The dashboard shows only a hint of each key: its last four characters, such as `key …abcd`. No page, REST route or MCP tool shows you a key again. The MCP tool `providers` lists what control holds without any key, token or kubeconfig, and `mcp_servers` lists the MCP servers with only each secret's hint.
 
 ## Model provider keys
 
@@ -78,16 +79,17 @@ The **results repository**, where rigs push their exports, uses a deploy key of 
 
 A **Hugging Face token**, for gated model files, is the supervisor's own too: a file mounted into it (`THERMITE_HF_TOKEN_FILE`). The supervisor sends it only to Hugging Face, and only over HTTPS, never to the file servers Hugging Face sends the download on to. It never puts it in a command, the inbox, a report or a log, so the harness and its agents never see it: they get only the downloaded file, which the harness checks against the signed SHA-256. See [Model files on a rig](../reference/model-files.md#gated-models-on-hugging-face).
 
-## Outside knowledge bases
+## MCP servers
 
-An **outside knowledge base**, such as a GBrain-style brain, is an MCP server that control can copy a campaign's folder to, and that a campaign's teachers can search ([Journals and the knowledge base](journals-and-knowledge.md#what-an-outside-knowledge-base-adds)). It takes a token, which you paste once on **Settings › Providers**. Control seals it like every other secret, and the dashboard shows only its hint, such as `token …abcd`.
+An **MCP server** gives a campaign's agents tools from outside Thermite, such as a knowledge base like GBrain or a code host ([Give agents MCP tools](../how-to/campaigns/give-agents-mcp-tools.md)). You add it once on **Settings › Providers**, with how it signs in: an OAuth sign-in on the server's own page, a key in a header, a client ID and secret, or nothing. Control seals the key, the client secret and the OAuth sign-in like every other secret, and the dashboard shows only a hint, such as `Authorization · key …c41b`. No page, route, MCP tool, log or audit entry shows a secret again: an MCP call that takes one is logged as `given (…c41b)`, and control takes each secret out of the error texts it shows.
 
-- **Control** opens the token to read the server's tool list when you add or check the knowledge base, and to write pages when a campaign's folder is copied there.
-- **A rig** gets the token only when control assigned it a campaign that the owner let search that knowledge base. Control hands it to the supervisor with the advisors' models, and its audit log records each change in what a rig is handed, also when that drops to nothing (`outside_kb_handed`). The supervisor keeps it in memory and gives the search only to the teachers of that campaign's runs. The harness and the workers never get it.
-- **On the wire**, the token goes in each request's `Authorization` header, never in the address: control refuses an address with credentials, a query or a fragment in it, and one that is not https, except for localhost.
-- **It stays with its server.** A new address on another server needs the token again, so a sealed token never goes to a server it was not given for. Control takes the token out of the error texts it shows. Deleting the knowledge base deletes its token.
+- **Control** opens the secret to read the server's tools when you add it or press **Read tools again**, and to sign in. For OAuth it keeps the refresh token and renews the access token itself; for a client ID and secret it gets an access token from the server. A refresh token or a client secret never leaves control.
+- **A rig** gets a server only when a run that control assigned it names that server in its kit. Control hands it to the supervisor as the headers each call carries (the key, or an access token), on the same beat as the model route, and its audit log records each change in what a rig is handed (`mcp_servers_handed`, names only). The supervisor keeps the advisors' servers in memory and calls them for the advisors. It hands the workers' and the planner's servers to the harness, which keeps them in memory, never on disk, and calls them for those agents.
+- **No agent holds a secret.** A worker or the planner calls the harness's gateway with its trial's token, or a token made for one planner call; an advisor in Claude Code calls a server the supervisor serves on `127.0.0.1` for that call. The gateway adds the headers and passes the server's answer back. OpenCode's and Claude Code's MCP configuration name the gateway and that token, nothing else.
+- **On the wire**, a secret goes in a request header, never in the address: control refuses an address with a user, a password, a fragment or a secret-like query parameter, and one that is not https, except for localhost.
+- **It stays with its server.** Another address on another server, or another way to sign in, needs the secret again, so a sealed secret never goes to a server it was not given for. Deleting the server deletes its secrets and its sign-in.
 
-[Connect an outside knowledge base](../how-to/operate/outside-knowledge-base.md) shows the steps.
+[Manage MCP servers](../how-to/operate/mcp-servers.md) shows the steps.
 
 ## Tokens
 

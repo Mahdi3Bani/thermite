@@ -31,7 +31,7 @@ This guide covers providers reached with an API key, or with no key for OpenCode
    | **Anthropic** | Anthropic's own API | Leave empty for `https://api.anthropic.com` | Required |
    | **OpenCode (its own models)** | OpenCode's own service. Its models run only in OpenCode v2 | Leave empty for `https://opencode.ai/zen/v1` | Leave empty for the free models |
 
-   The list's other groups hold subscriptions, Git access and the places where rigs run. Its last group, **Knowledge (optional)**, holds an outside knowledge base: a service over MCP, such as GBrain, that can keep a copy of what a campaign's runs recorded, and that the campaign's teacher pair (two of its advisors) can search. See [Connect an outside knowledge base](../operate/outside-knowledge-base.md).
+   The list's other groups hold subscriptions, Git access and the places where rigs run. MCP servers, such as GBrain, have a block of their own lower on the page, **Add an MCP server**: see [Give agents MCP tools](../campaigns/give-agents-mcp-tools.md).
 
 3. Fill in the fields. Each label has an ⓘ icon; hover over it to read its description:
 

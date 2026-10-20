@@ -77,6 +77,7 @@ Unknown fields are refused at every level.
 | `check.command` | list of text, at least one | required | The check's command and arguments. See [Check output](#check-output) |
 | `check.timeout_s` | integer ≥ 1 | 120 | The check's time limit, in seconds |
 | `verifiers` | object | `{}` | Named verifiers for goal campaigns. See [Verifiers](#verifiers) |
+| `mcp_servers` | list | none | The MCP servers the campaign's agents use, and which agents get each. See [MCP servers](#mcp-servers) |
 
 ### Rules across fields
 
@@ -116,6 +117,32 @@ The device's driver also refuses values it cannot believe. The `cpu` driver refu
 | `cells` | list of cell names, at least one | required | The cells whose runs must all pass the check |
 | `priority` | integer | 100 | The order verifiers run in: lower first. Goals are checked in this order and reported in the contract's order |
 | `requires` | list of verifier names | `[]` | Gates: other verifiers that must pass first. If one does not, this verifier runs none of its cells, and its goal is unmet with `not run: it requires <names>, which did not pass`. A gate with no cells in this pass (all held out, or none held out) does not block |
+
+### MCP servers
+
+`mcp_servers` lists the [MCP servers](../how-to/campaigns/give-agents-mcp-tools.md) whose tools this kit's campaigns give their agents, by their names in control's **Settings › Providers**. The judge never uses them. At most 20 servers, each named once.
+
+```json title="kit.json (part)"
+{
+  "mcp_servers": [
+    { "name": "gbrain", "agents": ["workers", "planner", "advisors"] },
+    { "name": "github", "agents": ["workers", "advisors"], "tools": { "advisors": ["search_code"] } }
+  ]
+}
+```
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `name` | text matching `^[a-z0-9][a-z0-9-]{0,63}$` | required | The server's name in **Settings** |
+| `agents` | list of `workers`, `planner` and `advisors`, at least one, each once | required | The kinds of agent that get the server: the workers (every lane), the planner, and the advisors (the teacher pair, the auditor and the review panel) |
+| `tools` | object | none | Only when narrowed: for a kind of agent in `agents`, the tools it may call, as a list of at least one tool name. A kind left out gets every tool the server lists. A kind not in `agents` is refused: `the <kind> do not get this server: add <kind> to agents, or take out its tools` |
+
+The harness calls the servers for the workers and the planner, and the supervisor for the advisors; each caller gets only the tools given to its kind, and a call to another is refused as a tool error. When a run is assigned:
+
+- **Control** refuses to sign the assignment when **Settings** has no server of a name the kit names: `The kit names the MCP server <name>, and Settings has no server of that name. Add an MCP server named <name> in Settings › Providers, or take it out of the kit. Then start the campaign again.` It sends the kit's list in the assignment ([`assign_campaign`](signed-commands.md#assign_campaign), field `mcp_servers`).
+- **The harness** refuses the run when the assignment's list is not the one `kit.json` names: `the kit names the MCP servers <list>, and the assignment names <list>: start the run from control, which reads the kit's servers, or give the kit's mcp_servers in the assignment`. Then it records the list in the run's history as the event `mcp_servers`.
+
+A research campaign has no kit: its contract's `mcp_servers` takes the same list ([Contract](contract.md)).
 
 ## Placeholders
 

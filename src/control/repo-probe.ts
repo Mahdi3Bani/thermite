@@ -108,6 +108,70 @@ async function probeWith(
   }
 }
 
+/**
+ * A kit's kit.json at one commit of its repository, for the new-campaign page (goal 068: the
+ * MCP servers a kit in a repository names). Control fetches that commit alone, with no file
+ * bigger than 1 MiB, reads kit.json and nothing else, and removes what it fetched.
+ */
+export async function readKitManifest(
+  url: string,
+  commit: string,
+  access?: { auth: GitAuth; knownHostsFile: string },
+): Promise<unknown> {
+  if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(commit))
+    throw new Error("the kit's commit is its full id: 40 hexadecimal characters");
+  const ssh = access?.auth.kind === "ssh";
+  if (
+    ssh
+      ? !/^(?:ssh:\/\/[^\s]+|[\w.-]+@[\w.-]+:[^\s]+)$/.test(url)
+      : !/^https:\/\/[^\s@]+$/.test(url)
+  )
+    throw new Error(
+      ssh
+        ? "with an SSH deploy key, the kit's repository is an ssh:// or git@host:path address"
+        : "the kit's repository must be an https:// URL, or choose Git access for a private one",
+    );
+  return withGitAuth(access?.auth, access?.knownHostsFile, async (g) => {
+    const git = (args: string[], cwd?: string) =>
+      run("git", args, {
+        cwd,
+        env: { ...env, ...(access ? { ...g.env, GIT_ALLOW_PROTOCOL: g.protocols } : {}) },
+        timeout: 60_000,
+        maxBuffer: 4 * 1024 * 1024,
+      });
+    const dir = mkdtempSync(join(tmpdir(), "thermite-kit-probe-"));
+    try {
+      await git(["init", "--quiet", "--bare", dir]);
+      try {
+        await git(
+          ["fetch", "--quiet", "--depth", "1", "--filter=blob:limit=1m", "--", url, commit],
+          dir,
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(
+          /could not read Username|Authentication|403|401/.test(msg)
+            ? "control cannot read the kit's repository without a key: is it private?"
+            : `control could not fetch the kit's commit: ${msg.split("\n").filter(Boolean).at(-1)?.slice(0, 200)}`,
+        );
+      }
+      let text: string;
+      try {
+        text = (await git(["show", `${commit}:kit.json`], dir)).stdout;
+      } catch {
+        throw new Error("the kit's commit has no kit.json at its top");
+      }
+      try {
+        return JSON.parse(text);
+      } catch {
+        throw new Error("the kit's kit.json is not JSON");
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
+
 /** The paths inside a folder, from the folder's own top. */
 export function inFolder(paths: string[], folder: string): string[] {
   const at = `${folder}/`;

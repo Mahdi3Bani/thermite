@@ -20,7 +20,7 @@ export const EDIT_RIG_JS = `
   // none uses the rig's advisors file.
   const runsIn = () => {
     const kindOf = (sel) => (sel.selectedOptions[0] && sel.selectedOptions[0].dataset.kind) || "";
-    const text = (role, kind) => kind === "claude" ? "Claude Code, past research only" : role === "planner" ? (kind === "opencode" ? "OpenCode" : "Pi") : kind === "opencode" ? "not for advisors: OpenCode only" : "the supervisor, read-only tools";
+    const text = (role, kind) => kind === "claude" ? "Claude Code, past research and the kit's MCP tools only" : role === "planner" ? (kind === "opencode" ? "OpenCode" : "Pi") : kind === "opencode" ? "not for advisors: OpenCode only" : "the supervisor, read-only tools";
     const workers = form.querySelector('[data-role="workers"]');
     const harness = form.querySelector("[data-harness]");
     const wKind = workers ? kindOf(workers) : "";

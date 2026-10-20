@@ -22,7 +22,8 @@ There are two ways to give them models, and you can mix them:
 | Rigs | Every rig | Only the local compose stack. The units and manifests that control writes for the rigs it sets up, and for rigs you join, have no setting for the file ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)) |
 | Models | A model from **Settings › Providers** for each role | An OpenAI-compatible or Anthropic API, a command-line agent, or Claude Code |
 | Web fetch | No | Yes |
-| Knowledge-base search, for the teachers | An [outside knowledge base](outside-knowledge-base.md) that you let the campaign's advisors search, for teachers on an API key or a ChatGPT subscription | The file's own `kb`, and such outside knowledge bases, for `openai` teachers |
+| Knowledge-base search, for the teachers | No | The file's own `kb`, for `openai` teachers |
+| MCP servers that the run's kit gives the advisors | Yes, in the supervisor and in Claude Code | Yes, for `openai` and `claude-code` runtimes; not for `cli` |
 | Counted toward a spending limit | No: these models count as $0 | Yes, with prices set ([Spending](#spending)) |
 
 A role given a model on **Edit rig** uses it, and the other roles keep what the file says.
@@ -42,7 +43,7 @@ You need a provider on control. See [Connect a model provider](../models/connect
 2. In **1 · Parts of the rig**, check that the switches **Teacher pair**, **Auditor** and **Review panel** are **on**. They are on by default, but a part with no model does nothing. **Teacher pair** also covers the combiner.
 3. In **2 · The agents**, choose a **Model** and an **Effort** for **Teacher pair**, **Combiner**, **Auditor** and **Review panel**. **Runs in** then shows where each will run; for advisors, you don't choose it:
    - `the supervisor, read-only tools`: a model with an API key, or a ChatGPT subscription;
-   - `Claude Code, past research only`: a Claude subscription. Claude Code gets none of its own tools, only a read-only search of the run's past research. The supervisor's image must be built with `CLAUDE_CODE_VERSION` for this (see [Use a Claude subscription](../models/claude-subscription.md));
+   - `Claude Code, past research and the kit's MCP tools only`: a Claude subscription. Claude Code gets none of its own tools: only a read-only search of the run's past research, and the MCP servers the run's kit gives the advisors, which the supervisor serves on localhost for the call. The supervisor's image must be built with `CLAUDE_CODE_VERSION` for this (see [Use a Claude subscription](../models/claude-subscription.md));
    - `not for advisors: OpenCode only`: OpenCode's own models, which advisors can't use. **Save changes** then refuses, for example with "The teachers cannot use OpenCode's own models: they run only in OpenCode. Choose another model."
 4. Press **Save changes**.
 
@@ -113,10 +114,7 @@ The example uses the `openai` runtime: a model API that the supervisor calls its
 
 `fetch_domains` lists the sites that the teachers and the auditor may read, for papers and upstream code; leave it out for no web fetch. The optional `kb` field connects a knowledge base of your own: a search service over your notes or documents, reached over MCP, which the teachers may search but not change. With `"*"` (any public site) in `fetch_domains`, the teachers get no knowledge-base search at all, and their brief leaves out the background and the past-research line described in [What they read](#what-they-read-and-their-field-notes), both in their prompt and from their `brief` tool. The [advisors file reference](../../reference/advisors-file.md#runtimes) has every runtime's fields, and what each role may read and fetch.
 
-An [outside knowledge base](outside-knowledge-base.md) does the same without the file, on any rig. You set it once in control's **Settings › Providers**: its MCP URL, its token, its search tool and, for copies, its write tool. Then, on a campaign's page, you choose for that campaign:
-
-- **Copy to it:** control writes each new or changed item of the campaign's folder there as a page, with where it came from in the page's front matter.
-- **Let its advisors search it** (over MCP, `kb_grant` with `reads` set to `outside:<name>`): the campaign's teacher pair may search it, when their model runs in the supervisor (`the supervisor, read-only tools` on **Edit rig**, or an `openai` runtime in the file). Control gives the address, the token and the search tool, with the advisors' models, only to the supervisors of rigs it assigned a run of that campaign, and its audit log has an `outside_kb_handed` entry each time what a rig gets changes. The combiner, the auditor, the review panel and the workers never call it.
+On any rig, without the file, a campaign's kit can give its advisors **MCP servers**, such as a knowledge base you run: add the server in **Settings › Providers › MCP servers**, then tick **Advisors** for it in the kit's **MCP servers for the agents** ([Give agents MCP tools](../campaigns/give-agents-mcp-tools.md)). The teacher pair, the auditor and the review panel then get its tools; the combiner gets none. The supervisor makes each call with the sign-in control gives it, and the advisor sees the tools and their answers, never the secret. With `"*"` in `fetch_domains`, the advisors get no MCP server, and the run's live view says so once ([MCP servers](../../reference/advisors-file.md#mcp-servers)).
 
 ## What they read, and their field notes
 

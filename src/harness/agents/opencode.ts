@@ -6,6 +6,7 @@ import { notesInstruction } from "../../core/journal.ts";
 import { type LiveKind, summarizeArgs } from "../../core/live.ts";
 import type { Role, Runner, RunOutcome } from "../broker/runner.ts";
 import type { MessageInbox, TrialProgress } from "./live-session.ts";
+import { type McpAccess, mcpLine, opencodeMcp } from "./mcp-tools.ts";
 import type { ModelConfig } from "./model.ts";
 import type { RigCheckReport } from "./model-check.ts";
 import {
@@ -46,11 +47,18 @@ export function opencodeModelId(m: ModelConfig): string {
  * question tool is denied. A provider other than OpenCode's own is reached through the harness's
  * key-adding proxy (`proxyRoot`), with the run's proxy credential from THERMITE_PROXY_AUTH.
  */
-export function opencodeConfig(m: ModelConfig, proxyRoot: string): Record<string, unknown> {
+export function opencodeConfig(
+  m: ModelConfig,
+  proxyRoot: string,
+  mcp?: McpAccess | undefined,
+): Record<string, unknown> {
   const config: Record<string, unknown> = {
     $schema: "https://opencode.ai/config.json",
     permissions: [{ action: "question", resource: "*", effect: "deny" }],
   };
+  // The MCP servers the run's kit gives this agent (goal 068), each at the harness's gateway.
+  const servers = opencodeMcp(mcp);
+  if (servers) config.mcp = servers;
   if (m.api !== "opencode") {
     const anthropic = m.api === "anthropic";
     config.providers = {
@@ -336,18 +344,20 @@ async function setUpInArea(
   area: string,
   model: ModelConfig,
   proxyRoot: string,
+  mcp?: McpAccess | undefined,
 ): Promise<string | undefined> {
   const setup = await runner.run({
     role,
-    // Relative to its own area: the lane may not walk the harness's directories by name.
+    // Relative to its own area: the lane may not walk the harness's directories by name. The
+    // configuration may hold the trial's own token (its MCP servers): only the lane reads it.
     argv: [
       "sh",
       "-c",
-      "mkdir -p opencode-home/.config/opencode opencode-tmp && cat > opencode-home/.config/opencode/opencode.jsonc && : > opencode-events.jsonl && chmod 0644 opencode-events.jsonl",
+      "mkdir -p opencode-home/.config/opencode opencode-tmp && umask 077 && cat > opencode-home/.config/opencode/opencode.jsonc && : > opencode-events.jsonl && chmod 0644 opencode-events.jsonl",
     ],
     cwd: area,
     timeoutMs: 30_000,
-    stdin: JSON.stringify(opencodeConfig(model, proxyRoot)),
+    stdin: JSON.stringify(opencodeConfig(model, proxyRoot, mcp)),
     captureBytes: 4096,
   });
   return setup.exitCode === 0
@@ -425,12 +435,15 @@ export async function runOpencodeTrial(
     TMPDIR: tmp,
     THERMITE_OPENCODE_EVENTS: events,
   };
-  const setupError = await setUpInArea(deps.runner, spec.lane, area, deps.model, proxyRoot);
+  const mcp = spec.mcpServers?.length
+    ? { apiUrl: deps.apiUrl, auth, servers: spec.mcpServers }
+    : undefined;
+  const setupError = await setUpInArea(deps.runner, spec.lane, area, deps.model, proxyRoot, mcp);
   if (setupError) return { ...result, stopped: "error", error: setupError };
   const started = Date.now();
   const deadline = started + spec.wallMs;
   const minutes = Math.round(spec.wallMs / 60_000);
-  let message = `${SYSTEM}\n\n${limitsNote(limits)}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. This trial lasts ${minutes} minutes. Submit before it ends.`;
+  let message = `${SYSTEM}${mcp ? `\n\n${mcpLine(mcp.servers)}` : ""}\n\n${limitsNote(limits)}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. This trial lasts ${minutes} minutes. Submit before it ends.`;
   let offset = 0;
   const carried = new CarriedMessages(deps.messages);
   const pump = () => {
@@ -610,11 +623,14 @@ export async function runOpencodeResearchTrial(
     TMPDIR: join(area, "opencode-tmp"),
     THERMITE_OPENCODE_EVENTS: events,
   };
-  const setupError = await setUpInArea(deps.runner, role, area, deps.model, proxyRoot);
+  const mcp = spec.mcpServers?.length
+    ? { apiUrl: deps.apiUrl, auth, servers: spec.mcpServers }
+    : undefined;
+  const setupError = await setUpInArea(deps.runner, role, area, deps.model, proxyRoot, mcp);
   if (setupError) return { ...result, stopped: "error", error: setupError };
   const deadline = Date.now() + spec.wallMs;
   const minutes = Math.round(spec.wallMs / 60_000);
-  let message = researchPrompt(limits, spec.brief, minutes, deps.folder);
+  let message = `${researchPrompt(limits, spec.brief, minutes, deps.folder)}${mcp ? `\n\n${mcpLine(mcp.servers)}` : ""}`;
   let offset = 0;
   const carried = new CarriedMessages(deps.messages);
   const pump = () => {
@@ -742,6 +758,8 @@ export interface OpencodeAskDeps {
   dir: string;
   timeoutMs: number;
   signal?: AbortSignal | undefined;
+  /** The MCP servers the call may use (a planner's), at the harness's gateway. */
+  mcp?: McpAccess | undefined;
 }
 
 /**
@@ -756,11 +774,11 @@ export async function opencodeAsk(prompt: string, deps: OpencodeAskDeps): Promis
     argv: [
       "sh",
       "-c",
-      "mkdir -p home/.config/opencode tmp && cat > home/.config/opencode/opencode.jsonc",
+      "mkdir -p home/.config/opencode tmp && umask 077 && cat > home/.config/opencode/opencode.jsonc",
     ],
     cwd: deps.dir,
     timeoutMs: 30_000,
-    stdin: JSON.stringify(opencodeConfig(deps.model, `${deps.apiUrl}/v1/model-proxy`)),
+    stdin: JSON.stringify(opencodeConfig(deps.model, `${deps.apiUrl}/v1/model-proxy`, deps.mcp)),
     captureBytes: 4096,
   });
   const tally = newTally();
@@ -822,7 +840,13 @@ export async function opencodeOnce(
   model: ModelConfig,
   prompt: string,
   deps: OpencodeOnceDeps,
-  o: { role: Role; timeoutMs: number; signal?: AbortSignal | undefined },
+  o: {
+    role: Role;
+    timeoutMs: number;
+    signal?: AbortSignal | undefined;
+    /** The MCP servers the call may use, and the gateway's credential for them (a planner's). */
+    mcp?: Omit<McpAccess, "apiUrl"> | undefined;
+  },
 ): Promise<OpencodeTally> {
   // OpenCode finds its home by name, so the directory must be reachable by name: under the lanes'
   // area, not the controller's own (which only its processes may walk).
@@ -842,6 +866,7 @@ export async function opencodeOnce(
       dir,
       timeoutMs: o.timeoutMs,
       signal: o.signal,
+      ...(o.mcp?.servers.length ? { mcp: { apiUrl: deps.apiUrl, ...o.mcp } } : {}),
     });
   } finally {
     await deps.runner.remove(dir).catch(() => undefined);

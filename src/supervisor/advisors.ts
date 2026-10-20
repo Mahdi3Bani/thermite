@@ -5,14 +5,17 @@ import { join } from "node:path";
 import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type TSchema, Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
+import type { McpCallResult } from "../common/mcp-client.ts";
 import { ExperimentId, QueuePosition, StructuredDirective } from "../core/commands.ts";
 import { LenientNotes, NOTES_GUIDE, type NoteInput } from "../core/journal.ts";
+import type { McpToolInfo } from "../core/mcp.ts";
 import { claudeBin, claudeExe } from "../harness/agents/claude-code.ts";
+import { mcpAgentTools, mcpLine } from "../harness/agents/mcp-tools.ts";
 import { buildModel } from "../harness/agents/model.ts";
 import { JOURNAL_FIELD } from "../harness/agents/notes-tool.ts";
 import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL, SEARCH_MAX } from "../harness/knowledge.ts";
 import { Fetcher, FetchRefused } from "../harness/research/fetcher.ts";
-import { type PastSearch, servePastSearch } from "./past-mcp.ts";
+import { type AdvisorServers, type PastSearch, serveAdvisorTools } from "./past-mcp.ts";
 
 /**
  * The supervisor's advisors: the teacher pair, the neutral combiner, the auditor and the review
@@ -80,16 +83,6 @@ const Runtime = z.discriminatedUnion("runtime", [
 ]);
 export type AdvisorRuntime = z.infer<typeof Runtime>;
 
-/** An outside knowledge base as control gives it: its search, and the campaigns that may use it. */
-export const OutsideKbGrant = z.strictObject({
-  name: z.string().min(1).max(64),
-  mcp_url: z.url(),
-  token: z.string().min(1).max(4096),
-  tool: z.string().min(1).max(128),
-  campaigns: z.array(z.string().min(1).max(200)).max(1000),
-});
-export type OutsideKbGrant = z.infer<typeof OutsideKbGrant>;
-
 export const AdvisorsConfig = z.strictObject({
   teachers: z.array(Runtime).max(2).default([]),
   combiner: Runtime.optional(),
@@ -116,11 +109,6 @@ export const AdvisorsConfig = z.strictObject({
       tool: z.string().min(1).default("search"),
     })
     .optional(),
-  /**
-   * Outside knowledge bases control gives (goal 065), each with its token in memory: their search
-   * goes only to the advisors of runs whose campaign is listed, and never with an open fetch.
-   */
-  outside_kb: z.array(OutsideKbGrant).optional(),
 });
 export type AdvisorsConfig = z.infer<typeof AdvisorsConfig>;
 
@@ -142,6 +130,18 @@ export interface AdvisorTools {
    * only, through the harness. Claude Code gets it over MCP; a command-line agent, not at all.
    */
   pastSearch?: PastSearch | undefined;
+  /**
+   * The MCP servers the run's kit gives its advisors (goal 068), called by the supervisor, which
+   * holds their sign-in: in Pi a tool for each MCP tool; in Claude Code each server on localhost
+   * for the call; a command-line agent gets none.
+   */
+  mcp?: AdvisorMcp | undefined;
+}
+
+/** An advisor's MCP servers: the tools it may call, a call, and each server as an MCP server. */
+export interface AdvisorMcp extends AdvisorServers {
+  tools: McpToolInfo[];
+  call(server: string, tool: string, args: Record<string, unknown>): Promise<McpCallResult>;
 }
 
 const text = (value: unknown) => ({
@@ -213,11 +213,14 @@ export async function runAdvisor<S extends z.ZodType>(input: {
   if (rt.runtime === "cli")
     return runCli(rt, input.system, input.prompt, input.schema, input.answerSchema);
   if (rt.runtime === "claude-code") {
-    // None of Claude Code's own tools; the run's past research, when it has a search, over MCP
-    // on localhost for this call alone, with only that server and only its one tool allowed.
-    const past = input.tools?.pastSearch
-      ? await servePastSearch(input.tools.pastSearch)
-      : undefined;
+    // None of Claude Code's own tools; the run's past research, when it has a search, and the MCP
+    // servers the run's kit gives the advisors, over MCP on localhost for this call alone, with
+    // only those servers and only their tools allowed.
+    const t = input.tools;
+    const past =
+      t?.pastSearch || t?.mcp?.servers.length
+        ? await serveAdvisorTools({ pastSearch: t.pastSearch, mcp: t.mcp })
+        : undefined;
     try {
       return await runCli(
         {
@@ -245,7 +248,7 @@ export async function runAdvisor<S extends z.ZodType>(input: {
             DISABLE_AUTOUPDATER: "1",
           },
         },
-        input.system,
+        t?.mcp?.servers.length ? `${input.system}\n\n${mcpLine(t.mcp.servers)}` : input.system,
         input.prompt,
         input.schema,
         input.answerSchema,
@@ -316,6 +319,8 @@ export async function runAdvisor<S extends z.ZodType>(input: {
         }),
     );
   }
+  // The MCP tools the run's kit gives the advisors, each called by the supervisor (goal 068).
+  if (t.mcp?.tools.length) tools.push(...mcpAgentTools(t.mcp.tools, t.mcp.call));
   if (t.kbSearch) {
     const kbSearch = t.kbSearch;
     add(
@@ -355,7 +360,14 @@ export async function runAdvisor<S extends z.ZodType>(input: {
   });
   const agent = new Agent({
     // The effort chosen for this advisor; without it the agent would never think.
-    initialState: { systemPrompt: input.system, model, thinkingLevel, tools },
+    initialState: {
+      systemPrompt: t.mcp?.tools.length
+        ? `${input.system}\n\n${mcpLine([...new Set(t.mcp.tools.map((x) => x.server))])}`
+        : input.system,
+      model,
+      thinkingLevel,
+      tools,
+    },
     streamFn: models.streamSimple.bind(models),
     toolExecution: "sequential",
   });
@@ -893,6 +905,8 @@ export async function auditOne(input: {
           ? input.tools.fetchUrl
           : undefined,
       pastSearch: input.tools.pastSearch,
+      // The MCP servers the run's kit gives the advisors (goal 068).
+      mcp: input.tools.mcp,
     },
   });
 }
@@ -900,8 +914,10 @@ export async function auditOne(input: {
 export async function reviewOne(input: {
   runtime: AdvisorRuntime;
   pkg: unknown;
-  /** The run's past research, read only: a panelist's one tool. */
+  /** The run's past research, read only: a panelist's tool. */
   pastSearch?: PastSearch | undefined;
+  /** The MCP servers the run's kit gives the advisors (goal 068). */
+  mcp?: AdvisorMcp | undefined;
 }): Promise<AdvisorResult<z.infer<typeof PanelAnswer>>> {
   return runAdvisor({
     runtime: input.runtime,
@@ -909,7 +925,14 @@ export async function reviewOne(input: {
     prompt: advisorPrompt("Review package (untrusted data):", input.pkg, 200_000),
     schema: PanelAnswer,
     answerSchema: PanelAnswerSchema,
-    ...(input.pastSearch ? { tools: { pastSearch: input.pastSearch } } : {}),
+    ...(input.pastSearch || input.mcp
+      ? {
+          tools: {
+            ...(input.pastSearch ? { pastSearch: input.pastSearch } : {}),
+            ...(input.mcp ? { mcp: input.mcp } : {}),
+          },
+        }
+      : {}),
   });
 }
 

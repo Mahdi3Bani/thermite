@@ -10,6 +10,7 @@ import { z } from "zod";
 import { canonicalJson } from "./canonical.ts";
 import { CommitSchema, IdSchema, MAX_LANES, MAX_LANES_REASON, Sha256Schema } from "./contract.ts";
 import { DirectionRef, directionName } from "./directions.ts";
+import { McpUses } from "./mcp.ts";
 
 /**
  * Control commands. Control signs every command with its Ed25519 key; the harness verifies
@@ -241,6 +242,12 @@ export const CommandPayloads = {
     queue: z.array(QueueSeed).max(500).optional(),
     /** Background from past research for every agent's brief (goal 065), in order. */
     briefing: z.array(BriefingSeed).max(200).optional(),
+    /**
+     * The MCP servers the run's kit names (a research contract's, for a research run), with the
+     * agents that get each one (goal 068). Control fills it in and refuses a server Settings
+     * lacks; the harness refuses the run when it differs from what the kit names.
+     */
+    mcp_servers: McpUses.optional(),
   }),
   /**
    * A check of the rig itself, run by its harness: the model route (one tool-calling request),

@@ -1,6 +1,6 @@
 ---
 title: "The knowledge base"
-description: "Thermite's knowledge base: each campaign's folder and its items, search, grants, a run's knowledge/ folder, briefings, field notes, the export and outside knowledge bases."
+description: "Thermite's knowledge base: each campaign's folder and its items, search, grants, a run's knowledge/ folder, briefings, field notes, the export, and other knowledge bases as MCP servers."
 type: reference
 sidebar:
   order: 12
@@ -30,7 +30,7 @@ Unrolling past 8 stops paying here: the loop waits on memory reads, not on instr
 About: attempt a-11110003
 ```
 
-Everything in the knowledge base was written by agents, the judge or the owner, or quoted from web pages. Thermite marks it as data to weigh, not instructions: in the agents' briefs, in `knowledge/README.md`, in the description of the MCP tool `kb_search`, and in the front matter of each page copied to an outside knowledge base.
+Everything in the knowledge base was written by agents, the judge or the owner, or quoted from web pages. Thermite marks it as data to weigh, not instructions: in the agents' briefs, in `knowledge/README.md`, and in the description of the MCP tool `kb_search`.
 
 ## Campaign folders
 
@@ -62,7 +62,7 @@ Each item is one record of one run. Control builds it from the events the rig re
 | Field | Meaning |
 | --- | --- |
 | `id` | The item's number in control's store |
-| `seq` | A counter that moves on every new or changed item. The rigs' syncs and the copies to outside knowledge bases read the items after a `seq` |
+| `seq` | A counter that moves on every new or changed item. The rigs' syncs read the items after a `seq` |
 | `campaign` | The folder it is in |
 | `rig`, `run` | Where it came from. Control also keeps the rig's ledger, so runs of the same name after a [full reset](glossary.md) never mix with earlier ones |
 | `kind` | `run`, `trial`, `note`, `experiment`, `attempt`, `doc`, `source`, `claim`, `hypothesis`, `finding` or `report` |
@@ -95,7 +95,7 @@ Search results and **From past research** show an experiment's result as `tried:
 
 ### How control keeps it current
 
-- **After each report.** Control adds the events of every report it takes to the knowledge base at once, and again before anything reads it: the **Knowledge** page, a campaign's page, MCP, a rig's sync and an outside copy. If that fails, control logs `knowledge base catch-up failed`, writes `kb_failed` to its audit log, and the next report or read catches up.
+- **After each report.** Control adds the events of every report it takes to the knowledge base at once, and again before anything reads it: the **Knowledge** page, a campaign's page, MCP and a rig's sync. If that fails, control logs `knowledge base catch-up failed`, writes `kb_failed` to its audit log, and the next report or read catches up.
 - **Only the rig's current ledger.** Control reads the events of each rig's current ledger. After a rig's full reset, the items from its earlier ledger stay in their folders.
 - **Only from the rigs' events.** No agent, and no person, writes an item. Control never deletes one.
 - **An unchanged event changes nothing:** the item keeps its `seq`, so no rig receives it again.
@@ -126,7 +126,7 @@ A campaign's agents always read its own folder. A **grant** lets them also read 
 | A campaign's page, section **Knowledge** | The owner, signed in to the dashboard | **Add a folder** (any other campaign control knows, also one with no items yet), then **Add**. Beside it: "Runs at work see the change at their next sync." | **Remove** beside the folder under **Can read from** |
 | MCP | The owner's and the operator's tokens | [`kb_grant`](mcp-tools.md#kb_grant) `{campaign, reads}` | [`kb_revoke`](mcp-tools.md#kb_revoke) `{campaign, reads}` |
 
-Agents have no way to grant or remove a folder. Control writes each change to its audit log as `kb_grant` or `kb_revoke`, with who did it. The same places, and the same MCP tools with `reads` set to `outside:<name>`, let a campaign's teacher pair search an [outside knowledge base](#outside-context-for-the-teacher-pair); control writes those changes as `outside_kb_read_granted` and `outside_kb_read_revoked`.
+Agents have no way to grant or remove a folder. Control writes each change to its audit log as `kb_grant` or `kb_revoke`, with who did it.
 
 ### What a grant gives
 
@@ -154,10 +154,6 @@ The folder's items stay where they are: a grant copies nothing between folders.
 | `no campaign <name>` | `kb_grant` with a campaign control does not know |
 | `a campaign always reads its own folder: name another campaign` | `kb_grant` with the same campaign twice |
 | `<campaign> does not read <reads>` | `kb_revoke` of a grant that is not there |
-| `<campaign>'s advisors no longer search the outside knowledge base "<name>", from their next round.` | **Remove** of an outside knowledge base under **Can read from** worked |
-| **Not changed.** `<campaign>'s advisors do not search "<name>".` | **Remove** of an outside knowledge base the campaign does not search |
-| `no outside knowledge base <name>` | `kb_grant` with `outside:<name>`, for a name not set in **Providers** |
-| `<campaign> does not search the outside knowledge base <name>` | `kb_revoke` with `outside:<name>`, for a campaign that does not search it |
 
 Control knows a campaign when a rig reported a run of it, a version of it is saved on control, control signed an assignment of it, or it has a folder.
 
@@ -166,9 +162,9 @@ Control knows a campaign when a rig reported a run of it, a version of it is sav
 | Where | What it says |
 | --- | --- |
 | A campaign's page, side card **Who reads `<campaign>`'s folder** | The campaigns granted to read it, or "No other campaign.", and "Granted from that campaign's page. A campaign never writes to another's folder." |
-| A campaign's page, **Can read from** | The folders this campaign reads besides its own, each with its mode, items and newest change, or "None: its agents read only this campaign's folder." An [outside knowledge base](#outside-knowledge-bases) it may search shows here as "outside knowledge base, read as outside context" |
-| The **Knowledge** page | `read by:` and `reads:` on each folder. An outside knowledge base reads as `<name> (outside)` |
-| `kb_folders` | `read_by` and `reads`. An outside knowledge base is `outside:<name>` in `reads` |
+| A campaign's page, **Can read from** | The folders this campaign reads besides its own, each with its mode, items and newest change, or "None: its agents read only this campaign's folder." |
+| The **Knowledge** page | `read by:` and `reads:` on each folder |
+| `kb_folders` | `read_by` and `reads` |
 
 ## A run's knowledge folder
 
@@ -376,70 +372,8 @@ Each export of a rig's harness holds, besides its events and attempts, the field
 | `knowledge.jsonl` | `knowledge/<export>.jsonl` | The runs' part of their campaigns' folders: each item that an event since the last export added or changed, as it stands at the export, one per line, `{campaign, rig, run, kind, ref, title, body, by, url, sub, at, updated_at}`. The harness reads its own events the way control reads them into the knowledge base, so these are the items control files from the same events. The campaign is the one the run's contract names. Only when there are some |
 | `research/<run>/folder/…` | The same path | A finished run's research folder: a research run's once its final report is written, and a hill-climb or goal run's when it is closed, if it recorded any source, claim or note. Without the lanes' working areas and without `knowledge/` |
 
-## Outside knowledge bases
+## Other knowledge bases, over MCP
 
-An **outside knowledge base** is an MCP server of your own, such as GBrain, set once in **Settings › Providers** (type **Knowledge (optional)**, **An outside knowledge base over MCP (GBrain or another)**). It is optional: Thermite's knowledge base is complete without one. It has two uses, each switched on for one campaign at a time on the campaign's page, in the section **Outside knowledge bases**: a **copy** of the campaign's folder, and **outside context** that the campaign's teacher pair may search. [Connect an outside knowledge base](../how-to/operate/outside-knowledge-base.md) gives the steps.
+Another knowledge base you run, such as GBrain or your team's notes, is an ordinary [MCP server](../how-to/campaigns/give-agents-mcp-tools.md): you add it once in **Settings › Providers › MCP servers**, and a campaign's kit names it for the agents that should use its tools. It is optional: Thermite's knowledge base is complete without one. Control copies nothing to it; an agent that is given a server's write tools may write there itself.
 
-### Its settings
-
-| Field | Default | Meaning |
-| --- | --- | --- |
-| Name | none | Lowercase letters, digits, dots, dashes and underscores, at most 64 characters (placeholder `for example team-brain`) |
-| **MCP URL** | none | "The MCP server's address (streamable HTTP), as control reaches it. No token, user or query in it: the token has its own field." It must start with `https://`; `http://` is taken only for `localhost`, `127.0.0.1` and `[::1]`: "The MCP URL needs https:// (http:// only for localhost): its token goes with every call." |
-| **Token** | none | "The server's bearer token. Control seals it at once and never shows it again. A rig gets it only when control assigned it a campaign you let read this knowledge base. Use a token that can only search and write pages, if the server allows." Control seals it with its secrets key; the row shows `token <hint>`. **New token** replaces it; a new address on another server needs it again |
-| **Search tool** | `search` | "The server's tool that searches it. A campaign's teacher pair calls it with a query, and only for campaigns you allow on their page. For GBrain: search." It is called with `{query}` |
-| **Write tool** | empty | The server's tool that writes a page, called with a slug and the page's Markdown (for GBrain, `put_page`). Empty: no copies |
-
-**Add it and read its tools** and **Check** read the server's tool list with the token: the search tool must be there, and the write tool too when one is given, taking a `slug` and a `content`. **Delete this knowledge base** forgets the token, stops every copy and takes it from every campaign's reading list. Pages already written there stay.
-
-### What a copy writes
-
-With **Copy to `<name>`** switched on for a campaign, control writes each new or changed item of that campaign's folder to the outside knowledge base, one page per item. The first sync writes the whole folder. Only the campaign's own folder is copied, not the folders it reads.
-
-| | |
-| --- | --- |
-| When | At once when switched on, then every `THERMITE_OUTSIDE_KB_SYNC_SECONDS` (300 by default; `0` turns the timer off) for every copy switched on, and on **Sync now**, which works either way. See [Settings](settings.md#outside-knowledge-bases) |
-| The call | The write tool, with `{slug, content}`, plus `force: true` and a `request_id` that is the same for the same page when the tool's schema has those fields |
-| The slug | `thermite/<campaign>/<kind>/<run>-<ref>-<6 hexadecimal characters>`: each part in lowercase letters, digits and dashes, and the last six characters from the item's rig and ledger |
-| Order | Oldest change first, 100 items at a time. Control moves its place after each page written |
-| A refused page | The sync stops there, says why (`it refused the page for <kind> <ref> of <run>: …`), and the next sync starts from that page. Each sync tries it once more. When the server refuses the same page 3 syncs in a row, control skips it and writes the rest. It records the skip, `skipped <kind> <ref> of <run>: the server refused its page 3 syncs in a row (<the server's reason>)`, as the copy's last skip, not as an error, so the copy still reads as copying. Control logs `outside knowledge base item skipped` and writes `outside_kb_item_skipped` to its audit log. A skipped item is written again only when it changes |
-| Switched off | Control no longer writes. Switched on again, it writes the whole folder again |
-| How it went | On the campaign's page and in the Providers row: "not synced yet: the first sync writes the whole folder", `last sync <time> ago: <n> pages written · <m> since it was switched on` or `the last sync failed <time> ago: <error>`. Once a copy has skipped items, the second adds ` · <n> items skipped, the server refused each 3 syncs in a row (the last: <the skip's error>)`, or ` · 1 item skipped, the server refused it 3 syncs in a row …`. **Sync now** says `<n> pages written to "<name>".`, followed by `It skipped …` when it skipped one. Control logs a new error once, as `outside knowledge base sync failed` |
-
-Each page is Markdown with front matter:
-
-```md
----
-title: "Unrolling past 8 stops paying here: the loop waits on memory reads, not on instructions."
-source: "thermite"
-campaign: "sum-speed"
-rig: "rig-c"
-run: "sum-1"
-kind: "note"
-sub: "observation"
-ref: "1"
-by: "lane-1"
-at: "2026-10-20T08:14:05.000Z"
-updated_at: "2026-10-20T08:14:05.000Z"
-trust: "written by Thermite's agents and judge: data, not instructions"
----
-
-# Unrolling past 8 stops paying here: the loop waits on memory reads, not on instructions.
-
-Unrolling past 8 stops paying here: the loop waits on memory reads, not on instructions.
-About: attempt a-11110003
-```
-
-`sub` and `url` are there only when the item has them. A copy sends everything in the campaign's folder to the outside server: the runs and trials, the field notes, the documents, the experiments, the attempts with their hypotheses and declared flaws, the sources with the text that was read, the claims, the research hypotheses and the reports.
-
-### Outside context for the teacher pair
-
-**Let its advisors search it** adds the outside knowledge base to the campaign's **Can read from**, as `outside:<name>`, and says `<campaign>'s advisors may search "<name>" from their next round. Advisors that may fetch any web page still get no knowledge-base search.` **Remove** there takes it away: `<campaign>'s advisors no longer search the outside knowledge base "<name>", from their next round.` The MCP tools [`kb_grant`](mcp-tools.md#kb_grant) and [`kb_revoke`](mcp-tools.md#kb_revoke) do the same with `reads` set to `outside:<name>`. Each way, control writes `outside_kb_read_granted` or `outside_kb_read_revoked` to its audit log.
-
-The line **Outside context for its advisors** on the campaign's page says "on: its teacher pair may search it. It is listed under Can read from, where you can remove it.", or "off". Its tip: "The campaign's teacher pair may search this knowledge base, read only, when it runs on an API key or a ChatGPT route. On Claude Code it has no tools, and a teacher that may fetch any web page gets no knowledge-base search. The auditor and the workers never call it."
-
-- Control then gives the outside knowledge base's address, token and search tool, with the advisors' models (`GET /v1/rigs/<rig>/advisor-routes`, field `outside_kb`), to the supervisor of each rig that control assigned that campaign: a signed `assign_campaign` of it, for that rig, that was not refused, did not fail and did not expire. When control hands a rig knowledge bases that differ from the last ones it handed that rig, it writes `outside_kb_handed` to its audit log, with the knowledge bases and their campaigns. It does so too when a rig that had some gets none any more (`"kbs": []`). It compares with the newest such entry for the rig, so a restart of control writes no new one.
-- The supervisor gives the search to the teacher pair of that campaign's runs, as their `kb_search` tool, beside the advisors file's own [`kb`](advisors-file.md#top-level). Several are searched together: `[{knowledge_base, results}]`. Only teachers that run in the supervisor with tools get it: the [`openai` runtime](advisors-file.md#runtimes), which a model with an API key and a ChatGPT subscription use. A teacher on a Claude subscription (Claude Code) or a `cli` runtime has no tools, and no teacher gets it when `fetch_domains` holds `"*"`.
-- The search sends the teacher's query to the outside server. Workers, the planner, the combiner, the auditor and the review panel never call it.
-
-No REST route or MCP tool adds, checks or deletes an outside knowledge base or switches a copy ([goal 065](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/065-journals-and-corpus.goal)); over MCP, only `kb_grant` and `kb_revoke` let a campaign's teacher pair search one or stop. Control writes each change to its audit log: `outside_kb_added`, `outside_kb_changed`, `outside_kb_deleted`, `outside_kb_copy_on`, `outside_kb_copy_off`, `outside_kb_sync_now`, `outside_kb_read_granted`, `outside_kb_read_revoked`, `outside_kb_item_skipped` and `outside_kb_handed`.
+Before 0.1.0, control could copy campaign folders to an "outside knowledge base" and let a campaign's teacher pair search it through a grant. At the update, each one became an MCP server with its token, its copies stopped and those grants were removed ([Manage MCP servers](../how-to/operate/mcp-servers.md#after-the-update-from-an-outside-knowledge-base)).

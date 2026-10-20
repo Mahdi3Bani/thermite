@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join, posix } from "node:path";
 import { z } from "zod";
 import type { Contract } from "../core/contract.ts";
+import { McpUses } from "../core/mcp.ts";
 
 /**
  * A project kit: the judge-side recipe for building and measuring one project on one target
@@ -114,6 +115,13 @@ const KitFields = z.strictObject({
       }),
     )
     .default({}),
+  /**
+   * The MCP servers this kit's campaigns give their agents (goal 068), by their names in
+   * control's Settings: for each, the kinds of agent that get it (workers, planner, advisors)
+   * and, only when narrowed, the tools each kind may call. The judge never uses them. A campaign
+   * whose kit names a server Settings lacks can't start.
+   */
+  mcp_servers: McpUses.optional(),
 });
 
 export const KitSchema = KitFields.superRefine((kit, ctx) => {

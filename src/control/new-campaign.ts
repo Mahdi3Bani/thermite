@@ -101,6 +101,8 @@ export async function startCampaign(deps: Deps, input: StartInput): Promise<Star
                 git: draft.kit?.url as string,
                 ...(draft.kit?.access ? { access: draft.kit.access } : {}),
               },
+          // The kit's MCP servers (goal 068): what its runs' assignments name.
+          ...(built.mcp_servers?.length ? { mcp_servers: built.mcp_servers } : {}),
         };
   deps.store.putCampaign({
     campaign: contract.campaign,
@@ -258,6 +260,12 @@ export async function startRun(deps: Deps, input: RunInput): Promise<RunStarted>
       ...(input.promotion ? { promotion: input.promotion } : {}),
       ...(input.queue?.length && input.agents ? { queue: input.queue } : {}),
       ...(input.briefing?.length && input.agents ? { briefing: input.briefing } : {}),
+      // The MCP servers the kit names (a research contract's are filled in from the contract).
+      ...(contract.mode !== "research" &&
+      Array.isArray(v.sources.mcp_servers) &&
+      v.sources.mcp_servers.length
+        ? { mcp_servers: v.sources.mcp_servers }
+        : {}),
       imports,
     },
     issuedBy: input.by,

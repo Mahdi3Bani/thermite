@@ -270,6 +270,7 @@ const internalSettings = new Map([
   ["THERMITE_HARNESS_URL", "the controller tells workers where the harness API is"],
   ["THERMITE_TRIAL_AUTH", "the controller gives a trial its token"],
   ["THERMITE_PROXY_AUTH", "the controller gives a trial its model proxy token"],
+  ["THERMITE_MCP_AUTH", "the controller gives Codex its token for the harness's MCP gateway"],
   ["THERMITE_EDITABLE_PATHS", "the controller tells thermite-trial what a trial may edit"],
   ["THERMITE_WORKSPACE", "the controller tells thermite-trial where the trial's workspace is"],
   ["THERMITE_OPENCODE_EVENTS", "the controller's event log path for an OpenCode trial"],

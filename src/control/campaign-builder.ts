@@ -8,6 +8,7 @@ import {
   MAX_LANES_REASON,
   parseContract,
 } from "../core/contract.ts";
+import { type McpUse, McpUses } from "../core/mcp.ts";
 import { KitSchema, kitProblems } from "../harness/kit.ts";
 
 /**
@@ -178,6 +179,14 @@ export const CampaignDraft = z.strictObject({
     })
     .default({}),
   wall_hours: z.number().positive().optional(),
+  /**
+   * The MCP servers the campaign's agents use (goal 068), by their names in Settings, with the
+   * agents that get each and, only when narrowed, their tools. A kit described here or uploaded
+   * gets them in its kit.json; a kit in a repository has its own (give what its kit.json names:
+   * the rig checks them); a research campaign keeps them in its contract. Left out: an uploaded
+   * kit keeps its own list.
+   */
+  mcp_servers: McpUses.optional(),
 });
 export type CampaignDraft = z.input<typeof CampaignDraft>;
 
@@ -189,7 +198,13 @@ export interface BuiltKit {
 }
 
 export type Built =
-  | { ok: true; contract: Record<string, unknown>; kit?: BuiltKit | undefined }
+  | {
+      ok: true;
+      contract: Record<string, unknown>;
+      kit?: BuiltKit | undefined;
+      /** The MCP servers the campaign's kit (or research contract) names, as built. */
+      mcp_servers?: McpUse[] | undefined;
+    }
   | { ok: false; errors: string[] };
 
 /** The kit's name for a campaign: its own repository beside the project. */
@@ -299,9 +314,13 @@ export function buildCampaign(
       questions: d.research.questions,
       seeds: d.research.seeds,
       min_duration: d.research.min_duration,
+      // A research campaign has no kit: its contract names its MCP servers.
+      ...(d.mcp_servers?.length ? { mcp_servers: d.mcp_servers } : {}),
     });
     const r = parseContract(contract);
-    return r.ok ? { ok: true, contract } : { ok: false, errors: r.errors };
+    return r.ok
+      ? { ok: true, contract, ...(d.mcp_servers?.length ? { mcp_servers: d.mcp_servers } : {}) }
+      : { ok: false, errors: r.errors };
   }
 
   if (!d.project)
@@ -317,6 +336,7 @@ export function buildCampaign(
   // The score: what the judge compares, and which way is better.
   let metric = d.score?.name ?? (d.score?.kind === "check" ? (d.score.field ?? "score") : "rate");
   let direction: "max" | "min" = d.score?.direction ?? "max";
+  let mcpServers: McpUse[] = [];
   if (d.kit.source === "here") {
     const k = d.kit;
     if (d.goals?.some((g) => g.verify.type === "verifier"))
@@ -413,7 +433,9 @@ export function buildCampaign(
           .filter((g) => g.verify.type === "check")
           .map((g) => [g.id, { cells: (g.verify as { cells: string[] }).cells }]),
       ),
+      ...(d.mcp_servers?.length ? { mcp_servers: d.mcp_servers } : {}),
     };
+    mcpServers = d.mcp_servers ?? [];
     files["kit.json"] = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
     const kitCheck = KitSchema.safeParse(manifest);
     if (!kitCheck.success)
@@ -424,17 +446,24 @@ export function buildCampaign(
     kitRef = { repo: kit.name };
   } else if (d.kit.source === "upload") {
     // An uploaded kit is kept by control like one described here; its cases and scores are its own.
-    const files = opts.uploads?.(d.kit.upload);
+    let files = opts.uploads?.(d.kit.upload);
     if (!files) return { ok: false, errors: ["the uploaded kit is gone: upload it again"] };
     const k = d.kit;
     cells = k.cells.filter((c) => !k.held_out.includes(c));
     heldOut = k.held_out;
-    let manifest: { metrics?: Record<string, unknown> } = {};
+    let manifest: { metrics?: Record<string, unknown>; mcp_servers?: unknown } = {};
     try {
       manifest = JSON.parse(String(files["kit.json"]));
     } catch {
       return { ok: false, errors: ["the uploaded kit's kit.json is not JSON"] };
     }
+    // Control keeps an uploaded kit, so the page may change its MCP servers: kit.json follows.
+    if (d.mcp_servers !== undefined) {
+      const { mcp_servers: _old, ...rest } = manifest;
+      manifest = d.mcp_servers.length ? { ...rest, mcp_servers: d.mcp_servers } : rest;
+      files = { ...files, "kit.json": Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`) };
+    }
+    mcpServers = McpUses.safeParse(manifest.mcp_servers ?? []).data ?? [];
     const names = Object.keys(manifest.metrics ?? {});
     if (d.mode === "hill_climb" && !d.score?.name) metric = names[0] ?? metric;
     // A time score improves downwards whatever the page said.
@@ -446,6 +475,9 @@ export function buildCampaign(
     kitRef = { repo: d.kit.repo, commit: d.kit.commit };
     cells = d.kit.cells.filter((c) => !d.kit?.held_out.includes(c));
     heldOut = d.kit.held_out;
+    // A kit in a repository has its own kit.json: the page read its servers from it, and the
+    // rig's harness checks them against it.
+    mcpServers = d.mcp_servers ?? [];
   }
 
   Object.assign(contract, {
@@ -511,5 +543,5 @@ export function buildCampaign(
     const problems = kitProblems(r.contract, parsedKit.data, d.target.type);
     if (problems.length) return { ok: false, errors: problems };
   }
-  return { ok: true, contract, kit };
+  return { ok: true, contract, kit, ...(mcpServers.length ? { mcp_servers: mcpServers } : {}) };
 }

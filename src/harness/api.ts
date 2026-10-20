@@ -2,10 +2,12 @@ import { timingSafeEqual } from "node:crypto";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { resolve } from "node:path";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { laneLimits } from "../core/contract.ts";
+import { McpConnection, McpUnavailable } from "../core/mcp.ts";
 import { CHATGPT_LIMIT_CODE } from "./agents/model.ts";
 import { ControlRoute } from "./agents/model-source.ts";
 import { Registry } from "./agents/registry.ts";
@@ -14,6 +16,7 @@ import { type Role, type Runner, RunRequest } from "./broker/runner.ts";
 import { chatgptRequest, chatgptRouteAllowed } from "./chatgpt.ts";
 import { SEARCH_MAX } from "./knowledge.ts";
 import { LedgerError } from "./ledger.ts";
+import type { McpCaller } from "./mcp-gateway.ts";
 import type { Research } from "./research/research.ts";
 import { Reviews } from "./reviews.ts";
 import { AdvisorQueueRequest, type HarnessService, SubmitRequest } from "./service.ts";
@@ -264,6 +267,78 @@ export function createHarnessApi(
     return c.json(service.setModelRoute(body.route, "supervisor", body.planner));
   });
 
+  // The MCP servers control gave the rig (goal 068), as the supervisor hands them over: their
+  // sign-in stays in this process's memory, and only their revisions are read back.
+  app.get("/v1/mcp-servers", supervisor, (c) => c.json(service.mcp.info()));
+  app.put("/v1/mcp-servers", supervisor, bodyLimit({ maxSize: 512 * 1024 }), async (c) => {
+    const body = z
+      .object({
+        servers: z.array(McpConnection).max(50),
+        unavailable: z.array(McpUnavailable).max(50).default([]),
+      })
+      .parse(await c.req.json());
+    service.mcp.set(body.servers, body.unavailable);
+    return c.json(service.mcp.info());
+  });
+  // The advisors' calls go through the supervisor: it says here when a server failed for them,
+  // or works again, and the run's history records it as the gateway records its own.
+  app.post("/v1/mcp-events", supervisor, async (c) => {
+    const b = z
+      .strictObject({
+        run: z.string().min(1).max(200),
+        server: z.string().min(1).max(64),
+        ok: z.boolean(),
+        error: z.string().max(500).optional(),
+      })
+      .parse(await c.req.json());
+    if (!service.ledger.getRun(b.run)) return c.json({ error: `no run ${b.run}` }, 404);
+    service.mcp.report(
+      { run: b.run, kind: "advisors", source: "supervisor" },
+      b.server,
+      b.ok,
+      b.error,
+    );
+    return c.json({ ok: true });
+  });
+
+  // The MCP gateway for workers (their trial's token) and the planner (a credential the harness
+  // made for one plan): the tools their run's kit gives their kind of agent, never a secret.
+  const mcpCaller = (header: string | undefined): McpCaller => {
+    const h = header ?? "";
+    const given = h.startsWith("Bearer ") ? h.slice(7) : "";
+    if (given.startsWith("trial.")) {
+      const t = trialOf(h).trial;
+      return { run: t.run, kind: "workers", source: `trial:${t.id}` };
+    }
+    const caller = given.startsWith("mcp.") ? service.mcpTokenCaller(given) : undefined;
+    if (!caller) throw new Unauthorized("unauthorized");
+    return caller;
+  };
+  app.get("/v1/mcp-tools", async (c) =>
+    c.json(await service.mcp.tools(mcpCaller(c.req.header("authorization")))),
+  );
+  app.post("/v1/mcp-call", bodyLimit({ maxSize: 4 * 1024 * 1024 }), async (c) => {
+    const caller = mcpCaller(c.req.header("authorization"));
+    const b = z
+      .strictObject({
+        server: z.string().min(1).max(64),
+        tool: z.string().min(1).max(128),
+        arguments: z.record(z.string(), z.unknown()).default({}),
+      })
+      .parse(await c.req.json());
+    return c.json(await service.mcp.call(caller, b.server, b.tool, b.arguments));
+  });
+  // One server as an MCP endpoint (streamable HTTP, stateless), for OpenCode and Claude Code.
+  app.all("/v1/mcp/:server", bodyLimit({ maxSize: 4 * 1024 * 1024 }), async (c) => {
+    const caller = mcpCaller(c.req.header("authorization"));
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+      enableJsonResponse: true,
+    });
+    await service.mcp.serverFor(caller, c.req.param("server")).connect(transport);
+    return transport.handleRequest(c.req.raw);
+  });
+
   app.get("/v1/snapshot", supervisor, (c) => {
     const cursor = Number(c.req.query("cursor") ?? "0");
     const limit = Math.min(Number(c.req.query("limit") ?? "500"), 5000);
@@ -299,6 +374,9 @@ export function createHarnessApi(
         // The owner's messages each advisor role has not read yet (their ids): a new one for the
         // teacher pair starts its round at once, not at the next hour.
         owner_messages_waiting: service.messages.waitingIds(i.id),
+        // The MCP servers its kit names, with the agents that get each: the advisors' share is
+        // the supervisor's to call (goal 068).
+        mcp_servers: service.mcpUses(i.id),
       })),
     }),
   );

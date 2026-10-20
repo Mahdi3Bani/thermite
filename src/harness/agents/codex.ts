@@ -5,6 +5,7 @@ import { type LaneLimitValues, laneLimits } from "../../core/contract.ts";
 import { type LiveKind, summarizeArgs } from "../../core/live.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import type { MessageInbox, TrialProgress } from "./live-session.ts";
+import { gatewayUrl, type McpAccess, mcpLine } from "./mcp-tools.ts";
 import { CHATGPT_LIMIT_CODE, type ModelConfig } from "./model.ts";
 import type { RigCheckReport } from "./model-check.ts";
 import {
@@ -259,10 +260,23 @@ export function tomlString(s: string): string {
  * The Codex CLI's configuration for a run ($CODEX_HOME/config.toml): one provider, the harness's
  * key-adding proxy (`proxyRoot`) over the Responses API, with the run's credential from
  * THERMITE_PROXY_AUTH; the route's reasoning effort ("off" sends "none"); no hosted web search,
- * analytics, feedback, update checks or history file.
+ * analytics, feedback, update checks or history file. The MCP servers the run's kit gives this
+ * agent (goal 068) are each a streamable HTTP server at the harness's gateway, with the gateway's
+ * credential from THERMITE_MCP_AUTH (never in the file), and none is required to start.
  */
-export function codexConfig(m: ModelConfig, proxyRoot: string): string {
+export function codexConfig(
+  m: ModelConfig,
+  proxyRoot: string,
+  mcp?: Pick<McpAccess, "apiUrl" | "servers"> | undefined,
+): string {
   const effort = m.reasoning === "off" ? "none" : m.reasoning;
+  const servers = (mcp?.servers ?? []).flatMap((s) => [
+    `[mcp_servers.${s}]`,
+    `url = ${tomlString(gatewayUrl(mcp?.apiUrl ?? "", s))}`,
+    'bearer_token_env_var = "THERMITE_MCP_AUTH"',
+    "required = false",
+    "",
+  ]);
   return [
     "# Written by Thermite's harness for one run.",
     'model_provider = "thermite"',
@@ -285,6 +299,7 @@ export function codexConfig(m: ModelConfig, proxyRoot: string): string {
     "[feedback]",
     "enabled = false",
     "",
+    ...servers,
   ].join("\n");
 }
 
@@ -315,11 +330,14 @@ export function codexEnv(o: {
   auth: string;
   /** What the model proxy takes: the trial's credential, or one minted for a check or a plan. */
   proxyAuth: string;
+  /** What the MCP gateway takes, when the agent has MCP servers: the trial's, or the plan's. */
+  mcpAuth?: string | undefined;
   tmp: string;
   extra?: Record<string, string> | undefined;
 }): Record<string, string> {
   return {
     ...o.extra,
+    ...(o.mcpAuth ? { THERMITE_MCP_AUTH: o.mcpAuth } : {}),
     HOME: o.home,
     CODEX_HOME: join(o.home, ".codex"),
     PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
@@ -391,12 +409,17 @@ export async function runCodexTrial(spec: TrialSpec, deps: CodexTrialDeps): Prom
   };
   const limits = spec.limits ?? laneLimits({ lanes: { count: 1, trials_per_epoch: 1 } });
   const auth = `trial.${spec.token ?? ""}`;
+  // The MCP servers the run's kit gives its workers (goal 068), at the gateway with the trial's token.
+  const mcp = spec.mcpServers?.length
+    ? { apiUrl: deps.apiUrl, servers: spec.mcpServers }
+    : undefined;
   const env = {
     ...codexEnv({
       home: join(area, "codex-home"),
       apiUrl: deps.apiUrl,
       auth,
       proxyAuth: auth,
+      mcpAuth: mcp ? auth : undefined,
       tmp: join(area, "codex-tmp"),
       extra: deps.env,
     }),
@@ -414,7 +437,7 @@ export async function runCodexTrial(spec: TrialSpec, deps: CodexTrialDeps): Prom
     ],
     cwd: area,
     timeoutMs: 30_000,
-    stdin: codexConfig(deps.model, `${deps.apiUrl}/v1/model-proxy`),
+    stdin: codexConfig(deps.model, `${deps.apiUrl}/v1/model-proxy`, mcp),
     captureBytes: 4096,
   });
   if (setup.exitCode !== 0)
@@ -427,7 +450,7 @@ export async function runCodexTrial(spec: TrialSpec, deps: CodexTrialDeps): Prom
   const deadline = started + spec.wallMs;
   const minutes = Math.round(spec.wallMs / 60_000);
   const maxTurns = spec.maxTurns;
-  let message = `${CODEX_SYSTEM}\n\n${codexLimitsNote(limits)}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. This trial lasts ${minutes} minutes${maxTurns !== undefined ? ` and at most ${maxTurns} turns (each message or tool call is one)` : ""}. Submit before it ends.`;
+  let message = `${CODEX_SYSTEM}${mcp ? `\n\n${mcpLine(mcp.servers)}` : ""}\n\n${codexLimitsNote(limits)}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. This trial lasts ${minutes} minutes${maxTurns !== undefined ? ` and at most ${maxTurns} turns (each message or tool call is one)` : ""}. Submit before it ends.`;
   let offset = 0;
   const carried = new CarriedMessages(deps.messages);
   const pump = () => {
@@ -575,7 +598,13 @@ export async function codexOnce(
   model: ModelConfig,
   prompt: string,
   deps: OpencodeOnceDeps,
-  o: { role: Role; timeoutMs: number; signal?: AbortSignal | undefined },
+  o: {
+    role: Role;
+    timeoutMs: number;
+    signal?: AbortSignal | undefined;
+    /** The MCP servers the call may use, and the gateway's credential for them (a planner's). */
+    mcp?: Omit<McpAccess, "apiUrl"> | undefined;
+  },
 ): Promise<CodexTally> {
   // Codex finds its home by name, so the directory must be reachable by name: under the lanes'
   // area, not the controller's own (which only its processes may walk).
@@ -594,7 +623,11 @@ export async function codexOnce(
       argv: ["sh", "-c", "mkdir -p home/.codex tmp && cat > home/.codex/config.toml"],
       cwd: dir,
       timeoutMs: 30_000,
-      stdin: codexConfig(model, `${deps.apiUrl}/v1/model-proxy`),
+      stdin: codexConfig(
+        model,
+        `${deps.apiUrl}/v1/model-proxy`,
+        o.mcp?.servers.length ? { apiUrl: deps.apiUrl, servers: o.mcp.servers } : undefined,
+      ),
       captureBytes: 4096,
     });
     if (setup.exitCode !== 0) {
@@ -610,6 +643,7 @@ export async function codexOnce(
         apiUrl: deps.apiUrl,
         auth: "",
         proxyAuth: deps.mintProxyToken(),
+        mcpAuth: o.mcp?.servers.length ? o.mcp.auth : undefined,
         tmp: join(dir, "tmp"),
       }),
       stdin: prompt,

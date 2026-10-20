@@ -50,9 +50,9 @@ Control checks a token against the owner's first, then the operator's, the agent
 | `propagate_champion` | Yes | Yes | Yes | No |
 | `kb_folders`, `kb_search`, `kb_grant`, `kb_revoke` | Yes | Yes | No | No |
 | `rig_setup` | Yes | Yes | No | Yes, without each step's `detail` |
-| `control_log`, `providers`, `runpod_tests`, `runpod_rigs` | Yes | Yes | No | Yes |
+| `control_log`, `providers`, `mcp_servers`, `runpod_tests`, `runpod_rigs` | Yes | Yes | No | Yes |
 | `add_cluster_rig`, `set_rig_model`, `start_run`, `cluster_rig`, `update_rig_images`, `set_cluster_slots`, `runpod_test_start`, `runpod_test_end` | Yes | Yes | No | No |
-| `retire_rig`, `bring_back_rig`, `runpod_launch`, `runpod_rig_limits`, `runpod_rig` | Yes | No | No | No |
+| `retire_rig`, `bring_back_rig`, `runpod_launch`, `runpod_rig_limits`, `runpod_rig`, `mcp_server_add`, `mcp_server_change`, `mcp_server_check`, `mcp_server_sign_in`, `mcp_server_delete` | Yes | No | No | No |
 
 ### Command kinds for each role
 
@@ -267,7 +267,7 @@ Returns `{status, outcome}`. Error: `no command <id>`.
 
 > Thermite's own knowledge base: one folder for each campaign, holding everything its runs produced (the runs, their trials, field notes, experiments with their results, attempts with their verdicts, research notes, the documents lanes wrote, sources with the text that was read, claims, hypotheses, findings, reports), each item with its run, its writer and its time. For each folder: its mode, its counts by kind, how many of its notes are field notes, its runs, its newest change, the campaigns granted to read it (read_by) and the folders it reads besides its own (reads).
 
-No inputs. Returns `[{campaign, counts, journal, items, runs, updated_at, read_by, reads, mode}]`, newest change first. `counts` is `{"<kind>": <n>}`; `journal` is how many of the notes are field notes; `mode` is `hill_climb`, `goal`, `research` or `null`. An outside knowledge base the campaign's teacher pair may search is `outside:<name>` in `reads`. [The knowledge base](knowledge-base.md#campaign-folders) describes the folders.
+No inputs. Returns `[{campaign, counts, journal, items, runs, updated_at, read_by, reads, mode}]`, newest change first. `counts` is `{"<kind>": <n>}`; `journal` is how many of the notes are field notes; `mode` is `hill_climb`, `goal`, `research` or `null`. [The knowledge base](knowledge-base.md#campaign-folders) describes the folders.
 
 ### kb_search
 
@@ -288,26 +288,25 @@ Returns items `{id, seq, campaign, rig, run, kind, ref, title, body, by, url, su
 
 **Let a campaign read another's folder.** Owner and operator.
 
-> From now on, the campaign's agents may search and read the other campaign's folder in Thermite's knowledge base; they never write to it. Its runs at work receive the folder at their supervisor's next sync, and new runs start with it. A campaign always reads its own folder. reads: `outside:<name>` instead lets the campaign's teacher pair search that outside knowledge base (read only), as the campaign page's Let its advisors search it does.
+> From now on, the campaign's agents may search and read the other campaign's folder in Thermite's knowledge base; they never write to it. Its runs at work receive the folder at their supervisor's next sync, and new runs start with it. A campaign always reads its own folder.
 
 | Input | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `campaign` | string | | "The campaign whose agents read" |
-| `reads` | string | | "The other campaign whose folder they read, or `outside:<name>` for an outside knowledge base" |
+| `reads` | string | | "The other campaign whose folder they read" |
 
 Returns `{granted, reads}`: `granted` is false when the campaign read that folder already, and `reads` is every folder it reads now besides its own. Errors: `no campaign <name>` (a campaign control does not know, for either input), `a campaign always reads its own folder: name another campaign`. Control writes a new grant to its audit log as `kb_grant`. [Grants](knowledge-base.md#grants) says what a grant gives.
 
-With `reads` set to `outside:<name>`, `kb_grant` lets the campaign's teacher pair search the [outside knowledge base](knowledge-base.md#outside-context-for-the-teacher-pair) of that name, as **Let its advisors search it** on the campaign's page does, and `reads` then lists it as `outside:<name>`. `campaign` must still be a campaign control knows. An outside knowledge base not set in **Providers** is refused: `no outside knowledge base <name>`. Control writes a new grant to its audit log as `outside_kb_read_granted`, not `kb_grant`.
+An outside knowledge base is no longer a grant: a campaign's kit names an [MCP server](#mcp_servers) instead.
 
 ### kb_revoke
 
 **Stop a campaign reading another's folder.** Owner and operator.
 
-> The campaign's agents no longer read the other campaign's folder. New runs start without it. reads: `outside:<name>` ends the teacher pair's search of that outside knowledge base.
+> The campaign's agents no longer read the other campaign's folder. New runs start without it.
 
 The same inputs as `kb_grant`. Returns `{revoked: true, reads}`. Error: `<campaign> does not read <reads>`. Control writes it to its audit log as `kb_revoke`. Each running run of the campaign loses the folder from its `knowledge/` at its supervisor's next sync.
 
-With `reads` set to `outside:<name>`, `kb_revoke` ends the teacher pair's search of that outside knowledge base, as **Remove** under **Can read from** on the campaign's page does. A campaign that does not search it is refused: `<campaign> does not search the outside knowledge base <name>`. Control writes it to its audit log as `outside_kb_read_revoked`. A grant left over from an outside knowledge base no longer set in **Providers** is removed without that entry.
 
 ### rig_setup
 
@@ -390,6 +389,69 @@ No inputs. Returns:
 | `machines` | `{name, address, port, user, host_key_trusted, facts, checked_at, check_error}` |
 | `clusters` | `{name, context, placement, namespace_pattern, slots, facts, checked_at, check_error}` |
 | `gpu_clouds` | `{name, kind, facts, checked_at, check_error}`. A RunPod account's `facts` include `spend`: `{today, month, last30, days}` in US dollars, `days` being the last 7 days as `{day, usd}`, or `error` when the key may not read billing |
+
+### mcp_servers
+
+**MCP servers.** Owner, operator and reader.
+
+> The MCP servers in Settings › Providers: each one's address, how it signs in, its state, its last error, its tools (with whether each only reads) and the kits that name it. Never a key, a client secret or a sign-in: only a secret's last four characters.
+
+No inputs. Returns `{servers}`: each server as `GET /v1/mcp-servers` gives it ([The REST API](rest-api.md#mcp-servers)), with `named_by`, the kits that name it.
+
+### mcp_server_add
+
+**Add an MCP server.** Owner.
+
+> Adds an MCP server to Settings, for the kits that name it. auth: oauth (answers with sign_in_url: open it in a browser and allow Thermite; the server's page sends the browser back to control), key (header, default Authorization, and secret: the header's whole value, such as Bearer and the token), client (client_id and client_secret: control gets a token with them) or none (a public server). url: https, or http for localhost only. Control seals each secret, never shows it again, and reads the server's tools; it calls none of them. The owner's token only.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `name` | string, up to 64 characters | | How kits name it: lowercase letters, digits and dashes |
+| `url` | string, up to 500 characters | | Its MCP address |
+| `auth` | `oauth`, `key`, `client` or `none` | | How the server signs Thermite in |
+| `header` | string, optional | `Authorization` | `key`: the header |
+| `secret` | string, optional | | `key`: the header's whole value |
+| `client_id` | string, optional | | `client`, or `oauth` for a server that does not register clients by itself |
+| `client_secret` | string, optional | | `client`; `oauth` when the server gave Thermite a secret |
+| `scope` | string, optional | | The scopes to ask for, separated by spaces |
+
+Returns `{server, sign_in_url}` for OAuth, else `{server}` with `check_error` when its tools could not be read (the server is kept). Errors: `There is a server named <name> already.`, and the REST route's refusals ([What a new server takes](rest-api.md#mcp-servers)). The audit log's `mcp:mcp_server_add` entry holds `secret` and `client_secret` only as `given (<hint>)`.
+
+### mcp_server_change
+
+**Change an MCP server.** Owner.
+
+> Changes a server's address, header, client ID, scopes or secrets. A secret left out is kept, except for another address or another way to sign in, which need it again. Then control reads its tools again. The owner's token only.
+
+The inputs of `mcp_server_add`, all but `name` optional; one left out keeps its value. Returns `{server}`, with `check_error` when its tools could not be read, or `{server, sign_in: "needed: call mcp_server_sign_in"}` for an OAuth server whose address or client changed. Error: `Settings has no server named <name>.`
+
+### mcp_server_check
+
+**Read an MCP server's tools again.** Owner.
+
+> Control reads the server's tools again with its sign-in, and keeps them with its state. It calls no tool. The owner's token only.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `name` | string | | The server |
+
+Returns `{server}`, with `check_error` when its tools could not be read.
+
+### mcp_server_sign_in
+
+**Sign in to an MCP server.** Owner.
+
+> For a server that signs in with OAuth: the address of its sign-in page. Open it in a browser within 15 minutes and allow Thermite; the page sends the browser back to control, which seals the sign-in and renews it. The owner's token only.
+
+The input `name`. Returns `{url}`. The page sends the browser to `/v1/mcp-oauth/callback` on `THERMITE_CONTROL_PUBLIC_URL`, or, when that is not set, on the address the MCP call came to.
+
+### mcp_server_delete
+
+**Delete an MCP server.** Owner.
+
+> Control forgets the server and its secrets. Nothing changes on the server. Refused while a kit names it: take it out of those kits first. The owner's token only.
+
+The input `name`. Returns `{deleted: true}`. Errors: `Settings has no server named <name>.`, and `<kits> name it. Take it out of those kits first.`
 
 ### add_cluster_rig
 

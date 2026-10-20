@@ -5,7 +5,10 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { log } from "../common/env.ts";
 import type { NoteInput } from "../core/journal.ts";
 import type { LiveKind } from "../core/live.ts";
+import type { McpUse } from "../core/mcp.ts";
+import type { McpCaller, McpGateway } from "../harness/mcp-gateway.ts";
 import {
+  type AdvisorMcp,
   type AdvisorsConfig,
   type AdvisorTools,
   advisorFetcher,
@@ -30,6 +33,10 @@ import type { PastSearch } from "./past-mcp.ts";
  * folders its campaign may read in Thermite's knowledge base), read only, through the harness's
  * copy of the run's knowledge/: the same items the workers search. A teacher that may fetch any
  * web page gets no past research at all.
+ *
+ * They get the MCP servers the run's kit gives the advisors (goal 068): the supervisor makes each
+ * call with the sign-in control gave it, and tells the harness when a server fails or comes back,
+ * for the run's history. Advisors that may fetch any web page get no MCP server either.
  */
 
 export interface AdviseConfig {
@@ -42,6 +49,11 @@ export interface AdviseConfig {
   retryMs?: number | undefined;
   /** A line in the live view (the supervisor's own lines, relayed unsigned). */
   live?: ((line: { kind: LiveKind; text: string; run?: string | undefined }) => void) | undefined;
+  /**
+   * The advisors' MCP servers (goal 068): the supervisor's gateway, holding the servers control
+   * gave the rig for advisors, and each run's servers as its kit names them (read each round).
+   */
+  mcp?: { gateway: McpGateway; uses: Map<string, McpUse[]> } | undefined;
 }
 
 export interface AdviseState {
@@ -53,6 +65,8 @@ export interface AdviseState {
   ownerSeen?: Record<string, number> | undefined;
   /** Per run, the newest owner's message already told it waits for the spending limit. */
   limitSaid?: Record<string, number> | undefined;
+  /** Runs already told their advisors get no MCP server because they may fetch any page. */
+  mcpOffSaid?: Record<string, boolean> | undefined;
   stats: {
     teacher_runs: number;
     directive_sets: number;
@@ -107,37 +121,12 @@ function mcpSearch(url: string, token: () => string, tool: string) {
   };
 }
 
-/**
- * The knowledge-base search for the advisors of one campaign's runs: the rig's own (the advisors
- * file's `kb`), and each outside knowledge base control granted that campaign. Several are
- * searched together, each answer under its name. None: no search.
- */
-export function kbSearchFor(
-  cfg: Pick<AdvisorsConfig, "kb" | "outside_kb">,
-  campaign: string | undefined,
-): AdvisorTools["kbSearch"] {
-  const searches: { name: string; search: (query: string) => Promise<unknown> }[] = [];
+/** The knowledge-base search of the advisors file's own `kb`, read only; none without one. */
+export function kbSearchFor(cfg: Pick<AdvisorsConfig, "kb">): AdvisorTools["kbSearch"] {
   const kb = cfg.kb;
-  if (kb)
-    searches.push({
-      name: "kb",
-      search: mcpSearch(kb.mcp_url, () => readFileSync(kb.token_file, "utf8").trim(), kb.tool),
-    });
-  for (const o of cfg.outside_kb ?? [])
-    if (campaign && o.campaigns.includes(campaign))
-      searches.push({ name: o.name, search: mcpSearch(o.mcp_url, () => o.token, o.tool) });
-  const [one] = searches;
-  if (!one) return undefined;
-  if (searches.length === 1) return one.search;
-  return (query) =>
-    Promise.all(
-      searches.map(async (s) => ({
-        knowledge_base: s.name,
-        results: await s
-          .search(query)
-          .catch((err) => `failed: ${err instanceof Error ? err.message : String(err)}`),
-      })),
-    );
+  return kb
+    ? mcpSearch(kb.mcp_url, () => readFileSync(kb.token_file, "utf8").trim(), kb.tool)
+    : undefined;
 }
 
 /** A run as the harness lists it, with the owner's messages each advisor role has not read. */
@@ -146,6 +135,8 @@ interface RunRow {
   campaign?: string;
   status: string;
   owner_messages_waiting?: { teachers?: number[]; auditor?: number[]; panel?: number[] };
+  /** The MCP servers its kit names, with the agents that get each (goal 068). */
+  mcp_servers?: McpUse[];
 }
 
 /** An owner's message in a brief or package. */
@@ -229,9 +220,9 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
   // outside knowledge base's search goes only to the advisors of the campaigns granted it.
   const domains = cfg.advisors.fetch_domains;
   const fetchUrl = domains.length ? advisorFetcher(cfg.home, domains) : undefined;
-  const toolsFor = (campaign: string | undefined): AdvisorTools => ({
+  const toolsFor = (): AdvisorTools => ({
     ...(fetchUrl ? { fetchUrl } : {}),
-    ...(domains.includes("*") ? {} : { kbSearch: kbSearchFor(cfg.advisors, campaign) }),
+    ...(domains.includes("*") ? {} : { kbSearch: kbSearchFor(cfg.advisors) }),
   });
   // The run's past research, read only: a search of the harness's copy of its knowledge/, for a
   // run whose brief or package says it has some (past_research).
@@ -247,20 +238,37 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           ...(o.limit ? { limit: String(Math.max(1, Math.min(50, Math.floor(o.limit)))) } : {}),
         }).toString()}`,
       );
-  // A run's campaign, from the harness's list (read once a round, and only when control granted
-  // outside knowledge bases). A list that can't be read gives no campaign: no outside search.
-  let campaigns: Map<string, string> | undefined;
-  const campaignOf = async (run: string | undefined): Promise<string | undefined> => {
-    if (!run || !cfg.advisors.outside_kb?.length) return undefined;
-    if (!campaigns) {
-      try {
-        const { runs } = (await api("GET", "/v1/runs")) as { runs: RunRow[] };
-        campaigns = new Map(runs.map((r) => [r.id, r.campaign ?? ""]));
-      } catch {
-        return undefined;
+  // The MCP servers a run's kit gives its advisors (goal 068), from the harness's list of runs
+  // (read once a round). The supervisor calls them; advisors that may fetch any page get none,
+  // which the run's live view says once.
+  let runRows: RunRow[] | undefined;
+  const mcpFor = async (run: string | undefined): Promise<AdvisorMcp | undefined> => {
+    const m = cfg.mcp;
+    if (!run || !m) return undefined;
+    runRows ??= ((await api("GET", "/v1/runs")) as { runs: RunRow[] }).runs;
+    m.uses.set(run, runRows.find((r) => r.id === run)?.mcp_servers ?? []);
+    const servers = m.gateway.given(run, "advisors").map((g) => g.name);
+    if (!servers.length) return undefined;
+    if (domains.includes("*")) {
+      next.mcpOffSaid ??= {};
+      if (!next.mcpOffSaid[run]) {
+        next.mcpOffSaid[run] = true;
+        say(
+          run,
+          "status",
+          `the advisors may fetch any web page (fetch_domains "*"), so they get no MCP server: ${servers.join(", ")}`,
+        );
       }
+      return undefined;
     }
-    return campaigns.get(run) || undefined;
+    const caller: McpCaller = { run, kind: "advisors", source: "supervisor" };
+    const { tools } = await m.gateway.tools(caller);
+    return {
+      servers,
+      tools,
+      call: (s, t, a) => m.gateway.call(caller, s, t, a),
+      serverFor: (s) => m.gateway.serverFor(caller, s),
+    };
   };
   // A daily spending limit for all advisors of the rig, when the owner set one.
   const day = new Date().toISOString().slice(0, 10);
@@ -441,7 +449,9 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           run: inst.id,
           brief,
           tools: {
-            ...toolsFor(inst.campaign || (await campaignOf(inst.id))),
+            ...toolsFor(),
+            // The run's MCP servers for its advisors (none with an open fetch: mcpFor says so).
+            mcp: await mcpFor(inst.id),
             // Teachers with an open fetch search no past research either.
             // Only when the run has some: the brief says so in past_research.
             ...(openFetch || !brief.past_research ? {} : { pastSearch: pastSearchFor(inst.id) }),
@@ -531,7 +541,8 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           config: cfg.advisors,
           pkg: { ...pkg, owner_messages: owner },
           tools: {
-            ...toolsFor(await campaignOf(pkg.run)),
+            ...toolsFor(),
+            mcp: await mcpFor(pkg.run),
             ...(pkg.run && pkg.past_research ? { pastSearch: pastSearchFor(pkg.run) } : {}),
           },
         });
@@ -606,11 +617,13 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         const results: { reviewer: string; pass: boolean; reasons: string }[] = [];
         const answers: { message: number; text: string; advisor: string }[] = [];
         const journal: { by: string; notes: NoteInput[] }[] = [];
+        const mcp = await mcpFor(pkg.run);
         for (const runtime of cfg.advisors.panel) {
           const r = await reviewOne({
             runtime,
             pkg: { ...pkg, owner_messages: owner },
             ...(pkg.run && pkg.past_research ? { pastSearch: pastSearchFor(pkg.run) } : {}),
+            ...(mcp ? { mcp } : {}),
           });
           count(r);
           if (!r.output) continue;

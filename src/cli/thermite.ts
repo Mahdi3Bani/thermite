@@ -30,7 +30,7 @@ const USAGE = `usage: thermite <command> [options]
                                       the only part control's deployment needs
   assign --contract F --run ID [--seed GIT_URL[@COMMIT] | --seed-commit C] [--kit GIT_URL]
          [--model NAME=URL ...] [--direction D] [--agents off] [--promotion auto|owner]
-         [--queue-from [RIG/]RUN]
+         [--queue-from [RIG/]RUN] [--mcp-servers JSON|@file]
          (--control URL --token-file F --rig R [--ttl MIN] | --print)
                                       start a run. The rig's supervisor fetches the project and
                                       kit commits from their repositories, and models from their
@@ -39,9 +39,11 @@ const USAGE = `usage: thermite <command> [options]
                                       already there needs no --kit. --queue-from starts the new
                                       run's queue with a past run's untried experiments, read
                                       from control (on --rig unless RIG/ is given; it needs
-                                      --control and --token-file, with --print too). --print
-                                      shows the payload (for issue_command over MCP) instead of
-                                      issuing it
+                                      --control and --token-file, with --print too).
+                                      --mcp-servers gives the MCP servers the kit's kit.json
+                                      names, as in kit.json; the rig refuses a run whose list
+                                      differs. --print shows the payload (for issue_command over
+                                      MCP) instead of issuing it
   assign-payload --contract F --run ID --seed-repo R --seed-commit C --bundle PATH
                  [--bundle-sha256 H] [--kit-repo R --kit-commit C --kit-bundle PATH
                  [--kit-bundle-sha256 H]] [--model NAME=SHA256:PATH ...] [--direction D] [--agents off]
@@ -106,6 +108,29 @@ const USAGE = `usage: thermite <command> [options]
                                       experiments (on --rig unless RIG/ is given); --past adds
                                       items of Thermite's knowledge base by id. It prints the new
                                       run and its command id; a stopped RunPod pod starts first
+  mcp list --control URL --token-file F [--json]
+                                      the MCP servers in Settings (owner's token): each one's
+                                      sign-in, state, last error, tools and the kits that name
+                                      it. No secret, only its last four characters
+  mcp add NAME --url URL --auth oauth|key|client|none [--header H] [--secret-file F]
+          [--client-id ID] [--client-secret-file F] [--scope S] --control URL --token-file F
+                                      add an MCP server (owner's token). key: --secret-file
+                                      holds the header's whole value (Bearer and the token);
+                                      client: --client-id and --client-secret-file. Control
+                                      seals each secret and reads the server's tools. oauth:
+                                      prints the sign-in page's address: open it and allow
+                                      Thermite
+  mcp change NAME [--url URL] [--header H] [--secret-file F] [--client-id ID]
+          [--client-secret-file F] [--scope S] --control URL --token-file F
+                                      change a server; a secret left out is kept, except for
+                                      another address, which needs it again
+  mcp check NAME --control URL --token-file F
+                                      read the server's tools again (it calls none)
+  mcp sign-in NAME --control URL --token-file F
+                                      print the address of an OAuth server's sign-in page
+  mcp delete NAME --control URL --token-file F
+                                      forget a server and its secrets; refused while a kit
+                                      names it
   command --control URL --token-file F --rig U --kind K --payload JSON|@file [--ttl MIN]
                                       issue a signed command through control (admin token).
                                       assign_campaign and resume_run on a RunPod rig whose pod
@@ -157,6 +182,45 @@ async function post(url: string, token: string, body: unknown): Promise<unknown>
   const text = await res.text();
   if (!res.ok) fail(`${url} -> ${res.status} ${text}`);
   return JSON.parse(text);
+}
+
+async function send(method: string, url: string, token: string, body?: unknown): Promise<unknown> {
+  const res = await fetch(url, {
+    method,
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  });
+  const text = await res.text();
+  if (!res.ok) fail(`${url} -> ${res.status} ${text}`);
+  return JSON.parse(text);
+}
+
+/** An MCP server as control lists it (never a secret). */
+interface McpServerLine {
+  name: string;
+  url: string;
+  auth: string;
+  status: string;
+  last_error: string | null;
+  secret_hint: string | null;
+  tools: { name: string; reads: boolean }[] | null;
+  named_by?: string[];
+}
+
+/** One line per server, then its last error and its tools, for `thermite mcp`. */
+export function formatMcpServers(list: McpServerLine[]): string {
+  if (!list.length) return "no MCP server in Settings\n";
+  return list
+    .map((s) => {
+      const tools = s.tools ?? [];
+      const head = `${s.name}  ${s.auth}${s.secret_hint ? ` ${s.secret_hint}` : ""}  ${s.status}  ${tools.length} tool${tools.length === 1 ? "" : "s"}  ${s.url}${s.named_by?.length ? `  named by ${s.named_by.join(", ")}` : ""}`;
+      const err = s.last_error ? `\n  ${s.last_error}` : "";
+      const t = tools.length
+        ? `\n  ${tools.map((x) => `${x.name}${x.reads ? "" : " (writes)"}`).join(", ")}`
+        : "";
+      return `${head}${err}${t}\n`;
+    })
+    .join("");
 }
 
 async function main(argv: string[]): Promise<void> {
@@ -316,6 +380,7 @@ async function main(argv: string[]): Promise<void> {
           agents: { type: "string" },
           promotion: { type: "string" },
           "queue-from": { type: "string" },
+          "mcp-servers": { type: "string" },
           control: { type: "string" },
           "token-file": { type: "string" },
           rig: { type: "string" },
@@ -438,6 +503,8 @@ async function main(argv: string[]): Promise<void> {
           : {}),
         imports,
         ...(queue.length ? { queue } : {}),
+        // The MCP servers the kit's kit.json names: the rig refuses a run whose list differs.
+        ...(values["mcp-servers"] ? { mcp_servers: readJsonArg(values["mcp-servers"]) } : {}),
       };
       if (values.print) {
         process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
@@ -679,6 +746,91 @@ async function main(argv: string[]): Promise<void> {
       process.stderr.write(runStartSaid(out));
       // Not started yet (the rig was given a model first): a script must not take it as started.
       if (out.started === false) process.exitCode = 1;
+      return;
+    }
+    case "mcp": {
+      const [sub, ...args] = rest;
+      const { values, positionals } = parseArgs({
+        args,
+        allowPositionals: true,
+        options: {
+          control: { type: "string" },
+          "token-file": { type: "string" },
+          json: { type: "boolean" },
+          url: { type: "string" },
+          auth: { type: "string" },
+          header: { type: "string" },
+          "secret-file": { type: "string" },
+          "client-id": { type: "string" },
+          "client-secret-file": { type: "string" },
+          scope: { type: "string" },
+        },
+      });
+      if (!values.control || !values["token-file"]) fail(USAGE);
+      const at = `${values.control.replace(/\/$/, "")}/v1/mcp-servers`;
+      const token = readFileSync(values["token-file"], "utf8").trim();
+      const name = positionals[0];
+      // Secrets come from files, never from the command line, where other users could see them.
+      const fields = () => ({
+        ...(values.url ? { url: values.url } : {}),
+        ...(values.auth ? { auth: values.auth } : {}),
+        ...(values.header ? { header: values.header } : {}),
+        ...(values["secret-file"]
+          ? { secret: readFileSync(values["secret-file"], "utf8").trim() }
+          : {}),
+        ...(values["client-id"] ? { client_id: values["client-id"] } : {}),
+        ...(values["client-secret-file"]
+          ? { client_secret: readFileSync(values["client-secret-file"], "utf8").trim() }
+          : {}),
+        ...(values.scope ? { scope: values.scope } : {}),
+      });
+      const said = (out: {
+        server?: McpServerLine;
+        sign_in_url?: string;
+        check_error?: string;
+        error?: string;
+      }) => {
+        if (out.server) process.stdout.write(formatMcpServers([out.server]));
+        if (out.sign_in_url)
+          process.stdout.write(
+            `open this address within 15 minutes and allow Thermite:\n  ${out.sign_in_url}\n`,
+          );
+        if (out.check_error) process.stdout.write(`its tools were not read: ${out.check_error}\n`);
+        if (out.error) process.stdout.write(`${out.error}\n`);
+      };
+      if (sub === "list") {
+        const out = (await get(at, token)) as { servers: McpServerLine[] };
+        process.stdout.write(
+          values.json ? `${JSON.stringify(out, null, 2)}\n` : formatMcpServers(out.servers),
+        );
+        return;
+      }
+      if (!name) fail(USAGE);
+      const one = `${at}/${encodeURIComponent(name)}`;
+      if (sub === "add") {
+        if (!values.url || !values.auth) fail(USAGE);
+        said((await post(at, token, { name, ...fields() })) as Parameters<typeof said>[0]);
+        return;
+      }
+      if (sub === "change") {
+        said((await send("PUT", one, token, fields())) as Parameters<typeof said>[0]);
+        return;
+      }
+      if (sub === "check") {
+        said((await post(`${one}/check`, token, {})) as Parameters<typeof said>[0]);
+        return;
+      }
+      if (sub === "sign-in") {
+        const out = (await post(`${one}/sign-in`, token, {})) as { url: string };
+        said({ sign_in_url: out.url });
+        return;
+      }
+      if (sub === "delete") {
+        await send("DELETE", one, token);
+        process.stdout.write(`${name} is deleted: control keeps nothing of its secrets\n`);
+        return;
+      }
+      fail(USAGE);
       return;
     }
     case "command": {

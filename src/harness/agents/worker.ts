@@ -1,9 +1,12 @@
 import { Agent, type AgentMessage, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type Message, type TSchema, Type } from "@earendil-works/pi-ai";
+import type { McpCallResult } from "../../common/mcp-client.ts";
 import { type LaneLimitValues, laneLimits, SHARED_DEV_RUN_S } from "../../core/contract.ts";
 import { notesInstruction } from "../../core/journal.ts";
+import type { McpToolInfo } from "../../core/mcp.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { linkSession, type SessionLink } from "./live-session.ts";
+import { mcpAgentTools, mcpLine } from "./mcp-tools.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
 import { NOTE_TOOL, type NoteRequest, writeNote } from "./notes-tool.ts";
 import { researchAgentTools } from "./research-agent-tools.ts";
@@ -36,6 +39,11 @@ export interface TrialSpec {
   maxTurns?: number | undefined;
   /** The contract's lane limits (the server enforces them too). */
   limits?: LaneLimitValues | undefined;
+  /**
+   * The MCP servers the run's kit gives its workers (goal 068), by name: the trial reaches them
+   * through the harness's gateway with its own token.
+   */
+  mcpServers?: string[] | undefined;
 }
 
 /** A worker's idea for its run's queue (the idea tool, or `thermite-trial idea`). */
@@ -120,6 +128,14 @@ export interface TrialDeps {
   research?(op: string, args: Record<string, unknown>): Promise<unknown>;
   /** The live view: the session's turns out, the owner's messages in. */
   link?: SessionLink | undefined;
+  /** The MCP tools the run's kit gives its workers, and how to call one (the harness's gateway). */
+  mcp?: McpForAgent | undefined;
+}
+
+/** An agent's MCP tools in Pi: what the gateway listed for it, and a call through the gateway. */
+export interface McpForAgent {
+  tools: McpToolInfo[];
+  call(server: string, tool: string, args: Record<string, unknown>): Promise<McpCallResult>;
 }
 
 export interface TrialResult {
@@ -352,6 +368,23 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
           },
         )
       : []),
+    // The MCP tools the run's kit gives its workers, through the harness's gateway (goal 068).
+    ...(deps.mcp
+      ? mcpAgentTools(
+          deps.mcp.tools,
+          async (server, t, args) =>
+            // A submission ends the trial: nothing runs after it.
+            result.submitted
+              ? {
+                  content: [{ type: "text", text: "the trial ended with your submission" }],
+                  isError: true,
+                }
+              : (deps.mcp as McpForAgent).call(server, t, args),
+          () => {
+            result.toolCalls++;
+          },
+        )
+      : []),
     tool(
       "submit",
       "Submit your change for judging. Call it once, when your change builds and passes your own tests. This ends the trial.",
@@ -413,7 +446,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
   const { models, model, thinkingLevel } = buildModel(deps.model);
   const agent = new Agent({
     initialState: {
-      systemPrompt: `${SYSTEM}\n\n${NOTES_AND_SOURCES}`,
+      systemPrompt: `${SYSTEM}\n\n${NOTES_AND_SOURCES}${deps.mcp?.tools.length ? `\n\n${mcpLine([...new Set(deps.mcp.tools.map((t) => t.server))])}` : ""}`,
       model,
       tools,
       thinkingLevel,

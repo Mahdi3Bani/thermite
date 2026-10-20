@@ -16,7 +16,7 @@ flowchart LR
   C -. "SSH, kubectl, RunPod's API" .-> P[Your machines, clusters, RunPod]
   S[Supervisor] -- "dials out with its rig token" --> C
   S -- "its own token" --> H
-  S --> G[Git hosts, advisors' models, an outside knowledge base]
+  S --> G[Git hosts, advisors' models, the advisors' MCP servers]
   subgraph H[Harness container]
     J["Judge and ledger<br/>(user thermite)"]
     L["Lanes<br/>(lane-N, agent-N)"]
@@ -24,7 +24,7 @@ flowchart LR
   end
   L -- "a token for one trial" --> J
   J --> B
-  H --> M[Its model endpoint, DNS, the internet]
+  H --> M[Its model endpoint, the agents' MCP servers, DNS, the internet]
 ```
 
 ## Three rules
@@ -37,24 +37,24 @@ flowchart LR
 
 - **Runs as** a user other than root. The compose file drops every Linux capability.
 - **Listens on** one port, 8800: the dashboard, the REST API, MCP and `/metrics`. Compose publishes it on `127.0.0.1` only. Rigs on other machines reach it through a reverse proxy with HTTPS that you provide ([Let rigs on other machines reach control](../how-to/install/one-machine.md#let-rigs-on-other-machines-reach-control)).
-- **Reaches** model providers, to list their models; OpenAI, for a ChatGPT sign-in; git hosts, to read a project's commit and file list for the **New campaign** page; your machines over SSH and your clusters' API, to set rigs up and manage them; RunPod's API and its test pods; and outside knowledge bases. It never connects to a running rig: every rig dials out to control. With `compose.lifecycle.yaml`, which is for development only, control also gets the container engine's socket, to restart the compose rigs.
+- **Reaches** model providers, to list their models; OpenAI, for a ChatGPT sign-in; git hosts, to read a project's commit and file list for the **New campaign** page; your machines over SSH and your clusters' API, to set rigs up and manage them; RunPod's API and its test pods; and the MCP servers in **Settings**, to read their tools and to sign in (an OAuth server's sign-in and token endpoints). It never connects to a running rig: every rig dials out to control. With `compose.lifecycle.yaml`, which is for development only, control also gets the container engine's socket, to restart the compose rigs.
 - **Trusts** a request only with a token, and only for what that token's role may do ([Tokens and roles](../reference/tokens.md)). It takes a rig's report only when the report is signed with the key that control pinned for that rig, and a champion's patch only when its hash matches the rig's signed record.
-- **Holds** every key and sign-in that you add, sealed; its own signing key; and tokens as hashes, where it can.
+- **Holds** every key and sign-in that you add, sealed, MCP servers' keys, client secrets and OAuth sign-ins included; its own signing key; and tokens as hashes, where it can.
 
 ## The supervisor
 
 - **Runs as** a user other than root, in a container of its own, with every Linux capability dropped. No agent's, build's or candidate's code runs in it, and it listens on no port.
-- **Reaches** control, by dialing out; its harness's API; git hosts, to fetch projects and kits and to push results; the advisors' model providers; public web pages, for advisors that the advisors file lets fetch them; and an outside knowledge base, when the owner lets a campaign's teachers search it.
+- **Reaches** control, by dialing out; its harness's API; git hosts, to fetch projects and kits and to push results; the advisors' model providers; public web pages, for advisors that the advisors file lets fetch them; and the MCP servers that its runs' kits give the advisors, which it calls for them.
 - **Trusts** control, at the address that it was given. It doesn't need to trust anything else, because the harness checks each command, and each project, kit, model or champion that the supervisor fetched, against what control signed.
-- **Holds** the rig's outside credentials: its rig token for control, its token for the harness, the results repository's deploy key, a private repository's Git access for one fetch at a time, the advisors' keys, and an outside knowledge base's token, in memory. It holds no signing key, so it can't make a command or a report, submit a change or set a verdict.
+- **Holds** the rig's outside credentials: its rig token for control, its token for the harness, the results repository's deploy key, a private repository's Git access for one fetch at a time, the advisors' keys, and the sign-in of each MCP server its runs name, in memory. It holds no signing key, so it can't make a command or a report, submit a change or set a verdict.
 
 ## The harness
 
 - **Runs as** a small broker, as root, with six capabilities (`CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `KILL`, `SETGID` and `SETUID`) and no way to gain more. The broker starts everything else as a role user of its own.
 - **Listens on** port 8700, the harness API, which is never published. Over the network, only its supervisor calls it; inside the container, the workers' tools call it on `127.0.0.1`. Every route but a health check needs a token.
-- **Reaches** DNS, the internet and its model endpoint. Where the rig runs decides what else it can reach ([below](#where-a-rig-runs)).
+- **Reaches** DNS, the internet and its model endpoint, and through the internet the MCP servers that its runs' kits give the workers and the planner, which it calls for them. Where the rig runs decides what else it can reach ([below](#where-a-rig-runs)).
 - **Trusts** a command only when control signed it, for this rig, before it expired, from an issuer allowed for its kind. It takes a project, kit, model or champion only when it matches the commit or hash in that command. What the supervisor hands over, such as the advisors' experiments and past research, reaches the agents as data, never as a verdict.
-- **Holds** the rig's report signing key, the ledger and the agents' model route, where no lane, build or timed run can read them.
+- **Holds** the rig's report signing key, the ledger, the agents' model route and the sign-in of the workers' and the planner's MCP servers (in memory only), where no lane, build or timed run can read them.
 
 ## The lanes
 
@@ -64,6 +64,21 @@ A lane is one line of search, worked by one agent session after another ([Agents
 - **Reach** the harness API with a token for one trial, which stops working when the trial ends; the run's research folder, where they read what the harness wrote and, in a research run, write only their own working area; and the harness container's network. A worker's research fetches go through the harness, which refuses private and local addresses. The commands that a lane runs use the container's network directly.
 - **Are trusted with** nothing that decides. A lane proposes a change, and the judge measures it. A lane can't read the ledger, the kits or the secret files, list or change the stored builds, or open another lane's workspace or a GPU that it wasn't given. The isolation self-test checks this every time the harness starts.
 - **Hold** what their worker harness needs. In Pi, the model key is in the environment of the agent's process (`agent-N`), which the lane's commands can't read. OpenCode and Codex never get the key: they call the model through the harness's proxy with the trial's token. Claude Code runs as the lane's own user, with the subscription token in its environment. The commands that it starts get no credentials in theirs, but they run as the same user, so they can read that token.
+
+## MCP servers
+
+An MCP server gives agents tools from outside Thermite ([Give agents MCP tools](../how-to/campaigns/give-agents-mcp-tools.md)). Its secret goes where the call is made, never to an agent:
+
+| Who | Reaches the server | Holds its secret |
+| --- | --- | --- |
+| Control | Yes: to read its tools when you add it or press **Read tools again**, and to sign in, renew a sign-in and get a client's token | Sealed in its store: a key, a client secret, an OAuth refresh token |
+| The supervisor | Yes, over the internet: the calls of the run's teacher pair, auditor and review panel, when the run's kit gives the server to the advisors | In memory: the headers control gave it, an access token rather than the refresh token or the client secret |
+| The harness | Yes, over the internet: the calls of the workers and the planner, when the run's kit gives them the server | In memory, the same headers. Nothing is written to its disk |
+| A lane, the planner's own process in OpenCode, Claude Code or Codex | No: it calls the harness's gateway with its trial's token, or one made for the planner's call, and the gateway calls the server | No. Its configuration names the gateway, with its own token in the file (OpenCode, Claude Code) or in its environment (Codex) |
+| An advisor in Claude Code | No: it calls a server the supervisor serves on `127.0.0.1` for that call | No |
+| The judge | No | No |
+
+Control hands a rig a server only when a run it assigned that rig names it. The gateway gives each kind of agent only the servers and tools its run's kit gives it, and a call to another is refused. What a server answers reaches the agent as data, never as a verdict; a write tool the kit gives an agent can change things on that server.
 
 ## The judge
 

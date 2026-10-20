@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { canonicalSha } from "./canonical.ts";
 import { DURATION_PATTERN, parseDuration } from "./duration.ts";
+import { McpUses } from "./mcp.ts";
 
 /**
  * Campaign contract, schema version 1.
@@ -286,6 +287,12 @@ export const ResearchContract = z.strictObject({
   questions: z.array(z.string().min(1)).min(1),
   /** Starting URLs (without a search provider, research follows links from these). */
   seeds: z.array(z.url()).default([]),
+  /**
+   * The MCP servers the campaign's agents use (goal 068), as a kit names them: a research
+   * campaign has no kit. Optional and without a default, so contracts written before it keep
+   * their hash.
+   */
+  mcp_servers: McpUses.optional(),
   scope: z
     .strictObject({
       include_domains: z.array(z.string()).default([]),

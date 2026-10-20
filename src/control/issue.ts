@@ -7,6 +7,8 @@ import {
 } from "../core/commands.ts";
 import { MAX_LANES } from "../core/contract.ts";
 import { RESEARCH_TASK_KINDS, researchDirectionRefusal } from "../core/directions.ts";
+import { McpUses, sameUses, usesWords } from "../core/mcp.ts";
+import { mcpRefusal } from "./mcp-servers.ts";
 import type { ControlStore } from "./store.ts";
 import { type RigView, type RunView, rigView } from "./views.ts";
 
@@ -140,6 +142,35 @@ export function redirectRefusal(store: ControlStore, rig: string, payload: unkno
   return unknown.length ? researchDirectionRefusal(unknown) : "";
 }
 
+/**
+ * An assignment's MCP servers (goal 068): a research contract's own list (a research campaign
+ * has no kit), filled in when the caller left it out. Refused, in words, when it differs from the
+ * contract's, or when it names a server Settings lacks: such a campaign can't start.
+ */
+function withMcpServers(store: ControlStore, payload: unknown): unknown {
+  if (!payload || typeof payload !== "object") return payload;
+  const p = payload as {
+    contract?: { mode?: unknown; mcp_servers?: unknown };
+    mcp_servers?: unknown;
+  };
+  let out = p;
+  if (p.contract?.mode === "research" && p.contract.mcp_servers !== undefined) {
+    if (p.mcp_servers === undefined) out = { ...p, mcp_servers: p.contract.mcp_servers };
+    else {
+      const a = McpUses.safeParse(p.mcp_servers);
+      const b = McpUses.safeParse(p.contract.mcp_servers);
+      if (a.success && b.success && !sameUses(a.data, b.data))
+        throw new Error(
+          `The assignment names the MCP servers ${usesWords(a.data)}, and the contract names ${usesWords(b.data)}. Leave mcp_servers out: control takes the contract's.`,
+        );
+    }
+  }
+  const uses = McpUses.safeParse(out.mcp_servers ?? []);
+  const why = uses.success ? mcpRefusal(store.db, uses.data) : "";
+  if (why) throw new Error(why);
+  return out;
+}
+
 /** A command outcome that came from the harness's signed report, not from the supervisor. */
 export function harnessConfirmed(outcome: unknown): boolean {
   return (outcome as { source?: string } | null)?.source === "harness";
@@ -244,7 +275,9 @@ export function prepareCommand(
   const parsed = CommandPayloads[input.kind].safeParse(
     input.kind === "message_agent"
       ? checkedMessage(store, input.rig, input.payload)
-      : input.payload,
+      : input.kind === "assign_campaign"
+        ? withMcpServers(store, input.payload)
+        : input.payload,
   );
   if (!parsed.success) {
     throw new Error(

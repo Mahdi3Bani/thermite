@@ -80,7 +80,7 @@ spec:
             except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]   # the RFC 1918 ranges (public-check: allow)
 ```
 
-If the slot has other rules, such as one that denies all traffic, they must still let the supervisor pod (label `app.kubernetes.io/component: supervisor`) reach control's address, the internet, the harness on port 8700, and any [outside knowledge base](../operate/outside-knowledge-base.md) the rig's advisors may search.
+If the slot has other rules, such as one that denies all traffic, they must still let the supervisor pod (label `app.kubernetes.io/component: supervisor`) reach control's address, the internet, the harness on port 8700, and any [MCP server](../campaigns/give-agents-mcp-tools.md) its runs' kits give the advisors. The harness pod calls the MCP servers of the workers and the planner, so it too must reach them, outside the private ranges.
 
 A helper that writes a slot's objects out for the operators is planned ([goal 033](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/033-slot-helper.goal)).
 

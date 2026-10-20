@@ -25,12 +25,13 @@ import {
 } from "./lifecycle.ts";
 import type { MachineSsh } from "./machines/ssh.ts";
 import { mountMcp } from "./mcp.ts";
+import { mountMcpServerRoutes } from "./mcp-server-routes.ts";
+import { McpServers } from "./mcp-servers.ts";
 import { metricsText } from "./metrics.ts";
 import { modelSteps } from "./model-steps.ts";
-import { OutsideKbs } from "./outside-kb.ts";
 import { claudeModelName, isOpencodeOwn, providerBase } from "./providers.ts";
 import { copiedFromRecords, untriedOf } from "./queue-copy.ts";
-import type { probeRepository } from "./repo-probe.ts";
+import type { probeRepository, readKitManifest } from "./repo-probe.ts";
 import { resultsLeft } from "./results-left.ts";
 import type { RigUpdates } from "./rig-update.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
@@ -252,6 +253,8 @@ export interface ControlOptions {
   exportsDir?: string | undefined;
   /** How the new-campaign page reads a project's repository (tests give their own). */
   probeRepo?: typeof probeRepository | undefined;
+  /** How the new-campaign page reads a kit's kit.json from its repository (tests give their own). */
+  readKit?: typeof readKitManifest | undefined;
   /** Control's address as rigs and machines reach it (THERMITE_CONTROL_PUBLIC_URL). */
   publicUrl?: string | undefined;
   /** How control reaches machines over SSH (tests give their own). */
@@ -279,10 +282,10 @@ export interface ControlOptions {
    */
   tunnels?: ControlTunnels | undefined;
   /**
-   * Outside knowledge bases (optional); control's loop syncs their copies (main.ts). Made here
-   * when not given.
+   * MCP servers for the agents (goal 068): made here when not given. Tests give one that reaches
+   * their fake servers.
    */
-  outsideKb?: OutsideKbs | undefined;
+  mcpServers?: McpServers | undefined;
   /** Updates of rigs to control's version from their pages (tests give their own, with short waits). */
   rigUpdates?: RigUpdates | undefined;
   /**
@@ -320,7 +323,8 @@ export function createControlApi(
   const runpodTests =
     opts.runpodTests ??
     new RunpodTests(store, secrets, { fetch: opts.cloudFetch, image: opts.runpodTestImage });
-  const outsideKb = opts.outsideKb ?? new OutsideKbs(store, store.kb(), secrets);
+  // MCP servers: made first, so an older control's outside knowledge bases become servers now.
+  const mcpServers = opts.mcpServers ?? new McpServers(store, secrets);
   // A rig in pull mode makes the same calls as any rig; control's end of the tunnel brings them
   // here in-process, bound to the rig whose signed answer carried them.
   const tunnels = opts.tunnels ?? new ControlTunnels(store, secrets, privateKeyPem);
@@ -749,9 +753,7 @@ export function createControlApi(
   });
 
   // The supervisor's advisors, by role, when the owner gave them models (each with its key or
-  // a subscription's token). A role with none keeps the supervisor's own configuration. With
-  // them, the outside knowledge bases granted to campaigns the rig runs (each with its token and
-  // those campaigns): the supervisor gives their search only to those campaigns' advisors.
+  // a subscription's token). A role with none keeps the supervisor's own configuration.
   app.get("/v1/rigs/:rig/advisor-routes", rigAuth, async (c) => {
     c.header("cache-control", "no-store");
     const rig = c.req.param("rig");
@@ -760,40 +762,17 @@ export function createControlApi(
       combiner: await roleRouteOf(rig, "combiner"),
       auditor: await roleRouteOf(rig, "auditor"),
       panel: await roleRouteOf(rig, "panel"),
-      outside_kb: handOutsideKb(rig),
     });
   });
-  /**
-   * Outside knowledge bases' tokens leave control here: audited when what a rig gets changes,
-   * to none too (kbs: []). What a rig got last is read back from the audit after a restart, so a
-   * restart of control writes no entry of its own.
-   */
-  const handed = new Map<string, string>();
-  const handedKey = (kbs: { name: string; campaigns: string[] }[]) =>
-    kbs.map((g) => `${g.name}:${g.campaigns.join(",")}`).join(";");
-  const handedBefore = (rig: string): string => {
-    const body = store.lastAudit(`rig:${rig}`, "outside_kb_handed") as
-      | { kbs?: { name?: unknown; campaigns?: unknown }[] }
-      | undefined;
-    return handedKey(
-      (Array.isArray(body?.kbs) ? body.kbs : []).map((g) => ({
-        name: String(g?.name ?? ""),
-        campaigns: Array.isArray(g?.campaigns) ? g.campaigns.map(String) : [],
-      })),
-    );
-  };
-  const handOutsideKb = (rig: string) => {
-    const grants = outsideKb.forRig(rig);
-    const what = handedKey(grants);
-    if (!handed.has(rig)) handed.set(rig, handedBefore(rig));
-    if (handed.get(rig) !== what) {
-      handed.set(rig, what);
-      store.audit(`rig:${rig}`, "outside_kb_handed", {
-        kbs: grants.map((g) => ({ name: g.name, campaigns: g.campaigns })),
-      });
-    }
-    return grants;
-  };
+
+  // MCP servers (goal 068): the owner's routes, the OAuth callback, and what a rig gets.
+  mountMcpServerRoutes(app, {
+    store,
+    servers: mcpServers,
+    admin,
+    rigAuth,
+    publicUrl: opts.publicUrl,
+  });
 
   // Past research for a run's agents (goal 065): the items of the folders the run's campaign may
   // read, after the supervisor's cursor. Only the rig's own runs; never a folder not granted.
@@ -1319,6 +1298,7 @@ export function createControlApi(
       providerFetch: opts.providerFetch,
       kits: opts.kits,
       probeRepo: opts.probeRepo,
+      readKit: opts.readKit,
       publicUrl: opts.publicUrl,
       machineSsh: opts.machineSsh,
       rigImages: opts.rigImages,
@@ -1326,7 +1306,7 @@ export function createControlApi(
       cloudFetch: opts.cloudFetch,
       runpodTests,
       actions,
-      outsideKb,
+      mcpServers,
       runpodRigs,
       runpodDriver,
       control,
@@ -1349,7 +1329,8 @@ export function createControlApi(
     runpodDriver,
     driver: opts.driver,
     actions,
-    outsideKb,
+    mcpServers,
+    publicUrl: opts.publicUrl,
   });
 
   return app;

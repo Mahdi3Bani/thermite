@@ -9,7 +9,7 @@ import { createControlApi } from "./api.ts";
 import { Credential } from "./credential.ts";
 import { KitRepos } from "./kit-repos.ts";
 import { advanceResets, driverFromEnv } from "./lifecycle.ts";
-import { OutsideKbs } from "./outside-kb.ts";
+import { McpServers } from "./mcp-servers.ts";
 import { checkQuietRigs } from "./rig-watch.ts";
 import { refreshGpuClouds } from "./runpod.ts";
 import { RunpodRigs } from "./runpod-rigs.ts";
@@ -86,8 +86,9 @@ async function main(): Promise<void> {
   const runpodTests = new RunpodTests(store, secrets, {
     image: env.THERMITE_RUNPOD_TEST_IMAGE || undefined,
   });
-  // Outside knowledge bases (optional): copies of campaign folders, synced by the loop below.
-  const outsideKb = new OutsideKbs(store, store.kb(), secrets);
+  // MCP servers for the agents (goal 068). An older control's outside knowledge bases become
+  // ordinary MCP servers here, once, with their tokens.
+  const mcpServers = new McpServers(store, secrets);
   // Rigs in pull mode (on RunPod): control connects to each, in the loop below.
   const tunnels = new ControlTunnels(store, secrets, privateKeyPem);
   // Rigs the owner launches on RunPod: their pods, prices and spend, and each stop, start,
@@ -112,7 +113,7 @@ async function main(): Promise<void> {
         : undefined,
       secrets,
       runpodTests,
-      outsideKb,
+      mcpServers,
       tunnels,
       runpodRigs,
       // Kits written on the new-campaign page, kept as git repositories in control's state.
@@ -185,20 +186,6 @@ async function main(): Promise<void> {
       log("control", "gpu cloud read error", { error: String(err) }),
     );
   }, 15 * 60_000);
-  // Campaign folders copied to outside knowledge bases: their new and changed items, every few
-  // minutes (THERMITE_OUTSIDE_KB_SYNC_SECONDS). With no copy switched on, nothing is called.
-  // 0 (or anything not a positive number) turns the timer off; Sync now still works.
-  const outsideSyncMs = Number(env.THERMITE_OUTSIDE_KB_SYNC_SECONDS ?? "300") * 1000;
-  const outsideSync =
-    Number.isFinite(outsideSyncMs) && outsideSyncMs > 0
-      ? setInterval(() => {
-          outsideKb
-            .syncAll()
-            .catch((err) =>
-              log("control", "outside knowledge base sync error", { error: String(err) }),
-            );
-        }, outsideSyncMs)
-      : undefined;
   const stop = () => {
     clearInterval(resets);
     clearInterval(tests);
@@ -206,7 +193,6 @@ async function main(): Promise<void> {
     clearInterval(launched);
     clearInterval(quiet);
     clearInterval(clouds);
-    clearInterval(outsideSync);
     server.close();
     process.exit(0);
   };

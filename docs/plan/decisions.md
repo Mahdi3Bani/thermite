@@ -55,6 +55,7 @@ Decisions that shape the whole product, newest last in each section. A decision 
 | 2026-10-18 | ChatGPT works through Sign in with ChatGPT. Control keeps the refresh token sealed and is the only one that renews it. Rigs get one-hour access tokens. |
 | 2026-10-18 | At a subscription's usage limit, agents wait for the reset. They never use paid credits. |
 | 2026-10-18 | A subscription serves only its owner's own Thermite. A Thermite that several people use takes API keys. |
+| 2026-10-20 | MCP servers are added once in Settings, with OAuth, a key, a client ID and secret, or no sign-in, sealed as keys are. A campaign's kit names the servers its agents use and which agents get each one. Control gives a rig only the servers its runs name; the harness makes the calls for workers and the planner, the supervisor for the advisors, and the secret stays in their memory. This replaces the outside knowledge base of 065: GBrain is an ordinary MCP server. ([068](goals/068-mcp-servers-for-agents.goal)) |
 
 ## Control and operation
 

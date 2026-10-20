@@ -1,6 +1,8 @@
+import type { McpServer } from "../mcp-servers.ts";
 import type { GitAccess } from "../store.ts";
 import type { RigView } from "../views.ts";
 import { esc } from "./components.ts";
+import { kitMcpSection } from "./new-campaign-mcp.ts";
 
 /**
  * The new-campaign page: a campaign from nothing
@@ -17,6 +19,8 @@ export interface NewCampaignPage {
   access?: GitAccess[] | undefined;
   /** The providers' models the agents may use, by provider (value: "provider|model", encoded). */
   models?: { group: string; options: { value: string; label: string }[] }[] | undefined;
+  /** The MCP servers in Settings, for the kit's MCP servers block (goal 068). */
+  mcp?: McpServer[] | undefined;
   /** A draft sent back with mistakes, to fill the form again. */
   draft?: Record<string, unknown> | undefined;
   errors?: string[] | undefined;
@@ -180,6 +184,7 @@ ${field("Smallest gain that counts (%)", "A change must beat the best so far by 
 </div></div>
 <p class="muted small" data-modes="goal" id="up-verifiers"></p></div></div>
 <div data-modes="goal" style="margin-top:14px">${field("Goals", "What the result must do. Each goal is checked by the judge: the check passes on some cases (list their names), the score reaches a value (write >= 4e13 on large), one of the kit's own checks passes (name it; for a kit from a repository or an upload), or people review it (criteria separated by ;).", `<table class="tbl" id="goals"><thead><tr><th style="width:40%">The goal</th><th>Checked by</th><th>Detail</th><th></th></tr></thead><tbody>${goals.map(goalRow).join("")}</tbody></table><div class="act" style="margin-top:6px"><button class="sm" data-add="#goals">Add a goal</button></div>`)}</div>
+${kitMcpSection("k", p.mcp ?? [])}
 <div class="act" style="margin-top:14px"><button data-back>Back</button><button class="primary" data-next>Next</button></div></div></section>
 
 <section class="pane" data-pane="research" hidden><div class="sec"><h2>The question</h2>
@@ -187,7 +192,8 @@ ${field("Topic", "What the agents research, in a sentence.", `<input name="topic
 ${field("Questions", "One per line. Every finding must answer one of them.", `<textarea name="questions"></textarea>`)}
 ${field("Starting links", "Pages to start from, one per line. Without a search service, agents follow links from these.", `<textarea name="seeds"></textarea>`)}
 ${field("Run for at least", "Research keeps going this long, collecting and checking sources: for example 8h or 2d.", `<input name="min_duration" value="8h">`)}
-<div class="act"><button data-back>Back</button><button class="primary" data-next>Next</button></div></div></section>
+${kitMcpSection("r", p.mcp ?? [])}
+<div class="act" style="margin-top:14px"><button data-back>Back</button><button class="primary" data-next>Next</button></div></div></section>
 
 <section class="pane" data-pane="where" hidden><div class="sec"><h2>Where it runs</h2><p class="lead">A rig with the hardware your kit measures on. Its first run starts there; later runs can go to other rigs.</p>
 <div class="g2"><div>${rigChoices || `<div class="card"><div class="empty">No rig yet. Add one first.</div></div>`}</div></div>

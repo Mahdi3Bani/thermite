@@ -12,11 +12,9 @@ import {
   CommandPayloads,
 } from "../core/commands.ts";
 import { FolderSchema, MAX_LANES } from "../core/contract.ts";
-
 import { notADirection, parseDirections } from "../core/directions.ts";
-
+import { McpUses } from "../core/mcp.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
-
 import type { ClusterRigRequest, ControlActions } from "./actions.ts";
 import { CHATGPT_API, CHATGPT_REDIRECT, ChatGPTLogins } from "./chatgpt.ts";
 import {
@@ -60,14 +58,7 @@ import {
   joinMachineScript,
   joinNamespaceManifest,
 } from "./join.ts";
-import {
-  briefingSeedOf,
-  isOutside,
-  type KbItem,
-  type KbKind,
-  PICKABLE,
-  queueSeedOf,
-} from "./kb.ts";
+import { briefingSeedOf, type KbItem, type KbKind, PICKABLE, queueSeedOf } from "./kb.ts";
 import type { KitRepos } from "./kit-repos.ts";
 import { kitSummary, unpackKit } from "./kit-upload.ts";
 import {
@@ -102,17 +93,9 @@ import {
   openSsh,
   USER,
 } from "./machines/ssh.ts";
+import { McpServers } from "./mcp-servers.ts";
+import { mcpSettingsBlocks, mountMcpUi } from "./mcp-ui.ts";
 import { type QueueSeed, startCampaign, startRun } from "./new-campaign.ts";
-import { OutsideKbs } from "./outside-kb.ts";
-import {
-  addOutsideKb,
-  campaignOutsideKb,
-  mountOutsideKbUi,
-  OUTSIDE_KB_SAYS,
-  OUTSIDE_KB_TYPE,
-  outsideKbAddFields,
-  outsideKbRows,
-} from "./outside-kb-ui.ts";
 import {
   ANTHROPIC_BASE,
   CLAUDE_MODELS,
@@ -121,7 +104,7 @@ import {
   providerBase,
 } from "./providers.ts";
 import { untriedOf } from "./queue-copy.ts";
-import { probeRepository } from "./repo-probe.ts";
+import { probeRepository, readKitManifest } from "./repo-probe.ts";
 import { exportLeft, resultsLeft } from "./results-left.ts";
 import { RigUpdates, UPDATE_STEP_WORDS } from "./rig-update.ts";
 import { type RunpodFacts, readRunpod, runpodLine } from "./runpod.ts";
@@ -287,6 +270,8 @@ export interface DashboardOptions {
   kits?: KitRepos | undefined;
   /** How control reads a project's repository (tests give their own). */
   probeRepo?: typeof probeRepository | undefined;
+  /** How control reads a kit's kit.json from its repository (tests give their own). */
+  readKit?: typeof readKitManifest | undefined;
   /** Control's address as rigs and machines reach it. */
   publicUrl?: string | undefined;
   /** How control reaches machines over SSH (tests give their own). */
@@ -301,8 +286,8 @@ export interface DashboardOptions {
   runpodTests?: RunpodTests | undefined;
   /** Actions MCP offers too: the dashboard fills them in (actions.ts). */
   actions?: ControlActions | undefined;
-  /** Outside knowledge bases (optional; made by createControlApi, which syncs them on a timer). */
-  outsideKb?: OutsideKbs | undefined;
+  /** MCP servers for the agents (goal 068; made by createControlApi). */
+  mcpServers?: McpServers | undefined;
   /** Rigs the owner launches on GPU clouds (made by createControlApi): the launch form, their pods. */
   runpodRigs?: RunpodRigs | undefined;
   /** Their stop, start, restart and terminate (made by createControlApi). */
@@ -325,7 +310,7 @@ export interface RigImages {
 export function createDashboard(store: ControlStore, opts: DashboardOptions): Hono {
   const app = new Hono();
   const chatgpt = opts.chatgpt ?? new ChatGPTLogins(store, opts.secrets, opts.providerFetch);
-  const outsideKb = opts.outsideKb ?? new OutsideKbs(store, store.kb(), opts.secrets);
+  const mcpServers = opts.mcpServers ?? new McpServers(store, opts.secrets);
   // Control's own build, which each rig's is compared with, and the window after which a rig
   // that does not report is offline.
   const control = opts.control ?? buildInfo();
@@ -979,6 +964,8 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         csrf: csrf(c),
         rigs: views(),
         access: store.gitAccessList(),
+        // The MCP servers in Settings, for the kit's MCP servers block (goal 068).
+        mcp: mcpServers.list(),
         models: store
           .providers()
           .filter((p) => p.models.length)
@@ -1062,6 +1049,29 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     if (!existsSync(p)) return undefined;
     return unpackKit(readFileSync(`${p}.name`, "utf8"), readFileSync(p));
   };
+  // A kit in a repository: the MCP servers its kit.json names at that commit (goal 068), for
+  // the page to show beside Settings' servers. Control reads kit.json alone.
+  app.get("/ui/campaigns/new/kit-repo", async (c) => {
+    try {
+      const manifest = (await (opts.readKit ?? readKitManifest)(
+        c.req.query("url") ?? "",
+        c.req.query("commit") ?? "",
+        accessFor(c.req.query("access") || undefined),
+      )) as { name?: unknown; mcp_servers?: unknown };
+      const uses = McpUses.safeParse(manifest?.mcp_servers ?? []);
+      if (!uses.success)
+        return c.json(
+          { error: `kit.json's mcp_servers: ${uses.error.issues[0]?.message ?? "not valid"}` },
+          400,
+        );
+      return c.json({
+        name: typeof manifest.name === "string" ? manifest.name : null,
+        mcp_servers: uses.data,
+      });
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+    }
+  });
   // What a page sent back with mistakes shows again about the kit it had uploaded.
   app.get("/ui/campaigns/new/kit/:id", async (c) => {
     const k = await uploaded(c.req.param("id")).catch(() => undefined);
@@ -1672,7 +1682,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           waiting
             ? startingCard(waiting)
             : `<div class="card" style="margin-bottom:16px"><div class="empty">${saved.length ? "Saved on control, with no run yet." : "Assigned to a rig over the API, MCP or the CLI; no run of it reports now."} <a href="${campaignHref(name)}?start=1" data-open="#start">Start a run.</a></div></div>`
-        }${knowledgeSection(c, name, vs, kbFailed)}${campaignOutsideKb(outsideKb, name, csrf(c), now, (q) => c.req.query(q))}${drawer}`,
+        }${knowledgeSection(c, name, vs, kbFailed)}${drawer}`,
         vs,
       );
     }
@@ -1808,7 +1818,7 @@ ${
         now,
       )}</div>`
     : ""
-}${knowledgeSection(c, name, vs, kbFailed)}${campaignOutsideKb(outsideKb, name, csrf(c), now, (q) => c.req.query(q))}${drawer}`,
+}${knowledgeSection(c, name, vs, kbFailed)}${drawer}`,
       vs,
     );
   });
@@ -1847,21 +1857,6 @@ ${
   app.post("/ui/campaigns/:campaign/kb/revoke", async (c) => {
     const campaign = c.req.param("campaign");
     const reads = String((await c.req.parseBody()).reads ?? "").trim();
-    // An outside knowledge base's grant is taken back through its own grant code (audited
-    // there), and said as what it is: its advisors' search, not a folder.
-    if (isOutside(reads)) {
-      const name = reads.slice("outside:".length);
-      if (!store.kb().reads(campaign).includes(reads))
-        return grantBack(c, campaign, "error", `${campaign}'s advisors do not search "${name}".`);
-      // A grant left from one no longer set is ended in the folders alone.
-      if (!outsideKb.setRead(name, campaign, false, "owner:ui")) store.kb().revoke(campaign, reads);
-      return grantBack(
-        c,
-        campaign,
-        "ok",
-        `${campaign}'s advisors no longer search the outside knowledge base "${name}", from their next round.`,
-      );
-    }
     if (!store.kb().revoke(campaign, reads))
       return grantBack(c, campaign, "error", `${campaign} does not read ${reads}.`);
     store.audit("owner:ui", "kb_revoke", { campaign, reads });
@@ -3144,7 +3139,6 @@ ${notice}${box}</section></div>`,
       "Add and check the cluster",
       "Control reads the cluster with this kubeconfig: its version, its nodes and their GPUs, DRA device classes, storage classes, and whether it may create namespaces or deploy into the slots you name. It changes nothing.",
     ],
-    [OUTSIDE_KB_TYPE]: OUTSIDE_KB_SAYS,
     runpod: [
       "Add and read the account",
       "Control seals the key and reads, with it, RunPod's GPU types with their prices and stock, its data centers, your network volumes and your pods. It starts nothing and spends nothing.",
@@ -3196,8 +3190,7 @@ ${notice}${box}</section></div>`,
       store.gitAccessList().length +
       store.machines().length +
       store.clusters().length +
-      store.gpuClouds().length +
-      outsideKb.list().length;
+      store.gpuClouds().length;
     const given = store.rigModels();
     /** The rigs whose workers or other agents use one of the provider's models. */
     const usersOf = (name: string) =>
@@ -3208,8 +3201,10 @@ ${notice}${box}</section></div>`,
             given[rig]?.provider === name ||
             Object.values(store.roleModels(rig)).some((r) => r?.provider === name),
         );
-    const ok = c.req.query("ok");
-    const error = c.req.query("error");
+    // What an MCP server's form did is said in its own block (at=mcp), where the page opens.
+    const atMcp = c.req.query("at") === "mcp";
+    const ok = atMcp ? undefined : c.req.query("ok");
+    const error = atMcp ? undefined : c.req.query("error");
     const note = error
       ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not done.</b> ${esc(error)}</div>`
       : ok
@@ -3311,7 +3306,7 @@ ${
       .join("");
     const models = "openai anthropic opencode";
     const addForm = `<form method="post" action="/ui/settings/add" class="form-grid" autocomplete="off" id="prov-add" data-says="${esc(JSON.stringify(ADD_SAYS))}"><input type="hidden" name="csrf" value="${t}">
-<label>${infoLabel("Type", `${TYPE_TIP} Git access lets rigs fetch private repositories: a deploy key control makes, or an HTTPS token you paste. An outside knowledge base is optional: control copies the campaign folders you choose to it, and the advisors of the campaigns you allow may search it.`)}<select name="type" id="ptype"><optgroup label="Models by API key">${KEY_TYPES.map((x) => `<option value="${x}">${x === "opencode" ? "OpenCode (its own models)" : TYPES[x]}</option>`).join("")}</optgroup><optgroup label="Subscriptions"><option value="claude">Claude subscription (Pro or Max)</option><option value="chatgpt">ChatGPT subscription (Plus or Pro)</option></optgroup><optgroup label="Git access"><option value="gitkey">A deploy key (control makes it)</option><option value="gittoken">An access token (HTTPS)</option></optgroup><optgroup label="Where rigs run"><option value="ssh">A machine over SSH</option><option value="k8s">A Kubernetes cluster</option><option value="runpod">RunPod (a GPU cloud)</option></optgroup><optgroup label="Knowledge (optional)"><option value="${OUTSIDE_KB_TYPE}">An outside knowledge base over MCP (GBrain or another)</option></optgroup></select></label>
+<label>${infoLabel("Type", `${TYPE_TIP} Git access lets rigs fetch private repositories: a deploy key control makes, or an HTTPS token you paste. MCP servers have their own block, below.`)}<select name="type" id="ptype"><optgroup label="Models by API key">${KEY_TYPES.map((x) => `<option value="${x}">${x === "opencode" ? "OpenCode (its own models)" : TYPES[x]}</option>`).join("")}</optgroup><optgroup label="Subscriptions"><option value="claude">Claude subscription (Pro or Max)</option><option value="chatgpt">ChatGPT subscription (Plus or Pro)</option></optgroup><optgroup label="Git access"><option value="gitkey">A deploy key (control makes it)</option><option value="gittoken">An access token (HTTPS)</option></optgroup><optgroup label="Where rigs run"><option value="ssh">A machine over SSH</option><option value="k8s">A Kubernetes cluster</option><option value="runpod">RunPod (a GPU cloud)</option></optgroup></select></label>
 <label>${infoLabel("Name", "How it shows in Thermite, and how rigs and campaigns refer to it: for example my-litellm or github-deploy. Letters, digits, dots, dashes and underscores: capitals become lowercase and spaces become dashes.")}<input name="name" required maxlength="64" pattern="\\s*[A-Za-z0-9][A-Za-z0-9._ \\-]*\\s*" title="Letters, digits, dots, dashes, underscores and spaces" placeholder="for example my-litellm"></label>
 <label data-for="${models}">${infoLabel("Base URL", BASE_TIP)}<input name="base_url" maxlength="500" placeholder="https://…/v1 (Anthropic and OpenCode: empty for their own)"></label>
 <label data-for="${models}">${infoLabel("API key", "The provider's key. Control seals it at once and never shows it again. OpenCode: leave it empty for its free models.")}<input name="api_key" type="password" autocomplete="new-password" maxlength="4096" placeholder="never shown again"></label>
@@ -3331,7 +3326,6 @@ ${
 <label data-for="chatgpt" hidden style="grid-column:1/-1">${infoLabel("The address the tab went to", `After the sign-in, the tab goes to an address that starts with ${CHATGPT_REDIRECT} and shows an error. Copy that whole address and paste it here. It holds a one-time code that control exchanges for the login; it works for a few minutes only.`)}<input name="chatgpt_url" maxlength="4096" placeholder="${esc(CHATGPT_REDIRECT)}?code=…"></label>
 <label data-for="chatgpt" hidden style="grid-column:1/-1">${infoLabel("Unattended use", "OpenAI asks apps to get your consent before they use your plan when you are not there. Thermite's agents work for hours without you: workers, the planner and the advisors, on the rigs you give its models.")}<span class="row small" style="gap:8px"><input type="checkbox" name="chatgpt_consent" value="1" style="height:auto;width:auto"> I allow Thermite's agents to use my ChatGPT plan when I am not there, for my own research.</span></label>
 <label data-for="runpod" hidden>${infoLabel("RunPod API key", "A key from RunPod's console (Settings, API Keys). Control seals it at once and never shows it again. Control reads the account with it, and starts test pods only when you ask: for those the key must be allowed to write.")}<input name="runpod_key" type="password" autocomplete="new-password" maxlength="4096" placeholder="never shown again"></label>
-${outsideKbAddFields()}
 <label data-for="ssh" hidden style="grid-column:1/-1">${infoLabel("Private key", "The SSH private key for that user, without a passphrase. Control seals it at once and never shows it again. Leave it empty and control makes a key: add its public half, shown next, to the user's ~/.ssh/authorized_keys on the machine.")}<textarea name="private_key" class="mono" rows="4" maxlength="16384" placeholder="empty: control makes a key"></textarea></label>
 <div class="nc-does" id="pdo" style="grid-column:1/-1"><b>What happens.</b> ${ADD_SAYS.openai[1]}</div>
 <div class="form-end"><button class="primary" id="padd">${ADD_SAYS.openai[0]}</button></div></form>`;
@@ -3388,10 +3382,11 @@ ${outsideKbAddFields()}
         active: "settings",
         crumbs: [{ href: "/ui/settings", text: "Settings" }],
       },
-      `<p class="run-said">Providers are what Thermite uses: model providers serve the agents' models, Git access lets rigs fetch private repositories, machines, clusters and GPU clouds are where rigs run, and an outside knowledge base (optional) gets copies of campaign folders and gives advisors outside context. Add each once with its key. Control seals every key, never shows it again, and gives a rig only what it uses. Then choose, for each rig, the harness its agents run in (Pi, OpenCode v2, Claude Code or Codex) and their model.</p>
+      `<p class="run-said">Providers are what Thermite uses: model providers serve the agents' models, Git access lets rigs fetch private repositories, and machines, clusters and GPU clouds are where rigs run. MCP servers give the agents tools from outside Thermite. Add each once with its sign-in or key. Control seals every secret, never shows it again, and gives a rig only what it uses. Then choose, for each rig, the harness its agents run in (Pi, OpenCode v2, Claude Code or Codex) and their model.</p>
 ${note}
-<div class="block"><div class="head"><h2>Providers</h2><span class="n">${providers.length + gitCount}</span><span class="right">models are read from each provider itself</span></div>${providers.length + gitCount ? `<div class="dqs">${providerRows}${gitRows(t)}${machineRows(t)}${clusterRows(t)}${cloudRows(t)}${outsideKbRows(outsideKb, t, now)}</div>` : `<div class="card"><div class="empty">No provider yet: add one below.</div></div>`}</div>
+<div class="block"><div class="head"><h2>Providers</h2><span class="n">${providers.length + gitCount}</span><span class="right">models are read from each provider itself</span></div>${providers.length + gitCount ? `<div class="dqs">${providerRows}${gitRows(t)}${machineRows(t)}${clusterRows(t)}${cloudRows(t)}</div>` : `<div class="card"><div class="empty">No provider yet: add one below.</div></div>`}</div>
 <div class="block"><div class="head"><h2>Add a provider</h2></div><div class="card">${addForm}</div></div>
+${mcpSettingsBlocks(store, mcpServers, t, now, (k) => c.req.query(k))}
 <div class="block"><div class="head"><h2>Harness and model for each rig</h2><span class="right">a rig takes a change within a minute; then check it</span></div><div class="card flat">${rigRows || `<div class="empty">No rig has reported yet.</div>`}</div></div>
 <script src="/ui/assets/providers.js" defer></script>`,
       vs,
@@ -6025,14 +6020,13 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     if (f.type === "ssh") return addMachine(c, f);
     if (f.type === "k8s") return addCluster(c, f);
     if (f.type === "runpod") return addRunpod(c, f);
-    if (f.type === OUTSIDE_KB_TYPE) return addOutsideKb(outsideKb, c, f);
     if (f.type === "gitkey" || f.type === "gittoken")
       return addGit(c, { ...f, kind: f.type === "gittoken" ? "token" : "ssh" });
     return saveProvider(c, f);
   });
   app.post("/ui/settings/providers", async (c) => saveProvider(c, await c.req.parseBody()));
-  // Outside knowledge bases: their rows in Providers, and their section on a campaign's page.
-  mountOutsideKbUi(app, outsideKb);
+  // MCP servers: their block on Providers, and its routes.
+  mountMcpUi(app, { store, servers: mcpServers, publicUrl: opts.publicUrl });
   /**
    * A Claude subscription added or its token replaced: the token sealed, the fixed model list, and
    * no call to Anthropic (only Claude Code may use the token).
@@ -6393,7 +6387,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     /** Where one agent runs with a model of that kind (the client script says the same). */
     const runsText = (role: AgentRole, kind: string) =>
       kind === "claude"
-        ? "Claude Code, past research only"
+        ? "Claude Code, past research and the kit's MCP tools only"
         : role === "planner"
           ? kind === "opencode"
             ? "OpenCode"

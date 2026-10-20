@@ -34,7 +34,7 @@ The "Secret" column says whether a value is secret: **no**; a **path to a secret
 | `THERMITE_CONTROL_LISTEN` | `host:port` | `0.0.0.0:8800` | no | Where control serves the dashboard, the REST API and MCP |
 | `THERMITE_CONTROL_DIR` | path | `/var/lib/thermite-control` | directory with secrets | Control's state: its store (`control.db`, which also holds [Thermite's knowledge base](knowledge-base.md)), its command-signing key pair (`control-signing.key` and `.pub`, made at first start), the secrets key when `THERMITE_CONTROL_SECRETS_KEY_FILE` is not set, the kits written on the **New campaign** page (`kits/`), and the [exports](exports.md#where-control-keeps-them) rigs without a results repository send it (`exports/`) |
 | `THERMITE_CONTROL_PUBKEY_EXPORT` | path | not set | no | A second place to write control's command-signing public key, so that rigs can verify [signed commands](signed-commands.md). The local compose file writes it to a volume the harness reads |
-| `THERMITE_CONTROL_SECRETS_KEY_FILE` | path | `secrets.key` in `THERMITE_CONTROL_DIR`, made on first use | path to a secret | The key that encrypts what control keeps for you: model providers' keys and sign-ins, Git access, GPU cloud keys, machines' SSH keys, cluster kubeconfigs and outside knowledge bases' tokens. It must hold a 32-byte key in base64. Without the same key, the stored secrets cannot be read |
+| `THERMITE_CONTROL_SECRETS_KEY_FILE` | path | `secrets.key` in `THERMITE_CONTROL_DIR`, made on first use | path to a secret | The key that encrypts what control keeps for you: model providers' keys and sign-ins, Git access, GPU cloud keys, machines' SSH keys, cluster kubeconfigs, and MCP servers' keys, client secrets and sign-ins. It must hold a 32-byte key in base64. Without the same key, the stored secrets cannot be read |
 | `THERMITE_CONTROL_STALE_SECONDS` | seconds | `180` | no | A rig that has sent no report for this long shows as stale: **Not reporting** on the dashboard, `stale` in the [rig lists](rest-api.md#reporting-stale-and-offline) |
 | `THERMITE_CONTROL_OFFLINE_SECONDS` | seconds | `900` | no | A rig that has sent no report for this long is `offline` in the rig lists of the REST API, MCP and `thermite rig list`, and on its page. A value below `THERMITE_CONTROL_STALE_SECONDS` counts as that value |
 | `THERMITE_CONTROL_SESSION_DAYS` | days | `30` | no | How long an unused dashboard sign-in lasts |
@@ -62,7 +62,7 @@ Setting both variables of one role stops control at start with `set THERMITE_CON
 
 | Variable | Type | Default | Secret | Meaning |
 | --- | --- | --- | --- | --- |
-| `THERMITE_CONTROL_PUBLIC_URL` | URL | not set | no | Control's address as rigs and machines reach it, for example `https://control.example.com`. Rigs that control sets up report there. Not set: **Add a rig** and join commands are blocked, a machine's check skips the "reaches control" test, and a cluster rig's image update is refused |
+| `THERMITE_CONTROL_PUBLIC_URL` | URL | not set | no | Control's address as rigs and machines reach it, for example `https://control.example.com`. Rigs that control sets up report there. Not set: **Add a rig** and join commands are blocked, a machine's check skips the "reaches control" test, and a cluster rig's image update is refused. It is also where an MCP server's OAuth sign-in page sends your browser back (`/v1/mcp-oauth/callback`); not set, that is the address you reached control at |
 | `THERMITE_RIG_HARNESS_IMAGE` | image reference | not set | no | The harness image for CPU rigs that control sets up on machines and clusters. Needs `THERMITE_RIG_SUPERVISOR_IMAGE` too: without both, control can't set rigs up |
 | `THERMITE_RIG_SUPERVISOR_IMAGE` | image reference | not set | no | The supervisor image for those rigs |
 | `THERMITE_RIG_HARNESS_CUDA_IMAGE` | image reference | not set | no | The harness image for rigs with GPUs. Not set: a rig with GPUs is refused with "Control has no CUDA harness image configured (THERMITE_RIG_HARNESS_CUDA_IMAGE)." |
@@ -92,12 +92,6 @@ A lifecycle driver lets control restart a rig's containers: the button **Restart
 | `KUBERNETES_SERVICE_HOST`, `KUBERNETES_SERVICE_PORT` | address, port | set by Kubernetes in every pod; port `443` | no | Read for the default of `THERMITE_K8S_API` |
 
 The `kubernetes` driver restarts a component by deleting its pods, which the rig's Deployment then makes again. Its service account lists and deletes pods in each rig's namespace. It is for rigs deployed on Kubernetes by other means. Rigs that control sets up on a cluster don't use it: control restarts them with the cluster's kubeconfig (**Restart them** on the rig's page), and names the namespaces it creates from the cluster's **Namespace for each rig**, `thermite-{rig}` by default, the same as the driver's default. If your rigs' namespaces have other names, set `THERMITE_K8S_NAMESPACE` to match them.
-
-### Outside knowledge bases
-
-| Variable | Type | Default | Secret | Meaning |
-| --- | --- | --- | --- | --- |
-| `THERMITE_OUTSIDE_KB_SYNC_SECONDS` | seconds | `300` | no | How often control copies the new and changed items of campaign folders to [outside knowledge bases](knowledge-base.md#outside-knowledge-bases): only the copies switched on, on a campaign's page. With no copy switched on, nothing is called. `0` turns the timer off; **Sync now** on a campaign's page still works |
 
 ## Harness
 
@@ -246,7 +240,7 @@ In pull mode the supervisor also takes `RUNPOD_API_KEY`, which RunPod puts in a 
 | `THERMITE_POLL_SECONDS` | seconds | `60` | no | How often it reports the harness's events to control and pushes new exports to the results repository, or, without one, sends them to control. The pause between the advisors' rounds is the same interval, but at least 30 seconds. On a rig with teachers, a message from the owner to the teacher pair of a running run ends the pause early: during it, the supervisor looks for one every 5 seconds |
 | `THERMITE_COMMAND_POLL_SECONDS` | seconds | `5` | no | How often it fetches control's commands. `0`: commands are fetched with each report instead |
 | `THERMITE_LIVE_INTERVAL_MS` | milliseconds | `3000` | no | How often it relays the live view. `0` turns the live view off |
-| `THERMITE_MODEL_ROUTE_POLL_SECONDS` | seconds | `30` | no | How often it asks control for the rig's model and hands a change to the harness. A round that fails is tried once more 5 seconds later (or after this interval, if it is shorter); only a second failure logs `model route error`, once until a round works again. `0` turns this off |
+| `THERMITE_MODEL_ROUTE_POLL_SECONDS` | seconds | `30` | no | How often it asks control for the rig's model and hands a change to the harness. A round that fails is tried once more 5 seconds later (or after this interval, if it is shorter); only a second failure logs `model route error`, once until a round works again. Each round also asks control for the rig's [MCP servers](../how-to/operate/mcp-servers.md#what-a-rig-gets), hands the harness its workers' and planner's share, and keeps the advisors' in memory; a failure logs `MCP servers error` once, and the servers given last stay. `0` turns both off |
 | `THERMITE_KB_SYNC_SECONDS` | seconds | `180` | no | How often it asks control for the past research each running run's campaign may read, and hands the new and changed items to the harness, for the run's [`knowledge/` folder](knowledge-base.md#a-runs-knowledge-folder). Only with `CONTROL_URL` and the rig's token. `0` turns it off |
 
 ### The results repository

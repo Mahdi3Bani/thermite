@@ -48,7 +48,7 @@ The stack, its settings and how to operate it are described on the site:
 
 The `two-rigs` profile adds a second rig (`local-2`), which the control and steering acceptance tests use. `compose.lifecycle.yaml` lets control restart containers through the engine's socket; it is for development only.
 
-`compose.yaml` passes the optional settings through from your shell or `.env`, each with its default. That includes the knowledge base's two timers: `THERMITE_KB_SYNC_SECONDS` for both rigs' supervisors (180), and `THERMITE_OUTSIDE_KB_SYNC_SECONDS` for control (300). Set one lower to see past research or an outside copy move sooner, or to `0` to turn that timer off; **Sync now** still copies a folder by hand.
+`compose.yaml` passes the optional settings through from your shell or `.env`, each with its default. That includes the knowledge base's timer, `THERMITE_KB_SYNC_SECONDS`, for both rigs' supervisors (180). Set it lower to see past research move sooner, or to `0` to turn it off.
 
 ## The dashboard demo
 
@@ -64,12 +64,18 @@ The documentation's screenshots come from the demo, whose data is made up. With 
 
 ## Journals and the knowledge base
 
-Goal 065's parts are covered by unit tests, which `npm test` runs like any other: field notes (`src/harness/journal.test.ts`, `src/harness/agents/scheduler-notes.test.ts`), research in every mode (`src/harness/research/research-everywhere.test.ts`), the export (`src/harness/export-notes.test.ts`), the supervisor's past-research sync (`src/supervisor/kb-sync.test.ts`), the advisors' notes (`src/supervisor/advise-notes.test.ts`), control's knowledge base and its pages (`src/control/kb.test.ts`, `src/control/kb-ui.test.ts`) and outside knowledge bases (`src/control/outside-kb.test.ts`, `src/supervisor/advise-outside-kb.test.ts`).
+Goal 065's parts are covered by unit tests, which `npm test` runs like any other: field notes (`src/harness/journal.test.ts`, `src/harness/agents/scheduler-notes.test.ts`), research in every mode (`src/harness/research/research-everywhere.test.ts`), the export (`src/harness/export-notes.test.ts`), the supervisor's past-research sync (`src/supervisor/kb-sync.test.ts`), the advisors' notes (`src/supervisor/advise-notes.test.ts`), control's knowledge base and its pages (`src/control/kb.test.ts`, `src/control/kb-ui.test.ts`).
 
-- **A fake outside knowledge base** (`src/testing/fake-kb.ts`) stands in for a GBrain-style brain: an MCP server on a free local port that takes one bearer token, with a search tool and a page-writing tool shaped like GBrain's `put_page`. It keeps every page, call and request, so a test can look at what control and the supervisor sent. A test can make it refuse every page (`failWrites`), or only the pages whose slug holds some words (`failPage`), as a server does that refuses one page for good.
-- **Control's assignments** (`src/testing/assignments.ts`): control serves a rig's past research and outside knowledge bases only for runs it assigned, so a test that seeds a rig's events records control's own assignment of the run with `assigned(store, rig, run, campaign)`.
+- **Control's assignments** (`src/testing/assignments.ts`): control serves a rig's past research and MCP servers only for runs it assigned, so a test that seeds a rig's events records control's own assignment of the run with `assigned(store, rig, run, campaign)`, and any other field of the assignment, such as its `mcp_servers`, as a fifth argument.
 
 No compose acceptance test covers them yet.
+
+## MCP servers for the agents
+
+Goal 068's parts are covered by unit tests too: control's servers, their sign-ins and secrets, the update from an outside knowledge base, the kit refusal, what a rig gets, the REST routes, control's MCP tools and the Settings block (`src/control/mcp-servers.test.ts`, `src/control/mcp-ui.test.ts`); the harness's gateway, the run's recorded servers, the planner's narrowed tools and a failing server (`src/harness/mcp-gateway.test.ts`); and the supervisor's share, the advisors' tools and their local servers for Claude Code (`src/supervisor/advise-mcp.test.ts`). Nothing in them reaches the internet.
+
+- **A fake MCP server and its OAuth server** (`src/testing/fake-mcp.ts`) stand in for a real one, on a free local port: an MCP server at `/mcp` with `search` and `get_page`, which say they only read, and `put_page`, which writes. It takes the sign-in a test sets: a bearer token, a key in a header of its own, an access token from its own OAuth server, or none. Its OAuth server, at the same address, has protected resource metadata, authorization server metadata, client registration, an authorization page that allows at once and sends the browser back with a code, and a token endpoint for codes (checked against PKCE), refresh tokens and client credentials. A test can stop it answering (`down`), stop client registration (`dcr`), shorten a token's life (`expiresIn`) or end every refresh token. It keeps every request's headers and every call, so a test can see that a secret reached the server and nothing else.
+- **The judge's test harness** (`src/testing/judge-env.ts`) takes `kitMcpServers`, the `mcp_servers` its kit's `kit.json` names.
 
 ## The smoke test
 
