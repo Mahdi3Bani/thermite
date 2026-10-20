@@ -2,7 +2,12 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { log } from "../../common/env.ts";
 import type { StructuredDirective } from "../../core/commands.ts";
-import { type Contract, laneLimits, type ResearchContract } from "../../core/contract.ts";
+import {
+  type Contract,
+  laneLimits,
+  MAX_LANES,
+  type ResearchContract,
+} from "../../core/contract.ts";
 import type { NoteInput } from "../../core/journal.ts";
 import type { LiveKind } from "../../core/live.ts";
 import type { Role, Runner } from "../broker/runner.ts";
@@ -422,7 +427,9 @@ export class Scheduler {
   }
 
   private laneCount(run: string, contract: Contract): number {
-    const cap = contract.lanes.count;
+    // A contract stored before lanes.count stopped at MAX_LANES may ask for more: lanes beyond
+    // it have no user to run as.
+    const cap = Math.min(contract.lanes.count, MAX_LANES);
     const d = this.directives(run)
       .filter((x) => x.body.kind === "lane_count" && typeof x.body.value === "number")
       .at(-1);

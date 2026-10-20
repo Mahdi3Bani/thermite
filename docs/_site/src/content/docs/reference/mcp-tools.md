@@ -226,6 +226,7 @@ Returns `{id}`. Errors:
 
 - `<rig> is being reset by the owner` (the agent's token only)
 - `unknown rig <rig>`
+- for `assign_campaign`, a contract that asks for more lanes than a rig runs: `This contract asks for <n> lanes. A rig runs 16 at most: it has users for lanes 1 to 16 only. Set lanes.count to 16 or fewer.`
 - `bad <kind> payload: <field>: <message>`, with `payload` in place of a field for a rule about the whole payload, such as `bad queue_edit payload: payload: change at least one of title, details, family and why`
 - for `message_agent`, `Write a message first.` and the refusals of a message that nothing on the rig would read, such as `The planner is off on this rig (Edit rig), so nothing would read it.`: [`message_agent`](signed-commands.md#message_agent) lists them
 - `the <kind> command is too large to deliver`

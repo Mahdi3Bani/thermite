@@ -1,6 +1,21 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import type { z } from "zod";
 import type { CommandPayloads } from "../core/commands.ts";
+import { MAX_LANES } from "../core/contract.ts";
+
+/**
+ * Workers at a time from THERMITE_MAX_TRIALS (unset: 1). A rig runs at most MAX_LANES, as on
+ * Edit rig; anything else stops the harness at start with the reason.
+ */
+export function lanesFromEnv(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return 1;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > MAX_LANES)
+    throw new Error(
+      `THERMITE_MAX_TRIALS must be a whole number from 1 to ${MAX_LANES}, not ${raw}: a rig has users for lanes 1 to ${MAX_LANES} only`,
+    );
+  return n;
+}
 
 /**
  * The rig's own settings, changed from its Edit page through a signed owner command

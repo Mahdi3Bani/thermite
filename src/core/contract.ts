@@ -39,6 +39,14 @@ const SearchPolicy = z.strictObject({
 });
 
 /**
+ * The most lanes a rig can run: its harness image has a user for each of lanes 1 to 16
+ * (containers/harness/Containerfile; IDS.maxLanes in src/harness/broker/runner.ts). A contract's
+ * lanes.count, a rig's workers at a time and the campaign builder refuse more, with this reason.
+ */
+export const MAX_LANES = 16;
+export const MAX_LANES_REASON = `at most ${MAX_LANES}: a rig has users for lanes 1 to ${MAX_LANES} only`;
+
+/**
  * What a worker's lane may use. Optional and without schema defaults, so contracts written
  * before it keep their hash; laneLimits() fills the defaults.
  */
@@ -72,7 +80,7 @@ const Common = {
   models: z.array(z.strictObject({ name: z.string().min(1), sha256: Sha256Schema })).default([]),
   lanes: z
     .strictObject({
-      count: z.number().int().min(1).max(64),
+      count: z.number().int().min(1).max(MAX_LANES, MAX_LANES_REASON),
       trials_per_epoch: z.number().int().min(1).default(3),
       /** Raised limits for heavy projects (see laneLimits for the defaults). */
       limits: LaneLimits.optional(),

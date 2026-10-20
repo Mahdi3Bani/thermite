@@ -1,4 +1,4 @@
-import type { Contract } from "../core/contract.ts";
+import { type Contract, MAX_LANES } from "../core/contract.ts";
 import type { LiveLog } from "../core/live.ts";
 import { type Ledger, LedgerError } from "./ledger.ts";
 import type { RigSettings } from "./rig-settings.ts";
@@ -122,7 +122,7 @@ export class OwnerMessages {
       throw new LedgerError("invalid", `run ${run} is closed: nothing will read this message`);
     const contract = this.contractFor(run);
     const s = this.settings();
-    const lanes = Math.min(contract.lanes.count, 16);
+    const lanes = Math.min(contract.lanes.count, MAX_LANES);
     // The lanes at work now: a lane_count rule can run fewer than the contract's count.
     const ruled = this.ledger
       .activeDirectives(run)

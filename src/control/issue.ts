@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { type CommandKind, CommandPayloads, signEnvelope } from "../core/commands.ts";
+import { MAX_LANES } from "../core/contract.ts";
 import type { ControlStore } from "./store.ts";
 import { type RigView, type RunView, rigView } from "./views.ts";
 
@@ -100,6 +101,19 @@ export function reviewsAGoal(store: ControlStore, campaign: string): boolean {
 }
 
 /**
+ * Why a campaign's assignment could not run, in plain words, or "" when nothing here stops it.
+ * A rig runs at most MAX_LANES lanes. The rig's harness checks the whole contract again (and
+ * refuses more lanes too); refusing here keeps such a command from being signed at all.
+ */
+export function assignRefusal(payload: unknown): string {
+  const count = (payload as { contract?: { lanes?: { count?: unknown } } } | null)?.contract?.lanes
+    ?.count;
+  if (typeof count === "number" && count > MAX_LANES)
+    return `This contract asks for ${count} lanes. A rig runs ${MAX_LANES} at most: it has users for lanes 1 to ${MAX_LANES} only. Set lanes.count to ${MAX_LANES} or fewer.`;
+  return "";
+}
+
+/**
  * Issues a signed command for a rig: the one path the API, the dashboard and MCP all use.
  * The payload is validated against its kind's schema before signing; the rig's harness
  * validates and verifies it again on arrival.
@@ -118,6 +132,8 @@ export function issueCommand(
   if (!store.rigs().some((u) => u.id === input.rig) && !store.knownRig(input.rig)) {
     throw new Error(`unknown rig ${input.rig}`);
   }
+  const refused = input.kind === "assign_campaign" ? assignRefusal(input.payload) : "";
+  if (refused) throw new Error(refused);
   const parsed = CommandPayloads[input.kind].safeParse(
     input.kind === "message_agent"
       ? checkedMessage(store, input.rig, input.payload)

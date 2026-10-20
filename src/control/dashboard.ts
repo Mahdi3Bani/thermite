@@ -11,6 +11,7 @@ import {
   type CommandKind,
   CommandPayloads,
 } from "../core/commands.ts";
+import { MAX_LANES } from "../core/contract.ts";
 import type { ClusterRigRequest, ControlActions } from "./actions.ts";
 import { CHATGPT_API, CHATGPT_REDIRECT, ChatGPTLogins } from "./chatgpt.ts";
 import {
@@ -5516,7 +5517,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     const want = store.rigModels()[u.id];
     const sw = (p: (typeof PARTS)[number]) => `<div class="pt">
 <label class="sw"><input type="checkbox" name="${p.id}" value="1" data-part data-name="${esc(p.name)}"${s?.[p.id] ? " checked" : ""}${s ? "" : " disabled"}><span class="knob"></span></label>
-<div><div><b>${esc(p.name)}</b> <span class="pt-state ${s?.[p.id] ? "on" : "off"}">${s ? (s[p.id] ? "on" : "off") : "?"}</span></div><div class="muted small">${esc(p.does)}</div><div class="small pt-off"><b>When it is off:</b> ${esc(p.off)}</div>${p.id === "workers" ? `<label class="fd" style="max-width:220px;margin-top:8px">${infoLabel("Workers at a time", "How many agents work at the same time. Each one uses its own CPUs, memory and disk, and the same model.")}<input name="lanes" type="number" min="1" max="16" value="${s?.lanes ?? 1}"${s ? "" : " disabled"}></label>` : ""}</div></div>`;
+<div><div><b>${esc(p.name)}</b> <span class="pt-state ${s?.[p.id] ? "on" : "off"}">${s ? (s[p.id] ? "on" : "off") : "?"}</span></div><div class="muted small">${esc(p.does)}</div><div class="small pt-off"><b>When it is off:</b> ${esc(p.off)}</div>${p.id === "workers" ? `<label class="fd" style="max-width:220px;margin-top:8px">${infoLabel("Workers at a time", `How many agents work at the same time: 1 to ${MAX_LANES}. Each one uses its own CPUs, memory and disk, and the same model.`)}<input name="lanes" type="number" min="1" max="${MAX_LANES}" value="${s?.lanes ?? 1}"${s ? "" : " disabled"}></label>` : ""}</div></div>`;
     /** Where a provider's models run: a subscription in Claude Code, OpenCode's own only in OpenCode. */
     const kindOf = (p: ModelProvider) =>
       p.type === "claude"

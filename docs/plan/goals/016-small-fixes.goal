@@ -1,7 +1,7 @@
 ---
 id: "016"
 title: "Small fixes before the release"
-status: READY
+status: IN_PROGRESS
 version: "0.1.0"
 part: "Install from images"
 depends_on: []
@@ -11,7 +11,7 @@ updated: 2026-10-20
 
 # 016 · Small fixes before the release
 
-**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Install from images
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Install from images
 
 ## What
 
@@ -45,6 +45,7 @@ None.
 - 2026-10-19: Research trials run in OpenCode when the agents' harness is OpenCode, so OpenCode's free models can serve a research run. The worker keeps OpenCode's own tools and runs the research tools as `thermite-trial research` commands. Unit tests cover the trial, the commands and control's check; the acceptance tests do not cover it yet.
 - 2026-10-19: Two fixes from running the docs' guides on local stand-ins. A rig set up on a machine (over SSH or with a join command) never reported: its keys folder was made under `umask 077`, so the harness's controller could not read control's public key; the folder is now 0755. Through OpenCode, the planner was still asked for its Pi tool, because the sentence the prompt replaced was split over two lines; the task and the two ways to answer are now separate texts. Each has a test; the rig deploy acceptance has not run again.
 - 2026-10-20: The rig deploy acceptance passed with the keys-folder fix (a machine rig reports). OpenCode research trials ran on a real rig: the first two finished (22 and 43 turns) and recorded sources, verified claims and findings through `thermite-trial research`. The acceptance tests still do not cover OpenCode research trials.
+- 2026-10-20: Lane limits agree. The true limit is the harness image's lane users, 16 (`MAX_LANES` in `src/core/contract.ts`). A contract's `lanes.count`, Edit rig's **Workers at a time**, the New campaign builder and the `rig_settings` command refuse more with `at most 16: a rig has users for lanes 1 to 16 only`. Control does not sign an `assign_campaign` whose contract asks for more, and a harness with `THERMITE_MAX_TRIALS` outside 1 to 16 does not start. A contract stored before the change runs 16 lanes at most. `src/core/lanes.test.ts` checks the image's users, the broker's roles, the message recipients and each refusal against the one number.
 
 ---
 

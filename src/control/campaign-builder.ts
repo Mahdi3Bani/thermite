@@ -1,5 +1,12 @@
 import { z } from "zod";
-import { CommitSchema, DurationSchema, IdSchema, parseContract } from "../core/contract.ts";
+import {
+  CommitSchema,
+  DurationSchema,
+  IdSchema,
+  MAX_LANES,
+  MAX_LANES_REASON,
+  parseContract,
+} from "../core/contract.ts";
 import { KitSchema, kitProblems } from "../harness/kit.ts";
 
 /**
@@ -159,7 +166,7 @@ export const CampaignDraft = z.strictObject({
       min_duration: DurationSchema,
     })
     .optional(),
-  lanes: z.number().int().min(1).max(16).default(2),
+  lanes: z.number().int().min(1).max(MAX_LANES, MAX_LANES_REASON).default(2),
   limits: z
     .strictObject({
       trial_minutes: z.number().int().min(1).max(1440).optional(),

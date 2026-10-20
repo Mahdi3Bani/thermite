@@ -50,7 +50,7 @@ import { Ledger } from "./ledger.ts";
 import { settlePropagations } from "./propagation.ts";
 import { ResearchFolder } from "./research/folder.ts";
 import { Research } from "./research/research.ts";
-import { RigSettingsStore } from "./rig-settings.ts";
+import { lanesFromEnv, RigSettingsStore } from "./rig-settings.ts";
 import { busyReason, isolationSelftest, isolationSummary } from "./selftest.ts";
 import { HarnessService, NOT_BEFORE_FILE, wipeIfRequested } from "./service.ts";
 import { checksDir, smokeCheck } from "./smoke-check.ts";
@@ -207,7 +207,7 @@ async function main(): Promise<void> {
     {
       judge: true,
       workers: true,
-      lanes: Number(env.THERMITE_MAX_TRIALS ?? "1"),
+      lanes: lanesFromEnv(env.THERMITE_MAX_TRIALS),
       planner: true,
       auditor: true,
       teachers: true,
