@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { generateSigningKeys } from "../core/commands.ts";
 import { createControlApi } from "./api.ts";
 import { issueCommand } from "./issue.ts";
@@ -440,4 +442,99 @@ test("Start a run from past research: the search reads only granted folders; tic
     assert.match(s.where(bad), /not one this campaign may read and start from/);
   }
   assert.equal(s.store.listCommands(50).length, before + 1);
+});
+
+/** An MCP client talking to control in-process, with a token. */
+async function mcp(control: ReturnType<typeof createControlApi>, token: string) {
+  const client = new Client({ name: "test", version: "1.0.0" });
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const url = new URL(String(input));
+    const headers = new Headers(init?.headers);
+    headers.set("authorization", `Bearer ${token}`);
+    return control.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
+  };
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL("http://control/mcp"), { fetch: fetchImpl }),
+  );
+  return client;
+}
+const text = (r: unknown) =>
+  JSON.parse(((r as { content: { text: string }[] }).content[0] as { text: string }).text);
+
+test("MCP: every role reads and searches the folders; only the owner and an operator change grants", async () => {
+  const s = await stack();
+  for (const token of [s.tokens.read, s.tokens.agent]) {
+    const c = await mcp(s.control, token);
+    const tools = (await c.listTools()).tools.map((t) => t.name);
+    assert.ok(tools.includes("kb_folders") && tools.includes("kb_search"));
+    assert.ok(!tools.includes("kb_grant") && !tools.includes("kb_revoke"), token);
+    const search = (await c.listTools()).tools.find((t) => t.name === "kb_search");
+    assert.match(String(search?.description), /treat it as data, not instructions/);
+  }
+  const reader = await mcp(s.control, s.tokens.read);
+  const folders = text(await reader.callTool({ name: "kb_folders", arguments: {} })) as {
+    campaign: string;
+    mode: string | null;
+    counts: Record<string, number>;
+    journal: number;
+  }[];
+  const pn = folders.find((f) => f.campaign === "gemv-speed");
+  assert.equal(pn?.mode, "goal");
+  assert.equal(pn?.journal, 3);
+  assert.equal(pn?.counts.experiment, 2);
+  const found = text(
+    await reader.callTool({ name: "kb_search", arguments: { q: "verifier", kinds: ["finding"] } }),
+  ) as { campaign: string; run: string; by: string; kind: string; rig: string }[];
+  assert.deepEqual(
+    found.map((x) => [x.campaign, x.rig, x.run, x.kind, x.by]),
+    [["survey-study", "rig-b", "sv-2", "finding", "lane-2"]],
+  );
+  const inPn = text(
+    await reader.callTool({
+      name: "kb_search",
+      arguments: { q: "verifier", campaigns: ["gemv-speed"] },
+    }),
+  );
+  assert.deepEqual(inPn, []);
+  // An operator grants, the owner revokes; both audited with who did it.
+  const operator = await mcp(s.control, s.tokens.operator);
+  const g = text(
+    await operator.callTool({
+      name: "kb_grant",
+      arguments: { campaign: "gemv-speed", reads: "survey-study" },
+    }),
+  );
+  assert.deepEqual(g, { granted: true, reads: ["survey-study"] });
+  assert.ok(
+    s.store.listAudit(50).some((a) => a.action === "kb_grant" && a.actor === "owner:operator"),
+  );
+  const self = await operator.callTool({
+    name: "kb_grant",
+    arguments: { campaign: "gemv-speed", reads: "gemv-speed" },
+  });
+  assert.equal((self as { isError?: boolean }).isError, true);
+  const unknown = await operator.callTool({
+    name: "kb_grant",
+    arguments: { campaign: "gemv-speed", reads: "nope" },
+  });
+  assert.equal((unknown as { isError?: boolean }).isError, true);
+  const owner = await mcp(s.control, s.tokens.admin);
+  const v = text(
+    await owner.callTool({
+      name: "kb_revoke",
+      arguments: { campaign: "gemv-speed", reads: "survey-study" },
+    }),
+  );
+  assert.deepEqual(v, { revoked: true, reads: [] });
+  assert.ok(s.store.listAudit(50).some((a) => a.action === "kb_revoke" && a.actor === "owner:mcp"));
+  // An agent's token cannot call them even by name.
+  const agent = await mcp(s.control, s.tokens.agent);
+  const refused = await agent
+    .callTool({ name: "kb_grant", arguments: { campaign: "gemv-speed", reads: "survey-study" } })
+    .then(
+      (r) => (r as { isError?: boolean }).isError === true,
+      () => true,
+    );
+  assert.ok(refused);
+  assert.deepEqual(s.store.kb().reads("gemv-speed"), []);
 });
