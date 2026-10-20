@@ -17,12 +17,14 @@ updated: 2026-10-20
 
 Every agent writes down what it learns. Each campaign builds a corpus from that, which can go into a knowledge base so that later campaigns start from past research.
 
-- **Journals:** each worker, the planner and each advisor keeps a journal for the run:
-  - what it tried and why;
-  - what it found;
-  - the dead ends and what they cost;
-  - what it would try next.
-  The harness gives each agent the tool to write its journal, and keeps the entries in the run's ledger with who wrote them and when. Agents never edit another agent's entries.
+- **Journals are field notes:** the workers, the planner and the advisors keep notes as they work, across the whole system:
+  - observations;
+  - key decisions and why;
+  - surprises;
+  - open questions;
+  - lessons.
+
+  Each note is short, has its kind, and names what it is about (an experiment, an attempt, a source, a round). What was tried and its result are already in the experiment log ([064](064-experiment-queue.goal)), so the journal doesn't repeat them. The harness gives each agent the tool to write a note and keeps the notes in the run's ledger with who wrote them and when. Agents never edit another agent's notes.
 - **Research notes:** in every mode, not only research mode, agents can record sources they read, claims with their quotes, and notes. The run's folder ([062](062-research-folder.goal)) holds them, built by the harness from its records, and agents search it.
 - **Thermite's own knowledge base:** control keeps a knowledge base of its own; nothing outside is required.
   - **A folder per campaign:** each campaign has a folder, scoped to that campaign, that holds everything its runs produce:
@@ -46,7 +48,7 @@ Today most of what an agent learns ends with its trial. Only submitted attempts,
 
 ## Done when
 
-- [ ] Workers, the planner and the advisors write journals; the entries are in the ledger with who wrote them and when.
+- [ ] Workers, the planner and the advisors write field notes (observations, decisions, surprises, questions, lessons), each with what it is about; the notes are in the ledger with who wrote them and when.
 - [ ] Agents in every mode can record sources, claims and notes in the run's folder.
 - [ ] Each campaign has a folder in Thermite's knowledge base with everything its runs produce, each item with its origin; a run's export also holds its part.
 - [ ] The owner sets, and later changes, which other campaigns' folders a campaign can read; agents can search and read them and never write to them.
@@ -60,6 +62,7 @@ Today most of what an agent learns ends with its trial. Only submitted attempts,
 - 2026-10-20, owner: all agents write journals and research notes; a campaign's corpus goes into the knowledge base to inform later campaigns. This goal follows the experiment queue ([064](064-experiment-queue.goal)).
 - 2026-10-20, owner: "Build it" (the mockups of 063 and 064); accepted into v0.1.0, built after 064.
 - 2026-10-20: [059](059-knowledge-base-export.goal) (research results into a knowledge base) becomes part of this goal.
+- 2026-10-20, owner, on the Journal mockup: the journal is a field note, not a record of what was tried (the experiment log has that): observations, key decisions and the like, kept by the agents throughout the system.
 - 2026-10-20, owner, on the first mockups: "gbrain shouldn't be required. thermite should maintain its own kb system. gbrain is more a sync than anything and additional external context brought in." Each campaign keeps everything in its own folder in Thermite's knowledge base; the owner grants a campaign read access to other campaigns' folders, at any time.
 
 ## Open questions
