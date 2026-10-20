@@ -488,27 +488,6 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
             `Another rig's run of this campaign imports this run's champion, and its own judge tests it there. If it holds up, it counts as cross-verified.`,
           )
         : "";
-    // The run's promotion policy, as it was assigned: what a confirmed win does here.
-    const policy =
-      i.promotion === "auto"
-        ? "Promotion: <b>automatic</b>. A confirmed win becomes the champion; an audit still holds a surprising gain or declared flaws, and a gain above the absolute trigger waits for you."
-        : i.promotion === "owner_approval"
-          ? "Promotion: <b>your approval</b>. Every confirmed win waits for you before it becomes the champion."
-          : "Promotion: <b>the rig's default</b> (set where the rig is deployed). A run assigned with its own policy shows it here.";
-    // The planner's rules for this run (goal 064 lists them and adds the experiment queue).
-    const steer = `<div class="card"><div class="card-head"><span class="title">Rules for the plan</span><span class="right muted small">${i.directives} rule set${i.directives === 1 ? "" : "s"} in force</span></div>
-<div class="small muted" style="margin-top:6px">A rule tells the planner, from its next plan on, to avoid a direction, to try it, or to always give it a lane. It changes what lanes work on, never a verdict. To tell the agents something, use the message box in <a href="${runLiveHref(u.id, i.id)}">Live</a>.</div>
-<div class="dc-choices" style="border:0;padding-top:10px">
-${ctl(
-  `<form class="inline" method="post" action="/ui/commands"><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(i.id)}"><input type="hidden" name="kind" value="redirect"><input type="hidden" name="back" value="${esc(back)}">
-<select name="directive" aria-label="Rule"><option value="avoid">avoid</option><option value="try">try</option><option value="mandate">always give it a lane</option></select>
-<input name="family" placeholder="direction" required style="width:140px" aria-label="Direction"><input name="rationale" placeholder="why" required style="width:180px" aria-label="Why">
-<label class="muted small row"><input type="checkbox" name="add" value="1" style="height:auto"> keep my earlier rules</label><button>Add the rule</button></form>`,
-  "Unless you keep them, your earlier rules are replaced.",
-)}
-${propagate}
-</div>
-<div class="small" style="margin-top:10px">${policy}</div></div>`;
     const audits = i.audits.slice(-8).reverse();
     const records = [
       audits.length
@@ -2048,7 +2027,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
         flush: true,
       },
       `<div class="lwrap" id="lwrap">${nav}<section class="lcol">${head}<div class="lchips">${chips}<span class="grow"></span>${keptBox}<button class="lchip on lfollow" type="button" aria-pressed="true" title="Follow new lines">↓ Follow</button></div>
-<div class="transcript lstream" id="transcript" data-rig="${esc(u.id)}" data-run="${esc(r.id)}" data-w="${esc(w)}" data-after="${after}">${runLinesHtml(lines, now) || `<div class="empty">No live lines yet. They appear here as the run's agents and judge work.</div>`}</div>
+<div class="transcript lstream" id="transcript" data-rig="${esc(u.id)}" data-run="${esc(r.id)}" data-w="${esc(w)}" data-after="${after}">${runLinesHtml(lines, now, store.runMessages(u.id, r.id)) || `<div class="empty">No live lines yet. They appear here as the run's agents and judge work.</div>`}</div>
 ${box}</section></div>`,
       vs,
     );
@@ -2059,11 +2038,12 @@ ${box}</section></div>`,
     const [rig, run] = String(c.req.query("run") ?? "").split("/");
     if (!rig || !run) return c.json({ entries: [] });
     const now = Date.now();
+    const messages = store.runMessages(rig, run);
     const entries = store.liveRun(rig, run, after, 500).map((e) => ({
       id: e.id,
       kind: e.kind,
       src: e.source,
-      html: runEntryHtml(e, now),
+      html: runEntryHtml(e, now, messages),
       ...(e.kind === "result" ? { join: resultJoin(e) } : {}),
     }));
     return c.json({ entries });

@@ -948,6 +948,35 @@ export class ControlStore {
     }));
   }
 
+  /**
+   * The owner's messages to one run, from the rig's signed events on its current ledger: what
+   * Live checks the message lines against (a worker's own line can claim anything).
+   */
+  runMessages(rig: string, run: string): Map<number, { to: string; text: string; keep: boolean }> {
+    const rows = this.db
+      .prepare(
+        `select e.body from rig_event e join rig r on r.id = e.rig and r.ledger_id = e.ledger_id
+         where e.rig = ? and e.kind = 'agent_message' and e.subject = ?`,
+      )
+      .all(rig, run) as { body: string }[];
+    const out = new Map<number, { to: string; text: string; keep: boolean }>();
+    for (const r of rows) {
+      try {
+        const b = JSON.parse(r.body) as {
+          id?: unknown;
+          to?: unknown;
+          text?: unknown;
+          keep?: unknown;
+        };
+        if (typeof b.id === "number" && typeof b.text === "string")
+          out.set(b.id, { to: String(b.to ?? ""), text: b.text, keep: b.keep === true });
+      } catch {
+        // not an event this store can read
+      }
+    }
+    return out;
+  }
+
   /** One run's newest live lines, newest last (for the Live page's first view). */
   liveRunTail(
     rig: string,

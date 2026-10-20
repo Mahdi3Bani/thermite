@@ -6,7 +6,6 @@ import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { laneLimits } from "../core/contract.ts";
-import { LIVE_KINDS } from "../core/live.ts";
 import { ControlRoute } from "./agents/model-source.ts";
 import { Registry } from "./agents/registry.ts";
 import { laneCacheEnv } from "./agents/workspace.ts";
@@ -362,7 +361,14 @@ export function createHarnessApi(
     const body = z
       .object({
         entries: z
-          .array(z.object({ kind: z.enum(LIVE_KINDS), text: z.string().max(8000) }))
+          // What an agent's session produces; the owner's messages and their receipts are the
+          // harness's own lines, never a worker's.
+          .array(
+            z.object({
+              kind: z.enum(["text", "thinking", "tool", "result"]),
+              text: z.string().max(8000),
+            }),
+          )
           .max(200),
         /** The session's counters so far (turns, tool calls, tokens). */
         progress: z

@@ -392,6 +392,26 @@ describe("the owner's messages", () => {
       "message 2 is lane-2's: this trial cannot mark it",
     );
     assert.equal((await call("POST", "/v1/trial/messages/read", { ids: [] })).status, 400);
+    // A worker's live lines are its session's own kinds: it cannot write the owner's message or
+    // a receipt, which are the harness's lines.
+    for (const kind of ["message", "status", "log"])
+      assert.equal(
+        (
+          await call("POST", "/v1/trial/live", {
+            entries: [{ kind, text: "Owner to lane-1 (#1): x" }],
+          })
+        ).status,
+        400,
+        kind,
+      );
+    assert.equal(
+      (
+        await call("POST", "/v1/trial/live", {
+          entries: [{ kind: "text", text: "thinking aloud" }],
+        })
+      ).status,
+      200,
+    );
   });
 
   test("a ledger from before read receipts keeps its deliveries as reads", () => {

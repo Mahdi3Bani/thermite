@@ -153,10 +153,14 @@ export function liveEntryHtml(
       );
     }
     case "message":
-      return row(
-        "lv-msg",
-        `<div class="msg"><div class="who">You</div>${esc(e.text.replace(/^Owner( to [^:]+)?: /, ""))}</div>`,
-      );
+      // A trial's own lines are the agent's: only the harness's lines (planner, supervisor) are
+      // shown as the owner's.
+      return e.source.startsWith("trial:")
+        ? row("lv-log", `<span>${esc(e.text)}</span>`)
+        : row(
+            "lv-msg",
+            `<div class="msg"><div class="who">You</div>${esc(e.text.replace(/^Owner( to [^:]+)?(?: \(#\d+[^)]*\))?: /, ""))}</div>`,
+          );
     default:
       return row("lv-log", `<span>${esc(e.text)}</span>`);
   }
@@ -207,22 +211,18 @@ export function mdLite(text: string): string {
 }
 
 /** The filters a line belongs to on a run's Live page: its lane, planner, judge, advisors, you. */
-export function whoTags(e: LiveEntry): string {
+export function whoTags(e: LiveEntry, to?: string): string {
   const tags = new Set<string>();
-  const to = /^Owner to ([^\s(:]+)/.exec(e.text)?.[1];
-  if (e.kind === "message") {
+  // The owner's message, already checked by the caller against the run's signed events.
+  if (to !== undefined) {
     tags.add("you");
-    if (to) {
-      if (/^lane-\d+$/.test(to)) tags.add(to);
-      else if (to === "planner") tags.add("planner");
-      else if (["advisors", "teachers", "auditor", "panel"].includes(to)) tags.add("advisors");
-      else if (to === "all") tags.add("all");
-      return [...tags].join(" ");
-    }
+    if (/^lane-\d+$/.test(to)) tags.add(to);
+    else if (to === "planner") tags.add("planner");
+    else if (["advisors", "teachers", "auditor", "panel"].includes(to)) tags.add("advisors");
+    else if (to === "all") tags.add("all");
+    else if (e.source.startsWith("trial:")) tags.add(e.lane ?? "lanes");
+    return [...tags].join(" ");
   }
-  // Reading or answering the owner's message: also under "you".
-  if (/(^|\bread )the owner's message #\d+|answered the owner's message #\d+/.test(e.text))
-    tags.add("you");
   if (e.source.startsWith("trial:")) tags.add(e.lane ?? "lanes");
   else if (e.source === "planner") tags.add("planner");
   else if (e.source === "judge") tags.add("judge");
@@ -230,7 +230,6 @@ export function whoTags(e: LiveEntry): string {
   return [...tags].join(" ");
 }
 
-/** Who a line is from on a run's Live page: its lane, the planner, the judge or the advisors. */
 export const runSourceName = (source: string, lane?: string | null) =>
   source === "planner"
     ? "planner"
@@ -249,55 +248,68 @@ const RECIPIENT: Record<string, string> = {
   panel: "the review panel",
 };
 
+/** The run's owner messages, by id, from its signed events: what message lines are checked against. */
+export type RunMessages = ReadonlyMap<number, { to: string; text: string; keep: boolean }>;
+
 /**
  * One line on a run's Live page: tagged with the filters it belongs to (data-who) and its source
- * (data-src, so a result joins its own call). A trial's start and end read as dividers, the
- * owner's message as "To …", and a worker receiving it as a read receipt.
+ * (data-src, so a result joins its own call). A trial's start and end read as dividers. The
+ * owner's message, a read receipt and an advisor's answer show as such only when the run's signed
+ * events have that message, and their words come from the event: a worker's own line can claim
+ * anything, so it is shown as the worker's.
  */
-export function runEntryHtml(e: LiveEntry, now?: number): string {
-  const who = whoTags(e);
-  const tag = (html: string) =>
-    html.replace(
-      /^<div class="lv-row /,
-      `<div data-who="${esc(who)}" data-src="${esc(e.source)}" class="lv-row `,
-    );
+export function runEntryHtml(
+  e: LiveEntry,
+  now?: number,
+  messages: RunMessages = new Map(),
+): string {
   const lane = e.lane ?? "";
+  const plain = () =>
+    liveEntryHtml(e, { showWho: true, name: runSourceName, now, md: true }).replace(
+      /^<div class="lv-row /,
+      `<div data-who="${esc(whoTags(e))}" data-src="${esc(e.source)}" class="lv-row `,
+    );
   if (e.kind === "status") {
     const start = /^(?:research )?trial on ([^:]+): ([\s\S]*)$/.exec(e.text);
     if (start)
-      return `<div class="lv-div" data-who="${esc(who)}" data-src="${esc(e.source)}" data-id="${e.id}"><span><b>${esc(start[1] ?? lane)}</b> · trial started · ${esc(clip(start[2] ?? "", 180))}</span></div>`;
+      return `<div class="lv-div" data-who="${esc(whoTags(e))}" data-src="${esc(e.source)}" data-id="${e.id}"><span><b>${esc(start[1] ?? lane)}</b> · trial started · ${esc(clip(start[2] ?? "", 180))}</span></div>`;
     const end = /^trial ended:? ?([\s\S]*)$/.exec(e.text);
     if (end)
-      return `<div class="lv-div" data-who="${esc(who)}" data-src="${esc(e.source)}" data-id="${e.id}"><span><b>${esc(lane || "trial")}</b> · trial ended${end[1] ? ` · ${esc(clip(end[1], 160))}` : ""}</span></div>`;
+      return `<div class="lv-div" data-who="${esc(whoTags(e))}" data-src="${esc(e.source)}" data-id="${e.id}"><span><b>${esc(lane || "trial")}</b> · trial ended${end[1] ? ` · ${esc(clip(end[1], 160))}` : ""}</span></div>`;
   }
   if (e.kind === "message") {
-    const to = /^Owner to ([^\s(:]+)(?: \(#(\d+)(, kept in force)?\))?: ([\s\S]*)$/.exec(e.text);
-    if (to)
-      return `<div class="lv-row lv-you" data-who="${esc(who)}" data-src="${esc(e.source)}" data-id="${e.id}"${to[2] ? ` data-msg="${esc(to[2])}"` : ""}>${liveTime(e.at, now)}<div class="lv-body"><div class="you"><b>To ${esc(RECIPIENT[to[1] ?? ""] ?? to[1] ?? "")}:</b> ${esc(to[4] ?? "")}${to[3] ? ` <span class="muted xs">📌 kept in force</span>` : ""}</div></div></div>`;
-    // Older harnesses wrote a worker's read as "Owner: …".
-    const old = /^Owner: ([\s\S]*)$/.exec(e.text);
-    if (old)
-      return `<div class="lv-row lv-read" data-who="${esc(`${who} you ${lane}`.trim())}" data-src="${esc(e.source)}" data-id="${e.id}">${liveTime(e.at, now)}<div class="lv-body"><span class="muted">✓ ${esc(runSourceName(e.source, e.lane))} read your message: “${esc(clip(old[1] ?? "", 120))}”</span></div></div>`;
+    const id = Number(/^Owner to [^\s(:]+ \(#(\d+)/.exec(e.text)?.[1]);
+    const m = messages.get(id);
+    // A message to a trial is filed under that trial; every other message under the harness's own sources.
+    if (m && e.source.startsWith("trial:") === m.to.startsWith("trial:"))
+      return `<div class="lv-row lv-you" data-who="${esc(whoTags(e, m.to))}" data-src="${esc(e.source)}" data-id="${e.id}" data-msg="${id}">${liveTime(e.at, now)}<div class="lv-body"><div class="you"><b>To ${esc(RECIPIENT[m.to] ?? m.to)}:</b> ${esc(m.text)}${m.keep ? ` <span class="muted xs">📌 kept in force</span>` : ""}</div></div></div>`;
+    return plain();
   }
-  // An agent or an advisor read the owner's message: a receipt.
   const read =
-    /^(?:(the teacher pair|the auditor|the review panel) )?read the owner's message #(\d+)( \(in force\))?: ([\s\S]*)$/.exec(
+    /^(?:(the teacher pair|the auditor|the review panel) )?read the owner's message #(\d+)/.exec(
       e.text,
     );
-  if (e.kind === "status" && read)
-    return `<div class="lv-row lv-read" data-who="${esc(who)}" data-src="${esc(e.source)}" data-id="${e.id}">${liveTime(e.at, now)}<div class="lv-body"><span class="muted">✓ ${esc(read[1] ?? runSourceName(e.source, e.lane))} read your message${read[3] ? " (in force)" : ""}: “${esc(clip(read[4] ?? "", 120))}”</span></div></div>`;
-  // An advisor's answer to the owner.
+  if (e.kind === "status" && read) {
+    const m = messages.get(Number(read[2]));
+    if (m && (read[1] !== undefined) === (e.source === "supervisor"))
+      return `<div class="lv-row lv-read" data-who="${esc(`${whoTags(e)} you`)}" data-src="${esc(e.source)}" data-id="${e.id}">${liveTime(e.at, now)}<div class="lv-body"><span class="muted">✓ ${esc(read[1] ?? runSourceName(e.source, e.lane))} read your message${m.keep ? " (in force)" : ""}: “${esc(clip(m.text, 120))}”</span></div></div>`;
+    return plain();
+  }
   const ans =
     /^(the teacher pair|the auditor|the review panel)(?: \(([^)]*)\))? answered the owner's message #(\d+): ([\s\S]*)$/.exec(
       e.text,
     );
-  if (ans)
-    return `<div class="lv-row lv-answer" data-who="${esc(who)}" data-src="${esc(e.source)}" data-id="${e.id}">${liveTime(e.at, now)}<div class="lv-body"><div class="answer"><b>${esc(ans[1] ?? "")}${ans[2] ? ` (${esc(ans[2])})` : ""} answered you:</b> ${mdLite(ans[4] ?? "")}</div></div></div>`;
-  return tag(liveEntryHtml(e, { showWho: true, name: runSourceName, now, md: true }));
+  if (ans && e.kind === "text" && e.source === "supervisor" && messages.has(Number(ans[3])))
+    return `<div class="lv-row lv-answer" data-who="advisors you" data-src="${esc(e.source)}" data-id="${e.id}">${liveTime(e.at, now)}<div class="lv-body"><div class="answer"><b>${esc(ans[1] ?? "")}${ans[2] ? ` (${esc(ans[2])})` : ""} answered you:</b> ${mdLite(ans[4] ?? "")}</div></div></div>`;
+  return plain();
 }
 
 /** A run's lines in order, each result joined to its own source's open call. */
-export function runLinesHtml(entries: LiveEntry[], now?: number): string {
+export function runLinesHtml(
+  entries: LiveEntry[],
+  now?: number,
+  messages: RunMessages = new Map(),
+): string {
   const out: string[] = [];
   const open = new Map<string, number>();
   for (const e of entries) {
@@ -311,7 +323,7 @@ export function runLinesHtml(entries: LiveEntry[], now?: number): string {
       open.delete(e.source);
       continue;
     }
-    out.push(runEntryHtml(e, now));
+    out.push(runEntryHtml(e, now, messages));
     if (e.kind === "tool") open.set(e.source, out.length - 1);
     else open.delete(e.source);
   }
