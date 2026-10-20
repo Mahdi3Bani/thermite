@@ -112,7 +112,7 @@ Control refuses a message with no words, or one that nothing would read, before 
 - `This rig's supervisor has no auditor set up, so nothing would read it.`, with the teacher pair or the review panel in its place, for an advisor the rig's supervisor hasn't set up, such as one with no model;
 - for **To all advisors**, `This rig's supervisor has no advisors set up, so nothing would read it.` when it has none, and `No advisor would read it.` with each advisor's reason when none of them would.
 
-In **Live** and on the **Planner** tab, a strip above the box shows **Not sent.** and control's reason at once. Over MCP, `issue_command` answers `{"error":"…"}` with the reason. The REST API and `thermite command` get an answer of **400** with `{"error":"…"}`. Nothing reaches **Commands**. A refusal from **Live**, the **Planner** tab or MCP is in the **Audit log**, as `refused`; one over the REST API or `thermite command` is only in its answer.
+In **Live** and on the **Planner** tab, a strip above the box shows **Not sent.** and control's reason at once. Over MCP, `issue_command` answers `{"error":"…"}` with the reason. The REST API and `thermite command` get an answer of **400** with `{"error":"…"}`. Nothing reaches **Commands**. Every refusal, from **Live**, the **Planner** tab, MCP, the REST API or `thermite command`, is in the **Audit log**, as `refused`.
 
 Control knows which advisors a rig has set up only once the rig's supervisor has reported them. Until then, it sends a message to an advisor that is switched on, and nothing reads it until the advisor has a model. See [Configure advisors](../operate/advisors.md).
 
