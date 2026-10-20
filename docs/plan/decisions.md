@@ -28,6 +28,8 @@ Decisions that shape the whole product, newest last in each section. A decision 
 | 2026-10-17 | Test cases fit any kind of project. A case is a name and what makes it different. The score is a run's time, a rate, or a number that the check reports. |
 | 2026-10-17 | A "hidden test" is a case the judge uses only to confirm a change that already looks better, never while it screens. |
 | 2026-10-18 | A rig is a set of GPUs. Judge GPUs and agent GPUs are pools, and the split is set where a campaign is deployed. |
+| 2026-10-20 | Each run has one experiment queue: the experiments still to try, in order, and a log of those tried, with their results. The planner coordinates it: it gives lanes work that does not overlap. The planner, the advisors and the owner add and reorder experiments; workers propose ideas for the planner to queue. Rules for the plan are set on the run's Planner tab. |
+| 2026-10-20 | Every agent writes a journal and research notes. A campaign's corpus can go to a knowledge base, so that later campaigns start from past research. |
 | 2026-10-19 | Research workers search all of a run's research and write files. The harness builds a research folder from its records (read-only to workers), and each lane keeps a working area across its trials; the other lanes see a lane's files when its trial ends. A research run's output is its report plus the whole folder. Findings carry a summary and why they matter, and code checks them against verified claims. ([062](goals/062-research-folder.goal)) |
 
 ## Rigs and deployment

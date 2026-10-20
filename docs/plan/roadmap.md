@@ -52,6 +52,11 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [016](goals/016-small-fixes.goal) Small fixes before the release · `READY`
 - [017](goals/017-legacy-names.goal) Remove the legacy model names · `READY`
 
+### Running campaigns
+
+- [064](goals/064-experiment-queue.goal) One experiment queue for each run; the planner coordinates it · `PROPOSED`
+- [065](goals/065-journals-and-corpus.goal) Journals and a research corpus from every campaign · `PROPOSED`
+
 ### Research mode
 
 - [062](goals/062-research-folder.goal) A research folder agents can search and write · `IN_PROGRESS`
@@ -127,4 +132,4 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [056](goals/056-codex-harness.goal) A Codex CLI harness · `PROPOSED`
 - [057](goals/057-finalize-champions.goal) Finalize a champion into reviewable branches · `PROPOSED`
 - [058](goals/058-helm-and-npm.goal) Helm charts and an npm package · `PROPOSED`
-- [059](goals/059-knowledge-base-export.goal) Research results into a knowledge base · `PROPOSED`
+- [059](goals/059-knowledge-base-export.goal) Research results into a knowledge base · `DROPPED` (now part of 065)

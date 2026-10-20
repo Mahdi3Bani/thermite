@@ -45,7 +45,7 @@ The dashboard's campaign, run and live views are rebuilt so that a person can se
   - The lane being watched is the lane being written to, and the other way round.
   - A message can stay in force: it goes into every new trial's brief until the owner removes it.
   - Each message shows in the stream with who has read it and when, and the answers advisors give. A "You" filter shows only the owner's messages and their answers.
-  - Beside the stream, "In force" lists the kept messages and the rules for the plan, whoever set them (the owner or the teachers), each with Remove. Adding a rule (avoid, try, always) is a collapsed form that picks from the run's known directions. Pause and restarting the lanes sit there too.
+  - Beside the stream: the top of the run's experiment queue ([064](064-experiment-queue.goal)), the messages kept in force, each with Remove, and Pause and restarting the lanes. Rules for the plan are not here: they are on the run's Planner tab (064).
   - Only the judge takes no messages: it is code that measures, not an agent. The auditor still decides each audit itself; the owner overrules a judge or auditor decision on its card.
 
 ## Why
@@ -76,6 +76,7 @@ The owner's feedback on 2026-10-20:
 - 2026-10-20: the recipients are the agents (lanes, planner) and the advisors. The judge takes no messages: it is code, and what anyone writes must not change a measurement. Only the owner can message an advisor (a signed owner command); agents cannot.
 - 2026-10-20, owner, on the Live mockup: choosing a lane (or everyone) at the top of Live also sets who the message box writes to. The lane you watch is the lane you write to, and choosing a recipient below shows that lane's stream.
 - 2026-10-20, owner, on the Live mockup: "why can't I view advisors?" Live gets an Advisors entry with the advisors' work as it happens.
+- 2026-10-20, owner: rules for the plan move to a Planner tab ([064](064-experiment-queue.goal)), out of Live and the message area.
 - 2026-10-20, owner, "Yeah thats a better design": steering lives only in Live (one message box, with In force beside the stream); no Steer tab on the run page.
 - 2026-10-20, owner: "advisors need to be viewable and interactable too!" The owner can message each advisor role, and advisors answer. This replaces the earlier choice to keep the auditor out of reach of messages.
 

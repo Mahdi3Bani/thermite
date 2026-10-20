@@ -1,16 +1,16 @@
 ---
 id: "059"
 title: "Research results into a knowledge base"
-status: PROPOSED
+status: DROPPED
 version: "later"
 depends_on: []
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # 059 · Research results into a knowledge base
 
-**Status:** `PROPOSED` · **Version:** [later](../roadmap.md#later)
+**Status:** `DROPPED` · **Version:** [later](../roadmap.md#later)
 
 ## What
 
@@ -26,7 +26,7 @@ A research campaign's value is its corpus, and it should outlive the run.
 
 ## Decisions
 
-None yet.
+- 2026-10-20: dropped as a goal of its own. Its scope is now part of [065](065-journals-and-corpus.goal), which builds a corpus from every campaign, not only research campaigns, and sends it to a knowledge base.
 
 ## Open questions
 

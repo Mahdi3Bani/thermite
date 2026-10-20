@@ -1,0 +1,68 @@
+---
+id: "065"
+title: "Journals and a research corpus from every campaign"
+status: PROPOSED
+version: "0.1.0"
+part: "Running campaigns"
+depends_on: ["062", "064"]
+created: 2026-10-20
+updated: 2026-10-20
+---
+
+# 065 · Journals and a research corpus from every campaign
+
+**Status:** `PROPOSED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+Every agent writes down what it learns. Each campaign builds a corpus from that, which can go into a knowledge base so that later campaigns start from past research.
+
+- **Journals:** each worker, the planner and each advisor keeps a journal for the run:
+  - what it tried and why;
+  - what it found;
+  - the dead ends and what they cost;
+  - what it would try next.
+  The harness gives each agent the tool to write its journal, and keeps the entries in the run's ledger with who wrote them and when. Agents never edit another agent's entries.
+- **Research notes:** in every mode, not only research mode, agents can record sources they read, claims with their quotes, and notes. The run's folder ([062](062-research-folder.goal)) holds them, built by the harness from its records, and agents search it.
+- **The corpus** of a run:
+  - the journals and notes;
+  - the experiment log ([064](064-experiment-queue.goal)) with each result;
+  - the verified claims and findings;
+  - the final report.
+  It goes into the run's export.
+- **Into a knowledge base:** the owner configures a knowledge base (for example a GBrain-style brain), and control sends a campaign's corpus to it during and after the run. Each item keeps where it came from: campaign, run, agent and time.
+- **From past research:** a new campaign's planner, advisors and workers can search the knowledge base for past experiments, results and findings on related work, and the queue can start with experiments drawn from them.
+
+## Why
+
+The owner, on 2026-10-20: "All agents should be writing journals, research notes, etc and building a corpus that then we can extract into the knowledge base... so that we can build up a corpus of past research to inform future campaigns and runs."
+
+Today most of what an agent learns ends with its trial. Only submitted attempts, research claims and the final report outlive it.
+
+## Done when
+
+- [ ] Workers, the planner and the advisors write journals; the entries are in the ledger with who wrote them and when.
+- [ ] Agents in every mode can record sources, claims and notes in the run's folder.
+- [ ] A run's export holds its corpus.
+- [ ] Control sends a corpus to a configured knowledge base, with its origin on each item.
+- [ ] A new campaign's agents can search past corpora, and the queue can start from them.
+- [ ] The dashboard shows a run's journals beside its experiments.
+- [ ] Tests cover writing, the export, sending to a knowledge base and searching it.
+
+## Decisions
+
+- 2026-10-20, owner: all agents write journals and research notes; a campaign's corpus goes into the knowledge base to inform later campaigns. This goal follows the experiment queue ([064](064-experiment-queue.goal)).
+- 2026-10-20: [059](059-knowledge-base-export.goal) (research results into a knowledge base) becomes part of this goal.
+
+## Open questions
+
+- Which knowledge bases come first, and does control push to them or do they pull from control?
+- How much of a journal does a new campaign see: everything, or only what the planner selects?
+
+## Progress
+
+- 2026-10-20: Goal written from the owner's direction.
+
+---
+
+Run with `/goal Complete docs/plan/goals/065-journals-and-corpus.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
