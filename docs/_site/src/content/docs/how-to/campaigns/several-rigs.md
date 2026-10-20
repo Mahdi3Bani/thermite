@@ -43,7 +43,7 @@ A champion beyond the starting point can be sent once its rig has published it, 
 2. Beside **Send champion #N**, choose the receiving run, shown as `<rig> / <run>`. The list holds other rigs' runs of the same campaign.
 3. Press **Send champion #N**.
 
-The dashboard opens the receiving run's page. The receiving run must be running when the champion arrives: if it is paused or closed, the command fails, and **Commands** in the sidebar shows the reason, such as `run sort-speed-1 is paused`. Resume the run, then send the champion again.
+The dashboard opens the receiving run's page. The receiving run must be running when the champion arrives: if it is paused or finished, the command fails, and **Commands** in the sidebar shows the reason, such as `run sort-speed-1 is paused`. Resume the run, then send the champion again.
 
 You can also send it with the owner's token over the REST API, `POST /v1/propagate` with `{"from_rig": "local-1", "run": "sort-speed-1", "to_rig": "local-2", "to_run": "sort-speed-1"}`, or with the MCP tool `propagate_champion` and the same four fields.
 

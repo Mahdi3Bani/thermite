@@ -55,7 +55,7 @@ Commands expire after an hour by default, so an old command that was never deliv
 
 The issuer is inside the signature: the owner through the dashboard, the REST API or MCP, an operator acting for the owner, or an agent. Some kinds are the owner's alone, such as approving a promotion, accepting a review, wiping the rig, changing its settings, messaging the run's agents and advisors, and changing a run's experiment queue or removing a rule for its plan. The harness accepts those kinds only from an issuer in the owner's name, and control decides which kinds each token may ask for. So an agent's token can't get an owner's command through, even though it reaches control. An operator's token, which the owner gives an agent that runs campaigns for them, may send messages and change the queue, in the owner's name.
 
-This is how only the owner can write to the agents and the advisors. The advisors can answer the owner's messages, through the supervisor, but they can't send one, and the judge takes no messages at all: it is code, and no message can change a measurement. A run's **Live** view draws the owner's message, a read receipt and an advisor's answer only from lines that the harness signed and that match the run's signed events, with the words taken from those events. A worker can't make one up: a trial may post only its own session's text, thinking, tool calls and results. [Tokens and roles](../reference/tokens.md) says what each token may do.
+This is how only the owner can write to the agents and the advisors. The advisors can answer the owner's messages, through the supervisor, but they can't send one, and the judge takes no messages at all: it is code, and no message can change a measurement. A run's **Live** view shows a line as the owner's message, a read receipt or an advisor's answer only when the harness signed it; a line that isn't signed shows as a plain log line, whatever it claims. A worker can't make one up either: a trial may post only its own session's text, thinking, tool calls and results. [Tokens and roles](../reference/tokens.md) says what each token may do.
 
 ### Content checked by hash
 
@@ -77,7 +77,7 @@ The harness signs every report it gives the supervisor: each page of new events,
 4. it does not come from a record the rig has left behind, such as one from before a full reset;
 5. it is not older than the newest report control has taken, and not dated in the future.
 
-So the supervisor cannot forge a report, replay an old one, or drop events from the middle of the stream. Only the harness's signed reports make a rig show **Live** on the dashboard's **Rigs** page. A champion patch that the supervisor uploads is kept only if its SHA-256 matches the one in the rig's signed record of that champion. A run's **Live** view is for watching the work as it happens; the record of what happened is these signed events. The same goes for a run's experiment queue: control builds the **Experiments** and **Planner** tabs from the signed events alone.
+So the supervisor cannot forge a report, replay an old one, or drop events from the middle of the stream. Only the harness's signed reports make a rig show **Live** on the dashboard's **Rigs** page. A champion patch that the supervisor uploads is kept only if its SHA-256 matches the one in the rig's signed record of that champion. A run's **Live** view is for watching the work as it happens; the record of what happened is these signed events. The same goes for a run's experiment queue: control builds the **Experiments** and **Planner** tabs from the signed events alone. When a new run copies another run's untried experiments, from **Start a run** or over MCP, control takes each one's author from its record of the experiment it was copied from, not from what an MCP caller wrote.
 
 ## Pinning the rig's key
 
@@ -116,3 +116,4 @@ Some steps wait for a person. A full reset, for one, wipes a rig only after its 
 | Set a verdict, a champion or a contract | Its connection to the harness has no way to |
 | Pass an audit or accept a goal | An audit can only block, and only the owner accepts a goal ([Supervision](supervision.md)) |
 | Drop an experiment, give a lane its work or remove a rule | Its one route to a run's queue only adds and moves experiments for the advisors, recorded as theirs. What it adds is work to try, which the judge measures like any other change |
+| Pass a line in Live off as the owner's message, a read receipt or an advisor's answer | Its own lines reach control unsigned, and Live shows an unsigned line as a plain log line |

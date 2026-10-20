@@ -159,9 +159,9 @@ Under the header is a row of filters, which choose whose lines you see:
 - **Judge** is the code that measures each change. It is not an agent, and takes no messages.
 - **Advisors** shows the rig's advisors, models that review the work, and **You** shows your own messages. You won't need them here.
 
-The **lane-1** filter appears when the planner is done, a few minutes after the run starts: press **refresh** in the status bar to see it. Choose **lane-1**. A green dot on it means it is working. Its trial starts with the line `lane-1 · trial started`, followed by the experiment it was given: its direction (the kind of change), then what to try. Each line after that is one step: a command the agent ran, or a file it read or wrote, with what came back. Most agents look around the project and read `src/kernel/matmul.c`, then change it, build it and try it.
+When the planner is done, a few minutes after the run starts, the lane's first trial begins, and a **lane-1** filter appears with its first line. Choose **lane-1**. Its trial starts with the line `lane-1 · trial started`, followed by the experiment it was given: its direction (the kind of change), then what to try. Each line after that is one step: a command the agent ran, or a file it read or wrote, with what came back. Most agents look around the project and read `src/kernel/matmul.c`, then change it, build it and try it.
 
-New lines come in by themselves. The rest of this page, like every other page, needs **refresh**.
+New lines come in by themselves. The rest of this page, like every other page, needs **refresh**. After a **refresh**, a green dot on **lane-1** means it is working.
 
 The box under the lines sends the agents a message, and its grey text says when they would read it. You won't need it here: see [Steer a run](../how-to/campaigns/steer-a-run.md).
 
@@ -199,7 +199,7 @@ Choose **Attempts**. Each change the agent submitted is an **attempt**, with one
 :::tip[Nothing yet after half an hour?]
 - On **Live**, choose **lane-1**. If it has its green dot and new lines keep coming, the agent is still on its experiment: wait.
 - In **What happened**, a line that says `lane-1's trial` … `ended without a submission` gives the reason. A free model is sometimes busy: `Rate limit exceeded. Please try again later.` The next trial tries again. If every trial ends this way, give the rig another model whose name ends in `-free`, as in step 2, or pause the run (step 9) and resume it later.
-- If **What happened** says that the planner planned a round with `its fallback plan`, the model gave the planner no plan it could use, often because a free model was busy. The lane then takes the next experiment in the queue by fixed rules, or a new one the fixed rules add when the queue is empty. The next round asks the model again.
+- If **What happened** says that the planner planned a round `(by the fixed rules: the model gave no usable plan, because` and a reason, the model could not plan that round, often because a free model was busy. The lane then takes the next experiment in the queue, or a new one that the fixed rules add when the queue is empty. The next round asks the model again.
 :::
 
 ### If a change waits for you
@@ -215,7 +215,7 @@ The item says `You selected Reject it`. After a **refresh**, **What happened** s
 
 ## 9. Pause the campaign
 
-A hill climb never ends by itself, and Thermite sets no time limit unless you ask for one: see [Why Thermite runs until the job is done](../explanation/runs-until-done.md). When you have seen enough, open the run's page: **Campaigns**, then `smoke-agents › smoke-agents-1` on the card under **At work now**. In the page's header, press **Pause**, just right of **Message**. A small menu opens. In its field **why (optional)**, type `seen enough for now`, then press **Pause the run**.
+A hill climb never ends by itself, and Thermite sets no time limit unless you ask for one: see [Why Thermite runs until the job is done](../explanation/runs-until-done.md). When you have seen enough, open the run's page: **Campaigns**, then `smoke-agents › smoke-agents-1` on the card under **At work now**. In the page's header, press **Pause**, just right of **Message**. A small menu opens. It says that the lanes' running trials stop, and that the run's jobs waiting for the judge wait until you resume. In its field **why (optional)**, type `seen enough for now`, then press **Pause the run**.
 
 A line at the top of the page says that control sent the command to `local-1`. If `lane-1` was in a trial, the trial stops, and its experiment goes back to the top of **Up next**, to be tried again when the run resumes. Within a minute, after a **refresh**, the run shows **Paused** beside its name, and the button says **Resume**. On the **Overview** tab, the **Now** block says `This run is paused: seen enough for now. Nothing new starts until it is resumed.`
 

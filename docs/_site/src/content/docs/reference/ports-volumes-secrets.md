@@ -135,7 +135,7 @@ Removing a rig removes these five volumes, the two networks, the unit files and 
 | Its subpaths | `state` → `/var/lib/thermite`; `scratch` → `/scratch`; `inbox` → `/inbox` (read-only in the harness); `outbox` → `/outbox` (read-only in the supervisor); `supervisor` → `/var/lib/thermite-supervisor` |
 | Init container `prepare` | Runs the harness image to make the folders and set their owners before each pod starts |
 
-Both pods run on the same node, so they can share the volume. An update to control's images (**Update to these images** on the rig's page) applies the rig's two Deployments again and leaves its volume claim, its Secret and its Service as they are, so the rig keeps its state and its tokens.
+Both pods run on the same node, so they can share the volume. An update to control's images or address (**Update to these images**, **Try the update again** or **Give it control's new address** on the rig's page) applies the rig's two Deployments again and leaves its volume claim, its Secret and its Service as they are, so the rig keeps its state and its tokens.
 
 ### RunPod test pods
 

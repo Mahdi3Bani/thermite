@@ -28,7 +28,7 @@ The buttons below are on the rig's page: open **Rigs** in the dashboard's sideba
 **On a cluster, a start takes a few minutes.** After **Start its pods**, the page says `Started.`, and the block's status, at the right of its heading, says `starting`. Control waits up to 15 minutes for the rig's pods to run, then up to 10 minutes for a report from the rig. Press **refresh** in the status bar, the line along the bottom of the page, to follow it:
 
 - Two steps get a ✓, "Its pods run the new images" and "A report reached control from the new images", and the status says `running`. The steps say "new images" even when no image changed.
-- If a step gets ✕ instead, the status says `failed`: see [A rig on a cluster never reports](troubleshoot.md#a-rig-on-a-cluster-never-reports).
+- If a step gets ✕ instead, the status says `failed`: see [A rig on a cluster never reports](troubleshoot.md#a-rig-on-a-cluster-never-reports). The block then offers **Try the update again**: see [Try again after a failure](#try-again-after-a-failure).
 
 **One change at a time on a cluster.** While the status says `starting` or `updating`, control refuses a start, a restart and an image update. The page shows a card that starts with **Not done.** and the reason, such as `rig-1 is starting: wait until its page shows it running, or failed.` **Stop its pods** and **Remove the rig** are never refused for this.
 
@@ -104,12 +104,7 @@ Steps:
 
 If control refuses the update, the page shows a card that starts with **Not done.** and the reason, such as `The cluster cluster-1 is no longer in Providers.`, `rig-1 is being updated: wait until its page shows it running, or failed.`, the refusal for a missing address above, or kubectl's error.
 
-If a step gets ✕ instead, with "not running after 15 minutes" or "no report after 10 minutes: it may not have started", the status says `failed`: see [A rig on a cluster never reports](troubleshoot.md#a-rig-on-a-cluster-never-reports). Fix the cause; the pods keep trying by themselves. When the rig reports again, its status says `running`, and a ✓ step follows the ✕: "A report reached control from the new images · it reported again after the wait ended".
-
-The page no longer offers **Update to these images** for these images, because control recorded them at the first try. To have control try again and wait once more:
-
-- press **Restart them**: the pods restart on the images control recorded, and control waits for them and a report, as after an update;
-- or, over MCP, call `update_rig_images` again: with the status `failed`, it applies the recorded images again.
+If a step gets ✕ instead, with "not running after 15 minutes" or "no report after 10 minutes: it may not have started", the status says `failed`: see [A rig on a cluster never reports](troubleshoot.md#a-rig-on-a-cluster-never-reports). Fix the cause; the pods keep trying by themselves. When the rig reports again, its status says `running`, and a ✓ step follows the ✕: "A report reached control from the new images · it reported again after the wait ended". To have control apply the images again and wait once more, see [Try again after a failure](#try-again-after-a-failure).
 
 After the update, run the rig's **Isolation** and **Judge smoke** checks: control doesn't run them for you ([Check a rig](check-a-rig.md)).
 
@@ -131,14 +126,28 @@ A newer harness may upgrade the rig's ledger when it opens it, and an older harn
 
 Over MCP, the owner's and an operator's tokens do the same with `update_rig_images`. They stop, start and restart the rig with `cluster_rig`, for example `{"rig": "rig-1", "action": "start"}`; it has no `remove`. `rig_setup` shows the rig's status and each step: see [From an agent or a script](../install/rig-on-a-cluster.md#from-an-agent-or-a-script). The REST API has no route for these.
 
+### Try again after a failure
+
+When a change to the rig's pods failed, its status says `failed`. This happens after a new rig's first wait, a start, a restart or an update. When the rig already has control's images, the block offers to apply them again; when control deploys other images, it offers **Update to these images** instead.
+
+1. Fix the cause first: see [A rig on a cluster never reports](troubleshoot.md#a-rig-on-a-cluster-never-reports).
+2. On the rig's page, the block says "The last change to its pods failed (see the steps above). Try it again on control's images:", with the two image names. Press **Try the update again**.
+
+   Control applies the rig's two deployments again, as for an update. The page says `rig-1's pods restart with control's new address.`, even when the address did not change. The status says `updating`, and a new step reads "Its deployments applied with new images", with the detail `control's address for rigs →` and the address.
+3. Wait, then press **refresh**. As after an update, the status says `running` once the pods run and the rig reports, or `failed` again with the step that failed.
+
+Over MCP, `update_rig_images` does the same for a rig whose status is `failed`.
+
 ### When only control's address changed
 
-When you move control to a new address and set `THERMITE_CONTROL_PUBLIC_URL` to it, but its images stay the same, the rig's page offers no button: **Update to these images** shows only when an image's name differs. Over MCP, the owner's or an operator's token can call `update_rig_images`. Control reads the address in the rig's supervisor deployment, and when it differs from `THERMITE_CONTROL_PUBLIC_URL`, it applies the deployments again with the new address:
+When you move control to a new address, set `THERMITE_CONTROL_PUBLIC_URL` to it and restart control. A rig keeps reporting to the old address until its supervisor gets the new one. When control's images changed too, **Update to these images** gives the rig the new address as well. When only the address changed:
 
-- It says `rig-1's pods restart with control's new address.`, and control waits for the pods and a report, as after an update.
-- For a stopped rig, it says `rig-1 gets control's new address when it starts again.`
-- The step "Its deployments applied with new images" has the detail `control's address for rigs →` and the new address.
-- When the address is the same, or control can't read the deployment, it says `rig-1 already runs control's images.` and changes nothing.
+1. Open the rig's page. Its **Set up by control** block says "Control's address for rigs changed: the rig reports to `https://control-old.example.com`, control is now at `https://control.example.com`."
+2. Press **Give it control's new address**. The rig's pods restart with the new address, on the same images. Its volume, tokens, runs and results stay; a trial in progress stops.
+
+   The page says `rig-1's pods restart with control's new address.`, and the status says `updating`. Control waits for the pods and a report, as after an update. For a stopped rig, the page says `rig-1 gets control's new address when it starts again.` The new step "Its deployments applied with new images" has the detail `control's address for rigs →` and the new address.
+
+Control records the address it gives each rig. A rig set up by an older version of control has no recorded address, so its page shows no button until its next update. For such a rig, call `update_rig_images` over MCP: control reads the address in the rig's supervisor deployment and, when it differs, applies the deployments again with the new one. When the address is the same, or control can't read the deployment, the answer is `rig-1 already runs control's images.` and nothing changes. **Give it control's new address** checks the deployment in the same way first, so the page can give the same answer.
 
 ## Remove
 

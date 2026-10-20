@@ -27,7 +27,7 @@ Thermite's limits are of four kinds. Only a cap can stop a run's work, and only 
 | `budget.device_hours` | The contract | None | The same, when the judge's time on the run reaches it: `the device-hours budget is spent` |
 | `budget.llm_usd` | The contract | None | The same, when the agents' token spending reaches it: `the model budget is spent ($<amount>)`. It counts only when the rig sets both `THERMITE_LLM_USD_PER_MTOK_IN` and `THERMITE_LLM_USD_PER_MTOK_OUT` (prices per million tokens) |
 | `min_duration`, `max_duration` | A research contract | `min_duration` is required | The research campaign closes after `max_duration` of running time (paused time does not count), or after `min_duration` when `max_duration` is not set: `the research window is over`. Other modes ignore both |
-| `max_usd_per_day` | The [advisors file](advisors-file.md) | None | The advisors skip their work until the next day (UTC). Research goes on. It counts only advisors with prices set |
+| `max_usd_per_day` | The [advisors file](advisors-file.md) | None | The advisors skip their work until the next day (UTC), and a message to the teacher pair starts no round until then. Research goes on. It counts only advisors with prices set |
 | `THERMITE_RESEARCH_MAX_MB` | The harness's settings | None | A research campaign's fetches are refused: `the corpus is full (<n> MiB archived)`. Its other tools go on |
 | Turns per trial (`max_turns`) | **Edit rig**, or `THERMITE_MAX_TURNS` | None | One trial ends after that many model replies. The lane's next trial starts afresh |
 | A RunPod test's stop time (`stop_after_minutes`) | **End it after (minutes)** on the test pod form, REST or MCP | None | The test pod is removed. At least 5 minutes. A test spends money: see [Test a GPU on RunPod](../how-to/install/runpod-test.md) |
@@ -64,7 +64,7 @@ The dashboard calls an epoch a **round**.
 | --- | --- | --- |
 | Epoch cap | 3 hours. With `budget.wall_hours`, 6% of it, between 30 minutes and 3 hours | An epoch ends when every lane's trials are done and settled, or at the cap once no trial runs |
 | Fork rounds | Every 20 epochs (epochs 21, 41, …). With `budget.wall_hours`, at one third and two thirds of it | Every lane starts again from the champion |
-| Planner call | 180 s with Pi; 300 s with OpenCode or Claude Code | An answer that code refuses is asked for once more, with the problems. After that, or after a failed or timed-out call, with no model, or with the planner turned off, lanes take queued experiments by the fixed rules (the [fallback](glossary.md)). Planner trouble never pauses research. A research run makes no planner call: its research plan fills the queue |
+| Planner call | 180 s with Pi; 300 s with OpenCode or Claude Code | A failed or timed-out call, or an answer that code refuses, is tried once more; a refused answer goes back with its problems. After a second failure, with no model, or with the planner turned off, lanes take queued experiments by the fixed rules (the [fallback](glossary.md)). Planner trouble never pauses research. A research run makes no planner call: its research plan fills the queue |
 | Goal campaign: wait for the goal report | Up to 2 hours, or until 3 checks of the champion failed | Then the epoch is planned without it |
 
 ### The judge
@@ -92,7 +92,7 @@ The dashboard calls an epoch a **round**.
 | A GPU cloud in **Providers** read again: prices, pods and spend | Every 15 minutes, and on **Read again** | Fixed |
 | Advisor rounds | 60 s after the last round ended, never less than 30 s, unless a new owner's message to the teacher pair ends the wait (below) | `THERMITE_POLL_SECONDS` |
 | Teacher reviews of a run | Every 60 minutes, and soon after the owner writes to the teacher pair, or to all the advisors, of a running run | `teacher_minutes` in the advisors file |
-| A new owner's message to the teacher pair, or to all the advisors, looked for between advisor rounds | Every 5 s, when the rig has teachers and its **Teacher pair** switch is on. Finding one ends the wait, and the next round starts; a round under way finishes first | Fixed |
+| A new owner's message to the teacher pair, or to all the advisors, looked for between advisor rounds | Every 5 s, when the rig has teachers and its **Teacher pair** switch is on. Finding one ends the wait, and the next round starts, unless the advisors' spending for the day has reached `max_usd_per_day`; a round under way finishes first | Fixed |
 | An audit or review that failed | Tried again every 30 minutes, at most 5 times, then left to the owner | Fixed |
 | Research digests | Every 60 minutes | The contract's `report_cadence.digest_minutes` |
 | Research fetches | 6 a minute for each domain: a fetch waits, it is never refused for this | The contract's `fetch_policy.per_domain_per_minute` |
@@ -167,9 +167,9 @@ None of these ends anything. A message itself is 1 to 4,000 characters (see [Con
 | What | Limit |
 | --- | --- |
 | Messages kept in force | No limit: each one stays in every new trial's brief until the owner removes it |
-| The owner's messages in an advisor's brief or package | Up to 20 that the role has not read. The teachers' brief also shows up to 5 that they read in the last 24 hours |
-| An advisor's answers to the owner's messages | Up to 50 in one answer, each cut to 1,000 characters. One longer than 20,000 characters, or anything else in `answers` that does not fit, empties that advisor's `answers`; its review, audit or verdict still counts. See [Advisors file](advisors-file.md#answers-to-the-owners-messages) |
-| How soon the teacher pair reads a new message | In the next teacher round. While the run is running and no round is under way, that round starts within about 5 s, unless the advisors' spending for the day has reached `max_usd_per_day`. See [The rig and control](#the-rig-and-control) |
+| The owner's messages in an advisor's brief or package | Up to 20 that the role has not read. The teachers' brief also shows up to 5 that they read in the last 24 hours. The brief or package in an advisor's prompt is cut to 120,000 characters for the teachers and the combiner, and 200,000 for the auditor and each panelist; the owner's messages come first in it and are never cut |
+| An advisor's answers to the owner's messages | The first 50 in one answer, each cut to 1,000 characters. An answer longer than 20,000 characters, empty, or otherwise not fitting is left out; the others still count, and so does the advisor's review, audit or verdict. See [Advisors file](advisors-file.md#answers-to-the-owners-messages) |
+| How soon the teacher pair reads a new message | In the next teacher round. While the run is running and no round is under way, that round starts within about 5 s. When the advisors' spending for the day has reached `max_usd_per_day`, it waits for the first round after midnight UTC, and the run's **Live** says so. See [The rig and control](#the-rig-and-control) |
 
 ## The experiment queue
 

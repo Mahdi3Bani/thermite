@@ -27,7 +27,7 @@ A trial is one worker's session in a [lane](../../reference/glossary.md): it end
 
 1. Open **Campaigns** in the sidebar, then the campaign. Press the run's name: on its card under **At work now**, shown as `<campaign> › <run>`, or, for a paused run, in its row under **Earlier runs**. The run's page opens.
 2. In the run's header:
-   - To pause, press **Pause**. A small menu opens. You may say why in **why (optional)**, up to 500 characters. Press **Pause the run**.
+   - To pause, press **Pause**. A small menu opens. It says `The lanes' running trials stop and no new ones start. Its jobs waiting for the judge wait until you resume, so the judge's time goes to running runs. Resume picks up from the same champion.` You may say why in **why (optional)**, up to 500 characters. Press **Pause the run**.
    - To resume a paused run, press **Resume**.
    - To restart the lanes, press **⋯**, then **Restart the lanes**. **⋯** shows only while the run is running.
 
@@ -35,10 +35,6 @@ A trial is one worker's session in a [lane](../../reference/glossary.md): it end
 3. A little later, press **refresh** in the status bar, the line along the bottom of the page. Once the rig has reported, within a minute, the run's **History** tab shows `Run sort-speed-1 paused: checking the kit.`, with the reason you gave, or `Run sort-speed-1 resumed.` After **Restart the lanes**, the running trial shows as `ended without a submission (interrupted)`, and a new plan follows.
 
 With **why (optional)** left empty, the reason is `paused from the dashboard`. The reason also shows in the run's **Now** block, and under **Why it stopped** in the campaign's **Earlier runs**.
-
-## Give the planner a rule
-
-Rules for the planner are on the run's **Planner** tab: see [Give the planner a rule](choose-what-runs-next.md#give-the-planner-a-rule).
 
 ## Send the agents a message
 
@@ -57,26 +53,26 @@ Rules for the planner are on the run's **Planner** tab: see [Give the planner a 
    - any role that is switched off on the rig's **Edit rig** page, such as `The auditor is off on this rig (Edit rig).`;
    - an advisor that the rig's supervisor has not set up, such as `This rig's supervisor has no teacher pair set up, so nothing would read it.`, and **To all advisors** when it has none.
 
-   Choosing a lane's chip above the stream, or **Planner** or **Advisors**, also chooses that recipient.
+   Choosing a lane's chip above the stream, or **Planner** or **Advisors**, also chooses that recipient. A lane that starts after the page has loaded gets its own chip when its first line arrives; its **To** entry comes with the next **refresh**.
 3. Write the message, up to 4,000 characters. The box's placeholder says when they will read it, such as `lane-1 (on loop-tiling) reads it at its next step`, or `lane-1 reads it when it can (this rig hasn't said which program runs its agents)`. To keep a message to everyone working or to a lane in force for every new trial, tick 📌, which shows only for those two (see [Keep a message in force](#keep-a-message-in-force)).
 4. Press **Send**, or Ctrl+Enter (⌘+Enter on a Mac).
 
-The rig records your message, and it reaches control with the rig's next report, within a minute. Press **refresh**: the stream shows it, such as **To lane-1:** `Look at the cache misses first.` When an agent reads it, a receipt follows: `✓ lane-1 read your message: “Look at the cache misses first.”` An advisor also answers, such as **the teacher pair (teacher-a) answered you:** and its answer. The filter **You**, above the stream, shows only your messages, their receipts and the answers. The judge takes no messages: it is code, and nothing anyone writes may change a measurement.
+Within seconds, once the rig has taken it, the stream shows your message, such as **To lane-1:** `Look at the cache misses first.` When an agent reads it, a receipt follows: `✓ lane-1 read your message: “Look at the cache misses first.”` A lane's receipt shows first as a plain line, `read the owner's message #3: …`, and becomes the receipt once the rig's next report reaches control, within a minute; a message to one trial does the same. An advisor also answers, such as **the teacher pair (teacher-a) answered you:** and its answer. Live shows a line as your message, a receipt or an answer only when the rig's harness signed it. The filter **You**, above the stream, shows only your messages, their receipts and the answers. The judge takes no messages: it is code, and nothing anyone writes may change a measurement.
 
 You can also write to the planner of a hill climb or goal run from its run's **Planner** tab: write in **Tell the planner** and press **Send to the planner**. The tab says `Sent to the rig. The planner reads it when it next gives out work; Commands shows whether the rig took it.` From what you say, the planner can change the run's experiment queue and add rules: see [Tell the planner](choose-what-runs-next.md#tell-the-planner).
 
 ### When each agent reads it
 
-A receipt means the text was given to the agent. Each reader reads a message once, except a message kept in force, which each new trial reads again.
+A receipt means the agent has the text. For a message in a new trial's brief, that is once the trial's agent is at work: its first line, or its first turn or tokens. A trial that fails before then leaves the message for the lane's next trial. Each reader reads a message once, except a message kept in force, which each new trial reads again.
 
 | Reader | When it reads your message |
 | --- | --- |
 | A worker in Pi | At its next step, before its next model call |
 | A worker in OpenCode or Claude Code | When its current run ends without a submission: the rig then continues the session with your message. A run ends when the model stops by itself, which can take many minutes. If the trial ends first, the lane's next trial reads it |
-| A worker that has submitted, or a lane with no trial running | In the brief of the lane's next trial |
+| A worker that has submitted, or a lane with no trial running | In the brief of the lane's next trial, once its agent is at work |
 | The planner | At its next plan, once its model answers. If its model can't be reached, the message waits for the next plan |
-| The teacher pair | While the run is running, in a round that starts at once, after any round already under way. For a paused run, the message waits until it runs again |
-| The auditor, the review panel | With their next audit or review. One comes only when the judge holds a change for audit, or a goal waits for review |
+| The teacher pair | While the run is running, in a round that starts at once, after any round already under way. For a paused run, the message waits until it runs again. If someone set the advisors a daily spending limit and it is reached, the message waits for the first round after midnight UTC, and **Live** says so once |
+| The auditor, the review panel | With their next audit or review, once it is posted: if it fails, the next try reads the message again. An audit or review comes only when the judge holds a change for audit, or a goal waits for review |
 
 [Supervision](../../explanation/supervision.md#the-owners-messages) says how the advisors read and answer your messages.
 
@@ -95,7 +91,7 @@ The rig's own live view, **Live** on the rig's page, has no message box: it says
 
 ### If a message doesn't arrive
 
-The rig refuses a message that nothing would read, and says why. Press **refresh** in **Live**: above the message box, a strip reads **Not sent.** `The rig refused your last message:` and the reason. It stays until a newer message to that run is taken. When control itself refuses the message, before signing it, the strip shows at once, with control's reason. **Commands** in the sidebar also has the rig's refusal: the newest **message agent** row is **failed**, with the reason under **Outcome**. The reasons include:
+The rig refuses a message that nothing would read, and says why. Press **refresh** in **Live**: above the message box, a strip reads **Not sent.** `The rig refused your last message:` and the reason. It stays until you send that run a newer message. A refused message to the planner shows on the **Planner** tab too, above **Tell the planner**. When control itself refuses the message, before signing it, the strip shows at once, with control's reason. **Commands** in the sidebar also has the rig's refusal: the newest **message agent** row is **failed**, with the reason under **Outcome**. The reasons include:
 
 - `run sort-speed-1 has 2 lanes`: the lane is not one of the run's;
 - `run sort-speed-1 is closed: nothing will read this message`;
@@ -141,12 +137,12 @@ A `redirect` takes up to 40 directives, each with a `kind`, a `rationale`, and, 
 | `lane_count` | `value`: how many lanes to plan, up to the contract's `lanes.count` |
 | `note` | Free text for the planner |
 
-- A set replaces your earlier set unless it has `"replace": false`.
+- A set replaces the rules you sent earlier from the command line or the REST API, unless it has `"replace": false`. Rules added on the dashboard or over MCP stay: remove them with `drop_directive`.
 - A set that both avoids a direction and asks for it, by name or in the same words, is refused: `the set both avoids and asks for <direction>`.
 - A directive with both `family` and `match` is refused: `bad redirect payload: directives.0.match: name either a family or match words, not both`. So is `match` on another kind: `… match words are for avoid, try and mandate rules`.
-- Rules in your own words apply only to the planner's model's hand-outs: see [Give the planner a rule](choose-what-runs-next.md#give-the-planner-a-rule).
+- Rules in your own words apply only to the planner's model's hand-outs: see [Which rules always apply](choose-what-runs-next.md#which-rules-always-apply).
 - Only the planner sees rationales, notes and match words; workers never do.
-- Your directives come before any that the rig's advisors or the planner set about the same direction.
+- Your directives come before any that the rig's advisors or the planner set on the same `family`.
 - `drop_directive` removes one rule in force, whoever set it. Its `id` is the rule's number, from `run_queue`'s `rules`. A rule that is not in force is refused: `no rule 7 in force in run sort-speed-1`.
 
 A `message_agent`'s `to` is `all` (everyone working), `planner`, `advisors` (all of them), `teachers`, `auditor`, `panel`, `lane-1` to `lane-16`, or `trial:` and a trial's id. The text may be up to 4000 characters. `"keep": true` works only with `all` or a lane; with another `to`, control refuses it: `bad message_agent payload: keep: only a message to everyone working (all) or to a lane can be kept in force`.

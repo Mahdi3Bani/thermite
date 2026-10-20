@@ -203,7 +203,7 @@ The change itself stays on the rig until the rig's next **export**: it copies th
 :::tip[If nothing waits for you after half an hour]
 Press **Live** at the top of the run's page to see what the agent is doing, and open the run's **History** tab for trials that ended. A trial can end without a change; the next trial then tries again. A busy free model ends trials with `Rate limit exceeded. Please try again later.` If every trial ends that way, give `local-1` another free model, as under [What you need](#what-you-need). The next trial uses it.
 
-If **History** says that the planner planned a round with `its fallback plan`, the model gave the planner no plan it could use, often because a free model was busy. The lane then takes the next experiment in the run's queue by fixed rules, or a new one the fixed rules add when the queue is empty. The next round asks the model again.
+If **History** says that the planner planned a round `(by the fixed rules: the model gave no usable plan, because` and a reason, the model could not plan that round, often because a free model was busy. The lane then takes the next experiment in the run's queue, or a new one that the fixed rules add when the queue is empty. The next round asks the model again.
 :::
 
 ## 11. Take the result home

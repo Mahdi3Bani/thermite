@@ -114,6 +114,7 @@ The example uses the `openai` runtime: a model API that the supervisor calls its
 - The limit counts only `openai` runtimes in the file, from their `usd_per_mtok_in` and `usd_per_mtok_out` prices. Without prices, they count as free.
 - `cli` and `claude-code` advisors, and every model given on **Edit rig**, count as $0, so the limit never stops them.
 - When the day's total reaches the limit, the advisors skip their turns until the next UTC day. The research itself goes on.
+- At the limit, a message you write to the teachers starts no round. The run's **Live** says so once for each new message, under **Advisors**: `the advisors reached the day's spending limit (20 USD): the teacher pair reads your message after midnight UTC`.
 - The check comes before each role's turn, so a round can go a little past the limit.
 
 ## Check that they work
@@ -132,7 +133,7 @@ Wait a minute, then press **refresh** in the status bar, the line along the bott
   - `advisor round done: …`, the round's counts, when the round did something.
 
   The rig's own live view (the **Live** button on the rig's page) shows the same lines when you choose **Supervisor** in its list.
-- When the teachers' advice reaches a run, its history says `A steering directive took effect.`
+- When the teachers' advice reaches a run, its **History** tab has a line for each rule they set, such as `supervisor set a rule for the plan: avoid loop-tiling.`, and for each experiment they add, such as `The teacher pair added "Unroll the loop by 4" to the queue.`
 - The run's **Experiments** tab shows the experiments the advisors added, with **teachers** or **auditor** as who added each one.
 
 A count of errors that grows means a role keeps failing. Each error is a line in **Live** with its reason, such as `audit of …: advisor auditor has no key`, and the supervisor's log has an `advisor error` line with the same reason. When the rig can't record an advisor's experiments and moves at all, the error line starts with `the queue for run-1:`. A move that the rig refuses, for example of an experiment a lane has taken since, shows after `refused:` in the advisor's own line, and the other changes still apply.
@@ -141,12 +142,14 @@ A count of errors that grows means a role keeps failing. Each error is a line in
 
 You can write to a run's advisors, as you write to its agents. On the run's **Live** page, in the box under the stream, choose under **To**:
 
-- **To the teachers**: the teacher pair reads it in a round that starts at once, instead of at its next scheduled round. The supervisor looks for new messages every few seconds between rounds; a round already under way finishes first. The teachers advise only running runs, so for a paused run they read it when it runs again. A round that fails leaves the message for the next scheduled round.
+- **To the teachers**: the teacher pair reads it in a round that starts at once, instead of at its next scheduled round. The supervisor looks for new messages every few seconds between rounds; a round already under way finishes first. The teachers advise only running runs, so for a paused run they read it when it runs again. A round that fails leaves the message for the next scheduled round. At the day's [spending limit](#spending), the message waits for the next UTC day.
 - **To the auditor**: it reads it with its next audit, which comes only when the judge holds a result for audit.
 - **To the review panel**: it reads it with its next review, which comes only when a goal waits for review.
 - **To all advisors**: each of the three that can read it, once each.
 
-Write, then press **Send**. The placeholder in the box says when the reader takes it. When an advisor reads your message, **Live** shows a line such as "✓ the teacher pair read your message", and each advisor that read it answers in one or two sentences: "the teacher pair (teacher-a) answered you: …". Choose **You** to see only your messages, the reads and the answers. The combiner sees your messages in the teachers' brief, but doesn't answer.
+Write, then press **Send**. The placeholder in the box says when the reader takes it. When an advisor reads your message, **Live** shows a line such as "✓ the teacher pair read your message", and each advisor that read it answers in one or two sentences: "the teacher pair (teacher-a) answered you: …". Choose **You** to see only your messages, the reads and the answers. An answer the supervisor can't read, or an empty one, is left out; the advisor's other answers still show. The combiner sees your messages in the teachers' brief, but doesn't answer.
+
+The auditor's and the panel's reads count only once their audit or review is posted: one that fails gives them your message again. In the teachers' brief, a message they have not had yet is marked `"read": false`, and they answer it. Up to five that they read in the last day stay in the brief, marked `"read": true`, as your standing wishes, without a new answer.
 
 A role that couldn't read your message is greyed out in the list, with one of these reasons:
 

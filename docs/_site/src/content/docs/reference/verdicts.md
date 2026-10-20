@@ -187,7 +187,7 @@ A campaign appears on the **Campaigns** page once a rig reports a run of it. A c
 
 ## Experiment states
 
-An **experiment** is one thing for a lane to try, in a run's [experiment queue](glossary.md). The harness keeps each run's experiments in its ledger, and records every change as an event that names who made it. The run page's **Experiments** tab shows them; [Choose what a run tries next](../how-to/campaigns/choose-what-runs-next.md) shows how to change them.
+An **experiment** is one thing for a lane to try, in a run's [experiment queue](glossary.md). The harness keeps each run's experiments in its ledger, and records every change as an event that names who made it. The run page's **History** tab has a sentence when an experiment is added, proposed, queued, moved, edited or dropped, and for each hand-out, such as "The teacher pair added "…" to the queue." or "The planner gave out round 4: lane-1 on "…".". The **Experiments** tab shows the experiments themselves; [Choose what a run tries next](../how-to/campaigns/choose-what-runs-next.md) shows how to change them.
 
 | State | Meaning | On the **Experiments** tab |
 | --- | --- | --- |
@@ -214,7 +214,16 @@ An **experiment** is one thing for a lane to try, in a run's [experiment queue](
 | `finished: its research is in the run's notes` | A research task whose trial ended on its own. Its sources, claims and findings are its result |
 | `dropped by <who>: <why>` | Someone dropped it: `you` (the owner, or an operator for the owner) or the `planner`. An idea dropped with its **Drop** button under **Ideas from the lanes** has the why `the owner dropped this idea` |
 
-The filters above the table group the results: **Wins** (`Champion #N`, `Promoted`, `Won`, or waiting for your approval), **Slower or broke a goal** (`Blocked` or `Broken`), **No gain** (every other outcome), **Research finished** (shown only when there are some) and **No attempt or dropped**.
+The filter chips above the table each show a count, and group the results by the attempt's outcome word:
+
+| Chip | Results |
+| --- | --- |
+| **All** | Every row |
+| **Wins** | `Champion #N`, `Promoted` or `Won`, and every attempt that waits for your approval |
+| **Slower or broke a goal** | `Blocked` or `Broken` |
+| **No gain** | Every other outcome: `Lost`, `Unclear`, `Duplicate`, `Declined`, `Judging`, and `Needs you` for an audit. A `regress` verdict (slower, or a goal lost) reads `Lost`, so it is here |
+| **Research finished** | `finished: its research is in the run's notes`. Shown only when there are some |
+| **No attempt or dropped** | `no attempt`, `no attempt: <reason>`, `<attempt>: not judged yet` and `dropped by <who>: <why>` |
 
 ## Other states
 
@@ -231,7 +240,7 @@ The filters above the table group the results: **Wins** (`Champion #N`, `Promote
 | Approach family | `live`, `exhausted` | A family becomes `exhausted` when a "not possible" proposal counts it as refuted |
 | Research claim | verified, draft | Verified when every quote is found word for word in its archived source and every number in the claim is in its quotes. A draft lists its problems |
 | Research finding | supported (a finding), draft | A finding counts when every claim it cites is verified and every number in it is in those claims. A draft finding lists its problems. See [Campaign modes](../explanation/campaign-modes.md#research) |
-| Epoch source | `planner`, `fallback` | Who gave out the epoch's work, which the dashboard calls a round. `planner`: the planner model, and History says "The planner planned round N: …". `fallback`: the fixed rules, used in a hill climb or goal campaign when the planner has no model, is off, or its answer was refused: lanes take queued experiments in order. History then adds "(its fallback plan: the model's plan was refused …)", whichever the cause. A research run's rounds are always `fallback`, with `plan: "research"` in their `epoch_started` event: the research plan fills the queue on purpose, and History says "The research plan set round N: …" |
+| Epoch source | `planner`, `fallback` | Who gave out the epoch's work, which the dashboard calls a round. `planner`: the planner model, and History says "The planner planned round N: …". `fallback`: the fixed rules, used in a hill climb or goal campaign when the planner has no model, is off, or gave no usable plan: lanes take queued experiments in order. History then says why: "(by the fixed rules: no model)", "(by the fixed rules: the planner is off on this rig (Edit rig))" or "(by the fixed rules: the model gave no usable plan, because …)". A research run's rounds are always `fallback`, with `plan: "research"` in their `epoch_started` event: the research plan fills the queue on purpose, and History says "The research plan set round N: …" |
 | Promotion policy | `auto`, `owner_approval` | Set for the run when it is assigned, or the rig's default |
 
 [Signed commands](signed-commands.md) lists the states of a command, and [Stop, restart, remove or reset a rig](../how-to/operate/rig-lifecycle.md) the steps of a full reset.

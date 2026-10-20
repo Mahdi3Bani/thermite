@@ -131,7 +131,7 @@ After **Update to these images**, **Start its pods** or **Restart them** ([Stop,
 
 The steps say "new images" after a start or a restart too, although no image changed. Either way, the block says `failed`. Fix the cause: the pods keep trying by themselves, for example once the nodes can pull the image. When the rig reports again, the block says `running`, with the ✓ step above.
 
-To have control try the same images again and wait once more, press **Restart them**, or call `update_rig_images` over MCP. The page doesn't offer **Update to these images** again, because control recorded the new images at the first try. If the new images themselves are at fault, set control's image settings back to the old ones, restart control, and press **Update to these images** again. An older harness may refuse a ledger that a newer one opened: see [The harness stops at start: the ledger is newer](#the-harness-stops-at-start-the-ledger-is-newer).
+To have control apply the images again and wait once more, press **Try the update again** in the block. It shows while the status says `failed`, after the line "The last change to its pods failed (see the steps above)." See [Try again after a failure](rig-lifecycle.md#try-again-after-a-failure). Over MCP, `update_rig_images` does the same. If the new images themselves are at fault, set control's image settings back to the old ones, restart control, and press **Update to these images**. An older harness may refuse a ledger that a newer one opened: see [The harness stops at start: the ledger is newer](#the-harness-stops-at-start-the-ledger-is-newer).
 
 ## The harness stops at start: the ledger is newer
 
@@ -237,7 +237,9 @@ The dashboard refuses to start a research run with agents in the last case. A ru
 | `run run-1 has 2 lanes` | Choose a lane the run has |
 | `run run-1 is closed: nothing will read this message` | The run has finished: nothing reads messages there |
 
-If the message isn't on **Commands** at all, control refused it before signing it. **Live** shows control's reason in the **Not sent.** strip. A message from **Tell the planner**, on a run's **Planner** tab, shows neither refusal on that tab: look for its **message agent** row on **Commands**.
+If the message isn't on **Commands** at all, control refused it before signing it. **Live** shows control's reason in the **Not sent.** strip.
+
+A message from **Tell the planner**, on a run's **Planner** tab, shows its refusal in that card, above the box: **Not sent.** and control's reason at once, or `The rig refused your last message to the planner:` and the rig's reason once the rig has answered. It stays until a later message to the planner goes through.
 
 The rig itself checks only the **Edit rig** switches. So a message sent over MCP, the REST API or the command line to an advisor that has no model is accepted, and nothing reads it until you give the role a model ([Configure advisors](advisors.md)). **Live** greys such a role out, once the rig's supervisor has reported which advisors it has: `This rig's supervisor has no auditor set up, so nothing would read it.`
 
@@ -248,9 +250,10 @@ The rig itself checks only the **Edit rig** switches. So a message sent over MCP
   - a Pi worker at its next step;
   - an OpenCode or Claude Code worker when its current run ends without a submission, which can take many minutes;
   - a worker that has already submitted doesn't read it: its lane's next trial does;
+  - a new trial reads the messages in its brief once its agent is at work, at the agent's first line or first turn; the "✓ … read your message" line comes then. A trial that fails before that leaves them for the lane's next trial;
   - the planner at its next plan, and only when its model answers;
-  - the teachers in a round that starts at once, for a run that is running;
-  - the auditor and the review panel only with their next audit or review, which come only when the judge holds a result for audit or a goal waits for review;
+  - the teachers in a round that starts at once, for a run that is running. At the advisors' [daily spending limit](advisors.md#spending), no round starts: **Live** says so once under **Advisors**, for example `the advisors reached the day's spending limit (20 USD): the teacher pair reads your message after midnight UTC`;
+  - the auditor and the review panel only with their next audit or review, which come only when the judge holds a result for audit or a goal waits for review. Their read counts only once that audit or review is posted, so one that fails gives them the message again;
   - when the rig hasn't said which program runs its agents, the placeholder says only that each agent reads it `when it can`.
 - **Do:** wait. To have every new trial of a lane, or of all lanes, read a message, keep it in force with 📌 when you send it. [Steer a run](../campaigns/steer-a-run.md) has more on messages.
 
@@ -280,17 +283,22 @@ A reason about one experiment names its state, then the rule: `only queued exper
 - **Why:** when a trial ends because it was interrupted, by **Pause**, **Restart the lanes** or a restart of the harness, or because of an error, its experiment was not really tried. It is marked as done, and a copy goes to the top of the queue, with the same author.
 - **Do:** nothing, or press **Drop** on it if it should not be tried again. A trial that ended for another reason, such as its time running out, doesn't come back.
 
-## History says the model's plan was refused
+## History says a round followed the fixed rules
 
-- **You see:** in a run's **History**, `The planner planned round 3 (its fallback plan: the model's plan was refused, because …)`, sometimes without a reason.
-- **Why:** that round had no plan from the planner's model. In two tries, the model didn't answer or gave a plan that code refused; or the rig has no model for the planner; or the **Planner** switch is off on **Edit rig**. The reason after `because` names the first problem. The lanes then took experiments from the queue in order, by fixed rules: they skip directions that an **Avoid** rule names, and take those that an **Always** rule, then a **Try** rule, names first. Rules in your own words, rather than a direction's name, are applied only by the planner's model.
+- **You see:** in a run's **History**, a round's line says why the planner's model didn't plan it, such as `The planner planned round 3 (by the fixed rules: no model): lane-1 on loop-tiling.` The words in brackets name the cause:
+  - `(by the fixed rules: the model gave no usable plan, because …)`: in two tries, the model didn't answer or gave a plan that code refused. The reason after `because` is the first problem;
+  - `(by the fixed rules: no model)`: the rig has no model for the planner, of its own or the workers';
+  - `(by the fixed rules: the planner is off on this rig (Edit rig))`: the **Planner** switch is off on **Edit rig**.
+
+  The planner's line in **Live** says the same, such as `round 3: taken from the queue by the fixed rules (no model)`.
+- **Why:** the lanes took experiments from the queue in order, by fixed rules: they skip directions that an **Avoid** rule names, and take those that an **Always** rule, then a **Try** rule, names first. Only a rule that names a direction the run has used applies this way; rules in other words are applied only by the planner's model.
 - **Do:** nothing is lost: the run goes on. If it happens every round, open the run's **Planner** tab. The **The planner** card names the planner's model, or says `No model: the lanes take the queue in order and keep to the rules.`, and counts the hand-outs made by the model and those made in queue order. Give the planner a model on **Edit rig**, or switch it on there ([Give each agent its own model](../models/model-per-agent.md)).
 
 ## Something was refused
 
 Thermite says why it refuses something. Where you see it depends on how you asked:
 
-- **The dashboard** shows `Not done.` and the reason on the rig and Providers pages, `Not started.` in a campaign's **Start a run** panel, and `Not sent.` above the message box in a run's **Live**. Some actions answer with a plain page that says `refused:` and the reason: use your browser's **Back** button. A command that control sent but the rig refused shows as **failed** on **Commands**, as for the [queue](#a-change-to-the-queue-or-a-rule-didnt-take).
+- **The dashboard** shows `Not done.` and the reason on the rig and Providers pages, `Not started.` in a campaign's **Start a run** panel, and `Not sent.` above the message box in a run's **Live** and in the **Tell the planner** card of its **Planner** tab. Some actions answer with a plain page that says `refused:` and the reason: use your browser's **Back** button. A command that control sent but the rig refused shows as **failed** on **Commands**, as for the [queue](#a-change-to-the-queue-or-a-rule-didnt-take).
 - **The REST API** answers `401 {"error":"unauthorized"}` for a token that isn't the owner's, and `400 {"error":"invalid request"}` for a body with a wrong field, without saying which. Other refusals answer **500** with the reason, for example `{"error":"unknown rig rig-9"}` or `{"error":"bad pause_run payload: run: …"}`.
 - **MCP** tools answer `{"error":"…"}` with the reason. A command kind that the token may not issue, such as `queue_add` with an agent's token, fails the tool's own input check with `Input validation error` instead.
 - **A rig** that refuses a command marks it `rejected` or `failed` on **Commands**, with the reason in **Outcome**. For example, `not now: …` for a busy rig, or `<kind> is the owner's to issue, not …'s` for a command only the owner may give.
