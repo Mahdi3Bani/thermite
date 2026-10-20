@@ -154,7 +154,7 @@ Open **Commands** in the sidebar. The `assign campaign` line shows **failed**, a
 
 ## 7. Watch the agent work
 
-Open **Live** in the sidebar. It shows the run at work, `smoke-agents-1`. The list on its left, **At work**, holds every run at work: here, only this one. In a narrow window that list is hidden, and **☰** in the header shows it. In the header above the lines, the run's name is followed by **Running**, then `local-1` (the rig) and how the run stands: its round and its gain so far. On the right are the buttons **Open the run** and **Pause**.
+Open **Live** in the sidebar. It shows the run at work, `smoke-agents-1`. The list on its left, **At work**, holds every run at work: here, only this one. In a narrow window that list is hidden, and **☰** in the header shows it. In the header above the lines, the run's name is followed by **Running**, then `local-1` (the rig) and how the run stands: its round and its gain so far. On the right are the buttons **Open the run**, **Pause** and **⋯**, which holds **Restart the lanes**.
 
 Under the header is a row of filters, which choose whose lines you see:
 

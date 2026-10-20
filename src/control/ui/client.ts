@@ -315,12 +315,22 @@ export const CLIENT_JS = `
       });
     });
   }
-  // The Tried table's filters.
-  document.querySelectorAll("#qf [data-qf]").forEach((b) => b.addEventListener("click", () => {
-    const want = b.dataset.qf.split(" ");
-    document.querySelectorAll("#qf [data-qf]").forEach((x) => x.classList.toggle("on", x === b));
-    document.querySelectorAll("#qtried tr").forEach((t) => (t.hidden = !(want[0] === "all" || want.includes(t.dataset.r))));
-  }));
+  // The Tried table's filters, together: the result (chips), the direction and who added it.
+  const qf = $("#qf");
+  if (qf) {
+    let want = ["all"];
+    const qd = qf.querySelector("[data-qd]");
+    const qb = qf.querySelector("[data-qb]");
+    const apply = () => document.querySelectorAll("#qtried tr").forEach((t) => {
+      t.hidden = !((want[0] === "all" || want.includes(t.dataset.r)) && (!qd || !qd.value || t.dataset.d === qd.value) && (!qb || !qb.value || t.dataset.b === qb.value));
+    });
+    qf.querySelectorAll("[data-qf]").forEach((b) => b.addEventListener("click", () => {
+      want = b.dataset.qf.split(" ");
+      qf.querySelectorAll("[data-qf]").forEach((x) => x.classList.toggle("on", x === b));
+      apply();
+    }));
+    for (const s of [qd, qb]) if (s) s.addEventListener("change", apply);
+  }
 
   // ------------------------------------------------ a message needs words: spaces alone are none
   document.querySelectorAll("textarea[data-words]").forEach((t) => {

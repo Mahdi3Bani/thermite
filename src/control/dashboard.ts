@@ -412,6 +412,11 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
   /** Pause, with an optional reason the run keeps (it shows wherever the run's state does). */
   const pauseMenu = (c: Ctx, rig: string, run: string, back: string, cls = "") =>
     `<details class="menu"><summary class="btn${cls ? ` ${cls}` : ""}">Pause</summary><div class="menu-pop">${cmdForm(c, { rig, kind: "pause_run", fields: { run }, label: "Pause the run", cls: "sm", back, extra: `<input name="reason" maxlength="500" placeholder="why (optional)" aria-label="Why" style="width:100%;margin-bottom:6px">` })}<div class="muted small">The lanes' running trials stop and no new ones start. Its jobs waiting for the judge wait until you resume, so the judge's time goes to running runs. Resume picks up from the same champion.</div></div></details>`;
+  /** ⋯ with Restart the lanes, for a running run with agents (the run's header and Live's). */
+  const moreMenu = (c: Ctx, rig: string, r: RunView, back: string, cls = "") =>
+    r.status === "running" && r.has_agents !== false
+      ? `<details class="menu"><summary class="btn${cls ? ` ${cls}` : ""}" title="More">⋯</summary><div class="menu-pop">${cmdForm(c, { rig, kind: "reset_workers", fields: { run: r.id }, label: "Restart the lanes", cls, back })}<div class="muted small">Ends the lanes' running trials now and the current round: every lane starts again from the champion. Nothing the judge decided is lost.</div></div></details>`
+      : "";
   const forms = (c: Ctx): Forms => ({
     cmd: (f) => cmdForm(c, f),
     csrf: csrf(c),
@@ -1515,10 +1520,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
             : "";
       // A run without agents (a try, a rig check) has no one to message and no lanes to restart.
       const agents = sel.run.has_agents !== false;
-      const more =
-        sel.run.status === "running" && agents
-          ? `<details class="menu"><summary class="btn" title="More">⋯</summary><div class="menu-pop">${cmdForm(c, { rig: sel.rig.id, kind: "reset_workers", fields: { run: sel.run.id }, label: "Restart the lanes", back })}<div class="muted small">Ends the lanes' running trials now and the current round: every lane starts again from the champion. Nothing the judge decided is lost.</div></div></details>`
-          : "";
+      const more = moreMenu(c, sel.rig.id, sel.run, back);
       return page(
         c,
         {
@@ -2323,7 +2325,8 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
     const st = runState(r);
     const head = `<div class="lhead"><button class="ghost sm lnav-btn" type="button" title="Show or hide the list of runs" aria-label="Runs">☰</button>${modeAvatar(r.mode)}<span class="t">${esc(r.id)}</span><span class="label ${st.cls}">${st.icon}${esc(st.text)}</span><span class="lmeta">${meta}</span><a class="btn sm" href="${runHref(u.id, r)}">Open the run</a>${
       r.status === "running"
-        ? pauseMenu(c, u.id, r.id, runLiveHref(u.id, r.id), "sm")
+        ? pauseMenu(c, u.id, r.id, runLiveHref(u.id, r.id), "sm") +
+          moreMenu(c, u.id, r, runLiveHref(u.id, r.id), "sm")
         : r.status === "paused"
           ? cmdForm(c, {
               rig: u.id,

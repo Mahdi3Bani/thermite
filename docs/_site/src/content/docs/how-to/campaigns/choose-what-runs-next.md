@@ -73,6 +73,8 @@ With no ideas waiting, the card says `None waiting. Lanes propose ideas while th
 
 To see only some results, press a chip above the list: **All**, **Wins**, **Not better**, **Broken or blocked**, **Other results**, **Research finished** (only when some research task has finished) or **No attempt or dropped**. Each chip shows its count. [An experiment's result](../../reference/verdicts.md#an-experiments-result) lists every **Result** and the chip that holds it.
 
+To narrow the list further, choose a direction in **Every direction**, or an author in **Anyone added it**, such as `you`, `planner` or `lane-2's idea`. Each lists only what **Tried** holds. The chip and the two lists work together: for example, **Wins** with `memory-layout` and `planner` shows the planner's wins in that direction.
+
 ## Give the planner a rule
 
 A **rule** tells the planner which directions to avoid or to favor. It changes what the lanes work on, never a verdict.
@@ -133,7 +135,17 @@ A research run has no planner model: its card **The plan** says `A research run 
 - `lane-1: use 32x32 blocks for the cache · a TRY rule (1) names its direction, cache-blocking`
 - `lane-2: … · the queue was empty, so the fixed plan added it`
 
-The model's notes follow, or, when the fixed rules gave out the work, a note that says why and ends `lanes took queued experiments in order`, such as `the model gave no usable plan: lanes took queued experiments in order`. A lane's later trial in a round has a hand-out of its own, noted such as `lane-1's trial 2 of 3 in round 4`. The tab shows the newest 30; before the first, it says `No hand-out yet.`
+The model's notes follow, or, when the fixed rules gave out the work, a note that says why and ends `lanes took queued experiments in order`, such as `the model gave no usable plan: lanes took queued experiments in order`. A lane's later trial in a round has a hand-out of its own, noted such as `lane-1's trial 2 of 3 in round 4`.
+
+Between the hand-outs, in time order, are the planner's own changes to the queue and the rules it set, each with its reason:
+
+- `Queued lane-2's idea “reference sum in the same order” · it protects the quality goal`
+- `Added “wider loads” to the queue · reads dominate`, also for an experiment the fixed plan added, such as `· the queue was empty, so the fixed plan added it`
+- `Moved “overlap the next tile” to place 4 · it depends on the fusion result`
+- `Dropped “shared-memory tiling, third form” · a rule avoids it`
+- `Set the rule avoid anything that touches the timer · you asked for it (from your message: “Never touch the timer code.”)`
+
+The tab shows the newest 30 entries; before the first, it says `No hand-out yet.`
 
 The run's **History** tab tells each round in a sentence, such as `The planner planned round 4: lane-1 on loop-tiling; lane-2 on vectorize.` A round that the fixed rules planned says why, such as `(by the fixed rules: the planner is off on this rig (Edit rig))` or `(by the fixed rules: the model gave no usable plan, because …)`. After `because` comes the problem with the model's answer, or, when there were several, each in turn with its try: `try 1: …; try 2: …`. Each hand-out follows, such as `The planner gave out round 4: lane-1 on "vectorize the scale loads (half2)".` A research round reads `The research plan set round 4: …`.
 

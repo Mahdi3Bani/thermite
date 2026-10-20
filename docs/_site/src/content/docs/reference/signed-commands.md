@@ -112,7 +112,7 @@ The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_revie
 | `pause_run` | **Pause**, then **Pause the run** in its menu, in a run's header, in the header of the run's **Live**, and on the run's card under **At work now** | Yes | Yes | Yes | Yes | |
 | `resume_run` | **Resume** in a run's header, in the header of the run's **Live**, and on a paused run's row under **Earlier runs** | Yes | Yes | Yes | Yes | |
 | `redirect` | **Add the rule** on a run's **Planner** tab (one rule, in a direction's name or your own words, added to the earlier ones) | Yes | Yes | Yes | Yes | |
-| `reset_workers` | **Restart the lanes**, under **⋯** in the header of a running run with agents | Yes | Yes | Yes | Yes | |
+| `reset_workers` | **Restart the lanes**, under **⋯** in the header of a running run with agents, on its page and in Live | Yes | Yes | Yes | Yes | |
 | `export_now` | **Export now** on a rig's page | Yes | Yes | Yes | Yes | |
 | `message_agent` | **Send** in the message box of a run's **Live**; **Send to the planner** on a run's **Planner** tab, while the planner is on | Yes | Yes | Yes | No | Yes |
 | `unkeep_message` | **Remove** in the **📌 &lt;n&gt; kept** list of a run's **Live** | Yes | Yes | Yes | No | Yes |
