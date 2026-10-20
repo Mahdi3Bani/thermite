@@ -123,6 +123,24 @@ export class OwnerMessages {
     const contract = this.contractFor(run);
     const s = this.settings();
     const lanes = Math.min(contract.lanes.count, 16);
+    // The lanes at work now: a lane_count rule can run fewer than the contract's count.
+    const ruled = this.ledger
+      .activeDirectives(run)
+      .map((d) => d.body as { kind?: string; value?: unknown })
+      .filter((b) => b.kind === "lane_count" && Number.isFinite(Number(b.value)))
+      .map((b) => Number(b.value))
+      .at(-1);
+    const working = ruled !== undefined ? Math.max(1, Math.min(lanes, Math.trunc(ruled))) : lanes;
+    // A run without agents (a try) has no lanes and no planner to read anything.
+    const noAgents = this.ledger.getRun(run)?.agents === false;
+    if (
+      noAgents &&
+      (to === "all" || to === "planner" || /^lane-\d+$/.test(to) || to.startsWith("trial:"))
+    )
+      throw new LedgerError(
+        "invalid",
+        `run ${run} has no agents (the judge alone tries the kit): nothing would read this message`,
+      );
     const planner = (): string | undefined =>
       contract.mode === "research"
         ? "a research run plans its rounds with a fixed method; it has no planner to message"
@@ -148,7 +166,7 @@ export class OwnerMessages {
         : "this run has no goal the review panel reviews, so the panel would never read this message";
     };
     if (to === "all") {
-      const readers = Array.from({ length: lanes }, (_, i) => `lane-${i + 1}`);
+      const readers = Array.from({ length: working }, (_, i) => `lane-${i + 1}`);
       return planner() ? { readers } : { readers: [...readers, "planner"] };
     }
     if (to === "planner") {

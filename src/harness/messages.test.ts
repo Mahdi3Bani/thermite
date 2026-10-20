@@ -56,6 +56,28 @@ const trial = (id: string, lane: string) => ({
 });
 
 describe("the owner's messages", () => {
+  test("a run without agents takes no message for its lanes or planner; a lane rule counts the lanes everyone reaches", async () => {
+    const tryEnv = makeJudgeEnv({ lanes: { count: 2, trials_per_epoch: 1 }, agents: false });
+    await tryEnv.service.applyCommand(tryEnv.assign);
+    for (const to of ["all", "lane-1", "planner"]) {
+      const out = await send(tryEnv, { to, text: "hello" });
+      assert.equal(out.accepted, false, to);
+      assert.match(String(out.result.error), /has no agents/);
+    }
+    const env = makeJudgeEnv({ lanes: { count: 3, trials_per_epoch: 1 } });
+    await env.service.applyCommand(env.assign);
+    await command(env, "redirect", {
+      run: "js-1",
+      directives: [{ kind: "lane_count", value: 2, rationale: "two lanes are enough" }],
+    });
+    const sent = await send(env, { to: "all", text: "two lanes now" });
+    assert.deepEqual((sent.result as { readers: string[] }).readers, [
+      "lane-1",
+      "lane-2",
+      "planner",
+    ]);
+  });
+
   test("everyone working reaches each lane once and the planner; a read is recorded only when given, and the first read by each reader is an event", async () => {
     const env = makeJudgeEnv({ lanes: { count: 2, trials_per_epoch: 1 } });
     await env.service.applyCommand(env.assign);
