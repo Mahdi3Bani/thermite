@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { log } from "../common/env.ts";
+import type { NoteInput } from "../core/journal.ts";
 import type { LiveKind } from "../core/live.ts";
 import {
   type AdvisorsConfig,
@@ -337,6 +338,32 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
     }
   };
 
+  /**
+   * An advisor's field notes, posted after its work was: the harness records them as written by
+   * `<role>:<name>` (each note checked on its own). A failure is the advisor's error line; its
+   * review, audit or verdict stands.
+   */
+  const notesOut = async (
+    run: string,
+    role: "teachers" | "auditor" | "panel",
+    by: string,
+    notes: NoteInput[],
+  ): Promise<unknown> => {
+    if (!notes.length) return undefined;
+    try {
+      const r = (await api("POST", "/v1/journal", { run, role, by, notes })) as {
+        recorded: number[];
+        problems: string[];
+      };
+      if (r.problems.length)
+        say(run, "status", `the field notes of ${by}: ${clip(r.problems.join("; "), 400)}`);
+      return r;
+    } catch (err) {
+      fail(`the field notes of ${by} for ${run}`, err, run);
+      return undefined;
+    }
+  };
+
   // The teacher pair, per running run, on its cadence, and at once for a new owner's message.
   // At the limit, an owner's message to the teacher pair waits for the next day: said once.
   if (cfg.advisors.teachers.length && overBudget()) {
@@ -425,7 +452,10 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         }
         // Their experiments for the run's queue, and moves of queued ones.
         const queued = await toQueue(inst.id, "teacher", run.experiments, run.moves);
-        record(`teachers-${inst.id}`, { ...run, posted, queued });
+        // Then each teacher's (and the combiner's) field notes, once the round's work is posted.
+        const noted: unknown[] = [];
+        for (const j of run.journal) noted.push(await notesOut(inst.id, "teachers", j.by, j.notes));
+        record(`teachers-${inst.id}`, { ...run, posted, queued, noted });
       } catch (err) {
         fail(`teachers for ${inst.id}`, err, inst.id);
       }
@@ -489,7 +519,11 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
                 [],
               )
             : undefined;
-        record(`audit-${pkg.attempt}`, { decision: r.output, posted, queued });
+        // Its field notes, once the audit is posted.
+        const noted = pkg.run
+          ? await notesOut(pkg.run, "auditor", cfg.advisors.auditor.name, r.output.journal)
+          : undefined;
+        record(`audit-${pkg.attempt}`, { decision: r.output, posted, queued, noted });
       } catch (err) {
         fail(`audit of ${pkg.attempt}`, err, pkg.run);
       }
@@ -510,12 +544,14 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
       try {
         const results: { reviewer: string; pass: boolean; reasons: string }[] = [];
         const answers: { message: number; text: string; advisor: string }[] = [];
+        const journal: { by: string; notes: NoteInput[] }[] = [];
         for (const runtime of cfg.advisors.panel) {
           const r = await reviewOne({ runtime, pkg: { ...pkg, owner_messages: owner } });
           count(r);
           if (!r.output) continue;
           results.push({ reviewer: runtime.name, pass: r.output.pass, reasons: r.output.reasons });
           for (const a of r.output.answers) answers.push({ ...a, advisor: runtime.name });
+          if (r.output.journal.length) journal.push({ by: runtime.name, notes: r.output.journal });
           say(
             pkg.run,
             "text",
@@ -550,7 +586,11 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           "status",
           `review ${pkg.id}: ${posted?.result === "review_passed" ? "the panel passed it; it waits for the owner's acceptance" : "the panel did not pass it"}`,
         );
-        record(`review-${pkg.id}`, { results, posted });
+        // Each panelist's field notes, once the review is posted.
+        const noted: unknown[] = [];
+        if (pkg.run)
+          for (const j of journal) noted.push(await notesOut(pkg.run, "panel", j.by, j.notes));
+        record(`review-${pkg.id}`, { results, posted, noted });
       } catch (err) {
         fail(`review ${pkg.id}`, err, pkg.run);
       }

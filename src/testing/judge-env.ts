@@ -156,6 +156,8 @@ export function makeJudgeEnv(
     /** The kit's metrics, instead of the default rate `ops_per_s`. */
     kitMetrics?: Record<string, unknown> | undefined;
     share?: { root: string; seed: string; kitCommit: string } | undefined;
+    /** More fields for the assignment's payload (for example a briefing). */
+    assign?: Record<string, unknown> | undefined;
   } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), "thermite-judge-"));
@@ -290,6 +292,7 @@ export function makeJudgeEnv(
           { kind: "repo_bundle", path: "repos/p.bundle", repo: "proj", commit: seed },
           { kind: "kit_bundle", path: "repos/k.bundle", repo: "js-kit", commit: kitCommit },
         ],
+        ...opts.assign,
       },
     },
     keys.privateKeyPem,

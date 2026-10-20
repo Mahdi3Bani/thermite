@@ -19,8 +19,9 @@ import { championFiles } from "./propagation.ts";
  * Outbox export. The harness has no git credentials and no remote access: it writes exports
  * into the shared outbox, and the supervisor pushes them to the results repository as packed
  * commits. An export holds patches and manifests for attempts recorded since the last export,
- * the events since then, a consistent ledger snapshot, and each new run champion as a patch
- * against its seed (what other rigs need to judge it themselves).
+ * the events since then, the runs' field notes, research notes and briefings since then, a
+ * consistent ledger snapshot, each new run champion as a patch against its seed (what other rigs
+ * need to judge it themselves), and the research folder of each run that finished.
  */
 
 export interface ExportResult {
@@ -99,12 +100,88 @@ export async function writeExport(input: {
       }
     }
 
+    // A run's field notes recorded since the last export (journal.jsonl), the research notes
+    // (research-notes.jsonl, with every source they cite) and the background the owner picked
+    // for runs created since then (briefing.jsonl), oldest first. The ledger snapshot holds all of
+    // them too; these are for readers without SQLite.
+    const ids = (kind: string, field: string) =>
+      events
+        .filter((e) => e.kind === kind)
+        .map((e) => Number((e.body as Record<string, unknown>)[field]))
+        .filter((n) => Number.isInteger(n));
+    const rowsOf = (table: string, list: number[]) =>
+      list.length
+        ? (ledger.db
+            .prepare(
+              `select * from ${table} where id in (${list.map(() => "?").join(", ")}) order by id`,
+            )
+            .all(...list) as Record<string, unknown>[])
+        : [];
+    const jsonl = (rows: unknown[]) =>
+      rows.map((r) => canonicalJson(r)).join("\n") + (rows.length ? "\n" : "");
+    const journal = rowsOf("journal_note", ids("journal_note", "id")).map((r) => ({
+      id: Number(r.id),
+      run: String(r.run),
+      by: String(r.by),
+      kind: String(r.kind),
+      text: String(r.text),
+      ...(r.about_type ? { about: { type: String(r.about_type), id: String(r.about_id) } } : {}),
+      ...(r.lane ? { lane: String(r.lane) } : {}),
+      ...(r.trial ? { trial: String(r.trial) } : {}),
+      at: String(r.at),
+    }));
+    writeFileSync(join(tmp, "journal.jsonl"), jsonl(journal));
+    const notesRel: string[] = [];
+    const researchNotes = rowsOf("note", ids("research_note", "note")).map((r) => ({
+      id: Number(r.id),
+      run: String(r.run),
+      lane: r.lane === null ? null : String(r.lane),
+      text: String(r.text),
+      sources: JSON.parse(String(r.sources)) as string[],
+      at: String(r.created_at),
+    }));
+    if (researchNotes.length) {
+      writeFileSync(join(tmp, "research-notes.jsonl"), jsonl(researchNotes));
+      notesRel.push("research-notes.jsonl");
+    }
+    const created = [
+      ...new Set(events.filter((e) => e.kind === "run_created").map((e) => String(e.subject))),
+    ];
+    const briefing = created.flatMap((run) =>
+      ledger.briefing(run).map((b, i) => ({ run, seq: i + 1, ...b })),
+    );
+    if (briefing.length) {
+      writeFileSync(join(tmp, "briefing.jsonl"), jsonl(briefing));
+      notesRel.push("briefing.jsonl");
+    }
+
     // A research campaign's output is its report and its whole folder: claims, findings, notes,
-    // sources and the lanes' files, exported once its final report is written.
+    // sources and the lanes' files, exported once its final report is written. A hill-climb or
+    // goal run that recorded sources, claims or notes exports its folder when it is closed.
     if (input.researchFolder) {
-      const finished = new Set(
-        events.filter((e) => e.kind === "research_final").map((e) => String(e.subject)),
-      );
+      const recorded = (run: string) =>
+        Number(
+          (
+            ledger.db
+              .prepare(
+                `select (select count(*) from source where run = ?) + (select count(*) from claim where run = ?)
+                   + (select count(*) from note where run = ?) as n`,
+              )
+              .get(run, run, run) as { n: number }
+          ).n,
+        ) > 0;
+      const finished = new Set([
+        ...events.filter((e) => e.kind === "research_final").map((e) => String(e.subject)),
+        ...events
+          .filter(
+            (e) =>
+              e.kind === "run_status" &&
+              (e.body as { status?: string }).status === "closed" &&
+              ledger.getRun(String(e.subject))?.mode !== "research" &&
+              recorded(String(e.subject)),
+          )
+          .map((e) => String(e.subject)),
+      ]);
       for (const run of finished) {
         let folder: { root: string; files: string[] };
         try {
@@ -130,6 +207,8 @@ export async function writeExport(input: {
 
     const files = [
       "events.jsonl",
+      "journal.jsonl",
+      ...notesRel,
       "ledger.sqlite",
       ...attemptIds.flatMap((id) => [`attempts/${id}.patch`, `attempts/${id}.json`]),
       ...championRel,

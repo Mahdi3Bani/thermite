@@ -1,9 +1,13 @@
 import { Agent, type AgentMessage, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type Message, type TSchema, Type } from "@earendil-works/pi-ai";
 import { type LaneLimitValues, laneLimits, SHARED_DEV_RUN_S } from "../../core/contract.ts";
+import { notesInstruction } from "../../core/journal.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { linkSession, type SessionLink } from "./live-session.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
+import { NOTE_TOOL, type NoteRequest, writeNote } from "./notes-tool.ts";
+import { researchAgentTools } from "./research-agent-tools.ts";
+import { CODE_RESEARCH_TOOLS, codeResearchNote } from "./research-tools.ts";
 
 /**
  * One worker trial: a fresh agent session (Pi) with Thermite's tools, in the lane's own
@@ -110,6 +114,10 @@ export interface TrialDeps {
   devRun?(req: { lane: string; command: string; timeoutS?: number }): Promise<unknown>;
   /** An idea for the run's experiment queue: proposed by this lane, for the planner to take. */
   idea?(req: IdeaInput): Promise<{ experiment: string }>;
+  /** A field note: written by this lane, in the run's journal. */
+  note?(req: NoteRequest): Promise<{ note: number }>;
+  /** The research service (sources, claims and notes in the run's folder): one operation. */
+  research?(op: string, args: Record<string, unknown>): Promise<unknown>;
   /** The live view: the session's turns out, the owner's messages in. */
   link?: SessionLink | undefined;
 }
@@ -143,6 +151,11 @@ are given. If you find a flaw in your own change, list it in known_flaws: hiding
 a smaller result. If you cannot make a useful change, explain why in your final message without
 submitting. If you see another experiment worth trying that is not your assignment, propose it
 with the idea tool: the planner or the campaign's owner decides whether it is queued, and your trial goes on.`;
+
+/** Field notes, and sources, claims and notes from the web, for a code trial (goal 065). */
+const NOTES_AND_SOURCES = `${notesInstruction("with the note tool")}
+
+${codeResearchNote("with the fetch tool")}`;
 
 function text(t: string) {
   return { content: [{ type: "text" as const, text: t }], details: {} };
@@ -313,6 +326,32 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
           ),
         ]
       : []),
+    ...(deps.note
+      ? [
+          tool(NOTE_TOOL.name, NOTE_TOOL.description, NOTE_TOOL.parameters, (p) =>
+            writeNote(deps.note as NonNullable<TrialDeps["note"]>, p),
+          ),
+        ]
+      : []),
+    // Sources, claims and notes in the run's research folder, as a research trial records them.
+    ...(deps.research
+      ? researchAgentTools(
+          CODE_RESEARCH_TOOLS,
+          async (op, args) => {
+            // A submission ends the trial: nothing runs after it.
+            if (result.submitted) return "the trial ended with your submission";
+            try {
+              return await (deps.research as NonNullable<TrialDeps["research"]>)(op, args);
+            } catch (err) {
+              return `refused: ${err instanceof Error ? err.message : String(err)}`;
+            }
+          },
+          { run: spec.run, lane: spec.lane },
+          () => {
+            result.toolCalls++;
+          },
+        )
+      : []),
     tool(
       "submit",
       "Submit your change for judging. Call it once, when your change builds and passes your own tests. This ends the trial.",
@@ -373,7 +412,12 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
 
   const { models, model, thinkingLevel } = buildModel(deps.model);
   const agent = new Agent({
-    initialState: { systemPrompt: SYSTEM, model, tools, thinkingLevel },
+    initialState: {
+      systemPrompt: `${SYSTEM}\n\n${NOTES_AND_SOURCES}`,
+      model,
+      tools,
+      thinkingLevel,
+    },
     streamFn: models.streamSimple.bind(models),
     convertToLlm: withoutPastThinking,
     // One tool call at a time: lane processes are killed by user when a tool finishes, so

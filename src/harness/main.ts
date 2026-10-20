@@ -325,12 +325,15 @@ async function main(): Promise<void> {
     unavailable: devCard?.error,
   });
 
-  // Each research run's folder: what it has learned, as files its workers search and add to.
+  // Each run's research folder: what it has learned, as files its workers search (and, in a
+  // research run, add to), with past research under knowledge/ (the same folders the service's
+  // knowledge store writes).
   const researchFolder = new ResearchFolder({
     ledger,
     scratchRoot: join(paths.scratchDir, "research"),
     stateRoot: join(paths.stateDir, "research-work"),
     runner,
+    knowledge: service.knowledge,
   });
   const research = new Research(ledger, paths.stateDir, {
     maxCorpusBytes: env.THERMITE_RESEARCH_MAX_MB

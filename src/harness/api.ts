@@ -351,6 +351,34 @@ export function createHarnessApi(
     c.json(service.advisorQueue(AdvisorQueueRequest.parse(await c.req.json()))),
   );
 
+  // The advisors' field notes, posted after their review, audit or verdict: each recorded as
+  // written by `<role>:<name>`. Each note is checked on its own; a refused one is said.
+  app.post("/v1/journal", supervisor, bodyLimit({ maxSize: 2 * 1024 * 1024 }), async (c) => {
+    const body = z
+      .strictObject({
+        run: z.string().min(1).max(100),
+        role: z.enum(["teachers", "auditor", "panel"]),
+        by: z.string().trim().min(1).max(100),
+        notes: z.array(z.unknown()),
+      })
+      .parse(await c.req.json());
+    return c.json(service.advisorNotes(body));
+  });
+
+  // Past research for a run's folder, from control's knowledge base (the supervisor syncs it):
+  // each item a file under the run's knowledge/. `folders` (the folders the run's campaign may
+  // read now) removes a folder whose grant was revoked.
+  app.post("/v1/kb", supervisor, bodyLimit({ maxSize: 32 * 1024 * 1024 }), async (c) => {
+    const body = z
+      .strictObject({
+        run: z.string().min(1).max(100),
+        items: z.array(z.unknown()),
+        folders: z.array(z.string().min(1).max(200)).optional(),
+      })
+      .parse(await c.req.json());
+    return c.json(service.writeKnowledge(body.run, body.items, body.folders));
+  });
+
   // The live log, signed, for the supervisor to relay to control.
   app.get("/v1/live", supervisor, (c) => {
     const after = Number(c.req.query("after") ?? "0");
@@ -414,6 +442,12 @@ export function createHarnessApi(
   app.post("/v1/trial/idea", bodyLimit({ maxSize: 64 * 1024 }), async (c) => {
     const { token } = trialOf(c.req.header("authorization"));
     return c.json(service.proposeIdea(token, await c.req.json()), 201);
+  });
+
+  // A worker's field note: its trial decides the run, the lane and who wrote it.
+  app.post("/v1/trial/note", bodyLimit({ maxSize: 64 * 1024 }), async (c) => {
+    const { token } = trialOf(c.req.header("authorization"));
+    return c.json(service.writeTrialNote(token, await c.req.json()), 201);
   });
 
   app.post("/v1/exports/done", supervisor, bodyLimit({ maxSize: 256 * 1024 }), async (c) => {
@@ -526,9 +560,10 @@ export function createHarnessApi(
     const r = extras.research;
     if (!r) return c.json({ error: "research is not available" }, 404);
     const body = (await c.req.json()) as Record<string, unknown>;
-    // The trial decides where its work goes; run and lane in the body are ignored.
+    // The trial decides where its work goes; run and lane in the body are ignored. A hill-climb
+    // or goal trial records sources, claims and notes too (goal 065); the rest is research's.
     const { run, lane } = trial;
-    r.requireRunning(run);
+    r.requireRunning(run, c.req.param("op"));
     const s = (k: string) => String(body[k] ?? "");
     switch (c.req.param("op")) {
       case "fetch":
@@ -544,7 +579,7 @@ export function createHarnessApi(
       case "claim":
         return c.json(r.addClaim(run, lane, body));
       case "note":
-        return c.json(r.addNote(run, lane, s("text"), Strings.parse(body.sources)));
+        return c.json(r.addNote(run, lane, s("text"), Strings.parse(body.sources), trial.id));
       case "hypothesis":
         return c.json(r.proposeHypothesis(run, lane, s("text"), Strings.parse(body.supporting)));
       case "finding":

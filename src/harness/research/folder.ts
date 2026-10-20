@@ -15,6 +15,7 @@ import {
 import { dirname, join } from "node:path";
 import type { ResearchFolderPaths } from "../agents/research-tools.ts";
 import type { Role, Runner } from "../broker/runner.ts";
+import { countsText, type Knowledge } from "../knowledge.ts";
 import type { Ledger } from "../ledger.ts";
 
 /**
@@ -36,6 +37,12 @@ import type { Ledger } from "../ledger.ts";
 type Row = Record<string, unknown>;
 
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+
+/** A run's folder under the folders' root (scratch/research): its run id must be a safe name. */
+export function folderRootOf(scratchRoot: string, run: string): string {
+  if (!SAFE.test(run)) throw new Error(`not a run id for a folder: ${run}`);
+  return join(scratchRoot, run);
+}
 
 /** Writes a file whole or not at all: readers never see half of it. */
 function writeAtomic(path: string, data: string | Buffer): void {
@@ -107,16 +114,25 @@ export class ResearchFolder {
   /** Contents last written for files that do change. */
   private readonly last = new Map<string, string>();
 
-  constructor(o: { ledger: Ledger; scratchRoot: string; stateRoot: string; runner: Runner }) {
+  /** Past research shown under knowledge/ (the harness keeps its own copy, knowledge.ts). */
+  private readonly knowledge: Pick<Knowledge, "show" | "summary"> | undefined;
+
+  constructor(o: {
+    ledger: Ledger;
+    scratchRoot: string;
+    stateRoot: string;
+    runner: Runner;
+    knowledge?: Pick<Knowledge, "show" | "summary"> | undefined;
+  }) {
     this.ledger = o.ledger;
     this.scratchRoot = o.scratchRoot;
     this.stateRoot = o.stateRoot;
     this.runner = o.runner;
+    this.knowledge = o.knowledge;
   }
 
   root(run: string): string {
-    if (!SAFE.test(run)) throw new Error(`not a run id for a folder: ${run}`);
-    return join(this.scratchRoot, run);
+    return folderRootOf(this.scratchRoot, run);
   }
 
   private all(sql: string, ...p: string[]): Row[] {
@@ -137,28 +153,33 @@ export class ResearchFolder {
     this.last.set(path, body);
   }
 
-  /** Brings the folder's harness-written part up to date with the records. */
+  /**
+   * Brings the folder's harness-written part up to date with the records. A hill-climb or goal
+   * run's folder holds what its trials recorded (sources, claims, notes) and past research; a
+   * research run's holds everything above.
+   */
   sync(run: string): string {
     const root = this.root(run);
     const inst = this.ledger.getRun(run);
-    if (inst?.mode !== "research") throw new Error(`${run} is not a research run`);
+    if (!inst) throw new Error(`no run ${run}`);
+    const research = inst.mode === "research";
     const contract = this.ledger.getContract(inst.campaign, inst.version) as {
       title?: string;
       topic?: string;
       questions?: string[];
       quality?: { min_independent_sources?: number };
     };
-    for (const d of [
-      "sources",
-      "claims",
-      "findings",
-      "hypotheses",
-      "notes",
-      "report",
-      "lanes",
-      "work",
-    ])
+    for (const d of research
+      ? ["sources", "claims", "findings", "hypotheses", "notes", "report", "lanes", "work"]
+      : ["sources", "claims", "notes"])
       mkdirSync(join(root, d), { recursive: true });
+    this.knowledge?.show(run);
+    const knowledge = this.knowledge?.summary(run);
+    const knowledgeLine = knowledge
+      ? [
+          `- knowledge/: past research from the folders this campaign may read (${countsText(knowledge.counts)}, from ${knowledge.folders.join(", ")}); README.md there says what is where`,
+        ]
+      : [];
 
     const sources = this.all("select * from source where run = ? order by fetched_at", run);
     const urlOf = new Map(sources.map((s) => [String(s.id), String(s.url)]));
@@ -267,6 +288,28 @@ export class ResearchFolder {
         ].join("\n"),
       );
 
+    const verified = claims.filter((c) => Number(c.verified) === 1).length;
+    if (!research) {
+      // A hill-climb or goal run: what its trials recorded, and past research.
+      this.changed(
+        join(root, "INDEX.md"),
+        [
+          `# ${contract.title ?? run}`,
+          "",
+          "This folder holds the sources, claims and notes this run's workers recorded, and past research from the folders its campaign may read. The harness writes it from its records and keeps it current. Every worker can read and search all of it, and change none of it.",
+          "",
+          "## What is here",
+          "",
+          `- sources/: ${sources.length} archived pages as text, one file each (claims quote these words)`,
+          `- claims/: ${claims.length} claims, ${verified} verified and ${claims.length - verified} drafts (the first line says which)`,
+          `- notes/: ${notes.length}`,
+          ...knowledgeLine,
+          "",
+        ].join("\n"),
+      );
+      return root;
+    }
+
     const sections = this.all("select * from report_section where run = ? order by name", run);
     for (const s of sections)
       this.changed(
@@ -293,7 +336,6 @@ export class ResearchFolder {
         order by f.lane, f.path`,
       run,
     );
-    const verified = claims.filter((c) => Number(c.verified) === 1).length;
     this.changed(
       join(root, "INDEX.md"),
       [
@@ -319,6 +361,7 @@ export class ResearchFolder {
         `- notes/: ${notes.length}`,
         `- report/: ${sections.length} report sections`,
         `- lanes/: the files each lane wrote, as they were when its last trial ended (${files.length} files)`,
+        ...knowledgeLine,
         "",
         "## Findings",
         "",
@@ -442,7 +485,8 @@ export class ResearchFolder {
   }
 
   /**
-   * The folder for an export, without the working areas: rebuilt from the records and the
+   * The folder for an export, without the working areas and without past research (knowledge/
+   * holds other runs' records, which their own exports carry): rebuilt from the records and the
    * saved files when scratch was cleared. Relative paths of its regular files.
    */
   exportFiles(run: string): { root: string; files: string[] } {
@@ -450,7 +494,10 @@ export class ResearchFolder {
     this.showLanes(run);
     return {
       root,
-      files: regularFiles(root, (rel) => rel === "work" || /\.tmp-[0-9a-f]{8}$/.test(rel)),
+      files: regularFiles(
+        root,
+        (rel) => rel === "work" || rel === "knowledge" || /\.tmp-[0-9a-f]{8}$/.test(rel),
+      ),
     };
   }
 }

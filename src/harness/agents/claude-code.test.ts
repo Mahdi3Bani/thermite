@@ -138,6 +138,8 @@ describe("Claude Code", () => {
     assert.ok(!a.join(" ").includes("sk-ant"), "the token is never an argument");
     assert.match(CLAUDE_SYSTEM, /Bash tool stops a command after two minutes/);
     assert.doesNotMatch(CLAUDE_SYSTEM, /set timeout to 0/);
+    // Claude Code keeps field notes with the same command as OpenCode.
+    assert.match(CLAUDE_SYSTEM, /keep field notes with "thermite-trial note --kind KIND/);
   });
 
   const spec = (area: string, workspace: string, over: Partial<TrialSpec> = {}): TrialSpec => ({

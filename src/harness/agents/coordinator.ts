@@ -179,13 +179,18 @@ export class Coordinator {
   /**
    * Applies a model's checked answer: accepted ideas and drops, new experiments (their refs
    * become ids), moves, and the rules from the owner's messages. A change the queue no longer
-   * allows (the owner moved first) is skipped and said. Returns each lane's hand-out; a lane
-   * whose experiment can no longer be given out gets none, and takes one by the fixed rules.
+   * allows (the owner moved first) is skipped and said. Returns each lane's hand-out (a lane
+   * whose experiment can no longer be given out gets none, and takes one by the fixed rules), and
+   * the ids the added experiments got, by their refs.
    */
   apply(
     run: string,
     plan: QueuePlan,
-  ): { handout: (Handout & { parent: "champion" | "lane_best" })[]; skipped: string[] } {
+  ): {
+    handout: (Handout & { parent: "champion" | "lane_best" })[];
+    skipped: string[];
+    refs: Map<string, string>;
+  } {
     const skipped: string[] = [];
     const tryIt = (what: string, f: () => void) => {
       try {
@@ -249,7 +254,7 @@ export class Coordinator {
       }
       handout.push({ lane: h.lane, experiment: id, parent: h.parent, why: h.why });
     }
-    return { handout, skipped };
+    return { handout, skipped, refs };
   }
 
   /** The direction-registry family for an experiment's direction (registered if new). */

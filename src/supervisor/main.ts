@@ -14,6 +14,7 @@ import { type ControlAdvisors, fetchControlAdvisors, mergeAdvisors } from "./adv
 import { AdvisorsConfig } from "./advisors.ts";
 import { type ChampionUpload, championsIn, uploadChampions } from "./champions.ts";
 import { type ExportState, exportOnce } from "./git-export.ts";
+import { emptyKbSyncState, type KbSyncState, syncKnowledgeOnce } from "./kb-sync.ts";
 import { type LiveRelayState, relayLiveOnce, supervisorLive } from "./live.ts";
 import { syncModelRoute } from "./model-route.ts";
 import { RelayError, type RelayState, relayCommandsOnce, relayOnce } from "./relay.ts";
@@ -299,6 +300,36 @@ async function main(): Promise<void> {
   };
   const routingDone = routing();
 
+  // Past research for each running run, from control's knowledge base into the run's research
+  // folder (knowledge/), every few minutes. The cursor of each run is kept here.
+  const kbPath = join(home, "kb-state.json");
+  let kbState: KbSyncState = load(kbPath, emptyKbSyncState());
+  const kbMs = Number(env.THERMITE_KB_SYNC_SECONDS ?? "180") * 1000;
+  const syncingKb = async () => {
+    let failing = false;
+    while (!stopping && controlUrl && controlToken && kbMs > 0) {
+      try {
+        const r = await syncKnowledgeOnce(
+          { rig, controlUrl, controlToken, harnessUrl, harnessToken },
+          kbState,
+        );
+        if (JSON.stringify(r.state) !== JSON.stringify(kbState)) save(kbPath, r.state);
+        kbState = r.state;
+        if (r.items) log("supervisor", "past research synced", { items: r.items });
+        if (r.errors.length && !failing)
+          log("supervisor", "past research sync error", { errors: r.errors.slice(0, 5) });
+        failing = r.errors.length > 0;
+      } catch (err) {
+        if (!failing) log("supervisor", "past research sync error", { error: String(err) });
+        failing = true;
+      }
+      const until = Date.now() + kbMs;
+      while (!stopping && !wipeRequested && Date.now() < until)
+        await new Promise((r) => setTimeout(r, 250));
+    }
+  };
+  const syncingKbDone = syncingKb();
+
   while (!stopping) {
     try {
       const next = await relayOnce({ ...cfg, skipCommands: commandMs > 0 }, state);
@@ -413,6 +444,7 @@ async function main(): Promise<void> {
   await livingDone;
   await commandingDone;
   await routingDone;
+  await syncingKbDone;
   process.exit(0);
 }
 

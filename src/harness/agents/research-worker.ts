@@ -1,15 +1,18 @@
 import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type TSchema, Type } from "@earendil-works/pi-ai";
 import type { LaneLimitValues } from "../../core/contract.ts";
+import { notesInstruction } from "../../core/journal.ts";
 import { linkSession, type SessionLink } from "./live-session.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
+import { NOTE_TOOL, type NoteRequest, writeNote } from "./notes-tool.ts";
+import { researchAgentTools } from "./research-agent-tools.ts";
 import { listFiles, readFile, removeFile, searchFiles, writeFile } from "./research-files.ts";
 import {
   RESEARCH_SYSTEM,
+  RESEARCH_TOOLS,
   type ResearchFolderPaths,
   researchFolderNote,
   researchOutput,
-  researchTool,
 } from "./research-tools.ts";
 import type { IdeaInput, TrialResult } from "./worker.ts";
 import { IDEA_TOOL, keepGoing, proposeIdea, withoutPastThinking } from "./worker.ts";
@@ -45,7 +48,12 @@ export interface ResearchDeps {
   link?: SessionLink | undefined;
   /** A research task for the run's queue, proposed by this lane (the idea tool). */
   idea?: ((req: IdeaInput) => Promise<{ experiment: string }>) | undefined;
+  /** A field note, written by this lane in the run's journal (the note tool). */
+  note?: ((req: NoteRequest) => Promise<{ note: number }>) | undefined;
 }
+
+/** A research worker's field notes, told apart from its research notes. */
+const RESEARCH_NOTES = `${notesInstruction("with the note tool")} Field notes are not research notes (add_note), which record what sources say for the report.`;
 
 const out = (value: unknown) => ({
   content: [{ type: "text" as const, text: researchOutput(value) }],
@@ -63,66 +71,15 @@ export async function runResearchTrial(
     tokensIn: 0,
     tokensOut: 0,
   };
-  const base = { run: spec.run, lane: spec.lane };
-  // The name, description and operation come from the list OpenCode's commands share.
-  const tool = <P extends TSchema>(name: string, parameters: P): AgentTool<P> => {
-    const t = researchTool(name);
-    if (!t) throw new Error(`no research tool ${name}`);
-    return {
-      name,
-      label: name,
-      description: t.description,
-      parameters,
-      execute: async (_id, params) => {
-        result.toolCalls++;
-        // The trial's own run and lane always win over anything in the model's arguments
-        // (the harness binds them again from the trial token).
-        return out(await deps.call(t.op, { ...(params as Record<string, unknown>), ...base }));
-      },
-    };
-  };
   const tools: AgentTool[] = [
-    tool("fetch", Type.Object({ url: Type.String() })),
-    tool(
-      "read_source",
-      Type.Object({
-        source: Type.String(),
-        offset: Type.Optional(Type.Number()),
-        length: Type.Optional(Type.Number()),
-      }),
+    ...researchAgentTools(
+      RESEARCH_TOOLS.map((t) => t.name),
+      deps.call,
+      { run: spec.run, lane: spec.lane },
+      () => {
+        result.toolCalls++;
+      },
     ),
-    tool("search", Type.Object({ query: Type.String() })),
-    tool("search_corpus", Type.Object({ text: Type.String() })),
-    tool(
-      "add_claim",
-      Type.Object({
-        text: Type.String(),
-        quotes: Type.Array(Type.Object({ source: Type.String(), quote: Type.String() })),
-        question: Type.Optional(
-          Type.Number({ description: "Index of the campaign question it answers (0-based)." }),
-        ),
-        confidence: Type.Optional(Type.Number()),
-      }),
-    ),
-    tool(
-      "add_note",
-      Type.Object({ text: Type.String(), sources: Type.Optional(Type.Array(Type.String())) }),
-    ),
-    tool(
-      "propose_hypothesis",
-      Type.Object({ text: Type.String(), supporting: Type.Optional(Type.Array(Type.String())) }),
-    ),
-    tool(
-      "add_finding",
-      Type.Object({
-        text: Type.String({ description: "The finding, in one sentence." }),
-        summary: Type.String({ description: "What the claims show, and how." }),
-        why_it_matters: Type.String({ description: "Why it matters for the campaign." }),
-        supporting: Type.Array(Type.String(), { description: "The verified claims behind it." }),
-      }),
-    ),
-    tool("update_section", Type.Object({ name: Type.String(), body: Type.String() })),
-    tool("progress", Type.Object({})),
     ...(spec.folder ? folderTools(spec.folder, result) : []),
     ...(deps.idea
       ? [
@@ -135,6 +92,23 @@ export async function runResearchTrial(
               result.toolCalls++;
               return proposeIdea(
                 deps.idea as NonNullable<ResearchDeps["idea"]>,
+                params as Record<string, unknown>,
+              );
+            },
+          } as AgentTool,
+        ]
+      : []),
+    ...(deps.note
+      ? [
+          {
+            name: NOTE_TOOL.name,
+            label: NOTE_TOOL.name,
+            description: NOTE_TOOL.description,
+            parameters: NOTE_TOOL.parameters,
+            execute: async (_id: string, params: unknown) => {
+              result.toolCalls++;
+              return writeNote(
+                deps.note as NonNullable<ResearchDeps["note"]>,
                 params as Record<string, unknown>,
               );
             },
@@ -179,7 +153,9 @@ export async function runResearchTrial(
     agent.abort();
   }, spec.wallMs);
   try {
-    await agent.prompt(spec.brief);
+    // With the note tool, the brief says how to keep field notes, and how they differ from
+    // research notes.
+    await agent.prompt(deps.note ? `${spec.brief}\n\n${RESEARCH_NOTES}` : spec.brief);
     // A cut-off reply or a failed call does not end a research trial before its time.
     const end = await keepGoing(
       agent,
