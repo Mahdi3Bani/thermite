@@ -76,6 +76,36 @@ describe("planner", () => {
     );
   });
 
+  test("a kind of rule is never a direction's name", () => {
+    const bad = validatePlan(
+      {
+        new_families: [{ id: "mandate", description: "what the owner mandated" }],
+        add: [{ ref: "n-1", title: "wider loads", family: "Lane_Count", why: "more lanes" }],
+        assignments: [
+          { lane: "lane-1", family: "try", focus: "unroll by 4", parent: "champion" },
+          { lane: "lane-2", experiment: "n-1", parent: "champion" },
+        ],
+      },
+      base,
+    );
+    assert.deepEqual(
+      bad.errors.map((e) => e.replace(/ is a kind of rule .*/, "")),
+      ['new_families: "mandate"', 'add n-1: the family "Lane_Count"', 'lane-1: the family "try"'],
+    );
+    assert.match(String(bad.errors[0]), /avoid, try, mandate, priority, lane_count, note/);
+    const ok = validatePlan(
+      {
+        new_families: [{ id: "try-unroll", description: "unroll the tail" }],
+        assignments: [
+          { lane: "lane-1", family: "try-unroll", focus: "unroll by 4", parent: "champion" },
+          { lane: "lane-2", family: "notes-cache", focus: "cache the notes", parent: "champion" },
+        ],
+      },
+      base,
+    );
+    assert.deepEqual(ok.errors, [], "a name that only starts with one is fine");
+  });
+
   test("a valid model plan is used; an invalid one is retried, then the fallback takes over", async () => {
     let call = 0;
     const good = {

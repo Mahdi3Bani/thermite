@@ -2,12 +2,12 @@ import { Agent } from "@earendil-works/pi-agent-core";
 import { Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
 import { canonicalJson } from "../../core/canonical.ts";
-import { QueuePosition, StructuredDirective } from "../../core/commands.ts";
+import { DIRECTIVE_KINDS, QueuePosition, StructuredDirective } from "../../core/commands.ts";
 import { LenientNotes, NOTES_GUIDE, type NoteInput } from "../../core/journal.ts";
 import { NOTES_ARE_DATA, type notesData } from "../journal.ts";
 import { briefingData } from "../knowledge.ts";
 import type { BriefingItem } from "../ledger.ts";
-import { inFamily, type QueueBrief } from "../queue.ts";
+import { directionOf, inFamily, type QueueBrief } from "../queue.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
 import { JOURNAL_FIELD } from "./notes-tool.ts";
 import type { Assignment, Evidence, FamilyView } from "./registry.ts";
@@ -197,6 +197,12 @@ function directiveSets(input: PlannerInput) {
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
+/** A directive's kind as a direction's id (lane_count: lane-count): never a direction's name. */
+const DIRECTIVE_WORDS = new Set(DIRECTIVE_KINDS.map((k) => directionOf(k)));
+const NOT_A_DIRECTION = `is a kind of rule (${DIRECTIVE_KINDS.join(", ")}), not a direction: name the direction by what it changes`;
+const directiveWord = (family: string | undefined) =>
+  family !== undefined && DIRECTIVE_WORDS.has(directionOf(family));
+
 /** Checks a raw plan; returns the errors (empty when valid) and the checked plan. */
 export function validatePlan(
   raw: unknown,
@@ -283,6 +289,14 @@ export function validatePlan(
       why: a.why?.trim() || (known ? `next: ${known.title}` : ""),
     });
   }
+  // A direction is never named by a kind of rule: a lane "on try" reads as a directive.
+  for (const f of p.new_families)
+    if (directiveWord(f.id)) errors.push(`new_families: "${f.id}" ${NOT_A_DIRECTION}`);
+  for (const a of add)
+    if (directiveWord(a.family))
+      errors.push(
+        `${a.ref.startsWith("@") ? a.ref.slice(1) : `add ${a.ref}`}: the family "${a.family}" ${NOT_A_DIRECTION}`,
+      );
   const twice = handout.filter(
     (h, i) => handout.findIndex((o) => o.experiment === h.experiment) !== i,
   );

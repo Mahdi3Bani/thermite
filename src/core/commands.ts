@@ -97,9 +97,19 @@ export type ImportSpec = z.infer<typeof ImportSpec>;
  * ranks a family; LANE_COUNT sets the lanes (up to the contract's count); NOTE is free text for
  * the planner only. The planner sees rationales, notes and match words; workers never do.
  */
+/** The kinds of directive. None of them is ever a direction's name (a lane "on try"). */
+export const DIRECTIVE_KINDS = [
+  "avoid",
+  "try",
+  "mandate",
+  "priority",
+  "lane_count",
+  "note",
+] as const;
+
 export const StructuredDirective = z
   .strictObject({
-    kind: z.enum(["avoid", "try", "mandate", "priority", "lane_count", "note"]),
+    kind: z.enum(DIRECTIVE_KINDS),
     /** Direction-registry family id the directive refers to (when applicable). */
     family: z
       .string()
