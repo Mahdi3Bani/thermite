@@ -48,7 +48,14 @@ import {
   joinMachineScript,
   joinNamespaceManifest,
 } from "./join.ts";
-import { briefingSeedOf, type KbItem, type KbKind, PICKABLE, queueSeedOf } from "./kb.ts";
+import {
+  briefingSeedOf,
+  isOutside,
+  type KbItem,
+  type KbKind,
+  PICKABLE,
+  queueSeedOf,
+} from "./kb.ts";
 import type { KitRepos } from "./kit-repos.ts";
 import { kitSummary, unpackKit } from "./kit-upload.ts";
 import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
@@ -1322,7 +1329,9 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       .filter((x) => PICKABLE[x.kind] === "briefing")
       .map(briefingSeedOf)
       .filter((x): x is BriefingSeed => x !== undefined);
-    const copied = String(f.copy_queue ?? "") === "1" ? untried(vs, String(f.copy_from ?? "")) : [];
+    // The copy box shows only with agents on: for a try it is ignored, whatever the form sent.
+    const copied =
+      agents && String(f.copy_queue ?? "") === "1" ? untried(vs, String(f.copy_from ?? "")) : [];
     let r: ReturnType<typeof startRun>;
     try {
       r = startRun(
@@ -1349,9 +1358,10 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     }
     if (!r.ok) return back(r.errors.join(" "));
     if (split !== undefined) sendSplit(rig.id, split);
-    // A try takes no queue and no briefing: say so when some were ticked.
+    // A try takes no queue and no briefing: say so when the owner ticked past research it showed
+    // (the page hides it for a try, and sends none of it; without the page's script it shows).
     const leftOut =
-      !agents && (copied.length || pastQueue.length || briefing.length)
+      !agents && (pastQueue.length || briefing.length)
         ? `&ok=${encodeURIComponent("A try (agents off) takes no experiments and no background: what you ticked was left out.")}`
         : "";
     return c.redirect(
@@ -1647,6 +1657,21 @@ ${
   app.post("/ui/campaigns/:campaign/kb/revoke", async (c) => {
     const campaign = c.req.param("campaign");
     const reads = String((await c.req.parseBody()).reads ?? "").trim();
+    // An outside knowledge base's grant is taken back through its own grant code (audited
+    // there), and said as what it is: its advisors' search, not a folder.
+    if (isOutside(reads)) {
+      const name = reads.slice("outside:".length);
+      if (!store.kb().reads(campaign).includes(reads))
+        return grantBack(c, campaign, "error", `${campaign}'s advisors do not search "${name}".`);
+      // A grant left from one no longer set is ended in the folders alone.
+      if (!outsideKb.setRead(name, campaign, false, "owner:ui")) store.kb().revoke(campaign, reads);
+      return grantBack(
+        c,
+        campaign,
+        "ok",
+        `${campaign}'s advisors no longer search the outside knowledge base "${name}", from their next round.`,
+      );
+    }
     if (!store.kb().revoke(campaign, reads))
       return grantBack(c, campaign, "error", `${campaign} does not read ${reads}.`);
     store.audit("owner:ui", "kb_revoke", { campaign, reads });

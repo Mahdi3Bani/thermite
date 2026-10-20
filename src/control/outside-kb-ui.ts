@@ -6,6 +6,7 @@ import {
   type OutsideKb,
   type OutsideKbCopy,
   type OutsideKbs,
+  SKIP_AFTER,
 } from "./outside-kb.ts";
 import { ago, campaignHref, esc } from "./ui/components.ts";
 import { infoLabel } from "./ui/new-campaign.ts";
@@ -29,14 +30,14 @@ export const OUTSIDE_KB_SAYS: [string, string] = [
 const URL_TIP =
   "The MCP server's address (streamable HTTP), as control reaches it. No token, user or query in it: the token has its own field.";
 const SEARCH_TIP =
-  "The server's tool that searches it. Advisors call it with a query, and only for campaigns you allow on their page. For GBrain: search.";
+  "The server's tool that searches it. A campaign's teacher pair calls it with a query, and only for campaigns you allow on their page. For GBrain: search.";
 const WRITE_TIP =
   "Optional. The server's tool that writes a page; control calls it with a slug and the page's Markdown. Empty: control never writes there, and campaign folders can't be copied to it. For GBrain: put_page.";
 
 /** The add form's fields for an outside knowledge base (shown by the page script for its type). */
 export const outsideKbAddFields = () =>
   `<label data-for="${OUTSIDE_KB_TYPE}" hidden style="grid-column:1/-1">${infoLabel("MCP URL", URL_TIP)}<input name="mcp_url" maxlength="500" placeholder="https://brain.example/mcp"></label>
-<label data-for="${OUTSIDE_KB_TYPE}" hidden>${infoLabel("Token", "The server's bearer token. Control seals it at once and never shows it again. A rig gets it only when it runs, or ran, a campaign you let read this knowledge base. Use a token that can only search and write pages, if the server allows.")}<input name="kb_token" type="password" autocomplete="new-password" maxlength="4096" placeholder="never shown again"></label>
+<label data-for="${OUTSIDE_KB_TYPE}" hidden>${infoLabel("Token", "The server's bearer token. Control seals it at once and never shows it again. A rig gets it only when control assigned it a campaign you let read this knowledge base. Use a token that can only search and write pages, if the server allows.")}<input name="kb_token" type="password" autocomplete="new-password" maxlength="4096" placeholder="never shown again"></label>
 <label data-for="${OUTSIDE_KB_TYPE}" hidden>${infoLabel("Search tool", SEARCH_TIP)}<input name="search_tool" maxlength="128" value="search"></label>
 <label data-for="${OUTSIDE_KB_TYPE}" hidden>${infoLabel("Write tool", WRITE_TIP)}<input name="write_tool" maxlength="128" placeholder="empty: no copies (GBrain: put_page)"></label>`;
 
@@ -49,13 +50,20 @@ const newName = (v: unknown) =>
     .toLowerCase()
     .replace(/\s+/g, "-");
 
-/** How the last sync of one copy went, in a few words. */
-const syncWords = (s: OutsideKbCopy, now: number) =>
-  s.last_error
+/**
+ * How the last sync of one copy went, in a few words, and the items it skipped: an item the
+ * server refused SKIP_AFTER syncs in a row is skipped, so the copy goes on without it.
+ */
+const syncWords = (s: OutsideKbCopy, now: number) => {
+  const skipped = s.skipped
+    ? ` · ${s.skipped} item${s.skipped === 1 ? "" : "s"} skipped, the server refused ${s.skipped === 1 ? "it" : "each"} ${SKIP_AFTER} syncs in a row${s.last_skipped ? ` (the last: ${esc(s.last_skipped)})` : ""}`
+    : "";
+  return s.last_error && s.last_error !== s.last_skipped
     ? `the last sync failed ${esc(ago(s.last_at, now))} ago: ${esc(s.last_error)}`
     : s.last_at
-      ? `last sync ${esc(ago(s.last_at, now))} ago: ${s.last_written ?? 0} page${s.last_written === 1 ? "" : "s"} written · ${s.written} since it was switched on`
+      ? `last sync ${esc(ago(s.last_at, now))} ago: ${s.last_written ?? 0} page${s.last_written === 1 ? "" : "s"} written · ${s.written} since it was switched on${skipped}`
       : "not synced yet: the first sync writes the whole folder";
+};
 
 /** One outside knowledge base's row in Providers. */
 export function outsideKbRows(o: OutsideKbs, t: string, now: number): string {
@@ -131,7 +139,7 @@ export function campaignOutsideKb(
         : copy
           ? `<span class="ck-sum${copy.last_error ? " bad" : ""}">${infoLabel(`Copy to ${k.name}`, "Control writes each new or changed item of this campaign's folder there as a page, with its run, agent and time: every few minutes, and when you press Sync now.")} on · ${syncWords(copy, now)}</span>`
           : `<span class="ck-sum">${infoLabel(`Copy to ${k.name}`, "Control writes each new or changed item of this campaign's folder there as a page, with its run, agent and time. The first sync writes the whole folder.")} off</span>`;
-      const readLine = `<span class="ck-sum">${infoLabel("Outside context for its advisors", "The campaign's advisors (the teacher pair and the auditor) may search this knowledge base, read only. An advisor that may fetch any web page gets no knowledge-base search. Workers never call it.")} ${reads ? `on: its advisors may search it. It is listed under <a href="#knowledge">Can read from</a>, where you can remove it.` : "off"}</span>`;
+      const readLine = `<span class="ck-sum">${infoLabel("Outside context for its advisors", "The campaign's teacher pair may search this knowledge base, read only, when it runs on an API key or a ChatGPT route. On Claude Code it has no tools, and a teacher that may fetch any web page gets no knowledge-base search. The auditor and the workers never call it.")} ${reads ? `on: its teacher pair may search it. It is listed under <a href="#knowledge">Can read from</a>, where you can remove it.` : "off"}</span>`;
       const acts = [
         k.write_tool
           ? copy
@@ -290,7 +298,7 @@ export function mountOutsideKbUi(app: Hono, o: OutsideKbs): void {
           : campaignUrl(
               campaign,
               "ok",
-              `${r.written} page${r.written === 1 ? "" : "s"} written to "${name}".`,
+              `${r.written} page${r.written === 1 ? "" : "s"} written to "${name}".${r.skipped ? ` It ${r.skipped}.` : ""}`,
             ),
       303,
     );

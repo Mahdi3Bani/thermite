@@ -606,17 +606,34 @@ export function createControlApi(
       outside_kb: handOutsideKb(rig),
     });
   });
-  /** Outside knowledge bases' tokens leave control here: audited when what a rig gets changes. */
+  /**
+   * Outside knowledge bases' tokens leave control here: audited when what a rig gets changes,
+   * to none too (kbs: []). What a rig got last is read back from the audit after a restart, so a
+   * restart of control writes no entry of its own.
+   */
   const handed = new Map<string, string>();
+  const handedKey = (kbs: { name: string; campaigns: string[] }[]) =>
+    kbs.map((g) => `${g.name}:${g.campaigns.join(",")}`).join(";");
+  const handedBefore = (rig: string): string => {
+    const body = store.lastAudit(`rig:${rig}`, "outside_kb_handed") as
+      | { kbs?: { name?: unknown; campaigns?: unknown }[] }
+      | undefined;
+    return handedKey(
+      (Array.isArray(body?.kbs) ? body.kbs : []).map((g) => ({
+        name: String(g?.name ?? ""),
+        campaigns: Array.isArray(g?.campaigns) ? g.campaigns.map(String) : [],
+      })),
+    );
+  };
   const handOutsideKb = (rig: string) => {
     const grants = outsideKb.forRig(rig);
-    const what = grants.map((g) => `${g.name}:${g.campaigns.join(",")}`).join(";");
-    if ((handed.get(rig) ?? "") !== what) {
+    const what = handedKey(grants);
+    if (!handed.has(rig)) handed.set(rig, handedBefore(rig));
+    if (handed.get(rig) !== what) {
       handed.set(rig, what);
-      if (grants.length)
-        store.audit(`rig:${rig}`, "outside_kb_handed", {
-          kbs: grants.map((g) => ({ name: g.name, campaigns: g.campaigns })),
-        });
+      store.audit(`rig:${rig}`, "outside_kb_handed", {
+        kbs: grants.map((g) => ({ name: g.name, campaigns: g.campaigns })),
+      });
     }
     return grants;
   };
@@ -961,6 +978,7 @@ export function createControlApi(
     staleAfterMs: opts.staleAfterMs,
     runpodTests,
     actions,
+    outsideKb,
   });
 
   return app;

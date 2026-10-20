@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { describe, type TestContext, test } from "node:test";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { generateSigningKeys } from "../core/commands.ts";
 import { assigned } from "../testing/assignments.ts";
 import { type FakeKb, startFakeKb } from "../testing/fake-kb.ts";
 import { createControlApi } from "./api.ts";
 import { KnowledgeBase } from "./kb.ts";
-import { OutsideKbs, outsideRead, pageOf, writeArgs } from "./outside-kb.ts";
+import { OutsideKbs, outsideRead, pageOf, SKIP_AFTER, writeArgs } from "./outside-kb.ts";
+import { campaignOutsideKb } from "./outside-kb-ui.ts";
 import { SecretBox } from "./secrets.ts";
 import { ControlStore } from "./store.ts";
 
@@ -276,6 +279,61 @@ describe("an outside knowledge base", () => {
     assert.equal((await outside.sync("team-brain", "pn-engine")).written, 4);
   });
 
+  test("an item the server refuses three syncs in a row is skipped: the copy goes on and says which", async (t) => {
+    const { fake, store, outside } = await setup(t);
+    seed(store);
+    add(outside, fake);
+    outside.setCopy("team-brain", "pn-engine", true, "owner:test");
+    fake.failPage = { slug: "/experiment/", why: "no pages about int4 here" };
+    for (let i = 1; i < SKIP_AFTER; i++) {
+      const r = await outside.sync("team-brain", "pn-engine");
+      assert.match(r.error ?? "", /refused the page for experiment x-1 of pn-3: no pages about/);
+      assert.equal(r.skipped, undefined);
+      assert.equal(outside.copies()[0]?.held_tries, i);
+    }
+    assert.ok(!fake.pages.has(slug("experiment", "pn-3-x-1")));
+    // The third refusal in a row: skipped, the rest written, and said with the item's ref.
+    const third = await outside.sync("team-brain", "pn-engine");
+    assert.equal(third.error, undefined);
+    assert.match(
+      third.skipped ?? "",
+      /^skipped experiment x-1 of pn-3: the server refused its page 3 syncs in a row \(no pages about int4 here\)$/,
+    );
+    assert.ok(
+      fake.pages.has(slug("note", "pn-3-1")) && fake.pages.has(slug("attempt", "pn-3-a-1")),
+    );
+    let copy = outside.copies()[0];
+    assert.equal(copy?.last_error, third.skipped);
+    assert.equal(copy?.skipped, 1);
+    assert.equal(copy?.held_seq, null);
+    assert.ok(
+      store
+        .listAudit(20)
+        .some(
+          (a) =>
+            a.action === "outside_kb_item_skipped" &&
+            JSON.stringify(a.body).includes('"ref":"x-1"'),
+        ),
+    );
+    // The campaign page says so, and does not call the sync failed.
+    const now = Date.now();
+    let section = campaignOutsideKb(outside, "pn-engine", "t", now, () => undefined);
+    assert.doesNotMatch(section, /the last sync failed/);
+    assert.match(
+      section,
+      /1 item skipped, the server refused it 3 syncs in a row \(the last: skipped experiment x-1 of pn-3/,
+    );
+    // The next sync has nothing to do: no error, and the skip is still said.
+    assert.deepEqual(await outside.sync("team-brain", "pn-engine"), {
+      written: 0,
+      error: undefined,
+    });
+    copy = outside.copies()[0];
+    assert.equal(copy?.last_error, null);
+    section = campaignOutsideKb(outside, "pn-engine", "t", now, () => undefined);
+    assert.match(section, /0 pages written · 2 since it was switched on · 1 item skipped/);
+  });
+
   test("with no write tool there is no copy and no sync", async (t) => {
     const { fake, store, outside } = await setup(t);
     seed(store);
@@ -432,9 +490,19 @@ describe("an outside knowledge base", () => {
     assert.match(page, /team-brain/);
     assert.match(page, /token …6789/);
     assert.match(page, /copies pn-engine · read by pn-engine/);
+    // A rig gets the token only for a campaign control assigned it.
+    assert.match(page, /A rig gets it only when control assigned it a campaign you let read/);
     const campaign = await get("/ui/campaigns/pn-engine");
     assert.match(campaign, /<h2>Outside knowledge bases<\/h2>/);
-    assert.match(campaign, /on: its advisors may search it/);
+    assert.match(campaign, /on: its teacher pair may search it/);
+    // Only the teacher pair searches it, and only on an API key or a ChatGPT route.
+    const tip =
+      /Outside context for its advisors<i class="ii" tabindex="0" data-tip="([^"]+)"/.exec(
+        campaign,
+      )?.[1];
+    assert.match(tip ?? "", /^The campaign&#39;s teacher pair|^The campaign's teacher pair/);
+    assert.match(tip ?? "", /on an API key or a ChatGPT route/);
+    assert.match(tip ?? "", /The auditor and the workers never call it\./);
     const seen = JSON.stringify([
       page,
       campaign,
@@ -448,6 +516,17 @@ describe("an outside knowledge base", () => {
     ]);
     assert.ok(!seen.includes(TOKEN), "the token is nowhere but the server's header");
     assert.ok(fake.requests.every((r) => !r.path.includes(TOKEN)));
+    // Removed under Can read from: said as an outside knowledge base, through its own grant code.
+    assert.match(
+      await post("/ui/campaigns/pn-engine/kb/revoke", { csrf, reads: "outside:team-brain" }),
+      /pn-engine's advisors no longer search the outside knowledge base "team-brain"/,
+    );
+    assert.deepEqual(outside.readers("team-brain"), []);
+    assert.ok(store.listAudit(20).some((a) => a.action === "outside_kb_read_revoked"));
+    assert.match(
+      await post("/ui/campaigns/pn-engine/kb/revoke", { csrf, reads: "outside:team-brain" }),
+      /pn-engine's advisors do not search "team-brain"/,
+    );
   });
 
   test("a granted campaign's rig gets the search with its campaigns; an ungranted one's gets none", async (t) => {
@@ -497,9 +576,26 @@ describe("an outside knowledge base", () => {
       headers: { authorization: "Bearer rig-b-token-abcdef" },
     });
     assert.equal(other.status, 401);
-    // Taken back, and deleted: no rig gets it.
+    // A restart of control remembers what the rig got last: no entry of its own.
+    const restarted = createControlApi(
+      store,
+      { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-a-token-abcdef" } },
+      generateSigningKeys().privateKeyPem,
+      { staleAfterMs: 180_000, outsideKb: outside },
+    );
+    const again = await restarted.request("/v1/rigs/rig-a/advisor-routes", {
+      headers: { authorization: "Bearer rig-a-token-abcdef" },
+    });
+    assert.equal(((await again.json()) as { outside_kb: unknown[] }).outside_kb.length, 1);
+    const handedNow = () => store.listAudit(100).filter((a) => a.action === "outside_kb_handed");
+    assert.equal(handedNow().length, 1, "a restart writes no entry");
+    // Taken back, and deleted: no rig gets it, and the audit says the rig's set is empty now.
     outside.setRead("team-brain", "pn-engine", false, "owner:test");
     assert.deepEqual(await routes("rig-a"), []);
+    assert.equal(handedNow().length, 2);
+    assert.deepEqual(handedNow()[0]?.body, { kbs: [] });
+    await routes("rig-a");
+    assert.equal(handedNow().length, 2, "still once per change");
     outside.setRead("team-brain", "rl-research", true, "owner:test");
     assert.ok(outside.delete("team-brain", "owner:test"));
     assert.deepEqual(await routes("rig-b"), []);
@@ -508,6 +604,54 @@ describe("an outside knowledge base", () => {
       undefined,
       "the grants went with it",
     );
+  });
+
+  test("over MCP, kb_grant and kb_revoke grant and end an outside knowledge base's search alike", async (t) => {
+    const { fake, store, outside } = await setup(t);
+    seed(store);
+    add(outside, fake, { write_tool: null });
+    const control = createControlApi(
+      store,
+      { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-a-token-abcdef" } },
+      generateSigningKeys().privateKeyPem,
+      { staleAfterMs: 180_000, outsideKb: outside },
+    );
+    const client = new Client({ name: "test", version: "1.0.0" });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL("http://control/mcp"), {
+        fetch: (async (input: string | URL | Request, init?: RequestInit) => {
+          const url = new URL(String(input));
+          const headers = new Headers(init?.headers);
+          headers.set("authorization", "Bearer admin-token-abcdef");
+          return control.request(`${url.pathname}${url.search}`, { ...init, headers });
+        }) as typeof fetch,
+      }),
+    );
+    t.after(() => client.close());
+    const call = async (name: string, reads: string) => {
+      const r = (await client.callTool({
+        name,
+        arguments: { campaign: "pn-engine", reads },
+      })) as { isError?: boolean; content: { text: string }[] };
+      return { error: r.isError === true, body: JSON.parse(r.content[0]?.text ?? "{}") };
+    };
+    assert.deepEqual(await call("kb_grant", "outside:team-brain"), {
+      error: false,
+      body: { granted: true, reads: ["outside:team-brain"] },
+    });
+    assert.deepEqual(outside.readers("team-brain"), ["pn-engine"]);
+    assert.ok(store.listAudit(50).some((a) => a.action === "outside_kb_read_granted"));
+    assert.equal((await call("kb_grant", "outside:team-brain")).body.granted, false);
+    assert.deepEqual(await call("kb_grant", "outside:nope"), {
+      error: true,
+      body: { error: "no outside knowledge base nope" },
+    });
+    assert.deepEqual(await call("kb_revoke", "outside:team-brain"), {
+      error: false,
+      body: { revoked: true, reads: [] },
+    });
+    assert.ok(store.listAudit(50).some((a) => a.action === "outside_kb_read_revoked"));
+    assert.equal((await call("kb_revoke", "outside:team-brain")).error, true);
   });
 
   test("a page's slug is stable and safe; the write tool gets only the arguments its schema names", () => {

@@ -23,6 +23,8 @@ export interface FakeKb {
   requests: { path: string; authorization: string | null }[];
   /** When set, the write tool refuses every page with these words. */
   failWrites: string | null;
+  /** When set, the write tool refuses the pages whose slug has `slug` in it, with `why`. */
+  failPage: { slug: string; why: string } | null;
   close(): Promise<void>;
 }
 
@@ -39,6 +41,7 @@ export async function startFakeKb(o: {
     calls: [],
     requests: [],
     failWrites: null,
+    failPage: null,
     close: async () => {},
   };
   const writeTool = o.writeTool === undefined ? "put_page" : o.writeTool;
@@ -84,6 +87,8 @@ export async function startFakeKb(o: {
         async (args) => {
           kb.calls.push({ tool: writeTool, args });
           if (kb.failWrites) return text(kb.failWrites, true);
+          if (kb.failPage && args.slug.includes(kb.failPage.slug))
+            return text(kb.failPage.why, true);
           kb.pages.set(args.slug, args.content);
           return text(JSON.stringify({ slug: args.slug, revision: String(kb.calls.length) }));
         },

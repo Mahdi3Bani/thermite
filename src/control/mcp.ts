@@ -7,7 +7,8 @@ import type { CommandKind } from "../core/commands.ts";
 import type { ControlActions } from "./actions.ts";
 import type { Credential } from "./credential.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
-import { briefingSeedOf, type KbKind } from "./kb.ts";
+import { briefingSeedOf, isOutside, type KbKind } from "./kb.ts";
+import type { OutsideKbs } from "./outside-kb.ts";
 import type { RunpodTests } from "./runpod-tests.ts";
 import type { ControlStore } from "./store.ts";
 import { campaignModes, leaderboard, rigView } from "./views.ts";
@@ -43,12 +44,21 @@ function copiedFromRecords(store: ControlStore, payload: unknown): unknown {
       // Only from a run of a campaign the new run's campaign may read (its own, or granted).
       const source = found && typeof run === "string" ? kb.runCampaign(found.rig, run) : undefined;
       const rec = found && source && readable.has(source) ? found : undefined;
-      if (!rec) return { ...x, by: "copied" };
+      if (!rec || !source || typeof run !== "string" || typeof id !== "string")
+        return { ...x, by: "copied" };
+      // What became of it in that run, as Start a run says (queueSeedOf), when the folder has it.
+      const item = kb.byOrigin(source, run, "experiment", id);
+      const result = item ? kb.resultOf(item) : null;
+      const details = [rec.details ?? "", result ? `In ${run} (${source}) it was ${result}.` : ""]
+        .filter(Boolean)
+        .join("\n");
       const { title: _t, details: _d, family: _f, why: _w, ...rest } = x as Record<string, unknown>;
       return {
         ...rest,
         title: rec.title,
-        ...(rec.details ? { details: rec.details } : {}),
+        ...(details
+          ? { details: details.length > 4000 ? `${details.slice(0, 3999)}…` : details }
+          : {}),
         ...(rec.family ? { family: rec.family } : {}),
         ...(rec.why ? { why: rec.why } : {}),
         by: rec.by,
@@ -103,6 +113,8 @@ export interface McpOptions {
   runpodTests?: RunpodTests | undefined;
   /** Actions the dashboard carries out (actions.ts); MCP offers those it has. */
   actions?: ControlActions | undefined;
+  /** Outside knowledge bases (goal 065): kb_grant and kb_revoke grant their search with them. */
+  outsideKb?: OutsideKbs | undefined;
 }
 
 const json = (value: unknown) => ({
@@ -438,19 +450,36 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
   if (role === "owner" || role === "operator") {
     const grantInput = {
       campaign: z.string().min(1).describe("The campaign whose agents read"),
-      reads: z.string().min(1).describe("The other campaign whose folder they read"),
+      reads: z
+        .string()
+        .min(1)
+        .describe(
+          "The other campaign whose folder they read, or outside:<name> for an outside knowledge base",
+        ),
     };
+    /** An outside knowledge base's name in a grant (outside:<name>), if it names one. */
+    const outsideName = (reads: string) =>
+      isOutside(reads) ? reads.slice("outside:".length) : undefined;
     server.registerTool(
       "kb_grant",
       {
         title: "Let a campaign read another's folder",
         description:
-          "From now on, the campaign's agents may search and read the other campaign's folder in Thermite's knowledge base; they never write to it. Its runs at work receive the folder at their supervisor's next sync, and new runs start with it. A campaign always reads its own folder.",
+          "From now on, the campaign's agents may search and read the other campaign's folder in Thermite's knowledge base; they never write to it. Its runs at work receive the folder at their supervisor's next sync, and new runs start with it. A campaign always reads its own folder. reads: outside:<name> instead lets the campaign's teacher pair search that outside knowledge base (read only), as the campaign page's Let its advisors search it does.",
         inputSchema: grantInput,
       },
       audited("kb_grant", (a: { campaign: string; reads: string }) => {
         const known = campaigns();
         if (!known.has(a.campaign)) throw new Error(`no campaign ${a.campaign}`);
+        const outside = outsideName(a.reads);
+        if (outside !== undefined) {
+          // The outside knowledge base's own grant code, audited there.
+          if (!opts.outsideKb?.get(outside))
+            throw new Error(`no outside knowledge base ${outside}`);
+          const granted = !store.kb().reads(a.campaign).includes(a.reads);
+          if (granted) opts.outsideKb.setRead(outside, a.campaign, true, actor);
+          return { granted, reads: store.kb().reads(a.campaign) };
+        }
         if (!known.has(a.reads)) throw new Error(`no campaign ${a.reads}`);
         if (a.campaign === a.reads)
           throw new Error("a campaign always reads its own folder: name another campaign");
@@ -464,10 +493,19 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
       {
         title: "Stop a campaign reading another's folder",
         description:
-          "The campaign's agents no longer read the other campaign's folder. New runs start without it.",
+          "The campaign's agents no longer read the other campaign's folder. New runs start without it. reads: outside:<name> ends the teacher pair's search of that outside knowledge base.",
         inputSchema: grantInput,
       },
       audited("kb_revoke", (a: { campaign: string; reads: string }) => {
+        const outside = outsideName(a.reads);
+        if (outside !== undefined) {
+          if (!store.kb().reads(a.campaign).includes(a.reads))
+            throw new Error(`${a.campaign} does not search the outside knowledge base ${outside}`);
+          // Its own grant code, audited there; a grant left from one no longer set, in the folders.
+          if (!opts.outsideKb?.setRead(outside, a.campaign, false, actor))
+            store.kb().revoke(a.campaign, a.reads);
+          return { revoked: true, reads: store.kb().reads(a.campaign) };
+        }
         if (!store.kb().revoke(a.campaign, a.reads))
           throw new Error(`${a.campaign} does not read ${a.reads}`);
         store.audit(actor, "kb_revoke", { campaign: a.campaign, reads: a.reads });

@@ -196,8 +196,12 @@ export const CLIENT_JS = `
       const chosen = start.querySelector("select[name=agents_model]");
       const picked = chosen && chosen.value ? decodeURIComponent(chosen.value.split("|")[1] || "") : "";
       if (pick) pick.hidden = !agents || !!has;
-      // Experiments to copy are for agents: a try (agents off) has no queue.
-      start.querySelectorAll("[data-agents-only]").forEach((el) => { el.hidden = !agents; });
+      // Experiments to copy and past research are for agents: a try (agents off) has no queue and
+      // no brief. Hidden, their fields are not sent either.
+      start.querySelectorAll("[data-agents-only]").forEach((el) => {
+        el.hidden = !agents;
+        el.querySelectorAll("input, select").forEach((i) => { i.disabled = !agents; });
+      });
       if (line) line.textContent = has ? "The rig's agents, on " + has + "." : "This rig has no model for its agents yet: pick one below.";
       const past = start.querySelectorAll("input[name=past]:checked").length;
       if (sum) sum.textContent = rig ? "Starts a new run on " + rig.value + (agents ? ", with agents on " + (picked || has || "a model you pick") + "." + (past ? " It starts from " + past + " item" + (past === 1 ? "" : "s") + " of past research." : "") : ", as a try: the judge only.") : "Choose a rig.";

@@ -2848,6 +2848,14 @@ export class ControlStore {
     }));
   }
 
+  /** The body of the newest audit entry by this actor with this action, if there is one. */
+  lastAudit(actor: string, action: string): unknown {
+    const r = this.db
+      .prepare("select body from audit where actor = ? and action = ? order by id desc limit 1")
+      .get(actor, action) as Row | undefined;
+    return r ? JSON.parse(String(r.body)) : undefined;
+  }
+
   command(id: string): { status: string; outcome: unknown } | undefined {
     const r = this.db.prepare("select status, outcome from command where id = ?").get(id) as
       | Row

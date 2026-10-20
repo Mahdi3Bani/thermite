@@ -18,7 +18,8 @@ import type { ControlStore } from "./store.ts";
  *   gives its advisors the server's search, through the rig's supervisor.
  *
  * The token is sealed with control's secret box. It is never shown again, never logged, never in
- * a URL, a page or the audit; a rig gets it only when it runs or ran a campaign granted to read it.
+ * a URL, a page or the audit; a rig gets it only when control assigned it a campaign granted to
+ * read it.
  * With no outside knowledge base set, nothing here runs.
  */
 
@@ -57,7 +58,17 @@ export interface OutsideKbCopy {
   last_at: string | null;
   last_written: number | null;
   last_error: string | null;
+  /** The item the server refused at the last sync (its seq), and how many syncs in a row. */
+  held_seq: number | null;
+  held_tries: number;
+  /** Items skipped since the copy was switched on (refused SKIP_AFTER syncs in a row). */
+  skipped: number;
+  /** The last item skipped, with its ref and the server's reason. */
+  last_skipped: string | null;
 }
+
+/** Syncs in a row the server may refuse one item before the copy skips it and goes on. */
+export const SKIP_AFTER = 3;
 
 /** What a rig's supervisor gets for its advisors: one outside search, for the campaigns granted. */
 export interface OutsideKbGrant {
@@ -89,7 +100,7 @@ create table if not exists outside_kb (
   updated_at text not null
 );
 -- Campaign folders control copies to an outside knowledge base: who switched it on, where the
--- next sync starts, and how the last one went.
+-- next sync starts, how the last one went, and the items the server refused to take.
 create table if not exists outside_kb_copy (
   kb text not null,
   campaign text not null,
@@ -100,9 +111,21 @@ create table if not exists outside_kb_copy (
   last_at text,
   last_written integer,
   last_error text,
+  held_seq integer,
+  held_tries integer not null default 0,
+  skipped integer not null default 0,
+  last_skipped text,
   primary key (kb, campaign)
 );
 `;
+
+/** Columns added after the table first shipped: an older control's table gets them. */
+const ADDED_COLUMNS: [string, string][] = [
+  ["held_seq", "integer"],
+  ["held_tries", "integer not null default 0"],
+  ["skipped", "integer not null default 0"],
+  ["last_skipped", "text"],
+];
 
 /** One MCP connection, as control uses it: the tool list and tool calls. */
 export interface McpSession {
@@ -265,6 +288,13 @@ export class OutsideKbs {
     this.connect = connect;
     this.db = store.db;
     this.db.exec(SCHEMA);
+    const cols = new Set(
+      (this.db.prepare("pragma table_info(outside_kb_copy)").all() as Row[]).map((r) =>
+        str(r.name),
+      ),
+    );
+    for (const [name, type] of ADDED_COLUMNS)
+      if (!cols.has(name)) this.db.exec(`alter table outside_kb_copy add column ${name} ${type}`);
   }
 
   list(): OutsideKb[] {
@@ -472,14 +502,21 @@ export class OutsideKbs {
   /**
    * Writes a campaign folder's new and changed items to the outside knowledge base, one page per
    * item, oldest change first. The cursor moves after each page written, so a failure leaves the
-   * rest for the next sync and nothing is written twice for one change. Off without a write tool.
-   * A sync the owner asked for (by) is in the audit with what it did.
+   * rest for the next sync and nothing is written twice for one change. An item the server
+   * refuses SKIP_AFTER syncs in a row is skipped, so one page cannot hold the copy for good: the
+   * copy's last error and the audit name it. Off without a write tool. A sync the owner asked for
+   * (by) is in the audit with what it did.
    */
   async sync(
     name: string,
     campaign: string,
     by?: string,
-  ): Promise<{ written: number; error?: string | undefined; off?: string | undefined }> {
+  ): Promise<{
+    written: number;
+    error?: string | undefined;
+    off?: string | undefined;
+    skipped?: string | undefined;
+  }> {
     const r = await this.syncOnce(name, campaign);
     if (by)
       this.store.audit(by, "outside_kb_sync_now", {
@@ -488,6 +525,7 @@ export class OutsideKbs {
         written: r.written,
         ...(r.error ? { error: r.error } : {}),
         ...(r.off ? { off: r.off } : {}),
+        ...(r.skipped ? { skipped: r.skipped } : {}),
       });
     return r;
   }
@@ -495,7 +533,12 @@ export class OutsideKbs {
   private async syncOnce(
     name: string,
     campaign: string,
-  ): Promise<{ written: number; error?: string | undefined; off?: string | undefined }> {
+  ): Promise<{
+    written: number;
+    error?: string | undefined;
+    off?: string | undefined;
+    skipped?: string | undefined;
+  }> {
     const k = this.get(name);
     const copy = this.copies({ kb: name, campaign })[0];
     if (!k || !copy) return { written: 0, off: "the copy is not switched on" };
@@ -507,6 +550,7 @@ export class OutsideKbs {
     let token: string | undefined;
     let session: McpSession | undefined;
     let error: string | undefined;
+    let skipped: string | undefined;
     try {
       token = this.token(k);
       // Control's own index first: the folder as of the rigs' latest reports.
@@ -516,7 +560,13 @@ export class OutsideKbs {
       if (!tool) throw new Error(`it has no tool "${k.write_tool}" to write pages`);
       let cursor = copy.cursor;
       const move = this.db.prepare(
-        "update outside_kb_copy set cursor = ?, written = written + 1 where kb = ? and campaign = ?",
+        "update outside_kb_copy set cursor = ?, written = written + 1, held_seq = null, held_tries = 0 where kb = ? and campaign = ?",
+      );
+      const hold = this.db.prepare(
+        "update outside_kb_copy set held_seq = ?, held_tries = ? where kb = ? and campaign = ?",
+      );
+      const skip = this.db.prepare(
+        "update outside_kb_copy set cursor = ?, held_seq = null, held_tries = 0, skipped = skipped + 1, last_skipped = ? where kb = ? and campaign = ?",
       );
       for (;;) {
         // The index's seq moves on every insert and update of an item: each change once.
@@ -526,10 +576,32 @@ export class OutsideKbs {
             k.write_tool,
             writeArgs(tool.inputSchema?.properties, pageOf(item)),
           );
-          if (r.isError)
-            throw new Error(
-              `it refused the page for ${item.kind} ${item.ref} of ${item.run}: ${answerText(r.content) || "no reason given"}`,
+          if (r.isError) {
+            const why = answerText(r.content) || "no reason given";
+            // Each sync tries a refused item once: after SKIP_AFTER syncs in a row, it goes on.
+            const tries = copy.held_seq === item.seq ? copy.held_tries + 1 : 1;
+            if (tries < SKIP_AFTER) {
+              hold.run(item.seq, tries, name, campaign);
+              throw new Error(
+                `it refused the page for ${item.kind} ${item.ref} of ${item.run}: ${why}`,
+              );
+            }
+            skipped = this.clean(
+              new Error(
+                `skipped ${item.kind} ${item.ref} of ${item.run}: the server refused its page ${tries} syncs in a row (${why})`,
+              ),
+              token,
             );
+            skip.run(item.seq, skipped, name, campaign);
+            this.store.audit("control", "outside_kb_item_skipped", {
+              kb: name,
+              campaign,
+              item: { kind: item.kind, ref: item.ref, run: item.run },
+              tries,
+            });
+            cursor = item.seq;
+            continue;
+          }
           move.run(item.seq, name, campaign);
           cursor = item.seq;
           written++;
@@ -546,15 +618,18 @@ export class OutsideKbs {
       this.running.delete(key);
     }
     const before = copy.last_error;
+    // An item skipped is the last error of the sync that skipped it, with its ref.
     this.db
       .prepare(
         "update outside_kb_copy set last_at = ?, last_written = ?, last_error = ? where kb = ? and campaign = ?",
       )
-      .run(new Date().toISOString(), written, error ?? null, name, campaign);
+      .run(new Date().toISOString(), written, error ?? skipped ?? null, name, campaign);
     // A new error is logged once, not every round it lasts.
     if (error && error !== before)
       log("control", "outside knowledge base sync failed", { kb: name, campaign, error });
-    return { written, error };
+    if (skipped)
+      log("control", "outside knowledge base item skipped", { kb: name, campaign, skipped });
+    return { written, error, ...(skipped ? { skipped } : {}) };
   }
 
   /** Every copy switched on, one after another (control's timer). */
@@ -562,7 +637,7 @@ export class OutsideKbs {
     for (const c of this.copies()) await this.sync(c.kb, c.campaign);
   }
 
-  /** The campaigns a rig runs or was assigned (from its reports and control's commands). */
+  /** The campaigns control assigned a rig (its own commands, never the rig's reports). */
   campaignsOfRig(rig: string): string[] {
     // Control's own assignments only: never what the rig's events claim.
     return [...new Set(this.store.assignedCampaigns(rig).values())].sort();
@@ -570,7 +645,8 @@ export class OutsideKbs {
 
   /**
    * What a rig's supervisor gets for its advisors: each outside knowledge base granted to a
-   * campaign the rig runs or ran, with its token, and those campaigns. Any other rig gets nothing.
+   * campaign control assigned the rig, with its token, and those campaigns. Any other rig gets
+   * nothing.
    */
   forRig(rig: string): OutsideKbGrant[] {
     const kbs = this.list();
@@ -633,5 +709,9 @@ function copyOf(r: Row): OutsideKbCopy {
     last_written:
       r.last_written === null || r.last_written === undefined ? null : Number(r.last_written),
     last_error: r.last_error ? str(r.last_error) : null,
+    held_seq: r.held_seq === null || r.held_seq === undefined ? null : Number(r.held_seq),
+    held_tries: Number(r.held_tries ?? 0),
+    skipped: Number(r.skipped ?? 0),
+    last_skipped: r.last_skipped ? str(r.last_skipped) : null,
   };
 }

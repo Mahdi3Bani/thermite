@@ -74,7 +74,10 @@ export function folderLine(f: Pick<KbFolder, "counts" | "journal" | "runs">): st
   );
 }
 
-/** Who wrote a note, as a filter key, a short label and a tone (the queue's colours). */
+/**
+ * Who wrote a note or an item, as a filter key, a short label and a tone (the queue's colours).
+ * The owner writes no field notes, but adds experiments the knowledge base keeps ("by you").
+ */
 export function writer(by: string): { key: string; text: string; cls: string } {
   if (/^lane-\d+$/.test(by)) return { key: by, text: by, cls: "lane" };
   if (by === "planner" || by.startsWith("planner"))
@@ -86,13 +89,13 @@ export function writer(by: string): { key: string; text: string; cls: string } {
     return { key: "you", text: "you", cls: "you" };
   return { key: by, text: by, cls: "auditor" };
 }
-const WRITER_ORDER = ["planner", "teachers", "auditor", "panel", "you"];
+/** The Journal's writer filters after the lanes: the agents that write field notes. */
+const WRITER_ORDER = ["planner", "teachers", "auditor", "panel"];
 const WRITER_WORD: Record<string, string> = {
   planner: "Planner",
   teachers: "Teachers",
   auditor: "Auditor",
   panel: "Review panel",
-  you: "You",
 };
 
 // ---------------------------------------------------------------- a run's Journal tab
@@ -289,7 +292,7 @@ ${o.error ? `<div class="card warn" style="margin-bottom:12px"><b class="bad">No
 <div class="card kbcard"><div class="jstat">${stat("Field notes", f.journal)}${stat("Experiments", f.counts.experiment ?? 0)}${stat("Attempts", f.counts.attempt ?? 0)}${stat("Notes and documentation", (f.counts.note ?? 0) - f.journal)}${stat("Sources read", f.counts.source ?? 0)}${f.counts.claim ? stat("Claims", f.counts.claim) : ""}${f.counts.finding ? stat("Findings", f.counts.finding) : ""}${f.counts.report ? stat("Reports", f.counts.report) : ""}</div><div class="small muted">Every run of this campaign writes here, each item with its run, agent and time. Agents read it; only the harness's records write to it.</div><div class="kbbtns"><a class="btn sm" href="/ui/knowledge?folder=${encodeURIComponent(o.campaign)}#search">Search it</a><a class="btn sm ghost" href="/ui/knowledge#folder-${encodeURIComponent(o.campaign)}">Open the folder</a></div></div>
 <div class="head" style="margin-top:18px"><h2>Can read from</h2><span class="right">other folders this campaign's agents may search and read; change it any time</span></div>
 <div class="card flat kbreads">${f.reads.map(readRow).join("") || `<div class="readrow"><span></span><div class="muted small">None: its agents read only this campaign's folder.</div><span></span></div>`}</div>
-<form class="kbadd" method="post" action="${action("grant")}"><input type="hidden" name="csrf" value="${esc(o.csrf)}"><label class="sfd">${infoLabel("Add a folder", "Another campaign's folder this campaign's agents may search and read: its experiments with their results, journals, notes, sources and findings. They never write to it. Its runs at work get it at their next sync, and new runs start with it.")}<select name="reads" required><option value="">Add a folder…</option>${addable.map((x) => `<option value="${esc(x.campaign)}">${esc(x.campaign)} (${esc(o.mode(x.campaign))} · ${fmtInt(x.items)} items)</option>`).join("")}</select></label><button class="sm">Add</button><span class="muted small">Runs at work see the change at their next trial.</span></form>
+<form class="kbadd" method="post" action="${action("grant")}"><input type="hidden" name="csrf" value="${esc(o.csrf)}"><label class="sfd">${infoLabel("Add a folder", "Another campaign's folder this campaign's agents may search and read: its experiments with their results, journals, notes, sources and findings. They never write to it. Its runs at work get it at their next sync, and new runs start with it.")}<select name="reads" required><option value="">Add a folder…</option>${addable.map((x) => `<option value="${esc(x.campaign)}">${esc(x.campaign)} (${esc(o.mode(x.campaign))} · ${fmtInt(x.items)} items)</option>`).join("")}</select></label><button class="sm">Add</button><span class="muted small">Runs at work see the change at their next sync.</span></form>
 </div><div class="side">
 <div class="card qcard"><h3>Who reads ${esc(o.campaign)}'s folder</h3><div class="small">${f.read_by.length ? f.read_by.map((x) => `<a href="${campaignHref(x)}#knowledge"><b>${esc(x)}</b></a>`).join(", ") : "No other campaign."}</div><div class="small muted">Granted from that campaign's page. A campaign never writes to another's folder.</div></div>
 </div></div></div>`;
@@ -327,6 +330,6 @@ export function pastSection(o: {
     const w = pastWords(x, o.result(x));
     return `<label class="pastrow"><input type="checkbox" name="past" value="${x.id}"><span><b>${esc(w.label)}</b> · ${esc(x.title)}<br><span class="muted">${esc(w.line)}</span></span><span class="muted xs">${esc(x.campaign)}</span></label>`;
   };
-  return `<div class="sfd" data-past="${esc(o.campaign)}">${infoLabel("From past research", "Search the folders this campaign can read (its own and the campaigns you granted) for related experiments and findings. Ticked experiments join the new run's queue, each saying where it came from; a ticked finding, claim, note or report goes to every agent's brief as background.")}<input type="search" data-past-q value="${esc(o.q)}" placeholder="Search past experiments, findings and notes" aria-label="Search past research"><div class="small muted">Searching: ${o.readable.map((f) => esc(f)).join(", ")}. <a href="${campaignHref(o.campaign)}#knowledge" style="color:var(--info-foreground)">Change</a></div>
+  return `<div class="sfd" data-past="${esc(o.campaign)}" data-agents-only>${infoLabel("From past research", "Search the folders this campaign can read (its own and the campaigns you granted) for related experiments and findings. Ticked experiments join the new run's queue, each saying where it came from; a ticked finding, claim, note or report goes to every agent's brief as background.")}<input type="search" data-past-q value="${esc(o.q)}" placeholder="Search past experiments, findings and notes" aria-label="Search past research"><div class="small muted">Searching: ${o.readable.map((f) => esc(f)).join(", ")}. <a href="${campaignHref(o.campaign)}#knowledge" style="color:var(--info-foreground)">Change</a></div>
 <div class="past" data-past-list>${o.results.map(row).join("") || `<div class="muted small" data-past-none>Nothing found in these folders yet.</div>`}</div></div>`;
 }

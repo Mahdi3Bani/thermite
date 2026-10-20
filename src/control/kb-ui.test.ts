@@ -228,6 +228,9 @@ test("a campaign's read grants: forms with the form token, refused for itself, a
   );
   assert.ok(!/<option value="gemv-speed">gemv-speed \(/.test(page), "never itself in the Add list");
   assert.match(page, /Add a folder<i class="ii" tabindex="0" data-tip="/);
+  // Runs at work get a change at their supervisor's next sync, as the tip says.
+  assert.match(page, /Runs at work see the change at their next sync\./);
+  assert.doesNotMatch(page, /at their next trial/);
   // Without the form token: refused.
   const forged = await s.post("/ui/campaigns/gemv-speed/kb/grant", { reads: "survey-study" });
   assert.equal(forged.status, 403);
@@ -369,9 +372,9 @@ test("Start a run from past research: the search reads only granted folders; tic
     303,
     "the owner's session only",
   );
-  // The drawer: the search box and the folders it reads, before More options.
+  // The drawer: the search box and the folders it reads, before More options; hidden for a try.
   const page = await (await s.get("/ui/campaigns/gemv-speed?start=1&past=vector")).text();
-  assert.match(page, /data-past="gemv-speed"/);
+  assert.match(page, /data-past="gemv-speed" data-agents-only>/);
   assert.match(page, /Searching: gemv-speed, survey-study\./);
   assert.match(page, /From past research<i class="ii"/);
   assert.ok(page.indexOf("data-past=") < page.indexOf("More options"));
@@ -436,6 +439,24 @@ test("Start a run from past research: the search reads only granted folders; tic
     assert.match(s.where(bad), /not one this campaign may read and start from/);
   }
   assert.equal(s.store.listCommands(50).length, before + 1);
+  // A try (agents off): the copy box it hides is ignored, and nothing is said left out; past
+  // research the owner ticked where the form showed it (no script) is said left out.
+  const tried = await s.post("/ui/campaigns/gemv-speed/runs", [
+    ["csrf", s.csrf],
+    ["rig", "rig-a"],
+    ["agents", "off"],
+    ["copy_queue", "1"],
+    ["copy_from", "rig-a/gs-3"],
+  ]);
+  assert.equal(tried.status, 303, s.where(tried));
+  assert.match(s.where(tried), /\?run=rig-a\/gemv-speed-try-\d+$/, "started, with no note");
+  const ticked = await s.post("/ui/campaigns/gemv-speed/runs", [
+    ["csrf", s.csrf],
+    ["rig", "rig-a"],
+    ["agents", "off"],
+    ["past", String(exp.id)],
+  ]);
+  assert.match(s.where(ticked), /what you ticked was left out/);
 });
 
 /** An MCP client talking to control in-process, with a token. */
@@ -642,4 +663,15 @@ test("MCP: a copied experiment takes control's record only from a folder the run
   const granted = await copy();
   assert.notEqual(granted?.title, "the caller's words");
   assert.notEqual(granted?.by, "copied");
+  // Control's record, with what became of it there, as Start a run gives it.
+  assert.deepEqual(granted, {
+    title: "Load int4 weights with vector loads",
+    details:
+      "128-bit loads of the packed weights\nIn gs-3 (gemv-speed) it was tried: attempt a-1 (submitted), win confirmed (+6.10%).",
+    family: "memory-layout",
+    why: "the guide says twice the bandwidth",
+    by: "teacher",
+    state: "queued",
+    from: { run: "gs-3", id: "x-1" },
+  });
 });
