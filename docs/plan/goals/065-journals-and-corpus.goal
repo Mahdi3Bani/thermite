@@ -1,7 +1,7 @@
 ---
 id: "065"
 title: "Journals and a research corpus from every campaign"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 part: "Running campaigns"
 depends_on: ["062", "064"]
@@ -11,7 +11,7 @@ updated: 2026-10-20
 
 # 065 · Journals and a research corpus from every campaign
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
 
 ## What
 
@@ -48,11 +48,11 @@ Today most of what an agent learns ends with its trial. Only submitted attempts,
 
 ## Done when
 
-- [ ] Workers, the planner and the advisors write field notes (observations, decisions, surprises, questions, lessons), each with what it is about; the notes are in the ledger with who wrote them and when.
+- [x] Workers, the planner and the advisors write field notes (observations, decisions, surprises, questions, lessons), each with what it is about; the notes are in the ledger with who wrote them and when.
 - [x] Agents in every mode can record sources, claims and notes in the run's folder.
-- [ ] Each campaign has a folder in Thermite's knowledge base with everything its runs produce, each item with its origin; a run's export also holds its part.
+- [x] Each campaign has a folder in Thermite's knowledge base with everything its runs produce, each item with its origin; a run's export also holds its part.
 - [x] The owner sets, and later changes, which other campaigns' folders a campaign can read; agents can search and read them and never write to them.
-- [ ] A new campaign's agents can search the folders they may read, and the queue can start from them.
+- [x] A new campaign's agents can search the folders they may read, and the queue can start from them.
 - [ ] Moved to [068](068-mcp-servers-for-agents.goal) (MCP servers for agents, owner, 2026-10-20): an outside knowledge base (such as GBrain) is optional; control can sync folders to it, and a campaign can read from it as outside context.
 - [x] The dashboard shows a run's journals beside its experiments.
 - [x] Tests cover writing, the export, sending to a knowledge base and searching it.
@@ -68,6 +68,9 @@ Today most of what an agent learns ends with its trial. Only submitted attempts,
 
 - 2026-10-20, owner, on whether control should sign the past research it sends to rigs: "This is probably overkill atm." and "overkill atm, keep it as it is with supervisor passing in." Not signed: the supervisor stays trusted for past research, as it is for the advisors' work.
 - 2026-10-20, owner, on how much of a journal a new campaign sees: "everything, keep it simple." Outside knowledge bases become plain MCP tools that a kit names ([068](068-mcp-servers-for-agents.goal)); that replaces this goal's outside knowledge base copies and the teachers' search grant.
+- 2026-10-20, release lead, on the box about what a note is about: the box stands. A note whose writer names nothing more specific is recorded as about its run, never with `about` left empty, and the lenient reading stays, so a bad note never loses an advisor's work.
+- 2026-10-20, from the approved mockups (the Knowledge page, a campaign's knowledge, and Start a run from past research): grants live in a campaign's Knowledge section and past research in Start a run, not on the New campaign page. So the New campaign page links there and says how to use them for a first run (save without starting, grant, Start a run).
+- 2026-10-20: "documentation" in a campaign's folder is the text files the lanes write in their working areas of the run's research folder (UTF-8, up to 1 MiB each); other files stay in the run's folder and its export. A research run's hypotheses go in the folder too.
 
 ## Open questions
 
@@ -122,6 +125,13 @@ Today most of what an agent learns ends with its trial. Only submitted attempts,
     - The New campaign page offers no grants and no past research. So a new campaign's first run reads other campaigns' folders only after a grant, and only a later run (Start a run) can start its queue from them.
 
   The explanation page's list of parts not built named two that later decisions settled. It now names the knowledge-base search for the planner and the advisors, and links goal 068 for outside knowledge bases.
+
+- 2026-10-20: The three open boxes built, each with its pages, on branch `v010/065-journals-corpus`:
+  - **What a note is about.** `about` takes `run`; a note that names nothing is recorded as about its run, and a planner's or advisor's note about a record the run lacks is kept as about the run (lenient as before). Ledger migration 16 rebuilds `journal_note` with `about` required; older notes read as about their run on the dashboard, in the knowledge base and in the export.
+  - **Everything a run produces.** One shared reading of events into items (`core/kb-index.ts`), used by control and by the harness. New items: `run` (campaign, version, mode, seed, direction, agents, briefing, then status and best so far), `trial` (lane, round, direction, focus, then how it ended), `doc` (a lane's text file, from a new `research_doc` event at the trial's end) and `hypothesis` (a new `hypothesis_added` event). A source's item holds the text that was read (`source_fetched` carries it, cut to 20,000 characters; the dashboard reads events without it). Each item keeps its run, its writer and its time. Each export writes `knowledge.jsonl`, the items its events added or changed, which the supervisor pushes to `knowledge/<export>.jsonl`; a test checks they equal what control files from the same events.
+  - **Search for the planner and the advisors.** The harness searches its copy of a run's `knowledge/` (read only, marked as data). The planner in Pi has `search_past_research`; in OpenCode or Claude Code it reads the folder's files with its own read tools (Claude Code: `Read`, `Grep`, `Glob` only). The teacher pair, the auditor and each panelist get the same tool through `GET /v1/knowledge`; in Claude Code over MCP on localhost, served by the supervisor for the one call; a teacher with an open web fetch gets none.
+  - **New campaign.** The approved mockups show grants and past research on the campaign's page and in Start a run only, so **Review and start** now has a **Past research** note that links to **Knowledge** and gives the steps.
+  - Unit tests cover each part; typecheck, lint, the docs build and check, and the public check pass. The compose acceptances were not run on this branch and do not drive the knowledge base yet. A rig must run the new images for past research to sync once control holds the new kinds of item.
 
 ---
 
