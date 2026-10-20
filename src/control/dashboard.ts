@@ -1993,10 +1993,22 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
       | { goals?: { verify?: { type?: string } }[] }
       | undefined;
     const reviewed = (contract?.goals ?? []).some((g) => g.verify?.type === "review");
+    // The advisors the rig's supervisor has (it reports them); none set up: nothing would read.
+    const sup = u.supervisor as { advisors?: { roles?: Record<string, unknown> } | null } | null;
+    const roles = sup && "advisors" in sup ? (sup.advisors?.roles ?? {}) : undefined;
+    const noAdvisor = (role: "teachers" | "auditor" | "review") =>
+      roles !== undefined &&
+      !(role === "teachers"
+        ? Number(roles.teachers) > 0
+        : role === "auditor"
+          ? roles.auditor === true
+          : Number(roles.panel) > 0);
     const offBy = (role: "planner" | "teachers" | "auditor" | "review") =>
       set && set[role] === false
         ? `The ${role === "review" ? "review panel" : role === "teachers" ? "teacher pair" : role} is off on this rig (Edit rig).`
-        : "";
+        : role !== "planner" && noAdvisor(role)
+          ? `This rig's supervisor has no ${role === "review" ? "review panel" : role === "teachers" ? "teacher pair" : "auditor"} set up, so nothing would read it.`
+          : "";
     const opt = (v: string, label: string, off = "") =>
       `<option value="${esc(v)}" data-hint="${esc(hint(v))}"${v === to ? " selected" : ""}${off ? ` disabled title="${esc(off)}"` : ""}>${esc(label)}</option>`;
     // A message control refused, or the rig refused (its newest one to this run).
@@ -2010,7 +2022,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
       r.status === "closed"
         ? `<div class="lcomposer off">This run has finished: its agents take no more messages.</div>`
         : `<form class="lcomposer" method="post" action="/ui/live/message"><input type="hidden" name="csrf" value="${csrf(c)}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(r.id)}"><input type="hidden" name="w" value="${esc(w)}">
-<select name="to" aria-label="To" class="lto">${opt("all", "To everyone working")}${lanes.map((l) => opt(l, `To ${l}`)).join("")}${opt("planner", "To the planner", research ? "A research run plans its rounds with a fixed method: it has no planner to message." : offBy("planner"))}<optgroup label="Advisors">${opt("advisors", "To all advisors")}${opt("teachers", "To the teachers", offBy("teachers"))}${opt("auditor", "To the auditor", research ? "A research run has no attempts to audit." : offBy("auditor"))}${opt("panel", "To the review panel", research ? "A research run has no conclusions to review." : !reviewed ? "This run has no goal the review panel reviews." : offBy("review"))}</optgroup></select>
+<select name="to" aria-label="To" class="lto">${opt("all", "To everyone working")}${lanes.map((l) => opt(l, `To ${l}`)).join("")}${opt("planner", "To the planner", research ? "A research run plans its rounds with a fixed method: it has no planner to message." : offBy("planner"))}<optgroup label="Advisors">${opt("advisors", "To all advisors", noAdvisor("teachers") && noAdvisor("auditor") && noAdvisor("review") ? "This rig's supervisor has no advisors set up, so nothing would read it." : "")}${opt("teachers", "To the teachers", offBy("teachers"))}${opt("auditor", "To the auditor", research ? "A research run has no attempts to audit." : offBy("auditor"))}${opt("panel", "To the review panel", research ? "A research run has no conclusions to review." : !reviewed ? "This run has no goal the review panel reviews." : offBy("review"))}</optgroup></select>
 <textarea name="text" rows="1" required maxlength="4000" aria-label="Message" placeholder="${esc(hint(to))} · ⌘↩ sends"${c.req.query("compose") ? " autofocus" : ""}></textarea>
 <label class="lpin" title="Keep it in force: every new trial gets it too, until you remove it"><input type="checkbox" name="keep" value="1">📌</label>
 <button class="primary">${icon.send}Send</button></form>`;
