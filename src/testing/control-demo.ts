@@ -348,7 +348,7 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
     { jobs: { leased: 1, queued: 0, done: 1 } },
   );
   live("rig-b", [
-    [65, { source: "planner", kind: "status", text: "planning epoch 1 (2 lanes)", run: "dec-2" }],
+    [65, { source: "planner", kind: "status", text: "planning round 1 (2 lanes)", run: "dec-2" }],
     [
       64,
       {

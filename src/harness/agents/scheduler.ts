@@ -555,8 +555,8 @@ export class Scheduler {
         source: "planner",
         kind: "status",
         text: giveUp
-          ? `planning epoch ${n} without a goal report on champion #${seq} (${failed >= 3 ? "its validation failed" : `none after ${Math.round(waited / 60_000)} min`})`
-          : `epoch ${n} waits for the judge's goal report on champion #${seq}`,
+          ? `planning round ${n} without a goal report on champion #${seq} (${failed >= 3 ? "its validation failed" : `none after ${Math.round(waited / 60_000)} min`})`
+          : `round ${n} waits for the judge's goal report on champion #${seq}`,
         run,
       });
     }
@@ -604,7 +604,7 @@ export class Scheduler {
     live.append({
       source: "planner",
       kind: "status",
-      text: `planning epoch ${n} (${laneCount} lanes)`,
+      text: `planning round ${n} (${laneCount} lane${laneCount === 1 ? "" : "s"})`,
       run,
     });
     const ctrl = new AbortController();

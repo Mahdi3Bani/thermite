@@ -925,11 +925,12 @@ describe("agent scheduler", () => {
     const { env, fake, planned, briefs, scheduler, live } = await goalSetup();
     assert.equal(await scheduler.tick(), false); // the seed is not validated yet: no plan
     assert.equal(planned.length, 0);
-    assert.match(live(), /epoch 1 waits for the judge's goal report on champion #1/);
+    assert.match(live(), /round 1 waits for the judge's goal report on champion #1/);
     await env.drain(); // the judge validates the seed
     assert.ok(await scheduler.tick());
     await scheduler.idle();
     assert.equal(planned.length, 1);
+    assert.match(live(), /^planning round 1 \(1 lane\)$/m);
     // The planner and the worker both see what the champion meets.
     assert.match(String(planned[0]), /\\"goal_report\\"/);
     assert.match(String(planned[0]), /\\"goal\\":\\"fast\\",[^}]*\\"status\\":\\"unmet\\"/);
@@ -947,7 +948,7 @@ describe("agent scheduler", () => {
     assert.doesNotMatch(String(planned[0]), /\\"goal_report\\"/);
     assert.match(
       live(),
-      /planning epoch 1 without a goal report on champion #1 \(none after 0 min\)/,
+      /planning round 1 without a goal report on champion #1 \(none after 0 min\)/,
     );
     assert.equal(env.ledger.db.prepare("select count(*) as n from epoch").get()?.n, 1);
     await fake.close();

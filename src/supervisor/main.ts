@@ -205,11 +205,12 @@ async function main(): Promise<void> {
           errors: a.errors - before.errors,
         };
         // A round that did nothing says nothing: the live view is for what happens.
-        if (Object.values(did).some((n) => n > 0))
+        const n = (k: number, what: string) => `${k} ${what}${k === 1 ? "" : "s"}`;
+        if (Object.values(did).some((k) => k > 0))
           supervisorLive.append({
             source: "supervisor",
             kind: "status",
-            text: `advisor round done: ${did.teachers} teacher runs, ${did.sets} directive sets, ${did.audits} audits, ${did.reviews} reviews, ${did.errors} errors`,
+            text: `advisor round done: ${n(did.teachers, "teacher run")}, ${n(did.sets, "directive set")}, ${n(did.audits, "audit")}, ${n(did.reviews, "review")}, ${n(did.errors, "error")}`,
           });
       } catch (err) {
         log("supervisor", "advisor loop error", { error: String(err) });
