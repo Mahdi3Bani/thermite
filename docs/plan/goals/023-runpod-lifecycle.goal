@@ -1,17 +1,17 @@
 ---
 id: "023"
 title: "Stop, start and terminate RunPod rigs"
-status: READY
+status: IN_PROGRESS
 version: "0.1.0"
 part: "Rigs on RunPod"
 depends_on: ["022"]
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # 023 · Stop, start and terminate RunPod rigs
 
-**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Rigs on RunPod · **Depends on:** [022](022-runpod-launch.goal)
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Rigs on RunPod · **Depends on:** [022](022-runpod-launch.goal)
 
 ## What
 
@@ -24,11 +24,18 @@ A rig you pay for by the hour must stop when it has no work, and it must not los
 ## Done when
 
 - [ ] Each action works against a fake RunPod API in CI, and once on RunPod.
-- [ ] Terminate refuses while exports are still pending.
+- [x] Terminate refuses while exports are still pending.
 
 ## Decisions
 
-None yet.
+- 2026-10-20, lead (brief): stop pauses the runs and sends waiting results out first; terminate waits until every result has left the pod (`resultsLeft()`, goal 024) and otherwise refuses, leaving the pod running with its runs paused; a full reset sends every result out, wipes the rig's state and keeps the pod and its GPU; start says plainly when RunPod has no GPU free; the owner alone, over REST, MCP and the command line, as for the launch; the dashboard's buttons wait for the owner's mockup.
+- 2026-10-20, builder: restart is a stop and a start through RunPod's API (the two actions the RunPod spike, goal 018, confirmed), with no export: the volume keeps everything. Both parts restart together, since a pod runs them in one container.
+- 2026-10-20, builder: a stop waits for its results at most 15 minutes, then stops the pod all the same: a stopped pod keeps its volume, and a limit's stop must not run on for long. What did not leave is named in the rig's history.
+- 2026-10-20, builder: a terminate waits as a full reset does: no judge job and no command waiting (1 hour), a full export (30 minutes), every result off the pod (1 hour). Past a step's limit, or when a result can never leave (an export that failed, a supervisor with nowhere to send), it is refused. There is no forced terminate: RunPod's console still removes a pod, and control then marks it gone.
+- 2026-10-20, builder: a start resumes the runs the last stop paused. A start is refused while the pod has cost its spend limit.
+- 2026-10-20, builder: a rig whose harness never reported holds no result, so a stop or a terminate acts on its pod at once (a pod that never enrolled, say). A stopped pod is terminated at once only when its last stop's export, and every result with it, had left the pod.
+- 2026-10-20, builder: the spend limit and the idle stop stop the pod through the same stop, its results first; they never remove it.
+- 2026-10-20, builder: the routes every rig has carry restart and the full reset (`POST /v1/rigs/<rig>/restart` and `/reset`); stop, start and terminate are new, under `/v1/rigs/<rig>/runpod/`. MCP's `runpod_rig` (owner only) and `thermite runpod stop|start|restart|terminate|reset|confirm-wipe|cancel-reset` cover all of them. The RunPod driver serves only rigs launched on RunPod and needs no setting; `THERMITE_LIFECYCLE` still names the driver for the others.
 
 ## Open questions
 
@@ -37,6 +44,15 @@ None.
 ## Progress
 
 - 2026-10-19: Goal written from the v0.1.0 release plan.
+- 2026-10-20: Built behind the screen:
+  - **The driver.** `RunpodDriver` (`src/control/lifecycle.ts`) beside the compose and Kubernetes drivers, and the changes themselves in `src/control/runpod-lifecycle.ts`, which `RunpodRigs` (`runpod-rigs.ts`) starts on the owner's ask or at a limit and moves on in control's loop, one change per rig at a time. A rig's `runpod` view has `op`, `op_words`, `paused_runs` and `last_export`; `stopped_by` is also `owner`.
+  - **Stop:** pause the running runs, `export_now`, wait until it and every export and champion's patch waiting on the pod have reached control (or 15 minutes), then RunPod's stop. **Start:** RunPod's start; refused in words when RunPod has no GPU free (`RunPod has no free GPU for pod … now, so the pod stays stopped (…)`), and while the spend limit is reached; once the pod runs, the paused runs resume, and a pod with fewer GPUs than launched is said in the history. **Restart:** stop, then start once RunPod says it stopped. **Terminate:** pause, quiesce, full export, every result off the pod, then RunPod's delete; the rig is retired. Refused otherwise, with the pod running and its runs paused. **Full reset** (`lifecycle.ts`): only while the pod runs and no change is under way; its `verifying` step also waits for `resultsLeft()`; at the wipe the pod and its GPU stay.
+  - **History:** each change is a step of the rig's history (`runpod_launched`, `runpod_stopping`, `runpod_stopped`, `runpod_restarting`, `runpod_starting`, `runpod_start_refused`, `runpod_running`, `runpod_terminating`, `runpod_terminated`, `runpod_terminate_refused`, `runpod_gone`, `reset_requested`, `reset_done`, `reset_failed`, `reset_cancelled`), in `GET /v1/rigs/<rig>/runpod` (`history`) and MCP's `rig_setup`, and in the audit log.
+  - **Who:** the owner alone: `POST /v1/rigs/<rig>/runpod/stop|start|terminate`, `POST /v1/rigs/<rig>/restart|reset` (RunPod's driver serves RunPod rigs with no setting), MCP's `runpod_rig`, and `thermite runpod stop|start|restart|terminate|reset|confirm-wipe|cancel-reset`.
+  - **Spend limit:** reaching it, or the idle stop, now goes through the stop (its results first); it never removes the pod.
+  - Tests: `src/control/runpod-lifecycle.test.ts` (every action and refusal against the fake RunPod API, terminate refusing while exports or a champion's patch wait, while a result can never leave, and after a failed export; the full reset keeping the pod; REST and MCP refusing every token but the owner's), `src/control/runpod-rigs.test.ts` (the idle stop's export first), `src/cli/runpod.test.ts`. `scripts/runpod-acceptance.mjs` runs launch, enrollment, a report, stop, start and terminate against the fake RunPod API with pods that are containers of the rig image; it passed under rootless Podman, and CI's new `runpod` job runs it with Docker.
+  - Pages: Run a rig on RunPod (new), Stop, restart, remove or reset a rig, REST API (Stop, start, restart and terminate; restart and reset; audit actions), MCP tools (`runpod_rig`, `rig_setup`), Command line, Tokens and roles, Exports, Known limits, Trust between control and rigs.
+  - Left: the dashboard's buttons and the history on the RunPod rig's page (they wait for the owner's mockup; each step's words are in `RUNPOD_STEP_WORDS`, which the REST history already gives), the first CI run of the `runpod` job, and the actions once on RunPod, in the paid acceptance (goal 025), which needs the owner's OK to spend. **Restart the rig's containers** in the rig page's **⋯** menu still goes to `THERMITE_LIFECYCLE`'s driver only.
 
 ---
 

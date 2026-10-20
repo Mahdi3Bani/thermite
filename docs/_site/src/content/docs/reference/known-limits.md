@@ -47,7 +47,7 @@ So with a paid model key, the agents spend for as long as the campaign runs. Bef
 
 ## Timing on RunPod is noisier
 
-Rigs on RunPod are being built ([goals 019 to 025](https://github.com/iammrduncan/thermite/blob/main/docs/plan/roadmap.md#rigs-on-runpod)). Today control starts only short test pods there ([Test a GPU on RunPod](../how-to/install/runpod-test.md)).
+Control launches rigs on RunPod ([Run a rig on RunPod](../how-to/install/runpod-rig.md)), and short test pods ([Test a GPU on RunPod](../how-to/install/runpod-test.md)).
 
 A RunPod GPU is in a machine that other customers' pods share. Their work can slow the processors, memory, disk and network that a timed run uses, so the same change can take a different time from one run to the next. In a hill climb, the judge measures the rig's noise and never assumes less ([Calibration](limits-and-pacing.md#the-judge)). On a noisier rig, a change needs a larger gain before the judge confirms it. RunPod's Community cloud is less predictable than its Secure cloud.
 

@@ -8,16 +8,18 @@ sidebar:
 
 What you can do to a [rig](../../reference/glossary.md), and where, depends on how the rig was set up. This page lists each action for each kind of rig, then gives the steps.
 
-| Action | The local compose stack | Set up by control on a machine | Set up by control on a cluster | Joined yourself |
-| --- | --- | --- | --- | --- |
-| Stop and start | Your compose tool | **Stop its services**, **Start its services** | **Stop its pods**, **Start its pods**, or MCP's `cluster_rig` | Commands on its page, which you run there |
-| Restart | Your compose tool | **Restart them** | **Restart them**, or MCP's `cluster_rig` | A command on its page |
-| Move to new images | Your compose tool | Not yet | **Update to these images** | Not yet |
-| Remove | Your compose tool | **Remove the rig** | **Remove the rig** | A command on its page, then **Retire the rig** |
-| Retire, bring back | Yes | Yes | Yes | Yes |
-| Full reset | Yes | Yes | Yes | Yes |
+| Action | The local compose stack | Set up by control on a machine | Set up by control on a cluster | Joined yourself | Launched on RunPod |
+| --- | --- | --- | --- | --- | --- |
+| Stop and start | Your compose tool | **Stop its services**, **Start its services** | **Stop its pods**, **Start its pods**, or MCP's `cluster_rig` | Commands on its page, which you run there | `thermite runpod stop`, `start`, or MCP's `runpod_rig` |
+| Restart | Your compose tool | **Restart them** | **Restart them**, or MCP's `cluster_rig` | A command on its page | `thermite runpod restart`, or MCP's `runpod_rig` |
+| Move to new images | Your compose tool | Not yet | **Update to these images** | Not yet | Not yet: launch a new rig |
+| Remove | Your compose tool | **Remove the rig** | **Remove the rig** | A command on its page, then **Retire the rig** | `thermite runpod terminate`, which also retires it |
+| Retire, bring back | Yes | Yes | Yes | Yes | Yes |
+| Full reset | Yes | Yes | Yes | Yes | Yes, with the pod running; the pod and its GPU stay |
 
 A full reset needs the rig's full export off the rig first: in its [results repository](results-repository.md), or, for a rig without one, on control. Of the rigs Thermite sets up, only the compose stack has a results repository; the others send their exports to control ([Exports](../../reference/exports.md#where-exports-go)).
+
+A rig launched on RunPod has no buttons for these on the dashboard yet: [Run a rig on RunPod](../install/runpod-rig.md#5-stop-and-start-it) gives the commands, which the REST API and MCP have too. Its stop sends its results out before the pod stops, and its terminate removes the pod only once every result has left it. A full reset of it starts from its page's **⋯** menu, as below, or with `thermite runpod reset`.
 
 The buttons below are on the rig's page: open **Rigs** in the dashboard's sidebar, then the rig.
 
@@ -46,7 +48,7 @@ A restart stops and starts the rig's two containers: its harness, which holds th
 
 ### Give control a deployment driver
 
-You don't need a deployment driver for the steps on this page. With one, control also restarts a rig's containers itself: with **Restart the rig's containers** in the **⋯** menu of the rig's page, over the REST API, and at the end of a full reset. Without one, the menu says `No deployment driver: restarts are not available.` The setting is `THERMITE_LIFECYCLE` on control: `compose` or `kubernetes` (the [settings reference](../../reference/settings.md#restarts-and-full-resets) has the others).
+You don't need a deployment driver for the steps on this page. With one, control also restarts a rig's containers itself: with **Restart the rig's containers** in the **⋯** menu of the rig's page, over the REST API, and at the end of a full reset. A rig launched on RunPod needs none: over the REST API its restart goes to RunPod, which stops its pod and starts it again, and a full reset leaves its pod running. Without one, the menu says `No deployment driver: restarts are not available.` The setting is `THERMITE_LIFECYCLE` on control: `compose` or `kubernetes` (the [settings reference](../../reference/settings.md#restarts-and-full-resets) has the others).
 
 On the compose stack, the file `compose.lifecycle.yaml` sets `compose` and mounts the container engine's socket into control. It is meant for development, because the socket gives control power over every container on the computer. With Docker, add it to your `-f` options. With rootless Podman, also give the socket's path, as `podman info --format '{{.Host.RemoteSocket.Path}}'` prints it, without `unix://` (on a Mac, use the path as it is):
 
@@ -189,6 +191,7 @@ A full reset gives a rig a clean start: it exports everything, checks that the e
 - The rig's exports leave it: to its results repository (the compose stack has one), or to control (every other rig). See [Exports](../../reference/exports.md#where-exports-go).
 - No commands wait for the rig. A pending command holds the reset at its `quiescing` step. [Cancel](cancel-a-command.md) those you don't need.
 - During the reset, `issue_command` refuses an agent's token for the rig, with `rig-1 is being reset by the owner`.
+- A rig launched on RunPod: its pod runs, and no stop, start, restart or terminate is under way. Otherwise the reset fails at once, for example with `rp-1a2b3c4d's pod is stopped: start it first, so its results can leave it before the wipe`. Its reset also waits until no other export or champion's patch waits on the pod, and its pod and GPU stay: the harness and the supervisor restart themselves in it.
 
 ### Steps
 
@@ -225,7 +228,7 @@ A full reset gives a rig a clean start: it exports everything, checks that the e
 
 If the reset fails or is cancelled, nothing is wiped and the runs stay paused. The **Detail** says why, for example `the rig has no results repository, and its supervisor does not send exports to control (an older version): its export cannot be verified` or `timed out while quiescing`.
 
-Over the REST API, with the owner's token: `POST /v1/rigs/<rig>/reset` with `{"confirm":"reset <rig>"}` starts a reset and answers `{"reset":<id>}`. `GET /v1/resets` lists them, and `POST /v1/resets/<id>/confirm` or `/cancel` confirms or cancels one. There is no MCP tool for resets.
+Over the REST API, with the owner's token: `POST /v1/rigs/<rig>/reset` with `{"confirm":"reset <rig>"}` starts a reset and answers `{"reset":<id>}`. `GET /v1/resets` lists them, and `POST /v1/resets/<id>/confirm` or `/cancel` confirms or cancels one. For a rig launched on RunPod, the owner's MCP tool `runpod_rig` (`reset`, `confirm_wipe`, `cancel_reset`) and `thermite runpod reset`, `confirm-wipe` and `cancel-reset` do the same. There is no MCP tool for other rigs' resets.
 
 ### What a full reset keeps
 

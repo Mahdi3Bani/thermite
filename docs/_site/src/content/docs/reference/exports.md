@@ -69,7 +69,7 @@ The supervisor reports these every round, unsigned. They are `supervisor.export`
 
 ## Have all results left the rig?
 
-Control answers this from the rig's latest supervisor report and, for exports on control, from its own copy. A terminate waits for it ([goal 023](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/023-runpod-lifecycle.goal)). `GET /v1/rigs/<rig>/results-left` asks it, with the owner's token; `?export=<name>` also asks about that export.
+Control answers this from the rig's latest supervisor report and, for exports on control, from its own copy. A RunPod pod's terminate waits for it, and so does its stop, for 15 minutes at most ([Stop, start, restart and terminate](rest-api.md#stop-start-restart-and-terminate)). `GET /v1/rigs/<rig>/results-left` asks it, with the owner's token; `?export=<name>` also asks about that export.
 
 The answer is yes only when all of these hold:
 

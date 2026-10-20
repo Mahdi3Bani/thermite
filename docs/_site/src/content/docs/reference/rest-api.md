@@ -129,8 +129,8 @@ A live line's `kind` is `text`, `thinking`, `tool`, `result`, `message`, `status
 
 | Route | Token | What it does | Request | Answer |
 | --- | --- | --- | --- | --- |
-| `POST /v1/rigs/<rig>/restart` | Owner | Restarts the rig's containers through the deployment driver that `THERMITE_LIFECYCLE` names | `{"components":["harness","supervisor"]}`, or no body for both | `{"restarted":[…]}`. 409 `{"error":"no deployment driver is configured"}`. 500 with the driver's error |
-| `POST /v1/rigs/<rig>/reset` | Owner | Starts a full reset: pause, export, verify the push, wait for the owner, wipe, restart | `{"confirm":"reset <rig>"}` | 201 `{"reset":<id>}`. 400 `confirm with "reset <rig>"`. 500 `a reset of <rig> is already in progress` |
+| `POST /v1/rigs/<rig>/restart` | Owner | Restarts the rig's containers through the deployment driver that `THERMITE_LIFECYCLE` names. A rig launched on RunPod needs no setting: its pod stops and starts again through RunPod's API ([Stop, start, restart and terminate](#stop-start-restart-and-terminate)) | `{"components":["harness","supervisor"]}`, or no body for both. On RunPod, both parts restart together | `{"restarted":[…]}`; on RunPod, `{"restarted":["pod <pod>: it stops, then starts again"]}`. 409 `{"error":"no deployment driver is configured"}`; on RunPod, 409 with the reason, such as `a rig on RunPod runs its harness and its supervisor in one container: they restart together`. 500 with the driver's error |
+| `POST /v1/rigs/<rig>/reset` | Owner | Starts a full reset: pause, export, verify the push, wait for the owner, wipe, restart | `{"confirm":"reset <rig>"}` | 201 `{"reset":<id>}`. 400 `confirm with "reset <rig>"`. 409, for a rig on RunPod, `<rig>'s pod is stopped: start it first, so its results can leave it before the wipe`, or `a stop of <rig> is under way: wait until it ends` (likewise a start, a restart or a terminate). 500 `a reset of <rig> is already in progress` |
 | `GET /v1/resets` | Owner | The newest 20 resets | None | `{"resets":[{id, rig, state, requested_by, command, export_name, through_event, detail, created_at, updated_at}]}` |
 | `POST /v1/resets/<id>/confirm` | Owner | Confirms the wipe of a reset that waits for the owner | None | `{"ok":true}`. 500 `no reset <id>` or `reset <id> is <state>, not waiting for confirmation` |
 | `POST /v1/resets/<id>/cancel` | Owner | Cancels a reset before its wipe. The rig's campaigns stay paused | None | `{"ok":true}`. 500 `no reset <id>`, or `reset <id> is <state>` once it is wiping or has ended |
@@ -142,13 +142,15 @@ A reset moves through these states. Control moves open resets on every 10 second
 | `start` | Control pauses the rig's running runs | |
 | `quiescing` | Waits until the judge has no queued or running jobs and no command is pending | 1 hour |
 | `exporting` | A full export, until the harness reports it | 30 minutes |
-| `verifying` | Waits until the supervisor reports the export pushed to the results repository. Fails at once if the rig has no results repository | 1 hour |
+| `verifying` | Waits until the supervisor reports the export pushed to the results repository, or, for a rig without one, until control holds every file of it. On RunPod, also until no other export or champion's patch waits on the pod. Fails at once if the rig has nowhere to send it | 1 hour |
 | `awaiting_owner` | Waits for the owner to check the pushed commit and confirm | 24 hours |
 | `confirmed` | Control sends the signed wipe | |
 | `wiping` | Waits for the harness to report the wipe, then restarts the rig | 30 minutes |
 | `done`, `failed`, `cancelled` | Ended. `detail` says why | |
 
 The commands a reset sends last 30 minutes and carry the owner who asked as their issuer. [Stop, restart, remove or reset a rig](../how-to/operate/rig-lifecycle.md) gives the steps.
+
+On a rig launched on RunPod, a reset starts only while its pod runs and no stop, start, restart or terminate is under way; one asked for otherwise (from the dashboard, say) fails at its `start` state with the same reason. At `wiping`, the pod and its GPU stay: the harness and the supervisor restart themselves in it, and `detail` says `wiped; the pod and its GPU stay: the harness and the supervisor restarted themselves in it`. Its steps are in the rig's history (`reset_requested`, `reset_done`, `reset_failed`, `reset_cancelled`).
 
 ### Audit log
 
@@ -183,13 +185,13 @@ Starting a test refuses with one of these:
 
 ### Rigs on a GPU cloud
 
-The owner launches rigs on RunPod with these routes, the MCP tool [`runpod_launch`](mcp-tools.md#runpod_launch) or [`thermite runpod launch`](command-line.md#runpod-launch). Only the owner's token may launch a rig or change its limits: an operator's, an agent's or a reader's token gets 401. A rig runs the [one-container rig image](harness-image.md#the-one-container-rig-image) in [pull mode](../explanation/trust.md#rigs-in-pull-mode). Control enrolls it once its pod runs, and follows its pod every 30 seconds.
+The owner launches rigs on RunPod with these routes, the MCP tool [`runpod_launch`](mcp-tools.md#runpod_launch) or [`thermite runpod launch`](command-line.md#runpod-launch), and stops, starts, restarts and terminates them with the routes in [Stop, start, restart and terminate](#stop-start-restart-and-terminate). Only the owner's token may launch a rig, change its limits or change its pod: an operator's, an agent's or a reader's token gets 401. A rig runs the [one-container rig image](harness-image.md#the-one-container-rig-image) in [pull mode](../explanation/trust.md#rigs-in-pull-mode). Control enrolls it once its pod runs, and follows its pod every 30 seconds.
 
 | Route | Token | What it does | Request | Answer |
 | --- | --- | --- | --- | --- |
 | `POST /v1/gpu-clouds/<name>/rigs` | Owner | **Spends money.** Launches a rig on the GPU cloud `<name>` from **Providers**: one pod, billed by the hour from now until it is stopped or removed | `{gpu, gpu_count, cloud_type, datacenter, image, container_disk_gb, volume_gb, rig, enroll_within_minutes, settings, spend_limit_usd, idle_stop_minutes}`. Only `gpu` is required, nothing else is taken. See below | 201 `runpod rig`. 409 with the reason. 400 `invalid request` for a field of the wrong type or a field it does not take |
 | `GET /v1/gpu-clouds/<name>/rigs` | Owner | The rigs launched on one GPU cloud, newest first | None | `[runpod rig]`. No such cloud gives `[]` |
-| `GET /v1/rigs/<rig>/runpod` | Owner | One rig launched on a GPU cloud | None | `runpod rig`. 404 `{"error":"not found"}` |
+| `GET /v1/rigs/<rig>/runpod` | Owner | One rig launched on a GPU cloud, with its history | None | `runpod rig` and `history`: `[{at, step, ok, detail, words}]`, oldest first. The steps are those the MCP tool [`rig_setup`](mcp-tools.md#rig_setup) lists; `words` says a RunPod step in words, such as `Pod stopped: its GPU is no longer billed, and its volume stays`, and is `null` for another step, such as a model download. 404 `{"error":"not found"}` |
 | `POST /v1/rigs/<rig>/runpod/limits` | Owner | Sets or clears the rig's spend limit and idle stop | `{spend_limit_usd, idle_stop_minutes}`: a number sets one, `null` clears it, and one left out stays | `runpod rig`. 404 `no rig <rig> on a GPU cloud`. 400 with the reason |
 
 What a launch takes:
@@ -211,11 +213,11 @@ What a launch takes:
 
 The pod's environment holds only pull mode's [launch values](settings.md#pull-mode): public material and the one-time code. Control's RunPod key, its tokens and every other secret stay on control. A launch that fails starts nothing, or removes the pod it started, and leaves no rig: its code can never enroll.
 
-A `runpod rig` has `rig`, `cloud`, `pod`, `active` (control still follows the pod), `created_by`, what it was launched with (`image`, `gpu`, `gpu_name`, `gpu_count`, `cloud_type`, `datacenter`, `container_disk_gb`, `volume_gb`), `status` (the pod's status at RunPod, as control last read it, such as `RUNNING` or `EXITED`), `status_at`, `launched_at`, `price_per_hr` (USD per hour for the whole pod: RunPod's price for it, or the GPU's list price before RunPod gives one), `spend_usd` (what it has cost so far, at the prices control saw, to the cent; `null` without a price), `spend_limit_usd`, `idle_stop_minutes`, `idle_since` (since when the idle stop counts), `enrolled_at`, `stopped_at` and `stopped_by` (`spend_limit` or `idle_stop`, when control stopped the pod), `ended_at` (when RunPod no longer had the pod), `error` (what control's last read of the pod found) and `notes`, in words.
+A `runpod rig` has `rig`, `cloud`, `pod`, `active` (control still follows the pod), `created_by`, what it was launched with (`image`, `gpu`, `gpu_name`, `gpu_count`, `cloud_type`, `datacenter`, `container_disk_gb`, `volume_gb`), `status` (the pod's status at RunPod, as control last read it, such as `RUNNING` or `EXITED`), `status_at`, `launched_at`, `price_per_hr` (USD per hour for the whole pod: RunPod's price for it, or the GPU's list price before RunPod gives one), `spend_usd` (what it has cost so far, at the prices control saw, to the cent; `null` without a price), `spend_limit_usd`, `idle_stop_minutes`, `idle_since` (since when the idle stop counts), `enrolled_at`, `stopped_at` and `stopped_by` (`spend_limit` or `idle_stop` when control stopped the pod at a limit, `owner` when the owner stopped it), `ended_at` (when RunPod no longer had the pod), `error` (what control's last read of the pod found, or why a terminate was refused) and `notes`, in words. While a stop, start, restart or terminate is under way, `op` is `{kind, by, why, phase, at, phase_at, command, export, paused}` and `op_words` says it in words, such as `stopping: waiting for its results to leave the pod`; otherwise both are `null`. `paused_runs` lists the runs the last stop paused, which the next start resumes. `last_export` is the export the last stop made, and `last_export_left` says whether it, and every result with it, had left the pod when the pod stopped.
 
 `spend_usd` counts the time the pod ran, as control saw it, at its price per hour. It leaves out what RunPod bills for a stopped pod's volume. **Providers** shows the account's whole spend from RunPod's billing.
 
-Neither limit has a default. A pod that reaches a limit that is set is stopped: its GPU is no longer billed, and its volume stays. A pod that is started again after a spend limit stopped it is stopped again at the next check, until the owner raises or clears the limit. Starting, stopping and removing a pod by hand come with [goal 023](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/023-runpod-lifecycle.goal).
+Neither limit has a default. A pod that reaches a limit that is set is stopped as the owner's stop is: its runs paused, its results sent out first, then the pod stopped. Its GPU is no longer billed, and its volume stays; it is never removed. A start is refused while the pod has cost its spend limit, and a pod started again in RunPod's console is stopped again at the next check, until the owner raises or clears the limit.
 
 A launch refuses with one of these, as 409 `{"error": ...}`:
 
@@ -233,6 +235,40 @@ A launch refuses with one of these, as 409 `{"error": ...}`:
 - `the rig's settings take only <names>, with values of letters, digits and . _ , : -`
 - `a rig's name is 2 to 40 characters of a-z, 0-9 and -, starting and ending with a letter or digit`, `rig <rig> exists already`
 - what RunPod answered, such as `RunPod answered 400 for POST /v2/pods (Bad Request: no capacity for that GPU)`, or `RunPod refused the key for this: a read-only key can't start or stop pods`
+
+#### Stop, start, restart and terminate
+
+These change a rig's pod through RunPod's API, the owner's alone, as the MCP tool [`runpod_rig`](mcp-tools.md#runpod_rig) and [`thermite runpod stop`](command-line.md#runpod-stop-start-restart-terminate), `start`, `restart` and `terminate` do. A restart uses the route every rig has, `POST /v1/rigs/<rig>/restart`, and a full reset `POST /v1/rigs/<rig>/reset` ([Restart and full reset](#restart-and-full-reset)). Control moves a stop or a terminate on every 30 seconds, as it follows the pod.
+
+| Route | Token | What it does | Request | Answer |
+| --- | --- | --- | --- | --- |
+| `POST /v1/rigs/<rig>/runpod/stop` | Owner | Begins a stop: pauses the rig's running runs and asks for an export. Once that export and every result waiting with it have left the pod, or after 15 minutes, RunPod stops the pod | None | `runpod rig`, with `op` |
+| `POST /v1/rigs/<rig>/runpod/start` | Owner | Starts a stopped pod now. Once it runs, the runs the last stop paused are resumed | None | `runpod rig` |
+| `POST /v1/rigs/<rig>/runpod/terminate` | Owner | Begins a terminate: pauses the runs, waits until no judge job and no command waits on the rig, asks for a full export, and removes the pod and its volume only once every result has left it. Then it retires the rig | `{"confirm":"terminate <rig>"}` | `runpod rig`, with `op`. 400 `confirm with "terminate <rig>"` |
+
+Each answers 404 `{"error":"no rig <rig> on a GPU cloud"}` for a rig not launched on a GPU cloud, and 409 `{"error": ...}` with the reason for a refusal:
+
+- `<rig>'s pod is gone: RunPod no longer has it`
+- `a stop of <rig> is under way: wait until it ends` (likewise a start, a restart or a terminate)
+- `a full reset of <rig> is under way (<state>): cancel it, or wait until it ends`
+- for a stop: `<rig>'s pod is stopped already`
+- for a start: `<rig>'s pod is not stopped: RunPod says it is <status>`, or `<rig> has cost <spent>, which is at its spend limit (<limit>): raise or clear the limit first`
+- for a start, when RunPod has no GPU free for the pod: `RunPod has no free GPU for pod <pod> now, so the pod stays stopped (<RunPod's answer>). Its volume stays. Try again later, or terminate it and launch a new rig`; for any other refusal by RunPod, `RunPod would not start pod <pod>: <RunPod's answer>. It stays stopped, with its volume`
+- for a restart: `<rig>'s pod is stopped: start it instead of restarting it`
+- for a terminate of a stopped pod: `<rig>'s pod is stopped, and results may wait on its volume (<why>): start it, so they can leave, then terminate it`
+
+How each one goes:
+
+| | Stop | Start | Restart | Terminate |
+| --- | --- | --- | --- | --- |
+| Runs | Pauses the running runs, with the reason `the owner stops the rig's pod` | Resumes the runs the last stop paused | Leaves them: they go on after the restart | Pauses the running runs, with the reason `the owner terminates the rig's pod` |
+| Results | An export (`export_now`); the pod stops once it and every export and champion's patch waiting on the rig have left, or after 15 minutes, when what did not leave stays on the volume | | None: the volume keeps them | First no judge job and no command may wait (1 hour at most), then a full export (30 minutes at most), then every result must leave (1 hour at most) |
+| RunPod | Stops the pod: its GPU is no longer billed, its volume stays | Starts the pod | Stops the pod, then starts it once RunPod says it stopped | Removes the pod and its volume |
+| When it can't | It stops all the same, and its history says what stayed on the volume | Refused, in words; the pod stays stopped | The start is refused: the pod stays stopped, and its history says why | Refused: the pod keeps running, with its runs paused, `error` says why, and its history has `runpod_terminate_refused` |
+
+A rig whose harness never reported holds no result: a stop or a terminate then acts on the pod at once. A stopped pod is terminated at once only when its last stop's export and every result with it had left the pod. A stop, start or restart may give the pod a different GPU, or none: RunPod keeps a stopped pod's GPU for no one, and a start says so when it has none free. When the pod runs with fewer GPUs than it was launched with, its history says so.
+
+Each change is a step in the rig's history (`GET /v1/rigs/<rig>/runpod`, or [`rig_setup`](mcp-tools.md#rig_setup), which lists the steps), and in control's audit log: see [Audit log actions](#audit-log-actions).
 
 ### Metrics
 
@@ -399,7 +435,7 @@ Control writes one entry for each of these to its audit log. `GET /v1/audit`, th
 | Providers | `model_provider_added`, `model_provider_changed`, `model_provider_deleted`, `model_provider_model_added`, `rig_model_given`, `agent_model_given`, `git_access_added`, `git_access_deleted`, `git_access_token_replaced`, `gpu_cloud_added`, `gpu_cloud_deleted`, `gpu_cloud_key_replaced` |
 | Machines and clusters | `machine_added`, `machine_deleted`, `machine_host_key_trusted`, `machine_install_approved`, `machine_install_finished`, `machine_rig_created`, `machine_rig_stop`, `machine_rig_start`, `machine_rig_restart`, `machine_rig_remove`, `cluster_added`, `cluster_deleted`, `cluster_slots_set`, `cluster_rig_created`, `cluster_rig_stop`, `cluster_rig_start`, `cluster_rig_restart`, `cluster_rig_remove`, `cluster_rig_images` (a cluster rig moved onto control's images, with the old and the new) |
 | Test pods | `runpod_test_started`, `runpod_test_ended`, `runpod_test_done` |
-| Pull mode and rigs on RunPod | `tunnel_rig_added` (a rig minted for a pod), `tunnel_rig_pod` (its pod named), `tunnel_rig_enrolled`, `tunnel_refusals` (the requests a pod refused since its last exchange), `tunnel_rig_dropped` (a minted rig whose launch failed), `runpod_rig_launched` (by the owner: the cloud, pod, GPU and count, cloud type, data center, price, image and limits), `runpod_rig_limits` (the limits now), `runpod_rig_stopped` (by `control`: the pod it stopped, why, `spend_limit` or `idle_stop`, and the spend) |
+| Pull mode and rigs on RunPod | `tunnel_rig_added` (a rig minted for a pod), `tunnel_rig_pod` (its pod named), `tunnel_rig_enrolled`, `tunnel_refusals` (the requests a pod refused since its last exchange), `tunnel_rig_dropped` (a minted rig whose launch failed), `runpod_rig_launched` (by the owner: the cloud, pod, GPU and count, cloud type, data center, price, image and limits), `runpod_rig_limits` (the limits now), `runpod_rig_stop`, `runpod_rig_start`, `runpod_rig_restart` and `runpod_rig_terminate` (by the owner, as asked), `runpod_rig_stopped` (the pod stopped, why, `spend_limit`, `idle_stop` or `owner`, and the spend: by `control` at a limit, by the owner otherwise), `runpod_rig_started` (by `control`: the pod runs again, its GPUs and the runs resumed), `runpod_rig_start_refused` (by `control`: why, such as no GPU free), `runpod_rig_terminated` (by the owner: the pod removed, and the spend), `runpod_rig_terminate_refused` (by `control`: why a result could not leave) |
 | Campaigns | `campaign_version_created` |
 | Knowledge base | `kb_grant`, `kb_revoke` (a campaign's agents may, or may no longer, read another campaign's folder), `kb_failed` (adding a report's events to the knowledge base failed) |
 | Outside knowledge bases | `outside_kb_added` and `outside_kb_changed` (which name the token only as `set (<hint>)`, `replaced (<hint>)` or `kept`), `outside_kb_deleted`, `outside_kb_copy_on`, `outside_kb_copy_off`, `outside_kb_sync_now`, `outside_kb_read_granted`, `outside_kb_read_revoked` (from the campaign's page or the MCP tools `kb_grant` and `kb_revoke` with `outside:<name>`), `outside_kb_item_skipped` (by `control`: a copy skipped an item whose page the outside server refused 3 syncs in a row, with the knowledge base, the campaign, the item's kind, `ref` and run, and the tries), `outside_kb_handed` (a rig's supervisor was handed other knowledge bases than before, or none any more: their names and campaigns, `[]` for none) |

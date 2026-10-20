@@ -1,3 +1,4 @@
+import type { RigOp } from "./runpod-lifecycle.ts";
 import type { StoredRunpodRig, TunnelRig } from "./store.ts";
 
 /**
@@ -35,14 +36,21 @@ export interface RigState {
   idle_from: string | null;
   /** The last time control saw a run running on the rig. */
   busy_at: string | null;
-  /** When control stopped the pod, and why. */
+  /** When control stopped the pod, and why: a limit the owner set, or the owner's stop. */
   stopped_at: string | null;
-  stopped_by: "spend_limit" | "idle_stop" | null;
+  stopped_by: "spend_limit" | "idle_stop" | "owner" | null;
   /** When RunPod no longer had the pod. */
   ended_at: string | null;
   /** The last thing that went wrong, in words. */
   error: string | null;
   notes: string[];
+  /** The stop, start, restart or terminate under way (runpod-lifecycle.ts); null: none. */
+  op?: RigOp | null | undefined;
+  /** The runs the last stop paused: the next start resumes them. */
+  paused_runs?: string[] | undefined;
+  /** The export the last stop made, and whether it had left the pod when the pod stopped. */
+  last_export?: string | null | undefined;
+  last_export_left?: boolean | undefined;
 }
 
 export interface RunpodRigView extends RigState {
@@ -61,6 +69,29 @@ export interface RunpodRigView extends RigState {
    * before enrollment, or while the pod is not running.
    */
   idle_since: string | null;
+  /** The change under way in words (opWords); null: none. */
+  op_words: string | null;
+}
+
+/** The change under way on a rig, in words: what it is and what it waits for. */
+export function opWords(op: Pick<RigOp, "kind" | "phase">): string {
+  const doing = {
+    stop: "stopping",
+    start: "starting",
+    restart: "restarting",
+    terminate: "terminating",
+  }[op.kind];
+  const waits = {
+    quiescing: "waiting until no judge job and no command waits on the rig",
+    exporting: op.kind === "terminate" ? "waiting for its full export" : "waiting for its export",
+    leaving:
+      op.kind === "terminate"
+        ? "waiting for every result to leave the pod"
+        : "waiting for its results to leave the pod",
+    stopping: "waiting for the pod to stop",
+    starting: "waiting for the pod to run",
+  }[op.phase];
+  return `${doing}: ${waits}`;
 }
 
 /** What the pod has cost by `now`, in USD (not rounded). */
@@ -93,6 +124,11 @@ export function runpodRigView(
   const enrolledAt = tunnel?.enrolled_at ?? null;
   return {
     ...s,
+    op: s.op ?? null,
+    op_words: s.op ? opWords(s.op) : null,
+    paused_runs: s.paused_runs ?? [],
+    last_export: s.last_export ?? null,
+    last_export_left: s.last_export_left ?? false,
     rig: r.rig,
     cloud: r.cloud,
     pod: r.pod,

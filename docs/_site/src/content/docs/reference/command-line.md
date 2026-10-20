@@ -90,6 +90,25 @@ usage: thermite <command> [options]
   runpod limits RIG [--spend-limit USD|off] [--idle-stop MIN|off] --control URL --token-file F
                                       set or clear a RunPod rig's spend limit and idle stop
                                       (owner's token)
+  runpod stop RIG --control URL --token-file F
+                                      stop a RunPod rig's pod (owner's token): its runs paused
+                                      and its results sent out first; its volume stays
+  runpod start RIG --control URL --token-file F
+                                      start a stopped pod again, and resume the runs its stop
+                                      paused; refused when RunPod has no GPU free (owner's token)
+  runpod restart RIG --control URL --token-file F
+                                      stop the pod and start it again (owner's token)
+  runpod terminate RIG --control URL --token-file F
+                                      remove the pod for good, once every result has left it;
+                                      refused, with the pod kept running, when one can't leave
+                                      (owner's token)
+  runpod reset RIG --control URL --token-file F
+                                      start a full reset of a RunPod rig: every result out,
+                                      then the wipe after your confirmation (owner's token)
+  runpod confirm-wipe RIG --control URL --token-file F
+                                      confirm the wipe of the rig's full reset (owner's token)
+  runpod cancel-reset RIG --control URL --token-file F
+                                      cancel the rig's full reset before its wipe (owner's token)
   command --control URL --token-file F --rig U --kind K --payload JSON|@file [--ttl MIN]
                                       issue a signed command through control (admin token)
   submit --harness URL --token-file F --run ID --patch-file P --hypothesis TEXT
@@ -108,7 +127,7 @@ usage: thermite <command> [options]
 
 - **Options.** Each option takes its value as the next word or after `=`. In `doctor`, `token new`, `assign`, `assign-payload`, `rig`, `runpod`, `command`, `submit` and `status`, an option the command does not know, or a word it does not expect, ends the command with Node's own message and exit code 2.
 - **Older option names.** `--instance` is read as `--run`, and `--unit` as `--rig`. These are the names from before runs and rigs were renamed.
-- **Control's token.** The commands that talk to control (`assign`, `command`, `rig add`, `rig token`, `rig retire`, `rig list`, `runpod launch`, `runpod list`, `runpod limits`) send the contents of `--token-file`, trimmed, as `Authorization: Bearer <token>`. Only the owner's token works on these routes; any other token gets `401 {"error":"unauthorized"}`. See [Tokens and roles](tokens.md).
+- **Control's token.** The commands that talk to control (`assign`, `command`, `rig add`, `rig token`, `rig retire`, `rig list`, and every `runpod` command) send the contents of `--token-file`, trimmed, as `Authorization: Bearer <token>`. Only the owner's token works on these routes; any other token gets `401 {"error":"unauthorized"}`. See [Tokens and roles](tokens.md).
 - **Control's address.** `--control` is control's base address, such as `https://control.example.com`. A trailing `/` is removed.
 - **Refusals.** When control or the harness refuses a request, the command prints `<url> -> <status> <body>` on standard error and exits 2. `status` is the exception: see [below](#status). A request body that does not match the route gives `400 {"error":"invalid request"}`; a command that control refuses before signing it gives `400` with the reason (for example a payload that does not fit its kind, or a message that nothing would read), or `404` for an unknown rig; another refusal from inside control gives `500` with the reason. The [REST API reference](rest-api.md) lists the routes.
 
@@ -380,11 +399,40 @@ It prints the rig on one line, then `Launched: RunPod bills the pod from now. Co
 rp-1a2b3c4d · pod pod1 · RUNNING · 1 × RTX A4000 (Secure) · $0.25/h · spent $1.50 · spend limit $20.00 · no idle stop · enrolled
 ```
 
-Each line has the rig, its pod, the pod's status at RunPod (`gone` once RunPod no longer has it), its GPUs and cloud, its price per hour, what it has cost so far, its limits and its enrollment. An indented line under it says `stopped by control: spend limit` (or `idle stop`) when control stopped the pod, and `last error:` with what control's last read of the pod found. With no rig it prints `no rig on a GPU cloud`.
+Each line has the rig, its pod, the pod's status at RunPod (`gone` once RunPod no longer has it), its GPUs and cloud, its price per hour, what it has cost so far, its limits and its enrollment. Indented lines under it say `stopped by control: spend limit` (or `idle stop`) when control stopped the pod at a limit, or `stopped by the owner`; `under way:` and the stop, start, restart or terminate under way, such as `under way: stopping: waiting for its results to leave the pod`; and `last error:` with what control's last read of the pod found, or why a terminate was refused. With no rig it prints `no rig on a GPU cloud`.
 
 ### `runpod limits`
 
 `thermite runpod limits RIG --spend-limit USD --idle-stop MIN` sets a rig's limits (`POST /v1/rigs/RIG/runpod/limits`), and prints the rig's line. `off` clears a limit, and a limit left out stays: `--spend-limit off` removes the spend limit and keeps the idle stop. Without either option it ends with `give --spend-limit, --idle-stop or both (a number, or off)`. Only the owner's token may change them.
+
+### `runpod stop`, `start`, `restart`, `terminate`
+
+These change a RunPod rig's pod, with the owner's token. Each prints the rig's line, as `runpod list` does, then what happens next.
+
+```sh
+thermite runpod stop rp-1a2b3c4d --control https://control.example.com --token-file ~/.thermite/owner-token
+```
+
+| Command | Route | What it prints after the rig's line |
+| --- | --- | --- |
+| `thermite runpod stop RIG` | `POST /v1/rigs/RIG/runpod/stop` | `Stopping: its runs are paused and its results go out first, then the pod stops. Follow it with thermite runpod list.` |
+| `thermite runpod start RIG` | `POST /v1/rigs/RIG/runpod/start` | `Started: RunPod bills the pod from now. The runs the last stop paused resume once it runs.` |
+| `thermite runpod restart RIG` | `POST /v1/rigs/RIG/restart`, then `GET /v1/rigs/RIG/runpod` | `Restarting: the pod stops, then starts again. Its volume stays.` |
+| `thermite runpod terminate RIG` | `POST /v1/rigs/RIG/runpod/terminate` | `Terminating: its runs are paused, and the pod is removed only once every result has left it. Follow it with thermite runpod list.` |
+
+Naming the rig in `terminate` is the confirmation: the command sends `{"confirm":"terminate RIG"}`. A refusal, such as `RunPod has no free GPU for pod … now, so the pod stays stopped (…)`, ends the command with exit code 2, as in [Refusals](#rules-for-every-command). [Stop, start, restart and terminate](rest-api.md#stop-start-restart-and-terminate) lists each refusal and how each change goes.
+
+### `runpod reset`, `confirm-wipe`, `cancel-reset`
+
+A full reset of a RunPod rig, with the owner's token: every result leaves the pod, the rig's state is wiped after your confirmation, and the pod and its GPU stay. Each first reads `GET /v1/rigs/RIG/runpod`, so a rig not on RunPod gets 404 and nothing starts.
+
+| Command | Route | What it prints |
+| --- | --- | --- |
+| `thermite runpod reset RIG` | `POST /v1/rigs/RIG/reset` with `{"confirm":"reset RIG"}` | `Full reset <id> of RIG started: its runs are paused, and every result leaves the pod. Check the export, then confirm the wipe with thermite runpod confirm-wipe RIG.` |
+| `thermite runpod confirm-wipe RIG` | `POST /v1/resets/<id>/confirm`, for the rig's reset that has not ended (`GET /v1/resets`) | `The wipe of reset <id> is confirmed: RIG's state is wiped, and the pod and its GPU stay.` |
+| `thermite runpod cancel-reset RIG` | `POST /v1/resets/<id>/cancel`, likewise | `Reset <id> is cancelled: nothing was wiped, and RIG's runs stay paused.` |
+
+With no reset of the rig under way, `confirm-wipe` and `cancel-reset` end with `no full reset of RIG is under way` and exit code 2. [Restart and full reset](rest-api.md#restart-and-full-reset) gives a reset's states.
 
 ### `command`
 

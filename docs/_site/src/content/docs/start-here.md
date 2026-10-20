@@ -38,7 +38,7 @@ You have machines with GPUs and want Thermite to use them.
 
 1. [Install Thermite on one machine](how-to/install/one-machine.md), so it keeps running.
 2. [Let rigs on other machines reach control](how-to/install/one-machine.md#let-rigs-on-other-machines-reach-control). This needs an HTTPS address for control, behind a reverse proxy you provide, and Thermite's images in a registry that the rigs can pull from without a login. A release's published images are such images, and its compose file gives them to control.
-3. [Add a rig on a machine over SSH](how-to/install/rig-on-a-machine.md) or [on a Kubernetes cluster](how-to/install/rig-on-a-cluster.md).
+3. [Add a rig on a machine over SSH](how-to/install/rig-on-a-machine.md) or [on a Kubernetes cluster](how-to/install/rig-on-a-cluster.md), or [run one on a RunPod GPU](how-to/install/runpod-rig.md), paid by the hour.
 4. [Give a rig several GPUs](how-to/install/several-gpus.md), and read [Sharing a device](explanation/sharing-a-device.md) to choose how.
 
 :::note
