@@ -49,7 +49,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [012](goals/012-version-checks.goal) Version checks between control and rigs · `READY`
 - [013](goals/013-thermite-doctor.goal) `thermite doctor` · `READY`
 - [014](goals/014-quick-start-in-ci.goal) The quick start, tested in CI · `READY`
-- [015](goals/015-log-paging.goal) Log paging · `READY`
+- [015](goals/015-log-paging.goal) Log paging · `VERIFIED`
 - [016](goals/016-small-fixes.goal) Small fixes before the release · `READY`
 - [017](goals/017-legacy-names.goal) Remove the legacy model names · `READY`
 

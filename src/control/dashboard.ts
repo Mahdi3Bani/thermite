@@ -109,6 +109,7 @@ import {
   type Cluster,
   type ClusterRig,
   type ControlStore,
+  cursorOf,
   EFFORTS,
   type Effort,
   fingerprint,
@@ -2595,17 +2596,27 @@ ${notice}${box}</section></div>`,
 
   app.get("/ui/audit", (c) => {
     const now = Date.now();
-    const rows = store
-      .listAudit(300)
+    // 300 entries a page, newest first; Older and Newer page through every entry (goal 015).
+    const before = cursorOf(c.req.query("before"));
+    const p = store.auditPage(
+      300,
+      {},
+      before !== undefined ? { before } : { after: cursorOf(c.req.query("after")) },
+    );
+    const rows = p.entries
       .map(
         (x) =>
           `<tr><td class="muted nowrap">${esc(ago(x.at, now))} ago</td><td>${esc(x.actor)}</td><td><b>${esc(x.action.replace(/_/g, " "))}</b> <span class="muted xs">${esc(x.action)}</span></td><td class="clip"><code class="muted">${esc(JSON.stringify(x.body).slice(0, 200))}</code></td></tr>`,
       )
       .join("");
+    const links = [
+      p.newer !== null ? `<a href="/ui/audit?after=${p.newer}">Newer</a>` : "",
+      p.older !== null ? `<a href="/ui/audit?before=${p.older}">Older</a>` : "",
+    ].filter(Boolean);
     return page(
       c,
       { title: "Audit log", summary: "who did what through control", active: "audit" },
-      `<div class="card flat"><table><thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table></div>`,
+      `<div class="card flat"><table><thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Detail</th></tr></thead><tbody>${rows || `<tr><td colspan="4" class="empty">No entry here.</td></tr>`}</tbody></table></div>${links.length ? `<div class="pager">${links.join("")}</div>` : ""}`,
     );
   });
 

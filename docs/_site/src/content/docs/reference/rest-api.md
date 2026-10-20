@@ -147,9 +147,9 @@ The commands a reset sends last 30 minutes and carry the owner who asked as thei
 
 | Route | Token | What it does | Request | Answer |
 | --- | --- | --- | --- | --- |
-| `GET /v1/audit` | Owner | Control's audit log, newest first, MCP calls included | `limit`, default 200 | `{"audit":[{at, actor, action, body}]}` |
+| `GET /v1/audit` | Owner | One page of control's audit log, newest first, MCP calls included | `limit`, default 200. `before`: only entries older than this cursor. `after`: only entries newer than it, the page just after the cursor | `{"audit":[{id, at, actor, action, body}], "older", "newer"}`. 400 `before and after are whole numbers`, or `give before or after, not both` |
 
-[Audit log actions](#audit-log-actions) lists the actions. [Tokens and roles](tokens.md#in-the-audit-log) lists the actors.
+To page through the whole log, give `older` as `before` for the next older page, and `newer` as `after` for the next newer one. Each is `null` when no entry is left that way. For example, `GET /v1/audit?limit=500` answers the newest 500 entries and `"older":3512`; then `GET /v1/audit?limit=500&before=3512` answers the 500 before them. [Audit log actions](#audit-log-actions) lists the actions. [Tokens and roles](tokens.md#in-the-audit-log) lists the actors.
 
 ### GPU-cloud test pods
 

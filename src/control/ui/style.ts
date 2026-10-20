@@ -111,6 +111,7 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .head .right { margin-left: auto; font-size: 12px; color: var(--muted-foreground); }
 .head .right a { color: var(--primary); }
 .block { margin-bottom: 28px; }
+.pager { display: flex; gap: 14px; margin-top: 10px; font-size: 12px; } .pager a { color: var(--primary); }
 @media (max-width: 1100px) { .cols { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 760px) {
   .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) 30px; }

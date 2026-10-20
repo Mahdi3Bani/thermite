@@ -73,7 +73,7 @@ A tester pulls images in place of building them, and every remote rig has images
 | [012 · Version checks between control and rigs](goals/012-version-checks.goal) | `READY` | [010](goals/010-published-images.goal) |
 | [013 · `thermite doctor`](goals/013-thermite-doctor.goal) | `READY` | — |
 | [014 · The quick start, tested in CI](goals/014-quick-start-in-ci.goal) | `READY` | [005](goals/005-sample-project.goal), [011](goals/011-release-bundle.goal) |
-| [015 · Log paging](goals/015-log-paging.goal) | `READY` | — |
+| [015 · Log paging](goals/015-log-paging.goal) | `VERIFIED` | — |
 | [016 · Small fixes before the release](goals/016-small-fixes.goal) | `READY` | — |
 | [017 · Remove the legacy model names](goals/017-legacy-names.goal) | `READY` | — |
 

@@ -25,6 +25,7 @@ import { SecretBox } from "./secrets.ts";
 import {
   type AgentRole,
   type ControlStore,
+  cursorOf,
   type Effort,
   fingerprint,
   type Harness,
@@ -912,9 +913,22 @@ export function createControlApi(
     c.json({ commands: store.listCommands(clampLimit(c.req.query("limit"), 100)) }),
   );
 
-  app.get("/v1/audit", admin, (c) =>
-    c.json({ audit: store.listAudit(clampLimit(c.req.query("limit"), 200)) }),
-  );
+  // A page of the audit log, newest first; older and newer are the cursors for the next pages.
+  app.get("/v1/audit", admin, (c) => {
+    const raw = { before: c.req.query("before"), after: c.req.query("after") };
+    const before = cursorOf(raw.before);
+    const after = cursorOf(raw.after);
+    // A cursor that is not a number (a script's "null") is refused: the newest page again would loop.
+    if (
+      (raw.before !== undefined && before === undefined) ||
+      (raw.after !== undefined && after === undefined)
+    )
+      return c.json({ error: "before and after are whole numbers" }, 400);
+    if (before !== undefined && after !== undefined)
+      return c.json({ error: "give before or after, not both" }, 400);
+    const p = store.auditPage(clampLimit(c.req.query("limit"), 200), {}, { before, after });
+    return c.json({ audit: p.entries, older: p.older, newer: p.newer });
+  });
 
   app.get("/v1/rigs/:rig/view", admin, (c) => {
     const v = rigView(store, c.req.param("rig"), { staleAfterMs: opts.staleAfterMs });
