@@ -31,20 +31,22 @@ The dashboard's campaign, run and live views are rebuilt so that a person can se
   - Campaigns assigned through MCP, the API or the CLI can also start a run, from their latest run's assignment.
 - **Live, per run:**
   - The Live page lists the runs at work first, then idle rigs, then runs that ended recently.
-  - A run's view has one entry per lane and one for the judge, not one per trial; trials show as dividers in the lane's stream.
+  - A run's view has one entry per lane, one for the advisors and one for the judge, not one per trial; trials show as dividers in the lane's stream.
+  - The advisors' entry shows their work as it happens: what each teacher read and suggested, the rules the combiner set and why, and each audit and review with its outcome and reason. Today the supervisor writes only "advisor round started" and "done" lines.
   - A trial that ended, or was cut off by a restart, no longer shows "working".
   - The stream is easy to read: an agent's text as paragraphs, a tool call as one line with its result, runs of steps folded, and research records (sources, claims, findings) as labelled lines.
-- **Steering as one message box:**
-  - On the run page and in Live, one box writes to the run's agents. Its recipients:
+- **Steering as one message box, in Live:**
+  - The run page has no Steer tab any more. Live is the one place to watch a run and write to it: its message box sits under the stream, and the "Message" buttons on the campaign and run pages open Live with the box ready. Its recipients:
     - **everyone working**, the default;
     - **a lane**;
     - **the planner**, for hill-climb and goal runs only;
-    - **the advisors**.
+    - **the advisors**: all of them, the teachers, the auditor or the review panel. An advisor reads the message at once (the teachers in a round that starts then; the auditor and the review panel before their next audit or review) and answers in Live and in the run's Sent list.
   - Under the box, the page says when the chosen recipient will read the message.
+  - The lane being watched is the lane being written to, and the other way round.
   - A message can stay in force: it goes into every new trial's brief until the owner removes it.
-  - Sent messages are listed with who has read each one, and when.
-  - Pause and restarting the lanes are separate buttons. The planner's rules (avoid, try, always) are an advanced, collapsed form that picks from the run's known directions.
-  - The judge and the auditor take no messages. They decide by measurement and by rules; the owner overrules them on their decision cards.
+  - Each message shows in the stream with who has read it and when, and the answers advisors give. A "You" filter shows only the owner's messages and their answers.
+  - Beside the stream, "In force" lists the kept messages and the rules for the plan, whoever set them (the owner or the teachers), each with Remove. Adding a rule (avoid, try, always) is a collapsed form that picks from the run's known directions. Pause and restarting the lanes sit there too.
+  - Only the judge takes no messages: it is code that measures, not an agent. The auditor still decides each audit itself; the owner overrules a judge or auditor decision on its card.
 
 ## Why
 
@@ -57,9 +59,11 @@ The owner's feedback on 2026-10-20:
 
 ## Done when
 
-- [ ] The Campaigns list, a campaign's page, Live and the run's Steer tab match the approved mockups.
+- [ ] The Campaigns list, a campaign's page and Live match the approved mockups; the run page's Steer tab is gone.
 - [ ] Start a run works from every campaign's page, including campaigns that were not made on the New campaign page.
-- [ ] Live lists runs at work first, has one entry per lane, and marks ended trials correctly.
+- [ ] Live lists runs at work first, has one entry per lane and one for the advisors, and marks ended trials correctly.
+- [ ] The advisors' entry in Live shows each teacher run, rule set, audit and review as it happens, with its reason.
+- [ ] The owner can message all advisors, the teachers, the auditor or the review panel; each reads the message as described above and its answer appears in Live and the run's Sent list.
 - [ ] A message reaches the chosen agents. Pi workers read it at their next step. OpenCode and Claude Code workers read it at their next step too, or the page says plainly when they will.
 - [ ] Control shows who has read each message, from the rig's own record, not only that the rig stored it.
 - [ ] A research run offers no planner as a recipient. "Everyone working" and messages kept in force reach its lanes.
@@ -69,11 +73,15 @@ The owner's feedback on 2026-10-20:
 ## Decisions
 
 - 2026-10-20, owner: the five points of feedback above. Designs are chosen by mockup first, as for the earlier dashboard pages.
-- 2026-10-20: the recipients are the agents only (lanes, planner, advisors). The judge and the auditor stay out of reach of messages, so that what agents and owner write cannot change a measurement or an audit; the owner's overrule is the decision card.
+- 2026-10-20: the recipients are the agents (lanes, planner) and the advisors. The judge takes no messages: it is code, and what anyone writes must not change a measurement. Only the owner can message an advisor (a signed owner command); agents cannot.
+- 2026-10-20, owner, on the Live mockup: choosing a lane (or everyone) at the top of Live also sets who the message box writes to. The lane you watch is the lane you write to, and choosing a recipient below shows that lane's stream.
+- 2026-10-20, owner, on the Live mockup: "why can't I view advisors?" Live gets an Advisors entry with the advisors' work as it happens.
+- 2026-10-20, owner, "Yeah thats a better design": steering lives only in Live (one message box, with In force beside the stream); no Steer tab on the run page.
+- 2026-10-20, owner: "advisors need to be viewable and interactable too!" The owner can message each advisor role, and advisors answer. This replaces the earlier choice to keep the auditor out of reach of messages.
 
 ## Open questions
 
-- Should "everyone working" also reach the advisors' teacher pair, or only the lanes and the planner? The mockups send it to the lanes and the planner.
+- Should "everyone working" also reach the advisors, or only the lanes and the planner? The mockups send it to the lanes and the planner; the advisors have their own choice.
 
 ## Progress
 
