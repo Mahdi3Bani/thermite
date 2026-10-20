@@ -37,6 +37,12 @@ type Row = Record<string, unknown>;
 
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
+/** A run's folder under the folders' root (scratch/research): its run id must be a safe name. */
+export function folderRootOf(scratchRoot: string, run: string): string {
+  if (!SAFE.test(run)) throw new Error(`not a run id for a folder: ${run}`);
+  return join(scratchRoot, run);
+}
+
 /** Writes a file whole or not at all: readers never see half of it. */
 function writeAtomic(path: string, data: string | Buffer): void {
   mkdirSync(dirname(path), { recursive: true });
@@ -115,8 +121,7 @@ export class ResearchFolder {
   }
 
   root(run: string): string {
-    if (!SAFE.test(run)) throw new Error(`not a run id for a folder: ${run}`);
-    return join(this.scratchRoot, run);
+    return folderRootOf(this.scratchRoot, run);
   }
 
   private all(sql: string, ...p: string[]): Row[] {

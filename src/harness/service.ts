@@ -35,12 +35,15 @@ import {
   updateRef,
 } from "./git.ts";
 import { importBundle, importFile } from "./imports.ts";
+import { Journal, NOTES_ARE_DATA, notesData } from "./journal.ts";
 import { type Kit, KitSchema, kitProblems } from "./kit.ts";
+import { briefingData, Knowledge, pastResearchLine } from "./knowledge.ts";
 import { type Ledger, LedgerError } from "./ledger.ts";
 import { type AdvisorRole, messageText, OwnerMessages } from "./messages.ts";
 import { writeExport } from "./outbox.ts";
 import { receivePropagation } from "./propagation.ts";
 import { type Experiment, ExperimentInput, ExperimentQueue } from "./queue.ts";
+import { folderRootOf } from "./research/folder.ts";
 import { type ReviewPackage, Reviews } from "./reviews.ts";
 import { RigSettingsStore } from "./rig-settings.ts";
 import { checkV0 } from "./v0.ts";
@@ -269,6 +272,10 @@ export class HarnessService {
   readonly messages: OwnerMessages;
   /** Each run's experiment queue: what to try next, in order, and what was tried. */
   readonly queue: ExperimentQueue;
+  /** Each run's field notes: what its workers, planner and advisors write down as they work. */
+  readonly journal: Journal;
+  /** Past research in each run's research folder (knowledge/), as the supervisor syncs it. */
+  readonly knowledge: Knowledge;
   /** A rig configured with its GPU set: how many cards, and how many the judge has now. */
   gpuSplit?: { set: number; judge: number } | undefined;
   /**
@@ -335,6 +342,12 @@ export class HarnessService {
       contractFor: (run) => this.contractFor(run),
     });
     this.queue = new ExperimentQueue(this.ledger);
+    this.journal = new Journal({ ledger: this.ledger, live: this.live, clock: this.clock });
+    // The same folders as the research folder's (main.ts): scratch/research/<run>/knowledge.
+    this.knowledge = new Knowledge({
+      stateRoot: join(this.paths.stateDir, "knowledge"),
+      folderRoot: (run) => folderRootOf(join(this.paths.scratchDir, "research"), run),
+    });
   }
 
   /** A run's promotion policy: its own, chosen when it was assigned, or the rig's default. */
@@ -742,6 +755,8 @@ export class HarnessService {
         direction: p.direction,
         agents: p.agents,
         promotion: p.promotion,
+        // The background the owner picked from past research: every agent's brief shows it.
+        briefing: p.briefing?.map((b) => ({ text: b.text, from: b.from })),
         actor: by,
       });
       // Another run's untried experiments start this run's queue, in order, each with who added
@@ -767,6 +782,7 @@ export class HarnessService {
       imported,
       agents: p.agents !== false,
       ...(p.queue?.length ? { queue: p.queue.length } : {}),
+      ...(p.briefing?.length ? { briefing: p.briefing.length } : {}),
     };
   }
 
@@ -1039,6 +1055,7 @@ export class HarnessService {
         diff: diff.slice(0, 200_000),
         // The owner's messages the auditor has not read (to it, or to all the advisors).
         owner_messages: this.ownerMessagesFor(row.run, "auditor"),
+        ...this.backgroundFor(row.run),
       });
     }
     return out;
@@ -1048,9 +1065,17 @@ export class HarnessService {
   reviewPackages(): (ReviewPackage & {
     owner_messages: { id: number; at: string; text: string }[];
   })[] {
-    return new Reviews(this.ledger)
-      .pending()
-      .map((r) => ({ ...r, owner_messages: this.ownerMessagesFor(r.run, "panel") }));
+    return new Reviews(this.ledger).pending().map((r) => ({
+      ...r,
+      owner_messages: this.ownerMessagesFor(r.run, "panel"),
+      ...this.backgroundFor(r.run),
+    }));
+  }
+
+  /** A run's background from past research, for an advisor's brief or package (when it has one). */
+  private backgroundFor(run: string): { background?: ReturnType<typeof briefingData> } {
+    const items = this.ledger.briefing(run);
+    return items.length ? { background: briefingData(items) } : {};
   }
 
   private ownerMessagesFor(run: string, role: AdvisorRole) {
@@ -1149,6 +1174,7 @@ export class HarnessService {
             status: string;
           }[])
         : undefined;
+    const knowledge = this.knowledge.summary(run);
     return {
       rig: this.rig,
       run,
@@ -1185,6 +1211,10 @@ export class HarnessService {
       owner_messages: this.messages
         .forTeachers(run)
         .map((m) => ({ id: m.id, at: m.at, text: m.text, read: m.read })),
+      // The run's newest field notes, by every writer: the agents' own words, as data.
+      field_notes: { note: NOTES_ARE_DATA, notes: notesData(this.journal.newest(run, 20)) },
+      ...this.backgroundFor(run),
+      ...(knowledge ? { past_research: pastResearchLine(knowledge, "advisor") } : {}),
     };
   }
 
@@ -1360,6 +1390,47 @@ export class HarnessService {
       run: t.run,
     });
     return { experiment: x.id, state: "proposed" };
+  }
+
+  /**
+   * A worker's field note (`thermite-trial note`, or Pi's note tool). The trial (found by its
+   * token) decides the run, the lane, the trial and who wrote it (the lane); the note cannot.
+   */
+  writeTrialNote(token: string, input: unknown): { note: number } {
+    const t = new Registry(this.ledger).openTrial(token);
+    const n = this.journal.write(t.run, input, {
+      by: t.lane,
+      actor: `trial:${t.id}`,
+      source: `trial:${t.id}`,
+      lane: t.lane,
+      trial: t.id,
+    });
+    return { note: n.id };
+  }
+
+  /**
+   * An advisor's field notes (the supervisor, after the advisor's review, audit or verdict was
+   * posted): each recorded as written by `<role>:<name>`, leniently (journal.ts, writeAll).
+   */
+  advisorNotes(input: { run: string; role: AdvisorRole; by: string; notes: unknown[] }): {
+    recorded: number[];
+    problems: string[];
+  } {
+    this.requireRun(input.run);
+    return this.journal.writeAll(input.run, input.notes, {
+      by: `${input.role}:${input.by}`,
+      actor: "supervisor",
+      source: "supervisor",
+    });
+  }
+
+  /**
+   * Past research for a run's folder (the supervisor, from control's knowledge base): each item
+   * a file under the run's knowledge/, overwritten when it changed.
+   */
+  writeKnowledge(run: string, items: unknown[]): { written: number; updated: number } {
+    this.requireRun(run);
+    return this.knowledge.write(run, items);
   }
 
   // ------------------------------------------------------------ attempts

@@ -108,6 +108,12 @@ export interface ExperimentRow {
   updated_at: string;
 }
 
+/** Background the owner picked from past research for a run, with where it came from. */
+export interface BriefingItem {
+  text: string;
+  from: { campaign: string; run: string; kind: string; ref: string };
+}
+
 export type PromoteResult = { ok: true; seq: number } | { ok: false; currentSeq: number };
 
 /** Verdicts that may move a champion. */
@@ -354,6 +360,8 @@ export class Ledger {
     agents?: boolean | undefined;
     /** The run's own promotion policy (unset: the rig's default). */
     promotion?: "auto" | "owner_approval" | undefined;
+    /** Background from past research for every agent's brief, in order (goal 065). */
+    briefing?: BriefingItem[] | undefined;
     actor: string;
   }): void {
     this.tx(() => {
@@ -405,6 +413,19 @@ export class Ledger {
           );
         }
       }
+      const briefing = input.briefing ?? [];
+      for (const [i, b] of briefing.entries())
+        this.run(
+          `insert into run_briefing (run, seq, text, from_campaign, from_run, from_kind, from_ref)
+             values (?, ?, ?, ?, ?, ?, ?)`,
+          input.id,
+          i + 1,
+          b.text,
+          b.from.campaign,
+          b.from.run,
+          b.from.kind,
+          b.from.ref,
+        );
       this.appendEvent(input.actor, "run_created", input.id, {
         campaign: input.contract.campaign,
         version: input.contract.version,
@@ -413,8 +434,25 @@ export class Ledger {
         direction: input.direction ?? null,
         agents: input.agents !== false,
         promotion: input.promotion ?? null,
+        ...(briefing.length ? { briefing: briefing.length } : {}),
       });
     });
+  }
+
+  /** A run's background from past research, in the order the owner gave it. */
+  briefing(run: string): BriefingItem[] {
+    return this.all<Row>(
+      "select text, from_campaign, from_run, from_kind, from_ref from run_briefing where run = ? order by seq",
+      run,
+    ).map((r) => ({
+      text: String(r.text),
+      from: {
+        campaign: String(r.from_campaign),
+        run: String(r.from_run),
+        kind: String(r.from_kind),
+        ref: String(r.from_ref),
+      },
+    }));
   }
 
   getRun(id: string): RunRow | undefined {

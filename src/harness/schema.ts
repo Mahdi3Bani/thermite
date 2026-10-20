@@ -703,4 +703,42 @@ export const MIGRATIONS: readonly (string | ((db: DatabaseSync) => void))[] = [
   create index experiment_run on experiment (run, state, place);
   create index experiment_trial on experiment (trial);
   `,
+  // 15: field notes (goal 065): what the workers, the planner and the advisors write down as they
+  // work, each with its kind, who wrote it and what it is about. Notes are append-only: no agent
+  // edits or deletes one. Each run also keeps the background the owner picked from past research
+  // when starting it, in order, with where each item came from.
+  `
+  create table journal_note (
+    id integer primary key autoincrement,
+    run text not null,
+    by text not null,
+    kind text not null
+      check (kind in ('observation', 'decision', 'surprise', 'question', 'lesson', 'note')),
+    text text not null check (length(text) between 1 and 2000),
+    about_type text
+      check (about_type in ('experiment', 'attempt', 'source', 'claim', 'finding', 'round', 'trial', 'message')),
+    about_id text,
+    lane text,
+    trial text,
+    at text not null,
+    check ((about_type is null) = (about_id is null))
+  );
+  create index journal_note_run on journal_note (run, id);
+  create index journal_note_lane on journal_note (run, lane, id);
+  create trigger journal_note_no_update before update on journal_note begin select raise(abort, 'field notes are append-only'); end;
+  create trigger journal_note_no_delete before delete on journal_note begin select raise(abort, 'field notes are append-only'); end;
+
+  create table run_briefing (
+    run text not null references run (id),
+    seq integer not null,
+    text text not null,
+    from_campaign text not null,
+    from_run text not null,
+    from_kind text not null,
+    from_ref text not null,
+    primary key (run, seq)
+  );
+  create trigger run_briefing_no_update before update on run_briefing begin select raise(abort, 'a run''s briefing is fixed'); end;
+  create trigger run_briefing_no_delete before delete on run_briefing begin select raise(abort, 'a run''s briefing is fixed'); end;
+  `,
 ];
