@@ -254,6 +254,36 @@ describe("control over MCP", () => {
       undefined,
       "an agent may not speak for the owner",
     );
+    // The queue and the removal of rules are the owner's: an operator changes them for the
+    // owner; an agent may add rules, but never changes the queue or removes a rule.
+    const queued = () =>
+      store
+        .listCommands(100)
+        .filter((c) => c.kind.startsWith("queue_") || c.kind === "drop_directive").length;
+    assert.ok(
+      await issue(operator, "queue_add", { run: "js-1", title: "unroll the loop" }),
+      "the operator may add an experiment",
+    );
+    assert.equal(queued(), 1);
+    const id = "x-000000000000";
+    for (const [kind, payload] of [
+      ["queue_add", { run: "js-1", title: "tile the loop" }],
+      ["queue_move", { run: "js-1", id, position: "top" }],
+      ["queue_edit", { run: "js-1", id, why: "fewer branches" }],
+      ["queue_drop", { run: "js-1", id, why: "slower twice" }],
+      ["queue_accept", { run: "js-1", id }],
+      ["drop_directive", { run: "js-1", id: 1 }],
+    ] as const)
+      assert.equal(await issue(agent, kind, payload), undefined, `an agent may not ${kind}`);
+    assert.equal(queued(), 1, "nothing the agent sent was signed");
+    assert.ok(
+      await issue(agent, "redirect", {
+        run: "js-1",
+        directives: [{ kind: "avoid", family: "loop-tiling", rationale: "slower twice" }],
+        replace: false,
+      }),
+      "an agent may add a rule",
+    );
     // The owner signs in with the token whose hash control holds.
     const owner = await connect(control, "admin-token-abcdef");
     assert.ok((await owner.listTools()).tools.some((t) => t.name === "issue_command"));

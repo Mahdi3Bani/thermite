@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { CampaignView, RigView, RunView } from "../views.ts";
-import { campaignFilter, campaignKind, campaignsListBody, isRigCheck } from "./campaigns.ts";
+import {
+  campaignFilter,
+  campaignKind,
+  campaignsListBody,
+  isRigCheck,
+  startDrawer,
+} from "./campaigns.ts";
 
 const run = (id: string, status: string, campaign: string): RunView =>
   ({
@@ -244,4 +250,58 @@ test("History tells the queue's changes, the hand-outs and the rules in words", 
     }),
     "You changed the rig's settings: the planner off, 3 lanes, no turn limit, confirmed wins kept at once.",
   );
+});
+
+test("Start a run lists each rig as free, busy or other hardware; a rig of other hardware can't be chosen", () => {
+  const html = startDrawer({
+    campaign: "speed",
+    csrf: "c",
+    open: true,
+    rigs: [
+      { id: "gpu-a", hardware: "1× P100", busy: "speed-3", stale: false, model: "m-1" },
+      { id: "gpu-b", hardware: "2× P100", stale: false },
+      {
+        id: "cpu-a",
+        hardware: "6 CPU",
+        off: "Other hardware: this campaign is measured on cuda, this rig on cpu.",
+        stale: false,
+      },
+    ],
+    models: [],
+    from: "Control assigns the campaign again.",
+  });
+  const rigs = [
+    ...html.matchAll(
+      /<label class="sopt( dis)?"><input type="radio" name="rig" value="([^"]+)"[^>]*?( checked)?( disabled)?>[\s\S]*?<span class="sd">([\s\S]*?)<\/span><\/span><span class="sr">([\s\S]*?)<\/span><\/label>/g,
+    ),
+  ].map((m) => ({
+    rig: m[2],
+    checked: Boolean(m[3]),
+    disabled: Boolean(m[1] && m[4]),
+    says: (m[5] ?? "").replace(/<[^>]+>/g, ""),
+    tag: (m[6] ?? "").replace(/<[^>]+>/g, ""),
+  }));
+  assert.deepEqual(rigs, [
+    {
+      rig: "gpu-a",
+      checked: false,
+      disabled: false,
+      says: "Busy: speed-3 is at work there, and pauses when this run starts (a rig runs one run at a time). Agents' model: m-1.",
+      tag: "busy",
+    },
+    {
+      rig: "gpu-b",
+      checked: true,
+      disabled: false,
+      says: "Free: no run at work. No model for its agents yet.",
+      tag: "free",
+    },
+    {
+      rig: "cpu-a",
+      checked: false,
+      disabled: true,
+      says: "Other hardware: this campaign is measured on cuda, this rig on cpu.",
+      tag: "",
+    },
+  ]);
 });

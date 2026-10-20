@@ -1349,8 +1349,9 @@ export class HarnessService {
   }
 
   /**
-   * An advisor's additions and moves for a run's queue (the supervisor, for the teacher pair,
-   * the auditor or the review panel): each recorded with the role as who made it. Each move is
+   * An advisor's additions and moves for a run's queue (the supervisor, for the teacher pair or
+   * the auditor; the review panel judges goals and has no way into the queue): each recorded
+   * with the role as who made it. Each move is
    * applied on its own; one that is refused (an unknown id, an experiment no longer queued) is
    * said in words and the others still apply.
    */
