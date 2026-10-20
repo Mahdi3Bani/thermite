@@ -27,7 +27,7 @@ Today a project must be a whole repository at an https or ssh git URL. A tester 
 - [x] A contract's project can name a folder in a repository. The rig fetches the repository and uses that folder as the project's root.
 - [x] New campaign offers the folder field, with a description.
 - [ ] The quick start runs a first agent campaign on the sample, with a free model, to a first verdict.
-- [ ] The campaign acceptance covers a project in a folder.
+- [x] The campaign acceptance covers a project in a folder.
 
 ## Decisions
 
@@ -47,6 +47,7 @@ None.
 - 2026-10-20: Built. `examples/matmul-cpu` holds the sample's project, kit and README. The contract has `project.folder` (`src/core/contract.ts`); the harness starts the run from that folder of the signed commit (`folderCommit` in `src/harness/git.ts`, used at assignment), records the folder and the repository's commit in the run's `run_created` event and the assignment's result, and refuses a commit without the folder. The New campaign page has **Folder in the repository**, with its description; **Look it up** counts and suggests the folder's own files, and refuses a folder the commit lacks. Control shows a folder run's start and its champion patch with the folder and the repository's commit, and how to apply it (`git apply --directory`). Tests: the schema (`src/core/core.test.ts`), the builder and the lookup's paths (`src/control/campaign-builder.test.ts`), the page with the sample's kit uploaded as the quick start packs it (`src/control/new-campaign-page.test.ts`), staging through control, the relay and the harness (`src/supervisor/staging.test.ts`), a folder run judged and promoted, the same start on a second rig, and a missing folder refused (`src/harness/judge/judge.test.ts`), and the patch's words on the run page (`src/supervisor/champions.test.ts`). The tutorial "Hand the work to agents" now starts its campaign on the sample from the New campaign page; the contract, command-line, signed-command, glossary, dashboard, troubleshoot and take-the-result pages describe the folder. `scripts/campaign-acceptance.mjs` now runs a try of the sample from its folder, served as part of a larger repository.
 - 2026-10-20: Rebased onto the release bundle's quick start. The tutorial installs from the release's `compose.yaml` as before; its step 4 clones the release's source (`git clone --branch v0.1.0 … thermite-source`) to pack the sample's kit, and the New campaign page starts from the same tag. "Your first goal campaign" builds the command line in that folder.
 - 2026-10-20: Left: run the quick start on a clean stack with a free model to a first verdict, once a release tag holds the sample; run the new-campaign acceptance with its folder part. Neither has run yet.
+- 2026-10-20: The campaign acceptance passed: control took a campaign whose project is `examples/matmul-cpu/project` in a repository, the rig fetched the whole repository and started from the folder, and the sample's kit built and measured every case. Left: the quick start on the sample with a free model, after the release tag.
 
 ---
 

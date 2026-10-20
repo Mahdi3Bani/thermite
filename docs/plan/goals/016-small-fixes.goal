@@ -1,7 +1,7 @@
 ---
 id: "016"
 title: "Small fixes before the release"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 part: "Install from images"
 depends_on: []
@@ -11,7 +11,7 @@ updated: 2026-10-20
 
 # 016 · Small fixes before the release
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Install from images
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Install from images
 
 ## What
 
@@ -28,7 +28,7 @@ Each one is small, and a tester would hit it.
 
 ## Done when
 
-- [ ] Each fix has a test or an acceptance check.
+- [x] Each fix has a test or an acceptance check.
 
 ## Decisions
 
@@ -54,6 +54,7 @@ None.
 - 2026-10-20: The release plan's extra list, checked against the docs site. The troubleshooting page (`how-to/operate/troubleshoot.md`), the own-registry how-to (`how-to/install/own-registry.md`), the harness image's toolchains (`reference/harness-image.md`, which matches `containers/harness/Containerfile`) and the split of the local development guide (`docs/local-development.md` is for contributors and sends users to the site; the site has `project/contributing.md`) exist. Lane limits agree (above). The README shows a screenshot from the dashboard demo, `docs/_site/src/assets/screenshots/run.webp`. The repository settings are goal 002's.
 - 2026-10-20: Left: run the agents acceptance with its OpenCode research case. When it passes, every fix has its test or acceptance check, and this goal is verified.
 - 2026-10-20: Lane 16 no longer shares a user (found by the v0.1.0 builders). Planner calls run as `planner` (uid and gid 10040) and model checks as `model-check` (10041), under OpenCode and Claude Code; before, both ran as `agent-16`, lane 16's Pi worker. The harness image makes the two users, the broker knows them (`IDS`, its roles, and the roles it stops at start), and the isolation selftest probes both. Because each probe kills its role's processes, the selftest and the rig's isolation check now wait while a process of either user runs (`a planner call is running: wait for it to end …`), unless forced. Tests: `src/core/lanes.test.ts` (at 16 lanes no two roles share a user; the image makes both users with the broker's ids; the selftest probes them), `src/harness/agents/opencode.test.ts` and `src/harness/agents/claude-code.test.ts` (each call runs, and is killed, as its own user), `src/harness/selftest.test.ts` (the wait). Pages: Harness image › Users and groups, Isolation inside a rig, Rig checks, Check a rig. No compose acceptance has run with the new image yet.
+- 2026-10-20: The agents acceptance passed with its new case: a research trial under OpenCode runs the research tools as `thermite-trial` commands, through the harness. Every fix now has a test or an acceptance check. Verified.
 
 ---
 

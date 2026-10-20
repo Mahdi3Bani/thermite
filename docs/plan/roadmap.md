@@ -50,7 +50,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [013](goals/013-thermite-doctor.goal) `thermite doctor` · `VERIFIED`
 - [014](goals/014-quick-start-in-ci.goal) The quick start, tested in CI · `IN_PROGRESS`
 - [015](goals/015-log-paging.goal) Log paging · `VERIFIED`
-- [016](goals/016-small-fixes.goal) Small fixes before the release · `IN_PROGRESS`
+- [016](goals/016-small-fixes.goal) Small fixes before the release · `VERIFIED`
 - [017](goals/017-legacy-names.goal) Remove the legacy model names · `VERIFIED`
 
 ### Running campaigns
