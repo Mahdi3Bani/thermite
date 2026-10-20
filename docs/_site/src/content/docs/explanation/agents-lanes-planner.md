@@ -48,7 +48,7 @@ A lane's next trial starts only after the judge has settled the change from its 
 
 Each run has one **experiment queue**: the experiments still to try, in order, and a log of the experiments already tried, with what became of each. It is the run's shared memory of what to try and what was tried. The planner, the advisors, the lanes and the owner all work from it, and it shows on the run's **Experiments** tab.
 
-![A run's Experiments tab: Up next with three experiments added by you, the planner and the auditor, a form to add one, In progress with what each lane is on, an idea from lane-2 with Queue it and Drop, and Tried with a dropped experiment and a champion](../../../assets/screenshots/experiments.webp)
+![A run's Experiments tab: Up next with three experiments added by you, the planner and the auditor, a form to add one, In progress with what each lane is on, an idea from lane-2 with Queue it and Drop, and Tried with an experiment you dropped](../../../assets/screenshots/experiments.webp)
 
 An experiment is always in one of five states:
 
@@ -64,11 +64,11 @@ The queue is research state, so it lives in the harness's ledger, like the attem
 
 ### Where experiments come from
 
-- **The owner** adds experiments, moves them, edits them and drops them, and queues or drops the lanes' ideas: on the **Experiments** tab, or with the commands `queue_add`, `queue_move`, `queue_edit`, `queue_drop` and `queue_accept` over the REST API, the command line or MCP. Editing is only over those three. Each is a [signed command](../reference/signed-commands.md) in the owner's name. An operator's token, which the owner gives an agent that runs campaigns for them, may send them too; an agent's token can't.
+- **The owner** adds experiments, moves them, edits them and drops them, and queues or drops the lanes' ideas: on the **Experiments** tab, or with the commands `queue_add`, `queue_move`, `queue_edit`, `queue_drop` and `queue_accept` over the REST API, the command line or MCP. Each is a [signed command](../reference/signed-commands.md) in the owner's name. An operator's token, which the owner gives an agent that runs campaigns for them, may send them too; an agent's token can't.
 - **The planner** adds experiments, moves them, drops them and queues the lanes' ideas, each with why. When the queue has nothing for a lane, the fixed rules add one ([below](#when-there-is-no-planner-answer)).
 - **The advisors:** the teacher pair adds experiments and moves queued ones, from its reviews and its outside reading. The auditor can put a check at the top of the queue when it doubts a result that it can't settle. Advisors never drop an experiment or give out work ([Supervision](supervision.md#the-teacher-pair-and-the-combiner)).
-- **The lanes:** a worker that sees something worth trying beyond its own experiment proposes it as an **idea**, with `thermite-trial idea` in OpenCode and Claude Code, or the `idea` tool in Pi. Its trial goes on. The idea waits as `proposed`.
-- **Another run:** **Start a run** can copy the untried experiments of another run of the same campaign into the new run's queue: up next in order, then the lanes' ideas, each with who added it and why. The tried ones stay with their run.
+- **The lanes:** a worker that sees something worth trying beyond its own experiment proposes it as an **idea**, with `thermite-trial idea` in OpenCode and Claude Code, or the `idea` tool in Pi. Its trial goes on. The idea waits as `proposed` until the planner's model or the owner queues it or drops it. The fixed rules never take an idea, so without an answer from the planner's model (no model, the planner off, its answer refused, or a research run) the idea waits for the owner.
+- **Another run:** for a run with agents, **Start a run** can copy up to 500 untried experiments of another run of the same campaign into the new run's queue: up next in order, then the lanes' ideas, each with who added it and why. The tried ones stay with their run.
 - **The research plan,** in a research run ([Research campaigns](#research-campaigns)).
 
 [Choose what a run tries next](../how-to/campaigns/choose-what-runs-next.md) shows the owner's side, step by step.
@@ -142,11 +142,11 @@ The run's **Live** view, under its **Planner** filter, shows each plan, as "roun
 
 ### Directives
 
-A **directive** is a recorded instruction that steers the planner. It comes from the owner, from the supervisor's teacher pair, or from the planner itself when an owner's message asks for a rule. It can tell the planner to avoid a direction, try it, always assign it or rank it, use fewer lanes, or note something. An avoid, try or always directive names a direction by its name, such as `loop-tiling`, or, from the owner and the planner, in plain words.
+A **directive** is a recorded instruction that steers the planner. It comes from the owner, from the supervisor's teacher pair, or from the planner itself when an owner's message asks for a rule. It can tell the planner to avoid a direction, try it, always assign it or rank it, use fewer lanes, or note something. An avoid, try or always directive names a direction by its name, such as `loop-tiling`, or in plain words, whoever sets it.
 
 The owner's directives come first: a teacher's or the planner's directive about a family the owner has a directive for does not apply. A directive's reasons and notes are for the planner only; workers never see them. A directive can steer the search, but it can never change a verdict.
 
-The dashboard calls directives **rules**. A run's **Planner** tab lists the rules in force, with who set each and why; a rule the planner added shows the message it came from. **Add a rule** takes the direction in your own words: words shaped like a direction's name, such as `loop-tiling`, are sent as that name, and anything else as plain words. **Remove** takes a rule out of force, whoever set it. The teachers' next set replaces their last one, so a teacher's rule comes back if they recommend it again. [Choose what a run tries next](../how-to/campaigns/choose-what-runs-next.md) shows how, and [Supervision](supervision.md) explains the teachers.
+The dashboard calls directives **rules**. A run's **Planner** tab lists the rules in force, with who set each and why; a rule the planner added shows the message it came from. **Add a rule** takes the direction in your own words: words shaped like a direction's name, such as `loop-tiling`, are sent as that name, and anything else as plain words. **Remove** takes a rule out of force, whoever set it, and keeps it out. The teachers' next set replaces their last one, and the planner adds rules when an owner's message asks, but neither brings back a rule the owner removed: the harness leaves out any rule of the same kind, on the same direction or words, and records that it did. Only the owner's own rule, from **Add a rule** or `redirect`, can set it again. [Choose what a run tries next](../how-to/campaigns/choose-what-runs-next.md) shows how, and [Supervision](supervision.md) explains the teachers.
 
 ### Lane bests and fork rounds
 

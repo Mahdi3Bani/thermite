@@ -126,12 +126,12 @@ A rig control set up on a machine or a cluster may also still be pulling its ima
 
 After **Update to these images**, **Start its pods** or **Restart them** ([Stop, restart, remove or reset a rig](rig-lifecycle.md#a-rig-on-a-cluster)), the same can happen to the new pods, with other steps:
 
-- "Its pods run the new images" has ✕ and `not running after 15 minutes`, sometimes with kubectl's error. The new pods did not start: look at them with the commands above. An image the nodes can't pull shows `ImagePullBackOff`.
-- "A report reached control from the new images" has ✕ and `no report after 10 minutes: it may not have started`. The pods run, but the supervisor did not report: read its log, as above. If the harness keeps restarting, read its log too (`deployment/thermite-rig-1-harness`).
+- "Its pods run the new images" after an update, or "Its pods run again" after a start or a restart, has ✕ and `not running after 15 minutes`, sometimes with kubectl's error. The new pods did not start: look at them with the commands above. An image the nodes can't pull shows `ImagePullBackOff`.
+- "A report reached control from the new images", or "A report reached control after the start", has ✕ and `no report after 10 minutes: it may not have started`. The pods run, but the supervisor did not report: read its log, as above. If the harness keeps restarting, read its log too (`deployment/thermite-rig-1-harness`).
 
-The steps say "new images" after a start or a restart too, although no image changed. Either way, the block says `failed`. Fix the cause: the pods keep trying by themselves, for example once the nodes can pull the image. When the rig reports again, the block says `running`, with the ✓ step above.
+Either way, the block says `failed`. A rig you stop or remove while control waits never gets these ✕ steps: the stop or the removal ends the wait. Fix the cause: the pods keep trying by themselves, for example once the nodes can pull the image. When the rig reports again, the block says `running`, with the ✓ step above.
 
-To have control apply the images again and wait once more, press **Try the update again** in the block. It shows while the status says `failed`, after the line "The last change to its pods failed (see the steps above)." See [Try again after a failure](rig-lifecycle.md#try-again-after-a-failure). Over MCP, `update_rig_images` does the same. If the new images themselves are at fault, set control's image settings back to the old ones, restart control, and press **Update to these images**. An older harness may refuse a ledger that a newer one opened: see [The harness stops at start: the ledger is newer](#the-harness-stops-at-start-the-ledger-is-newer).
+To have control apply the images again and wait once more, press **Try the update again** in the block. It shows while the status says `failed`, after the line "The last change to its pods failed (see the steps above)." See [Try again after a failure](rig-lifecycle.md#try-again-after-a-failure). Over MCP, `update_rig_images` does the same. Either answers `rig-1's pods restart on control's images again (a retry).` If the new images themselves are at fault, set control's image settings back to the old ones, restart control, and press **Update to these images**. An older harness may refuse a ledger that a newer one opened: see [The harness stops at start: the ledger is newer](#the-harness-stops-at-start-the-ledger-is-newer).
 
 ## The harness stops at start: the ledger is newer
 
@@ -237,7 +237,7 @@ The dashboard refuses to start a research run with agents in the last case. A ru
 | `run run-1 has 2 lanes` | Choose a lane the run has |
 | `run run-1 is closed: nothing will read this message` | The run has finished: nothing reads messages there |
 
-If the message isn't on **Commands** at all, control refused it before signing it. **Live** shows control's reason in the **Not sent.** strip.
+If the message isn't on **Commands** at all, control refused it before signing it. **Live** shows control's reason in the **Not sent.** strip, and the **Audit log** has it as a `refused` entry.
 
 A message from **Tell the planner**, on a run's **Planner** tab, shows its refusal in that card, above the box: **Not sent.** and control's reason at once, or `The rig refused your last message to the planner:` and the rig's reason once the rig has answered. It stays until a later message to the planner goes through.
 
@@ -261,11 +261,11 @@ The rig itself checks only the **Edit rig** switches. So a message sent over MCP
 
 Each run has an [experiment queue](../campaigns/choose-what-runs-next.md): the experiments up next, in order, which the planner gives to free lanes, and the lanes' ideas, which wait for the planner or you.
 
-- **You see:** on a run's **Experiments** or **Planner** tab, you pressed **Add**, **↑ Top**, **Drop it**, **Queue it**, **Drop** or **Remove**, or dragged an experiment. The page said `Control sent the command to rig-1. The rig does it in less than 10 seconds. This page shows the result.`, but the tab doesn't change. On **Commands**, the command's row, such as **queue move** or **drop directive**, is **failed**, with the rig's reason in **Outcome**.
+- **You see:** on a run's **Experiments** or **Planner** tab, you pressed **Add**, **↑ Top**, **Save** under **Edit**, **Drop it**, **Queue it**, **Drop** or **Remove**, or dragged an experiment. The page said `Control sent the command to rig-1. The rig does it in less than 10 seconds. This page shows the result.`, but the tab doesn't change. On **Commands**, the command's row, such as **queue move** or **drop directive**, is **failed**, with the rig's reason in **Outcome**.
 - **Why:** most often, the queue changed on the rig before your command reached it. A lane took the experiment, or the planner queued or dropped an idea first. A change that worked shows on the tab after the rig's next report, within a minute by default.
 - **Do:** press **refresh** in the status bar, and act on what the tab shows now.
 
-A reason about one experiment names its state, then the rule: `only queued experiments move` after **↑ Top** or a drag, and `only proposed or queued experiments can be dropped` after **Drop**. For example, `experiment x-3f2a9c41d07e is assigned: only queued experiments move`.
+A reason about one experiment names its state, then the rule: `only queued experiments move` after **↑ Top** or a drag, `only proposed or queued experiments can be edited` after **Save** under **Edit**, and `only proposed or queued experiments can be dropped` after **Drop**. For example, `experiment x-3f2a9c41d07e is assigned: only queued experiments move`.
 
 | Reason in **Outcome** | Why |
 | --- | --- |
@@ -303,7 +303,7 @@ Thermite says why it refuses something. Where you see it depends on how you aske
 - **MCP** tools answer `{"error":"…"}` with the reason. A command kind that the token may not issue, such as `queue_add` with an agent's token, fails the tool's own input check with `Input validation error` instead.
 - **A rig** that refuses a command marks it `rejected` or `failed` on **Commands**, with the reason in **Outcome**. For example, `not now: …` for a busy rig, or `<kind> is the owner's to issue, not …'s` for a command only the owner may give.
 
-Control writes the dashboard's `Not done.`, `Not started.` and `refused:` answers, and failed requests, to its audit log as well. To list them over MCP, call `control_log` with `action: "refused"` or `action: "failed"`.
+Control writes the dashboard's `Not done.`, `Not started.` and `refused:` answers, its own `Not sent.` refusals of a message, and failed requests, to its audit log as well. To list them over MCP, call `control_log` with `action: "refused"` or `action: "failed"`.
 
 ## Still stuck?
 

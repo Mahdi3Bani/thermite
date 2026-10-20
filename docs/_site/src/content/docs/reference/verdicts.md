@@ -183,7 +183,7 @@ A **campaign** has no state of its own: its runs do.
 - **The Campaigns page** (in the sidebar) counts a campaign as at work when one of its runs is running, paused when none runs and one is paused, and finished when every run is closed. Campaigns named `rig-check-…`, which the [smoke check](rig-checks.md#smoke-check) makes, are rig checks. The filters are **Active and paused** (the default), **At work**, **Paused**, **Rig checks** and **All**. The default hides finished campaigns and rig checks; **All** shows every campaign. The **Runs** column counts each campaign's runs as "N at work", "N paused" and "N finished".
 - **The sidebar's Campaigns section** lists up to 12 campaigns that have a run that is not closed. Each shows its most urgent run's label, in this order: **Approval**, **Decision**, **Review**, **Audit**, **Running**, **Paused**.
 
-A campaign appears on the **Campaigns** page once a rig reports a run of it. A campaign saved on the **New campaign** page with no run yet is not listed there; its own page says "Saved, with no run yet. Start a run." That page opens the same way for a campaign assigned over MCP, the REST API or the command line whose run no rig has reported yet.
+A campaign appears on the **Campaigns** page once a rig reports a run of it. A campaign saved on the **New campaign** page with no run yet is not listed there; its own page says "Saved on control, with no run yet. Start a run." That page also opens for a campaign assigned over MCP, the REST API or the command line whose run no rig reports now. It then says "Assigned to a rig over the API, MCP or the CLI; no run of it reports now. Start a run."
 
 ## Experiment states
 
@@ -214,14 +214,15 @@ An **experiment** is one thing for a lane to try, in a run's [experiment queue](
 | `finished: its research is in the run's notes` | A research task whose trial ended on its own. Its sources, claims and findings are its result |
 | `dropped by <who>: <why>` | Someone dropped it: `you` (the owner, or an operator for the owner) or the `planner`. An idea dropped with its **Drop** button under **Ideas from the lanes** has the why `the owner dropped this idea` |
 
-The filter chips above the table each show a count, and group the results by the attempt's outcome word:
+The filter chips above the table each show a count, and group the results by the attempt's [outcome word](#outcome-words-on-the-dashboard):
 
 | Chip | Results |
 | --- | --- |
 | **All** | Every row |
-| **Wins** | `Champion #N`, `Promoted` or `Won`, and every attempt that waits for your approval |
-| **Slower or broke a goal** | `Blocked` or `Broken` |
-| **No gain** | Every other outcome: `Lost`, `Unclear`, `Duplicate`, `Declined`, `Judging`, and `Needs you` for an audit. A `regress` verdict (slower, or a goal lost) reads `Lost`, so it is here |
+| **Wins** | `Champion #N`, `Promoted` or `Won`, and every attempt that waits for you: `Needs you`, or one that waits for your approval |
+| **Not better** | `Lost`: not better than the champion. A `regress` verdict (slower, or a goal lost) reads `Lost`, so it is here |
+| **Broken or blocked** | `Broken` or `Blocked` |
+| **Other results** | `Unclear`, `Declined`, `Duplicate` and `Judging` |
 | **Research finished** | `finished: its research is in the run's notes`. Shown only when there are some |
 | **No attempt or dropped** | `no attempt`, `no attempt: <reason>`, `<attempt>: not judged yet` and `dropped by <who>: <why>` |
 

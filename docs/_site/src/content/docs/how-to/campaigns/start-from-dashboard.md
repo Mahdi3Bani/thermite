@@ -125,6 +125,8 @@ Choose the rig. Each card shows its hardware, whether it is idle, and its agents
 
 :::note[A model the rig doesn't have yet]
 The rig takes a model you choose here within a minute, and checks it. Until then its agents could not work, so **Start the campaign** saves the campaign without starting it. The campaign's page says `Saved. rig-1 takes <model> within a minute. When the rig shows it, start the run here.` Keep that page's address: the **Campaigns** list shows the campaign only once a rig reports a run of it. When the rig's row under **Harness and model for each rig** on **Settings › Providers** says `Its agents run under` the harness `with` that model, come back to the campaign's page, press **Start a run**, then **Start the run** (see [Start a run later](#start-a-run-later)). Pressed sooner, it says `rig-1 has not taken <model> yet …`. A model the rig already has starts the run at once.
+
+The same happens with **the rig's model** when control gave the rig a model a moment ago, on **Edit rig**, **Settings › Providers** or over MCP, and the rig hasn't taken it yet. The page then says `Saved. rig-1 has not taken <model> yet (it does within a minute of being given it). When the rig shows it, start the run here.`
 :::
 
 :::caution[How many agents work at once]
@@ -158,7 +160,7 @@ The **Campaigns** list shows a campaign only once a rig reports a run of it. A c
 
 - After **Start the campaign** or **Try the kit first**, the campaign's page opens. For a new campaign, it says, for example, `Starting rig-1/sort-speed-1.` Wait a minute and press **refresh** in the status bar, the line along the bottom of the page: pages don't reload by themselves. The same address then opens the run's own page, with the tabs **Overview**, **Experiments**, **Attempts**, **History** and **Planner**. On **Campaigns** in the sidebar, the run shows under **At work now**, and the campaign in the list below it.
 - A try's run is named like `sort-speed-try-1`, and its page says **A try of the kit.** When its results look right, press **start the campaign** in that note: the **Start a run** panel opens. Keep **Agents** on **On**, and press **Start the run**. A rig runs one run at a time, so the new run pauses the try.
-- After **Save without starting**, the page says `Saved, with no run yet.` and offers **Start a run**.
+- After **Save without starting**, the page says `Saved on control, with no run yet.` and offers **Start a run**.
 - If the page comes back at **Review and start** with **Not started: fix these first.**, fix each item in the list. Everything you typed is kept. A kit described here or uploaded is checked against the campaign here, before anything is saved. The items about the agents' model are:
   - `rig-1 has no model for its agents, so they could not work: choose one under "The agents' model".`
   - `OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig.` Choose **OpenCode v2** or **what the model needs** under **The agents run in**.
@@ -181,7 +183,7 @@ Press **Start a run** at the top of the campaign's page. A panel opens, headed *
 | **Where it runs** | One card per rig, with its hardware, `free` or `busy`, and its agents' model, or `No model for its agents yet.` A rig with other hardware than the campaign's kit is greyed out. A busy rig's card says `Busy: sort-speed-1 is at work there, and pauses when this run starts (a rig runs one run at a time).` |
 | **Agents** | **On**: the agents propose changes, and the judge measures each one. **Off: a try**: no agents, only the judge, which measures the starting point. A try needs no model |
 | **The agents' model** | Shows with **Agents** **On**, for a rig with no model: the model to give it, as on its **Edit rig** page. See the note below |
-| **Experiments to start with** | **Copy the untried experiments of** and a run of this campaign, such as `sort-speed-1 (4 up next, 1 lane idea)`: the new run's [experiment queue](choose-what-runs-next.md) starts with that run's waiting experiments, in the same order, and its lanes' ideas, each with who added it and why. Ticked by default, and used only with **Agents** **On**. It shows only when a run of the campaign has experiments up next or ideas. Untick it for an empty queue, which the planner fills |
+| **Experiments to start with** | **Copy the untried experiments of** and a run of this campaign, such as `sort-speed-1 (4 up next, 1 lane idea)`: the new run's [experiment queue](choose-what-runs-next.md) starts with that run's waiting experiments, in the same order, and its lanes' ideas, each with who added it and why, up to 500. Ticked by default. It shows only with **Agents** **On**, and only when a run of the campaign has experiments up next or ideas. Untick it for an empty queue, which the planner fills |
 | **When a change is confirmed better** | Under **More options**: **the rig's default**, **always keep it** or **ask me every time** |
 | **GPUs for the judge** | Under **More options**: as in step 4. Empty: the rig's current split |
 

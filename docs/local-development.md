@@ -119,7 +119,7 @@ COMPOSE="podman compose" npm run acceptance:judge
 [AGENTS.md](../AGENTS.md#checks) lists the rest, each with when it is needed: control (two rigs), new campaign, machines over SSH, clusters on kind, rig deploy, multi-GPU and Claude Code. Each uses local stand-ins, never a real host or cluster. Two of them check more than their names say:
 
 - **New campaign** (`scripts/campaign-acceptance.mjs`) creates a campaign through the New campaign form, which starts a try of its kit, then starts the campaign's own run from the campaign's page (**Start a run**) with the agents on. The rig gets a model route that nothing answers (`THERMITE_MODEL_BASE_URL=http://127.0.0.1:9/v1`), so control lets the agents start and they fail at once; the script submits the changes itself.
-- **Clusters on kind** (`scripts/cluster-acceptance.mjs`) keeps control's records on a Podman volume. After the slot's rig reports, it tags both rig images `:accept-update`, loads them into kind and restarts control with them. Then it checks that the rig's page offers **Update to these images**, that the rig's new pods run those images and report again, and that its volume claim and secret are unchanged. Only the slot and a CPU rig are tested.
+- **Clusters on kind** (`scripts/cluster-acceptance.mjs`) keeps control's records on a Podman volume. After the slot's rig reports, it tags both rig images `:accept-update`, loads them into kind and restarts control with them. Then it checks that the rig's page offers **Update to these images**, that the rig's new pods run those images and report again, and that its volume claim and secret are unchanged. The update is tried on the slot's CPU rig only.
 
 ## Clean up
 

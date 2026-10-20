@@ -67,7 +67,7 @@ You can also give a rig its agents' model where you start a run:
 
 An agent can do it over MCP with [`set_rig_model`](../../reference/mcp-tools.md#set_rig_model). All three work like **Use** here.
 
-**Start a run** starts a run with agents only once the rig has taken the model that control gave it, wherever you gave it: with **Use** here, on **Edit rig**, over MCP or in an earlier **Start a run**. Pressed too early, **Start the run** answers **Not started.** "rig-1 has not taken my-model yet (it does within a minute of being given it): start the run once its page shows that model."
+**Start a run** starts a run with agents only once the rig has taken the model that control gave it, wherever you gave it: with **Use** here, on **Edit rig**, over MCP or in an earlier **Start a run**. Pressed too early, **Start the run** answers **Not started.** "rig-1 has not taken my-model yet (it does within a minute of being given it): start the run once its page shows that model." Until then, **Start the campaign** on the **New campaign** page saves the campaign without starting it, and says "Saved. rig-1 has not taken my-model yet (it does within a minute of being given it). When the rig shows it, start the run here."
 
 A failed check says `Its model check FAILED`, then why. With OpenCode's free models, two reasons are common:
 

@@ -143,7 +143,7 @@ A `redirect` takes up to 40 directives, each with a `kind`, a `rationale`, and, 
 - Rules in your own words apply only to the planner's model's hand-outs: see [Which rules always apply](choose-what-runs-next.md#which-rules-always-apply).
 - Only the planner sees rationales, notes and match words; workers never do.
 - Your directives come before any that the rig's advisors or the planner set on the same `family`.
-- `drop_directive` removes one rule in force, whoever set it. Its `id` is the rule's number, from `run_queue`'s `rules`. A rule that is not in force is refused: `no rule 7 in force in run sort-speed-1`.
+- `drop_directive` removes one rule in force, whoever set it. Its `id` is the rule's number, from `run_queue`'s `rules`. A rule that is not in force is refused: `no rule 7 in force in run sort-speed-1`, and so is a removal in a finished run: `run sort-speed-1 is closed: its queue no longer changes`. The advisors and the planner can't set a removed rule again; a `redirect` can: see [Remove a rule](choose-what-runs-next.md#remove-a-rule).
 
 A `message_agent`'s `to` is `all` (everyone working), `planner`, `advisors` (all of them), `teachers`, `auditor`, `panel`, `lane-1` to `lane-16`, or `trial:` and a trial's id. The text may be up to 4000 characters. `"keep": true` works only with `all` or a lane; with another `to`, control refuses it: `bad message_agent payload: keep: only a message to everyone working (all) or to a lane can be kept in force`.
 

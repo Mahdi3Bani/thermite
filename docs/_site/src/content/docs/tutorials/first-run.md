@@ -60,7 +60,7 @@ You see three lines, one each for `control`, `harness` and `supervisor`, and eac
 - **harness** and **supervisor** together make a **rig**: the place where research happens. The harness holds the judge and the agents. The supervisor is the rig's link to control. This rig is called `local-1`.
 
 :::tip[If a line is missing or its status isn't `Up`]
-Read that container's log, for example `docker compose logs harness` (or `podman compose logs harness`). If `up` stopped because port 8800 is in use, see [The port is already in use](../how-to/operate/troubleshoot.md#the-port-is-already-in-use). [Troubleshoot](../how-to/operate/troubleshoot.md) has the other common problems.
+Read that container's log, for example `docker compose logs harness` (or `podman compose logs harness`). If `up` stopped with `address already in use`, another program has port 8800: see [The port is already in use](../how-to/operate/troubleshoot.md#the-port-is-already-in-use). [Troubleshoot](../how-to/operate/troubleshoot.md) has the other common problems.
 :::
 
 ## 4. Sign in
@@ -86,7 +86,11 @@ If the sign-in page comes back with no message, the token didn't match. Copy it 
 
 Choose **Rigs** in the sidebar, then **local-1**.
 
-The page says `local-1 is live; it reported 10s ago.`, with your computer's processors, memory and disk under **What it runs on**. Find the **Checks** block. **Isolation** already shows **passed**: the rig ran it by itself when it started. Each agent works as its own operating-system user, and the check made sure that those users can't reach what they must not, such as the judge's files and other agents' work.
+The page says `local-1 is live; it reported 10s ago.`, with your computer's processors, memory and disk under **What it runs on**. Find the **Checks** block. It has three checks:
+
+- **Model route** shows **not run yet**. It checks the agents' model, which you give the rig in [Hand the work to agents](agents-with-a-free-model.md).
+- **Isolation** already shows **passed**: the rig ran it by itself when it started. Each agent works as its own operating-system user, and the check made sure that those users can't reach what they must not, such as the judge's files and other agents' work.
+- **Judge smoke** shows **not run yet**. You run it next.
 
 ## 6. Run the judge's smoke check
 
@@ -96,15 +100,15 @@ Now give the judge something to judge. The **Judge smoke** check submits twelve 
 
    A message says that control sent the command to `local-1`.
 
-2. Open **Campaigns** in the sidebar. Within a minute, after a **refresh**, the check shows under **At work now**, on a card headed `rig-check-smoke-cpu-` and some letters, then `›` and `check-smoke-` and some letters. The first name is the check's **campaign**. The second is its **run**: the campaign at work on your rig.
+2. Open **Campaigns** in the sidebar. Within a minute, after a **refresh**, the check shows under **At work now**, on a card headed `rig-check-smoke-cpu-` and some letters, then `›` and `check-smoke-` and some letters. The first name is the check's **campaign**. The second is its **run**: the campaign at work on your rig. The card's lines say what the run does now: `no agents on this run: changes come from people`, and what the judge is screening.
 
    Lower down, **All campaigns** says `No campaign here.`, then `Rig checks are hidden`. Control keeps rig checks out of that table unless you ask for them, as you will in step 7.
 
-3. On the card, choose the name `rig-check-smoke-cpu-… › check-smoke-…` to watch the run. Its page has the title `check-smoke-…`, followed by `on local-1 · hill climb · Running`. Its first tab, **Overview**, lists the run's **Attempts**: each change shows up, then gets its verdict. Press **refresh** to see more.
+3. On the card, choose the name `rig-check-smoke-cpu-… › check-smoke-…` to watch the run. Its page has the title `check-smoke-…`, followed by `on local-1 · hill climb · Running`. Below it are the run's tabs: **Overview**, **Experiments**, **Attempts**, **History** and **Planner**. The first, **Overview**, lists the run's **Attempts**: each change shows up, then gets its verdict. Press **refresh** to see more.
 
 4. Two or three minutes after you pressed **Run it**, go back to **Rigs** › **local-1** and press **refresh**.
 
-   **Judge smoke** shows **passed**, with `smoke on smoke-cpu: all 12 candidates were judged as expected (run check-smoke-…)`. While it works, it shows **running**.
+   **Judge smoke** shows **passed**, with `smoke on smoke-cpu: all 12 candidates were judged as expected (run check-smoke-…)`. While it works, it shows **running**, and its button reads **Running…**. The rig reports to control about once a minute, so the result can show a minute after the check ended.
 
    If it shows **failed**, the sentence beside it says why. The usual reason on a laptop is a computer too busy for fair timing: close other heavy programs and press **Run it** again. See [A check failed](../how-to/operate/troubleshoot.md#a-check-failed).
 

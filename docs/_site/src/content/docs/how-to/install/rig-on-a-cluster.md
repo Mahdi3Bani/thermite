@@ -170,11 +170,11 @@ Once the cause is fixed, the pods start and the rig reports by itself, and its s
 
 The rig's page keeps the **Set up by control** block: the cluster, the namespace ("made by control" or "a slot"), the GPUs, the storage, the images and each step so far. Its heading shows the rig's status there, such as `running`, `stopped`, `starting`, `updating` or `failed`. Its buttons:
 
-- **Stop its pods** or **Start its pods** (the deployments scale to 0 or 1), and **Restart them**. After a start or a restart, the page says `Started.` or `Restarted.`, and the status says `starting`. As after an update, control waits up to 15 minutes for the pods and then up to 10 minutes for a report. The steps "Its pods run the new images" and "A report reached control from the new images" get a ✓, even when no image changed, and the status says `running`. If a wait runs out, its step gets ✕ and the status says `failed`.
+- **Stop its pods** or **Start its pods** (the deployments scale to 0 or 1), and **Restart them**. After a start or a restart, the page says `Started.` or `Restarted.`, and the status says `starting`. As after an update, control waits up to 15 minutes for the pods and then up to 10 minutes for a report. The steps "Its pods run again" and "A report reached control after the start" get a ✓, and the status says `running`. If a wait runs out, its step gets ✕ and the status says `failed`.
 - **Update to these images**, when control deploys other images than the rig runs; **Try the update again**, when the last change to its pods failed; **Give it control's new address**, when only control's address changed. See [Update the rig's images](#update-the-rigs-images).
 - **Remove it from cluster-1**: type `remove rig-1` and press **Remove the rig**. Control deletes the namespace it created, or the rig's objects in the slot, and retires the rig's token. The rig's results go with its volume; control keeps only its events and its champions' patches, so [take the result](../campaigns/take-the-result.md) you need first. The page says `Removed from the cluster.`, and the rig stays in **Rigs** as not reporting. To take it off the rig lists too, use **Retire it** at the top of its page: type `retire rig-1` and press **Retire it**.
 
-Control makes one change at a time. While the status says `starting` or `updating`, it refuses a start, a restart or an update, and the page shows a card that starts with **Not done.**, such as `rig-1 is starting: wait until its page shows it running, or failed.` **Stop its pods** and **Remove the rig** are never refused for this.
+Control makes one change at a time. While the status says `starting` or `updating`, it refuses a start, a restart or an update, and the page shows a card that starts with **Not done.**, such as `rig-1 is starting: wait until its page shows it running, or failed.` It refuses an update before it compares any images, even for a rig that already runs control's images. **Stop its pods** and **Remove the rig** are never refused for this, and they end control's wait: a rig you stopped or removed meanwhile doesn't turn `failed` later.
 
 Next, [check the rig](../operate/check-a-rig.md), then [give it a model](../models/connect-a-provider.md).
 
@@ -199,12 +199,13 @@ Over MCP, the owner's and the operator's tokens have four tools for clusters (se
 - `update_rig_images` moves a rig onto control's images, as **Update to these images**, **Try the update again** and **Give it control's new address** do. Its one field is `rig`. Its answer's `said` is one of:
   - `rig-1's pods restart on the new images.`;
   - `rig-1 runs the new images when it starts again.` (a stopped rig);
-  - `rig-1's pods restart with control's new address.`, when only control's address for rigs changed, and also when it tries a failed change again on the same images;
+  - `rig-1's pods restart with control's new address.`, when only control's address for rigs changed;
   - `rig-1 gets control's new address when it starts again.` (a stopped rig);
-  - `rig-1 already runs control's images.`: the images and control's address are the same as the rig's, or control couldn't read the rig's supervisor deployment.
+  - `rig-1's pods restart on control's images again (a retry).`, when it tries a failed change again on the same images;
+  - `rig-1 already runs control's images.`: the images and control's address are the same as the rig's.
 
-  An update while the rig is `updating` or `starting` is refused, and so is one without control's address for rigs, with the same reasons as on the page.
+  An update while the rig is `updating` or `starting` is refused, and so is one without control's address for rigs, with the same reasons as on the page. When control can't read the rig's supervisor deployment to compare the address, the tool answers with an error: `Control could not read rig-1's deployment to compare control's address:` and kubectl's error.
 
-`rig_setup` (field `rig`) shows a rig that control set up: the cluster, the namespace, the placement, the rig's status there, its images, and each step, oldest first. A step is `{at, step, ok, detail}`, with the step's id rather than the page's words, such as `applied`, `first_report`, `images`, `images_running` or `report_after_images`. A failed step has `"ok": false` and the reason in `detail`. Use it to follow a new rig, a start or an update. It is for those who run control: the agent token doesn't have it, and a reader's token gets each step with `detail` set to `null`.
+`rig_setup` (field `rig`) shows a rig that control set up: the cluster, the namespace, the placement, the rig's status there, its images, and each step, oldest first. A step is `{at, step, ok, detail}`, with the step's id rather than the page's words, such as `applied`, `first_report`, `images`, `images_running` and `report_after_images` for an update, or `pods_running` and `report_after_start` for a start or a restart. A failed step has `"ok": false` and the reason in `detail`. Use it to follow a new rig, a start or an update. It is for those who run control: the agent token doesn't have it, and a reader's token gets each step with `detail` set to `null`.
 
 Once the rig shows on **Rigs**, `set_rig_model` gives its agents a model from **Providers**, as **Edit rig** does. Adding the cluster itself is done on the dashboard.

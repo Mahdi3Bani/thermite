@@ -118,7 +118,7 @@ The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_revie
 | `unkeep_message` | **Remove** in the **📌 &lt;n&gt; kept** list of a run's **Live** | Yes | Yes | Yes | No | Yes |
 | `queue_add` | **Add** under **Up next** on a run's **Experiments** tab | Yes | Yes | Yes | No | Yes |
 | `queue_move` | **↑ Top**, or dragging an experiment, under **Up next** on a run's **Experiments** tab | Yes | Yes | Yes | No | Yes |
-| `queue_edit` | None | Yes | Yes | Yes | No | Yes |
+| `queue_edit` | **Edit**, then **Save**, on an experiment under **Up next** on a run's **Experiments** tab | Yes | Yes | Yes | No | Yes |
 | `queue_drop` | **Drop**, then **Drop it**, on an experiment under **Up next**; **Drop** on a lane's idea under **Ideas from the lanes** | Yes | Yes | Yes | No | Yes |
 | `queue_accept` | **Queue it** on a lane's idea under **Ideas from the lanes** | Yes | Yes | Yes | No | Yes |
 | `drop_directive` | **Remove** on a rule on a run's **Planner** tab | Yes | Yes | Yes | No | Yes |
@@ -132,7 +132,7 @@ The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_revie
 
 Control's own lists decide what each MCP role may issue; the harness's owner-only check is a second gate behind them. The operator acts for the owner, so its `owner:operator` passes that gate for `message_agent`, `unkeep_message` and the six queue kinds. During the owner's full reset of a rig, MCP's `issue_command` refuses an agent's token for that rig: `<rig> is being reset by the owner`. [Tokens and roles](tokens.md) describes each token.
 
-The dashboard has no button for `queue_edit`: an experiment's words change only over the REST API, the command line or MCP. [Choose what runs next](../how-to/campaigns/choose-what-runs-next.md) walks through the **Experiments** and **Planner** tabs.
+On the dashboard, only an experiment up next has **Edit**: a lane's idea's words change only over the REST API, the command line or MCP. [Choose what runs next](../how-to/campaigns/choose-what-runs-next.md) walks through the **Experiments** and **Planner** tabs.
 
 ## Every kind
 
@@ -164,11 +164,13 @@ Each experiment in `queue` has these fields:
 | `details` | text up to 4000 characters | Optional. More about it |
 | `family` | text, 1 to 80 characters | Optional. Its direction, in words or as a direction family's name |
 | `why` | text up to 2000 characters | Optional. Why it is worth trying |
-| `by` | text, 1 to 80 characters | Who added it in the first place, such as `owner`, `planner`, `teacher` or `lane-2`. The new run keeps it as the experiment's author. Over MCP, control replaces it: with the author the rigs' events give the experiment named in `from`, or `copied` when control does not know that experiment |
+| `by` | text, 1 to 80 characters | Who added it in the first place, such as `owner`, `planner`, `teacher` or `lane-2`. The new run keeps it as the experiment's author. Over MCP, control replaces it, as below |
 | `state` | `queued` or `proposed` | `queued`: up next. `proposed`: a lane's idea, which stays an idea in the new run |
 | `from` | `{run, id}` | The run and the experiment it was copied from |
 
-**Start a run** on a campaign's page also works for a campaign that was assigned over the REST API, MCP or the command line, with no version saved on control. Control then signs again the campaign's newest `assign_campaign` whose status is `pending` or `delivered`, as a new run: the same `contract`, `seed`, `imports` and `direction`, with a new `run`, and `agents` and `promotion` from the panel. With **Agents** on and **Copy the untried experiments of** ticked, the panel also sends `queue`: the chosen run's experiments still up next, in their order, then its lanes' ideas. `thermite assign` has no option for `queue`.
+Over MCP, control does not keep the caller's words for a copied experiment. It takes `title`, `details`, `family`, `why` and `by` from its own record of the experiment that `from` names: the rigs' signed events, with every edit applied. A field that the record does not have is left out. When control has no record of that experiment (no rig reported it, or more than one did), the experiment keeps the caller's words, and its `by` is `copied`.
+
+**Start a run** on a campaign's page also works for a campaign that was assigned over the REST API, MCP or the command line, with no version saved on control. Control then signs again the campaign's newest `assign_campaign` whose status is `pending` or `delivered`, as a new run: the same `contract`, `seed`, `imports` and `direction`, with a new `run`, and `agents` and `promotion` from the panel. With **Agents** on and **Copy the untried experiments of** ticked, the panel also sends `queue`: the chosen run's experiments still up next, in their order, then its lanes' ideas, at most 500 of them. Its help says "They join the new run's queue in the same order, up to 500." With **Agents** off, the panel hides that field, and control sends no `queue` even when the form has it: a run without agents has no queue. `thermite assign` has no option for `queue`.
 
 The harness creates the run only after every check passes. In order, it refuses:
 
@@ -251,6 +253,10 @@ A set that both avoids a direction and tries or mandates it is refused: `the set
 
 Only the planner's model applies match words. The fixed rules that give out work without it (no model, a model answer that code refused, the planner switched off, and every research run) keep only the directives that name a `family`.
 
+`redirect` is not the only source of match words. The teacher pair's set (each teacher's recommendations, and the combiner's directives: see [What each role must answer](advisors-file.md#what-each-role-must-answer)) and a rule that the planner adds because an owner's message asked for it may also name `match` for an `avoid`, `try` or `mandate` rule.
+
+A `redirect` can set again a rule that was removed with [`drop_directive`](#drop_directive); the teacher pair's and the planner's sets cannot.
+
 The dashboard calls directives **rules**. **Add the rule** on a run's **Planner** tab sends one directive, `avoid`, `try` or `mandate`, with `replace: false`: it adds to the rules given from the dashboard before, and replaces none. Its **Direction** goes as `family` when it is shaped like a family's name (2 to 41 lowercase letters, digits and dashes, such as `loop-tiling`), and as `match` otherwise. [`drop_directive`](#drop_directive) removes one rule.
 
 ### `reset_workers`
@@ -316,7 +322,7 @@ Control refuses `keep` with any other `to` before signing: `bad message_agent pa
 | `run <run> has <n> lanes`, or `… has 1 lane` | A lane beyond the contract's number of lanes. A lane within it, but above the number a `lane_count` rule leaves at work, is accepted |
 | `no trial t-… in run <run>` | A trial the run does not have |
 
-The run's **Live** shows the rig's refusal of the newest message to the run, from wherever it was sent, as **Not sent.** `The rig refused your last message: <reason>` above its message box, the next time the page loads. The run's **Planner** tab does the same for the newest message to the planner, above **Tell the planner**: **Not sent.** `The rig refused your last message to the planner: <reason>`.
+The run's **Live** shows the rig's refusal of the newest message to the run, from wherever it was sent, as **Not sent.** `The rig refused your last message: <reason>` above its message box, the next time the page loads. The run's **Planner** tab does the same for the newest message to the planner, above **Tell the planner**: **Not sent.** `The rig refused your last message to the planner: <reason>`. A message from the dashboard that control refuses before it signs it shows in the same place at once, as **Not sent.** and control's reason. Control's audit log records that refusal as `refused`, with the page's path and the reason ([Audit log actions](rest-api.md#audit-log-actions)).
 
 The harness writes the live line `Owner to <to> (#<id>): <text>`, with `, kept in force` after the id for a kept message. A run's **Live** shows a signed line as **To** the recipient and the text. A line for everyone working, a lane, the planner or the advisors shows so at once, in its own words. A line for a trial shows as a plain line until the run's `agent_message` event, below, reaches control with the rig's report; **Live** then draws it again in place, with the event's words. Result: `{"message": <id>, "to", "keep", "readers", "note"}`. `readers` lists who will read it: lanes, `planner`, `teachers`, `auditor` or `panel`. `note` is there only for a trial that has ended: `trial t-… has ended; lane-<n>'s next trial reads this`.
 
@@ -346,7 +352,7 @@ Adds an experiment to the run's **experiment queue**. Each run has its own queue
 | `why` | text up to 2000 characters | none | Why it is worth trying. The planner reads it, and so does the worker whose lane gets the experiment |
 | `position` | `"top"`, `"end"`, or a whole number from 0 to 100000 | `"end"` | Where it goes among the queued experiments |
 
-The dashboard's **Add** puts the experiment at the top, unless **Where** says **at the end**. Over the REST API, the command line and MCP it goes to the end unless `position` says otherwise.
+The dashboard's **Add** sends **Add an experiment** as `title`, and **Direction**, **Why** and **Details** as `family`, `why` and `details` when they are not empty. It puts the experiment at the top, unless **Where** says **at the end**. Over the REST API, the command line and MCP it goes to the end unless `position` says otherwise.
 
 These rules hold for the five queue kinds:
 
@@ -379,6 +385,10 @@ Changes the words of an experiment that still waits: one up next, or a lane's id
 | `id` | experiment id | The experiment |
 | `title`, `details`, `family`, `why` | as for `queue_add` | The new words. Give at least one; the others stay as they are |
 
+An empty `details` or `why` clears it; `title` and `family` cannot be empty.
+
+**Edit** on an experiment under **Up next** opens a form with its words: **What to try** (`title`), **Details**, **Direction** (`family`) and **Why**. **Save** always sends `details` and `why`, so a field you empty is cleared. It sends `title` and `family` only when they are not empty, so an emptied one keeps its old words. A lane's idea has no **Edit** on the dashboard.
+
 Control refuses an edit with none before signing: `bad queue_edit payload: payload: change at least one of title, details, family and why`. The harness refuses an experiment that no longer waits: `experiment <id> is <state>: only proposed or queued experiments can be edited`. Result as for `queue_add`; `position` is `null` for a lane's idea. Event: `experiment_edited`, `{id, by}` and the fields that changed.
 
 ### `queue_drop`
@@ -395,7 +405,7 @@ Drops an experiment that still waits, so no lane tries it. It stays in the run's
 
 ### `queue_accept`
 
-Queues a lane's idea: an experiment a worker proposed (with `thermite-trial idea` or Pi's `idea` tool) goes up next. The planner also queues or drops ideas as it plans.
+Queues a lane's idea: an experiment a worker proposed (with `thermite-trial idea` or Pi's `idea` tool) goes up next. The planner's model also queues or drops ideas as it plans. Under **Ideas from the lanes**, the **Experiments** tab says: "The planner's model queues or drops these at its next hand-out, and you can decide first. Without its model (none set, its answer refused, the planner off, or a research run) they wait for you."
 
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -414,7 +424,9 @@ Removes one [directive](#redirect), a rule for the plan, whoever set it: the own
 | `run` | lowercase id | The run |
 | `id` | positive whole number | The directive's id: one of `directives` in its `redirect`'s result, or `id` in the run's `rules` ([`run_queue`](mcp-tools.md#run_queue)) |
 
-The harness refuses: `no run <run>`, and `no rule <id> in force in run <run>`. It checks that the run exists, not that it is open. The directive stays in the record with the status `dropped`, and the ledger records `directive_dropped`, `{id}`. The teacher pair's next set of directives replaces its earlier set, so a rule of theirs comes back if they give it again. Result: `{"run", "dropped": <id>}`.
+The harness refuses: `no run <run>`, a closed run (`run <run> is closed: its queue no longer changes`), and `no rule <id> in force in run <run>`. The directive stays in the record with the status `dropped`, and the ledger records `directive_dropped`, `{id}`. Result: `{"run", "dropped": <id>}`.
+
+**A removed rule does not come back from the advisors or the planner.** The teacher pair's next set of directives replaces its earlier set, and the planner adds rules when an owner's message asks for one. Before the harness records such a set, it leaves out each rule that matches a rule removed from the run with `drop_directive`: the same kind, and the same `family` or `match` words, ignoring case and spaces at the ends. A rule that names neither matches every removed rule of its kind that names neither. The harness records the left-out rules in one event, `directives_left_out`, `{rules, why: "the owner removed these rules"}`, whose actor is `supervisor` or `planner`, and records the rest of the set. Only a `redirect` (the owner's **Add the rule**, for example) sets a removed rule again.
 
 ### `propagate`
 

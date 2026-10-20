@@ -269,7 +269,7 @@ Control writes one entry for each of these to its audit log. `GET /v1/audit`, th
 
 | Group | Actions |
 | --- | --- |
-| Requests | `failed` (a request that ended in an error), `refused` (a dashboard action control turned down, with why), `mcp:<tool>` (every MCP tool call, with its inputs) |
+| Requests | `failed` (a request that ended in an error), `refused` (a dashboard action control turned down, with the page's path and why, including a message to the agents that control refused before signing it, which the page shows as **Not sent.**), `mcp:<tool>` (every MCP tool call, with its inputs) |
 | Sign-in | `login`, `login_throttled` |
 | Commands | `command_issued`, `command_acked`, `command_expired`, `command_cancelled` |
 | Rigs and keys | `rig_enrolled`, `rig_token_rotated`, `rig_retired`, `rig_brought_back`, `rig_key_pinned`, `rig_key_changed`, `rig_key_accepted`, `report_rejected`, `report_refused`, `git_access_handed` |

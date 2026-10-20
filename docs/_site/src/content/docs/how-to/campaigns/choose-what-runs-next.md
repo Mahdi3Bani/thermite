@@ -10,11 +10,11 @@ Each run keeps an **experiment queue**: a list, in order, of what its [lanes](..
 
 [Agents, lanes and the planner](../../explanation/agents-lanes-planner.md#the-experiment-queue) explains the queue and how the planner coordinates the lanes.
 
-![A run's Experiments tab: Up next with the Add an experiment form and three experiments, added by you, the planner and the auditor; In progress with lane-1 and lane-2; Ideas from the lanes with one of lane-2's ideas and the buttons Queue it and Drop; Tried with its filters and two rows, one dropped by you and one that became Champion #6](../../../../assets/screenshots/experiments.webp)
+![A run's Experiments tab: Up next with the form to add an experiment (its fields Add an experiment, Direction, Where, Why and Details) and three experiments, added by you, the planner and the auditor, each with Edit and Drop; In progress with lane-1 and lane-2; Ideas from the lanes with one of lane-2's ideas and the buttons Queue it and Drop; Tried with its filters and an experiment you dropped](../../../../assets/screenshots/experiments.webp)
 
 ## Before you start
 
-- A run with agents that is running or paused. A finished run's queue no longer changes: `run sort-speed-1 is closed: its queue no longer changes`.
+- A run with agents that is running or paused. A finished run's queue no longer changes, and its rules can't be removed: `run sort-speed-1 is closed: its queue no longer changes`.
 - The owner's sign-in on the dashboard. From the command line, the owner's token; over MCP, the owner's or an operator's token. See [Who may do what](steer-a-run.md#who-may-do-what).
 
 Others write to the queue too, and **Added by** names them:
@@ -36,19 +36,19 @@ Open **Campaigns** in the sidebar, then the campaign, then the run: press its na
 2. In **Direction**, you may name the approach it belongs to, in your own words or as a direction the run has used: the field lists them. The planner keeps similar work on the same lane, and [rules](#give-the-planner-a-rule) apply by direction.
 3. In **Where**, keep **at the top**, or choose **at the end**.
 4. In **Why**, you may say why it is worth trying. The planner and the lane that gets it read it.
-5. Press **Add**.
+5. In **Details**, you may say more on how to try it, up to 4000 characters, for the lane that takes it.
+6. Press **Add**.
 
 The page says `Control sent the command to rig-1. The rig does it in less than 10 seconds. This page shows the result.`, with your rig's name. Once the rig has reported, within a minute, press **refresh** in the status bar, the line along the bottom of the page. The experiment is in **Up next** at its place, marked **you**, with its direction and why.
 
-The form has no field for longer details. To give an experiment details, add or change it from the [command line](#from-the-command-line-and-over-mcp).
-
-## Reorder or drop an experiment
+## Reorder, edit or drop an experiment
 
 - **↑ Top**, beside every experiment but the first, moves it to the top.
-- To move an experiment anywhere else, drag it by its handle, `⋮⋮`, and drop it on another experiment: it goes just above that one. The numbers change at once; press **refresh** after the rig's next report to see the rig's order. To move one to the very end, use `queue_move` with `"position":"end"`.
+- To move an experiment anywhere else, drag it by its handle, `⋮⋮`, and drop it on another experiment. Dropped on the upper half of that experiment, it goes just above it; on the lower half, just below it, so you can also move one below the last. The numbers change at once; press **refresh** after the rig's next report to see the rig's order.
+- **Edit** opens a small form with the experiment's **What to try**, **Details**, **Direction** and **Why**. Change them, then press **Save**. An emptied **Details** or **Why** is cleared; an emptied **Direction** keeps the direction it had. **History** then says `You edited "…".`
 - **Drop** opens a small menu. Write why in its field, then press **Drop it**. The experiment leaves **Up next** and shows under **Tried** as `dropped by you:` and your reason.
 
-Only experiments that wait can change: a lane that has started on one keeps it. The rig then refuses the move or the drop, such as `experiment x-0123456789ab is assigned: only queued experiments move`.
+Only experiments that wait can change: a lane that has started on one keeps it. The rig then refuses the move, the edit or the drop, such as `experiment x-0123456789ab is assigned: only queued experiments move`.
 
 ## Follow the lanes' work
 
@@ -60,7 +60,7 @@ When **Pause**, **Restart the lanes** or a restart of the rig's harness ends a t
 
 While it works, a lane's worker may propose an **idea**: another experiment worth trying beyond its own. It does so with `thermite-trial idea` in OpenCode or Claude Code, or with the `idea` tool in Pi (see [the command line](../../reference/command-line.md#thermite-trial)), and its trial goes on. Thermite sets no limit on how many ideas a lane proposes.
 
-Ideas wait under **Ideas from the lanes**, each with its title, why, and who proposed it, such as `lane-2's idea · 18m ago`. At its next hand-out, the planner's model may queue them, drop them or give one to a lane; without an answer from the model, they wait. You can decide first:
+Ideas wait under **Ideas from the lanes**, headed `wait for the planner or you`, each with its title, why, and who proposed it, such as `lane-2's idea · 18m ago`. Below them, the card says `The planner's model queues or drops these at its next hand-out, and you can decide first. Without its model (none set, its answer refused, the planner off, or a research run) they wait for you.` The lane's worker is told the same: `it waits until the planner or the campaign's owner queues it or drops it. Your trial goes on.` To decide:
 
 - **Queue it** puts the idea at the end of **Up next**.
 - **Drop** drops it, with the reason `the owner dropped this idea`.
@@ -69,7 +69,15 @@ With no ideas waiting, the card says `None waiting. Lanes propose ideas while th
 
 ## Read what was tried
 
-**Tried** lists every experiment that ended, newest first, with the columns **Experiment**, **Direction**, **Added by**, **Where** (the lane and its trial), **Result** and **When**. The chips above it filter the list: **All**, **Wins**, **Slower or broke a goal**, **No gain**, **Research finished** (only when some research tasks have finished) and **No attempt or dropped**.
+**Tried** lists every experiment that ended, newest first, with the columns **Experiment**, **Direction**, **Added by**, **Where** (the lane and its trial), **Result** and **When**. The chips above it filter the list by the judge's word for each attempt:
+
+- **All**;
+- **Wins**: **Won**, **Champion #…**, **Promoted**, or waiting for you (**Needs you**);
+- **Not better**: **Lost**, not better than the champion;
+- **Broken or blocked**: **Broken**, or **Blocked** by the auditor;
+- **Other results**: **Unclear**, **Declined**, **Duplicate**, or still **Judging**;
+- **Research finished**, only when some research tasks have finished;
+- **No attempt or dropped**, which also holds an attempt whose verdict is not on control yet.
 
 | **Result** says | It means |
 | --- | --- |
@@ -109,7 +117,9 @@ When the model plans, code still refuses an answer that gives a lane an **Avoid*
 
 ### Remove a rule
 
-Press **Remove** beside the rule. It works on any rule, whoever set it. Once the rig has reported, the rule leaves **Rules**, and **History** says `You removed rule 7.` The teacher pair's next set of rules replaces their earlier set, so they may set a rule you removed again.
+Press **Remove** beside the rule. It works on any rule, whoever set it. Once the rig has reported, the rule leaves **Rules**, and **History** says `You removed rule 7.`
+
+A rule you removed stays removed. When the advisors or the planner send the same rule again, of the same kind and with the same direction or words, the rig leaves it out of their set, and records an event `directives_left_out` with the rule and `"why": "the owner removed these rules"`. Only a rule set through control brings it back: yours from **Add a rule**, or a `redirect`.
 
 The kinds the dashboard doesn't offer, `priority`, `lane_count` and `note`, go with `redirect` from the [command line](steer-a-run.md#steer-from-the-command-line).
 
@@ -148,7 +158,7 @@ The card **The planner** says which model plans:
 - `No model: the lanes take the queue in order and keep to the rules.`;
 - `Not reported by this rig's harness.`
 
-**Change it on Edit rig** opens the rig's settings: see [Give each agent its own model](../models/model-per-agent.md). Below, a line such as `Last 12 hand-outs: 10 by the model, 2 in queue order because the model's answer was refused.` counts the rounds. Its second number counts every round that the fixed rules planned, whatever the reason: History says which.
+**Change it on Edit rig** opens the rig's settings: see [Give each agent its own model](../models/model-per-agent.md). Below, a line counts the rounds, such as `Last 12 hand-outs: 10 by the model, 2 in queue order by the fixed rules (no model, the planner off, or no usable answer from the model). History says which for each round.`
 
 The tab also holds the run's **Agent figures** and, once the run has published a champion, **Other rigs**: see [Run a campaign on several rigs](several-rigs.md).
 
@@ -157,10 +167,11 @@ The tab also holds the run's **Agent figures** and, once the run has published a
 Each run has its own queue. A new run can start with the experiments another run of the campaign had not tried yet.
 
 1. On the campaign's page, press **Start a run**.
-2. Under **Experiments to start with**, keep **Copy the untried experiments of** ticked, and choose the run, such as `sort-speed-1 (4 up next, 1 lane idea)`. The field shows only when some run of the campaign has experiments up next or ideas.
-3. Keep **Agents** on **On**: a run without agents gets no copy. Choose the rest as in [Start a run later](start-from-dashboard.md#start-a-run-later), and press **Start the run**.
+2. Keep **Agents** on **On**. With **Off: a try**, the field below hides, and a try gets no copy.
+3. Under **Experiments to start with**, keep **Copy the untried experiments of** ticked, and choose the run, such as `sort-speed-1 (4 up next, 1 lane idea)`. The field shows only when some run of the campaign has experiments up next or ideas.
+4. Choose the rest as in [Start a run later](start-from-dashboard.md#start-a-run-later), and press **Start the run**.
 
-The new run's **Up next** starts with that run's waiting experiments, in the same order, each marked `from sort-speed-1`. That run's ideas wait under **Ideas from the lanes**. Each keeps who added it and why, and the new run's **History** says, for each, `"…" was copied into the queue from run sort-speed-1.` The tried ones stay with their run. Untick the box for an empty queue, which the planner fills.
+The new run's **Up next** starts with that run's waiting experiments, in the same order, up to 500, each marked `from sort-speed-1`. That run's ideas wait under **Ideas from the lanes**. Each keeps who added it and why, and the new run's **History** says, for each, `"…" was copied into the queue from run sort-speed-1.` The tried ones stay with their run. Untick the box for an empty queue, which the planner fills.
 
 ## From the command line and over MCP
 
@@ -186,7 +197,7 @@ It prints the command's id and `"status":"pending"`. The kinds, with an example 
 
 - An experiment's id is `x-` and 12 hexadecimal characters; a rule's id is a number. Read them with the MCP tool `run_queue`, or in the run's `queue` and `rules` from `GET /v1/rigs/<rig>/view` with the owner's token.
 - A `position` is `"top"`, `"end"`, or a number: the place among the experiments up next, 0 first. `queue_add` and `queue_accept` put an experiment at the end unless you give one.
-- `queue_edit` changes the title, details, direction (`family`) or why of an experiment that waits. The dashboard has no button for it.
+- `queue_edit` changes the title, details, direction (`family`) or why of an experiment that waits, as **Edit** on the dashboard does. A field you leave out stays as it was; an empty `details` or `why` clears it.
 - In `redirect`, a rule names a direction's name with `family`, or your own words with `match`; `"replace": false` adds to the rules in force.
 
 [Signed commands](../../reference/signed-commands.md) has every field, limit and refusal. Control refuses a payload that doesn't fit at once, such as `bad queue_edit payload: payload: change at least one of title, details, family and why`. The rig's own refusals show on **Commands**, where the row is **failed** with the reason under **Outcome**, such as:
@@ -194,7 +205,8 @@ It prints the command's id and `"status":"pending"`. The kinds, with an example 
 - `no experiment x-0123456789ab in run sort-speed-1`;
 - `experiment x-0123456789ab is done: only proposed or queued experiments can be dropped`;
 - `experiment x-0123456789ab is queued, not a proposed idea`, for `queue_accept`;
-- `no rule 7 in force in run sort-speed-1`.
+- `no rule 7 in force in run sort-speed-1`;
+- `run sort-speed-1 is closed: its queue no longer changes`, for every kind here but `redirect`.
 
 Over MCP, the owner's and an operator's tokens send the same kinds and payloads with the `issue_command` tool, then follow them with `command_status`. The agent's token can't change the queue or remove a rule, though it may add rules with `redirect`. Every token can read the queue with `run_queue`: up next in order, the lanes' ideas, what each lane is on, the newest experiments tried (`tried`, 50 unless set, up to 500), the rules in force, the newest 10 hand-outs and your newest 20 messages. See [Let an agent run Thermite over MCP](../automate/agent-over-mcp.md).
 

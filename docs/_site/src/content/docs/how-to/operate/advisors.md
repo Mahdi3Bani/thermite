@@ -8,12 +8,12 @@ sidebar:
 
 A rig's supervisor can run **advisors**: models that watch the research but never judge it.
 
-- The **teacher pair** reads each running run's progress, every hour by default and at once when you write to it, and suggests directions, each with a source. It can also add experiments to the run's [experiment queue](../campaigns/choose-what-runs-next.md), the list of what the lanes try next, and move experiments that wait there.
+- The **teacher pair** reads each running run's progress, every hour by default and at once when you write to it, and suggests directions, each with a source. A direction to avoid, try or always work on is a direction's name, or words such as a kind of change or a file. It can also add experiments to the run's [experiment queue](../campaigns/choose-what-runs-next.md), the list of what the lanes try next, and move experiments that wait there.
 - The **combiner** joins the two teachers' advice into one set of directions for the planner, and one list of experiments and moves.
 - The **auditor** answers the judge's audits: it can block a change before it becomes the champion, never pass one on its own. When it has a doubt it can't settle, it can put a check at the top of the run's queue, which a lane then works on like any other experiment.
-- The **review panel** grades goals that code cannot check. A pass still needs your acceptance.
+- The **review panel** grades goals that code cannot check. A pass still needs your acceptance. It adds nothing to the queue.
 
-Advisors add and move experiments, each with a reason. They never drop one, take a lane's idea into the queue or give out work: the planner and you do that.
+The teacher pair and the auditor add experiments, and the teachers move them, each with a reason. No advisor drops one, takes a lane's idea into the queue or gives out work: the planner and you do that. Nor can the advisors bring back a rule you removed: their next set leaves it out ([Remove a rule](../campaigns/choose-what-runs-next.md#remove-a-rule)).
 
 No advisor runs until you give it a model. **Edit rig** also has a switch for each part, which is **on** by default; a switch only lets a role run once it has a model. [Supervision](../../explanation/supervision.md) explains what each one may and may not do.
 
@@ -133,7 +133,7 @@ Wait a minute, then press **refresh** in the status bar, the line along the bott
   - `advisor round done: …`, the round's counts, when the round did something.
 
   The rig's own live view (the **Live** button on the rig's page) shows the same lines when you choose **Supervisor** in its list.
-- When the teachers' advice reaches a run, its **History** tab has a line for each rule they set, such as `supervisor set a rule for the plan: avoid loop-tiling.`, and for each experiment they add, such as `The teacher pair added "Unroll the loop by 4" to the queue.`
+- When the teachers' advice reaches a run, its **History** tab has a line for each rule they set, such as `The teacher pair set a rule for the plan: avoid loop-tiling.`, and for each experiment they add, such as `The teacher pair added "Unroll the loop by 4" to the queue.`
 - The run's **Experiments** tab shows the experiments the advisors added, with **teachers** or **auditor** as who added each one.
 
 A count of errors that grows means a role keeps failing. Each error is a line in **Live** with its reason, such as `audit of …: advisor auditor has no key`, and the supervisor's log has an `advisor error` line with the same reason. When the rig can't record an advisor's experiments and moves at all, the error line starts with `the queue for run-1:`. A move that the rig refuses, for example of an experiment a lane has taken since, shows after `refused:` in the advisor's own line, and the other changes still apply.
