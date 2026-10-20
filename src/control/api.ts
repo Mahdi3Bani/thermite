@@ -38,8 +38,8 @@ import {
   type ModelProvider,
   RIG_ID,
 } from "./store.ts";
-import { checkRig, recheckRefusals, rigVersions } from "./versions.ts";
 import { ControlTunnels } from "./tunnel.ts";
+import { checkRig, recheckRefusals, rigVersions } from "./versions.ts";
 import { leaderboard, reportingState, rigView } from "./views.ts";
 
 /**
