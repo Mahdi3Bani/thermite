@@ -880,6 +880,25 @@ export function rigView(
         });
         break;
       }
+      // A research note (sources read, in any mode): in the journal's notes card, apart from the
+      // field notes. Its id is negative so it never meets a field note's.
+      case "research_note": {
+        const note = Number(b.note);
+        const text = typeof b.text === "string" ? b.text : "";
+        if (!Number.isFinite(note) || !text) break;
+        const sources = Array.isArray(b.sources) ? b.sources.map(String) : [];
+        inst(String(e.subject)).journal.push({
+          id: -note,
+          by: String(b.by ?? e.actor),
+          kind: "note",
+          text,
+          about: sources[0] ? { type: "source", id: sources[0] } : null,
+          lane: typeof b.by === "string" && /^lane-\d+$/.test(b.by) ? b.by : null,
+          trial: typeof b.trial === "string" ? b.trial : null,
+          at: e.at,
+        });
+        break;
+      }
       // ---------------------------------------- the owner's messages (goal 063)
       case "agent_message": {
         const v = inst(String(e.subject));
@@ -957,7 +976,7 @@ export function rigView(
     }
     const run = runOf(e);
     // The agents' notes are kept in the journal: the timeline tells what happened.
-    if (run && runs.has(run) && e.kind !== "journal_note") {
+    if (run && runs.has(run) && e.kind !== "journal_note" && e.kind !== "research_note") {
       const t = (runs.get(run) as RunView).timeline;
       t.push(e);
       if (t.length > 400) t.shift();

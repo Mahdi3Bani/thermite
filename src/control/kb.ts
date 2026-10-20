@@ -324,6 +324,27 @@ export class KnowledgeBase {
         );
         return;
       }
+      // A research note (goal 065: in any mode), apart from the field notes: its own ref.
+      case "research_note": {
+        const sources = Array.isArray(b.sources) ? b.sources.map(String) : [];
+        this.put(
+          src,
+          run,
+          "note",
+          `rn-${str(b.note)}`,
+          {
+            title: clip(str(b.text), 120),
+            body: [str(b.text), sources.length ? `Sources: ${sources.join(", ")}` : ""]
+              .filter(Boolean)
+              .join("\n"),
+            by: str(b.by) || actor,
+            url: str(b.url) || null,
+            sub: "note",
+          },
+          at,
+        );
+        return;
+      }
       case "experiment_added":
         this.put(
           src,

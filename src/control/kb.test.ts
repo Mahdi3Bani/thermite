@@ -380,3 +380,46 @@ test("the rigs' route: the rig's own token, its own runs, a KbSync", async () =>
   assert.equal((await get("/v1/rigs/rig-b/kb?run=sv-2&after=-1", "rig-b-token-abcd")).status, 400);
   assert.equal((await get("/v1/rigs/rig-b/kb?run=sv-2", "admin-token-abcdef")).status, 401);
 });
+
+test("a research note is a note of its own in the folder and in the run's journal", async () => {
+  const store = new ControlStore(":memory:");
+  ingest(store, "rig-c", [
+    ["harness", "run_created", "g-1", { campaign: "gemv-speed", mode: "goal" }],
+    [
+      "lane-1",
+      "journal_note",
+      "g-1",
+      { id: 1, by: "lane-1", kind: "observation", text: "the kernel is memory bound" },
+    ],
+    [
+      "lane-1",
+      "research_note",
+      "g-1",
+      {
+        note: 1,
+        by: "lane-1",
+        text: "The vendor guide says 128-bit loads double the bandwidth",
+        sources: ["s-1"],
+        url: "https://example.com/guide",
+      },
+    ],
+  ]);
+  const kb = store.kb();
+  const notes = kb.search("bandwidth", ["gemv-speed"], { kinds: ["note"] });
+  assert.equal(notes.length, 1);
+  assert.equal(notes[0]?.ref, "rn-1", "never the field note's id");
+  assert.equal(notes[0]?.sub, "note");
+  assert.equal(notes[0]?.url, "https://example.com/guide");
+  assert.match(String(notes[0]?.body), /Sources: s-1/);
+  assert.equal(kb.search("memory bound", ["gemv-speed"])[0]?.sub, "observation");
+  const { rigView } = await import("./views.ts");
+  const run = rigView(store, "rig-c", { staleAfterMs: 600_000 })?.runs.find((r) => r.id === "g-1");
+  assert.deepEqual(
+    run?.journal.map((n) => [n.id, n.kind, n.about?.type ?? null]),
+    [
+      [1, "observation", null],
+      [-1, "note", "source"],
+    ],
+  );
+  assert.ok(!run?.timeline.some((e) => e.kind === "research_note"));
+});
