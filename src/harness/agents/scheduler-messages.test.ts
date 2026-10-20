@@ -101,7 +101,7 @@ describe("the owner's messages in plans and briefs", () => {
     await epoch();
     assert.match(
       String(planned[0]),
-      /\\"owner_messages\\":\[\\"keep every change small\\",\\"spread wider\\"\]/,
+      /\\"owner_messages\\":\[\{\\"id\\":1,\\"text\\":\\"keep every change small\\"\},\{\\"id\\":3,\\"text\\":\\"spread wider\\"\}\]/,
     );
     assert.doesNotMatch(
       String(planned[0]),

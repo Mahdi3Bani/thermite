@@ -1,0 +1,340 @@
+import type { StructuredDirective } from "../../core/commands.ts";
+import { type Ledger, LedgerError } from "../ledger.ts";
+import { directionOf, type Experiment, type ExperimentQueue, inFamily } from "../queue.ts";
+import type { NewFamily, QueuePlan } from "./planner.ts";
+import type { Assignment, Registry } from "./registry.ts";
+
+/**
+ * The coordinator's side of the experiment queue (goal 064): how lanes get work. The planner
+ * gives out queued work each round; the code here applies its answer, and when there is no
+ * model answer it gives out work itself by fixed rules. Either way, every change is recorded
+ * as the planner's (`planner`), and each hand-out is one `planner_handout` event.
+ *
+ * The fixed rules: lanes take queued experiments in order, skipping those an AVOID rule names by
+ * family, MANDATE families first and TRY families next. Among the next experiments in order
+ * (as many as the run has lanes), a lane prefers one in its last direction, so it builds on what
+ * it learned. An experiment goes to one lane only.
+ */
+
+/** Who gives out work and changes the queue for the coordinator, in the record. */
+export const PLANNER = "planner";
+
+export type Directive = { id: number; body: StructuredDirective };
+
+/** A lane's work for its next trial: the experiment and why the lane got it. */
+export interface Handout {
+  lane: string;
+  experiment: string;
+  why: string;
+}
+
+const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+
+/**
+ * An experiment's result from how its trial ended: "submitted" (with the attempt), "no_attempt"
+ * (the worker stopped without submitting), or the trial's stopped reason (interrupted, error,
+ * wall, turns, context; a research trial's finished).
+ */
+export function resultOf(stopped: string, attempt?: string | null | undefined): string {
+  if (attempt) return "submitted";
+  return stopped === "no_submission" || stopped === "submitted" ? "no_attempt" : stopped;
+}
+
+/** What a trial works on, as its focus: the experiment's title and details. */
+export function focusOf(x: Pick<Experiment, "title" | "details">): string {
+  return x.details ? `${x.title}\n${x.details}` : x.title;
+}
+
+export class Coordinator {
+  private readonly ledger: Ledger;
+  private readonly queue: ExperimentQueue;
+  private readonly registry: Registry;
+
+  constructor(o: { ledger: Ledger; queue: ExperimentQueue; registry: Registry }) {
+    this.ledger = o.ledger;
+    this.queue = o.queue;
+    this.registry = o.registry;
+  }
+
+  /** What each lane worked on last: the direction and title of its newest experiment. */
+  laneState(
+    run: string,
+    lanes: string[],
+  ): Record<string, { direction: string | null; experiment: string | null }> {
+    const out: Record<string, { direction: string | null; experiment: string | null }> = {};
+    for (const lane of lanes) {
+      const x = this.ledger.db
+        .prepare(
+          "select title, family from experiment where run = ? and lane = ? order by updated_at desc, rowid desc limit 1",
+        )
+        .get(run, lane) as { title: string; family: string } | undefined;
+      const t = x
+        ? undefined
+        : (this.ledger.db
+            .prepare(
+              "select family from trial where run = ? and lane = ? order by started_at desc limit 1",
+            )
+            .get(run, lane) as { family: string | null } | undefined);
+      out[lane] = {
+        direction: x ? x.family || null : (t?.family ?? null),
+        experiment: x?.title ?? null,
+      };
+    }
+    return out;
+  }
+
+  /**
+   * The next experiment for a lane by the fixed rules, or none when nothing queued may go to
+   * it. `exclude`: experiments already given to other lanes in this hand-out or this round.
+   */
+  pick(
+    run: string,
+    lane: string,
+    o: { directives: Directive[]; window: number; exclude: Set<string> },
+  ): Experiment | undefined {
+    const fam = (k: string) =>
+      o.directives
+        .filter((d) => d.body.kind === k && d.body.family)
+        .map((d) => String(d.body.family));
+    const avoid = fam("avoid");
+    const mandate = fam("mandate");
+    const tried = fam("try");
+    const rank = (x: Experiment) =>
+      mandate.some((f) => inFamily(x, f)) ? 0 : tried.some((f) => inFamily(x, f)) ? 1 : 2;
+    const candidates = this.queue
+      .queued(run)
+      .filter((x) => !o.exclude.has(x.id) && !avoid.some((f) => inFamily(x, f)))
+      .map((x, i) => ({ x, i, r: rank(x) }))
+      .sort((a, b) => a.r - b.r || a.i - b.i);
+    const first = candidates[0];
+    if (!first) return undefined;
+    const last = this.laneState(run, [lane])[lane]?.direction;
+    const same =
+      last &&
+      candidates
+        .slice(0, Math.max(1, o.window))
+        .find((c) => c.r === first.r && sameDirection(c.x.family, last));
+    return (same || first).x;
+  }
+
+  /** Why a lane got an experiment by the fixed rules, in words. */
+  whyPicked(run: string, lane: string, x: Experiment, directives: Directive[]): string {
+    const ruled = directives.find(
+      (d) =>
+        (d.body.kind === "mandate" || d.body.kind === "try") &&
+        d.body.family &&
+        inFamily(x, d.body.family),
+    );
+    if (ruled)
+      return `a ${ruled.body.kind.toUpperCase()} rule (${ruled.id}) names its direction, ${ruled.body.family}`;
+    const last = this.laneState(run, [lane])[lane]?.direction;
+    if (last && sameDirection(x.family, last))
+      return `next in the queue in ${lane}'s last direction (${x.family}), so it builds on what it learned`;
+    return "next in the queue";
+  }
+
+  /**
+   * A MANDATE family with nothing queued or in progress gets one experiment, at the top, so the
+   * fixed rules can keep it: a lane always works in every MANDATE direction.
+   */
+  ensureMandates(run: string, directives: Directive[]): void {
+    const waiting = [...this.queue.queued(run), ...this.queue.assigned(run)];
+    for (const d of directives) {
+      const f = d.body.family;
+      if (d.body.kind !== "mandate" || !f || waiting.some((x) => inFamily(x, f))) continue;
+      waiting.push(
+        this.queue.add(
+          run,
+          {
+            title: `Work on the "${f}" direction`,
+            family: f,
+            why: `a MANDATE rule (${d.id}) asks for the "${f}" direction, and nothing queued was in it`,
+            by: PLANNER,
+            position: "top",
+          },
+          PLANNER,
+        ),
+      );
+    }
+  }
+
+  /**
+   * The fixed plan fills an empty queue: an experiment in the direction it gives a lane, added
+   * by the planner. `a` is the fixed plan's (or the round's) assignment for the lane.
+   */
+  fill(run: string, a: Pick<Assignment, "family" | "focus">, why: string): Experiment {
+    return this.queue.add(
+      run,
+      {
+        title: clip(a.focus.split("\n")[0] ?? a.focus, 200),
+        ...(a.focus.length > 200 || a.focus.includes("\n") ? { details: clip(a.focus, 4000) } : {}),
+        family: a.family,
+        why,
+        by: PLANNER,
+      },
+      PLANNER,
+    );
+  }
+
+  /**
+   * Applies a model's checked answer: accepted ideas and drops, new experiments (their refs
+   * become ids), moves, and the rules from the owner's messages. A change the queue no longer
+   * allows (the owner moved first) is skipped and said. Returns each lane's hand-out; a lane
+   * whose experiment can no longer be given out gets none, and takes one by the fixed rules.
+   */
+  apply(
+    run: string,
+    plan: QueuePlan,
+  ): { handout: (Handout & { parent: "champion" | "lane_best" })[]; skipped: string[] } {
+    const skipped: string[] = [];
+    const tryIt = (what: string, f: () => void) => {
+      try {
+        f();
+      } catch (err) {
+        if (!(err instanceof LedgerError)) throw err;
+        skipped.push(`${what}: ${err.message}`);
+      }
+    };
+    for (const a of plan.accept)
+      tryIt(`accept ${a.id}`, () =>
+        this.queue.accept(run, a.id, { by: PLANNER, position: a.position, why: a.why }, PLANNER),
+      );
+    for (const d of plan.drop)
+      tryIt(`drop ${d.id}`, () => this.queue.drop(run, d.id, { by: PLANNER, why: d.why }, PLANNER));
+    const refs = new Map<string, string>();
+    for (const a of plan.add) {
+      const x = this.queue.add(
+        run,
+        {
+          title: a.title,
+          details: a.details,
+          family: a.family,
+          why: a.why,
+          by: PLANNER,
+          position: a.position,
+        },
+        PLANNER,
+      );
+      refs.set(a.ref, x.id);
+    }
+    for (const m of plan.move)
+      tryIt(`move ${m.id}`, () =>
+        this.queue.move(run, m.id, { by: PLANNER, position: m.position, why: m.why }, PLANNER),
+      );
+    if (plan.rules.length)
+      this.ledger.addDirectiveSet(
+        run,
+        PLANNER,
+        plan.rules.map((r) => ({
+          kind: r.kind,
+          ...(r.family ? { family: r.family } : {}),
+          ...(r.match ? { match: r.match } : {}),
+          rationale: r.rationale,
+          citations: [],
+          from_message: r.from_message,
+        })),
+        false,
+      );
+    const handout: (Handout & { parent: "champion" | "lane_best" })[] = [];
+    for (const h of plan.handout) {
+      const id = refs.get(h.experiment) ?? h.experiment;
+      const x = this.queue.get(id);
+      if (!x || x.run !== run || (x.state !== "queued" && x.state !== "proposed")) {
+        skipped.push(`${h.lane}: ${id} can no longer be given out (${x?.state ?? "unknown"})`);
+        continue;
+      }
+      if (handout.some((o) => o.experiment === id)) {
+        skipped.push(`${h.lane}: ${id} is another lane's already`);
+        continue;
+      }
+      handout.push({ lane: h.lane, experiment: id, parent: h.parent, why: h.why });
+    }
+    return { handout, skipped };
+  }
+
+  /** The direction-registry family for an experiment's direction (registered if new). */
+  direction(run: string, x: Experiment, families: NewFamily[] = []): string {
+    const id = directionOf(x.family) ?? "general";
+    const described = families.find((f) => f.id === id)?.description;
+    this.registry.addFamily(
+      run,
+      id,
+      described ??
+        (id === "general"
+          ? "Any correct change that improves the primary metric"
+          : x.family && x.family !== id
+            ? x.family
+            : `the "${id}" direction (first: ${clip(x.title, 200)})`),
+      PLANNER,
+    );
+    return id;
+  }
+
+  /** One hand-out, in the planner's log. */
+  handout(run: string, round: number, assignments: Handout[], notes: string): void {
+    this.ledger.appendEvent(PLANNER, "planner_handout", run, {
+      round,
+      assignments: assignments.map((a) => ({
+        lane: a.lane,
+        experiment: a.experiment,
+        why: clip(a.why, 2000),
+      })),
+      notes: clip(notes, 2000),
+    });
+  }
+
+  /**
+   * A trial ended: its experiment is done, with its attempt or why there is none. One whose
+   * trial was interrupted (a reset, a pause, a restart) or failed was not really tried: it goes
+   * back to the top of the queue, as a new experiment by its author, saying so.
+   */
+  finish(
+    trial: string,
+    r: { result: string; attempt?: string | null | undefined },
+    actor: string,
+  ): void {
+    const x = this.queue.finish(trial, r, actor);
+    if (!x || (r.result !== "interrupted" && r.result !== "error")) return;
+    this.queue.add(
+      x.run,
+      {
+        title: x.title,
+        details: x.details || undefined,
+        family: x.family || undefined,
+        why: clip(
+          `tried again: its trial on ${x.lane ?? "a lane"} ${r.result === "error" ? "failed" : "was interrupted"} (${x.id})${x.why ? `. ${x.why}` : ""}`,
+          2000,
+        ),
+        by: x.added_by,
+        position: "top",
+      },
+      PLANNER,
+    );
+  }
+
+  /**
+   * After a restart: experiments whose trial a dead controller left open are finished with how
+   * their trial ended (interrupted), and go back to the queue.
+   */
+  finishOrphans(actor: string): void {
+    const rows = this.ledger.db
+      .prepare(
+        `select e.trial as trial, t.stopped as stopped, t.attempt as attempt from experiment e
+         left join trial t on t.id = e.trial
+         where e.state = 'assigned' and (t.id is null or t.ended_at is not null)`,
+      )
+      .all() as { trial: string; stopped: string | null; attempt: string | null }[];
+    for (const r of rows)
+      this.finish(
+        r.trial,
+        { result: resultOf(r.stopped ?? "interrupted", r.attempt), attempt: r.attempt },
+        actor,
+      );
+  }
+}
+
+/** Whether an experiment's direction is a lane's last one (the same words, or the same family). */
+function sameDirection(family: string, last: string): boolean {
+  if (!family) return false;
+  return family === last || (directionOf(family) ?? family) === (directionOf(last) ?? last);
+}

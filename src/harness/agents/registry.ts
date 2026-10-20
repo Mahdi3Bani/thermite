@@ -25,6 +25,9 @@ export interface Assignment {
   parent: "champion" | "lane_best";
   /** The MANDATE or TRY directive this assignment follows, when it follows one. */
   directive?: number | undefined;
+  /** The experiment from the run's queue the lane's next trial takes, and why it got it. */
+  experiment?: string | undefined;
+  why?: string | undefined;
 }
 
 export interface EpochRecord {
@@ -224,6 +227,7 @@ export class Registry {
           focus: a.focus.slice(0, 300),
           parent: a.parent,
           ...(a.directive === undefined ? {} : { directive: a.directive }),
+          ...(a.experiment ? { experiment: a.experiment } : {}),
         })),
       });
     });

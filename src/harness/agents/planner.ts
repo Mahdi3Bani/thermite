@@ -2,15 +2,25 @@ import { Agent } from "@earendil-works/pi-agent-core";
 import { Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
 import { canonicalJson } from "../../core/canonical.ts";
-import type { StructuredDirective } from "../../core/commands.ts";
+import { QueuePosition, StructuredDirective } from "../../core/commands.ts";
+import { inFamily, type QueueBrief } from "../queue.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
 import type { Assignment, Evidence, FamilyView } from "./registry.ts";
 
 /**
- * The planner: one stateless model call per epoch. Its context is built deterministically from
- * the ledger; its output is a plan through a single tool call, checked against the directives
- * (AVOID families are never assigned, MANDATE families always are). Invalid output gets one
- * retry with the errors, then the deterministic fallback: planner trouble never pauses research.
+ * The planner: the coordinator of a run's lanes. One stateless model call per round, with
+ * context built deterministically from the ledger: the run's experiment queue (up next in order,
+ * the lanes' ideas, what lanes are on, the newest tried with their results), the rules for the
+ * plan and the owner's messages. The queue is its memory; the harness keeps it.
+ *
+ * Its answer, through one tool call (or JSON through another harness): which experiment each
+ * lane works on next and why, changes to the queue (add, move, drop, accept, each with why), and
+ * the rules the owner's messages ask for. Code checks it: no two lanes share an experiment, a
+ * dropped or finished experiment is never given out, AVOID families are never given out and
+ * every MANDATE family is. Rules given by match words are the planner's to apply. An answer that
+ * fails the checks gets one retry with the errors, then the fallback: lanes take queued
+ * experiments in order (the scheduler does that), and the fixed plan below only fills an empty
+ * queue. Planner trouble never pauses research.
  */
 
 export interface PlannerInput {
@@ -24,10 +34,14 @@ export interface PlannerInput {
   evidence: Evidence[];
   directives: { id: number; body: StructuredDirective }[];
   laneBests: Record<string, string | null>;
+  /** The run's experiment queue (none: an empty queue). */
+  queue?: QueueBrief | undefined;
+  /** What each lane worked on last: its direction and its experiment's title. */
+  laneState?: Record<string, { direction: string | null; experiment: string | null }> | undefined;
   /** The contract's notes (written by the campaign's author, approved with the contract). */
   campaignNotes?: string | undefined;
-  /** The owner's messages to the planner since the last plan (message_agent). */
-  ownerMessages?: string[] | undefined;
+  /** The owner's messages to the planner since the last plan (message_agent), with their ids. */
+  ownerMessages?: { id: number; text: string }[] | undefined;
   /** Goal mode: the judge's latest report on the champion. */
   goalReport?: GoalReport | undefined;
 }
@@ -43,6 +57,35 @@ export interface NewFamily {
   description: string;
 }
 
+/** A rule the planner adds because an owner's message asked for it. */
+export interface PlannerRule {
+  kind: "avoid" | "try" | "mandate";
+  family?: string | undefined;
+  match?: string | undefined;
+  rationale: string;
+  /** The owner's message that asked for it. */
+  from_message: number;
+}
+
+/** The model's checked answer: its queue changes, its rules and its hand-out. */
+export interface QueuePlan {
+  /** New experiments; `ref` is how an assignment names one (inline ones get `@lane-N`). */
+  add: {
+    ref: string;
+    title: string;
+    details?: string | undefined;
+    family?: string | undefined;
+    why: string;
+    position?: QueuePosition | undefined;
+  }[];
+  move: { id: string; position: QueuePosition; why: string }[];
+  drop: { id: string; why: string }[];
+  accept: { id: string; why: string; position?: QueuePosition | undefined }[];
+  rules: PlannerRule[];
+  /** Each lane's experiment (a queued or proposed id, or an added one's ref) and why. */
+  handout: { lane: string; experiment: string; parent: "champion" | "lane_best"; why: string }[];
+}
+
 export interface PlanResult {
   source: "planner" | "fallback";
   tries: number;
@@ -52,23 +95,73 @@ export interface PlanResult {
   rawViolations: string[];
   /** True when the model gave an answer (valid or not): its prompt, owner messages included, reached it. */
   answered?: boolean | undefined;
+  /** The fixed plan (fallback): a direction for each lane, used when the queue has nothing. */
   assignments: Assignment[];
   newFamilies: NewFamily[];
   notes?: string | undefined;
+  /** The model's valid answer. */
+  queue?: QueuePlan | undefined;
 }
 
 const FamilyId = z.string().regex(/^[a-z0-9][a-z0-9-]{1,40}$/);
+const Why = z.string().trim().min(1).max(2000);
 const PlanSchema = z.object({
   new_families: z
     .array(z.object({ id: FamilyId, description: z.string().min(3).max(300) }))
     .max(8)
     .default([]),
+  add: z
+    .array(
+      z.object({
+        ref: z.string().trim().min(1).max(40).optional(),
+        title: z.string().trim().min(1).max(200),
+        details: z.string().max(4000).optional(),
+        family: z.string().trim().min(1).max(80).optional(),
+        why: Why,
+        position: QueuePosition.optional(),
+      }),
+    )
+    .max(20)
+    .default([]),
+  move: z
+    .array(z.object({ id: z.string().min(1).max(64), position: QueuePosition, why: Why }))
+    .max(40)
+    .default([]),
+  drop: z
+    .array(z.object({ id: z.string().min(1).max(64), why: Why }))
+    .max(40)
+    .default([]),
+  accept: z
+    .array(
+      z.object({ id: z.string().min(1).max(64), why: Why, position: QueuePosition.optional() }),
+    )
+    .max(40)
+    .default([]),
+  rules: z
+    .array(
+      z.object({
+        kind: z.enum(["avoid", "try", "mandate"]),
+        /** A family's id; other words are taken as match words. */
+        family: z.string().trim().min(1).max(200).optional(),
+        match: z.string().trim().min(1).max(200).optional(),
+        rationale: z.string().trim().min(1).max(2000),
+        from_message: z.coerce.number().int().positive(),
+      }),
+    )
+    .max(5)
+    .default([]),
   assignments: z.array(
     z.object({
       lane: z.string(),
-      family: FamilyId,
-      focus: z.string().min(3).max(600),
-      parent: z.enum(["champion", "lane_best"]),
+      /** An experiment from the queue (its id) or one this answer adds (its ref). */
+      experiment: z.string().trim().min(1).max(64).optional(),
+      /** Or a new experiment inline: what to try (title or focus), its direction and details. */
+      title: z.string().trim().min(1).max(200).optional(),
+      focus: z.string().trim().min(3).max(600).optional(),
+      family: z.string().trim().min(1).max(80).optional(),
+      details: z.string().max(4000).optional(),
+      parent: z.enum(["champion", "lane_best"]).default("champion"),
+      why: z.string().max(2000).optional(),
     }),
   ),
   notes: z.string().max(2000).optional(),
@@ -88,42 +181,157 @@ function directiveSets(input: PlannerInput) {
   return { avoid: of("avoid"), mandate: of("mandate"), tryFam: of("try") };
 }
 
-/** Checks a raw plan; returns the errors (empty when valid) and the parsed plan. */
+const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+
+/** Checks a raw plan; returns the errors (empty when valid) and the checked plan. */
 export function validatePlan(
   raw: unknown,
   input: PlannerInput,
-): { errors: string[]; plan?: z.infer<typeof PlanSchema> } {
+): {
+  errors: string[];
+  plan?: QueuePlan & { newFamilies: NewFamily[]; notes?: string | undefined };
+} {
   const parsed = PlanSchema.safeParse(raw);
   if (!parsed.success)
     return { errors: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) };
-  const plan = parsed.data;
+  const p = parsed.data;
   const errors: string[] = [];
   const lanes = lanesOf(input.laneCount);
-  const assigned = plan.assignments.map((a) => a.lane).sort();
+  const assigned = p.assignments.map((a) => a.lane).sort();
   if (canonicalJson(assigned) !== canonicalJson([...lanes].sort())) {
     errors.push(
       `assign each of ${lanes.join(", ")} exactly once (got ${assigned.join(", ") || "none"})`,
     );
   }
-  const known = new Set([
-    ...input.families.filter((f) => f.status === "live").map((f) => f.id),
-    ...plan.new_families.map((f) => f.id),
+  const q = input.queue ?? { up_next: [], proposed: [], in_progress: [], tried: [] };
+  const queued = new Map(q.up_next.map((x) => [x.id, x]));
+  const proposed = new Map(q.proposed.map((x) => [x.id, x]));
+  const elsewhere = new Map<string, string>([
+    ...q.in_progress.map((x): [string, string] => [x.id, `in progress on ${x.lane}`]),
+    ...q.tried.map((x): [string, string] => [x.id, "tried already"]),
   ]);
-  const { avoid, mandate } = directiveSets(input);
-  for (const a of plan.assignments) {
-    if (!known.has(a.family))
-      errors.push(`${a.lane}: family ${a.family} is not live and not proposed as new`);
-    if (avoid.has(a.family))
-      errors.push(`${a.lane}: family ${a.family} is under an AVOID directive`);
-    if (a.parent === "lane_best" && !input.laneBests[a.lane]) {
-      errors.push(`${a.lane}: has no lane best yet; use parent "champion"`);
+  const why = (id: string) => elsewhere.get(id) ?? "not in the queue";
+
+  // The queue's changes: each names an experiment in the state it needs.
+  for (const m of p.move)
+    if (!queued.has(m.id)) errors.push(`move ${m.id}: only queued experiments move (${why(m.id)})`);
+  for (const d of p.drop)
+    if (!queued.has(d.id) && !proposed.has(d.id))
+      errors.push(
+        `drop ${d.id}: only queued or proposed experiments can be dropped (${why(d.id)})`,
+      );
+  for (const a of p.accept)
+    if (!proposed.has(a.id)) errors.push(`accept ${a.id}: not a proposed idea (${why(a.id)})`);
+  const dropped = new Set(p.drop.map((d) => d.id));
+
+  // New experiments: the answer's own, then each inline one under its lane's ref.
+  const add: QueuePlan["add"] = [];
+  p.add.forEach((a, i) => {
+    const ref = a.ref ?? `new-${i + 1}`;
+    if (add.some((x) => x.ref === ref) || queued.has(ref) || proposed.has(ref))
+      errors.push(`add: the ref ${ref} is used twice`);
+    add.push({ ...a, ref });
+  });
+  const handout: QueuePlan["handout"] = [];
+  for (const a of p.assignments) {
+    let experiment = a.experiment;
+    const text = a.title ?? a.focus;
+    if (!experiment && text) {
+      experiment = `@${a.lane}`;
+      add.push({
+        ref: experiment,
+        title: clip(text, 200),
+        ...(text.length > 200 || a.details
+          ? { details: [text.length > 200 ? text : "", a.details ?? ""].filter(Boolean).join("\n") }
+          : {}),
+        ...(a.family ? { family: a.family } : {}),
+        why: a.why?.trim() || text,
+      });
     }
+    if (!experiment) {
+      errors.push(
+        `${a.lane}: name an experiment (an id from the queue or the ref of one you add), or give a new one with title and family`,
+      );
+      continue;
+    }
+    const known =
+      queued.get(experiment) ?? proposed.get(experiment) ?? add.find((x) => x.ref === experiment);
+    if (!known)
+      errors.push(`${a.lane}: experiment ${experiment} can't be given out (${why(experiment)})`);
+    if (dropped.has(experiment))
+      errors.push(`${a.lane}: experiment ${experiment} is dropped in this same answer`);
+    if (a.parent === "lane_best" && !input.laneBests[a.lane])
+      errors.push(`${a.lane}: has no lane best yet; use parent "champion"`);
+    handout.push({
+      lane: a.lane,
+      experiment,
+      parent: a.parent,
+      why: a.why?.trim() || (known ? `next: ${known.title}` : ""),
+    });
+  }
+  const twice = handout.filter(
+    (h, i) => handout.findIndex((o) => o.experiment === h.experiment) !== i,
+  );
+  for (const h of twice)
+    errors.push(`${h.lane}: experiment ${h.experiment} is given to another lane too`);
+
+  // The rules: AVOID families are never given out, every MANDATE family is.
+  const familyOf = (id: string) =>
+    (queued.get(id) ?? proposed.get(id) ?? add.find((x) => x.ref === id))?.family ?? "";
+  const { avoid, mandate } = directiveSets(input);
+  for (const h of handout) {
+    const family = familyOf(h.experiment);
+    for (const f of avoid)
+      if (inFamily({ family }, f))
+        errors.push(
+          `${h.lane}: experiment ${h.experiment} is in family ${f}, under an AVOID directive`,
+        );
   }
   for (const m of mandate) {
-    if (!plan.assignments.some((a) => a.family === m))
-      errors.push(`MANDATE directive: assign family ${m} to a lane`);
+    if (!handout.some((h) => inFamily({ family: familyOf(h.experiment) }, m)))
+      errors.push(
+        `MANDATE directive: give a lane an experiment of family ${m} (add one if the queue has none)`,
+      );
   }
-  return { errors, plan };
+  // Rules only from the owner's messages in this prompt, each naming a family or match words.
+  const messages = new Set((input.ownerMessages ?? []).map((m) => m.id));
+  const rules: PlannerRule[] = [];
+  for (const r of p.rules) {
+    if (!messages.has(r.from_message))
+      errors.push(
+        `rules: message ${r.from_message} is not one of the owner's messages given to you`,
+      );
+    const family = r.family && FamilyId.safeParse(r.family).success ? r.family : undefined;
+    const match = r.match ?? (family ? undefined : r.family);
+    const ok = StructuredDirective.safeParse({
+      kind: r.kind,
+      ...(family ? { family } : {}),
+      ...(match ? { match } : {}),
+      rationale: r.rationale,
+    });
+    if (!ok.success) errors.push(`rules: ${ok.error.issues.map((i) => i.message).join("; ")}`);
+    else
+      rules.push({
+        kind: r.kind,
+        ...(family ? { family } : {}),
+        ...(match ? { match } : {}),
+        rationale: r.rationale,
+        from_message: r.from_message,
+      });
+  }
+  return {
+    errors,
+    plan: {
+      add,
+      move: p.move,
+      drop: p.drop,
+      accept: p.accept,
+      rules,
+      handout,
+      newFamilies: p.new_families,
+      notes: p.notes,
+    },
+  };
 }
 
 /**
@@ -142,7 +350,11 @@ export function attribute(
   });
 }
 
-/** The deterministic plan: mandated families first, then tried, then the least explored. */
+/**
+ * The fixed plan: mandated families first, then tried, then the least explored. With the queue,
+ * it only fills an empty one: a lane with no queued experiment to take gets one in this
+ * direction, added by the planner.
+ */
 export function fallbackPlan(input: PlannerInput): {
   assignments: Assignment[];
   newFamilies: NewFamily[];
@@ -189,23 +401,54 @@ export function fallbackPlan(input: PlannerInput): {
 }
 
 /** The planner's task, the same through every harness; only how it answers differs. */
-const TASK = `You plan the next epoch of an automated research campaign. Each lane runs one
-worker; give each lane one direction (an approach family) and a concrete focus. Spread lanes over
-different directions so they do not duplicate each other; reuse directions with promising evidence
-and propose a new family when a genuinely different approach is worth trying. Obey the directives:
-never assign an AVOID family, always assign every MANDATE family, prefer TRY families. Messages in
-owner_messages come from the campaign's owner: take them into account. In a goal campaign,
-goal_report is the judge's check of the champion: aim lanes at goals it does not meet yet (a goal
-"not run" waits on a goal it requires), never at work the champion already does.`;
+const TASK = `You coordinate the lanes of an automated research campaign. Each lane runs one
+worker; each round you give every lane one experiment to work on next. The run's experiment
+queue is in queue: up_next is in order (give out the first ones first), proposed holds ideas the
+lanes proposed while they worked, in_progress is what lanes are on now, and tried holds the
+newest experiments tried with their results (the judge's verdict and change), so do not repeat
+what failed. Never give two lanes the same experiment. You may give a lane an experiment close to
+its last direction (lane_state) so it builds on what it learned. You may change the queue, each
+change with a reason in why: add experiments (each with a ref that a lane's assignment may name),
+move or drop queued ones, and accept proposed ideas into up next or drop them. Obey the
+directives (the rules for the plan): never give out an experiment whose family an AVOID
+directive names, give at least one lane an experiment of every MANDATE family (add one if the
+queue has none), and prefer TRY families. A directive with match words names a direction in the
+owner's own words: apply it to every experiment it fits, as for a family (do not give out what an
+AVOID matches; prefer what a TRY matches; give a lane what a MANDATE matches). Messages in
+owner_messages come from the campaign's owner: take them into account, and when one asks for a
+rule (to avoid, try or always do something), add it to rules with from_message set to that
+message's id. In a goal campaign, goal_report is the judge's check of the champion: aim lanes at
+goals it does not meet yet (a goal "not run" waits on a goal it requires), never at work the
+champion already does.`;
 
 /** In Pi, the planner answers with its one tool. */
 const SYSTEM = `${TASK} Answer only by calling submit_plan once.`;
 
 /** Through another harness (OpenCode), it answers with the plan as JSON text and no tools. */
-const ASK_SYSTEM = `${TASK} Answer with only the plan, as one JSON object: {"new_families": [{"id": "...", "description": "..."}], "assignments": [{"lane": "lane-1", "family": "...", "focus": "...", "parent": "champion" or "lane_best"}], "notes": "..."}. Use no tools.`;
+const ASK_SYSTEM = `${TASK} Answer with only the plan, as one JSON object: {"assignments": [{"lane": "lane-1", "experiment": "an id from queue.up_next or queue.proposed, or the ref of one you add", "parent": "champion" or "lane_best", "why": "..."}], "add": [{"ref": "new-1", "title": "...", "details": "...", "family": "...", "why": "...", "position": "top", "end" or an index}], "move": [{"id": "...", "position": "top", "end" or an index, "why": "..."}], "drop": [{"id": "...", "why": "..."}], "accept": [{"id": "...", "why": "..."}], "rules": [{"kind": "avoid", "try" or "mandate", "family": "..." or "match": "...", "rationale": "...", "from_message": 1}], "notes": "..."}. Leave out the lists you do not need. Use no tools.`;
 
 /** A planner call through another harness (OpenCode): the prompt in, the model's answer out. */
 export type Ask = (prompt: string, signal?: AbortSignal) => Promise<string>;
+
+/** The planner's context, as JSON: what the planner reads (and the prompt carries) each round. */
+export function plannerContext(input: PlannerInput): string {
+  return canonicalJson({
+    epoch: input.epoch,
+    lanes: lanesOf(input.laneCount),
+    objective: input.objective,
+    editable_paths: input.editablePaths,
+    champion: input.champion,
+    families: input.families,
+    evidence: input.evidence,
+    queue: input.queue ?? { up_next: [], proposed: [], in_progress: [], tried: [] },
+    ...(input.laneState ? { lane_state: input.laneState } : {}),
+    directives: input.directives.map((d) => ({ id: d.id, ...d.body })),
+    lane_bests: input.laneBests,
+    ...(input.campaignNotes ? { campaign_notes: input.campaignNotes } : {}),
+    ...(input.ownerMessages?.length ? { owner_messages: input.ownerMessages } : {}),
+    ...(input.goalReport ? { goal_report: input.goalReport } : {}),
+  });
+}
 
 export async function plan(
   input: PlannerInput,
@@ -216,20 +459,7 @@ export async function plan(
   const rawViolations: string[] = [];
   let answered = false;
   if (model) {
-    const context = canonicalJson({
-      epoch: input.epoch,
-      lanes: lanesOf(input.laneCount),
-      objective: input.objective,
-      editable_paths: input.editablePaths,
-      champion: input.champion,
-      families: input.families,
-      evidence: input.evidence,
-      directives: input.directives.map((d) => ({ id: d.id, ...d.body })),
-      lane_bests: input.laneBests,
-      ...(input.campaignNotes ? { campaign_notes: input.campaignNotes } : {}),
-      ...(input.ownerMessages?.length ? { owner_messages: input.ownerMessages } : {}),
-      ...(input.goalReport ? { goal_report: input.goalReport } : {}),
-    });
+    const context = plannerContext(input);
     let feedback = "";
     for (let tries = 1; tries <= 2; tries++) {
       if (signal?.aborted) break;
@@ -245,15 +475,27 @@ export async function plan(
       answered = true;
       const { errors, plan: p } = validatePlan(raw, input);
       if (!errors.length && p) {
+        const { newFamilies, notes, ...queue } = p;
         return {
           source: "planner",
           tries,
           valid: true,
           rawViolations,
           answered,
-          assignments: p.assignments,
-          newFamilies: p.new_families,
-          notes: p.notes,
+          assignments: queue.handout.map((h) => {
+            const x = familyAndTitle(h.experiment, input, queue);
+            return {
+              lane: h.lane,
+              family: x.family,
+              focus: x.title,
+              parent: h.parent,
+              experiment: h.experiment,
+              why: h.why,
+            };
+          }),
+          newFamilies,
+          notes,
+          queue,
         };
       }
       rawViolations.push(...errors.map((e) => `try ${tries}: ${e}`));
@@ -272,6 +514,20 @@ export async function plan(
   };
 }
 
+/** An experiment's direction and title, wherever the plan names it from. */
+function familyAndTitle(
+  id: string,
+  input: PlannerInput,
+  queue: QueuePlan,
+): { family: string; title: string } {
+  const q = input.queue;
+  const x =
+    q?.up_next.find((e) => e.id === id) ??
+    q?.proposed.find((e) => e.id === id) ??
+    queue.add.find((e) => e.ref === id);
+  return { family: x?.family ?? "", title: x?.title ?? id };
+}
+
 /** The planner through another harness: the same instructions, with the plan as JSON text. */
 async function askPlanner(ask: Ask, context: string, signal?: AbortSignal): Promise<unknown> {
   const text = await ask(`${ASK_SYSTEM}\n\nThe campaign, as JSON:\n${context}`, signal);
@@ -283,6 +539,10 @@ async function askPlanner(ask: Ask, context: string, signal?: AbortSignal): Prom
     throw new Error(`the planner's answer was not a JSON plan: ${text.slice(0, 200)}`);
   }
 }
+
+const Position = Type.Union([Type.String(), Type.Number()], {
+  description: '"top", "end", or an index among the queued experiments (0 first)',
+});
 
 async function callPlanner(
   cfg: ModelConfig,
@@ -305,18 +565,68 @@ async function callPlanner(
         {
           name: "submit_plan",
           label: "submit_plan",
-          description: "Submit the plan for the next epoch.",
+          description:
+            "Submit this round's plan: each lane's experiment, and your changes to the queue.",
           parameters: Type.Object({
-            new_families: Type.Optional(
-              Type.Array(Type.Object({ id: Type.String(), description: Type.String() })),
-            ),
             assignments: Type.Array(
               Type.Object({
                 lane: Type.String(),
-                family: Type.String(),
-                focus: Type.String(),
-                parent: Type.Union([Type.Literal("champion"), Type.Literal("lane_best")]),
+                experiment: Type.Optional(
+                  Type.String({
+                    description:
+                      "An id from queue.up_next or queue.proposed, or the ref of an experiment you add",
+                  }),
+                ),
+                parent: Type.Optional(
+                  Type.Union([Type.Literal("champion"), Type.Literal("lane_best")]),
+                ),
+                why: Type.Optional(Type.String({ description: "Why this lane gets it" })),
+                title: Type.Optional(Type.String({ description: "A new experiment, inline" })),
+                focus: Type.Optional(Type.String()),
+                family: Type.Optional(Type.String()),
+                details: Type.Optional(Type.String()),
               }),
+            ),
+            add: Type.Optional(
+              Type.Array(
+                Type.Object({
+                  ref: Type.Optional(Type.String()),
+                  title: Type.String(),
+                  details: Type.Optional(Type.String()),
+                  family: Type.Optional(Type.String()),
+                  why: Type.String(),
+                  position: Type.Optional(Position),
+                }),
+              ),
+            ),
+            move: Type.Optional(
+              Type.Array(
+                Type.Object({ id: Type.String(), position: Position, why: Type.String() }),
+              ),
+            ),
+            drop: Type.Optional(Type.Array(Type.Object({ id: Type.String(), why: Type.String() }))),
+            accept: Type.Optional(
+              Type.Array(
+                Type.Object({
+                  id: Type.String(),
+                  why: Type.String(),
+                  position: Type.Optional(Position),
+                }),
+              ),
+            ),
+            rules: Type.Optional(
+              Type.Array(
+                Type.Object({
+                  kind: Type.String({ description: "avoid | try | mandate" }),
+                  family: Type.Optional(Type.String()),
+                  match: Type.Optional(Type.String()),
+                  rationale: Type.String(),
+                  from_message: Type.Number(),
+                }),
+              ),
+            ),
+            new_families: Type.Optional(
+              Type.Array(Type.Object({ id: Type.String(), description: Type.String() })),
             ),
             notes: Type.Optional(Type.String()),
           }),

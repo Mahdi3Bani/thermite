@@ -7,8 +7,10 @@ import type { LiveKind } from "../../core/live.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import type { Ledger } from "../ledger.ts";
 import { messageText, type OwnerMessage } from "../messages.ts";
+import type { Experiment } from "../queue.ts";
 import type { Research } from "../research/research.ts";
 import type { HarnessService } from "../service.ts";
+import { Coordinator, focusOf, type Handout, PLANNER, resultOf } from "./coordinator.ts";
 import { type ModelConfig, usageLimitRetry } from "./model.ts";
 import {
   attribute,
@@ -18,17 +20,19 @@ import {
   type PlannerInput,
   plan,
 } from "./planner.ts";
-import { type Assignment, Registry } from "./registry.ts";
+import { type Assignment, type EpochRecord, Registry } from "./registry.ts";
 import type { ResearchTrialSpec } from "./research-worker.ts";
 import type { TrialResult, TrialSpec } from "./worker.ts";
 import { prepareWorkspace } from "./workspace.ts";
 
 /**
- * The agent scheduler (SLA pattern). Each epoch the planner assigns every lane a direction; each
- * lane then runs `trials_per_epoch` trials, one at a time: a fresh workspace at the champion (or
- * the lane's best), one worker invocation, at most one submission, and the next trial only after
- * that submission is judged. An epoch ends when its lanes' trials are judged (or at a time cap).
- * Agents never judge: the scheduler only reads verdicts.
+ * The agent scheduler (SLA pattern). Each epoch (a round) the planner, as the coordinator of the
+ * run's experiment queue, gives every lane an experiment; each lane then runs `trials_per_epoch`
+ * trials, one at a time, each on an experiment of its own (the round's first, then the next in
+ * the queue): a fresh workspace at the champion (or the lane's best), one worker invocation, at
+ * most one submission, and the next trial only after that submission is judged. An epoch ends
+ * when its lanes' trials are judged (or at a time cap). Agents never judge: the scheduler only
+ * reads verdicts.
  */
 
 const SETTLED = new Set([
@@ -113,6 +117,8 @@ type Optional =
 
 export class Scheduler {
   readonly registry: Registry;
+  /** How lanes get work from the run's experiment queue. */
+  readonly coordinator: Coordinator;
   private readonly o: Required<Omit<SchedulerOptions, Optional>> & Pick<SchedulerOptions, Optional>;
   private readonly ledger: Ledger;
   private readonly running = new Map<string, Promise<void>>();
@@ -139,8 +145,15 @@ export class Scheduler {
     } as typeof this.o;
     this.ledger = opts.service.ledger;
     this.registry = new Registry(this.ledger);
-    // Resume after a restart: nothing of an earlier process is running any more.
+    this.coordinator = new Coordinator({
+      ledger: this.ledger,
+      queue: opts.service.queue,
+      registry: this.registry,
+    });
+    // Resume after a restart: nothing of an earlier process is running any more, and the
+    // experiments those trials had go back to the queue.
     this.registry.interruptUnfinished(opts.owner);
+    this.coordinator.finishOrphans(opts.owner);
     this.resetSeen = this.lastReset();
   }
 
@@ -571,10 +584,12 @@ export class Scheduler {
       champion: { seq: champion.seq, gain: this.championGain(run) },
       families: this.registry.families(run),
       evidence: this.registry.evidence(run, 30),
+      queue: this.o.service.queue.brief(run),
+      laneState: this.coordinator.laneState(run, lanes),
       directives: this.directives(run),
       laneBests: Object.fromEntries(lanes.map((l) => [l, this.registry.laneBest(run, l)])),
       campaignNotes: contract.notes,
-      ownerMessages: owner.map((m) => m.text),
+      ownerMessages: owner.map((m) => ({ id: m.id, text: messageText(m) })),
       goalReport: contract.mode === "goal" ? this.goalReport(run, champion.seq) : undefined,
     };
     const live = this.o.service.live;
@@ -628,12 +643,67 @@ export class Scheduler {
         owner.map((m) => m.id),
         "planner",
       );
+    for (const f of p.newFamilies)
+      this.registry.addFamily(run, f.id, f.description, `planner:${p.source}`);
+    // The hand-out: the model's answer applied to the queue, or the fixed rules. Every lane gets
+    // an experiment for its next trial; none goes to two lanes.
+    const given = new Set<string>();
+    const handout: (Handout & { parent: "champion" | "lane_best" })[] = [];
+    let skipped: string[] = [];
+    if (p.queue) {
+      const r = this.coordinator.apply(run, p.queue);
+      skipped = r.skipped;
+      for (const h of r.handout) {
+        handout.push(h);
+        given.add(h.experiment);
+      }
+    }
+    // Rules the model just added (from the owner's messages) apply from this hand-out on.
+    const directives = p.queue?.rules.length ? this.directives(run) : input.directives;
+    if (lanes.some((l) => !handout.some((h) => h.lane === l)))
+      this.coordinator.ensureMandates(run, directives);
+    for (const lane of lanes) {
+      if (handout.some((h) => h.lane === lane)) continue;
+      const fixed = p.assignments.find((a) => a.lane === lane);
+      let x = this.coordinator.pick(run, lane, { directives, window: laneCount, exclude: given });
+      let why = x ? this.coordinator.whyPicked(run, lane, x, directives) : "";
+      if (!x && fixed) {
+        x = this.coordinator.fill(
+          run,
+          fixed,
+          `the queue was empty: the fixed plan's direction for ${lane} (${fixed.family})`,
+        );
+        why = "the queue was empty, so the fixed plan added it";
+      }
+      if (!x) continue;
+      given.add(x.id);
+      handout.push({
+        lane,
+        experiment: x.id,
+        parent: fixed?.parent ?? (input.laneBests[lane] ? "lane_best" : "champion"),
+        why,
+      });
+    }
+    const assignments: Assignment[] = handout.flatMap((h) => {
+      const x = this.o.service.queue.get(h.experiment);
+      if (!x) return [];
+      return [
+        {
+          lane: h.lane,
+          family: this.coordinator.direction(run, x, p.newFamilies),
+          focus: x.title,
+          parent: h.parent,
+          experiment: x.id,
+          why: h.why,
+        },
+      ];
+    });
     live.append({
       source: "planner",
       kind: "text",
       text: [
-        `epoch ${n}: ${p.source === "planner" ? `planned by the model${p.tries > 1 ? ` (try ${p.tries})` : ""}` : "the fallback plan"}`,
-        ...p.assignments.map(
+        `epoch ${n}: ${p.source === "planner" ? `planned by the model${p.tries > 1 ? ` (try ${p.tries})` : ""}` : "taken from the queue by the fixed rules"}`,
+        ...assignments.map(
           (a) =>
             `${a.lane}: ${a.family}, ${a.focus}${a.parent === "lane_best" ? " (from the lane's best)" : ""}`,
         ),
@@ -641,11 +711,10 @@ export class Scheduler {
           ? [`new families: ${p.newFamilies.map((f) => f.id).join(", ")}`]
           : []),
         ...(p.rawViolations.length ? [`refused: ${p.rawViolations.slice(0, 3).join("; ")}`] : []),
+        ...(skipped.length ? [`skipped: ${skipped.slice(0, 3).join("; ")}`] : []),
       ].join("\n"),
       run,
     });
-    for (const f of p.newFamilies)
-      this.registry.addFamily(run, f.id, f.description, `planner:${p.source}`);
     this.registry.startEpoch({
       run,
       n,
@@ -653,11 +722,86 @@ export class Scheduler {
       tries: p.tries,
       valid: p.valid,
       rawViolations: p.rawViolations,
-      assignments: attribute(p.assignments, input.directives),
-      directives: input.directives.map((d) => d.id),
+      assignments: attribute(assignments, directives),
+      directives: directives.map((d) => d.id),
       notes: p.notes,
       by: this.o.owner,
     });
+    this.coordinator.handout(
+      run,
+      n,
+      handout,
+      [
+        p.source === "planner"
+          ? (p.notes ?? "the planner's plan")
+          : p.rawViolations.length
+            ? "the model's plan was refused: lanes took queued experiments in order"
+            : "lanes took queued experiments in order",
+        ...(skipped.length ? [`skipped: ${skipped.join("; ")}`] : []),
+      ].join(". "),
+    );
+  }
+
+  /**
+   * The experiment a lane's trial takes: the round's own for its first trial, while it can
+   * still be given out; otherwise the next by the fixed rules (one hand-out of its own), and
+   * when the queue has nothing for it, one in the round's direction, added by the planner.
+   * Experiments other lanes were given this round, and have not started yet, are left to them.
+   */
+  private experimentFor(
+    run: string,
+    epoch: EpochRecord,
+    a: Assignment,
+    k: number,
+    o: {
+      perEpoch: number;
+      laneCount: number;
+      /** Research: the research plan fills the queue instead (its MANDATEs name task kinds). */
+      fill?: (() => Experiment | undefined) | undefined;
+    },
+  ): { x: Experiment; why: string } | undefined {
+    const queue = this.o.service.queue;
+    const mine = k === 1 && a.experiment ? queue.get(a.experiment) : undefined;
+    if (mine && mine.run === run && (mine.state === "queued" || mine.state === "proposed"))
+      return { x: mine, why: a.why ?? "the round's hand-out" };
+    const reserved = new Set(
+      epoch.assignments
+        .filter(
+          (b) =>
+            b.lane !== a.lane &&
+            b.experiment &&
+            this.registry.trials(run, b.lane, epoch.n).length === 0,
+        )
+        .map((b) => b.experiment as string),
+    );
+    const directives = this.directives(run);
+    if (!o.fill) this.coordinator.ensureMandates(run, directives);
+    let x = this.coordinator.pick(run, a.lane, {
+      directives,
+      window: o.laneCount,
+      exclude: reserved,
+    });
+    let why = x ? this.coordinator.whyPicked(run, a.lane, x, directives) : "";
+    if (!x) {
+      x =
+        o.fill?.() ??
+        this.coordinator.fill(
+          run,
+          a,
+          `the queue had nothing for ${a.lane}: it goes on in its round's direction (${a.family})`,
+        );
+      why = "the queue had nothing for this lane, so it goes on in its round's direction";
+    }
+    if (!x) return undefined;
+    this.coordinator.handout(
+      run,
+      epoch.n,
+      [{ lane: a.lane, experiment: x.id, why }],
+      k === 1
+        ? `${a.lane}'s first trial of round ${epoch.n}: the experiment the round gave it can no longer be given out`
+        : `${a.lane}'s trial ${k} of ${o.perEpoch} in round ${epoch.n}`,
+    );
+    return { x, why };
   }
 
   /** The model route now (none: agents wait). */
@@ -727,7 +871,13 @@ export class Scheduler {
       if (this.o.workersOn && !this.o.workersOn()) continue;
       if (this.openAttempts(id) >= contract.budget.max_open_attempts) continue;
       if (this.laneWaitMs(id, a.lane, false) > 0) continue;
-      this.startTrial(id, contract, epoch.n, a, trials.length + 1, perEpoch);
+      const k = trials.length + 1;
+      const got = this.experimentFor(id, epoch, a, k, {
+        perEpoch,
+        laneCount: epoch.assignments.length,
+      });
+      if (!got) continue;
+      this.startTrial(id, contract, epoch.n, a, k, perEpoch, got);
       started = true;
     }
     const capped = Date.now() - Date.parse(epoch.started_at) > this.epochCap(contract);
@@ -771,7 +921,13 @@ export class Scheduler {
       if (this.running.size >= this.o.maxConcurrent) continue;
       if (this.o.workersOn && !this.o.workersOn()) continue;
       if (this.laneWaitMs(run, a.lane, true) > 0) continue;
-      this.startResearchTrial(run, contract, epoch.n, a, clock);
+      const got = this.experimentFor(run, epoch, a, trials.length + 1, {
+        perEpoch: contract.lanes.trials_per_epoch,
+        laneCount: 1,
+        fill: () => this.fillResearch(run, contract, epoch.n, 1).added[0],
+      });
+      if (!got) continue;
+      this.startResearchTrial(run, contract, epoch.n, a, clock, got);
       started = true;
     }
     if (complete && !this.running.size) this.registry.endEpoch(run, epoch.n, this.o.owner);
@@ -792,15 +948,80 @@ export class Scheduler {
   ];
 
   /**
-   * Deterministic research plan: least-covered questions first, task kinds rotating by epoch.
-   * Directives steer it by structure only (redirects in research mode): MANDATE and TRY name
-   * task kinds to put first, AVOID removes a task kind, and a numeric TRY or MANDATE value puts
-   * that question first. Directive text never reaches a worker's brief.
+   * A research round: research tasks are the run's experiments. The research plan (below) fills
+   * the queue when it has fewer tasks than lanes, then each lane takes the next task in order:
+   * the owner's and the advisors' as much as the plan's. One hand-out in the planner's log.
    */
   private planResearchEpoch(run: string, contract: ResearchContract, n: number): void {
-    const research = this.o.research as Research;
     for (const t of Scheduler.RESEARCH_TASKS)
       this.registry.addFamily(run, t.id, t.description, "research-plan");
+    const directives = this.directives(run);
+    const lanes = lanesOf(this.laneCount(run, contract));
+    // The research plan fills the queue when it has fewer tasks than lanes; then each lane takes
+    // the next task in order (AVOID task kinds skipped, MANDATE and TRY first).
+    const avoided = (x: Experiment) =>
+      directives.some(
+        (d) => d.body.kind === "avoid" && d.body.family && x.family === d.body.family,
+      );
+    const free = this.o.service.queue.queued(run).filter((x) => !avoided(x)).length;
+    const filled = this.fillResearch(run, contract, n, lanes.length - free);
+    const given = new Set<string>();
+    const handout: Handout[] = [];
+    const assignments: Assignment[] = [];
+    for (const lane of lanes) {
+      const x =
+        this.coordinator.pick(run, lane, { directives, window: 1, exclude: given }) ??
+        this.fillResearch(run, contract, n, 1).added[0];
+      if (!x) continue;
+      given.add(x.id);
+      const why = this.coordinator.whyPicked(run, lane, x, directives);
+      handout.push({ lane, experiment: x.id, why });
+      assignments.push({
+        lane,
+        family: x.family || "explore",
+        focus: focusOf(x),
+        parent: "champion",
+        experiment: x.id,
+        why,
+      });
+    }
+    this.registry.startEpoch({
+      run,
+      n,
+      source: "fallback",
+      tries: 0,
+      valid: false,
+      rawViolations: [],
+      assignments: attribute(assignments, directives),
+      directives: directives.map((d) => d.id),
+      notes: filled.stalled
+        ? "research plan (deterministic in v1); novelty fell, so primary sources and contradictions first"
+        : "research plan (deterministic in v1)",
+      plan: "research",
+      by: this.o.owner,
+    });
+    this.coordinator.handout(
+      run,
+      n,
+      handout,
+      "research plan: lanes take the queued research tasks in order",
+    );
+  }
+
+  /**
+   * The research plan's tasks for the queue: least-covered questions first, task kinds rotating
+   * by round. Directives steer it by structure only (redirects in research mode): MANDATE and TRY
+   * name task kinds to put first, AVOID removes a task kind, and a numeric TRY or MANDATE value
+   * puts that question first. Each task is an experiment: its family is the task kind and its
+   * details hold the question. Directive text never reaches a worker's brief.
+   */
+  private fillResearch(
+    run: string,
+    contract: ResearchContract,
+    n: number,
+    count: number,
+  ): { added: Experiment[]; stalled: boolean } {
+    const research = this.o.research as Research;
     const directives = this.directives(run);
     const avoid = new Set(
       directives.filter((d) => d.body.kind === "avoid" && d.body.family).map((d) => d.body.family),
@@ -853,41 +1074,48 @@ export class Scheduler {
           x.verified - y.verified ||
           x.i - y.i,
       );
-    const lanes = lanesOf(this.laneCount(run, contract));
-    const assignments: Assignment[] = lanes.map((lane, k) => {
+    // Tasks already waiting or under way shift the plan on, so a fill does not repeat them.
+    const queue = this.o.service.queue;
+    const offset = queue.queued(run).length + queue.assigned(run).length;
+    const added: Experiment[] = [];
+    for (let k = offset; k < offset + count; k++) {
       const q = coverage[k % coverage.length] as { i: number };
       const task = tasks[k % tasks.length] as { id: string; description: string };
-      return {
-        lane,
-        family: task.id,
-        focus: `Question ${q.i}: ${contract.questions[q.i]}. Task: ${task.description}.`,
-        parent: "champion",
-      };
-    });
-    this.registry.startEpoch({
-      run,
-      n,
-      source: "fallback",
-      tries: 0,
-      valid: false,
-      rawViolations: [],
-      assignments: attribute(assignments, directives),
-      directives: directives.map((d) => d.id),
-      notes: stalled
-        ? "research plan (deterministic in v1); novelty fell, so primary sources and contradictions first"
-        : "research plan (deterministic in v1)",
-      plan: "research",
-      by: this.o.owner,
-    });
+      added.push(
+        queue.add(
+          run,
+          {
+            title: `Question ${q.i}: ${task.description}`,
+            details: `Question ${q.i}: ${contract.questions[q.i]}`,
+            family: task.id,
+            why: stalled
+              ? "the research plan: novelty fell, so primary sources and contradictions first"
+              : "the research plan: the least-covered questions first, task kinds in turn",
+            by: PLANNER,
+          },
+          PLANNER,
+        ),
+      );
+    }
+    return { added, stalled };
   }
 
   private startResearchTrial(
     run: string,
     contract: ResearchContract,
     epoch: number,
-    a: Assignment,
+    round: Assignment,
     clock: { elapsed_ms: number; min_ms: number; max_ms: number },
+    got: { x: Experiment; why: string },
   ): void {
+    // A research task from the queue: its task kind is the trial's family, its text the focus.
+    const a: Assignment = {
+      ...round,
+      family: got.x.family || "explore",
+      focus: [focusOf(got.x), got.x.why ? `Why: ${got.x.why}` : ""].filter(Boolean).join("\n"),
+      experiment: got.x.id,
+      why: got.why,
+    };
     const research = this.o.research as Research;
     const id = `t-${randomUUID().replace(/-/g, "").slice(0, 16)}`;
     const stats = research.stats(run);
@@ -922,12 +1150,18 @@ export class Scheduler {
       token,
       focus: a.focus,
     });
+    this.o.service.queue.assign(
+      run,
+      got.x.id,
+      { lane: a.lane, trial: id, by: PLANNER, why: got.why },
+      PLANNER,
+    );
     this.trialLine(
       id,
       run,
       a.lane,
       "status",
-      `research trial on ${a.lane}: ${a.family}, ${a.focus}`,
+      `research trial on ${a.lane}: ${a.family}, ${got.x.title}`,
     );
     const fullBrief = this.withOwnerMessages(id, run, a.lane, brief);
     const abort = new AbortController();
@@ -963,6 +1197,7 @@ export class Scheduler {
         if (abort.signal.aborted) r = { ...r, stopped: "interrupted" };
         r = this.withProgress(id, r);
         this.registry.finishTrial(id, r, this.o.owner);
+        this.finishExperiment(id, r.stopped);
         this.trialLine(
           id,
           run,
@@ -983,10 +1218,19 @@ export class Scheduler {
     run: string,
     contract: Contract,
     epoch: number,
-    a: Assignment,
+    round: Assignment,
     k: number,
     perEpoch: number,
+    got: { x: Experiment; why: string },
   ): void {
+    // The trial works on its experiment: its direction and its text are the trial's.
+    const a: Assignment = {
+      ...round,
+      family: this.coordinator.direction(run, got.x),
+      focus: focusOf(got.x),
+      experiment: got.x.id,
+      why: got.why,
+    };
     const lane = a.lane as Role;
     const id = `t-${randomUUID().replace(/-/g, "").slice(0, 16)}`;
     const token = randomBytes(32).toString("hex");
@@ -1013,12 +1257,19 @@ export class Scheduler {
         token,
         focus: a.focus,
       });
+      // The experiment is the trial's now: no other lane can be given it.
+      this.o.service.queue.assign(
+        run,
+        got.x.id,
+        { lane: a.lane, trial: id, by: PLANNER, why: got.why },
+        PLANNER,
+      );
       this.trialLine(
         id,
         run,
         a.lane,
         "status",
-        `trial on ${a.lane}: ${a.family}, ${a.focus} (from ${parent === champion.commit_sha ? `the champion, seq ${champion.seq}` : `the lane's best, ${best}`})`,
+        `trial on ${a.lane}: ${a.family}, ${got.x.title} (from ${parent === champion.commit_sha ? `the champion, seq ${champion.seq}` : `the lane's best, ${best}`})`,
       );
       const limits = laneLimits(contract);
       let ws: { dir: string; repo: string } | undefined;
@@ -1054,6 +1305,7 @@ export class Scheduler {
                 contract,
                 epoch,
                 a,
+                got.x,
                 k,
                 perEpoch,
                 parent === champion.commit_sha
@@ -1076,6 +1328,7 @@ export class Scheduler {
         // The trial ends first (its token stops working), then its processes and dev runs.
         this.o.service.trialWorkspaces.delete(id);
         this.registry.finishTrial(id, { ...r, attempt: r.submitted?.attempt }, this.o.owner);
+        this.finishExperiment(id, r.stopped, r.submitted?.attempt);
         // A full ChatGPT plan gives no reset time: the agents wait a while and try again.
         if (!r.retryAfter && r.stopped === "error") {
           const until = usageLimitRetry(r.error);
@@ -1105,6 +1358,18 @@ export class Scheduler {
       this.laneRun.delete(a.lane);
     });
     this.running.set(a.lane, work);
+  }
+
+  /**
+   * A trial ended: its experiment is done (and goes back to the queue if the trial was
+   * interrupted or failed). A failure here is logged; the trial's own record stands.
+   */
+  private finishExperiment(trial: string, stopped: string, attempt?: string | undefined): void {
+    try {
+      this.coordinator.finish(trial, { result: resultOf(stopped, attempt), attempt }, this.o.owner);
+    } catch (err) {
+      log("scheduler", "the trial's experiment was not finished", { trial, error: String(err) });
+    }
   }
 
   /**
@@ -1161,6 +1426,7 @@ export class Scheduler {
     contract: Contract,
     epoch: number,
     a: Assignment,
+    x: Experiment,
     k: number,
     perEpoch: number,
     start: string,
@@ -1209,7 +1475,10 @@ export class Scheduler {
             .join("; ")}`
         : "",
       `Direction: ${a.family}${fam ? ` (${fam.description})` : ""}`,
-      `Focus: ${a.focus}`,
+      // The experiment from the run's queue this trial works on.
+      `Focus: ${x.title}`,
+      x.details ? `Details: ${x.details}` : "",
+      x.why ? `Why it is worth trying: ${x.why}` : "",
       "",
       report
         ? `# What the champion meets (the judge's check of champion #${report.champion_seq})\n${report.goals
