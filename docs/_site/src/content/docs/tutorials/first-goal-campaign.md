@@ -21,9 +21,9 @@ A rig works on one run at a time, so starting a run pauses any other run on `loc
 
 ## 1. Install Thermite's command line
 
-You start the campaign from the command line. It comes with Thermite's source code, in a folder `thermite-source` beside your `thermite` folder. If you did [Hand the work to agents](agents-with-a-free-model.md), you made that folder in its step 4: open a terminal in it, and go on to step 2.
+You start the campaign from the command line. It comes with Thermite's source code, in a folder `thermite-source` beside your `thermite` folder. If you did [Hand the work to agents](agents-with-a-free-model.md), you made that folder in its step 4: open a terminal in it, and run only the last three commands below, from `ln -s` on.
 
-Otherwise, go to the folder that holds your `thermite` folder, and do it now:
+Otherwise, go to the folder that holds your `thermite` folder, and do it all now:
 
 ```sh
 cd ..

@@ -27,10 +27,13 @@ async function stack() {
     {
       staleAfterMs: 180_000,
       kits,
-      probeRepo: async (url, ref) => {
-        probes.push(`${url}@${ref}`);
+      probeRepo: async (url, ref, _access, folder) => {
+        probes.push(`${url}@${ref}${folder ? ` in ${folder}` : ""}`);
         if (url.includes("private")) throw new Error("control cannot read it without a key");
-        return { commit: C, files: 1532, suggest: ["src/**", "src/kernels/**"] };
+        if (folder === "examples/none") throw new Error(`${ref} has no folder ${folder}`);
+        return folder
+          ? { commit: C, files: 4, suggest: ["src/**", "src/kernel/**"] }
+          : { commit: C, files: 1532, suggest: ["src/**", "src/kernels/**"] };
       },
     },
   );
@@ -299,6 +302,104 @@ describe("the new-campaign page", () => {
     });
     assert.equal(forged.status, 403);
     assert.equal(s.store.campaignVersions().length, 0);
+  });
+
+  test("a project in a folder of its repository: the page asks for it, the lookup reads that folder, and the contract names it", async () => {
+    const s = await stack();
+    const page = await (await s.get("/ui/campaigns/new")).text();
+    assert.match(
+      page,
+      /<span class="lb">Folder in the repository<i class="ii" tabindex="0" data-tip="Leave it empty when the project is the whole repository\. [^"]+">i<\/i><\/span><input class="mono" name="project_folder"/,
+    );
+    const script = await (await s.get("/ui/assets/new-campaign.js")).text();
+    assert.doesNotThrow(() => new Function(script));
+    assert.match(script, /folder: folder\(\)/);
+    const mono = "https://git.example.com/team/mono.git";
+    const probe = (folder: string) =>
+      s.get(`/ui/campaigns/new/probe?${new URLSearchParams({ url: mono, ref: "main", folder })}`);
+    // The lookup reads the folder: its files, and paths to suggest from its own top.
+    assert.deepEqual(await (await probe("examples/matmul-cpu/project")).json(), {
+      commit: C,
+      files: 4,
+      suggest: ["src/**", "src/kernel/**"],
+    });
+    const missing = await probe("examples/none");
+    assert.equal(missing.status, 400);
+    assert.match(((await missing.json()) as { error: string }).error, /main has no folder/);
+    const outside = await probe("../etc");
+    assert.equal(outside.status, 400);
+    assert.match(
+      ((await outside.json()) as { error: string }).error,
+      /no part that starts with a dot/,
+    );
+    assert.ok(!s.probes.some((p) => p.includes("../etc")), "a bad folder never reaches git");
+
+    // The sample's kit, packed as the quick start packs it: one top folder, kit/.
+    const dir = mkdtempSync(join(tmpdir(), "thermite-up-"));
+    const sample = resolve(import.meta.dirname, "..", "..", "examples", "matmul-cpu");
+    execFileSync("tar", ["-czf", join(dir, "matmul-cpu-kit.tar.gz"), "-C", sample, "kit"]);
+    const up = await s.upload(
+      "matmul-cpu-kit.tar.gz",
+      readFileSync(join(dir, "matmul-cpu-kit.tar.gz")),
+    );
+    assert.equal(up.status, 200);
+    const kit = (await up.json()) as { id: string; name: string; cells: string[] };
+    assert.deepEqual([kit.name, kit.cells], ["matmul-cpu", ["small", "large", "held"]]);
+    const inFolder = (folder: string) =>
+      draft({
+        project: {
+          url: mono,
+          ref: "main",
+          repo: "mono",
+          folder,
+          editable_paths: ["src/kernel/**"],
+          forbidden_patterns: ["__real_", "__wrap_", "thermite_ref_calls"],
+        },
+        kit: {
+          source: "upload",
+          upload: kit.id,
+          cells: ["small", "large", "held"],
+          held_out: ["held"],
+        },
+        score: { name: "flops_per_s", direction: "max", min_effect: 0.05 },
+        lanes: 1,
+      });
+    // Started without the page's lookup: control looks it up in the folder.
+    const res = await s.post("/ui/campaigns/new", {
+      csrf: s.csrf,
+      draft: JSON.stringify(inFolder("examples/matmul-cpu/project")),
+      rig: "rig-a",
+      start_value: "start",
+    });
+    assert.equal(res.status, 303);
+    assert.ok(s.probes.includes(`${mono}@main in examples/matmul-cpu/project`));
+    const [v] = s.store.campaignVersions("matmul-speed");
+    assert.equal(
+      (v?.contract as { project: { folder?: string } } | undefined)?.project.folder,
+      "examples/matmul-cpu/project",
+    );
+    // The rig is sent the whole repository's commit, and the contract that names the folder.
+    const payload = s.store.latestAssignments().get("matmul-speed")?.payload as {
+      contract: { project: { folder?: string } };
+      seed: { commit: string };
+      imports: { kind: string; commit: string; source?: { git?: string } }[];
+    };
+    assert.equal(payload.contract.project.folder, "examples/matmul-cpu/project");
+    assert.equal(payload.seed.commit, C);
+    assert.deepEqual(
+      payload.imports.filter((i) => i.kind === "repo_bundle").map((i) => [i.commit, i.source?.git]),
+      [[C, mono]],
+    );
+    // A folder that is not a path in the repository: refused in words, and nothing is sent.
+    const bad = await s.post("/ui/campaigns/new", {
+      csrf: s.csrf,
+      draft: JSON.stringify({ ...inFolder("/abs"), campaign: "abs-folder" }),
+      rig: "rig-a",
+      start_value: "start",
+    });
+    assert.equal(bad.status, 200);
+    assert.match(await bad.text(), /project\.folder: a folder in the repository/);
+    assert.equal(s.store.campaignVersions("abs-folder").length, 0);
   });
 
   test("agents never start on a rig with no model: the page gives it one, saves the campaign, and starts once the rig has it", async () => {

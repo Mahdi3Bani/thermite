@@ -17,7 +17,7 @@ Stuck, or found something wrong? This page says where to ask, and what to put in
 | Report a security problem | Privately, through GitHub's private vulnerability reporting, as the [security policy](https://github.com/iammrduncan/thermite/blob/main/SECURITY.md) says. Not a public issue, and not a public Discord channel. First check [Known limits](../reference/known-limits.md): it lists what the design does not cover yet |
 | Report a problem with someone's conduct | Privately to the maintainers, as the [code of conduct](https://github.com/iammrduncan/thermite/blob/main/CODE_OF_CONDUCT.md) says |
 
-Before you report a problem, try [Troubleshoot](../how-to/operate/troubleshoot.md). It covers failed checks, port clashes, the Podman virtual machine's disk and memory, and slow builds.
+Before you report a problem, try [Troubleshoot](../how-to/operate/troubleshoot.md). It starts with `thermite doctor`, which checks your machine, and covers failed checks, port clashes, the Podman virtual machine's disk and memory, and slow builds.
 
 ## What to put in a report
 
@@ -28,7 +28,7 @@ Before you report a problem, try [Troubleshoot](../how-to/operate/troubleshoot.m
    git log -1 --oneline
    ```
 
-3. **Your system:**
+3. **Your system.** Run `npx thermite doctor` on the machine with the problem, in your `thermite-source` folder ([the command line](../how-to/install/one-machine.md#the-command-line)), and copy all of its output: it names the container engine, the compose tool, the free disk and the GPU driver. Add:
    - the operating system and its version;
    - the container engine and its version, for example `docker --version` or `podman --version`;
    - the compose tool: `docker compose`, `podman compose` or podman-compose, and its version;

@@ -16,6 +16,8 @@ This guide sets Thermite up to stay on one computer: control and one rig run as 
 - **Docker** with Docker Compose, or **Podman** with `podman compose` or podman-compose. On a Mac, start Podman's virtual machine first (`podman machine start`).
 - `curl`, and access to `github.com` and `ghcr.io`, where the release and its images are.
 
+To check the computer before the first `up`, build [the command line](#the-command-line) and run `npx thermite doctor` in its folder. It checks Docker or Podman and the compose tool, port 8800, free disk and the clock, and, on a computer with an NVIDIA GPU, the driver and NVIDIA's container toolkit. Each problem it finds comes with a `Fix:` line. See [Check the machine](../operate/troubleshoot.md#check-the-machine).
+
 ## Start it
 
 From a terminal:
@@ -59,7 +61,7 @@ npm ci
 npm run build
 ```
 
-Run `npx thermite` in your `thermite-source` folder; from another folder, `npx` may fetch some other package of that name. With the link, the guides' paths, such as `--token-file .dev/secrets/control-admin-token`, work there too. The [command line reference](../../reference/command-line.md) lists its commands. The stack doesn't need the command line: each image has its own copy, as `thermite`.
+Run `npx thermite` in your `thermite-source` folder; from another folder, `npx` may fetch some other package of that name. With the link, the guides' paths, such as `--token-file .dev/secrets/control-admin-token`, work there too. The [command line reference](../../reference/command-line.md) lists its commands. The stack doesn't need the command line: each image has its own copy, as `thermite`. Only `thermite doctor`, which checks the computer itself, must run here and not in a container.
 
 ## What runs
 

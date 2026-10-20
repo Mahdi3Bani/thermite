@@ -20,6 +20,7 @@ import {
   type CampaignDraft,
   shellCommand,
 } from "./campaign-builder.ts";
+import { inFolder, suggestions } from "./repo-probe.ts";
 
 const C = "9a41c07e0d1f2a3b4c5d6e7f8091a2b3c4d5e6f7";
 const here = {
@@ -287,6 +288,53 @@ describe("the new-campaign page's builder", () => {
     assert.ok(research.ok, JSON.stringify(!research.ok && research.errors));
     const missing = buildCampaign({ ...hillClimb, project: undefined });
     assert.equal(missing.ok, false);
+  });
+
+  test("a project in a folder of its repository: the contract names the folder, and the lookup reads it from its top", () => {
+    const b = buildCampaign({
+      ...hillClimb,
+      project: { ...hillClimb.project, folder: "examples/matmul-cpu/project" },
+    } as CampaignDraft);
+    assert.ok(b.ok, JSON.stringify(!b.ok && b.errors));
+    if (b.ok)
+      assert.deepEqual(b.contract.project, {
+        repo: "fastmat",
+        folder: "examples/matmul-cpu/project",
+        kit: { repo: "matmul-speed-kit", commit: "0".repeat(40) },
+      });
+    // Without one, the contract has no folder at all: the whole repository, as before.
+    const whole = buildCampaign(hillClimb);
+    assert.ok(whole.ok && !("folder" in (whole.contract.project as object)));
+    for (const bad of ["/examples", "examples/", "../up", "a/./b"]) {
+      const r = buildCampaign({
+        ...hillClimb,
+        project: { ...hillClimb.project, folder: bad },
+      } as CampaignDraft);
+      assert.ok(
+        !r.ok && r.errors.some((e) => e.startsWith("project.folder: a folder in the repository")),
+        bad,
+      );
+    }
+    // The lookup's files and suggestions inside a folder are paths from the folder's top.
+    const tree = [
+      "README.md",
+      "examples/matmul-cpu/README.md",
+      "examples/matmul-cpu/project/README.md",
+      "examples/matmul-cpu/project/include/matmul.h",
+      "examples/matmul-cpu/project/src/kernel/matmul.c",
+      "examples/matmul-cpu/project/src/ref/matmul_ref.c",
+      "examples/matmul-cpu/project-old/src/kernel/matmul.c",
+      "examples/matmul-cpu/kit/kit.json",
+    ];
+    const inside = inFolder(tree, "examples/matmul-cpu/project");
+    assert.deepEqual(inside, [
+      "README.md",
+      "include/matmul.h",
+      "src/kernel/matmul.c",
+      "src/ref/matmul_ref.c",
+    ]);
+    assert.deepEqual(suggestions(inside), ["src/**", "include/**", "src/kernel/**", "src/ref/**"]);
+    assert.deepEqual(inFolder(tree, "examples/none"), []);
   });
 
   test("an uploaded kit is kept as it came, with the cases and score chosen on the page", () => {

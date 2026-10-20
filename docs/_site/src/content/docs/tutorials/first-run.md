@@ -64,7 +64,7 @@ You see three lines, one each for `control`, `harness` and `supervisor`, and eac
 - **harness** and **supervisor** together make a **rig**: the place where research happens. The harness holds the judge and the agents. The supervisor is the rig's link to control. This rig is called `local-1`.
 
 :::tip[If a line is missing or its status isn't `Up`]
-Read that container's log, for example `docker compose logs harness` (or `podman compose logs harness`). If `up` stopped with `address already in use`, another program has port 8800: see [The port is already in use](../how-to/operate/troubleshoot.md#the-port-is-already-in-use). [Troubleshoot](../how-to/operate/troubleshoot.md) has the other common problems.
+Read that container's log, for example `docker compose logs harness` (or `podman compose logs harness`). If `up` stopped with `address already in use`, another program has port 8800: see [The port is already in use](../how-to/operate/troubleshoot.md#the-port-is-already-in-use). [Troubleshoot](../how-to/operate/troubleshoot.md) has the other common problems. It starts with `thermite doctor`, which checks Docker or Podman, the port, disk and the clock, and says how to fix each problem it finds.
 :::
 
 ## 4. Sign in
@@ -106,7 +106,7 @@ Now give the judge something to judge. The **Judge smoke** check submits twelve 
 
 2. Wait half a minute, then press **refresh**, still on the rig's page. **Judge smoke** shows **running**, and its button reads **Running…**. The line that starts `local-1 is live` now goes on with `It runs rig-check-smoke-cpu-69c3d2f6 › check-smoke-` and some letters, then says what the judge is **screening**. Screening is the judge's first look at a change: it builds the change and measures it.
 
-   The two names are the check's campaign and run. A **campaign** is one piece of research: what to improve, and how the judge decides. The check's campaign is `rig-check-smoke-cpu-69c3d2f6`; its letters are the start of the smoke kit's commit, which [Hand the work to agents](agents-with-a-free-model.md) uses again. A **run** is a campaign at work on one rig: here, `check-smoke-` and some letters.
+   The two names are the check's campaign and run. A **campaign** is one piece of research: what to improve, and how the judge decides. The check's campaign is `rig-check-smoke-cpu-69c3d2f6`; its letters are the start of the smoke kit's commit, which [Your first goal campaign](first-goal-campaign.md) uses again. A **run** is a campaign at work on one rig: here, `check-smoke-` and some letters.
 
    The page shows the run twice more: on a card under **At work**, above **Checks**, with the lines `no agents on this run: changes come from people` and what the judge is screening; and under **Runs on this rig**, below **Checks**, where it stays after it ends.
 

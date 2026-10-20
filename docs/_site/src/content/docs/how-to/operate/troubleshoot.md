@@ -1,12 +1,34 @@
 ---
 title: "Troubleshoot"
-description: "Find out why a check failed, a port clashes, a build is slow, a rig is quiet, a message goes unread, a queue change doesn't take, past research or an outside knowledge base doesn't work, or a sign-in bounces back, and where the logs are."
+description: "Check the machine with thermite doctor, then find out why a check failed, a port clashes, a build is slow, a rig is quiet, a message goes unread, a queue change doesn't take, past research or an outside knowledge base doesn't work, or a sign-in bounces back, and where the logs are."
 type: how-to
 sidebar:
   order: 9
 ---
 
-Find the problem you see, then follow what to do. The problems are in five groups: [install and sign-in](#install-and-sign-in), [rigs](#rigs), [starting a campaign](#starting-a-campaign), [runs: trials, messages and the queue](#runs-trials-messages-and-the-queue), and [past research and outside knowledge bases](#past-research-and-outside-knowledge-bases). A [rig](../../reference/glossary.md) is two containers: the harness, which holds the judge and the agents, and the supervisor, its link to control. Most problems leave a line in a log, so [Where the logs are](#where-the-logs-are) comes first. Most commands below are for the local compose stack; with Podman, write `podman compose` where they say `docker compose`. For a rig on a machine or a cluster, the table below gives the commands that read its logs, and the entries say what to read there.
+Find the problem you see, then follow what to do. On a new machine, or when Thermite won't start, [check the machine](#check-the-machine) first. The problems are in five groups: [install and sign-in](#install-and-sign-in), [rigs](#rigs), [starting a campaign](#starting-a-campaign), [runs: trials, messages and the queue](#runs-trials-messages-and-the-queue), and [past research and outside knowledge bases](#past-research-and-outside-knowledge-bases). A [rig](../../reference/glossary.md) is two containers: the harness, which holds the judge and the agents, and the supervisor, its link to control. Most problems leave a line in a log, so [Where the logs are](#where-the-logs-are) comes next. Most commands below are for the local compose stack; with Podman, write `podman compose` where they say `docker compose`. For a rig on a machine or a cluster, the table below gives the commands that read its logs, and the entries say what to read there.
+
+## Check the machine
+
+Most first-run problems are in the machine, not in Thermite. `thermite doctor` checks it: the container engine and its compose tool, control's port, free disk, the clock, the GPU driver and NVIDIA's container toolkit where there is a GPU, and whether control and the model server answer.
+
+1. Run it on the machine that has the problem, in your `thermite-source` folder: the command line, built once from the source of the release you run, as [The command line](../install/one-machine.md#the-command-line) says. It needs Node.js 22.19 or later and git, and works before Thermite is started.
+
+   ```sh
+   npx thermite doctor --control http://127.0.0.1:8800 --model-url https://opencode.ai/zen/v1
+   ```
+
+   On a rig's own machine, give control's address for rigs instead, such as `https://control.example.com`. Give your own provider's address as `--model-url`, or leave it out. Before control runs, leave out `--control`.
+2. Read each line. It starts with `ok`, `WARN`, `FAIL` or `skip`. A failure or a warning has a `Fix:` line under it:
+
+   ```text
+   FAIL  Control's port: Port 8800 is in use by another program. Control needs this port for its dashboard and API.
+         Fix: Stop that program. To find it, run lsof -nP -iTCP:8800 -sTCP:LISTEN. Or use another port: put THERMITE_CONTROL_PORT=8801 in a .env file next to compose.yaml. Then run thermite doctor --port 8801.
+   ```
+
+3. Do what each `Fix:` line says, then run the doctor again.
+
+The last line says `No check failed.` when the machine is ready. A check that says `skip` did not apply: for example, a machine without an NVIDIA GPU needs no GPU driver. [Command line](../../reference/command-line.md#doctor) lists every check and its limits.
 
 ## Where the logs are
 
@@ -46,9 +68,9 @@ There is no single Logs page yet ([goal 027](https://github.com/iammrduncan/ther
 
 ### The port is already in use
 
-- **You see:** `docker compose up` fails because port 8800 is taken.
+- **You see:** `docker compose up` fails because port 8800 is taken. `thermite doctor` says `Port 8800 is in use by another program.` before you start.
 - **Why:** another program, or another Thermite stack, uses port 8800 on your computer.
-- **Do:** choose another port: `THERMITE_CONTROL_PORT=8801 docker compose up -d`, or put `THERMITE_CONTROL_PORT=8801` in a `.env` file next to `compose.yaml`. The dashboard is then at `http://127.0.0.1:8801/ui`.
+- **Do:** stop that program, or choose another port: `THERMITE_CONTROL_PORT=8801 docker compose up -d`, or put `THERMITE_CONTROL_PORT=8801` in a `.env` file next to `compose.yaml`. The dashboard is then at `http://127.0.0.1:8801/ui`. Check the new port with `npx thermite doctor --port 8801`.
 
 ### The harness restarts at the first start
 
@@ -64,7 +86,7 @@ There is no single Logs page yet ([goal 027](https://github.com/iammrduncan/ther
 
 ### The Podman VM runs out of disk or memory
 
-- **You see:** builds fail partway, or the VM's disk fills up. `podman system df` shows how much the images and volumes take.
+- **You see:** builds fail partway, or the VM's disk fills up. The **Disk** line of `thermite doctor` shows how much space is free in the VM, and `podman system df` shows how much the images and volumes take.
 - **Why:** on a Mac, Podman runs containers in a VM. Each build leaves old image layers behind, and each lane's compiler cache can grow to 8 GB.
 - **Do:** free the space, then give it back to your Mac:
 
@@ -103,7 +125,7 @@ A sign-in also ends when the owner's token changes, or after 30 days without use
 | `this rig is retired in control` | The rig was retired | Bring it back on its page: see [Retire and bring back](rig-lifecycle.md#retire-and-bring-back) |
 | `ingest -> 401` with `unauthorized` | The supervisor's control token is wrong | Give it the rig's current token: see [Rig tokens](tokens.md#rig-tokens) |
 | `the harness reports as rig …, but this supervisor is …` | The two containers have different `THERMITE_RIG_ID` settings | Make them the same |
-| `report from the future` | The rig's clock is ahead of control's | Set the clocks right |
+| `report from the future` | The rig's clock is ahead of control's | Set the clocks right. On the rig's machine, `thermite doctor --control` and control's address compares the two clocks |
 | `Control cannot work with this rig: …` | Control refuses the rig: the protocol of its harness or supervisor and control's do not meet. The message says which part, and whether to update the rig's images or control | Do what the message says. `thermite rig list` shows each part's version ([Rig versions](../../reference/rest-api.md#rig-versions)) |
 | No `relay error`, but the rig has never appeared | The supervisor has no control token file, so it reports nothing and logs no error | Check that the file its `THERMITE_CONTROL_TOKEN_FILE` names exists and holds the rig's token |
 
@@ -176,7 +198,7 @@ Two causes are common on a laptop:
 
 - **You see:** **Model route** fails with `no answer in 120 s (is the model up?)`, or with `no tool call:` and a connection error, while the server answers on your computer.
 - **Why:** the rig calls the model from its harness container. Inside a container, `localhost` is the container itself. A rig on a cluster reaches only DNS and addresses outside the private ranges, so a server on a private address is out of its reach.
-- **Do:** on the local stack, use `host.docker.internal` in the provider's address (`host.containers.internal` with Podman). Give a rig on a cluster a hosted provider. See [Choose a model](../models/choose-a-model.md#2-a-model-server-on-your-own-computer).
+- **Do:** on the local stack, use `host.docker.internal` in the provider's address (`host.containers.internal` with Podman). Give a rig on a cluster a hosted provider. See [Choose a model](../models/choose-a-model.md#2-a-model-server-on-your-own-computer). To check that the server answers at all, run `npx thermite doctor --model-url` with the provider's address: it checks `host.docker.internal` at `127.0.0.1`.
 
 ## Starting a campaign
 
@@ -198,6 +220,12 @@ Two causes are common on a laptop:
 - **You see:** the run never appears. On **Commands**, the **assign campaign** row is **failed**, and its **Outcome** has `the kit does not fit the contract:` and what doesn't fit, such as `cells names cell large, which the kit does not have` or `the kit measures on cuda-gpu, and this rig's target is cpu`.
 - **Why:** when the rig takes a campaign, it checks the contract against the kit's `kit.json`. Every test case (a "cell" in `kit.json` and the contract), metric and verifier the contract names must be in the kit, and the kit's target must be the rig's. A kit with a broken `kit.json` fails with `has no valid kit.json:` instead.
 - **Do:** fix the contract or the kit, then start the campaign again. See [Write a contract](../campaigns/write-a-contract.md) and [Write a kit](../campaigns/write-a-kit.md). For a kit described or uploaded on the **New campaign** page, the page runs the same check before it sends anything.
+
+### A campaign doesn't start: the commit has no folder
+
+- **You see:** the run never appears. On **Commands**, the **assign campaign** row is **failed**, and its **Outcome** has `commit <commit> has no folder <folder>`. On the **New campaign** page, **Look it up** says `main has no folder examples/none, or the folder has no files` (with your branch and folder).
+- **Why:** the campaign's project is one folder of its repository (**Folder in the repository**, or `project.folder` in the contract), and the commit the run starts from has no such folder. The path is from the top of the repository, and git's names are case-sensitive.
+- **Do:** check the folder's path on your Git host, at the branch or commit you start from. Then open **New campaign** again, fill it in with the same campaign name and the folder fixed, and start it. See [Start a campaign from the dashboard](../campaigns/start-from-dashboard.md#2-project).
 
 ### Agents don't start
 
@@ -323,4 +351,4 @@ Control writes the dashboard's `Not done.`, `Not started.` and `refused:` answer
 
 ## Still stuck?
 
-See [Getting help](../../project/getting-help.md) for where to ask, and include the log lines you found.
+See [Getting help](../../project/getting-help.md) for where to ask, and include the log lines you found and the output of `thermite doctor`.

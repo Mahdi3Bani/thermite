@@ -103,12 +103,13 @@ On **2 Project**:
 
 1. **Repository**: your repository's `https` address from step 2.
 2. **Start from**: `main`
-3. **Repository access**: keep **Public: no key**.
-4. Press **Look it up**. Control reads your repository and says `Found: main is at`, a short commit id, and how many files it has: `· 1 file. Rigs fetch it from there.` Every run starts from exactly that commit.
+3. **Folder in the repository**: leave it empty. Your project is the whole repository.
+4. **Repository access**: keep **Public: no key**.
+5. Press **Look it up**. Control reads your repository and says `Found: main is at`, a short commit id, and how many files it has: `· 1 file. Rigs fetch it from there.` Every run starts from exactly that commit.
 
    If it says `control cannot read it without a key: is the repository private?` instead, check the address, and check that the repository is public. If it says `the repository has no branch or tag named main`, check **Start from**, and that step 2's push went through.
-5. **Files the agents may change**: `primes.c`. A change to any other file is refused before it is built.
-6. Press **Next**.
+6. **Files the agents may change**: `primes.c`. A change to any other file is refused before it is built.
+7. Press **Next**.
 
 ## 6. Tell the judge how to measure it
 
@@ -178,7 +179,7 @@ The campaign's page comes back with a card at the top, `Starting local-1/primes-
 
 The try has stopped. To see it, press **primes-speed** in the line at the top: the campaign's page lists the try under **Earlier runs** as **Paused**, with `replaced by primes-speed-1` under **Why it stopped**. Press `primes-speed › primes-speed-1` under **At work now** to go back to the run's page.
 
-As in [Hand the work to agents](agents-with-a-free-model.md#7-watch-the-agent-work), the planner works first, often for less than a minute. While it plans, the **Now** block on the run's **Overview** shows `planner` and `planning round 1 (1 lane)`, and **Agents**, under **The run**, says `On: they start work at the first round`. The run's page may open only after the planner is done. Then the agent starts, and **Now** shows `lane-1` with the experiment it works on: the one thing the planner gave it to try, from the run's **queue** of experiments. The run's **Experiments** tab shows that queue, and its **Journal** tab the field notes the agents keep as they work. A **lane** is one line of search, worked by one **trial** after another: each trial is one agent's session, which submits at most one change.
+As in [Hand the work to agents](agents-with-a-free-model.md#9-watch-the-agent-work), the planner works first, often for less than a minute. While it plans, the **Now** block on the run's **Overview** shows `planner` and `planning round 1 (1 lane)`, and **Agents**, under **The run**, says `On: they start work at the first round`. The run's page may open only after the planner is done. Then the agent starts, and **Now** shows `lane-1` with the experiment it works on: the one thing the planner gave it to try, from the run's **queue** of experiments. The run's **Experiments** tab shows that queue, and its **Journal** tab the field notes the agents keep as they work. A **lane** is one line of search, worked by one **trial** after another: each trial is one agent's session, which submits at most one change.
 
 To watch the agent:
 

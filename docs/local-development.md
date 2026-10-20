@@ -93,6 +93,8 @@ Set `KEEP=1` to leave the stack running afterwards. To run it beside another sta
 
 A rig's smoke check (one of its [rig checks](_site/src/content/docs/how-to/operate/check-a-rig.md)) makes git repositories from `examples/smoke-project` and `kits/smoke-cpu` (without its candidates). The same files always give the same commits, and `examples/contracts/smoke-cpu-goal.json`, the contract of the [goal-campaign tutorial](_site/src/content/docs/tutorials/first-goal-campaign.md), names them. So a change to either folder changes the commits the contract must name. A unit test in `src/harness/smoke-check.test.ts` makes the repositories as the smoke check does and compares: when it fails, it says which field of the contract to set to which commit.
 
+`examples/matmul-cpu` is the sample project of the [agents tutorial](_site/src/content/docs/tutorials/agents-with-a-free-model.md): a copy of the same project (`project/`) and kit (`kit/`, named `matmul-cpu`, without candidates), kept apart so that the smoke check's commits don't move when the sample changes. A fix to the project or the kit usually belongs in both. The new-campaign page test uploads the sample's kit as the tutorial packs it, and the new-campaign acceptance runs a try of it from its folder.
+
 ## The judge acceptance test
 
 `npm run acceptance:judge` runs the smoke campaign (`kits/smoke-cpu`, `examples/smoke-project`) through the whole judge under compose. It submits every candidate in `kits/smoke-cpu/candidates`, each with an expected outcome:
