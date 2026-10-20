@@ -205,7 +205,7 @@ export type RunLink = (rig: string, run: string) => string | undefined;
 /** One item with its origin (campaign, run, who, when), its result, and its text on demand. */
 function resultHtml(x: KbItem, now: number, link: RunLink, result: string | null): string {
   const href = link(x.rig, x.run);
-  const run = href ? `<a href="${href}">${esc(x.run)}</a>` : esc(x.run);
+  const run = href ? `<a href="${esc(href)}">${esc(x.run)}</a>` : esc(x.run);
   const kind =
     x.kind === "note" && x.sub && x.sub !== "note" ? `Field note (${x.sub})` : KIND_WORD[x.kind][0];
   const meta = [

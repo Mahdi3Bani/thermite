@@ -266,7 +266,8 @@ test("a run's sync: its readable folders by seq, never its own items, in pages, 
     const out: KbSync["items"] = [];
     let cur = after;
     for (let i = 0; i < 50; i++) {
-      const page = kb.sync(rig, run, cur, limit);
+      // As the route does: caught up with every report first.
+      const page = store.kb().sync(rig, run, cur, limit);
       assert.ok(page);
       KbSync.parse(page);
       out.push(...page.items);
