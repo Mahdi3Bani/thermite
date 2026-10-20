@@ -231,6 +231,45 @@ describe("past research, synced from control into the run's folder", () => {
     assert.equal(again.items, 2);
   });
 
+  test("a run control did not assign is no error, and is left alone for an hour; one control has not heard of yet is asked again", async () => {
+    const s = await setup([item(1)]);
+    let clock = Date.parse("2026-10-20T12:00:00.000Z");
+    let answer = "control did not assign run smoke-1 to this rig";
+    const fetchImpl: typeof fetch = async (input, init) => {
+      if (new URL(String(input)).host !== "control")
+        return (s.cfg.fetchImpl as typeof fetch)(input, init);
+      s.asked.push(String(input));
+      return Response.json({ error: answer }, { status: 404 });
+    };
+    const cfg = { ...s.cfg, fetchImpl, now: () => clock };
+    const r = await syncKnowledgeOnce(cfg, emptyKbSyncState());
+    assert.deepEqual(r.errors, []);
+    assert.deepEqual(r.state, {
+      cursors: {},
+      skipped: { [RUN]: "2026-10-20T13:00:00.000Z" },
+    });
+    assert.equal(s.asked.length, 1);
+    clock += 59 * 60_000;
+    const later = await syncKnowledgeOnce(cfg, r.state);
+    assert.equal(s.asked.length, 1, "not asked again within the hour");
+    assert.deepEqual(later.state, r.state);
+    clock += 2 * 60_000;
+    answer = "this rig has no run smoke-1";
+    const after = await syncKnowledgeOnce(cfg, later.state);
+    assert.equal(s.asked.length, 2, "asked again after the hour");
+    assert.deepEqual(after.errors, []);
+    assert.deepEqual(after.state, { cursors: {} }, "not heard of yet: no skip");
+    await syncKnowledgeOnce(cfg, after.state);
+    assert.equal(s.asked.length, 3, "so it is asked again at the next sync");
+    // Any other answer is still an error.
+    const failing: typeof fetch = async (input, init) =>
+      new URL(String(input)).host === "control"
+        ? new Response("no", { status: 500 })
+        : (s.cfg.fetchImpl as typeof fetch)(input, init);
+    const bad = await syncKnowledgeOnce({ ...cfg, fetchImpl: failing }, emptyKbSyncState());
+    assert.match(bad.errors[0] ?? "", /smoke-1: control's knowledge base: HTTP 500/);
+  });
+
   test("without control the sync does nothing", async () => {
     const s = await setup([item(1)]);
     let called = 0;

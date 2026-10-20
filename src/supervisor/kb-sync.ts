@@ -10,6 +10,11 @@ import { KbSync } from "../core/kb.ts";
  * fetched while control says more wait. Control replays a newly granted folder's items with new
  * seqs, so a grant needs nothing special here. The harness never reaches control itself.
  *
+ * A run control did not assign (a rig check's smoke run, say) has nothing there: control answers
+ * 404, which is no error, and the run is not asked about again for an hour. Control also answers
+ * 404 for a run it assigned but has not heard of from the rig yet (its first events are still on
+ * their way): that run is asked about again at the next sync.
+ *
  * Without control (no URL or token), nothing happens.
  */
 
@@ -22,12 +27,19 @@ export interface KbSyncConfig {
   fetchImpl?: typeof fetch | undefined;
   /** The most JSON posted to the harness in one request, in bytes (8 MiB by default). */
   batchBytes?: number | undefined;
+  /** The clock (tests set it). */
+  now?: (() => number) | undefined;
 }
 
 export interface KbSyncState {
   /** Per run, the last item's seq it was given (control's cursor). */
   cursors: Record<string, number>;
+  /** Running runs control did not assign, and when to ask about each again (ISO time). */
+  skipped?: Record<string, string> | undefined;
 }
+
+/** How long a run control did not assign is left alone. */
+export const NOT_ASSIGNED_SKIP_MS = 3_600_000;
 
 export function emptyKbSyncState(): KbSyncState {
   return { cursors: {} };
@@ -62,8 +74,17 @@ export async function syncKnowledgeOnce(
   const { runs } = (await harness("GET", "/v1/runs")) as {
     runs: { id: string; status: string }[];
   };
+  const running = runs.filter((r) => r.status === "running");
+  // A skip ends after its hour, or when its run no longer runs.
+  const now = (cfg.now ?? Date.now)();
+  const skipped = Object.fromEntries(
+    Object.entries(state.skipped ?? {}).filter(
+      ([id, until]) => Date.parse(until) > now && running.some((r) => r.id === id),
+    ),
+  );
   const maxBytes = cfg.batchBytes ?? 8 * 1024 * 1024;
-  for (const run of runs.filter((r) => r.status === "running")) {
+  for (const run of running) {
+    if (skipped[run.id]) continue;
     try {
       for (;;) {
         const after = out.state.cursors[run.id] ?? 0;
@@ -71,6 +92,16 @@ export async function syncKnowledgeOnce(
           `${cfg.controlUrl}/v1/rigs/${encodeURIComponent(cfg.rig)}/kb?run=${encodeURIComponent(run.id)}&after=${after}`,
           { headers: { authorization: `Bearer ${cfg.controlToken}` } },
         );
+        // Nothing for this run: control did not assign it (left alone for an hour), or has not
+        // heard of it from the rig yet (asked again next time).
+        if (res.status === 404) {
+          const why = String(
+            ((await res.json().catch(() => ({}))) as { error?: unknown }).error ?? "",
+          );
+          if (/did not assign/.test(why))
+            skipped[run.id] = new Date(now + NOT_ASSIGNED_SKIP_MS).toISOString();
+          break;
+        }
         if (!res.ok) throw new Error(`control's knowledge base: HTTP ${res.status}`);
         const page = KbSync.parse(await res.json());
         // Posted in batches the harness takes in one request each; the cursor moves only when
@@ -102,5 +133,6 @@ export async function syncKnowledgeOnce(
       out.errors.push(`${run.id}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
+  if (Object.keys(skipped).length) out.state.skipped = skipped;
   return out;
 }
