@@ -328,6 +328,15 @@ export function createControlApi(
     if (Date.parse(body.generated_at) > Date.now() + 5 * 60_000)
       return c.json({ error: "report from the future" }, 409);
     const added = store.ingest(body as IngestReport);
+    // Into the knowledge base now, while this report's ledger is the rig's (it reads only a rig's
+    // current ledger). After a failure the next report or read catches up.
+    try {
+      store.kb();
+    } catch (err) {
+      const error = redact(err instanceof Error ? err.message : String(err));
+      log("control", "knowledge base catch-up failed", { rig, error });
+      store.audit("control", "kb_failed", { rig, error });
+    }
     // A rig control marked failed (its update or start waited too long) that reports again
     // works: say so, and show it as running.
     const placed = store.clusterRig(rig);
@@ -580,6 +589,20 @@ export function createControlApi(
       auditor: await roleRouteOf(rig, "auditor"),
       panel: await roleRouteOf(rig, "panel"),
     });
+  });
+
+  // Past research for a run's agents (goal 065): the items of the folders the run's campaign may
+  // read, after the supervisor's cursor. Only the rig's own runs; never a folder not granted.
+  app.get("/v1/rigs/:rig/kb", rigAuth, (c) => {
+    c.header("cache-control", "no-store");
+    const run = c.req.query("run") ?? "";
+    const after = Number(c.req.query("after") ?? "0");
+    if (!run) return c.json({ error: "run is required" }, 400);
+    if (!Number.isSafeInteger(after) || after < 0)
+      return c.json({ error: "after is a whole number from 0" }, 400);
+    const sync = store.kb().sync(c.req.param("rig"), run, after);
+    if (!sync) return c.json({ error: `this rig has no run ${run}` }, 404);
+    return c.json(sync);
   });
 
   // A champion's patch, uploaded by the rig's supervisor once its export is published. It is

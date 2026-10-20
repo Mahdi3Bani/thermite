@@ -7,6 +7,7 @@ import type { LiveEntry } from "../core/live.ts";
 import { currentEvent } from "../core/names.ts";
 import { Credential } from "./credential.ts";
 import type { JoinedSpec, JoinForm } from "./join.ts";
+import { KnowledgeBase } from "./kb.ts";
 
 /**
  * Control's store: rigs, the events they report, and command queues. A single control process
@@ -751,6 +752,7 @@ export const RIG_ID = /^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$/;
 export class ControlStore {
   readonly db: DatabaseSync;
   private configuredRigs = new Set<string>();
+  private knowledge: KnowledgeBase | undefined;
 
   constructor(path: string) {
     if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
@@ -785,6 +787,16 @@ export class ControlStore {
       this.db.exec("alter table rig add column supervisor text");
       this.db.exec("alter table rig add column supervisor_at text");
     }
+  }
+
+  /**
+   * Thermite's own knowledge base (goal 065), brought up to date with every event reported so
+   * far. Its cursor is kept in this store, so it carries on after a restart of control.
+   */
+  kb(): KnowledgeBase {
+    this.knowledge ??= new KnowledgeBase(this.db);
+    this.knowledge.catchUp();
+    return this.knowledge;
   }
 
   /**
