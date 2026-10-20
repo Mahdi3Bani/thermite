@@ -81,6 +81,60 @@ test("a research run's rounds read as set by the research plan, not as a refused
     String(research?.text ?? JSON.stringify(research)),
     /The research plan set round 3: lane-1 on contradict\./,
   );
-  const refused = sentence(u, e({ n: 3, source: "fallback", assignments }));
-  assert.match(String(refused?.text ?? JSON.stringify(refused)), /the model's plan was refused/);
+  const said = (body: Record<string, unknown>) => {
+    const x = sentence(u, e({ n: 3, source: "fallback", assignments, ...body }));
+    return String(x?.text ?? JSON.stringify(x));
+  };
+  assert.match(
+    said({ planner_tries: 2, refused: ["try 2: lane-3 is not a lane"] }),
+    /by the fixed rules: the model gave no usable plan, because lane-3 is not a lane/,
+  );
+  // Neither a planner switched off nor a missing model reads as a refused plan.
+  assert.match(
+    said({ planner_tries: 0, notes: "the planner is off on this rig (Edit rig)" }),
+    /round 3 \(by the fixed rules: the planner is off on this rig \(Edit rig\)\)/,
+  );
+  assert.match(said({ planner_tries: 0 }), /round 3 \(by the fixed rules: no model\)/);
+});
+
+test("History tells the queue's changes, the hand-outs and the rules in words", async () => {
+  const { sentence } = await import("./words.ts");
+  const u = {
+    judge: { jobs: [] },
+    runs: [{ id: "r-1", queue: [{ id: "x-1", title: "vector loads" }] }],
+  } as never;
+  const say = (kind: string, actor: string, body: Record<string, unknown>) =>
+    String(
+      sentence(u, { kind, subject: "r-1", actor, at: "2026-10-20T00:00:00Z", body } as never)?.text,
+    );
+  assert.equal(
+    say("experiment_added", "supervisor:teacher", {
+      id: "x-1",
+      title: "vector loads",
+      by: "teacher",
+    }),
+    'The teacher pair added "vector loads" to the queue.',
+  );
+  assert.equal(
+    say("experiment_dropped", "control:owner:ui", { id: "x-1", by: "owner", why: "slower" }),
+    'You dropped "vector loads": slower.',
+  );
+  assert.equal(
+    say("experiment_moved", "planner", { id: "x-1", by: "planner", position: 0 }),
+    'The planner moved "vector loads" to place 1.',
+  );
+  assert.equal(
+    say("planner_handout", "planner", {
+      round: 4,
+      assignments: [{ lane: "lane-1", experiment: "x-1" }],
+    }),
+    'The planner gave out round 4: lane-1 on "vector loads".',
+  );
+  assert.equal(
+    say("directive", "control:owner:ui", {
+      id: 3,
+      body: { kind: "avoid", match: "shared memory" },
+    }),
+    "You set a rule for the plan: avoid shared memory.",
+  );
 });

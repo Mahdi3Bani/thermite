@@ -644,6 +644,8 @@ export interface ClusterRig {
     /** The rig's CPUs and memory; none: the namespace's defaults. */
     resources?: { cpus: number; memoryGi: number } | undefined;
     images: { harness: string; supervisor: string };
+    /** Control's address the rig's supervisor reports to, as last deployed (older rigs: unknown). */
+    controlUrl?: string | undefined;
   };
   status: string;
   created_at: string;
@@ -927,14 +929,17 @@ export class ControlStore {
     run: string,
     after: number,
     limit: number,
+    ids?: number[],
   ): (LiveEntry & { id: number; signed: boolean })[] {
+    // With ids: only those lines (Live draws again the ones waiting for their event).
+    const only = ids?.length ? ` and id in (${ids.map(() => "?").join(",")})` : "";
     const rows = this.db
       .prepare(
         `select * from rig_live where rig = ? and id > ?
-           and (run = ? or (run is null and source in ('judge', 'supervisor')))
+           and (run = ? or (run is null and source in ('judge', 'supervisor')))${only}
          order by id limit ?`,
       )
-      .all(rig, after, run, limit) as Row[];
+      .all(rig, after, run, ...(ids ?? []), limit) as Row[];
     return rows.map((r) => ({
       id: Number(r.id),
       seq: Number(r.seq),
@@ -975,6 +980,29 @@ export class ControlStore {
       }
     }
     return out;
+  }
+
+  /**
+   * Who added an experiment to a run's queue, from the rigs' signed events (any rig's current
+   * ledger): what a copied experiment's author is checked against. Undefined if not found once.
+   */
+  experimentAuthor(run: string, id: string): string | undefined {
+    const rows = this.db
+      .prepare(
+        `select e.body from rig_event e join rig r on r.id = e.rig and r.ledger_id = e.ledger_id
+         where e.kind = 'experiment_added' and e.subject = ? and json_extract(e.body, '$.id') = ?`,
+      )
+      .all(run, id) as { body: string }[];
+    const by = new Set<string>();
+    for (const r of rows) {
+      try {
+        const b = JSON.parse(r.body) as { by?: unknown };
+        if (typeof b.by === "string") by.add(b.by);
+      } catch {
+        // not an event this store can read
+      }
+    }
+    return by.size === 1 ? [...by][0] : undefined;
   }
 
   /** One run's newest live lines, newest last (for the Live page's first view). */
@@ -2337,12 +2365,16 @@ export class ControlStore {
   }
 
   /** The images a rig on a cluster now runs, after an image update. */
-  setClusterRigImages(rig: string, images: ClusterRig["spec"]["images"]): void {
+  setClusterRigImages(
+    rig: string,
+    images: ClusterRig["spec"]["images"],
+    controlUrl?: string | undefined,
+  ): void {
     const r = this.clusterRig(rig);
     if (!r) return;
     this.db
       .prepare("update cluster_rig set spec = ? where rig = ?")
-      .run(JSON.stringify({ ...r.spec, images }), rig);
+      .run(JSON.stringify({ ...r.spec, images, ...(controlUrl ? { controlUrl } : {}) }), rig);
   }
 
   deleteMachine(name: string, by: string): boolean {
@@ -2622,6 +2654,7 @@ export class ControlStore {
   lastMessageToRun(
     rig: string,
     run: string,
+    to?: string,
   ): { refused: string | null; issued_at: string } | undefined {
     const rows = this.db
       .prepare(
@@ -2631,9 +2664,9 @@ export class ControlStore {
     for (const r of rows) {
       try {
         const payload = (
-          JSON.parse(String(r.signed)) as { envelope?: { payload?: { run?: string } } }
+          JSON.parse(String(r.signed)) as { envelope?: { payload?: { run?: string; to?: string } } }
         ).envelope?.payload;
-        if (payload?.run !== run) continue;
+        if (payload?.run !== run || (to !== undefined && payload.to !== to)) continue;
         const out = r.outcome
           ? (JSON.parse(String(r.outcome)) as {
               accepted?: boolean;

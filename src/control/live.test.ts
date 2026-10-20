@@ -6,6 +6,7 @@ import { relayOnce } from "../supervisor/relay.ts";
 import { makeHarnessEnv } from "../testing/harness-env.ts";
 import { createControlApi } from "./api.ts";
 import { ControlStore } from "./store.ts";
+import { runEntryHtml } from "./ui/live.ts";
 
 const tokens = { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } };
 
@@ -140,5 +141,73 @@ describe("the owner's messages to agents", () => {
       ),
     );
     assert.ok(r.status === "applied" && !r.accepted, JSON.stringify(r));
+  });
+});
+
+describe("a run's Live lines", () => {
+  const line = (o: {
+    source: string;
+    kind: string;
+    text: string;
+    signed: boolean;
+    lane?: string;
+  }) =>
+    ({ id: 7, seq: 1, at: "2026-10-20T05:00:00.000Z", run: "r-1", ...o }) as Parameters<
+      typeof runEntryHtml
+    >[0];
+  test("the harness's signed lines show at once; unsigned ones never show as you; a trial's wait for the event", () => {
+    // Signed, from the harness's own source: drawn from its words before the event comes.
+    const sent = runEntryHtml(
+      line({
+        source: "supervisor",
+        kind: "message",
+        text: "Owner to teachers (#4): cite the paper",
+        signed: true,
+      }),
+    );
+    assert.match(sent, /class="lv-row lv-you"[\s\S]*<b>To the teachers:<\/b> cite the paper/);
+    // The same words unsigned (the supervisor's own line): never the owner's.
+    const forged = runEntryHtml(
+      line({
+        source: "supervisor",
+        kind: "message",
+        text: "Owner to teachers (#4): cite the paper",
+        signed: false,
+      }),
+    );
+    assert.doesNotMatch(forged, /lv-you|class="who">You/);
+    const receipt = runEntryHtml(
+      line({
+        source: "supervisor",
+        kind: "status",
+        text: "the teacher pair read the owner's message #4: cite the paper",
+        signed: true,
+      }),
+    );
+    assert.match(receipt, /✓ the teacher pair read your message: “cite the paper”/);
+    // Filed under a trial: plain and marked until the run's event has the message.
+    const early = line({
+      source: "trial:t-1",
+      kind: "status",
+      text: "read the owner's message #4: cite the paper",
+      signed: true,
+      lane: "lane-1",
+    });
+    assert.match(runEntryHtml(early), /data-recheck="1"/);
+    const later = runEntryHtml(
+      early,
+      undefined,
+      new Map([[4, { to: "lane-1", text: "cite the paper", keep: false }]]),
+    );
+    assert.match(later, /lv-read/);
+    assert.doesNotMatch(later, /data-recheck/);
+    // An answer is the harness's signed line from the supervisor's source, nothing else.
+    const answer = {
+      source: "supervisor",
+      kind: "text",
+      text: "the auditor answered the owner's message #4: Noted.",
+    };
+    assert.match(runEntryHtml(line({ ...answer, signed: true })), /the auditor answered you:/);
+    assert.doesNotMatch(runEntryHtml(line({ ...answer, signed: false })), /answered you/);
   });
 });

@@ -375,7 +375,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
 
   /** Pause, with an optional reason the run keeps (it shows wherever the run's state does). */
   const pauseMenu = (c: Ctx, rig: string, run: string, back: string, cls = "") =>
-    `<details class="menu"><summary class="btn${cls ? ` ${cls}` : ""}">Pause</summary><div class="menu-pop">${cmdForm(c, { rig, kind: "pause_run", fields: { run }, label: "Pause the run", cls: "sm", back, extra: `<input name="reason" maxlength="500" placeholder="why (optional)" aria-label="Why" style="width:100%;margin-bottom:6px">` })}<div class="muted small">The lanes' running trials stop and no new ones start; the judge finishes what it has queued. Resume picks up from the same champion.</div></div></details>`;
+    `<details class="menu"><summary class="btn${cls ? ` ${cls}` : ""}">Pause</summary><div class="menu-pop">${cmdForm(c, { rig, kind: "pause_run", fields: { run }, label: "Pause the run", cls: "sm", back, extra: `<input name="reason" maxlength="500" placeholder="why (optional)" aria-label="Why" style="width:100%;margin-bottom:6px">` })}<div class="muted small">The lanes' running trials stop and no new ones start. Its jobs waiting for the judge wait until you resume, so the judge's time goes to running runs. Resume picks up from the same champion.</div></div></details>`;
   const forms = (c: Ctx): Forms => ({
     cmd: (f) => cmdForm(c, f),
     csrf: csrf(c),
@@ -658,6 +658,13 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
                 })(),
                 figures: diagnostics,
                 propagate,
+                // A message to the planner that control or the rig refused.
+                refused:
+                  c.req.query("msgerror") ||
+                  (() => {
+                    const why = store.lastMessageToRun(u.id, i.id, "planner")?.refused;
+                    return why ? `The rig refused your last message to the planner: ${why}` : "";
+                  })(),
               })
             : view === "experiments"
               ? experimentsTab({
@@ -2089,7 +2096,19 @@ ${notice}${box}</section></div>`,
       html: runEntryHtml(e, now, messages),
       ...(e.kind === "result" ? { join: resultJoin(e) } : {}),
     }));
-    return c.json({ entries });
+    // Lines drawn before their event came (recheck=ids), drawn again once it has.
+    const ids = String(c.req.query("recheck") ?? "")
+      .split(",")
+      .map(Number)
+      .filter((n) => Number.isInteger(n) && n > 0)
+      .slice(0, 50);
+    const redrawn = ids.length
+      ? store
+          .liveRun(rig, run, 0, 50, ids)
+          .map((e) => ({ id: e.id, html: runEntryHtml(e, now, messages) }))
+          .filter((x) => !x.html.includes('data-recheck="1"'))
+      : [];
+    return c.json({ entries, redrawn });
   });
 
   app.post("/ui/live/message", async (c) => {
@@ -3474,6 +3493,8 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
       supervisor: opts.rigImages.supervisor,
     };
   };
+  /** Control's address for rigs, as a supervisor's CONTROL_URL has it. */
+  const controlAddress = () => opts.publicUrl?.replace(/\/$/, "");
   /** A rig control set up on a cluster: where, its setup history, and its controls. */
   const clusterPlacedBlock = (r: ClusterRig, t: string) => {
     const rName = encodeURIComponent(r.rig);
@@ -3486,12 +3507,19 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
         : `<div class="act" style="margin-top:10px">${r.status === "stopped" ? act("start", "Start its pods") : act("stop", "Stop its pods")}${act("restart", "Restart them")}</div>
 <details style="margin-top:8px"><summary class="small">Remove it from ${esc(r.cluster)}</summary><div class="small muted" style="margin:6px 0">${r.placement === "created" ? "Deletes its namespace, with everything in it," : "Deletes its deployments, service, volume claim and secret from the slot,"} and retires its token. Results it has not exported are lost.</div>${act("remove", "Remove the rig", `<input name="confirm" placeholder="type: remove ${esc(r.rig)}" style="margin-right:6px">`, "sm danger")}</details>`;
     const want = controlImages(s.gpus);
+    const keeps =
+      "Its volume, tokens, runs and results stay. A trial in progress stops, and the harness plans it again.";
+    // New images; or the same ones after a failed update (a retry); or a new address for control.
     const update =
-      manage &&
-      typeof want !== "string" &&
-      (want.harness !== s.images.harness || want.supervisor !== s.images.supervisor)
-        ? `<div class="small" style="margin-top:12px">Control now deploys other images:<div class="mono">${esc(want.harness)}<br>${esc(want.supervisor)}</div></div><div class="small muted" style="margin:4px 0 6px">Its pods restart on these images. Its volume, tokens, runs and results stay. A trial in progress stops, and the harness plans it again. After a newer harness has opened its ledger, an older image may not open it.</div>${act("images", "Update to these images")}`
-        : "";
+      !manage || typeof want === "string"
+        ? ""
+        : want.harness !== s.images.harness || want.supervisor !== s.images.supervisor
+          ? `<div class="small" style="margin-top:12px">Control now deploys other images:<div class="mono">${esc(want.harness)}<br>${esc(want.supervisor)}</div></div><div class="small muted" style="margin:4px 0 6px">Its pods restart on these images. ${keeps} After a newer harness has opened its ledger, an older image may not open it.</div>${act("images", "Update to these images")}`
+          : r.status === "failed"
+            ? `<div class="small" style="margin-top:12px">The last change to its pods failed (see the steps above). Try it again on control's images:<div class="mono">${esc(want.harness)}<br>${esc(want.supervisor)}</div></div><div class="small muted" style="margin:4px 0 6px">${keeps}</div>${act("images", "Try the update again")}`
+            : s.controlUrl && controlAddress() && s.controlUrl !== controlAddress()
+              ? `<div class="small" style="margin-top:12px">Control's address for rigs changed: the rig reports to <span class="mono">${esc(s.controlUrl)}</span>, control is now at <span class="mono">${esc(controlAddress() ?? "")}</span>.</div><div class="small muted" style="margin:4px 0 6px">Its pods restart with the new address, on the same images. ${keeps}</div>${act("images", "Give it control's new address")}`
+              : "";
     return `<div class="block"><div class="head"><h2>Set up by control</h2><span class="right">${esc(r.status)}</span></div><div class="card"><dl class="facts"><dt>Cluster</dt><dd><a href="/ui/settings">${esc(r.cluster)}</a> (Providers)</dd><dt>Namespace</dt><dd>${esc(r.namespace)} <span class="muted">(${r.placement === "created" ? "made by control" : "a slot"})</span></dd><dt>GPUs</dt><dd>${s.gpus ? `${s.gpus} through ${s.gpuMode === "dra" ? `DRA (${esc(s.deviceClass ?? "")})` : "NVIDIA's device plugin"}: ${splitWords(s.gpus, s.judgeGpus)}` : "none: it measures on the CPU"}${s.node ? ` · on ${esc(s.node)}` : ""}</dd><dt>Storage</dt><dd>${s.storageGi} GB${s.storageClass ? ` · ${esc(s.storageClass)}` : ""}</dd><dt>Images</dt><dd class="mono small">${esc(s.images.harness)}<br>${esc(s.images.supervisor)}</dd></dl>
 <div class="tl" style="margin-top:10px">${setupSteps(r.rig) || `<div class="muted small">No step yet.</div>`}</div>${manage}${update}</div></div>`;
   };
@@ -3926,6 +3954,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
           harness: gpus ? (opts.rigImages.harnessCuda as string) : opts.rigImages.harness,
           supervisor: opts.rigImages.supervisor,
         },
+        controlUrl: controlAddress(),
       },
       created_by: by,
     });
@@ -4056,7 +4085,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       store.rigSetupEvent(rig, "images", false, kubeError(out));
       return { error: kubeError(out) };
     }
-    store.setClusterRigImages(rig, images);
+    store.setClusterRigImages(rig, images, controlAddress());
     const changed =
       [
         old.harness !== images.harness ? `harness ${old.harness} → ${images.harness}` : "",

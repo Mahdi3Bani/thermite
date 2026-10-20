@@ -41,13 +41,33 @@ export const CLIENT_JS = `
       if (empty) empty.remove();
       tr.insertAdjacentHTML("beforeend", e.html);
       const el = tr.lastElementChild;
-      if (run && el && el.dataset && el.dataset.who !== undefined) el.hidden = !shows(el);
+      if (run && el && el.dataset && el.dataset.who !== undefined) {
+        el.hidden = !shows(el);
+        // A lane that started after the page was drawn gets its own filter, after the others.
+        for (const l of el.dataset.who.split(" ").filter((t) => /^lane-\\d+$/.test(t))) {
+          if (document.querySelector('.lchip[data-w="' + l + '"]')) continue;
+          const lanes = [...document.querySelectorAll(".lchip[data-w^='lane-']")];
+          const before = lanes.find((c) => Number(c.dataset.w.slice(5)) > Number(l.slice(5)))
+            || document.querySelector('.lchip[data-w="planner"], .lchip[data-w="judge"], .lchip[data-w="advisors"]');
+          const u = new URL(location.href);
+          u.searchParams.set("w", l);
+          const a = document.createElement("a");
+          a.className = "lchip";
+          a.dataset.w = l;
+          a.href = u.pathname + u.search;
+          a.textContent = l;
+          if (before) before.before(a);
+        }
+      }
     };
     const poll = async () => {
       if (document.visibilityState !== "visible") return;
       try {
         const q = new URLSearchParams({ after: String(after) });
         let url;
+        // Lines waiting for their event, to be drawn again once control has it.
+        const waiting = run ? [...tr.querySelectorAll("[data-recheck]")].map((el) => el.dataset.id).filter(Boolean).slice(-50) : [];
+        if (waiting.length) q.set("recheck", waiting.join(","));
         if (run) { q.set("run", rig + "/" + run); url = "/ui/live.json?" + q; }
         else { if (source) q.set("source", source); url = "/ui/rigs/" + encodeURIComponent(rig) + "/live.json?" + q; }
         const res = await fetch(url, { credentials: "same-origin" });
@@ -55,6 +75,14 @@ export const CLIENT_JS = `
         const body = await res.json();
         const stick = follow && near();
         for (const e of body.entries || []) { add(e); after = Math.max(after, e.id); }
+        for (const r of body.redrawn || []) {
+          const old = tr.querySelector('[data-id="' + r.id + '"]');
+          if (!old) continue;
+          old.insertAdjacentHTML("afterend", r.html);
+          const el = old.nextElementSibling;
+          old.remove();
+          if (el && el.dataset && el.dataset.who !== undefined) el.hidden = !shows(el);
+        }
         if (stick && (body.entries || []).length) tr.scrollTop = tr.scrollHeight;
         const st = $("#live-state .sub");
         if (st) st.textContent = "live · " + new Date().toISOString().slice(11, 19) + " UTC";
@@ -85,7 +113,10 @@ export const CLIENT_JS = `
       history.replaceState(null, "", u);
       tr.scrollTop = tr.scrollHeight;
     };
-    document.querySelectorAll(".lchip[data-w]").forEach((c) => c.addEventListener("click", (ev) => {
+    // One handler for every filter, including those added for lanes that start later.
+    document.addEventListener("click", (ev) => {
+      const c = ev.target instanceof Element ? ev.target.closest(".lchip[data-w]") : null;
+      if (!c) return;
       ev.preventDefault();
       const w = c.dataset.w;
       view(w);
@@ -93,7 +124,7 @@ export const CLIENT_JS = `
         const opt = [...sel.options].find((o) => o.value === w && !o.disabled);
         if (opt) { sel.value = w; hint(); }
       }
-    }));
+    });
     if (sel) sel.addEventListener("change", () => {
       hint();
       const t = sel.value;

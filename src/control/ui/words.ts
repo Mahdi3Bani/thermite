@@ -114,6 +114,23 @@ export interface Sentence {
  */
 export function sentence(u: RigView, e: StoredEvent): Sentence | null {
   const b = e.body ?? {};
+  /** Who did it, in words. */
+  const who = (by: string) =>
+    by === "owner" || by.startsWith("control:owner")
+      ? "You"
+      : by === "planner"
+        ? "The planner"
+        : /teacher|combiner/.test(by)
+          ? "The teacher pair"
+          : /auditor/.test(by)
+            ? "The auditor"
+            : by.startsWith("control:")
+              ? by.slice("control:".length)
+              : by;
+  /** An experiment's title, from the run's queue. */
+  const title = (run: unknown, id: unknown) =>
+    u.runs.find((r) => r.id === String(run))?.queue.find((x) => x.id === String(id))?.title ??
+    String(id ?? "");
   const att = (id: unknown) => findAttempt(u, String(id ?? ""));
   const job = (id: unknown) => u.judge.jobs.find((j) => j.id === String(id ?? ""));
   const s = (text: string, tone: Sentence["tone"] = "", extra: Partial<Sentence> = {}) => ({
@@ -151,7 +168,17 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
           { run: String(e.subject) },
         );
       return s(
-        `The planner planned ${round}${b.source === "fallback" ? ` (its fallback plan: the model's plan was refused${Array.isArray(b.refused) && b.refused.length ? `, because ${String(b.refused[0]).replace(/^try \d+: /, "")}` : ""})` : ""}: ${as.map((a) => `${a.lane} on ${a.family}`).join("; ")}.`,
+        `The planner planned ${round}${
+          b.source !== "fallback"
+            ? ""
+            : Array.isArray(b.refused) && b.refused.length
+              ? ` (by the fixed rules: the model gave no usable plan, because ${String(b.refused[0]).replace(/^try \d+: /, "")})`
+              : b.notes
+                ? ` (by the fixed rules: ${String(b.notes)})`
+                : Number(b.planner_tries) === 0
+                  ? " (by the fixed rules: no model)"
+                  : " (by the fixed rules)"
+        }: ${as.map((a) => `${a.lane} on ${a.family}`).join("; ")}.`,
         "",
         { run: String(e.subject) },
       );
@@ -276,8 +303,54 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
         { attempt: b.attempt ? String(b.attempt) : undefined, run: String(e.subject) },
       );
     }
-    case "directive":
-      return s("A steering directive took effect.", "", { run: String(e.subject) });
+    case "directive": {
+      const d = (b.body ?? {}) as { kind?: string; family?: string; match?: string };
+      const what = d.family ?? d.match;
+      return s(
+        `${who(e.actor)} set a rule for the plan${d.kind ? `: ${d.kind}${what ? ` ${what}` : ""}` : ""}.`,
+        "",
+        { run: String(e.subject) },
+      );
+    }
+    case "directive_dropped":
+      return s(`${who(e.actor)} removed rule ${String(b.id)}.`, "", { run: String(e.subject) });
+    // The run's experiment queue (goal 064): what was added, moved, dropped and given out.
+    case "experiment_added":
+      return s(
+        b.from_run
+          ? `"${clip(String(b.title ?? ""), 120)}" was copied into the queue from run ${String(b.from_run)}.`
+          : `${who(String(b.by ?? e.actor))} ${b.state === "proposed" ? "proposed" : "added"} "${clip(String(b.title ?? ""), 120)}"${b.state === "proposed" ? " as an idea for the queue" : " to the queue"}.`,
+        "",
+        { run: String(e.subject) },
+      );
+    case "experiment_accepted":
+    case "experiment_moved":
+    case "experiment_edited":
+    case "experiment_dropped": {
+      const t = `"${clip(title(e.subject, b.id), 120)}"`;
+      const by = who(String(b.by ?? e.actor));
+      return s(
+        e.kind === "experiment_accepted"
+          ? `${by} queued the idea ${t}.`
+          : e.kind === "experiment_moved"
+            ? `${by} moved ${t} to ${typeof b.position === "number" ? `place ${b.position + 1}` : `the ${String(b.position)}`}.`
+            : e.kind === "experiment_edited"
+              ? `${by} edited ${t}.`
+              : `${by} dropped ${t}${b.why ? `: ${clip(String(b.why), 200)}` : ""}.`,
+        "",
+        { run: String(e.subject) },
+      );
+    }
+    case "planner_handout": {
+      const as = Array.isArray(b.assignments)
+        ? (b.assignments as { lane?: string; experiment?: string }[])
+        : [];
+      return s(
+        `The planner gave out ${Number.isFinite(Number(b.round)) ? `round ${String(b.round)}` : "work"}: ${as.map((a) => `${a.lane} on "${clip(title(e.subject, a.experiment), 80)}"`).join("; ") || "nothing"}.`,
+        "",
+        { run: String(e.subject) },
+      );
+    }
     case "review_requested":
       return s(`The review panel was asked to judge the goal "${String(b.goal)}".`, "", {
         run: String(e.subject),

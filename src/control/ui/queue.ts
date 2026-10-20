@@ -1,5 +1,5 @@
 import type { AttemptView, ExperimentView, RigView, RunView } from "../views.ts";
-import { ago, esc } from "./components.ts";
+import { ago, esc, icon } from "./components.ts";
 import { infoLabel } from "./new-campaign.ts";
 import { outcome } from "./operator.ts";
 import { clip } from "./words.ts";
@@ -159,6 +159,8 @@ export function plannerTab(o: {
   figures: string;
   /** The champion to another rig, when that is possible. */
   propagate: string;
+  /** Why the owner's last message to the planner was not sent or not taken, if so. */
+  refused?: string | undefined;
 }): string {
   const { u, r } = o;
   const research = r.mode === "research";
@@ -199,7 +201,7 @@ export function plannerTab(o: {
 <div class="qrules">${r.rules.map(ruleRow).join("") || `<div class="card"><div class="empty">No rules. The planner follows the queue and its own judgment.</div></div>`}</div>
 <details class="adv" style="margin-top:10px"${r.rules.length ? "" : " open"}><summary>Add a rule</summary><div><form method="post" action="/ui/commands" class="qruleform"><input type="hidden" name="csrf" value="${esc(o.csrf)}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(r.id)}"><input type="hidden" name="kind" value="redirect"><input type="hidden" name="add" value="1"><input type="hidden" name="back" value="${esc(o.back)}">
 <label class="sfd">${infoLabel("Rule", "Avoid: no lane gets this direction. Try: it comes first when there is a choice. Always: one lane works on it at every hand-out.")}<select name="directive"><option value="avoid">Avoid</option><option value="try">Try</option><option value="mandate">Always</option></select></label>
-<label class="sfd">${infoLabel("Direction", "In your own words: a direction this run has used, a kind of change (anything with shared memory), or a file. The planner applies it to every experiment it matches.")}<input name="match" required maxlength="200" placeholder="for example: anything that uses shared memory"></label>
+<label class="sfd">${infoLabel("Direction", "In your own words: a direction this run has used, a kind of change (anything with shared memory), or a file. The planner's model applies words to every experiment they match. Without its model (none set, its answer refused, the planner off, or a research run) only a rule that names a direction this run has used applies.")}<input name="match" required maxlength="200" placeholder="for example: anything that uses shared memory"></label>
 <label class="sfd">${infoLabel("Why", "Kept with the rule and shown to the planner.")}<input name="rationale" required maxlength="2000" placeholder="for example: measured slower twice"></label>
 <button class="primary">Add the rule</button></form></div></details>
 <div class="head" style="margin-top:26px"><h2>What the planner did</h2><span class="right">each hand-out: what went to which lane, and why</span></div>
@@ -209,7 +211,7 @@ ${o.figures}
 ${
   research
     ? `<div class="card qcard"><h3>The plan</h3><div class="small">A research run sets each round with a fixed method: it takes the experiments in queue order and keeps to the rules. There is no planner model to tell.</div></div>`
-    : `<div class="card qcard"><h3>Tell the planner</h3><form method="post" action="/ui/live/message"><input type="hidden" name="csrf" value="${esc(o.csrf)}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(r.id)}"><input type="hidden" name="to" value="planner"><input type="hidden" name="back" value="${esc(o.back)}"><textarea name="text" rows="4" required maxlength="4000" placeholder="for example: stop trying tiling, and put vector loads first" style="width:100%"></textarea><div class="muted small" style="margin:6px 0">The planner reads it when it next gives out work. From what you say it can add or drop experiments, reorder the queue and add rules; each change shows here and in Experiments, with your message as its reason.</div><button class="primary">Send to the planner</button></form></div>`
+    : `<div class="card qcard"><h3>Tell the planner</h3>${o.refused ? `<div class="lnotice">${icon.warn}<span><b>Not sent.</b> ${esc(o.refused)}</span></div>` : ""}<form method="post" action="/ui/live/message"><input type="hidden" name="csrf" value="${esc(o.csrf)}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(r.id)}"><input type="hidden" name="to" value="planner"><input type="hidden" name="back" value="${esc(o.back)}"><textarea name="text" rows="4" required maxlength="4000" placeholder="for example: stop trying tiling, and put vector loads first" style="width:100%"></textarea><div class="muted small" style="margin:6px 0">The planner reads it when it next gives out work. From what you say it can add or drop experiments, reorder the queue and add rules; each change shows here and in Experiments, with your message as its reason.</div><button class="primary">Send to the planner</button></form></div>`
 }
 <div class="card qcard"><h3>The planner</h3><div class="small">${esc(o.model)}</div><a class="small" href="/ui/rigs/${encodeURIComponent(u.id)}/edit">Change it on Edit rig</a>${
     r.agents.epochs && !research

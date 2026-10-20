@@ -118,7 +118,7 @@ export function runState(i: RunView): { text: string; cls: string; icon: string 
 
 /** A campaign's state: its most urgent run's. */
 export function campaignState(k: CampaignView): { text: string; cls: string; icon: string } {
-  const order = ["Approval", "Decision", "Review", "Audit", "Running", "Paused", "Closed"];
+  const order = ["Approval", "Decision", "Review", "Audit", "Running", "Paused", "Finished"];
   const states = k.runs.map((x) => runState(x.run));
   return (
     states.sort((a, b) => order.indexOf(a.text) - order.indexOf(b.text))[0] ?? {

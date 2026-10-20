@@ -153,9 +153,9 @@ export function liveEntryHtml(
       );
     }
     case "message":
-      // A trial's own lines are the agent's: only the harness's lines (planner, supervisor) are
-      // shown as the owner's.
-      return e.source.startsWith("trial:")
+      // A trial's own lines are the agent's, and an unsigned line can claim anything: only the
+      // harness's signed lines (planner, supervisor) are shown as the owner's.
+      return e.source.startsWith("trial:") || e.signed !== true
         ? row("lv-log", `<span>${esc(e.text)}</span>`)
         : row(
             "lv-msg",
@@ -255,8 +255,11 @@ export type RunMessages = ReadonlyMap<number, { to: string; text: string; keep: 
  * One line on a run's Live page: tagged with the filters it belongs to (data-who) and its source
  * (data-src, so a result joins its own call). A trial's start and end read as dividers. The
  * owner's message, a read receipt and an advisor's answer show as such only when the harness signed
- * the line and the run's signed events have that message, and their words come from the event: a
- * worker's own line, or the supervisor's unsigned one, can claim anything, so it shows as theirs.
+ * the line: a worker's own line, or the supervisor's unsigned one, can claim anything, so it shows
+ * as theirs. The words come from the run's signed event when control has it. A signed line from
+ * the harness's own sources (planner, supervisor) shows at once from its own words; one filed
+ * under a trial waits for the event (a rig on an older harness let trials post such lines), and
+ * is marked so that Live draws it again when the event comes (data-recheck).
  */
 export function runEntryHtml(
   e: LiveEntry,
@@ -277,20 +280,31 @@ export function runEntryHtml(
     if (end)
       return `<div class="lv-div" data-who="${esc(whoTags(e))}" data-src="${esc(e.source)}" data-id="${e.id}"><span><b>${esc(lane || "trial")}</b> · trial ended${end[1] ? ` · ${esc(clip(end[1], 160))}` : ""}</span></div>`;
   }
+  const trial = e.source.startsWith("trial:");
+  // A signed line filed under a trial, still waiting for its event: drawn plain until it comes.
+  const waits = () => plain().replace('<div data-who="', '<div data-recheck="1" data-who="');
   if (e.kind === "message") {
-    const id = Number(/^Owner to [^\s(:]+ \(#(\d+)/.exec(e.text)?.[1]);
-    const m = messages.get(id);
+    const line = /^Owner to ([^\s(:]+) \(#(\d+)(, kept in force)?\): ([\s\S]*)$/.exec(e.text);
+    const id = Number(line?.[2]);
+    const m =
+      messages.get(id) ??
+      (line && !trial
+        ? { to: line[1] ?? "", text: line[4] ?? "", keep: line[3] !== undefined }
+        : undefined);
     // A message to a trial is filed under that trial; every other message under the harness's own sources.
-    if (m && e.signed === true && e.source.startsWith("trial:") === m.to.startsWith("trial:"))
+    if (m && e.signed === true && trial === m.to.startsWith("trial:"))
       return `<div class="lv-row lv-you" data-who="${esc(whoTags(e, m.to))}" data-src="${esc(e.source)}" data-id="${e.id}" data-msg="${id}">${liveTime(e.at, now)}<div class="lv-body"><div class="you"><b>To ${esc(RECIPIENT[m.to] ?? m.to)}:</b> ${esc(m.text)}${m.keep ? ` <span class="muted xs">📌 kept in force</span>` : ""}</div></div></div>`;
-    return plain();
+    return line && e.signed === true && trial ? waits() : plain();
   }
   const read =
-    /^(?:(the teacher pair|the auditor|the review panel) )?read the owner's message #(\d+)/.exec(
+    /^(?:(the teacher pair|the auditor|the review panel) )?read the owner's message #(\d+)( \(in force\))?: ([\s\S]*)$/.exec(
       e.text,
     );
   if (e.kind === "status" && read) {
-    const m = messages.get(Number(read[2]));
+    const m =
+      messages.get(Number(read[2])) ??
+      (!trial ? { to: "", text: read[4] ?? "", keep: read[3] !== undefined } : undefined);
+    if (!m && e.signed === true) return waits();
     if (m && e.signed === true && (read[1] !== undefined) === (e.source === "supervisor"))
       return `<div class="lv-row lv-read" data-who="${esc(`${whoTags(e)} you`)}" data-src="${esc(e.source)}" data-id="${e.id}">${liveTime(e.at, now)}<div class="lv-body"><span class="muted">✓ ${esc(read[1] ?? runSourceName(e.source, e.lane))} read your message${m.keep ? " (in force)" : ""}: “${esc(clip(m.text, 120))}”</span></div></div>`;
     return plain();
@@ -299,13 +313,7 @@ export function runEntryHtml(
     /^(the teacher pair|the auditor|the review panel)(?: \(([^)]*)\))? answered the owner's message #(\d+): ([\s\S]*)$/.exec(
       e.text,
     );
-  if (
-    ans &&
-    e.kind === "text" &&
-    e.source === "supervisor" &&
-    e.signed === true &&
-    messages.has(Number(ans[3]))
-  )
+  if (ans && e.kind === "text" && e.source === "supervisor" && e.signed === true)
     return `<div class="lv-row lv-answer" data-who="advisors you" data-src="${esc(e.source)}" data-id="${e.id}">${liveTime(e.at, now)}<div class="lv-body"><div class="answer"><b>${esc(ans[1] ?? "")}${ans[2] ? ` (${esc(ans[2])})` : ""} answered you:</b> ${mdLite(ans[4] ?? "")}</div></div></div>`;
   return plain();
 }

@@ -95,6 +95,50 @@ describe("control over MCP", () => {
     assert.equal(queue.run, "js-1");
     assert.deepEqual(queue.up_next, []);
     assert.ok(Array.isArray(queue.rules));
+    // A copied experiment's author comes from the rig's events, never from the caller.
+    text(
+      await agent.callTool({
+        name: "issue_command",
+        arguments: {
+          rig: "rig-a",
+          kind: "queue_add",
+          payload: { run: "js-1", title: "unroll the loop" },
+        },
+      }),
+    );
+    state = await relayOnce(cfg, state); // the command to the harness
+    state = await relayOnce(cfg, state); // its event back to control
+    const known = env.service.queue.all("js-1")[0];
+    assert.ok(known);
+    const from = (id: string) => ({
+      title: "t",
+      by: "planner",
+      state: "queued",
+      from: { run: "js-1", id },
+    });
+    text(
+      await agent.callTool({
+        name: "issue_command",
+        arguments: {
+          rig: "rig-a",
+          kind: "assign_campaign",
+          payload: {
+            ...(env.assign.envelope.payload as Record<string, unknown>),
+            run: "js-2",
+            queue: [from(known.id), from("x-000000000000")],
+          },
+        },
+      }),
+    );
+    const signed = store.db
+      .prepare("select signed from command where kind = 'assign_campaign'")
+      .get() as { signed: string };
+    assert.deepEqual(
+      (
+        JSON.parse(signed.signed) as { envelope: { payload: { queue: { by: string }[] } } }
+      ).envelope.payload.queue.map((x) => x.by),
+      ["owner", "copied"],
+    );
     const audit = store.listAudit(100).map((a) => a.action);
     assert.ok(audit.includes("mcp:issue_command"));
     const denied = await control.request("/mcp", { method: "POST", body: "{}" });

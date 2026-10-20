@@ -487,11 +487,21 @@ describe("clusters in Providers and Add a rig", () => {
       tag: "3",
       publicUrl: "https://control2.example.com",
     });
+    assert.match(
+      await moved.page("/ui/rigs/cpu-1"),
+      /Control's address for rigs changed: the rig reports to <span class="mono">https:\/\/control\.example\.com<\/span>, control is now at <span class="mono">https:\/\/control2\.example\.com<\/span>[\s\S]*Give it control's new address/,
+    );
     f.calls.length = 0;
     assert.match(
       await moved.post("/ui/rigs/cpu-1/cluster/images", {}),
       /ok=cpu-1 gets control's new address when it starts again/,
     );
+    assert.equal(moved.store.clusterRig("cpu-1")?.spec.controlUrl, "https://control2.example.com");
+    assert.doesNotMatch(await moved.page("/ui/rigs/cpu-1"), /Give it control/);
+    // After a failed change, the same images are offered again as a retry.
+    moved.store.setClusterRigStatus("cpu-1", "failed");
+    assert.match(await moved.page("/ui/rigs/cpu-1"), /Try the update again/);
+    moved.store.setClusterRigStatus("cpu-1", "stopped");
     assert.match(
       String(f.calls.find((c) => c.args[0] === "apply")?.stdin),
       /control2\.example\.com/,
