@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { type CommandKind, CommandPayloads, signEnvelope } from "../core/commands.ts";
+import {
+  type CommandKind,
+  CommandPayloads,
+  type SignedCommand,
+  signEnvelope,
+} from "../core/commands.ts";
 import { MAX_LANES } from "../core/contract.ts";
 import { RESEARCH_TASK_KINDS, researchDirectionRefusal } from "../core/directions.ts";
 import type { ControlStore } from "./store.ts";
@@ -140,6 +145,15 @@ export function harnessConfirmed(outcome: unknown): boolean {
   return (outcome as { source?: string } | null)?.source === "harness";
 }
 
+/** What a command is issued with: the rig, its kind and payload, how long it lives, who asks. */
+export interface IssueInput {
+  rig: string;
+  kind: CommandKind;
+  payload: unknown;
+  ttlMinutes?: number | undefined;
+  issuedBy: string;
+}
+
 /**
  * Issues a signed command for a rig: the one path the API, the dashboard and MCP all use.
  * The payload is validated against its kind's schema before signing; the rig's harness
@@ -148,14 +162,77 @@ export function harnessConfirmed(outcome: unknown): boolean {
 export function issueCommand(
   store: ControlStore,
   privateKeyPem: string,
-  input: {
-    rig: string;
-    kind: CommandKind;
-    payload: unknown;
-    ttlMinutes?: number | undefined;
-    issuedBy: string;
-  },
+  input: IssueInput,
 ): { id: string } {
+  const signed = prepareCommand(store, privateKeyPem, input);
+  store.enqueueCommand(signed);
+  return { id: signed.envelope.id };
+}
+
+/** The commands that start a run on a rig: on a stopped RunPod pod, they start the pod first. */
+export const WAKING_KINDS: readonly CommandKind[] = ["assign_campaign", "resume_run"];
+
+/** A command refused because its rig's pod on RunPod could not be started for it (a conflict). */
+export class WakeRefused extends Error {}
+
+/** What issueWaking needs of the rigs on RunPod (RunpodRigs, runpod-rigs.ts). */
+export interface PodWaker {
+  /** The rig's pod as control follows it, when the rig is one launched on RunPod. */
+  view(rig: string): { active: boolean; status: string; op?: { kind: string } | null } | undefined;
+  /** Starts the rig's pod when it is stopped: what it did in words, or null when nothing. */
+  wake(rig: string, by: string, why?: string): Promise<string | null>;
+}
+
+/**
+ * Issues a command that may start a run (WAKING_KINDS) on a rig launched on RunPod: when the
+ * rig's pod is stopped, control starts it first, then queues the command, which waits until the
+ * pod runs and the rig fetches it. The command is checked and signed before anything starts, so a
+ * bad payload never starts a pod. A start that is refused (no free GPU, the spend limit reached,
+ * a stop under way) refuses the command too, and nothing is queued. Only the owner starts a pod,
+ * as for a launch and a start: for a stopped pod, another token's command is refused in words.
+ * Other kinds, and other rigs, are issued as issueCommand issues them.
+ */
+export async function issueWaking(
+  store: ControlStore,
+  privateKeyPem: string,
+  pods: PodWaker | undefined,
+  input: IssueInput & { owner: boolean },
+): Promise<{ id: string; woke: string | null }> {
+  const signed = prepareCommand(store, privateKeyPem, input);
+  let woke: string | null = null;
+  if (pods && WAKING_KINDS.includes(input.kind)) {
+    const pod = pods.view(input.rig);
+    if (pod?.active && pod.status === "EXITED" && !pod.op && !input.owner)
+      throw new WakeRefused(
+        `${input.rig}'s pod on RunPod is stopped, and only the owner can start it: start the pod from the rig's page, or start the run with the owner's token`,
+      );
+    const run = (input.payload as { run?: unknown } | null)?.run;
+    const why =
+      typeof run === "string"
+        ? `to ${input.kind === "assign_campaign" ? "assign" : "resume"} run ${run}`
+        : undefined;
+    try {
+      woke = await pods.wake(input.rig, input.issuedBy, why);
+    } catch (err) {
+      throw new WakeRefused(
+        `Not sent: control could not start ${input.rig}'s pod on RunPod for it. ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+  store.enqueueCommand(signed);
+  return { id: signed.envelope.id, woke };
+}
+
+/**
+ * Checks and signs a command for a rig without queueing it: the rig is known and not refused, the
+ * payload fits its kind's schema, and the signed command is small enough to deliver. Throws, in
+ * words, otherwise. issueCommand and issueWaking queue what it returns.
+ */
+export function prepareCommand(
+  store: ControlStore,
+  privateKeyPem: string,
+  input: IssueInput,
+): SignedCommand {
   if (!store.rigs().some((u) => u.id === input.rig) && !store.knownRig(input.rig)) {
     throw new Error(`unknown rig ${input.rig}`);
   }
@@ -194,8 +271,7 @@ export function issueCommand(
   // The harness takes commands up to 4 MiB: a bigger one could never be delivered.
   if (Buffer.byteLength(JSON.stringify(signed)) > 3.5 * 1024 * 1024)
     throw new Error(`the ${input.kind} command is too large to deliver`);
-  store.enqueueCommand(signed);
-  return { id: signed.envelope.id };
+  return signed;
 }
 
 /**

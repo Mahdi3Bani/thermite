@@ -31,6 +31,8 @@ Thermite's limits are of four kinds. Only a cap can stop a run's work, and only 
 | `THERMITE_RESEARCH_MAX_MB` | The harness's settings | None | A run's fetches are refused, in any mode: `the corpus is full (<n> MiB archived)`. Its other tools go on |
 | Turns per trial (`max_turns`) | **Edit rig**, or `THERMITE_MAX_TURNS` | None | One trial ends after that many model replies. The lane's next trial starts afresh |
 | A RunPod test's stop time (`stop_after_minutes`) | **End it after (minutes)** on the test pod form, REST or MCP | None | The test pod is removed. At least 5 minutes. A test spends money: see [Test a GPU on RunPod](../how-to/install/runpod-test.md) |
+| A RunPod rig's spend limit (`spend_limit_usd`) | The launch, or the rig's limits later, over REST, MCP or the command line | None | Control stops the pod, its results sent out first: its runs are paused, its GPU is no longer billed and its volume stays. A start is refused until the limit is raised or cleared. See [Rigs on a GPU cloud](rest-api.md#rigs-on-a-gpu-cloud) |
+| A RunPod rig's idle stop (`idle_stop_minutes`) | The same | None | When no run has been at work on the rig for that many minutes (no run running, or every run paused, blocked or finished), control stops the pod as for the spend limit. At least 5 minutes. Assigning or resuming a run starts the pod again. See [When a rig is idle](rest-api.md#when-a-rig-is-idle) |
 
 - **A paused run waits.** The judge works only on running runs, so a paused run's queued judge jobs stay queued until it is resumed.
 - **Contract budgets apply only to runs with agents and a model.** A judge-only run has no trials to stop.

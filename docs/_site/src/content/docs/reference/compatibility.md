@@ -94,9 +94,9 @@ The release workflow builds the arm64 images under emulation, on amd64 runners; 
 
 ## Control and rig versions
 
-Control, each rig's harness and each rig's supervisor report their Thermite version, the commit their image was built from, and their protocol: the version of the contract between control and a rig. Control compares each rig's with its own. The REST API, MCP's `list_rigs` and `thermite rig list` show a rig as `behind` when it runs an older version that control still works with, with a notice to update its images. [Rig versions](rest-api.md#rig-versions) gives every field and message. The dashboard does not show versions yet ([goal 012](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/012-version-checks.goal)).
+Control, each rig's harness and each rig's supervisor report their Thermite version, the commit their image was built from, and their protocol: the version of the contract between control and a rig. Control compares each rig's with its own. The REST API, MCP's `list_rigs` and `thermite rig list` show a rig as `behind` when it runs an older version that control still works with, with a notice to update its images. [Rig versions](rest-api.md#rig-versions) gives every field and message. On the dashboard, a rig's page shows its version, and a banner when it is behind, ahead or refused, with **Update to** control's version for a rig control set up ([A rig's page](rig-page.md#the-version-banner)).
 
-Control can move a rig it set up on a cluster onto the images it now deploys (**Update to these images** on the rig's page); rigs on machines and joined rigs keep their images ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
+Control can move a rig it set up, on a machine or a cluster, onto the images it now deploys (**Update to** control's version on the rig's page; on a cluster, **Update to these images** too); joined rigs keep their images ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
 
 | Case | What happens | How it is tested |
 | --- | --- | --- |

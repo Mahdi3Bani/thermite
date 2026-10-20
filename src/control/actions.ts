@@ -51,4 +51,9 @@ export interface ControlActions {
   ) => Promise<{ ok: string } | { error: string }>;
   /** Sets the slots of a cluster of pre-made slots and reads it again; an error in words. */
   setClusterSlots?: (cluster: string, slots: string[], by: string) => Promise<string | null>;
+  /**
+   * Checks where a rig control set up runs (Check again on its page): whether its containers run.
+   * What it found is a step in the rig's history. Null when control can't reach where it runs.
+   */
+  checkRigPlace?: (rig: string, by: string) => Promise<{ ok: boolean; words: string } | null>;
 }

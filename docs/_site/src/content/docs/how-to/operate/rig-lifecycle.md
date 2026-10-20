@@ -10,16 +10,16 @@ What you can do to a [rig](../../reference/glossary.md), and where, depends on h
 
 | Action | The local compose stack | Set up by control on a machine | Set up by control on a cluster | Joined yourself | Launched on RunPod |
 | --- | --- | --- | --- | --- | --- |
-| Stop and start | Your compose tool | **Stop its services**, **Start its services** | **Stop its pods**, **Start its pods**, or MCP's `cluster_rig` | Commands on its page, which you run there | `thermite runpod stop`, `start`, or MCP's `runpod_rig` |
-| Restart | Your compose tool | **Restart them** | **Restart them**, or MCP's `cluster_rig` | A command on its page | `thermite runpod restart`, or MCP's `runpod_rig` |
-| Move to new images | Your compose tool | Not yet | **Update to these images** | Not yet | Not yet: launch a new rig |
-| Remove | Your compose tool | **Remove the rig** | **Remove the rig** | A command on its page, then **Retire the rig** | `thermite runpod terminate`, which also retires it |
+| Stop and start | Your compose tool | **Stop its services**, **Start its services** | **Stop its pods**, **Start its pods**, or MCP's `cluster_rig` | Commands on its page, which you run there | **Stop the pod**, **Start the pod**, `thermite runpod stop`, `start`, or MCP's `runpod_rig` |
+| Restart | Your compose tool | **Restart them** | **Restart them**, or MCP's `cluster_rig` | A command on its page | **Restart the pod**, `thermite runpod restart`, or MCP's `runpod_rig` |
+| Move to new images | Your compose tool | **Update to** control's version | **Update to** control's version, or **Update to these images** | Not yet | Not yet: launch a new rig |
+| Remove | Your compose tool | **Remove the rig** | **Remove the rig** | A command on its page, then **Retire the rig** | **Terminate**, or `thermite runpod terminate`, which also retires it |
 | Retire, bring back | Yes | Yes | Yes | Yes | Yes |
 | Full reset | Yes | Yes | Yes | Yes | Yes, with the pod running; the pod and its GPU stay |
 
 A full reset needs the rig's full export off the rig first: in its [results repository](results-repository.md), or, for a rig without one, on control. Of the rigs Thermite sets up, only the compose stack has a results repository; the others send their exports to control ([Exports](../../reference/exports.md#where-exports-go)).
 
-A rig launched on RunPod has no buttons for these on the dashboard yet: [Run a rig on RunPod](../install/runpod-rig.md#5-stop-and-start-it) gives the commands, which the REST API and MCP have too. Its stop sends its results out before the pod stops, and its terminate removes the pod only once every result has left it. A full reset of it starts from its page's **⋯** menu, as below, or with `thermite runpod reset`.
+A rig launched on RunPod has its buttons under **The pod** on its page: **Stop the pod**, **Start the pod**, **Restart the pod**, **Start the full reset** and **Terminate**. [Run a rig on RunPod](../install/runpod-rig.md#6-stop-and-start-it) gives the steps and the commands, which the REST API and MCP have too. Its stop sends its results out before the pod stops, and its terminate removes the pod only once every result has left it.
 
 The buttons below are on the rig's page: open **Rigs** in the dashboard's sidebar, then the rig.
 
@@ -48,7 +48,7 @@ A restart stops and starts the rig's two containers: its harness, which holds th
 
 ### Give control a deployment driver
 
-You don't need a deployment driver for the steps on this page. With one, control also restarts a rig's containers itself: with **Restart the rig's containers** in the **⋯** menu of the rig's page, over the REST API, and at the end of a full reset. A rig launched on RunPod needs none: over the REST API its restart goes to RunPod, which stops its pod and starts it again, and a full reset leaves its pod running. Without one, the menu says `No deployment driver: restarts are not available.` The setting is `THERMITE_LIFECYCLE` on control: `compose` or `kubernetes` (the [settings reference](../../reference/settings.md#restarts-and-full-resets) has the others).
+You don't need a deployment driver for the steps on this page. With one, control also restarts a rig's containers itself: with **Restart the rig's containers** in the **⋯** menu of the rig's page, over the REST API, and at the end of a full reset. A rig launched on RunPod needs none: its restart, with **Restart the pod** on its page or over the REST API, goes to RunPod, which stops its pod and starts it again, and a full reset leaves its pod running. Without one, the menu says `No deployment driver: restarts are not available.` The setting is `THERMITE_LIFECYCLE` on control: `compose` or `kubernetes` (the [settings reference](../../reference/settings.md#restarts-and-full-resets) has the others).
 
 On the compose stack, the file `compose.lifecycle.yaml` sets `compose` and mounts the container engine's socket into control. It is meant for development, because the socket gives control power over every container on the computer. With Docker, add it to your `-f` options. With rootless Podman, also give the socket's path, as `podman info --format '{{.Host.RemoteSocket.Path}}'` prints it, without `unix://` (on a Mac, use the path as it is):
 
@@ -76,8 +76,33 @@ It answers `{"restarted":["supervisor"]}`, or `409 {"error":"no deployment drive
 A rig keeps the images it was set up with until you move it. What you can do depends on the kind of rig:
 
 - **The compose stack:** rebuild its images and start it again with your compose tool, as [Stop, start and update](../install/one-machine.md#stop-start-and-update) says.
-- **Set up by control on a cluster:** control moves it onto the images it now deploys, as below.
-- **Set up by control on a machine, or joined yourself:** not yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)). Add a new rig from the new images instead.
+- **Set up by control on a machine or a cluster:** when its version is behind control's, **Update to** control's version on its page moves it onto the images control deploys now, with its runs paused, then checked and resumed: see [Update to control's version](#update-to-controls-version).
+- **Set up by control on a cluster:** **Update to these images** also moves it onto the images control deploys now, whatever its version, as [A rig on a cluster](#a-rig-on-a-cluster) says.
+- **Joined yourself:** not yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)). Pull the new images where it runs, and start it again.
+- **Launched on RunPod:** terminate it and launch a new rig on control's image.
+
+### Update to control's version
+
+When a rig runs an older Thermite than control, its page shows a banner: "rig-1 runs Thermite 0.1.0. Control runs 0.2.0." For a rig control set up on a machine or a cluster, the banner has **Update to 0.2.0**. When control refuses a rig because its version is too old, that banner has the button too.
+
+Before you start:
+
+- **Control runs with the new images**, as for [a rig on a cluster](#a-rig-on-a-cluster): `THERMITE_RIG_HARNESS_IMAGE` (`THERMITE_RIG_HARNESS_CUDA_IMAGE` for a rig with GPUs) and `THERMITE_RIG_SUPERVISOR_IMAGE`, those of control's own version.
+- **Control's address for rigs is set** (`THERMITE_CONTROL_PUBLIC_URL`).
+- **The machine or the cluster is still in Settings › Providers.**
+
+Steps:
+
+1. Open the rig's page, and press **Update to 0.2.0** in the banner. The page says `The update of rig-1 to 0.2.0 began. Its steps show below: press refresh to follow them.`
+2. Press **refresh** in the status bar to follow the steps in the banner:
+   - "Its runs paused at a safe point": control pauses the running runs, and waits up to 5 minutes for the rig to take the pause.
+   - "Its containers moved onto control's images": on a machine, over SSH, control pulls both images while the rig still runs, writes its two container units again, and restarts both services. On a cluster, it applies the rig's two deployments again.
+   - "A report reached control from control's version", within 20 minutes.
+   - "The isolation check after the update", within 30 minutes.
+   - "Its runs resumed".
+3. When every step has its ✓, the banner says "Updated. It runs Thermite 0.2.0, as control does."
+
+If a step fails, it gets ✕ with the reason, the banner shows "The update stopped", and the runs it paused resume. When the images could not move, the rig keeps the images it had. The rig's volumes, tokens, key, ledger, runs and results stay in every case. [A rig's page](../../reference/rig-page.md#update-to-controls-version) describes each step and its limits.
 
 ### A rig on a cluster
 
@@ -168,7 +193,7 @@ Then, in the **Set up by control** block, open "Remove it from …", type `remov
 
 Retire a rig that is gone. It leaves the rig lists, its campaigns' pages and **Needs you** (on **Overview**, the first page in the sidebar), and control refuses its reports. Its records stay. **Retiring stops nothing on the machine.**
 
-1. On the rig's page, open the **⋯** menu.
+1. On the rig's page, open the **⋯** menu. A rig control refuses, or one that is offline, also has **Retire it** in its banner.
 2. Under **Retire it**, type `retire rig-1` and press **Retire it**.
 
 The page says `rig-1 is retired.` The rig is listed under **Retired** on **Rigs**. A token control made for the rig, with **Add a rig**, a join command or `thermite rig add`, stops working.
@@ -195,7 +220,7 @@ A full reset gives a rig a clean start: it exports everything, checks that the e
 
 ### Steps
 
-1. On the rig's page, open the **⋯** menu. Under **Full reset**, type `reset rig-1` and press **Start the full reset**.
+1. On the rig's page, open the **⋯** menu. Under **Full reset**, type `reset rig-1` and press **Start the full reset**. For a rig launched on RunPod, the **Full reset** box is under **The pod**.
 
    You land on **Reports**, a page in the sidebar. The **Full resets** table shows the rig and its state. Press **refresh** in the status bar, the line along the bottom of the page, to follow it.
 

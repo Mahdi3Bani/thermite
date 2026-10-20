@@ -34,14 +34,20 @@ const draft: CampaignDraft = {
 };
 
 describe("starting a campaign from the page", () => {
-  test("the kit is kept on control, the contract stored, and the first run assigned with both sources", () => {
+  test("the kit is kept on control, the contract stored, and the first run assigned with both sources", async () => {
     const keys = generateSigningKeys();
     const store = new ControlStore(":memory:");
     store.setConfiguredRigs(["rig-a"]);
     const kits = new KitRepos(mkdtempSync(join(tmpdir(), "thermite-kits-")));
     const deps = { store, kits, privateKeyPem: keys.privateKeyPem };
     const target = { type: "cpu", class: "generic-cpu" };
-    const r = startCampaign(deps, { draft, rig: "rig-a", target, start: true, by: "owner:ui" });
+    const r = await startCampaign(deps, {
+      draft,
+      rig: "rig-a",
+      target,
+      start: true,
+      by: "owner:ui",
+    });
     assert.ok(r.ok, JSON.stringify(!r.ok && r.errors));
     if (!r.ok) return;
     assert.equal(r.version, 1);
@@ -77,7 +83,13 @@ describe("starting a campaign from the page", () => {
       ],
     );
     // Again: a new version, the same kit commit (nothing changed), the next run's name.
-    const again = startCampaign(deps, { draft, rig: "rig-a", target, start: true, by: "owner:ui" });
+    const again = await startCampaign(deps, {
+      draft,
+      rig: "rig-a",
+      target,
+      start: true,
+      by: "owner:ui",
+    });
     assert.ok(again.ok);
     if (again.ok) {
       assert.equal(again.version, 2);
@@ -85,7 +97,7 @@ describe("starting a campaign from the page", () => {
     }
     assert.equal(kits.head("matmul-speed-kit"), head);
     // Saved only: stored, nothing assigned.
-    const saved = startCampaign(deps, {
+    const saved = await startCampaign(deps, {
       draft,
       rig: "rig-a",
       target,
@@ -95,7 +107,7 @@ describe("starting a campaign from the page", () => {
     assert.ok(saved.ok && saved.run === undefined && saved.version === 3);
   });
 
-  test("a try runs the kit with no agents; a later run starts from the saved version and its sources", () => {
+  test("a try runs the kit with no agents; a later run starts from the saved version and its sources", async () => {
     const keys = generateSigningKeys();
     const store = new ControlStore(":memory:");
     store.setConfiguredRigs(["rig-a", "rig-b"]);
@@ -112,7 +124,7 @@ describe("starting a campaign from the page", () => {
           ).signed,
         ) as { envelope: { payload: { run: string; agents?: boolean; imports: unknown[] } } }
       ).envelope.payload;
-    const tried = startCampaign(deps, {
+    const tried = await startCampaign(deps, {
       draft,
       rig: "rig-a",
       target,
@@ -122,7 +134,7 @@ describe("starting a campaign from the page", () => {
     assert.ok(tried.ok && tried.run === "matmul-speed-try-1", JSON.stringify(tried));
     if (!tried.ok) return;
     assert.equal(payloadOf(String(tried.command)).agents, false);
-    const real = startRun(deps, {
+    const real = await startRun(deps, {
       campaign: "matmul-speed",
       rig: "rig-b",
       target,
@@ -135,7 +147,7 @@ describe("starting a campaign from the page", () => {
     assert.equal(p.agents, undefined);
     assert.deepEqual(p.imports, payloadOf(String(tried.command)).imports);
     // A rig with other hardware is refused, and an unknown campaign too.
-    const gpu = startRun(deps, {
+    const gpu = await startRun(deps, {
       campaign: "matmul-speed",
       rig: "rig-b",
       target: { type: "cuda-gpu", class: "p100" },
@@ -144,19 +156,20 @@ describe("starting a campaign from the page", () => {
     });
     assert.match(JSON.stringify(gpu), /measures on cuda-gpu/);
     assert.equal(
-      startRun(deps, { campaign: "nothing", rig: "rig-a", agents: true, by: "owner:ui" }).ok,
+      (await startRun(deps, { campaign: "nothing", rig: "rig-a", agents: true, by: "owner:ui" }))
+        .ok,
       false,
     );
   });
 
-  test("a campaign assigned outside the page starts again from its newest assignment", () => {
+  test("a campaign assigned outside the page starts again from its newest assignment", async () => {
     const keys = generateSigningKeys();
     const store = new ControlStore(":memory:");
     store.setConfiguredRigs(["rig-a", "rig-b"]);
     const kits = new KitRepos(mkdtempSync(join(tmpdir(), "thermite-kits-")));
     const deps = { store, kits, privateKeyPem: keys.privateKeyPem };
     // No version on control: nothing to start from yet.
-    const none = startRun(deps, {
+    const none = await startRun(deps, {
       campaign: "cli-made",
       rig: "rig-b",
       agents: true,
@@ -187,7 +200,7 @@ describe("starting a campaign from the page", () => {
       issuedBy: "owner:mcp",
     });
     // Other hardware is refused, with why.
-    const gpu = startRun(deps, {
+    const gpu = await startRun(deps, {
       campaign: "cli-made",
       rig: "rig-b",
       target: { type: "cuda", class: "p100" },
@@ -196,7 +209,7 @@ describe("starting a campaign from the page", () => {
     });
     assert.equal(gpu.ok, false);
     if (!gpu.ok) assert.match(gpu.errors.join(" "), /measures on cpu/);
-    const r = startRun(deps, {
+    const r = await startRun(deps, {
       campaign: "cli-made",
       rig: "rig-b",
       target: { type: "cpu", class: "x" },
@@ -236,7 +249,7 @@ describe("starting a campaign from the page", () => {
         from: { run: "cli-made-1", id: "x-4" },
       },
     ];
-    const q = startRun(deps, {
+    const q = await startRun(deps, {
       campaign: "cli-made",
       rig: "rig-a",
       agents: true,
@@ -256,7 +269,7 @@ describe("starting a campaign from the page", () => {
     ).envelope.payload;
     assert.deepEqual(qp.queue, seed);
     // A try (no agents) has no queue.
-    const t = startRun(deps, {
+    const t = await startRun(deps, {
       campaign: "cli-made",
       rig: "rig-a",
       agents: false,
@@ -277,11 +290,11 @@ describe("starting a campaign from the page", () => {
     assert.equal(tp.queue, undefined);
   });
 
-  test("a draft with mistakes changes nothing and says why", () => {
+  test("a draft with mistakes changes nothing and says why", async () => {
     const store = new ControlStore(":memory:");
     store.setConfiguredRigs(["rig-a"]);
     const kits = new KitRepos(mkdtempSync(join(tmpdir(), "thermite-kits-")));
-    const r = startCampaign(
+    const r = await startCampaign(
       { store, kits, privateKeyPem: generateSigningKeys().privateKeyPem },
       {
         draft: { ...draft, kit: { ...(draft.kit as object), run: "{build}/bench {size}" } },

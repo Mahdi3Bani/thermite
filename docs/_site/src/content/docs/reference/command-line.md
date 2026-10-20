@@ -77,13 +77,15 @@ usage: thermite <command> [options]
                                       control's, with what to do when it is behind or refused
   runpod launch CLOUD --gpu G [--gpus N] [--cloud-type SECURE|COMMUNITY] [--datacenter DC]
          [--image I] [--disk GB] [--volume GB] [--rig NAME] [--enroll-within MIN]
-         [--setting NAME=VALUE ...] [--spend-limit USD] [--idle-stop MIN]
+         [--setting NAME=VALUE ...] [--spend-limit USD] [--idle-stop MIN|off]
          --control URL --token-file F
                                       spends money: launch a rig on the GPU cloud CLOUD from
                                       Providers (owner's token), a pod of the one-container rig
                                       image in pull mode. Defaults: 1 GPU, SECURE, any data
                                       center, control's rig image, a 40 GB disk, a 100 GB
-                                      volume, no spend limit, no idle stop
+                                      volume, no spend limit, no idle stop. --idle-stop MIN
+                                      stops the pod after MIN minutes with no run at work;
+                                      off: no idle stop
   runpod list [CLOUD] --control URL --token-file F [--json]
                                       list the rigs launched on GPU clouds (owner's token):
                                       each pod's status, price per hour, spend so far and limits
@@ -110,7 +112,9 @@ usage: thermite <command> [options]
   runpod cancel-reset RIG --control URL --token-file F
                                       cancel the rig's full reset before its wipe (owner's token)
   command --control URL --token-file F --rig U --kind K --payload JSON|@file [--ttl MIN]
-                                      issue a signed command through control (admin token)
+                                      issue a signed command through control (admin token).
+                                      assign_campaign and resume_run on a RunPod rig whose pod
+                                      is stopped start the pod first, and say so
   submit --harness URL --token-file F --run ID --patch-file P --hypothesis TEXT
          [--known-flaw TEXT ...]      submit a patch as a proposer
   status --harness URL --token-file F --attempt ID
@@ -266,7 +270,7 @@ The imports it adds to the payload:
 | `--kit` | `kit_bundle` for the contract's `project.kit` repository and commit | `repos/kit-<repo>-<commit>.bundle` | `{"git": "<GIT_URL>"}` |
 | `--model` | `model` with the contract's SHA-256 for that model | `models/<sha256>` | `{"url": "<URL>"}` |
 
-Sent, it prints control's answer on one line, such as `{"id":"<command id>","status":"pending"}`. [Signed commands](signed-commands.md) describes the `assign_campaign` payload and what the harness checks. The campaign's page on the dashboard can start further runs of it: **Start a run** signs the newest assignment again as a new run, with the same contract, seed and imports. A run on another rig works only if that rig already has what the imports leave out: the seed commit when `--seed` was not given, the kit's commit when `--kit` was not given, and each model the contract lists that no `--model` gave.
+Sent, it prints control's answer on one line, such as `{"id":"<command id>","status":"pending"}`. On a [rig launched on RunPod](rest-api.md#rigs-on-a-gpu-cloud) whose pod is stopped, control starts the pod first; the answer's `woke` says so, and the command also prints those words on standard error: `rp-1a2b3c4d's pod was stopped: control started it. The run starts once the pod runs.` When control can't start it, the command is not sent, and it ends with control's `409` and the reason, such as no GPU free at RunPod or the spend limit reached. [Signed commands](signed-commands.md) describes the `assign_campaign` payload and what the harness checks. The campaign's page on the dashboard can start further runs of it: **Start a run** signs the newest assignment again as a new run, with the same contract, seed and imports. A run on another rig works only if that rig already has what the imports leave out: the seed commit when `--seed` was not given, the kit's commit when `--kit` was not given, and each model the contract lists that no `--model` gave.
 
 | Message | Cause |
 | --- | --- |
@@ -386,7 +390,7 @@ It prints the rig on one line, then `Launched: RunPod bills the pod from now. Co
 | `--enroll-within MIN` | No | no expiry | The enrollment code expires this many minutes after the launch |
 | `--setting NAME=VALUE` | No | a GPU rig on all the pod's GPUs | One of the rig's settings at enrollment; give it again for each |
 | `--spend-limit USD` | No | none | Control stops the pod once it has cost this much |
-| `--idle-stop MIN` | No | none | Control stops the pod once no run has run on the rig for this many minutes |
+| `--idle-stop MIN` | No | none | Control stops the pod once no run has been at work on the rig for this many minutes: no run running, or every run paused, blocked or finished. `off`: no idle stop. [Rigs on a GPU cloud](rest-api.md#rigs-on-a-gpu-cloud) says what counts as at work |
 | `--control URL`, `--token-file F` | Yes | | Control's address, and a file with the owner's token |
 
 [Rigs on a GPU cloud](rest-api.md#rigs-on-a-gpu-cloud) gives each field's limits and every refusal. An option with a value it can't take ends the command with exit code 2 and a reason, such as `--gpus takes a whole number, not "two"` or `--cloud-type is SECURE or COMMUNITY, not "spot"`.
@@ -436,7 +440,7 @@ With no reset of the rig under way, `confirm-wipe` and `cancel-reset` end with `
 
 ### `command`
 
-`thermite command` sends any [signed command](signed-commands.md) through control (`POST /v1/commands`) and prints control's answer on one line, such as `{"id":"<command id>","status":"pending"}`.
+`thermite command` sends any [signed command](signed-commands.md) through control (`POST /v1/commands`) and prints control's answer on one line, such as `{"id":"<command id>","status":"pending"}`. For `assign_campaign` and `resume_run`: on a [rig launched on RunPod](rest-api.md#rigs-on-a-gpu-cloud) whose pod is stopped, control starts the pod first; the answer's `woke` says so, and the command also prints those words on standard error: `rp-1a2b3c4d's pod was stopped: control started it. The run starts once the pod runs.` When control can't start it, the command is not sent, and it ends with control's `409` and the reason, such as no GPU free at RunPod or the spend limit reached.
 
 | Option | Required | Default | Meaning |
 | --- | --- | --- | --- |

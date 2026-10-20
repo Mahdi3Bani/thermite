@@ -142,7 +142,7 @@ Except where a section says control refuses, the refusals listed under each kind
 
 ### `assign_campaign`
 
-Starts a run of a campaign on the rig.
+Starts a run of a campaign on the rig. On a [rig launched on RunPod](rest-api.md#rigs-on-a-gpu-cloud) whose pod is stopped, control starts the pod first, then queues the command, which waits until the pod runs ([A run on a stopped RunPod pod](rest-api.md#signed-commands)). Only the owner's token starts a pod.
 
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -233,7 +233,7 @@ The run becomes `paused` with the reason. Its lanes' running trials end; the exp
 | --- | --- | --- |
 | `run` | lowercase id | The run |
 
-The run becomes `running`, and the rig's other running runs are paused: a rig runs one run at a time. A closed run is refused: `run <run> is closed`. Result: `{"run", "status": "running"}`.
+The run becomes `running`, and the rig's other running runs are paused: a rig runs one run at a time. A closed run is refused: `run <run> is closed`. Result: `{"run", "status": "running"}`. On a rig launched on RunPod whose pod is stopped, control starts the pod first, as for [`assign_campaign`](#assign_campaign).
 
 ### `redirect`
 

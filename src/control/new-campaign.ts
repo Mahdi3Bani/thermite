@@ -1,7 +1,7 @@
 import type { BriefingSeed } from "../core/commands.ts";
 import { parseContract } from "../core/contract.ts";
 import { buildCampaign } from "./campaign-builder.ts";
-import { issueCommand } from "./issue.ts";
+import { issueWaking, type PodWaker } from "./issue.ts";
 import type { KitRepos } from "./kit-repos.ts";
 import type { CampaignSources, ControlStore } from "./store.ts";
 
@@ -15,6 +15,9 @@ import type { CampaignSources, ControlStore } from "./store.ts";
  * A run is either a campaign's own run (its agents at work) or a try: the same assignment with
  * no agents, so the judge builds the starting point and runs every case once on its own, and
  * the owner sees the kit work before agents spend anything.
+ *
+ * A run on a rig launched on RunPod whose pod is stopped starts the pod first (issue.ts's
+ * issueWaking): these pages are the owner's, who alone may start a pod.
  */
 
 export interface StartInput {
@@ -37,7 +40,14 @@ export type StartResult =
       sha: string;
       run?: string | undefined;
       command?: string | undefined;
+      /** What control did to start the rig's stopped pod first, in words; null: nothing. */
+      woke?: string | null | undefined;
     }
+  | { ok: false; errors: string[] };
+
+/** A run started: its campaign, its name, its command and whether its rig's pod was started. */
+export type RunStarted =
+  | { ok: true; campaign: string; run: string; command: string; woke: string | null }
   | { ok: false; errors: string[] };
 
 type Deps = {
@@ -46,9 +56,11 @@ type Deps = {
   privateKeyPem: string;
   /** The files of a kit uploaded on the page, by its id. */
   uploads?: ((id: string) => Record<string, Buffer> | undefined) | undefined;
+  /** Rigs launched on RunPod: a stopped pod is started before its run is assigned. */
+  runpodRigs?: PodWaker | undefined;
 };
 
-export function startCampaign(deps: Deps, input: StartInput): StartResult {
+export async function startCampaign(deps: Deps, input: StartInput): Promise<StartResult> {
   const built = buildCampaign({ ...input.draft, target: input.target }, { uploads: deps.uploads });
   if (!built.ok) return built;
   const contract = built.contract as {
@@ -98,7 +110,7 @@ export function startCampaign(deps: Deps, input: StartInput): StartResult {
     by: input.by,
   });
   if (!input.start) return { ok: true, campaign: contract.campaign, version, sha: parsed.sha };
-  const r = startRun(deps, {
+  const r = await startRun(deps, {
     campaign: contract.campaign,
     version,
     rig: input.rig,
@@ -142,10 +154,7 @@ export interface QueueSeed {
  * A run of a campaign assigned over the API, MCP or the CLI (no version saved on control): the
  * newest assignment again, with the same contract, starting point and imports, as a new run.
  */
-function againLikeBefore(
-  deps: Deps,
-  input: RunInput,
-): { ok: true; campaign: string; run: string; command: string } | { ok: false; errors: string[] } {
+async function againLikeBefore(deps: Deps, input: RunInput): Promise<RunStarted> {
   const past = deps.store.latestAssignments().get(input.campaign);
   if (!past)
     return {
@@ -172,7 +181,7 @@ function againLikeBefore(
     briefing: _briefing,
     ...rest
   } = past.payload;
-  const issued = issueCommand(deps.store, deps.privateKeyPem, {
+  const issued = await issueWaking(deps.store, deps.privateKeyPem, deps.runpodRigs, {
     rig: input.rig,
     kind: "assign_campaign",
     payload: {
@@ -184,15 +193,13 @@ function againLikeBefore(
       ...(input.briefing?.length && input.agents ? { briefing: input.briefing } : {}),
     },
     issuedBy: input.by,
+    owner: true,
   });
-  return { ok: true, campaign: input.campaign, run, command: issued.id };
+  return { ok: true, campaign: input.campaign, run, command: issued.id, woke: issued.woke };
 }
 
 /** Starts a run of a stored campaign version on a rig: its own run, or a try with no agents. */
-export function startRun(
-  deps: Deps,
-  input: RunInput,
-): { ok: true; campaign: string; run: string; command: string } | { ok: false; errors: string[] } {
+export async function startRun(deps: Deps, input: RunInput): Promise<RunStarted> {
   const versions = deps.store.campaignVersions(input.campaign);
   const v =
     input.version === undefined ? versions[0] : versions.find((x) => x.version === input.version);
@@ -233,7 +240,7 @@ export function startRun(
       source: v.sources.kit,
     });
   }
-  const issued = issueCommand(deps.store, deps.privateKeyPem, {
+  const issued = await issueWaking(deps.store, deps.privateKeyPem, deps.runpodRigs, {
     rig: input.rig,
     kind: "assign_campaign",
     payload: {
@@ -248,6 +255,7 @@ export function startRun(
       imports,
     },
     issuedBy: input.by,
+    owner: true,
   });
-  return { ok: true, campaign: input.campaign, run, command: issued.id };
+  return { ok: true, campaign: input.campaign, run, command: issued.id, woke: issued.woke };
 }

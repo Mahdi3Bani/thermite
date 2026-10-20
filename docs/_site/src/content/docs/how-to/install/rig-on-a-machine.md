@@ -125,7 +125,7 @@ The rig's page keeps the **Set up by control** block: the machine, the GPUs (for
 - **Stop its services** or **Start its services**, and **Restart them**.
 - **Remove it from gpu-host-1**: type `remove rig-1` and press **Remove the rig**. It deletes the rig's units, files and volumes on the machine and retires its token. The rig's results go with its volumes; control keeps only its events, its champions' patches and what its runs added to Thermite's [knowledge base](../../explanation/journals-and-knowledge.md), so [take the result](../campaigns/take-the-result.md) you need first. The page says `Removed from the machine.`, and the rig stays in **Rigs** as not reporting. To take it off the rig lists too, use **Retire it** at the top of its page: type `retire rig-1` and press **Retire it**.
 
-The rig keeps the images it was set up with: control can't move a rig on a machine onto newer images yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)). Rigs that control set up on a cluster can ([Move a rig onto new images](../operate/rig-lifecycle.md#a-rig-on-a-cluster)).
+The rig keeps the images it was set up with. When control runs a newer version, the rig's page says so, and **Update to** control's version moves it onto the images control deploys, over SSH: [Update to control's version](../operate/rig-lifecycle.md#update-to-controls-version).
 
 Next, [check the rig](../operate/check-a-rig.md): **Isolation** has already run at start; run **Judge smoke**. Then [give it a model](../models/connect-a-provider.md).
 

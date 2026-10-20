@@ -205,8 +205,8 @@ The dashboard is then at `http://127.0.0.1:8801/ui`. Inside the stack, control k
 
 After an update, run the rig's **Judge smoke** check ([Check a rig](../operate/check-a-rig.md)). This updates only the local stack. Rigs elsewhere keep the images they run:
 
-- a rig that control set up on a cluster moves onto new images from its page. Control deploys the new release's images once it runs from the new `compose.yaml`, unless `.env` names other images ([Move a rig onto new images](../operate/rig-lifecycle.md#a-rig-on-a-cluster));
-- a rig on another machine, or one you joined yourself, can't be moved yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
+- a rig that control set up, on a machine or a cluster, moves onto new images from its page, with **Update to** control's version. Control deploys the new release's images once it runs from the new `compose.yaml`, unless `.env` names other images ([Move a rig onto new images](../operate/rig-lifecycle.md#move-a-rig-onto-new-images));
+- a rig you joined yourself can't be moved from control yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
 
 ## Let rigs on other machines reach control
 

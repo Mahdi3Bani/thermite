@@ -67,7 +67,7 @@ Thermite is built to run unattended for as long as a campaign takes, and to reco
 
 ## 0.x versions make no upgrade promise
 
-Until version 1.0, a new version may change settings, commands, routes, files and stored data, with no way back. A newer harness upgrades the rig's ledger, so an older image may not open it again. Control can move a rig on a cluster onto new images, but not a rig on a machine or a rig that you joined ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
+Until version 1.0, a new version may change settings, commands, routes, files and stored data, with no way back. A newer harness upgrades the rig's ledger, so an older image may not open it again. Control can move a rig it set up, on a machine or a cluster, onto new images, but not a rig that you joined, and it has no way back to older images ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
 
 Before you move to a new version, make sure that what you want to keep is in your results repository, and download the champions that you want ([Take the result](../how-to/campaigns/take-the-result.md)).
 

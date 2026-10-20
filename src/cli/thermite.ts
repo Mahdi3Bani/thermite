@@ -60,13 +60,15 @@ const USAGE = `usage: thermite <command> [options]
                                       control's, with what to do when it is behind or refused
   runpod launch CLOUD --gpu G [--gpus N] [--cloud-type SECURE|COMMUNITY] [--datacenter DC]
          [--image I] [--disk GB] [--volume GB] [--rig NAME] [--enroll-within MIN]
-         [--setting NAME=VALUE ...] [--spend-limit USD] [--idle-stop MIN]
+         [--setting NAME=VALUE ...] [--spend-limit USD] [--idle-stop MIN|off]
          --control URL --token-file F
                                       spends money: launch a rig on the GPU cloud CLOUD from
                                       Providers (owner's token), a pod of the one-container rig
                                       image in pull mode. Defaults: 1 GPU, SECURE, any data
                                       center, control's rig image, a 40 GB disk, a 100 GB
-                                      volume, no spend limit, no idle stop
+                                      volume, no spend limit, no idle stop. --idle-stop MIN
+                                      stops the pod after MIN minutes with no run at work;
+                                      off: no idle stop
   runpod list [CLOUD] --control URL --token-file F [--json]
                                       list the rigs launched on GPU clouds (owner's token):
                                       each pod's status, price per hour, spend so far and limits
@@ -93,7 +95,9 @@ const USAGE = `usage: thermite <command> [options]
   runpod cancel-reset RIG --control URL --token-file F
                                       cancel the rig's full reset before its wipe (owner's token)
   command --control URL --token-file F --rig U --kind K --payload JSON|@file [--ttl MIN]
-                                      issue a signed command through control (admin token)
+                                      issue a signed command through control (admin token).
+                                      assign_campaign and resume_run on a RunPod rig whose pod
+                                      is stopped start the pod first, and say so
   submit --harness URL --token-file F --run ID --patch-file P --hypothesis TEXT
          [--known-flaw TEXT ...]      submit a patch as a proposer
   status --harness URL --token-file F --attempt ID
@@ -120,6 +124,16 @@ async function get(url: string, token: string): Promise<unknown> {
   const text = await res.text();
   if (!res.ok) fail(`${url} -> ${res.status} ${text}`);
   return JSON.parse(text);
+}
+
+/**
+ * Prints an issued command's answer: its JSON on standard output, and, when control started the
+ * rig's stopped RunPod pod first (an assigned or resumed run), its words on standard error.
+ */
+function printIssued(out: unknown): void {
+  process.stdout.write(`${JSON.stringify(out)}\n`);
+  const woke = (out as { woke?: unknown } | null)?.woke;
+  if (typeof woke === "string" && woke) process.stderr.write(`${woke}\n`);
 }
 
 async function post(url: string, token: string, body: unknown): Promise<unknown> {
@@ -428,7 +442,7 @@ async function main(argv: string[]): Promise<void> {
           ...(values.ttl ? { ttl_minutes: Number(values.ttl) } : {}),
         },
       );
-      process.stdout.write(`${JSON.stringify(out)}\n`);
+      printIssued(out);
       return;
     }
     case "rig": {
@@ -644,7 +658,7 @@ async function main(argv: string[]): Promise<void> {
         payload: readJsonArg(values.payload),
         ...(values.ttl ? { ttl_minutes: Number(values.ttl) } : {}),
       });
-      process.stdout.write(`${JSON.stringify(out)}\n`);
+      printIssued(out);
       return;
     }
     case "submit": {

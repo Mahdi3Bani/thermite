@@ -275,10 +275,19 @@ create table if not exists rig_build (
   since text not null,
   primary key (rig, component)
 );
--- Rigs control refuses now because their protocol and control's do not meet, and why.
+-- Rigs control refuses now because their protocol and control's do not meet, and why; how many
+-- of the rig's calls control refused since, and when the last one came.
 create table if not exists rig_refusal (
   rig text primary key,
   reason text not null,
+  since text not null,
+  calls integer not null default 0,
+  last_at text
+);
+-- Control's own builds, each from when it first ran: a rig's page says since when the two differ.
+create table if not exists control_build (
+  version text not null,
+  commit_sha text,
   since text not null
 );
 -- Rigs in pull mode, which control connects to through a public proxy (a RunPod pod): the pod
@@ -883,6 +892,16 @@ export interface StoredBuild extends ReportedBuild {
   since: string;
 }
 
+/** Why control refuses a rig, since when, and how many of its calls it refused since. */
+export interface RigRefusal {
+  reason: string;
+  since: string;
+  /** The rig's calls control refused since the refusal began. */
+  calls: number;
+  /** When the last of them came; null: none since. */
+  last_at: string | null;
+}
+
 /** A rig's name: what the lifecycle drivers accept (a Kubernetes namespace part, a compose name). */
 export const RIG_ID = /^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$/;
 
@@ -933,6 +952,13 @@ export class ControlStore {
     );
     if (!machineRigCols.includes("judge_gpus"))
       this.db.exec("alter table machine_rig add column judge_gpus integer");
+    const refusalCols = (this.db.prepare("pragma table_info(rig_refusal)").all() as Row[]).map(
+      (r) => r.name,
+    );
+    if (!refusalCols.includes("calls")) {
+      this.db.exec("alter table rig_refusal add column calls integer not null default 0");
+      this.db.exec("alter table rig_refusal add column last_at text");
+    }
     if (!cols.includes("supervisor")) {
       this.db.exec("alter table rig add column supervisor text");
       this.db.exec("alter table rig add column supervisor_at text");
@@ -2281,6 +2307,13 @@ export class ControlStore {
     this.db.prepare("update machine_rig set status = ? where rig = ?").run(status, rig);
   }
 
+  /** The images a rig control set up on a machine runs now, after an update. */
+  setMachineRigImages(rig: string, images: MachineRig["images"]): void {
+    this.db
+      .prepare("update machine_rig set images = ? where rig = ?")
+      .run(JSON.stringify(images), rig);
+  }
+
   /** One step of a rig's setup or management, for its history. */
   rigSetupEvent(rig: string, step: string, ok: boolean, detail?: string): void {
     this.db
@@ -2510,12 +2543,54 @@ export class ControlStore {
     return true;
   }
 
-  /** Why control refuses the rig now, and since when; undefined when it does not. */
-  rigRefusal(rig: string): { reason: string; since: string } | undefined {
-    const r = this.db.prepare("select reason, since from rig_refusal where rig = ?").get(rig) as
-      | Row
-      | undefined;
-    return r ? { reason: String(r.reason), since: String(r.since) } : undefined;
+  /**
+   * Why control refuses the rig now, and since when; how many of its calls control refused since,
+   * and when the last one came. Undefined when it does not refuse it.
+   */
+  rigRefusal(rig: string): RigRefusal | undefined {
+    const r = this.db
+      .prepare("select reason, since, calls, last_at from rig_refusal where rig = ?")
+      .get(rig) as Row | undefined;
+    return r
+      ? {
+          reason: String(r.reason),
+          since: String(r.since),
+          calls: Number(r.calls ?? 0),
+          last_at: r.last_at === null || r.last_at === undefined ? null : String(r.last_at),
+        }
+      : undefined;
+  }
+
+  /** One more of a refused rig's calls, refused: counted, with its time. */
+  countRefusedCall(rig: string): void {
+    this.db
+      .prepare("update rig_refusal set calls = calls + 1, last_at = ? where rig = ?")
+      .run(new Date().toISOString(), rig);
+  }
+
+  /**
+   * Notes the build control runs now, and returns since when control runs it: a build is kept from
+   * the first time control ran it, so a restart on the same build keeps its time.
+   */
+  noteControlBuild(b: { version: string; commit: string | null }): string {
+    const last = this.db
+      .prepare("select version, commit_sha, since from control_build order by rowid desc limit 1")
+      .get() as Row | undefined;
+    if (last && String(last.version) === b.version && (last.commit_sha ?? null) === b.commit)
+      return String(last.since);
+    const since = new Date().toISOString();
+    this.db
+      .prepare("insert into control_build (version, commit_sha, since) values (?, ?, ?)")
+      .run(b.version, b.commit, since);
+    return since;
+  }
+
+  /** Since when control runs the build it noted last (noteControlBuild); undefined: none noted. */
+  controlBuildSince(): string | undefined {
+    const r = this.db
+      .prepare("select since from control_build order by rowid desc limit 1")
+      .get() as Row | undefined;
+    return r ? String(r.since) : undefined;
   }
 
   /** The rigs control refuses now. */

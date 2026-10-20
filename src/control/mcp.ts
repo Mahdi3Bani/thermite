@@ -9,7 +9,7 @@ import { POD_CONFIG_ENV } from "../core/tunnel.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import type { ControlActions } from "./actions.ts";
 import type { Credential } from "./credential.ts";
-import { issueCommand, propagateChampion } from "./issue.ts";
+import { issueWaking, propagateChampion } from "./issue.ts";
 import { briefingSeedOf, isOutside, type KbKind } from "./kb.ts";
 import {
   advanceResets,
@@ -22,6 +22,7 @@ import type { OutsideKbs } from "./outside-kb.ts";
 import { copiedFromRecords } from "./queue-copy.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
 import {
+  DEFAULT_IDLE_STOP_MINUTES,
   type LaunchRequest,
   type LimitsChange,
   MIN_IDLE_STOP_MINUTES,
@@ -323,7 +324,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
       "issue_command",
       {
         title: "Issue a signed command",
-        description: `Queue a command for a rig; control signs it and the rig's supervisor relays it. Kinds: ${kinds.join(", ")}. The payload must match the kind (for example pause_run {run, reason}; redirect {run, directives:[{kind: avoid|try|mandate|priority|lane_count|note, family? (the direction, in plain words or as :name:, such as :shared memory tiling:; one the run doesn't have yet is designed by the planner at its next round; run_queue lists the run's directions), value?, rationale, citations}], replace?: false (add to the rules in force)}; approve_promotion {run, attempt}; ${role === "agent" ? "" : "message_agent {run, to: all|lane-N|trial:ID|planner|advisors|teachers|auditor|panel, text, keep?: true (all or a lane: kept in force until unkeep_message {run, message})}; queue_add {run, title, details?, family?, why?, position?: top|end|index (0 first)}; queue_move {run, id, position}; queue_edit {run, id, title?, details?, family?, why?}; queue_drop {run, id, why}; queue_accept {run, id, position?} (a lane's idea into the queue); drop_directive {run, id} (a rule in force, whoever set it); "}assign_campaign {run, contract, contract_sha, seed, imports}, where an import may name a source the rig's supervisor fetches: {git: URL} for a project or kit commit, {url: URL} for a model. \`thermite assign --print\` builds an assign_campaign payload). Returns the command id; poll command_status: a source that cannot be fetched fails the command with the reason.`,
+        description: `Queue a command for a rig; control signs it and the rig's supervisor relays it. Kinds: ${kinds.join(", ")}. The payload must match the kind (for example pause_run {run, reason}; redirect {run, directives:[{kind: avoid|try|mandate|priority|lane_count|note, family? (the direction, in plain words or as :name:, such as :shared memory tiling:; one the run doesn't have yet is designed by the planner at its next round; run_queue lists the run's directions), value?, rationale, citations}], replace?: false (add to the rules in force)}; approve_promotion {run, attempt}; ${role === "agent" ? "" : "message_agent {run, to: all|lane-N|trial:ID|planner|advisors|teachers|auditor|panel, text, keep?: true (all or a lane: kept in force until unkeep_message {run, message})}; queue_add {run, title, details?, family?, why?, position?: top|end|index (0 first)}; queue_move {run, id, position}; queue_edit {run, id, title?, details?, family?, why?}; queue_drop {run, id, why}; queue_accept {run, id, position?} (a lane's idea into the queue); drop_directive {run, id} (a rule in force, whoever set it); "}assign_campaign {run, contract, contract_sha, seed, imports}, where an import may name a source the rig's supervisor fetches: {git: URL} for a project or kit commit, {url: URL} for a model. \`thermite assign --print\` builds an assign_campaign payload). Returns the command id. On a rig launched on RunPod whose pod is stopped, assign_campaign and resume_run start the pod first (the owner's token only; another token is refused), and the answer's woke says so in words. Poll command_status: a source that cannot be fetched fails the command with the reason.`,
         inputSchema: {
           rig: z.string().min(1),
           kind: z.enum(kinds as unknown as [CommandKind, ...CommandKind[]]),
@@ -333,19 +334,23 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
       },
       audited(
         "issue_command",
-        (a: { rig: string; kind: CommandKind; payload: unknown; ttl_minutes: number }) => {
+        async (a: { rig: string; kind: CommandKind; payload: unknown; ttl_minutes: number }) => {
           // During the owner's full reset of a rig, agents do not steer it.
           if (role === "agent" && store.openReset(a.rig))
             throw new Error(`${a.rig} is being reset by the owner`);
           // A briefing takes the knowledge base's own words (goal 065); the queue's come next.
           if (a.kind === "assign_campaign") a.payload = briefingFromKb(store, a.payload);
-          return issueCommand(store, opts.privateKeyPem, {
+          // A run assigned or resumed on a stopped RunPod pod starts the pod first: the owner's
+          // token only, as for a launch and a start. `woke` says so, only then.
+          const { id, woke } = await issueWaking(store, opts.privateKeyPem, opts.runpodRigs, {
             rig: a.rig,
             kind: a.kind,
             payload: a.kind === "assign_campaign" ? queueFromRecords(store, a.payload) : a.payload,
             ttlMinutes: a.ttl_minutes,
             issuedBy: actor,
+            owner: role === "owner",
           });
+          return woke ? { id, woke } : { id };
         },
       ),
     );
@@ -938,8 +943,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
           "runpod_launch",
           {
             title: "Launch a rig on RunPod",
-            description:
-              "Spends money. Launches a rig on a GPU cloud from Providers: one pod of Thermite's one-container rig image, in pull mode, billed by the hour until it is stopped or removed. Control enrolls it and follows its price and spend (runpod_rigs). Defaults: 1 GPU, Secure cloud on demand, any data center, control's rig image, a 40 GB container disk, a 100 GB volume, no spend limit, no idle stop. The owner's token only.",
+            description: `Spends money. Launches a rig on a GPU cloud from Providers: one pod of Thermite's one-container rig image, in pull mode, billed by the hour until it is stopped or removed. Control enrolls it and follows its price and spend (runpod_rigs). Defaults: 1 GPU, Secure cloud on demand, any data center, control's rig image, a 40 GB container disk, a 100 GB volume, no spend limit, ${DEFAULT_IDLE_STOP_MINUTES === null ? "no idle stop" : `an idle stop of ${DEFAULT_IDLE_STOP_MINUTES} minutes`}. The owner's token only.`,
             inputSchema: {
               cloud: z.string().min(1).describe("The GPU cloud's name in Providers"),
               gpu: z.string().min(1).describe("A GPU type's id or name, from providers"),
@@ -967,8 +971,11 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
               idle_stop_minutes: z
                 .number()
                 .min(MIN_IDLE_STOP_MINUTES)
+                .nullable()
                 .optional()
-                .describe("Stop the pod after this many minutes with no run running"),
+                .describe(
+                  "Stop the pod after this many minutes with no run at work: no run running, or every run paused, blocked or finished. null: no idle stop; left out: the default",
+                ),
             },
           },
           audited("runpod_launch", (a: LaunchRequest & { cloud: string }) => {
@@ -981,7 +988,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
           {
             title: "Set a RunPod rig's limits",
             description:
-              "Sets or clears a RunPod rig's spend limit and idle stop. A number sets one, null clears it, and one left out stays. Control stops the pod when it reaches a limit that is set; its volume stays. The owner's token only.",
+              "Sets or clears a RunPod rig's spend limit and idle stop. A number sets one, null clears it, and one left out stays. Control stops the pod when it reaches a limit that is set; its volume stays. The idle stop counts the minutes no run is at work: no run running, or every run paused, blocked or finished. The owner's token only.",
             inputSchema: {
               rig: z.string().min(1),
               spend_limit_usd: z.number().positive().nullable().optional(),

@@ -14,7 +14,7 @@ import type { ClusterKubectl } from "./clusters/kubectl.ts";
 import { Credential, newToken } from "./credential.ts";
 import { createDashboard, type RigImages } from "./dashboard.ts";
 import { ExportFiles, mountExports } from "./exports.ts";
-import { issueCommand, propagateChampion } from "./issue.ts";
+import { issueWaking, propagateChampion, WakeRefused } from "./issue.ts";
 import type { KitRepos } from "./kit-repos.ts";
 import {
   advanceResets,
@@ -32,6 +32,7 @@ import { claudeModelName, isOpencodeOwn, providerBase } from "./providers.ts";
 import { copiedFromRecords, untriedOf } from "./queue-copy.ts";
 import type { probeRepository } from "./repo-probe.ts";
 import { resultsLeft } from "./results-left.ts";
+import type { RigUpdates } from "./rig-update.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
 import { type LaunchRequest, type LimitsChange, RunpodRigs } from "./runpod-rigs.ts";
 import { RunpodTests, type TestRequest } from "./runpod-tests.ts";
@@ -280,6 +281,13 @@ export interface ControlOptions {
    * when not given.
    */
   outsideKb?: OutsideKbs | undefined;
+  /** Updates of rigs to control's version from their pages (tests give their own, with short waits). */
+  rigUpdates?: RigUpdates | undefined;
+  /**
+   * What the dashboard does that others call too (MCP, control's loop in main.ts): the dashboard
+   * fills it in. Made here when not given.
+   */
+  actions?: ControlActions | undefined;
 }
 
 export function createControlApi(
@@ -293,6 +301,8 @@ export function createControlApi(
   const control = opts.build ?? buildInfo();
   // A rig refused by an earlier control may work with this one.
   recheckRefusals(store, control);
+  // Since when control runs this build: a rig's page says since when the two differ.
+  store.noteControlBuild(control);
   const viewOpts = {
     staleAfterMs: opts.staleAfterMs,
     offlineAfterMs: opts.offlineAfterMs,
@@ -304,7 +314,7 @@ export function createControlApi(
   // ChatGPT subscriptions' logins: control alone renews them (the dashboard signs them in).
   const chatgpt = new ChatGPTLogins(store, secrets, opts.providerFetch);
   // Filled in by the dashboard, offered by MCP too.
-  const actions: ControlActions = {};
+  const actions: ControlActions = opts.actions ?? {};
   const runpodTests =
     opts.runpodTests ??
     new RunpodTests(store, secrets, { fetch: opts.cloudFetch, image: opts.runpodTestImage });
@@ -383,7 +393,11 @@ export function createControlApi(
       route === "ingest"
         ? checkRig(store, rig, control, { harness: null, endRefusal: false })
         : checkRig(store, rig, control);
-    if (refused) return c.json({ error: refused }, 409);
+    if (refused) {
+      // Counted, so the rig's page can say that it still calls.
+      store.countRefusedCall(rig);
+      return c.json({ error: refused }, 409);
+    }
     await next();
   };
 
@@ -463,7 +477,10 @@ export function createControlApi(
     // meet. A replayed old report never gets this far, so it cannot change the recorded build.
     store.setRigBuild(rig, "harness", readBuild((body.summary as { build?: unknown })?.build));
     const refused = checkRig(store, rig, control);
-    if (refused) return c.json({ error: refused }, 409);
+    if (refused) {
+      store.countRefusedCall(rig);
+      return c.json({ error: refused }, 409);
+    }
     const added = store.ingest(body as IngestReport);
     // Into the knowledge base now, while this report's ledger is the rig's (it reads only a rig's
     // current ledger). After a failure the next report or read catches up.
@@ -1055,16 +1072,18 @@ export function createControlApi(
     // A wipe goes only through the full reset (export, verified push, the owner's confirmation).
     if (body.kind === "wipe_state")
       return c.json({ error: "wipe_state is issued only by a full reset" }, 400);
-    let id: string;
+    let issued: { id: string; woke: string | null };
     try {
-      ({ id } = issueCommand(store, privateKeyPem, {
+      // A run assigned or resumed on a stopped RunPod pod starts the pod first.
+      issued = await issueWaking(store, privateKeyPem, runpodRigs, {
         rig: body.rig,
         kind: body.kind,
         payload: body.payload,
         ttlMinutes: body.ttl_minutes,
         // The admin token is the owner's; who issued a command is control's to say, not the client's.
         issuedBy: "owner:api",
-      }));
+        owner: true,
+      });
     } catch (err) {
       // A refused command (a bad payload, a message nothing would read) is the client's to fix,
       // and in the audit log as the dashboard's and MCP's refusals are.
@@ -1074,9 +1093,16 @@ export function createControlApi(
         kind: body.kind,
         why: redact(error),
       });
-      return c.json({ error }, error.startsWith("unknown rig") ? 404 : 400);
+      return c.json(
+        { error },
+        err instanceof WakeRefused ? 409 : error.startsWith("unknown rig") ? 404 : 400,
+      );
     }
-    return c.json({ id, status: "pending" }, 201);
+    // `woke` only when control started the rig's stopped pod first: other answers stay as they were.
+    return c.json(
+      { id: issued.id, status: "pending", ...(issued.woke ? { woke: issued.woke } : {}) },
+      201,
+    );
   });
 
   app.get("/v1/commands", admin, (c) =>
@@ -1170,7 +1196,7 @@ export function createControlApi(
     enroll_within_minutes: z.number().positive().optional(),
     settings: z.partialRecord(z.enum(POD_CONFIG_ENV), z.string()).optional(),
     spend_limit_usd: z.number().positive().optional(),
-    idle_stop_minutes: z.number().optional(),
+    idle_stop_minutes: z.number().nullable().optional(),
   });
   const LimitsBody = z.strictObject({
     spend_limit_usd: z.number().positive().nullable().optional(),
@@ -1274,6 +1300,11 @@ export function createControlApi(
       runpodTests,
       actions,
       outsideKb,
+      runpodRigs,
+      runpodDriver,
+      control,
+      offlineAfterMs: opts.offlineAfterMs,
+      rigUpdates: opts.rigUpdates,
     }),
   );
   app.get("/", (c) => c.redirect("/ui", 302));

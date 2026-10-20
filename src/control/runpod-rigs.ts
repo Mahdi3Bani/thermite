@@ -22,9 +22,11 @@ import { rigView } from "./views.ts";
  *
  * Control follows each pod (`advance`, every 30 s): its status, its price and what it has cost
  * so far. It stops the pod when the owner asks, or when the owner set a spend limit or an idle
- * stop and the pod reached it; nothing else stops it: no limit is set for the owner. The owner
- * also starts, restarts and terminates it (goal 023): runpod-lifecycle.ts, through which every
- * stop, the limits' included, sends the rig's results out first.
+ * stop and the pod reached it; nothing else stops it: no limit is set for the owner. The idle
+ * stop counts the time no run is at work on the rig (lastWork). The owner also starts, restarts
+ * and terminates it (goal 023): runpod-lifecycle.ts, through which every stop, the limits'
+ * included, sends the rig's results out first. Assigning or resuming a run on a stopped pod starts
+ * it first (wake; issue.ts's issueWaking).
  */
 
 /** The one-container image is CUDA 12.6; RunPod places the pod only on hosts whose driver runs it. */
@@ -35,6 +37,12 @@ export const DEFAULT_CONTAINER_DISK_GB = 40;
 export const DEFAULT_VOLUME_GB = 100;
 /** The shortest idle stop: a rig needs a few minutes between enrollment and its first run. */
 export const MIN_IDLE_STOP_MINUTES = 5;
+/**
+ * The idle stop a launch gets when it names none, in minutes; null: none. The owner still
+ * confirms this default: on at 30 minutes, or none (2026-10-20). Until then there is none, so no
+ * cap comes by default; the answer changes this one line.
+ */
+export const DEFAULT_IDLE_STOP_MINUTES: number | null = null;
 
 /** What the owner asks for. Only the GPU type has no default. */
 export interface LaunchRequest {
@@ -56,7 +64,8 @@ export interface LaunchRequest {
   /** The rig's settings at enrollment, over the launch's own (its target and GPUs). */
   settings?: Partial<Record<(typeof POD_CONFIG_ENV)[number], string>> | undefined;
   spend_limit_usd?: number | undefined;
-  idle_stop_minutes?: number | undefined;
+  /** Minutes with no run at work before control stops the pod; null: none; left out: the default. */
+  idle_stop_minutes?: number | null | undefined;
 }
 
 /** A change to a rig's limits: a number sets one, null clears it, nothing keeps it. */
@@ -258,6 +267,8 @@ export class RunpodRigs {
       throw err;
     }
     const now = this.iso();
+    const idleStop =
+      req.idle_stop_minutes === undefined ? DEFAULT_IDLE_STOP_MINUTES : req.idle_stop_minutes;
     const state: RigState = {
       image,
       gpu: gpu.id,
@@ -275,8 +286,8 @@ export class RunpodRigs {
       billed_since: now,
       running_since: now,
       spend_limit_usd: req.spend_limit_usd ?? null,
-      idle_stop_minutes: req.idle_stop_minutes ?? null,
-      idle_from: req.idle_stop_minutes === undefined ? null : now,
+      idle_stop_minutes: idleStop,
+      idle_from: idleStop === null ? null : now,
       busy_at: null,
       stopped_at: null,
       stopped_by: null,
@@ -341,10 +352,32 @@ export class RunpodRigs {
     }
   }
 
-  /** A run is running on the rig, as its signed reports say. */
-  private working(rig: string): boolean {
-    const v = rigView(this.store, rig, { staleAfterMs: this.staleAfterMs, now: this.now() });
-    return Boolean(v?.runs.some((x) => x.status === "running"));
+  /**
+   * When a run was last at work on the rig, as its signed reports say, in ms; null when none ever
+   * was. A run is at work while it is running and something is under way for it: a lane's trial
+   * in progress, or a judge job queued for it. A judge job that runs is work whatever its run.
+   * While nothing is under way, a running run's newest event (capped at now) is its last work, so
+   * the planner's gap between trials is not idle. A paused or finished run is never at work, and a
+   * running run with nothing under way and no new event (blocked: waiting for the owner, say)
+   * becomes idle from its last event.
+   */
+  private lastWork(rig: string, nowMs: number): number | null {
+    const v = rigView(this.store, rig, { staleAfterMs: this.staleAfterMs, now: nowMs });
+    if (!v) return null;
+    const running = v.runs.filter((x) => x.status === "running");
+    const ids = new Set(running.map((x) => x.id));
+    if (
+      v.judge.now ||
+      running.some((x) => Object.keys(x.at_work).length > 0) ||
+      v.judge.queued.some((j) => j.run !== null && ids.has(j.run))
+    )
+      return nowMs;
+    let last: number | null = null;
+    for (const x of running) {
+      const at = Date.parse(x.timeline.at(-1)?.at ?? "");
+      if (Number.isFinite(at)) last = Math.max(last ?? 0, Math.min(at, nowMs));
+    }
+    return last;
   }
 
   private async step(rig: string): Promise<void> {
@@ -403,8 +436,11 @@ export class RunpodRigs {
   /** The owner's limits, if set: a pod that reached one is stopped, its results sent out first. */
   private async limit(r: StoredRunpodRig, key: string, s: RigState, nowMs: number): Promise<void> {
     const enrolledAt = this.store.tunnelRig(r.rig)?.enrolled_at ?? null;
-    if (s.idle_stop_minutes !== null && enrolledAt && this.working(r.rig))
-      s.busy_at = new Date(nowMs).toISOString();
+    if (s.idle_stop_minutes !== null && enrolledAt) {
+      const last = this.lastWork(r.rig, nowMs);
+      if (last !== null && !(s.busy_at && Date.parse(s.busy_at) >= last))
+        s.busy_at = new Date(last).toISOString();
+    }
     const spent = spentBy(s, nowMs);
     let why: "spend_limit" | "idle_stop" | undefined;
     if (s.spend_limit_usd !== null && spent >= s.spend_limit_usd) why = "spend_limit";
@@ -465,6 +501,42 @@ export class RunpodRigs {
   /** Starts a stopped pod now; refused, in words, when RunPod has no GPU free for it. */
   start(rig: string, by: string): Promise<RunpodRigView> {
     return this.ask(rig, (r, s, key) => this.life.start(r, s, key, by));
+  }
+
+  /**
+   * Starts the rig's pod when it is stopped, before a run is assigned or resumed on it (issue.ts's
+   * issueWaking): the command then waits until the pod runs and the rig fetches it. `why` says
+   * what for, in the history and the audit log ("to assign run x"). Null when nothing was needed:
+   * the rig is not one control follows on RunPod, or its pod runs or is starting. Throws, in
+   * words, when a stop or a terminate is under way, or when the start is refused (the spend limit
+   * reached, no GPU free at RunPod, a full reset under way).
+   */
+  wake(rig: string, by: string, why?: string): Promise<string | null> {
+    if (!this.store.runpodRig(rig)?.active) return Promise.resolve(null);
+    return this.locked(rig, async () => {
+      const r = this.store.runpodRig(rig);
+      if (!r?.active) return null;
+      const s = r.state as RigState;
+      if (s.op?.kind === "stop")
+        throw new Error(
+          `a stop of ${rig}'s pod is under way: wait until it has stopped, then start the run again (control then starts the pod first)`,
+        );
+      if (s.op?.kind === "terminate")
+        throw new Error(`a terminate of ${rig}'s pod is under way: wait until it ends`);
+      if (s.op || s.status !== "EXITED") return null;
+      const key = this.key(r.cloud);
+      if (!key)
+        throw new Error(
+          `the GPU cloud "${r.cloud}" was deleted, so control can't start pod ${r.pod}: see RunPod's console`,
+        );
+      const before = JSON.stringify(s);
+      try {
+        await this.life.start(r, s, key, by, why);
+      } finally {
+        if (JSON.stringify(s) !== before) this.store.saveRunpodRig(rig, s, r.active);
+      }
+      return `${rig}'s pod was stopped: control started it. The run starts once the pod runs.`;
+    });
   }
 
   /** Stops the pod and starts it again (no export: its volume stays). */

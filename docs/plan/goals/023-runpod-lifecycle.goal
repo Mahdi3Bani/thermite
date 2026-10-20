@@ -37,6 +37,7 @@ A rig you pay for by the hour must stop when it has no work, and it must not los
 - 2026-10-20, builder: the spend limit and the idle stop stop the pod through the same stop, its results first; they never remove it.
 - 2026-10-20, builder: the routes every rig has carry restart and the full reset (`POST /v1/rigs/<rig>/restart` and `/reset`); stop, start and terminate are new, under `/v1/rigs/<rig>/runpod/`. MCP's `runpod_rig` (owner only) and `thermite runpod stop|start|restart|terminate|reset|confirm-wipe|cancel-reset` cover all of them. The RunPod driver serves only rigs launched on RunPod and needs no setting; `THERMITE_LIFECYCLE` still names the driver for the others.
 - 2026-10-20, owner: A RunPod rig's page and lifecycle: approved, with the stop after a timeout when no campaign is running (blocked, stopped or finished runs included), as for 022.
+- 2026-10-20, builder: The page's **Restart** box says what the restart does: a stop and a start of the pod through RunPod, not a restart of the programs in it as the mockup said. The rig's **⋯** menu keeps only **Retire it** for a RunPod rig: its changes are under **The pod**. The page's restart route sends a RunPod rig to RunPod's driver, and its full reset is refused while the pod is stopped, as over REST.
 
 ## Open questions
 
@@ -55,6 +56,7 @@ None.
   - Pages: Run a rig on RunPod (new), Stop, restart, remove or reset a rig, REST API (Stop, start, restart and terminate; restart and reset; audit actions), MCP tools (`runpod_rig`, `rig_setup`), Command line, Tokens and roles, Exports, Known limits, Trust between control and rigs.
   - Left: the dashboard's buttons and the history on the RunPod rig's page (they wait for the owner's mockup; each step's words are in `RUNPOD_STEP_WORDS`, which the REST history already gives), the first CI run of the `runpod` job, and the actions once on RunPod, in the paid acceptance (goal 025), which needs the owner's OK to spend. **Restart the rig's containers** in the rig page's **⋯** menu still goes to `THERMITE_LIFECYCLE`'s driver only.
 - 2026-10-20: Every action passes against the fake RunPod API in CI (CI run 39479049337 on `v1/build` (85b4de0), the `runpod` job). Left for the box: once on RunPod, in the paid run.
+- 2026-10-20: The dashboard, from the approved mockup (`v010-runpod-rig.html`): **The pod** on the rig's page with **Stop the pod**, **Start the pod**, **Restart the pod**, **Start the full reset** and **Terminate** (typed words for the last two), each off with the reason when it can't apply; the change under way with its steps; **Results in the pod** from the supervisor's last report and the last export; **History** with the pod's steps beside the rig's events and filters for the pod, the runs and the judge; a terminated rig's page with what it cost. A stopped pod shows as stopped, not stale or offline. Routes: `POST /ui/rigs/<rig>/runpod/stop|start|restart|terminate|limits`. Tests: `src/control/runpod-ui.test.ts`. Pages: Run a rig on RunPod, A rig's page, Stop, restart, remove or reset a rig. Left: the actions once on RunPod, in the paid run (goal 025).
 
 ---
 

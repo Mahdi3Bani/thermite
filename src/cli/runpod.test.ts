@@ -36,6 +36,10 @@ describe("thermite runpod", () => {
         idle_stop_minutes: 45,
       },
     );
+    assert.deepEqual(launchBody({ gpu: "RTX A4000", "idle-stop": "off" }), {
+      gpu: "RTX A4000",
+      idle_stop_minutes: null,
+    });
     assert.throws(() => launchBody({}), /--gpu names the GPU type/);
     assert.throws(() => launchBody({ gpu: "x", gpus: "two" }), /--gpus takes a whole number/);
     assert.throws(() => launchBody({ gpu: "x", gpus: "1.5" }), /--gpus takes a whole number/);
