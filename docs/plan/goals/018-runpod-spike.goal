@@ -6,7 +6,7 @@ version: "0.1.0"
 part: "Rigs on RunPod"
 depends_on: []
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # 018 · RunPod spike
@@ -49,6 +49,17 @@ The RunPod rig's design depends on these answers.
 - 2026-10-19: Goal written from the v0.1.0 release plan.
 - 2026-10-19: Test pods start from Providers, REST and MCP (`9041644`). The spike run itself is next.
 - 2026-10-19: The spike waits for two things: the maintainers' control to run a version with test pods (requested), and the harness image package to be public, so a pod can pull it.
+- 2026-10-19: First spike run, from control's test pods: the CUDA harness image (`9041644`) on the cheapest Secure-cloud GPU in stock (an RTX 2000 Ada, 16 GB, 0.24 USD an hour), with a stop and a start. It cost about 0.01 USD. Answers:
+  - **Root and capabilities:** the container runs as root, with every capability the broker needs (chown, dac_override, fowner, kill, setgid, setuid).
+  - **Device ownership:** the GPU's device nodes keep the owner and mode they came with (mode 666); the broker cannot change their group. Only the GPU fence (a Landlock rule set) can keep roles off the card. The image of this run had no fence check.
+  - **Temp directories:** `/tmp` and `/dev/shm` can be set to mode 1770.
+  - **RunPod's variables:** RunPod sets eight, the API key among them, in the container's environment only. A role's user reads none of them.
+  - **Outbound HTTPS:** open to all six addresses tried.
+  - **The isolation self-test:** it did not pass in that image, which predates the fence check on RunPod, and its harness had no control key (a test pod has no control).
+  - **Stop and start:** the pod came back with its GPU and reported again.
+  - **Start time:** the pod ran 4 s after it was asked for, and its first report came 2.5 minutes later, the image pull included.
+  - **A/A noise:** not measured yet. It needs a working rig on the pod.
+- 2026-10-20: The design follows from the answers: the one-container image (020) keeps RunPod's variables from every role and relies on the GPU fence for the card; control connects to the pod (019), because the pod cannot be given control's key in advance. Still to do: a second run with the one-container image, to check the fence, the self-test and A/A noise.
 
 ---
 
