@@ -841,7 +841,11 @@ export function runBrief(
   if (!lanes.length && r.status === "running")
     row(
       "lanes",
-      r.agents.trials ? "between trials" : "no agents on this run: changes come from people",
+      !r.has_agents
+        ? "no agents on this run: changes come from people"
+        : r.agents.trials
+          ? "between trials"
+          : "waiting for the first round",
       "",
       "muted",
     );

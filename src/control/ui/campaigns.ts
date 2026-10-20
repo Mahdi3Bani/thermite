@@ -94,7 +94,7 @@ export function campaignsListBody(o: CampaignsListInput): string {
         )
         .join("")}</div>`
     : "";
-  return `<div class="block"><div class="head"><h2>At work now</h2><span class="n">${o.atWork.length}</span><span class="right">runs whose agents or judge are working at this moment</span></div>${
+  return `<div class="block"><div class="head"><h2>At work now</h2><span class="n">${o.atWork.length}</span><span class="right">running runs, and what their lanes and judge are doing</span></div>${
     o.atWork.length
       ? `<div class="kwork">${o.atWork.join("")}</div>`
       : `<div class="card"><div class="empty">No run is at work.</div></div>`
@@ -108,7 +108,7 @@ ${
     ? `<div class="card flat"><table class="ktable"><thead><tr><th>Campaign</th><th>Runs</th><th>Best so far</th><th>Last activity</th><th>Rigs</th></tr></thead><tbody>${rows}</tbody></table></div>`
     : `<div class="card"><div class="empty">${q ? "No campaign matches." : "No campaign here."}</div></div>`
 }
-${o.filter === "default" && checks ? `<div class="muted small" style="margin-top:8px">Rig checks are hidden: control runs them on each new rig. <a href="/ui/campaigns?f=check">Show the ${checks} rig check${checks === 1 ? "" : "s"}</a></div>` : ""}</div>`;
+${o.filter === "default" && checks ? `<div class="muted small" style="margin-top:8px">Rig checks are hidden: they are the smoke runs a rig check starts. <a href="/ui/campaigns?f=check">Show the ${checks} rig check${checks === 1 ? "" : "s"}</a></div>` : ""}</div>`;
 }
 
 /** A run at work as a card: what it is doing now (the brief), then its buttons. */

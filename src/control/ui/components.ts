@@ -105,7 +105,7 @@ export const modeName = (mode: string | null) => MODE[mode ?? ""]?.[1] ?? mode ?
 /** What a run needs, or is doing, as one coloured label (Magnesium's status words). */
 export function runState(i: RunView): { text: string; cls: string; icon: string } {
   const heldAudit = i.audits.some((a) => a.decision === null || a.decision === "block");
-  if (i.status === "closed") return { text: "Closed", cls: "muted", icon: icon.check };
+  if (i.status === "closed") return { text: "Finished", cls: "muted", icon: icon.check };
   if (i.pending_promotions.length) return { text: "Approval", cls: "warn", icon: icon.warn };
   if (i.conclusions.some((c) => c.decision === null))
     return { text: "Decision", cls: "warn", icon: icon.warn };

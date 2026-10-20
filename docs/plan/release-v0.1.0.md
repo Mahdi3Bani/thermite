@@ -44,6 +44,16 @@ A tester can run Thermite, knows the risks, and knows where to report a problem.
 | [007 · Known limits and the security model](goals/007-known-limits.goal) | `READY` | — |
 | [008 · Community files and contributor docs](goals/008-community-files.goal) | `READY` | — |
 | [009 · Real subscription sign-in tests](goals/009-subscription-sign-in-tests.goal) | `READY` | — |
+| [063 · Campaigns, runs and live views you can scan; steering as one message box](goals/063-scan-and-steer.goal) | `IN_PROGRESS` | — |
+
+### Running campaigns
+
+A tester sees what each run is doing, gives it work through one queue of experiments, and every campaign keeps what its agents learn.
+
+| Goal | Status | Depends on |
+| --- | --- | --- |
+| [064 · One experiment queue for each run; the planner coordinates it](goals/064-experiment-queue.goal) | `IN_PROGRESS` | 063 |
+| [065 · Journals and a research corpus from every campaign](goals/065-journals-and-corpus.goal) | `READY` | 062, 064 |
 
 ### Install from images
 
@@ -92,7 +102,7 @@ The owner launches a GPU rig on RunPod from control, runs campaigns on it, and s
 ## Order of work
 
 1. Goal 002 first, so CI runs on every push from now on.
-2. The four parts go on at the same time. In RunPod, the launcher (022) waits for the images (010), the rig-only entry (019), the rig image (020) and the enrollment codes (021).
+2. The parts go on at the same time; in Running campaigns, 064 follows 063 and 065 follows 064. In RunPod, the launcher (022) waits for the images (010), the rig-only entry (019), the rig image (020) and the enrollment codes (021).
 3. When every other goal is verified, goal 026 ships the release: the clean-machine tests, the full checks, the pull request into `main`, the changelog, the tag and the GitHub Release.
 4. Fixes from tester reports ship as 0.1.1, 0.1.2 and so on. New features go into v0.2.0.
 

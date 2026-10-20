@@ -1219,6 +1219,12 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           303,
         );
     }
+    // Control gave the rig a model it has not taken yet: the agents would start with none.
+    const given = store.rigModels()[rig.id];
+    if (agents && !chosen && given && rig.model?.model !== given.model)
+      return back(
+        `${rig.id} has not taken ${given.model} yet (it does within a minute of being given it): start the run once its page shows that model.`,
+      );
     if (agents && !chosen && agentsModelMissing(rig))
       return back(
         `${rig.id} has no model for its agents, so they could not work: choose one under "The agents' model", or give it one on its Edit rig page.`,
@@ -1908,7 +1914,7 @@ ${placed ? placedBlock(placed, t) : ""}${onCluster ? clusterPlacedBlock(onCluste
     const nav = `<nav class="lruns" aria-label="Runs">
 <div class="hd">At work</div>${atWork.map((x) => runLink(x, `${esc(x.u.id)} · ${esc(modeName(x.r.mode))} · ${Object.keys(x.r.at_work).length} working${waitingOn(x.r) ? ` · <span class="warn">${waitingOn(x.r)} wait for you</span>` : ""}`)).join("") || `<div class="lempty">No run is at work.</div>`}
 ${idle.length ? `<div class="hd">Idle rigs</div>${idle.map((u) => `<a class="lr idle" href="/ui/rigs/${encodeURIComponent(u.id)}"><span class="t">${esc(u.id)}</span><span class="s">no run at work${u.stale ? " · not reporting" : ""}</span></a>`).join("")}` : ""}
-${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? " open" : ""}><summary class="hd">Ended in the last day (${ended.length})</summary>${ended.map((x) => runLink(x, `${esc(x.u.id)} · ${esc(x.r.status)}`, " idle")).join("")}</details>` : ""}
+${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? " open" : ""}><summary class="hd">Ended in the last day (${ended.length})</summary>${ended.map((x) => runLink(x, `${esc(x.u.id)} · ${x.r.status === "closed" ? "finished" : esc(x.r.status)}`, " idle")).join("")}</details>` : ""}
 </nav>`;
     if (!sel)
       return page(
@@ -5239,7 +5245,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       {
         id: "planner",
         name: "Planner",
-        tip: "Gives each worker its direction at the start of each epoch. A few calls per epoch.",
+        tip: "Gives each worker its direction at the start of each round. A few calls per round.",
       },
       {
         id: "teachers",

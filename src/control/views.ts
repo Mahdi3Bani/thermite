@@ -191,6 +191,8 @@ export interface RunView {
   >;
   /** The run's events, oldest first (at most the latest 400): the timeline's source. */
   timeline: StoredEvent[];
+  /** False for a run with no worker agents (a try: the judge alone). */
+  has_agents: boolean;
   /** The rules for the plan in force (directives): who set each, when, and the rule. */
   rules: { id: number; author: string; at: string; body: Record<string, unknown> }[];
   /** The experiment queue (goal 064): every experiment, with its state; up next in order. */
@@ -421,6 +423,7 @@ export function rigView(
         trials: [],
         at_work: {},
         timeline: [],
+        has_agents: true,
         rules: [],
         queue: [],
         handouts: [],
@@ -468,6 +471,7 @@ export function rigView(
         v.campaign = String(b.campaign ?? "");
         v.mode = String(b.mode ?? "");
         v.created_at = e.at;
+        v.has_agents = b.agents !== false;
         running = v.id;
         v.seed_repo =
           ((b.seed as { repo?: string } | undefined)?.repo as string | undefined) ?? null;
