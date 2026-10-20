@@ -1,7 +1,7 @@
 ---
 id: "008"
 title: "Community files and contributor docs"
-status: READY
+status: IN_PROGRESS
 version: "0.1.0"
 part: "Tester basics"
 depends_on: []
@@ -11,7 +11,7 @@ updated: 2026-10-20
 
 # 008 · Community files and contributor docs
 
-**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
 
 ## What
 
@@ -24,8 +24,8 @@ Outside testers need a place to report problems and a way to send changes. Today
 ## Done when
 
 - [ ] Each file exists, and GitHub shows the security policy and the templates.
-- [ ] No public document tells a contributor to read a private file.
-- [ ] The contributor guide is in `docs/`, and the docs index links it.
+- [x] No public document tells a contributor to read a private file.
+- [x] The contributor guide is in `docs/`, and the docs index links it.
 
 ## Decisions
 
@@ -40,6 +40,10 @@ None.
 
 - 2026-10-19: Goal written from the v0.1.0 release plan.
 - 2026-10-19: The operator half of `docs/local-development.md` moved to goal [060](060-docs-site.goal), the documentation site.
+- 2026-10-20: The files exist, on the owner's terms. `CODE_OF_CONDUCT.md` adopts the Contributor Covenant 2.1 by reference, with a short summary, and takes conduct reports privately through GitHub's private vulnerability reporting form, titled "Conduct report:". `SECURITY.md` supports only the latest 0.x release, takes reports through the same private form, and says what counts, what to include and what happens next. `CONTRIBUTING.md` has the terms (no contributor agreement, no sign-off rule), how to send a change, the checks and the rules, and links the site's Contributing page. Under `.github/`: a bug report form (it asks for the OS, the container engine, the compose tool, where the rig runs, the rig-check results and the logs), a feature request form, a chooser that sends security reports to the private form and questions to Discord, and a pull request template.
+- 2026-10-20: `AGENTS.md` says that outside contributors don't need the maintainers' private overlay, that deployment-specific logs stay in `.internal/` in your own checkout, and that security problems are reported privately; its push rule covers a contributor's fork. `CONVENTIONS.md` names `CONTRIBUTING.md` as the contributor's entry point. No public document tells a contributor to read a private file.
+- 2026-10-20: `docs/local-development.md` is now the contributor guide; the docs index, the README and the site's Contributing page link it under that name. The site's Contributing and Getting help pages point to the new files.
+- 2026-10-20: Left: GitHub shows the security policy and the templates only from the default branch, which gets the code in goal [026](026-ship-v0.1.0.goal), and the private reporting form needs private vulnerability reporting on, in goal [002](002-ci-and-repository-settings.goal). The first box is ticked when both are done.
 
 ---
 

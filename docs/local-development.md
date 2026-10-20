@@ -1,6 +1,6 @@
-# Running Thermite locally
+# Contributor guide: running Thermite locally
 
-This page is for people working on Thermite itself: the checks, the compose stack you develop against, the dashboard demo and the acceptance tests. To **use** Thermite, start with the documentation site: [Your first run](_site/src/content/docs/tutorials/first-run.md), then the [how-to guides](_site/src/content/docs/how-to/install/one-machine.md).
+This is the guide for people working on Thermite itself: the checks, the compose stack you develop against, the dashboard demo and the acceptance tests. [CONTRIBUTING.md](../CONTRIBUTING.md) has the essentials: the terms, how to send a change and the rules every change keeps. [CONVENTIONS.md](../CONVENTIONS.md) has the design rules that every review checks. To **use** Thermite, start with the documentation site: [Your first run](_site/src/content/docs/tutorials/first-run.md), then the [how-to guides](_site/src/content/docs/how-to/install/one-machine.md).
 
 Thermite runs the same images under docker-compose, podman-compose and Kubernetes. Locally, one compose stack starts the control service and one rig (a harness and a supervisor), with the CPU target.
 

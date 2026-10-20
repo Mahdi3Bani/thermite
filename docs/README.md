@@ -23,5 +23,5 @@ Agents can read the whole site through `llms.txt` and `llms-full.txt` at the sit
 | Page | What it covers |
 | --- | --- |
 | [Writing the documentation](writing-docs.md) | How the site is built and checked, and the rules every page follows |
-| [Running locally](local-development.md) | Checks, the compose stack, the dashboard demo and the acceptance tests, for people working on Thermite |
+| [Contributor guide](local-development.md) | For people working on Thermite: the checks, the compose stack, the dashboard demo and the acceptance tests. [CONTRIBUTING.md](../CONTRIBUTING.md) has the essentials |
 | [How Thermite is planned](plan/README.md) | The roadmap, the release plan, the settled decisions, and a goal for each roadmap item |

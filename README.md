@@ -109,14 +109,16 @@ More in [architecture](docs/_site/src/content/docs/explanation/how-it-fits-toget
 | [Known limits](docs/_site/src/content/docs/reference/known-limits.md) | Know the risks and what is not built yet, before you run it |
 | [The security model](docs/_site/src/content/docs/explanation/security-model.md) | See what each part can reach and what it trusts |
 | [Settings reference](docs/_site/src/content/docs/reference/settings.md) | Configure control, the harness and the supervisor |
-| [Running locally](docs/local-development.md) | Run the checks, the compose stack and the acceptance tests |
+| [Contributor guide](docs/local-development.md) | Run the checks, the compose stack and the acceptance tests |
 | [Glossary](docs/_site/src/content/docs/reference/glossary.md) | Look up a term |
 
 ## Community and contributing
 
-Questions, ideas and results go in our [Discord](https://discord.gg/3Qs2uejUf9).
+Questions, ideas and results go in our [Discord](https://discord.gg/3Qs2uejUf9). Bugs and feature requests go in [GitHub issues](https://github.com/iammrduncan/thermite/issues).
 
-Read [CONVENTIONS.md](CONVENTIONS.md) before you change the code. Before you open a pull request, run `npm run check` (typecheck, lint, tests and the public-content check). [Running locally](docs/local-development.md) lists the compose and acceptance tests for changes to containers, the judge or control.
+- **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) has the essentials. There is no contributor agreement and no sign-off rule. Read [CONVENTIONS.md](CONVENTIONS.md) before you change the code, and run `npm run check` (typecheck, lint, tests and the public-content check) before you open a pull request. The [contributor guide](docs/local-development.md) lists the compose and acceptance tests for changes to containers, the judge or control.
+- **Code of conduct:** the [Contributor Covenant 2.1](CODE_OF_CONDUCT.md).
+- **Security:** report a problem privately, as [SECURITY.md](SECURITY.md) says, never in a public issue.
 
 ## License
 
