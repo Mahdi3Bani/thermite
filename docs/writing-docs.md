@@ -87,4 +87,4 @@ The built site has `/llms.txt`, which lists every page with its description, and
 
 ## When Thermite changes
 
-A change to what Thermite does updates the pages that describe it in the same change. The [rules for every goal](plan/README.md#rules-for-every-goal) say so.
+A change to what Thermite does updates the pages that describe it in the same commit, written by whoever changes the code. That covers screens and their text, commands, settings, routes, events, errors and limits. Run `npm run docs:build` and `npm run docs:check` before that commit. Never leave pages for a later pass: a goal is not verified until its pages match the code. The [rules for every goal](plan/README.md#rules-for-every-goal) say so.

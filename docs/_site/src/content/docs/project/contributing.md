@@ -102,7 +102,7 @@ npm run docs:build
 npm run docs:check
 ```
 
-A change to what Thermite does also updates the pages that describe it, in the same change.
+A change to what Thermite does also updates the pages that describe it, in the same commit: screens and their text, commands, settings, routes, events, errors and limits. Run `npm run docs:build` and `npm run docs:check` before you commit.
 
 ## Plans and ideas
 
