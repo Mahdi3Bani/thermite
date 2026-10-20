@@ -67,6 +67,7 @@ Setting both variables of one role stops control at start with `set THERMITE_CON
 | `THERMITE_RIG_SUPERVISOR_IMAGE` | image reference | not set | no | The supervisor image for those rigs |
 | `THERMITE_RIG_HARNESS_CUDA_IMAGE` | image reference | not set | no | The harness image for rigs with GPUs. Not set: a rig with GPUs is refused with "Control has no CUDA harness image configured (THERMITE_RIG_HARNESS_CUDA_IMAGE)." |
 | `THERMITE_RUNPOD_TEST_IMAGE` | image reference | not set | no | The image a [RunPod test pod](../how-to/install/runpod-test.md) runs when the test names none. It must be an image RunPod can pull |
+| `THERMITE_RUNPOD_RIG_IMAGE` | image reference | not set | no | The [one-container rig image](harness-image.md#the-one-container-rig-image) (CUDA) a [rig launched on RunPod](rest-api.md#rigs-on-a-gpu-cloud) runs when the launch names none. It must be an image RunPod can pull. Not set, and none given: the launch is refused |
 
 Without `THERMITE_RIG_HARNESS_IMAGE` and `THERMITE_RIG_SUPERVISOR_IMAGE`, **Add a rig** says "Control has no rig images configured (THERMITE_RIG_HARNESS_IMAGE, THERMITE_RIG_SUPERVISOR_IMAGE), so it can't set rigs up yet." Without `THERMITE_CONTROL_PUBLIC_URL` it says "Control's address for rigs is not set (THERMITE_CONTROL_PUBLIC_URL), so a rig would not know where to report."
 
@@ -219,7 +220,7 @@ A Claude subscription and Claude Code go only together. Any other pairing stops 
 
 ### Pull mode
 
-In [pull mode](../explanation/trust.md#rigs-in-pull-mode), the supervisor never connects to control: control connects to it. A rig on RunPod runs this way. Control makes the launch values below for each rig, as public material and one one-time code; launching a rig on RunPod from control comes with [goal 022](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/022-runpod-launch.goal). A missing or bad value stops the supervisor at start: `pull mode needs <NAME>`, `THERMITE_TUNNEL_PORT must be a port number, not <value>`, `THERMITE_TUNNEL_CONTROL_BOX is not a public key`, `THERMITE_TUNNEL_CONTROL_KEY_SHA256 must be 64 hexadecimal characters` or `THERMITE_TUNNEL_ENROLL_UNTIL must be an ISO time`.
+In [pull mode](../explanation/trust.md#rigs-in-pull-mode), the supervisor never connects to control: control connects to it. A rig on RunPod runs this way. Control makes the launch values below for each rig, as public material and one one-time code, and puts them in the pod's environment when the owner [launches a rig on RunPod](rest-api.md#rigs-on-a-gpu-cloud). A missing or bad value stops the supervisor at start: `pull mode needs <NAME>`, `THERMITE_TUNNEL_PORT must be a port number, not <value>`, `THERMITE_TUNNEL_CONTROL_BOX is not a public key`, `THERMITE_TUNNEL_CONTROL_KEY_SHA256 must be 64 hexadecimal characters` or `THERMITE_TUNNEL_ENROLL_UNTIL must be an ISO time`.
 
 | Variable | Type | Default | Secret | Meaning |
 | --- | --- | --- | --- | --- |

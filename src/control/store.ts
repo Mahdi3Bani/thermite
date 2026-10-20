@@ -304,6 +304,17 @@ create table if not exists tunnel_rig (
   created_at text not null,
   created_by text not null
 );
+-- Rigs the owner launched on a GPU cloud: the pod, what it was launched with, its price, what
+-- control has seen it cost so far, and the owner's spend limit and idle stop, if set.
+create table if not exists runpod_rig (
+  rig text primary key,
+  cloud text not null,
+  pod text not null,
+  active integer not null,
+  state text not null,
+  created_at text not null,
+  created_by text not null
+);
 -- Test pods control started on a GPU cloud: what was asked, the pod, and what it found.
 create table if not exists runpod_test (
   id text primary key,
@@ -703,6 +714,28 @@ const tunnelRigOf = (r: Row): TunnelRig & TunnelSecrets => {
     created_by: String(r.created_by),
   };
 };
+
+/** A rig launched on a GPU cloud, as kept: its state is runpod-rigs.ts's RigState. */
+export interface StoredRunpodRig {
+  rig: string;
+  cloud: string;
+  pod: string;
+  /** Control still follows its pod (false once RunPod no longer has it). */
+  active: boolean;
+  state: unknown;
+  created_at: string;
+  created_by: string;
+}
+
+const runpodRigOf = (r: Row): StoredRunpodRig => ({
+  rig: String(r.rig),
+  cloud: String(r.cloud),
+  pod: String(r.pod),
+  active: Number(r.active) === 1,
+  state: JSON.parse(String(r.state)),
+  created_at: String(r.created_at),
+  created_by: String(r.created_by),
+});
 
 /** A test pod as kept: its state is runpod-tests.ts's TestState. */
 export interface StoredRunpodTest {
@@ -2567,6 +2600,18 @@ export class ControlStore {
     });
   }
 
+  /**
+   * Removes a minted rig whose pod was never made (its launch failed): nothing can enroll with
+   * its code any more. Refused once it has a pod.
+   */
+  dropTunnelRig(rig: string, by: string): boolean {
+    const r = this.db
+      .prepare("delete from tunnel_rig where rig = ? and pod is null and enrolled_at is null")
+      .run(rig);
+    if (Number(r.changes)) this.audit(by, "tunnel_rig_dropped", { rig });
+    return Number(r.changes) > 0;
+  }
+
   /** Pins the pod's keys and spends the code; refused once pinned (a second enrollment). */
   pinTunnelRig(rig: string, sign: string, box: string): boolean {
     const r = this.db
@@ -2592,6 +2637,37 @@ export class ControlStore {
   }
 
   // ---------------------------------------------------------------- test pods on GPU clouds
+  addRunpodRig(t: { rig: string; cloud: string; pod: string; state: unknown; by: string }): void {
+    this.db
+      .prepare(
+        "insert into runpod_rig (rig, cloud, pod, active, state, created_at, created_by) values (?, ?, ?, 1, ?, ?, ?)",
+      )
+      .run(t.rig, t.cloud, t.pod, JSON.stringify(t.state), new Date().toISOString(), t.by);
+  }
+
+  saveRunpodRig(rig: string, state: unknown, active: boolean): void {
+    this.db
+      .prepare("update runpod_rig set state = ?, active = ? where rig = ?")
+      .run(JSON.stringify(state), active ? 1 : 0, rig);
+  }
+
+  runpodRig(rig: string): StoredRunpodRig | undefined {
+    const r = this.db.prepare("select * from runpod_rig where rig = ?").get(rig) as Row | undefined;
+    return r ? runpodRigOf(r) : undefined;
+  }
+
+  /** RunPod rigs, newest first: on one cloud, or only those control still follows. */
+  runpodRigs(f: { cloud?: string | undefined; active?: boolean } = {}): StoredRunpodRig[] {
+    return (
+      this.db
+        .prepare(
+          `select * from runpod_rig where (? is null or cloud = ?) and (? = 0 or active = 1)
+           order by created_at desc, rig desc`,
+        )
+        .all(f.cloud ?? null, f.cloud ?? null, f.active ? 1 : 0) as Row[]
+    ).map(runpodRigOf);
+  }
+
   addRunpodTest(t: { id: string; cloud: string; state: unknown; by: string }): void {
     this.db
       .prepare(

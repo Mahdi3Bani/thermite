@@ -6,6 +6,7 @@ import { log, redact } from "../common/env.ts";
 import { sha256Hex } from "../core/canonical.ts";
 import { COMMAND_KINDS, type CommandKind, reportBody, verifyJson } from "../core/commands.ts";
 import { LiveBatch, LiveEntry, liveBody } from "../core/live.ts";
+import { POD_CONFIG_ENV } from "../core/tunnel.ts";
 import { type BuildInfo, buildFromHeaders, buildInfo, readBuild } from "../core/version.ts";
 import type { ControlActions } from "./actions.ts";
 import { CHATGPT_API, ChatGPTLogins } from "./chatgpt.ts";
@@ -25,6 +26,7 @@ import { claudeModelName, isOpencodeOwn, providerBase } from "./providers.ts";
 import { copiedFromRecords, untriedOf } from "./queue-copy.ts";
 import type { probeRepository } from "./repo-probe.ts";
 import { resultsLeft } from "./results-left.ts";
+import { type LaunchRequest, type LimitsChange, RunpodRigs } from "./runpod-rigs.ts";
 import { RunpodTests, type TestRequest } from "./runpod-tests.ts";
 import { SecretBox } from "./secrets.ts";
 import {
@@ -244,6 +246,13 @@ export interface ControlOptions {
   /** The image a RunPod test pod runs when none is given (THERMITE_RUNPOD_TEST_IMAGE). */
   runpodTestImage?: string | undefined;
   /**
+   * Rigs the owner launches on GPU clouds; control's loop follows them (main.ts). Made here when
+   * not given.
+   */
+  runpodRigs?: RunpodRigs | undefined;
+  /** The image a RunPod rig runs when none is given (THERMITE_RUNPOD_RIG_IMAGE). */
+  runpodRigImage?: string | undefined;
+  /**
    * Rigs in pull mode, which control connects to; control's loop advances them (main.ts). Made
    * here when not given. Their calls are answered by this API, in-process.
    */
@@ -285,6 +294,13 @@ export function createControlApi(
   // A rig in pull mode makes the same calls as any rig; control's end of the tunnel brings them
   // here in-process, bound to the rig whose signed answer carried them.
   const tunnels = opts.tunnels ?? new ControlTunnels(store, secrets, privateKeyPem);
+  const runpodRigs =
+    opts.runpodRigs ??
+    new RunpodRigs(store, secrets, tunnels, {
+      fetch: opts.cloudFetch,
+      image: opts.runpodRigImage,
+      staleAfterMs: opts.staleAfterMs,
+    });
   tunnels.serveWith((rig, call) =>
     Promise.resolve(
       app.request(
@@ -896,6 +912,7 @@ export function createControlApi(
       })),
       enrolled: store.enrolledRigs(),
       pull: store.tunnelRigs(),
+      runpod: runpodRigs.list(),
     }),
   );
 
@@ -1094,6 +1111,49 @@ export function createControlApi(
       return c.json({ error: err instanceof Error ? err.message : String(err) }, 409);
     }
   });
+  // Rigs on a GPU cloud: launched by the owner alone (this token; MCP's owner tools; never an
+  // operator's or an agent's), billed by the hour. Limits apply only when the owner sets them.
+  const LaunchBody = z.strictObject({
+    gpu: z.string().min(1),
+    gpu_count: z.number().int().optional(),
+    cloud_type: z.enum(["SECURE", "COMMUNITY"]).optional(),
+    datacenter: z.string().min(1).optional(),
+    image: z.string().min(1).optional(),
+    container_disk_gb: z.number().int().optional(),
+    volume_gb: z.number().int().optional(),
+    rig: z.string().min(1).optional(),
+    enroll_within_minutes: z.number().positive().optional(),
+    settings: z.partialRecord(z.enum(POD_CONFIG_ENV), z.string()).optional(),
+    spend_limit_usd: z.number().positive().optional(),
+    idle_stop_minutes: z.number().optional(),
+  });
+  const LimitsBody = z.strictObject({
+    spend_limit_usd: z.number().positive().nullable().optional(),
+    idle_stop_minutes: z.number().nullable().optional(),
+  });
+  app.get("/v1/gpu-clouds/:name/rigs", admin, (c) => c.json(runpodRigs.list(c.req.param("name"))));
+  app.post("/v1/gpu-clouds/:name/rigs", admin, async (c) => {
+    const body: LaunchRequest = LaunchBody.parse(await c.req.json());
+    try {
+      return c.json(await runpodRigs.launch(c.req.param("name"), body, "owner:api"), 201);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 409);
+    }
+  });
+  app.get("/v1/rigs/:rig/runpod", admin, (c) => {
+    const v = runpodRigs.view(c.req.param("rig"));
+    return v ? c.json(v) : c.json({ error: "not found" }, 404);
+  });
+  app.post("/v1/rigs/:rig/runpod/limits", admin, async (c) => {
+    const body: LimitsChange = LimitsBody.parse(await c.req.json());
+    try {
+      return c.json(runpodRigs.limits(c.req.param("rig"), body, "owner:api"));
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      return c.json({ error }, /^no rig /.test(error) ? 404 : 400);
+    }
+  });
+
   app.get("/v1/gpu-cloud-tests/:id", admin, (c) => {
     const t = runpodTests.view(c.req.param("id"));
     return t ? c.json(t) : c.json({ error: "not found" }, 404);
@@ -1145,6 +1205,7 @@ export function createControlApi(
     offlineAfterMs: opts.offlineAfterMs,
     control,
     runpodTests,
+    runpodRigs,
     actions,
     outsideKb,
   });

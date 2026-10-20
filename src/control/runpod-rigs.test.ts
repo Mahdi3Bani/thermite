@@ -1,0 +1,529 @@
+import assert from "node:assert/strict";
+import { describe, test } from "node:test";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { generateSigningKeys } from "../core/commands.ts";
+import { keySha256 } from "../core/tunnel.ts";
+import { createControlApi } from "./api.ts";
+import { podPortUrl } from "./runpod.ts";
+import type { RunpodRigView } from "./runpod-rig-view.ts";
+import { RunpodRigs } from "./runpod-rigs.ts";
+import { SecretBox } from "./secrets.ts";
+import { ControlStore } from "./store.ts";
+import { ControlTunnels } from "./tunnel.ts";
+
+const KEY = "rpa_test-key-0123456789abcdef";
+const IMAGE = "ghcr.io/example/thermite-rig:test-cuda";
+const HOUR = 3_600_000;
+
+/**
+ * RunPod's REST API behind a fake fetch, with every call it got. Never the real one: no request
+ * leaves the test. A pod runs once read, costs `cost` per GPU an hour, and stops when asked.
+ */
+function fakeRunpod(o: { noCapacity?: boolean } = {}) {
+  type Pod = { status: string; gpu: string; count: number; cloud: string };
+  const pods = new Map<string, Pod>();
+  const calls: { method: string; path: string; body?: unknown }[] = [];
+  let n = 0;
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  const perGpu = (p: Pod) => (p.cloud === "COMMUNITY" ? 0.17 : 0.25);
+  const podJson = (id: string, p: Pod) => ({
+    id,
+    status: p.status,
+    cost: p.status === "RUNNING" ? perGpu(p) * p.count : 0,
+    gpu: { id: p.gpu, count: p.count },
+    dataCenterId: "EU-RO-1",
+  });
+  const f = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(String(input));
+    const method = init?.method ?? "GET";
+    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+    calls.push({ method, path: url.pathname, body });
+    if (url.host !== "api.runpod.io") throw new Error(`only RunPod's API, not ${url.host}`);
+    if (new Headers(init?.headers).get("authorization") !== `Bearer ${KEY}`)
+      return json({ title: "Unauthorized" }, 401);
+    const path = url.pathname;
+    if (path === "/v2/catalog/gpus")
+      return json({
+        gpus: [
+          {
+            id: "NVIDIA H100 80GB HBM3",
+            name: "H100 SXM",
+            memory: 80,
+            secure: true,
+            price: { secure: 2.69 },
+            availability: "LOW",
+          },
+          {
+            id: "NVIDIA RTX A4000",
+            name: "RTX A4000",
+            memory: 16,
+            secure: true,
+            community: true,
+            price: { secure: 0.25, community: 0.17 },
+            availability: "HIGH",
+          },
+        ],
+      });
+    if (path === "/v2/catalog/datacenters")
+      return json({ dataCenters: [{ id: "EU-RO-1", name: "Romania", region: "Europe" }] });
+    if (path === "/v2/pods" && method === "GET")
+      return json({ pods: [...pods].map(([id, p]) => podJson(id, p)) });
+    if (path === "/v2/pods" && method === "POST") {
+      if (o.noCapacity)
+        return json({ title: "Bad Request", detail: "no capacity for that GPU" }, 400);
+      const id = `pod${++n}`;
+      pods.set(id, {
+        status: "PROVISIONING",
+        gpu: body.gpu.id,
+        count: body.gpu.count,
+        cloud: body.cloud,
+      });
+      return json(podJson(id, pods.get(id) as Pod), 201);
+    }
+    if (path.startsWith("/v2/") && !path.startsWith("/v2/pods/")) return json({});
+    const m = /^\/v2\/pods\/([^/]+)(\/action)?$/.exec(path);
+    const p = m ? pods.get(m[1] ?? "") : undefined;
+    if (!m || !p) return json({ title: "Not Found" }, 404);
+    if (method === "DELETE") {
+      pods.delete(m[1] ?? "");
+      return new Response(null, { status: 204 });
+    }
+    if (m[2]) {
+      p.status = body.action === "stop" ? "EXITED" : "RUNNING";
+      return json(podJson(m[1] ?? "", p));
+    }
+    if (p.status === "PROVISIONING") p.status = "RUNNING";
+    return json(podJson(m[1] ?? "", p));
+  }) as typeof fetch;
+  const stops = () =>
+    calls.filter((c) => c.method === "POST" && c.path.endsWith("/action")).map((c) => c.body);
+  return { f, calls, pods, stops };
+}
+
+function setup(o: { noCapacity?: boolean; image?: string | undefined } = {}) {
+  const store = new ControlStore(":memory:");
+  const secrets = SecretBox.ephemeral();
+  store.addGpuCloud({
+    name: "runpod",
+    kind: "runpod",
+    key_sealed: secrets.seal(KEY),
+    key_hint: "…cdef",
+    by: "owner:ui",
+  });
+  const cloud = fakeRunpod(o);
+  const control = generateSigningKeys();
+  let clock = Date.now();
+  const now = () => clock;
+  const tunnels = new ControlTunnels(store, secrets, control.privateKeyPem, { now });
+  const rigs = new RunpodRigs(store, secrets, tunnels, {
+    fetch: cloud.f,
+    image: "image" in o ? o.image : IMAGE,
+    now,
+  });
+  const created = () =>
+    cloud.calls.filter((c) => c.method === "POST" && c.path === "/v2/pods").map((c) => c.body) as {
+      image: string;
+      gpu: { id: string; count: number; minCudaVersion: string };
+      cloud: string;
+      disk: number;
+      dataCenterId?: string;
+      volume: { size: number; mountPath: string };
+      ports: string[];
+      env: Record<string, string>;
+      cmd?: unknown;
+    }[];
+  const advance = async (ms: number) => {
+    clock += ms;
+    await rigs.advance();
+  };
+  return { store, secrets, cloud, control, tunnels, rigs, created, advance };
+}
+
+/** The rig's harness reports a run that runs (or one that ended), as its signed reports would. */
+function reportRun(store: ControlStore, rig: string, status: "running" | "completed", n: number) {
+  const ev = (id: number, kind: string, body: Record<string, unknown>) => ({
+    id,
+    at: new Date(Date.now() + id).toISOString(),
+    actor: "t",
+    kind,
+    subject: "c-1",
+    body,
+  });
+  store.ingest({
+    rig,
+    ledger_id: "l1",
+    cursor: n - 1,
+    next: n,
+    summary: {},
+    events: [
+      status === "running"
+        ? ev(n, "run_created", { campaign: "camp", mode: "hill_climb", seed: { repo: "p" } })
+        : ev(n, "run_status", { status: "completed" }),
+    ],
+  });
+}
+
+describe("rigs on RunPod: the launch", () => {
+  test("a pod of the rig image in pull mode: Secure by default, the volume, the port, the launch values and nothing else", async () => {
+    const s = setup();
+    const v = await s.rigs.launch("runpod", { gpu: "RTX A4000" }, "owner:api");
+    const [body] = s.created();
+    assert.ok(body);
+    assert.equal(body.image, IMAGE);
+    assert.deepEqual(body.gpu, { id: "NVIDIA RTX A4000", count: 1, minCudaVersion: "12.6" });
+    assert.equal(body.cloud, "SECURE", "Secure cloud on demand unless the owner asks otherwise");
+    assert.equal(body.disk, 40);
+    assert.deepEqual(body.volume, { size: 100, mountPath: "/workspace" });
+    assert.equal(body.dataCenterId, undefined, "RunPod chooses when none is given");
+    assert.deepEqual(body.ports, ["8790/http"]);
+    assert.equal(body.cmd, undefined, "the image's own entry point runs");
+    // Only pull mode's launch values: public material and the one-time code.
+    assert.deepEqual(Object.keys(body.env).sort(), [
+      "THERMITE_RIG_ID",
+      "THERMITE_TUNNEL_CONTROL_BOX",
+      "THERMITE_TUNNEL_CONTROL_KEY_SHA256",
+      "THERMITE_TUNNEL_ENROLL_CODE",
+      "THERMITE_TUNNEL_PORT",
+      "THERMITE_TUNNEL_PREFIX",
+    ]);
+    assert.equal(body.env.THERMITE_RIG_ID, v.rig);
+    assert.match(v.rig, /^rp-[0-9a-f]{8}$/);
+    assert.equal(body.env.THERMITE_TUNNEL_CONTROL_KEY_SHA256, keySha256(s.control.publicKeyPem));
+    assert.equal(body.env.THERMITE_TUNNEL_PORT, "8790");
+    assert.ok(!JSON.stringify(body).includes(KEY), "control's RunPod key never goes to the pod");
+    // Control follows the pod in pull mode, with the rig's settings for a GPU rig.
+    const t = s.store.tunnelRig(v.rig);
+    assert.equal(t?.pod, "pod1");
+    assert.equal(t?.url, podPortUrl("pod1", 8790));
+    assert.deepEqual(t?.config.env, { THERMITE_TARGET: "cuda-gpu", THERMITE_GPUS: "0" });
+    assert.equal(t?.code_expires_at, null, "the code expires only when the launch says so");
+    // Its price from RunPod's list (the new pod shows none yet), nothing spent, no limits.
+    assert.equal(v.pod, "pod1");
+    assert.equal(v.price_per_hr, 0.25);
+    assert.equal(v.spend_usd, 0);
+    assert.equal(v.spend_limit_usd, null);
+    assert.equal(v.idle_stop_minutes, null);
+    assert.equal(v.enrolled_at, null);
+    const audit = s.store.listAudit(10).find((a) => a.action === "runpod_rig_launched");
+    assert.equal(audit?.actor, "owner:api");
+    assert.equal((audit?.body as { pod?: string } | undefined)?.pod, "pod1");
+  });
+
+  test("Community when asked, with GPUs, a data center, an expiry for the code and the owner's settings", async () => {
+    const s = setup();
+    const v = await s.rigs.launch(
+      "runpod",
+      {
+        gpu: "NVIDIA RTX A4000",
+        gpu_count: 2,
+        cloud_type: "COMMUNITY",
+        datacenter: "EU-RO-1",
+        container_disk_gb: 60,
+        volume_gb: 300,
+        rig: "big-rig",
+        enroll_within_minutes: 30,
+        settings: { THERMITE_JUDGE_GPUS: "1", THERMITE_TARGET_CLASS: "a4000" },
+        spend_limit_usd: 20,
+        idle_stop_minutes: 45,
+      },
+      "owner:mcp",
+    );
+    const [body] = s.created();
+    assert.equal(body?.cloud, "COMMUNITY");
+    assert.equal(body?.gpu.count, 2);
+    assert.equal(body?.dataCenterId, "EU-RO-1");
+    assert.equal(body?.disk, 60);
+    assert.deepEqual(body?.volume, { size: 300, mountPath: "/workspace" });
+    assert.equal(v.rig, "big-rig");
+    assert.ok(body?.env.THERMITE_TUNNEL_ENROLL_UNTIL);
+    assert.deepEqual(s.store.tunnelRig("big-rig")?.config.env, {
+      THERMITE_TARGET: "cuda-gpu",
+      THERMITE_GPUS: "0,1",
+      THERMITE_JUDGE_GPUS: "1",
+      THERMITE_TARGET_CLASS: "a4000",
+    });
+    assert.equal(v.price_per_hr, 0.34, "Community's price for two GPUs");
+    assert.equal(v.spend_limit_usd, 20);
+    assert.equal(v.idle_stop_minutes, 45);
+  });
+
+  test("refusals start nothing and leave no rig: each says why", async () => {
+    const s = setup();
+    const refused: [Parameters<RunpodRigs["launch"]>[1], RegExp][] = [
+      [{ gpu: "" }, /name a GPU type/],
+      [{ gpu: "B200" }, /RunPod lists no GPU type "B200"/],
+      [{ gpu: "H100 SXM", cloud_type: "COMMUNITY" }, /H100 SXM is not offered on Community cloud/],
+      [{ gpu: "RTX A4000", datacenter: "US-XX-9" }, /no data center "US-XX-9"/],
+      [{ gpu: "RTX A4000", gpu_count: 9 }, /1 to 8 GPUs/],
+      [{ gpu: "RTX A4000", volume_gb: 5 }, /volume is 10 to 10000 GB/],
+      [{ gpu: "RTX A4000", spend_limit_usd: 0 }, /spend limit is a number of US dollars above 0/],
+      [{ gpu: "RTX A4000", idle_stop_minutes: 2 }, /idle stop is 5 minutes or more/],
+      [
+        { gpu: "RTX A4000", settings: { THERMITE_TARGET: "$(id)" } },
+        /settings take only THERMITE_TARGET/,
+      ],
+      [
+        { gpu: "RTX A4000", settings: { LD_PRELOAD: "x" } as Record<string, string> },
+        /settings take only/,
+      ],
+      [{ gpu: "RTX A4000", rig: "Bad_Name" }, /a rig's name is/],
+    ];
+    for (const [req, why] of refused)
+      await assert.rejects(s.rigs.launch("runpod", req, "owner:api"), why, JSON.stringify(req));
+    await assert.rejects(s.rigs.launch("aws", { gpu: "RTX A4000" }, "o"), /no GPU cloud "aws"/);
+    const noImage = setup({ image: undefined });
+    await assert.rejects(
+      noImage.rigs.launch("runpod", { gpu: "RTX A4000" }, "o"),
+      /no image: give one, or set THERMITE_RUNPOD_RIG_IMAGE/,
+    );
+    for (const x of [s, noImage]) {
+      assert.deepEqual(x.created(), [], "no pod was asked for");
+      assert.deepEqual(x.store.tunnelRigs(), []);
+      assert.deepEqual(x.store.runpodRigs(), []);
+    }
+  });
+
+  test("a pod RunPod refuses leaves no rig, and its code can never enroll", async () => {
+    const s = setup({ noCapacity: true });
+    await assert.rejects(
+      s.rigs.launch("runpod", { gpu: "RTX A4000", rig: "rig-x" }, "owner:api"),
+      /RunPod answered 400 .*no capacity for that GPU/,
+    );
+    assert.equal(s.store.tunnelRig("rig-x"), undefined);
+    assert.deepEqual(s.store.runpodRigs(), []);
+    assert.ok(s.store.listAudit(10).some((a) => a.action === "tunnel_rig_dropped"));
+    // The name is free again.
+    const ok = setup();
+    await ok.rigs.launch("runpod", { gpu: "RTX A4000", rig: "rig-x" }, "owner:api");
+    assert.ok(ok.store.tunnelRig("rig-x")?.pod);
+  });
+});
+
+describe("rigs on RunPod: price, spend and the owner's limits", () => {
+  test("the price per hour and the spend so far follow the pod; with no limit set, nothing stops it", async () => {
+    const s = setup();
+    const v = await s.rigs.launch("runpod", { gpu: "RTX A4000", gpu_count: 2 }, "owner:api");
+    await s.advance(HOUR);
+    let now = s.rigs.view(v.rig) as RunpodRigView;
+    assert.equal(now.status, "RUNNING");
+    assert.equal(now.price_per_hr, 0.5, "RunPod's own price for the running pod");
+    assert.equal(now.spend_usd, 0.5);
+    // A hundred hours later it still runs: no default limit.
+    for (let i = 0; i < 100; i++) await s.advance(HOUR);
+    now = s.rigs.view(v.rig) as RunpodRigView;
+    assert.equal(now.status, "RUNNING");
+    assert.equal(now.spend_usd, 50.5);
+    assert.deepEqual(s.cloud.stops(), [], "control never stopped it");
+    // Stopped at RunPod (by hand): the spend stops growing.
+    const pod = s.cloud.pods.get("pod1");
+    if (pod) pod.status = "EXITED";
+    await s.advance(HOUR);
+    const spent = s.rigs.view(v.rig)?.spend_usd;
+    await s.advance(5 * HOUR);
+    assert.equal(s.rigs.view(v.rig)?.spend_usd, spent);
+    assert.equal(s.rigs.view(v.rig)?.status, "EXITED");
+    // Gone at RunPod: control stops following it.
+    s.cloud.pods.delete("pod1");
+    await s.advance(HOUR);
+    const gone = s.rigs.view(v.rig) as RunpodRigView;
+    assert.equal(gone.active, false);
+    assert.ok(gone.ended_at);
+    assert.match(gone.notes.join(" "), /RunPod no longer has the pod/);
+  });
+
+  test("a spend limit stops the pod once it is reached, and only then", async () => {
+    const s = setup();
+    const v = await s.rigs.launch("runpod", { gpu: "RTX A4000", spend_limit_usd: 1 }, "owner:api");
+    await s.advance(HOUR);
+    await s.advance(HOUR);
+    await s.advance(HOUR);
+    assert.deepEqual(s.cloud.stops(), [], "$0.75 of $1.00");
+    await s.advance(HOUR);
+    assert.deepEqual(s.cloud.stops(), [{ action: "stop" }], "$1.00 reached");
+    const stopped = s.rigs.view(v.rig) as RunpodRigView;
+    assert.equal(stopped.stopped_by, "spend_limit");
+    assert.equal(stopped.status, "EXITED");
+    assert.equal(stopped.spend_usd, 1);
+    assert.match(stopped.notes.join(" "), /reached the spend limit you set \(\$1\.00\)/);
+    const audit = s.store.listAudit(10).find((a) => a.action === "runpod_rig_stopped");
+    assert.deepEqual(audit?.body, { rig: v.rig, pod: "pod1", why: "spend_limit", spend_usd: 1 });
+    // Stopped, it costs nothing more and is not stopped again.
+    await s.advance(10 * HOUR);
+    assert.equal(s.rigs.view(v.rig)?.spend_usd, 1);
+    assert.equal(s.cloud.stops().length, 1);
+  });
+
+  test("an idle stop counts only after enrollment, and only while no run runs", async () => {
+    const s = setup();
+    const v = await s.rigs.launch(
+      "runpod",
+      { gpu: "RTX A4000", idle_stop_minutes: 30 },
+      "owner:api",
+    );
+    // Not enrolled yet: a slow image pull is not idleness.
+    await s.advance(HOUR);
+    assert.deepEqual(s.cloud.stops(), []);
+    assert.equal(s.rigs.view(v.rig)?.idle_since, null);
+    // Enrolled, with a run running: busy.
+    assert.ok(s.store.pinTunnelRig(v.rig, "sign", "box"));
+    reportRun(s.store, v.rig, "running", 1);
+    for (let i = 0; i < 4; i++) await s.advance(20 * 60_000);
+    assert.deepEqual(s.cloud.stops(), [], "a run runs");
+    // The run ends: 30 minutes later the pod stops.
+    reportRun(s.store, v.rig, "completed", 2);
+    await s.advance(20 * 60_000);
+    assert.deepEqual(s.cloud.stops(), []);
+    await s.advance(20 * 60_000);
+    assert.deepEqual(s.cloud.stops(), [{ action: "stop" }]);
+    const stopped = s.rigs.view(v.rig) as RunpodRigView;
+    assert.equal(stopped.stopped_by, "idle_stop");
+    assert.match(stopped.notes.join(" "), /no run ran on it for 30 minutes, the idle stop you set/);
+  });
+
+  test("limits are set and cleared later; an idle stop set later counts from then", async () => {
+    const s = setup();
+    const v = await s.rigs.launch("runpod", { gpu: "RTX A4000" }, "owner:api");
+    s.store.pinTunnelRig(v.rig, "sign", "box");
+    await s.advance(3 * HOUR);
+    assert.deepEqual(s.cloud.stops(), [], "idle for hours, but no idle stop is set");
+    const set = s.rigs.limits(v.rig, { idle_stop_minutes: 60, spend_limit_usd: 100 }, "owner:api");
+    assert.equal(set.idle_stop_minutes, 60);
+    await s.advance(30 * 60_000);
+    assert.deepEqual(s.cloud.stops(), [], "the idle time counts from when it was set");
+    const cleared = s.rigs.limits(v.rig, { idle_stop_minutes: null }, "owner:api");
+    assert.equal(cleared.idle_stop_minutes, null);
+    assert.equal(cleared.spend_limit_usd, 100, "left out: kept");
+    await s.advance(2 * HOUR);
+    assert.deepEqual(s.cloud.stops(), []);
+    assert.throws(() => s.rigs.limits(v.rig, { spend_limit_usd: -1 }, "o"), /above 0/);
+    assert.throws(() => s.rigs.limits("nope", {}, "o"), /no rig nope on a GPU cloud/);
+    assert.ok(s.store.listAudit(20).some((a) => a.action === "runpod_rig_limits"));
+  });
+});
+
+/** An MCP client on control in-process, with this token. */
+async function connect(control: ReturnType<typeof createControlApi>, token: string) {
+  const client = new Client({ name: "test", version: "1.0.0" });
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const url = new URL(String(input));
+    const headers = new Headers(init?.headers);
+    headers.set("authorization", `Bearer ${token}`);
+    return control.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
+  };
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL("http://control/mcp"), { fetch: fetchImpl }),
+  );
+  return client;
+}
+
+describe("rigs on RunPod over REST and MCP: the owner's alone", () => {
+  const tokens = {
+    admin: "owner-token-abcdef",
+    operator: "operator-token-abcdef",
+    agent: "agent-token-abcdef",
+    read: "read-token-abcdef",
+    rigs: {},
+  };
+
+  test("REST: the owner launches, lists, reads and sets limits; another token is refused", async () => {
+    const s = setup();
+    const api = createControlApi(s.store, tokens, s.control.privateKeyPem, {
+      staleAfterMs: 180_000,
+      secrets: s.secrets,
+      tunnels: s.tunnels,
+      runpodRigs: s.rigs,
+    });
+    const call = (path: string, token: string, body?: unknown) =>
+      api.request(path, {
+        method: body === undefined ? "GET" : "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+    for (const t of [tokens.operator, tokens.agent, tokens.read]) {
+      const r = await call("/v1/gpu-clouds/runpod/rigs", t, { gpu: "RTX A4000" });
+      assert.equal(r.status, 401);
+    }
+    assert.deepEqual(s.created(), [], "no pod for anyone but the owner");
+    const launched = await call("/v1/gpu-clouds/runpod/rigs", tokens.admin, {
+      gpu: "RTX A4000",
+      spend_limit_usd: 5,
+    });
+    assert.equal(launched.status, 201);
+    const v = (await launched.json()) as RunpodRigView;
+    assert.equal(v.created_by, "owner:api");
+    const list = (await (await call("/v1/gpu-clouds/runpod/rigs", tokens.admin)).json()) as {
+      rig: string;
+    }[];
+    assert.deepEqual(
+      list.map((x) => x.rig),
+      [v.rig],
+    );
+    const rigs = (await (await call("/v1/rigs", tokens.admin)).json()) as {
+      runpod: RunpodRigView[];
+    };
+    assert.equal(rigs.runpod[0]?.price_per_hr, 0.25);
+    const one = await call(`/v1/rigs/${v.rig}/runpod`, tokens.admin);
+    assert.equal(((await one.json()) as RunpodRigView).spend_limit_usd, 5);
+    assert.equal((await call("/v1/rigs/nope/runpod", tokens.admin)).status, 404);
+    const limits = await call(`/v1/rigs/${v.rig}/runpod/limits`, tokens.admin, {
+      spend_limit_usd: null,
+      idle_stop_minutes: 30,
+    });
+    assert.equal(limits.status, 200);
+    assert.equal(((await limits.json()) as RunpodRigView).spend_limit_usd, null);
+    assert.equal(
+      (await call(`/v1/rigs/${v.rig}/runpod/limits`, tokens.operator, { spend_limit_usd: 1 }))
+        .status,
+      401,
+    );
+    // A refusal comes back in words; an unknown field is refused.
+    const bad = await call("/v1/gpu-clouds/runpod/rigs", tokens.admin, { gpu: "B200" });
+    assert.equal(bad.status, 409);
+    assert.match(((await bad.json()) as { error: string }).error, /no GPU type "B200"/);
+    const extra = await call("/v1/gpu-clouds/runpod/rigs", tokens.admin, {
+      gpu: "RTX A4000",
+      cmd: ["sh"],
+    });
+    assert.equal(extra.status, 400);
+  });
+
+  test("MCP: only the owner may launch or set limits; the operator, readers and the owner see the rigs; agents nothing", async () => {
+    const s = setup();
+    const api = createControlApi(s.store, tokens, s.control.privateKeyPem, {
+      staleAfterMs: 180_000,
+      secrets: s.secrets,
+      tunnels: s.tunnels,
+      runpodRigs: s.rigs,
+    });
+    const names = async (token: string) =>
+      (await (await connect(api, token)).listTools()).tools.map((t) => t.name);
+    const owner = await names(tokens.admin);
+    assert.ok(owner.includes("runpod_launch") && owner.includes("runpod_rig_limits"));
+    for (const t of [tokens.operator, tokens.read]) {
+      const n = await names(t);
+      assert.ok(n.includes("runpod_rigs"));
+      assert.ok(!n.includes("runpod_launch") && !n.includes("runpod_rig_limits"));
+    }
+    const agent = await names(tokens.agent);
+    assert.ok(!agent.some((n) => n.startsWith("runpod_")));
+    const operator = await connect(api, tokens.operator);
+    const tried = await operator.callTool({
+      name: "runpod_launch",
+      arguments: { cloud: "runpod", gpu: "RTX A4000" },
+    });
+    assert.equal(tried.isError, true);
+    assert.deepEqual(s.created(), []);
+    const client = await connect(api, tokens.admin);
+    const r = await client.callTool({
+      name: "runpod_launch",
+      arguments: { cloud: "runpod", gpu: "RTX A4000", idle_stop_minutes: 20 },
+    });
+    const v = JSON.parse((r.content as { text: string }[])[0]?.text ?? "{}") as RunpodRigView;
+    assert.equal(v.created_by, "owner:mcp");
+    assert.equal(v.idle_stop_minutes, 20);
+    const listed = await operator.callTool({ name: "runpod_rigs", arguments: {} });
+    assert.match((listed.content as { text: string }[])[0]?.text ?? "", new RegExp(v.rig));
+  });
+});
