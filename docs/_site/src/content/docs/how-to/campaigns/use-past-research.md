@@ -123,6 +123,16 @@ With **Agents** on **Off: a try**, **From past research** hides, and nothing tic
 
 If an item can no longer be used, for example because you removed its folder from **Can read from** after the panel opened, the campaign's page says **Not started.** `An item from past research is not one this campaign may read and start from: search again.`, with the panel open again.
 
+## Past research for a new campaign
+
+The **New campaign** page sets neither grants nor past research. Its last step, **Review and start**, says so under **Past research**, with a link to **Knowledge**: both are set on the campaign's page once it is saved. A run that **Start the campaign** starts reads only the campaign's own folder, and has no briefing. To start a new campaign's first run from past research:
+
+1. On **New campaign**, at **Review and start**, press **Save without starting**. The campaign's page opens and says `Saved on control, with no run yet.`
+2. Under **Knowledge** › **Can read from**, choose a folder in **Add a folder** and press **Add**, as in [Let a campaign read another's folder](#let-a-campaign-read-anothers-folder). Do it for each folder its agents should read.
+3. Press **Start a run**. Under **From past research**, tick the experiments and findings to start from, as in [Start a run from past research](#start-a-run-from-past-research), and press **Start the run**.
+
+The run's agents then read the granted folders in `knowledge/`, and the planner and the advisors search them; its queue starts with the experiments you ticked.
+
 ## Over MCP and the command line
 
 The [MCP tools](../../reference/mcp-tools.md) for the knowledge base:
@@ -172,7 +182,3 @@ A run without agents (`"agents": false`) refuses a briefing: `a run without agen
 - **A grant:** the folder is under **Can read from** on the campaign's page. On **Knowledge**, the campaign's row says `reads:` and the folder, and the folder's row says `read by:` and the campaign. A run's **Journal** tab says `Its agents also read:` and the folder.
 - **The sync:** the rig's supervisor writes `past research synced` to its log, with how many items it handed over, and `past research sync error` once when a sync fails.
 - **A run from past research:** on **Commands**, the **assign campaign** row is **delivered**. On the run's **Experiments** tab, the past experiments are in **Up next**, each marked `from` and its run. The dashboard doesn't show a run's briefing. Over MCP, `command_status` or `list_commands` gives the rig's whole answer to the command, which counts what the run took, such as `"queue": 1` and `"briefing": 2`. The rig's next export holds the briefing, in `briefing.jsonl`.
-
-## Not built yet
-
-The **New campaign** page offers neither past research nor grants: a new campaign reads only its own folder until you add folders on its page, and a run started there has no briefing ([goal 065](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/065-journals-and-corpus.goal)). To start a new campaign's first run from past research, press **Save without starting** there, add folders under **Can read from** on the campaign's page, and then press **Start a run**.

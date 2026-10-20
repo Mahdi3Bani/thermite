@@ -150,6 +150,8 @@ Read the summary sentence. **What control will check (the draft)** shows your an
 - **Try the kit first** (hill climb and goal): starts a run with no agents, so you see the kit work before an agent spends anything. See [Test a kit with known candidates](test-a-kit.md).
 - **Save without starting**: saves the campaign and starts nothing.
 
+Below the buttons, **Past research** says that the campaign's agents read its own folder in Thermite's knowledge base (the link opens **Knowledge**), and that reading other campaigns' folders and starting a run from past research are set on the campaign's page once it is saved. To use them for the first run, press **Save without starting**, then follow [Use past research in a new run](use-past-research.md#past-research-for-a-new-campaign).
+
 :::caution[Keep the address of a campaign you save without starting]
 The **Campaigns** list shows a campaign only once a rig reports a run of it. A campaign saved without starting, or whose first run failed to start, is not on the list. Its page is at `/ui/campaigns/<name>`, such as `http://127.0.0.1:8800/ui/campaigns/sort-speed`: keep that address. The page has a **Start a run** button ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)).
 :::
