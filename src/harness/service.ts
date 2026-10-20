@@ -688,6 +688,11 @@ export class HarnessService {
       if (!ok.success)
         throw new Error(`queue experiment ${i + 1}: ${ok.error.issues[0]?.message ?? "invalid"}`);
     }
+    // A run without agents (a try) has no briefs: nothing would read the background.
+    if (p.agents === false && p.briefing?.length)
+      throw new Error(
+        "a run without agents has no briefs: leave out the background from past research",
+      );
     const existing = this.ledger.getContract(contract.campaign, contract.version);
     if (existing && contractSha(existing) !== parsed.sha) {
       throw new Error(

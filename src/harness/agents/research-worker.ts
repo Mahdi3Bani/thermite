@@ -124,7 +124,7 @@ export async function runResearchTrial(
         spec.folder
           ? `${RESEARCH_SYSTEM}\n\n${researchFolderNote(spec.folder)} Use the file tools (list_files, read_file, search_files, write_file, remove_file) for it.`
           : RESEARCH_SYSTEM
-      }${deps.idea ? "\n\nTo propose another research task for the run's queue, use the idea tool: the planner decides whether it is queued, and your trial goes on." : ""}${deps.note ? `\n\n${RESEARCH_NOTES}` : ""}`,
+      }${deps.idea ? "\n\nTo propose another research task for the run's queue, use the idea tool: the planner or the campaign's owner decides whether it is queued, and your trial goes on." : ""}`,
       model,
       tools,
       thinkingLevel,
@@ -153,7 +153,9 @@ export async function runResearchTrial(
     agent.abort();
   }, spec.wallMs);
   try {
-    await agent.prompt(spec.brief);
+    // With the note tool, the brief says how to keep field notes, and how they differ from
+    // research notes.
+    await agent.prompt(deps.note ? `${spec.brief}\n\n${RESEARCH_NOTES}` : spec.brief);
     // A cut-off reply or a failed call does not end a research trial before its time.
     const end = await keepGoing(
       agent,

@@ -266,5 +266,16 @@ describe("field notes", () => {
     );
     const plain = await setup();
     assert.deepEqual(plain.s.ledger.briefing(RUN), []);
+    // A run without agents has no briefs: its background is refused, and no run is made.
+    const tryEnv = makeHarnessEnv();
+    const refused = await tryEnv.service.applyCommand(
+      tryEnv.sign("assign_campaign", tryEnv.assignPayload({ briefing, agents: false })),
+    );
+    assert.ok(refused.status === "applied" && !refused.accepted, JSON.stringify(refused));
+    assert.match(
+      String((refused.result as { error?: string }).error),
+      /a run without agents has no briefs: leave out the background from past research/,
+    );
+    assert.equal(tryEnv.service.ledger.getRun(RUN), undefined);
   });
 });
