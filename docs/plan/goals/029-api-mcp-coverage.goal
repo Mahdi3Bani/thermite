@@ -1,16 +1,16 @@
 ---
 id: "029"
 title: "Full API and MCP coverage"
-status: PROPOSED
+status: IN_PROGRESS
 version: "0.2.0"
 depends_on: []
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # 029 · Full API and MCP coverage
 
-**Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020)
+**Status:** `IN_PROGRESS` · **Version:** [v0.2.0](../roadmap.md#v020)
 
 ## What
 
@@ -28,6 +28,10 @@ Other agents must be able to run Thermite through control without the dashboard.
 ## Decisions
 
 - 2026-10-19, owner: Control needs full API and MCP coverage of its features, so other agents can work with it.
+- 2026-10-20, builder, within the v0.1.0 build brief (Thermite runs itself, so an operator agent must start a run without the browser): **Start a run** gets its twin first. The twin is `POST /v1/campaigns/<campaign>/runs`, MCP's `start_run` and `thermite run start`. All three call the dashboard's own code for the panel (`ControlActions.startRun`, filled in by `dashboard.ts`; the shared request and answer are in `src/control/start-run.ts`), so they check and refuse in the panel's words.
+  - **Fields:** the ones the panel offers: the rig, agents on or off, the agents' model, promotion, GPUs for the judge, a run of the campaign to copy untried experiments from, and past research by knowledge-base id. The panel offers no lanes and no harness, so the twins don't either.
+  - **Tokens:** REST and the command line take the owner's token, as every REST route does. MCP takes the owner's and an operator's: an operator may already start runs with `issue_command`'s `assign_campaign`, and may give a rig's agents a model with `set_rig_model`. An operator's `start_run` can't set the GPU split, because `issue_command` sends no `rig_settings`. It can't start a stopped RunPod pod either, as for `assign_campaign`. The agent's token may issue `assign_campaign` too, but it has no `start_run`: the panel is the owner's, and it reads the knowledge base, which the agent's token can't.
+  - **Differences from the panel:** for a try (agents off), the twins refuse a model, a run to copy from and past research, where the panel leaves them out. The run to copy from must be a run of the campaign, as the panel lists them; the panel's form now refuses another one too.
 
 ## Open questions
 
@@ -36,6 +40,7 @@ None.
 ## Progress
 
 - 2026-10-19: Goal written from the roadmap.
+- 2026-10-20: **Start a run**'s twin is built: `POST /v1/campaigns/<campaign>/runs`, MCP `start_run` and `thermite run start`, with the panel's refusals in words and a stopped RunPod pod started first (the owner's token only). Tests: `src/control/start-run.test.ts` (REST against the panel's own assignment, every refusal, a model given first, MCP tokens), `src/control/runpod-lifecycle.test.ts` (the pod started first; an operator refused), `src/cli/run.test.ts`. Pages: the REST, MCP and command-line references, **Start a run later** in Start a campaign from the dashboard, and the pages that listed the ways to start or copy a run. The rest of the goal is not started: the other dashboard actions, the OpenAPI file and the twin test.
 
 ---
 
