@@ -763,6 +763,7 @@ export class KnowledgeBase {
       return {
         seq: Number(r.s),
         campaign: x.campaign,
+        rig: x.rig,
         run: x.run,
         kind: x.kind,
         ref: x.ref,

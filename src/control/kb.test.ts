@@ -289,6 +289,8 @@ test("a run's sync: its readable folders by seq, never its own items, in pages, 
     s.items.every((x) => x.campaign === "gemv-speed"),
     "never a folder not granted",
   );
+  // Each item says which rig's run it came from (run names are unique per rig only).
+  assert.ok(s.items.every((x) => x.rig === "rig-a" && x.run === "gs-3"));
   const seqs = s.items.map((x) => x.seq);
   assert.deepEqual(
     seqs,
@@ -324,14 +326,18 @@ test("a run's sync: its readable folders by seq, never its own items, in pages, 
   const granted = all("rig-c", "gs-4", again.next);
   assert.deepEqual(granted.folders, ["gemv-speed", "survey-study"]);
   assert.deepEqual(granted.items.map((x) => x.kind).sort(), ["claim", "finding", "source"]);
-  assert.ok(granted.items.every((x) => x.campaign === "survey-study"));
+  assert.ok(granted.items.every((x) => x.campaign === "survey-study" && x.rig === "rig-b"));
   assert.deepEqual(all("rig-c", "gs-4", granted.next).items, [], "and only once");
   // The secret campaign's folder never comes.
   assert.ok(
     ![...s.items, ...again.items, ...granted.items].some((x) => x.campaign === "secret-campaign"),
   );
-  // After a revoke, the folder's items no longer come, even from the start.
+  // After a revoke, the folder leaves the run's folders at once (its supervisor removes its
+  // copy), and its items no longer come, even from the start.
   kb.revoke("gemv-speed", "survey-study");
+  const after = store.kb().sync("rig-c", "gs-4", granted.next);
+  assert.deepEqual(after?.folders, ["gemv-speed"]);
+  assert.deepEqual(after?.items, []);
   const fresh = all("rig-c", "gs-4", 0);
   assert.deepEqual(fresh.folders, ["gemv-speed"]);
   assert.ok(fresh.items.every((x) => x.campaign === "gemv-speed"));
@@ -365,6 +371,7 @@ test("the rigs' route: the rig's own token, its own runs, a KbSync", async () =>
   );
   assert.deepEqual(withGrant.folders, ["survey-study", "gemv-speed"]);
   assert.deepEqual(withGrant.items.map((x) => x.kind).sort(), ["attempt", "experiment", "note"]);
+  assert.ok(withGrant.items.every((x) => x.rig === "rig-a"));
   // Another rig's token, another rig's run, an unknown run, a bad cursor.
   assert.equal((await get("/v1/rigs/rig-b/kb?run=sv-2", "rig-a-token-abcd")).status, 401);
   assert.equal((await get("/v1/rigs/rig-a/kb?run=sv-2", "rig-a-token-abcd")).status, 404);
