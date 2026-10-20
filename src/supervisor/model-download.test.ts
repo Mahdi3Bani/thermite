@@ -156,7 +156,7 @@ describe("model files by URL", () => {
 
   test("a Hugging Face token goes to Hugging Face only, never into a file, a line, the report or an error", async () => {
     const { root, inbox, lines, downloads } = setup();
-    const token = "hf_madeUpTokenForTheTest0123456789";
+    const token = "hf_madeUpTokenForTheTest";
     const bytes = Buffer.from("gated weights ".repeat(500));
     const calls: { url: string; auth: string | null }[] = [];
     let gated = false;
@@ -304,7 +304,7 @@ describe("model files by URL", () => {
         target: join(inbox, "m.bin"),
         path: "m.bin",
         name: "m",
-        hfToken: "hf_anotherMadeUpToken000000",
+        hfToken: "hf_anotherMadeUpToken",
         downloads,
         fetchImpl,
       }),
