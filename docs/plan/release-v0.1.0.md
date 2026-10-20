@@ -53,7 +53,7 @@ A tester sees what each run is doing, gives it work through one queue of experim
 | Goal | Status | Depends on |
 | --- | --- | --- |
 | [064 · One experiment queue for each run; the planner coordinates it](goals/064-experiment-queue.goal) | `IN_PROGRESS` | 063 |
-| [065 · Journals and a research corpus from every campaign](goals/065-journals-and-corpus.goal) | `READY` | 062, 064 |
+| [065 · Journals and a research corpus from every campaign](goals/065-journals-and-corpus.goal) | `IN_PROGRESS` | 062, 064 |
 
 ### Install from images
 

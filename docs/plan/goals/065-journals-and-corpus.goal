@@ -1,7 +1,7 @@
 ---
 id: "065"
 title: "Journals and a research corpus from every campaign"
-status: READY
+status: IN_PROGRESS
 version: "0.1.0"
 part: "Running campaigns"
 depends_on: ["062", "064"]
@@ -11,7 +11,7 @@ updated: 2026-10-20
 
 # 065 · Journals and a research corpus from every campaign
 
-**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
 
 ## What
 
@@ -74,6 +74,41 @@ Today most of what an agent learns ends with its trial. Only submitted attempts,
 ## Progress
 
 - 2026-10-20: Goal written from the owner's direction.
+
+- 2026-10-20: Built on `v1/build` by three helpers and merged: the rig side, control, and outside knowledge bases. Unit tests cover writing notes, the briefing, research in every mode, the sync into each run, the export, the folders and grants, the pages, MCP, and outside knowledge bases with a fake server. The compose acceptances do not cover it yet. What the docs should say:
+  - **Field notes (the journal).**
+    - The workers, the planner and the advisors keep short notes as they work. A note is an observation, a decision (and why), a surprise, a question or a lesson, and it can name what it is about: an experiment, an attempt, a source, a claim, a finding, a round, a trial or a message.
+    - A note is not a record of what was tried: the experiment log has that.
+    - Notes are kept in the run's ledger with who wrote them and when (event `journal_note`). Nobody edits or deletes a note.
+    - Writers:
+      - OpenCode and Claude Code use `thermite-trial note --kind KIND [--about TYPE:ID] TEXT`; Pi has a `note` tool, in code and research trials.
+      - The planner's answer and the advisors' answers can carry notes. The supervisor posts an advisor's notes after its work is posted.
+    - What each agent sees: a worker's brief has its lane's newest notes and the run's newest decisions and lessons from others; the planner and the teacher pair see the run's newest notes. These are windows on the notes, not limits on writing. Notes are shown to agents as data, not instructions.
+  - **Research in every mode.** Workers in hill-climb and goal runs can also fetch sources, read them, search the run's sources, and record claims and notes in the run's folder, as research workers do (`thermite-trial` commands, or Pi's tools). Findings, hypotheses and the report stay in research runs. A research note is its own event (`research_note`), apart from field notes.
+  - **The run's Journal tab** (between Experiments and Attempts) shows the field notes, newest first, with filters by writer and by kind and a word filter. What a note is about links to the attempt or the experiment. Research notes are in a side card, with the run's counts and its campaign's folder.
+  - **Thermite's knowledge base.** Control keeps a folder for each campaign with everything its runs record: runs, experiments with their results, attempts with their verdicts, field notes and research notes, sources, claims, findings and reports. Each item keeps its campaign, rig, run, who wrote it and when. GBrain or any other outside system is not needed.
+  - **The Knowledge page** (sidebar: Knowledge) lists every folder with its counts and runs, who reads it and what it reads, and searches the folders by words, kind and folder. Each result shows where it came from.
+  - **A campaign's Knowledge section** shows the folder's counts, "Can read from" (the folders this campaign's agents may read, each with Remove, and Add), and "Who reads" it. The owner can change grants at any time.
+  - **How agents read past research.** A run's supervisor asks control every few minutes (`THERMITE_KB_SYNC_SECONDS`, 180) for new and changed items of the folders its campaign may read: its own campaign's other runs, and the granted folders. The harness writes them into the run's research folder under `knowledge/` (one Markdown file per item, with where it came from, and a `knowledge/README.md`). Workers search it there. The planner and the advisors get one line saying what it holds. A revoked folder is removed from the run's `knowledge/` at the next sync. Agents never write to any folder: only the harness's records do.
+  - **Start a run: From past research.** Search the folders the campaign can read and tick items:
+    - ticked experiments join the new run's queue, after any copied untried ones, each saying where it came from and what result it gave;
+    - ticked findings, claims, notes and reports become the run's **briefing**: background every agent's brief shows, marked as data, with where each item came from.
+
+    A run without agents takes neither. Over MCP, control takes a briefing item's words from its own record of the item, never from the caller.
+  - **MCP:**
+    - `kb_folders` and `kb_search {q, campaigns?, kinds?, limit?}`, for every role;
+    - `kb_grant` and `kb_revoke {campaign, reads}`, for the owner and the operator;
+    - `assign_campaign` takes `briefing: [{text, from: {campaign, run, kind, ref}}]`.
+  - **Outside knowledge bases (optional).** In Settings › Providers, add one (an MCP URL, its token, its search tool and, to copy into it, its write tool), with a check of its tools. The token is kept sealed and never shown again.
+    - On a campaign's page, switch on "copy to <name>": control writes each new or changed item of the folder as a page, every `THERMITE_OUTSIDE_KB_SYNC_SECONDS` (300) and with Sync now. Without a write tool there is no copy.
+    - "Let its advisors search it" grants the campaign's advisors that knowledge base's search as outside context. An advisor with open web fetch gets no knowledge-base search.
+    - Workers do not reach outside knowledge bases.
+  - **The export.** Each export holds the journal (`journal.jsonl`), the research notes and the briefing. A finished hill-climb or goal run that recorded sources, claims or notes also exports its folder, without `knowledge/`.
+  - **Not built:**
+    - REST or MCP tools for outside knowledge bases;
+    - workers reading outside knowledge bases;
+    - a search tool over `knowledge/` for the planner and the advisors;
+    - a choice of how much of the journal a new campaign sees (open question above).
 
 ---
 
