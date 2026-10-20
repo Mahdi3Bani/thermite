@@ -28,6 +28,14 @@ const run = promisify(execFile);
 const MAX_FILES = 2000;
 const MAX_BYTES = 64 * 1024 * 1024;
 
+/**
+ * What macOS adds to an archive made on a Mac, which is not part of the kit: `tar` puts a file's
+ * extended attributes in a `._name` file beside it, the Finder's zip puts them under
+ * `__MACOSX/`, and the Finder leaves `.DS_Store` files. They are left out.
+ */
+const macMetadata = (name: string) =>
+  name.startsWith("._") || name === "__MACOSX" || name === ".DS_Store";
+
 export interface UploadedKit {
   /** The archive's sha256: how the page refers to it afterwards. */
   id: string;
@@ -94,7 +102,7 @@ export async function unpackKit(filename: string, archive: Buffer): Promise<Uplo
     // kit.json at the top, or inside one top folder.
     let root = out;
     if (!existsSync(join(root, "kit.json"))) {
-      const top = readdirSync(root);
+      const top = readdirSync(root).filter((name) => !macMetadata(name));
       const only = top.length === 1 ? join(root, top[0] as string) : undefined;
       if (only && lstatSync(only).isDirectory() && existsSync(join(only, "kit.json"))) root = only;
       else throw new Error("the archive has no kit.json at its top");
@@ -103,6 +111,7 @@ export async function unpackKit(filename: string, archive: Buffer): Promise<Uplo
     let count = 0;
     const walk = (dir: string) => {
       for (const name of readdirSync(dir)) {
+        if (macMetadata(name)) continue;
         const p = join(dir, name);
         const st = lstatSync(p);
         const rel = relative(root, p).split(sep).join("/");

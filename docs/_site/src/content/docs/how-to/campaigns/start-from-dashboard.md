@@ -93,7 +93,7 @@ For a goal campaign, do only step 3, without **The kit's metric**. Control doesn
 
 ### Upload a kit
 
-Choose the file under **Kit archive**. It holds `kit.json` at its top or inside one folder, and has at most 2000 files, 64 MB in all, and no links. From a kit kept in git, `git archive --format=tar.gz -o kit.tar.gz HEAD` makes one. A `tar` of a folder made on a Mac adds hidden `._` files, which give `the archive has no kit.json at its top`. Control checks `kit.json` and shows a line such as `smoke-cpu: measures on cpu, 3 cases, scores flops_per_s.` Nothing in the kit runs until a run starts.
+Choose the file under **Kit archive**. It holds `kit.json` at its top or inside one folder, and has at most 2000 files, 64 MB in all, and no links. From a kit kept in git, `git archive --format=tar.gz -o kit.tar.gz HEAD` makes one. Control leaves out what a Mac adds to an archive: the hidden `._` files that `tar` puts beside each file, the `__MACOSX` folder of a zip made in the Finder, and `.DS_Store` files. Control checks `kit.json` and shows a line such as `smoke-cpu: measures on cpu, 3 cases, scores flops_per_s.` Nothing in the kit runs until a run starts.
 
 Under **The kit's cases**, mark each case **Measured**, **Hidden test** or **Not used**. For a hill climb, also choose **The score**, **Better is** and **Smallest gain that counts (%)**. A time is always better lower.
 

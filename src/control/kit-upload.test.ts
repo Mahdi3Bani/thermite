@@ -60,4 +60,35 @@ describe("a kit uploaded on the new-campaign page", () => {
         !err.message.includes("thermite-upload-"),
     );
   });
+
+  test("what a Mac adds to an archive is left out: ._ files, __MACOSX and .DS_Store", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "thermite-up-"));
+    // As `tar` on a Mac packs `kit` when its files carry extended attributes: a `._kit` beside the
+    // kit's one top folder, and a `._` file beside each file in it.
+    const src = join(dir, "tar-src");
+    mkdirSync(join(src, "kit"), { recursive: true });
+    execFileSync("cp", ["-R", `${smoke}/.`, join(src, "kit")]);
+    for (const p of ["._kit", "kit/._kit.json", "kit/bench/._build.sh", "kit/.DS_Store"])
+      writeFileSync(join(src, p), "macOS metadata");
+    // COPYFILE_DISABLE: the test makes its own ._ files, on a Mac and elsewhere alike.
+    execFileSync("tar", ["-czf", join(dir, "kit.tar.gz"), "-C", src, "._kit", "kit"], {
+      env: { ...process.env, COPYFILE_DISABLE: "1" },
+    });
+    const k = await unpackKit("kit.tar.gz", readFileSync(join(dir, "kit.tar.gz")));
+    assert.equal(k.kit.name, "smoke-cpu");
+    assert.ok(k.files["kit.json"] && k.files["bench/build.sh"]);
+    assert.deepEqual(
+      Object.keys(k.files).filter((p) => p.includes("._") || p.endsWith(".DS_Store")),
+      [],
+    );
+    // As the Finder's zip packs it: a __MACOSX folder beside the kit's folder.
+    const zipped = join(dir, "zip-src");
+    mkdirSync(join(zipped, "__MACOSX", "kit"), { recursive: true });
+    execFileSync("cp", ["-R", join(src, "kit"), join(zipped, "kit")]);
+    writeFileSync(join(zipped, "__MACOSX", "kit", "._kit.json"), "macOS metadata");
+    execFileSync("zip", ["-qr", join(dir, "kit.zip"), "kit", "__MACOSX"], { cwd: zipped });
+    const z = await unpackKit("kit.zip", readFileSync(join(dir, "kit.zip")));
+    assert.equal(z.kit.name, "smoke-cpu");
+    assert.ok(!Object.keys(z.files).some((p) => p.startsWith("__MACOSX")));
+  });
 });
