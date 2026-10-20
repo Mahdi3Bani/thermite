@@ -16,6 +16,7 @@ It takes half an hour to an hour, most of it waiting. An agent may work for up t
 
 - Everything from [Your first run](first-run.md): Thermite running on your computer, the dashboard signed in, and **Judge smoke** passed on `local-1`. The smoke check left the smoke project and its kit on the rig, and this tutorial uses them.
 - An internet connection. The free models run on OpenCode's own service. You need no account and no key. The model sees the code the agents read, which here is only the smoke project.
+- A look at [Known limits](../reference/known-limits.md), if you haven't read it yet. From this tutorial on, agents run the code that a model writes, on your computer.
 
 ## 1. Add OpenCode as a model provider
 
