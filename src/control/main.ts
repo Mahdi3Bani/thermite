@@ -7,6 +7,7 @@ import { createControlApi } from "./api.ts";
 import { Credential } from "./credential.ts";
 import { KitRepos } from "./kit-repos.ts";
 import { advanceResets, driverFromEnv } from "./lifecycle.ts";
+import { OutsideKbs } from "./outside-kb.ts";
 import { refreshGpuClouds } from "./runpod.ts";
 import { RunpodTests } from "./runpod-tests.ts";
 import { SecretBox } from "./secrets.ts";
@@ -78,6 +79,8 @@ async function main(): Promise<void> {
   const runpodTests = new RunpodTests(store, secrets, {
     image: env.THERMITE_RUNPOD_TEST_IMAGE || undefined,
   });
+  // Outside knowledge bases (optional): copies of campaign folders, synced by the loop below.
+  const outsideKb = new OutsideKbs(store, store.kb(), secrets);
   const server = serve({
     fetch: createControlApi(store, tokens, privateKeyPem, {
       staleAfterMs,
@@ -89,6 +92,7 @@ async function main(): Promise<void> {
         : undefined,
       secrets,
       runpodTests,
+      outsideKb,
       // Kits written on the new-campaign page, kept as git repositories in control's state.
       kits: new KitRepos(join(dir, "kits")),
       // How rigs and the machines control sets rigs up on reach control.
@@ -134,10 +138,19 @@ async function main(): Promise<void> {
       log("control", "gpu cloud read error", { error: String(err) }),
     );
   }, 15 * 60_000);
+  // Campaign folders copied to outside knowledge bases: their new and changed items, every few
+  // minutes (THERMITE_OUTSIDE_KB_SYNC_SECONDS). With no copy switched on, nothing is called.
+  const outsideSyncMs = Number(env.THERMITE_OUTSIDE_KB_SYNC_SECONDS ?? "300") * 1000;
+  const outsideSync = setInterval(() => {
+    outsideKb
+      .syncAll()
+      .catch((err) => log("control", "outside knowledge base sync error", { error: String(err) }));
+  }, outsideSyncMs);
   const stop = () => {
     clearInterval(resets);
     clearInterval(tests);
     clearInterval(clouds);
+    clearInterval(outsideSync);
     server.close();
     process.exit(0);
   };

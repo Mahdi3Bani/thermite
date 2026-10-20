@@ -17,6 +17,7 @@ import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from 
 import type { MachineSsh } from "./machines/ssh.ts";
 import { mountMcp } from "./mcp.ts";
 import { metricsText } from "./metrics.ts";
+import { OutsideKbs } from "./outside-kb.ts";
 import { claudeModelName, isOpencodeOwn, providerBase } from "./providers.ts";
 import type { probeRepository } from "./repo-probe.ts";
 import { RunpodTests, type TestRequest } from "./runpod-tests.ts";
@@ -198,6 +199,11 @@ export interface ControlOptions {
   runpodTests?: RunpodTests | undefined;
   /** The image a RunPod test pod runs when none is given (THERMITE_RUNPOD_TEST_IMAGE). */
   runpodTestImage?: string | undefined;
+  /**
+   * Outside knowledge bases (optional); control's loop syncs their copies (main.ts). Made here
+   * when not given.
+   */
+  outsideKb?: OutsideKbs | undefined;
 }
 
 export function createControlApi(
@@ -218,6 +224,7 @@ export function createControlApi(
   const runpodTests =
     opts.runpodTests ??
     new RunpodTests(store, secrets, { fetch: opts.cloudFetch, image: opts.runpodTestImage });
+  const outsideKb = opts.outsideKb ?? new OutsideKbs(store, store.kb(), secrets);
   const opt = (t: string | Credential | undefined) =>
     t === undefined ? undefined : Credential.from(t);
   const creds = {
@@ -579,7 +586,9 @@ export function createControlApi(
   });
 
   // The supervisor's advisors, by role, when the owner gave them models (each with its key or
-  // a subscription's token). A role with none keeps the supervisor's own configuration.
+  // a subscription's token). A role with none keeps the supervisor's own configuration. With
+  // them, the outside knowledge bases granted to campaigns the rig runs (each with its token and
+  // those campaigns): the supervisor gives their search only to those campaigns' advisors.
   app.get("/v1/rigs/:rig/advisor-routes", rigAuth, async (c) => {
     c.header("cache-control", "no-store");
     const rig = c.req.param("rig");
@@ -588,6 +597,7 @@ export function createControlApi(
       combiner: await roleRouteOf(rig, "combiner"),
       auditor: await roleRouteOf(rig, "auditor"),
       panel: await roleRouteOf(rig, "panel"),
+      outside_kb: outsideKb.forRig(rig),
     });
   });
 
@@ -912,6 +922,7 @@ export function createControlApi(
       cloudFetch: opts.cloudFetch,
       runpodTests,
       actions,
+      outsideKb,
     }),
   );
   app.get("/", (c) => c.redirect("/ui", 302));
