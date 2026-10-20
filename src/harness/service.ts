@@ -1426,11 +1426,16 @@ export class HarnessService {
 
   /**
    * Past research for a run's folder (the supervisor, from control's knowledge base): each item
-   * a file under the run's knowledge/, overwritten when it changed.
+   * a file under the run's knowledge/, overwritten when it changed. With `folders` (the campaign
+   * folders the run may read now), a folder no longer among them is removed.
    */
-  writeKnowledge(run: string, items: unknown[]): { written: number; updated: number } {
+  writeKnowledge(
+    run: string,
+    items: unknown[],
+    folders?: string[] | undefined,
+  ): { written: number; updated: number; removed: string[] } {
     this.requireRun(run);
-    return this.knowledge.write(run, items);
+    return this.knowledge.write(run, items, folders);
   }
 
   // ------------------------------------------------------------ attempts

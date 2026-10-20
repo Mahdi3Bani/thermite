@@ -177,6 +177,7 @@ describe("research in every mode", () => {
       {
         seq: 4,
         campaign: "kernels",
+        rig: "rig-b",
         run: "kernels-7",
         kind: "note",
         ref: "12",

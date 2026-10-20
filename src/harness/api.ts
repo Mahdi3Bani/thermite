@@ -366,12 +366,17 @@ export function createHarnessApi(
   });
 
   // Past research for a run's folder, from control's knowledge base (the supervisor syncs it):
-  // each item a file under the run's knowledge/.
+  // each item a file under the run's knowledge/. `folders` (the folders the run's campaign may
+  // read now) removes a folder whose grant was revoked.
   app.post("/v1/kb", supervisor, bodyLimit({ maxSize: 32 * 1024 * 1024 }), async (c) => {
     const body = z
-      .strictObject({ run: z.string().min(1).max(100), items: z.array(z.unknown()) })
+      .strictObject({
+        run: z.string().min(1).max(100),
+        items: z.array(z.unknown()),
+        folders: z.array(z.string().min(1).max(200)).optional(),
+      })
       .parse(await c.req.json());
-    return c.json(service.writeKnowledge(body.run, body.items));
+    return c.json(service.writeKnowledge(body.run, body.items, body.folders));
   });
 
   // The live log, signed, for the supervisor to relay to control.

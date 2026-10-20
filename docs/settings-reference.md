@@ -109,6 +109,7 @@ harness needs it for agents on a Claude subscription, and the supervisor for adv
 | `THERMITE_COMMAND_POLL_SECONDS` | 5 | How often it fetches control's commands. `0` puts them back on the report round |
 | `THERMITE_LIVE_INTERVAL_MS` | 3000 | How often it relays the live view |
 | `THERMITE_MODEL_ROUTE_POLL_SECONDS` | 30 | How often it asks control for the rig's model and its provider, and hands a change to its harness |
+| `THERMITE_KB_SYNC_SECONDS` | 180 | How often it asks control for the past research each running run's campaign may read, and hands new items to its harness (the run's `knowledge/` folder). `0` turns it off |
 | `THERMITE_SUPERVISOR_HOME` | `/var/lib/thermite-supervisor` | Its state: relay cursor, results repository, fetched sources, advisor records |
 | `THERMITE_INBOX_DIR`, `THERMITE_OUTBOX_DIR` | `/inbox`, `/outbox` | The harness's inbox (it writes imports there) and outbox (it reads exports) |
 | `THERMITE_RESULTS_REMOTE` | none | The results repository it pushes exports to. Unset: it commits locally only |

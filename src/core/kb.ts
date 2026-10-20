@@ -22,6 +22,8 @@ export const KbItemWire = z.object({
   /** Increases on every change of any item: the sync's cursor. */
   seq: z.number().int().positive(),
   campaign: z.string().min(1).max(200),
+  /** The rig the item's run was on: a run's name is unique per rig only. */
+  rig: z.string().min(1).max(200),
   run: z.string().min(1).max(100),
   kind: KbKind,
   /** The item's id in its run (an experiment, an attempt, a claim, a note's number). */

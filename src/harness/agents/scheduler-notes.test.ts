@@ -155,6 +155,7 @@ describe("field notes in planning and briefs", () => {
       {
         seq: 1,
         campaign: "kernels",
+        rig: "rig-b",
         run: "kernels-7",
         kind: "experiment",
         ref: "x-0123456789ab",
