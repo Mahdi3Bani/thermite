@@ -1,0 +1,90 @@
+---
+id: "063"
+title: "Campaigns, runs and live views you can scan; steering as one message box"
+status: IN_PROGRESS
+version: "0.1.0"
+part: "Tester basics"
+depends_on: []
+created: 2026-10-20
+updated: 2026-10-20
+---
+
+# 063 · Campaigns, runs and live views you can scan; steering as one message box
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
+
+## What
+
+The dashboard's campaign, run and live views are rebuilt so that a person can see at a glance what is at work now, find any campaign or run, start a run, and steer a run by writing to its agents.
+
+- **Campaigns list:**
+  - "At work now" first: one card per running run, with what each agent and the judge is doing and the run's result so far.
+  - Then "Waiting for you", then every campaign as one row: its runs counted by state, its best result, its last activity and its rigs.
+  - Filters (at work, paused, rig checks, all) and a search box. The smoke checks that control runs on each new rig are hidden unless asked for.
+- **A campaign's page:**
+  - "Start a run" is always in the page's header. It opens a short form:
+    - where the run goes (only rigs with the right hardware, each shown as free or busy);
+    - where it starts from;
+    - agents on or off, with a model picked there if the rig has none;
+    - more options, collapsed.
+  - The page shows the runs at work first, then the earlier runs in one table, newest first. A paused run can be resumed from its row. There are no tabs, one per run, any more.
+  - Campaigns assigned through MCP, the API or the CLI can also start a run, from their latest run's assignment.
+- **Live, per run:**
+  - The Live page lists the runs at work first, then idle rigs, then runs that ended recently.
+  - A run's view has one entry per lane and one for the judge, not one per trial; trials show as dividers in the lane's stream.
+  - A trial that ended, or was cut off by a restart, no longer shows "working".
+  - The stream is easy to read: an agent's text as paragraphs, a tool call as one line with its result, runs of steps folded, and research records (sources, claims, findings) as labelled lines.
+- **Steering as one message box:**
+  - On the run page and in Live, one box writes to the run's agents. Its recipients:
+    - **everyone working**, the default;
+    - **a lane**;
+    - **the planner**, for hill-climb and goal runs only;
+    - **the advisors**.
+  - Under the box, the page says when the chosen recipient will read the message.
+  - A message can stay in force: it goes into every new trial's brief until the owner removes it.
+  - Sent messages are listed with who has read each one, and when.
+  - Pause and restarting the lanes are separate buttons. The planner's rules (avoid, try, always) are an advanced, collapsed form that picks from the run's known directions.
+  - The judge and the auditor take no messages. They decide by measurement and by rules; the owner overrules them on their decision cards.
+
+## Why
+
+The owner's feedback on 2026-10-20:
+
+- **Campaigns list:** it lists every run of every campaign, rig checks included. It doesn't show what is live, and it is hard to explore.
+- **A campaign's page:** it has one tab per run and no visible way to start a run. The "Start another run" form exists, but only at the bottom, and only for campaigns made on the New campaign page.
+- **Live:** it is per rig and lists one session per trial, in the order of the latest line, so it fills with near-identical rows. Long tool calls can show as raw JSON.
+- **Steering:** the form mixes pause, reset, rules and a link. The message box defaults to the planner. On a research run, a message to the planner is never read, yet control still reports it as delivered.
+
+## Done when
+
+- [ ] The Campaigns list, a campaign's page, Live and the run's Steer tab match the approved mockups.
+- [ ] Start a run works from every campaign's page, including campaigns that were not made on the New campaign page.
+- [ ] Live lists runs at work first, has one entry per lane, and marks ended trials correctly.
+- [ ] A message reaches the chosen agents. Pi workers read it at their next step. OpenCode and Claude Code workers read it at their next step too, or the page says plainly when they will.
+- [ ] Control shows who has read each message, from the rig's own record, not only that the rig stored it.
+- [ ] A research run offers no planner as a recipient. "Everyone working" and messages kept in force reach its lanes.
+- [ ] No message is lost: a message taken from the queue is always given to an agent.
+- [ ] Tests cover the lists and filters, start a run, the lane grouping in Live, delivery to each kind of worker, and read receipts.
+
+## Decisions
+
+- 2026-10-20, owner: the five points of feedback above. Designs are chosen by mockup first, as for the earlier dashboard pages.
+- 2026-10-20: the recipients are the agents only (lanes, planner, advisors). The judge and the auditor stay out of reach of messages, so that what agents and owner write cannot change a measurement or an audit; the owner's overrule is the decision card.
+
+## Open questions
+
+- Should "everyone working" also reach the advisors' teacher pair, or only the lanes and the planner? The mockups send it to the lanes and the planner.
+
+## Progress
+
+- 2026-10-20: Goal written from the owner's feedback. Mockups made from the dashboard's own shell and stylesheet, with data shaped like a real deployment: the Campaigns list, a campaign's page with Start a run, Live per run, and the run's Steer tab.
+- 2026-10-20: Defects found while mapping the current code:
+  - On research runs, planner messages are never read, yet they are reported as delivered.
+  - OpenCode and Claude Code workers read a message only when nudged after they stop without submitting.
+  - An OpenCode research trial drops messages taken on its third pass.
+  - A trial cut off by a restart shows "working" for ever.
+  - Research rounds appear in the timeline as "the model's plan was refused", though they are planned by a fixed method on purpose.
+
+---
+
+Run with `/goal Complete docs/plan/goals/063-scan-and-steer.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

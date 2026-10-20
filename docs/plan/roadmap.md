@@ -39,6 +39,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [007](goals/007-known-limits.goal) Known limits and the security model · `READY`
 - [008](goals/008-community-files.goal) Community files and contributor docs · `READY`
 - [009](goals/009-subscription-sign-in-tests.goal) Real subscription sign-in tests · `READY`
+- [063](goals/063-scan-and-steer.goal) Campaigns, runs and live views you can scan; steering as one message box · `IN_PROGRESS`
 
 ### Install from images
 
