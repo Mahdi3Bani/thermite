@@ -1,0 +1,43 @@
+# Changelog
+
+Each release of Thermite, newest first. Versions 0.x make no upgrade promise: read [Known limits](docs/_site/src/content/docs/reference/known-limits.md) before you upgrade.
+
+## [Unreleased]: v0.1.0, the first public release
+
+### Install and run
+
+- Install from published images, with no build. Each release attaches a compose file that pins the images by digest, and `thermite local init` makes the stack's secret files. Building from source stays for contributors.
+- The images:
+  - control, the CPU harness and the supervisor, for amd64 and arm64;
+  - the CUDA harness, for amd64.
+- `thermite doctor` checks the machine. It covers the container engine, the compose tool, ports, disk, the clock, the GPU toolkit, and whether control and the model can be reached, and it says how to fix each problem.
+- Control and every rig report their versions. Control marks a rig that is behind it, refuses a rig it cannot work with, and shows a rig that stopped reporting as stale or offline.
+
+### Rigs
+
+- Rigs on your own machines over SSH, and on Kubernetes clusters, in a namespace that control creates or in a slot that your operators made.
+- Rigs on RunPod GPUs, on Secure cloud, launched by the owner over REST, MCP or the command line:
+  - control connects to the pod through RunPod's proxy, and enrolls it with a one-time code;
+  - the pod runs one container that holds the harness and the supervisor;
+  - control tracks each rig's hourly price and spend, and applies a spend limit or an idle stop only when you set one;
+  - stop, start, restart, full reset and terminate, where terminate waits until every result has left the pod.
+- A rig takes model files by URL and checksum, with progress. It sends its exports to control when the project has no results repository.
+
+### Campaigns
+
+- Three campaign modes: hill climb, goal and research.
+- The New campaign page and Start a run. A campaign's project can be a folder inside a repository. A sample project and its kit are in `examples/matmul-cpu`.
+- Campaigns, runs and Live per run, built for scanning. The owner messages the agents and the advisors from one message box, and sees who read each message.
+- One experiment queue for each run. The planner coordinates it. The owner, the advisors and the lanes add to it, and `thermite assign --queue-from` copies another run's untried experiments.
+- Field notes from the workers, the planner and the advisors. Thermite keeps its own knowledge base, with a folder for each campaign, and the owner grants which campaigns may read which folders. Workers, the planner and the advisors can search what they may read.
+
+### Operate
+
+- Control's log pages through every entry, in the dashboard, over REST and in the `control_log` MCP tool.
+- The documentation site has tutorials, how-to guides, reference and explanation. Agents read it through `llms.txt`. It includes the known limits and the security model.
+- `SECURITY.md`, `CONTRIBUTING.md` and a code of conduct (the Contributor Covenant 2.1). CI runs on every push to the development branch: the checks, the docs site, a secret scan, the compose smoke test, the rig image, RunPod against a fake API, and the quick start from the release bundle.
+
+### Removed
+
+- The old `QWEN_*` names of the model settings, the `thermite-qwen` provider ID and the `qwen-api-key` file migration. Use the `THERMITE_MODEL_*` settings.
+- The Kubernetes namespace default `ar-{rig}`. It is now `thermite-{rig}`; a rig with a namespace set keeps it.

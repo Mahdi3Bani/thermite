@@ -7,7 +7,7 @@
 ![Node.js 22.19+](https://img.shields.io/badge/node-%E2%89%A522.19-339933)
 [![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/3Qs2uejUf9)
 
-[Quick start](docs/_site/src/content/docs/tutorials/first-run.md) · [Documentation](docs/README.md) · [Architecture](docs/_site/src/content/docs/explanation/how-it-fits-together.md) · [Roadmap](docs/plan/roadmap.md) · [Discord](https://discord.gg/3Qs2uejUf9)
+[Quick start](docs/_site/src/content/docs/tutorials/first-run.md) · [Documentation](docs/README.md) · [Architecture](docs/_site/src/content/docs/explanation/how-it-fits-together.md) · [Roadmap](docs/plan/roadmap.md) · [Changelog](CHANGELOG.md) · [Discord](https://discord.gg/3Qs2uejUf9)
 
 Point Thermite at a project and a goal: make a kernel faster without breaking its tests, reach a list of goals, or research a topic for eight hours. It runs many agents in parallel, each trying one change at a time. A judge that the agents can't read or modify builds every change, times it, checks it and decides what counts. Wins are kept and built on. Losses are kept too, with the reason they lost. One dashboard, with a REST API and MCP, shows and steers every campaign on every machine.
 
