@@ -165,7 +165,10 @@ describe("the advisors' field notes", () => {
     await env.service.applyCommand(env.assign);
     const seen: string[] = [];
     const fake = await startFakeModel(({ messages }) => {
-      seen.push(JSON.stringify(messages));
+      const all = JSON.stringify(messages);
+      seen.push(all);
+      // First the brief tool (it must be filtered too), then the answer.
+      if (!all.includes('"role":"tool"')) return { toolCalls: [{ name: "brief", args: {} }] };
       return { toolCalls: [{ name: "answer", args: { summary: "s", recommendations: [] } }] };
     });
     t.after(() => fake.close());
@@ -176,7 +179,11 @@ describe("the advisors' field notes", () => {
     await adviseOnce(config(env, advisors, []), emptyAdviseState());
     const brief = seen.find((s) => s.includes("Brief of run js-1")) ?? "";
     assert.ok(brief, "the teacher ran");
-    assert.doesNotMatch(brief, /Vector loads need 16-byte aligned pointers/);
+    assert.ok(
+      seen.some((x) => x.includes('"role":"tool"')),
+      "the teacher called its brief tool",
+    );
+    for (const x of seen) assert.doesNotMatch(x, /Vector loads need 16-byte aligned pointers/);
     assert.doesNotMatch(brief, /\\"background\\"|\\"past_research\\"/);
   });
 

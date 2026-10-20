@@ -200,6 +200,31 @@ export class KnowledgeBase {
     }
   }
 
+  /** The campaign of the newest assign_campaign control issued for this run on this rig. */
+  private assigned(rig: string, run: string): string | undefined {
+    const r = this.db
+      .prepare(
+        `select json_extract(signed, '$.envelope.payload.contract.campaign') as c from command
+         where rig = ? and kind = 'assign_campaign' and status not in ('failed', 'rejected', 'expired')
+           and json_extract(signed, '$.envelope.payload.run') = ?
+         order by issued_at desc limit 1`,
+      )
+      .get(rig, run) as { c: unknown } | undefined;
+    return typeof r?.c === "string" && r.c ? r.c : undefined;
+  }
+
+  /** Whether control assigned a run of this campaign to any rig. */
+  private assignedAnywhere(campaign: string): boolean {
+    return (
+      this.db
+        .prepare(
+          `select 1 from command where kind = 'assign_campaign'
+           and json_extract(signed, '$.envelope.payload.contract.campaign') = ? limit 1`,
+        )
+        .get(campaign) !== undefined
+    );
+  }
+
   private campaignOf(rig: string, ledger: string, run: string): string | undefined {
     return (
       this.db
@@ -296,14 +321,21 @@ export class KnowledgeBase {
     const { rig, ledger } = src;
     const run = str(b.run) || subject;
     switch (kind) {
-      case "run_created":
-        if (str(b.campaign))
+      case "run_created": {
+        // Filed under the campaign control assigned this run on this rig. A run control did not
+        // assign keeps the campaign its event names, unless control assigned that campaign
+        // somewhere: a rig cannot file items into a campaign it was not given.
+        const named = str(b.campaign);
+        const assigned = this.assigned(rig, subject);
+        const campaign = assigned ?? (named && !this.assignedAnywhere(named) ? named : "");
+        if (campaign)
           this.db
             .prepare(
               "insert into kb_run (rig, ledger, run, campaign) values (?, ?, ?, ?) on conflict(rig, ledger, run) do update set campaign = excluded.campaign",
             )
-            .run(rig, ledger, subject, str(b.campaign));
+            .run(rig, ledger, subject, campaign);
         return;
+      }
       case "journal_note": {
         const about = b.about && typeof b.about === "object" ? (b.about as Row) : undefined;
         this.put(

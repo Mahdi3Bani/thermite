@@ -593,3 +593,53 @@ test("MCP: a briefing takes the knowledge base's own words; an item not found or
   p = await assign([asked[2]]);
   assert.equal(p.briefing, undefined);
 });
+
+test("MCP: a copied experiment takes control's record only from a folder the run may read", async () => {
+  const s = await stack();
+  const owner = await mcp(s.control, s.tokens.admin);
+  const copy = async () => {
+    const r = text(
+      await owner.callTool({
+        name: "issue_command",
+        arguments: {
+          rig: "rig-b",
+          kind: "assign_campaign",
+          payload: {
+            run: "survey-study-9",
+            contract: { campaign: "survey-study", mode: "research" },
+            contract_sha: "a".repeat(64),
+            imports: [],
+            queue: [
+              {
+                title: "the caller's words",
+                by: "owner",
+                state: "queued",
+                from: { run: "gs-3", id: "x-1" },
+              },
+            ],
+          },
+        },
+      }),
+    ) as { id: string };
+    return (
+      JSON.parse(
+        (
+          s.store.db.prepare("select signed from command where id = ?").get(r.id) as {
+            signed: string;
+          }
+        ).signed,
+      ) as { envelope: { payload: { queue: { title: string; by: string }[] } } }
+    ).envelope.payload.queue[0];
+  };
+  // gemv-speed's experiment, for a survey-study run that may not read gemv-speed: no record.
+  assert.deepEqual(await copy(), {
+    title: "the caller's words",
+    by: "copied",
+    state: "queued",
+    from: { run: "gs-3", id: "x-1" },
+  });
+  s.store.kb().grant("survey-study", "gemv-speed", "owner:ui");
+  const granted = await copy();
+  assert.notEqual(granted?.title, "the caller's words");
+  assert.notEqual(granted?.by, "copied");
+});

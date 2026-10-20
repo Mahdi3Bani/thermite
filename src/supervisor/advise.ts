@@ -405,11 +405,16 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           past_research?: unknown;
         };
         // Teachers with an open web fetch get no records of other campaigns: past research and
-        // the briefing stay out of their brief, as the knowledge-base search does.
-        if (domains.includes("*")) {
-          delete brief.background;
-          delete brief.past_research;
-        }
+        // the briefing stay out of their brief (and its tool), as the knowledge-base search does.
+        const openFetch = domains.includes("*");
+        const closed = <T extends { background?: unknown; past_research?: unknown }>(b: T): T => {
+          if (openFetch) {
+            delete b.background;
+            delete b.past_research;
+          }
+          return b;
+        };
+        closed(brief);
         const given = (brief.owner_messages ?? []).filter((m) => !m.read).map((m) => m.id);
         const run = await teacherRound({
           config: cfg.advisors,
@@ -417,7 +422,13 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           brief,
           tools: {
             ...toolsFor(inst.campaign || (await campaignOf(inst.id))),
-            brief: () => api("GET", `/v1/brief?run=${encodeURIComponent(inst.id)}`),
+            brief: async () =>
+              closed(
+                (await api("GET", `/v1/brief?run=${encodeURIComponent(inst.id)}`)) as {
+                  background?: unknown;
+                  past_research?: unknown;
+                },
+              ),
           },
         });
         s.teacher_runs++;

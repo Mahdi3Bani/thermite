@@ -1004,6 +1004,7 @@ export class ControlStore {
     id: string,
   ):
     | {
+        rig: string;
         by: string;
         title: string;
         details?: string | undefined;
@@ -1022,7 +1023,7 @@ export class ControlStore {
     if (new Set(rows.filter((r) => r.kind === "experiment_added").map((r) => r.rig)).size !== 1)
       return undefined;
     let x:
-      | { by: string; title: string; details?: string; family?: string; why?: string }
+      | { rig: string; by: string; title: string; details?: string; family?: string; why?: string }
       | undefined;
     for (const r of rows) {
       let b: Record<string, unknown>;
@@ -1036,7 +1037,14 @@ export class ControlStore {
         const by = str("by");
         const title = str("title");
         if (!by || !title) return undefined;
-        x = { by, title, details: str("details"), family: str("family"), why: str("why") };
+        x = {
+          rig: r.rig,
+          by,
+          title,
+          details: str("details"),
+          family: str("family"),
+          why: str("why"),
+        };
       } else if (x)
         for (const k of ["title", "details", "family", "why"] as const) {
           const v = str(k);

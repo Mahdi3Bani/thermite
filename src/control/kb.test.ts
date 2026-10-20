@@ -427,3 +427,28 @@ test("a research note is a note of its own in the folder and in the run's journa
   );
   assert.ok(!run?.timeline.some((e) => e.kind === "research_note"));
 });
+
+test("a rig files a run's items only under a campaign control gave it", () => {
+  const store = new ControlStore(":memory:");
+  // Control assigned gemv-speed to rig-a's g-1.
+  assigned(store, "rig-a", "g-1", "gemv-speed");
+  ingest(store, "rig-a", [
+    ["harness", "run_created", "g-1", { campaign: "gemv-speed", mode: "goal" }],
+    ["lane-1", "journal_note", "g-1", { id: 1, by: "lane-1", kind: "lesson", text: "real lesson" }],
+  ]);
+  // rig-b names gemv-speed for a run control never assigned it: nothing goes in that folder.
+  ingest(store, "rig-b", [
+    ["harness", "run_created", "g-9", { campaign: "gemv-speed", mode: "goal" }],
+    ["lane-1", "journal_note", "g-9", { id: 1, by: "lane-1", kind: "lesson", text: "planted" }],
+    // A campaign control never assigned anywhere (a local run) is still filed as named.
+    ["harness", "run_created", "l-1", { campaign: "local-try", mode: "goal" }],
+    ["lane-1", "journal_note", "l-1", { id: 2, by: "lane-1", kind: "lesson", text: "local" }],
+  ]);
+  const kb = store.kb();
+  assert.deepEqual(
+    kb.search("lesson", ["gemv-speed"]).map((x) => x.body),
+    ["real lesson"],
+  );
+  assert.equal(kb.search("planted", ["gemv-speed"]).length, 0);
+  assert.equal(kb.search("local", ["local-try"]).length, 1);
+});

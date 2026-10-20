@@ -19,28 +19,30 @@ import { campaignModes, leaderboard, rigView } from "./views.ts";
  */
 
 /**
- * Commands agents may issue through MCP. Wiping state, full resets, accepting a subjective goal
- * and accepting a "not possible" ending stay with the owner (dashboard or REST): no model is the
- * final gate.
- */
-/**
  * A run's copied experiments (assign_campaign.queue) are taken from the rigs' signed events:
  * their author and their words come from control's record of the copied experiment, never from
- * the caller. One control has no record of keeps the caller's words, as "copied".
+ * the caller, and only from a run of a campaign the new run's campaign may read. Any other keeps
+ * the caller's words, as "copied".
  */
 function copiedFromRecords(store: ControlStore, payload: unknown): unknown {
-  const p = payload as { queue?: unknown };
+  const p = payload as { queue?: unknown; contract?: { campaign?: unknown } };
   if (!p || typeof p !== "object" || !Array.isArray(p.queue)) return payload;
+  const target = typeof p.contract?.campaign === "string" ? p.contract.campaign : "";
+  const kb = store.kb();
+  const readable = new Set([target, ...(target ? kb.reads(target) : [])]);
   return {
     ...p,
     queue: p.queue.map((x: { from?: { run?: unknown; id?: unknown } }) => {
       if (!x || typeof x !== "object") return x;
       const run = x.from?.run;
       const id = x.from?.id;
-      const rec =
+      const found =
         typeof run === "string" && typeof id === "string"
           ? store.experimentRecord(run, id)
           : undefined;
+      // Only from a run of a campaign the new run's campaign may read (its own, or granted).
+      const source = found && typeof run === "string" ? kb.runCampaign(found.rig, run) : undefined;
+      const rec = found && source && readable.has(source) ? found : undefined;
       if (!rec) return { ...x, by: "copied" };
       const { title: _t, details: _d, family: _f, why: _w, ...rest } = x as Record<string, unknown>;
       return {
@@ -55,6 +57,11 @@ function copiedFromRecords(store: ControlStore, payload: unknown): unknown {
   };
 }
 
+/**
+ * Commands agents may issue through MCP. Wiping state, full resets, accepting a subjective goal
+ * and accepting a "not possible" ending stay with the owner (dashboard or REST): no model is the
+ * final gate.
+ */
 const AGENT_COMMANDS = [
   "assign_campaign",
   "pause_run",
