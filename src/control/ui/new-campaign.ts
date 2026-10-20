@@ -117,7 +117,7 @@ ${errors}
 <div>
 <section class="pane" data-pane="aim"><div class="sec"><h2>What should this campaign do?</h2><p class="lead">This decides how the judge tells better from worse.</p>
 <div class="cards3">
-${choice("mode", "hill_climb", "Hillclimbing", "Improve one measured number: speed, size or accuracy. A change is kept only when the judge measures it as better.<br><i>For example: a faster matrix multiply on this GPU.</i>", mode === "hill_climb")}
+${choice("mode", "hill_climb", "Hill climb", "Improve one measured number: speed, size or accuracy. A change is kept only when the judge measures it as better.<br><i>For example: a faster matrix multiply on this GPU.</i>", mode === "hill_climb")}
 ${choice("mode", "goal", "Reach a list of goals", "Say what the result must do, as checks: it builds, it loads the model, its answers match. The campaign ends when the goals are met.<br><i>For example: support a new quantized format.</i>", mode === "goal")}
 ${choice("mode", "research", "Research a question", "Agents read sources and report findings, each backed by quotes Thermite checks. No code changes.<br><i>For example: which papers improve 2-bit decoding?</i>", mode === "research")}
 </div></div>

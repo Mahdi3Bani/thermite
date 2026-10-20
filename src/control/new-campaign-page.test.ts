@@ -118,7 +118,9 @@ describe("the new-campaign page", () => {
   test("the page offers the rig and explains every field; a campaign from nothing starts its first run", async () => {
     const s = await stack();
     const page = await (await s.get("/ui/campaigns/new")).text();
-    assert.match(page, /Hillclimbing/);
+    // The mode's name as everywhere else.
+    assert.match(page, /data-value="hill_climb"[\s\S]*?Hill climb/);
+    assert.doesNotMatch(page, /Hillclimbing/);
     assert.match(page, /data-group="rig" data-value="rig-a"/);
     assert.match(page, /cpu · generic-cpu/);
     assert.match(page, /<script src="\/ui\/assets\/new-campaign.js" defer>/);
@@ -129,6 +131,10 @@ describe("the new-campaign page", () => {
     assert.match(await (await s.get("/ui/campaigns")).text(), /href="\/ui\/campaigns\/new"/);
     const js = await s.get("/ui/assets/new-campaign.js");
     assert.match(js.headers.get("content-type") ?? "", /javascript/);
+    // Its counts in words: "1 agent works", "1 file".
+    const script = await js.text();
+    assert.match(script, /" agent works" : " agents work"/);
+    assert.match(script, /j\.files \+ " file" \+ \(j\.files === 1 \? "" : "s"\)/);
 
     // The project is looked up by control; the page then shows what it found.
     const probe = await s.get(

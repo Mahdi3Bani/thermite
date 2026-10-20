@@ -76,7 +76,7 @@ export const NEW_CAMPAIGN_JS = `
       found = j;
       out.textContent = "";
       const b = document.createElement("b"); b.textContent = ref;
-      out.append("Found: ", b, " is at ", j.commit.slice(0, 7), " · " + j.files + " files. Rigs fetch it from there.");
+      out.append("Found: ", b, " is at ", j.commit.slice(0, 7), " · " + j.files + " file" + (j.files === 1 ? "" : "s") + ". Rigs fetch it from there.");
       const sug = $("#suggest"); sug.replaceChildren();
       for (const p of j.suggest) { const btn = document.createElement("button"); btn.className = "sm"; btn.dataset.path = p; btn.textContent = p; sug.append(btn); }
       update();
@@ -248,7 +248,7 @@ export const NEW_CAMPAIGN_JS = `
     const score = choice.kit === "upload" ? (val("up_metric") || "the kit's score") + " " + (val("up_direction") === "min" ? "lower" : "higher") : (choice.score || "time") === "check" ? (val("score_field") || "its score") + " " + (val("direction") === "min" ? "lower" : "higher") : "its runs faster";
     const aim = { hill_climb: "make " + score + ", keeping only changes the judge confirms are at least " + (val(choice.kit === "upload" ? "up_min_effect" : "min_effect") || "5") + "% better", goal: "reach its goals, each checked by the judge", research: "research " + (val("topic") || "its topic") + " and report checked findings" }[mode];
     const proj = mode === "research" ? "" : " on " + repoName(val("project_url") || "the project") + (found ? " at " + found.commit.slice(0, 7) : "") + ", changing only " + (lines("editable_paths").join(", ") || "(no files yet)");
-    const s = (val("campaign") || "The campaign") + " will " + aim + proj + ". " + lanes + " agent" + (lanes === "1" ? "" : "s") + " work on " + (rig || "(no rig chosen)") + ".";
+    const s = (val("campaign") || "The campaign") + " will " + aim + proj + ". " + lanes + (Number(lanes) === 1 ? " agent works" : " agents work") + " on " + (rig || "(no rig chosen)") + ".";
     for (const el of $$("[data-summary]")) el.textContent = s;
     $("#draft-preview") && ($("#draft-preview").textContent = JSON.stringify(draft(), null, 2));
   };
