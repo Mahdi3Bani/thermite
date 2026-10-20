@@ -736,6 +736,8 @@ export class KnowledgeBase {
    * What a run's supervisor syncs into the run's knowledge/ folder: the items of the folders its
    * campaign may read, changed after `after`, in seq order, at most SYNC_PAGE at once, without
    * the run's own items (it has them). Undefined: the rig has no such run in its current ledger.
+   * A grant's copy of an item comes only to a cursor already past the item's own seq; a run that
+   * pages through both may still get an item twice, and keeps the newer.
    */
   sync(rig: string, run: string, after: number, limit = SYNC_PAGE): KbSync | undefined {
     const ledger = (
@@ -758,7 +760,8 @@ export class KnowledgeBase {
            granted.length
              ? `union all
          select i.*, g.seq as s from kb_grant_item g join kb_item i on i.id = g.item
-         where g.campaign = ? and g.reads in (${marks(granted)}) and g.seq > ? and ${notOwn}`
+         where g.campaign = ? and g.reads in (${marks(granted)}) and g.seq > ? and i.seq <= ?
+           and ${notOwn}`
              : ""
          }
          order by s limit ?`,
@@ -767,7 +770,7 @@ export class KnowledgeBase {
         ...folders,
         after,
         ...own,
-        ...(granted.length ? [campaign, ...granted, after, ...own] : []),
+        ...(granted.length ? [campaign, ...granted, after, after, ...own] : []),
         limit + 1,
       ) as Row[];
     const page = rows.slice(0, limit);
