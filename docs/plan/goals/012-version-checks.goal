@@ -1,17 +1,17 @@
 ---
 id: "012"
 title: "Version checks between control and rigs"
-status: READY
+status: IN_PROGRESS
 version: "0.1.0"
 part: "Install from images"
 depends_on: ["010"]
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # 012 · Version checks between control and rigs
 
-**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Install from images · **Depends on:** [010](010-published-images.goal)
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Install from images · **Depends on:** [010](010-published-images.goal)
 
 ## What
 
@@ -23,13 +23,14 @@ With published images, control and its rigs will run different versions.
 
 ## Done when
 
-- [ ] A rig on an older, compatible version shows a notice.
-- [ ] An incompatible rig is refused, with the reason.
-- [ ] Tests cover both cases and the offline state.
+- [ ] A rig on an older, compatible version shows a notice. The REST API, MCP's `list_rigs` and `thermite rig list` show it (`976c88b`: `version.state` `behind` and `version.notice`; `src/control/versions.test.ts`, `src/cli/rig.test.ts`; pages: REST API › Rig versions, MCP tools, Command line). The dashboard's **Rigs** badge and rig page wait for the mockup.
+- [x] An incompatible rig is refused, with the reason. (`976c88b`: every rig route answers 409 with the reason, commands for it are refused when issued, `rig_refused` and `rig_refusal_ended` in the audit log, the reason in the rig list; `src/control/versions.test.ts`; pages: REST API › When control refuses a rig, Troubleshoot, Compatibility.)
+- [x] Tests cover both cases and the offline state. (`976c88b`: `src/control/versions.test.ts` covers behind, refused for the supervisor's and the harness's protocol, unknown, a refusal that ends, a new control that checks refusals again, and reporting, stale and offline; `src/core/version.test.ts` keeps the protocol before this one accepted; `src/cli/rig.test.ts`.)
 
 ## Decisions
 
-None yet.
+- 2026-10-20, owner (through the lead's brief): A rig that sends no version is `unknown`: shown, never refused. Control refuses a rig only when both protocol versions are known and incompatible. An update of control must never cut off rigs on the previous build, and a test shows it.
+- 2026-10-20, owner (through the lead's brief): The screen display (the **Rigs** list badge and the rig page) waits for a mockup the owner is approving. This goal builds what is behind it first.
 
 ## Open questions
 
@@ -38,6 +39,8 @@ None.
 ## Progress
 
 - 2026-10-19: Goal written from the v0.1.0 release plan.
+- 2026-10-20: Built behind the screen (`976c88b`). Each build reports Thermite's version from `package.json`, its commit from `THERMITE_COMMIT` (a new build argument of all three images, which goal 010's release workflow should pass), and protocol 1 with the oldest protocol it works with (`src/core/version.ts`). The harness reports its build in its signed report; the supervisor in `x-thermite-*` headers on every call to control. Control records each part's build, compares it with its own, and gives `state` (`reporting`, `stale`, or `offline` after `THERMITE_CONTROL_OFFLINE_SECONDS`, 900 s by default) and `version` in `GET /v1/rigs`, a rig's view, MCP's `list_rigs` and the new `thermite rig list`. A test keeps `OLDEST_PROTOCOL` at the protocol before `PROTOCOL`.
+- 2026-10-20: Left: the dashboard's **Rigs** badge and rig page, from the owner's mockup. Then the first Done-when item can be ticked.
 
 ---
 

@@ -46,7 +46,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 
 - [010](goals/010-published-images.goal) Published images and a release workflow · `IN_PROGRESS`
 - [011](goals/011-release-bundle.goal) A release bundle · `READY`
-- [012](goals/012-version-checks.goal) Version checks between control and rigs · `READY`
+- [012](goals/012-version-checks.goal) Version checks between control and rigs · `IN_PROGRESS`
 - [013](goals/013-thermite-doctor.goal) `thermite doctor` · `READY`
 - [014](goals/014-quick-start-in-ci.goal) The quick start, tested in CI · `READY`
 - [015](goals/015-log-paging.goal) Log paging · `READY`
