@@ -66,10 +66,14 @@ export const CLIENT_JS = `
     const box = $("form.lcomposer");
     const sel = box && box.querySelector("select[name=to]");
     const ta = box && box.querySelector("textarea");
+    const pin = box && box.querySelector(".lpin");
     const hint = () => {
       const o = sel && sel.selectedOptions[0];
       if (ta && o) ta.placeholder = (o.dataset.hint || "") + " · ⌘↩ sends";
+      // Only messages to everyone working or a lane can stay in force.
+      if (pin && sel) pin.hidden = !(sel.value === "all" || sel.value.startsWith("lane-"));
     };
+    hint();
     const view = (w) => {
       tr.dataset.w = w;
       document.querySelectorAll(".lchip[data-w]").forEach((c) => c.classList.toggle("on", c.dataset.w === w));

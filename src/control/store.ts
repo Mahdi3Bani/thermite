@@ -2615,6 +2615,44 @@ export class ControlStore {
     this.configuredRigs = new Set(rigs);
   }
 
+  /**
+   * The newest owner message (message_agent) control sent to one run, and the rig's answer: refused
+   * (with why), or not.
+   */
+  lastMessageToRun(
+    rig: string,
+    run: string,
+  ): { refused: string | null; issued_at: string } | undefined {
+    const rows = this.db
+      .prepare(
+        "select signed, status, outcome, issued_at from command where rig = ? and kind = 'message_agent' order by issued_at desc limit 30",
+      )
+      .all(rig) as Row[];
+    for (const r of rows) {
+      try {
+        const payload = (
+          JSON.parse(String(r.signed)) as { envelope?: { payload?: { run?: string } } }
+        ).envelope?.payload;
+        if (payload?.run !== run) continue;
+        const out = r.outcome
+          ? (JSON.parse(String(r.outcome)) as {
+              accepted?: boolean;
+              error?: string;
+              result?: { error?: string };
+            })
+          : null;
+        const failed = r.status === "failed" || r.status === "rejected" || out?.accepted === false;
+        return {
+          refused: failed ? (out?.result?.error ?? out?.error ?? String(r.status)) : null,
+          issued_at: String(r.issued_at),
+        };
+      } catch {
+        // not a command this store wrote
+      }
+    }
+    return undefined;
+  }
+
   listCommands(limit = 100): {
     id: string;
     rig: string;

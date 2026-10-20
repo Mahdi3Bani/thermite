@@ -632,6 +632,9 @@ details.menu > summary::-webkit-details-marker { display: none; }
 .lpin { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: var(--control-radius); border: 1px solid var(--input); cursor: pointer; flex: none; opacity: .5; }
 .lpin input { position: absolute; opacity: 0; pointer-events: none; }
 .lpin:has(input:checked) { opacity: 1; background: var(--accent); }
+.lpin[hidden] { display: none; }
+.lnotice { display: flex; gap: 8px; align-items: center; padding: 8px 14px; border-top: 1px solid color-mix(in srgb, var(--warning) 45%, transparent); background: var(--warning-surface); font-size: 13px; }
+.lnotice svg { color: var(--warning-foreground); flex: none; }
 /* The experiment queue and the Planner tab (goal 064) */
 .qcols { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 20px; align-items: start; }
 @media (max-width: 1100px) { .qcols { grid-template-columns: minmax(0, 1fr); } }

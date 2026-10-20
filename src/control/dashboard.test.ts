@@ -1158,13 +1158,14 @@ describe("control dashboard", () => {
       entries: unknown[];
     };
     assert.equal(json.entries.length, 2);
-    // The judge takes no messages; a worker does, through a signed owner command.
+    // The rig-wide view sends you to each run's own Live to message its agents.
     assert.match(
       await (await s.get("/ui/rigs/rig-a/live?source=judge")).text(),
-      /takes no messages/,
+      /To message an agent, open its run's Live: <a href="\/ui\/live\?run=rig-a%2Fjs-1">js-1<\/a>/,
     );
+    // The older message route still takes a signed message (its form now lives on a run's Live).
     const sent = await s.post("/ui/rigs/rig-a/message", {
-      csrf: s.csrfFrom(html),
+      csrf: s.csrfFrom(await (await s.get("/ui/live?run=rig-a%2Fjs-1")).text()),
       run: "js-1",
       to: "lane-1",
       text: "try the closed form",
@@ -1357,7 +1358,7 @@ describe("control dashboard", () => {
     assert.match(html, /data-w="you"/);
     assert.match(
       html,
-      /<option value="lane-1" data-hint="lane-1[^"]*reads it at its next step" selected>/,
+      /<option value="lane-1" data-hint="lane-1[^"]*reads it (at its next step|when it can[^"]*)" selected>/,
     );
     assert.match(html, /<optgroup label="Advisors">/);
     // The feed for this run only, each line tagged.

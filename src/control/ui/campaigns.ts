@@ -144,7 +144,7 @@ export function startDrawer(o: {
   const rigOpts = o.rigs
     .map(
       (r) =>
-        `<label class="sopt${r.off ? " dis" : ""}"><input type="radio" name="rig" value="${esc(r.id)}" data-model="${esc(r.model ?? "")}"${r.id === first?.id ? " checked" : ""}${r.off ? " disabled" : ""}><span><b>${esc(r.id)}</b> <span class="muted small">${esc(r.hardware)}</span><span class="sd">${r.off ? esc(r.off) : r.busy ? `Busy: ${esc(r.busy)} is at work there. A second run shares its devices and model.` : r.stale ? "Not reporting now." : "Free: no run at work."}${r.off ? "" : r.model ? ` Agents' model: ${esc(r.model)}.` : ` <span class="warn">No model for its agents yet.</span>`}</span></span><span class="sr">${r.off ? "" : r.busy ? `<span class="warn">busy</span>` : `<span class="ok">free</span>`}</span></label>`,
+        `<label class="sopt${r.off ? " dis" : ""}"><input type="radio" name="rig" value="${esc(r.id)}" data-model="${esc(r.model ?? "")}"${r.id === first?.id ? " checked" : ""}${r.off ? " disabled" : ""}><span><b>${esc(r.id)}</b> <span class="muted small">${esc(r.hardware)}</span><span class="sd">${r.off ? esc(r.off) : r.busy ? `Busy: ${esc(r.busy)} is at work there, and pauses when this run starts (a rig runs one run at a time).` : r.stale ? "Not reporting now." : "Free: no run at work."}${r.off ? "" : r.model ? ` Agents' model: ${esc(r.model)}.` : ` <span class="warn">No model for its agents yet.</span>`}</span></span><span class="sr">${r.off ? "" : r.busy ? `<span class="warn">busy</span>` : `<span class="ok">free</span>`}</span></label>`,
     )
     .join("");
   const models = o.models
@@ -157,11 +157,11 @@ export function startDrawer(o: {
 <aside class="drawer" aria-label="Start a run"><form method="post" action="/ui/campaigns/${encodeURIComponent(o.campaign)}/runs" class="drawer-form" data-start>
 <header><h3>Start a run of ${esc(o.campaign)}</h3><span class="grow"></span><a class="btn sm ghost" href="/ui/campaigns/${encodeURIComponent(o.campaign)}" data-close>Close</a></header>
 <div class="drawer-body"><input type="hidden" name="csrf" value="${esc(o.csrf)}">
-<div class="sfd">${infoLabel("Where it runs", "The rig whose judge measures this run and whose agents work on it. A free rig has no other run at work; a busy one shares its devices and model with the run already there. Rigs with other hardware than the campaign's kit can't take it.")}<div class="sopts">${rigOpts || `<div class="muted">No rig yet.</div>`}</div></div>
+<div class="sfd">${infoLabel("Where it runs", "The rig whose judge measures this run and whose agents work on it. A free rig has no run at work; on a busy one, the run at work pauses when this one starts, since a rig runs one run at a time. Rigs with other hardware than the campaign's kit can't take it.")}<div class="sopts">${rigOpts || `<div class="muted">No rig yet.</div>`}</div></div>
 <div class="sfd">${infoLabel("Agents", "On: the agents propose changes and the judge measures each one. Off: no agents; the judge measures the starting code on every case once (a try), which checks a kit or a rig.")}<div class="sopts">
 <label class="sopt"><input type="radio" name="agents" value="on" checked><span><b>On</b><span class="sd" data-model-line>The rig's agents and model.</span></span><span></span></label>
 <label class="sopt"><input type="radio" name="agents" value="off"><span><b>Off: a try</b><span class="sd">The judge measures the starting code on every case once. No changes.</span></span><span></span></label></div>
-<label class="sfd smodel" data-model-pick>${infoLabel("The agents' model", "For a rig with no model for its agents: the model to give it, as on its Edit rig page. It reaches the rig within a minute; the run starts once the rig has it.")}<select name="agents_model"><option value="">the rig's model</option>${models}</select></label></div>
+<label class="sfd smodel" data-model-pick>${infoLabel("The agents' model", "For a rig with no model for its agents: the model to give it, as on its Edit rig page. Control gives it to the rig, which takes it within a minute; then start the run again here.")}<select name="agents_model"><option value="">the rig's model</option>${models}</select></label></div>
 ${
   o.copyFrom?.length
     ? `<div class="sfd">${infoLabel("Experiments to start with", "Each run has its own queue. Copy the experiments another run of this campaign had not tried yet, so the new run starts from them; who added each one and why come along. Leave it off for an empty queue the planner fills.")}<label class="sopt"><input type="checkbox" name="copy_queue" value="1" checked><span><b>Copy the untried experiments of</b> <select name="copy_from" aria-label="From which run" style="width:auto;height:28px;display:inline-block;margin-left:4px">${o.copyFrom.map((x) => `<option value="${esc(x.key)}">${esc(x.label)}</option>`).join("")}</select><span class="sd">They join the new run's queue in the same order. The tried ones stay with their run.</span></span><span></span></label></div>`
@@ -179,6 +179,7 @@ ${
 
 /** A campaign's earlier runs (paused and finished), newest first, in one table. */
 export function earlierRuns(
+  /** `result`: more for the result cell (cross-verification); `action`: the row's button. */
   rows: { rig: RigView; run: RunView; result: string; action: string }[],
   now: number,
 ): string {
@@ -190,7 +191,7 @@ export function earlierRuns(
         : `<span class="kst done">${esc(x.run.status === "closed" ? "Finished" : x.run.status)}</span>`;
     const last = lastActivity(x.run);
     const n = waitingOn(x.run);
-    return `<tr><td>${st}</td><td><a href="${runHref(x.rig.id, x.run)}"><b>${esc(x.run.id)}</b></a>${n ? ` <span class="warn small">${n} wait${n === 1 ? "s" : ""} for you</span>` : ""}</td><td class="muted">${esc(x.rig.id)}</td><td>${runProgress(x.run)}</td><td class="muted small">${esc(x.run.pause_reason ?? "")}</td><td class="muted nowrap">${last ? `${esc(ago(last, now))} ago` : ""}</td><td class="right">${x.action}</td></tr>`;
+    return `<tr><td>${st}</td><td><a href="${runHref(x.rig.id, x.run)}"><b>${esc(x.run.id)}</b></a>${n ? ` <span class="warn small">${n} wait${n === 1 ? "s" : ""} for you</span>` : ""}</td><td class="muted">${esc(x.rig.id)}</td><td>${runProgress(x.run)}${x.result}</td><td class="muted small">${esc(x.run.pause_reason ?? "")}</td><td class="muted nowrap">${last ? `${esc(ago(last, now))} ago` : ""}</td><td class="right">${x.action}</td></tr>`;
   };
   const head = `<thead><tr><th style="width:90px">State</th><th>Run</th><th>Rig</th><th>Result</th><th>Why it stopped</th><th>Last activity</th><th></th></tr></thead>`;
   const shown = rows.slice(0, 8).map(row).join("");

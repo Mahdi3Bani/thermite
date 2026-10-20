@@ -373,6 +373,9 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
         "",
       )}${f.back ? `<input type="hidden" name="back" value="${esc(f.back)}">` : ""}${f.extra ?? ""}<button class="${f.cls ?? ""}">${esc(f.label)}</button></form>`;
 
+  /** Pause, with an optional reason the run keeps (it shows wherever the run's state does). */
+  const pauseMenu = (c: Ctx, rig: string, run: string, back: string, cls = "") =>
+    `<details class="menu"><summary class="btn${cls ? ` ${cls}` : ""}">Pause</summary><div class="menu-pop">${cmdForm(c, { rig, kind: "pause_run", fields: { run }, label: "Pause the run", cls: "sm", back, extra: `<input name="reason" maxlength="500" placeholder="why (optional)" aria-label="Why" style="width:100%;margin-bottom:6px">` })}<div class="muted small">The lanes' running trials stop and no new ones start; the judge finishes what it has queued. Resume picks up from the same champion.</div></div></details>`;
   const forms = (c: Ctx): Forms => ({
     cmd: (f) => cmdForm(c, f),
     csrf: csrf(c),
@@ -644,11 +647,15 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
                 csrf: t,
                 back,
                 cmd: (f) => cmdForm(c, f),
-                model: u.model
-                  ? u.model.source === "none"
-                    ? "No model: the lanes take the queue in order and keep to the rules."
-                    : `${u.model.model} (the agents' model; Edit rig can give the planner its own)`
-                  : "Not reported by this rig's harness.",
+                model: (() => {
+                  const own = store.roleModels(u.id).planner;
+                  if (own) return `${own.model}, its own model (from ${own.provider})`;
+                  return u.model
+                    ? u.model.source === "none"
+                      ? "No model: the lanes take the queue in order and keep to the rules."
+                      : `${u.model.model}, the agents' model (Edit rig can give the planner its own)`
+                    : "Not reported by this rig's harness.";
+                })(),
                 figures: diagnostics,
                 propagate,
               })
@@ -1258,7 +1265,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
   ) =>
     workCard(
       runBrief(store, u, r, now, { heading: true }),
-      `<a class="btn sm" href="${runLiveHref(u.id, r.id)}">${icon.terminal}Live</a><a class="btn sm" href="${runLiveHref(u.id, r.id, "&compose=1")}">Message</a>${cmdForm(c, { rig: u.id, kind: "pause_run", fields: { run: r.id }, label: "Pause", cls: "sm ghost", back })}`,
+      `<a class="btn sm" href="${runLiveHref(u.id, r.id)}">${icon.terminal}Live</a><a class="btn sm" href="${runLiveHref(u.id, r.id, "&compose=1")}">Message</a>${pauseMenu(c, u.id, r.id, back, "sm ghost")}`,
       waiting,
     );
 
@@ -1291,7 +1298,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     if (!k) {
       // Saved on control, with no run reported yet: what was asked for, and a way to start one.
       const saved = store.campaignVersions(name);
-      if (!saved.length)
+      if (!saved.length && !canStart)
         return page(
           c,
           {
@@ -1348,17 +1355,11 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
               back,
             })
           : sel.run.status === "running"
-            ? cmdForm(c, {
-                rig: sel.rig.id,
-                kind: "pause_run",
-                fields: { run: sel.run.id },
-                label: "Pause",
-                back,
-              })
+            ? pauseMenu(c, sel.rig.id, sel.run.id, back)
             : "";
       const more =
         sel.run.status === "running"
-          ? `<details class="menu"><summary class="btn" title="More">⋯</summary><div class="menu-pop">${cmdForm(c, { rig: sel.rig.id, kind: "reset_workers", fields: { run: sel.run.id }, label: "Restart the lanes", back })}<div class="muted small">Ends the lanes' running trials now and the current epoch: every lane starts again from the champion. Nothing the judge decided is lost.</div></div></details>`
+          ? `<details class="menu"><summary class="btn" title="More">⋯</summary><div class="menu-pop">${cmdForm(c, { rig: sel.rig.id, kind: "reset_workers", fields: { run: sel.run.id }, label: "Restart the lanes", back })}<div class="muted small">Ends the lanes' running trials now and the current round: every lane starts again from the champion. Nothing the judge decided is lost.</div></div></details>`
           : "";
       return page(
         c,
@@ -1401,12 +1402,18 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         : "";
     const about = aboutOf(name);
     const rigs = rigList(k);
+    const verifiedBy = new Map(
+      (leaderboard(store, { staleAfterMs: opts.staleAfterMs })[k.name] ?? []).map((r) => [
+        runKey(r.rig, r.run),
+        r.verified_by,
+      ]),
+    );
     return page(
       c,
       {
         title: k.name,
         crumbs: [{ href: "/ui/campaigns", text: "Campaigns" }],
-        summary: `${esc(isRigCheck(k.name) ? "rig check" : modeName(k.mode))} · ${k.runs.length} run${k.runs.length === 1 ? "" : "s"}${running.length ? ` · ${running.length} at work` : ""} · ${esc(h.value)} ${esc(h.sub)}`,
+        summary: `${esc(isRigCheck(k.name) ? "rig check" : modeName(k.mode))} · ${k.runs.length} run${k.runs.length === 1 ? "" : "s"}${running.length ? ` · ${running.length} at work` : ""} · ${esc(h.value)} ${esc(h.sub)}${k.mode === "hill_climb" ? ` · <a href="/ui/leaderboard">leaderboard</a>` : ""}`,
         active: "campaigns",
         actions: startBtn,
       },
@@ -1426,7 +1433,13 @@ ${
     ? `<div class="block"><div class="head"><h2>Earlier runs</h2><span class="n">${earlier.length}</span><span class="right">paused and finished, newest first; open one for its attempts and history</span></div>${earlierRuns(
         earlier.map((x) => ({
           ...x,
-          result: "",
+          // A hill climb's champion that other rigs confirmed (cross-verified).
+          result: (() => {
+            const v = verifiedBy.get(runKey(x.rig.id, x.run.id)) ?? [];
+            return v.length
+              ? ` <span class="pill ok" title="other rigs' judges confirmed this run's champion">${icon.check}cross-verified on ${esc(v.join(", "))}</span>`
+              : "";
+          })(),
           action:
             x.run.status === "paused"
               ? cmdForm(c, {
@@ -1948,13 +1961,19 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
     // The message box: who it goes to, and when they read it (the placeholder says).
     // When they read it depends on the agents' harness: Pi between steps; OpenCode and Claude
     // Code when their current run ends (or in the lane's next trial).
-    const pi = !u.model || u.model.harness === "pi";
-    const when = pi ? "at its next step" : "when its current run ends, or in its next trial";
+    const harness = u.model?.harness;
+    const pi = harness === "pi";
+    const when =
+      harness === undefined
+        ? "when it can (this rig hasn't said which program runs its agents)"
+        : pi
+          ? "at its next step"
+          : "when its current run ends, or in its next trial";
     const hint = (to: string) =>
       to === "all"
         ? research
-          ? `Each agent reads it ${pi ? "at its next step" : "when its current run ends"}`
-          : `Each agent reads it ${pi ? "at its next step" : "when its current run ends"}; the planner at its next plan`
+          ? `Each agent reads it ${harness === undefined ? "when it can" : pi ? "at its next step" : "when its current run ends"}`
+          : `Each agent reads it ${harness === undefined ? "when it can" : pi ? "at its next step" : "when its current run ends"}; the planner at its next plan`
         : to.startsWith("lane-")
           ? `${to}${r.at_work[to] ? ` (on ${r.at_work[to]?.family})` : ""} reads it ${when}`
           : to === "planner"
@@ -1968,17 +1987,30 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
                   : "The advisors read it and answer here";
     const to = lanes.includes(w) || w === "planner" ? w : w === "advisors" ? "advisors" : "all";
     const set = u.settings;
+    // The review panel reads only for a goal it reviews (a goal checked by review).
+    const contract = (store.campaignVersions(r.campaign || r.id)[0]?.contract ??
+      store.latestAssignments().get(r.campaign || r.id)?.payload.contract) as
+      | { goals?: { verify?: { type?: string } }[] }
+      | undefined;
+    const reviewed = (contract?.goals ?? []).some((g) => g.verify?.type === "review");
     const offBy = (role: "planner" | "teachers" | "auditor" | "review") =>
       set && set[role] === false
         ? `The ${role === "review" ? "review panel" : role === "teachers" ? "teacher pair" : role} is off on this rig (Edit rig).`
         : "";
     const opt = (v: string, label: string, off = "") =>
       `<option value="${esc(v)}" data-hint="${esc(hint(v))}"${v === to ? " selected" : ""}${off ? ` disabled title="${esc(off)}"` : ""}>${esc(label)}</option>`;
+    // A message control refused, or the rig refused (its newest one to this run).
+    const refused = c.req.query("msgerror");
+    const rigRefused = store.lastMessageToRun(u.id, r.id)?.refused ?? "";
+    const notice =
+      refused || rigRefused
+        ? `<div class="lnotice">${icon.warn}<span><b>Not sent.</b> ${esc(refused || `The rig refused your last message: ${rigRefused}`)}</span></div>`
+        : "";
     const box =
       r.status === "closed"
         ? `<div class="lcomposer off">This run has finished: its agents take no more messages.</div>`
         : `<form class="lcomposer" method="post" action="/ui/live/message"><input type="hidden" name="csrf" value="${csrf(c)}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(r.id)}"><input type="hidden" name="w" value="${esc(w)}">
-<select name="to" aria-label="To" class="lto">${opt("all", "To everyone working")}${lanes.map((l) => opt(l, `To ${l}`)).join("")}${opt("planner", "To the planner", research ? "A research run plans its rounds with a fixed method: it has no planner to message." : offBy("planner"))}<optgroup label="Advisors">${opt("advisors", "To all advisors")}${opt("teachers", "To the teachers", offBy("teachers"))}${opt("auditor", "To the auditor", research ? "A research run has no attempts to audit." : offBy("auditor"))}${opt("panel", "To the review panel", research ? "A research run has no conclusions to review." : offBy("review"))}</optgroup></select>
+<select name="to" aria-label="To" class="lto">${opt("all", "To everyone working")}${lanes.map((l) => opt(l, `To ${l}`)).join("")}${opt("planner", "To the planner", research ? "A research run plans its rounds with a fixed method: it has no planner to message." : offBy("planner"))}<optgroup label="Advisors">${opt("advisors", "To all advisors")}${opt("teachers", "To the teachers", offBy("teachers"))}${opt("auditor", "To the auditor", research ? "A research run has no attempts to audit." : offBy("auditor"))}${opt("panel", "To the review panel", research ? "A research run has no conclusions to review." : !reviewed ? "This run has no goal the review panel reviews." : offBy("review"))}</optgroup></select>
 <textarea name="text" rows="1" required maxlength="4000" aria-label="Message" placeholder="${esc(hint(to))} · ⌘↩ sends"${c.req.query("compose") ? " autofocus" : ""}></textarea>
 <label class="lpin" title="Keep it in force: every new trial gets it too, until you remove it"><input type="checkbox" name="keep" value="1">📌</label>
 <button class="primary">${icon.send}Send</button></form>`;
@@ -1999,14 +2031,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
     const st = runState(r);
     const head = `<div class="lhead"><button class="ghost sm lnav-btn" type="button" title="Show or hide the list of runs" aria-label="Runs">☰</button>${modeAvatar(r.mode)}<span class="t">${esc(r.id)}</span><span class="label ${st.cls}">${st.icon}${esc(st.text)}</span><span class="lmeta">${meta}</span><a class="btn sm" href="${runHref(u.id, r)}">Open the run</a>${
       r.status === "running"
-        ? cmdForm(c, {
-            rig: u.id,
-            kind: "pause_run",
-            fields: { run: r.id },
-            label: "Pause",
-            cls: "sm",
-            back: runLiveHref(u.id, r.id),
-          })
+        ? pauseMenu(c, u.id, r.id, runLiveHref(u.id, r.id), "sm")
         : r.status === "paused"
           ? cmdForm(c, {
               rig: u.id,
@@ -2028,7 +2053,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
       },
       `<div class="lwrap" id="lwrap">${nav}<section class="lcol">${head}<div class="lchips">${chips}<span class="grow"></span>${keptBox}<button class="lchip on lfollow" type="button" aria-pressed="true" title="Follow new lines">↓ Follow</button></div>
 <div class="transcript lstream" id="transcript" data-rig="${esc(u.id)}" data-run="${esc(r.id)}" data-w="${esc(w)}" data-after="${after}">${runLinesHtml(lines, now, store.runMessages(u.id, r.id)) || `<div class="empty">No live lines yet. They appear here as the run's agents and judge work.</div>`}</div>
-${box}</section></div>`,
+${notice}${box}</section></div>`,
       vs,
     );
   });
@@ -2059,7 +2084,7 @@ ${box}</section></div>`,
     const back = (more = "") =>
       c.redirect(
         from.startsWith("/ui/")
-          ? `${from}${from.includes("?") ? "&" : "?"}${more ? more.slice(1) : `sent=${encodeURIComponent("Sent. The planner reads it when it next gives out work.")}`}`
+          ? `${from}${from.includes("?") ? "&" : "?"}${more ? more.slice(1) : `sent=${encodeURIComponent("Sent to the rig. The planner reads it when it next gives out work; Commands shows whether the rig took it.")}`}`
           : runLiveHref(
               rig,
               run,
@@ -2077,7 +2102,9 @@ ${box}</section></div>`,
         issuedBy: "owner:ui",
       });
     } catch (err) {
-      return back(`&error=${encodeURIComponent(err instanceof Error ? err.message : String(err))}`);
+      return back(
+        `&msgerror=${encodeURIComponent(err instanceof Error ? err.message : String(err))}`,
+      );
     }
     return back();
   });
@@ -2154,28 +2181,13 @@ ${box}</section></div>`,
       : !source
         ? `<div class="lv-head"><dl class="facts"><dt>Agents</dt><dd>${esc(agent)}</dd><dt>Last activity</dt><dd>${sources[0] ? whenAt(sources[0].last_at) : "none yet"}</dd></dl></div>`
         : "";
-    // The composer: who can receive a message from here.
-    const running = u.runs.filter((i) => i.status === "running");
-    const inst = (sel?.run && u.runs.find((i) => i.id === sel.run)) || running[0] || u.runs[0];
-    const targets: { to: string; label: string }[] = [];
-    if (source.startsWith("trial:"))
-      targets.push({ to: source, label: `this worker (${source.slice(6)})` });
-    if (sel?.lane) targets.push({ to: sel.lane, label: `${sel.lane}: its running or next trial` });
-    targets.push({ to: "planner", label: "the planner (next plan)" });
-    for (let n = 1; n <= 4; n++)
-      if (!targets.some((x) => x.to === `lane-${n}`))
-        targets.push({ to: `lane-${n}`, label: `lane-${n}: its running or next trial` });
-    targets.push({ to: "advisors", label: "the advisors (next brief)" });
-    const composer =
-      source === "judge"
-        ? `<div class="composer off">The judge is code, not an agent: it takes no messages. That is what keeps agents from judging.</div>`
-        : !inst
-          ? `<div class="composer off">No campaign on this rig: nothing to message.</div>`
-          : `<form class="composer" method="post" action="/ui/rigs/${encodeURIComponent(u.id)}/message"><input type="hidden" name="csrf" value="${csrf(c)}"><input type="hidden" name="source" value="${esc(source)}">
-<textarea name="text" required maxlength="4000" placeholder="Message ${esc(targets[0]?.label ?? "an agent")}…  (⌘/Ctrl+Enter to send)"></textarea>
-<div class="bar2"><select name="to">${targets.map((x) => `<option value="${esc(x.to)}">${esc(x.label)}</option>`).join("")}</select>
-<select name="run">${u.runs.map((i) => `<option value="${esc(i.id)}"${i.id === inst.id ? " selected" : ""}>${esc(i.id)}</option>`).join("")}</select>
-<span class="hint grow">A signed owner command. Workers get it after their current turn.</span><button class="primary" aria-label="Send">${icon.send}</button></div></form>`;
+    // Messages go from a run's own Live page, where each recipient says when it reads them.
+    const composer = u.runs.filter((x) => x.status !== "closed").length
+      ? `<div class="composer off">To message an agent, open its run's Live: ${u.runs
+          .filter((x) => x.status !== "closed")
+          .map((x) => `<a href="${runLiveHref(u.id, x.id)}">${esc(x.id)}</a>`)
+          .join(", ")}.</div>`
+      : `<div class="composer off">No run on this rig to message.</div>`;
     const title = source ? sourceName(source, sel?.lane) : "Everything";
     return page(
       c,
