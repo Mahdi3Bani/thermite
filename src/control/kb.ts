@@ -675,6 +675,19 @@ export class KnowledgeBase {
     return r ? itemOf(r) : undefined;
   }
 
+  /**
+   * The item a briefing names by where it came from (campaign, run, kind, ref). Undefined when
+   * control has none, or more than one (run names are unique per rig only).
+   */
+  byOrigin(campaign: string, run: string, kind: string, ref: string): KbItem | undefined {
+    const rows = this.db
+      .prepare(
+        "select * from kb_item where campaign = ? and run = ? and kind = ? and ref = ? limit 2",
+      )
+      .all(campaign, run, kind, ref) as Row[];
+    return rows.length === 1 && rows[0] ? itemOf(rows[0]) : undefined;
+  }
+
   /** An experiment's result in words, with its attempt's verdict when the folder has it. */
   resultOf(x: KbItem): string | null {
     if (x.kind !== "experiment") return null;
