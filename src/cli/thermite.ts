@@ -5,16 +5,23 @@ import { parseArgs } from "node:util";
 import { newToken } from "../control/credential.ts";
 import { generateSigningKeys } from "../core/commands.ts";
 import { CommitSchema, parseContract } from "../core/contract.ts";
+import { doctor, doctorExit, formatReport, machineProbes } from "./doctor.ts";
 import { chooseOwner, localInit, parentOwner } from "./local-init.ts";
 import { type Enrolled, formatRigList, type RigList, writeRigFiles } from "./rig.ts";
 
 /**
- * The thermite command line: contract checks, key generation, issuing commands through control,
- * and the scripted proposer's submit/status calls against a harness.
+ * The thermite command line: the machine's checks, contract checks, key generation, issuing
+ * commands through control, and the scripted proposer's submit/status calls against a harness.
  */
 
 const USAGE = `usage: thermite <command> [options]
 
+  doctor [--control URL] [--model-url URL] [--port N] [--json]
+                                      check this machine: the container engine and its compose
+                                      tool, control's port, disk, the clock, the GPU driver and
+                                      container toolkit where there is a GPU, and whether control
+                                      and the model server answer. It says how to fix each
+                                      problem, and exits 1 when a check fails
   contract validate <file>            validate a contract and print its sha256
   keys generate <dir>                 write a new Ed25519 control signing key pair
   token new --out F                   make a control token: write it to F (mode 0600; keep it,
@@ -97,6 +104,32 @@ async function main(argv: string[]): Promise<void> {
     a.replace(/^--instance(?==|$)/, "--run").replace(/^--unit(?==|$)/, "--rig"),
   );
   switch (cmd) {
+    case "doctor": {
+      const { values } = parseArgs({
+        args: rest,
+        options: {
+          control: { type: "string" },
+          "model-url": { type: "string" },
+          port: { type: "string" },
+          json: { type: "boolean" },
+        },
+      });
+      const port = values.port === undefined ? undefined : Number(values.port);
+      if (port !== undefined && (!Number.isInteger(port) || port < 1 || port > 65535))
+        fail("--port is a port number from 1 to 65535");
+      const findings = await doctor(machineProbes(), {
+        control: values.control?.replace(/\/+$/, ""),
+        modelUrl: values["model-url"],
+        port,
+      });
+      process.stdout.write(
+        values.json
+          ? `${JSON.stringify({ ok: doctorExit(findings) === 0, checks: findings }, null, 2)}\n`
+          : formatReport(findings),
+      );
+      process.exitCode = doctorExit(findings);
+      return;
+    }
     case "contract": {
       const [sub, file] = rest;
       if (sub !== "validate" || !file) fail(USAGE);

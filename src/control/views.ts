@@ -86,6 +86,11 @@ export interface RunView {
   mode: string | null;
   /** The project repository the run works on (from its assignment). */
   seed_repo: string | null;
+  /**
+   * A project in one folder of its repository: the folder, and the repository's commit the run
+   * started from. The run's own first commit is that folder's alone (see folderCommit).
+   */
+  seed_folder?: { folder: string; commit: string } | undefined;
   /** The run's own promotion policy (null: the rig's default, which control does not see). */
   promotion: "auto" | "owner_approval" | null;
   status: string;
@@ -528,6 +533,11 @@ export function rigView(
         running = v.id;
         v.seed_repo =
           ((b.seed as { repo?: string } | undefined)?.repo as string | undefined) ?? null;
+        const seed = (b.seed ?? {}) as { folder?: unknown; source_commit?: unknown };
+        v.seed_folder =
+          typeof seed.folder === "string" && typeof seed.source_commit === "string"
+            ? { folder: seed.folder, commit: seed.source_commit }
+            : undefined;
         v.promotion =
           b.promotion === "auto" || b.promotion === "owner_approval" ? b.promotion : null;
         v.status = "running";

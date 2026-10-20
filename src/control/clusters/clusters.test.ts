@@ -85,6 +85,13 @@ describe("rigs on Kubernetes", () => {
       JSON.stringify(pod(objs, "thermite-k8s-a-1-supervisor")),
       /kubernetes\.io\/hostname/,
     );
+    // Neither pod gets a service-account token: nothing in them calls the cluster's API.
+    for (const name of ["thermite-k8s-a-1-harness", "thermite-k8s-a-1-supervisor"])
+      assert.equal(
+        (pod(objs, name) as { automountServiceAccountToken?: boolean })
+          .automountServiceAccountToken,
+        false,
+      );
     assert.equal(JSON.parse(asList(objs)).kind, "List");
   });
 

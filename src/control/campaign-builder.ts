@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   CommitSchema,
   DurationSchema,
+  FolderSchema,
   IdSchema,
   MAX_LANES,
   MAX_LANES_REASON,
@@ -134,6 +135,8 @@ export const CampaignDraft = z.strictObject({
       ref: z.string().max(300).optional(),
       commit: CommitSchema,
       repo: IdSchema,
+      /** The project's folder in the repository, when it is not the whole repository. */
+      folder: FolderSchema.optional(),
       editable_paths: z.array(Glob).min(1),
       forbidden_patterns: z.array(z.string().min(1).max(500)).default([]),
     })
@@ -449,6 +452,7 @@ export function buildCampaign(
     // The kit's commit is filled in when control stores a kit it wrote.
     project: {
       repo: d.project.repo,
+      ...(d.project.folder ? { folder: d.project.folder } : {}),
       kit: { repo: kitRef.repo, commit: kitRef.commit ?? "0".repeat(40) },
     },
     target: d.target,

@@ -26,7 +26,7 @@ Before you give Thermite a model, read [Known limits](reference/known-limits.md)
 You want to see what Thermite does before you commit to anything. The four tutorials build on each other, in this order:
 
 1. [Your first run](tutorials/first-run.md): start Thermite and watch its judge check a rig. Needs only the computer above.
-2. [Hand the work to agents](tutorials/agents-with-a-free-model.md): connect a free model and watch agents propose changes. Needs tutorial 1 and an internet connection; no account or key.
+2. [Hand the work to agents](tutorials/agents-with-a-free-model.md): connect a free model, start a campaign on the sample project in Thermite's repository, and watch agents propose changes. Needs tutorial 1 and an internet connection; no account or key.
 3. [Your first goal campaign](tutorials/first-goal-campaign.md): set a goal, submit a change yourself, and watch the campaign end when the goal is met. Needs tutorial 1; no model.
 4. [Your own project](tutorials/your-own-project.md): a campaign on a small project of yours, started from the **New campaign** page. Needs tutorials 1 and 2, and a public repository that your computer can push to and Thermite can fetch over `https`.
 

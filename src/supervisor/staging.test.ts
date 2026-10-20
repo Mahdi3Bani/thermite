@@ -205,6 +205,99 @@ describe("staging sources by reference", () => {
     assert.ok(!existsSync(marker));
   });
 
+  test("a project in a folder of its repository: the rig fetches the repository and starts from the folder", async () => {
+    const env = makeJudgeEnv({ folder: "examples/sum" });
+    const store = new ControlStore(":memory:");
+    const control = createControlApi(
+      store,
+      { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } },
+      env.keys.privateKeyPem,
+    );
+    const harness = createHarnessApi(env.service, { supervisor: "s-token-abcdef" });
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url = new URL(String(input));
+      return (url.host === "harness" ? harness : control).request(
+        `${url.pathname}${url.search}`,
+        init as RequestInit,
+      );
+    };
+    const payload = (env.assign as unknown as SignedCommand).envelope.payload as Record<
+      string,
+      unknown
+    >;
+    assert.equal(
+      (payload.contract as { project: { folder?: string } }).project.folder,
+      "examples/sum",
+    );
+    const r = await control.request("/v1/commands", {
+      method: "POST",
+      headers: { authorization: "Bearer admin-token-abcdef", "content-type": "application/json" },
+      body: JSON.stringify({
+        rig: "rig-a",
+        kind: "assign_campaign",
+        payload: {
+          ...payload,
+          imports: [
+            {
+              kind: "repo_bundle",
+              path: "repos/folder-project.bundle",
+              repo: "proj",
+              commit: env.seed,
+              source: { git: `file://${join(env.root, "project")}` },
+            },
+            {
+              kind: "kit_bundle",
+              path: "repos/folder-kit.bundle",
+              repo: "js-kit",
+              commit: env.kitCommit,
+              source: { git: `file://${join(env.root, "kit")}` },
+            },
+          ],
+        },
+      }),
+    });
+    assert.equal(r.status, 201, await r.clone().text());
+    const id = ((await r.json()) as { id: string }).id;
+    const stagingCfg = {
+      rig: "rig-a",
+      inboxDir: env.paths.inboxDir,
+      resultsRepo: join(env.root, "supervisor", "results.git"),
+      sourcesDir: join(env.root, "supervisor", "sources"),
+    };
+    const cfg = {
+      rig: "rig-a",
+      harnessUrl: "http://harness",
+      harnessToken: "s-token-abcdef",
+      controlUrl: "http://control",
+      controlToken: "rig-token-abcdef",
+      fetchImpl,
+      stage: (cmd: SignedCommand) => stageCommand(stagingCfg, cmd),
+    };
+    let state = { cursor: 0 };
+    for (let i = 0; i < 200 && store.command(id)?.status === "pending"; i++) {
+      state = await relayOnce(cfg, state);
+      await new Promise((res) => setTimeout(res, 25));
+    }
+    assert.equal(store.command(id)?.status, "delivered", JSON.stringify(store.command(id)));
+    // The supervisor fetched the whole repository's commit, which the harness checked.
+    const bundle = join(env.paths.inboxDir, "repos", "folder-project.bundle");
+    assert.match(git(env.root, "bundle", "list-heads", bundle), new RegExp(`^${env.seed} `));
+    // The run starts from the folder: its tree, and none of the repository's other files.
+    const start = env.ledger.getRun("js-1")?.seed_commit ?? "";
+    const mirror = env.service.mirrorFor("proj");
+    assert.equal(
+      git(mirror, "rev-parse", `${start}^{tree}`),
+      git(mirror, "rev-parse", `${env.seed}:examples/sum`),
+    );
+    assert.deepEqual(git(mirror, "ls-tree", "--name-only", start).split("\n"), [
+      "README.md",
+      "src",
+    ]);
+    // The rig's answer names where the run starts.
+    const outcome = store.command(id)?.outcome as { result?: { start?: unknown } };
+    assert.deepEqual(outcome.result?.start, { folder: "examples/sum", commit: start });
+  });
+
   test("an assignment that names its project and kit by URL starts a run, with nothing put in the inbox by hand", async () => {
     const env = makeJudgeEnv();
     const store = new ControlStore(":memory:");

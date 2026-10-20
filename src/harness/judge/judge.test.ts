@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { describe, test } from "node:test";
 import { CRASH_KERNEL, FAST_KERNEL, makeJudgeEnv, WRONG_KERNEL } from "../../testing/judge-env.ts";
 import { LocalRunner } from "../broker/runner.ts";
@@ -163,6 +164,51 @@ describe("judge pipeline (local runner, Node test kit)", () => {
     await env.drain();
     assert.equal(String(env.ledger.getAttempt(id)?.lifecycle), "promoted", why(env, id));
     assert.equal(env.ledger.currentChampion("js-1").attempt, id);
+  });
+
+  test("a project in a folder of its repository: the run starts from that folder, and a win there promotes", async () => {
+    const env = await setup({ folder: "examples/sum" });
+    const mirror = env.service.mirrorFor("proj");
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-C", mirror, ...args], { encoding: "utf8" }).trim();
+    const start = env.ledger.getRun("js-1")?.seed_commit ?? "";
+    assert.notEqual(start, env.seed, "the run starts from the folder, not the whole repository");
+    // Only the folder's files, at the folder's own tree, with no history of the repository.
+    assert.deepEqual(git("ls-tree", "-r", "--name-only", start).split("\n"), [
+      "README.md",
+      "src/kernel/work.mjs",
+    ]);
+    assert.equal(git("rev-parse", `${start}^{tree}`), git("rev-parse", `${env.seed}:examples/sum`));
+    assert.doesNotMatch(git("cat-file", "-p", start), /^parent /m);
+    assert.equal(env.ledger.currentChampion("js-1").commit_sha, start);
+    const created = env.ledger.eventsAfter(0, 1000).events.find((e) => e.kind === "run_created");
+    assert.deepEqual((created?.body as { seed?: unknown } | undefined)?.seed, {
+      repo: "proj",
+      commit: start,
+      folder: "examples/sum",
+      source_commit: env.seed,
+    });
+    // A change from the folder's root is judged there, and promoted.
+    const id = await env.submit(FAST_KERNEL, "drop the wasted wait");
+    await env.drain();
+    assert.equal(String(env.ledger.getAttempt(id)?.lifecycle), "promoted", why(env, id));
+    const champion = env.ledger.currentChampion("js-1");
+    assert.equal(git("rev-parse", `${champion.commit_sha}^`), start);
+
+    // Another rig makes the same starting commit from the same signed commit and folder.
+    const share = { root: env.root, seed: env.seed, kitCommit: env.kitCommit };
+    const other = makeJudgeEnv({ folder: "examples/sum", rig: "rig-b", share });
+    const out = await other.service.applyCommand(other.assign);
+    assert.ok(out.status === "applied" && out.accepted, JSON.stringify(out));
+    assert.equal(other.ledger.getRun("js-1")?.seed_commit, start);
+    // A folder the commit does not have is refused, and no run is made.
+    const none = makeJudgeEnv({ folder: "examples/none", rig: "rig-c", share });
+    const refused = await none.service.applyCommand(none.assign);
+    assert.match(
+      JSON.stringify(refused),
+      new RegExp(`commit ${env.seed} has no folder examples/none`),
+    );
+    assert.equal(none.ledger.getRun("js-1"), undefined);
   });
 
   test("a wrong kernel is invalid and a crashing one is crash_candidate; the champion stays", async () => {

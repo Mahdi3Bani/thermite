@@ -364,6 +364,8 @@ export class Ledger {
     contractSha: string;
     seedRepo: string;
     seedCommit: string;
+    /** A project in one folder of its repository: the folder, and the repository's commit. */
+    seedFolder?: { folder: string; commit: string } | undefined;
     direction?: string | undefined;
     /** False: a judge-only run (no worker agents). */
     agents?: boolean | undefined;
@@ -439,7 +441,13 @@ export class Ledger {
         campaign: input.contract.campaign,
         version: input.contract.version,
         mode: input.contract.mode,
-        seed: { repo: input.seedRepo, commit: input.seedCommit },
+        seed: {
+          repo: input.seedRepo,
+          commit: input.seedCommit,
+          ...(input.seedFolder
+            ? { folder: input.seedFolder.folder, source_commit: input.seedFolder.commit }
+            : {}),
+        },
         direction: input.direction ?? null,
         agents: input.agents !== false,
         promotion: input.promotion ?? null,

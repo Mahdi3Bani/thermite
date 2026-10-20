@@ -64,19 +64,21 @@ export const NEW_CAMPAIGN_JS = `
 
   // ------------------------------------------------ the project: control looks it up
   let found = null;
+  // The project's folder in its repository, as a path from the top: "./" and outer "/" go.
+  const folder = () => val("project_folder").replace(/^(\\.\\/)+|^\\/+|\\/+$/g, "");
   const probe = async () => {
     const out = $("#probe-out");
     const url = val("project_url"), ref = val("project_ref") || "HEAD";
     if (!url) return;
     out.textContent = "Looking it up…";
     try {
-      const res = await fetch("/ui/campaigns/new/probe?" + new URLSearchParams({ url, ref, access: val("project_access") }), { credentials: "same-origin" });
+      const res = await fetch("/ui/campaigns/new/probe?" + new URLSearchParams({ url, ref, access: val("project_access"), folder: folder() }), { credentials: "same-origin" });
       const j = await res.json();
       if (!res.ok) { found = null; out.textContent = j.error || "Control could not read it."; update(); return; }
       found = j;
       out.textContent = "";
       const b = document.createElement("b"); b.textContent = ref;
-      out.append("Found: ", b, " is at ", j.commit.slice(0, 7), " · " + j.files + " file" + (j.files === 1 ? "" : "s") + ". Rigs fetch it from there.");
+      out.append("Found: ", b, " is at ", j.commit.slice(0, 7), " · " + j.files + " file" + (j.files === 1 ? "" : "s") + (folder() ? " in " + folder() : "") + ". Rigs fetch it from there.");
       const sug = $("#suggest"); sug.replaceChildren();
       for (const p of j.suggest) { const btn = document.createElement("button"); btn.className = "sm"; btn.dataset.path = p; btn.textContent = p; sug.append(btn); }
       update();
@@ -189,7 +191,7 @@ export const NEW_CAMPAIGN_JS = `
       return d;
     }
     const url = val("project_url");
-    d.project = { url, ...(val("project_access") ? { access: val("project_access") } : {}), ref: val("project_ref") || undefined, commit: found ? found.commit : undefined, repo: repoName(url), editable_paths: lines("editable_paths"), forbidden_patterns: lines("forbidden_patterns") };
+    d.project = { url, ...(val("project_access") ? { access: val("project_access") } : {}), ref: val("project_ref") || undefined, commit: found ? found.commit : undefined, repo: repoName(url), ...(folder() ? { folder: folder() } : {}), editable_paths: lines("editable_paths"), forbidden_patterns: lines("forbidden_patterns") };
     if ((choice.kit || "here") === "here") {
       const timed = (choice.score || "time") === "time";
       const cases = $$("#cases tbody tr").map((tr) => {
@@ -247,7 +249,7 @@ export const NEW_CAMPAIGN_JS = `
     const rig = choice.rig || "", lanes = val("lanes") || "2";
     const score = choice.kit === "upload" ? (val("up_metric") || "the kit's score") + " " + (val("up_direction") === "min" ? "lower" : "higher") : (choice.score || "time") === "check" ? (val("score_field") || "its score") + " " + (val("direction") === "min" ? "lower" : "higher") : "its runs faster";
     const aim = { hill_climb: "make " + score + ", keeping only changes the judge confirms are at least " + (val(choice.kit === "upload" ? "up_min_effect" : "min_effect") || "5") + "% better", goal: "reach its goals, each checked by the judge", research: "research " + (val("topic") || "its topic") + " and report checked findings" }[mode];
-    const proj = mode === "research" ? "" : " on " + repoName(val("project_url") || "the project") + (found ? " at " + found.commit.slice(0, 7) : "") + ", changing only " + (lines("editable_paths").join(", ") || "(no files yet)");
+    const proj = mode === "research" ? "" : " on " + repoName(val("project_url") || "the project") + (folder() ? " (the folder " + folder() + ")" : "") + (found ? " at " + found.commit.slice(0, 7) : "") + ", changing only " + (lines("editable_paths").join(", ") || "(no files yet)");
     const s = (val("campaign") || "The campaign") + " will " + aim + proj + ". " + lanes + (Number(lanes) === 1 ? " agent works" : " agents work") + " on " + (rig || "(no rig chosen)") + ".";
     for (const el of $$("[data-summary]")) el.textContent = s;
     $("#draft-preview") && ($("#draft-preview").textContent = JSON.stringify(draft(), null, 2));
@@ -264,7 +266,7 @@ export const NEW_CAMPAIGN_JS = `
   if (back) {
     const set = (n, v) => { if (form.elements[n] && v !== undefined && v !== null) form.elements[n].value = Array.isArray(v) ? v.join(n === "editable_paths" || n === "forbidden_patterns" || n === "questions" || n === "seeds" ? "\\n" : " ") : v; };
     set("campaign", back.campaign); set("title", back.title); set("notes", back.notes); set("lanes", back.lanes);
-    if (back.project) { set("project_access", back.project.access); set("project_url", back.project.url); set("project_ref", back.project.ref); set("editable_paths", back.project.editable_paths); set("forbidden_patterns", back.project.forbidden_patterns); }
+    if (back.project) { set("project_access", back.project.access); set("project_url", back.project.url); set("project_ref", back.project.ref); set("project_folder", back.project.folder); set("editable_paths", back.project.editable_paths); set("forbidden_patterns", back.project.forbidden_patterns); }
     if (back.kit && back.kit.source === "here") { for (const k of ["build", "run", "check"]) set(k, back.kit[k]); set("outputs", back.kit.outputs); set("runs_per_case", back.kit.runs_per_case); }
     if (back.score) {
       set("score_field", back.score.field); set("score_unit", back.score.unit); set("direction", back.score.direction); set("min_effect", back.score.min_effect * 100);

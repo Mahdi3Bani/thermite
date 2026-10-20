@@ -158,6 +158,8 @@ export function makeJudgeEnv(
     share?: { root: string; seed: string; kitCommit: string } | undefined;
     /** More fields for the assignment's payload (for example a briefing). */
     assign?: Record<string, unknown> | undefined;
+    /** The project is this folder of its repository, beside files that are not the project. */
+    folder?: string | undefined;
   } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), "thermite-judge-"));
@@ -179,7 +181,14 @@ export function makeJudgeEnv(
     for (const b of ["p.bundle", "k.bundle"])
       copyFileSync(join(opts.share.root, "inbox", "repos", b), join(paths.inboxDir, "repos", b));
   } else {
-    seed = repo(project, { "src/kernel/work.mjs": SEED_KERNEL, "README.md": "test\n" });
+    const at = opts.folder ? `${opts.folder}/` : "";
+    seed = repo(project, {
+      [`${at}src/kernel/work.mjs`]: SEED_KERNEL,
+      [`${at}README.md`]: "test\n",
+      ...(opts.folder
+        ? { "README.md": "the repository, not the project\n", "docs/other.md": "not the project\n" }
+        : {}),
+    });
     git(project, "bundle", "create", "--quiet", join(paths.inboxDir, "repos", "p.bundle"), "--all");
     const kitRepo = join(root, "kit");
     kitCommit = repo(kitRepo, {
@@ -217,7 +226,12 @@ export function makeJudgeEnv(
         version: 1,
         title: "Reach the sum goals",
         mode: "goal",
-        project: { repo: "proj", commit: seed, kit: { repo: "js-kit", commit: kitCommit } },
+        project: {
+          repo: "proj",
+          commit: seed,
+          ...(opts.folder ? { folder: opts.folder } : {}),
+          kit: { repo: "js-kit", commit: kitCommit },
+        },
         target: { type: "cpu", class: "test" },
         goals: [
           {
@@ -255,7 +269,12 @@ export function makeJudgeEnv(
       version: 1,
       title: "Speed up the sum",
       mode: "hill_climb",
-      project: { repo: "proj", commit: seed, kit: { repo: "js-kit", commit: kitCommit } },
+      project: {
+        repo: "proj",
+        commit: seed,
+        ...(opts.folder ? { folder: opts.folder } : {}),
+        kit: { repo: "js-kit", commit: kitCommit },
+      },
       target: { type: "cpu", class: "test" },
       objective: { primary: { metric: "ops_per_s", direction: "max", min_effect: 0.05 } },
       cells: ["small"],
@@ -311,12 +330,17 @@ export function makeJudgeEnv(
     calibrationBlocks: 0,
   });
 
+  /** A change to the kernel, as a patch from the project's root (its folder, if it has one). */
   const patch = (kernel: string): string => {
     const wt = join(root, `wt-${randomUUID().slice(0, 8)}`);
     execFileSync("git", ["clone", "--quiet", project, wt]);
-    writeFileSync(join(wt, "src", "kernel", "work.mjs"), kernel);
+    writeFileSync(join(wt, opts.folder ?? "", "src", "kernel", "work.mjs"), kernel);
     execFileSync("git", ["add", "-A"], { cwd: wt });
-    return execFileSync("git", ["diff", "--cached", "--binary"], { cwd: wt }).toString("base64");
+    return execFileSync(
+      "git",
+      ["diff", "--cached", "--binary", ...(opts.folder ? [`--relative=${opts.folder}`] : [])],
+      { cwd: wt },
+    ).toString("base64");
   };
 
   /** Runs the judge until no job is left. */

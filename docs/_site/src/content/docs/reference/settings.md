@@ -271,7 +271,7 @@ See [Set up the results repository](../how-to/operate/results-repository.md).
 
 The `thermite` command takes control's or the harness's address and a token file as options (`--control` or `--harness`, and `--token-file`), never from the environment. See [Command line](command-line.md).
 
-Only `thermite selftest isolation`, which runs inside the harness container, reads variables. It reads the harness's own settings, with the same defaults:
+Two commands read variables. `thermite doctor` reads `THERMITE_CONTROL_PORT`, the port the compose file publishes control on, as its default for `--port`. `thermite selftest isolation`, which runs inside the harness container, reads the harness's own settings, with the same defaults:
 
 - the secret files it checks no role can read: `THERMITE_SUPERVISOR_TOKEN_FILE`, `THERMITE_PROPOSER_TOKEN_FILE` and `THERMITE_MODEL_API_KEY_FILE`, and, when `THERMITE_TUNNEL_DIR` is set, the pull mode keys in it (`keys.json`);
 - the places: `THERMITE_BROKER_DIR`, `THERMITE_STATE_DIR`, `THERMITE_SCRATCH_DIR` and `THERMITE_OUTBOX_DIR`;
@@ -314,7 +314,7 @@ Each service's build in the repository's `compose.yaml` also takes `THERMITE_COM
 
 The defaults match the code's, except `THERMITE_RESULTS_REMOTE`, which the code leaves unset. A release's `compose.yaml` passes the same settings with the same defaults, with one difference: `THERMITE_RIG_HARNESS_IMAGE`, `THERMITE_RIG_HARNESS_CUDA_IMAGE` and `THERMITE_RIG_SUPERVISOR_IMAGE` default to that release's published images, pinned by digest. It builds nothing, so it takes no `THERMITE_COMMIT`: the published images carry their commit already. The second rig of the `two-rigs` profile (`harness-2` and `supervisor-2`, rig `local-2`) takes the same settings, except that its harness does not pass `THERMITE_RESEARCH_MAX_MB` or the two prices.
 
-These two are read only by the compose files, never by Thermite's code:
+These two are read by the compose files. Thermite's services never read them; `thermite doctor` reads `THERMITE_CONTROL_PORT` to find control's port:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |

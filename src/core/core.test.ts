@@ -91,6 +91,42 @@ describe("contracts", () => {
     assert.equal(g.ok, false);
   });
 
+  test("a project can be one folder of its repository; a folder that leaves it is refused", () => {
+    const withFolder = (folder: unknown) =>
+      parseContract({ ...hillClimbFixture, project: { ...hillClimbFixture.project, folder } });
+    for (const ok of ["examples/matmul-cpu/project", "kernels", "a_b/c-d/v1.2", "@scope/pkg"]) {
+      const r = withFolder(ok);
+      assert.ok(r.ok, `${ok}: ${r.ok ? "" : r.errors.join("; ")}`);
+      assert.equal(r.ok && r.contract.project.folder, ok);
+    }
+    for (const bad of [
+      "",
+      "/abs",
+      "trailing/",
+      "a//b",
+      ".",
+      "..",
+      "a/../b",
+      "./a",
+      ".git",
+      "a/.git",
+      "a b",
+      "a\\b",
+    ]) {
+      const r = withFolder(bad);
+      assert.ok(!r.ok, `${JSON.stringify(bad)} was accepted`);
+      assert.ok(r.errors.some((e) => e.startsWith("project.folder: a folder in the repository")));
+    }
+    // Optional and without a default: a contract written before it keeps its hash.
+    const before = parseContract(hillClimbFixture);
+    assert.ok(before.ok && !("folder" in before.contract.project));
+    const a = withFolder("kernels");
+    assert.ok(
+      a.ok && before.ok && a.sha !== before.sha,
+      "the folder is part of the contract's hash",
+    );
+  });
+
   test("rejects unknown modes and missing edit policy", () => {
     assert.ok(!parseContract({ ...hillClimbFixture, mode: "freestyle" }).ok);
     const { editable_paths: _e, ...noEdit } = hillClimbFixture;

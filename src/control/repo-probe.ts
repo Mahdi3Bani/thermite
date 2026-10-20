@@ -10,6 +10,8 @@ const run = promisify(execFile);
 /**
  * What the new-campaign page shows about a project before it starts: the commit a branch or tag
  * names now, how many files it has, and folders to suggest for the files agents may change.
+ * For a project in one folder of its repository, the files and suggestions are that folder's,
+ * from its own top, and a commit without that folder is refused.
  * Control reads the repository's tree, never its file contents (a shallow fetch without blobs),
  * over https only, with no credentials and a time limit.
  */
@@ -30,6 +32,7 @@ export async function probeRepository(
   url: string,
   ref: string,
   access?: { auth: GitAuth; knownHostsFile: string },
+  folder?: string,
 ): Promise<Probe> {
   const ssh = access?.auth.kind === "ssh";
   if (
@@ -43,11 +46,16 @@ export async function probeRepository(
         : "the repository must be an https:// URL, or choose Git access for a private one",
     );
   return withGitAuth(access?.auth, access?.knownHostsFile, (g) =>
-    probeWith(url, ref, access ? { ...g.env, GIT_ALLOW_PROTOCOL: g.protocols } : {}),
+    probeWith(url, ref, access ? { ...g.env, GIT_ALLOW_PROTOCOL: g.protocols } : {}, folder),
   );
 }
 
-async function probeWith(url: string, ref: string, extra: Record<string, string>): Promise<Probe> {
+async function probeWith(
+  url: string,
+  ref: string,
+  extra: Record<string, string>,
+  folder: string | undefined,
+): Promise<Probe> {
   if (!/^[\w./-]{1,200}$/.test(ref) || ref.startsWith("-"))
     throw new Error("the branch, tag or commit has characters git does not allow");
   const git = (args: string[], cwd?: string) =>
@@ -88,13 +96,22 @@ async function probeWith(url: string, ref: string, extra: Record<string, string>
   try {
     await git(["init", "--quiet", "--bare", dir]);
     await git(["fetch", "--quiet", "--depth", "1", "--filter=blob:none", "--", url, commit], dir);
-    const paths = (await git(["ls-tree", "-r", "--name-only", commit], dir)).stdout
+    const all = (await git(["ls-tree", "-r", "--name-only", commit], dir)).stdout
       .split("\n")
       .filter(Boolean);
+    const paths = folder ? inFolder(all, folder) : all;
+    if (!paths.length)
+      throw new Error(`${ref} has no folder ${folder}, or the folder has no files`);
     return { commit, files: paths.length, suggest: suggestions(paths) };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+/** The paths inside a folder, from the folder's own top. */
+export function inFolder(paths: string[], folder: string): string[] {
+  const at = `${folder}/`;
+  return paths.filter((p) => p.startsWith(at)).map((p) => p.slice(at.length));
 }
 
 /** Folders worth offering as editable paths: the busiest top folders and their source folders. */

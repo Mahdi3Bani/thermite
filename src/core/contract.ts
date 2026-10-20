@@ -71,6 +71,19 @@ const LaneLimits = z.strictObject({
   processes: z.number().int().min(64).max(65_536).optional(),
 });
 
+/**
+ * A folder inside a repository, such as examples/matmul-cpu/project: its path from the top,
+ * separated by /. No part is empty or starts with a dot, so ".", "..", ".git" and absolute paths
+ * are refused. A project in one folder of its repository uses that folder as its root.
+ */
+export const FolderSchema = z
+  .string()
+  .max(300)
+  .regex(
+    /^[A-Za-z0-9_@+-][A-Za-z0-9._@+-]*(?:\/[A-Za-z0-9_@+-][A-Za-z0-9._@+-]*)*$/,
+    "a folder in the repository, such as examples/matmul-cpu/project: its path from the top, with no / at either end and no part that starts with a dot",
+  );
+
 const Common = {
   schema_version: z.literal(1),
   campaign: IdSchema,
@@ -79,6 +92,12 @@ const Common = {
   project: z.strictObject({
     repo: z.string().min(1),
     commit: CommitSchema.optional(),
+    /**
+     * The project's folder in its repository, when it is not the whole repository. The rig
+     * fetches the repository's commit and the run starts from that folder. Optional and without a
+     * default, so contracts written before it keep their hash.
+     */
+    folder: FolderSchema.optional(),
     kit: z.strictObject({ repo: z.string().min(1), commit: CommitSchema }).optional(),
   }),
   target: z.strictObject({ type: z.string().min(1), class: z.string().min(1) }).optional(),
