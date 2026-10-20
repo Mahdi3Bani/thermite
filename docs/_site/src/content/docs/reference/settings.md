@@ -32,7 +32,7 @@ The "Secret" column says whether a value is secret: **no**; a **path to a secret
 | Variable | Type | Default | Secret | Meaning |
 | --- | --- | --- | --- | --- |
 | `THERMITE_CONTROL_LISTEN` | `host:port` | `0.0.0.0:8800` | no | Where control serves the dashboard, the REST API and MCP |
-| `THERMITE_CONTROL_DIR` | path | `/var/lib/thermite-control` | directory with secrets | Control's state: its store (`control.db`, which also holds [Thermite's knowledge base](knowledge-base.md)), its command-signing key pair (`control-signing.key` and `.pub`, made at first start), the secrets key when `THERMITE_CONTROL_SECRETS_KEY_FILE` is not set, and the kits written on the **New campaign** page (`kits/`) |
+| `THERMITE_CONTROL_DIR` | path | `/var/lib/thermite-control` | directory with secrets | Control's state: its store (`control.db`, which also holds [Thermite's knowledge base](knowledge-base.md)), its command-signing key pair (`control-signing.key` and `.pub`, made at first start), the secrets key when `THERMITE_CONTROL_SECRETS_KEY_FILE` is not set, the kits written on the **New campaign** page (`kits/`), and the [exports](exports.md#where-control-keeps-them) rigs without a results repository send it (`exports/`) |
 | `THERMITE_CONTROL_PUBKEY_EXPORT` | path | not set | no | A second place to write control's command-signing public key, so that rigs can verify [signed commands](signed-commands.md). The local compose file writes it to a volume the harness reads |
 | `THERMITE_CONTROL_SECRETS_KEY_FILE` | path | `secrets.key` in `THERMITE_CONTROL_DIR`, made on first use | path to a secret | The key that encrypts what control keeps for you: model providers' keys and sign-ins, Git access, GPU cloud keys, machines' SSH keys, cluster kubeconfigs and outside knowledge bases' tokens. It must hold a 32-byte key in base64. Without the same key, the stored secrets cannot be read |
 | `THERMITE_CONTROL_STALE_SECONDS` | seconds | `180` | no | A rig that has sent no report for this long shows as stale: **Not reporting** on the dashboard, `stale` in the [rig lists](rest-api.md#reporting-stale-and-offline) |
@@ -240,7 +240,7 @@ In pull mode the supervisor also takes `RUNPOD_API_KEY`, which RunPod puts in a 
 
 | Variable | Type | Default | Secret | Meaning |
 | --- | --- | --- | --- | --- |
-| `THERMITE_POLL_SECONDS` | seconds | `60` | no | How often it reports the harness's events to control and pushes new exports to the results repository. The pause between the advisors' rounds is the same interval, but at least 30 seconds. On a rig with teachers, a message from the owner to the teacher pair of a running run ends the pause early: during it, the supervisor looks for one every 5 seconds |
+| `THERMITE_POLL_SECONDS` | seconds | `60` | no | How often it reports the harness's events to control and pushes new exports to the results repository, or, without one, sends them to control. The pause between the advisors' rounds is the same interval, but at least 30 seconds. On a rig with teachers, a message from the owner to the teacher pair of a running run ends the pause early: during it, the supervisor looks for one every 5 seconds |
 | `THERMITE_COMMAND_POLL_SECONDS` | seconds | `5` | no | How often it fetches control's commands. `0`: commands are fetched with each report instead |
 | `THERMITE_LIVE_INTERVAL_MS` | milliseconds | `3000` | no | How often it relays the live view. `0` turns the live view off |
 | `THERMITE_MODEL_ROUTE_POLL_SECONDS` | seconds | `30` | no | How often it asks control for the rig's model and hands a change to the harness. `0` turns this off |
@@ -252,7 +252,7 @@ See [Set up the results repository](../how-to/operate/results-repository.md).
 
 | Variable | Type | Default | Secret | Meaning |
 | --- | --- | --- | --- | --- |
-| `THERMITE_RESULTS_REMOTE` | Git URL | not set: exports are committed locally only | no | The repository the supervisor pushes exports to. A full reset needs it, to check the last export arrived |
+| `THERMITE_RESULTS_REMOTE` | Git URL | not set: exports go to control, or, without control, stay in the supervisor's volume | no | The repository the supervisor pushes exports to. Without it, the supervisor sends them to control instead: see [Exports](exports.md#where-exports-go) |
 | `THERMITE_RESULTS_KEY_FILE` | path | not set | path to a secret | An SSH key for the results repository, also used to fetch private sources over SSH |
 | `THERMITE_RESULTS_KNOWN_HOSTS` | path | not set | no | A known-hosts file for the results repository's host. With it, Git accepts only the host keys in the file. It takes effect together with `THERMITE_RESULTS_KEY_FILE` |
 
@@ -260,8 +260,9 @@ See [Set up the results repository](../how-to/operate/results-repository.md).
 
 | Variable | Type | Default | Secret | Meaning |
 | --- | --- | --- | --- | --- |
-| `THERMITE_SUPERVISOR_HOME` | path | `/var/lib/thermite-supervisor` | no | The supervisor's state: where it is in the event stream, exports done, champions waiting to reach control, advisors' records, where each run's past research sync is (`kb-state.json`), the local results repository (`results.git`) and fetched sources (`sources/`) |
-| `THERMITE_INBOX_DIR` | path | `/inbox` | no | The harness's inbox. The supervisor writes imports there |
+| `THERMITE_SUPERVISOR_HOME` | path | `/var/lib/thermite-supervisor` | no | The supervisor's state: where it is in the event stream, exports done, champions waiting to reach control, exports waiting to be sent to control (`export-uploads.json`), advisors' records, where each run's past research sync is (`kb-state.json`), the local results repository (`results.git`) and fetched sources (`sources/`) |
+| `THERMITE_INBOX_DIR` | path | `/inbox` | no | The harness's inbox. The supervisor writes imports there, [model files](model-files.md#where-the-file-goes) it downloads among them |
+| `THERMITE_HF_TOKEN_FILE` | path | not set | path to a secret | A Hugging Face token, for [gated model files](model-files.md#gated-models-on-hugging-face). The supervisor reads it when it starts and sends it to Hugging Face only. The harness never gets it |
 | `THERMITE_OUTBOX_DIR` | path | `/outbox` | no | The harness's outbox. The supervisor reads exports from it |
 | `THERMITE_ADVISORS_FILE` | path to a JSON file | not set | path to a secret | The [advisors file](advisors-file.md): teachers, combiner, auditor and review panel. A role given a model on **Edit rig** uses that model instead. Not set, and no role given a model: no advisors run |
 | `THERMITE_CLAUDE_BIN` | name or path | `claude` on the `PATH` | no | The Claude Code program, for advisors that run in Claude Code |

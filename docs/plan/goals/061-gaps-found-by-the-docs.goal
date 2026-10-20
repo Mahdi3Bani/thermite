@@ -5,7 +5,7 @@ status: PROPOSED
 version: "0.2.0"
 depends_on: []
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # 061 · Gaps found by the docs work
@@ -183,7 +183,7 @@ The writers and verifiers of the documentation site (goal [060](060-docs-site.go
 - [ ] A full reset of a rig with an unfinished research run would lose the lanes' working files, which no export holds yet (worked out from the code, not run).
 - [ ] A failed push shows only git's first line of output (`@@@@@@@@@`), so the reason is lost on **Rigs**, the rig's **Results** row and the supervisor's log (`src/supervisor/git-export.ts`).
 - [ ] The results deploy key needs a different file mode under Docker on Linux (readable by the supervisor's user) and Podman on a Mac (ssh refuses anything but 0600); the supervisor could copy the key into its own home with mode 0600 so one instruction fits every engine (`src/supervisor/git-export.ts`).
-- [ ] Rigs that control sets up have no results repository, so a full reset stops at `verifying`, a champion sent to or from such a rig waits until it expires after 24 hours, and a removed rig loses every result that control does not hold (`src/control/lifecycle.ts`, `src/supervisor/staging.ts`).
+- [ ] Rigs that control sets up have no results repository, so a full reset stops at `verifying`, a champion sent to or from such a rig waits until it expires after 24 hours, and a removed rig loses every result that control does not hold (`src/control/lifecycle.ts`, `src/supervisor/staging.ts`). Partly fixed by goal 024: their exports now go to control, so a full reset verifies its export there and an exported result outlives the rig. Still open: champions sent to or from such a rig.
 - [ ] A propagation that waits for its champion shows only as a pending command; the reason is only in the supervisor's log (`src/supervisor/staging.ts`).
 - [ ] The results repository takes SSH with a key file, `file://`, or a remote that needs no sign-in; there is no HTTPS token option (`src/supervisor/git-export.ts`).
 - [ ] An error from a refused export stays on the Rigs list until another push error replaces it, because only errors that start with `push` are cleared (`src/supervisor/git-export.ts`).
@@ -251,6 +251,8 @@ The docs describe only what exists. Each gap here is a place where a tester expe
 - 2026-10-20: The development branch's goal 063 work (`b233d44` to `eeb7c5b`: new campaign and run pages, Live for one run, the owner's messages) fixed the start card's model check and, in part, where advisor errors show; the Steering card's wording went with the Steering tab. Four other items changed wording and stay open. The docs pages now describe the new screens.
 
 - 2026-10-20: Goals 064 and 065 and the fixes after them closed one more item (a research run's folder in the export, `ab95204`) and changed four others, which stay open with notes.
+
+- 2026-10-20: Goal 024 (exports sent to control) partly fixed the item on rigs without a results repository; it stays open for propagation.
 
 ---
 

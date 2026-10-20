@@ -73,7 +73,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [021](goals/021-enrollment-codes.goal) Enrollment codes · `VERIFIED`
 - [022](goals/022-runpod-launch.goal) Launch a rig on RunPod · `READY`
 - [023](goals/023-runpod-lifecycle.goal) Stop, start and terminate RunPod rigs · `READY`
-- [024](goals/024-runpod-models-and-results.goal) Models into the pod, results out · `READY`
+- [024](goals/024-runpod-models-and-results.goal) Models into the pod, results out · `IN_PROGRESS`
 - [025](goals/025-runpod-tests-and-docs.goal) RunPod tests and how-to · `READY`
 
 ### The release

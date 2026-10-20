@@ -42,7 +42,7 @@ You have machines with GPUs and want Thermite to use them.
 4. [Give a rig several GPUs](how-to/install/several-gpus.md), and read [Sharing a device](explanation/sharing-a-device.md) to choose how.
 
 :::note
-Rigs that control sets up on machines and clusters, and rigs you join yourself, have no [results repository](how-to/operate/results-repository.md) yet. So their exports are not pushed anywhere, they can't be fully reset, and they can't send each other champions. The rigs of the local compose stack have one. See [goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal).
+Rigs that control sets up on machines and clusters, and rigs you join yourself, have no [results repository](how-to/operate/results-repository.md) yet. Their exports go to control instead ([Get a rig's results from control](how-to/operate/exports-on-control.md)), but they can't send each other champions. The rigs of the local compose stack have one. See [goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal).
 :::
 
 ### Give it your own project

@@ -14,9 +14,11 @@ import { type AdviseState, adviseOnce, emptyAdviseState, teachersCalled } from "
 import { type ControlAdvisors, fetchControlAdvisors, mergeAdvisors } from "./advisor-routes.ts";
 import { AdvisorsConfig } from "./advisors.ts";
 import { type ChampionUpload, championsIn, uploadChampions } from "./champions.ts";
+import { type UploadState, uploadExportsOnce } from "./export-upload.ts";
 import { type ExportState, exportOnce } from "./git-export.ts";
 import { emptyKbSyncState, type KbSyncState, syncKnowledgeOnce } from "./kb-sync.ts";
 import { type LiveRelayState, relayLiveOnce, supervisorLive } from "./live.ts";
+import { ModelDownloads } from "./model-download.ts";
 import { syncModelRoute } from "./model-route.ts";
 import { RelayError, type RelayState, relayCommandsOnce, relayOnce } from "./relay.ts";
 import { dailyReport } from "./report.ts";
@@ -33,10 +35,18 @@ function save(path: string, value: unknown): void {
   renameSync(`${path}.tmp`, path);
 }
 
+/** Exports in the outbox the exporter has not taken yet. */
+function notYetExported(outboxDir: string, state: ExportState): number {
+  if (!existsSync(outboxDir)) return 0;
+  const done = new Set(state.done);
+  return readdirSync(outboxDir).filter((n) => !n.startsWith(".") && !done.has(n)).length;
+}
+
 /**
- * Supervisor entry point: the 60-second report and command relay loop (with content staging),
- * git exports, supervisor figures and a daily report to control, and, when advisors are
- * configured, the teacher pair, auditor and review panel in a loop of their own.
+ * Supervisor entry point: the 60-second report and command relay loop (with content staging,
+ * model downloads among it), exports (pushed to the results repository, or, without one, sent to
+ * control), supervisor figures and a daily report to control, and, when advisors are configured,
+ * the teacher pair, auditor and review panel in a loop of their own.
  */
 async function main(): Promise<void> {
   const env = process.env;
@@ -60,6 +70,12 @@ async function main(): Promise<void> {
   const sshKeyFile = env.THERMITE_RESULTS_KEY_FILE || undefined;
   const knownHostsFile = env.THERMITE_RESULTS_KNOWN_HOSTS || undefined;
   const inboxDir = env.THERMITE_INBOX_DIR ?? "/inbox";
+  // Gated models on Hugging Face: the supervisor's own token, sent to Hugging Face only.
+  const hfToken = optionalSecretFromFile("THERMITE_HF_TOKEN_FILE");
+  // Model downloads, in the report to control and in the live view.
+  const models = new ModelDownloads({
+    live: (text, run) => supervisorLive.append({ source: "supervisor", kind: "status", text, run }),
+  });
   let wipeRequested = false;
   const cfg = {
     rig,
@@ -79,6 +95,8 @@ async function main(): Promise<void> {
           remote,
           sshKeyFile,
           knownHostsFile,
+          models,
+          hfToken,
         },
         cmd,
       ),
@@ -92,6 +110,10 @@ async function main(): Promise<void> {
   // Champion patches waiting to reach control (kept across restarts).
   const championQueuePath = join(home, "champion-uploads.json");
   let championQueue: ChampionUpload[] = load(championQueuePath, []);
+  // Without a results repository, exports leave the rig as uploads to control (export-upload.ts).
+  const uploadToControl = !remote && Boolean(controlUrl && controlToken);
+  const uploadPath = join(home, "export-uploads.json");
+  let uploadState: UploadState = load(uploadPath, { queue: [], uploaded: [] });
   const exportCfg = {
     rig,
     outboxDir: env.THERMITE_OUTBOX_DIR ?? "/outbox",
@@ -130,6 +152,8 @@ async function main(): Promise<void> {
     control: Boolean(controlUrl),
     pull_mode: Boolean(pull),
     results_remote: Boolean(remote),
+    results_to: remote ? "repository" : uploadToControl ? "control" : "none",
+    hf_token: Boolean(hfToken),
     advisors: advisors
       ? {
           teachers: advisors.teachers.length,
@@ -375,6 +399,10 @@ async function main(): Promise<void> {
       if (fresh.length) {
         championQueue.push(...championsIn(exportCfg.outboxDir, fresh));
         save(championQueuePath, championQueue);
+        if (uploadToControl) {
+          uploadState = { ...uploadState, queue: [...uploadState.queue, ...fresh] };
+          save(uploadPath, uploadState);
+        }
       }
       if (next.done.length !== before || next.lastError !== exportState.lastError) {
         save(exportPath, next);
@@ -384,12 +412,30 @@ async function main(): Promise<void> {
           error: next.lastError ?? null,
         });
       }
-      // Exports safe in the results repository (or, without a remote, committed here) leave
-      // the harness's outbox.
+      // Exports safe in the results repository (or on control, or, with neither, committed here)
+      // leave the harness's outbox.
       const safe = remote
         ? (next.pushed ?? []).filter((n) => !(exportState.pushed ?? []).includes(n))
-        : next.done.filter((n) => !exportState.done.includes(n));
+        : uploadToControl
+          ? []
+          : next.done.filter((n) => !exportState.done.includes(n));
       exportState = next;
+      if (uploadToControl && uploadState.queue.length && controlUrl && controlToken) {
+        const before = uploadState;
+        uploadState = await uploadExportsOnce(
+          { rig, outboxDir: exportCfg.outboxDir, controlUrl, controlToken },
+          uploadState,
+        );
+        if (JSON.stringify(uploadState) !== JSON.stringify(before)) {
+          save(uploadPath, uploadState);
+          log("supervisor", "exports sent to control", {
+            sent: uploadState.uploaded.filter((n) => !before.uploaded.includes(n)).length,
+            waiting: uploadState.queue.length,
+            error: uploadState.lastError ?? null,
+          });
+        }
+        safe.push(...uploadState.uploaded.filter((n) => !before.uploaded.includes(n)));
+      }
       if (safe.length) {
         await fetch(`${harnessUrl}/v1/exports/done`, {
           method: "POST",
@@ -415,12 +461,27 @@ async function main(): Promise<void> {
         relay: { cursor: state.cursor },
         export: {
           remote: Boolean(remote),
+          to: remote ? "repository" : uploadToControl ? "control" : "none",
           exports: exportState.done.length,
           pushed: exportState.pushed ?? [],
           pushed_commit: exportState.pushedCommit ?? null,
           last_push_at: exportState.lastPushAt ?? null,
-          last_error: exportState.lastError?.slice(0, 900) ?? null,
+          uploaded: uploadState.uploaded.slice(-50),
+          last_upload_at: uploadState.lastUploadAt ?? null,
+          // What has not left the rig: exports not yet taken from the outbox, and those taken
+          // but not yet pushed (or sent to control).
+          waiting:
+            notYetExported(exportCfg.outboxDir, exportState) +
+            (remote
+              ? (exportState.unpushed?.length ?? 0)
+              : uploadToControl
+                ? uploadState.queue.length
+                : 0),
+          champions_waiting: championQueue.length,
+          last_error:
+            ((!remote && uploadState.lastError) || exportState.lastError)?.slice(0, 900) ?? null,
         },
+        models: models.list(),
         advisors: advisors
           ? {
               ...adviseState.stats,
@@ -442,6 +503,7 @@ async function main(): Promise<void> {
           harnessUrl,
           harnessToken,
           exportState,
+          uploadState: uploadToControl ? uploadState : undefined,
           adviseState,
         });
         await toControl("/reports", { kind: "daily", body });

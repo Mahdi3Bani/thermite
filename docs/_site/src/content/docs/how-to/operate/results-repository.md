@@ -6,14 +6,14 @@ sidebar:
   order: 3
 ---
 
-Every hour in which something new happened, a rig's harness (its container that holds the judge and the agents) writes an **export**: the new attempts, champions, events and agents' notes since the last one. The rig's supervisor (its other container, the link to the outside) commits each export to git and pushes it to the **results repository**. That repository is the lasting copy of a rig's work. A [full reset](rig-lifecycle.md#fully-reset-a-rig) needs it, and so does [sending a champion to another rig](../campaigns/several-rigs.md).
+Every hour in which something new happened, a rig's harness (its container that holds the judge and the agents) writes an **export**: the new attempts, champions, events and agents' notes since the last one. The rig's supervisor (its other container, the link to the outside) commits each export to git and pushes it to the **results repository**. That repository is the lasting copy of a rig's work, and [sending a champion to another rig](../campaigns/several-rigs.md) needs it. A rig without one sends its exports to control instead: see [Get a rig's results from control](exports-on-control.md).
 
 This page sets up a results repository on your own git host, reached over SSH.
 
 ## Which rigs have one
 
 - **The local compose stack** has one already. Both of its rigs push to `file:///results/results.git`, a repository on a volume they share. Nothing reaches the outside world. This page moves it to your git host.
-- **Rigs that control sets up on a machine or a cluster, and rigs you join yourself, have no results repository yet**: control can't give them one ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)). Their exports are committed only inside the supervisor's volume, and the **Results** row on their page says `no results repository`. So they have no lasting copy of their results outside the rig, no full reset, and no champions sent to or from other rigs.
+- **Rigs that control sets up on a machine or a cluster, and rigs you join yourself, have no results repository yet**: control can't give them one ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)). Their supervisors send their exports to control instead, and the **Results** row on their page says `sent to control … ago`. See [Get a rig's results from control](exports-on-control.md). They can't send champions to other rigs or take them from other rigs: that needs a results repository.
 
 So the steps below are for the compose stack. `thermite rig add` writes the files for a rig you deploy your own way, but Thermite ships no deployment that reads them ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)).
 

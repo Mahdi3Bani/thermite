@@ -1,4 +1,5 @@
 import type { AdviseState } from "./advise.ts";
+import type { UploadState } from "./export-upload.ts";
 import type { ExportState } from "./git-export.ts";
 
 /**
@@ -10,6 +11,8 @@ export async function dailyReport(input: {
   harnessUrl: string;
   harnessToken: string;
   exportState: ExportState;
+  /** For a rig that sends its exports to control (it has no results repository). */
+  uploadState?: UploadState | undefined;
   adviseState: AdviseState;
   fetchImpl?: typeof fetch | undefined;
 }): Promise<string> {
@@ -59,10 +62,12 @@ export async function dailyReport(input: {
   }
   const a = input.adviseState.stats;
   const e = input.exportState;
+  const u = input.uploadState;
+  const error = (u?.lastError ?? e.lastError) || undefined;
   lines.push(
     "## Supervisor",
     "",
-    `- Exports: ${e.done.length} committed; last push ${e.lastPushAt ?? "never"}${e.lastError ? `; last error: ${e.lastError}` : ""}.`,
+    `- Exports: ${e.done.length} committed; ${u ? `${u.uploaded.length ? `last sent to control ${u.lastUploadAt ?? "?"}` : "none sent to control yet"}; ${u.queue.length} waiting to go` : `last push ${e.lastPushAt ?? "never"}`}${error ? `; last error: ${error}` : ""}.`,
     `- Advisors: ${a.teacher_runs} teacher rounds, ${a.directive_sets} directive sets (${a.directives} directives), ${a.audits} audits, ${a.reviews} panel reviews, ${a.errors} errors; $${a.usd.toFixed(2)}.`,
   );
   return lines.join("\n");
