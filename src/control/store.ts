@@ -6,6 +6,7 @@ import type { SignedCommand } from "../core/commands.ts";
 import type { LiveEntry } from "../core/live.ts";
 import { currentEvent } from "../core/names.ts";
 import type { ReportedBuild } from "../core/version.ts";
+import { PodConfig } from "../core/tunnel.ts";
 import { Credential } from "./credential.ts";
 import type { JoinedSpec, JoinForm } from "./join.ts";
 import { KnowledgeBase } from "./kb.ts";
@@ -280,17 +281,20 @@ create table if not exists rig_refusal (
   reason text not null,
   since text not null
 );
--- Rigs control reaches through a public proxy (a RunPod pod): the pod, the tunnel's sealed
--- secrets, and the pod's keys once enrolled (docs/plan/goals/019-rig-only-entry.goal).
+-- Rigs in pull mode, which control connects to through a public proxy (a RunPod pod): the pod
+-- once launched, the tunnel's sealed secrets, the one-time enrollment code (spent: ''), the
+-- rig's settings, and the pod's keys once enrolled (docs/plan/goals/019-rig-only-entry.goal).
 create table if not exists tunnel_rig (
   rig text primary key,
-  pod text not null,
-  url text not null,
+  pod text,
+  url text,
+  port integer not null,
   prefix_sealed text not null,
   box_private_sealed text not null,
   box_public text not null,
   code_sealed text not null,
-  code_expires_at text not null,
+  code_expires_at text,
+  config text not null,
   pod_sign_public text,
   pod_box_public text,
   enrolled_at text,
@@ -598,13 +602,19 @@ const gpuCloudOf = (r: Row): GpuCloud => ({
   created_at: String(r.created_at),
 });
 
-/** A rig behind a public proxy, as listed: never its sealed secrets. */
+/** A rig in pull mode, as listed: never its sealed secrets. */
 export interface TunnelRig {
   rig: string;
-  pod: string;
-  url: string;
+  /** The pod and control's address for it, once launched. */
+  pod: string | null;
+  url: string | null;
+  /** The port the pod serves for control. */
+  port: number;
   box_public: string;
-  code_expires_at: string;
+  /** When the enrollment code expires; null: it does not. */
+  code_expires_at: string | null;
+  /** The rig's settings, given to the pod at enrollment. */
+  config: PodConfig;
   pod_sign_public: string | null;
   pod_box_public: string | null;
   enrolled_at: string | null;
@@ -624,13 +634,15 @@ const tunnelRigOf = (r: Row): TunnelRig & TunnelSecrets => {
   const opt = (v: unknown) => (v === null || v === undefined ? null : String(v));
   return {
     rig: String(r.rig),
-    pod: String(r.pod),
-    url: String(r.url),
+    pod: opt(r.pod),
+    url: opt(r.url),
+    port: Number(r.port),
     prefix_sealed: String(r.prefix_sealed),
     box_private_sealed: String(r.box_private_sealed),
     box_public: String(r.box_public),
     code_sealed: String(r.code_sealed),
-    code_expires_at: String(r.code_expires_at),
+    code_expires_at: opt(r.code_expires_at),
+    config: PodConfig.parse(JSON.parse(String(r.config))),
     pod_sign_public: opt(r.pod_sign_public),
     pod_box_public: opt(r.pod_box_public),
     enrolled_at: opt(r.enrolled_at),
@@ -801,6 +813,19 @@ export class ControlStore {
     this.db = new DatabaseSync(path);
     this.db.exec("pragma busy_timeout = 5000; pragma journal_mode = wal;");
     renameUnitsToRigs(this.db);
+    // The first table of rigs in pull mode (2026-10-19) had no launch port and needed its pod
+    // up front; nothing launched one. An empty one makes way, a filled one is kept aside.
+    const tunnelCols = (this.db.prepare("pragma table_info(tunnel_rig)").all() as Row[]).map(
+      (r) => r.name,
+    );
+    if (tunnelCols.length && !tunnelCols.includes("port")) {
+      const n = this.db.prepare("select count(*) as n from tunnel_rig").get() as Row;
+      this.db.exec(
+        Number(n.n)
+          ? "alter table tunnel_rig rename to tunnel_rig_2026_10_19"
+          : "drop table tunnel_rig",
+      );
+    }
     this.db.exec(SCHEMA);
     const cols = (this.db.prepare("pragma table_info(rig)").all() as Row[]).map((r) => r.name);
     if (!cols.includes("pubkey")) this.db.exec("alter table rig add column pubkey text");
@@ -2354,17 +2379,12 @@ export class ControlStore {
     });
   }
 
-  // ---------------------------------------------------------------- rigs behind a proxy
+  // ---------------------------------------------------------------- rigs in pull mode
+  /** A rig minted for a pod about to be launched; its pod comes later (attachTunnelPod). */
   addTunnelRig(
-    t: Omit<
+    t: Pick<
       TunnelRig,
-      | "pod_sign_public"
-      | "pod_box_public"
-      | "enrolled_at"
-      | "last_exchange_at"
-      | "refused_total"
-      | "error"
-      | "created_at"
+      "rig" | "port" | "box_public" | "code_expires_at" | "config" | "created_by"
     > & {
       prefix_sealed: string;
       box_private_sealed: string;
@@ -2373,23 +2393,35 @@ export class ControlStore {
   ): void {
     this.db
       .prepare(
-        `insert into tunnel_rig (rig, pod, url, prefix_sealed, box_private_sealed, box_public,
-           code_sealed, code_expires_at, created_at, created_by)
+        `insert into tunnel_rig (rig, port, prefix_sealed, box_private_sealed, box_public,
+           code_sealed, code_expires_at, config, created_at, created_by)
          values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         t.rig,
-        t.pod,
-        t.url,
+        t.port,
         t.prefix_sealed,
         t.box_private_sealed,
         t.box_public,
         t.code_sealed,
         t.code_expires_at,
+        JSON.stringify(t.config),
         new Date().toISOString(),
         t.created_by,
       );
-    this.audit(t.created_by, "tunnel_rig_added", { rig: t.rig, pod: t.pod, url: t.url });
+    this.audit(t.created_by, "tunnel_rig_added", {
+      rig: t.rig,
+      code_expires_at: t.code_expires_at,
+    });
+  }
+
+  /** The pod a rig in pull mode runs in, and control's address for it; refused once enrolled. */
+  attachTunnelPod(rig: string, pod: string, url: string): boolean {
+    const r = this.db
+      .prepare("update tunnel_rig set pod = ?, url = ? where rig = ? and enrolled_at is null")
+      .run(pod, url, rig);
+    if (Number(r.changes)) this.audit("control", "tunnel_rig_pod", { rig, pod, url });
+    return Number(r.changes) > 0;
   }
 
   tunnelRig(rig: string): (TunnelRig & TunnelSecrets) | undefined {
@@ -2409,7 +2441,7 @@ export class ControlStore {
     });
   }
 
-  /** Pins the pod's keys; refused once pinned (a second enrollment). */
+  /** Pins the pod's keys and spends the code; refused once pinned (a second enrollment). */
   pinTunnelRig(rig: string, sign: string, box: string): boolean {
     const r = this.db
       .prepare(
