@@ -1532,6 +1532,21 @@ describe("control dashboard", () => {
     assert.match(page, /<dt>Agents<\/dt><dd>On: they start work at the first round<\/dd>/);
     assert.match(page, /&compose=1">Message<\/a>/);
     assert.match(page, /Restart the lanes/);
+    // Restart the lanes, and a change on Edit rig, each leave a line in the run's History.
+    const csrf = s.csrfFrom(page);
+    await s.post("/ui/commands", { csrf, rig: "rig-a", kind: "reset_workers", run: "js-1" });
+    const edit = await (await s.get("/ui/rigs/rig-a/edit")).text();
+    const form: Record<string, string> = { csrf: s.csrfFrom(edit), choice: "", harness: "pi" };
+    for (const k of ["judge", "workers", "auditor", "teachers", "review", "exports"]) form[k] = "1";
+    Object.assign(form, { lanes: "2", trial_minutes: "20", max_turns: "", promotion: "auto" });
+    await s.post("/ui/rigs/rig-a/edit", form);
+    await s.relay();
+    await s.relay();
+    const history = await (
+      await s.get("/ui/campaigns/js-sum?run=rig-a%2Fjs-1&view=history")
+    ).text();
+    assert.match(history, /You restarted the lanes: their trials ended/);
+    assert.match(history, /You changed the rig's settings: [^<]*the planner off/);
     // Another run assigned through control: the campaign's page says it is starting until the
     // rig reports it; a link to a run control never assigned says nothing.
     const payload = (s.env.assign as { envelope: { payload: Record<string, unknown> } }).envelope

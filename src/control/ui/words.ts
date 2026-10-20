@@ -160,6 +160,10 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
         ? (b.assignments as { lane?: string; family?: string }[])
         : [];
       const round = Number.isFinite(Number(b.n)) ? `round ${String(b.n)}` : "a round";
+      // Why each try's plan was refused ("try 2: …"): one try's reason alone, else each in turn.
+      const refused = Array.isArray(b.refused) ? b.refused.map(String) : [];
+      const because =
+        refused.length === 1 ? String(refused[0]).replace(/^try \d+: /, "") : refused.join("; ");
       // A research run plans its rounds with a fixed method on purpose: not a refused plan.
       if (b.plan === "research" || String(b.notes ?? "").startsWith("research plan"))
         return s(
@@ -171,8 +175,8 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
         `The planner planned ${round}${
           b.source !== "fallback"
             ? ""
-            : Array.isArray(b.refused) && b.refused.length
-              ? ` (by the fixed rules: the model gave no usable plan, because ${String(b.refused[0]).replace(/^try \d+: /, "")})`
+            : refused.length
+              ? ` (by the fixed rules: the model gave no usable plan, because ${because})`
               : b.notes
                 ? ` (by the fixed rules: ${String(b.notes)})`
                 : Number(b.planner_tries) === 0
@@ -324,8 +328,34 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
     }
     case "directive_dropped":
       return s(`${who(e.actor)} removed rule ${String(b.id)}.`, "", { run: String(e.subject) });
+    case "workers_reset":
+      return s(
+        `${who(e.actor)} restarted the lanes: their trials ended, and every lane starts again from the champion.`,
+        "warn",
+        { run: String(e.subject) },
+      );
+    case "rig_settings_changed": {
+      const said = settingsText((b.change ?? {}) as Record<string, unknown>);
+      return s(`${who(e.actor)} changed the rig's settings${said ? `: ${said}` : ""}.`);
+    }
     // The run's experiment queue (goal 064): what was added, moved, dropped and given out.
-    case "experiment_added":
+    case "experiment_added": {
+      // An experiment whose trial was interrupted (or failed) goes back to the queue as a new one
+      // by its author: not the author's act. The harness marks it (back_from_trial); an older
+      // one says so only in its why.
+      const again = /^tried again: its trial on \S+ (was interrupted|failed) \(/.exec(
+        String(b.why ?? ""),
+      );
+      if (b.back_from_trial || again) {
+        const by = who(String(b.by ?? e.actor));
+        const back = b.back_from_trial as { result?: unknown } | undefined;
+        const failed = again?.[1] === "failed" || back?.result === "error";
+        return s(
+          `${by === "You" ? "Your" : `${by}'s`} experiment "${clip(String(b.title ?? ""), 120)}" went back in the queue: its trial ${failed ? "failed" : "was interrupted"}.`,
+          "",
+          { run: String(e.subject) },
+        );
+      }
       return s(
         b.from_run
           ? `"${clip(String(b.title ?? ""), 120)}" was copied into the queue from run ${String(b.from_run)}.`
@@ -333,6 +363,7 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
         "",
         { run: String(e.subject) },
       );
+    }
     case "experiment_accepted":
     case "experiment_moved":
     case "experiment_edited":
@@ -429,6 +460,36 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
     default:
       return null;
   }
+}
+
+const SETTING_PART: Record<string, string> = {
+  judge: "the judge",
+  workers: "the workers",
+  planner: "the planner",
+  auditor: "the auditor",
+  teachers: "the teacher pair",
+  review: "the review panel",
+  exports: "exports",
+};
+
+/** A change to a rig's settings (Edit rig) in words: "the planner off, 3 lanes". */
+export function settingsText(change: Record<string, unknown>): string {
+  return Object.entries(change)
+    .map(([k, v]) => {
+      const n = Number(v);
+      if (k in SETTING_PART) return `${SETTING_PART[k]} ${v === false ? "off" : "on"}`;
+      if (k === "lanes") return `${n} lane${n === 1 ? "" : "s"}`;
+      if (k === "trial_minutes") return `trials of ${n} min`;
+      if (k === "max_turns") return v === null ? "no turn limit" : `at most ${n} turns a trial`;
+      if (k === "promotion")
+        return v === "auto" ? "confirmed wins kept at once" : "confirmed wins wait for you";
+      if (k === "judge_gpus")
+        return v === null
+          ? "the judge's usual share of GPUs"
+          : `${n} GPU${n === 1 ? "" : "s"} for the judge`;
+      return `${k.replace(/_/g, " ")} ${String(v)}`;
+    })
+    .join(", ");
 }
 
 /** The audit trigger in words ("declared flaws" says little on its own). */

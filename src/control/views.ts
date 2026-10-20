@@ -459,6 +459,8 @@ export function rigView(
   // Which run an event belongs to, for the run's timeline.
   const runOf = (e: StoredEvent): string | null => {
     const b = e.body ?? {};
+    // A change to the rig's settings (Edit rig) is in the History of the run at work then.
+    if (e.kind === "rig_settings_changed") return running;
     if (e.subject && runs.has(e.subject)) return e.subject;
     if (typeof b.run === "string" && b.run) return b.run;
     if (e.subject && attempts.has(e.subject)) return attempts.get(e.subject)?.run ?? null;

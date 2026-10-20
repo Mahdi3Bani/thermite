@@ -141,6 +141,14 @@ test("a research run's rounds read as set by the research plan, not as a refused
     said({ planner_tries: 2, refused: ["try 2: lane-3 is not a lane"] }),
     /by the fixed rules: the model gave no usable plan, because lane-3 is not a lane/,
   );
+  // Every try's reason, not only the first.
+  assert.match(
+    said({
+      planner_tries: 2,
+      refused: ["try 1: no JSON in the answer", "try 2: lane-3 is not a lane"],
+    }),
+    /because try 1: no JSON in the answer; try 2: lane-3 is not a lane\)/,
+  );
   // Neither a planner switched off nor a missing model reads as a refused plan.
   assert.match(
     said({ planner_tries: 0, notes: "the planner is off on this rig (Edit rig)" }),
@@ -188,5 +196,48 @@ test("History tells the queue's changes, the hand-outs and the rules in words", 
       body: { kind: "avoid", match: "shared memory" },
     }),
     "You set a rule for the plan: avoid shared memory.",
+  );
+  // An experiment back in the queue after its trial was interrupted: not its author's act.
+  const back = {
+    id: "x-2",
+    title: "vector loads",
+    by: "owner",
+    state: "queued",
+    position: "top",
+  };
+  assert.equal(
+    say("experiment_added", "planner", {
+      ...back,
+      why: "tried again: its trial on lane-1 was interrupted (x-1). fewer loads",
+    }),
+    'Your experiment "vector loads" went back in the queue: its trial was interrupted.',
+  );
+  assert.equal(
+    say("experiment_added", "planner", { ...back, by: "planner", back_from_trial: "t-1" }),
+    'The planner\'s experiment "vector loads" went back in the queue: its trial was interrupted.',
+  );
+  assert.equal(
+    say("experiment_added", "planner", {
+      ...back,
+      by: "lane-2",
+      why: "tried again: its trial on lane-2 failed (x-1)",
+    }),
+    'lane-2\'s experiment "vector loads" went back in the queue: its trial failed.',
+  );
+  assert.equal(
+    say("experiment_added", "control:owner:ui", { ...back, why: "fewer loads" }),
+    'You added "vector loads" to the queue.',
+  );
+  // Restart the lanes, and a change on Edit rig.
+  assert.equal(
+    say("workers_reset", "control:owner:ui", {}),
+    "You restarted the lanes: their trials ended, and every lane starts again from the champion.",
+  );
+  assert.equal(
+    say("rig_settings_changed", "control:owner:ui", {
+      change: { planner: false, lanes: 3, max_turns: null, promotion: "auto" },
+      settings: {},
+    }),
+    "You changed the rig's settings: the planner off, 3 lanes, no turn limit, confirmed wins kept at once.",
   );
 });
