@@ -106,4 +106,4 @@ grep -i '^x-thermite' headers.txt
 | `400` or `404` with a reason, for a command | Control refused the command before signing it, for example `{"error":"bad pause_run payload: …"}`, a message that nothing would read (`400`), or `{"error":"unknown rig rig-9"}` for a rig it doesn't know (`404`) |
 | `500` with a reason | Control refused another action while doing it, for example a propagation it can't make |
 
-Control also writes each `invalid request` and each `500` to its audit log, as a `failed` entry with the route and the reason. A command it refuses before signing it (`400` or `404` with a reason) is only in the answer. `GET /v1/audit?limit=20` lists the newest entries.
+Control also writes each `invalid request` and each `500` to its audit log, as a `failed` entry with the route and the reason. A command it refuses before signing it (`400` or `404` with a reason) is written as a `refused` entry, with the kind and the reason. `GET /v1/audit?limit=20` lists the newest entries.

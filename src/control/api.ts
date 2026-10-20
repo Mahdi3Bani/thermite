@@ -895,8 +895,14 @@ export function createControlApi(
         issuedBy: "owner:api",
       }));
     } catch (err) {
-      // A refused command (a bad payload, a message nothing would read) is the client's to fix.
+      // A refused command (a bad payload, a message nothing would read) is the client's to fix,
+      // and in the audit log as the dashboard's and MCP's refusals are.
       const error = err instanceof Error ? err.message : String(err);
+      store.audit("owner:api", "refused", {
+        path: "/v1/commands",
+        kind: body.kind,
+        why: redact(error),
+      });
       return c.json({ error }, error.startsWith("unknown rig") ? 404 : 400);
     }
     return c.json({ id, status: "pending" }, 201);

@@ -133,6 +133,11 @@ describe("the owner's messages to agents", () => {
       payload: { run: "smoke-1", to: "lane-1", text: "x" },
     });
     assert.equal(nowhere.status, 404);
+    // Each refusal is in the audit log, as the dashboard's and MCP's are.
+    assert.equal(
+      s.store.listAudit(50).filter((a) => a.action === "refused" && a.actor === "owner:api").length,
+      3,
+    );
     await relayOnce(s.cfg, { cursor: 0 });
     const svc = s.env.service;
     assert.deepEqual(
