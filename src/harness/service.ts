@@ -19,7 +19,7 @@ import {
 } from "../core/commands.ts";
 import { type Contract, contractSha, parseContract } from "../core/contract.ts";
 import type { Hardware } from "../core/hardware.ts";
-import { LiveLog, liveBody } from "../core/live.ts";
+import { type LiveKind, LiveLog, liveBody } from "../core/live.ts";
 import type { RigCheckReport } from "./agents/model-check.ts";
 import type { ControlRoute, ModelInfo, ModelSource } from "./agents/model-source.ts";
 import { Registry } from "./agents/registry.ts";
@@ -254,6 +254,14 @@ export class HarnessService {
   readonly trialProgress = new Map<
     string,
     { turns: number; tool_calls: number; tokens_in: number; tokens_out: number }
+  >();
+  /**
+   * The owner's messages in each starting trial's brief. They count as read only when its agent
+   * is at work (its first line or counters), so a trial that fails first leaves them waiting.
+   */
+  private readonly briefMessages = new Map<
+    string,
+    { trial: { id: string; run: string; lane: string }; ids: number[] }
   >();
   /** The rig's own settings (Edit rig): parts on or off, workers at once, limits, promotion. */
   readonly settings: RigSettingsStore;
@@ -1176,7 +1184,7 @@ export class HarnessService {
       // read, to answer, and those it read in the last day.
       owner_messages: this.messages
         .forTeachers(run)
-        .map((m) => ({ id: m.id, at: m.at, text: m.text, answered: m.answered })),
+        .map((m) => ({ id: m.id, at: m.at, text: m.text, read: m.read })),
     };
   }
 
@@ -1534,11 +1542,15 @@ export class HarnessService {
     waiting(): { id: number; text: string }[];
     given(ids: number[]): void;
   } {
+    // Messages its brief already carries are not given again.
+    const waiting = () => {
+      const briefed = new Set(this.briefMessages.get(trial.id)?.ids ?? []);
+      return this.messages.waitingForTrial(trial).filter((m) => !briefed.has(m.id));
+    };
     return {
-      waiting: () =>
-        this.messages.waitingForTrial(trial).map((m) => ({ id: m.id, text: messageText(m) })),
+      waiting: () => waiting().map((m) => ({ id: m.id, text: messageText(m) })),
       given: (ids) => {
-        const ok = new Set(this.messages.waitingForTrial(trial).map((m) => m.id));
+        const ok = new Set(waiting().map((m) => m.id));
         this.messages.read(
           ids.filter((id) => ok.has(id)),
           trial.lane,
@@ -1546,6 +1558,47 @@ export class HarnessService {
         );
       },
     };
+  }
+
+  /** The owner's messages a starting trial's brief carries: read once its agent is at work. */
+  briefed(trial: { id: string; run: string; lane: string }, ids: number[]): void {
+    if (ids.length) this.briefMessages.set(trial.id, { trial, ids });
+  }
+
+  /** A trial's agent is at work: the messages in its brief are read now. */
+  trialAtWork(id: string): void {
+    const b = this.briefMessages.get(id);
+    if (!b) return;
+    this.briefMessages.delete(id);
+    this.messages.read(b.ids, b.trial.lane, b.trial);
+  }
+
+  /** A trial ended. Its brief's messages are read only if its agent ever got to work. */
+  trialEnded(id: string, atWork: boolean): void {
+    if (atWork) this.trialAtWork(id);
+    this.briefMessages.delete(id);
+  }
+
+  /** A trial's own session lines and counters, as its harness reports them. */
+  trialReport(
+    trial: { id: string; run: string; lane: string },
+    r: {
+      entries?: { kind: LiveKind; text: string }[] | undefined;
+      progress?:
+        | { turns: number; tool_calls: number; tokens_in: number; tokens_out: number }
+        | undefined;
+    },
+  ): void {
+    if (r.progress) this.trialProgress.set(trial.id, r.progress);
+    for (const e of r.entries ?? [])
+      this.live.append({
+        source: `trial:${trial.id}`,
+        kind: e.kind,
+        text: e.text,
+        lane: trial.lane,
+        run: trial.run,
+      });
+    if (r.entries?.length || r.progress?.turns || r.progress?.tokens_in) this.trialAtWork(trial.id);
   }
 
   /** A trial's waiting messages, given to it now (each read at once). */

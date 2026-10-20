@@ -9,7 +9,13 @@ import { createHarnessApi } from "../harness/api.ts";
 import { startFakeModel } from "../testing/fake-model.ts";
 import { FAST_KERNEL, makeJudgeEnv } from "../testing/judge-env.ts";
 import { type AdviseConfig, adviseOnce, emptyAdviseState, teachersCalled } from "./advise.ts";
-import { AdvisorsConfig, AuditAnswer, PanelAnswer, TeacherReview } from "./advisors.ts";
+import {
+  AdvisorsConfig,
+  AuditAnswer,
+  advisorPrompt,
+  PanelAnswer,
+  TeacherReview,
+} from "./advisors.ts";
 
 const tokens = { supervisor: "sup-token", proposer: "prop-token" };
 type Env = ReturnType<typeof makeJudgeEnv>;
@@ -96,6 +102,71 @@ describe("the owner's messages to the advisors", () => {
     assert.ok(garbled.success);
     assert.deepEqual(garbled.data?.answers, []);
     assert.equal(garbled.data?.decision, "block");
+    // One answer that cannot be read never loses the others.
+    const mixed = AuditAnswer.parse({
+      decision: "clear",
+      reasons: "r",
+      answers: [
+        { text: "no id" },
+        { message: 2, text: "Noted.", extra: 1 },
+        { message: 4, text: " " },
+      ],
+    });
+    assert.deepEqual(
+      mixed.answers.map((a) => [a.message, a.text]),
+      [[2, "Noted."]],
+    );
+  });
+
+  test("an advisor's prompt puts the owner's messages first and never cuts them", () => {
+    const owner_messages = [{ id: 1, text: "keep the API stable" }];
+    const p = advisorPrompt(
+      "Audit package:",
+      { diff: "x".repeat(300_000), owner_messages },
+      200_000,
+    );
+    assert.ok(
+      p.startsWith(
+        'Audit package:\n{"owner_messages":[{"id":1,"text":"keep the API stable"}],"diff":"xxx',
+      ),
+    );
+    assert.equal(p.length, "Audit package:\n".length + 200_000);
+    // Messages longer than the cut are kept whole, with a little of the rest.
+    const big = [{ id: 2, text: "y".repeat(5000) }];
+    assert.match(
+      advisorPrompt("B:", { diff: "z".repeat(9000), owner_messages: big }, 1000),
+      /y{5000}"\}\],"diff":"z/,
+    );
+    assert.equal(advisorPrompt("B:", { a: 1 }, 3), 'B:\n{"a');
+  });
+
+  test("at the day's spending limit, a message to the teacher pair starts no round, and says so once", async () => {
+    const env = makeJudgeEnv();
+    await env.service.applyCommand(env.assign);
+    await ownerSays(env, "teachers", "look at the paper");
+    const advisors = AdvisorsConfig.parse({
+      teachers: [runtime("http://127.0.0.1:9", "teacher-a")],
+      max_usd_per_day: 1,
+    });
+    const state = {
+      ...emptyAdviseState(),
+      spend: { day: new Date().toISOString().slice(0, 10), usd: 1 },
+    };
+    const cfg = config(env, advisors, []);
+    assert.equal(await teachersCalled({ ...cfg, advisors }, state), false);
+    assert.equal(
+      await teachersCalled({ ...cfg, advisors }, emptyAdviseState()),
+      true,
+      "under the limit",
+    );
+    const lines: string[] = [];
+    let next = await adviseOnce(config(env, advisors, lines), state);
+    next = await adviseOnce(config(env, advisors, lines), next);
+    assert.equal(next.stats.teacher_runs, 0);
+    assert.deepEqual(lines, [
+      "js-1 status: the advisors reached the day's spending limit (1 USD): the teacher pair reads your message after midnight UTC",
+    ]);
+    assert.deepEqual(bodies(env, "agent_message_read"), [], "not read: it waits");
   });
 
   test("a new message to the teacher pair starts its round at once; each teacher answers it, the harness records the reads and answers, and every step is a live line", async (t: TestContext) => {
@@ -122,7 +193,7 @@ describe("the owner's messages to the advisors", () => {
           ],
         };
       // A teacher: it answers the owner's message when its brief has one to answer.
-      const asked = all.includes('\\"answered\\":false');
+      const asked = all.includes('\\"read\\":false');
       return {
         toolCalls: [
           {
@@ -284,6 +355,51 @@ describe("the owner's messages to the advisors", () => {
     assert.match(
       lines.join("\n"),
       /review 1: the panel passed it; it waits for the owner's acceptance/,
+    );
+  });
+
+  test("a panel that cannot post its review leaves the owner's message for the retry", async (t: TestContext) => {
+    const env = makeJudgeEnv({ goal: { opsPerSecond: 1e12 } });
+    await env.service.applyCommand(env.assign);
+    await env.drain();
+    await ownerSays(env, "panel", "judge readability strictly");
+    const pass = (messages: unknown) => ({
+      toolCalls: [
+        {
+          name: "answer",
+          args: {
+            pass: true,
+            reasons: "fine",
+            ...(JSON.stringify(messages).includes("judge readability strictly")
+              ? { answers: [{ message: 1, text: "Strictly judged." }] }
+              : {}),
+          },
+        },
+      ],
+    });
+    let down = true;
+    const one = await startFakeModel(({ messages }) => pass(messages));
+    const two = await startFakeModel(({ messages }) => (down ? { fail: 400 } : pass(messages)));
+    t.after(() => one.close());
+    t.after(() => two.close());
+    const advisors = AdvisorsConfig.parse({
+      panel: [runtime(one.url, "reviewer-1"), runtime(two.url, "reviewer-2")],
+    });
+    const cfg = { ...config(env, advisors, []), retryMs: 0 };
+    let state = await adviseOnce(cfg, emptyAdviseState());
+    assert.equal(state.stats.reviews, 0, "one panelist did not answer");
+    assert.deepEqual(bodies(env, "agent_message_read"), [], "not read without a posted review");
+    down = false;
+    state = await adviseOnce(cfg, state);
+    assert.equal(state.stats.reviews, 1);
+    assert.deepEqual(
+      bodies(env, "advisor_answer").map((b) => b.advisor),
+      ["reviewer-1", "reviewer-2"],
+      "both panelists of the retry had the message",
+    );
+    assert.deepEqual(
+      bodies(env, "agent_message_read").map((b) => b.by),
+      ["panel"],
     );
   });
 });

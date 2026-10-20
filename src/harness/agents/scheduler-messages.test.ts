@@ -42,7 +42,10 @@ const reads = (env: { service: { ledger: Env["ledger"] } }) =>
     });
 
 /** A hill climb with one lane, a planner that records its prompt and trials that record their brief. */
-async function setup(t: TestContext, o: { plannerOn?: () => boolean } = {}) {
+async function setup(
+  t: TestContext,
+  o: { plannerOn?: () => boolean; turns?: (trial: number) => number } = {},
+) {
   const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
   await env.service.applyCommand(env.assign);
   const planned: string[] = [];
@@ -75,7 +78,14 @@ async function setup(t: TestContext, o: { plannerOn?: () => boolean } = {}) {
     backoffMaxMs: 0,
     runTrial: async (spec) => {
       briefs.push(spec.brief);
-      return { stopped: "no_submission", turns: 1, toolCalls: 0, tokensIn: 0, tokensOut: 0 };
+      const turns = o.turns?.(briefs.length) ?? 1;
+      return {
+        stopped: turns ? "no_submission" : "error",
+        turns,
+        toolCalls: 0,
+        tokensIn: 0,
+        tokensOut: 0,
+      };
     },
   });
   /** One epoch: planned, its one trial run to the end. */
@@ -129,6 +139,17 @@ describe("the owner's messages in plans and briefs", () => {
       3,
       "the planner, then lane-1's first and second trials",
     );
+  });
+
+  test("a trial that fails before its agent works leaves its brief's messages for the next one", async (t) => {
+    const { env, briefs, epoch } = await setup(t, { turns: (n) => (n === 1 ? 0 : 1) });
+    await command(env, "message_agent", { run: "js-1", to: "lane-1", text: "try unrolling" });
+    await epoch();
+    assert.match(String(briefs[0]), /- try unrolling$/);
+    assert.deepEqual(reads(env), [], "not read: the first trial's agent never worked");
+    await epoch();
+    assert.match(String(briefs[1]), /- try unrolling$/, "the next trial gets it");
+    assert.deepEqual(reads(env), ["1:lane-1"]);
   });
 
   test("with the planner off, everyone-working messages wait for it", async (t) => {

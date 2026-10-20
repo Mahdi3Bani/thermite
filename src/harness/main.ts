@@ -466,6 +466,11 @@ async function main(): Promise<void> {
         scratchDir: paths.scratchDir,
       }),
   };
+  const trialOf = (spec: { trialId: string; run: string; lane: string }) => ({
+    id: spec.trialId,
+    run: spec.run,
+    lane: spec.lane,
+  });
   // Agents wait while no route is set; one set later starts them without a restart.
   const scheduler = new Scheduler({
     service,
@@ -486,17 +491,8 @@ async function main(): Promise<void> {
           runner,
           model: m,
           apiUrl,
-          live: (entries) => {
-            for (const e of entries)
-              service.live.append({
-                source: `trial:${spec.trialId}`,
-                kind: e.kind,
-                text: e.text,
-                lane: spec.lane,
-                run: spec.run,
-              });
-          },
-          progress: (p) => service.trialProgress.set(spec.trialId, p),
+          live: (entries) => service.trialReport(trialOf(spec), { entries }),
+          progress: (progress) => service.trialReport(trialOf(spec), { progress }),
           submitted: () => service.trialSubmission(spec.trialId),
           messages: service.trialInbox({ id: spec.trialId, run: spec.run, lane: spec.lane }),
           // The subscription's windows, as Claude Code reports them: in the rig's report.
@@ -512,17 +508,8 @@ async function main(): Promise<void> {
         runner,
         model: m,
         apiUrl,
-        live: (entries) => {
-          for (const e of entries)
-            service.live.append({
-              source: `trial:${spec.trialId}`,
-              kind: e.kind,
-              text: e.text,
-              lane: spec.lane,
-              run: spec.run,
-            });
-        },
-        progress: (p) => service.trialProgress.set(spec.trialId, p),
+        live: (entries) => service.trialReport(trialOf(spec), { entries }),
+        progress: (progress) => service.trialReport(trialOf(spec), { progress }),
         submitted: () => service.trialSubmission(spec.trialId),
         messages: service.trialInbox({ id: spec.trialId, run: spec.run, lane: spec.lane }),
         env: laneCacheEnv(paths.scratchDir, spec.lane),
@@ -599,17 +586,8 @@ async function main(): Promise<void> {
           apiUrl,
           area: area.dir,
           folder,
-          live: (entries) => {
-            for (const e of entries)
-              service.live.append({
-                source: `trial:${spec.trialId}`,
-                kind: e.kind,
-                text: e.text,
-                lane: spec.lane,
-                run: spec.run,
-              });
-          },
-          progress: (p) => service.trialProgress.set(spec.trialId, p),
+          live: (entries) => service.trialReport(trialOf(spec), { entries }),
+          progress: (progress) => service.trialReport(trialOf(spec), { progress }),
           messages: service.trialInbox({ id: spec.trialId, run: spec.run, lane: spec.lane }),
           env: laneCacheEnv(paths.scratchDir, spec.lane),
           signal,

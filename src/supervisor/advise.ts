@@ -44,6 +44,8 @@ export interface AdviseState {
   spend?: { day: string; usd: number } | undefined;
   /** Per run, the newest owner's message to the teacher pair that already started a round. */
   ownerSeen?: Record<string, number> | undefined;
+  /** Per run, the newest owner's message already told it waits for the spending limit. */
+  limitSaid?: Record<string, number> | undefined;
   stats: {
     teacher_runs: number;
     directive_sets: number;
@@ -111,7 +113,8 @@ interface RunRow {
 interface OwnerMessage {
   id: number;
   text: string;
-  answered?: boolean;
+  /** In the teachers' brief: read in an earlier round (a standing wish, not to answer again). */
+  read?: boolean;
 }
 
 const clip = (s: string, n: number) => {
@@ -141,13 +144,27 @@ const newestForTeachers = (r: RunRow) => Math.max(0, ...(r.owner_messages_waitin
  * loop then starts the next round at once instead of waiting out its pause.
  */
 export async function teachersCalled(
-  cfg: Pick<AdviseConfig, "harnessUrl" | "harnessToken" | "fetchImpl">,
+  cfg: Pick<AdviseConfig, "harnessUrl" | "harnessToken" | "fetchImpl"> & {
+    advisors?: Pick<AdvisorsConfig, "max_usd_per_day"> | undefined;
+  },
   state: AdviseState,
 ): Promise<boolean> {
+  // At the day's spending limit the teachers do not run, so a message cannot start a round.
+  if (overSpendLimit(cfg.advisors, state)) return false;
   const { runs } = (await harnessApi(cfg)("GET", "/v1/runs")) as { runs: RunRow[] };
   return runs.some(
     (r) => r.status === "running" && newestForTeachers(r) > (state.ownerSeen?.[r.id] ?? 0),
   );
+}
+
+/** Whether the advisors have spent the day's limit (UTC), when the owner set one. */
+export function overSpendLimit(
+  advisors: Pick<AdvisorsConfig, "max_usd_per_day"> | undefined,
+  state: AdviseState,
+): boolean {
+  const limit = advisors?.max_usd_per_day;
+  const day = new Date().toISOString().slice(0, 10);
+  return limit !== undefined && state.spend?.day === day && state.spend.usd >= limit;
 }
 
 export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise<AdviseState> {
@@ -272,6 +289,21 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
   };
 
   // The teacher pair, per running run, on its cadence, and at once for a new owner's message.
+  // At the limit, an owner's message to the teacher pair waits for the next day: said once.
+  if (cfg.advisors.teachers.length && overBudget()) {
+    next.limitSaid ??= {};
+    const { runs } = (await api("GET", "/v1/runs")) as { runs: RunRow[] };
+    for (const inst of runs.filter((i) => i.status === "running")) {
+      const newest = newestForTeachers(inst);
+      if (newest <= Math.max(next.ownerSeen[inst.id] ?? 0, next.limitSaid[inst.id] ?? 0)) continue;
+      next.limitSaid[inst.id] = newest;
+      say(
+        inst.id,
+        "status",
+        `the advisors reached the day's spending limit (${limit} USD): the teacher pair reads your message after midnight UTC`,
+      );
+    }
+  }
   if (cfg.advisors.teachers.length && !overBudget()) {
     const { runs } = (await api("GET", "/v1/runs")) as { runs: RunRow[] };
     for (const inst of runs.filter((i) => i.status === "running")) {
@@ -294,7 +326,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         const brief = (await api("GET", `/v1/brief?run=${encodeURIComponent(inst.id)}`)) as {
           owner_messages?: OwnerMessage[];
         };
-        const given = (brief.owner_messages ?? []).filter((m) => !m.answered).map((m) => m.id);
+        const given = (brief.owner_messages ?? []).filter((m) => !m.read).map((m) => m.id);
         const run = await teacherRound({
           config: cfg.advisors,
           run: inst.id,
@@ -374,6 +406,15 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           fail(`audit of ${pkg.attempt}`, r.error, pkg.run);
           continue;
         }
+        const posted = (await api("POST", "/v1/audits", {
+          attempt: pkg.attempt,
+          decision: r.output.decision,
+          reasons: r.output.reasons,
+          citations: r.output.citations,
+          auditor: cfg.advisors.auditor.name,
+        })) as { effect?: string };
+        s.audits++;
+        // Read only with the posted audit: an audit that fails to post gives them again.
         if (pkg.run) {
           await receipts(
             pkg.run,
@@ -383,14 +424,6 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           );
           for (const m of owner) told.add(m.id);
         }
-        const posted = (await api("POST", "/v1/audits", {
-          attempt: pkg.attempt,
-          decision: r.output.decision,
-          reasons: r.output.reasons,
-          citations: r.output.citations,
-          auditor: cfg.advisors.auditor.name,
-        })) as { effect?: string };
-        s.audits++;
         say(
           pkg.run,
           "text",
@@ -440,16 +473,8 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
             `review ${pkg.id}${pkg.goal ? ` of goal ${pkg.goal}` : ""}, ${runtime.name}: ${r.output.pass ? "pass" : "fail"}. ${clip(r.output.reasons, 300)}`,
           );
         }
-        if (results.length && pkg.run) {
-          await receipts(
-            pkg.run,
-            "panel",
-            owner.map((m) => m.id),
-            answers,
-          );
-          for (const m of owner) told.add(m.id);
-        }
-        // Every panelist must answer: a crashed dissenter must not lose its veto.
+        // Every panelist must answer: a crashed dissenter must not lose its veto. The owner's
+        // messages count as read only with the posted review, so a retry gives them again.
         if (results.length < cfg.advisors.panel.length) {
           fail(
             `review ${pkg.id}`,
@@ -462,6 +487,15 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           result?: string;
         };
         s.reviews++;
+        if (pkg.run) {
+          await receipts(
+            pkg.run,
+            "panel",
+            owner.map((m) => m.id),
+            answers,
+          );
+          for (const m of owner) told.add(m.id);
+        }
         say(
           pkg.run,
           "status",

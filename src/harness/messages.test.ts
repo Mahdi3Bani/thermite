@@ -321,11 +321,11 @@ describe("the owner's messages", () => {
     const brief = async () =>
       (
         (await (await call("GET", "/v1/brief?run=js-1")).json()) as {
-          owner_messages: { id: number; text: string; answered: boolean }[];
+          owner_messages: { id: number; text: string; read: boolean }[];
         }
       ).owner_messages;
     assert.deepEqual(
-      (await brief()).map((m) => [m.id, m.answered]),
+      (await brief()).map((m) => [m.id, m.read]),
       [
         [1, false],
         [2, false],
@@ -354,12 +354,12 @@ describe("the owner's messages", () => {
     });
     assert.equal(ok.status, 200, await ok.clone().text());
     assert.deepEqual(
-      (await brief()).map((m) => [m.id, m.answered]),
+      (await brief()).map((m) => [m.id, m.read]),
       [
         [1, true],
         [2, true],
       ],
-      "read in the last day: shown as answered",
+      "read in the last day: shown as read",
     );
     assert.deepEqual(events(env, "advisor_answer"), [
       { message: 1, role: "teachers", text: "We will cite it next round.", advisor: "teacher-a" },
@@ -436,7 +436,7 @@ describe("the owner's messages", () => {
     );
   });
 
-  test("a ledger from before read receipts keeps its deliveries as reads", () => {
+  test("a ledger from before read receipts keeps its deliveries as reads, and the advisors' old messages as read", () => {
     const path = join(mkdtempSync(join(tmpdir(), "thermite-ledger-")), "ledger.db");
     const db = new DatabaseSync(path);
     db.exec("create table schema_migrations (version integer primary key)");
@@ -466,6 +466,10 @@ describe("the owner's messages", () => {
       [
         { message: 1, reader: "lane-2", trial: "t-1", read_at: at },
         { message: 2, reader: "planner", trial: null, read_at: at },
+        // Shown in the advisors' briefs under the earlier rules: never given again.
+        { message: 4, reader: "teachers", trial: null, read_at: at },
+        { message: 4, reader: "auditor", trial: null, read_at: at },
+        { message: 4, reader: "panel", trial: null, read_at: at },
       ],
     );
     const cols = (

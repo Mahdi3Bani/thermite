@@ -1196,6 +1196,7 @@ export class Scheduler {
       } finally {
         if (abort.signal.aborted) r = { ...r, stopped: "interrupted" };
         r = this.withProgress(id, r);
+        this.o.service.trialEnded(id, r.turns > 0 || r.tokensIn > 0);
         this.registry.finishTrial(id, r, this.o.owner);
         this.finishExperiment(id, r.stopped);
         this.trialLine(
@@ -1324,6 +1325,7 @@ export class Scheduler {
       } finally {
         if (abort.signal.aborted && r.stopped !== "submitted") r = { ...r, stopped: "interrupted" };
         r = this.withProgress(id, r);
+        this.o.service.trialEnded(id, r.turns > 0 || r.tokensIn > 0);
         if (r.submitted) this.registry.tagAttempt(r.submitted.attempt, a.family);
         // The trial ends first (its token stops working), then its processes and dev runs.
         this.o.service.trialWorkspaces.delete(id);
@@ -1397,7 +1399,8 @@ export class Scheduler {
   /**
    * The brief with the owner's messages for this trial: those kept in force (to everyone working
    * or to this lane) in every new trial's brief until the owner removes them, then those its lane
-   * has not read yet. Both are read by this trial (code and research trials alike).
+   * has not read yet. Both are read by this trial once its agent is at work (code and research
+   * trials alike).
    */
   private withOwnerMessages(id: string, run: string, lane: string, brief: string): string {
     const inbox = this.o.service.messages;
@@ -1406,10 +1409,10 @@ export class Scheduler {
       .waitingForTrial({ id, run, lane })
       .filter((m) => !kept.some((k) => k.id === m.id));
     if (!kept.length && !waiting.length) return brief;
-    inbox.read(
-      [...kept, ...waiting].map((m) => m.id),
-      lane,
+    // Read when the trial's agent is at work, not now: a trial that fails first leaves them.
+    this.o.service.briefed(
       { id, run, lane },
+      [...kept, ...waiting].map((m) => m.id),
     );
     const list = (ms: OwnerMessage[]) =>
       ms.map((m) => `- ${messageText(m).replace(/\n/g, "\n  ")}`).join("\n");

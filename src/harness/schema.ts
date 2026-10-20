@@ -629,7 +629,8 @@ export const MIGRATIONS: readonly (string | ((db: DatabaseSync) => void))[] = [
   // several readers (each lane, the planner, the teacher pair, the auditor, the review panel); a
   // message kept in force goes into every new trial's brief until it is unkept. Deliveries made
   // before this version become reads by the trial's lane (or the planner) at the time they
-  // were made; nothing else is assumed read.
+  // were made, and messages to the advisors become reads by each advisor role; nothing else is
+  // assumed read.
   (db) => {
     db.exec(`
       alter table agent_message add column keep integer not null default 0;
@@ -664,6 +665,14 @@ export const MIGRATIONS: readonly (string | ((db: DatabaseSync) => void))[] = [
         (m.target.startsWith("lane-") ? m.target : undefined);
       if (lane) insert.run(m.id, lane, trial, m.delivered_at);
     }
+    // Messages to the advisors were shown in their briefs for a day under the earlier rules and
+    // never marked: each advisor role has read them, so none is given again after the upgrade.
+    const advisors = db
+      .prepare("select id, created_at from agent_message where target = 'advisors'")
+      .all() as { id: number; created_at: string }[];
+    for (const m of advisors)
+      for (const role of ["teachers", "auditor", "panel"])
+        insert.run(m.id, role, null, m.created_at);
   },
   // 14: each run's experiment queue (goal 064): what to try, who added it and why, its state,
   // its place among the queued ones (0 first; null once it left the order or before it was

@@ -226,9 +226,10 @@ async function main(): Promise<void> {
         await new Promise((r) => setTimeout(r, 250));
         if (Date.now() - checked < ownerCheckMs || !advisors.teachers.length) continue;
         checked = Date.now();
-        const called = await teachersCalled({ harnessUrl, harnessToken }, adviseState).catch(
-          () => false,
-        );
+        const called = await teachersCalled(
+          { harnessUrl, harnessToken, advisors },
+          adviseState,
+        ).catch(() => false);
         if (called && lastSettings.teachers) break;
       }
     }

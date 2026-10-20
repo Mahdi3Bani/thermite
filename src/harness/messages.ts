@@ -335,9 +335,10 @@ export class OwnerMessages {
 
   /**
    * The teacher pair's view: the messages it has not read (to answer), then the five it read in
-   * the last day, as the owner's standing wishes (already answered).
+   * the last day, as the owner's standing wishes (read before; whether it answered them is in
+   * the advisor_answer events).
    */
-  forTeachers(run: string): (OwnerMessage & { answered: boolean })[] {
+  forTeachers(run: string): (OwnerMessage & { read: boolean })[] {
     const since = new Date(this.clock().getTime() - 24 * 3_600_000).toISOString();
     const read = (
       this.ledger.db
@@ -351,8 +352,8 @@ export class OwnerMessages {
       .map(toMessage)
       .reverse();
     return [
-      ...read.map((m) => ({ ...m, answered: true })),
-      ...this.waitingForAdvisor(run, "teachers").map((m) => ({ ...m, answered: false })),
+      ...read.map((m) => ({ ...m, read: true })),
+      ...this.waitingForAdvisor(run, "teachers").map((m) => ({ ...m, read: false })),
     ];
   }
 
