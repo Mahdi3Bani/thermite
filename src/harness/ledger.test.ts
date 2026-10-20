@@ -136,6 +136,56 @@ describe("ledger", () => {
     ledger.close();
   });
 
+  test("field notes kept before version 16 say what they are about: the run, if nothing else", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "thermite-ledger-")), "ledger.db");
+    const db = new DatabaseSync(path);
+    db.exec("create table schema_migrations (version integer primary key)");
+    MIGRATIONS.slice(0, 15).forEach((m, i) => {
+      if (typeof m === "string") db.exec(m);
+      else m(db);
+      db.prepare("insert into schema_migrations (version) values (?)").run(i + 1);
+    });
+    const add = db.prepare(
+      "insert into journal_note (run, by, kind, text, about_type, about_id, at) values (?, ?, ?, ?, ?, ?, ?)",
+    );
+    const at = "2026-10-20T00:00:00.000Z";
+    add.run("old-1", "lane-1", "lesson", "said nothing", null, null, at);
+    add.run("old-1", "planner", "decision", "about a trial", "trial", "t-1", at);
+    db.close();
+    const ledger = Ledger.open(path);
+    assert.deepEqual(
+      ledger.db
+        .prepare("select id, run, about_type, about_id, text from journal_note order by id")
+        .all()
+        .map((r) => ({ ...r })),
+      [
+        { id: 1, run: "old-1", about_type: "run", about_id: "old-1", text: "said nothing" },
+        { id: 2, run: "old-1", about_type: "trial", about_id: "t-1", text: "about a trial" },
+      ],
+    );
+    // Still append-only, and never empty again; the next note takes the next number.
+    assert.throws(
+      () => ledger.db.prepare("update journal_note set text = 'x' where id = 1").run(),
+      /append-only/,
+    );
+    assert.throws(
+      () =>
+        ledger.db
+          .prepare(
+            "insert into journal_note (run, by, kind, text, about_type, about_id, at) values ('old-1', 'x', 'note', 't', null, null, ?)",
+          )
+          .run(at),
+      /NOT NULL/,
+    );
+    const next = ledger.db
+      .prepare(
+        "insert into journal_note (run, by, kind, text, about_type, about_id, at) values ('old-1', 'x', 'note', 't', 'run', 'old-1', ?)",
+      )
+      .run(at);
+    assert.equal(Number(next.lastInsertRowid), 3);
+    ledger.close();
+  });
+
   test("a contract edit must become a new version", () => {
     const { ledger } = setup();
     const v1 = contractOf(hillClimbFixture);

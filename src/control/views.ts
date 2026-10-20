@@ -904,10 +904,11 @@ export function rigView(
           by: String(b.by ?? e.actor),
           kind: typeof b.kind === "string" && b.kind ? b.kind : "note",
           text,
+          // A note always says what it is about; one recorded before that rule is about its run.
           about:
             about && typeof about.type === "string" && about.id !== undefined && about.id !== null
               ? { type: about.type, id: String(about.id) }
-              : null,
+              : { type: "run", id: String(e.subject) },
           lane: typeof b.lane === "string" ? b.lane : null,
           trial: typeof b.trial === "string" ? b.trial : null,
           at: e.at,

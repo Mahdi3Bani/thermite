@@ -421,7 +421,7 @@ test("a research note is a note of its own in the folder and in the run's journa
   assert.deepEqual(
     run?.journal.map((n) => [n.id, n.kind, n.about?.type ?? null]),
     [
-      [1, "observation", null],
+      [1, "observation", "run"],
       [-1, "note", "source"],
     ],
   );
@@ -447,7 +447,7 @@ test("a rig files a run's items only under a campaign control gave it", () => {
   const kb = store.kb();
   assert.deepEqual(
     kb.search("lesson", ["gemv-speed"]).map((x) => x.body),
-    ["real lesson"],
+    ["real lesson\nAbout: run g-1"],
   );
   assert.equal(kb.search("planted", ["gemv-speed"]).length, 0);
   assert.equal(kb.search("local", ["local-try"]).length, 1);

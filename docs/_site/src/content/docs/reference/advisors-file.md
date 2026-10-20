@@ -336,7 +336,7 @@ Each step of a round is a line in the run's **Live**, under **Advisors**, and in
 | `advisor round done: <n> teacher runs, <n> directive sets, <n> audits, <n> reviews, <n> errors` | The end of a round that did at least one of these. A count of 1 takes the singular, as in `1 teacher run, 0 directive sets, 1 audit, 0 reviews, 0 errors`. It names no run, so the Live of every run on the rig shows it |
 | `advisor round failed: <error>` | The round itself failed |
 | `<role>:<name> noted (<kind>): <text>` | An advisor's field note, recorded by the harness, such as `teachers:teacher-a noted (lesson): …`. The text is cut to 300 characters |
-| `the field notes of <name>: <problems>` | Some of an advisor's notes could not be kept as given: `note <n>: recorded without what it is about (<why>)` or `note <n>: not recorded: <why>` |
+| `the field notes of <name>: <problems>` | Some of an advisor's notes could not be kept as given: `note <n>: recorded as about the run (<why>)` or `note <n>: not recorded: <why>` |
 
 ## Error messages
 

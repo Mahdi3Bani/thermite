@@ -99,11 +99,14 @@ const WRITER_WORD: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------- a run's Journal tab
-/** What a note is about, linked to the experiment or the attempt where the page has it. */
+/**
+ * What a note is about, linked to the experiment or the attempt where the page has it. A note
+ * about the run itself (what a note that names nothing is about) needs no line on its run's page.
+ */
 function aboutHtml(u: RigView, r: RunView, n: JournalNoteView): string {
   const parts: string[] = [];
   const a = n.about;
-  if (a) {
+  if (a && !(a.type === "run" && a.id === r.id)) {
     if (a.type === "experiment") {
       const x = r.queue.find((q) => q.id === a.id);
       parts.push(
@@ -172,7 +175,7 @@ export function journalTab(o: {
   const stat = (k: string, v: number) => `<span>${esc(k)}</span><b>${fmtInt(v)}</b>`;
   const others = o.reads.filter((f) => f !== r.campaign);
   const noteRow = (n: JournalNoteView) =>
-    `<div class="jsnote"><span>${esc(n.text)}</span><span class="muted xs">${esc(writer(n.by).text)} · ${esc(ago(n.at, o.now))} ago${n.about ? ` · ${esc(n.about.type)} ${esc(n.about.id)}` : ""}</span></div>`;
+    `<div class="jsnote"><span>${esc(n.text)}</span><span class="muted xs">${esc(writer(n.by).text)} · ${esc(ago(n.at, o.now))} ago${n.about && !(n.about.type === "run" && n.about.id === r.id) ? ` · ${esc(n.about.type)} ${esc(n.about.id)}` : ""}</span></div>`;
   return `<div class="jcols"><div>
 <div class="small muted" style="margin-bottom:10px">Field notes the agents keep as they work: what they observe, the decisions they make and why, what surprised them, open questions and lessons. What was tried, and its result, is in <a href="${runHref(u.id, r, "experiments")}">Experiments</a>.</div>
 ${

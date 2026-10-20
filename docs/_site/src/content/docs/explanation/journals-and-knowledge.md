@@ -65,7 +65,7 @@ Every agent role can write field notes, each in the way its runtime allows:
 | The planner | Notes in its answer, kept even when the plan itself is refused | `planner` |
 | The advisors | Notes in each answer: the teachers, the combiner, the auditor and each reviewer. The supervisor posts them after the review, audit or verdict | `teachers:<name>`, `auditor:<name>`, `panel:<name>` |
 
-A note has its kind, its text (up to 2,000 characters) and, when it is about one thing, what that is: an experiment, an attempt, a source, a claim, a finding, a round, a trial or one of the owner's messages. The harness checks that the run has that record.
+A note has its kind, its text (up to 2,000 characters) and what it is about. When it is about one thing, that is a record of the run: an experiment, an attempt, a source, a claim, a finding, a round, a trial or one of the owner's messages, and the harness checks that the run has that record. Otherwise it is about the run itself: a note whose writer names nothing is recorded as about its run. So every note says what it is about, and a reader can always place it.
 
 The harness keeps each note in the run's ledger, with who wrote it and when, and records it as a `journal_note` event. Who wrote a note comes from how it arrived: a trial's token names the trial and its lane, the planner's answer is the planner's, and the supervisor names the advisor. The words of a note can't change that. Nobody edits or deletes a note, its writer included. A note from the planner or an advisor that doesn't fit the format is left out on its own, and never costs the plan, the review, the audit or the verdict it came with.
 

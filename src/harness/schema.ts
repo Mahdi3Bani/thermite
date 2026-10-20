@@ -741,4 +741,32 @@ export const MIGRATIONS: readonly (string | ((db: DatabaseSync) => void))[] = [
   create trigger run_briefing_no_update before update on run_briefing begin select raise(abort, 'a run''s briefing is fixed'); end;
   create trigger run_briefing_no_delete before delete on run_briefing begin select raise(abort, 'a run''s briefing is fixed'); end;
   `,
+  // 16: every field note says what it is about. A note whose writer named nothing is about its
+  // run (about_type 'run', about_id the run's id): the notes kept before say so too, and none
+  // leaves it empty any more. The table is copied whole into its new form; no note is lost.
+  `
+  create table journal_note_v16 (
+    id integer primary key autoincrement,
+    run text not null,
+    by text not null,
+    kind text not null
+      check (kind in ('observation', 'decision', 'surprise', 'question', 'lesson', 'note')),
+    text text not null check (length(text) between 1 and 2000),
+    about_type text not null
+      check (about_type in ('run', 'experiment', 'attempt', 'source', 'claim', 'finding', 'round', 'trial', 'message')),
+    about_id text not null,
+    lane text,
+    trial text,
+    at text not null
+  );
+  insert into journal_note_v16 (id, run, by, kind, text, about_type, about_id, lane, trial, at)
+    select id, run, by, kind, text, coalesce(about_type, 'run'), coalesce(about_id, run), lane, trial, at
+    from journal_note order by id;
+  drop table journal_note;
+  alter table journal_note_v16 rename to journal_note;
+  create index journal_note_run on journal_note (run, id);
+  create index journal_note_lane on journal_note (run, lane, id);
+  create trigger journal_note_no_update before update on journal_note begin select raise(abort, 'field notes are append-only'); end;
+  create trigger journal_note_no_delete before delete on journal_note begin select raise(abort, 'field notes are append-only'); end;
+  `,
 ];

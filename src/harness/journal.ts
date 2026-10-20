@@ -7,8 +7,10 @@ import { type Ledger, LedgerError } from "./ledger.ts";
  * A run's field notes (goal 065): what its workers, its planner and its advisors write down as
  * they work. Each note is one row of the ledger and one `journal_note` event (subject: the run),
  * written together, and one line in the live view. Who wrote a note comes from how it arrived (a
- * trial's token, the planner's own answer, the supervisor's advisor), never from the note. Notes
- * are append-only: no agent edits or deletes one, its own or another's.
+ * trial's token, the planner's own answer, the supervisor's advisor), never from the note. Every
+ * note says what it is about: a record of its run, or the run itself when its writer names
+ * nothing more specific. Notes are append-only: no agent edits or deletes one, its own or
+ * another's.
  *
  * Notes are the agents' own words: briefs show them as data to weigh, never as instructions.
  */
@@ -20,7 +22,8 @@ export interface JournalNote {
   by: string;
   kind: NoteKind;
   text: string;
-  about?: NoteAbout | undefined;
+  /** What it is about: a record of the run, or the run itself. */
+  about: NoteAbout;
   lane?: string | undefined;
   trial?: string | undefined;
   at: string;
@@ -43,8 +46,8 @@ type Row = {
   by: string;
   kind: string;
   text: string;
-  about_type: string | null;
-  about_id: string | null;
+  about_type: string;
+  about_id: string;
   lane: string | null;
   trial: string | null;
   at: string;
@@ -56,9 +59,7 @@ const toNote = (r: Row): JournalNote => ({
   by: r.by,
   kind: r.kind as NoteKind,
   text: r.text,
-  ...(r.about_type && r.about_id
-    ? { about: { type: r.about_type, id: r.about_id } as NoteAbout }
-    : {}),
+  about: { type: r.about_type, id: r.about_id } as NoteAbout,
   ...(r.lane ? { lane: r.lane } : {}),
   ...(r.trial ? { trial: r.trial } : {}),
   at: r.at,
@@ -69,8 +70,9 @@ const clip = (s: string, n: number) => {
   return t.length > n ? `${t.slice(0, n - 1)}…` : t;
 };
 
-/** Where each kind of record a note may be about is kept, by run. */
+/** Where each kind of record a note may be about is kept, by run (a run: the run itself). */
 const ABOUT_SQL: Record<NoteAbout["type"], string> = {
+  run: "select 1 from run where id = ? and id = ?",
   experiment: "select 1 from experiment where id = ? and run = ?",
   attempt: "select 1 from attempt where id = ? and run = ?",
   source: "select 1 from source where id = ? and run = ?",
@@ -100,12 +102,17 @@ export class Journal {
     const where = issue?.path.join(".") || "note";
     throw new LedgerError(
       "invalid",
-      `${where}: ${issue?.message ?? "invalid"}. A note is {"kind": one of ${NOTE_KINDS.join(", ")}; "text": 1 to 2000 characters; "about" (optional): {"type", "id"}}`,
+      `${where}: ${issue?.message ?? "invalid"}. A note is {"kind": one of ${NOTE_KINDS.join(", ")}; "text": 1 to 2000 characters; "about" (optional, the run when left out): {"type", "id"}}`,
     );
   }
 
   /** What a note is about must be a record of its run, where that is cheap to check. */
   private checkAbout(run: string, about: NoteAbout): void {
+    if (about.type === "run" && about.id.trim() !== run)
+      throw new LedgerError(
+        "invalid",
+        `about: a note is about its own run (${run}), not run ${about.id}`,
+      );
     const id =
       about.type === "round" || about.type === "message" ? Number(about.id) : about.id.trim();
     if (typeof id === "number" && (!Number.isInteger(id) || id < 1))
@@ -114,11 +121,15 @@ export class Journal {
       throw new LedgerError("invalid", `about: no ${about.type} ${about.id} in run ${run}`);
   }
 
-  /** One note: checked, its row and its event in one transaction, and a line in the live view. */
+  /**
+   * One note: checked, its row and its event in one transaction, and a line in the live view. A
+   * note that names nothing is recorded as about its run.
+   */
   write(run: string, input: unknown, w: NoteWriter): JournalNote {
     const n = Journal.parse(input);
     if (!this.ledger.getRun(run)) throw new LedgerError("not_found", `no run ${run}`);
-    if (n.about) this.checkAbout(run, n.about);
+    const about: NoteAbout = n.about ?? { type: "run", id: run };
+    this.checkAbout(run, about);
     const at = this.clock().toISOString();
     const id = this.ledger.tx(() => {
       const r = this.ledger.db
@@ -126,24 +137,14 @@ export class Journal {
           `insert into journal_note (run, by, kind, text, about_type, about_id, lane, trial, at)
            values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(
-          run,
-          w.by,
-          n.kind,
-          n.text,
-          n.about?.type ?? null,
-          n.about?.id ?? null,
-          w.lane ?? null,
-          w.trial ?? null,
-          at,
-        );
+        .run(run, w.by, n.kind, n.text, about.type, about.id, w.lane ?? null, w.trial ?? null, at);
       const id = Number(r.lastInsertRowid);
       this.ledger.appendEvent(w.actor, "journal_note", run, {
         id,
         by: w.by,
         kind: n.kind,
         text: n.text,
-        ...(n.about ? { about: n.about } : {}),
+        about,
         ...(w.lane ? { lane: w.lane } : {}),
         ...(w.trial ? { trial: w.trial } : {}),
       });
@@ -163,8 +164,8 @@ export class Journal {
 
   /**
    * Several notes from one writer (the planner, an advisor), each on its own and leniently: a
-   * note about a record the run does not have keeps its words without what it is about, a note
-   * that cannot be recorded is left out, and each problem is said in words.
+   * note about a record the run does not have keeps its words, recorded as about the run; a note
+   * that cannot be recorded is left out; and each problem is said in words.
    */
   writeAll(
     run: string,
@@ -180,9 +181,7 @@ export class Journal {
         if (err instanceof LedgerError && err.message.startsWith("about: ") && x) {
           try {
             out.recorded.push(this.write(run, { ...(x as object), about: undefined }, w).id);
-            out.problems.push(
-              `note ${i + 1}: recorded without what it is about (${err.message.slice(7)})`,
-            );
+            out.problems.push(`note ${i + 1}: recorded as about the run (${err.message.slice(7)})`);
             return;
           } catch {
             // refused for another reason too: said below
@@ -257,7 +256,7 @@ export function notesText(notes: JournalNote[]): string {
     .sort((a, b) => a.id - b.id)
     .map(
       (n) =>
-        `- (${n.kind}) ${n.by}${n.about ? `, about ${n.about.type} ${n.about.id}` : ""}, ${n.at.slice(0, 16).replace("T", " ")}: ${n.text.replace(/\s*\n\s*/g, " ")}`,
+        `- (${n.kind}) ${n.by}, about ${n.about.type} ${n.about.id}, ${n.at.slice(0, 16).replace("T", " ")}: ${n.text.replace(/\s*\n\s*/g, " ")}`,
     )
     .join("\n");
 }
@@ -268,7 +267,7 @@ export function notesData(notes: JournalNote[]): {
   by: string;
   kind: string;
   text: string;
-  about?: NoteAbout;
+  about: NoteAbout;
   at: string;
 }[] {
   return [...notes]
@@ -278,7 +277,7 @@ export function notesData(notes: JournalNote[]): {
       by: n.by,
       kind: n.kind,
       text: n.text,
-      ...(n.about ? { about: n.about } : {}),
+      about: n.about,
       at: n.at,
     }));
 }

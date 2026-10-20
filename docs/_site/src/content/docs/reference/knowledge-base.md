@@ -78,7 +78,7 @@ Each item is one record of one run. Control builds it from the events the rig re
 
 | Kind | From the events | `ref` | Title | Text |
 | --- | --- | --- | --- | --- |
-| Field note | `journal_note` | The note's number | The note, cut to 120 characters | The note, then `About: <type> <id>` when it is about one record. `sub` is its kind |
+| Field note | `journal_note` | The note's number | The note, cut to 120 characters | The note, then `About: <type> <id>`: the record it is about, or `About: run <run>`. `sub` is its kind |
 | Research note | `research_note` | `rn-` and the note's number | The note, cut to 120 characters | The note, then `Sources: <source ids>`. `url` is its first source's address. `sub` is `note` |
 | Experiment | `experiment_added`, then `experiment_finished` or `experiment_dropped` | Its id, `x-…` | What to try, as it was added | Its details, `Why: …` and `Direction: …`, then one of `Result: attempt <id> (<result>)`, `Result: no attempt (<result>)` or `Dropped: <why>` |
 | Attempt | `attempt_recorded`, then `verdict` | Its id, `a-…` | Its hypothesis | The hypothesis, `Claim: …` and `Declared flaws: …`, then `Verdict: <verdict> (+1.23%)` once the judge decides |
@@ -286,7 +286,7 @@ A **field note** is a short note an agent keeps as it works: what it saw, decide
 | --- | --- | --- |
 | `kind` | one of the kinds above | Required |
 | `text` | text, 1 to 2,000 characters, trimmed | Required |
-| `about` | `{type, id}` | Optional. The one record of the same run the note is about. `type` is `experiment`, `attempt`, `source`, `claim`, `finding`, `round`, `trial` or `message`; `id` is 1 to 200 characters. A `round` or a `message` is named by its number. The harness refuses a record the run does not have: `about: no <type> <id> in run <run>` |
+| `about` | `{type, id}` | What the note is about: one record of the same run, or the run itself. `type` is `run`, `experiment`, `attempt`, `source`, `claim`, `finding`, `round`, `trial` or `message`; `id` is 1 to 200 characters. A `run` is named by its id, and must be the note's own run: `about: a note is about its own run (<run>), not run <other>`. A `round` or a `message` is named by its number. The harness refuses a record the run does not have: `about: no <type> <id> in run <run>`. A writer may leave `about` out: the harness then records the note as about its run, `{"type": "run", "id": "<run>"}`. Every recorded note has its `about` |
 
 Nothing limits how many notes an agent writes. Nobody edits or deletes a note, its own or another's.
 
@@ -301,13 +301,13 @@ Nothing limits how many notes an agent writes. Nobody edits or deletes a note, i
 | The auditor | `journal` in its answer, posted after the audit | `auditor:<name>` |
 | Each panelist | `journal` in its answer, posted after the panel's results | `panel:<name>` |
 
-Who wrote a note comes from how it arrived, never from the note itself. The planner's and the advisors' notes are read one by one: a note about a record the run does not have is kept without its `about`, a note that cannot be kept is left out, and their plan, review, audit or verdict stands either way. [Advisors file](advisors-file.md#what-each-role-must-answer) gives the advisors' answers.
+Who wrote a note comes from how it arrived, never from the note itself. The planner's and the advisors' notes are read one by one: a note about a record the run does not have is kept as about the run, a note that cannot be kept is left out, and their plan, review, audit or verdict stands either way. [Advisors file](advisors-file.md#what-each-role-must-answer) gives the advisors' answers.
 
 ### Events and lines
 
 | Where | What |
 | --- | --- |
-| The run's ledger | One row for each note, and one `journal_note` event, `{id, by, kind, text, about?, lane?, trial?}`, whose subject is the run |
+| The run's ledger | One row for each note, and one `journal_note` event, `{id, by, kind, text, about, lane?, trial?}`, whose subject is the run. A note kept before every note had its `about` reads as about its run, on the dashboard, in the knowledge base and in the export |
 | **Live** | `noted (<kind>): <text>`, cut to 300 characters; an advisor's line starts with who wrote it, such as `teachers:teacher-a noted (lesson): …` |
 | **Live**, for the planner's and the advisors' notes it could not keep | `field notes: <problems>` (the planner) or `the field notes of <name>: <problems>` (an advisor) |
 | The run page's **Journal** tab | The field notes, newest first, with filters by writer and by kind; the research notes are in its **Notes** card. It shows the newest 500 |
@@ -334,7 +334,7 @@ Each export of a rig's harness holds, besides its events and attempts, the field
 
 | In the export | In the results repository | What it holds |
 | --- | --- | --- |
-| `journal.jsonl` | `journal/<export>.jsonl` | The field notes recorded since the last export, oldest first, one per line: `{id, run, by, kind, text, about?, lane?, trial?, at}`. Written for every export, empty when there are none |
+| `journal.jsonl` | `journal/<export>.jsonl` | The field notes recorded since the last export, oldest first, one per line: `{id, run, by, kind, text, about, lane?, trial?, at}`. Written for every export, empty when there are none |
 | `research-notes.jsonl` | `research-notes/<export>.jsonl` | The research notes since then: `{id, run, lane, text, sources, at}`. Only when there are some |
 | `briefing.jsonl` | `briefing/<export>.jsonl` | The briefing of each run created since then: `{run, seq, text, from}`. Only when there is one |
 | `research/<run>/folder/…` | The same path | A finished run's research folder: a research run's once its final report is written, and a hill-climb or goal run's when it is closed, if it recorded any source, claim or note. Without the lanes' working areas and without `knowledge/` |

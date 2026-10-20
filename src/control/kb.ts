@@ -337,7 +337,9 @@ export class KnowledgeBase {
         return;
       }
       case "journal_note": {
-        const about = b.about && typeof b.about === "object" ? (b.about as Row) : undefined;
+        // A note always says what it is about; one recorded before that rule is about its run.
+        const about =
+          b.about && typeof b.about === "object" ? (b.about as Row) : { type: "run", id: run };
         this.put(
           src,
           run,
@@ -345,9 +347,7 @@ export class KnowledgeBase {
           str(b.id),
           {
             title: clip(str(b.text), 120),
-            body: [str(b.text), about ? `About: ${str(about.type)} ${str(about.id)}` : ""]
-              .filter(Boolean)
-              .join("\n"),
+            body: `${str(b.text)}\nAbout: ${str(about.type)} ${str(about.id)}`,
             by: str(b.by) || actor,
             url: b.source ? str((b.source as Row).url) || null : null,
             sub: str(b.kind) || "note",

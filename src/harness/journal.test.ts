@@ -57,9 +57,20 @@ describe("field notes", () => {
       by: "lane-1",
       kind: "observation",
       text: "The working set is 6 MB, larger than L2.",
+      about: { type: "run", id: RUN },
       lane: "lane-1",
       trial: "t-1",
     });
+    // A note that names nothing is about its run: its row and its event say so.
+    assert.deepEqual(n.about, { type: "run", id: RUN });
+    assert.deepEqual(
+      {
+        ...s.s.ledger.db
+          .prepare("select about_type, about_id from journal_note where id = ?")
+          .get(n.id),
+      },
+      { about_type: "run", about_id: RUN },
+    );
     const line = s.s.live.since(0, 100).entries.at(-1);
     assert.equal(line?.source, "trial:t-1");
     assert.equal(line?.lane, "lane-1");
@@ -82,6 +93,10 @@ describe("field notes", () => {
     refuse({ kind: "note", text: "t", about: { type: "attempt", id: "a-none" } }, /no attempt/);
     refuse({ kind: "note", text: "t", about: { type: "round", id: "one" } }, /its number/);
     refuse({ kind: "note", text: "t", about: { type: "page", id: "p" } }, /about/);
+    refuse(
+      { kind: "note", text: "t", about: { type: "run", id: "smoke-9" } },
+      /about its own run \(smoke-1\), not run smoke-9/,
+    );
     // An experiment of another run is not this run's.
     const second = await s.s.applyCommand(
       s.env.sign("assign_campaign", s.env.assignPayload({ run: "smoke-2" })),
@@ -99,7 +114,13 @@ describe("field notes", () => {
       writer,
     );
     assert.deepEqual(ok.about, { type: "experiment", id: mine.id });
-    assert.equal(s.events("journal_note").length, 1, "only the accepted note");
+    const run = s.s.journal.write(
+      RUN,
+      { kind: "lesson", text: "about the run", about: { type: "run", id: RUN } },
+      writer,
+    );
+    assert.deepEqual(run.about, { type: "run", id: RUN }, "a note may name its run itself");
+    assert.equal(s.events("journal_note").length, 2, "only the accepted notes");
     assert.throws(() => s.s.journal.write("no-run", { kind: "note", text: "t" }, writer), /no run/);
   });
 
@@ -182,11 +203,12 @@ describe("field notes", () => {
     assert.equal(out.recorded.length, 2, "a note about a record the run lacks keeps its words");
     assert.equal(out.problems.length, 2);
     assert.match(out.problems[0] ?? "", /^note 2: not recorded: /);
-    assert.match(out.problems[1] ?? "", /^note 3: recorded without what it is about .*a-0/);
+    assert.match(out.problems[1] ?? "", /^note 3: recorded as about the run .*a-0/);
     const [first, third] = out.recorded.map((id) => s.s.journal.get(id));
     assert.equal(first?.by, "teachers:teacher-a");
     assert.equal(third?.text, "Is the tolerance fixed?");
-    assert.equal(third?.about, undefined);
+    assert.deepEqual(third?.about, { type: "run", id: RUN }, "never left empty");
+    assert.deepEqual(first?.about, { type: "run", id: RUN }, "it named nothing: the run");
     assert.equal(s.events("journal_note").at(-1)?.actor, "supervisor");
     assert.match(
       s.s.live.since(0, 100).entries.at(-2)?.text ?? "",

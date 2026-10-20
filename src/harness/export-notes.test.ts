@@ -71,6 +71,7 @@ describe("a run's export holds its journal, its research notes and its briefing"
         by: "lane-1",
         kind: "lesson",
         text: "Profile first.",
+        about: { type: "run", id: RUN },
         lane: "lane-1",
         trial: "t-1",
         at: first.at,

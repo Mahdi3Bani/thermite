@@ -37,7 +37,7 @@ The tab lists the field notes, newest first. Each shows:
 - who wrote it: `lane-1`, `planner`, `teachers`, `auditor` or `review panel`;
 - its kind, such as decision or lesson, and when, such as `10-20 01:11` (month, day and UTC time);
 - its text;
-- what it is about, when it names one thing: an experiment's title, which opens **Experiments**; an attempt's id and hypothesis, which opens the attempt; `your message “…”`; or a round, such as `round 15`.
+- what it is about, when it names one thing: an experiment's title, which opens **Experiments**; an attempt's id and hypothesis, which opens the attempt; `your message “…”`; or a round, such as `round 15`. A note about the run itself (what a note that names nothing is about) has no such line.
 
 To narrow the list, press a writer above it (**Everyone**, then one button for each writer, such as **lane-1**, **Planner** or **Teachers**) or a kind (**Every kind**, **Observations**, **Decisions**, **Surprises**, **Questions**, **Lessons**, and **note** when a field note is of the kind note), or type words in **Search the journal**. The list changes at once. The tab shows the newest 500 notes; a longer journal ends with `The newest 500 of 812. All of them are in the campaign's folder on Knowledge and in the run's export.` Before the first note, it says `No field notes yet. The lanes, the planner and the advisors write them as they work.`
 

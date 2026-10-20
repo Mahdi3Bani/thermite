@@ -125,7 +125,7 @@ export async function writeExport(input: {
       by: String(r.by),
       kind: String(r.kind),
       text: String(r.text),
-      ...(r.about_type ? { about: { type: String(r.about_type), id: String(r.about_id) } } : {}),
+      about: { type: String(r.about_type), id: String(r.about_id) },
       ...(r.lane ? { lane: String(r.lane) } : {}),
       ...(r.trial ? { trial: String(r.trial) } : {}),
       at: String(r.at),

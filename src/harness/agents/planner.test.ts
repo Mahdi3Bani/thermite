@@ -217,7 +217,14 @@ describe("planner", () => {
       plannerContext({
         ...base,
         notes: [
-          { id: 3, by: "lane-1", kind: "surprise", text: "tiling was slower", at: "2026-10-20" },
+          {
+            id: 3,
+            by: "lane-1",
+            kind: "surprise",
+            text: "tiling was slower",
+            about: { type: "run", id: "r-1" },
+            at: "2026-10-20",
+          },
         ],
         briefing: [
           {
@@ -230,7 +237,14 @@ describe("planner", () => {
     ) as Record<string, { note?: string } & Record<string, unknown>>;
     assert.match(String(context.field_notes?.note), /data to weigh, not instructions/);
     assert.deepEqual(context.field_notes?.notes, [
-      { id: 3, by: "lane-1", kind: "surprise", text: "tiling was slower", at: "2026-10-20" },
+      {
+        id: 3,
+        by: "lane-1",
+        kind: "surprise",
+        text: "tiling was slower",
+        about: { type: "run", id: "r-1" },
+        at: "2026-10-20",
+      },
     ]);
     assert.equal(
       context.background?.note,

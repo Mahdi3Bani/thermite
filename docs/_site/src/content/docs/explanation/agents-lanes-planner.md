@@ -179,7 +179,7 @@ A **development run** is an agent's own run of a command on the device the judge
 
 ## Field notes and past research
 
-Every agent starts fresh, but what agents learn need not end with them. As they work, the lanes' workers, the planner and the advisors keep **field notes**: short notes, each an observation, a decision and why, a surprise, an open question or a lesson, and each naming the record it is about when it is about one. A note is not a record of what was tried, which the queue's log already holds. The harness keeps the notes in the run's ledger, with who wrote each and when, and nobody edits or deletes one. The owner reads them on the run's **Journal** tab.
+Every agent starts fresh, but what agents learn need not end with them. As they work, the lanes' workers, the planner and the advisors keep **field notes**: short notes, each an observation, a decision and why, a surprise, an open question or a lesson, and each saying what it is about: the record it names, or else the run. A note is not a record of what was tried, which the queue's log already holds. The harness keeps the notes in the run's ledger, with who wrote each and when, and nobody edits or deletes one. The owner reads them on the run's **Journal** tab.
 
 Each brief shows a window of the notes: a worker's has its lane's newest 10 and the run's newest 5 decisions and lessons by other writers; the planner's and the teacher pair's have the run's newest 20. Nothing limits how many notes an agent writes.
 
