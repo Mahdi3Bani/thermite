@@ -50,7 +50,7 @@ Two Unix sockets matter too:
 | `control` | Normal | `control`, `supervisor`, `supervisor-2` |
 | `egress` | Normal: the way out | `harness`, `supervisor`, `harness-2`, `supervisor-2` |
 
-The harness is not on the `control` network. Control and the harness also get the host name `host.docker.internal`, so they can reach a model server on the host.
+The harness is not on the `control` network. Control and the harness also get the host name `host.docker.internal`, so they can reach a model server on the host. A release's compose file also has an `init` service, which makes the local tokens: it has no network at all (`network_mode: none`).
 
 ### Machines
 
@@ -106,8 +106,9 @@ A full reset empties the harness's state, scratch and outbox, keeping only the r
 | `supervisor-home`, `supervisor2-home` | supervisor, supervisor-2 | `/var/lib/thermite-supervisor` | read-write |
 | `results` | both supervisors | `/results` | read-write. The default results repository is `file:///results/results.git` |
 | `./.dev/advisors` (a folder) | both supervisors | `/etc/thermite/advisors` | read-only |
+| `.` (the folder that holds `compose.yaml`) | init, in a release's compose file | `/work` | read-write. It runs as root, with only the capabilities `CHOWN`, `DAC_OVERRIDE` and `FOWNER` |
 
-`npm run dev:init` makes the `.dev/` folders. `docker compose down -v` removes the named volumes; without `-v` they keep their state.
+The `init` service makes the `.dev/` folders, next to `compose.yaml`: it runs `thermite local init` with that folder mounted at `/work`. In a checkout of the source code, `npm run dev:init` makes the same folders. `docker compose down -v` removes the named volumes; without `-v` they keep their state.
 
 ### Machines
 
@@ -168,7 +169,7 @@ At start, the harness's broker reads its secret files as root, gives their value
 
 | Way of running | Files | Mounted at |
 | --- | --- | --- |
-| Compose | `npm run dev:init` writes them to `.dev/secrets/`: `control-admin-token`, `control-operator-token`, `control-rig-tokens.json`, `control-rig-token`, `harness-supervisor-token`, `harness-proposer-token`, `model-api-key`, and the second rig's `control-rig-token-2`, `harness2-supervisor-token`, `harness2-proposer-token` | `/run/secrets/<name>` (`control-rig-tokens.json` as `control-rig-tokens`), each only in the containers that use it |
+| Compose | The `init` service (`docker compose run --rm init`), or `npm run dev:init` in a checkout, writes them to `.dev/secrets/`, mode 0644: `control-admin-token`, `control-operator-token`, `control-rig-tokens.json`, `control-rig-token`, `harness-supervisor-token`, `harness-proposer-token`, `model-api-key`, and the second rig's `control-rig-token-2`, `harness2-supervisor-token`, `harness2-proposer-token` | `/run/secrets/<name>` (`control-rig-tokens.json` as `control-rig-tokens`), each only in the containers that use it |
 | `thermite rig add --out DIR` | `secrets/control-rig-token` and `secrets/harness-supervisor-token` (0600, in a 0700 folder); `keys/control-signing.pub` and `keys/control-signing.fingerprint`; `rig.env` with `THERMITE_RIG_ID` and `CONTROL_URL`; `README.txt` | Wherever your own deployment puts them |
 | Machines (over SSH or a join command) | `secrets/control-rig-token`, `secrets/harness-supervisor-token`, `keys/control-signing.pub`, `keys/control-signing.fingerprint`, in the rig's folder | `/run/secrets/<name>` and `/keys`, read-only |
 | Kubernetes | A Secret `thermite-<rig>` with `control-rig-token`, `harness-supervisor-token` and `control-signing.pub` | Each key as its own read-only file, at `/run/secrets/<name>` or `/keys/control-signing.pub` |

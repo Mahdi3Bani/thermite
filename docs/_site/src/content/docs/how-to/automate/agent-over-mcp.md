@@ -12,7 +12,7 @@ Control has an MCP server, so an AI agent such as Claude Code can watch rigs and
 
 - **Control's address, as the agent's computer reaches it:** `http://127.0.0.1:8800` on the computer that runs the local stack, or your control's address, such as `https://control.example.com`.
 - **A token for the agent** (step 1).
-- **To start runs:** a [contract](../campaigns/write-a-contract.md) file, and the `thermite` command line where the agent works, to turn the contract into a command (step 3). Run `npx thermite` in your Thermite folder, after `npm ci` and `npm run build` (see [the command line](../../reference/command-line.md)). The command line has no option to name a [Git access](../campaigns/private-repository.md), so start campaigns on private repositories from the dashboard's **New campaign** page.
+- **To start runs:** a [contract](../campaigns/write-a-contract.md) file, and the `thermite` command line where the agent works, to turn the contract into a command (step 3). Run `npx thermite` in the folder you built it in (see [the command line](../install/one-machine.md#the-command-line)). The command line has no option to name a [Git access](../campaigns/private-repository.md), so start campaigns on private repositories from the dashboard's **New campaign** page.
 
 ## 1. Choose the agent's token
 

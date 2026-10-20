@@ -20,7 +20,30 @@ Each image is built from the repository's root, from its own file:
 docker build -t thermite-harness -f containers/harness/Containerfile .
 ```
 
-`podman build` takes the same arguments. Under compose, `docker compose build` builds all three. No image is published yet: [goal 010](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/010-published-images.goal) plans that.
+`podman build` takes the same arguments. In a checkout of the source code, `docker compose build` builds all three.
+
+## Published images
+
+For each release, the release workflow (`.github/workflows/release.yml`) builds the images from these files and pushes them to GitHub's container registry, under the repository owner's name:
+
+| Image | Name | Tags | Architectures |
+| --- | --- | --- | --- |
+| Control | `ghcr.io/iammrduncan/thermite-control` | The version, such as `0.1.0`, and the first 12 characters of the commit | amd64, arm64 |
+| Harness, CPU | `ghcr.io/iammrduncan/thermite-harness` | The same | amd64, arm64 |
+| Harness, CUDA | `ghcr.io/iammrduncan/thermite-harness` | The same, each with `-cuda` added: `0.1.0-cuda` | amd64 |
+| Supervisor | `ghcr.io/iammrduncan/thermite-supervisor` | The same | amd64, arm64 |
+
+The workflow sets no `CLAUDE_CODE_VERSION`, so no published image carries Claude Code. A release's `compose.yaml` names each image by its digest, not by a tag. Each image also has these labels (and, for an image of two architectures, the same annotations on its index):
+
+| Label | Value |
+| --- | --- |
+| `org.opencontainers.image.source` | The repository, `https://github.com/iammrduncan/thermite`. GitHub links each package to the repository by it |
+| `org.opencontainers.image.version` | The release's version, such as `0.1.0` |
+| `org.opencontainers.image.revision` | The full commit the image was built from |
+| `org.opencontainers.image.title`, `org.opencontainers.image.description` | The image's name and what it is |
+| `org.opencontainers.image.licenses` | `MIT` |
+
+The workflow builds each image with `THERMITE_COMMIT` set to the full commit, so each service reports that commit with the version in its `package.json` ([Rig versions](rest-api.md#rig-versions)). It builds the harness images with `THERMITE_IMAGE_ID` too, set to the image's tag and short commit, such as `0.1.0-cuda+1a2b3c4d5e6f`: the harness reports it as its image in the rig's hardware report, which the rig's page shows, and puts it in every build's key ([Build cache](kit-manifest.md#build-cache)). In an image built from a checkout without these arguments, both are empty, which counts as not set.
 
 ## Build arguments
 
@@ -33,6 +56,7 @@ docker build -t thermite-harness -f containers/harness/Containerfile .
 | `KUBECTL_VERSION` | Control | `v1.37.1` | The kubectl release installed. Its sha256 is pinned for amd64 and arm64 only |
 | `THERMITE_COMMIT` | All three | empty | The source commit the image is built from. The image sets the environment variable of the same name, and the service reports it with Thermite's version: see [Rig versions](rest-api.md#rig-versions) |
 | `TARGETARCH` | All three | set by the builder | Chooses the arm64 or x64 package of OpenCode, Claude Code and kubectl |
+| `THERMITE_IMAGE_ID` | Harness | empty | The image's identity, kept as the variable of the same name, which the harness reports. The release workflow sets it to the tag and the short commit |
 
 ## The harness image
 
@@ -56,7 +80,7 @@ On the default base, the apt packages are Debian 12 ("bookworm") packages. The b
 
 ### The CUDA harness
 
-GPU rigs need the same image built on a CUDA 12.x development image, with `--build-arg BASE_IMAGE=<image>`. The image's comment says why 12.x: CUDA 13 dropped older GPU architectures. A development image is needed because the CUDA smoke kit builds with `nvcc`. The repository names no exact CUDA image tag. RunPod test pods ask for hosts with CUDA 12.6 or later.
+GPU rigs need the same image built on a CUDA 12.x development image, with `--build-arg BASE_IMAGE=<image>`. The image's comment says why 12.x: CUDA 13 dropped older GPU architectures. A development image is needed because the CUDA smoke kit builds with `nvcc`. The release workflow builds the published CUDA harness on `docker.io/nvidia/cuda:12.6.3-devel-ubuntu22.04`, pinned by its digest, so its apt packages are Ubuntu 22.04's. RunPod test pods ask for hosts with CUDA 12.6 or later.
 
 The CPU image has no `nvcc`, so it cannot build GPU kits. Control finds the CUDA image through `THERMITE_RIG_HARNESS_CUDA_IMAGE` (rigs it sets up, and the image it moves a cluster rig with GPUs onto) and `THERMITE_RUNPOD_TEST_IMAGE` (test pods). Compose runs CPU rigs only.
 
@@ -92,7 +116,7 @@ The [isolation check](rig-checks.md#isolation-check) tests these users, and [Iso
 - **As root.** The image sets no user. The broker needs root to start each role as its user, and stops at start with `fatal: not root, so roles cannot be separated` otherwise. Compose, the machine units and the cluster manifests keep only the capabilities `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `KILL`, `SETGID` and `SETUID`, and forbid gaining new privileges.
 - **What a role's process sees.** Builds and timed runs get only `PATH`, `LANG=C.UTF-8`, `HOME` and `TMPDIR` (both the run's own directory) and `USER`, plus `CUDA_VISIBLE_DEVICES` on a rig with dedicated GPUs. Other `ENV` lines in a derived image do not reach them. A lane's commands also get their build cache: `THERMITE_LANE_CACHE` and `CCACHE_DIR` (both the lane's cache folder) and `CCACHE_MAXSIZE=8G`.
 - **Port:** 8700, the harness API (`THERMITE_LISTEN`). No port is published.
-- **Also set:** `NODE_OPTIONS=--disable-warning=ExperimentalWarning`.
+- **Also set:** `NODE_OPTIONS=--disable-warning=ExperimentalWarning`, and `THERMITE_COMMIT` and `THERMITE_IMAGE_ID` from their build arguments (see [Published images](#published-images)).
 
 ### Paths
 

@@ -15,7 +15,7 @@ This page lists what Thermite needs and what it has been tested with. Each row s
 | Your computer, for the `thermite` command, the tests and the scripts | 22.19 or later (`engines` in `package.json`). The agent libraries need it | CI runs the type check, lint and tests on Node.js 22 and 24 |
 | Inside the images | The Node.js 22 of `node:22-bookworm-slim`, pinned by digest. The exact 22.x release is whatever that digest holds | Every image build |
 
-The images build their own copy of Thermite, so the compose stack needs Node.js on your computer only for `npm run dev:init`, the command line and the test scripts.
+The images carry their own copy of Thermite, so a release's compose stack needs no Node.js on your computer. Node.js is needed only for the command line, and in a checkout of the source code for `npm run dev:init` and the test scripts.
 
 ## Operating systems
 
@@ -46,7 +46,7 @@ Installs need `sudo` without a password. See [Add a rig on a machine over SSH](.
 | podman-compose | Supported | The compose smoke test takes it (`COMPOSE="podman-compose"`). Not in CI |
 | Podman on a machine that hosts rigs | 4.4 or later, for its Quadlet units | The rig deploy acceptance, on Fedora 41's Podman. Neither the join script nor setting up over SSH checks the version: the join script checks only that Podman is there |
 
-No minimum version of Docker, Docker Compose, Podman or podman-compose is stated or checked for the compose stack. `compose.yaml` uses secrets from files, profiles, internal networks, `extra_hosts` with `host-gateway`, dropped and added capabilities, `no-new-privileges`, restart policies and `${VAR:-default}` defaults.
+No minimum version of Docker, Docker Compose, Podman or podman-compose is stated or checked for the compose stack. `compose.yaml` uses secrets from files, profiles, internal networks, `extra_hosts` with `host-gateway`, dropped and added capabilities, `no-new-privileges`, restart policies and `${VAR:-default}` defaults. A release's compose file uses the same, images pinned by digest alone (`name@sha256:…`), and `network_mode: none` for its `init` service, which you start with `compose run --rm`.
 
 Two acceptance tests need Podman and refuse Docker: rig deploy and cluster. [Install Thermite on one machine](../how-to/install/one-machine.md) gives the commands for each tool.
 
@@ -71,7 +71,7 @@ See [Add a rig on a Kubernetes cluster](../how-to/install/rig-on-a-cluster.md).
 | GPU vendor | NVIDIA only: `nvidia-smi`, `/dev/nvidia*` device nodes, CDI on machines, the device plugin or dynamic resource allocation on clusters | |
 | GPUs on one rig | Up to 8 for the judge and 8 for the agents. Up to 16 on a rig control sets up on a machine or cluster; 8 on a joined namespace | The multi-GPU acceptance, with four fake GPUs (plain files and a stand-in `nvidia-smi`) |
 | Several judge GPUs | They must be the same model. Otherwise only the first one judges, and the rig's hardware report says why | Not tested |
-| CUDA | A CUDA 12.x development image as the harness's base. The repository names no exact image. CUDA 13 dropped older architectures. RunPod test pods ask for hosts with CUDA 12.6 or later | No test in the repository. A RunPod test pod checks one real GPU host: see [Test a GPU on RunPod](../how-to/install/runpod-test.md) |
+| CUDA | A CUDA 12.x development image as the harness's base. The published CUDA harness is built on `nvidia/cuda:12.6.3-devel-ubuntu22.04`, pinned by digest in the release workflow. CUDA 13 dropped older architectures. RunPod test pods ask for hosts with CUDA 12.6 or later | No test in the repository. A RunPod test pod checks one real GPU host: see [Test a GPU on RunPod](../how-to/install/runpod-test.md) |
 | GPU architecture of the CUDA smoke kit | Built for `sm_60` | |
 | NVIDIA driver | No minimum is stated or checked. A machine's check reports the driver and CUDA versions | Not tested |
 | NVIDIA container toolkit | 1.20.1-1 when control installs it, with a CDI specification for Podman | Not tested: the machines acceptance installs only Podman |
@@ -84,11 +84,12 @@ Without Landlock, and with device nodes that cannot be given their own groups, a
 
 | Image | Architectures | How it is tested |
 | --- | --- | --- |
-| Control | amd64 and arm64. Its build stops on any other: `kubectl` is pinned for these two only | CI builds it on amd64 (GitHub's `ubuntu-24.04` runners) |
-| Harness | amd64 and arm64. It installs the arm64 package of OpenCode and Claude Code on arm64, and the x64 package on any other architecture | CI builds it on amd64 |
-| Supervisor | Not stated. Claude Code, when built in, comes as its arm64 or x64 package | CI builds it on amd64 |
+| Control | amd64 and arm64. Its build stops on any other: `kubectl` is pinned for these two only | CI builds it on amd64 (GitHub's `ubuntu-24.04` runners). The release workflow builds it for amd64 and arm64 |
+| Harness, CPU | amd64 and arm64. It installs the arm64 package of OpenCode and Claude Code on arm64, and the x64 package on any other architecture | CI builds it on amd64. The release workflow builds it for amd64 and arm64 |
+| Harness, CUDA | amd64 | The release workflow builds it for amd64 only |
+| Supervisor | amd64 and arm64. Claude Code, when built in, comes as its arm64 or x64 package | CI builds it on amd64. The release workflow builds it for amd64 and arm64 |
 
-No test in the repository builds the images for more than one architecture. [Push the images to your own registry](../how-to/install/own-registry.md) builds them yourself, and [Harness image](harness-image.md) lists what each contains.
+The release workflow builds the arm64 images under emulation, on amd64 runners; no test runs them. Each published image of control, the CPU harness and the supervisor is one name for both architectures, and Docker or Podman pulls the one that fits the machine. [Push the images to your own registry](../how-to/install/own-registry.md) builds them yourself, and [Harness image](harness-image.md) lists what each contains.
 
 ## Control and rig versions
 
@@ -111,5 +112,5 @@ Control can move a rig it set up on a cluster onto the images it now deploys (**
 - The oldest Docker, Docker Compose, Podman or podman-compose that runs the compose stack.
 - The oldest Kubernetes that runs a rig, and whether GPU rigs work on a real cluster.
 - The oldest NVIDIA driver that works.
-- Windows, and arm64 images.
+- Windows, and whether the arm64 images work: no test runs them.
 - How much memory and disk the stack needs. Lane build caches can reach 8 GB each. A cluster rig with resources set needs at least 1.5 CPUs and 6 GiB of memory.

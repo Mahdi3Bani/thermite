@@ -43,7 +43,7 @@ npm ci
 npm run check
 ```
 
-`npm run check` runs every fast check. When it passes, your copy works. Thermite is written in TypeScript and runs on Node.js. To run Thermite itself from your copy, follow [Your first run](../tutorials/first-run.md).
+`npm run check` runs every fast check. When it passes, your copy works. Thermite is written in TypeScript and runs on Node.js. To run Thermite itself from your copy, build its images with the repository's own `compose.yaml`: `npm run dev:init`, then `docker compose up -d --build`. The [contributor guide](https://github.com/iammrduncan/thermite/blob/main/docs/local-development.md#the-compose-stack-built-from-source) says more. [Your first run](../tutorials/first-run.md) runs a release's published images instead.
 
 ## The checks
 
@@ -85,6 +85,8 @@ Continuous integration (`.github/workflows/ci.yml`) runs on every pull request, 
 | **compose-smoke** | The compose smoke test with Docker, after both **checks** jobs pass |
 
 A new commit on a pull request cancels the run for the commit before it. Every push to `main` or `v1/build` gets a whole run of its own.
+
+A second workflow, `.github/workflows/release.yml`, runs on a tag that starts with `v`. It builds the control, harness (CPU and CUDA) and supervisor images, pushes them to `ghcr.io`, and attaches the release bundle (`compose.yaml` and `README.md`, made by `scripts/release-bundle.ts`) to a draft GitHub Release. Run by hand from the **Actions** tab, it builds the same images and bundle but pushes nothing. The [contributor guide](https://github.com/iammrduncan/thermite/blob/main/docs/local-development.md#releases) describes each step.
 
 `.github/dependabot.yml` asks Dependabot for updates once a week: Thermite's packages, this site's packages and the GitHub Actions in the workflow. For each of the three, the minor and patch updates come together in one pull request. A major update comes alone, and so does every Starlight update, because Starlight is still 0.x.
 

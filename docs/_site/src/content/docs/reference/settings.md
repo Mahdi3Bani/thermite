@@ -194,7 +194,7 @@ A Claude subscription and Claude Code go only together. Any other pairing stops 
 | `THERMITE_BROKER_DIR` | path | `/run/thermite` | no | The directory of the broker's socket, `broker.sock` |
 | `THERMITE_CHECKS_DIR` | path | `/opt/thermite/checks` in the image; outside it, the checkout | no | Where the [smoke check](rig-checks.md) finds its kits and projects |
 | `THERMITE_ALLOW_UNSEPARATED` | `1` | off | no | `1`: when the harness container does not run as root, the broker starts the harness anyway, with no separate users for the roles. Meant for development only. Without it, a broker that is not root stops with `fatal: not root, so roles cannot be separated` |
-| `THERMITE_IMAGE_ID` | string | not set | no | Reported as the image in the rig's hardware report and in each build's toolchain record. Thermite's images do not set it yet ([goal 010](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/010-published-images.goal)) |
+| `THERMITE_IMAGE_ID` | string | the image's: set in the published harness images, such as `0.1.0+1a2b3c4d5e6f`; empty in an image built from a checkout | no | Reported as the image in the rig's hardware report and in each build's toolchain record. Empty counts as not set. See [Published images](harness-image.md#published-images) |
 
 ## Supervisor
 
@@ -280,7 +280,7 @@ The harness warns once when it reads a `QWEN_` name: `<older name> and the other
 
 ## The compose file
 
-`compose.yaml` runs control and one rig on one machine. It passes some settings from your shell or a `.env` file next to it, and fixes the rest. A setting it does not list needs an edit to the compose file.
+`compose.yaml` runs control and one rig on one machine: the repository's builds the images from the source code, and a release's runs the published images. It passes some settings from your shell or a `.env` file next to it, and fixes the rest. A setting it does not list needs an edit to the compose file.
 
 | Service | Passed from your shell or `.env`, with its default | Fixed in `compose.yaml` |
 | --- | --- | --- |
@@ -288,9 +288,9 @@ The harness warns once when it reads a `QWEN_` name: `<older name> and the other
 | harness | `THERMITE_PROMOTION` (`auto`); `THERMITE_CALIBRATION_BLOCKS` (6); `THERMITE_MODEL_BASE_URL`, `THERMITE_MODEL` and `THERMITE_MODEL_REASONING_EFFORT` (empty); `THERMITE_MODEL_CONTEXT_WINDOW` (0); `THERMITE_MODEL_MAX_TOKENS` (8192); `THERMITE_MAX_TRIALS` (1); `THERMITE_TRIAL_MINUTES` (20); `THERMITE_MAX_TURNS`, `THERMITE_RESEARCH_MAX_MB`, `THERMITE_LLM_USD_PER_MTOK_IN` and `THERMITE_LLM_USD_PER_MTOK_OUT` (empty); `THERMITE_EXPORT_MINUTES` (60) | `THERMITE_RIG_ID` (`local-1`), `THERMITE_TARGET` (`cpu`), `THERMITE_CONTROL_PUBKEY_FILE`, `THERMITE_SUPERVISOR_TOKEN_FILE`, `THERMITE_PROPOSER_TOKEN_FILE`, `THERMITE_MODEL_API_KEY_FILE` |
 | supervisor | `THERMITE_POLL_SECONDS` (60); `THERMITE_COMMAND_POLL_SECONDS` (5); `THERMITE_MODEL_ROUTE_POLL_SECONDS` (30); `THERMITE_LIVE_INTERVAL_MS` (3000); `THERMITE_RESULTS_REMOTE` (`file:///results/results.git`, a repository on a shared volume); `THERMITE_ADVISORS_FILE` (empty) | `THERMITE_RIG_ID` (`local-1`), `HARNESS_URL`, `CONTROL_URL`, `THERMITE_HARNESS_TOKEN_FILE`, `THERMITE_CONTROL_TOKEN_FILE` |
 
-Each service's build also takes `THERMITE_COMMIT` from your shell or `.env` (empty), as the [build argument](#build-arguments) of the same name: for example `THERMITE_COMMIT=$(git rev-parse HEAD) docker compose build`.
+Each service's build in the repository's `compose.yaml` also takes `THERMITE_COMMIT` from your shell or `.env` (empty), as the [build argument](#build-arguments) of the same name: for example `THERMITE_COMMIT=$(git rev-parse HEAD) docker compose build`.
 
-The defaults match the code's, except `THERMITE_RESULTS_REMOTE`, which the code leaves unset. The second rig of the `two-rigs` profile (`harness-2` and `supervisor-2`, rig `local-2`) takes the same settings, except that its harness does not pass `THERMITE_RESEARCH_MAX_MB` or the two prices.
+The defaults match the code's, except `THERMITE_RESULTS_REMOTE`, which the code leaves unset. A release's `compose.yaml` passes the same settings with the same defaults, with one difference: `THERMITE_RIG_HARNESS_IMAGE`, `THERMITE_RIG_HARNESS_CUDA_IMAGE` and `THERMITE_RIG_SUPERVISOR_IMAGE` default to that release's published images, pinned by digest. It builds nothing, so it takes no `THERMITE_COMMIT`: the published images carry their commit already. The second rig of the `two-rigs` profile (`harness-2` and `supervisor-2`, rig `local-2`) takes the same settings, except that its harness does not pass `THERMITE_RESEARCH_MAX_MB` or the two prices.
 
 These two are read only by the compose files, never by Thermite's code:
 
@@ -324,6 +324,7 @@ The images take these build arguments. [Harness image](harness-image.md) says wh
 | `OPENCODE_VERSION` | harness | `2.0.32` | The OpenCode version installed |
 | `CLAUDE_CODE_VERSION` | harness, supervisor | empty: Claude Code is not installed | The Claude Code version to download at build time, for agents or advisors on a Claude subscription |
 | `KUBECTL_VERSION` | control | `v1.37.1` | The kubectl version installed, checked against a pinned checksum |
+| `THERMITE_IMAGE_ID` | harness | empty | The image's identity, kept as the environment variable of the same name ([above](#places-exports-and-the-broker)). The release workflow sets it to the image's tag and short commit, such as `0.1.0-cuda+1a2b3c4d5e6f` |
 | `THERMITE_COMMIT` | control, harness, supervisor | empty | The source commit the image is built from: 7 to 64 hexadecimal characters, such as the output of `git rev-parse HEAD`. The image sets the environment variable of the same name, and the service reports it with Thermite's version from `package.json` ([Rig versions](rest-api.md#rig-versions)). Empty, or anything else: the service reports no commit |
 
 ## Set by Thermite itself

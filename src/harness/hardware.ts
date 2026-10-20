@@ -153,7 +153,8 @@ export async function collectHardware(opts: {
       kernel: release(),
       arch: arch(),
       node: process.version,
-      image: process.env.THERMITE_IMAGE_ID ?? null,
+      // Set by the release images (empty in an image built from a checkout).
+      image: process.env.THERMITE_IMAGE_ID || null,
     },
     toolchain: {
       cc: firstLine("cc", ["--version"]),

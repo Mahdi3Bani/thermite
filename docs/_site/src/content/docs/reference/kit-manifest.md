@@ -216,7 +216,7 @@ Reasons are shortened where they are passed on:
 
 ## Build cache
 
-Each build has a key: the hash of the candidate's commit, the kit's commit, the kit's `build` section and the toolchain. The toolchain is the `cc` and `nvcc` versions, and the image's identity when `THERMITE_IMAGE_ID` is set. A build is made once for each key and reused after. A failed build is remembered as failed, unless it was ended for a limit.
+Each build has a key: the hash of the candidate's commit, the kit's commit, the kit's `build` section and the toolchain. The toolchain is the `cc` and `nvcc` versions, and the image's identity when `THERMITE_IMAGE_ID` is set and not empty, as in the published harness images. A build is made once for each key and reused after. A failed build is remembered as failed, unless it was ended for a limit.
 
 ## How a kit reaches a rig
 

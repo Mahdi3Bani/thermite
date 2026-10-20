@@ -20,7 +20,7 @@ Run `npx thermite` in your Thermite folder, after `npm ci` and `npm run build` (
 
 ## Before you start
 
-- A clone of Thermite with Node.js 22.19 or later. Thermite's images also have the command line, as `thermite`.
+- Thermite's command line, built from a clone of its source code with Node.js 22.19 or later ([the command line](../install/one-machine.md#the-command-line)). Thermite's images also have the command line, as `thermite`.
 - A contract file. See [Write a contract](write-a-contract.md).
 - For a hill climb or a goal campaign: the project and its [kit](../../reference/glossary.md) in git repositories the rig can fetch. The contract names each by a short name, and the kit by its full commit too; the addresses are given here, with `--seed` and `--kit`. See [Write a kit for your project](write-a-kit.md).
 

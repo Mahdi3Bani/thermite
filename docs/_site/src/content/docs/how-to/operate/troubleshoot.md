@@ -30,7 +30,7 @@ There is no single Logs page yet ([goal 027](https://github.com/iammrduncan/ther
 
 - **You see:** `docker compose up` stops with an error about a file in `.dev/secrets/`.
 - **Why:** the local tokens don't exist yet. `compose.yaml` reads them from `.dev/secrets/`.
-- **Do:** run `npm run dev:init` in the repository's top folder, then start again.
+- **Do:** run `docker compose run --rm init` (or `podman compose run --rm init`) in the folder that holds `compose.yaml`, then start again. In a checkout of the source code, run `npm run dev:init` in the repository's top folder instead.
 
 ### Control stops at start: `control needs the owner's credential`
 
@@ -58,8 +58,8 @@ There is no single Logs page yet ([goal 027](https://github.com/iammrduncan/ther
 
 ### The first build is slow
 
-- **You see:** `docker compose up -d --build` takes 20 minutes or more.
-- **Why:** it builds three images from source, and the harness image installs compilers, Python and agent programs. A GPU image's base is a large download too.
+- **You see:** in a checkout of the source code, `docker compose up -d --build` takes 20 minutes or more.
+- **Why:** it builds three images from source, and the harness image installs compilers, Python and agent programs. A GPU image's base is a large download too. A release's `compose.yaml` downloads ready-made images instead ([Install Thermite on one machine](../install/one-machine.md)).
 - **Do:** wait for it once. Later, start without `--build` (`docker compose up -d`) to reuse the images, and rebuild only what changed, for example `docker compose build harness`.
 
 ### The Podman VM runs out of disk or memory

@@ -17,7 +17,7 @@ Subscriptions are built, but Thermite's tests so far use a stand-in for Claude C
 ## Before you start
 
 - A Claude Pro or Max plan, and Node.js on your own computer.
-- A rig whose images have Claude Code in them. Thermite's images leave it out unless you build them with it: see step 2.
+- A rig whose images have Claude Code in them. Thermite's images leave it out unless you build them with it: see step 2. The published images, which a release's `compose.yaml` runs, never carry it, so the local stack must run from the source code ([Running Thermite locally](https://github.com/iammrduncan/thermite/blob/main/docs/local-development.md)).
 
 ## 1. Make a token
 
@@ -46,7 +46,7 @@ Claude Code is not open source, so Thermite's images carry it only when you buil
 
    On an arm64 machine the build downloads `@anthropic-ai/claude-code-linux-arm64` instead.
 
-2. On the local stack, put the option in an override file next to `compose.yaml`, with that version:
+2. On the local stack built from the source code, put the option in an override file next to the repository's `compose.yaml`, with that version:
 
    ```yaml title="compose.claude.yaml"
    services:

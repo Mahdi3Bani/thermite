@@ -73,7 +73,7 @@ curl -sS -H "$AUTH" "$CONTROL/v1/commands/<command id>"
 
 Within seconds the status becomes `delivered`, and `outcome` holds the rig's answer. Other statuses are `rejected` or `failed`, with the rig's reason in `outcome`, and `expired`. `GET /v1/commands?limit=20` lists the newest commands of every rig. A command still `pending` can be [cancelled](../operate/cancel-a-command.md).
 
-The `thermite` command line uses the same route. Run `npx thermite` in your Thermite folder, after `npm ci` and `npm run build` (see [the command line](../../reference/command-line.md)):
+The `thermite` command line uses the same route. Run `npx thermite` in the folder you built it in (see [the command line](../install/one-machine.md#the-command-line)):
 
 ```sh
 npx thermite command --control "$CONTROL" --token-file .dev/secrets/control-admin-token \

@@ -1,0 +1,192 @@
+import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, test } from "node:test";
+import { promisify } from "node:util";
+import { LOCAL_TOKEN_FILES } from "../cli/local-init.ts";
+import {
+  type BundleInput,
+  COMPOSE_NEEDS,
+  checkInput,
+  IMAGE_KEYS,
+  placeholders,
+  README_NEEDS,
+  render,
+  templateDrift,
+} from "./bundle.ts";
+
+const run = promisify(execFile);
+const ROOT = join(import.meta.dirname, "..", "..");
+const SCRIPT = join(ROOT, "scripts", "release-bundle.ts");
+const read = (path: string) => readFileSync(join(ROOT, path), "utf8");
+const COMPOSE = read("compose.yaml");
+const TEMPLATE = read("containers/release/compose.template.yaml");
+const README = read("containers/release/README.template.md");
+const PACKAGE_VERSION: string = JSON.parse(read("package.json")).version;
+
+const digest = (c: string) => `sha256:${c.repeat(64)}`;
+const input = (over: Partial<BundleInput> = {}): BundleInput => ({
+  version: PACKAGE_VERSION,
+  registry: "ghcr.io/example",
+  repoUrl: "https://github.com/example/thermite",
+  digests: {
+    control: digest("a"),
+    harness: digest("b"),
+    "harness-cuda": digest("c"),
+    supervisor: digest("d"),
+  },
+  ...over,
+});
+
+/** The value a service's key has in a rendered compose file (services are two spaces in). */
+function serviceKey(compose: string, service: string, key: string): string | undefined {
+  const lines = compose.split("\n");
+  const start = lines.indexOf(`  ${service}:`);
+  if (start < 0) return undefined;
+  for (const line of lines.slice(start + 1)) {
+    if (/^ {2}\S/.test(line) || /^\S/.test(line)) return undefined;
+    const m = new RegExp(`^ {4}${key}: (.*)$`).exec(line);
+    if (m) return m[1];
+  }
+  return undefined;
+}
+
+describe("the release bundle", () => {
+  test("pins every service's image by digest", () => {
+    const compose = render(TEMPLATE, placeholders(input()), COMPOSE_NEEDS);
+    const images: Record<string, string> = {
+      init: digest("a"),
+      control: digest("a"),
+      harness: digest("b"),
+      "harness-2": digest("b"),
+      supervisor: digest("d"),
+      "supervisor-2": digest("d"),
+    };
+    for (const [service, d] of Object.entries(images)) {
+      const image = serviceKey(compose, service, "image");
+      assert.match(
+        image ?? "",
+        /^ghcr\.io\/example\/thermite-[a-z]+@sha256:[0-9a-f]{64}$/,
+        service,
+      );
+      assert.ok(image?.endsWith(`@${d}`), `${service} runs ${image}`);
+    }
+    assert.ok(!/^\s*build:/m.test(compose), "nothing is built");
+    // Control sets rigs up from this release's images unless .env names others.
+    assert.match(
+      compose,
+      /THERMITE_RIG_HARNESS_CUDA_IMAGE: "\$\{THERMITE_RIG_HARNESS_CUDA_IMAGE:-ghcr\.io\/example\/thermite-harness@sha256:c{64}\}"/,
+    );
+    assert.match(compose, /THERMITE_RIG_SUPERVISOR_IMAGE: "\$\{[A-Z_]+:-[^}]+@sha256:d{64}\}"/);
+    assert.match(compose, /^# Thermite \d+\.\d+\.\d+/);
+  });
+
+  test("the init service makes .dev/ with no network", () => {
+    const compose = render(TEMPLATE, placeholders(input()), COMPOSE_NEEDS);
+    assert.equal(
+      serviceKey(compose, "init", "command"),
+      '["thermite", "local", "init", "/work/.dev"]',
+    );
+    assert.equal(serviceKey(compose, "init", "network_mode"), "none");
+    assert.equal(serviceKey(compose, "init", "cap_drop"), "[ALL]");
+    // Every secret the services read is a file the init service writes.
+    const made = [...LOCAL_TOKEN_FILES, "model-api-key", "control-rig-tokens.json"];
+    const files = [...compose.matchAll(/\{ file: \.\/\.dev\/secrets\/([a-z0-9.-]+) \}/g)].map(
+      (m) => m[1],
+    );
+    assert.equal(files.length, 10);
+    for (const name of files) assert.ok(made.includes(name ?? ""), `${name} is made by init`);
+  });
+
+  test("the template matches compose.yaml but for images and the init service", () => {
+    assert.deepEqual(templateDrift(COMPOSE, TEMPLATE), []);
+    const changed = COMPOSE.replace(
+      "THERMITE_TARGET: cpu\n      THERMITE_CONTROL_PUBKEY_FILE",
+      'THERMITE_TARGET: cpu\n      THERMITE_NEW_SETTING: "1"\n      THERMITE_CONTROL_PUBKEY_FILE',
+    );
+    assert.notEqual(changed, COMPOSE);
+    const drift = templateDrift(changed, TEMPLATE);
+    assert.ok(drift.length > 0);
+    assert.match(drift[0] ?? "", /THERMITE_NEW_SETTING/);
+    assert.deepEqual(templateDrift(COMPOSE, TEMPLATE.replace("  init:", "  setup:")), [
+      "the template has no init service",
+    ]);
+  });
+
+  test("the readme names the version, the images and their tags", () => {
+    const readme = render(README, placeholders(input()), README_NEEDS);
+    assert.match(readme, new RegExp(`^# Thermite ${PACKAGE_VERSION.replace(/\./g, "\\.")}\n`));
+    assert.ok(
+      readme.includes(
+        `https://github.com/example/thermite/releases/download/v${PACKAGE_VERSION}/compose.yaml`,
+      ),
+    );
+    assert.ok(readme.includes(`ghcr.io/example/thermite-harness:${PACKAGE_VERSION}-cuda`));
+    assert.ok(readme.includes(`ghcr.io/example/thermite-control@${digest("a")}`));
+  });
+
+  test("refuses bad input", () => {
+    assert.deepEqual(checkInput(input(), PACKAGE_VERSION), []);
+    assert.deepEqual(
+      checkInput(input({ version: `${PACKAGE_VERSION}-rc.1` }), PACKAGE_VERSION),
+      [],
+    );
+    const problems = (over: Partial<BundleInput>) => checkInput(input(over), PACKAGE_VERSION);
+    assert.match(problems({ version: "9.9.9" }).join(), /does not match package\.json/);
+    assert.match(problems({ version: "v1.0.0" }).join(), /expected 1\.2\.3/);
+    assert.match(problems({ registry: "ghcr.io/Example" }).join(), /lowercase/);
+    assert.match(problems({ repoUrl: "http://github.com/x" }).join(), /https/);
+    const digests = { ...input().digests, harness: "sha256:abc" };
+    assert.match(problems({ digests }).join(), /^harness: digest/);
+    const { supervisor: _, ...missing } = input().digests;
+    assert.match(
+      problems({ digests: missing as BundleInput["digests"] }).join(),
+      /supervisor: no digest/,
+    );
+  });
+
+  test("a placeholder without a value, or one never used, stops the render", () => {
+    assert.throws(() => render("@@NOPE@@", {}), /@@NOPE@@, which has no value/);
+    assert.throws(() => render("plain", { VERSION: "1" }, ["VERSION"]), /never uses @@VERSION@@/);
+  });
+
+  test("the script writes both files, and refuses a missing digest", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "thermite-bundle-"));
+    const digests = join(dir, "digests");
+    mkdirSync(digests);
+    for (const [i, key] of IMAGE_KEYS.entries())
+      writeFileSync(join(digests, key), `${digest(String(i + 1))}\n`);
+    const out = join(dir, "bundle");
+    const args = [
+      "--experimental-strip-types",
+      "--no-warnings",
+      SCRIPT,
+      "--version",
+      PACKAGE_VERSION,
+      "--registry",
+      "ghcr.io/example",
+      "--repo-url",
+      "https://github.com/example/thermite",
+      "--digests",
+      digests,
+      "--out",
+      out,
+    ];
+    const done = await run(process.execPath, args);
+    assert.match(done.stdout, /wrote .*compose\.yaml and .*README\.md/);
+    const compose = readFileSync(join(out, "compose.yaml"), "utf8");
+    assert.equal(
+      serviceKey(compose, "control", "image"),
+      `ghcr.io/example/thermite-control@${digest("1")}`,
+    );
+    assert.ok(readFileSync(join(out, "README.md"), "utf8").includes(digest("4")));
+    writeFileSync(join(digests, "harness-cuda"), "");
+    await assert.rejects(run(process.execPath, args), (e: { code?: number; stderr?: string }) => {
+      assert.equal(e.code, 1);
+      assert.match(e.stderr ?? "", /harness-cuda: digest ""/);
+      return true;
+    });
+  });
+});

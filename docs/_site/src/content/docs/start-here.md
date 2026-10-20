@@ -10,10 +10,10 @@ Thermite lets AI agents work on a project for as long as it takes, while a judge
 
 ## What you need
 
-- A computer running Linux or macOS, with a few CPU cores, a few gigabytes of free memory, and several gigabytes of free disk. Thermite's three images take about 2 GB, and building them needs room of its own.
-- Docker or Podman, which run Thermite's containers.
-- Node.js 22.19 or later, and git.
-- About half an hour for the first run. Most of it is the first build of the images, which you wait for only once.
+- A computer running Linux or macOS, with a few CPU cores, a few gigabytes of free memory, and several gigabytes of free disk. Thermite's three images take about 2 GB.
+- Docker or Podman, which run Thermite's containers. You download Thermite's images ready-made, and build nothing.
+- For the command line, from the second tutorial on: Node.js 22.19 or later, and git.
+- About twenty minutes for the first run.
 
 A GPU is optional, and so is a paid AI model: you can start with a free one.
 
@@ -37,7 +37,7 @@ You want to see what Thermite does before you commit to anything. The four tutor
 You have machines with GPUs and want Thermite to use them.
 
 1. [Install Thermite on one machine](how-to/install/one-machine.md), so it keeps running.
-2. [Let rigs on other machines reach control](how-to/install/one-machine.md#let-rigs-on-other-machines-reach-control). This needs an HTTPS address for control, behind a reverse proxy you provide, and Thermite's images in a registry that the rigs can pull from without a login ([Push the images to your own registry](how-to/install/own-registry.md)). Building the images takes 20 minutes or more.
+2. [Let rigs on other machines reach control](how-to/install/one-machine.md#let-rigs-on-other-machines-reach-control). This needs an HTTPS address for control, behind a reverse proxy you provide, and Thermite's images in a registry that the rigs can pull from without a login. A release's published images are such images, and its compose file gives them to control.
 3. [Add a rig on a machine over SSH](how-to/install/rig-on-a-machine.md) or [on a Kubernetes cluster](how-to/install/rig-on-a-cluster.md).
 4. [Give a rig several GPUs](how-to/install/several-gpus.md), and read [Sharing a device](explanation/sharing-a-device.md) to choose how.
 

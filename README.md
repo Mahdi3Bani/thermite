@@ -40,26 +40,24 @@ Each project comes with a **kit**: the judge's half of the project, which says h
 
 ## Quick start
 
-You need Linux or macOS, Node.js 22.19 or later, git, and Podman or Docker with compose. A model is optional at first: the judge works without one.
+You need Linux or macOS, and Podman or Docker with compose. Thermite runs from published images: you build nothing. A model is optional at first: the judge works without one.
 
 Before you give Thermite a model, read the [known limits](docs/_site/src/content/docs/reference/known-limits.md). Agents run the code that a model writes on your computer, and under compose that code can reach your local network. [The security model](docs/_site/src/content/docs/explanation/security-model.md) says what each part can reach and what it trusts.
 
 ```sh
-git clone https://github.com/iammrduncan/thermite.git
-cd thermite
-npm ci
-npm run build
-npm run dev:init                 # writes local tokens to .dev/ (git-ignored)
-docker compose up -d --build     # or: podman compose up -d --build
+mkdir thermite && cd thermite
+curl -fsSLO https://github.com/iammrduncan/thermite/releases/latest/download/compose.yaml
+docker compose run --rm init     # writes local tokens to .dev/
+docker compose up -d
 ```
 
-Building the images is the slow part of a first run. Then:
+With Podman, write `podman compose` in place of `docker compose`. The first start downloads the images. Then:
 
 1. Open <http://127.0.0.1:8800/ui> and sign in with the token in `.dev/secrets/control-admin-token`.
 2. Go to **Rigs › local-1 › Checks** and run **smoke**. The rig builds a small benchmark and submits known changes to its judge: a real speed-up, a no-op, broken builds and attempts to cheat. Each one gets its expected verdict in about ten minutes on a CPU.
 3. Add a model under **Settings › Providers** (any OpenAI-compatible endpoint with tool calling, Anthropic, or OpenCode), then start a campaign on your own project from **Campaigns › New campaign**.
 
-The [quick start](docs/_site/src/content/docs/tutorials/first-run.md) walks through every step, including taking the winning patch back to your project.
+The [quick start](docs/_site/src/content/docs/tutorials/first-run.md) walks through every step, including taking the winning patch back to your project. To build Thermite from its source code instead, see the [contributor guide](docs/local-development.md).
 
 **Just want to look around?** `npm ci && node --experimental-strip-types scripts/dashboard-demo.ts` serves the dashboard with synthetic campaigns and rigs at <http://127.0.0.1:8810/ui>, with no containers. It prints the token to sign in with.
 

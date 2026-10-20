@@ -12,18 +12,22 @@ The image already has a C and C++ toolchain (`gcc`, `g++`, `make`), CMake, Ninja
 
 ## Before you start
 
-- Thermite's harness image, built and pushed to your registry: see [Push the images to your own registry](own-registry.md). Extend the CPU image for CPU rigs and the CUDA image for GPU rigs.
+- Thermite's harness image: a published one, such as `ghcr.io/iammrduncan/thermite-harness:0.1.0` for CPU rigs or `ghcr.io/iammrduncan/thermite-harness:0.1.0-cuda` for GPU rigs ([Published images](../../reference/harness-image.md#published-images)), or one you built ([Push the images to your own registry](own-registry.md)). Extend the CPU image for CPU rigs and the CUDA image for GPU rigs.
+- A registry your rigs can pull from without signing in, for your image.
 
 ## 1. Write a Containerfile
 
 Start from the harness image and install with `apt-get`. This example adds a Fortran compiler and OpenBLAS:
 
 ```dockerfile title="Containerfile"
-FROM registry.example.com/thermite/thermite-harness:1a2b3c4d5e6f
+FROM ghcr.io/iammrduncan/thermite-harness:0.1.0
 RUN apt-get update \
  && apt-get install -y --no-install-recommends gfortran libopenblas-dev \
  && rm -rf /var/lib/apt/lists/*
+ENV THERMITE_IMAGE_ID=0.1.0-fortran-1
 ```
+
+The last line gives your image a name of its own. The harness puts `THERMITE_IMAGE_ID` in the key of every build it makes, so a rig on your image builds afresh, and never reuses a build made without your tools. Change it with each new build of your image.
 
 Keep these as they are, or the rig won't start or won't be safe to judge on:
 
@@ -72,13 +76,21 @@ Thermite doesn't know which rigs carry your tools. A kit names only its target (
 
 ### On the local stack
 
-The local compose stack builds its harness from your clone and has no setting for another image ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)). To give its rig the tools, add the packages to the first `apt-get install` line in your clone's `containers/harness/Containerfile` (the one that lists `gcc`), then rebuild:
+A release's `compose.yaml` names the harness image itself and has no setting for another one ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)). Give its rig your image with an [override file](one-machine.md#settings-and-override-files) next to `compose.yaml`:
 
-```sh
-docker compose up -d --build harness     # or: podman compose up -d --build harness
+```yaml title="compose.harness.yaml"
+services:
+  harness:
+    image: registry.example.com/thermite/thermite-harness-fortran:1a2b3c4d5e6f-1
 ```
 
-Add your `-f` options if you use [override files](one-machine.md#settings-and-override-files). The change stays in your clone, so a later `git pull` may ask you to merge it.
+Then start the stack with it, and name it in every later `up`, with your other `-f` options:
+
+```sh
+docker compose -f compose.yaml -f compose.harness.yaml up -d   # or: podman compose -f … -f … up -d
+```
+
+In a checkout of the source code, the stack builds its harness from your clone instead. Add the packages to the first `apt-get install` line in your clone's `containers/harness/Containerfile` (the one that lists `gcc`), then rebuild with `docker compose up -d --build harness`. The change stays in your clone, so a later `git pull` may ask you to merge it.
 
 ## Check that it worked
 
