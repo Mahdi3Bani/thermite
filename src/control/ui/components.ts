@@ -57,6 +57,9 @@ export const icon = {
     '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/>',
   ),
   shield: svg('<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/>'),
+  book: svg(
+    '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>',
+  ),
   warn: svg('<path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/>', 14),
   check: svg('<path d="m5 12 5 5 9-10"/>', 14),
   x: svg('<path d="M6 6l12 12M18 6 6 18"/>', 14),
@@ -132,11 +135,13 @@ export function campaignState(k: CampaignView): { text: string; cls: string; ico
 export const campaignHref = (name: string) => `/ui/campaigns/${encodeURIComponent(name)}`;
 /** A run's key on its campaign's page (run ids are unique per rig only). */
 export const runKey = (rig: string, run: string) => `${rig}/${run}`;
+/** A run page's tabs. */
+export type RunTab = "overview" | "experiments" | "journal" | "attempts" | "history" | "planner";
 /** A run's page (on its campaign's page), and one of its tabs. */
 export const runHref = (
   rig: string,
   i: Pick<RunView, "id" | "campaign">,
-  view: "overview" | "experiments" | "attempts" | "history" | "planner" = "overview",
+  view: RunTab = "overview",
 ) =>
   `${campaignHref(i.campaign || i.id)}?run=${encodeURIComponent(runKey(rig, i.id))}${view === "overview" ? "" : `&view=${view}`}`;
 
@@ -295,6 +300,7 @@ export interface Shell {
     | "campaigns"
     | "rigs"
     | "live"
+    | "knowledge"
     | "commands"
     | "reports"
     | "audit"
@@ -347,6 +353,7 @@ export function shell(s: Shell, body: string): string {
     ${nav("/ui/campaigns", "campaigns", icon.trophy, "Campaigns", `<span class="count">${camps.length}</span>`)}
     ${nav("/ui/rigs", "rigs", icon.rigs, "Rigs", `<span class="count">${s.rigs.length}</span>`)}
     ${nav("/ui/live", "live", icon.terminal, "Live")}
+    ${nav("/ui/knowledge", "knowledge", icon.book, "Knowledge")}
     ${nav("/ui/commands", "commands", icon.list, "Commands")}
     ${nav("/ui/reports", "reports", icon.file, "Reports")}
     ${nav("/ui/audit", "audit", icon.shield, "Audit log")}

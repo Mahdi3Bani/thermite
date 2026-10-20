@@ -207,6 +207,24 @@ export interface RunView {
   }[];
   /** The owner's messages to the run's agents (goal 063), newest last, with who read them. */
   messages: MessageView[];
+  /** The agents' field notes and research notes (goal 065), oldest first; all of them. */
+  journal: JournalNoteView[];
+}
+
+/**
+ * One note an agent wrote as it worked (goal 065): an observation, a decision and why, a surprise,
+ * an open question or a lesson (field notes), or a research note ("note"). Agents' words: data.
+ */
+export interface JournalNoteView {
+  id: number;
+  by: string;
+  kind: string;
+  text: string;
+  /** What it is about: an experiment, an attempt, a source, a claim, a round, a trial, … */
+  about: { type: string; id: string } | null;
+  lane: string | null;
+  trial: string | null;
+  at: string;
 }
 
 /** One experiment in a run's queue: what to try, who added it and why, and what became of it. */
@@ -428,6 +446,7 @@ export function rigView(
         queue: [],
         handouts: [],
         messages: [],
+        journal: [],
       };
       runs.set(id, v);
     }
@@ -839,6 +858,28 @@ export function rigView(
         if (v.handouts.length > 50) v.handouts.shift();
         break;
       }
+      // ---------------------------------------- the agents' notes (goal 065)
+      case "journal_note": {
+        const id = Number(b.id);
+        const text = typeof b.text === "string" ? b.text : "";
+        if (!Number.isFinite(id) || !text) break;
+        const about =
+          b.about && typeof b.about === "object" ? (b.about as Record<string, unknown>) : null;
+        inst(String(e.subject)).journal.push({
+          id,
+          by: String(b.by ?? e.actor),
+          kind: typeof b.kind === "string" && b.kind ? b.kind : "note",
+          text,
+          about:
+            about && typeof about.type === "string" && about.id !== undefined && about.id !== null
+              ? { type: about.type, id: String(about.id) }
+              : null,
+          lane: typeof b.lane === "string" ? b.lane : null,
+          trial: typeof b.trial === "string" ? b.trial : null,
+          at: e.at,
+        });
+        break;
+      }
       // ---------------------------------------- the owner's messages (goal 063)
       case "agent_message": {
         const v = inst(String(e.subject));
@@ -915,7 +956,8 @@ export function rigView(
       }
     }
     const run = runOf(e);
-    if (run && runs.has(run)) {
+    // The agents' notes are kept in the journal: the timeline tells what happened.
+    if (run && runs.has(run) && e.kind !== "journal_note") {
       const t = (runs.get(run) as RunView).timeline;
       t.push(e);
       if (t.length > 400) t.shift();
@@ -1054,6 +1096,25 @@ export function campaignViews(vs: RigView[]): CampaignView[] {
         ? 1
         : 2;
   return [...by.values()].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+}
+
+/**
+ * Every campaign control knows, with its mode: from the runs rigs report, the versions saved on
+ * control, the assignments it signed, and the knowledge base's folders (goal 065).
+ */
+export function campaignModes(store: ControlStore, vs: RigView[]): Map<string, string | null> {
+  const out = new Map<string, string | null>();
+  const modeOf = (contract: unknown) => {
+    const m = (contract as { mode?: unknown } | undefined)?.mode;
+    return typeof m === "string" ? m : null;
+  };
+  for (const k of campaignViews(vs)) out.set(k.name, k.mode);
+  for (const v of store.campaignVersions())
+    if (!out.get(v.campaign)) out.set(v.campaign, modeOf(v.contract));
+  for (const [name, a] of store.latestAssignments())
+    if (!out.get(name)) out.set(name, modeOf(a.payload.contract));
+  for (const f of store.kb().folders()) if (!out.has(f.campaign)) out.set(f.campaign, null);
+  return out;
 }
 
 /**

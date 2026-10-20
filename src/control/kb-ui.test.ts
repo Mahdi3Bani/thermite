@@ -1,0 +1,443 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { generateSigningKeys } from "../core/commands.ts";
+import { createControlApi } from "./api.ts";
+import { issueCommand } from "./issue.ts";
+import { ControlStore } from "./store.ts";
+
+type Ev = [string, string, string, Record<string, unknown>];
+
+function ingest(store: ControlStore, rig: string, events: Ev[], from = 0) {
+  store.ingest({
+    rig,
+    ledger_id: `ledger-${rig}`,
+    cursor: from,
+    next: from + events.length,
+    generated_at: new Date().toISOString(),
+    events: events.map(([actor, kind, subject, body], i) => ({
+      id: from + i + 1,
+      at: new Date(Date.parse("2026-10-20T01:00:00Z") + (from + i) * 60_000).toISOString(),
+      actor,
+      kind,
+      subject,
+      body,
+    })),
+    summary: {},
+  });
+}
+
+/**
+ * Control with two rigs: rig-a runs gemv-speed (a goal campaign, with its journal, experiments
+ * and an attempt), rig-b runs survey-study (findings and claims). Signed in; gemv-speed can be
+ * started again (control signed an assignment of it before).
+ */
+async function stack() {
+  const keys = generateSigningKeys();
+  const store = new ControlStore(":memory:");
+  const tokens = {
+    admin: "admin-token-abcdef",
+    operator: "operator-token-abcdef",
+    agent: "agent-token-abcdef",
+    read: "read-token-abcdef",
+    rigs: { "rig-a": "rig-a-token-abcd", "rig-b": "rig-b-token-abcd" },
+  };
+  const control = createControlApi(store, tokens, keys.privateKeyPem, { staleAfterMs: 600_000 });
+  ingest(store, "rig-a", [
+    ["harness", "run_created", "gs-3", { campaign: "gemv-speed", mode: "goal", agents: true }],
+    [
+      "supervisor",
+      "experiment_added",
+      "gs-3",
+      {
+        id: "x-1",
+        title: "Load int4 weights with vector loads",
+        details: "128-bit loads of the packed weights",
+        why: "the guide says twice the bandwidth",
+        family: "memory-layout",
+        by: "teacher",
+      },
+    ],
+    [
+      "lane-2",
+      "experiment_added",
+      "gs-3",
+      { id: "x-2", title: "Tile the vector in shared memory", by: "lane-2", state: "proposed" },
+    ],
+    [
+      "harness",
+      "attempt_recorded",
+      "a-1",
+      { run: "gs-3", lane: "lane-1", hypothesis: "vector loads for the weights" },
+    ],
+    ["judge", "verdict", "a-1", { verdict: "win_confirmed", delta: 0.061 }],
+    ["planner", "experiment_assigned", "gs-3", { id: "x-1", lane: "lane-1", trial: "t-1" }],
+    [
+      "harness",
+      "experiment_finished",
+      "gs-3",
+      { id: "x-1", lane: "lane-1", trial: "t-1", attempt: "a-1", result: "submitted" },
+    ],
+    [
+      "harness",
+      "journal_note",
+      "gs-3",
+      {
+        id: 1,
+        by: "lane-1",
+        kind: "decision",
+        text: "Kept the old path below n = 4096 <script>alert(1)</script>",
+        about: { type: "attempt", id: "a-1" },
+        lane: "lane-1",
+        trial: "t-1",
+      },
+    ],
+    [
+      "harness",
+      "journal_note",
+      "gs-3",
+      {
+        id: 2,
+        by: "planner",
+        kind: "observation",
+        text: "Nothing queued uses the L2 yet.",
+        about: { type: "experiment", id: "x-2" },
+      },
+    ],
+    [
+      "harness",
+      "journal_note",
+      "gs-3",
+      { id: 3, by: "teachers:teacher-a", kind: "lesson", text: "Tiling helps only above n = 1M." },
+    ],
+    [
+      "harness",
+      "journal_note",
+      "gs-3",
+      {
+        id: 4,
+        by: "lane-1",
+        kind: "note",
+        text: "The GPU has 4 MB of L2.",
+        about: { type: "source", id: "s-1" },
+      },
+    ],
+  ]);
+  ingest(store, "rig-b", [
+    ["harness", "run_created", "sv-2", { campaign: "survey-study", mode: "research" }],
+    [
+      "lane-1",
+      "source_fetched",
+      "sv-2",
+      { source: "s-1", url: "https://arxiv.org/abs/1", title: "Limits of self-training" },
+    ],
+    [
+      "lane-1",
+      "claim_added",
+      "sv-2",
+      { claim: "c-1", verified: true, text: "gains vanish without a verifier" },
+    ],
+    [
+      "lane-2",
+      "finding_added",
+      "sv-2",
+      { finding: "f-1", claims: 6, statement: "Self-training helps only where a verifier exists" },
+    ],
+  ]);
+  issueCommand(store, keys.privateKeyPem, {
+    rig: "rig-a",
+    kind: "assign_campaign",
+    payload: {
+      run: "gs-3",
+      contract: { campaign: "gemv-speed", mode: "goal" },
+      contract_sha: "a".repeat(64),
+      imports: [],
+    },
+    issuedBy: "owner:api",
+  });
+  const login = await control.request("/ui/login", {
+    method: "POST",
+    body: new URLSearchParams({ token: tokens.admin }),
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+  });
+  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
+  const get = (path: string) => control.request(path, { headers: { cookie } });
+  const post = (path: string, form: Record<string, string> | [string, string][]) =>
+    control.request(path, {
+      method: "POST",
+      body: new URLSearchParams(form),
+      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+    });
+  const csrf =
+    /name="csrf" value="([0-9a-f]+)"/.exec(
+      await (await get("/ui/campaigns/gemv-speed")).text(),
+    )?.[1] ?? "";
+  assert.ok(csrf);
+  const where = (r: Response) => decodeURIComponent(r.headers.get("location") ?? "");
+  return { store, control, tokens, get, post, csrf, where };
+}
+
+test("a run's Journal tab: field notes newest first, by writer and kind, linked to what they are about", async () => {
+  const s = await stack();
+  const page = await (await s.get("/ui/campaigns/gemv-speed?run=rig-a%2Fgs-3&view=journal")).text();
+  assert.match(
+    page,
+    /<a class="on" href="[^"]*view=journal">Journal <span class="muted">3 notes<\/span>/,
+  );
+  assert.match(page, /view=experiments">Experiments/, "the other tabs are still there");
+  // Newest first: the teachers' lesson, the planner's observation, then lane-1's decision.
+  const list = page.slice(page.indexOf('id="jl"'));
+  const order = ["Tiling helps only above", "Nothing queued uses the L2", "Kept the old path"].map(
+    (t) => list.indexOf(t),
+  );
+  assert.ok(order.every((i) => i > 0));
+  assert.deepEqual(
+    order,
+    [...order].sort((a, b) => a - b),
+  );
+  // Agents' words are escaped.
+  assert.match(page, /Kept the old path below n = 4096 &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.ok(!page.includes("<script>alert(1)</script>"));
+  // What a note is about: the attempt, and the experiment by its title.
+  assert.match(page, /href="\/ui\/rigs\/rig-a\/attempts\/a-1"><code>a-1<\/code><\/a> vector loads/);
+  assert.match(page, /view=experiments">Tile the vector in shared memory<\/a>/);
+  // Filters by writer and by kind.
+  for (const w of ["all", "lane-1", "planner", "teachers"])
+    assert.match(page, new RegExp(`data-jw="${w}"`));
+  for (const k of ["observation", "decision", "surprise", "question", "lesson"])
+    assert.match(page, new RegExp(`data-jk="${k}"`));
+  assert.match(page, /data-who="teachers" data-kind="lesson"/);
+  // A research note is in the Notes card, not among the field notes.
+  assert.ok(!list.slice(0, list.indexOf('class="jside"')).includes("The GPU has 4 MB of L2"));
+  assert.match(page, /<h3>Notes<\/h3><div class="jsnote"><span>The GPU has 4 MB of L2\./);
+  assert.match(
+    page,
+    /Its agents read only this campaign&#39;s folder|Its agents read only this campaign's folder/,
+  );
+  // The corpus card counts the run's items.
+  assert.match(page, /<span>Field notes<\/span><b>3<\/b><span>Notes<\/span><b>1<\/b>/);
+  assert.match(page, /<span>Experiments tried<\/span><b>1<\/b>/);
+});
+
+test("a campaign's read grants: forms with the form token, refused for itself, audited", async () => {
+  const s = await stack();
+  let page = await (await s.get("/ui/campaigns/gemv-speed")).text();
+  assert.match(page, /id="knowledge"/);
+  assert.match(
+    page,
+    /None: its agents read only this campaign&#39;s folder|None: its agents read only this campaign's folder/,
+  );
+  assert.match(
+    page,
+    /<select name="reads" required><option value="">Add a folder…<\/option><option value="survey-study">/,
+  );
+  assert.ok(!/<option value="gemv-speed">gemv-speed \(/.test(page), "never itself in the Add list");
+  assert.match(page, /Add a folder<i class="ii" tabindex="0" data-tip="/);
+  // Without the form token: refused.
+  const forged = await s.post("/ui/campaigns/gemv-speed/kb/grant", { reads: "survey-study" });
+  assert.equal(forged.status, 403);
+  assert.deepEqual(s.store.kb().reads("gemv-speed"), []);
+  // Itself, or a campaign control does not know: refused, and said in the Knowledge section.
+  const self = await s.post("/ui/campaigns/gemv-speed/kb/grant", {
+    csrf: s.csrf,
+    reads: "gemv-speed",
+  });
+  assert.match(s.where(self), /on=kb/);
+  assert.match(s.where(self), /always reads its own folder/);
+  page = await (await s.get((self.headers.get("location") ?? "").replace(/#.*$/, ""))).text();
+  assert.match(page, /<b class="bad">Not changed\.<\/b> A campaign always reads its own folder/);
+  assert.ok(!page.includes("Not started."));
+  assert.match(
+    s.where(await s.post("/ui/campaigns/gemv-speed/kb/grant", { csrf: s.csrf, reads: "nope" })),
+    /Control has no campaign named nope/,
+  );
+  // A grant: the folder is read from now on, and the audit log says who.
+  const ok = await s.post("/ui/campaigns/gemv-speed/kb/grant", {
+    csrf: s.csrf,
+    reads: "survey-study",
+  });
+  assert.equal(ok.status, 303);
+  assert.match(s.where(ok), /may now read survey-study's folder/);
+  assert.deepEqual(s.store.kb().reads("gemv-speed"), ["survey-study"]);
+  const audit = s.store.listAudit(50);
+  assert.ok(
+    audit.some(
+      (a) =>
+        a.actor === "owner:ui" &&
+        a.action === "kb_grant" &&
+        JSON.stringify(a.body) ===
+          JSON.stringify({ campaign: "gemv-speed", reads: "survey-study" }),
+    ),
+  );
+  page = await (await s.get("/ui/campaigns/gemv-speed")).text();
+  assert.match(page, /<b>survey-study<\/b> <span class="muted small">research · 3 items/);
+  assert.match(
+    page,
+    /action="\/ui\/campaigns\/gemv-speed\/kb\/revoke"><input type="hidden" name="csrf" value="[0-9a-f]+"><input type="hidden" name="reads" value="survey-study">/,
+  );
+  const other = await (await s.get("/ui/campaigns/survey-study")).text();
+  assert.match(other, /Who reads survey-study&#39;s folder|Who reads survey-study's folder/);
+  assert.match(other, /#knowledge"><b>gemv-speed<\/b><\/a>/);
+  // The Journal's folder card follows the grant.
+  const journal = await (
+    await s.get("/ui/campaigns/gemv-speed?run=rig-a%2Fgs-3&view=journal")
+  ).text();
+  assert.match(journal, /Its agents also read: <b>survey-study<\/b>/);
+  // Removing it: audited too.
+  const rm = await s.post("/ui/campaigns/gemv-speed/kb/revoke", {
+    csrf: s.csrf,
+    reads: "survey-study",
+  });
+  assert.match(s.where(rm), /no longer read survey-study's folder/);
+  assert.deepEqual(s.store.kb().reads("gemv-speed"), []);
+  assert.ok(s.store.listAudit(50).some((a) => a.action === "kb_revoke" && a.actor === "owner:ui"));
+  assert.match(
+    s.where(
+      await s.post("/ui/campaigns/gemv-speed/kb/revoke", { csrf: s.csrf, reads: "survey-study" }),
+    ),
+    /does not read survey-study/,
+  );
+});
+
+test("the Knowledge page: every folder with its counts and grants, and a search with each item's origin", async () => {
+  const s = await stack();
+  s.store.kb().grant("gemv-speed", "survey-study", "owner:ui");
+  const page = await (await s.get("/ui/knowledge")).text();
+  assert.match(page, /<a href="\/ui\/knowledge" class="on">/, "the sidebar's Knowledge entry");
+  assert.match(page, /id="folder-gemv-speed"/);
+  assert.match(page, /<b>gemv-speed<\/b><\/a> <span class="muted small">goal · 7 items<\/span>/);
+  assert.match(page, /1 run · 3 field notes · 2 experiments · 1 attempt · 1 note/);
+  assert.match(page, /read by: <b>gemv-speed<\/b>/);
+  assert.match(page, /reads: survey-study/);
+  assert.match(page, /The newest items in every folder/);
+  // A search, with where each item came from.
+  const found = await (await s.get("/ui/knowledge?q=verifier")).text();
+  assert.match(found, /<b>Finding<\/b> · Self-training helps only where a verifier exists/);
+  assert.match(
+    found,
+    /<a href="\/ui\/campaigns\/survey-study">survey-study<\/a> · <a href="\/ui\/campaigns\/survey-study\?run=rig-b%2Fsv-2">sv-2<\/a> · by lane-2/,
+  );
+  // By folder, and by kind.
+  assert.match(
+    await (await s.get("/ui/knowledge?q=verifier&folder=gemv-speed")).text(),
+    /Nothing matches\./,
+  );
+  const exps = await (await s.get("/ui/knowledge?kind=experiment")).text();
+  assert.match(exps, /<b>Experiment<\/b> · Load int4 weights/);
+  assert.match(exps, /tried: attempt a-1 \(submitted\), win confirmed \(\+6\.10%\)/);
+  assert.ok(!exps.includes("<b>Finding</b>"));
+  // Every form label has its description.
+  for (const l of ["Words", "Kind", "Folder"])
+    assert.match(page, new RegExp(`${l}<i class="ii" tabindex="0" data-tip="`));
+});
+
+test("Start a run from past research: the search reads only granted folders; ticks become queue and briefing", async () => {
+  const s = await stack();
+  const search = async (campaign: string, q: string) =>
+    (await (
+      await s.get(`/ui/kb/search.json?campaign=${campaign}&q=${encodeURIComponent(q)}`)
+    ).json()) as {
+      folders: string[];
+      items: {
+        id: number;
+        kind: string;
+        label: string;
+        line: string;
+        campaign: string;
+        goes: string;
+      }[];
+    };
+  // Before a grant: gemv-speed's own folder only.
+  let r = await search("gemv-speed", "verifier");
+  assert.deepEqual(r.folders, ["gemv-speed"]);
+  assert.deepEqual(r.items, []);
+  r = await search("gemv-speed", "vector loads");
+  assert.deepEqual(
+    r.items.map((x) => [x.kind, x.label, x.goes]),
+    [["experiment", "Past experiment", "queue"]],
+    "attempts are not offered: an experiment carries its result",
+  );
+  assert.match(
+    r.items[0]?.line ?? "",
+    /^gs-3 · tried: attempt a-1 \(submitted\), win confirmed \(\+6\.10%\) · by teachers$/,
+  );
+  s.store.kb().grant("gemv-speed", "survey-study", "owner:ui");
+  r = await search("gemv-speed", "verifier");
+  assert.deepEqual(r.folders, ["gemv-speed", "survey-study"]);
+  assert.deepEqual(r.items.map((x) => x.kind).sort(), ["claim", "finding"]);
+  assert.ok(r.items.every((x) => x.goes === "briefing"));
+  // The other way round was not granted.
+  assert.deepEqual((await search("survey-study", "vector")).items, []);
+  assert.equal((await s.get("/ui/kb/search.json?campaign=nope&q=x")).status, 404);
+  assert.equal(
+    (await s.control.request("/ui/kb/search.json?campaign=gemv-speed&q=x")).status,
+    303,
+    "the owner's session only",
+  );
+  // The drawer: the search box and the folders it reads, before More options.
+  const page = await (await s.get("/ui/campaigns/gemv-speed?start=1&past=vector")).text();
+  assert.match(page, /data-past="gemv-speed"/);
+  assert.match(page, /Searching: gemv-speed, survey-study\./);
+  assert.match(page, /From past research<i class="ii"/);
+  assert.ok(page.indexOf("data-past=") < page.indexOf("More options"));
+  assert.match(page, /name="agents" value="on" checked/, "the drawer keeps its other fields");
+  assert.match(page, /name="promotion"/);
+  assert.match(page, /name="judge_gpus"/);
+  // Start with a past experiment and a finding ticked.
+  const kb = s.store.kb();
+  const exp = kb.search("vector loads", ["gemv-speed"], { kinds: ["experiment"] })[0];
+  const finding = kb.search("verifier", ["survey-study"], { kinds: ["finding"] })[0];
+  const attempt = kb.search("vector", ["gemv-speed"], { kinds: ["attempt"] })[0];
+  assert.ok(exp && finding && attempt);
+  const before = s.store.listCommands(50).length;
+  const started = await s.post("/ui/campaigns/gemv-speed/runs", [
+    ["csrf", s.csrf],
+    ["rig", "rig-a"],
+    ["agents", "on"],
+    ["past", String(exp.id)],
+    ["past", String(finding.id)],
+  ]);
+  assert.equal(started.status, 303, s.where(started));
+  assert.match(s.where(started), /run=rig-a\/gemv-speed-1$/);
+  const payload = (
+    s.store.db.prepare("select signed from command where kind = 'assign_campaign'").all() as {
+      signed: string;
+    }[]
+  )
+    .map(
+      (x) =>
+        (JSON.parse(x.signed) as { envelope: { payload: Record<string, unknown> } }).envelope
+          .payload,
+    )
+    .find((p) => p.run === "gemv-speed-1");
+  assert.ok(payload);
+  assert.deepEqual(payload.queue, [
+    {
+      title: "Load int4 weights with vector loads",
+      details:
+        "128-bit loads of the packed weights\nIn gs-3 (gemv-speed) it was tried: attempt a-1 (submitted), win confirmed (+6.10%).",
+      family: "memory-layout",
+      why: "the guide says twice the bandwidth",
+      by: "teacher",
+      state: "queued",
+      from: { run: "gs-3", id: "x-1" },
+    },
+  ]);
+  assert.deepEqual(payload.briefing, [
+    {
+      text: "Self-training helps only where a verifier exists\n6 supporting claims",
+      from: { campaign: "survey-study", run: "sv-2", kind: "finding", ref: "f-1" },
+    },
+  ]);
+  // An item of a folder not granted, or a kind a run does not start from: refused, nothing sent.
+  kb.revoke("gemv-speed", "survey-study");
+  for (const id of [finding.id, attempt.id, 999_999]) {
+    const bad = await s.post("/ui/campaigns/gemv-speed/runs", [
+      ["csrf", s.csrf],
+      ["rig", "rig-a"],
+      ["agents", "on"],
+      ["past", String(id)],
+    ]);
+    assert.match(s.where(bad), /not one this campaign may read and start from/);
+  }
+  assert.equal(s.store.listCommands(50).length, before + 1);
+});

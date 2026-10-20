@@ -1696,6 +1696,22 @@ describe("control dashboard for an operator", () => {
     assert.match(attempts, /blocked by the auditor/);
     assert.match(attempts, /waiting for your approval/);
     assert.match(attempts, /href="\/ui\/rigs\/rig-c\/attempts\/a-5b5b0001"/);
+    // The Journal: the agents' field notes, newest first; the research note beside them.
+    const journal = await get("/ui/campaigns/sum-speed?run=rig-c%2Fsum-1&view=journal");
+    assert.match(journal, /Journal <span class="muted">4 notes<\/span>/);
+    assert.ok(journal.indexOf("A gain far above") < journal.indexOf("Unrolling past 8"));
+    assert.match(journal, /href="\/ui\/rigs\/rig-c\/attempts\/a-9c9c0001"/);
+    assert.match(journal, /The benchmark reads 64 MB per call/);
+    // History tells what happened; the notes are not in it.
+    assert.doesNotMatch(
+      await get("/ui/campaigns/sum-speed?run=rig-c%2Fsum-1&view=history"),
+      /Unrolling past 8/,
+    );
+    // The campaign's folder on the Knowledge page.
+    assert.match(
+      await get("/ui/knowledge"),
+      /<b>sum-speed<\/b><\/a> <span class="muted small">hill climb · /,
+    );
   });
 
   test("agent-written text in decisions, timelines and attempt pages is escaped", async () => {

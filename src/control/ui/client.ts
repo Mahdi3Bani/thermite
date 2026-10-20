@@ -199,10 +199,86 @@ export const CLIENT_JS = `
       // Experiments to copy are for agents: a try (agents off) has no queue.
       start.querySelectorAll("[data-agents-only]").forEach((el) => { el.hidden = !agents; });
       if (line) line.textContent = has ? "The rig's agents, on " + has + "." : "This rig has no model for its agents yet: pick one below.";
-      if (sum) sum.textContent = rig ? "Starts a new run on " + rig.value + (agents ? ", with agents on " + (picked || has || "a model you pick") + "." : ", as a try: the judge only.") : "Choose a rig.";
+      const past = start.querySelectorAll("input[name=past]:checked").length;
+      if (sum) sum.textContent = rig ? "Starts a new run on " + rig.value + (agents ? ", with agents on " + (picked || has || "a model you pick") + "." + (past ? " It starts from " + past + " item" + (past === 1 ? "" : "s") + " of past research." : "") : ", as a try: the judge only.") : "Choose a rig.";
     };
     start.addEventListener("change", update);
     update();
+  }
+
+  // ------------------------------------------------ Start a run: from past research (goal 065)
+  // Searches the folders the campaign may read; ticked results stay while the owner searches
+  // again. Results are agents' text: built with text nodes only.
+  const past = $("[data-past]");
+  if (past) {
+    const qIn = past.querySelector("[data-past-q]");
+    const list = past.querySelector("[data-past-list]");
+    let timer = 0;
+    let asked = 0;
+    const row = (x) => {
+      const l = document.createElement("label");
+      l.className = "pastrow";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.name = "past";
+      cb.value = String(x.id);
+      const s = document.createElement("span");
+      const b = document.createElement("b");
+      b.textContent = x.label;
+      const m = document.createElement("span");
+      m.className = "muted";
+      m.textContent = x.line;
+      s.append(b, " · " + x.title, document.createElement("br"), m);
+      const f = document.createElement("span");
+      f.className = "muted xs";
+      f.textContent = x.campaign;
+      l.append(cb, s, f);
+      return l;
+    };
+    const search = async () => {
+      const mine = ++asked;
+      try {
+        const res = await fetch("/ui/kb/search.json?" + new URLSearchParams({ campaign: past.dataset.past, q: qIn.value }), { credentials: "same-origin" });
+        if (!res.ok || mine !== asked) return;
+        const body = await res.json();
+        const kept = [...list.querySelectorAll(".pastrow")].filter((l) => l.querySelector("input:checked"));
+        const have = new Set(kept.map((l) => l.querySelector("input").value));
+        list.replaceChildren(...kept, ...(body.items || []).filter((x) => !have.has(String(x.id))).map(row));
+        if (!list.children.length) {
+          const d = document.createElement("div");
+          d.className = "muted small";
+          d.textContent = "Nothing found in these folders.";
+          list.append(d);
+        }
+      } catch {}
+    };
+    if (qIn && list) {
+      qIn.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(search, 300); });
+      // Enter searches; it never starts the run.
+      qIn.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); clearTimeout(timer); search(); } });
+    }
+  }
+
+  // ------------------------------------------------ a run's Journal: by writer, by kind, by words
+  const jl = $("#jl");
+  if (jl) {
+    let jw = "all";
+    let jk = "all";
+    const words = $(".jsearch");
+    const apply = () => {
+      const q = words ? words.value.trim().toLowerCase() : "";
+      jl.querySelectorAll(".jnote").forEach((e) => {
+        e.hidden = !((jw === "all" || e.dataset.who === jw) && (jk === "all" || e.dataset.kind === jk) && (!q || e.textContent.toLowerCase().includes(q)));
+      });
+    };
+    const chips = (sel, set) => document.querySelectorAll(sel).forEach((b) => b.addEventListener("click", () => {
+      set(b);
+      document.querySelectorAll(sel).forEach((x) => x.classList.toggle("on", x === b));
+      apply();
+    }));
+    chips("#jf [data-jw]", (b) => (jw = b.dataset.jw));
+    chips("#jk [data-jk]", (b) => (jk = b.dataset.jk));
+    if (words) words.addEventListener("input", apply);
   }
 
   // ------------------------------------------------ the experiment queue: drag to reorder

@@ -5,7 +5,12 @@ import { join } from "node:path";
 import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { getCookie, setCookie } from "hono/cookie";
-import { COMMAND_KINDS, type CommandKind, CommandPayloads } from "../core/commands.ts";
+import {
+  type BriefingSeed,
+  COMMAND_KINDS,
+  type CommandKind,
+  CommandPayloads,
+} from "../core/commands.ts";
 import type { ClusterRigRequest, ControlActions } from "./actions.ts";
 import { CHATGPT_API, CHATGPT_REDIRECT, ChatGPTLogins } from "./chatgpt.ts";
 import {
@@ -43,6 +48,7 @@ import {
   joinMachineScript,
   joinNamespaceManifest,
 } from "./join.ts";
+import { briefingSeedOf, type KbItem, type KbKind, PICKABLE, queueSeedOf } from "./kb.ts";
 import type { KitRepos } from "./kit-repos.ts";
 import { kitSummary, unpackKit } from "./kit-upload.ts";
 import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
@@ -125,6 +131,7 @@ import {
   modeName,
   num,
   pct,
+  type RunTab,
   runHref,
   runKey,
   runState,
@@ -133,6 +140,14 @@ import {
   stackBar,
 } from "./ui/components.ts";
 import { EDIT_RIG_JS } from "./ui/edit-rig-client.ts";
+import {
+  campaignKnowledge,
+  journalTab,
+  knowledgePage,
+  pastSection,
+  pastWords,
+  SEARCH_KINDS,
+} from "./ui/knowledge.ts";
 import { liveEntryHtml, liveLinesHtml, resultJoin, runEntryHtml, runLinesHtml } from "./ui/live.ts";
 import { infoLabel, newCampaignBody } from "./ui/new-campaign.ts";
 import { NEW_CAMPAIGN_JS } from "./ui/new-campaign-client.ts";
@@ -158,6 +173,7 @@ import { STYLE } from "./ui/style.ts";
 import { auditReason, clip, jobText, runStatusText, signed, span } from "./ui/words.ts";
 import {
   type CampaignView,
+  campaignModes,
   campaignViews,
   leaderboard,
   type RigSettingsView,
@@ -184,7 +200,7 @@ const CSP =
   "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
 // biome-ignore lint/suspicious/noExplicitAny: any route's context
 type Ctx = Context<any, any, any>;
-type RunViewName = "overview" | "experiments" | "attempts" | "history" | "planner";
+type RunViewName = RunTab;
 
 export interface DashboardOptions {
   /** The owner's credential (the dashboard signs in with its token). */
@@ -666,23 +682,31 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
                     return why ? `The rig refused your last message to the planner: ${why}` : "";
                   })(),
               })
-            : view === "experiments"
-              ? experimentsTab({
+            : view === "journal"
+              ? journalTab({
                   u,
                   r: i,
                   now,
-                  csrf: t,
-                  back,
-                  cmd: (f) => cmdForm(c, f),
-                  families: [
-                    ...new Set([
-                      ...i.queue.map((x) => x.family),
-                      ...i.trials.map((x) => x.family ?? ""),
-                      ...(i.epoch?.assignments.map((a) => a.family) ?? []),
-                    ]),
-                  ].filter(Boolean),
+                  counts: u.ledger_id ? store.kb().runCounts(u.id, u.ledger_id, i.id) : {},
+                  reads: i.campaign ? store.kb().reads(i.campaign) : [],
                 })
-              : `<p class="run-said">${said}</p>
+              : view === "experiments"
+                ? experimentsTab({
+                    u,
+                    r: i,
+                    now,
+                    csrf: t,
+                    back,
+                    cmd: (f) => cmdForm(c, f),
+                    families: [
+                      ...new Set([
+                        ...i.queue.map((x) => x.family),
+                        ...i.trials.map((x) => x.family ?? ""),
+                        ...(i.epoch?.assignments.map((a) => a.family) ?? []),
+                      ]),
+                    ].filter(Boolean),
+                  })
+                : `<p class="run-said">${said}</p>
 ${waiting ? `<div class="block" id="needs"><div class="head"><h2>Needs you</h2><span class="n">${waiting}</span></div><div class="dqs">${decisions.map((n) => n.html).join("")}</div></div>` : ""}
 <div class="cols run-cols"><div>
 ${goals}${research}${ladder}
@@ -693,7 +717,7 @@ ${goals}${research}${ladder}
 <div class="block"><div class="head"><h2>Recent</h2><span class="right"><a href="${runHref(u.id, i, "history")}">Full history</a></span></div>${recent}</div>
 </div></div>`;
     return `<section class="block" id="${esc(runKey(u.id, i.id))}">
-<nav class="tabs">${sub("overview", "Overview", waiting ? ` <span class="dot warn"></span>` : "")}${sub("experiments", "Experiments", ` <span class="muted">${i.queue.filter((x) => x.state === "queued").length} up next</span>`)}${sub("attempts", "Attempts", ` <span class="muted">${i.attempts.length}</span>`)}${sub("history", "History")}${sub("planner", "Planner")}</nav>
+<nav class="tabs">${sub("overview", "Overview", waiting ? ` <span class="dot warn"></span>` : "")}${sub("experiments", "Experiments", ` <span class="muted">${i.queue.filter((x) => x.state === "queued").length} up next</span>`)}${sub("journal", "Journal", ` <span class="muted">${i.journal.filter((n) => n.kind !== "note").length} notes</span>`)}${sub("attempts", "Attempts", ` <span class="muted">${i.attempts.length}</span>`)}${sub("history", "History")}${sub("planner", "Planner")}</nav>
 ${body}
 </section>`;
   };
@@ -1147,10 +1171,27 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       return `Control assigns the campaign again as it assigned ${esc(past.run)} on ${esc(past.rig)}: the same contract, starting point and imports, as a new run.`;
     return undefined;
   };
+  /** Past research a new run of a campaign can start from: its readable folders' newest matches. */
+  const pastResults = (campaign: string, q: string) => {
+    const kb = store.kb();
+    return kb.search(q, kb.readable(campaign), {
+      kinds: (Object.keys(PICKABLE) as KbKind[]).filter((k) => PICKABLE[k]),
+      limit: 40,
+    });
+  };
   const startPanel = (c: Ctx, campaign: string, vs: RigView[], open: boolean) => {
     const from = startFrom(campaign);
     if (!from) return "";
+    const kb = store.kb();
+    const pastQ = (c.req.query("past") ?? "").slice(0, 300);
     return startDrawer({
+      past: pastSection({
+        campaign,
+        readable: kb.readable(campaign),
+        q: pastQ,
+        results: pastResults(campaign, pastQ),
+        result: (x) => kb.resultOf(x),
+      }),
       campaign,
       csrf: csrf(c),
       open,
@@ -1246,6 +1287,27 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     const promotion = String(f.promotion ?? "");
     const split = splitFor(rig, String(f.judge_gpus ?? ""));
     if (typeof split === "string") return back(split);
+    // From past research (goal 065): only items of folders this campaign may read, looked up
+    // here by id. Experiments join the queue; findings, claims, notes and reports brief the agents.
+    const kb = store.kb();
+    const readable = new Set(kb.readable(campaign));
+    const picked = [(await c.req.parseBody({ all: true })).past ?? []]
+      .flat()
+      .map((x) => kb.item(Number(x)));
+    if (picked.some((x) => !x || !readable.has(x.campaign) || !PICKABLE[x.kind]))
+      return back(
+        "An item from past research is not one this campaign may read and start from: search again.",
+      );
+    const past = picked.filter((x): x is KbItem => x !== undefined);
+    const pastQueue = past
+      .filter((x) => PICKABLE[x.kind] === "queue")
+      .map((x) => queueSeedOf(x, kb.resultOf(x)))
+      .filter((x): x is QueueSeed => x !== undefined);
+    const briefing = past
+      .filter((x) => PICKABLE[x.kind] === "briefing")
+      .map(briefingSeedOf)
+      .filter((x): x is BriefingSeed => x !== undefined);
+    const copied = String(f.copy_queue ?? "") === "1" ? untried(vs, String(f.copy_from ?? "")) : [];
     let r: ReturnType<typeof startRun>;
     try {
       r = startRun(
@@ -1261,9 +1323,10 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           by: "owner:ui",
           // A try (agents off) has no queue; a command carries at most 500 experiments.
           queue:
-            agents && String(f.copy_queue ?? "") === "1"
-              ? untried(vs, String(f.copy_from ?? "")).slice(0, 500)
+            agents && copied.length + pastQueue.length
+              ? [...copied, ...pastQueue].slice(0, 500)
               : undefined,
+          briefing: briefing.length ? briefing : undefined,
         },
       );
     } catch (err) {
@@ -1302,12 +1365,48 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     return contract?.title ?? contract?.topic ?? contract?.objective?.description ?? "";
   };
 
+  // ---------------------------------------------------------------- the knowledge base (goal 065)
+  /** A campaign's mode in words, for folders: hill climb, goal, research or rig check. */
+  const modeWords =
+    (modes: Map<string, string | null>) =>
+    (name: string): string =>
+      isRigCheck(name) ? "rig check" : modeName(modes.get(name) ?? null) || "campaign";
+  /** A run's page, when a rig reports the run now (an item's run may be gone after a reset). */
+  const runLinks = (vs: RigView[]) => {
+    const live = new Map(
+      vs.flatMap((u) => u.runs.map((r) => [runKey(u.id, r.id), runHref(u.id, r)] as const)),
+    );
+    return (rig: string, run: string) => live.get(runKey(rig, run));
+  };
+  /** A campaign's Knowledge section: its folder, the folders it reads, who reads it. */
+  const knowledgeSection = (c: Ctx, name: string, vs: RigView[], error?: string) => {
+    const kb = store.kb();
+    const folders = kb.folders();
+    const have = new Set(folders.map((f) => f.campaign));
+    const modes = campaignModes(store, vs);
+    return campaignKnowledge({
+      campaign: name,
+      folder: kb.folder(name, folders),
+      folders: [
+        ...folders,
+        // Campaigns with no folder yet can be granted too: their items come as their runs report.
+        ...[...modes.keys()].filter((x) => !have.has(x)).map((x) => kb.folder(x, folders)),
+      ],
+      mode: modeWords(modes),
+      csrf: csrf(c),
+      now: Date.now(),
+      error,
+    });
+  };
+
   app.get("/ui/campaigns/:campaign", (c) => {
     const now = Date.now();
     const vs = views();
     const name = c.req.param("campaign");
     const k = campaignViews(vs).find((x) => x.name === name);
-    const failed = c.req.query("error");
+    // A refused grant shows in the Knowledge section, not as a run that did not start.
+    const kbFailed = c.req.query("on") === "kb" ? c.req.query("error") : undefined;
+    const failed = kbFailed ? undefined : c.req.query("error");
     const okNote = c.req.query("ok");
     const note = failed
       ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not started.</b> ${esc(failed)}</div>`
@@ -1347,7 +1446,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           waiting
             ? `<div class="card" style="margin-bottom:16px"><b>Starting ${esc(waiting)}.</b> <span class="muted">The rig fetches the project and the kit and checks both; the run shows here once the rig reports it, usually within a minute.</span></div>`
             : `<div class="card" style="margin-bottom:16px"><div class="empty">${saved.length ? "Saved on control, with no run yet." : "Assigned to a rig over the API, MCP or the CLI; no run of it reports now."} <a href="${campaignHref(name)}?start=1" data-open="#start">Start a run.</a></div></div>`
-        }${drawer}`,
+        }${knowledgeSection(c, name, vs, kbFailed)}${drawer}`,
         vs,
       );
     }
@@ -1362,7 +1461,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     if (sel) {
       const qv = c.req.query("view");
       const view: RunViewName =
-        qv === "attempts" || qv === "history" || qv === "experiments"
+        qv === "attempts" || qv === "history" || qv === "experiments" || qv === "journal"
           ? qv
           : qv === "planner" || qv === "steering"
             ? "planner"
@@ -1479,9 +1578,123 @@ ${
         now,
       )}</div>`
     : ""
-}${drawer}`,
+}${knowledgeSection(c, name, vs, kbFailed)}${drawer}`,
       vs,
     );
+  });
+
+  // The folders a campaign's agents may read besides its own (goal 065): the owner's, any time.
+  const grantBack = (c: Ctx, campaign: string, k: "ok" | "error", m: string) =>
+    c.redirect(
+      `${campaignHref(campaign)}?${k}=${encodeURIComponent(m)}${k === "error" ? "&on=kb" : ""}#knowledge`,
+      303,
+    );
+  app.post("/ui/campaigns/:campaign/kb/grant", async (c) => {
+    const campaign = c.req.param("campaign");
+    const reads = String((await c.req.parseBody()).reads ?? "").trim();
+    const known = campaignModes(store, views());
+    if (!known.has(campaign)) return c.text("No such campaign.", 404);
+    if (!reads) return grantBack(c, campaign, "error", "Choose a folder to add.");
+    if (reads === campaign)
+      return grantBack(
+        c,
+        campaign,
+        "error",
+        "A campaign always reads its own folder: choose another campaign's.",
+      );
+    if (!known.has(reads))
+      return grantBack(c, campaign, "error", `Control has no campaign named ${reads}.`);
+    if (!store.kb().grant(campaign, reads, "owner:ui"))
+      return grantBack(c, campaign, "ok", `${campaign} reads ${reads} already.`);
+    store.audit("owner:ui", "kb_grant", { campaign, reads });
+    return grantBack(
+      c,
+      campaign,
+      "ok",
+      `${campaign}'s agents may now read ${reads}'s folder. Runs at work get it at their next sync.`,
+    );
+  });
+  app.post("/ui/campaigns/:campaign/kb/revoke", async (c) => {
+    const campaign = c.req.param("campaign");
+    const reads = String((await c.req.parseBody()).reads ?? "").trim();
+    if (!store.kb().revoke(campaign, reads))
+      return grantBack(c, campaign, "error", `${campaign} does not read ${reads}.`);
+    store.audit("owner:ui", "kb_revoke", { campaign, reads });
+    return grantBack(
+      c,
+      campaign,
+      "ok",
+      `${campaign}'s agents no longer read ${reads}'s folder. New runs start without it.`,
+    );
+  });
+
+  // ---------------------------------------------------------------- the Knowledge page (goal 065)
+  app.get("/ui/knowledge", (c) => {
+    const vs = views();
+    const kb = store.kb();
+    const folders = kb.folders();
+    const q = (c.req.query("q") ?? "").slice(0, 300);
+    const kind = SEARCH_KINDS.find((k) => k === c.req.query("kind")) ?? "";
+    const folder = folders.find((f) => f.campaign === c.req.query("folder"))?.campaign ?? "";
+    const limit = 100;
+    const results = kb.search(q, folder ? [folder] : folders.map((f) => f.campaign), {
+      ...(kind ? { kinds: [kind] } : {}),
+      limit,
+    });
+    return page(
+      c,
+      {
+        title: "Knowledge",
+        summary: "Thermite's knowledge base: a folder for each campaign, and what each may read",
+        active: "knowledge",
+      },
+      knowledgePage({
+        folders,
+        mode: modeWords(campaignModes(store, vs)),
+        q,
+        kind,
+        folder,
+        results,
+        limit,
+        now: Date.now(),
+        link: runLinks(vs),
+        result: (x) => kb.resultOf(x),
+      }),
+      vs,
+    );
+  });
+
+  /**
+   * Start a run's "From past research": a search of the folders one campaign may read (its own
+   * and those granted), of the kinds a new run can start from. Agents' text, sent as JSON data.
+   */
+  app.get("/ui/kb/search.json", (c) => {
+    c.header("cache-control", "no-store");
+    const campaign = c.req.query("campaign") ?? "";
+    if (!campaignModes(store, views()).has(campaign))
+      return c.json({ error: "no such campaign" }, 404);
+    const kb = store.kb();
+    const folders = kb.readable(campaign);
+    const items = pastResults(campaign, (c.req.query("q") ?? "").slice(0, 300));
+    return c.json({
+      campaign,
+      folders,
+      items: items.map((x) => {
+        const w = pastWords(x, kb.resultOf(x));
+        return {
+          id: x.id,
+          kind: x.kind,
+          label: w.label,
+          title: x.title,
+          line: w.line,
+          campaign: x.campaign,
+          run: x.run,
+          by: x.by,
+          at: x.updated_at,
+          goes: PICKABLE[x.kind],
+        };
+      }),
+    });
   });
 
   // ---------------------------------------------------------------- rigs (Magnesium's Fleet)

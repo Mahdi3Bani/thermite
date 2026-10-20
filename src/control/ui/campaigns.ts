@@ -139,6 +139,8 @@ export function startDrawer(o: {
   from: string;
   /** Runs of the campaign with experiments not tried yet, to copy into the new run's queue. */
   copyFrom?: { key: string; label: string }[] | undefined;
+  /** "From past research" (goal 065): a search of the folders the campaign may read. */
+  past?: string | undefined;
 }): string {
   const first = o.rigs.find((r) => !r.off && !r.busy) ?? o.rigs.find((r) => !r.off);
   const rigOpts = o.rigs
@@ -166,7 +168,7 @@ ${
   o.copyFrom?.length
     ? `<div class="sfd" data-agents-only>${infoLabel("Experiments to start with", "Each run has its own queue. Copy the experiments another run of this campaign had not tried yet, so the new run starts from them; who added each one and why come along. Leave it off for an empty queue the planner fills.")}<label class="sopt"><input type="checkbox" name="copy_queue" value="1" checked><span><b>Copy the untried experiments of</b> <select name="copy_from" aria-label="From which run" style="width:auto;height:28px;display:inline-block;margin-left:4px">${o.copyFrom.map((x) => `<option value="${esc(x.key)}">${esc(x.label)}</option>`).join("")}</select><span class="sd">They join the new run's queue in the same order, up to 500. The tried ones stay with their run.</span></span><span></span></label></div>`
     : ""
-}
+}${o.past ?? ""}
 <details class="adv"><summary>More options</summary><div class="sgrid">
 <label class="sfd">${infoLabel("When a change is confirmed better", "Keep it at once as the new best, or wait for you. The rig's default is set where the rig is deployed.")}<select name="promotion"><option value="">the rig's default</option><option value="auto">always keep it</option><option value="owner_approval">ask me every time</option></select></label>
 <label class="sfd">${infoLabel("GPUs for the judge", "For a rig with several GPUs: how many the judge measures on; the rest are the agents'. It changes the rig's split for every run on it, and the rig's harness restarts to apply it. Empty: the rig's current split.")}<input name="judge_gpus" inputmode="numeric" placeholder="the rig's current split"></label>

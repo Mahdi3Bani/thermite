@@ -1,3 +1,4 @@
+import type { BriefingSeed } from "../core/commands.ts";
 import { parseContract } from "../core/contract.ts";
 import { buildCampaign } from "./campaign-builder.ts";
 import { issueCommand } from "./issue.ts";
@@ -122,6 +123,8 @@ export interface RunInput {
   by: string;
   /** Experiments another run had not tried, copied into the new run's queue (goal 064). */
   queue?: QueueSeed[] | undefined;
+  /** Background from past research for every agent's brief, with where each came from (065). */
+  briefing?: BriefingSeed[] | undefined;
 }
 
 /** One experiment copied into a new run's queue, with who added it and why. */
@@ -166,6 +169,7 @@ function againLikeBefore(
     agents: _agents,
     promotion: _promotion,
     queue: _queue,
+    briefing: _briefing,
     ...rest
   } = past.payload;
   const issued = issueCommand(deps.store, deps.privateKeyPem, {
@@ -177,6 +181,7 @@ function againLikeBefore(
       ...(input.agents ? {} : { agents: false }),
       ...(input.promotion ? { promotion: input.promotion } : {}),
       ...(input.queue?.length && input.agents ? { queue: input.queue } : {}),
+      ...(input.briefing?.length && input.agents ? { briefing: input.briefing } : {}),
     },
     issuedBy: input.by,
   });
@@ -239,6 +244,7 @@ export function startRun(
       ...(input.agents ? {} : { agents: false }),
       ...(input.promotion ? { promotion: input.promotion } : {}),
       ...(input.queue?.length && input.agents ? { queue: input.queue } : {}),
+      ...(input.briefing?.length && input.agents ? { briefing: input.briefing } : {}),
       imports,
     },
     issuedBy: input.by,
