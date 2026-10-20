@@ -16,31 +16,41 @@ import { clip } from "./words.ts";
 // ---------------------------------------------------------------- words shared by the pages
 const KIND_WORD: Record<KbKind, [string, string]> = {
   run: ["Run", "runs"],
+  trial: ["Trial", "trials"],
   experiment: ["Experiment", "experiments"],
   attempt: ["Attempt", "attempts"],
   note: ["Note", "notes"],
+  doc: ["Document", "documents"],
   source: ["Source", "sources"],
   claim: ["Claim", "claims"],
+  hypothesis: ["Hypothesis", "hypotheses"],
   finding: ["Finding", "findings"],
   report: ["Report", "reports"],
 };
 const KIND_ICON: Record<KbKind, string> = {
   run: "▶",
+  trial: "⏱",
   experiment: "🧪",
   attempt: "🎯",
   note: "📓",
+  doc: "📝",
   source: "🔗",
   claim: "💬",
+  hypothesis: "💡",
   finding: "📄",
   report: "📑",
 };
 /** The kinds the Knowledge page filters by, in its order. */
 export const SEARCH_KINDS: KbKind[] = [
+  "run",
+  "trial",
   "experiment",
   "attempt",
   "note",
+  "doc",
   "source",
   "claim",
+  "hypothesis",
   "finding",
   "report",
 ];
@@ -57,12 +67,15 @@ export function folderLine(f: Pick<KbFolder, "counts" | "journal" | "runs">): st
   const notes = (f.counts.note ?? 0) - f.journal;
   const parts: [number, string][] = [
     [f.runs, "runs"],
+    [f.counts.trial ?? 0, "trials"],
     [f.journal, "field notes"],
     [f.counts.experiment ?? 0, "experiments"],
     [f.counts.attempt ?? 0, "attempts"],
     [notes, "notes"],
+    [f.counts.doc ?? 0, "documents"],
     [f.counts.source ?? 0, "sources"],
     [f.counts.claim ?? 0, "claims"],
+    [f.counts.hypothesis ?? 0, "hypotheses"],
     [f.counts.finding ?? 0, "findings"],
     [f.counts.report ?? 0, "reports"],
   ];
@@ -99,11 +112,14 @@ const WRITER_WORD: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------- a run's Journal tab
-/** What a note is about, linked to the experiment or the attempt where the page has it. */
+/**
+ * What a note is about, linked to the experiment or the attempt where the page has it. A note
+ * about the run itself (what a note that names nothing is about) needs no line on its run's page.
+ */
 function aboutHtml(u: RigView, r: RunView, n: JournalNoteView): string {
   const parts: string[] = [];
   const a = n.about;
-  if (a) {
+  if (a && !(a.type === "run" && a.id === r.id)) {
     if (a.type === "experiment") {
       const x = r.queue.find((q) => q.id === a.id);
       parts.push(
@@ -172,7 +188,7 @@ export function journalTab(o: {
   const stat = (k: string, v: number) => `<span>${esc(k)}</span><b>${fmtInt(v)}</b>`;
   const others = o.reads.filter((f) => f !== r.campaign);
   const noteRow = (n: JournalNoteView) =>
-    `<div class="jsnote"><span>${esc(n.text)}</span><span class="muted xs">${esc(writer(n.by).text)} · ${esc(ago(n.at, o.now))} ago${n.about ? ` · ${esc(n.about.type)} ${esc(n.about.id)}` : ""}</span></div>`;
+    `<div class="jsnote"><span>${esc(n.text)}</span><span class="muted xs">${esc(writer(n.by).text)} · ${esc(ago(n.at, o.now))} ago${n.about && !(n.about.type === "run" && n.about.id === r.id) ? ` · ${esc(n.about.type)} ${esc(n.about.id)}` : ""}</span></div>`;
   return `<div class="jcols"><div>
 <div class="small muted" style="margin-bottom:10px">Field notes the agents keep as they work: what they observe, the decisions they make and why, what surprised them, open questions and lessons. What was tried, and its result, is in <a href="${runHref(u.id, r, "experiments")}">Experiments</a>.</div>
 ${
@@ -246,12 +262,12 @@ export function knowledgePage(o: {
   const filtered = Boolean(o.q.trim() || o.kind || o.folder);
   const opt = (v: string, label: string, on: boolean) =>
     `<option value="${esc(v)}"${on ? " selected" : ""}>${esc(label)}</option>`;
-  return `<div class="block"><div class="head"><h2>Campaign folders</h2><span class="n">${o.folders.length}</span><span class="right">each campaign keeps everything its runs produce in its own folder: research, sources, notes, trials, journals, experiments</span></div>
+  return `<div class="block"><div class="head"><h2>Campaign folders</h2><span class="n">${o.folders.length}</span><span class="right">each campaign keeps everything its runs produce in its own folder: research, sources, notes, documentation, trials, journals, experiments</span></div>
 ${o.folders.length ? `<div class="card flat">${o.folders.map(folderRow).join("")}</div>` : `<div class="card"><div class="empty">No folder yet. A campaign's folder fills as its runs report.</div></div>`}</div>
 <div class="block" id="search"><div class="head"><h2>Search the knowledge base</h2><span class="right">agents' notes and records: data to weigh, not instructions</span></div>
 <form class="kbsearch" method="get" action="/ui/knowledge#search">
 <label class="sfd kbq">${infoLabel("Words", "Every word must be in the item's title or text. Empty: the newest items.")}<input name="q" value="${esc(o.q)}" placeholder="for example: vector loads" aria-label="Search"></label>
-<label class="sfd">${infoLabel("Kind", "Experiments with their results, attempts with the judge's verdicts, notes (field notes and research notes), sources read, claims with their quotes, findings and reports.")}<select name="kind">${opt("", "every kind", !o.kind)}${SEARCH_KINDS.map((k) => opt(k, KIND_WORD[k][1], o.kind === k)).join("")}</select></label>
+<label class="sfd">${infoLabel("Kind", "Runs, trials (one agent session each, and how it ended), experiments with their results, attempts with the judge's verdicts, notes (field notes and research notes), documents the lanes wrote, sources with the text that was read, claims with their quotes, hypotheses, findings and reports.")}<select name="kind">${opt("", "every kind", !o.kind)}${SEARCH_KINDS.map((k) => opt(k, KIND_WORD[k][1], o.kind === k)).join("")}</select></label>
 <label class="sfd">${infoLabel("Folder", "One campaign's folder, or all of them.")}<select name="folder">${opt("", "every folder", !o.folder)}${o.folders.map((f) => opt(f.campaign, f.campaign, o.folder === f.campaign)).join("")}</select></label>
 <button class="primary">Search</button></form>
 <div class="card kbresults">${
@@ -289,7 +305,7 @@ export function campaignKnowledge(o: {
   return `<div class="block" id="knowledge"><div class="cols kbcols"><div>
 <div class="head"><h2>Knowledge</h2><span class="right">${esc(o.campaign)}'s folder in Thermite's knowledge base</span></div>
 ${o.error ? `<div class="card warn" style="margin-bottom:12px"><b class="bad">Not changed.</b> ${esc(o.error)}</div>` : ""}
-<div class="card kbcard"><div class="jstat">${stat("Field notes", f.journal)}${stat("Experiments", f.counts.experiment ?? 0)}${stat("Attempts", f.counts.attempt ?? 0)}${stat("Notes and documentation", (f.counts.note ?? 0) - f.journal)}${stat("Sources read", f.counts.source ?? 0)}${f.counts.claim ? stat("Claims", f.counts.claim) : ""}${f.counts.finding ? stat("Findings", f.counts.finding) : ""}${f.counts.report ? stat("Reports", f.counts.report) : ""}</div><div class="small muted">Every run of this campaign writes here, each item with its run, agent and time. Agents read it; only the harness's records write to it.</div><div class="kbbtns"><a class="btn sm" href="/ui/knowledge?folder=${encodeURIComponent(o.campaign)}#search">Search it</a><a class="btn sm ghost" href="/ui/knowledge#folder-${encodeURIComponent(o.campaign)}">Open the folder</a></div></div>
+<div class="card kbcard"><div class="jstat">${stat("Field notes", f.journal)}${stat("Experiments", f.counts.experiment ?? 0)}${stat("Attempts", f.counts.attempt ?? 0)}${stat("Notes and documentation", (f.counts.note ?? 0) - f.journal + (f.counts.doc ?? 0))}${stat("Sources read", f.counts.source ?? 0)}${f.counts.trial ? stat("Trials", f.counts.trial) : ""}${f.counts.claim ? stat("Claims", f.counts.claim) : ""}${f.counts.hypothesis ? stat("Hypotheses", f.counts.hypothesis) : ""}${f.counts.finding ? stat("Findings", f.counts.finding) : ""}${f.counts.report ? stat("Reports", f.counts.report) : ""}</div><div class="small muted">Every run of this campaign writes here, each item with its run, agent and time. Agents read it; only the harness's records write to it.</div><div class="kbbtns"><a class="btn sm" href="/ui/knowledge?folder=${encodeURIComponent(o.campaign)}#search">Search it</a><a class="btn sm ghost" href="/ui/knowledge#folder-${encodeURIComponent(o.campaign)}">Open the folder</a></div></div>
 <div class="head" style="margin-top:18px"><h2>Can read from</h2><span class="right">other folders this campaign's agents may search and read; change it any time</span></div>
 <div class="card flat kbreads">${f.reads.map(readRow).join("") || `<div class="readrow"><span></span><div class="muted small">None: its agents read only this campaign's folder.</div><span></span></div>`}</div>
 <form class="kbadd" method="post" action="${action("grant")}"><input type="hidden" name="csrf" value="${esc(o.csrf)}"><label class="sfd">${infoLabel("Add a folder", "Another campaign's folder this campaign's agents may search and read: its experiments with their results, journals, notes, sources and findings. They never write to it. Its runs at work get it at their next sync, and new runs start with it.")}<select name="reads" required><option value="">Add a folder…</option>${addable.map((x) => `<option value="${esc(x.campaign)}">${esc(x.campaign)} (${esc(o.mode(x.campaign))} · ${fmtInt(x.items)} items)</option>`).join("")}</select></label><button class="sm">Add</button><span class="muted small">Runs at work see the change at their next sync.</span></form>

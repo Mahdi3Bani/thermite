@@ -2,13 +2,25 @@ import type { DatabaseSync } from "node:sqlite";
 import type { BriefingSeed, QueueSeed } from "../core/commands.ts";
 import { IdSchema } from "../core/contract.ts";
 import type { KbItemWire, KbKind, KbSync } from "../core/kb.ts";
+import {
+  clip,
+  indexEvent,
+  type KbFields,
+  type KbIndexTarget,
+  type KbStored,
+  mergeItem,
+  sameItem,
+  str,
+} from "../core/kb-index.ts";
 
 /**
  * Thermite's own knowledge base (goal 065): one folder for each campaign, built from what its
- * runs report. Control indexes the rigs' events as they arrive: the agents' field notes, the
- * experiments with their results, attempts, sources, claims, findings and reports. A campaign
- * reads its own folder and, when the owner grants it, other campaigns' folders. Agents only read
- * folders; the folders are written from the rigs' signed events alone.
+ * runs report. Control indexes the rigs' events as they arrive (core/kb-index.ts reads each):
+ * the runs, the trials, the agents' field notes and research notes, the documents lanes wrote,
+ * the experiments with their results, attempts with their verdicts, sources with their text,
+ * claims, findings and reports, each with its run, who wrote it and when. A campaign reads its
+ * own folder and, when the owner grants it, other campaigns' folders. Agents only read folders;
+ * the folders are written from the rigs' signed events alone.
  */
 
 export type { KbKind } from "../core/kb.ts";
@@ -111,16 +123,31 @@ create table if not exists kb_grant_item (
   primary key (campaign, reads, item)
 );
 create index if not exists kb_grant_item_seq on kb_grant_item (campaign, seq);
+-- What the folders were built with: the reading's version (see READING).
+create table if not exists kb_meta (key text primary key, value text not null);
 `;
 
 type Row = Record<string, unknown>;
-const str = (v: unknown) =>
-  typeof v === "string" ? v : v === undefined || v === null ? "" : String(v);
-const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 /** Events read per transaction while catching up. */
 const PAGE = 2000;
 /** Items a rig's sync answers at most at once (it asks again while `more` is true). */
 export const SYNC_PAGE = 500;
+/**
+ * The reading's version. A store built by an earlier reading reads its events once more for the
+ * kinds of item added since (runs, trials, documents, hypotheses), so the runs before an upgrade
+ * have them too. The items it had already are left as they were.
+ */
+const READING = "2";
+const SINCE_READING_1 = [
+  "run_created",
+  "run_status",
+  "champion_promoted",
+  "trial_started",
+  "trial_finished",
+  "research_doc",
+  "hypothesis_added",
+];
+
 /** An outside knowledge base in a campaign's grants (goal 065, optional): not a folder here. */
 export const isOutside = (folder: string) => folder.startsWith("outside:");
 
@@ -159,6 +186,7 @@ export class KnowledgeBase {
    * the rig's, and a ledger the rig has left (a reset) adds nothing more.
    */
   catchUp(): number {
+    this.readAgain();
     let total = 0;
     for (;;) {
       const cur = Number(
@@ -200,6 +228,59 @@ export class KnowledgeBase {
     }
   }
 
+  /**
+   * Once, after an upgrade: the events indexed before READING read again for the kinds of item
+   * added since, from each rig's current ledger, as catchUp reads them. A run keeps the folder it
+   * was filed in. Nothing is written when the store is already at READING.
+   */
+  private readAgain(): void {
+    const at = (
+      this.db.prepare("select value from kb_meta where key = 'reading'").get() as
+        | { value: string }
+        | undefined
+    )?.value;
+    if (at === READING) return;
+    const through = Number(
+      (this.db.prepare("select seq from kb_cursor where id = 1").get() as { seq: number }).seq,
+    );
+    const kinds = SINCE_READING_1.map(() => "?").join(", ");
+    for (let after = 0; ; ) {
+      const rows = this.db
+        .prepare(
+          `select e.seq, e.rig, e.ledger_id, e.at, e.actor, e.kind, e.subject, e.body from rig_event e
+           join rig r on r.id = e.rig and r.ledger_id = e.ledger_id
+           where e.seq > ? and e.seq <= ? and e.kind in (${kinds}) order by e.seq limit ?`,
+        )
+        .all(after, through, ...SINCE_READING_1, PAGE) as Row[];
+      this.tx(() => {
+        for (const r of rows) {
+          let body: unknown;
+          try {
+            body = JSON.parse(str(r.body));
+          } catch {
+            continue; // as in catchUp
+          }
+          if (!body || typeof body !== "object") continue;
+          const src = { rig: str(r.rig), ledger: str(r.ledger_id) };
+          indexEvent(this.target(src, { keepRuns: true }), {
+            at: str(r.at),
+            actor: str(r.actor),
+            kind: str(r.kind),
+            subject: str(r.subject),
+            body: body as Row,
+          });
+        }
+      });
+      if (rows.length < PAGE) break;
+      after = Number(rows.at(-1)?.seq ?? through);
+    }
+    this.db
+      .prepare(
+        "insert into kb_meta (key, value) values ('reading', ?) on conflict(key) do update set value = excluded.value",
+      )
+      .run(READING);
+  }
+
   /** The campaign of the newest assign_campaign control issued for this run on this rig. */
   private assigned(rig: string, run: string): string | undefined {
     const r = this.db
@@ -233,55 +314,77 @@ export class KnowledgeBase {
     )?.campaign;
   }
 
+  /**
+   * Where one rig ledger's events put their items: the folder control files each run in.
+   * `keepRuns`: a run filed already stays in its folder (reading old events again).
+   */
+  private target(
+    src: { rig: string; ledger: string },
+    o: { keepRuns?: boolean } = {},
+  ): KbIndexTarget {
+    const { rig, ledger } = src;
+    return {
+      // Filed under the campaign control assigned this run on this rig. A run control did not
+      // assign keeps the campaign its event names, unless control assigned that campaign
+      // somewhere: a rig cannot file items into a campaign it was not given.
+      runCreated: (run, named) => {
+        if (o.keepRuns && this.campaignOf(rig, ledger, run)) return;
+        const assigned = this.assigned(rig, run);
+        const campaign = assigned ?? (named && !this.assignedAnywhere(named) ? named : "");
+        if (campaign)
+          this.db
+            .prepare(
+              "insert into kb_run (rig, ledger, run, campaign) values (?, ?, ?, ?) on conflict(rig, ledger, run) do update set campaign = excluded.campaign",
+            )
+            .run(rig, ledger, run, campaign);
+      },
+      body: (run, kind, ref) =>
+        (
+          this.db
+            .prepare(
+              "select body from kb_item where rig = ? and ledger = ? and run = ? and kind = ? and ref = ?",
+            )
+            .get(rig, ledger, run, kind, ref) as { body: string } | undefined
+        )?.body,
+      attempt: (ref) =>
+        this.db
+          .prepare(
+            "select run, body from kb_item where rig = ? and ledger = ? and kind = 'attempt' and ref = ?",
+          )
+          .get(rig, ledger, ref) as { run: string; body: string } | undefined,
+      put: (run, kind, ref, f, at) => this.put(src, run, kind, ref, f, at),
+    };
+  }
+
   private put(
     src: { rig: string; ledger: string },
     run: string,
     kind: KbKind,
-    rawRef: string,
-    f: {
-      title?: string;
-      body?: string;
-      by?: string;
-      url?: string | null;
-      sub?: string | null;
-      meta?: Record<string, string>;
-    },
+    ref: string,
+    f: KbFields,
     at: string,
   ): void {
     const { rig, ledger } = src;
     const campaign = this.campaignOf(rig, ledger, run);
-    const ref = clip(rawRef, 200);
     if (!campaign || !ref) return;
-    const old = this.db
+    const row = this.db
       .prepare(
         "select title, body, by, url, sub, meta from kb_item where rig = ? and ledger = ? and run = ? and kind = ? and ref = ?",
       )
       .get(rig, ledger, run, kind, ref) as Row | undefined;
-    const next = {
-      title: clip(f.title ?? str(old?.title), 300) || ref,
-      body: clip(f.body ?? str(old?.body), 20_000),
-      by: clip(f.by ?? (str(old?.by) || "harness"), 200),
-      url: (() => {
-        const u = f.url !== undefined ? f.url : old?.url ? str(old.url) : null;
-        return u && u.length <= 2000 ? u : null;
-      })(),
-      sub: (() => {
-        const s = f.sub !== undefined ? f.sub : old?.sub ? str(old.sub) : null;
-        return s ? clip(s, 40) : null;
-      })(),
-      meta: f.meta ? JSON.stringify(f.meta) : str(old?.meta) || "{}",
-    };
+    const old: KbStored | undefined = row
+      ? {
+          title: str(row.title),
+          body: str(row.body),
+          by: str(row.by),
+          url: row.url ? str(row.url) : null,
+          sub: row.sub ? str(row.sub) : null,
+          meta: str(row.meta),
+        }
+      : undefined;
+    const next = mergeItem(ref, old, f);
     // Nothing changed: the item keeps its seq, so no rig syncs it again.
-    if (
-      old &&
-      next.title === str(old.title) &&
-      next.body === str(old.body) &&
-      next.by === str(old.by) &&
-      next.url === (old.url ? str(old.url) : null) &&
-      next.sub === (old.sub ? str(old.sub) : null) &&
-      next.meta === str(old.meta)
-    )
-      return;
+    if (old && sameItem(old, next)) return;
     this.db
       .prepare(
         `insert into kb_item (seq, campaign, rig, ledger, run, kind, ref, title, body, by, url, sub, meta, at, updated_at)
@@ -309,7 +412,7 @@ export class KnowledgeBase {
       );
   }
 
-  /** One event into the folder of its run's campaign. */
+  /** One event into the folder of its run's campaign (core/kb-index.ts reads it). */
   private index(
     src: { rig: string; ledger: string },
     at: string,
@@ -318,226 +421,7 @@ export class KnowledgeBase {
     subject: string,
     b: Row,
   ): void {
-    const { rig, ledger } = src;
-    const run = str(b.run) || subject;
-    switch (kind) {
-      case "run_created": {
-        // Filed under the campaign control assigned this run on this rig. A run control did not
-        // assign keeps the campaign its event names, unless control assigned that campaign
-        // somewhere: a rig cannot file items into a campaign it was not given.
-        const named = str(b.campaign);
-        const assigned = this.assigned(rig, subject);
-        const campaign = assigned ?? (named && !this.assignedAnywhere(named) ? named : "");
-        if (campaign)
-          this.db
-            .prepare(
-              "insert into kb_run (rig, ledger, run, campaign) values (?, ?, ?, ?) on conflict(rig, ledger, run) do update set campaign = excluded.campaign",
-            )
-            .run(rig, ledger, subject, campaign);
-        return;
-      }
-      case "journal_note": {
-        const about = b.about && typeof b.about === "object" ? (b.about as Row) : undefined;
-        this.put(
-          src,
-          run,
-          "note",
-          str(b.id),
-          {
-            title: clip(str(b.text), 120),
-            body: [str(b.text), about ? `About: ${str(about.type)} ${str(about.id)}` : ""]
-              .filter(Boolean)
-              .join("\n"),
-            by: str(b.by) || actor,
-            url: b.source ? str((b.source as Row).url) || null : null,
-            sub: str(b.kind) || "note",
-          },
-          at,
-        );
-        return;
-      }
-      // A research note (goal 065: in any mode), apart from the field notes: its own ref.
-      case "research_note": {
-        const sources = Array.isArray(b.sources) ? b.sources.map(String) : [];
-        this.put(
-          src,
-          run,
-          "note",
-          `rn-${str(b.note)}`,
-          {
-            title: clip(str(b.text), 120),
-            body: [str(b.text), sources.length ? `Sources: ${sources.join(", ")}` : ""]
-              .filter(Boolean)
-              .join("\n"),
-            by: str(b.by) || actor,
-            url: str(b.url) || null,
-            sub: "note",
-          },
-          at,
-        );
-        return;
-      }
-      case "experiment_added":
-        this.put(
-          src,
-          run,
-          "experiment",
-          str(b.id),
-          {
-            title: str(b.title),
-            body: [
-              str(b.details),
-              b.why ? `Why: ${str(b.why)}` : "",
-              b.family ? `Direction: ${str(b.family)}` : "",
-            ]
-              .filter(Boolean)
-              .join("\n"),
-            by: str(b.by) || actor,
-            meta: { details: str(b.details), why: str(b.why), family: str(b.family) },
-          },
-          at,
-        );
-        return;
-      case "experiment_finished":
-      case "experiment_dropped": {
-        const old = this.db
-          .prepare(
-            "select body from kb_item where rig = ? and ledger = ? and run = ? and kind = 'experiment' and ref = ?",
-          )
-          .get(rig, ledger, run, clip(str(b.id), 200)) as { body: string } | undefined;
-        if (!old) return;
-        const result =
-          kind === "experiment_dropped"
-            ? `Dropped: ${str(b.why)}`
-            : `Result: ${str(b.attempt) ? `attempt ${str(b.attempt)}` : "no attempt"}${str(b.result) ? ` (${str(b.result)})` : ""}`;
-        this.put(
-          src,
-          run,
-          "experiment",
-          str(b.id),
-          { body: `${old.body.replace(/\n?(Result|Dropped): .*$/s, "")}\n${result}`.trim() },
-          at,
-        );
-        return;
-      }
-      case "attempt_recorded":
-        this.put(
-          src,
-          run,
-          "attempt",
-          subject || str(b.attempt),
-          {
-            title: str(b.hypothesis) || subject,
-            body: [
-              str(b.hypothesis),
-              str(b.claim) ? `Claim: ${str(b.claim)}` : "",
-              Array.isArray(b.known_flaws) && b.known_flaws.length
-                ? `Declared flaws: ${b.known_flaws.map(str).join("; ")}`
-                : "",
-            ]
-              .filter(Boolean)
-              .join("\n"),
-            by: str(b.lane) || actor,
-          },
-          at,
-        );
-        return;
-      case "verdict": {
-        // A verdict names its attempt (the subject); the attempt's item says which run it is in.
-        const old = this.db
-          .prepare(
-            "select run, body from kb_item where rig = ? and ledger = ? and kind = 'attempt' and ref = ?",
-          )
-          .get(rig, ledger, subject) as { run: string; body: string } | undefined;
-        const verdict = str(b.verdict);
-        if (old && verdict)
-          this.put(
-            src,
-            old.run,
-            "attempt",
-            subject,
-            {
-              body: `${old.body.replace(/\n?Verdict: .*$/s, "")}\nVerdict: ${verdict}${typeof b.delta === "number" ? ` (${b.delta >= 0 ? "+" : ""}${(b.delta * 100).toFixed(2)}%)` : ""}`.trim(),
-            },
-            at,
-          );
-        return;
-      }
-      case "source_fetched":
-        this.put(
-          src,
-          run,
-          "source",
-          str(b.source),
-          {
-            title: str(b.title) || str(b.url) || str(b.domain) || str(b.source),
-            body: [str(b.url), str(b.domain)].filter(Boolean).join("\n"),
-            by: actor,
-            url: str(b.url) || null,
-          },
-          at,
-        );
-        return;
-      case "claim_added":
-        this.put(
-          src,
-          run,
-          "claim",
-          str(b.claim),
-          {
-            title: str(b.text) || str(b.quote) || `claim ${str(b.claim)}`,
-            body: [
-              str(b.text),
-              str(b.quote) ? `“${str(b.quote)}”` : "",
-              b.verified === true ? "Verified against its source." : "A draft: not verified yet.",
-              b.question !== undefined ? `Question ${str(b.question)}` : "",
-            ]
-              .filter(Boolean)
-              .join("\n"),
-            by: actor,
-            sub: b.verified === true ? "verified" : "draft",
-          },
-          at,
-        );
-        return;
-      case "finding_added":
-        this.put(
-          src,
-          run,
-          "finding",
-          str(b.finding),
-          {
-            title: str(b.statement) || str(b.text) || `finding ${str(b.finding)}`,
-            body: [
-              str(b.statement),
-              str(b.summary),
-              str(b.why) ? `Why it matters: ${str(b.why)}` : "",
-              `${str(b.claims)} supporting claims${b.supported === false ? " (not all verified)" : ""}`,
-            ]
-              .filter(Boolean)
-              .join("\n"),
-            by: actor,
-          },
-          at,
-        );
-        return;
-      case "research_final":
-      case "research_digest":
-        if (str(b.report))
-          this.put(
-            src,
-            run,
-            "report",
-            kind === "research_final" ? "final" : "digest",
-            {
-              title: kind === "research_final" ? "Final report" : "Latest digest",
-              body: str(b.report),
-              by: "research",
-            },
-            at,
-          );
-        return;
-    }
+    indexEvent(this.target(src), { at, actor, kind, subject, body: b });
   }
 
   /** Every campaign folder (also one with runs and no items yet), newest change first. */

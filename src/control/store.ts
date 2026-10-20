@@ -1945,12 +1945,25 @@ export class ControlStore {
       : undefined;
   }
 
-  events(rig: string, after: number, limit: number, ledgerId?: string | null): unknown[] {
+  /**
+   * A rig's events after a seq. `lean`: without the text a source's and a document's events
+   * carry (the knowledge base keeps it), for readers that build pages from every event.
+   */
+  events(
+    rig: string,
+    after: number,
+    limit: number,
+    ledgerId?: string | null,
+    o: { lean?: boolean } = {},
+  ): unknown[] {
     const byLedger = ledgerId ? " and ledger_id = ?" : "";
+    const body = o.lean
+      ? "case when kind in ('source_fetched', 'research_doc') then json_remove(body, '$.text') else body end"
+      : "body";
     return (
       this.db
         .prepare(
-          `select seq, ledger_id, event_id, at, actor, kind, subject, body from rig_event
+          `select seq, ledger_id, event_id, at, actor, kind, subject, ${body} as body from rig_event
              where rig = ?${byLedger} and seq > ? order by seq limit ?`,
         )
         .all(...(ledgerId ? [rig, ledgerId, after, limit] : [rig, after, limit])) as Row[]

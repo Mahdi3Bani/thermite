@@ -26,7 +26,8 @@ const USAGE = `usage:
   thermite-trial idea TITLE [--why TEXT] [--family TEXT] [--details TEXT]
   ${NOTE_USAGE}
     KIND: observation, decision, surprise, question, lesson or note
-    TYPE: experiment, attempt, source, claim, finding, round, trial or message
+    TYPE: run, experiment, attempt, source, claim, finding, round, trial or message
+      (no --about: the note is about the run)
   thermite-trial research TOOL ... (thermite-trial research help lists them)`;
 
 /**

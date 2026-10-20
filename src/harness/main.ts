@@ -533,6 +533,8 @@ async function main(): Promise<void> {
         signal,
       });
     },
+    // The planner through OpenCode: its own tools; with past research, the prompt names the
+    // run's knowledge/ folder, which every agent user may read and none may change.
     askOpencode: async (m, prompt, signal) => {
       const t = await opencodeOnce(m, prompt, once, 300_000, signal);
       if (!t.lastText) throw new Error(t.errors.at(-1) ?? "OpenCode gave no answer");
@@ -540,9 +542,15 @@ async function main(): Promise<void> {
     },
     // The planner's own model, when control gave it one.
     plannerModel: () => models.planner(),
-    // The planner on a Claude subscription: Claude Code with no tools, as an unprivileged user.
-    askClaude: async (m, prompt, signal) => {
-      const t = await claudeOnce(m, prompt, once, { tools: "", timeoutMs: 300_000, signal });
+    // The planner on a Claude subscription: Claude Code as an unprivileged user, with no tools,
+    // or with the read-only file tools when it has past research to read (the run's knowledge/,
+    // which every agent user may read and none may change).
+    askClaude: async (m, prompt, signal, o) => {
+      const t = await claudeOnce(m, prompt, once, {
+        tools: o?.read ? "Read,Grep,Glob" : "",
+        timeoutMs: 300_000,
+        signal,
+      });
       if (t.usage) service.subscriptionUsage = { ...t.usage, at: new Date().toISOString() };
       const answer = t.result ?? t.lastText;
       if (!answer) throw new Error(t.errors.at(-1) ?? "Claude Code gave no answer");

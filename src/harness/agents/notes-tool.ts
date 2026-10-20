@@ -23,7 +23,7 @@ const Note = Type.Object({
         type: Type.String({ description: ABOUT_TYPES.join(" | ") }),
         id: Type.String({ description: "Its id (a round or a message: its number)" }),
       },
-      { description: "What the note is about, when it is about one thing" },
+      { description: "What the note is about, when it is about one thing. Left out: the run" },
     ),
   ),
 });

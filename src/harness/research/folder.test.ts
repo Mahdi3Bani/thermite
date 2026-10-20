@@ -208,6 +208,57 @@ describe("the research folder", () => {
     assert.ok(!exported.files.some((p) => p.startsWith("work")), "working areas are not exported");
   });
 
+  test("each text file a lane writes is a document of the run: its text in an event, its removal too", async () => {
+    const { env, folder } = await setup();
+    const docs = () =>
+      env.service.ledger
+        .eventsAfter(0, 10_000)
+        .events.filter((e) => e.kind === "research_doc")
+        .map((e) => ({ actor: e.actor, subject: e.subject, ...(e.body as object) }));
+    const f = await folder.prepareLane("r-1", "lane-1", "agent-1");
+    writeFileSync(join(f.work, "synthesis.md"), "What we know so far.\n");
+    writeFileSync(join(f.work, "long.md"), `${"x".repeat(25_000)}\n`);
+    writeFileSync(join(f.work, "weights.bin"), Buffer.from([0, 1, 2, 3]));
+    writeFileSync(join(f.work, "latin1.txt"), Buffer.from([0x63, 0x61, 0x66, 0xe9]));
+    await folder.captureLane("r-1", "lane-1", "t-1");
+    const first = docs() as Record<string, unknown>[];
+    assert.deepEqual(
+      first.map((d) => d.path),
+      ["long.md", "synthesis.md"],
+      "text files only: not a binary file, not one that is not UTF-8",
+    );
+    const syn = first.find((d) => d.path === "synthesis.md");
+    assert.deepEqual(syn, {
+      actor: "lane-1",
+      subject: "r-1",
+      lane: "lane-1",
+      trial: "t-1",
+      path: "synthesis.md",
+      change: "written",
+      bytes: 21,
+      sha256: syn?.sha256,
+      text: "What we know so far.\n",
+    });
+    const long = first.find((d) => d.path === "long.md");
+    assert.equal(String(long?.text).length, 20_000, "cut to an item's length");
+    assert.equal(long?.clipped, true);
+    // The next trial: one document unchanged, one changed, one removed, the binary removed.
+    await folder.prepareLane("r-1", "lane-1", "agent-1");
+    writeFileSync(join(f.work, "synthesis.md"), "What we know now.\n");
+    rmSync(join(f.work, "long.md"));
+    rmSync(join(f.work, "weights.bin"));
+    await folder.captureLane("r-1", "lane-1", "t-2");
+    assert.deepEqual(
+      (docs() as Record<string, unknown>[]).slice(2).map((d) => `${d.path} ${d.change} ${d.trial}`),
+      ["synthesis.md written t-2", "long.md removed t-2"],
+      "a removed file that was never a document says nothing",
+    );
+    // Nothing changed: nothing more.
+    await folder.prepareLane("r-1", "lane-1", "agent-1");
+    await folder.captureLane("r-1", "lane-1", "t-3");
+    assert.equal(docs().length, 4);
+  });
+
   test("a finished campaign's export carries its report and its whole folder", async () => {
     const w = await web();
     const { env, research, folder } = await setup();

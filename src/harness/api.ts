@@ -11,6 +11,7 @@ import { Registry } from "./agents/registry.ts";
 import { laneCacheEnv } from "./agents/workspace.ts";
 import { type Role, type Runner, RunRequest } from "./broker/runner.ts";
 import { chatgptRequest, chatgptRouteAllowed } from "./chatgpt.ts";
+import { SEARCH_MAX } from "./knowledge.ts";
 import { LedgerError } from "./ledger.ts";
 import type { Research } from "./research/research.ts";
 import { Reviews } from "./reviews.ts";
@@ -377,6 +378,32 @@ export function createHarnessApi(
       })
       .parse(await c.req.json());
     return c.json(service.writeKnowledge(body.run, body.items, body.folders));
+  });
+
+  // A search of a run's past research for its advisors, read only (the supervisor gives it to
+  // them as a tool): the items of its knowledge/ with every word given, newest first, marked as
+  // data. Nothing here writes.
+  app.get("/v1/knowledge", supervisor, (c) => {
+    const q = z
+      .object({
+        run: z.string().min(1).max(100),
+        q: z.string().max(300).default(""),
+        kinds: z.string().max(200).optional(),
+        limit: z.coerce.number().int().min(1).max(SEARCH_MAX).optional(),
+      })
+      .parse({
+        run: c.req.query("run"),
+        q: c.req.query("q") ?? undefined,
+        kinds: c.req.query("kinds") ?? undefined,
+        limit: c.req.query("limit") ?? undefined,
+      });
+    if (!service.ledger.getRun(q.run)) return c.json({ error: `no run ${q.run}` }, 404);
+    return c.json(
+      service.knowledge.search(q.run, q.q, {
+        kinds: q.kinds ? q.kinds.split(",").map((k) => k.trim()) : undefined,
+        limit: q.limit,
+      }),
+    );
   });
 
   // The live log, signed, for the supervisor to relay to control.

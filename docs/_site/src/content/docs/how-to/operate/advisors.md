@@ -42,7 +42,7 @@ You need a provider on control. See [Connect a model provider](../models/connect
 2. In **1 · Parts of the rig**, check that the switches **Teacher pair**, **Auditor** and **Review panel** are **on**. They are on by default, but a part with no model does nothing. **Teacher pair** also covers the combiner.
 3. In **2 · The agents**, choose a **Model** and an **Effort** for **Teacher pair**, **Combiner**, **Auditor** and **Review panel**. **Runs in** then shows where each will run; for advisors, you don't choose it:
    - `the supervisor, read-only tools`: a model with an API key, or a ChatGPT subscription;
-   - `Claude Code, no tools`: a Claude subscription. The supervisor's image must be built with `CLAUDE_CODE_VERSION` for this (see [Use a Claude subscription](../models/claude-subscription.md));
+   - `Claude Code, past research only`: a Claude subscription. Claude Code gets none of its own tools, only a read-only search of the run's past research. The supervisor's image must be built with `CLAUDE_CODE_VERSION` for this (see [Use a Claude subscription](../models/claude-subscription.md));
    - `not for advisors: OpenCode only`: OpenCode's own models, which advisors can't use. **Save changes** then refuses, for example with "The teachers cannot use OpenCode's own models: they run only in OpenCode. Choose another model."
 4. Press **Save changes**.
 

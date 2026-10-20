@@ -182,6 +182,31 @@ describe("the new-campaign page", () => {
     );
   });
 
+  test("past research: the page links to the knowledge base, and a campaign saved without starting offers grants and From past research", async () => {
+    const s = await stack();
+    const page = await (await s.get("/ui/campaigns/new")).text();
+    const note = /<div class="nc-does" id="nc-past">([\s\S]*?)<\/div>/.exec(page)?.[1] ?? "";
+    assert.match(note, /<a href="\/ui\/knowledge">Thermite's knowledge base<\/a>/);
+    assert.match(note, /press <b>Save without starting<\/b>/);
+    assert.match(note, /add folders under <b>Can read from<\/b>/);
+    assert.match(note, /press <b>Start a run<\/b> and pick items under <b>From past research<\/b>/);
+    // Saved without starting: the campaign's page has both, as the note says.
+    const res = await s.post("/ui/campaigns/new", {
+      csrf: s.csrf,
+      draft: JSON.stringify(draft()),
+      rig: "rig-a",
+      promotion: "",
+      start_value: "save",
+    });
+    assert.equal(res.status, 303);
+    assert.equal(res.headers.get("location"), "/ui/campaigns/matmul-speed");
+    const campaign = await (await s.get("/ui/campaigns/matmul-speed")).text();
+    assert.match(campaign, /<div class="block" id="knowledge">/);
+    assert.match(campaign, /<h2>Can read from<\/h2>/);
+    assert.match(campaign, /From past research/);
+    assert.equal(s.store.listCommands(10).filter((c) => c.kind === "assign_campaign").length, 0);
+  });
+
   test("try the kit first: a no-agents run, a page that waits for it, and a start form for the real run", async () => {
     const s = await stack();
     const res = await s.post("/ui/campaigns/new", {

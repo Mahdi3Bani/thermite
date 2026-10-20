@@ -120,7 +120,7 @@ test("each campaign's folder is built from its runs' events; folders are read on
   assert.equal(kb.catchUp(), 0, "store.kb() caught up already: nothing new");
   const folders = kb.folders();
   const pn = folders.find((f) => f.campaign === "gemv-speed");
-  assert.deepEqual(pn?.counts, { attempt: 1, experiment: 1, note: 1 });
+  assert.deepEqual(pn?.counts, { attempt: 1, experiment: 1, note: 1, run: 1 });
   assert.equal(pn?.journal, 1, "the observation is a field note");
   assert.equal(pn?.runs, 1);
   // The experiment carries its result, the attempt its verdict, the note its kind.
@@ -285,6 +285,7 @@ test("a run's sync: its readable folders by seq, never its own items, in pages, 
     "gs-3/attempt",
     "gs-3/experiment",
     "gs-3/note",
+    "gs-3/run",
   ]);
   assert.ok(
     s.items.every((x) => x.campaign === "gemv-speed"),
@@ -326,7 +327,7 @@ test("a run's sync: its readable folders by seq, never its own items, in pages, 
   assert.equal(kb.grant("gemv-speed", "survey-study", "owner:ui"), true);
   const granted = all("rig-c", "gs-4", again.next);
   assert.deepEqual(granted.folders, ["gemv-speed", "survey-study"]);
-  assert.deepEqual(granted.items.map((x) => x.kind).sort(), ["claim", "finding", "source"]);
+  assert.deepEqual(granted.items.map((x) => x.kind).sort(), ["claim", "finding", "run", "source"]);
   assert.ok(granted.items.every((x) => x.campaign === "survey-study" && x.rig === "rig-b"));
   assert.deepEqual(all("rig-c", "gs-4", granted.next).items, [], "and only once");
   // The secret campaign's folder never comes.
@@ -374,7 +375,12 @@ test("the rigs' route: the rig's own token, its own runs, a KbSync", async () =>
     await (await get("/v1/rigs/rig-b/kb?run=sv-2&after=0", "rig-b-token-abcd")).json(),
   );
   assert.deepEqual(withGrant.folders, ["survey-study", "gemv-speed"]);
-  assert.deepEqual(withGrant.items.map((x) => x.kind).sort(), ["attempt", "experiment", "note"]);
+  assert.deepEqual(withGrant.items.map((x) => x.kind).sort(), [
+    "attempt",
+    "experiment",
+    "note",
+    "run",
+  ]);
   assert.ok(withGrant.items.every((x) => x.rig === "rig-a"));
   // Another rig's token, another rig's run, an unknown run, a bad cursor.
   assert.equal((await get("/v1/rigs/rig-b/kb?run=sv-2", "rig-a-token-abcd")).status, 401);
@@ -421,11 +427,207 @@ test("a research note is a note of its own in the folder and in the run's journa
   assert.deepEqual(
     run?.journal.map((n) => [n.id, n.kind, n.about?.type ?? null]),
     [
-      [1, "observation", null],
+      [1, "observation", "run"],
       [-1, "note", "source"],
     ],
   );
   assert.ok(!run?.timeline.some((e) => e.kind === "research_note"));
+});
+
+test("a folder holds everything a run produces: the run, its trials, its documents, the sources' text", () => {
+  const store = new ControlStore(":memory:");
+  const text = `The weights stream from memory. ${"More words. ".repeat(40)}`;
+  ingest(store, "rig-r", [
+    [
+      "control:owner",
+      "run_created",
+      "rs-1",
+      {
+        campaign: "kernel-survey",
+        version: 2,
+        mode: "research",
+        seed: { repo: "https://git.example.com/kernels.git", commit: "c".repeat(40) },
+        direction: "memory first",
+        agents: true,
+        briefing: 2,
+      },
+    ],
+    [
+      "scheduler",
+      "trial_started",
+      "rs-1",
+      { trial: "t-1", lane: "lane-1", epoch: 3, family: "survey", focus: "read the guide" },
+    ],
+    [
+      "lane-1",
+      "source_fetched",
+      "rs-1",
+      {
+        source: "s-1",
+        domain: "docs.example.com",
+        url: "https://docs.example.com/guide",
+        title: "The guide",
+        text,
+      },
+    ],
+    [
+      "lane-1",
+      "research_doc",
+      "rs-1",
+      {
+        lane: "lane-1",
+        trial: "t-1",
+        path: "synthesis/outline.md",
+        change: "written",
+        bytes: 40,
+        sha256: "a".repeat(64),
+        text: "# Outline\nLoads first, then tiling.",
+      },
+    ],
+    [
+      "lane-1",
+      "trial_finished",
+      "rs-1",
+      {
+        trial: "t-1",
+        lane: "lane-1",
+        epoch: 3,
+        attempt: null,
+        stopped: "no_submission",
+        turns: 12,
+        tokens_in: 120000,
+        tokens_out: 8000,
+        error: null,
+      },
+    ],
+    ["control:owner", "run_status", "rs-1", { status: "paused", reason: "the owner paused it" }],
+    [
+      "lane-1",
+      "research_doc",
+      "rs-1",
+      { lane: "lane-1", trial: "t-2", path: "synthesis/outline.md", change: "removed" },
+    ],
+    // A document never recorded as one: its removal adds nothing.
+    ["lane-1", "research_doc", "rs-1", { lane: "lane-1", path: "data.bin", change: "removed" }],
+    [
+      "lane-1",
+      "hypothesis_added",
+      "rs-1",
+      { hypothesis: "h-1", lane: "lane-1", text: "Loads bound the kernel.", supporting: ["c-1"] },
+    ],
+  ]);
+  const kb = store.kb();
+  const f = kb.folder("kernel-survey");
+  assert.deepEqual(f.counts, { doc: 1, hypothesis: 1, run: 1, source: 1, trial: 1 });
+  const one = (kind: "run" | "trial" | "doc" | "source" | "hypothesis") => {
+    const [x] = kb.search("", ["kernel-survey"], { kinds: [kind] });
+    assert.ok(x, kind);
+    return x;
+  };
+  // The run: its campaign and version, mode, seed, direction, agents and briefing, then status.
+  const run = one("run");
+  assert.equal(run.ref, "rs-1");
+  assert.equal(run.title, "Run rs-1: research, kernel-survey");
+  assert.equal(run.by, "control:owner");
+  assert.equal(
+    run.body,
+    [
+      "Campaign: kernel-survey, version 2",
+      "Mode: research",
+      `Seed: https://git.example.com/kernels.git at ${"c".repeat(12)}`,
+      "Direction: memory first",
+      "Agents: on",
+      "Briefing: 2 items from past research",
+      "Status: paused (the owner paused it)",
+    ].join("\n"),
+  );
+  // The trial: its lane, round, direction and focus, then how it ended; written by its lane.
+  const trial = one("trial");
+  assert.equal(trial.ref, "t-1");
+  assert.equal(trial.by, "lane-1");
+  assert.equal(trial.title, "lane-1, round 3: read the guide");
+  assert.equal(
+    trial.body,
+    [
+      "Lane: lane-1",
+      "Round: 3",
+      "Direction: survey",
+      "Focus: read the guide",
+      "Ended: no submission; 12 turns; 120,000 tokens in, 8,000 out",
+    ].join("\n"),
+  );
+  // The source holds the text that was read, after its address.
+  const source = one("source");
+  assert.equal(source.body, `https://docs.example.com/guide\ndocs.example.com\n\n${text}`);
+  assert.equal(kb.search("weights stream", ["kernel-survey"])[0]?.kind, "source");
+  // The document: its path, its text and its lane; then that the lane took it out.
+  const doc = one("doc");
+  assert.equal(doc.ref, "lane-1/synthesis/outline.md");
+  assert.equal(doc.title, "synthesis/outline.md");
+  assert.equal(doc.by, "lane-1");
+  assert.equal(
+    doc.body,
+    "# Outline\nLoads first, then tiling.\nRemoved: lane-1 took it out of its working area in trial t-2.",
+  );
+  // A hypothesis, with the verified claims for it.
+  const hypothesis = one("hypothesis");
+  assert.equal(hypothesis.ref, "h-1");
+  assert.equal(hypothesis.by, "lane-1");
+  assert.equal(hypothesis.body, "Loads bound the kernel.\nSupporting claims: c-1");
+  // Each item keeps its origin: the rig and run, who wrote it, and when.
+  for (const x of [run, trial, source, doc, hypothesis]) {
+    assert.equal(x.rig, "rig-r");
+    assert.equal(x.run, "rs-1");
+    assert.equal(x.campaign, "kernel-survey");
+    assert.match(x.at, /^2026-10-20T01:0\d:00\.000Z$/);
+  }
+  // The pages are built without the text a source's or a document's event carries.
+  const events = store.events("rig-r", 0, 100, null, { lean: true }) as {
+    kind: string;
+    body: Record<string, unknown>;
+  }[];
+  assert.equal(events.find((e) => e.kind === "source_fetched")?.body.text, undefined);
+  assert.equal(events.find((e) => e.kind === "research_doc")?.body.text, undefined);
+  assert.equal(
+    events.find((e) => e.kind === "source_fetched")?.body.url,
+    "https://docs.example.com/guide",
+  );
+  const full = store.events("rig-r", 0, 100) as { kind: string; body: Record<string, unknown> }[];
+  assert.equal(full.find((e) => e.kind === "source_fetched")?.body.text, text);
+});
+
+test("after an upgrade, the runs indexed before get their run and trial items, once, in their folder", () => {
+  const store = new ControlStore(":memory:");
+  assigned(store, "rig-a", "gs-3", "gemv-speed");
+  ingest(store, "rig-a", [
+    ["harness", "run_created", "gs-3", { campaign: "gemv-speed", mode: "goal" }],
+    [
+      "scheduler",
+      "trial_started",
+      "gs-3",
+      { trial: "t-1", lane: "lane-1", epoch: 1, family: "loads" },
+    ],
+    ["lane-1", "journal_note", "gs-3", { id: 1, by: "lane-1", kind: "lesson", text: "kept" }],
+    ["control:owner", "run_status", "gs-3", { status: "paused", reason: "a pause" }],
+  ]);
+  const kb = store.kb();
+  // As an earlier reading left the store: no run or trial items, and no reading's version.
+  store.db.exec("delete from kb_item where kind in ('run', 'trial'); delete from kb_meta;");
+  const note = kb.search("kept", ["gemv-speed"])[0];
+  assert.equal(kb.catchUp(), 0, "no new event");
+  assert.deepEqual(kb.folder("gemv-speed").counts, { note: 1, run: 1, trial: 1 });
+  const [run] = kb.search("", ["gemv-speed"], { kinds: ["run"] });
+  assert.match(String(run?.body), /Status: paused \(a pause\)$/);
+  assert.equal(run?.campaign, "gemv-speed");
+  assert.equal(
+    kb.search("kept", ["gemv-speed"])[0]?.seq,
+    note?.seq,
+    "an item it had stays as it was",
+  );
+  // Once only: a later call reads nothing again.
+  store.db.exec("delete from kb_item where kind = 'trial'");
+  kb.catchUp();
+  assert.equal(kb.folder("gemv-speed").counts.trial, undefined);
 });
 
 test("a rig files a run's items only under a campaign control gave it", () => {
@@ -447,8 +649,8 @@ test("a rig files a run's items only under a campaign control gave it", () => {
   const kb = store.kb();
   assert.deepEqual(
     kb.search("lesson", ["gemv-speed"]).map((x) => x.body),
-    ["real lesson"],
+    ["real lesson\nAbout: run g-1"],
   );
   assert.equal(kb.search("planted", ["gemv-speed"]).length, 0);
-  assert.equal(kb.search("local", ["local-try"]).length, 1);
+  assert.equal(kb.search("local", ["local-try"], { kinds: ["note"] }).length, 1);
 });

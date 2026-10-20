@@ -4,8 +4,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import { ControlStore } from "../control/store.ts";
 import { exportOnce } from "../supervisor/git-export.ts";
 import { makeHarnessEnv } from "../testing/harness-env.ts";
+import { Registry } from "./agents/registry.ts";
 import { LocalRunner } from "./broker/runner.ts";
 import { ResearchFolder } from "./research/folder.ts";
 import { Research } from "./research/research.ts";
@@ -71,6 +73,7 @@ describe("a run's export holds its journal, its research notes and its briefing"
         by: "lane-1",
         kind: "lesson",
         text: "Profile first.",
+        about: { type: "run", id: RUN },
         lane: "lane-1",
         trial: "t-1",
         at: first.at,
@@ -154,8 +157,97 @@ describe("a run's export holds its journal, its research notes and its briefing"
       `journal/${name}.jsonl`,
       `research-notes/${name}.jsonl`,
       `briefing/${name}.jsonl`,
+      `knowledge/${name}.jsonl`,
       `research/${RUN}/folder/INDEX.md`,
     ])
       assert.ok(pushed.includes(f), `${f} in ${pushed.join(", ")}`);
+  });
+
+  test("an export holds the run's part of its campaign's folder: the items control files, each with its origin", async () => {
+    const { s, research } = await setup();
+    const reg = new Registry(s.ledger);
+    reg.startTrial({
+      id: "t-1",
+      run: RUN,
+      lane: "lane-1",
+      epoch: 1,
+      family: "loads",
+      parent: "p",
+      focus: "align the loads",
+    });
+    const x = s.queue.add(RUN, { title: "Align the loads", by: "owner", why: "the guide" }, "t");
+    s.journal.write(RUN, { kind: "lesson", text: "Profile first." }, lane);
+    research.addNote(RUN, "lane-1", "The guide says loads should be aligned.", [], "t-1");
+    reg.finishTrial(
+      "t-1",
+      { stopped: "no_submission", turns: 4, toolCalls: 2, tokensIn: 1000, tokensOut: 100 },
+      "scheduler",
+    );
+    const one = await s.export("test");
+    const part = lines(join(one.dir, "knowledge.jsonl"));
+    assert.match(String(manifestOf(one.dir).files["knowledge.jsonl"]), /^[0-9a-f]{64}$/);
+    assert.deepEqual(part.map((i) => `${i.kind} ${i.ref}`).sort(), [
+      `experiment ${x.id}`,
+      "note 1",
+      "note rn-1",
+      `run ${RUN}`,
+      "trial t-1",
+    ]);
+    for (const i of part) {
+      assert.equal(i.rig, s.rig);
+      assert.equal(i.run, RUN);
+      assert.equal(i.campaign, s.ledger.getRun(RUN)?.campaign);
+      assert.ok(i.by && i.at && i.updated_at, "who wrote it and when");
+    }
+    assert.match(
+      String(part.find((i) => i.kind === "trial")?.body),
+      /Ended: no submission; 4 turns/,
+    );
+    // The same items control files from the same events, field by field.
+    const store = new ControlStore(":memory:");
+    const events = s.ledger.eventsAfter(0, 100_000).events;
+    store.ingest({
+      rig: s.rig,
+      ledger_id: "l-1",
+      cursor: 0,
+      next: events.length,
+      generated_at: new Date().toISOString(),
+      events,
+      summary: {},
+    });
+    const filed = store
+      .kb()
+      .changedAfter([String(s.ledger.getRun(RUN)?.campaign)], 0)
+      .map(({ campaign, rig, run, kind, ref, title, body, by, url, sub, at, updated_at }) => ({
+        campaign,
+        rig,
+        run,
+        kind,
+        ref,
+        title,
+        body,
+        by,
+        url,
+        sub,
+        at,
+        updated_at,
+      }));
+    const key = (i: Record<string, unknown>) => `${i.kind} ${i.ref}`;
+    assert.deepEqual(
+      [...part].sort((a, b) => key(a).localeCompare(key(b))),
+      [...filed].sort((a, b) => key(a).localeCompare(key(b))),
+    );
+    // The next export holds only what changed since: the run's new status.
+    s.ledger.setRunStatus(RUN, "paused", "the owner paused it", "test");
+    const two = await s.export("test");
+    const changed = lines(join(two.dir, "knowledge.jsonl"));
+    assert.deepEqual(
+      changed.map((i) => `${i.kind} ${i.ref}`),
+      [`run ${RUN}`],
+    );
+    assert.match(String(changed[0]?.body), /Status: paused \(the owner paused it\)$/);
+    // Nothing changed: no part in the export.
+    const three = await s.export("test");
+    assert.ok(!existsSync(join(three.dir, "knowledge.jsonl")));
   });
 });

@@ -7,15 +7,22 @@ import { z } from "zod";
  */
 export const KbKind = z.enum([
   "run",
+  "trial",
   "experiment",
   "attempt",
   "note",
+  "doc",
   "source",
   "claim",
+  "hypothesis",
   "finding",
   "report",
 ]);
 export type KbKind = z.infer<typeof KbKind>;
+
+/** A kind's plural, as folders and counts say it: notes, hypotheses. */
+export const kbPlural = (kind: string): string =>
+  kind === "hypothesis" ? "hypotheses" : `${kind}s`;
 
 /** One item of a campaign's folder, as control sends it. */
 export const KbItemWire = z.object({
@@ -25,7 +32,10 @@ export const KbItemWire = z.object({
   rig: z.string().min(1).max(200),
   run: z.string().min(1).max(100),
   kind: KbKind,
-  /** The item's id in its run (an experiment, an attempt, a claim, a note's number). */
+  /**
+   * The item's id in its run: the run's own id, a trial's, an experiment's, an attempt's, a
+   * claim's, a note's number, or a document's lane and path.
+   */
   ref: z.string().min(1).max(200),
   title: z.string().max(500),
   body: z.string().max(200_000),

@@ -145,14 +145,19 @@ describe("the advisors' field notes", () => {
       notes.filter(([by]) => by === "teachers:combiner"),
       [["teachers:combiner", "decision", "kept both views as one experiment"]],
     );
-    // Both teachers' notes, the one about a missing attempt kept without its about.
+    // Both teachers' notes, the one about a missing attempt kept as about the run.
     assert.equal(notes.filter(([by]) => by === "teachers:teacher-a").length, 2);
     assert.equal(notes.filter(([by]) => by === "teachers:teacher-b").length, 2);
     assert.ok(
-      env.service.journal.newest("js-1", 100).every((n) => n.about === undefined),
-      "an about the run lacks is left out",
+      env.service.journal
+        .newest("js-1", 100)
+        .every((n) => n.about.type === "run" && n.about.id === "js-1"),
+      "an about the run lacks becomes the run; a note that names nothing is about the run",
     );
-    assert.match(lines.join("\n"), /the field notes of teacher-a: note 2: recorded without/);
+    assert.match(
+      lines.join("\n"),
+      /the field notes of teacher-a: note 2: recorded as about the run/,
+    );
     // The notes come after the round's work was posted.
     const all = events(env);
     const work = all.findLast((e) => e.kind === "experiment_added")?.id ?? 0;

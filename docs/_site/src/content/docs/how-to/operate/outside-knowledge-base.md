@@ -11,7 +11,7 @@ An **outside knowledge base** is an MCP server you already run, such as your tea
 - **A copy.** Control writes every item of the campaign's folder there as a page, so the campaign's research sits beside your own notes.
 - **Outside context.** The campaign's **teacher pair**, the two [advisors](advisors.md) that review each run and suggest what to try, may search it while they review.
 
-You don't need one. Thermite keeps every campaign's research in its own [knowledge base](../../reference/knowledge-base.md): a **folder** for each campaign, with everything its runs record, such as the agents' field notes (short notes they keep as they work), experiments with their results, attempts with their verdicts, sources, claims, findings and reports. [Journals and the knowledge base](../../explanation/journals-and-knowledge.md) explains how that works.
+You don't need one. Thermite keeps every campaign's research in its own [knowledge base](../../reference/knowledge-base.md): a **folder** for each campaign, with everything its runs produce, such as the runs and their trials, the agents' field notes (short notes they keep as they work), experiments with their results, attempts with their verdicts, documents, sources with their text, claims, findings and reports. [Journals and the knowledge base](../../explanation/journals-and-knowledge.md) explains how that works.
 
 ## Before you start
 
@@ -79,7 +79,7 @@ You need a write tool for this step.
 3. Wait a minute, then press **refresh** in the status bar, the line along the bottom of the page. The line says, for example, `on · last sync 1m ago: 52 pages written · 52 since it was switched on`. Until the first sync ends, it says `on · not synced yet: the first sync writes the whole folder`.
 
 :::caution[The whole folder leaves Thermite]
-A copy sends every item of the campaign's folder to the outside server, and then each new or changed item: the agents' field notes and research notes, the experiments with their details and results, the attempts with their hypotheses, declared flaws and verdicts, the sources' addresses, the claims with their quotes, the findings and the reports. You can't choose items. The folders this campaign may read from other campaigns are not copied, only its own. Pages already written there stay when you stop the copy or delete the knowledge base.
+A copy sends every item of the campaign's folder to the outside server, and then each new or changed item: the runs and their trials, the agents' field notes and research notes, the documents lanes wrote, the experiments with their details and results, the attempts with their hypotheses, declared flaws and verdicts, the sources with the text that was read, the claims with their quotes, the hypotheses, the findings and the reports. You can't choose items. The folders this campaign may read from other campaigns are not copied, only its own. Pages already written there stay when you stop the copy or delete the knowledge base.
 :::
 
 From then on, control writes each new or changed item every 5 minutes ([How often copies go](#how-often-copies-go)). To write them now, press **Sync now**. It says, for example, `3 pages written to "team-brain".`, or `Not synced: a sync of this folder is running.` while one is.

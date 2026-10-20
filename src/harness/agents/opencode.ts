@@ -203,7 +203,7 @@ ATTEMPT" shows how the judge decided an attempt; "thermite-trial idea TITLE [--w
 [--family TEXT]" proposes another experiment worth trying for the run's queue (the planner
 decides whether it is queued; your trial goes on).
 
-${notesInstruction(`with "${NOTE_USAGE}" (KIND: observation, decision, surprise, question, lesson or note; TYPE: experiment, attempt, source, claim, finding, round, trial or message)`)}
+${notesInstruction(`with "${NOTE_USAGE}" (KIND: observation, decision, surprise, question, lesson or note; TYPE: run, experiment, attempt, source, claim, finding, round, trial or message; no --about: the run)`)}
 
 ${codeResearchNote('with "thermite-trial research fetch URL"')} The research commands:
 
@@ -561,7 +561,7 @@ Only pages fetched with "thermite-trial research fetch" are archived, and only a
 
 To propose another research task for the run's queue (the planner or the campaign's owner decides whether it is queued; your trial goes on): thermite-trial idea TITLE [--why TEXT] [--family TEXT]
 
-${notesInstruction(`with "${NOTE_USAGE}" (KIND: observation, decision, surprise, question, lesson or note; TYPE: experiment, attempt, source, claim, finding, round, trial or message)`)} Field notes are not research notes (add_note), which record what sources say for the report.
+${notesInstruction(`with "${NOTE_USAGE}" (KIND: observation, decision, surprise, question, lesson or note; TYPE: run, experiment, attempt, source, claim, finding, round, trial or message; no --about: the run)`)} Field notes are not research notes (add_note), which record what sources say for the report.
 
 ${researchFolderNote(folder)} Your shell starts in your working area; use grep, rg and your file tools on the folder.
 

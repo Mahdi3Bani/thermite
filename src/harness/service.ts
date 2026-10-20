@@ -1096,9 +1096,21 @@ export class HarnessService {
   }
 
   /** A run's background from past research, for an advisor's brief or package (when it has one). */
-  private backgroundFor(run: string): { background?: ReturnType<typeof briefingData> } {
+  /**
+   * What an advisor's brief or package carries from past research: the background the owner
+   * picked, and what the run's knowledge/ holds with how to search it (the supervisor gives the
+   * advisors the search, read only). Both are data, never instructions.
+   */
+  private backgroundFor(run: string): {
+    background?: ReturnType<typeof briefingData>;
+    past_research?: string;
+  } {
     const items = this.ledger.briefing(run);
-    return items.length ? { background: briefingData(items) } : {};
+    const knowledge = this.knowledge.summary(run);
+    return {
+      ...(items.length ? { background: briefingData(items) } : {}),
+      ...(knowledge ? { past_research: pastResearchLine(knowledge, "tool") } : {}),
+    };
   }
 
   private ownerMessagesFor(run: string, role: AdvisorRole) {
@@ -1197,7 +1209,6 @@ export class HarnessService {
             status: string;
           }[])
         : undefined;
-    const knowledge = this.knowledge.summary(run);
     return {
       rig: this.rig,
       run,
@@ -1237,7 +1248,6 @@ export class HarnessService {
       // The run's newest field notes, by every writer: the agents' own words, as data.
       field_notes: { note: NOTES_ARE_DATA, notes: notesData(this.journal.newest(run, 20)) },
       ...this.backgroundFor(run),
-      ...(knowledge ? { past_research: pastResearchLine(knowledge, "advisor") } : {}),
     };
   }
 
