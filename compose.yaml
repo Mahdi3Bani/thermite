@@ -25,6 +25,8 @@ services:
       # "1": the owner accepts each rig's first report key on the dashboard.
       THERMITE_CONTROL_REQUIRE_KEY_ACCEPT: "${THERMITE_CONTROL_REQUIRE_KEY_ACCEPT:-}"
       THERMITE_CONTROL_SESSION_DAYS: "${THERMITE_CONTROL_SESSION_DAYS:-}"
+      # How often control copies campaign folders to outside knowledge bases (0: only Sync now).
+      THERMITE_OUTSIDE_KB_SYNC_SECONDS: "${THERMITE_OUTSIDE_KB_SYNC_SECONDS:-300}"
       # Restarts through the container engine: see compose.lifecycle.yaml (off by default).
       THERMITE_LIFECYCLE: "${THERMITE_LIFECYCLE:-}"
       THERMITE_COMPOSE_PROJECT: thermite
@@ -98,6 +100,8 @@ services:
       THERMITE_COMMAND_POLL_SECONDS: "${THERMITE_COMMAND_POLL_SECONDS:-5}"
       THERMITE_MODEL_ROUTE_POLL_SECONDS: "${THERMITE_MODEL_ROUTE_POLL_SECONDS:-30}"
       THERMITE_LIVE_INTERVAL_MS: "${THERMITE_LIVE_INTERVAL_MS:-3000}"
+      # How often past research comes from control into each running run's knowledge/ (0: off).
+      THERMITE_KB_SYNC_SECONDS: "${THERMITE_KB_SYNC_SECONDS:-180}"
       THERMITE_HARNESS_TOKEN_FILE: /run/secrets/harness-supervisor-token
       THERMITE_CONTROL_TOKEN_FILE: /run/secrets/control-rig-token
       # Locally, both rigs' supervisors push to one results repository on a shared volume.
@@ -166,6 +170,7 @@ services:
       THERMITE_COMMAND_POLL_SECONDS: "${THERMITE_COMMAND_POLL_SECONDS:-5}"
       THERMITE_MODEL_ROUTE_POLL_SECONDS: "${THERMITE_MODEL_ROUTE_POLL_SECONDS:-30}"
       THERMITE_LIVE_INTERVAL_MS: "${THERMITE_LIVE_INTERVAL_MS:-3000}"
+      THERMITE_KB_SYNC_SECONDS: "${THERMITE_KB_SYNC_SECONDS:-180}"
       THERMITE_HARNESS_TOKEN_FILE: /run/secrets/harness2-supervisor-token
       THERMITE_CONTROL_TOKEN_FILE: /run/secrets/control-rig-token-2
       THERMITE_RESULTS_REMOTE: "${THERMITE_RESULTS_REMOTE:-file:///results/results.git}"
