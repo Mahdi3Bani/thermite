@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { newToken } from "../control/credential.ts";
 import { generateSigningKeys } from "../core/commands.ts";
 import { CommitSchema, parseContract } from "../core/contract.ts";
+import { chooseOwner, localInit, parentOwner } from "./local-init.ts";
 import { type Enrolled, formatRigList, type RigList, writeRigFiles } from "./rig.ts";
 
 /**
@@ -55,6 +56,10 @@ const USAGE = `usage: thermite <command> [options]
          [--known-flaw TEXT ...]      submit a patch as a proposer
   status --harness URL --token-file F --attempt ID
                                       show an attempt's lifecycle and verdict
+  local init DIR                      make DIR, the local compose stack's .dev folder: random
+                                      tokens in DIR/secrets, the inbox, the outbox and the
+                                      advisors' folder. Files that exist are kept. Run as root,
+                                      it gives what it makes to the owner of DIR's parent folder
   selftest isolation [--force]        inside the harness container, as root, with the rig idle: check that role
                                       users cannot reach the ledger, kits, builds or secrets
 `;
@@ -504,6 +509,24 @@ async function main(argv: string[]): Promise<void> {
         },
       );
       process.stdout.write(`${await res.text()}\n`);
+      return;
+    }
+    case "local": {
+      const [sub, dir, ...extra] = rest;
+      if (sub !== "init" || !dir || extra.length) fail(USAGE);
+      const root = resolve(dir);
+      const owner = chooseOwner(process.getuid?.(), parentOwner(root));
+      const { made, kept } = localInit(root, owner);
+      const name = basename(root);
+      for (const rel of made)
+        process.stdout.write(`made ${rel === "." ? name : `${name}/${rel}`}\n`);
+      if (owner && made.length)
+        process.stdout.write(
+          `gave what it made to ${owner.uid}:${owner.gid}, the owner of the folder that holds ${name}\n`,
+        );
+      process.stdout.write(
+        `local init: ${name} ready (${made.length} made, ${kept.length} kept)\n`,
+      );
       return;
     }
     case "selftest": {

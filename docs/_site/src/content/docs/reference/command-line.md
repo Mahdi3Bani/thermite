@@ -20,8 +20,8 @@ The first prints `ok`, the contract's mode, name, version and SHA-256. The secon
 
 | Where | How to run it | Used there for |
 | --- | --- | --- |
-| Your computer, in a clone of the repository | `npx thermite <command>`, after `npm ci` and `npm run build`. It runs `dist/cli/thermite.js` and needs Node.js 22.19 or later | Contracts, tokens, starting runs, commands, enrolling rigs |
-| Control's image | `thermite` (`/usr/local/bin/thermite`, which runs `node /opt/thermite/dist/cli/thermite.js`) | The same commands, from inside control's container |
+| Your computer, in a clone of the repository | `npx thermite <command>`, after `npm ci` and `npm run build`. It runs `dist/cli/thermite.js` and needs Node.js 22.19 or later. With a release's compose stack, link its `.dev/` folder into the clone, as [the command line](../how-to/install/one-machine.md#the-command-line) shows | Contracts, tokens, starting runs, commands, enrolling rigs |
+| Control's image | `thermite` (`/usr/local/bin/thermite`, which runs `node /opt/thermite/dist/cli/thermite.js`) | The same commands, from inside control's container. A release's `init` service runs `local init` from this image |
 | The supervisor's image | `thermite`, the same wrapper | The same commands |
 | The harness image | `thermite`, the same wrapper, and `thermite-trial` | `submit` and `status` against the harness at `http://127.0.0.1:8700`; `selftest isolation`, which must run there, as root |
 
@@ -75,6 +75,10 @@ usage: thermite <command> [options]
          [--known-flaw TEXT ...]      submit a patch as a proposer
   status --harness URL --token-file F --attempt ID
                                       show an attempt's lifecycle and verdict
+  local init DIR                      make DIR, the local compose stack's .dev folder: random
+                                      tokens in DIR/secrets, the inbox, the outbox and the
+                                      advisors' folder. Files that exist are kept. Run as root,
+                                      it gives what it makes to the owner of DIR's parent folder
   selftest isolation [--force]        inside the harness container, as root, with the rig idle: check that role
                                       users cannot reach the ledger, kits, builds or secrets
 ```
@@ -317,6 +321,20 @@ It prints the harness's answer on one line: `{"attempt":"<id>","lifecycle":"queu
 `thermite status --harness URL --token-file F --attempt ID` prints what the harness knows of an attempt (`GET /v1/attempts/ID`): `attempt`, `run`, `lifecycle`, `commit`, `v0` and `verdict`. The token is the proposer's or the supervisor's.
 
 It prints the harness's answer whatever its HTTP status, and exits 0 even when the harness answers with an error such as `no attempt <id>`.
+
+### `local init`
+
+`thermite local init DIR` makes `DIR`, the `.dev` folder that the local compose stack reads, and keeps every file that is there already. A release's compose file runs it in its `init` service as `thermite local init /work/.dev`, with the folder of `compose.yaml` mounted at `/work`. In a checkout of the source code, `npm run dev:init` makes the same folder without a build. It needs no network.
+
+| What | Mode | Made |
+| --- | --- | --- |
+| `secrets/`, `outbox/`, `advisors/` | 0755 | When missing |
+| `inbox/`, `inbox/repos/`, `inbox/models/` | 0777, set again at every run | When missing. The supervisor writes into the inbox as its own user |
+| `secrets/control-admin-token`, `control-operator-token`, `control-rig-token`, `control-rig-token-2`, `harness-supervisor-token`, `harness-proposer-token`, `harness2-supervisor-token`, `harness2-proposer-token` | 0644 | When missing: 24 random bytes each, base64url-encoded |
+| `secrets/model-api-key` | 0644 | When missing: `local-placeholder`, or the contents of `secrets/qwen-api-key` when that file exists |
+| `secrets/control-rig-tokens.json` | 0644 | At every run, from the two rig tokens: `{"local-1": …, "local-2": …}` |
+
+Run as root, when the folder that holds `DIR` belongs to another user, it gives what it makes to that user and group, and says so. It prints `made` and the path of each folder and file it made, never a token, then `local init: <name> ready (<n> made, <m> kept)`, where `<name>` is the last part of `DIR`. Without `DIR`, it prints the usage text on standard error and exits 2.
 
 ### `selftest isolation`
 
