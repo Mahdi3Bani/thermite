@@ -15,7 +15,7 @@ It takes about half an hour. Most of that is the first build of Thermite's conta
 ## What you need
 
 - A computer running Linux or macOS, with a few CPU cores, a few gigabytes of free memory and several gigabytes of free disk. Thermite's three images take about 2 GB, and building them needs room of its own. With Podman on a Mac, that space must be free in Podman's virtual machine.
-- **Docker** with Docker Compose, or **Podman** with `podman compose`. These run Thermite's parts as containers. On a Mac, Podman runs them in a small virtual machine, which must be started (`podman machine start`).
+- **Docker** with Docker Compose, or **Podman** with `podman compose`. These run Thermite's parts as containers. `podman compose` hands the work to a compose program, `docker-compose` or `podman-compose`, so install one of them too. On a Mac, Podman runs the containers in a small virtual machine, which must be started (`podman machine start`).
 - **Node.js** 22.19 or later, and **git**.
 
 ## 1. Get Thermite
@@ -74,7 +74,7 @@ Read that container's log, for example `docker compose logs harness` (or `podman
 2. Open <http://127.0.0.1:8800/ui> in your browser.
 3. Paste the token into **Admin token** and press **Sign in**.
 
-You see the **Overview**. Its first line says `nothing needs you · 0 runs at work · 1 of 1 rigs reporting`. If it says `0 of 1`, the rig hasn't reported yet: wait a minute and press **refresh** in the status bar, the line along the bottom of every page. Dashboard pages never reload by themselves.
+You see the **Overview**, the first page in the sidebar. Its first line says `nothing needs you · 0 runs at work · 1 of 1 rigs reporting`. If it says `0 of 1`, the rig hasn't reported yet: wait a minute and press **refresh** in the status bar, the line along the bottom of every page. Dashboard pages never reload by themselves.
 
 The sidebar on the left holds the dashboard's pages: **Overview**, **Campaigns**, **Rigs**, **Live** and more.
 
@@ -86,38 +86,42 @@ If the sign-in page comes back with no message, the token didn't match. Copy it 
 
 Choose **Rigs** in the sidebar, then **local-1**.
 
-The page says `local-1 is live; it reported 10s ago.`, with your computer's processors, memory and disk under **What it runs on**. Find the **Checks** block. It has three checks:
+The page says `local-1 is live; it reported 10s ago.`, with your computer's processors, memory and disk under **What it runs on**. With Podman on a Mac, these are the virtual machine's, not the whole Mac's. Find the **Checks** block. It has three checks:
 
 - **Model route** shows **not run yet**. It checks the agents' model, which you give the rig in [Hand the work to agents](agents-with-a-free-model.md).
-- **Isolation** already shows **passed**: the rig ran it by itself when it started. Each agent works as its own operating-system user, and the check made sure that those users can't reach what they must not, such as the judge's files and other agents' work.
+- **Isolation** already shows **passed**: the rig ran it by itself when it started. Each agent works as its own operating-system user, and the check made sure that those users can't reach what they must not, such as the judge's files and other agents' work. If it shows **failed**, the sentence beside it says why: see [The isolation check failed](../how-to/operate/troubleshoot.md#the-isolation-check-failed) before you go on.
 - **Judge smoke** shows **not run yet**. You run it next.
 
 ## 6. Run the judge's smoke check
 
-Now give the judge something to judge. The **Judge smoke** check submits twelve changes to a small matrix-multiplication program. For each one, the right verdict is already known.
+Now give the judge something to judge. The **Judge smoke** check submits twelve changes to a small matrix-multiplication program. For each one, the right **verdict**, the judge's decision on that change, is already known.
 
 1. Beside **Judge smoke**, press **Run it**.
 
-   A message says that control sent the command to `local-1`.
+   A message shows above the line `local-1 is live`: `Control sent the command to local-1. The rig does it in less than 10 seconds. This page shows the result.`
 
-2. Open **Campaigns** in the sidebar. Within a minute, after a **refresh**, the check shows under **At work now**, on a card headed `rig-check-smoke-cpu-` and some letters, then `›` and `check-smoke-` and some letters. The first name is the check's **campaign**. The second is its **run**: the campaign at work on your rig. The card's lines say what the run does now: `no agents on this run: changes come from people`, and what the judge is screening.
+2. Wait half a minute, then press **refresh**, still on the rig's page. **Judge smoke** shows **running**, and its button reads **Running…**. The line that starts `local-1 is live` now goes on with `It runs rig-check-smoke-cpu-69c3d2f6 › check-smoke-` and some letters, then says what the judge is **screening**. Screening is the judge's first look at a change: it builds the change and measures it.
 
-   Lower down, **All campaigns** says `No campaign here.`, then `Rig checks are hidden`. Control keeps rig checks out of that table unless you ask for them, as you will in step 7.
+   The two names are the check's campaign and run. A **campaign** is one piece of research: what to improve, and how the judge decides. The check's campaign is `rig-check-smoke-cpu-69c3d2f6`; its letters are the start of the smoke kit's commit, which [Hand the work to agents](agents-with-a-free-model.md) uses again. A **run** is a campaign at work on one rig: here, `check-smoke-` and some letters.
 
-3. On the card, choose the name `rig-check-smoke-cpu-… › check-smoke-…` to watch the run. Its page has the title `check-smoke-…`, followed by `on local-1 · hill climb · Running`. Below it are the run's tabs: **Overview**, **Experiments**, **Attempts**, **History** and **Planner**. The first, **Overview**, lists the run's **Attempts**: each change shows up, then gets its verdict. Press **refresh** to see more.
+   The page shows the run twice more: on a card under **At work**, above **Checks**, with the lines `no agents on this run: changes come from people` and what the judge is screening; and under **Runs on this rig**, below **Checks**, where it stays after it ends.
+
+3. Choose the name `rig-check-smoke-cpu-69c3d2f6 › check-smoke-…` to watch the run. Its page has the title `check-smoke-…`, followed by `on local-1 · hill climb · Running`. A **hill climb** is a campaign that keeps improving a number, here the program's speed. Below it are the run's tabs: **Overview**, **Experiments**, **Attempts**, **History** and **Planner**. The run's **Overview** tab, open first, lists its **Attempts**: an attempt is one submitted change. Each one shows up, then gets its verdict. Press **refresh** to see more.
+
+   The **Campaigns** page in the sidebar doesn't show this run under **At work now**: that list leaves rig checks out. Step 7 shows where Campaigns keeps them.
 
 4. Two or three minutes after you pressed **Run it**, go back to **Rigs** › **local-1** and press **refresh**.
 
-   **Judge smoke** shows **passed**, with `smoke on smoke-cpu: all 12 candidates were judged as expected (run check-smoke-…)`. While it works, it shows **running**, and its button reads **Running…**. The rig reports to control about once a minute, so the result can show a minute after the check ended.
+   **Judge smoke** shows **passed**, with `smoke on smoke-cpu: all 12 candidates were judged as expected (run check-smoke-…)`. Until then, it shows **running**. The rig reports to control about once a minute, so the result can show a minute after the check ended, as `passed 1m ago`.
 
    If it shows **failed**, the sentence beside it says why. The usual reason on a laptop is a computer too busy for fair timing: close other heavy programs and press **Run it** again. See [A check failed](../how-to/operate/troubleshoot.md#a-check-failed).
 
 ## 7. See what the judge decided
 
-Open the check's run again. The check is over, so its run is no longer under **At work now**, and the table hides rig checks. Ask for them:
+Open the check's run again, this time from **Campaigns**. Its table hides rig checks unless you ask for them:
 
-1. Open **Campaigns** in the sidebar, and choose the filter **Rig checks**, above the table. The table now lists `rig-check-smoke-cpu-…`, marked **rig check**, with `1 finished` under **Runs**.
-2. Choose `rig-check-smoke-cpu-…`. On the campaign's page, under **Earlier runs**, the run `check-smoke-…` shows **Finished**, and **Why it stopped** says `the smoke check is done`.
+1. Open **Campaigns** in the sidebar. Under **All campaigns**, it says `No campaign here.`, then `Rig checks are hidden: they are the smoke runs a rig check starts.` Choose the filter **Rig checks**, above the table. The table now lists `rig-check-smoke-cpu-69c3d2f6`, marked **rig check**, with `1 finished` under **Runs**.
+2. Choose `rig-check-smoke-cpu-69c3d2f6`. On the campaign's page, under **Earlier runs**, the run `check-smoke-…` shows **Finished**, and **Why it stopped** says `the smoke check is done`.
 3. Choose `check-smoke-…`, then the **Attempts** tab at the top of the run's page.
 
 **How the judge decided** counts the judge's **verdicts**, its decision on each change: `invalid 4`, `neutral 3`, `rejected v0 2`, `crash candidate 2` and `win confirmed 1`. Below it, each change is listed by what it tries, and starts with one word for how it ended. Here is what the judge did with some of the twelve:
@@ -129,12 +133,12 @@ Open the check's run again. The check is over, so its run is no longer under **A
 | `skip half of the reduction` | **Broken** | invalid | Its answers were wrong |
 | `call the reference implementation` | **Broken** | invalid | The judge noticed the reference ran |
 | `use a large scratch buffer` | **Broken** | crash candidate | Stopped at the run's memory limit |
-| `time the kernel from inside` | **Judging** | rejected v0 | It adds a timer call, which the rules forbid |
-| `make the reference trivial` | **Judging** | rejected v0 | That file is not the agents' to change |
+| `time the kernel from inside` | **Judging**, though it is final (see below) | rejected v0 | It adds a timer call, which the rules forbid |
+| `make the reference trivial` | **Judging**, though it is final (see below) | rejected v0 | That file is not the agents' to change |
 
 The word sums up the verdict. [Hand the work to agents](agents-with-a-free-model.md) uses these words. The **champion** is the run's best version so far. Champion #1 is the project as the run started, so the first change that beats it becomes champion #2.
 
-`rejected v0` means refused by the first, static checks, before the change was built. Such a change never gets a verdict, so its row shows **Judging** for ever, with `rejected v0` under the change: a known fault ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)). Nothing more happens to it.
+`rejected v0` means refused by the first, static checks, before the change was built. Such a change never gets a verdict, so its row shows **Judging** for ever, with `rejected v0` under the change: a known fault ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)). The judge isn't working on it: nothing more happens to it.
 
 Open **Overview** in the sidebar. Its **What happened** block tells the same story in sentences, newest first. For example: `confirmed faster on fresh runs (+67.1%)` and `became champion #2`.
 
@@ -148,7 +152,7 @@ Thermite can keep running in the background. To stop it:
 docker compose down              # or: podman compose down
 ```
 
-To start it again, run `docker compose up -d` (or `podman compose up -d`). Your campaigns and results are kept between starts.
+To start it again, run `docker compose up -d` (or `podman compose up -d`). Your campaigns and results are kept between starts, and you stay signed in. They are kept in the containers' volumes, so don't add `-v` to `down`: `down -v` deletes the volumes, and everything Thermite has recorded with them.
 
 ## What you did
 

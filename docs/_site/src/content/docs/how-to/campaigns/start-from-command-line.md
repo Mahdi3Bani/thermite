@@ -22,10 +22,18 @@ Run `npx thermite` in your Thermite folder, after `npm ci` and `npm run build` (
 
 - A clone of Thermite with Node.js 22.19 or later. Thermite's images also have the command line, as `thermite`.
 - A contract file. See [Write a contract](write-a-contract.md).
-- For a hill climb or a goal campaign: the project and its [kit](../../reference/glossary.md) in git repositories the rig can fetch, and the kit's full commit in the contract's `project.kit`. See [Write a kit for your project](write-a-kit.md). The contract names the project only by a short name, `project.repo`; its address is given here, with `--seed`.
+- For a hill climb or a goal campaign: the project and its [kit](../../reference/glossary.md) in git repositories the rig can fetch. The contract names each by a short name, and the kit by its full commit too; the addresses are given here, with `--seed` and `--kit`. See [Write a kit for your project](write-a-kit.md).
+
+  ```json title="contract.json (part)"
+  "project": {
+    "repo": "project",
+    "kit": { "repo": "project-kit", "commit": "89abcdef0123456789abcdef0123456789abcdef" }
+  }
+  ```
 - For a private project or kit: `thermite assign` has no option to name a [Git access](private-repository.md). See [If the repository is private](#if-the-repository-is-private).
-- The owner's token in a file. No other token works with these commands. See [Tokens and roles](../../reference/tokens.md).
+- The owner's token in a file. No other token works with these commands. (Over MCP, an operator's or an agent's token can send the same payload: see [Send it from an agent over MCP](#send-it-from-an-agent-over-mcp).) See [Tokens and roles](../../reference/tokens.md).
 - A rig that reports to control. For agents to work, it needs a model: see [Connect a model provider](../models/connect-a-provider.md). If the model uses a paid key, put a limit in the contract first: see [Set a budget or a stop time](budget-and-stop-time.md).
+- A rig runs one run at a time: a new run pauses the run at work on that rig.
 
 ## 1. Validate the contract
 
@@ -66,15 +74,13 @@ With neither `--seed` nor `--seed-commit`, the contract's `project.commit` must 
     http://127.0.0.1:8800/v1/commands/3f6c1d2e-…
   ```
 
-  Its `status` is `pending`, `delivered`, `rejected`, `failed` or `expired`, and `outcome` holds the rig's answer.
-
-Assigning a run pauses the run that was running on that rig: a rig runs one run at a time.
+  Its `status` is `pending`, `delivered`, `rejected`, `failed` or `expired`, and `outcome` holds the rig's answer. `rejected` means the rig refused the command before it tried it, for example because its signature or payload didn't pass the rig's checks; `failed` means the rig tried it and it didn't work, for example because a fetch failed. See [Statuses](../../reference/signed-commands.md#statuses).
 
 ## Start further runs
 
 Assign each further run the same way, with a new `--run` name. Or open the campaign's page on the dashboard and press **Start a run**: choose the rig under **Where it runs**, **Agents** **On** or **Off: a try**, and press **Start the run**. The page is `/ui/campaigns/<name>`, such as `http://127.0.0.1:8800/ui/campaigns/sort-speed`. It opens once the **assign campaign** row on **Commands** is **pending** or **delivered**, even before the rig reports the run. Until the rig does, the **Campaigns** list doesn't show the campaign, and the page says `Assigned to a rig over the API, MCP or the CLI; no run of it reports now.` A campaign saved from the dashboard's **New campaign** page says `Saved on control, with no run yet.` instead.
 
-Control assigns the campaign again as it assigned its newest run, with the same contract, starting commit and imports, as a new run named after the campaign, such as `sort-speed-2`, or `sort-speed-try-1` without agents. **Agents**, and **When a change is confirmed better** under **More options**, come from the panel, not from the old assignment. With **Agents** **On**, **Experiments to start with** can copy another run's untried experiments into the new run's queue: see [Choose what a run tries next](choose-what-runs-next.md#start-a-run-from-another-runs-untried-experiments). `thermite assign` has no option for that. A run on another rig needs that rig to get the project and the kit the same way: see [Run a campaign on several rigs](several-rigs.md).
+Control assigns the campaign again as it assigned its newest run, with the same contract, starting commit and imports, as a new run named `<campaign>-<n>`, or `<campaign>-try-<n>` without agents, with the first number not yet used on that rig, such as `sort-speed-2`. **Agents**, and **When a change is confirmed better** under **More options**, come from the panel, not from the old assignment. With **Agents** **On**, **Experiments to start with** can copy another run's untried experiments into the new run's queue: see [Choose what a run tries next](choose-what-runs-next.md#start-a-run-from-another-runs-untried-experiments). `thermite assign` has no option for that. A run on another rig needs that rig to get the project and the kit the same way: see [Run a campaign on several rigs](several-rigs.md).
 
 ## Send it from an agent over MCP
 
@@ -113,7 +119,7 @@ kubectl cp -n <namespace> project.bundle "$POD":/inbox/repos/project.bundle
 
 Copy the kit's bundle the same way.
 
-Then `thermite assign-payload` names the bundles by their paths inside the inbox, and `thermite command` sends the payload. Use the contract's `project.repo` and `project.kit.repo` for `--seed-repo` and `--kit-repo`: the harness looks for the kit's commit under that name.
+Then `thermite assign-payload` names the bundles by their paths inside the inbox, and `thermite command` sends the payload. Use the contract's `project.repo` and `project.kit.repo` for `--seed-repo` and `--kit-repo`, and its `project.kit.commit` for `--kit-commit`: the harness looks for the kit's commit under that name.
 
 ```sh
 npx thermite assign-payload --contract contract.json --run sort-speed-1 \
@@ -135,18 +141,18 @@ npx thermite command --control http://127.0.0.1:8800 --token-file .dev/secrets/c
 
 ## If it is refused
 
-The command line prints the first five; the others show on **Commands**.
+The command line itself prints a refusal from its own checks or from control. A refusal from the rig shows on **Commands**, in the command's row.
 
-| You see | What to do |
-| --- | --- |
-| `give --control, --token-file and --rig to issue it, or --print to show it` | Add the three options, or `--print` |
-| `the seed commit must be a full commit id (40 or 64 hexadecimal characters)` | Give the whole commit after `@` |
-| `--kit given, but the contract names no project.kit` | Add `project.kit` to the contract |
-| `-> 401 {"error":"unauthorized"}` | Use the owner's token |
-| `bad assign_campaign payload: seed.repo: lowercase id` | Make the contract's `project.repo` a lowercase name, such as `my-project` |
-| `run <id> already exists` | Choose a new run name |
-| `contract <campaign> v<n> exists with other content` | You changed the contract: raise its `version` |
-| **pending**, then **expired** | The rig's supervisor is down, or a large fetch took longer than the command may wait: send it again with a longer `--ttl` |
-| **failed**, `staging: <address> has no commit <commit>`, or git's own error after `staging:` | The rig could not fetch the project or the kit. Check that the address works from the rig and that the commit is pushed there. For a private repository, see [If the repository is private](#if-the-repository-is-private). Then send the same command again: the run was never made |
-| **failed**, `the kit does not fit the contract: …` | The kit lacks a cell, metric or verifier the contract names, or measures on another target: each problem is named, such as `cells names cell large, which the kit does not have`. Correct the contract, or commit the kit again and put its new commit in `project.kit`. Then send it again, with a new `version` if this version already ran on the rig |
-| **failed**, `kit <repo> at <commit> has no valid kit.json: …` | Fix `kit.json` as the message says, commit it, and put the new commit in `project.kit`. See [Write a kit for your project](write-a-kit.md) |
+| You see | Where | What to do |
+| --- | --- | --- |
+| `give --control, --token-file and --rig to issue it, or --print to show it` | The terminal | Add the three options, or `--print` |
+| `the seed commit must be a full commit id (40 or 64 hexadecimal characters)` | The terminal | Give the whole commit after `@` |
+| `--kit given, but the contract names no project.kit` | The terminal | Add `project.kit` to the contract |
+| `-> 401 {"error":"unauthorized"}` | The terminal | Use the owner's token |
+| `bad assign_campaign payload: seed.repo: lowercase id` | The terminal | Make the contract's `project.repo` a lowercase name, such as `my-project` |
+| **failed**, `run <id> already exists` | **Commands** | Choose a new run name |
+| **failed**, `contract <campaign> v<n> exists with other content` | **Commands** | You changed the contract: raise its `version` |
+| **pending**, then **expired** | **Commands** | The rig's supervisor is down, or a large fetch took longer than the command may wait: send it again with a longer `--ttl` |
+| **failed**, `staging: <address> has no commit <commit>`, or git's own error after `staging:` | **Commands** | The rig could not fetch the project or the kit. Check that the address works from the rig and that the commit is pushed there. For a private repository, see [If the repository is private](#if-the-repository-is-private). Then send the same command again: the run was never made |
+| **failed**, `the kit does not fit the contract: …` | **Commands** | The kit lacks a cell, metric or verifier the contract names, or measures on another target: each problem is named, such as `cells names cell large, which the kit does not have`. Correct the contract, or commit the kit again and put its new commit in `project.kit`. Then send it again, with a new `version` if this version already ran on the rig |
+| **failed**, `kit <repo> at <commit> has no valid kit.json: …` | **Commands** | Fix `kit.json` as the message says, commit it, and put the new commit in `project.kit`. See [Write a kit for your project](write-a-kit.md) |

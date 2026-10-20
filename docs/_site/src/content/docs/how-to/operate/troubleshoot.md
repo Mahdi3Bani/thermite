@@ -6,7 +6,7 @@ sidebar:
   order: 8
 ---
 
-Find the problem you see, then follow what to do. A [rig](../../reference/glossary.md) is two containers: the harness, which holds the judge and the agents, and the supervisor, its link to control. Most problems leave a line in a log, so [Where the logs are](#where-the-logs-are) comes first. Most commands below are for the local compose stack; with Podman, write `podman compose` where they say `docker compose`. For a rig on a machine or a cluster, the table below gives the commands that read its logs, and the entries say what to read there.
+Find the problem you see, then follow what to do. The problems are in four groups: [install and sign-in](#install-and-sign-in), [rigs](#rigs), [starting a campaign](#starting-a-campaign), and [runs: trials, messages and the queue](#runs-trials-messages-and-the-queue). A [rig](../../reference/glossary.md) is two containers: the harness, which holds the judge and the agents, and the supervisor, its link to control. Most problems leave a line in a log, so [Where the logs are](#where-the-logs-are) comes first. Most commands below are for the local compose stack; with Podman, write `podman compose` where they say `docker compose`. For a rig on a machine or a cluster, the table below gives the commands that read its logs, and the entries say what to read there.
 
 ## Where the logs are
 
@@ -19,48 +19,50 @@ Every part of Thermite writes one JSON object per line, such as `{"at":"…","co
 | A rig on a cluster, set up by control or joined | `kubectl logs -n <namespace> deployment/thermite-rig-1-supervisor` (or `-harness`) |
 | What a rig did | The rig's page: **Recent** for its history, **Checks** for its checks, and the **Set up by control** or **You run it yourself** block for each setup step. For a rig control set up, the MCP tool `rig_setup` lists the same steps |
 | What a run's agents and advisors are doing | **Live** in the sidebar, or **Live** on the run's page: the run's lines as they come. Choose **Advisors** for each step of the advisors' rounds, with each advisor error and its reason. Choose **You** for your messages, who read them and the advisors' answers |
-| What control did, refused or failed at | **Audit log** in the sidebar (the newest 300 entries), `GET /v1/audit`, or the MCP tool `control_log`. Dashboard refusals are entries named `refused`, and requests that ended in an error are named `failed`, each with the reason (for a refusal shown as a plain page, such as `bad form token`, only its HTTP status) |
+| What control did, refused or failed at | **Audit log** in the sidebar (the newest 300 entries), `GET /v1/audit`, or the MCP tool `control_log`. Refusals, from the dashboard or an MCP tool, are entries named `refused`, and requests that ended in an error are named `failed`, each with the reason (for a refusal shown as a plain page, such as `bad form token`, only its HTTP status) |
 | Where each command went | **Commands** in the sidebar: each command's status (`pending`, `delivered`, `rejected`, `failed`, `expired`) and the rig's answer in **Outcome** |
 
 There is no single Logs page yet ([goal 027](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/027-logs-page.goal)).
 
-## Compose won't start: a secret file is missing
+## Install and sign-in
+
+### Compose won't start: a secret file is missing
 
 - **You see:** `docker compose up` stops with an error about a file in `.dev/secrets/`.
 - **Why:** the local tokens don't exist yet. `compose.yaml` reads them from `.dev/secrets/`.
 - **Do:** run `npm run dev:init` in the repository's top folder, then start again.
 
-## Control stops at start: `control needs the owner's credential`
+### Control stops at start: `control needs the owner's credential`
 
 - **You see:** control keeps restarting, and `docker compose logs control` has a `fatal` line that says `control needs the owner's credential`.
 - **Why:** control has no owner's token. After you switch to an owner's token of your own, the token file is empty on purpose, and only the override file gives control the hash.
 - **Do:** start the stack with both files: `docker compose -f compose.yaml -f compose.tokens.yaml up -d`. See [Use an owner's token of your own](../install/one-machine.md#use-an-owners-token-of-your-own).
 
-## Control stops at start: `EPERM` on `control-signing.key`
+### Control stops at start: `EPERM` on `control-signing.key`
 
 - **You see:** control keeps restarting, and its log has a `fatal` line with `EPERM: operation not permitted, chmod '/var/lib/thermite-control/control-signing.key'`.
 - **Why:** you added `compose.lifecycle.yaml` to a stack that had already run. See [Give control a deployment driver](rig-lifecycle.md#give-control-a-deployment-driver).
 - **Do:** start the stack again without that file.
 
-## The port is already in use
+### The port is already in use
 
 - **You see:** `docker compose up` fails because port 8800 is taken.
 - **Why:** another program, or another Thermite stack, uses port 8800 on your computer.
 - **Do:** choose another port: `THERMITE_CONTROL_PORT=8801 docker compose up -d`, or put `THERMITE_CONTROL_PORT=8801` in a `.env` file next to `compose.yaml`. The dashboard is then at `http://127.0.0.1:8801/ui`.
 
-## The harness restarts at the first start
+### The harness restarts at the first start
 
 - **You see:** the harness's log has `timed out waiting for /keys/control-signing.pub`, and it starts again.
 - **Why:** control writes its public key when it first starts, and the harness waits only two minutes for it.
 - **Do:** nothing. The harness starts again by itself and finds the key.
 
-## The first build is slow
+### The first build is slow
 
 - **You see:** `docker compose up -d --build` takes 20 minutes or more.
 - **Why:** it builds three images from source, and the harness image installs compilers, Python and agent programs. A GPU image's base is a large download too.
 - **Do:** wait for it once. Later, start without `--build` (`docker compose up -d`) to reuse the images, and rebuild only what changed, for example `docker compose build harness`.
 
-## The Podman VM runs out of disk or memory
+### The Podman VM runs out of disk or memory
 
 - **You see:** builds fail partway, or the VM's disk fills up. `podman system df` shows how much the images and volumes take.
 - **Why:** on a Mac, Podman runs containers in a VM. Each build leaves old image layers behind, and each lane's compiler cache can grow to 8 GB.
@@ -73,7 +75,7 @@ podman machine ssh sudo fstrim -a  # give the freed space back to your Mac
 
 Never prune tagged images: they may belong to other projects. For more memory or CPUs, stop the VM and change it with Podman's own command, `podman machine set --memory <MiB> --cpus <n>`.
 
-## Sign-in comes back with no message
+### Sign-in comes back with no message
 
 - **You see:** after **Sign in**, the sign-in page shows again.
 - **Why:** the token is not the owner's. Only the owner's token signs in; an operator's, agent's or reader's token can't. A token with a space or a missing character fails too.
@@ -81,13 +83,15 @@ Never prune tagged images: they may belong to other projects. For more memory or
 
 A sign-in also ends when the owner's token changes, or after 30 days without use.
 
-## A button answers `bad form token`
+### A button answers `bad form token`
 
 - **You see:** a plain page that says `bad form token` after you press a button.
 - **Why:** the page was opened before your current sign-in, for example before you signed in again in another tab.
 - **Do:** go back, reload the page and press the button again.
 
-## A rig is quiet
+## Rigs
+
+### A rig is quiet
 
 - **You see:** the rig shows **Not reporting**, or never appears on **Rigs**.
 - **Why and do:** read the supervisor's log. Most causes show in a `relay error` line:
@@ -104,13 +108,13 @@ A sign-in also ends when the owner's token changes, or after 30 days without use
 
 A rig control set up on a machine or a cluster may also still be pulling its images. Its setup steps say `no report after 10 minutes: it may not have started` when it took longer than that; it may still report later. For a rig on a cluster, see [A rig on a cluster never reports](#a-rig-on-a-cluster-never-reports).
 
-## Pushes to the results repository fail with `@@@@@@@@@`
+### Pushes to the results repository fail with `@@@@@@@@@`
 
 - **You see:** the **Results** row on the rig's page says `push failed: Command failed: git … push …` and `@@@@@@@@@`.
 - **Why:** ssh refused the deploy key. On a Mac with Podman, it refuses a key file at mode 644.
 - **Do:** see [Set up the results repository](results-repository.md#3-give-the-supervisor-the-three-settings).
 
-## A rig on a cluster never reports
+### A rig on a cluster never reports
 
 - **You see:** in the rig's **Set up by control** block, the step "First report reached control" has ✕ and `no report after 10 minutes: it may not have started`, and the block says `failed`.
 - **Why:** its pods have not started, or its supervisor can't reach control. Often the nodes are still pulling the large images. A pod stays `Pending` when no node has room for what it asks, such as its GPUs, CPUs, memory or volume. It shows `ImagePullBackOff` when the nodes can't pull the images: a registry that needs a sign-in is not supported yet ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)).
@@ -122,7 +126,7 @@ A rig control set up on a machine or a cluster may also still be pulling its ima
   kubectl logs -n <namespace> deployment/thermite-rig-1-supervisor          # relay errors, as in the table above
   ```
 
-  When the rig reports later, the block says `running` again, and a ✓ step follows the ✕: "A report reached control from the new images · it reported again after the wait ended". The ✕ stays in the list.
+  When the rig reports later, the block says `running` again, and a ✓ step follows the ✕: "A report reached control from the new images · it reported again after the wait ended". A first setup shows this same line, although no images changed. The ✕ stays in the list.
 
 After **Update to these images**, **Start its pods** or **Restart them** ([Stop, restart, remove or reset a rig](rig-lifecycle.md#a-rig-on-a-cluster)), the same can happen to the new pods, with other steps:
 
@@ -131,21 +135,21 @@ After **Update to these images**, **Start its pods** or **Restart them** ([Stop,
 
 Either way, the block says `failed`. A rig you stop or remove while control waits never gets these ✕ steps: the stop or the removal ends the wait. Fix the cause: the pods keep trying by themselves, for example once the nodes can pull the image. When the rig reports again, the block says `running`, with the ✓ step above.
 
-To have control apply the images again and wait once more, press **Try the update again** in the block. It shows while the status says `failed`, after the line "The last change to its pods failed (see the steps above)." See [Try again after a failure](rig-lifecycle.md#try-again-after-a-failure). Over MCP, `update_rig_images` does the same. Either answers `rig-1's pods restart on control's images again (a retry).` If the new images themselves are at fault, set control's image settings back to the old ones, restart control, and press **Update to these images**. An older harness may refuse a ledger that a newer one opened: see [The harness stops at start: the ledger is newer](#the-harness-stops-at-start-the-ledger-is-newer).
+To have control apply the images again and wait once more, press **Try the update again** in the block. It shows while the status says `failed`, after the line "The last change to its pods failed (see the steps above)." See [Try again after a failure](rig-lifecycle.md#try-again-after-a-failure). Over MCP, `update_rig_images` does the same. Either answers `rig-1's pods restart on control's images again (a retry).` If the new images themselves are at fault, you can go back to the old ones while the new harness never opened the rig's ledger, for example when the new pods never ran: see the caution "Going back to older images" in [A rig on a cluster](rig-lifecycle.md#a-rig-on-a-cluster). If the new harness did run, the older one may refuse the ledger: see [The harness stops at start: the ledger is newer](#the-harness-stops-at-start-the-ledger-is-newer).
 
-## The harness stops at start: the ledger is newer
+### The harness stops at start: the ledger is newer
 
 - **You see:** the harness keeps restarting, and its log has a `fatal` line with `this ledger is at schema version 13, newer than this code's 12: run a newer Thermite, or restore the ledger from before the upgrade` (the numbers vary).
 - **Why:** a newer harness opened the rig's ledger and upgraded it. An older harness never opens a newer ledger, so that it can't damage the record.
-- **Do:** run the newer harness image again: on the compose stack, rebuild from the newer commit; on a rig on a cluster, set control's images to the newer ones and press **Update to these images**. Going back to an older version needs the ledger from before the upgrade ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
+- **Do:** run the newer harness image again: on the compose stack, rebuild from the newer commit; on a rig on a cluster, set control's images to the newer ones and press **Update to these images**. The older harness changed nothing, so the rig goes on from where it was. Going back to an older version needs the ledger from before the upgrade ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
 
-## A join command stops at a check and then doesn't work
+### A join command stops at a check and then doesn't work
 
 - **You see:** the join command stops with a line such as `thermite: Podman is missing: install Podman 4.4 or later, then make a new join command`. Run again, it fails with curl's `The requested URL returned error: 401`.
 - **Why:** a join command works once. It is used up when the machine fetches its script, before the script checks the machine ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)). The checks run before anything is written, so nothing was set up. In a namespace, a `kubectl apply` that fails uses the command up too.
 - **Do:** fix what the message names. Then, on the rig's page, press **Make a new join command** and run the new one. After a failed check there is nothing to remove first, although the card asks you to. See [Join a rig yourself](../install/join-a-rig.md#4-make-a-new-one-or-revoke-it).
 
-## A check failed
+### A check failed
 
 - **You see:** **Model route**, **Isolation** or **Judge smoke** shows **failed**.
 - **Do:** read its sentence, and see [Check a rig](check-a-rig.md#read-the-result).
@@ -155,7 +159,7 @@ Two causes are common on a laptop:
 - `not now: …`: the rig has open trials or judge jobs. Make it idle as [Check a rig](check-a-rig.md#before-you-start) says, then run the check again.
 - **Judge smoke** fails with some candidates "judged otherwise", and the harness's log has `job failed` lines that say `target not ready for timing: load … above 75% of … cores`. The computer was too busy for fair timing. Close other heavy programs and run the check again.
 
-## The isolation check failed
+### The isolation check failed
 
 - **You see:** **Isolation** shows **failed**, with `isolation does NOT hold (devices: …):` and up to 12 items such as `agent-1 ledger: ALLOWED`.
 - **Why:** each item is a role and a probe. `ALLOWED`: the role's user reached something it must not, such as the judge's files or a secret. `UNREADABLE`, `UNREACHABLE` or `WRONG GPUS`: a role was refused something it needs, or saw other GPUs than its own. `the device setup failed`: the rig's GPUs could not be split between the judge and the agents; the `devices:` part says why.
@@ -167,13 +171,15 @@ Two causes are common on a laptop:
 
   If it still fails on Thermite's own image, ask for help with the whole sentence: see [Still stuck?](#still-stuck).
 
-## A rig can't reach a model server on your network
+### A rig can't reach a model server on your network
 
 - **You see:** **Model route** fails with `no answer in 120 s (is the model up?)`, or with `no tool call:` and a connection error, while the server answers on your computer.
 - **Why:** the rig calls the model from its harness container. Inside a container, `localhost` is the container itself. A rig on a cluster reaches only DNS and addresses outside the private ranges, so a server on a private address is out of its reach.
 - **Do:** on the local stack, use `host.docker.internal` in the provider's address (`host.containers.internal` with Podman). Give a rig on a cluster a hosted provider. See [Choose a model](../models/choose-a-model.md#2-a-model-server-on-your-own-computer).
 
-## A campaign doesn't start: `staging:`
+## Starting a campaign
+
+### A campaign doesn't start: `staging:`
 
 - **You see:** the run never appears. On **Commands**, in the sidebar, the **assign campaign** row is **failed**, and its **Outcome** holds `{"error":"staging: …"}`. The supervisor's log has a `staging failed` line with the same error, then `command not relayed`.
 - **Why:** before the rig takes a campaign, its supervisor fetches the project, the kit and any model the command names. That fetch failed. The supervisor's log line `staged sources` means it worked.
@@ -186,19 +192,19 @@ Two causes are common on a laptop:
 | `Command failed: git …` and git's message, such as `Host key verification failed` or `Permission denied (publickey)` | The rig can't read the repository. Give the campaign a [Git access](../campaigns/private-repository.md), or check the address |
 | `<url>: HTTP <status>`, or `<url>: sha256 …, not …` | A model's address answered with an error, or its file is not the one the contract names |
 
-## A campaign doesn't start: the kit does not fit the contract
+### A campaign doesn't start: the kit does not fit the contract
 
 - **You see:** the run never appears. On **Commands**, the **assign campaign** row is **failed**, and its **Outcome** has `the kit does not fit the contract:` and what doesn't fit, such as `cells names cell large, which the kit does not have` or `the kit measures on cuda-gpu, and this rig's target is cpu`.
 - **Why:** when the rig takes a campaign, it checks the contract against the kit's `kit.json`. Every test case (a "cell" in `kit.json` and the contract), metric and verifier the contract names must be in the kit, and the kit's target must be the rig's. A kit with a broken `kit.json` fails with `has no valid kit.json:` instead.
 - **Do:** fix the contract or the kit, then start the campaign again. See [Write a contract](../campaigns/write-a-contract.md) and [Write a kit](../campaigns/write-a-kit.md). For a kit described or uploaded on the **New campaign** page, the page runs the same check before it sends anything.
 
-## Agents don't start
+### Agents don't start
 
 - **You see:** the harness's log says `agents wait for a model route`, and no trials start. Or the **New campaign** page won't start the run: `rig-1 has no model for its agents, so they could not work: choose one under "The agents' model".` On a campaign's page, **Start a run** says **Not started.** and `rig-1 has no model for its agents, so they could not work: choose one under "The agents' model", or give it one on its Edit rig page.`
 - **Why:** the rig has no model yet. A run without agents (**Agents**: **Off: a try**) needs none.
-- **Do:** [connect a model provider](../models/connect-a-provider.md) and give the rig one of its models, on **Settings › Providers**, or under **The agents' model** on the **New campaign** page or in the **Start a run** panel. From **Start a run**, control gives the rig the model first and says `rig-1 takes <model> within a minute. When the rig shows it, start the run again.`: press **Start a run** again once the rig's page shows the model. Until the rig has taken a model that control gave it, **Start a run** says **Not started.** and `rig-1 has not taken <model> yet (it does within a minute of being given it): start the run once its page shows that model.` If six trials in a row had already failed, the agents rest for 30 minutes; a new model, or resuming the run, ends that rest at once.
+- **Do:** [connect a model provider](../models/connect-a-provider.md) and give the rig one of its models, on **Settings › Providers**, or under **The agents' model** on the **New campaign** page or in the **Start a run** panel. The rig takes it within a minute. Until then, **Start the campaign** saves the campaign instead of starting it, and **Start the run** starts nothing: [When the rig doesn't have the model yet](../campaigns/start-from-dashboard.md#when-the-rig-doesnt-have-the-model-yet) says where to see that the rig has the model, and how to start the run then. If six trials in a row had already failed, the agents rest for 30 minutes; a new model, or resuming the run, ends that rest at once.
 
-## A research campaign's trials all end in errors
+### A research campaign's trials all end in errors
 
 - **You see:** each trial of a research run ends at once with an error that names the model.
 - **Why:** research workers run in Pi or OpenCode v2, and the rig's model can't serve them there:
@@ -211,53 +217,31 @@ Two causes are common on a laptop:
 
 The dashboard refuses to start a research run with agents in the last case. A run started from the command line, or on a rig whose model changed after the start, can still meet it. See [Write a contract](../campaigns/write-a-contract.md#4-write-a-research-campaign).
 
-## A trial stopped without a "trial ended" line
+## Runs: trials, messages and the queue
+
+### A trial stopped without a "trial ended" line
 
 - **You see:** in a run's **Live**, a lane's trial started, but no "trial ended" line follows it. The lane's next trial may already have started.
 - **Why:** the rig's harness restarted while the trial ran, for example after **Restart them**, **Update to these images**, a restart with your compose tool, or a crash. A restart stops the running trials. When the harness starts again, it closes them as `interrupted`, without a "trial ended" line. Control shows a trial as working only while the rig says it is at work, or for 15 minutes after its last line.
 - **Do:** nothing. The lane goes on with a new trial, and a change the trial had already submitted stands. The trial's experiment goes back to the top of the queue: see [An experiment came back at the top of the queue](#an-experiment-came-back-at-the-top-of-the-queue).
 
-## A message to the agents was refused
+### A message to the agents was refused
 
 - **You see:** after **Send** in **Live**, your message never shows in the stream. Above the message box, a strip says **Not sent.** and why:
   - when control refused the message, its reason shows at once;
   - when the rig refused it, the strip says `The rig refused your last message:` and the rig's reason. It shows once the rig has answered, so press **refresh** in the status bar after a few seconds.
 
   On **Commands**, the message's **message agent** row is **failed**, with the rig's reason in **Outcome**. The strip stays until a later message to the run goes through. It also shows the rig's refusal of a message sent over MCP, the REST API or the command line.
-- **Why:** the rig refuses a message that nothing would read, rather than keep it waiting for ever. The **To** list in **Live** greys out most of these recipients, with the reason, but a message sent over MCP or the REST API can still meet them:
+- **Why:** the rig refuses a message that nothing would read, such as one to a lane the run doesn't have, to a part that is off on **Edit rig**, or to the planner of a research run. The reason says which; [`message_agent`](../../reference/signed-commands.md#message_agent) lists every reason.
+- **Do:** write to a recipient that the **To** list in **Live** doesn't grey out, or switch the part on, on **Edit rig**. If the message isn't on **Commands** at all, control refused it before signing it: the **Audit log** has it as a `refused` entry. A message from **Tell the planner**, on a run's **Planner** tab, shows its refusal in that card, above the box.
 
-| Reason in **Outcome** | Do |
-| --- | --- |
-| `run run-1 has no agents (the judge alone tries the kit): nothing would read this message` | The run is a try, without agents: nothing reads a message to everyone working, a lane, a trial or the planner. Write to the advisors, or start a run with agents |
-| `a research run plans its rounds with a fixed method; it has no planner to message` | Write to everyone working, or to a lane |
-| `the planner is off on this rig (Edit rig), so nothing would read this message`, or the same for the teacher pair, the auditor or the review panel | Switch the part on, on **Edit rig**, or write to someone else |
-| `a research run has no audits, so the auditor would never read this message` | Write to the teachers instead |
-| `this run has no goal the review panel reviews, so the panel would never read this message` | The panel reads messages only in a goal run with a goal it reviews |
-| `none of the advisors would read this message:` and each one's reason | As above, for each advisor |
-| `run run-1 has 2 lanes` | Choose a lane the run has |
-| `run run-1 is closed: nothing will read this message` | The run has finished: nothing reads messages there |
-
-If the message isn't on **Commands** at all, control refused it before signing it. **Live** shows control's reason in the **Not sent.** strip, and the **Audit log** has it as a `refused` entry.
-
-A message from **Tell the planner**, on a run's **Planner** tab, shows its refusal in that card, above the box: **Not sent.** and control's reason at once, or `The rig refused your last message to the planner:` and the rig's reason once the rig has answered. It stays until a later message to the planner goes through.
-
-The rig itself checks only the **Edit rig** switches. So a message sent over MCP, the REST API or the command line to an advisor that has no model is accepted, and nothing reads it until you give the role a model ([Configure advisors](advisors.md)). **Live** greys such a role out, once the rig's supervisor has reported which advisors it has: `This rig's supervisor has no auditor set up, so nothing would read it.`
-
-## A message shows, but nobody reads it
+### A message shows, but nobody reads it
 
 - **You see:** your message shows in **Live**, but no "✓ … read your message" line follows.
-- **Why:** each agent reads a message at a set time, and the box's placeholder says when:
-  - a Pi worker at its next step;
-  - an OpenCode or Claude Code worker when its current run ends without a submission, which can take many minutes;
-  - a worker that has already submitted doesn't read it: its lane's next trial does;
-  - a new trial reads the messages in its brief once its agent is at work, at the agent's first line or first turn; the "✓ … read your message" line comes then. A trial that fails before that leaves them for the lane's next trial;
-  - the planner at its next plan, and only when its model answers;
-  - the teachers in a round that starts at once, for a run that is running. At the advisors' [daily spending limit](advisors.md#spending), no round starts: **Live** says so once under **Advisors**, for example `the advisors reached the day's spending limit (20 USD): the teacher pair reads your message after midnight UTC`;
-  - the auditor and the review panel only with their next audit or review, which come only when the judge holds a result for audit or a goal waits for review. Their read counts only once that audit or review is posted, so one that fails gives them the message again;
-  - when the rig hasn't said which program runs its agents, the placeholder says only that each agent reads it `when it can`.
-- **Do:** wait. To have every new trial of a lane, or of all lanes, read a message, keep it in force with 📌 when you send it. [Steer a run](../campaigns/steer-a-run.md) has more on messages.
+- **Why:** each agent reads a message at a set time, and the box's placeholder says when. An OpenCode or Claude Code worker, for example, reads it only when its model stops by itself, which can take many minutes; the auditor and the review panel only with their next audit or review. [When each agent reads it](../campaigns/steer-a-run.md#when-each-agent-reads-it) gives each reader's timing.
+- **Do:** wait. To have every new trial of a lane, or of all lanes, read a message, keep it in force with 📌 when you send it.
 
-## A change to the queue or a rule didn't take
+### A change to the queue or a rule didn't take
 
 Each run has an [experiment queue](../campaigns/choose-what-runs-next.md): the experiments up next, in order, which the planner gives to free lanes, and the lanes' ideas, which wait for the planner or you.
 
@@ -275,15 +259,15 @@ A reason about one experiment names its state, then the rule: `only queued exper
 | `experiment x-… is queued, not a proposed idea` | The planner queued the idea before you pressed **Queue it** |
 | `no experiment x-… in run run-1` | The run has no experiment with that id |
 | `no rule 4 in force in run run-1` | The rule was removed already, or replaced, for example by the teachers' next set of rules |
-| `run run-1 is closed: its queue no longer changes` | The run has finished |
+| `run run-1 is closed: its queue and rules no longer change` | The run has finished |
 
-## An experiment came back at the top of the queue
+### An experiment came back at the top of the queue
 
 - **You see:** an experiment that a lane already worked on is first under **Up next** again. Its reason starts with `tried again: its trial on lane-2 was interrupted` or `… failed`, and the old experiment's id.
 - **Why:** when a trial ends because it was interrupted, by **Pause**, **Restart the lanes** or a restart of the harness, or because of an error, its experiment was not really tried. It is marked as done, and a copy goes to the top of the queue, with the same author.
 - **Do:** nothing, or press **Drop** on it if it should not be tried again. A trial that ended for another reason, such as its time running out, doesn't come back.
 
-## History says a round followed the fixed rules
+### History says a round followed the fixed rules
 
 - **You see:** in a run's **History**, a round's line says why the planner's model didn't plan it, such as `The planner planned round 3 (by the fixed rules: no model): lane-1 on loop-tiling.` The words in brackets name the cause:
   - `(by the fixed rules: the model gave no usable plan, because …)`: in two tries, the model didn't answer or gave a plan that code refused. The reason after `because` is the first problem;
@@ -291,7 +275,7 @@ A reason about one experiment names its state, then the rule: `only queued exper
   - `(by the fixed rules: the planner is off on this rig (Edit rig))`: the **Planner** switch is off on **Edit rig**.
 
   The planner's line in **Live** says the same, such as `round 3: taken from the queue by the fixed rules (no model)`.
-- **Why:** the lanes took experiments from the queue in order, by fixed rules: they skip directions that an **Avoid** rule names, and take those that an **Always** rule, then a **Try** rule, names first. Only a rule that names a direction the run has used applies this way; rules in other words are applied only by the planner's model.
+- **Why:** the lanes took experiments from the queue in order, by fixed rules: they skip directions that an **Avoid** rule names, and take those that an **Always** rule, then a **Try** rule, names first. The fixed rules use only rules that name a direction, such as `loop-tiling`; a rule in your own words applies only when the planner's model plans. See [Give the planner a rule](../campaigns/choose-what-runs-next.md#give-the-planner-a-rule).
 - **Do:** nothing is lost: the run goes on. If it happens every round, open the run's **Planner** tab. The **The planner** card names the planner's model, or says `No model: the lanes take the queue in order and keep to the rules.`, and counts the hand-outs made by the model and those made in queue order. Give the planner a model on **Edit rig**, or switch it on there ([Give each agent its own model](../models/model-per-agent.md)).
 
 ## Something was refused
@@ -300,10 +284,10 @@ Thermite says why it refuses something. Where you see it depends on how you aske
 
 - **The dashboard** shows `Not done.` and the reason on the rig and Providers pages, `Not started.` in a campaign's **Start a run** panel, and `Not sent.` above the message box in a run's **Live** and in the **Tell the planner** card of its **Planner** tab. Some actions answer with a plain page that says `refused:` and the reason: use your browser's **Back** button. A command that control sent but the rig refused shows as **failed** on **Commands**, as for the [queue](#a-change-to-the-queue-or-a-rule-didnt-take).
 - **The REST API** answers `401 {"error":"unauthorized"}` for a token that isn't the owner's, and `400 {"error":"invalid request"}` for a body with a wrong field, without saying which. Other refusals answer **500** with the reason, for example `{"error":"unknown rig rig-9"}` or `{"error":"bad pause_run payload: run: …"}`.
-- **MCP** tools answer `{"error":"…"}` with the reason. A command kind that the token may not issue, such as `queue_add` with an agent's token, fails the tool's own input check with `Input validation error` instead.
+- **MCP** tools answer `{"error":"…"}` with the reason, and control's audit log has it as a `refused` entry, with the tool's name. A command kind that the token may not issue, such as `queue_add` with an agent's token, fails the tool's own input check with `Input validation error` instead, and leaves no audit entry.
 - **A rig** that refuses a command marks it `rejected` or `failed` on **Commands**, with the reason in **Outcome**. For example, `not now: …` for a busy rig, or `<kind> is the owner's to issue, not …'s` for a command only the owner may give.
 
-Control writes the dashboard's `Not done.`, `Not started.` and `refused:` answers, its own `Not sent.` refusals of a message, and failed requests, to its audit log as well. To list them over MCP, call `control_log` with `action: "refused"` or `action: "failed"`.
+Control writes the dashboard's `Not done.`, `Not started.` and `refused:` answers, its own `Not sent.` refusals of a message, the MCP tools' refusals, and failed requests, to its audit log as well. To list them over MCP, call `control_log` with `action: "refused"` or `action: "failed"`.
 
 ## Still stuck?
 

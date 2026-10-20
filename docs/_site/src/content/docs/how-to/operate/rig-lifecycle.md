@@ -23,14 +23,14 @@ The buttons below are on the rig's page: open **Rigs** in the dashboard's sideba
 
 ## Stop and start
 
-**A rig set up by control** has a **Set up by control** block on its page. Press **Stop its services** (a machine) or **Stop its pods** (a cluster). The block shows `stopped`, and the button becomes **Start its services** or **Start its pods**. Its runs stay as they are. After three minutes without a report, the rig shows **Not reporting** until you start it again.
+**A rig set up by control** has a **Set up by control** block on its page. Press **Stop its services** (a machine) or **Stop its pods** (a cluster). The block shows `stopped`, and the button becomes **Start its services** or **Start its pods**. Its runs keep their status and their records. A stop ends the trials at work, as a [restart](#restart) does: when the rig starts again, the harness closes them as interrupted, their experiments go back to the top of the queue, and the judge's jobs start again. After three minutes without a report, the rig shows **Not reporting** until you start it again.
 
 **On a cluster, a start takes a few minutes.** After **Start its pods**, the page says `Started.`, and the block's status, at the right of its heading, says `starting`. Control waits up to 15 minutes for the rig's pods to run, then up to 10 minutes for a report from the rig. Press **refresh** in the status bar, the line along the bottom of the page, to follow it:
 
 - Two steps get a ✓, "Its pods run again" and "A report reached control after the start", and the status says `running`.
-- If a step gets ✕ instead, the status says `failed`: see [A rig on a cluster never reports](troubleshoot.md#a-rig-on-a-cluster-never-reports). The block then offers **Try the update again**: see [Try again after a failure](#try-again-after-a-failure).
+- If a step gets ✕ instead, the status says `failed`: see [A rig on a cluster never reports](troubleshoot.md#a-rig-on-a-cluster-never-reports). The block then offers **Try the update again**, also after a start: it applies the same images again and waits once more. See [Try again after a failure](#try-again-after-a-failure).
 
-**One change at a time on a cluster.** While the status says `starting` or `updating`, control refuses a start, a restart and an image update. It refuses the update before it compares any images, so even a rig that already runs control's images gets the refusal. The page shows a card that starts with **Not done.** and the reason, such as `rig-1 is starting: wait until its page shows it running, or failed.` **Stop its pods** and **Remove the rig** are never refused for this. They also end control's wait for the pods and the report, so a rig you stopped or removed during a start or an update doesn't turn `failed` later.
+**One change at a time on a cluster.** While the status says `starting` or `updating`, control refuses a start, a restart and an image update. The page shows a card that starts with **Not done.** and the reason, such as `rig-1 is starting: wait until its page shows it running, or failed.` **Stop its pods** and **Remove the rig** are never refused for this. They also end control's wait for the pods and the report, so a rig you stopped or removed during a start or an update doesn't turn `failed` later.
 
 **A rig you joined yourself** has a **You run it yourself** block. Open "Stop, start, restart or remove it: you run these there", and run the **Stop** or **Start** command where the rig runs. Control can't reach that place, so it can't do it for you.
 
@@ -46,20 +46,18 @@ A restart stops and starts the rig's two containers: its harness, which holds th
 
 ### Give control a deployment driver
 
-A deployment driver lets control restart a rig's containers itself: with the **Restart the rig's containers** button in the **⋯** menu of the rig's page, over the REST API, and at the end of a full reset. Without one, the menu says `No deployment driver: restarts are not available.` You don't need one for the steps on this page. It is the setting `THERMITE_LIFECYCLE` on control.
+You don't need a deployment driver for the steps on this page. With one, control also restarts a rig's containers itself: with **Restart the rig's containers** in the **⋯** menu of the rig's page, over the REST API, and at the end of a full reset. Without one, the menu says `No deployment driver: restarts are not available.` The setting is `THERMITE_LIFECYCLE` on control: `compose` or `kubernetes` (the [settings reference](../../reference/settings.md#restarts-and-full-resets) has the others).
 
-- **`compose`** restarts the compose stack's containers through the container engine's socket. The file `compose.lifecycle.yaml` mounts the socket into control and sets the driver. It is meant for development, because the socket gives control power over every container on the computer. With rootless Podman, give the path that `podman info` prints, without `unix://`:
+On the compose stack, the file `compose.lifecycle.yaml` sets `compose` and mounts the container engine's socket into control. It is meant for development, because the socket gives control power over every container on the computer. With Docker, add it to your `-f` options. With rootless Podman, also give the socket's path, as `podman info --format '{{.Host.RemoteSocket.Path}}'` prints it, without `unix://` (on a Mac, use the path as it is):
 
-  ```sh
-  podman info --format '{{.Host.RemoteSocket.Path}}'   # prints unix:// and the socket's path
-  THERMITE_ENGINE_SOCKET_HOST=/run/user/1000/podman/podman.sock \
-    podman compose -f compose.yaml -f compose.lifecycle.yaml up -d
-  ```
+```sh
+THERMITE_ENGINE_SOCKET_HOST=/run/user/1000/podman/podman.sock \
+  podman compose -f compose.yaml -f compose.lifecycle.yaml up -d
+```
 
-  On a Mac, the path it prints is inside the Podman machine, where the containers run: use it as it is. With Docker, leave out `THERMITE_ENGINE_SOCKET_HOST`: the file uses `/var/run/docker.sock`. The driver finds each rig's containers by the compose project, `thermite`, and their service names in `THERMITE_COMPOSE_SERVICES`; `compose.yaml` sets both (`THERMITE_COMPOSE_PROJECT` and `THERMITE_COMPOSE_SERVICES`) for `local-1` and `local-2`.
+Use the file from the stack's first start. Added to a stack that has already run, control stops at start, with `EPERM` on `control-signing.key` in its log ([Troubleshoot](troubleshoot.md#control-stops-at-start-eperm-on-control-signingkey)). Thermite can't add the driver to such a stack yet. Start again without the file, and control comes back as it was.
 
-  Use the file from the stack's first start. Added to a stack that has already run, control stops at start, and its log has a `fatal` line with `EPERM: operation not permitted, chmod '/var/lib/thermite-control/control-signing.key'`: with the file, control runs as root, without the right to change the key file that it made as its own user before. Thermite can't add the driver to such a stack yet. Start again without the file, and control comes back as it was.
-- **`kubernetes`** is for a control that you run inside a Kubernetes cluster yourself; Thermite ships no manifest for that yet ([goal 058](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/058-helm-and-npm.goal)). Rigs that control sets up on a cluster don't need it: they have **Restart them**. The driver deletes the rig's pods, and their deployments start new ones. Control uses its own service account in the cluster, or the API server, token and CA in `THERMITE_K8S_API`, `THERMITE_K8S_TOKEN_FILE` and `THERMITE_K8S_CA_FILE`. It needs the right to get, list and delete pods in each rig's namespace. `THERMITE_K8S_NAMESPACE` names that namespace, with `{rig}` for the rig's name. Its default is `ar-{rig}`, which is not `thermite-{rig}`, the default name of the namespaces that control creates, so set it to match your rigs' namespaces.
+The `kubernetes` driver is for a control that you run inside a cluster yourself; Thermite ships no manifest for that yet ([goal 058](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/058-helm-and-npm.goal)). Rigs that control sets up on a cluster don't need it: they have **Restart them**.
 
 With a driver, you can also restart over the REST API with the owner's token. The examples use the owner's token file of the local stack, `.dev/secrets/control-admin-token`. If you made an owner's token of your own, use its file instead. The body is optional; without it, both parts restart:
 
@@ -121,7 +119,7 @@ What changes and what stays:
 - **A trial in progress stops**, as with a restart. When the harness starts again, it closes the trial as interrupted, and the lane goes on with a new one. The trial's experiment goes back to the top of the run's [experiment queue](../campaigns/choose-what-runs-next.md).
 
 :::caution[Going back to older images]
-A newer harness may upgrade the rig's ledger when it opens it, and an older harness refuses a ledger that a newer one upgraded. So moving a rig back to older images may leave it unable to start: see [The harness stops at start: the ledger is newer](troubleshoot.md#the-harness-stops-at-start-the-ledger-is-newer). Thermite can't roll a rig back yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
+Thermite has no rollback ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)). To go back, set control's image settings to the old images, restart control, and press **Update to these images**. This works when the new harness never opened the rig's ledger, for example when the new pods never ran. A newer harness that ran may have upgraded the ledger, and an older harness refuses such a ledger before it changes anything: it stops at start, as [The harness stops at start: the ledger is newer](troubleshoot.md#the-harness-stops-at-start-the-ledger-is-newer) says. Nothing is lost then: move the rig onto the newer images again.
 :::
 
 Over MCP, the owner's and an operator's tokens do the same with `update_rig_images`. They stop, start and restart the rig with `cluster_rig`, for example `{"rig": "rig-1", "action": "start"}`; it has no `remove`. `rig_setup` shows the rig's status and each step: see [From an agent or a script](../install/rig-on-a-cluster.md#from-an-agent-or-a-script). The REST API has no route for these.
@@ -147,11 +145,18 @@ When you move control to a new address, set `THERMITE_CONTROL_PUBLIC_URL` to it 
 
    The page says `rig-1's pods restart with control's new address.`, and the status says `updating`. Control waits for the pods and a report, as after an update. For a stopped rig, the page says `rig-1 gets control's new address when it starts again.` The new step "Its deployments applied with new images" has the detail `control's address for rigs →` and the new address.
 
-Control records the address it gives each rig. A rig set up by an older version of control has no recorded address, so its page shows no button until its next update. For such a rig, call `update_rig_images` over MCP: control reads the address in the rig's supervisor deployment and, when it differs, applies the deployments again with the new one. When the address is the same, the answer is `rig-1 already runs control's images.` and nothing changes. When control can't read the deployment, it refuses with `Control could not read rig-1's deployment to compare control's address:` and kubectl's error: check that the cluster is reachable and that the deployment is still there. **Give it control's new address** checks the deployment in the same way first, so the page can give the same answers.
+Before it restarts anything, control reads the address in the rig's supervisor deployment. When it is already the new one, the answer is `rig-1 already runs control's images.` and nothing changes. When control can't read the deployment, it refuses with `Control could not read rig-1's deployment to compare control's address:` and kubectl's error: check that the cluster is reachable and that the deployment is still there.
+
+Control records the address it gives each rig. A rig set up by a control too old to record it shows no button. On the dashboard, it gets the new address with its next **Update to these images**. To give it the address now, call `update_rig_images` over MCP: control reads the deployment in the same way and applies it again with the new address.
 
 ## Remove
 
-**Set up by control:** in the **Set up by control** block, open "Remove it from …", type `remove rig-1`, and press **Remove the rig**. On a machine, control stops the services and deletes the rig's units, files and volumes. On a cluster, it deletes the namespace it made, or the rig's objects in its slot. Either way it retires the rig, so its token stops working. **The rig's own results are lost**, because these rigs have no results repository. Control keeps the rig's events and the patches of its published champions: [take the result](../campaigns/take-the-result.md) you need first.
+**Set up by control:** removing the rig deletes its results, because these rigs have no results repository. Control keeps the rig's events, and the patch of each champion the rig has exported. So, before you remove it:
+
+1. On the rig's page, press **Export now**, and wait a minute or two: the rig uploads its champions' patches to control.
+2. Download each run's champion as a patch: see [Take the result](../campaigns/take-the-result.md).
+
+Then, in the **Set up by control** block, open "Remove it from …", type `remove rig-1`, and press **Remove the rig**. On a machine, control stops the services and deletes the rig's units, files and volumes. On a cluster, it deletes the namespace it made, or the rig's objects in its slot. Either way it retires the rig, so its token stops working.
 
 **Joined:** run the **Remove** command from the rig's page, there. Then retire it.
 
@@ -164,11 +169,16 @@ Retire a rig that is gone. It leaves the rig lists, its campaigns' pages and **N
 1. On the rig's page, open the **⋯** menu.
 2. Under **Retire it**, type `retire rig-1` and press **Retire it**.
 
-The page says `rig-1 is retired.` For a rig whose token is in control's rig tokens file (`THERMITE_CONTROL_RIG_TOKENS_FILE`), such as the compose stack's, it adds "If its token is in control's settings, take it out there too." The rig is listed under **Retired** on **Rigs**.
+The page says `rig-1 is retired.` The rig is listed under **Retired** on **Rigs**. A token control made for the rig, with **Add a rig**, a join command or `thermite rig add`, stops working.
+
+A rig whose token is in control's rig tokens file (`THERMITE_CONTROL_RIG_TOKENS_FILE`), such as the compose stack's `local-1` and `local-2`, keeps its token: the page adds "If its token is in control's settings, take it out there too." Do so only to end the rig for good: take its line out of that file (`.dev/secrets/control-rig-tokens.json` on the local stack) and restart control. Leave it in if you may bring the rig back.
 
 You can also retire a rig with `thermite rig retire`, `POST /v1/rigs/<rig>/retire`, or the MCP tool `retire_rig` with `confirm: "retire rig-1"`. Only the owner's token can.
 
-To **bring it back**, open its page and press **Bring it back**, or use `POST /v1/rigs/<rig>/bring-back` or the MCP tool `bring_back_rig`. It shows again, and its reports are taken again. **A token control made for it stays ended.** To let such a rig report again, enroll it again with `thermite rig add`, which also brings it back, and give the rig the new token. See [Make and change tokens](tokens.md).
+To **bring it back**, open its page and press **Bring it back**, or use `POST /v1/rigs/<rig>/bring-back` or the MCP tool `bring_back_rig`. It shows again, and its reports are taken again:
+
+- A rig with its token still in the rig tokens file reports again at once.
+- **A token control made for it stays ended.** To let such a rig report again, enroll it again with `thermite rig add`, which also brings it back, and give the rig the new token. See [Make and change tokens](tokens.md).
 
 ## Fully reset a rig
 

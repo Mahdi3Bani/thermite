@@ -13,12 +13,12 @@ The **New campaign** page starts a [campaign](../../reference/glossary.md) in fi
 - You are signed in to the dashboard with the owner's token.
 - A rig reports to control: on **Rigs**, in the sidebar on the left, it shows the green **Live** chip and a hardware line. The campaign measures on this rig's target, CPU or GPU.
 - Your project is in a git repository at an `https://` address, or in a private repository with Git access set up: see [Use a private repository](private-repository.md).
-- For agents to work, the rig needs a model from a provider in **Settings › Providers**: see [Connect a model provider](../models/connect-a-provider.md). You can give the rig one in step 4. The page won't start agents on a rig without a model; **Try the kit first** and **Save without starting** work without one.
+- For agents to work, the rig needs a model from a provider in **Settings › Providers**: see [Connect a model provider](../models/connect-a-provider.md). The page won't start agents on a rig without a model; **Try the kit first** and **Save without starting** work without one. You can give the rig a model in step 4, but then **Start the campaign** only saves the campaign: see [When the rig doesn't have the model yet](#when-the-rig-doesnt-have-the-model-yet).
 - If the model uses a paid API key, set **Stop after (hours)** in step 4 under **Advanced**. See [Set a budget or a stop time](budget-and-stop-time.md).
 
 ## 1. Aim
 
-Open **Campaigns** and press **New campaign**. The page shows the steps **1 Aim**, **2 Project**, **3 How to measure** (**3 The question** for research), **4 Where it runs** and **5 Review and start**. Move with **Next** and **Back**. Hover over the "i" beside a field to read what it means.
+Open **Campaigns** in the sidebar and press **New campaign**, at the top right of the page. The page shows the steps **1 Aim**, **2 Project**, **3 How to measure** (**3 The question** for research), **4 Where it runs** and **5 Review and start**. Move with **Next** and **Back**. Hover over the "i" beside a field to read what it means.
 
 Choose a card. [Campaign modes](../../explanation/campaign-modes.md) explains each.
 
@@ -28,7 +28,7 @@ Choose a card. [Campaign modes](../../explanation/campaign-modes.md) explains ea
 | **Reach a list of goals** | Work until checks you write all pass |
 | **Research a question** | Collect sourced findings. No code changes |
 
-Fill in **Campaign name** (lowercase letters, digits, dots and dashes, such as `sort-speed`) and **Title** (one sentence; agents read it too). Runs are named after the campaign: `sort-speed-1`, `sort-speed-2`. Using a name again saves a new version of that campaign: runs that exist keep their version, and later runs use the new one. This is how you change a campaign made here, such as its stop time: fill in the page again with the same name. The page starts empty each time.
+Fill in **Campaign name** (lowercase letters, digits, dots and dashes, such as `sort-speed`) and **Title** (one sentence; agents read it too). Runs are named after the campaign: `sort-speed-1`, `sort-speed-2`. Using a name again saves a new version of that campaign, and the page doesn't warn you that the name is in use. Nothing that ran changes: runs that exist keep their version, and later runs use the new one. This is how you change a campaign made here, such as its stop time: fill in the page again with the same name. The page starts empty each time.
 
 ## 2. Project
 
@@ -110,7 +110,7 @@ A goal campaign made here can't end as "not possible": it runs until every goal 
 
 ### The question
 
-For research, step 3 asks for **Topic** (a sentence), **Questions** (one per line, up to 50; the report counts the verified claims for each), **Starting links** (pages agents start from, one per line) and **Run for at least**, such as `8h` or `2d`. The run ends after that much running time.
+For research, step 3 asks for **Topic** (a sentence), **Questions** (one per line, up to 50; the report counts the verified claims for each), **Starting links** (pages agents start from, one per line) and **Run for at least**, such as `8h` or `2d`. A run made here ends after that much running time; time while it is paused doesn't count.
 
 ## 4. Where it runs
 
@@ -119,25 +119,23 @@ Choose the rig. Each card shows its hardware, whether it is idle, and its agents
 | Field | What it does |
 | --- | --- |
 | **Agents working at once** | 1 to 4 (2 unless changed). Despite its name, it sets how many [lanes](../../reference/glossary.md) the planner plans, not how many agents work at once. See the caution below |
-| **The agents' model** | **the rig's model** (the default) keeps the model the rig has. Or choose one of the models in **Providers**, listed by provider. It becomes the rig's model for every run on that rig, as on its **Edit rig** page. See the note below |
-| **The agents run in** | The [worker harness](../../reference/glossary.md), the program that runs the agents, for the model you chose: **what the model needs** (the default: OpenCode v2 for OpenCode's free models, Claude Code for a Claude subscription, else Pi), **OpenCode v2** or **Pi** |
+| **The agents' model** | **the rig's model** (the default) keeps the model the rig has. Or choose one of the models in **Providers**, listed by provider. It becomes the rig's model for every run on that rig, as on its **Edit rig** page. See the caution below |
+| **The agents run in** | The [worker harness](../../reference/glossary.md), the program that runs the agents, for the model you chose: **what the model needs** (the default: OpenCode v2 for OpenCode's free models, Claude Code for a Claude subscription, else Pi), **OpenCode v2** or **Pi**. Claude Code is not in the list: for a Claude subscription, keep **what the model needs** |
 | **When a change is confirmed better** | **the rig's default**: the choice on the rig's **Edit rig** page, **Automatically** unless changed. Or **always keep it**, or **ask me every time**. See [Decide what waits for you](decide-what-waits.md#promotions) |
 
-:::note[A model the rig doesn't have yet]
-The rig takes a model you choose here within a minute, and checks it. Until then its agents could not work, so **Start the campaign** saves the campaign without starting it. The campaign's page says `Saved. rig-1 takes <model> within a minute. When the rig shows it, start the run here.` Keep that page's address: the **Campaigns** list shows the campaign only once a rig reports a run of it. When the rig's row under **Harness and model for each rig** on **Settings › Providers** says `Its agents run under` the harness `with` that model, come back to the campaign's page, press **Start a run**, then **Start the run** (see [Start a run later](#start-a-run-later)). Pressed sooner, it says `rig-1 has not taken <model> yet …`. A model the rig already has starts the run at once.
-
-The same happens with **the rig's model** when control gave the rig a model a moment ago, on **Edit rig**, **Settings › Providers** or over MCP, and the rig hasn't taken it yet. The page then says `Saved. rig-1 has not taken <model> yet (it does within a minute of being given it). When the rig shows it, start the run here.`
+:::caution[A model the rig doesn't run yet: Start only saves]
+**Start the campaign** starts the run only when the rig already runs the model. When you choose a model here that the rig doesn't run yet, control gives the rig that model and **saves the campaign without starting it**. The rig takes the model within a minute. The same happens with **the rig's model** when control gave the rig a model a moment ago, on **Edit rig**, **Settings › Providers** or over MCP. Then start the run as [When the rig doesn't have the model yet](#when-the-rig-doesnt-have-the-model-yet) says.
 :::
 
 :::caution[How many agents work at once]
-The rig's **Workers at a time** decides it: on **Rigs**, open the rig, press **Edit rig**, and find it in the **Workers (agents)** row. It is 1 unless changed, so with the defaults the two lanes take turns, one trial at a time. Raise it for agents to work side by side ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)). The summary at **5 Review and start** counts lanes as agents too.
+The rig's **Workers at a time** decides it: on **Rigs**, open the rig, press **Edit rig**, and find it in the **Workers (agents)** row. It is 1 unless changed, so with the defaults the two lanes take turns, one trial at a time: the run's card shows one lane at work and the other with `next:` and its experiment. Raise it for agents to work side by side ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)). The summary at **5 Review and start** counts lanes as agents too.
 :::
 
 Under **Advanced**:
 
 | Field | What it does |
 | --- | --- |
-| **One try lasts (minutes)** | How long an agent works on one idea, in one [trial](../../reference/glossary.md), 1 to 1440. Empty: the rig's default, 20 unless changed |
+| **One try lasts (minutes)** | How long an agent works on one idea, in one [trial](../../reference/glossary.md) (not a try of the kit), 1 to 1440. Empty: the rig's default, 20 unless changed |
 | **Memory per agent (MiB)** | 256 to 16384. Empty: 2048 |
 | **Disk per agent (MiB)** | For one trial's copy of the code and its builds, 256 to 65536. Empty: 2048 |
 | **Stop after (hours)** | Empty: no limit. When the time is up, no new trial starts and the run is paused. See [Set a budget or a stop time](budget-and-stop-time.md) |
@@ -158,9 +156,10 @@ The **Campaigns** list shows a campaign only once a rig reports a run of it. A c
 
 ## Check that it started
 
-- After **Start the campaign** or **Try the kit first**, the campaign's page opens. For a new campaign, it says, for example, `Starting rig-1/sort-speed-1.` Wait a minute and press **refresh** in the status bar, the line along the bottom of the page: pages don't reload by themselves. The same address then opens the run's own page, with the tabs **Overview**, **Experiments**, **Attempts**, **History** and **Planner**. On **Campaigns** in the sidebar, the run shows under **At work now**, and the campaign in the list below it.
-- A try's run is named like `sort-speed-try-1`, and its page says **A try of the kit.** When its results look right, press **start the campaign** in that note: the **Start a run** panel opens. Keep **Agents** on **On**, and press **Start the run**. A rig runs one run at a time, so the new run pauses the try.
+- After **Start the campaign** or **Try the kit first**, the campaign's page opens. For a new campaign, it says, for example, `Starting rig-1/sort-speed-1.` Wait a minute and press **refresh** in the status bar, the line along the bottom of the page: pages don't reload by themselves. Once the rig reports the run, the page shows the run's own page instead, with the tabs **Overview**, **Experiments**, **Attempts**, **History** and **Planner**. On **Campaigns** in the sidebar, the run also shows under **At work now**, and the campaign in the list below it.
+- A try's run is named like `sort-speed-try-1`, and its page says **A try of the kit.** Its results look right when the starting point builds and runs every case, and **History** has no `The judge's job (…) failed` line: see [Read the dry run](test-a-kit.md#3-read-the-dry-run). Then press **start the campaign** in that note: the **Start a run** panel opens. Keep **Agents** on **On**, and press **Start the run**. A rig runs one run at a time, so the new run pauses the try.
 - After **Save without starting**, the page says `Saved on control, with no run yet.` and offers **Start a run**.
+- If the page says `Saved.` and that the rig takes a model, nothing started yet: see the next section.
 - If the page comes back at **Review and start** with **Not started: fix these first.**, fix each item in the list. Everything you typed is kept. A kit described here or uploaded is checked against the campaign here, before anything is saved. The items about the agents' model are:
   - `rig-1 has no model for its agents, so they could not work: choose one under "The agents' model".`
   - `OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig.` Choose **OpenCode v2** or **what the model needs** under **The agents run in**.
@@ -174,6 +173,16 @@ The **Campaigns** list shows a campaign only once a rig reports a run of it. A c
 
 When nothing in the campaign must change, such as after you fixed the repository's access, **Start a run** on the campaign's page starts the same version again. Otherwise fill in the **New campaign** page again with the same **Campaign name** and press **Start the campaign**: this saves a new version and starts it.
 
+## When the rig doesn't have the model yet
+
+When control has just given the rig a model, from step 4, the **Start a run** panel, **Edit rig**, **Settings › Providers** or MCP, the rig takes it within a minute. Until then, **Start the campaign** saves the campaign instead of starting it, and **Start the run** doesn't start a run. Start it once the rig has the model:
+
+1. Note the campaign's page and its address. It says, for example, `Saved. rig-1 takes my-model within a minute. When the rig shows it, start the run here.`, or `rig-1 takes my-model within a minute. When the rig shows it, start the run again.` after **Start the run**. The address is `/ui/campaigns/<name>`, such as `http://127.0.0.1:8800/ui/campaigns/sort-speed`. A campaign with no run yet is not in the **Campaigns** list, only at this address.
+2. Open **Settings › Providers**, the cog at the foot of the sidebar, and find the rig's row under **Harness and model for each rig**. While the rig hasn't taken the model, the row shows `taking my-model under Pi` (or the harness you chose). Press **refresh** until that chip is gone and the row says `Its agents run under Pi with my-model from <provider>.`
+3. Go back to the campaign's address, press **Start a run**, choose the rig under **Where it runs**, and press **Start the run**. The run starts as [Start a run later](#start-a-run-later) says.
+
+Pressed too soon, **Start the run** answers **Not started.** and `rig-1 has not taken my-model yet (it does within a minute of being given it): start the run once its page shows that model.` Check the rig's row on **Settings › Providers** again, then press it again.
+
 ## Start a run later
 
 Press **Start a run** at the top of the campaign's page. A panel opens, headed **Start a run of sort-speed**:
@@ -182,22 +191,18 @@ Press **Start a run** at the top of the campaign's page. A panel opens, headed *
 | --- | --- |
 | **Where it runs** | One card per rig, with its hardware, `free` or `busy`, and its agents' model, or `No model for its agents yet.` A rig with other hardware than the campaign's kit is greyed out. A busy rig's card says `Busy: sort-speed-1 is at work there, and pauses when this run starts (a rig runs one run at a time).` |
 | **Agents** | **On**: the agents propose changes, and the judge measures each one. **Off: a try**: no agents, only the judge, which measures the starting point. A try needs no model |
-| **The agents' model** | Shows with **Agents** **On**, for a rig with no model: the model to give it, as on its **Edit rig** page. See the note below |
+| **The agents' model** | Shows with **Agents** **On**, for a rig with no model: the model to give it, as on its **Edit rig** page. Control then gives the rig the model and starts nothing yet: see [When the rig doesn't have the model yet](#when-the-rig-doesnt-have-the-model-yet) |
 | **Experiments to start with** | **Copy the untried experiments of** and a run of this campaign, such as `sort-speed-1 (4 up next, 1 lane idea)`: the new run's [experiment queue](choose-what-runs-next.md) starts with that run's waiting experiments, in the same order, and its lanes' ideas, each with who added it and why, up to 500. Ticked by default. It shows only with **Agents** **On**, and only when a run of the campaign has experiments up next or ideas. Untick it for an empty queue, which the planner fills |
 | **When a change is confirmed better** | Under **More options**: **the rig's default**, **always keep it** or **ask me every time** |
 | **GPUs for the judge** | Under **More options**: as in step 4. Empty: the rig's current split |
 
-The line at the foot sums it up, such as `Starts a new run on rig-1, with agents on <model>.` or `Starts a new run on rig-1, as a try: the judge only.` Press **Start the run**. The run uses the latest saved version, and is named after the campaign, such as `sort-speed-2`, or `sort-speed-try-2` without agents.
+The line at the foot sums it up, such as `Starts a new run on rig-1, with agents on <model>.` or `Starts a new run on rig-1, as a try: the judge only.` Press **Start the run**. The run uses the latest saved version. It is named `<campaign>-<n>`, or `<campaign>-try-<n>` without agents, with the first number not yet used on that rig, such as `sort-speed-2`.
 
-The campaign's page comes back. Once the rig reports the new run, usually within a minute, press **refresh**: the run shows under **At work now**, and the same address opens the run's own page. If control can't start it, the campaign's page says **Not started.** and the reason, with the panel open again, such as:
+The campaign's page comes back. Wait a minute and press **refresh**: once the rig reports the new run, the page shows the run's own page. The run also shows under **At work now** on the campaign's page. If control can't start it, the campaign's page says **Not started.** and the reason, with the panel open again, such as:
 
 - `rig-1 has no model for its agents, so they could not work: choose one under "The agents' model", or give it one on its Edit rig page.`
-- `rig-1 has not taken my-model yet (it does within a minute of being given it): start the run once its page shows that model.` Control gave the rig a model, on **Edit rig**, **Settings › Providers**, over MCP or here, and the rig doesn't report it yet. Wait a minute, then press **Start the run** again.
+- `rig-1 has not taken my-model yet (it does within a minute of being given it): start the run once its page shows that model.`: see [When the rig doesn't have the model yet](#when-the-rig-doesnt-have-the-model-yet).
 
 For a research campaign with agents, it refuses a rig whose agents would run OpenCode's free models in Pi, with the message above.
-
-:::note[Giving the rig a model here]
-With a model chosen under **The agents' model**, control gives the rig that model but doesn't start the run yet. The page says `rig-1 takes <model> within a minute. When the rig shows it, start the run again.` When the rig's row under **Harness and model for each rig** on **Settings › Providers** shows that model, press **Start a run** and **Start the run** again. Pressed sooner, it is refused with `rig-1 has not taken <model> yet …`. A model the rig already has starts the run at once.
-:::
 
 **Start a run** also works for a campaign started from the command line, the REST API or MCP, even before a rig reports a run of it: see [Start a campaign from the command line](start-from-command-line.md#start-further-runs). For runs on other rigs, see [Run a campaign on several rigs](several-rigs.md).

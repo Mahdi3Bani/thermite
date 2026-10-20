@@ -65,17 +65,17 @@ It prints `{"id":"…","status":"pending"}`. Control has signed a command, and w
 
 The first thing the judge does in a goal campaign is check which goals the project already meets. Look at it on the dashboard:
 
-1. After a minute or two, open **Campaigns** in the sidebar and press **refresh**. At the top, under **At work now**, a card shows your run: `smoke-cpu-goal › goal-start-1`, `on local-1`.
+1. Within a minute, open **Campaigns** in the sidebar and press **refresh**. At the top, under **At work now**, a card shows your run: `smoke-cpu-goal › goal-start-1`, `on local-1`, `0/1 goals`. It has no **Message** button: no agent works on this run to read one.
 2. In the table under **All campaigns**, choose **smoke-cpu-goal**. The campaign's page opens. Under **What it is for**, it shows the contract's `title`, and below it the goal `faster`. Under **At work now**, the same card shows the campaign's only run so far. A **run** is the campaign at work on one rig.
-3. On the card, press the run's name, `smoke-cpu-goal › goal-start-1`. The run's own page opens. The line at the top reads `Campaigns › smoke-cpu-goal › goal-start-1`, then `on local-1 · goal · Running`. Below it are the run's tabs: **Overview**, **Experiments**, **Attempts**, **History** and **Planner**. This tutorial uses **Overview**, which is open, and **History**.
+3. On the card, press the run's name, `smoke-cpu-goal › goal-start-1`. The run's own page opens. The line at the top reads `Campaigns › smoke-cpu-goal › goal-start-1`, then `on local-1 · goal · Running`. Below it are the run's tabs: **Overview**, **Experiments**, **Attempts**, **History** and **Planner**. This tutorial uses the run's **Overview** tab, which is open, and its **History** tab.
 
-On the **Overview**, the **Goals** block says `0 of 1 met`, and under the goal `faster`, marked **unmet**, a line like this:
+On the run's **Overview** tab, the **Goals** block says `0 of 1 met`, and under the goal `faster`, marked **unmet**, a line like this:
 
 ```text
 flops_per_s >= 10000000000: large: 3.44791e+9 [3.32615e+9, 3.56967e+9]
 ```
 
-The first number after `large:` is your computer's speed now: here 3.45 × 10⁹, or 3.45 billion operations a second. The two in brackets are the range the judge is 95% sure of. Your numbers will differ: they depend on your processor.
+The first number after `large:` is your computer's speed now: here 3.45 × 10⁹, or 3.45 billion operations a second. The two in brackets are the range the judge is 95% sure of. Your numbers will differ: they depend on your processor. If the block says `The judge has not checked the goals yet.`, press **refresh** after another minute.
 
 ## 4. Set a goal you can reach
 
@@ -116,18 +116,18 @@ npx thermite assign --contract my-goal.json --run goal-1 --agents off --promotio
   --control http://127.0.0.1:8800 --token-file .dev/secrets/control-admin-token --rig local-1
 ```
 
-`--promotion auto` lets a change that the judge confirms become the **champion**, the run's best version, without waiting for you.
+`--promotion auto` lets a change that the judge confirms become the **champion**, the run's best version, without waiting for you. `local-1` already does that by its own rule; the flag makes this run do it whatever the rig's rule is.
 
 Then look at the campaign again:
 
 1. After a minute, go back to the campaign's page: in the line at the top of the run's page, press **smoke-cpu-goal**. Press **refresh**. The page now counts two runs. Under **At work now**, a card shows the new run, `smoke-cpu-goal › goal-1`. Under **Earlier runs**, `goal-start-1` is **Paused**, and **Why it stopped** says `replaced by goal-1`, because a rig works on one run at a time. Leave it paused.
-2. On the card, press `smoke-cpu-goal › goal-1`. Its page opens on its **Overview**. The **Goals** block says `0 of 1 met`: the goal `faster` is **unmet**, and its line shows your new value, `4200000000`, above the speed the judge measured. If the block says `The judge has not checked the goals yet.`, press **refresh** after another minute.
+2. On the card, press `smoke-cpu-goal › goal-1`. Its page opens on the run's **Overview** tab. The **Goals** block says `0 of 1 met`: the goal `faster` is **unmet**. Its line starts with your value written out in full (in the example, `flops_per_s >= 4200000000`), which is more than the speed the judge measured after `large:`. If the block says `The judge has not checked the goals yet.`, press **refresh** after another minute.
 
 ## 6. Propose a change yourself
 
 The change is the one the smoke check confirmed in your first run: it loops over the matrix in a different order, so the inner loop reads memory in sequence. Thermite's image holds it, with the smoke project.
 
-You submit it from inside the rig's harness container, the way an agent would. The harness has no port open to your computer: only the rig's supervisor reaches it from outside its container.
+You submit it from inside the rig's harness container, where the agents work too. You submit as a **proposer**: someone who submits changes by hand, with `thermite submit` and the harness's proposer token. The harness listens on port 8700 inside its container, and has no port open to your computer: only the rig's supervisor reaches it from outside.
 
 1. Open a shell in the harness container:
 
@@ -162,14 +162,16 @@ You submit it from inside the rig's harness container, the way an agent would. T
 
 ## 7. Watch the goal be met
 
-It takes about a minute. Stay on the page of `goal-1`. Press **refresh** after a minute, and again until the line at the top says **Finished** after `on local-1 · goal`. Under **Recent**, on the **Overview** tab, the story unfolds, newest first; the **History** tab keeps all of it. In order:
+It takes less than a minute. Stay on the page of `goal-1`. Press **refresh** until the line at the top says **Finished** after `on local-1 · goal`. On the run's **Overview** tab, **Recent** shows the newest ten lines of the story, newest at the top. Read them from the bottom up:
 
-1. The judge screens your change: it builds it and checks the goal. It says the change `looked like goal progress; being confirmed on fresh runs`, and `Newly met: faster.`
-2. It checks the change again on fresh runs: `confirmed: it meets more goals and loses none`. At the same moment your change `became champion #2`. Champion #1 was the project as it started.
-3. The judge checks the goals of the new champion: `1 of 1 goals met, every required goal`.
-4. It checks them a second time, because ending a campaign is final and one check is not enough. Then: `Every required goal is met: the campaign is complete.`
+1. The judge screens your change: it builds it and checks the goal. It says the change `looked like goal progress; being confirmed on fresh runs. Newly met: faster.`
+2. It checks the change again on fresh runs: `confirmed: it meets more goals and loses none. Newly met: faster.` Then your change `became champion #2`. Champion #1 was the project as it started.
+3. The judge checks the goals of the new champion: `The judge checked champion #2: 1 of 1 goals met, every required goal.`
+4. It checks them a second time, because ending a campaign is final and one check is not enough. The last three lines come at the same moment: `Run goal-1 closed: every required goal is met.`, `Every required goal is met: the campaign is complete.`, and the second check's `1 of 1 goals met, every required goal`.
 
-The run's state is now **Finished**, and the **Goals** block says `1 of 1 met`, with a ✓ beside `faster`. Open **Campaigns** in the sidebar: no run of the campaign is under **At work now** any more, and in the table, the row for **smoke-cpu-goal** says `1/1 goals met` under **Best so far**. Nothing more runs: a goal campaign stops once its goals are met.
+To see the whole story, from `Run goal-1 started`, open the run's **History** tab: it keeps every line, also newest first.
+
+The run's state is now **Finished**. On the run's **Overview** tab, the **Goals** block says `1 of 1 met`, with a ✓ beside `faster`. Open **Campaigns** in the sidebar: no run of the campaign is under **At work now** any more. In the table, the row for **smoke-cpu-goal** says `1 paused` and `1 finished` under **Runs**, and `1/1 goals met` under **Best so far**. The paused run is `goal-start-1`, which you left paused in step 5. It uses nothing while it is paused, but it keeps the campaign's row under **Active and paused**, and the sidebar shows the campaign as **Paused**. Nothing more runs: `goal-1` stopped once its goal was met.
 
 ## What you did
 

@@ -21,7 +21,7 @@ It takes half an hour to an hour, most of it waiting. An agent may work for up t
 
 A **provider** is where your agents' models come from. OpenCode is a program that runs coding agents, and its service offers some models for free.
 
-1. Press the cog icon at the foot of the sidebar. It is labelled **Settings**, and it opens the **Providers** page.
+1. Press the cog icon at the foot of the sidebar, beside **Sign out**. Its tooltip says **Settings**. It opens the **Providers** page, whose heading reads `Settings › Providers`.
 2. Under **Add a provider**, set:
    - **Type**: **OpenCode (its own models)**
    - **Name**: `opencode`
@@ -48,7 +48,9 @@ Wait a minute or two, then press **refresh** in the status bar along the bottom 
 
 `Its model check passed … ago:` your model's name, then `answered with a correct tool call in` some seconds `(OpenCode)`.
 
-If it says **FAILED** instead, the rest of the sentence says why. A free model is sometimes busy: choose another model whose name ends in `-free`, press **Use**, and wait again. **Check** runs the check again at any time.
+If it says **FAILED** instead, the rest of the sentence says why, such as `Rate limit exceeded. Please try again later.` when the free model is busy, or `Model unavailable:` and the model's name when OpenCode no longer serves it, though its list still names it. Choose another model whose name ends in `-free`, press **Use**, and wait again. It can take a few tries to find one that answers. **Check** runs the check again at any time.
+
+The rig's own page shows the same result: open **Rigs**, then `local-1`, and under **Checks**, **Model route** says **passed**, with the same sentence.
 
 ## 4. Install Thermite's command line
 
@@ -110,11 +112,11 @@ A **contract** says what a campaign must achieve and how the judge decides. Save
 
 You don't need every line. What matters here:
 
-- `project`: the smoke project and its **kit**, the judge's recipe for building, running and checking it. Each is pinned to the exact commit that the smoke check made from files in Thermite's image, so the commits are the same on every rig built from the same version of Thermite as this page. The kit's commit starts with `69c3d2f6`, like the name of the smoke check's campaign in [Your first run](first-run.md).
+- `project`: the smoke project and its **kit**, the judge's recipe for building, running and checking it. Each is pinned to the exact commit that the smoke check made from files in Thermite's image. The same files always make the same commits, so your `thermite` folder holds the commits your own rig has: the file `examples/contracts/smoke-cpu-goal.json` names them in its `project` block. The kit's commit also starts the name of the smoke check's campaign in [Your first run](first-run.md), such as `rig-check-smoke-cpu-69c3d2f6`. If either commit differs from the ones above, copy the `project` block from `examples/contracts/smoke-cpu-goal.json` into your `contract.json`.
 - `objective`: make `flops_per_s`, the matrix multiply's speed, higher. A change must be at least 10% faster (`min_effect` is 0.1) to count.
 - `cells`: the kit's test cases, which the dashboard calls cases. The judge measures every change on `small` and `large`, and keeps `held` back as a hidden test, run only to double-check a change that already looks better.
 - `editable_paths` and `forbidden_patterns`: the agent may change only files in `src/kernel/`, and may not add a line that matches one of these patterns, such as a call to a timer. A change that breaks either rule is refused before it is built.
-- `lanes`: one **lane**, a line of search worked by one agent at a time. The planner plans in rounds, which the contract calls **epochs** and the dashboard calls rounds. In each one the lane gets three trials (`trials_per_epoch`).
+- `lanes`: one **lane**, a line of search worked by one agent at a time. The **planner**, an agent that decides what each lane tries, plans in rounds, which the contract calls **epochs** and the dashboard calls rounds. In each round the lane gets three **trials** (`trials_per_epoch`): three goes by its agent, each at one thing to try. Step 7 shows them at work.
 
 The other fields give the file's format (`schema_version`), the campaign's name and version, the kind of machine it runs on (`target`), and how carefully the judge measures (`acceptance`). [Contract](../reference/contract.md) explains every field.
 
@@ -144,7 +146,10 @@ Open **Campaigns** in the sidebar. After a minute, press **refresh**. Under **At
 For the first few minutes, while the planner works, the card's `lanes` line says `waiting for the first round`. `lane-1` takes its place once the planner has given the lane its work.
 
 :::tip[If the run does not appear]
-Open **Commands** in the sidebar. The `assign campaign` line shows **failed**, and its outcome says why. If it says that a kit commit or a seed commit (the project commit a run starts from) is not in `smoke-cpu-kit` or `smoke-cpu-project`, the smoke check has not run on this rig. Run **Judge smoke** (step 6 of [Your first run](first-run.md)), then the same command again.
+Open **Commands** in the sidebar. The `assign campaign` line shows **failed**, and its outcome says why. If it says that a kit commit or a seed commit (the project commit a run starts from) is not in `smoke-cpu-kit` or `smoke-cpu-project`, there are two causes:
+
+- The smoke check has not run on this rig. Run **Judge smoke** (step 6 of [Your first run](first-run.md)), then the same command again.
+- Your version of Thermite makes other commits than the ones on this page. Copy the `project` block from `examples/contracts/smoke-cpu-goal.json` in your `thermite` folder into `contract.json`, as step 5 says, then run the command again.
 :::
 
 ## 7. Watch the agent work
@@ -154,32 +159,32 @@ Open **Live** in the sidebar. It shows the run at work, `smoke-agents-1`. The li
 Under the header is a row of filters, which choose whose lines you see:
 
 - **Everyone** is chosen at first, and shows every line.
-- **lane-1** is the agent itself. It gets a fresh copy of the project, works on the one thing the planner gave it to try, and ends by submitting its change. This is one **trial**, and it lasts at most 20 minutes.
+- **lane-1** is the agent itself. Its filter appears only when the planner has given the lane its work, a few minutes in. The agent gets a fresh copy of the project, works on the one thing the planner gave it to try, and ends by submitting its change. This is one **trial**, and it lasts at most 20 minutes.
 - **Planner** works first. Before each round of work, it reads what has happened so far and gives each lane an **experiment**: one thing to try. It takes experiments from the run's **queue**, the list of what to try next, and adds new ones of its own.
 - **Judge** is the code that measures each change. It is not an agent, and takes no messages.
 - **Advisors** shows the rig's advisors, models that review the work, and **You** shows your own messages. You won't need them here.
 
-When the planner is done, a few minutes after the run starts, the lane's first trial begins, and a **lane-1** filter appears with its first line. Choose **lane-1**. Its trial starts with the line `lane-1 · trial started`, followed by the experiment it was given: its direction (the kind of change), then what to try. Each line after that is one step: a command the agent ran, or a file it read or wrote, with what came back. Most agents look around the project and read `src/kernel/matmul.c`, then change it, build it and try it.
+When the planner is done, a few minutes after the run starts, the planner's line says `round 1:` and how it planned, and the lane's first trial begins. A **lane-1** filter appears with its first line. Choose **lane-1**. Its trial starts with the line `lane-1 · trial started`, followed by the experiment it was given: its direction (the kind of change), then what to try, such as `optimization, Kernel micro-interleaving for flops_per_s (from the champion, seq 1)`. Each line after that is one step: a command the agent ran, or a file it read or wrote, with what came back. Most agents look around the project and read `src/kernel/matmul.c`, then change it, build it and try it.
 
-New lines come in by themselves. The rest of this page, like every other page, needs **refresh**. After a **refresh**, a green dot on **lane-1** means it is working.
+New lines come in by themselves, at the bottom: the newest line is the last. **↓ Follow**, on the right above the lines, keeps the newest line in view; press it to stop following, so you can read further up. The rest of this page, like every other page, needs **refresh**. After a **refresh**, a green dot on **lane-1** means it is working.
 
 The box under the lines sends the agents a message, and its grey text says when they would read it. You won't need it here: see [Steer a run](../how-to/campaigns/steer-a-run.md).
 
 ## 8. Watch the judge decide
 
-The first change takes a while. The planner works for a few minutes, a trial can last up to 20 minutes, and the judge then needs a few minutes to measure what it made. Expect the first verdict about 15 to 30 minutes after the run starts.
+The first change takes a while. The planner works for a few minutes, a trial can last up to 20 minutes, and the judge then needs a minute or more to measure what it made. Expect the first verdict between 5 and 30 minutes after the run starts, depending on how fast the model works.
 
-When the agent submits its change, the judge takes over. Open **Overview** and look at **What happened**, newest first. You see `lane-1 submitted` with the agent's description of its change, then the judge screening it: building it and measuring it against the champion. The **champion** is the best version so far. At the start it is the project as it was: champion #1.
+When the agent submits its change, the judge takes over. Open **Overview** in the sidebar and look at **What happened**, newest first. You see `lane-1 submitted` with the agent's description of its change, then the judge screening it: building it and measuring it against the champion. The **champion** is the best version so far. At the start it is the project as it was: champion #1.
 
 Then open **Campaigns**, and on the card under **At work now**, choose `smoke-agents › smoke-agents-1`. The run's page opens. Its title, `smoke-agents-1`, is followed by `on local-1 · hill climb · Running`. On the right of the header are the buttons **Live**, **Message**, **Pause** and **⋯**. Below the header are the run's tabs: **Overview**, **Experiments**, **Attempts**, **History** and **Planner**.
 
 Choose **Experiments**. It shows the run's queue of experiments. Three of its parts matter here:
 
-- **Up next**: the experiments that wait for a lane, in order. The planner fills it as it plans, so it may be empty.
+- **Up next**: the experiments that wait for a lane, in order. It starts with a form to add an experiment, and the waiting experiments are below it. The planner fills it as it plans, so it may be empty: `Nothing queued.`
 - **In progress**: what `lane-1` works on now, while its trial runs.
 - **Tried**: every experiment that has ended, newest first, with its result. For a trial that submitted a change, the result is its attempt and a word for how the judge decided it, as in the table below.
 
-You can add, reorder and drop experiments yourself. You don't need to here: [Choose what a run tries next](../how-to/campaigns/choose-what-runs-next.md) says how.
+The card **Ideas from the lanes** holds what an agent proposes beyond its own experiment; it is usually empty. You can add, reorder and drop experiments yourself, and queue or drop the lanes' ideas. You don't need to here: [Choose what a run tries next](../how-to/campaigns/choose-what-runs-next.md) says how.
 
 Choose **Attempts**. Each change the agent submitted is an **attempt**, with one word for how it ended. The word sums up the judge's verdict, as in [Your first run](first-run.md#7-see-what-the-judge-decided):
 
@@ -204,9 +209,9 @@ Choose **Attempts**. Each change the agent submitted is an **attempt**, with one
 
 ### If a change waits for you
 
-A confirmed change waits for you only when it needs a second look. That happens when its agent wrote down problems it knows the change has, or when the gain is so large that the contract asks for an audit. This contract's `audit` limits are so high that a gain's size almost never holds a change. If no change waits, you see **Champion #2** in the list instead, and **Needs you** stays empty: skip to step 9.
+A confirmed change waits for you only when it needs a second look. That happens when its agent wrote down problems it knows the change has, or when the gain is so large that the contract asks for an audit. This contract's `audit` limits are so high that a gain's size almost never holds a change: `absolute` 1000 holds only a gain of more than 1000 times (100,000%), where the default, 0.15, holds any gain above 15%. If no change waits, you see **Champion #2** in the list instead, and **Needs you** stays empty: skip to step 9. If after an hour you see only **Lost**, **Unclear** or **Broken**, that is normal for a small model: go on to step 9.
 
-An **auditor**, a model that gives such second looks, isn't set up on this rig, so the decision is yours. **What happened** says that the change `is held for an audit`, the Overview's first line says `1 needs you`, and **Needs you** shows **Your decision** with the question `Make this change the new champion?`.
+An **auditor**, a model that gives such second looks, isn't set up on this rig, so the decision is yours. **What happened** says that the change `is held for an audit`, the first line of **Overview** in the sidebar says `1 needs you`, and **Needs you** shows **Your decision** with the question `Make this change the new champion?`.
 
 1. Open it. It shows what the agent says it did, the problems it wrote, and what the judge measured. Read the problems: they are why the change waits. Some matter, such as a change that only wins because of how the benchmark calls it; some don't, such as a little more memory.
 2. For this tutorial, press **Reject it**, to see what happens to a change you decline. In [Your own project](your-own-project.md) you make a change the champion instead. [Decide what waits for you](../how-to/campaigns/decide-what-waits.md) explains each choice.
@@ -217,7 +222,7 @@ The item says `You selected Reject it`. After a **refresh**, **What happened** s
 
 A hill climb never ends by itself, and Thermite sets no time limit unless you ask for one: see [Why Thermite runs until the job is done](../explanation/runs-until-done.md). When you have seen enough, open the run's page: **Campaigns**, then `smoke-agents › smoke-agents-1` on the card under **At work now**. In the page's header, press **Pause**, just right of **Message**. A small menu opens. It says that the lanes' running trials stop, and that the run's jobs waiting for the judge wait until you resume. In its field **why (optional)**, type `seen enough for now`, then press **Pause the run**.
 
-A line at the top of the page says that control sent the command to `local-1`. If `lane-1` was in a trial, the trial stops, and its experiment goes back to the top of **Up next**, to be tried again when the run resumes. Within a minute, after a **refresh**, the run shows **Paused** beside its name, and the button says **Resume**. On the **Overview** tab, the **Now** block says `This run is paused: seen enough for now. Nothing new starts until it is resumed.`
+A line at the top of the page says that control sent the command to `local-1`. If `lane-1` was in a trial, the trial stops, and a copy of its experiment goes back to the top of **Up next**, to be tried again when the run resumes. Within a minute, after a **refresh**, the line under the run's name ends `· Paused`, and the button says **Resume**. On the run's **Overview** tab, the **Now** block says `This run is paused: seen enough for now. Nothing new starts until it is resumed.`
 
 The rig keeps its model. [Your own project](your-own-project.md) uses it.
 

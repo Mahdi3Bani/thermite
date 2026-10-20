@@ -6,26 +6,31 @@ sidebar:
   order: 4
 ---
 
-A rig's supervisor can run **advisors**: models that watch the research but never judge it.
+A rig's supervisor can run **advisors**: models that watch the research but never judge it. Give them models on **Edit rig**, or in an advisors file, then check that they work.
 
-- The **teacher pair** reads each running run's progress, every hour by default and at once when you write to it, and suggests directions, each with a source. A direction to avoid, try or always work on is a direction's name, or words such as a kind of change or a file. It can also add experiments to the run's [experiment queue](../campaigns/choose-what-runs-next.md), the list of what the lanes try next, and move experiments that wait there.
-- The **combiner** joins the two teachers' advice into one set of directions for the planner, and one list of experiments and moves.
-- The **auditor** answers the judge's audits: it can block a change before it becomes the champion, never pass one on its own. When it has a doubt it can't settle, it can put a check at the top of the run's queue, which a lane then works on like any other experiment.
-- The **review panel** grades goals that code cannot check. A pass still needs your acceptance. It adds nothing to the queue.
+- The **teacher pair** reviews each running run, every hour by default, and suggests directions for the planner and experiments for the run's [experiment queue](../campaigns/choose-what-runs-next.md).
+- The **combiner** joins the two teachers' advice into one.
+- The **auditor** answers the judge's audits: it can block a change before it becomes the champion, never pass one.
+- The **review panel** grades goals that code cannot check. A pass still needs your acceptance.
 
-The teacher pair and the auditor add experiments, and the teachers move them, each with a reason. No advisor drops one, takes a lane's idea into the queue or gives out work: the planner and you do that. Nor can the advisors bring back a rule you removed: their next set leaves it out ([Remove a rule](../campaigns/choose-what-runs-next.md#remove-a-rule)).
-
-No advisor runs until you give it a model. **Edit rig** also has a switch for each part, which is **on** by default; a switch only lets a role run once it has a model. [Supervision](../../explanation/supervision.md) explains what each one may and may not do.
+[Supervision](../../explanation/supervision.md) explains what each one may and may not do. No advisor runs until it has a model. **Edit rig** also has a switch for each part, **on** by default; a switch only lets a role run once it has a model.
 
 There are two ways to give them models, and you can mix them:
 
-- **On Edit rig**, a model from **Settings › Providers** for each role. This is the quickest way, and the only one for rigs that control sets up on a machine or a cluster, or that you join. But Thermite can't count what these models spend, so no spending limit applies to them.
-- **In the advisors file** on the rig. Only the file can turn on web fetch, a knowledge base and a spending limit. Thermite can give the file only to the local compose stack: control can't put one on the rigs it sets up ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)).
+| | **On Edit rig** | **In the advisors file** |
+| --- | --- | --- |
+| Rigs | Every rig | Only the local compose stack. The units and manifests that control writes for the rigs it sets up, and for rigs you join, have no setting for the file ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)) |
+| Models | A model from **Settings › Providers** for each role | An OpenAI-compatible or Anthropic API, a command-line agent, or Claude Code |
+| Web fetch, knowledge base | No | Yes |
+| Counted toward a spending limit | No: these models count as $0 | Yes, with prices set ([Spending](#spending)) |
 
 A role given a model on **Edit rig** uses it, and the other roles keep what the file says.
 
-:::caution[Set a spending limit first]
-Advisors with a paid key spend money for as long as runs are running: nothing stops them by default. Set `max_usd_per_day` in the advisors file, with prices on each runtime (see [Spending](#spending)). Thermite can't count what models given on **Edit rig** spend, so watch those at your provider.
+:::caution[What limits the advisors' spending]
+Advisors with a paid key spend money for as long as runs are running. Thermite sets no spending limit of its own.
+
+- **Rigs that control sets up, and rigs you join,** get their advisors only from **Edit rig**, and Thermite counts what those spend as $0. Nothing in Thermite limits it: set a limit with your model provider before you give advisors a paid key.
+- **On the local compose stack,** set `max_usd_per_day` in the advisors file. It counts only what the file's API advisors spend, from the prices you give them; advisors from **Edit rig** on the same rig add nothing to it. See [Spending](#spending).
 :::
 
 ## On Edit rig
@@ -34,7 +39,7 @@ You need a provider on control. See [Connect a model provider](../models/connect
 
 1. Open **Rigs** in the sidebar, choose the rig, then press **Edit rig**.
 2. In **1 · Parts of the rig**, check that the switches **Teacher pair**, **Auditor** and **Review panel** are **on**. They are on by default, but a part with no model does nothing. **Teacher pair** also covers the combiner.
-3. In **2 · The agents**, choose a **Model** and an **Effort** for **Teacher pair**, **Combiner**, **Auditor** and **Review panel**. **Runs in** says where each will run:
+3. In **2 · The agents**, choose a **Model** and an **Effort** for **Teacher pair**, **Combiner**, **Auditor** and **Review panel**. **Runs in** then shows where each will run; for advisors, you don't choose it:
    - `the supervisor, read-only tools`: a model with an API key, or a ChatGPT subscription;
    - `Claude Code, no tools`: a Claude subscription. The supervisor's image must be built with `CLAUDE_CODE_VERSION` for this (see [Use a Claude subscription](../models/claude-subscription.md));
    - `not for advisors: OpenCode only`: OpenCode's own models, which advisors can't use. **Save changes** then refuses, for example with "The teachers cannot use OpenCode's own models: they run only in OpenCode. Choose another model."
@@ -90,7 +95,7 @@ The page says, for example, "Control sent a model for the teachers to rig-1. The
    THERMITE_ADVISORS_FILE=/etc/thermite/advisors/advisors.json
    ```
 
-4. Start the supervisor again with the setting: `docker compose up -d` (or `podman compose up -d`), with your `-f` options if you start the stack with override files.
+4. Start the supervisor again with the setting: `docker compose up -d` (or `podman compose up -d`), with your `-f` options if you start the stack with override files. With the `two-rigs` profile, `local-2`'s supervisor reads the same `.env` and folder, so both rigs get the same advisors.
 
 The supervisor reads the file only when it starts, so after each change run `docker compose restart supervisor`.
 
@@ -109,11 +114,11 @@ The example uses the `openai` runtime: a model API that the supervisor calls its
 
 ## Spending
 
-`max_usd_per_day` sets a limit for all advisors of the rig together, per day (UTC). There is no limit unless you set one.
+`max_usd_per_day` sets a limit for all advisors of the rig together, per day (UTC). There is no limit unless you set one. Each rig counts its own spending, so with two rigs on the stack, each has the whole limit.
 
 - The limit counts only `openai` runtimes in the file, from their `usd_per_mtok_in` and `usd_per_mtok_out` prices. Without prices, they count as free.
-- `cli` and `claude-code` advisors, and every model given on **Edit rig**, count as $0, so the limit never stops them.
-- When the day's total reaches the limit, the advisors skip their turns until the next UTC day. The research itself goes on.
+- `cli` and `claude-code` advisors, and every model given on **Edit rig**, count as $0: they add nothing to the total.
+- When the day's total reaches the limit, every advisor of the rig skips its turns until the next UTC day, wherever its model comes from. The research itself goes on.
 - At the limit, a message you write to the teachers starts no round. The run's **Live** says so once for each new message, under **Advisors**: `the advisors reached the day's spending limit (20 USD): the teacher pair reads your message after midnight UTC`.
 - The check comes before each role's turn, so a round can go a little past the limit.
 
@@ -127,34 +132,19 @@ Wait a minute, then press **refresh** in the status bar, the line along the bott
   - `teacher teacher-a: …`, with what it suggests, or `teacher teacher-b gave no review: …`;
   - `directives for the planner: …`, each with its reason, or `the teacher pair set no directives`;
   - `the teacher pair added to the queue: …`, with the titles of the experiments it added, and `the teacher pair moved …`, with their ids;
-  - `audit of …`, with the try, the auditor's decision, what it did to the result and why;
+  - `audit of …`, with the attempt, which try of that audit it is (`(try 1)`), the auditor's decision, what it did to the result and why;
   - `the auditor added to the queue: …`, with the title of its check;
   - `review …`, with each reviewer's pass or fail and why, then the panel's outcome;
   - `advisor round done: …`, the round's counts, when the round did something.
 
   The rig's own live view (the **Live** button on the rig's page) shows the same lines when you choose **Supervisor** in its list.
-- When the teachers' advice reaches a run, its **History** tab has a line for each rule they set, such as `The teacher pair set a rule for the plan: avoid loop-tiling.`, and for each experiment they add, such as `The teacher pair added "Unroll the loop by 4" to the queue.`
+- When the teachers' advice reaches a run, its **History** tab has a line for each rule they set, such as `The teacher pair set a rule for the plan: avoid loop-tiling.`, and for each experiment they add, such as `The teacher pair added "Unroll the loop by 4" to the queue.` Advisors can't bring back a rule you removed: History then says, for example, `The teacher pair named a rule you removed (avoid loop-tiling): left out.` ([Remove a rule](../campaigns/choose-what-runs-next.md#remove-a-rule)).
 - The run's **Experiments** tab shows the experiments the advisors added, with **teachers** or **auditor** as who added each one.
 
 A count of errors that grows means a role keeps failing. Each error is a line in **Live** with its reason, such as `audit of …: advisor auditor has no key`, and the supervisor's log has an `advisor error` line with the same reason. When the rig can't record an advisor's experiments and moves at all, the error line starts with `the queue for run-1:`. A move that the rig refuses, for example of an experiment a lane has taken since, shows after `refused:` in the advisor's own line, and the other changes still apply.
 
 ## Write to the advisors
 
-You can write to a run's advisors, as you write to its agents. On the run's **Live** page, in the box under the stream, choose under **To**:
+You write to a run's advisors as you write to its agents: on the run's **Live** page, choose **To the teachers**, **To the auditor**, **To the review panel** or **To all advisors** under **To**, write, and press **Send**. See [Send the agents a message](../campaigns/steer-a-run.md#send-the-agents-a-message).
 
-- **To the teachers**: the teacher pair reads it in a round that starts at once, instead of at its next scheduled round. The supervisor looks for new messages every few seconds between rounds; a round already under way finishes first. The teachers advise only running runs, so for a paused run they read it when it runs again. A round that fails leaves the message for the next scheduled round. At the day's [spending limit](#spending), the message waits for the next UTC day.
-- **To the auditor**: it reads it with its next audit, which comes only when the judge holds a result for audit.
-- **To the review panel**: it reads it with its next review, which comes only when a goal waits for review.
-- **To all advisors**: each of the three that can read it, once each.
-
-Write, then press **Send**. The placeholder in the box says when the reader takes it. When an advisor reads your message, **Live** shows a line such as "✓ the teacher pair read your message", and each advisor that read it answers in one or two sentences: "the teacher pair (teacher-a) answered you: …". Choose **You** to see only your messages, the reads and the answers. An answer the supervisor can't read, or an empty one, is left out; the advisor's other answers still show. The combiner sees your messages in the teachers' brief, but doesn't answer.
-
-The auditor's and the panel's reads count only once their audit or review is posted: one that fails gives them your message again. In the teachers' brief, a message they have not had yet is marked `"read": false`, and they answer it. Up to five that they read in the last day stay in the brief, marked `"read": true`, as your standing wishes, without a new answer.
-
-A role that couldn't read your message is greyed out in the list, with one of these reasons:
-
-- the run can't have it: a research run has no audits and nothing for the panel to review, and the review panel reads only in a run with a goal it reviews (`This run has no goal the review panel reviews.`);
-- it is off on **Edit rig**: `The auditor is off on this rig (Edit rig).`;
-- the rig's supervisor has not set it up, because it has no model: `This rig's supervisor has no auditor set up, so nothing would read it.` **To all advisors** is greyed out when none of the three is set up.
-
-The last reason shows only once the rig's supervisor has reported which advisors it has. The rig itself checks only the **Edit rig** switches: a message sent over MCP, the REST API or the command line to a role with its switch on but no model is accepted, and nothing reads it until you give the role a model. [Steer a run](../campaigns/steer-a-run.md) covers messages to the agents.
+The teachers read it in a round that starts at once; the auditor and the panel only with their next audit or review. Each advisor that reads it answers in one or two sentences in **Live**, such as "the teacher pair (teacher-a) answered you: …". [When each agent reads it](../campaigns/steer-a-run.md#when-each-agent-reads-it) gives each reader's timing, and [`message_agent`](../../reference/signed-commands.md#message_agent) lists the reasons a message is refused. A role with no model is greyed out under **To**, once the rig's supervisor has reported its advisors. A message sent to such a role over MCP, the REST API or the command line is accepted, and nothing reads it until you give the role a model.

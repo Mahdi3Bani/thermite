@@ -21,7 +21,7 @@ Control knows people and programs by **tokens**: long random strings sent as `Au
 
 "Steers" means these [signed commands](signed-commands.md): assign a campaign, pause and resume a run, redirect it, reset its workers, export now and run a rig check, plus sending a champion to another rig. The operator may also message the agents (`message_agent`), remove a message kept in force (`unkeep_message`), change a run's experiment queue (`queue_add`, `queue_move`, `queue_edit`, `queue_drop`, `queue_accept`) and remove a rule (`drop_directive`). Only the owner approves or declines a promotion.
 
-Some things no token can do over MCP: changing a rig's settings, accepting a review or a "not possible" ending, and wiping a rig. The owner does them on the dashboard, and a wipe only as part of a full reset.
+Some things no token can do over MCP: changing a rig's settings (other than its agents' model, which `set_rig_model` gives), accepting a rig's key, accepting a review or a "not possible" ending, and wiping a rig. The owner does them on the dashboard, and a wipe only as part of a full reset.
 
 ### Rules
 

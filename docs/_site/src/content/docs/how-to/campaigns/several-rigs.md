@@ -6,16 +6,16 @@ sidebar:
   order: 11
 ---
 
-One campaign can run on several [rigs](../../reference/glossary.md) at once, each with its own run, agents and judge. You can then send one rig's [champion](../../reference/glossary.md) to another rig, whose judge tests it again on its own hardware. If it holds up there too, the result is **cross-verified**.
+One campaign can run on several [rigs](../../reference/glossary.md) at once, each with its own run, agents and judge. You can then send one rig's [champion](../../reference/glossary.md) to another rig, from the run's **Planner** tab, and the other rig's judge tests it again on its own hardware. If it holds up there too, the result is **cross-verified**.
 
 :::caution[Sending champions needs a shared results repository]
-Rigs send each other champions through one [results repository](../operate/results-repository.md) that they all push to. Rigs that control sets up on machines and clusters, and rigs you join yourself, have no results repository yet ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)). They can run the same campaign side by side, but can't send each other champions, so nothing is cross-verified. Of the rigs Thermite sets up, only the local compose stack's two rigs, on one computer, can.
+Rigs send each other champions through one [results repository](../operate/results-repository.md) that they all push to. Of the rigs Thermite sets up, only the local compose stack's two rigs, on one computer, have one. Rigs that control sets up on machines and clusters, and rigs you join yourself, have none, and you can't give them one: the units and manifests that control writes for them have no setting for it ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)). They can run the same campaign side by side, but can't send each other champions, so nothing is cross-verified.
 :::
 
 ## Before you start
 
 - Two or more rigs that report to control, with the target (CPU or GPU) of the campaign's kit.
-- To send champions between rigs, every rig involved pushes its results to **the same results repository**: the supervisor setting `THERMITE_RESULTS_REMOTE` is the same on each. See [Set up the results repository](../operate/results-repository.md). The local stack does this already. Start its second rig, `local-2`, with `docker compose --profile two-rigs up -d`.
+- To send champions between rigs, every rig involved pushes its results to **the same results repository**: the supervisor setting `THERMITE_RESULTS_REMOTE` is the same on each. See [Set up the results repository](../operate/results-repository.md). The local stack does this already. Start its second rig, `local-2`, with `docker compose --profile two-rigs up -d`, with the same `-f` options you start the stack with (`podman compose` with Podman).
 - Each rig's **Exports** switch, on **Edit rig**, is on. It is on unless you turned it off.
 
 ## 1. Start a run on each rig
@@ -24,7 +24,7 @@ A rig runs one run at a time, so each rig gets its own run.
 
 1. Open **Campaigns** in the sidebar, then the campaign, and press **Start a run** at the top of its page. A panel opens.
 2. Under **Where it runs**, choose the next rig. A rig with other hardware than the campaign's kit is greyed out.
-3. Keep **Agents** on **On**. When another run of the campaign has experiments waiting in its [queue](choose-what-runs-next.md), **Experiments to start with** copies them into the new run's queue unless you untick it. Each run then works through its own copy.
+3. Keep **Agents** on **On**. When another run of the campaign has experiments waiting in its [queue](choose-what-runs-next.md), **Experiments to start with** copies them into the new run's queue unless you untick it. Each run then works through its own copy, so both rigs try the same experiments. Untick it for the new run to start with an empty queue, which its planner fills.
 4. Press **Start the run**.
 
 This works for a campaign made on the **New campaign** page, which runs its latest saved version, and for one started from the command line, the REST API or MCP. For those, control assigns the campaign again as it assigned its newest run: the same contract, starting commit and imports, as a new run. The new rig must get the project and the kit the same way: if you put them in the first rig's inbox as bundles, or the first rig already had them (`--seed-commit`, or no `--kit`), put them on the new rig too. You can also run `thermite assign` again for each rig, with the same contract and starting commit: see [Start a campaign from the command line](start-from-command-line.md).
@@ -45,7 +45,7 @@ A champion beyond the starting point can be sent once its rig has published it, 
 
 The dashboard opens the receiving run's page. The receiving run must be running when the champion arrives: if it is paused or finished, the command fails, and **Commands** in the sidebar shows the reason, such as `run sort-speed-1 is paused`. Resume the run, then send the champion again.
 
-You can also send it with the owner's token over the REST API, `POST /v1/propagate` with `{"from_rig": "local-1", "run": "sort-speed-1", "to_rig": "local-2", "to_run": "sort-speed-1"}`, or with the MCP tool `propagate_champion` and the same four fields.
+You can also send it with the owner's token over the REST API, `POST /v1/propagate` with `{"from_rig": "local-1", "run": "sort-speed-1", "to_rig": "local-2", "to_run": "sort-speed-1"}`, or with the MCP tool `propagate_champion` and the same four fields. `run` and `to_run` are each run's name on its own rig, as the list beside **Send champion #N** shows them. **Start a run** numbers runs on each rig on its own, so the campaign's first run on `local-2` is `sort-speed-1` too.
 
 ## 4. Check the result
 
@@ -66,7 +66,7 @@ If the receiving run's champion is already the same code, nothing is judged, and
 
 ## If it is refused
 
-The dashboard shows `refused:` and the reason:
+After **Send champion #N**, the dashboard answers with a plain page that says `refused:` and the reason. Use your browser's **Back** button to go back to the run.
 
 | Reason | What it means |
 | --- | --- |

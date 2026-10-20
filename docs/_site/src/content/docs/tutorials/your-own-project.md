@@ -18,7 +18,7 @@ It takes half an hour to an hour, most of it waiting for the agent. New words ar
 
   Free models are often busy. Before you start, open **Settings**, find the row for `local-1` under **Harness and model for each rig**, and press **Check**. After a minute, press **refresh**. If the row says `Its model check FAILED`, for example with `Rate limit exceeded. Please try again later.`, choose another model whose name ends in `-free`, press **Use**, and wait until the check has `passed`, as in [step 3 of Hand the work to agents](agents-with-a-free-model.md#3-check-that-the-model-works).
 
-  If your rig uses a paid model instead, set **Stop after (hours)** under **Advanced** in step 7, so the campaign pauses itself after that many hours.
+  If your rig uses a paid model instead, set **Stop after (hours)** in step 7, so each run of the campaign pauses itself after that many hours.
 
 - An account on a Git hosting service, such as GitHub, GitLab or Codeberg, where you can make a **public** repository, and git set up on your computer to push to it. Your rig fetches the project from there over `https`, and the agents send its code to the model's service as they work. For a private repository, see [Use a private repository](../how-to/campaigns/private-repository.md) after this tutorial.
 
@@ -88,7 +88,7 @@ Each line is a number and how many primes there are below it: 9,592 below 100,00
 
 ## 4. Name the campaign
 
-In the dashboard, open **Campaigns** and press **New campaign**. The page has five steps: **1 Aim**, **2 Project**, **3 How to measure**, **4 Where it runs** and **5 Review and start**. Each field's ⓘ says more about it.
+In the dashboard, open **Campaigns** in the sidebar, and press **New campaign** at the top right of the page. The page has five steps: **1 Aim**, **2 Project**, **3 How to measure**, **4 Where it runs** and **5 Review and start**. Each field's ⓘ says more about it.
 
 On **1 Aim**:
 
@@ -105,6 +105,8 @@ On **2 Project**:
 2. **Start from**: `main`
 3. **Repository access**: keep **Public: no key**.
 4. Press **Look it up**. Control reads your repository and says `Found: main is at`, a short commit id, and how many files it has. Every run starts from exactly that commit.
+
+   If it says `control cannot read it without a key: is the repository private?` instead, check the address, and check that the repository is public. If it says `the repository has no branch or tag named main`, check **Start from**, and that step 2's push went through.
 5. **Files the agents may change**: `primes.c`. A change to any other file is refused before it is built.
 6. Press **Next**.
 
@@ -116,7 +118,7 @@ Fill in these fields, in the order the page shows them. Leave every field that t
 
 1. **Run**: `{build}/primes {args} > {out}/result.txt`
 
-   `{build}` is the folder that holds what the build made, `{args}` is the test case's arguments, and `{out}` is a folder for the run's results.
+   `{build}` is the folder that holds what the build made (you describe the build itself in item 6), `{args}` is the test case's arguments, and `{out}` is a folder for the run's results.
 
 2. **Test cases**: in the first row, replace `default` with `100k` under **Name**, and set **Arguments** to `100000`. Press **Add a case**, and in the new row set **Name** to `80k`, **Arguments** to `80000`, and tick **Hidden test**.
 
@@ -138,7 +140,8 @@ On **4 Where it runs**, the card for `local-1` is chosen. It shows the rig's har
 
 1. **Agents working at once**: `1`
 2. **The agents' model**: keep **the rig's model**. `local-1` goes on with the free model you gave it.
-3. Leave the rest as it is, and press **Next**.
+3. With a paid model, open **Advanced** and set **Stop after (hours)**, for example `2`. That many hours after each run of this campaign starts, its agents stop and the run pauses. With the free model, leave it empty: no limit.
+4. Leave the rest as it is, and press **Next**.
 
 ## 8. Try the kit first
 
@@ -146,14 +149,16 @@ On **5 Review and start**, a sentence sums up the campaign. It starts with `prim
 
 Press **Try the kit first**. This starts a run with no agents: the judge builds your project and runs it, so you see the kit work before an agent spends any time on it.
 
-The campaign's page opens and says `Starting local-1/primes-speed-try-1.` The rig fetches your project from your Git host and the kit from control, and checks both. Within a minute, press **refresh**. The same address now opens the run's own page. The line at the top reads `Campaigns › primes-speed › primes-speed-try-1`, then `on local-1 · hill climb · Running`, and below it is the note **A try of the kit.** The run's tabs follow: **Overview**, **Experiments**, **Attempts**, **History** and **Planner**. **Overview** is open.
+The campaign's page opens and says `Starting local-1/primes-speed-try-1.` The rig fetches your project from your Git host and the kit from control, and checks both. Within a minute, press **refresh**. The address names the run, so once the rig reports the run, the same address opens the run's own page. The line at the top reads `Campaigns › primes-speed › primes-speed-try-1`, then `on local-1 · hill climb · Running`, and below it is the note **A try of the kit.** The run's tabs follow: **Overview**, **Experiments**, **Attempts**, **History** and **Planner**. **Overview** is open.
 
 A minute or two after you pressed **Try the kit first**, press **refresh** again. Under **Recent**, on the **Overview**, you see `The judge measured the rig's noise:` and a small percentage. To learn that, the judge built your project and ran the `100k` case many times, and the check passed on every answer. Now the judge also knows how much your computer's timings vary on their own.
+
+This line means that the kit works. The try has nothing more to do: under **Now**, the judge is `idle`. It stays **Running** until the run you start in step 9 replaces it, so you need not wait for it.
 
 :::tip[If the try failed]
 If **Recent** says instead that `The judge's job` failed, the end of the sentence says why. For example, `the check exited 1` means that an answer was not a line of `expected.txt`: check the answers file and the **Is it right?** command. If the run never appears, open **Commands** in the sidebar: the `assign campaign` line says why.
 
-To fix a field, open **New campaign** again. It starts empty: fill it in again with the same campaign name and the field fixed, and press **Try the kit first**. That saves the campaign as version 2, and tries it as `primes-speed-try-2`. The campaign's page opens; after a minute, press **refresh**, and the same address opens the new try's page.
+To fix a field, open **New campaign** again. It starts empty: fill in every field again as in steps 4 to 7, with the same campaign name and the field fixed, and press **Try the kit first**. That saves the campaign as version 2, and tries it as `primes-speed-try-2`. The campaign's page opens; after a minute, press **refresh**, and the same address opens the new try's page.
 :::
 
 ## 9. Start the campaign
@@ -161,42 +166,50 @@ To fix a field, open **New campaign** again. It starts empty: fill it in again w
 The try shows that the kit works. Now start the real run, with an agent.
 
 1. On the try's page, in the note **A try of the kit.**, press the link **start the campaign**. The campaign's page opens, with the panel **Start a run of primes-speed** on its right.
+
+   If you left the try's page, open the campaign's page instead: press **primes-speed** in the line at the top of the try's page, or open **Campaigns** in the sidebar and press `primes-speed` under **All campaigns**. Then press **Start a run** at the top right. The same panel opens.
 2. **Where it runs**: the card for `local-1` is chosen. It is marked **busy**, and says `Busy: primes-speed-try-1 is at work there, and pauses when this run starts (a rig runs one run at a time).` That is expected: the new run replaces the try.
 3. **Agents**: keep **On**. Under it, the panel says `The rig's agents, on` and the name of the free model you gave `local-1`.
 4. Open **More options**, and set **When a change is confirmed better** to **ask me every time**. Every change the judge confirms will wait for you before it becomes the new best version.
 5. At the bottom, the panel sums it up: `Starts a new run on local-1, with agents on` and your model. Press **Start the run**.
 
-The campaign's page still shows the try under **At work now** at first. After a minute, press **refresh**: the same address now opens the new run's own page, `primes-speed-1`, and its top line ends `Running`. The try has stopped: the campaign's page now lists it under **Earlier runs** as **Paused**, with `replaced by primes-speed-1` under **Why it stopped**.
+The campaign's page still shows the try under **At work now** at first. After a minute, press **refresh**: as in step 8, the same address now opens the new run's own page, `primes-speed-1`, and its top line ends `Running`. The new run keeps what you set on the New campaign page, such as **Stop after (hours)**, whose hours count from this run's start.
 
-As in [Hand the work to agents](agents-with-a-free-model.md#7-watch-the-agent-work), the planner works first: for a few minutes the **Now** block on the run's **Overview** shows `planner` and `planning epoch 1`. Then the agent starts, and **Now** shows `lane-1` with the experiment it works on: the one thing the planner gave it to try, from the run's **queue** of experiments. The run's **Experiments** tab shows that queue. A **lane** is one line of search, worked by one **trial** after another: each trial is one agent's session, which submits at most one change.
+The try has stopped. To see it, press **primes-speed** in the line at the top: the campaign's page lists the try under **Earlier runs** as **Paused**, with `replaced by primes-speed-1` under **Why it stopped**. Press `primes-speed › primes-speed-1` under **At work now** to go back to the run's page.
+
+As in [Hand the work to agents](agents-with-a-free-model.md#7-watch-the-agent-work), the planner works first, often for less than a minute. While it plans, the **Now** block on the run's **Overview** shows `planner` and `planning epoch 1`: the rig's own lines still call a round an **epoch**. The run's page may open only after the planner is done. Then the agent starts, and **Now** shows `lane-1` with the experiment it works on: the one thing the planner gave it to try, from the run's **queue** of experiments. The run's **Experiments** tab shows that queue. A **lane** is one line of search, worked by one **trial** after another: each trial is one agent's session, which submits at most one change.
 
 To watch the agent:
 
-1. At the top of the run's page, press **Live**. Live opens on `primes-speed-1` and shows its lines as they come, newest at the bottom. Above them are filters: **Everyone**, **lane-1**, **Planner**, **Judge**, **Advisors** and **You**.
+1. At the top of the run's page, press **Live**. Live opens on `primes-speed-1` and shows its lines as they come, newest at the bottom. Above them are filters: **Everyone**, **lane-1**, **Planner**, **Judge**, **Advisors** and **You**. (**lane-1** shows once the planner has given the lane its first experiment.)
 2. Choose **lane-1**. It has a green dot while its agent works. Now you see only the agent: it reads `primes.c`, changes it, builds it and tries it. Each trial lasts at most 20 minutes.
 
 The box at the bottom of Live now says **To lane-1**, and its grey text says when the agent would read a message from you. You don't need it in this tutorial: [Steer a run](../how-to/campaigns/steer-a-run.md) says how to use it.
 
 ## 10. Approve the agent's change
 
-The agent's first change usually reaches the judge within half an hour of **Start the run**. Go back to the run's page: at the top of Live, press **Open the run**. Press **refresh** now and then.
+The agent's first change often reaches the judge within a few minutes of **Start the run**, and usually within half an hour. Go back to the run's page: at the top of Live, press **Open the run**. Press **refresh** now and then.
 
-When the judge has confirmed the change faster on fresh runs, it waits for you. Then, on the run's page:
+The run's **Attempts** tab lists each change the agent submitted. The first one can be **Broken**: when we ran this tutorial, the agent built its change with an extra option that the kit's **Build** command doesn't use, so the judge's build failed. The change's page, which opens when you press its row, gives the judge's reasons. The next trial tries again.
+
+When the judge has confirmed a change faster on fresh runs, it waits for you. Then, on the run's page:
 
 - the top line ends **Audit** or **Approval** instead of `Running`;
-- the **Overview** tab has a dot, and the Overview's first line ends `1 decision waits for you.`;
+- the run's **Overview** tab has a dot, and the tab's first line ends `1 decision waits for you.`;
 - under **Recent**, a line says that the change was `confirmed faster on fresh runs`;
-- under **Needs you**, at the top of the Overview, the change has the label **Your decision** and the question `Make this change the new champion?`.
+- under **Needs you**, at the top of the **Overview** tab, the change has the label **Your decision**. Its row says `lane-1 changed 1 file. The judge measured it:` and the gain, and it has the buttons **Make it the champion** and **Reject it**.
 
-The sidebar's **Overview** item shows a count too.
+The **Overview** item in the sidebar shows a count too.
 
 **Audit** is the more likely word. It means the change waits for a second look: its gain is above 15%, the limit unless a contract sets another, or the agent wrote down problems that the change has. This rig has no auditor, so the second look is yours. **Approval** means the change waits only because you asked to approve every change.
 
-1. Open the item. It shows what the agent says it did, which files it changed and by how many lines, what the judge found, and what each choice does.
-2. Read **Problems that the agent wrote**, if the item has them. Agents often note limits that don't matter here: when we ran this tutorial, the agent wrote that its new method uses some memory (`Uses O(n) memory`). That is no reason to refuse a faster program. If a problem says that the answers can be wrong, or that the change works only for the test cases, press **Reject it** instead, as in [Hand the work to agents](agents-with-a-free-model.md#if-a-change-waits-for-you).
+1. Open the item: press the text of its row, not its buttons. It asks `Make this change the new champion?`, and shows what the agent says it did, which files it changed and by how many lines, what the judge found, why the change waits for you, and what each choice does.
+2. Read **Problems that the agent wrote**, if the item has them. Agents often note limits that don't matter here: when we ran this tutorial, the agent wrote that its new method uses some memory (`Basic sieve uses O(n) memory`). That is no reason to refuse a faster program. If a problem says that the answers can be wrong, or that the change works only for the test cases, press **Reject it** instead, as in [Hand the work to agents](agents-with-a-free-model.md#if-a-change-waits-for-you).
 3. Press **Make it the champion**.
 
 The item says `You selected Make it the champion`. Press **refresh** after a few seconds: it says `The rig made the change champion #2.`, and it goes away after the rig's next report, in about a minute. The **champion** is the run's best version so far. Champion #1 was your project as you pushed it.
+
+The agent goes on working while you decide, so another change may wait for you by then, and the top line still ends **Audit**. Its item says that the champion changed after the judge measured it, so **Make it the champion** would have the judge test it again against champion #2. You can leave it: this tutorial takes champion #2 home, and step 12 pauses the run.
 
 The change itself stays on the rig until the rig's next **export**: it copies the run's results out of the harness, keeps them, and sends each new champion to control as a patch. You'll read the change line by line in the next step, before you keep it.
 
@@ -232,7 +245,9 @@ git commit -am "Count primes faster, as Thermite's judge confirmed"
 
 The agent keeps looking for more speed until you stop it. At the top of the run's page, on the right, press **Pause**, between **Message** and **⋯**. A small menu opens. In its field **why (optional)**, type `result taken home`, then press **Pause the run**.
 
-The page says `Control sent the command to local-1.`, and the agent's current trial stops too. Within a minute, after a **refresh**, the top line ends **Paused**, the button says **Resume**, and the **Now** block says `This run is paused: result taken home. Nothing new starts until it is resumed.`
+The page says `Control sent the command to local-1.`, and the agent's current trial stops too. Within a minute, after a **refresh**, the button says **Resume**, and the **Now** block says `This run is paused: result taken home. Nothing new starts until it is resumed.` The top line ends **Paused**, or still **Audit** while a change waits for you.
+
+A paused run uses no model: no agent works on it until you resume it. The runs from the earlier tutorials are paused or finished too. To stop Thermite itself, see [step 8 of Your first run](first-run.md#8-stop-or-keep-thermite).
 
 ## What you did
 
