@@ -38,6 +38,7 @@ The owner, 2026-10-20: rules use direction names only. A rule in free words reac
 ## Decisions
 
 - 2026-10-20, owner: "no. use directions name. Also I wasn't aware of tags like that and how its used in directions free form box. We should probably use a syntax for the tag and make that explicit on what tags are available such as :tag-name: and when you hit `:` it shows a list of tags available to use just like how in claude code or in discord/slack that shows you a list of emoji's you can use."
+- 2026-10-20, owner: On the mockup: direction names may contain spaces; a direction the run does not have is designed and created by the planner; the `:name:` syntax is offered but not required, so plain words to the planner also make rules. The mockup is revised and shown again, without the separate Add a rule form.
 
 ## Open questions
 
@@ -47,6 +48,7 @@ The owner, 2026-10-20: rules use direction names only. A rule in free words reac
 
 - 2026-10-20: Goal written from the owner's decision. A mockup comes first.
 - 2026-10-20: From 064's check against its approved Planner mockup, two parts of the rule box are not built: a **Lanes** rule in **Add a rule**, and the contract's lane count shown as a rule ("set by the campaign", with Change). 064's rules box moved here, so these come with this goal's rule box, if the new mockup keeps them.
+- 2026-10-20: The owner's notes on the mockup recorded; a revised mockup follows.
 
 ---
 

@@ -35,6 +35,7 @@ Rigs on RunPod GPUs are the owner's priority feature: quantization, kernel and e
 - 2026-10-20, owner: Secure cloud on demand first, as recommended. Community and spot come later.
 - 2026-10-20, lead: following the owner's decision above, a launch is on Secure cloud on demand only. Control refuses Community (the field stays, for a later version), and spot is not offered.
 - 2026-10-20, lead: The form and the rig page's cost wait for the owner's mockup approval. Everything behind them is built first: REST, MCP, the command line, the price and the spend, and the limits.
+- 2026-10-20, owner: The launch form: approved, with one change: when no campaign is running on a RunPod rig, it stops after a timeout so it costs no GPU time, and starting a run wakes it again.
 
 ## Open questions
 

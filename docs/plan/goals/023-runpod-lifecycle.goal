@@ -36,6 +36,7 @@ A rig you pay for by the hour must stop when it has no work, and it must not los
 - 2026-10-20, builder: a rig whose harness never reported holds no result, so a stop or a terminate acts on its pod at once (a pod that never enrolled, say). A stopped pod is terminated at once only when its last stop's export, and every result with it, had left the pod.
 - 2026-10-20, builder: the spend limit and the idle stop stop the pod through the same stop, its results first; they never remove it.
 - 2026-10-20, builder: the routes every rig has carry restart and the full reset (`POST /v1/rigs/<rig>/restart` and `/reset`); stop, start and terminate are new, under `/v1/rigs/<rig>/runpod/`. MCP's `runpod_rig` (owner only) and `thermite runpod stop|start|restart|terminate|reset|confirm-wipe|cancel-reset` cover all of them. The RunPod driver serves only rigs launched on RunPod and needs no setting; `THERMITE_LIFECYCLE` still names the driver for the others.
+- 2026-10-20, owner: A RunPod rig's page and lifecycle: approved, with the stop after a timeout when no campaign is running (blocked, stopped or finished runs included), as for 022.
 
 ## Open questions
 

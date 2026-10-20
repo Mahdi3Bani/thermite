@@ -38,6 +38,8 @@ The owner, 2026-10-20: outside knowledge bases should be plain MCP tools: add an
 ## Decisions
 
 - 2026-10-20, owner: "This should simply just MCP tools granted to a system. We don't need anything special, but our settings should allow us to add MCP tools to the system with auth (either the oauth flow or key/secret etc) and kits should define what mcps should be used. Gbrain should be added this way as well."
+- 2026-10-20, owner: Settings › MCP servers: approved as mocked up.
+- 2026-10-20, owner: The kit's MCP servers: approved, with an advanced part that selects and unselects each server's tools for each kind of agent.
 
 ## Open questions
 

@@ -32,6 +32,8 @@ With published images, control and its rigs will run different versions.
 - 2026-10-20, owner (through the lead's brief): A rig that sends no version is `unknown`: shown, never refused. Control refuses a rig only when both protocol versions are known and incompatible. An update of control must never cut off rigs on the previous build, and a test shows it.
 - 2026-10-20, owner (through the lead's brief): The screen display (the **Rigs** list badge and the rig page) waits for a mockup the owner is approving. This goal builds what is behind it first.
 - 2026-10-20, release lead (a fix the v0.1.0 builders found): the compatibility rule covers fields too. Control drops a field it does not know in what a supervisor sends unsigned (its figures, daily reports, acknowledgements, an export's start, its own live lines) and takes the rest, so a newer supervisor is never refused for reporting more. Kept exact: the harness's signed reports and live batches (control checks the signature over the fields it reads, so new harness data goes in an event's body or the summary, and a new signed field is a new protocol), and a pod's enrollment answer in pull mode.
+- 2026-10-20, owner: A rig's page (behind, refused, stale, offline): approved as mocked up.
+- 2026-10-20, owner: The Rigs list: a table that scans, where a rig that needs an update shows "needs update", which opens the rig's page; the update and its steps run there. A revised mockup follows.
 
 ## Open questions
 
