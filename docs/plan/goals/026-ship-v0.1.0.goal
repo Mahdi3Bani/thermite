@@ -4,14 +4,14 @@ title: "Ship v0.1.0"
 status: READY
 version: "0.1.0"
 part: "The release"
-depends_on: ["002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022", "023", "024", "025"]
+depends_on: ["001", "002", "003", "004", "005", "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022", "023", "024", "025", "060", "062", "063", "064", "065", "066", "067", "068"]
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # 026 · Ship v0.1.0
 
-**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** The release · **Depends on:** [002](002-ci-and-repository-settings.goal), [003](003-advisors-no-default-cap.goal), [004](004-secret-scan.goal), [005](005-sample-project.goal), [006](006-docs-for-testers.goal), [007](007-known-limits.goal), [008](008-community-files.goal), [009](009-subscription-sign-in-tests.goal), [010](010-published-images.goal), [011](011-release-bundle.goal), [012](012-version-checks.goal), [013](013-thermite-doctor.goal), [014](014-quick-start-in-ci.goal), [015](015-log-paging.goal), [016](016-small-fixes.goal), [017](017-legacy-names.goal), [018](018-runpod-spike.goal), [019](019-rig-only-entry.goal), [020](020-runpod-rig-image.goal), [021](021-enrollment-codes.goal), [022](022-runpod-launch.goal), [023](023-runpod-lifecycle.goal), [024](024-runpod-models-and-results.goal), [025](025-runpod-tests-and-docs.goal)
+**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** The release · **Depends on:** [001](001-plans-in-public.goal), [002](002-ci-and-repository-settings.goal), [003](003-advisors-no-default-cap.goal), [004](004-secret-scan.goal), [005](005-sample-project.goal), [007](007-known-limits.goal), [008](008-community-files.goal), [009](009-subscription-sign-in-tests.goal), [010](010-published-images.goal), [011](011-release-bundle.goal), [012](012-version-checks.goal), [013](013-thermite-doctor.goal), [014](014-quick-start-in-ci.goal), [015](015-log-paging.goal), [016](016-small-fixes.goal), [017](017-legacy-names.goal), [018](018-runpod-spike.goal), [019](019-rig-only-entry.goal), [020](020-runpod-rig-image.goal), [021](021-enrollment-codes.goal), [022](022-runpod-launch.goal), [023](023-runpod-lifecycle.goal), [024](024-runpod-models-and-results.goal), [025](025-runpod-tests-and-docs.goal), [060](060-docs-site.goal), [062](062-research-folder.goal), [063](063-scan-and-steer.goal), [064](064-experiment-queue.goal), [065](065-journals-and-corpus.goal), [066](066-direction-rules.goal), [067](067-assign-queue-from.goal), [068](068-mcp-servers-for-agents.goal)
 
 ## What
 
@@ -45,6 +45,7 @@ This is the first release that people outside the project can install and test.
 ## Progress
 
 - 2026-10-19: Goal written from the v0.1.0 release plan.
+- 2026-10-20: Depends on every v0.1.0 goal in the release plan, goals 001, 060 and 062 to 068 included; goal 006 was dropped into 060.
 
 ---
 
