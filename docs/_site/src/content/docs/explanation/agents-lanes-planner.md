@@ -24,7 +24,7 @@ Thermite's work nests in five levels:
 
 An **experiment** is one thing to try: a short title, some details, its **direction** (a named approach, such as `loop-tiling`) and why it is worth trying. Each run keeps its experiments in one queue, described [below](#the-experiment-queue).
 
-Work is organised in **rounds**. At the start of each round, the planner gives every lane an experiment for its next trial. Then each lane runs a few trials, one after another (three by default), and each later trial takes the next experiment from the queue. When every lane has run its trials and the judge has settled their attempts, the next round is planned. The dashboard says "round", and so does each plan in Live ("round 4: planned by the model"). The contract's settings, the harness's records, the workers' briefs and the planner's "planning epoch 4" line before each plan call a round an **epoch**.
+Work is organised in **rounds**. At the start of each round, the planner gives every lane an experiment for its next trial. Then each lane runs a few trials, one after another (three by default), and each later trial takes the next experiment from the queue. When every lane has run its trials and the judge has settled their attempts, the next round is planned. The dashboard says "round", and so does each plan in Live ("round 4: planned by the model"). The contract's settings, the harness's records and the workers' briefs call a round an **epoch**; the planner's live line says "planning round 4".
 
 ```mermaid
 flowchart LR
@@ -123,7 +123,7 @@ Code checks the answer before anything changes. It refuses an answer that:
 - moves an experiment that isn't queued, drops one that isn't queued or an idea, or queues something that isn't an idea;
 - adds a rule for a message that wasn't in its input.
 
-A refused answer goes back to the model once, with the errors. If the second answer fails too, or the model can't be reached, the lanes take work by the fixed rules below. Planner trouble never pauses research.
+Code checks the answer first: among other things, every lane gets one experiment, no experiment goes to two lanes, and no direction is named like a kind of rule (`avoid`, `try`, `mandate`, `priority`, `lane_count`, `note`). A refused answer goes back to the model once, with the errors. If the second answer fails too, or the model can't be reached, the lanes take work by the fixed rules below. Planner trouble never pauses research.
 
 Code checks the **Avoid** and **Always** rules that name a direction. A rule in plain words, such as "anything that uses shared memory", is for the model to apply: it is told to treat those words like a direction's name. Code doesn't check them, and the fixed rules don't use them. So when no model answer comes (the planner is switched off, its model can't be reached or its answer is refused), and in a research run, only the rules that name a direction apply.
 

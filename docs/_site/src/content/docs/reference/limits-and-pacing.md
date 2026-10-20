@@ -50,7 +50,7 @@ None of these ends research. A trial that ends at its time is followed by the la
 | Trials per lane per epoch | 3 | The contract's `lanes.trials_per_epoch` |
 | Reminders to a Pi worker | When 85% of the trial's time is used, 10 turns before a turn cap, and at 80% of the model's context window | Fixed |
 | Nudges when a worker stops without submitting | 2. An OpenCode or Claude Code worker is continued again for as long as the owner's messages wait for its trial and its last run made progress | Fixed (Pi, OpenCode and Claude Code). Then the trial ends; the trial's time limit still applies |
-| Time to finish after a submission | 60 s | Fixed (OpenCode and Claude Code) |
+| Time to finish after a submission | 5 s: the submission is recorded, then the lane's agent stops (its closing reply, and any note or idea after the submission, is not kept) | Fixed (OpenCode and Claude Code; Pi stops at once) |
 | Model call retries in a Pi trial | Waits of 5 s, doubling to 60 s. The trial ends after 6 failed calls in a row, 5 cut-off replies in a row, or a full context | Fixed |
 | A lane's wait after unproductive trials | 15 s, doubling for each one in a row, at most 10 minutes. Unproductive: an error, no submission, or an attempt that is `rejected_v0` or `duplicate` (research: an error) | Fixed |
 | A run's cool-down after 6 trials in a row end in errors | 30 minutes, with an `agents_cooldown` event. A new model given to the rig, or the run resumed, after the last of those errors ends it at once | Fixed |
