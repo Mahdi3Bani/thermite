@@ -173,6 +173,36 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
   );
 
   server.registerTool(
+    "rig_setup",
+    {
+      title: "How a rig was set up",
+      description:
+        "For a rig control set up or manages on a machine or a cluster: where it is, its status there (for example deploying, running, updating, stopped) and each step of its setup and management, oldest first (applied, pods running, first report, images updated, failures with why). Use it after add_cluster_rig or update_rig_images. Holds no keys or tokens.",
+      inputSchema: { rig: z.string().min(1) },
+    },
+    audited("rig_setup", (a: { rig: string }) => {
+      const cluster = store.clusterRig(a.rig);
+      const machine = store.machineRig(a.rig);
+      if (!cluster && !machine) throw new Error(`control did not set ${a.rig} up`);
+      return {
+        rig: a.rig,
+        ...(cluster
+          ? {
+              on: "cluster",
+              cluster: cluster.cluster,
+              namespace: cluster.namespace,
+              placement: cluster.placement,
+              status: cluster.status,
+              images: cluster.spec.images,
+            }
+          : {}),
+        ...(machine ? { on: "machine", machine: machine.machine, status: machine.status } : {}),
+        steps: store.rigSetupEvents(a.rig),
+      };
+    }),
+  );
+
+  server.registerTool(
     "recent_events",
     {
       title: "Recent events",

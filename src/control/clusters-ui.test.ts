@@ -584,6 +584,18 @@ describe("clusters in Providers and Add a rig", () => {
     const unknown = await call("update_rig_images", { rig: "cpu-9" });
     assert.ok(unknown.error);
     assert.match(String(unknown.body.error), /Control didn't set cpu-9 up on a cluster/);
+    // Where the rig is, its status there and each step of its setup, over MCP.
+    const setup = await call("rig_setup", { rig: "cpu-2" });
+    assert.equal(setup.error, false);
+    const body = setup.body as unknown as {
+      on: string;
+      namespace: string;
+      steps: { step: string }[];
+    };
+    assert.equal(body.on, "cluster");
+    assert.equal(body.namespace, "thermite-slot-2");
+    assert.ok(body.steps.length > 0);
+    assert.ok((await call("rig_setup", { rig: "cpu-9" })).error);
     await client.close();
   });
 });
