@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { syncModelRoute } from "./model-route.ts";
+import { syncModelRoute, syncModelRouteRound } from "./model-route.ts";
 
 /** A fake control and harness: control's reply is given; the harness records what it is handed. */
 function fakes(
@@ -78,5 +78,41 @@ describe("the supervisor's model route", () => {
     });
     assert.equal(await syncModelRoute(dropped.cfg), "set");
     assert.deepEqual(dropped.handed, [{ route, planner: null }]);
+  });
+
+  test("a round that fails is tried once more after a wait; only a second failure reaches the log", async () => {
+    const route = { name: "r", version: 2, revision: "bbbbbbbb" };
+    // Control not up yet at the first call, as at start: fetch itself fails.
+    let calls = 0;
+    const starting = fakes(
+      () => {
+        calls++;
+        if (calls === 1) throw new TypeError("fetch failed");
+        return Response.json({ route });
+      },
+      { source: "environment" },
+    );
+    const waits: number[] = [];
+    const wait = async (ms: number) => {
+      waits.push(ms);
+    };
+    assert.equal(await syncModelRouteRound(starting.cfg, 5000, wait), "set");
+    assert.deepEqual(waits, [5000]);
+    assert.deepEqual(starting.handed, [{ route, planner: null }]);
+    // Up at once: no wait.
+    const up = fakes(() => Response.json({ route }), { source: "environment" });
+    waits.length = 0;
+    assert.equal(await syncModelRouteRound(up.cfg, 5000, wait), "set");
+    assert.deepEqual(waits, []);
+    // Still down after the wait: the second failure is the round's.
+    const down = fakes(
+      () => {
+        throw new TypeError("fetch failed");
+      },
+      { source: "control", revision: "aaaaaaaa" },
+    );
+    await assert.rejects(syncModelRouteRound(down.cfg, 5000, wait), /fetch failed/);
+    assert.deepEqual(waits, [5000]);
+    assert.deepEqual(down.handed, []);
   });
 });
