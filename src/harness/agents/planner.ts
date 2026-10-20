@@ -50,6 +50,8 @@ export interface PlanResult {
   valid: boolean;
   /** What was wrong with the model's raw output, per try (the directive-compliance record). */
   rawViolations: string[];
+  /** True when the model gave an answer (valid or not): its prompt, owner messages included, reached it. */
+  answered?: boolean | undefined;
   assignments: Assignment[];
   newFamilies: NewFamily[];
   notes?: string | undefined;
@@ -212,6 +214,7 @@ export async function plan(
   ask?: Ask,
 ): Promise<PlanResult> {
   const rawViolations: string[] = [];
+  let answered = false;
   if (model) {
     const context = canonicalJson({
       epoch: input.epoch,
@@ -239,6 +242,7 @@ export async function plan(
         rawViolations.push(`try ${tries}: ${err instanceof Error ? err.message : String(err)}`);
         continue;
       }
+      answered = true;
       const { errors, plan: p } = validatePlan(raw, input);
       if (!errors.length && p) {
         return {
@@ -246,6 +250,7 @@ export async function plan(
           tries,
           valid: true,
           rawViolations,
+          answered,
           assignments: p.assignments,
           newFamilies: p.new_families,
           notes: p.notes,
@@ -261,6 +266,7 @@ export async function plan(
     tries: model ? 2 : 0,
     valid: false,
     rawViolations,
+    answered,
     assignments: f.assignments,
     newFamilies: f.newFamilies,
   };

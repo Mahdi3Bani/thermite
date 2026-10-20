@@ -6,6 +6,7 @@ import { type Contract, laneLimits, type ResearchContract } from "../../core/con
 import type { LiveKind } from "../../core/live.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import type { Ledger } from "../ledger.ts";
+import { messageText, type OwnerMessage } from "../messages.ts";
 import type { Research } from "../research/research.ts";
 import type { HarnessService } from "../service.ts";
 import { type ModelConfig, usageLimitRetry } from "./model.ts";
@@ -557,6 +558,8 @@ export class Scheduler {
 
   private async planEpoch(run: string, contract: Contract, n: number): Promise<void> {
     const laneCount = this.laneCount(run, contract);
+    // The owner's messages to the planner and to everyone working, not read yet.
+    const owner = this.o.service.messages.waitingForPlanner(run);
     const lanes = lanesOf(laneCount);
     const champion = this.ledger.currentChampion(run);
     const input: PlannerInput = {
@@ -571,7 +574,7 @@ export class Scheduler {
       directives: this.directives(run),
       laneBests: Object.fromEntries(lanes.map((l) => [l, this.registry.laneBest(run, l)])),
       campaignNotes: contract.notes,
-      ownerMessages: this.o.service.takePlannerMessages(run),
+      ownerMessages: owner.map((m) => m.text),
       goalReport: contract.mode === "goal" ? this.goalReport(run, champion.seq) : undefined,
     };
     const live = this.o.service.live;
@@ -581,8 +584,6 @@ export class Scheduler {
       text: `planning epoch ${n} (${laneCount} lanes)`,
       run,
     });
-    for (const m of input.ownerMessages ?? [])
-      live.append({ source: "planner", kind: "message", text: `Owner: ${m}`, run });
     const ctrl = new AbortController();
     this.planning = { run, ctrl };
     this.watch();
@@ -615,11 +616,18 @@ export class Scheduler {
     } finally {
       this.planning = undefined;
     }
-    // Paused or closed while planning: no epoch starts.
+    // Paused or closed while planning: no epoch starts, and the owner's messages wait.
     if (ctrl.signal.aborted) {
       live.append({ source: "planner", kind: "status", text: "planning cancelled", run });
       return;
     }
+    // Read only when the model answered with them in its prompt: a planner that is off, or a
+    // model that could not be reached, leaves them waiting for the next plan.
+    if (owner.length && p.answered)
+      this.o.service.messages.read(
+        owner.map((m) => m.id),
+        "planner",
+      );
     live.append({
       source: "planner",
       kind: "text",
@@ -868,6 +876,7 @@ export class Scheduler {
       notes: stalled
         ? "research plan (deterministic in v1); novelty fell, so primary sources and contradictions first"
         : "research plan (deterministic in v1)",
+      plan: "research",
       by: this.o.owner,
     });
   }
@@ -1120,12 +1129,30 @@ export class Scheduler {
     this.o.service.live.append({ source: `trial:${id}`, kind, text, lane, run });
   }
 
-  /** The brief with the owner's messages for this lane, if any (each delivered once). */
+  /**
+   * The brief with the owner's messages for this trial: those kept in force (to everyone working
+   * or to this lane) in every new trial's brief until the owner removes them, then those its lane
+   * has not read yet. Both are read by this trial (code and research trials alike).
+   */
   private withOwnerMessages(id: string, run: string, lane: string, brief: string): string {
-    const msgs = this.o.service.takeMessages({ id, run, lane });
-    if (!msgs.length) return brief;
-    for (const m of msgs) this.trialLine(id, run, lane, "message", `Owner: ${m}`);
-    return `${brief}\n\n# Messages from the campaign's owner\n${msgs.map((m) => `- ${m}`).join("\n")}`;
+    const inbox = this.o.service.messages;
+    const kept = inbox.inForce(run, lane);
+    const waiting = inbox
+      .waitingForTrial({ id, run, lane })
+      .filter((m) => !kept.some((k) => k.id === m.id));
+    if (!kept.length && !waiting.length) return brief;
+    inbox.read(
+      [...kept, ...waiting].map((m) => m.id),
+      lane,
+      { id, run, lane },
+    );
+    const list = (ms: OwnerMessage[]) =>
+      ms.map((m) => `- ${messageText(m).replace(/\n/g, "\n  ")}`).join("\n");
+    return [
+      brief,
+      ...(kept.length ? [`# Messages from the campaign's owner, in force\n${list(kept)}`] : []),
+      ...(waiting.length ? [`# Messages from the campaign's owner\n${list(waiting)}`] : []),
+    ].join("\n\n");
   }
 
   /** The worker's brief: built only from the ledger, and only from this lane's own history. */

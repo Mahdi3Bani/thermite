@@ -125,6 +125,13 @@ export const QueueSeed = z.strictObject({
 });
 export type QueueSeed = z.infer<typeof QueueSeed>;
 
+/**
+ * Who an owner's message (message_agent) may go to: everyone working, the planner, the advisors
+ * (all of them, the teacher pair, the auditor or the review panel), a lane or a worker's trial.
+ */
+export const MESSAGE_TARGET =
+  /^(all|planner|advisors|teachers|auditor|panel|lane-([1-9]|1[0-6])|trial:t-[0-9a-f]{8,32})$/;
+
 export const CommandPayloads = {
   assign_campaign: z.object({
     run: IdSchema,
@@ -165,15 +172,25 @@ export const CommandPayloads = {
   }),
   reset_workers: z.object({ run: IdSchema, reseed_commit: CommitSchema.optional() }),
   /**
-   * The owner's message to an agent session (owner only): a running worker's trial, a lane (its
-   * running trial, else its next one), the planner (its next plan) or the advisors (their next
-   * brief). The judge is code and takes no messages.
+   * The owner's message to the run's agents (owner only). `to`: everyone working (`all`: every
+   * lane, and the planner of a hill-climb or goal run), a lane, a running worker's trial, the
+   * planner, or the advisors (`advisors`: all of them; `teachers`, `auditor` or `panel`). The
+   * judge is code and takes no messages. `keep`, for `all` or a lane only, keeps the message in
+   * force: it goes into every new trial's brief until an unkeep_message removes it.
    */
-  message_agent: z.object({
-    run: IdSchema,
-    to: z.string().regex(/^(planner|advisors|lane-([1-9]|1[0-6])|trial:t-[0-9a-f]{8,32})$/),
-    text: z.string().min(1).max(4000),
-  }),
+  message_agent: z
+    .object({
+      run: IdSchema,
+      to: z.string().regex(MESSAGE_TARGET),
+      text: z.string().min(1).max(4000),
+      keep: z.boolean().optional(),
+    })
+    .refine((p) => !p.keep || p.to === "all" || p.to.startsWith("lane-"), {
+      message: "only a message to everyone working (all) or to a lane can be kept in force",
+      path: ["keep"],
+    }),
+  /** The owner ends a message kept in force (owner only): new briefs no longer carry it. */
+  unkeep_message: z.object({ run: IdSchema, message: z.number().int().positive() }),
   /**
    * Another rig's champion as a candidate here: this rig's judge screens and confirms it
    * against its own champion. The supervisor stages the file from the results repository.

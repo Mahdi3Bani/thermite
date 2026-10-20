@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { type LaneLimitValues, laneLimits } from "../../core/contract.ts";
 import { type LiveKind, summarizeArgs } from "../../core/live.ts";
 import type { Role, Runner, RunOutcome } from "../broker/runner.ts";
-import type { TrialProgress } from "./live-session.ts";
+import type { MessageInbox, TrialProgress } from "./live-session.ts";
 import type { ModelConfig } from "./model.ts";
 import type { RigCheckReport } from "./model-check.ts";
 import {
@@ -232,6 +232,46 @@ export function breachError(
 export const NUDGE =
   'You have not submitted yet. Keep working: make your change, build and test it, then run `thermite-trial submit --hypothesis "..."` once. If you find no change worth judging, say why in one sentence.';
 
+/** The owner's messages as they are put to an agent in a continued session. */
+export const ownerLines = (msgs: { text: string }[]) =>
+  msgs.map((m) => `A message from the campaign's owner: ${m.text}`);
+
+/**
+ * The owner's messages carried by the prompt of a continued session (OpenCode or Claude Code):
+ * they are read once the agent has started on that prompt (its first step or tool call), and
+ * stay waiting if it never does.
+ */
+export class CarriedMessages {
+  private carrying: { ids: number[]; turns: number; calls: number } | undefined;
+  private readonly inbox: MessageInbox | undefined;
+
+  constructor(inbox: MessageInbox | undefined) {
+    this.inbox = inbox;
+  }
+
+  /** The messages waiting now, to put in the next prompt. */
+  take(tally: { turns: number; toolCalls: number }): { id: number; text: string }[] {
+    const msgs = this.inbox?.waiting() ?? [];
+    this.carrying = msgs.length
+      ? { ids: msgs.map((m) => m.id), turns: tally.turns, calls: tally.toolCalls }
+      : undefined;
+    return msgs;
+  }
+
+  /** After reading the run's output: the agent started on the prompt, so they are read. */
+  check(tally: { turns: number; toolCalls: number }): void {
+    const c = this.carrying;
+    if (!c || (tally.turns <= c.turns && tally.toolCalls <= c.calls)) return;
+    this.carrying = undefined;
+    this.inbox?.given(c.ids);
+  }
+
+  /** The run ended: what it never started on stays waiting (for the next prompt or trial). */
+  drop(): void {
+    this.carrying = undefined;
+  }
+}
+
 export interface OpencodeTrialDeps {
   runner: Runner;
   model: ModelConfig;
@@ -242,8 +282,12 @@ export interface OpencodeTrialDeps {
   progress(p: TrialProgress): void;
   /** The trial's submission, once it has one (from the ledger). */
   submitted(): SubmitOutcome | undefined;
-  /** The owner's messages for this trial, each given once. */
-  messages?: (() => string[]) | undefined;
+  /**
+   * The owner's messages for this trial. OpenCode takes no message into a running session: one
+   * waiting when a run ends is given by continuing the session with it, and is read once the
+   * agent starts on that prompt.
+   */
+  messages?: MessageInbox | undefined;
   /** The lane's build caches (ccache and the like). */
   env?: Record<string, string> | undefined;
   signal?: AbortSignal | undefined;
@@ -326,7 +370,10 @@ function startInArea(
 /**
  * One worker trial in OpenCode: its home and configuration in the lane's own area, then
  * `opencode run` in the workspace until the agent submits or the trial's time ends. A run that
- * ends without a submission is continued in the same session, twice at most, as Pi's are.
+ * ends without a submission is continued in the same session, twice at most, as Pi's are, and
+ * after that for as long as the owner's messages wait and the agent keeps working. OpenCode
+ * takes no message into a running session: a message waits until the run ends without a
+ * submission, and goes into the continuation's prompt.
  */
 export async function runOpencodeTrial(
   spec: TrialSpec,
@@ -362,11 +409,13 @@ export async function runOpencodeTrial(
   const minutes = Math.round(spec.wallMs / 60_000);
   let message = `${SYSTEM}\n\n${limitsNote(limits)}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. This trial lasts ${minutes} minutes. Submit before it ends.`;
   let offset = 0;
+  const carried = new CarriedMessages(deps.messages);
   const pump = () => {
     const r = readNew(events, offset);
     offset = r.next;
     const live = readOpencodeEvents(r.lines, tally);
     if (live.length) deps.live(live);
+    carried.check(tally);
     if (r.lines.length)
       deps.progress({
         turns: tally.turns,
@@ -382,6 +431,7 @@ export async function runOpencodeTrial(
       break;
     }
     const errorsBefore = tally.errors.length;
+    const progressBefore = tally.turns + tally.toolCalls;
     const args = [
       "run",
       "--standalone",
@@ -417,10 +467,13 @@ export async function runOpencodeTrial(
     }
     const outcome = await running;
     pump();
+    carried.drop();
     if (deps.signal?.aborted) {
       result.stopped = "interrupted";
       break;
     }
+    // After a submission the trial is over: messages still waiting go to the lane's next trial,
+    // which can act on them.
     if (deps.submitted()) break;
     // A memory or disk limit ends OpenCode with everything it ran: say which, with the figures.
     const breach = breachError(outcome, limits);
@@ -445,11 +498,11 @@ export async function runOpencodeTrial(
       result.error = `OpenCode exited ${outcome.exitCode ?? outcome.signal}: ${tally.notes.at(-1) ?? "no output"}`;
       break;
     }
-    if (nudges >= 2) break;
-    const owner = deps.messages?.() ?? [];
-    message = [NUDGE, ...owner.map((m) => `A message from the campaign's owner: ${m}`)].join(
-      "\n\n",
-    );
+    // Continued twice to get a submission, and then for as long as the owner's messages wait
+    // and the agent keeps working. A message is read only once the agent starts on the prompt.
+    const progressed = tally.turns + tally.toolCalls > progressBefore;
+    if (nudges >= 2 && (!progressed || !(deps.messages?.waiting().length ?? 0))) break;
+    message = [NUDGE, ...ownerLines(carried.take(tally))].join("\n\n");
   }
   const sub = deps.submitted();
   if (sub) {
@@ -502,8 +555,9 @@ export interface OpencodeResearchDeps extends Omit<OpencodeTrialDeps, "submitted
  * One research trial in OpenCode: the same tools as a hill-climb trial (its shell, files and web
  * search) plus the research tools as `thermite-trial research` commands, which reach the
  * harness's research service with the trial's token. As in Pi, the trial ends when the agent
- * stops, its time or turns run out, or it is stopped; a run cut short by a failure after some
- * work, or with the owner's messages waiting, is continued in its session, twice at most.
+ * stops, its time or turns run out, or it is stopped. A run cut short by a failure after some
+ * work is continued in its session, twice at most; one that ends with the owner's messages
+ * waiting is continued with them, for as long as messages wait and the agent keeps working.
  */
 export async function runOpencodeResearchTrial(
   spec: ResearchTrialSpec,
@@ -534,11 +588,13 @@ export async function runOpencodeResearchTrial(
   const minutes = Math.round(spec.wallMs / 60_000);
   let message = researchPrompt(limits, spec.brief, minutes, deps.folder);
   let offset = 0;
+  const carried = new CarriedMessages(deps.messages);
   const pump = () => {
     const r = readNew(events, offset);
     offset = r.next;
     const live = readOpencodeEvents(r.lines, tally);
     if (live.length) deps.live(live);
+    carried.check(tally);
     if (r.lines.length)
       deps.progress({
         turns: tally.turns,
@@ -548,7 +604,8 @@ export async function runOpencodeResearchTrial(
       });
   };
   const capped = () => spec.maxTurns !== undefined && tally.turns >= spec.maxTurns;
-  for (let again = 0; ; again++) {
+  let retries = 0;
+  for (;;) {
     const remaining = deadline - Date.now();
     if (remaining <= 0) {
       result.stopped = "wall";
@@ -556,6 +613,7 @@ export async function runOpencodeResearchTrial(
     }
     const errorsBefore = tally.errors.length;
     const callsBefore = tally.toolCalls;
+    const turnsBefore = tally.turns;
     const running = startInArea(
       deps.runner,
       role,
@@ -590,6 +648,7 @@ export async function runOpencodeResearchTrial(
     }
     const outcome = await running;
     pump();
+    carried.drop();
     if (deps.signal?.aborted) {
       result.stopped = "interrupted";
       break;
@@ -621,13 +680,19 @@ export async function runOpencodeResearchTrial(
       result.error = `OpenCode exited ${outcome.exitCode ?? outcome.signal}: ${tally.notes.at(-1) ?? "no output"}`;
       break;
     }
-    const owner = deps.messages?.() ?? [];
-    if (again >= 2 || (!failed && !owner.length)) break;
+    // Continued after a failure that followed some work (twice at most), and for as long as the
+    // owner's messages wait and the agent keeps working. Messages are taken only for a run that
+    // starts, and read only once the agent starts on that prompt: none is ever dropped.
+    const progressed = tally.turns > turnsBefore || tally.toolCalls > callsBefore;
+    const retry = failed && retries < 2;
+    const owner = progressed ? (deps.messages?.waiting().length ?? 0) : 0;
+    if (!retry && !owner) break;
+    if (failed) retries++;
     message = [
       ...(failed
         ? [`The model call failed (${tally.errors.at(-1)}). Continue where you left off.`]
         : ["Continue your research."]),
-      ...owner.map((m) => `A message from the campaign's owner: ${m}`),
+      ...ownerLines(carried.take(tally)),
     ].join("\n\n");
   }
   if (result.stopped === "wall") result.error = `the trial reached its ${minutes}-minute limit`;

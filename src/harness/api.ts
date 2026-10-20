@@ -262,9 +262,15 @@ export function createHarnessApi(
   // where their outputs go. None of these can set a verdict, a contract or a champion.
   app.get("/v1/runs", supervisor, (c) =>
     c.json({
-      runs: service.ledger
-        .listRuns()
-        .map((i) => ({ id: i.id, campaign: i.campaign, mode: i.mode, status: i.status })),
+      runs: service.ledger.listRuns().map((i) => ({
+        id: i.id,
+        campaign: i.campaign,
+        mode: i.mode,
+        status: i.status,
+        // The owner's messages each advisor role has not read yet (their ids): a new one for the
+        // teacher pair starts its round at once, not at the next hour.
+        owner_messages_waiting: service.messages.waitingIds(i.id),
+      })),
     }),
   );
 
@@ -292,9 +298,7 @@ export function createHarnessApi(
     );
   });
 
-  app.get("/v1/reviews/pending", supervisor, (c) =>
-    c.json({ reviews: new Reviews(service.ledger).pending() }),
-  );
+  app.get("/v1/reviews/pending", supervisor, (c) => c.json({ reviews: service.reviewPackages() }));
 
   app.post("/v1/reviews/:id", supervisor, bodyLimit({ maxSize: 256 * 1024 }), async (c) => {
     const id = z.coerce.number().int().positive().parse(c.req.param("id"));
@@ -316,6 +320,30 @@ export function createHarnessApi(
       review: id,
       result: new Reviews(service.ledger).recordPanel(id, body.results, "supervisor"),
     });
+  });
+
+  // The advisors' receipts and answers for the owner's messages: which messages an advisor role
+  // was given (in its brief or package) and what it answered. Each message must be in the run and
+  // addressed to that role.
+  app.post("/v1/advisor-messages", supervisor, bodyLimit({ maxSize: 256 * 1024 }), async (c) => {
+    const body = z
+      .strictObject({
+        run: z.string().min(1).max(100),
+        role: z.enum(["teachers", "auditor", "panel"]),
+        read: z.array(z.number().int().positive()).max(100).default([]),
+        answers: z
+          .array(
+            z.strictObject({
+              message: z.number().int().positive(),
+              text: z.string().min(1).max(2000),
+              advisor: z.string().min(1).max(100).optional(),
+            }),
+          )
+          .max(100)
+          .default([]),
+      })
+      .parse(await c.req.json());
+    return c.json(service.advisorMessages(body));
   });
 
   // The live log, signed, for the supervisor to relay to control.
@@ -360,12 +388,23 @@ export function createHarnessApi(
     return c.json({ ok: true });
   });
 
-  // The owner's messages for this trial (sent to it or to its lane), each delivered once.
+  // The owner's messages waiting for this trial (to it, its lane or everyone working). Fetching
+  // them gives nothing to the agent: the worker confirms each one once its agent has it.
   app.get("/v1/trial/messages", (c) => {
     const { trial } = trialOf(c.req.header("authorization"));
     return c.json({
-      messages: service.takeMessages({ id: trial.id, run: trial.run, lane: trial.lane }),
+      messages: service.trialInbox({ id: trial.id, run: trial.run, lane: trial.lane }).waiting(),
     });
+  });
+
+  // The worker's receipt: these messages reached its agent (only messages waiting for it count).
+  app.post("/v1/trial/messages/read", bodyLimit({ maxSize: 16 * 1024 }), async (c) => {
+    const { trial } = trialOf(c.req.header("authorization"));
+    const body = z
+      .object({ ids: z.array(z.number().int().positive()).min(1).max(100) })
+      .parse(await c.req.json());
+    service.trialInbox({ id: trial.id, run: trial.run, lane: trial.lane }).given(body.ids);
+    return c.json({ ok: true });
   });
 
   app.post("/v1/exports/done", supervisor, bodyLimit({ maxSize: 256 * 1024 }), async (c) => {

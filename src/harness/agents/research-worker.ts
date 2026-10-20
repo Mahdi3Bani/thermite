@@ -139,7 +139,6 @@ export async function runResearchTrial(
     // One tool call at a time: each is a request to the harness, in the order the model chose.
     toolExecution: "sequential",
   });
-  if (deps.link) linkSession(agent, deps.link);
   agent.subscribe((event) => {
     if (event.type === "turn_end") {
       result.turns++;
@@ -152,6 +151,8 @@ export async function runResearchTrial(
       }
     }
   });
+  // After the turn cap above: the owner's messages are not fetched on the turn it stops.
+  if (deps.link) linkSession(agent, deps.link);
   const wall = setTimeout(() => {
     result.stopped = "wall";
     agent.abort();

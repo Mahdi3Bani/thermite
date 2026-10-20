@@ -625,4 +625,44 @@ export const MIGRATIONS: readonly (string | ((db: DatabaseSync) => void))[] = [
   );
   create index research_file_run on research_file (run, lane, path);
   `,
+  // 13: the owner's messages get read receipts and can be kept in force. A message can be read by
+  // several readers (each lane, the planner, the teacher pair, the auditor, the review panel); a
+  // message kept in force goes into every new trial's brief until it is unkept. Deliveries made
+  // before this version become reads by the trial's lane (or the planner) at the time they
+  // were made; nothing else is assumed read.
+  (db) => {
+    db.exec(`
+      alter table agent_message add column keep integer not null default 0;
+      alter table agent_message add column unkept_at text;
+      create table agent_message_read (
+        id integer primary key autoincrement,
+        message integer not null references agent_message (id),
+        reader text not null,
+        trial text,
+        read_at text not null
+      );
+      create index agent_message_read_by on agent_message_read (message, reader);
+    `);
+    const delivered = db
+      .prepare(
+        "select id, target, delivered_at, delivered_to from agent_message where delivered_at is not null",
+      )
+      .all() as { id: number; target: string; delivered_at: string; delivered_to: string | null }[];
+    const laneOf = db.prepare("select lane from trial where id = ?");
+    const insert = db.prepare(
+      "insert into agent_message_read (message, reader, trial, read_at) values (?, ?, ?, ?)",
+    );
+    for (const m of delivered) {
+      const to = m.delivered_to ?? "";
+      if (to === "planner") {
+        insert.run(m.id, "planner", null, m.delivered_at);
+        continue;
+      }
+      const trial = to.startsWith("trial:") ? to.slice("trial:".length) : null;
+      const lane =
+        (trial ? (laneOf.get(trial) as { lane: string } | undefined)?.lane : undefined) ??
+        (m.target.startsWith("lane-") ? m.target : undefined);
+      if (lane) insert.run(m.id, lane, trial, m.delivered_at);
+    }
+  },
 ];

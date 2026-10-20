@@ -34,9 +34,10 @@ import {
 import { importBundle, importFile } from "./imports.ts";
 import { type Kit, KitSchema, kitProblems } from "./kit.ts";
 import { type Ledger, LedgerError } from "./ledger.ts";
+import { type AdvisorRole, messageText, OwnerMessages } from "./messages.ts";
 import { writeExport } from "./outbox.ts";
 import { receivePropagation } from "./propagation.ts";
-import { Reviews } from "./reviews.ts";
+import { type ReviewPackage, Reviews } from "./reviews.ts";
 import { RigSettingsStore } from "./rig-settings.ts";
 import { checkV0 } from "./v0.ts";
 
@@ -60,6 +61,7 @@ const OWNER_ONLY = new Set([
   "conclude",
   "wipe_state",
   "message_agent",
+  "unkeep_message",
   "rig_settings",
 ]);
 
@@ -193,6 +195,8 @@ export class HarnessService {
   >();
   /** The rig's own settings (Edit rig): parts on or off, workers at once, limits, promotion. */
   readonly settings: RigSettingsStore;
+  /** The owner's messages to the run's agents, and who read each one. */
+  readonly messages: OwnerMessages;
   /** A rig configured with its GPU set: how many cards, and how many the judge has now. */
   gpuSplit?: { set: number; judge: number } | undefined;
   /**
@@ -251,6 +255,13 @@ export class HarnessService {
     this.ledger = input.ledger;
     this.paths = input.paths;
     this.controlPublicKeyPem = input.controlPublicKeyPem;
+    this.messages = new OwnerMessages({
+      ledger: this.ledger,
+      live: this.live,
+      clock: this.clock,
+      settings: () => this.settings.get(),
+      contractFor: (run) => this.contractFor(run),
+    });
   }
 
   /** A run's promotion policy: its own, chosen when it was assigned, or the rig's default. */
@@ -357,26 +368,12 @@ export class HarnessService {
         const ids = this.ledger.addDirectiveSet(p.run, by, p.directives, p.replace);
         return { run: p.run, directives: ids };
       }
-      case "message_agent": {
-        const p = CommandPayloads.message_agent.parse(payload);
+      case "message_agent":
+        return this.messages.send(CommandPayloads.message_agent.parse(payload), by);
+      case "unkeep_message": {
+        const p = CommandPayloads.unkeep_message.parse(payload);
         this.requireRun(p.run);
-        const r = this.ledger.db
-          .prepare(
-            "insert into agent_message (run, target, text, issued_by, created_at) values (?, ?, ?, ?, ?)",
-          )
-          .run(p.run, p.to, p.text, by, this.clock().toISOString());
-        this.ledger.appendEvent(by, "agent_message", p.run, {
-          to: p.to,
-          chars: p.text.length,
-        });
-        this.live.append({
-          source: p.to.startsWith("trial:") ? p.to : p.to === "planner" ? "planner" : "supervisor",
-          kind: "message",
-          text: `Owner to ${p.to}: ${p.text}`,
-          run: p.run,
-          ...(p.to.startsWith("lane-") ? { lane: p.to } : {}),
-        });
-        return { message: Number(r.lastInsertRowid), to: p.to };
+        return this.messages.unkeep(p.run, p.message, by);
       }
       case "reset_workers": {
         // The scheduler acts on the event: it kills the run's running trials, clears the
@@ -860,9 +857,14 @@ export class HarnessService {
   // ------------------------------------------------------------ audits, reviews, briefs
 
   /** What the supervisor's auditor sees for each open audit: the package and the diff. */
-  async auditPackages(): Promise<(AuditPackage & { diff: string })[]> {
+  async auditPackages(): Promise<
+    (AuditPackage & { diff: string; owner_messages: { id: number; at: string; text: string }[] })[]
+  > {
     const audits = new Audits(this.ledger);
-    const out: (AuditPackage & { diff: string })[] = [];
+    const out: (AuditPackage & {
+      diff: string;
+      owner_messages: { id: number; at: string; text: string }[];
+    })[] = [];
     for (const id of audits.pending()) {
       const row = this.ledger.db.prepare("select attempt, run from audit where id = ?").get(id) as {
         attempt: string;
@@ -876,9 +878,29 @@ export class HarnessService {
         String(a.parent_commit),
         String(a.commit_sha),
       );
-      out.push({ ...pkg, diff: diff.slice(0, 200_000) });
+      out.push({
+        ...pkg,
+        diff: diff.slice(0, 200_000),
+        // The owner's messages the auditor has not read (to it, or to all the advisors).
+        owner_messages: this.ownerMessagesFor(row.run, "auditor"),
+      });
     }
     return out;
+  }
+
+  /** Reviews waiting for the panel, each with the owner's messages the panel has not read. */
+  reviewPackages(): (ReviewPackage & {
+    owner_messages: { id: number; at: string; text: string }[];
+  })[] {
+    return new Reviews(this.ledger)
+      .pending()
+      .map((r) => ({ ...r, owner_messages: this.ownerMessagesFor(r.run, "panel") }));
+  }
+
+  private ownerMessagesFor(run: string, role: AdvisorRole) {
+    return this.messages
+      .waitingForAdvisor(run, role)
+      .map((m) => ({ id: m.id, at: m.at, text: m.text }));
   }
 
   /**
@@ -1000,8 +1022,11 @@ export class HarnessService {
         device_hours_used: this.ledger.deviceHours(run),
         tokens: registry.tokensUsed(run),
       },
-      // The owner's recent messages to the advisors (message_agent to "advisors").
-      owner_messages: this.advisorMessages(run),
+      // The owner's messages to the teacher pair (to it, or to all the advisors): those it has not
+      // read, to answer, and those it read in the last day.
+      owner_messages: this.messages
+        .forTeachers(run)
+        .map((m) => ({ id: m.id, at: m.at, text: m.text, answered: m.answered })),
     };
   }
 
@@ -1298,50 +1323,63 @@ export class HarnessService {
   }
 
   /**
-   * The owner's messages for a running trial: those sent to the trial itself or to its lane.
-   * Each is delivered once and marked with the trial that took it.
+   * A running trial's inbox: the owner's messages waiting for it (to the trial, its lane,
+   * everyone working, or an earlier trial of its lane that ended before reading them), and how
+   * its harness says it gave them to the agent. Only messages waiting for this trial can be
+   * marked; a read is recorded only when they were given.
    */
+  trialInbox(trial: { id: string; run: string; lane: string }): {
+    waiting(): { id: number; text: string }[];
+    given(ids: number[]): void;
+  } {
+    return {
+      waiting: () =>
+        this.messages.waitingForTrial(trial).map((m) => ({ id: m.id, text: messageText(m) })),
+      given: (ids) => {
+        const ok = new Set(this.messages.waitingForTrial(trial).map((m) => m.id));
+        this.messages.read(
+          ids.filter((id) => ok.has(id)),
+          trial.lane,
+          trial,
+        );
+      },
+    };
+  }
+
+  /** A trial's waiting messages, given to it now (each read at once). */
   takeMessages(trial: { id: string; run: string; lane: string }): string[] {
-    return this.ledger.tx(() => {
-      const rows = this.ledger.db
-        .prepare(
-          "select id, text from agent_message where run = ? and delivered_at is null and (target = ? or target = ?) order by id",
-        )
-        .all(trial.run, `trial:${trial.id}`, trial.lane) as { id: number; text: string }[];
-      const mark = this.ledger.db.prepare(
-        "update agent_message set delivered_at = ?, delivered_to = ? where id = ?",
-      );
-      for (const r of rows) mark.run(this.clock().toISOString(), `trial:${trial.id}`, r.id);
-      return rows.map((r) => r.text);
-    });
+    const inbox = this.trialInbox(trial);
+    const msgs = inbox.waiting();
+    inbox.given(msgs.map((m) => m.id));
+    return msgs.map((m) => m.text);
   }
 
-  /** The owner's messages for the planner (delivered with the next plan). */
+  /** The planner's waiting messages, given to it now (each read at once). */
   takePlannerMessages(run: string): string[] {
-    return this.ledger.tx(() => {
-      const rows = this.ledger.db
-        .prepare(
-          "select id, text from agent_message where run = ? and target = 'planner' and delivered_at is null order by id",
-        )
-        .all(run) as { id: number; text: string }[];
-      const mark = this.ledger.db.prepare(
-        "update agent_message set delivered_at = ?, delivered_to = 'planner' where id = ?",
-      );
-      for (const r of rows) mark.run(this.clock().toISOString(), r.id);
-      return rows.map((r) => r.text);
-    });
+    const msgs = this.messages.waitingForPlanner(run);
+    this.messages.read(
+      msgs.map((m) => m.id),
+      "planner",
+    );
+    return msgs.map((m) => m.text);
   }
 
-  /** The owner's recent messages for the advisors (shown in their brief for a day). */
-  advisorMessages(run: string): { at: string; text: string }[] {
-    const since = new Date(this.clock().getTime() - 24 * 3_600_000).toISOString();
-    return (
-      this.ledger.db
-        .prepare(
-          "select created_at as at, text from agent_message where run = ? and target = 'advisors' and created_at >= ? order by id desc limit 5",
-        )
-        .all(run, since) as { at: string; text: string }[]
-    ).reverse();
+  /**
+   * The advisors' receipts and answers (the supervisor, after an advisor ran with the messages
+   * in its brief or package): every message must be in the run and addressed to the role.
+   */
+  advisorMessages(input: {
+    run: string;
+    role: AdvisorRole;
+    read: number[];
+    answers: { message: number; text: string; advisor?: string | undefined }[];
+  }): { read: number; answers: number } {
+    this.requireRun(input.run);
+    const ids = [...new Set([...input.read, ...input.answers.map((a) => a.message)])];
+    for (const id of ids) this.messages.requireFor(input.run, input.role, id);
+    this.messages.read(input.read, input.role);
+    for (const a of input.answers) this.messages.answer({ run: input.run, role: input.role, ...a });
+    return { read: ids.length, answers: input.answers.length };
   }
 
   // ------------------------------------------------------------ snapshot and export

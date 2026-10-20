@@ -19,6 +19,23 @@ import { RESEARCH_SYSTEM } from "./research-tools.ts";
 import type { TrialSpec } from "./worker.ts";
 
 // OpenCode v2's JSON output, as the spike recorded it (trimmed).
+/** An inbox of the owner's messages as the harness keeps it: a message waits until it is given. */
+function fakeInbox(texts: string[]) {
+  let waiting = texts.map((text, i) => ({ id: i + 1, text }));
+  const given: number[] = [];
+  return {
+    given,
+    add: (text: string) => waiting.push({ id: waiting.length + given.length + 1, text }),
+    inbox: {
+      waiting: () => waiting,
+      given: (ids: number[]) => {
+        given.push(...ids);
+        waiting = waiting.filter((m) => !ids.includes(m.id));
+      },
+    },
+  };
+}
+
 const EVENTS = [
   { type: "step_start", sessionID: "ses_1", part: { type: "step-start" } },
   {
@@ -238,8 +255,9 @@ describe("the OpenCode harness", () => {
     assert.match(String(disk), /300 MiB in 50000 files, over 16384 MiB/);
   });
 
-  test("a run that ends without a submission is continued in its session, twice at most", async () => {
+  test("a run that ends without a submission is continued in its session, twice at most; a waiting message goes into the next continuation and is read when the agent starts on it", async () => {
     const area = mkdtempSync(join(tmpdir(), "thermite-oc-"));
+    const owner = fakeInbox(["try the other loop"]);
     const runs: RunRequest[] = [];
     const runner = {
       run: async (req: RunRequest): Promise<RunOutcome> => {
@@ -269,14 +287,17 @@ describe("the OpenCode harness", () => {
         live: () => undefined,
         progress: () => undefined,
         submitted: () => undefined,
-        messages: () => ["try the other loop"],
+        messages: owner.inbox,
         pollMs: 5,
       },
     );
     const opencodeRuns = runs.filter((x) => x.argv.includes("run"));
     assert.equal(opencodeRuns.length, 3);
     assert.ok(opencodeRuns[1]?.argv.includes("ses_1"));
-    assert.match(String(opencodeRuns[2]?.argv.at(-1)), /owner: try the other loop/);
+    // The message waiting when the first run ended went into the first continuation, once.
+    assert.match(String(opencodeRuns[1]?.argv.at(-1)), /owner: try the other loop/);
+    assert.doesNotMatch(String(opencodeRuns[2]?.argv.at(-1)), /owner:/);
+    assert.deepEqual(owner.given, [1]);
     assert.equal(r.stopped, "no_submission");
   });
 
@@ -353,17 +374,26 @@ describe("the OpenCode harness", () => {
     });
     const trial = async (
       outputs: string[][],
-      o: { messages?: string[]; maxTurns?: number; hang?: boolean } = {},
+      o: {
+        messages?: string[];
+        maxTurns?: number;
+        hang?: boolean;
+        /** A message the owner sends while this run (from 1) is going on. */
+        during?: { run: number; text: string };
+      } = {},
     ) => {
       const area = mkdtempSync(join(tmpdir(), "thermite-oc-"));
       const runs: RunRequest[] = [];
       let killed = 0;
       let release: () => void = () => undefined;
+      const owner = fakeInbox(o.messages ?? []);
       const runner = {
         run: async (req: RunRequest): Promise<RunOutcome> => {
           runs.push(req);
           if (req.argv.includes("run")) {
-            const lines = outputs[runs.filter((x) => x.argv.includes("run")).length - 1] ?? [];
+            const n = runs.filter((x) => x.argv.includes("run")).length;
+            if (o.during?.run === n) owner.add(o.during.text);
+            const lines = outputs[n - 1] ?? [];
             appendFileSync(String(req.env?.THERMITE_OPENCODE_EVENTS), `${lines.join("\n")}\n`);
             if (o.hang) await new Promise<void>((r) => (release = r));
           }
@@ -381,7 +411,6 @@ describe("the OpenCode harness", () => {
           return 1;
         },
       } as unknown as Runner;
-      let messages = o.messages ?? [];
       const r = await runOpencodeResearchTrial(
         {
           trialId: "t",
@@ -399,11 +428,7 @@ describe("the OpenCode harness", () => {
           folder: { root: area, work: area },
           live: () => undefined,
           progress: () => undefined,
-          messages: () => {
-            const m = messages;
-            messages = [];
-            return m;
-          },
+          messages: owner.inbox,
           pollMs: 5,
         },
       );
@@ -411,6 +436,7 @@ describe("the OpenCode harness", () => {
         r,
         prompts: runs.filter((x) => x.argv.includes("run")).map((x) => String(x.argv.at(-1))),
         killed,
+        given: owner.given,
       };
     };
     const midway = await trial([
@@ -436,6 +462,26 @@ describe("the OpenCode harness", () => {
     );
     assert.equal(owner.prompts.length, 2);
     assert.match(String(owner.prompts[1]), /owner: look at Pascal too/);
+    assert.deepEqual(owner.given, [1]);
+    // A message that arrives during the third pass is not dropped: a fourth carries it, and it is
+    // read there (before 063 it was taken from the queue and lost).
+    const third = await trial(
+      [
+        [tool, step, failed],
+        [tool, step, failed],
+        [tool, step],
+        [tool, step],
+      ],
+      { during: { run: 3, text: "three passes on" } },
+    );
+    assert.equal(third.prompts.length, 4);
+    assert.match(String(third.prompts[3]), /owner: three passes on/);
+    assert.deepEqual(third.given, [1]);
+    // A failure before any work ends the trial; a waiting message is not taken.
+    const noWork = await trial([[tool, step], [failed]], { messages: ["unread"] });
+    assert.equal(noWork.r.stopped, "error");
+    assert.match(String(noWork.prompts[1]), /owner: unread/);
+    assert.deepEqual(noWork.given, [], "the agent never started on it: it stays waiting");
     const capped = await trial([[tool, step, step, step]], { maxTurns: 2, hang: true });
     assert.equal(capped.r.stopped, "turns");
     assert.ok(capped.killed >= 1, "OpenCode stopped at the cap");

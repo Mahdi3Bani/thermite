@@ -502,7 +502,7 @@ describe("worker trial", () => {
     assert.equal(await keepGoing(late.agent, () => true, 32_768), undefined);
   });
 
-  test("the live view: a worker's turns stream out, and the owner's message arrives as a user turn", async () => {
+  test("the live view: a worker's turns stream out, and the owner's message arrives as a user turn, read once the agent takes it", async () => {
     const env = makeJudgeEnv();
     await env.service.applyCommand(env.assign);
     const runner = new LocalRunner(env.paths.scratchDir);
@@ -537,7 +537,9 @@ describe("worker trial", () => {
       };
     });
     const lines: { kind: string; text: string }[] = [];
-    let pending = ["use the fast kernel"];
+    // Waiting until confirmed, as the harness keeps it: the worker must not take it twice.
+    let pending = [{ id: 7, text: "use the fast kernel" }];
+    const reads: number[][] = [];
     const r = await runTrial(
       {
         trialId: "t-live",
@@ -566,10 +568,10 @@ describe("worker trial", () => {
           live: async (entries) => {
             lines.push(...entries);
           },
-          messages: async () => {
-            const m = pending;
-            pending = [];
-            return m;
+          messages: async () => pending,
+          read: async (ids) => {
+            reads.push(ids);
+            pending = pending.filter((m) => !ids.includes(m.id));
           },
         },
       },
@@ -577,8 +579,9 @@ describe("worker trial", () => {
     await fake.close();
     assert.ok(sawOwner, "the model saw the owner's message");
     assert.equal(r.stopped, "submitted", JSON.stringify(r));
+    assert.deepEqual(reads, [[7]], "confirmed once, when the agent took it");
     const kinds = new Set(lines.map((l) => l.kind));
-    for (const k of ["text", "tool", "result", "message"]) assert.ok(kinds.has(k), `a ${k} line`);
+    for (const k of ["text", "tool", "result"]) assert.ok(kinds.has(k), `a ${k} line`);
     assert.ok(lines.some((l) => l.kind === "tool" && l.text.startsWith("read_file")));
   });
 

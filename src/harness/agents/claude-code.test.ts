@@ -210,6 +210,49 @@ describe("Claude Code", () => {
     assert.ok(seen.length > 0, "the subscription's windows were reported");
   });
 
+  test("an owner's message waiting when a run ends without a submission resumes the session with it, and is read there; after a submission it waits for the lane's next trial", async () => {
+    const inbox = (texts: string[]) => {
+      let waiting = texts.map((text, i) => ({ id: i + 1, text }));
+      const given: number[] = [];
+      return {
+        given,
+        waiting: () => waiting,
+        given_: (ids: number[]) => {
+          given.push(...ids);
+          waiting = waiting.filter((m) => !ids.includes(m.id));
+        },
+      };
+    };
+    const run = async (o: { submit: boolean }) => {
+      const a = area();
+      const f = fakeRunner(events(), { submit: o.submit });
+      const owner = inbox(["look at the inner loop"]);
+      const r = await runClaudeTrial(spec(a, join(a, "repo")), {
+        runner: f.runner,
+        model,
+        apiUrl: "http://127.0.0.1:8700",
+        live: () => undefined,
+        progress: () => undefined,
+        submitted: () => (f.submitted() ? { attempt: "a-1", lifecycle: "queued" } : undefined),
+        messages: { waiting: owner.waiting, given: owner.given_ },
+        pollMs: 5,
+      });
+      const runs = f.runs.filter((x) => x.argv.includes("-p"));
+      const prompts = runs.map((x) => String(x.argv[x.argv.indexOf("-p") + 1]));
+      return { r, runs, prompts, given: owner.given };
+    };
+    const open = await run({ submit: false });
+    assert.equal(open.prompts.length, 3);
+    assert.match(String(open.prompts[1]), /campaign's owner: look at the inner loop/);
+    assert.ok(open.runs[1]?.argv.join(" ").includes("--resume s-1"), "the same session");
+    assert.doesNotMatch(String(open.prompts[2]), /campaign's owner/);
+    assert.deepEqual(open.given, [1], "read once the resumed session started on it");
+    const done = await run({ submit: true });
+    assert.equal(done.r.stopped, "submitted");
+    assert.equal(done.prompts.length, 1, "no continuation after a submission");
+    assert.deepEqual(done.given, [], "it stays waiting for the lane's next trial");
+  });
+
   test("a full usage window ends the trial with when it resets; a turn cap stops it", async () => {
     const a = area();
     const limited = fakeRunner(events({ limited: true }));

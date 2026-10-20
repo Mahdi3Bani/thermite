@@ -3,7 +3,13 @@ import { randomUUID } from "node:crypto";
 import { describe, test } from "node:test";
 import { goalFixture, hillClimbFixture, researchFixture } from "../testing/fixtures.ts";
 import { canonicalJson, canonicalSha } from "./canonical.ts";
-import { type Envelope, generateSigningKeys, signEnvelope, verifyCommand } from "./commands.ts";
+import {
+  CommandPayloads,
+  type Envelope,
+  generateSigningKeys,
+  signEnvelope,
+  verifyCommand,
+} from "./commands.ts";
 import { parseContract } from "./contract.ts";
 import { parseDuration } from "./duration.ts";
 import { globToRegExp, matchesAny } from "./glob.ts";
@@ -159,6 +165,36 @@ describe("signed commands", () => {
       now,
     );
     assert.ok(!badPayload.ok && badPayload.reason.startsWith("bad payload"));
+  });
+
+  test("an owner's message goes to everyone working, a lane, a trial, the planner or an advisor role; only all or a lane can be kept", () => {
+    const msg = CommandPayloads.message_agent;
+    for (const to of [
+      "all",
+      "planner",
+      "advisors",
+      "teachers",
+      "auditor",
+      "panel",
+      "lane-1",
+      "lane-16",
+      "trial:t-0123456789abcdef",
+    ])
+      assert.ok(msg.safeParse({ run: "r-1", to, text: "x" }).success, to);
+    for (const to of ["judge", "lane-0", "lane-17", "trial:x", "everyone", "supervisor"])
+      assert.ok(!msg.safeParse({ run: "r-1", to, text: "x" }).success, to);
+    assert.ok(msg.safeParse({ run: "r-1", to: "all", text: "x", keep: true }).success);
+    assert.ok(msg.safeParse({ run: "r-1", to: "lane-2", text: "x", keep: true }).success);
+    for (const to of ["planner", "advisors", "auditor", "trial:t-0123456789abcdef"]) {
+      const r = msg.safeParse({ run: "r-1", to, text: "x", keep: true });
+      assert.ok(!r.success, to);
+      assert.match(String(r.error?.issues[0]?.message), /only a message to everyone working/);
+    }
+    assert.ok(msg.safeParse({ run: "r-1", to: "planner", text: "x", keep: false }).success);
+    const unkeep = CommandPayloads.unkeep_message;
+    assert.ok(unkeep.safeParse({ run: "r-1", message: 3 }).success);
+    assert.ok(!unkeep.safeParse({ run: "r-1", message: 0 }).success);
+    assert.ok(!unkeep.safeParse({ run: "r-1" }).success);
   });
 });
 

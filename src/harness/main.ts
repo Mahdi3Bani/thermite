@@ -498,8 +498,7 @@ async function main(): Promise<void> {
           },
           progress: (p) => service.trialProgress.set(spec.trialId, p),
           submitted: () => service.trialSubmission(spec.trialId),
-          messages: () =>
-            service.takeMessages({ id: spec.trialId, run: spec.run, lane: spec.lane }),
+          messages: service.trialInbox({ id: spec.trialId, run: spec.run, lane: spec.lane }),
           // The subscription's windows, as Claude Code reports them: in the rig's report.
           usage: (u) => {
             service.subscriptionUsage = { ...u, at: new Date().toISOString() };
@@ -525,7 +524,7 @@ async function main(): Promise<void> {
         },
         progress: (p) => service.trialProgress.set(spec.trialId, p),
         submitted: () => service.trialSubmission(spec.trialId),
-        messages: () => service.takeMessages({ id: spec.trialId, run: spec.run, lane: spec.lane }),
+        messages: service.trialInbox({ id: spec.trialId, run: spec.run, lane: spec.lane }),
         env: laneCacheEnv(paths.scratchDir, spec.lane),
         signal,
       });
@@ -611,8 +610,7 @@ async function main(): Promise<void> {
               });
           },
           progress: (p) => service.trialProgress.set(spec.trialId, p),
-          messages: () =>
-            service.takeMessages({ id: spec.trialId, run: spec.run, lane: spec.lane }),
+          messages: service.trialInbox({ id: spec.trialId, run: spec.run, lane: spec.lane }),
           env: laneCacheEnv(paths.scratchDir, spec.lane),
           signal,
         });

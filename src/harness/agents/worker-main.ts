@@ -53,11 +53,17 @@ async function main(): Promise<void> {
       throw new Error(`${method} ${path} -> ${status}: ${text.slice(0, 500)}`);
     return JSON.parse(text);
   };
-  // The live view: this session's turns to the live log, the owner's messages back in.
+  // The live view: this session's turns to the live log, the owner's messages back in (each
+  // confirmed once the agent has it).
   const link = {
     live: (entries: unknown[]) => call("POST", "/v1/trial/live", { entries }),
     messages: async () =>
-      ((await call("GET", "/v1/trial/messages")) as { messages: string[] }).messages,
+      (
+        (await call("GET", "/v1/trial/messages")) as {
+          messages: { id: number; text: string }[];
+        }
+      ).messages,
+    read: (ids: number[]) => call("POST", "/v1/trial/messages/read", { ids }),
     progress: (p: TrialProgress) => call("POST", "/v1/trial/live", { entries: [], progress: p }),
   };
   if (trial.kind === "research") {

@@ -320,7 +320,6 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
     // else runs.
     toolExecution: "sequential",
   });
-  if (deps.link) linkSession(agent, deps.link);
   // The budget is stated up front, and the worker is told once when it is nearly spent, so a
   // trial ends with its best change submitted rather than cut off with nothing.
   const started = Date.now();
@@ -369,6 +368,16 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
       }
     }
   });
+  // After the turn cap above: the owner's messages are not fetched on the turn it stops. After a
+  // submission none are taken either: the trial is over, and the lane's next trial, which can
+  // act on them, reads them in its brief.
+  const link = deps.link;
+  const waiting = link?.messages;
+  if (link)
+    linkSession(agent, {
+      ...link,
+      messages: waiting ? async () => (result.submitted ? [] : waiting()) : undefined,
+    });
   const wall = setTimeout(() => {
     if (!result.submitted) result.stopped = "wall";
     agent.abort();

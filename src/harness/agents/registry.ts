@@ -180,6 +180,8 @@ export class Registry {
     assignments: Assignment[];
     directives?: number[] | undefined;
     notes?: string | undefined;
+    /** "research": planned by the research plan's fixed method, not by a model (no refusal). */
+    plan?: "research" | undefined;
     by: string;
   }): void {
     this.ledger.tx(() => {
@@ -203,6 +205,10 @@ export class Registry {
       this.ledger.appendEvent(input.by, "epoch_started", input.run, {
         n: input.n,
         source: input.source,
+        // A research run's rounds are planned by a fixed method on purpose: say so, so a reader
+        // does not take its "fallback" source for a refused plan.
+        ...(input.plan ? { plan: input.plan } : {}),
+        ...(input.notes ? { notes: input.notes.slice(0, 500) } : {}),
         planner_tries: input.tries,
         planner_valid: input.valid,
         raw_violations: input.rawViolations.length,

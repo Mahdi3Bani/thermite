@@ -4,10 +4,19 @@ import { dirname, join } from "node:path";
 import { laneLimits } from "../../core/contract.ts";
 import { type LiveKind, summarizeArgs } from "../../core/live.ts";
 import type { Role, Runner } from "../broker/runner.ts";
-import type { TrialProgress } from "./live-session.ts";
+import type { MessageInbox, TrialProgress } from "./live-session.ts";
 import type { ModelConfig } from "./model.ts";
 import type { RigCheckReport } from "./model-check.ts";
-import { ASK_ROLE, breachError, limitsNote, NUDGE, readNew, SYSTEM } from "./opencode.ts";
+import {
+  ASK_ROLE,
+  breachError,
+  CarriedMessages,
+  limitsNote,
+  NUDGE,
+  ownerLines,
+  readNew,
+  SYSTEM,
+} from "./opencode.ts";
 import type { SubmitOutcome, TrialResult, TrialSpec } from "./worker.ts";
 
 /**
@@ -311,7 +320,12 @@ export interface ClaudeTrialDeps {
   live(entries: { kind: LiveKind; text: string }[]): void;
   progress(p: TrialProgress): void;
   submitted(): SubmitOutcome | undefined;
-  messages?: (() => string[]) | undefined;
+  /**
+   * The owner's messages for this trial. `claude -p` takes no message into a running session: one
+   * waiting when a run ends is given by resuming the session with it, and is read once the agent
+   * starts on that prompt.
+   */
+  messages?: MessageInbox | undefined;
   /** The subscription's windows, whenever Claude Code reports them. */
   usage?: ((u: NonNullable<ClaudeTally["usage"]>) => void) | undefined;
   env?: Record<string, string> | undefined;
@@ -322,8 +336,9 @@ export interface ClaudeTrialDeps {
 /**
  * One worker trial in Claude Code: its home in the lane's own area, then `claude -p` in the
  * workspace until the agent submits or the trial's time ends. A run that ends without a submission
- * is continued in the same session, twice at most. A turn cap, when the rig sets one, is kept by
- * counting its turns.
+ * is continued in the same session, twice at most, and after that for as long as the owner's
+ * messages wait and the agent keeps working; a message waits until the run ends without a
+ * submission. A turn cap, when the rig sets one, is kept by counting its turns.
  */
 export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Promise<TrialResult> {
   const area = spec.workspaceRoot ?? dirname(spec.workspace);
@@ -376,11 +391,13 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
   const maxTurns = spec.maxTurns;
   let message = `${CLAUDE_SYSTEM}\n\n${limitsNote(limits).replace(/OpenCode/g, "Claude Code")}\n\n${spec.brief}\n\nThe editable paths: ${spec.editablePaths.join(", ")}. This trial lasts ${minutes} minutes${maxTurns !== undefined ? ` and at most ${maxTurns} turns (each model reply is one)` : ""}. Submit before it ends.`;
   let offset = 0;
+  const carried = new CarriedMessages(deps.messages);
   const pump = () => {
     const r = readNew(events, offset);
     offset = r.next;
     const live = readClaudeEvents(r.lines, tally);
     if (live.length) deps.live(live);
+    carried.check(tally);
     if (r.lines.length) {
       deps.progress({
         turns: tally.turns,
@@ -398,6 +415,7 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
       break;
     }
     const errorsBefore = tally.errors.length;
+    const progressBefore = tally.turns + tally.toolCalls;
     const exe = claudeExe() ?? claudeBin();
     const running = deps.runner.run({
       role: spec.lane,
@@ -443,10 +461,13 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
     }
     const outcome = await running;
     pump();
+    carried.drop();
     if (deps.signal?.aborted) {
       result.stopped = "interrupted";
       break;
     }
+    // After a submission the trial is over: messages still waiting go to the lane's next trial,
+    // which can act on them.
     if (deps.submitted()) break;
     if (capped) {
       result.stopped = "turns";
@@ -480,11 +501,11 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
       result.error = `Claude Code exited ${outcome.exitCode ?? outcome.signal}: ${tally.notes.at(-1) ?? "no output"}`;
       break;
     }
-    if (nudges >= 2) break;
-    const owner = deps.messages?.() ?? [];
-    message = [NUDGE, ...owner.map((m) => `A message from the campaign's owner: ${m}`)].join(
-      "\n\n",
-    );
+    // Continued twice to get a submission, and then for as long as the owner's messages wait
+    // and the agent keeps working. A message is read only once the agent starts on the prompt.
+    const progressed = tally.turns + tally.toolCalls > progressBefore;
+    if (nudges >= 2 && (!progressed || !(deps.messages?.waiting().length ?? 0))) break;
+    message = [NUDGE, ...ownerLines(carried.take(tally))].join("\n\n");
   }
   const sub = deps.submitted();
   if (sub) {
