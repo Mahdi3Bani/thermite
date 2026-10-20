@@ -131,6 +131,60 @@ describe("thermite-trial, Thermite's tools in an agent's own shell", () => {
     assert.equal(calls.length, 1, "nothing sent for a mistake");
   });
 
+  test("note writes a field note: its words are the text, --kind and --about the rest", async () => {
+    const calls: { method: string; path: string; body?: unknown }[] = [];
+    const env = { harnessUrl: "http://h", auth: "trial.t", workspace: "/w", editablePaths: [] };
+    const call = async (method: string, path: string, body?: unknown) => {
+      calls.push({ method, path, body });
+      return { note: 7 };
+    };
+    const out = await trialCli(
+      [
+        "note",
+        "--kind",
+        "Surprise",
+        "--about",
+        "experiment:x-0123456789ab",
+        "tiling",
+        "was",
+        "slower",
+      ],
+      env,
+      call,
+    );
+    assert.equal(out, "noted (#7). Your trial goes on.");
+    assert.deepEqual(calls, [
+      {
+        method: "POST",
+        path: "/v1/trial/note",
+        body: {
+          kind: "surprise",
+          text: "tiling was slower",
+          about: { type: "experiment", id: "x-0123456789ab" },
+        },
+      },
+    ]);
+    assert.equal(
+      await trialCli(["note", "--kind", "lesson", "keep it short"], env, call),
+      "noted (#7). Your trial goes on.",
+    );
+    assert.deepEqual(calls[1]?.body, { kind: "lesson", text: "keep it short" });
+    assert.match(await trialCli(["note", "no kind"], env, call), /^error: note needs --kind/);
+    assert.match(
+      await trialCli(["note", "--kind", "note"], env, call),
+      /^error: note needs its text/,
+    );
+    assert.match(
+      await trialCli(["note", "--kind", "note", "--about", "a-1", "t"], env, call),
+      /^error: --about takes TYPE:ID/,
+    );
+    assert.match(
+      await trialCli(["note", "--kind", "note", "--lane", "lane-2", "t"], env, call),
+      /^error: note has no --lane/,
+    );
+    assert.equal(calls.length, 2, "nothing sent for a mistake");
+  });
+
   test("research: each of the research worker's tools is a command, and reaches its operation", async () => {
     const calls: { method: string; path: string; body?: unknown }[] = [];
     const env = { harnessUrl: "http://h", auth: "trial.t", workspace: "/w", editablePaths: [] };

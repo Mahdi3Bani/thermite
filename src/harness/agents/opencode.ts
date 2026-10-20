@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { type LaneLimitValues, laneLimits } from "../../core/contract.ts";
+import { notesInstruction } from "../../core/journal.ts";
 import { type LiveKind, summarizeArgs } from "../../core/live.ts";
 import type { Role, Runner, RunOutcome } from "../broker/runner.ts";
 import type { MessageInbox, TrialProgress } from "./live-session.ts";
@@ -14,6 +15,7 @@ import {
   researchFolderNote,
 } from "./research-tools.ts";
 import type { ResearchTrialSpec } from "./research-worker.ts";
+import { NOTE_USAGE } from "./trial-cli.ts";
 import type { SubmitOutcome, TrialResult, TrialSpec } from "./worker.ts";
 
 /**
@@ -198,6 +200,8 @@ measurement device (for example a GPU) when the judge is not using it; "thermite
 ATTEMPT" shows how the judge decided an attempt; "thermite-trial idea TITLE [--why TEXT]
 [--family TEXT]" proposes another experiment worth trying for the run's queue (the planner
 decides whether it is queued; your trial goes on).
+
+${notesInstruction(`with "${NOTE_USAGE}" (KIND: observation, decision, surprise, question, lesson or note; TYPE: experiment, attempt, source, claim, finding, round, trial or message)`)}
 
 Your shell tool stops a command after two minutes unless you set its timeout: for a long build or
 test, set timeout to 0. What a command starts in the background runs until the trial ends.`;
@@ -538,6 +542,8 @@ ${researchCommands()}
 Only pages fetched with "thermite-trial research fetch" are archived, and only archived sources can verify a claim: a page you read another way (your own web search, curl, a fetch from code) verifies nothing until you fetch it with that command.
 
 To propose another research task for the run's queue (the planner decides whether it is queued; your trial goes on): thermite-trial idea TITLE [--why TEXT] [--family TEXT]
+
+${notesInstruction(`with "${NOTE_USAGE}" (KIND: observation, decision, surprise, question, lesson or note; TYPE: experiment, attempt, source, claim, finding, round, trial or message)`)} Field notes are not research notes (add_note), which record what sources say for the report.
 
 ${researchFolderNote(folder)} Your shell starts in your working area; use grep, rg and your file tools on the folder.
 

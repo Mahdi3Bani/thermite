@@ -1,8 +1,10 @@
 import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type TSchema, Type } from "@earendil-works/pi-ai";
 import type { LaneLimitValues } from "../../core/contract.ts";
+import { notesInstruction } from "../../core/journal.ts";
 import { linkSession, type SessionLink } from "./live-session.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
+import { NOTE_TOOL, type NoteRequest, writeNote } from "./notes-tool.ts";
 import { listFiles, readFile, removeFile, searchFiles, writeFile } from "./research-files.ts";
 import {
   RESEARCH_SYSTEM,
@@ -45,7 +47,12 @@ export interface ResearchDeps {
   link?: SessionLink | undefined;
   /** A research task for the run's queue, proposed by this lane (the idea tool). */
   idea?: ((req: IdeaInput) => Promise<{ experiment: string }>) | undefined;
+  /** A field note, written by this lane in the run's journal (the note tool). */
+  note?: ((req: NoteRequest) => Promise<{ note: number }>) | undefined;
 }
+
+/** A research worker's field notes, told apart from its research notes. */
+const RESEARCH_NOTES = `${notesInstruction("with the note tool")} Field notes are not research notes (add_note), which record what sources say for the report.`;
 
 const out = (value: unknown) => ({
   content: [{ type: "text" as const, text: researchOutput(value) }],
@@ -141,6 +148,23 @@ export async function runResearchTrial(
           } as AgentTool,
         ]
       : []),
+    ...(deps.note
+      ? [
+          {
+            name: NOTE_TOOL.name,
+            label: NOTE_TOOL.name,
+            description: NOTE_TOOL.description,
+            parameters: NOTE_TOOL.parameters,
+            execute: async (_id: string, params: unknown) => {
+              result.toolCalls++;
+              return writeNote(
+                deps.note as NonNullable<ResearchDeps["note"]>,
+                params as Record<string, unknown>,
+              );
+            },
+          } as AgentTool,
+        ]
+      : []),
   ];
 
   const { models, model, thinkingLevel } = buildModel(deps.model);
@@ -150,7 +174,7 @@ export async function runResearchTrial(
         spec.folder
           ? `${RESEARCH_SYSTEM}\n\n${researchFolderNote(spec.folder)} Use the file tools (list_files, read_file, search_files, write_file, remove_file) for it.`
           : RESEARCH_SYSTEM
-      }${deps.idea ? "\n\nTo propose another research task for the run's queue, use the idea tool: the planner decides whether it is queued, and your trial goes on." : ""}`,
+      }${deps.idea ? "\n\nTo propose another research task for the run's queue, use the idea tool: the planner decides whether it is queued, and your trial goes on." : ""}${deps.note ? `\n\n${RESEARCH_NOTES}` : ""}`,
       model,
       tools,
       thinkingLevel,

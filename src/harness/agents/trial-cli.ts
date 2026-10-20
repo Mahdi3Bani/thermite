@@ -12,14 +12,21 @@ import { RESEARCH_TOOLS, researchOutput, researchTool } from "./research-tools.t
  *   thermite-trial dev-run [--timeout SECONDS] -- COMMAND...
  *   thermite-trial status ATTEMPT
  *   thermite-trial idea TITLE [--why TEXT] [--family TEXT] [--details TEXT]
- *   thermite-trial research TOOL [WORDS...] [--FLAG VALUE]... [-]   (a research trial's tools)
+ *   thermite-trial note --kind KIND [--about TYPE:ID] TEXT
+ *   thermite-trial research TOOL [WORDS...] [--FLAG VALUE]... [-]   (the research tools)
  */
+
+/** How to write a field note from a shell, for the workers' instructions. */
+export const NOTE_USAGE = "thermite-trial note --kind KIND [--about TYPE:ID] TEXT";
 
 const USAGE = `usage:
   thermite-trial submit --hypothesis TEXT [--claim TEXT] [--flaw TEXT]...
   thermite-trial dev-run [--timeout SECONDS] -- COMMAND...
   thermite-trial status ATTEMPT
   thermite-trial idea TITLE [--why TEXT] [--family TEXT] [--details TEXT]
+  ${NOTE_USAGE}
+    KIND: observation, decision, surprise, question, lesson or note
+    TYPE: experiment, attempt, source, claim, finding, round, trial or message
   thermite-trial research TOOL ... (thermite-trial research help lists them)`;
 
 export interface TrialCliEnv {
@@ -171,6 +178,25 @@ export async function trialCli(
       ...opt("details", 4000),
     })) as { experiment: string };
     return `proposed ${out.experiment}: it waits for the planner, who queues it or drops it. Your trial goes on.`;
+  }
+  if (cmd === "note") {
+    const text = rest.join(" ").trim();
+    const unknown = Object.keys(flags).filter((f) => !["kind", "about"].includes(f));
+    if (unknown.length) return `error: note has no --${unknown[0]}\n${USAGE}`;
+    const kind = flags.kind?.at(-1)?.trim().toLowerCase();
+    if (!kind)
+      return `error: note needs --kind: observation, decision, surprise, question, lesson or note\n${USAGE}`;
+    if (!text) return `error: note needs its text: what you observed, decided or learned\n${USAGE}`;
+    const a = flags.about?.at(-1)?.trim();
+    const about = a ? /^([a-z]+):(.+)$/.exec(a) : undefined;
+    if (a && !about)
+      return `error: --about takes TYPE:ID, for example experiment:x-0123456789ab\n${USAGE}`;
+    const out = (await call("POST", "/v1/trial/note", {
+      kind,
+      text,
+      ...(about ? { about: { type: about[1], id: (about[2] as string).trim() } } : {}),
+    })) as { note: number };
+    return `noted (#${out.note}). Your trial goes on.`;
   }
   return USAGE;
 }

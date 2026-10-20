@@ -729,6 +729,87 @@ describe("worker trial", () => {
     assert.match(String(replies[1]), /an idea needs a title/);
   });
 
+  test("a worker keeps field notes with its note tool, and its trial goes on", async () => {
+    const env = makeJudgeEnv();
+    await env.service.applyCommand(env.assign);
+    const runner = new LocalRunner(env.paths.scratchDir);
+    const champion = env.ledger.currentChampion("js-1");
+    const ws = await prepareWorkspace({
+      runner,
+      scratchDir: env.paths.scratchDir,
+      mirror: env.service.mirrorFor("proj"),
+      commit: champion.commit_sha,
+      lane: "lane-1",
+    });
+    const replies: string[] = [];
+    let system = "";
+    const fake = await startFakeModel(({ messages }) => {
+      system ||= JSON.stringify(
+        messages.find((m) => m.role === "system" || m.role === "developer")?.content ?? "",
+      );
+      const tools = messages.filter((m) => m.role === "tool");
+      if (tools.length) replies[tools.length - 1] = JSON.stringify(tools.at(-1)?.content);
+      const steps = [
+        {
+          name: "note",
+          args: {
+            kind: "Observation",
+            text: " the loop is memory bound ",
+            about: { type: "trial", id: "t4" },
+          },
+        },
+        { name: "note", args: { kind: "lesson", text: "  " } },
+        { name: "note", args: { kind: "rumour", text: "refused by the harness" } },
+        { name: "write_file", args: { path: "src/kernel/work.mjs", content: FAST_KERNEL } },
+        { name: "submit", args: { hypothesis: "h" } },
+      ];
+      const step = steps[tools.length];
+      return step ? { toolCalls: [step] } : { text: "done" };
+    });
+    const notes: unknown[] = [];
+    const r = await runTrial(
+      {
+        trialId: "t4",
+        run: "js-1",
+        lane: "lane-1",
+        workspace: ws.repo,
+        parentCommit: champion.commit_sha,
+        editablePaths: ["src/kernel/**"],
+        brief: "b",
+        wallMs: 60_000,
+        maxTurns: 20,
+      },
+      {
+        runner,
+        laneTool,
+        model: {
+          baseUrl: fake.url,
+          model: "t",
+          apiKey: "k",
+          contextWindow: 32000,
+          maxTokens: 2000,
+        },
+        submit: (req) => env.service.submitAttempt({ ...req, lane: req.lane }, "proposer") as never,
+        status: async (id) => env.service.attemptStatus(id),
+        note: async (req) => {
+          if (req.kind === "rumour") throw new Error("400: kind: invalid option");
+          notes.push(req);
+          return { note: notes.length };
+        },
+      },
+    );
+    await fake.close();
+    assert.equal(r.stopped, "submitted", "notes did not end the trial");
+    assert.deepEqual(notes, [
+      { kind: "observation", text: "the loop is memory bound", about: { type: "trial", id: "t4" } },
+    ]);
+    assert.match(String(replies[0]), /noted \(#1\)\. Your trial goes on/);
+    assert.match(String(replies[1]), /a note needs its text/);
+    assert.match(String(replies[2]), /the note was not recorded: 400: kind/);
+    assert.match(system, /keep field notes with the note tool/);
+    assert.match(system, /Never note what you tried and its result/);
+  });
+
   test("a worker's lane work goes through the API: its own lane, its own workspace, tool or shell only", async () => {
     const env = makeJudgeEnv();
     await env.service.applyCommand(env.assign);

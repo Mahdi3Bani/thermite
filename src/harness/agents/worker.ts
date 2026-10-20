@@ -1,9 +1,11 @@
 import { Agent, type AgentMessage, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type Message, type TSchema, Type } from "@earendil-works/pi-ai";
 import { type LaneLimitValues, laneLimits, SHARED_DEV_RUN_S } from "../../core/contract.ts";
+import { notesInstruction } from "../../core/journal.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { linkSession, type SessionLink } from "./live-session.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
+import { NOTE_TOOL, type NoteRequest, writeNote } from "./notes-tool.ts";
 
 /**
  * One worker trial: a fresh agent session (Pi) with Thermite's tools, in the lane's own
@@ -108,6 +110,8 @@ export interface TrialDeps {
   devRun?(req: { lane: string; command: string; timeoutS?: number }): Promise<unknown>;
   /** An idea for the run's experiment queue: proposed by this lane, for the planner to take. */
   idea?(req: IdeaInput): Promise<{ experiment: string }>;
+  /** A field note: written by this lane, in the run's journal. */
+  note?(req: NoteRequest): Promise<{ note: number }>;
   /** The live view: the session's turns out, the owner's messages in. */
   link?: SessionLink | undefined;
 }
@@ -140,7 +144,9 @@ own timings are only for your guidance and never count. Keep changes inside the 
 are given. If you find a flaw in your own change, list it in known_flaws: hiding it is worse than
 a smaller result. If you cannot make a useful change, explain why in your final message without
 submitting. If you see another experiment worth trying that is not your assignment, propose it
-with the idea tool: the planner decides whether it is queued, and your trial goes on.`;
+with the idea tool: the planner decides whether it is queued, and your trial goes on.
+
+${notesInstruction("with the note tool")}`;
 
 function text(t: string) {
   return { content: [{ type: "text" as const, text: t }], details: {} };
@@ -308,6 +314,13 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
       ? [
           tool(IDEA_TOOL.name, IDEA_TOOL.description, IDEA_TOOL.parameters, (p) =>
             proposeIdea(deps.idea as NonNullable<TrialDeps["idea"]>, p),
+          ),
+        ]
+      : []),
+    ...(deps.note
+      ? [
+          tool(NOTE_TOOL.name, NOTE_TOOL.description, NOTE_TOOL.parameters, (p) =>
+            writeNote(deps.note as NonNullable<TrialDeps["note"]>, p),
           ),
         ]
       : []),
