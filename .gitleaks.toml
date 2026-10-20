@@ -11,7 +11,7 @@ useDefault = true
 description = "The made-up RunPod key in control's RunPod tests"
 condition = "AND"
 targetRules = ["generic-api-key"]
-paths = ['''^src/control/runpod(-tests)?\.test\.ts$''']
+paths = ['''^src/control/runpod(-tests|-rigs)?\.test\.ts$''']
 regexes = ['''^rpa_test-key-0123456789abcdef$''']
 
 [[allowlists]]
