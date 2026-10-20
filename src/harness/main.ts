@@ -43,6 +43,7 @@ import {
   readLayout,
   runRole,
 } from "./broker/devices.ts";
+import { oneContainer } from "./broker/one-container.ts";
 import { LocalRunner, type Role, type Runner } from "./broker/runner.ts";
 import { collectHardware } from "./hardware.ts";
 import { Judge, type PromotionPolicy, serial } from "./judge/judge.ts";
@@ -51,7 +52,12 @@ import { settlePropagations } from "./propagation.ts";
 import { ResearchFolder } from "./research/folder.ts";
 import { Research } from "./research/research.ts";
 import { RigSettingsStore } from "./rig-settings.ts";
-import { busyReason, isolationSelftest, isolationSummary } from "./selftest.ts";
+import {
+  busyReason,
+  isolationSelftest,
+  isolationSummary,
+  oneContainerTargets,
+} from "./selftest.ts";
 import { HarnessService, NOT_BEFORE_FILE, wipeIfRequested } from "./service.ts";
 import { checksDir, smokeCheck } from "./smoke-check.ts";
 import { CpuDriver } from "./targets/cpu.ts";
@@ -77,10 +83,19 @@ async function main(): Promise<void> {
   };
   for (const d of [paths.stateDir, paths.scratchDir, paths.outboxDir])
     mkdirSync(d, { recursive: true });
-  const controlPublicKeyPem = await waitForFile(
-    requireEnv("THERMITE_CONTROL_PUBKEY_FILE"),
-    120_000,
-  );
+  // In the one-container rig image control's key comes with the launch, or later: the harness
+  // waits for it as long as it takes, rather than exit and be restarted again and again.
+  const keyFile = requireEnv("THERMITE_CONTROL_PUBKEY_FILE");
+  const controlPublicKeyPem = oneContainer(env)
+    ? await waitForFile(keyFile, undefined, {
+        waiting: (ms) =>
+          log("harness", "waiting for control's public key", {
+            file: keyFile,
+            waited_s: Math.round(ms / 1000),
+          }),
+        sayEveryMs: 10 * 60_000,
+      })
+    : await waitForFile(keyFile, 120_000);
   const tokens = {
     // The broker passes secret values in the environment (it alone can read the files).
     supervisor: env.THERMITE_SUPERVISOR_TOKEN || secretFromFile("THERMITE_SUPERVISOR_TOKEN_FILE"),
@@ -369,6 +384,7 @@ async function main(): Promise<void> {
           dedicated: env.THERMITE_DEV_GPU_INDEX !== undefined,
           force,
           controllerPid: process.pid,
+          oneContainer: oneContainerTargets(env),
         });
         return { ok: report.ok, summary: isolationSummary(report), detail: { ...report } };
       },

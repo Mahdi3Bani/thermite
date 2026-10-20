@@ -2,6 +2,7 @@ import {
   chmodSync,
   chownSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -9,10 +10,24 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { BrokerClient } from "./broker/client.ts";
-import { cardsOf, type GpuLayout, judgeCardOf, readLayout, runRole } from "./broker/devices.ts";
+import {
+  cardsOf,
+  type GpuLayout,
+  judgeCardOf,
+  LAYOUT_FILE,
+  type LayoutRecord,
+  readLayout,
+  runRole,
+} from "./broker/devices.ts";
+import {
+  oneContainer,
+  SUPERVISOR_RECORD,
+  type SupervisorRecord,
+  supervisorPaths,
+} from "./broker/one-container.ts";
 import { IDS, type Role, walk } from "./broker/runner.ts";
 import { copyForRun } from "./judge/measure.ts";
 
@@ -20,12 +35,24 @@ import { copyForRun } from "./judge/measure.ts";
  * Isolation self-test, run as root inside the harness container (`thermite selftest
  * isolation`). For each role it asks the broker to run a probe as that role's user, which tries
  * to read, list or write what the role must not reach. Every probe must be refused, except a
- * `readable` or `reachable` probe, which must succeed.
+ * `readable` or `reachable` probe, which must succeed. In the one-container rig image it also
+ * checks the container as a whole (containerChecks): the supervisor's user, its GPU access,
+ * set-id files and RunPod's variables.
  */
 
 export interface Probe {
   name: string;
-  op: "read" | "list" | "write" | "access" | "open" | "create" | "readable" | "reachable" | "gpus";
+  op:
+    | "read"
+    | "list"
+    | "write"
+    | "access"
+    | "open"
+    | "create"
+    | "readable"
+    | "reachable"
+    | "gpus"
+    | "runpod";
   path: string;
   /** For `gpus`: the only card UUIDs nvidia-smi may list, comma-separated. */
   expect?: string;
@@ -36,15 +63,62 @@ export interface IsolationReport {
   /** "shared", or "dedicated" with the judge's and the development card's nodes. */
   devices: string;
   roles: Record<string, Record<string, string>>;
+  /** The one-container rig image: checks of the container as a whole (containerChecks). */
+  container?: Record<string, string>;
   skipped: string[];
 }
 
-const PROBE = `
+const FAILURES = [
+  "ALLOWED",
+  "UNREADABLE",
+  "UNREACHABLE",
+  "WRONG",
+  "FOUND",
+  "OPENED",
+  "MISSING",
+  "failed",
+];
+
+/**
+ * A result that fails the selftest: a probe that must be refused got through (ALLOWED), one that
+ * must succeed did not (UNREADABLE, UNREACHABLE), the wrong cards or user (WRONG ...), something
+ * found that must not be there (FOUND, OPENED), something missing (MISSING), or a probe that
+ * failed to run.
+ */
+export function isFailure(result: string): boolean {
+  return FAILURES.some((m) => result.startsWith(m));
+}
+
+/**
+ * The probe script each role runs (node -e, the probes as JSON in argv[1]). `runpod` lists /proc
+ * (the probe's `path`): RunPod's variables must be in neither the role's own environment nor any
+ * process environment it can read.
+ */
+export const PROBE = `
 const fs = require("node:fs");
 const { execFileSync } = require("node:child_process");
 const probes = JSON.parse(process.argv[1]);
 const out = {};
 for (const p of probes) {
+  if (p.op === "runpod") {
+    const found = Object.keys(process.env).filter((k) => k.startsWith("RUNPOD_")).map((k) => k + " (own)");
+    try {
+      for (const pid of fs.readdirSync(p.path).filter((d) => /^\\d+$/.test(d))) {
+        let text;
+        try {
+          text = fs.readFileSync(p.path + "/" + pid + "/environ", "latin1");
+        } catch {
+          continue;
+        }
+        for (const kv of text.split("\\0"))
+          if (kv.startsWith("RUNPOD_")) found.push(kv.split("=")[0] + " (pid " + pid + ")");
+      }
+      out[p.name] = found.length ? "FOUND " + found.slice(0, 8).join(", ") : "none";
+    } catch (e) {
+      out[p.name] = "failed: " + (e.code || String(e));
+    }
+    continue;
+  }
   if (p.op === "gpus") {
     // A card whose node is refused is silently left out, so check exactly which cards show.
     let ids = "";
@@ -109,19 +183,223 @@ export function deviceProbes(
   ];
 }
 
-function controllerPid(): number | undefined {
-  for (const name of readdirSync("/proc")) {
+/** The processes running a script of Thermite's (`node <...>/<script>`), other than this one. */
+export function pidsRunning(script: string, procDir = "/proc"): number[] {
+  const pids: number[] = [];
+  for (const name of existsSync(procDir) ? readdirSync(procDir) : []) {
     if (!/^\d+$/.test(name)) continue;
     try {
-      const argv = readFileSync(`/proc/${name}/cmdline`, "utf8").split("\0");
-      if (Number(name) !== process.pid && (argv[1] ?? "").endsWith("dist/harness/main.js")) {
-        return Number(name);
-      }
+      const argv = readFileSync(join(procDir, name, "cmdline"), "utf8").split("\0");
+      if (Number(name) !== process.pid && (argv[1] ?? "").endsWith(script)) pids.push(Number(name));
     } catch {
       // gone
     }
   }
-  return undefined;
+  return pids;
+}
+
+function controllerPid(): number | undefined {
+  return pidsRunning("dist/harness/main.js")[0];
+}
+
+const SUPERVISOR_SCRIPT = "dist/supervisor/main.js";
+
+/** The one-container rig image: the supervisor's places, which no role may reach. */
+export interface OneContainerTargets {
+  supervisorHome: string;
+  /** Its copy of the token it uses on the harness API. */
+  supervisorToken: string;
+  /** The inbox it writes and the controller reads. */
+  inboxDir: string;
+}
+
+/** What the selftest probes of the supervisor in the one-container image; none elsewhere. */
+export function oneContainerTargets(
+  env: Record<string, string | undefined>,
+): OneContainerTargets | undefined {
+  if (!oneContainer(env)) return undefined;
+  const p = supervisorPaths(env);
+  return { supervisorHome: p.home, supervisorToken: p.tokenFile, inboxDir: p.inbox };
+}
+
+/** A process's real, effective, saved and file ids, and no_new_privs (/proc/<pid>/status). */
+function statusOf(
+  procDir: string,
+  pid: number,
+): { uids: number[]; gids: number[]; nnp: boolean } | undefined {
+  try {
+    const text = readFileSync(join(procDir, String(pid), "status"), "utf8");
+    const ids = (field: string) =>
+      (new RegExp(`^${field}:\\s*(.*)$`, "m").exec(text)?.[1] ?? "")
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .map(Number);
+    return { uids: ids("Uid"), gids: ids("Gid"), nnp: /^NoNewPrivs:\s*1\s*$/m.test(text) };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The supervisor runs as its own user and group, with no_new_privs: "uid 10001, gid 10001,
+ * no_new_privs", or a failure. It may still be starting: waits up to `waitMs` for it.
+ */
+export async function supervisorUserCheck(
+  procDir = "/proc",
+  waitMs = 10_000,
+  expect = IDS.supervisor,
+): Promise<string> {
+  const deadline = Date.now() + waitMs;
+  let pids = pidsRunning(SUPERVISOR_SCRIPT, procDir);
+  while (!pids.length && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 500));
+    pids = pidsRunning(SUPERVISOR_SCRIPT, procDir);
+  }
+  if (!pids.length) return "MISSING: no supervisor process";
+  for (const pid of pids) {
+    const st = statusOf(procDir, pid);
+    if (!st) continue;
+    const wrong =
+      st.uids.length !== 4 ||
+      st.uids.some((u) => u !== expect.uid) ||
+      st.gids.length !== 4 ||
+      st.gids.some((g) => g !== expect.gid);
+    if (wrong)
+      return `WRONG USER: pid ${pid} has uids ${st.uids.join(" ")}, gids ${st.gids.join(" ")}`;
+    if (!st.nnp) return `WRONG: pid ${pid} may gain privileges (no_new_privs is off)`;
+  }
+  return `uid ${expect.uid}, gid ${expect.gid}, no_new_privs`;
+}
+
+/**
+ * What the supervisor's user met opening the GPU's device nodes when the broker started it (the
+ * broker's record next to its socket): "refused" or "no GPU node", with the fence; or a failure.
+ */
+export function supervisorGpuCheck(brokerDir: string): string {
+  let r: SupervisorRecord;
+  try {
+    r = JSON.parse(readFileSync(join(brokerDir, SUPERVISOR_RECORD), "utf8")) as SupervisorRecord;
+  } catch (err) {
+    return `MISSING: no record from the broker (${(err as NodeJS.ErrnoException).code ?? String(err)})`;
+  }
+  return isFailure(r.gpu) ? r.gpu : `${r.gpu} (fence: ${r.fence})`;
+}
+
+/**
+ * Set-id files on the container's own filesystem (from `root`, not crossing into other mounts):
+ * the one-container image has none, since its host does not stop a process gaining privileges
+ * through one. "none", or "FOUND <files>". Folders this process cannot read are counted. `skip`
+ * leaves folders out: the scratch folder, where roles work (a role's own set-id file gives only
+ * itself, and the broker clears set-id bits after every lane run).
+ */
+export function setIdCheck(root = "/", skip: string[] = []): string {
+  const found: string[] = [];
+  let unreadable = 0;
+  const dev = lstatSync(root).dev;
+  const skipped = new Set(skip);
+  const visit = (dir: string) => {
+    let names: string[];
+    try {
+      names = readdirSync(dir);
+    } catch {
+      unreadable++;
+      return;
+    }
+    for (const name of names) {
+      const p = join(dir, name);
+      let st: ReturnType<typeof lstatSync>;
+      try {
+        st = lstatSync(p);
+      } catch {
+        continue;
+      }
+      if (st.dev !== dev || skipped.has(p)) continue;
+      if (st.isDirectory()) visit(p);
+      else if (st.isFile() && st.mode & 0o6000) found.push(p);
+    }
+  };
+  visit(root);
+  if (found.length)
+    return `FOUND ${found.length} set-id files: ${found.slice(0, 10).join(", ")}${found.length > 10 ? ", ..." : ""}`;
+  return unreadable ? `none (${unreadable} folders not readable)` : "none";
+}
+
+/**
+ * RunPod's variables in the rig's processes: PID 1 and everything started under it, as far as
+ * this process may read their environments (all of them as root). A process started from outside
+ * (a shell opened with `exec`) is not part of the rig and is left out. "none (...)" or "FOUND".
+ */
+export function runpodCheck(procDir = "/proc"): string {
+  const parent = new Map<number, number>();
+  for (const name of existsSync(procDir) ? readdirSync(procDir) : []) {
+    if (!/^\d+$/.test(name)) continue;
+    try {
+      const ppid = /^PPid:\s*(\d+)/m.exec(readFileSync(join(procDir, name, "status"), "utf8"));
+      if (ppid) parent.set(Number(name), Number(ppid[1]));
+    } catch {
+      // gone
+    }
+  }
+  const underInit = (pid: number) => {
+    for (let p = pid, hops = 0; hops < 4096; hops++) {
+      if (p === 1) return true;
+      const up = parent.get(p);
+      if (up === undefined || up === 0) return false;
+      p = up;
+    }
+    return false;
+  };
+  const found: string[] = [];
+  let read = 0;
+  let rig = 0;
+  for (const pid of parent.keys()) {
+    if (!underInit(pid)) continue;
+    rig++;
+    let text: string;
+    try {
+      text = readFileSync(join(procDir, String(pid), "environ"), "latin1");
+    } catch {
+      continue;
+    }
+    read++;
+    for (const kv of text.split("\0"))
+      if (kv.startsWith("RUNPOD_")) found.push(`${kv.split("=")[0]} (pid ${pid})`);
+  }
+  if (found.length) return `FOUND ${found.slice(0, 8).join(", ")}`;
+  return `none (read ${read} of ${rig} processes)`;
+}
+
+/**
+ * The one-container image's checks of the container as a whole: the supervisor's user, its GPU
+ * access, set-id files and RunPod's variables.
+ */
+export async function containerChecks(opts: {
+  brokerDir: string;
+  /** Folders the set-id check leaves out (setIdCheck). */
+  skip?: string[];
+  procDir?: string;
+  rootDir?: string;
+  waitMs?: number;
+}): Promise<Record<string, string>> {
+  return {
+    "supervisor-user": await supervisorUserCheck(opts.procDir, opts.waitMs),
+    "supervisor-gpu": supervisorGpuCheck(opts.brokerDir),
+    "setid-files": setIdCheck(opts.rootDir, opts.skip),
+    "runpod-variables": runpodCheck(opts.procDir),
+  };
+}
+
+/** The shared-mode record the broker wrote, if any (its fence, or why it could not be set up). */
+function sharedRecord(socketPath: string): LayoutRecord | undefined {
+  try {
+    const r = JSON.parse(
+      readFileSync(join(dirname(socketPath), LAYOUT_FILE), "utf8"),
+    ) as LayoutRecord;
+    return "mode" in r && r.mode === "shared" ? r : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function firstKitFile(kitsDir: string): string | undefined {
@@ -181,10 +459,16 @@ export async function isolationSelftest(opts: {
   force?: boolean;
   /** The controller's pid, when the controller itself runs the selftest (a rig check). */
   controllerPid?: number;
+  /** The one-container rig image (oneContainerTargets): the supervisor shares the container. */
+  oneContainer?: OneContainerTargets | undefined;
 }): Promise<IsolationReport> {
   const busy = opts.force ? undefined : busyReason(opts.stateDir);
   if (busy) throw new Error(`the rig is busy: ${busy}; rerun with --force to probe anyway`);
   const skipped: string[] = [];
+  // First, as it waits for a supervisor that is still starting.
+  const container = opts.oneContainer
+    ? await containerChecks({ brokerDir: dirname(opts.socketPath), skip: [opts.scratchDir] })
+    : undefined;
   const probes: Probe[] = [
     { name: "ledger", op: "read", path: join(opts.stateDir, "ledger", "ledger.db") },
     { name: "state-list", op: "list", path: opts.stateDir },
@@ -199,7 +483,22 @@ export async function isolationSelftest(opts: {
     { name: "tmp-create", op: "create", path: "/tmp" },
     { name: "var-tmp-create", op: "create", path: "/var/tmp" },
     { name: "shm-create", op: "create", path: "/dev/shm" },
+    // The container's first process holds what the container was started with (on RunPod, its
+    // API key among it); nor may any process a role can read hold one of RunPod's variables.
+    { name: "pid1-environ", op: "read", path: "/proc/1/environ" },
+    { name: "runpod-variables", op: "runpod", path: "/proc" },
   ];
+  const pod = opts.oneContainer;
+  if (pod) {
+    probes.push(
+      { name: "supervisor-home", op: "list", path: pod.supervisorHome },
+      { name: "supervisor-token", op: "read", path: pod.supervisorToken },
+      { name: "inbox-list", op: "list", path: pod.inboxDir },
+    );
+    const sup = pidsRunning(SUPERVISOR_SCRIPT)[0];
+    if (sup) probes.push({ name: "supervisor-environ", op: "read", path: `/proc/${sup}/environ` });
+    else skipped.push("supervisor-environ (supervisor not found)");
+  }
   const kitFile = firstKitFile(join(opts.stateDir, "kits"));
   if (kitFile) probes.push({ name: "kit-by-path", op: "read", path: kitFile });
   else skipped.push("kit-by-path (no kit checked out yet)");
@@ -229,11 +528,18 @@ export async function isolationSelftest(opts: {
   // A dedicated development card is probed as the broker set it up; a failed setup fails here.
   const card = opts.dedicated ? readLayout(opts.socketPath) : {};
   const cards = card.layout ? cardsOf(card.layout) : undefined;
+  // Shared mode: how the broker keeps roles off the nodes, or why it could not.
+  const shared = opts.dedicated ? undefined : sharedRecord(opts.socketPath);
+  const sharedError = shared && !shared.ok ? shared.error : undefined;
   const devices = cards
     ? `dedicated: judge ${cards.judges.map((c) => c.node).join(", ")}, development ${cards.devs.map((c) => c.node).join(", ")}`
     : card.error
       ? `dedicated, NOT SET UP: ${card.error}`
-      : "shared";
+      : sharedError
+        ? `shared, NOT SET UP: ${sharedError}`
+        : shared?.ok && shared.fence
+          ? `shared (fence: ${shared.fence})`
+          : "shared";
 
   const client = new BrokerClient(opts.socketPath);
   const roles =
@@ -262,7 +568,16 @@ export async function isolationSelftest(opts: {
         ]
       : [{ key: role as string, role, gpu: false, card: judgeCardOf(role) ?? 0 }],
   );
-  const report: IsolationReport = { ok: card.error === undefined, devices, roles: {}, skipped };
+  const report: IsolationReport = {
+    ok:
+      card.error === undefined &&
+      sharedError === undefined &&
+      !Object.values(container ?? {}).some(isFailure),
+    devices,
+    roles: {},
+    ...(container ? { container } : {}),
+    skipped,
+  };
   try {
     for (const { key, role, gpu, card: n } of subjects) {
       const cwd = join(opts.scratchDir, "thermite", `selftest-${key}`);
@@ -286,18 +601,7 @@ export async function isolationSelftest(opts: {
         results = { probe: `failed: exit ${r.exitCode} ${r.stderr.slice(-200)}` };
       }
       report.roles[key] = results;
-      if (
-        Object.values(results).some(
-          (v) =>
-            v === "ALLOWED" ||
-            v.startsWith("UNREADABLE") ||
-            v.startsWith("UNREACHABLE") ||
-            v.startsWith("WRONG GPUS") ||
-            v.startsWith("failed"),
-        )
-      ) {
-        report.ok = false;
-      }
+      if (Object.values(results).some(isFailure)) report.ok = false;
     }
   } finally {
     client.close();
@@ -308,18 +612,16 @@ export async function isolationSelftest(opts: {
 
 /** A selftest's outcome in a sentence: what passed, or which probes a role got through. */
 export function isolationSummary(report: IsolationReport): string {
-  const bad = Object.entries(report.roles).flatMap(([role, results]) =>
-    Object.entries(results)
-      .filter(
-        ([, v]) =>
-          v === "ALLOWED" ||
-          v.startsWith("UNREADABLE") ||
-          v.startsWith("UNREACHABLE") ||
-          v.startsWith("WRONG GPUS") ||
-          v.startsWith("failed"),
-      )
-      .map(([probe, v]) => `${role} ${probe}: ${v}`),
-  );
+  const bad = [
+    ...Object.entries(report.container ?? {})
+      .filter(([, v]) => isFailure(v))
+      .map(([check, v]) => `container ${check}: ${v}`),
+    ...Object.entries(report.roles).flatMap(([role, results]) =>
+      Object.entries(results)
+        .filter(([, v]) => isFailure(v))
+        .map(([probe, v]) => `${role} ${probe}: ${v}`),
+    ),
+  ];
   const roles = Object.keys(report.roles).length;
   if (report.ok)
     return `isolation holds: every probe of ${roles} roles came out as it must (devices: ${report.devices})`;

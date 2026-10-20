@@ -12,6 +12,11 @@ import { killScope, runSupervised, type SupervisedResult } from "./process.ts";
 /** Fixed ids, created in the harness image (containers/harness/Containerfile). */
 export const IDS = {
   thermite: { uid: 10010, gid: 10010 },
+  /**
+   * The rig's supervisor (containers/supervisor/Containerfile). In the one-container rig image
+   * (containers/rig/Containerfile) the broker starts it under this user, beside the roles.
+   */
+  supervisor: { uid: 10001, gid: 10001 },
   builder: { uid: 10020, gid: 10020 },
   /** Candidate execution: primary group `gpu`, the group that owns the device nodes. */
   run: { uid: 10030, gid: 10500 },

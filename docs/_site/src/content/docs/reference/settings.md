@@ -108,8 +108,17 @@ The harness container runs a **broker**, which runs as root and starts the other
 | `THERMITE_RIG_ID` | string | required | no | The rig's name, as control knows it |
 | `THERMITE_TARGET` | `cpu` or `cuda-gpu` | `cpu` | no | The [target](glossary.md) driver. Anything else stops the harness with `no target driver <value>; this build has cpu and cuda-gpu` |
 | `THERMITE_TARGET_CLASS` | string | `generic-cpu` on `cpu`, `cuda-gpu` on `cuda-gpu` | no | A name for the kind of device. The dashboard shows it with the rig's hardware, and the **New campaign** page and the smoke check copy it into the contracts they write. Nothing compares it |
-| `THERMITE_CONTROL_PUBKEY_FILE` | path | required | no | Control's command-signing public key, to verify signed commands. The harness waits up to 120 seconds for the file to appear, then stops with `timed out waiting for <path>` |
+| `THERMITE_CONTROL_PUBKEY_FILE` | path | required | no | Control's command-signing public key, to verify signed commands. The harness waits up to 120 seconds for the file to appear, then stops with `timed out waiting for <path>`. With `THERMITE_ONE_CONTAINER=1` it waits as long as it takes, and logs `waiting for control's public key` at once and every 10 minutes |
 | `THERMITE_LISTEN` | `host:port` | `0.0.0.0:8700` | no | Where the harness serves its API, for the rig's supervisor, a proposer's `thermite submit` and the agents' tools. Rigs that control sets up expect port 8700 |
+
+### The one-container rig image
+
+The [one-container rig image](harness-image.md#the-one-container-rig-image) sets `THERMITE_ONE_CONTAINER` itself, with the places it uses. The broker then also reads the supervisor's `THERMITE_SUPERVISOR_HOME` and `THERMITE_INBOX_DIR`, to prepare them, and the isolation selftest probes them.
+
+| Variable | Type | Default | Secret | Meaning |
+| --- | --- | --- | --- | --- |
+| `THERMITE_ONE_CONTAINER` | `1` | off | no | `1`: the rig's supervisor runs in this container. The broker prepares its places and its token, writes control's key from `THERMITE_CONTROL_PUBKEY`, and starts it as its own user. A broker that is not root then stops with `fatal: the one-container image must run as root`, and one without `THERMITE_SUPERVISOR_TOKEN_FILE` with `fatal: the one-container image needs THERMITE_SUPERVISOR_TOKEN_FILE` |
+| `THERMITE_CONTROL_PUBKEY` | PEM, or PEM in base64 | not set | no | Control's command-signing public key, given at launch. With `THERMITE_ONE_CONTAINER=1` the broker writes it to `THERMITE_CONTROL_PUBKEY_FILE`. A value that is not an Ed25519 public key is not written: the broker logs `control's public key from the launch is not usable; the harness waits` |
 
 ### GPUs and CPUs
 
@@ -245,7 +254,8 @@ Only `thermite selftest isolation`, which runs inside the harness container, rea
 
 - the secret files it checks no role can read: `THERMITE_SUPERVISOR_TOKEN_FILE`, `THERMITE_PROPOSER_TOKEN_FILE`, `THERMITE_MODEL_API_KEY_FILE` and `QWEN_API_KEY_FILE`;
 - the places: `THERMITE_BROKER_DIR`, `THERMITE_STATE_DIR`, `THERMITE_SCRATCH_DIR` and `THERMITE_OUTBOX_DIR`;
-- the GPU settings: `THERMITE_GPU_INDEX`, `THERMITE_DEV_GPU_INDEX`, `THERMITE_GPUS` and `THERMITE_JUDGE_GPUS`.
+- the GPU settings: `THERMITE_GPU_INDEX`, `THERMITE_DEV_GPU_INDEX`, `THERMITE_GPUS` and `THERMITE_JUDGE_GPUS`;
+- in the one-container rig image, `THERMITE_ONE_CONTAINER`, and the supervisor's places it probes: `THERMITE_SUPERVISOR_HOME` and `THERMITE_INBOX_DIR`.
 
 ## Rigs that control sets up
 
@@ -321,6 +331,7 @@ The images take these build arguments. [Harness image](harness-image.md) says wh
 | `OPENCODE_VERSION` | harness | `2.0.32` | The OpenCode version installed |
 | `CLAUDE_CODE_VERSION` | harness, supervisor | empty: Claude Code is not installed | The Claude Code version to download at build time, for agents or advisors on a Claude subscription |
 | `KUBECTL_VERSION` | control | `v1.37.1` | The kubectl version installed, checked against a pinned checksum |
+| `HARNESS_IMAGE` | one-container rig | none: required | The harness image the one-container rig image is built on |
 
 ## Set by Thermite itself
 

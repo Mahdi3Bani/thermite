@@ -304,7 +304,7 @@ export function sweepRole(uid: number): string[] {
 }
 
 const PRLIMIT = ["/usr/bin/prlimit", "/bin/prlimit"].find((p) => existsSync(p));
-const SETPRIV = ["/usr/bin/setpriv", "/bin/setpriv"].find((p) => existsSync(p));
+export const SETPRIV = ["/usr/bin/setpriv", "/bin/setpriv"].find((p) => existsSync(p));
 const TASKSET = ["/usr/bin/taskset", "/bin/taskset"].find((p) => existsSync(p));
 
 /**

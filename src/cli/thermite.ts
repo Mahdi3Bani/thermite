@@ -437,7 +437,7 @@ async function main(argv: string[]): Promise<void> {
     }
     case "selftest": {
       if (rest[0] !== "isolation") fail(USAGE);
-      const { isolationSelftest } = await import("../harness/selftest.ts");
+      const { isolationSelftest, oneContainerTargets } = await import("../harness/selftest.ts");
       const { effectiveGpuLists, savedJudgeGpus } = await import("../harness/broker/devices.ts");
       const env = process.env;
       const secretFiles = [
@@ -457,6 +457,8 @@ async function main(argv: string[]): Promise<void> {
           effectiveGpuLists(env, savedJudgeGpus(env.THERMITE_STATE_DIR ?? "/var/lib/thermite"))
             .dev !== undefined,
         force: rest.includes("--force"),
+        // The one-container rig image (THERMITE_ONE_CONTAINER): the supervisor's places too.
+        oneContainer: oneContainerTargets(env),
       });
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
       if (!report.ok) process.exit(1);

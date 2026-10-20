@@ -1,0 +1,47 @@
+# Thermite's one-container rig image: a rig's harness and supervisor in one container, for hosts
+# that run one container per machine (a RunPod pod). It is the harness image with the supervisor
+# added. Build the harness image first from containers/harness/Containerfile (on a CUDA 12.x base
+# for GPU pods; the default CPU base works the same) and name it in HARNESS_IMAGE:
+#
+#   podman build -t thermite-harness -f containers/harness/Containerfile .
+#   podman build -t thermite-rig --build-arg HARNESS_IMAGE=localhost/thermite-harness \
+#     -f containers/rig/Containerfile .
+#
+# The harness image already holds the supervisor's code: both images build all of src/.
+ARG HARNESS_IMAGE
+FROM ${HARNESS_IMAGE}
+# What the supervisor image adds to its base that the harness image lacks: openssh-client (Git
+# over SSH), and the supervisor's user. ssh refuses a uid without a passwd entry, and finds
+# ~/.ssh from the entry's home (containers/supervisor/Containerfile).
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends openssh-client \
+ && rm -rf /var/lib/apt/lists/*
+RUN groupadd -g 10001 supervisor \
+ && useradd -u 10001 -g 10001 -M -d /var/lib/thermite-supervisor/home -s /usr/sbin/nologin supervisor \
+ && mkdir -p /var/lib/thermite-supervisor/home \
+ && chown 10001:10001 /var/lib/thermite-supervisor /var/lib/thermite-supervisor/home \
+ && chmod 0700 /var/lib/thermite-supervisor /var/lib/thermite-supervisor/home
+# No set-id file anywhere: RunPod does not stop a process from gaining privileges (no_new_privs is
+# off there), so a role could otherwise run a setuid program as its owner. Last, after every
+# package; the build fails if one is left.
+RUN find / -xdev -type f -perm /6000 -exec chmod ug-s {} + \
+ && test -z "$(find / -xdev -type f -perm /6000 -print -quit)"
+COPY --chmod=0755 containers/rig/thermite-rig-start /usr/local/bin/thermite-rig-start
+# THERMITE_ONE_CONTAINER: the broker also starts the supervisor. The state of both parts is on
+# RunPod's volume (/workspace, kept when the pod stops); scratch stays on the container's disk.
+# The harness API answers on loopback only. Control's public key comes with the launch
+# (THERMITE_CONTROL_PUBKEY); the broker writes it where both parts read it.
+ENV THERMITE_ONE_CONTAINER=1 \
+    THERMITE_STATE_DIR=/workspace/thermite/harness \
+    THERMITE_OUTBOX_DIR=/workspace/thermite/outbox \
+    THERMITE_INBOX_DIR=/workspace/thermite/inbox \
+    THERMITE_SUPERVISOR_HOME=/workspace/thermite/supervisor \
+    THERMITE_SUPERVISOR_TOKEN_FILE=/workspace/thermite/secrets/supervisor-token \
+    THERMITE_CONTROL_PUBKEY_FILE=/etc/thermite/control-signing.pub \
+    THERMITE_LISTEN=127.0.0.1:8700 \
+    HARNESS_URL=http://127.0.0.1:8700 \
+    THERMITE_TUNNEL_PORT=8000
+# The port control is to reach the supervisor on, through RunPod's proxy (goal 019).
+EXPOSE 8000
+ENTRYPOINT ["/usr/local/bin/thermite-rig-start", "/usr/bin/tini", "--"]
+CMD ["node", "/opt/thermite/dist/harness/broker.js"]
