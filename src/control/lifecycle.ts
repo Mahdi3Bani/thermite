@@ -75,13 +75,19 @@ function call(
   });
 }
 
+/**
+ * Each rig's namespace when THERMITE_K8S_NAMESPACE is not set: the name control also gives the
+ * namespaces it creates on a cluster. A control that sets the template keeps its own.
+ */
+export const DEFAULT_NAMESPACE = "thermite-{rig}";
+
 export interface KubernetesOptions {
   /** API server; in a pod, the address Kubernetes gives every pod (no DNS needed). */
   apiUrl: string;
   /** The token, or a function that reads it (service-account tokens are rotated on disk). */
   token: string | (() => string);
   ca?: string | undefined;
-  /** Namespace per rig, with {rig} replaced (default ar-{rig}). */
+  /** Namespace per rig, with {rig} replaced (default DEFAULT_NAMESPACE). */
   namespaceTemplate: string;
   /** Label selector per component (default app.kubernetes.io/component=<component>). */
   selectors: Record<Component, string>;
@@ -102,7 +108,7 @@ export class KubernetesDriver implements DeploymentDriver {
       apiUrl: env.THERMITE_K8S_API ?? inClusterApi(env),
       token: () => readFileSync(env.THERMITE_K8S_TOKEN_FILE ?? `${sa}/token`, "utf8").trim(),
       ca: readFileSync(env.THERMITE_K8S_CA_FILE ?? `${sa}/ca.crt`, "utf8"),
-      namespaceTemplate: env.THERMITE_K8S_NAMESPACE ?? "ar-{rig}",
+      namespaceTemplate: env.THERMITE_K8S_NAMESPACE || DEFAULT_NAMESPACE,
       selectors: {
         harness: env.THERMITE_K8S_SELECTOR_HARNESS ?? "app.kubernetes.io/component=harness",
         supervisor:

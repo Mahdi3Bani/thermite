@@ -84,12 +84,12 @@ A lifecycle driver lets control restart a rig's containers: the button **Restart
 | `THERMITE_K8S_API` | URL | `https://<KUBERNETES_SERVICE_HOST>:<KUBERNETES_SERVICE_PORT>`, else `https://kubernetes.default.svc` | no | `kubernetes`: the cluster's API server |
 | `THERMITE_K8S_TOKEN_FILE` | path | `/var/run/secrets/kubernetes.io/serviceaccount/token` | path to a secret | `kubernetes`: control's service account token. Read again at each restart, so a rotated token is used |
 | `THERMITE_K8S_CA_FILE` | path | `/var/run/secrets/kubernetes.io/serviceaccount/ca.crt` | no | `kubernetes`: the API server's certificate authority |
-| `THERMITE_K8S_NAMESPACE` | template | `ar-{rig}` | no | `kubernetes`: each rig's namespace. `{rig}` is replaced with the rig's name; so is `{unit}`, the placeholder's older name |
+| `THERMITE_K8S_NAMESPACE` | template | `thermite-{rig}` | no | `kubernetes`: each rig's namespace. `{rig}` is replaced with the rig's name; so is `{unit}`, the placeholder's older name. Empty counts as not set |
 | `THERMITE_K8S_SELECTOR_HARNESS` | label selector | `app.kubernetes.io/component=harness` | no | `kubernetes`: how control finds a rig's harness pods |
 | `THERMITE_K8S_SELECTOR_SUPERVISOR` | label selector | `app.kubernetes.io/component=supervisor` | no | `kubernetes`: how control finds a rig's supervisor pods |
 | `KUBERNETES_SERVICE_HOST`, `KUBERNETES_SERVICE_PORT` | address, port | set by Kubernetes in every pod; port `443` | no | Read for the default of `THERMITE_K8S_API` |
 
-The `kubernetes` driver restarts a component by deleting its pods, which the rig's Deployment then makes again. Its service account lists and deletes pods in each rig's namespace. It is for rigs deployed on Kubernetes by other means. Rigs that control sets up on a cluster don't use it: control restarts them with the cluster's kubeconfig (**Restart them** on the rig's page), and names the namespaces it creates from the cluster's **Namespace for each rig**, `thermite-{rig}` by default. The driver's default `ar-{rig}` is planned to become `thermite-{rig}` too ([goal 017](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/017-legacy-names.goal)).
+The `kubernetes` driver restarts a component by deleting its pods, which the rig's Deployment then makes again. Its service account lists and deletes pods in each rig's namespace. It is for rigs deployed on Kubernetes by other means. Rigs that control sets up on a cluster don't use it: control restarts them with the cluster's kubeconfig (**Restart them** on the rig's page), and names the namespaces it creates from the cluster's **Namespace for each rig**, `thermite-{rig}` by default, the same as the driver's default. If your rigs' namespaces have other names, set `THERMITE_K8S_NAMESPACE` to match them.
 
 ### Outside knowledge bases
 
@@ -243,7 +243,7 @@ The `thermite` command takes control's or the harness's address and a token file
 
 Only `thermite selftest isolation`, which runs inside the harness container, reads variables. It reads the harness's own settings, with the same defaults:
 
-- the secret files it checks no role can read: `THERMITE_SUPERVISOR_TOKEN_FILE`, `THERMITE_PROPOSER_TOKEN_FILE`, `THERMITE_MODEL_API_KEY_FILE` and `QWEN_API_KEY_FILE`;
+- the secret files it checks no role can read: `THERMITE_SUPERVISOR_TOKEN_FILE`, `THERMITE_PROPOSER_TOKEN_FILE` and `THERMITE_MODEL_API_KEY_FILE`;
 - the places: `THERMITE_BROKER_DIR`, `THERMITE_STATE_DIR`, `THERMITE_SCRATCH_DIR` and `THERMITE_OUTBOX_DIR`;
 - the GPU settings: `THERMITE_GPU_INDEX`, `THERMITE_DEV_GPU_INDEX`, `THERMITE_GPUS` and `THERMITE_JUDGE_GPUS`.
 
@@ -266,16 +266,8 @@ Some settings were renamed. These older names are still read when the new name i
 | --- | --- | --- |
 | `THERMITE_UNIT_ID` | `THERMITE_RIG_ID` | Yes, in the harness and the supervisor. It logs `THERMITE_UNIT_ID is deprecated; set THERMITE_RIG_ID` |
 | `THERMITE_CONTROL_UNIT_TOKENS_FILE` | `THERMITE_CONTROL_RIG_TOKENS_FILE` | **No.** It is declared as an older name, but control does not read it. Use `THERMITE_CONTROL_RIG_TOKENS_FILE` |
-| `QWEN_BASE_URL` | `THERMITE_MODEL_BASE_URL` | Yes |
-| `QWEN_MODEL` | `THERMITE_MODEL` | Yes |
-| `QWEN_API_KEY_FILE` | `THERMITE_MODEL_API_KEY_FILE` | Yes |
-| `QWEN_CONTEXT_WINDOW` | `THERMITE_MODEL_CONTEXT_WINDOW` | Yes |
-| `QWEN_MAX_TOKENS` | `THERMITE_MODEL_MAX_TOKENS` | Yes |
-| `QWEN_REASONING_EFFORT` | `THERMITE_MODEL_REASONING_EFFORT` | Yes |
-| `QWEN_MODEL_API` | `THERMITE_MODEL_API` | Yes |
-| `QWEN_AGENT_HARNESS` | `THERMITE_AGENT_HARNESS` | Yes |
 
-The harness warns once when it reads a `QWEN_` name: `<older name> and the other QWEN_* model settings are old names: use THERMITE_MODEL_* (<new name>)`. The `QWEN_` names are planned to go ([goal 017](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/017-legacy-names.goal)).
+The model settings have only the names in [The rig's own model](#the-rigs-own-model). Names they had before are not read.
 
 ## The compose file
 

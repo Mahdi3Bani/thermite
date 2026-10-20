@@ -279,7 +279,7 @@ It prints the harness's answer whatever its HTTP status, and exits 0 even when t
 
 Without `--force`, a busy rig is refused, with exit 2: `the rig is busy: <n> open trial(s) and <m> judge job(s): pause the rig's runs and let the judge finish first (each probe kills its role's processes); rerun with --force to probe anyway`.
 
-It reads where the broker's socket and the rig's directories are from `THERMITE_BROKER_DIR` (default `/run/thermite`), `THERMITE_STATE_DIR` (`/var/lib/thermite`), `THERMITE_SCRATCH_DIR` (`/scratch`) and `THERMITE_OUTBOX_DIR` (`/outbox`), and probes the secret files named by `THERMITE_SUPERVISOR_TOKEN_FILE`, `THERMITE_PROPOSER_TOKEN_FILE`, `THERMITE_MODEL_API_KEY_FILE` and `QWEN_API_KEY_FILE`. The same check runs from the dashboard as a rig check; see [Rig checks](rig-checks.md) and [Check a rig](../how-to/operate/check-a-rig.md).
+It reads where the broker's socket and the rig's directories are from `THERMITE_BROKER_DIR` (default `/run/thermite`), `THERMITE_STATE_DIR` (`/var/lib/thermite`), `THERMITE_SCRATCH_DIR` (`/scratch`) and `THERMITE_OUTBOX_DIR` (`/outbox`), and probes the secret files named by `THERMITE_SUPERVISOR_TOKEN_FILE`, `THERMITE_PROPOSER_TOKEN_FILE` and `THERMITE_MODEL_API_KEY_FILE`. The same check runs from the dashboard as a rig check; see [Rig checks](rig-checks.md) and [Check a rig](../how-to/operate/check-a-rig.md).
 
 ## `thermite-trial`
 

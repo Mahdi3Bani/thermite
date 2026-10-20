@@ -364,7 +364,6 @@ async function main(): Promise<void> {
             env.THERMITE_SUPERVISOR_TOKEN_FILE,
             env.THERMITE_PROPOSER_TOKEN_FILE,
             env.THERMITE_MODEL_API_KEY_FILE,
-            env.QWEN_API_KEY_FILE,
           ].filter((f): f is string => Boolean(f)),
           dedicated: env.THERMITE_DEV_GPU_INDEX !== undefined,
           force,

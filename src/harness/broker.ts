@@ -69,8 +69,6 @@ const SECRET_VARS: Record<string, string> = {
   THERMITE_SUPERVISOR_TOKEN_FILE: "THERMITE_SUPERVISOR_TOKEN",
   THERMITE_PROPOSER_TOKEN_FILE: "THERMITE_PROPOSER_TOKEN",
   THERMITE_MODEL_API_KEY_FILE: "THERMITE_MODEL_API_KEY",
-  // The old name, still read (see MODEL_SETTINGS).
-  QWEN_API_KEY_FILE: "QWEN_API_KEY",
 };
 
 function tryDo(what: string, fn: () => void): void {

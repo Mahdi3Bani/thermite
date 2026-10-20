@@ -444,7 +444,6 @@ async function main(argv: string[]): Promise<void> {
         env.THERMITE_SUPERVISOR_TOKEN_FILE,
         env.THERMITE_PROPOSER_TOKEN_FILE,
         env.THERMITE_MODEL_API_KEY_FILE,
-        env.QWEN_API_KEY_FILE,
       ].filter((f): f is string => Boolean(f));
       const report = await isolationSelftest({
         socketPath: join(env.THERMITE_BROKER_DIR ?? "/run/thermite", "broker.sock"),
