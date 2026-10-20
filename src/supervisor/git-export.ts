@@ -214,10 +214,16 @@ export async function exportOnce(cfg: ExportConfig, state: ExportState): Promise
       [`exports/${name}.json`]: join(dir, "manifest.json"),
     };
     for (const rel of Object.keys(manifest.files)) {
+      // The runs' field notes, research notes and briefings since the last export (goal 065),
+      // one file per export beside its events.
+      const per = /^(journal|research-notes|briefing)\.jsonl$/.exec(rel);
+      if (per) files[`${per[1]}/${name}.jsonl`] = join(dir, rel);
       // Attempts, and published champions (what other rigs fetch to judge them themselves).
       if (
         rel.startsWith("attempts/") ||
         rel.startsWith("champions/") ||
+        // A finished run's research folder (its report, claims, findings, notes and sources).
+        /^research\/[^/]+\/folder\//.test(rel) ||
         // A full export's research archive (kept before a full reset).
         (manifest.full && rel.startsWith("research/"))
       )
