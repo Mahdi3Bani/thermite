@@ -62,6 +62,7 @@ Today most of what an agent learns ends with its trial. Only submitted attempts,
 - 2026-10-20, owner: all agents write journals and research notes; a campaign's corpus goes into the knowledge base to inform later campaigns. This goal follows the experiment queue ([064](064-experiment-queue.goal)).
 - 2026-10-20, owner: "Build it" (the mockups of 063 and 064); accepted into v0.1.0, built after 064.
 - 2026-10-20: [059](059-knowledge-base-export.goal) (research results into a knowledge base) becomes part of this goal.
+- 2026-10-20, owner: "Mockups look great btw, I approve those" (the Journal tab, the Knowledge page, a campaign's knowledge, and Start a run from past research).
 - 2026-10-20, owner, on the Journal mockup: the journal is a field note, not a record of what was tried (the experiment log has that): observations, key decisions and the like, kept by the agents throughout the system.
 - 2026-10-20, owner, on the first mockups: "gbrain shouldn't be required. thermite should maintain its own kb system. gbrain is more a sync than anything and additional external context brought in." Each campaign keeps everything in its own folder in Thermite's knowledge base; the owner grants a campaign read access to other campaigns' folders, at any time.
 
