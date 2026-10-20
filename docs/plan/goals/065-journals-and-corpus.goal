@@ -110,6 +110,7 @@ Today most of what an agent learns ends with its trial. Only submitted attempts,
     - a search tool over `knowledge/` for the planner and the advisors;
     - a choice of how much of the journal a new campaign sees (open question above).
 
+- 2026-10-20: Fixes after the docs review: past research and outside tokens follow control's own assignments; items are filed by control's assignment; copies and briefings over MCP keep to grants; open-fetch teachers get no other campaign's records; the knowledge base's MCP tools are the owner's and the operator's. Then checked (full `npm run check`, all seven compose acceptances, and again after the fixes) and deployed on the maintainers' control and rigs (ledger migration 15). The pages are on the docs site. Still open: the acceptance tests do not drive the knowledge base, and the items synced to a rig are not signed by control (the supervisor is trusted for them, as for the advisors' work).
 ---
 
 Run with `/goal Complete docs/plan/goals/065-journals-and-corpus.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

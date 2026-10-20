@@ -100,6 +100,7 @@ Today the plan exists only for the current round and is redone every round. Idea
 
   Still to do: the compose acceptances, then the roll. The acceptance tests do not cover the queue yet.
 
+- 2026-10-20: Checked and deployed with 063, on the maintainers' control and rigs (ledger migration 14). The pages are on the docs site. Still open: the acceptance tests do not cover the queue, and `thermite assign` has no option to copy a run's experiments.
 ---
 
 Run with `/goal Complete docs/plan/goals/064-experiment-queue.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

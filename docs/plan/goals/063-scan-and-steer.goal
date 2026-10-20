@@ -125,6 +125,7 @@ None.
 
   Still to do: the compose acceptances, then the roll.
 
+- 2026-10-20: Checked and deployed. The full `npm run check` and the compose acceptances (smoke, agents, Claude Code, steering, control, campaign, cluster) passed. The maintainers' control and rigs run it, each rig's ledger kept and its isolation check passing. The pages are on the docs site. Still open: the acceptance tests do not drive Live's message box or the Planner tab.
 ---
 
 Run with `/goal Complete docs/plan/goals/063-scan-and-steer.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
