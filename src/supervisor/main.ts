@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { log, optionalSecretFromFile, requireEnv, secretFromFile } from "../common/env.ts";
+import { untoldKinds } from "../core/kb.ts";
 import { buildHeaders, buildInfo } from "../core/version.ts";
 import { type AdviseState, adviseOnce, emptyAdviseState, teachersCalled } from "./advise.ts";
 import { type ControlAdvisors, fetchControlAdvisors, mergeAdvisors } from "./advisor-routes.ts";
@@ -364,6 +365,8 @@ async function main(): Promise<void> {
   const kbMs = Number(env.THERMITE_KB_SYNC_SECONDS ?? "180") * 1000;
   const syncingKb = async () => {
     let failing = false;
+    // Kinds of item from a newer control that this build left out: each is logged once.
+    const toldKinds = new Set<string>();
     while (!stopping && controlUrl && controlToken && kbMs > 0) {
       try {
         const r = await syncKnowledgeOnce(
@@ -373,6 +376,12 @@ async function main(): Promise<void> {
         if (JSON.stringify(r.state) !== JSON.stringify(kbState)) save(kbPath, r.state);
         kbState = r.state;
         if (r.items) log("supervisor", "past research synced", { items: r.items });
+        for (const [kind, items] of untoldKinds(toldKinds, r.unknownKinds))
+          log("supervisor", "past research of an unknown kind left out", {
+            kind,
+            items,
+            why: "control is newer than this rig: update the rig's images to get these items",
+          });
         if (r.errors.length && !failing)
           log("supervisor", "past research sync error", { errors: r.errors.slice(0, 5) });
         failing = r.errors.length > 0;

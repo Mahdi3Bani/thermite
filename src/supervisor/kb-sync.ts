@@ -1,4 +1,4 @@
-import { KbSync } from "../core/kb.ts";
+import { knownKbKind, readKbSync } from "../core/kb.ts";
 import { buildHeaders } from "../core/version.ts";
 
 /**
@@ -15,6 +15,11 @@ import { buildHeaders } from "../core/version.ts";
  * 404, which is no error, and the run is not asked about again for an hour. Control also answers
  * 404 for a run it assigned but has not heard of from the rig yet (its first events are still on
  * their way): that run is asked about again at the next sync.
+ *
+ * A newer control may send items of a kind this build does not know. They are left out, counted
+ * by kind (the caller logs each kind once), and the sync goes on: a newer control never stops an
+ * older rig's sync. The kinds are kept in the state; when an update of the rig teaches it one of
+ * them, every run's cursor starts again from 0, so the items left out arrive then.
  *
  * Without control (no URL or token), nothing happens.
  */
@@ -37,6 +42,8 @@ export interface KbSyncState {
   cursors: Record<string, number>;
   /** Running runs control did not assign, and when to ask about each again (ISO time). */
   skipped?: Record<string, string> | undefined;
+  /** Kinds of item this build left out because it does not know them (control is newer). */
+  unknown_kinds?: string[] | undefined;
 }
 
 /** How long a run control did not assign is left alone. */
@@ -52,14 +59,25 @@ export interface KbSyncResult {
   items: number;
   /** What went wrong, per run, in words (the other runs went on). */
   errors: string[];
+  /** Items left out in this call, per kind this build does not know. */
+  unknownKinds: Record<string, number>;
 }
 
 export async function syncKnowledgeOnce(
   cfg: KbSyncConfig,
   state: KbSyncState,
 ): Promise<KbSyncResult> {
-  const out: KbSyncResult = { state: { cursors: { ...state.cursors } }, items: 0, errors: [] };
+  const out: KbSyncResult = {
+    state: { cursors: { ...state.cursors } },
+    items: 0,
+    errors: [],
+    unknownKinds: {},
+  };
   if (!cfg.controlUrl || !cfg.controlToken) return out;
+  // Kinds left out before that this build now knows (the rig was updated): every run starts
+  // again from 0, so the items left out arrive. The harness overwrites the items it has.
+  const leftOut = state.unknown_kinds ?? [];
+  if (leftOut.some(knownKbKind)) out.state.cursors = {};
   const f = cfg.fetchImpl ?? fetch;
   const harness = async (method: string, path: string, body?: unknown) => {
     const res = await f(`${cfg.harnessUrl}${path}`, {
@@ -104,7 +122,9 @@ export async function syncKnowledgeOnce(
           break;
         }
         if (!res.ok) throw new Error(`control's knowledge base: HTTP ${res.status}`);
-        const page = KbSync.parse(await res.json());
+        const { page, unknownKinds } = readKbSync(await res.json());
+        for (const [kind, n] of Object.entries(unknownKinds))
+          out.unknownKinds[kind] = (out.unknownKinds[kind] ?? 0) + n;
         // Posted in batches the harness takes in one request each; the cursor moves only when
         // every item of the page reached the harness. Each post says which folders the run may
         // read now, so the harness removes a folder whose grant was revoked: a page with no
@@ -135,5 +155,9 @@ export async function syncKnowledgeOnce(
     }
   }
   if (Object.keys(skipped).length) out.state.skipped = skipped;
+  const unknown = [
+    ...new Set([...leftOut.filter((k) => !knownKbKind(k)), ...Object.keys(out.unknownKinds)]),
+  ].sort();
+  if (unknown.length) out.state.unknown_kinds = unknown;
   return out;
 }

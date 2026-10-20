@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import type { KbItemWire } from "../core/kb.ts";
+import { type KbItemWire, untoldKinds } from "../core/kb.ts";
 import { createHarnessApi } from "../harness/api.ts";
 import { makeHarnessEnv } from "../testing/harness-env.ts";
 import { emptyKbSyncState, type KbSyncConfig, syncKnowledgeOnce } from "./kb-sync.ts";
@@ -165,7 +165,7 @@ describe("past research, synced from control into the run's folder", () => {
         item(6, { ref: "1" }),
         item(7, { rig: "rig-c", ref: "1" }),
       ]),
-      { written: 1, updated: 1, removed: [] },
+      { written: 1, updated: 1, removed: [], skipped: 0 },
     );
     assert.deepEqual(readdirSync(notes), ["rig-b--kernels-7--1.md", "rig-c--kernels-7--1.md"]);
   });
@@ -294,6 +294,88 @@ describe("past research, synced from control into the run's folder", () => {
     assert.match(bad.errors[0] ?? "", /smoke-1: control's knowledge base: HTTP 500/);
   });
 
+  test("an item of a kind this build does not know is left out and the sync goes on; once an update knows the kind, the run syncs again from the start", async () => {
+    // "verdict" stands in for a kind a newer control has and this build does not.
+    const newer = (seq: number) =>
+      item(seq, {
+        kind: "verdict" as KbItemWire["kind"],
+        ref: `v-${seq}`,
+        title: "From a newer control",
+      });
+    const s = await setup([item(1), newer(2), newer(3), item(4)]);
+    const logged: string[] = [];
+    const write = process.stdout.write.bind(process.stdout);
+    process.stdout.write = ((chunk: string) => {
+      logged.push(String(chunk));
+      return true;
+    }) as typeof process.stdout.write;
+    let r: Awaited<ReturnType<typeof syncKnowledgeOnce>>;
+    try {
+      r = await syncKnowledgeOnce(s.cfg, emptyKbSyncState());
+    } finally {
+      process.stdout.write = write;
+    }
+    assert.deepEqual(r.errors, []);
+    assert.equal(r.items, 2);
+    assert.deepEqual(r.unknownKinds, { verdict: 2 });
+    // The cursor moved past them: the sync never sticks on what it cannot read.
+    assert.deepEqual(r.state.cursors, { [RUN]: 4 });
+    assert.deepEqual(r.state.unknown_kinds, ["verdict"]);
+    assert.ok(existsSync(join(s.dir, "kernels", "notes", "rig-b--kernels-7--1.md")));
+    assert.ok(existsSync(join(s.dir, "kernels", "notes", "rig-b--kernels-7--4.md")));
+    assert.ok(!existsSync(join(s.dir, "kernels", "verdicts")));
+    // The supervisor left them out, so the harness never saw one.
+    assert.equal(logged.filter((l) => l.includes("unknown kind")).length, 0);
+    // Each kind is told once, however often it comes.
+    const told = new Set<string>();
+    assert.deepEqual(untoldKinds(told, r.unknownKinds), [["verdict", 2]]);
+    assert.deepEqual(untoldKinds(told, { verdict: 5, finding_v2: 1 }), [["finding_v2", 1]]);
+    assert.deepEqual(untoldKinds(told, { verdict: 1 }), []);
+    // Nothing new next time, and the kind is still remembered.
+    s.asked.length = 0;
+    const again = await syncKnowledgeOnce(s.cfg, r.state);
+    assert.deepEqual(s.asked, ["/v1/rigs/rig-a/kb?run=smoke-1&after=4"]);
+    assert.deepEqual(again.state.unknown_kinds, ["verdict"]);
+    // After an update that knows a kind it left out ("trial" stands in for it), every run starts
+    // again from 0, so the items left out arrive; a kind still unknown stays remembered.
+    s.asked.length = 0;
+    const updated = await syncKnowledgeOnce(s.cfg, {
+      ...again.state,
+      unknown_kinds: ["trial", "verdict"],
+    });
+    assert.deepEqual(updated.errors, []);
+    assert.equal(s.asked[0], "/v1/rigs/rig-a/kb?run=smoke-1&after=0");
+    assert.deepEqual(updated.state.cursors, { [RUN]: 4 });
+    assert.deepEqual(updated.state.unknown_kinds, ["verdict"]);
+  });
+
+  test("the harness, too, leaves out an item of a kind it does not know, and logs the kind once", () => {
+    const env = makeHarnessEnv();
+    const k = env.service.knowledge;
+    const logged: string[] = [];
+    const write = process.stdout.write.bind(process.stdout);
+    process.stdout.write = ((chunk: string) => {
+      logged.push(String(chunk));
+      return true;
+    }) as typeof process.stdout.write;
+    let first: ReturnType<typeof k.write>;
+    let second: ReturnType<typeof k.write>;
+    try {
+      const odd = { ...item(2), kind: "verdict" };
+      first = k.write(RUN, [item(1), odd, odd]);
+      second = k.write(RUN, [odd]);
+    } finally {
+      process.stdout.write = write;
+    }
+    assert.deepEqual(first, { written: 1, updated: 0, removed: [], skipped: 2 });
+    assert.deepEqual(second, { written: 0, updated: 0, removed: [], skipped: 1 });
+    const lines = logged.filter((l) => l.includes("past research of an unknown kind left out"));
+    assert.equal(lines.length, 1);
+    assert.match(lines[0] ?? "", /"kind":"verdict","items":2/);
+    // A known kind must still be well formed.
+    assert.throws(() => k.write(RUN, [{ ...item(3), seq: -1 }]));
+  });
+
   test("without control the sync does nothing", async () => {
     const s = await setup([item(1)]);
     let called = 0;
@@ -309,7 +391,7 @@ describe("past research, synced from control into the run's folder", () => {
       emptyKbSyncState(),
     );
     assert.equal(called, 0);
-    assert.deepEqual(r, { state: { cursors: {} }, items: 0, errors: [] });
+    assert.deepEqual(r, { state: { cursors: {} }, items: 0, errors: [], unknownKinds: {} });
     assert.equal(s.env.service.knowledge.summary(RUN), undefined);
   });
 
@@ -325,8 +407,15 @@ describe("past research, synced from control into the run's folder", () => {
     assert.equal((await post({ run: RUN, items: [item(1)] }, tokens.proposer)).status, 401);
     assert.equal((await post({ run: RUN, items: [item(1)] }, "trial.x")).status, 401);
     assert.equal((await post({ run: "no-run", items: [item(1)] }, tokens.supervisor)).status, 404);
+    // A kind this build does not know is left out, not refused: a newer control may send it.
+    const unknown = await post(
+      { run: RUN, items: [{ ...item(1), kind: "secret" }] },
+      tokens.supervisor,
+    );
+    assert.equal(unknown.status, 200);
+    assert.deepEqual(await unknown.json(), { written: 0, updated: 0, removed: [], skipped: 1 });
     assert.equal(
-      (await post({ run: RUN, items: [{ ...item(1), kind: "secret" }] }, tokens.supervisor)).status,
+      (await post({ run: RUN, items: [{ ...item(1), kind: 7 }] }, tokens.supervisor)).status,
       400,
     );
     const { rig: _rig, ...noRig } = item(1);
