@@ -20,9 +20,9 @@ const sha256 = (t: string) => createHash("sha256").update(t).digest("hex");
 
 async function stack(
   promotion: "auto" | "owner_approval" = "owner_approval",
-  opts: { providerFetch?: typeof fetch } = {},
+  opts: { providerFetch?: typeof fetch; agents?: false } = {},
 ) {
-  const env = makeJudgeEnv({ promotion });
+  const env = makeJudgeEnv({ promotion, ...(opts.agents === false ? { agents: false } : {}) });
   const store = new ControlStore(":memory:");
   const admin = "admin-token-abcdef";
   const control = createControlApi(
@@ -1437,6 +1437,131 @@ describe("control dashboard", () => {
     };
     assert.ok(json.entries.length >= 12);
     assert.ok(json.entries.every((e) => e.html.includes("data-who=")));
+  });
+
+  test("control refuses a message nothing would read, or one with no words, and says why", async () => {
+    const s = await stack();
+    await s.env.service.applyCommand(s.env.assign);
+    s.env.service.settings.set({ planner: false });
+    await s.relay();
+    // The supervisor reports it has no advisors set up: no teacher pair, auditor or panel.
+    const sup = await s.control.request("/v1/rigs/rig-a/supervisor", {
+      method: "POST",
+      headers: { authorization: "Bearer rig-token-abcdef", "content-type": "application/json" },
+      body: JSON.stringify({
+        at: new Date().toISOString(),
+        relay: { cursor: 3 },
+        export: { remote: false, exports: 0, pushed: [], last_push_at: null, last_error: null },
+        advisors: null,
+      }),
+    });
+    assert.equal(sup.status, 200, await sup.clone().text());
+    const live = await (await s.get("/ui/live?run=rig-a%2Fjs-1")).text();
+    // Live greys them with the words control refuses with.
+    assert.match(
+      live,
+      /<option value="teachers" [^>]*disabled title="This rig's supervisor has no teacher pair set up, so nothing would read it\.">/,
+    );
+    assert.match(
+      live,
+      /<option value="planner" [^>]*disabled title="The planner is off on this rig \(Edit rig\), so nothing would read it\.">/,
+    );
+    assert.match(live, /<textarea name="text" rows="1" required data-words/);
+    const csrf = s.csrfFrom(live);
+    const send = (to: string, text: string, back?: string) =>
+      s.post("/ui/live/message", {
+        csrf,
+        rig: "rig-a",
+        run: "js-1",
+        to,
+        text,
+        ...(back ? { back } : {}),
+      });
+    const where = async (r: Response | Promise<Response>) =>
+      decodeURIComponent((await r).headers.get("location") ?? "");
+    assert.match(
+      await where(send("teachers", "cite the paper")),
+      /msgerror=This rig's supervisor has no teacher pair set up, so nothing would read it\./,
+    );
+    assert.match(
+      await where(send("advisors", "cite the paper")),
+      /msgerror=This rig's supervisor has no advisors set up, so nothing would read it\./,
+    );
+    assert.match(await where(send("lane-1", "   \n ")), /msgerror=Write a message first\.$/);
+    // The planner off (Edit rig): the Planner tab says so, and a message to it is refused plainly.
+    const tab = "/ui/campaigns/js-sum?run=rig-a%2Fjs-1&view=planner";
+    const planner = await (await s.get(tab)).text();
+    assert.match(planner, /The planner is off on this rig, so it reads no messages/);
+    assert.doesNotMatch(planner, /Send to the planner/);
+    const refused = await where(send("planner", "put vector loads first", tab));
+    assert.match(
+      refused,
+      /msgerror=The planner is off on this rig \(Edit rig\), so nothing would read it\./,
+    );
+    assert.doesNotMatch(refused, /Sent to the rig/);
+    assert.equal(s.store.listCommands(20).filter((c) => c.kind === "message_agent").length, 0);
+    // A lane reads its message: that one goes, trimmed.
+    assert.equal(await where(send("lane-1", "  keep it simple  ")), "/ui/live?run=rig-a/js-1");
+    const sent = s.store.db
+      .prepare("select signed from command where kind = 'message_agent'")
+      .all() as { signed: string }[];
+    assert.deepEqual(
+      sent.map((x) => JSON.parse(x.signed).envelope.payload.text),
+      ["keep it simple"],
+    );
+    // With no run at work, Live points to the list rather than saying there is nothing.
+    await s.post("/ui/commands", {
+      csrf,
+      rig: "rig-a",
+      kind: "pause_run",
+      run: "js-1",
+      reason: "owner looked",
+    });
+    await s.relay();
+    await s.relay();
+    const idle = await (await s.get("/ui/live")).text();
+    assert.match(idle, /No run is at work\. Pick one from the list to see its lines\./);
+    assert.match(idle, /Ended in the last day \(1\)/);
+  });
+
+  test("a run's page: its agents before the first round; a new run of the campaign waits as Starting", async () => {
+    const s = await stack();
+    await s.env.service.applyCommand(s.env.assign);
+    await s.relay();
+    const page = await (await s.get("/ui/campaigns/js-sum?run=rig-a%2Fjs-1")).text();
+    assert.match(page, /<dt>Agents<\/dt><dd>On: they start work at the first round<\/dd>/);
+    assert.match(page, /&compose=1">Message<\/a>/);
+    assert.match(page, /Restart the lanes/);
+    // Another run assigned through control: the campaign's page says it is starting until the
+    // rig reports it; a link to a run control never assigned says nothing.
+    const payload = (s.env.assign as { envelope: { payload: Record<string, unknown> } }).envelope
+      .payload;
+    const r = await s.control.request("/v1/commands", {
+      method: "POST",
+      headers: { authorization: "Bearer admin-token-abcdef", "content-type": "application/json" },
+      body: JSON.stringify({
+        rig: "rig-a",
+        kind: "assign_campaign",
+        payload: { ...payload, run: "js-2" },
+      }),
+    });
+    assert.equal(r.status, 201, await r.clone().text());
+    const starting = await (await s.get("/ui/campaigns/js-sum?run=rig-a%2Fjs-2")).text();
+    assert.match(starting, /<b>Starting rig-a\/js-2\.<\/b>/);
+    assert.match(starting, /<h2>At work now<\/h2>/);
+    const stale = await (await s.get("/ui/campaigns/js-sum?run=rig-a%2Fjs-9")).text();
+    assert.doesNotMatch(stale, /Starting/);
+  });
+
+  test("a run without agents: no Message and no Restart the lanes on its page", async () => {
+    const s = await stack("owner_approval", { agents: false });
+    await s.env.service.applyCommand(s.env.assign);
+    await s.relay();
+    const page = await (await s.get("/ui/campaigns/js-sum?run=rig-a%2Fjs-1")).text();
+    assert.match(page, /<dt>Agents<\/dt><dd>None: changes come from people<\/dd>/);
+    assert.match(page, /<a class="btn" href="\/ui\/live\?run=rig-a%2Fjs-1">/);
+    assert.doesNotMatch(page, />Message<\/a>/);
+    assert.doesNotMatch(page, /Restart the lanes/);
   });
 });
 

@@ -210,4 +210,23 @@ describe("a run's Live lines", () => {
     assert.match(runEntryHtml(line({ ...answer, signed: true })), /the auditor answered you:/);
     assert.doesNotMatch(runEntryHtml(line({ ...answer, signed: false })), /answered you/);
   });
+
+  test("the owner removing a kept message is the owner's line, under You and its lane", () => {
+    const unkept = {
+      source: "supervisor",
+      kind: "status",
+      text: "the owner's message #4 is no longer in force",
+    };
+    const kept = new Map([[4, { to: "lane-2", text: "keep it simple", keep: true }]]);
+    const html = runEntryHtml(line({ ...unkept, signed: true, lane: "lane-2" }), undefined, kept);
+    assert.match(html, /^<div class="lv-row lv-read" data-who="you lane-2"/);
+    assert.match(html, /📌 You removed your kept message: “keep it simple”\. New trials no longer/);
+    assert.doesNotMatch(html, /advisors/);
+    // To everyone working: under You alone; its words from the event when control has it.
+    assert.match(runEntryHtml(line({ ...unkept, signed: true })), /data-who="you"[\s\S]*\(#4\)/);
+    // Unsigned, the supervisor's own line: never the owner's.
+    const forged = runEntryHtml(line({ ...unkept, signed: false }), undefined, kept);
+    assert.match(forged, /data-who="advisors"/);
+    assert.doesNotMatch(forged, /You removed/);
+  });
 });

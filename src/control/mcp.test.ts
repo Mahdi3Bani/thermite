@@ -210,6 +210,35 @@ describe("control over MCP", () => {
       text(await operator.callTool({ name: "command_status", arguments: { id: sent.id } })).status,
       "delivered",
     );
+    // A message nothing would read, or with no words, is refused in plain words, as Live greys it.
+    await control.request("/v1/rigs/rig-a/supervisor", {
+      method: "POST",
+      headers: { authorization: "Bearer rig-token-abcdef", "content-type": "application/json" },
+      body: JSON.stringify({
+        at: new Date().toISOString(),
+        advisors: {
+          ...{ teacher_runs: 0, directive_sets: 0, directives: 0, audits: 0, reviews: 0 },
+          ...{ errors: 0, tokens_in: 0, tokens_out: 0, usd: 0 },
+          roles: { teachers: 2, combiner: true, auditor: false, panel: 0 },
+        },
+      }),
+    });
+    const refusal = async (payload: Record<string, unknown>) =>
+      text(
+        await operator.callTool({
+          name: "issue_command",
+          arguments: { rig: "rig-a", kind: "message_agent", payload: { run: "js-1", ...payload } },
+        }),
+      ).error;
+    assert.equal(
+      await refusal({ to: "auditor", text: "check the timer" }),
+      "This rig's supervisor has no auditor set up, so nothing would read it.",
+    );
+    assert.equal(await refusal({ to: "planner", text: "  \n " }), "Write a message first.");
+    assert.ok(
+      await issue(operator, "message_agent", { run: "js-1", to: "teachers", text: "cite it" }),
+      "the teacher pair is set up: that one goes",
+    );
     assert.equal(
       await issue(operator, "approve_promotion", { run: "js-1", attempt: "a-1" }),
       undefined,

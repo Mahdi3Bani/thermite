@@ -210,6 +210,16 @@ export function mdLite(text: string): string {
     .join("");
 }
 
+/**
+ * The harness's line for the owner taking a kept message out of force (unkeep_message): the
+ * owner's act, not the advisors'. Only the harness's signed line counts; it is filed under the
+ * supervisor's source, with the message's lane when it went to one.
+ */
+const unkeptLine = (e: LiveEntry) =>
+  e.kind === "status" && e.source === "supervisor" && e.signed === true
+    ? /^the owner's message #(\d+) is no longer in force$/.exec(e.text)
+    : null;
+
 /** The filters a line belongs to on a run's Live page: its lane, planner, judge, advisors, you. */
 export function whoTags(e: LiveEntry, to?: string): string {
   const tags = new Set<string>();
@@ -221,6 +231,11 @@ export function whoTags(e: LiveEntry, to?: string): string {
     else if (["advisors", "teachers", "auditor", "panel"].includes(to)) tags.add("advisors");
     else if (to === "all") tags.add("all");
     else if (e.source.startsWith("trial:")) tags.add(e.lane ?? "lanes");
+    return [...tags].join(" ");
+  }
+  if (unkeptLine(e)) {
+    tags.add("you");
+    if (e.lane) tags.add(e.lane);
     return [...tags].join(" ");
   }
   if (e.source.startsWith("trial:")) tags.add(e.lane ?? "lanes");
@@ -279,6 +294,12 @@ export function runEntryHtml(
     const end = /^trial ended:? ?([\s\S]*)$/.exec(e.text);
     if (end)
       return `<div class="lv-div" data-who="${esc(whoTags(e))}" data-src="${esc(e.source)}" data-id="${e.id}"><span><b>${esc(lane || "trial")}</b> · trial ended${end[1] ? ` · ${esc(clip(end[1], 160))}` : ""}</span></div>`;
+  }
+  // The owner removed a kept message: the owner's line, with the message's words.
+  const unkept = unkeptLine(e);
+  if (unkept) {
+    const m = messages.get(Number(unkept[1]));
+    return `<div class="lv-row lv-read" data-who="${esc(whoTags(e))}" data-src="${esc(e.source)}" data-id="${e.id}">${liveTime(e.at, now)}<div class="lv-body"><span class="muted">📌 You removed your kept message${m ? `: “${esc(clip(m.text, 120))}”` : ` (#${esc(unkept[1] ?? "")})`}. New trials no longer get it.</span></div></div>`;
   }
   const trial = e.source.startsWith("trial:");
   // A signed line filed under a trial, still waiting for its event: drawn plain until it comes.

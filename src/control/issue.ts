@@ -1,7 +1,85 @@
 import { randomUUID } from "node:crypto";
 import { type CommandKind, CommandPayloads, signEnvelope } from "../core/commands.ts";
 import type { ControlStore } from "./store.ts";
-import { rigView } from "./views.ts";
+import { type RigView, type RunView, rigView } from "./views.ts";
+
+type AdvisorRole = "teachers" | "auditor" | "panel";
+const ADVISOR_ROLES: readonly AdvisorRole[] = ["teachers", "auditor", "panel"];
+const ROLE_NAME: Record<AdvisorRole, string> = {
+  teachers: "teacher pair",
+  auditor: "auditor",
+  panel: "review panel",
+};
+
+/**
+ * Why nothing on the rig would read an owner's message to `to` in this run, in plain words, or ""
+ * when something would. The rig's settings (Edit rig, from its signed report) say whether the
+ * planner and each advisor are on; the rig's supervisor says which advisors it has set up (the
+ * roles it reports). A supervisor that has not reported its roles says nothing: the rig decides.
+ * Live greys these recipients, and control refuses such a message before it signs it. Whether a
+ * run has a goal the review panel reviews is the contract's: Live and the rig's harness check it.
+ */
+export function nobodyReads(
+  u: Pick<RigView, "settings" | "supervisor">,
+  to: string,
+  r: Pick<RunView, "mode" | "has_agents">,
+): string {
+  const research = r.mode === "research";
+  if (
+    r.has_agents === false &&
+    (to === "all" || to === "planner" || /^lane-\d+$/.test(to) || to.startsWith("trial:"))
+  )
+    return "This run has no agents (the judge alone tries the kit), so nothing would read it.";
+  if (to === "planner")
+    return research
+      ? "A research run plans its rounds with a fixed method: it has no planner to message."
+      : u.settings?.planner === false
+        ? "The planner is off on this rig (Edit rig), so nothing would read it."
+        : "";
+  const sup = u.supervisor as { advisors?: { roles?: Record<string, unknown> } | null } | null;
+  // None set up: the supervisor reports no advisors. Unknown: it has not reported its roles.
+  const roles =
+    sup && "advisors" in sup ? (sup.advisors === null ? {} : sup.advisors?.roles) : undefined;
+  const unset = (x: AdvisorRole) =>
+    roles !== undefined &&
+    !(x === "teachers"
+      ? Number(roles.teachers) > 0
+      : x === "auditor"
+        ? roles.auditor === true
+        : Number(roles.panel) > 0);
+  const role = (x: AdvisorRole): string => {
+    if (research && x === "auditor") return "A research run has no attempts to audit.";
+    if (research && x === "panel") return "A research run has no conclusions to review.";
+    if (u.settings?.[x === "panel" ? "review" : x] === false)
+      return `The ${ROLE_NAME[x]} is off on this rig (Edit rig), so nothing would read it.`;
+    return unset(x)
+      ? `This rig's supervisor has no ${ROLE_NAME[x]} set up, so nothing would read it.`
+      : "";
+  };
+  if (to === "teachers" || to === "auditor" || to === "panel") return role(to);
+  if (to !== "advisors") return "";
+  if (ADVISOR_ROLES.every(unset))
+    return "This rig's supervisor has no advisors set up, so nothing would read it.";
+  const why = ADVISOR_ROLES.map(role);
+  return why.every(Boolean) ? `No advisor would read it. ${why.join(" ")}` : "";
+}
+
+/**
+ * An owner's message (message_agent) as control sends it: its words trimmed, and refused in plain
+ * words when it has none or when nothing on the rig would read it (nobodyReads). Every path that
+ * sends one (the dashboard, MCP, the API) comes through issueCommand, so each refuses alike.
+ */
+function checkedMessage(store: ControlStore, rig: string, payload: unknown): unknown {
+  if (!payload || typeof payload !== "object") return payload;
+  const p = payload as { run?: unknown; to?: unknown; text?: unknown };
+  const text = typeof p.text === "string" ? p.text.trim() : p.text;
+  if (text === "") throw new Error("Write a message first.");
+  const u = typeof p.run === "string" && typeof p.to === "string" ? rigView(store, rig) : undefined;
+  const r = u?.runs.find((x) => x.id === p.run);
+  const why = u && r ? nobodyReads(u, String(p.to), r) : "";
+  if (why) throw new Error(why);
+  return { ...p, text };
+}
 
 /**
  * Issues a signed command for a rig: the one path the API, the dashboard and MCP all use.
@@ -22,7 +100,11 @@ export function issueCommand(
   if (!store.rigs().some((u) => u.id === input.rig) && !store.knownRig(input.rig)) {
     throw new Error(`unknown rig ${input.rig}`);
   }
-  const parsed = CommandPayloads[input.kind].safeParse(input.payload);
+  const parsed = CommandPayloads[input.kind].safeParse(
+    input.kind === "message_agent"
+      ? checkedMessage(store, input.rig, input.payload)
+      : input.payload,
+  );
   if (!parsed.success) {
     throw new Error(
       `bad ${input.kind} payload: ${parsed.error.issues.map((i) => `${i.path.join(".") || "payload"}: ${i.message}`).join("; ")}`,

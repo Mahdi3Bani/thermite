@@ -38,7 +38,7 @@ import {
 import type { Credential } from "./credential.ts";
 import { newToken } from "./credential.ts";
 import { makeDeployKey } from "./git-keys.ts";
-import { issueCommand, propagateChampion } from "./issue.ts";
+import { issueCommand, nobodyReads, propagateChampion } from "./issue.ts";
 import {
   JOIN_HOURS,
   type JoinedSpec,
@@ -650,7 +650,9 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
         "Agents",
         i.agents.trials || i.epoch || lanesAtWork
           ? `${i.epoch?.assignments.length ?? lanesAtWork} lane${(i.epoch?.assignments.length ?? lanesAtWork) === 1 ? "" : "s"} · ${i.agents.trials} trial${i.agents.trials === 1 ? "" : "s"} done · ${i.agents.submitted} submitted`
-          : "None: changes come from people",
+          : i.has_agents
+            ? "On: they start work at the first round"
+            : "None: changes come from people",
       ],
       [
         "Started",
@@ -1436,6 +1438,9 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       ? `<a class="btn primary" href="${campaignHref(name)}?start=1" data-open="#start">${icon.play}Start a run</a>`
       : undefined;
     const drawer = startPanel(c, name, vs, c.req.query("start") === "1");
+    // A run just started (Start a run sends here with ?run=), until its rig reports it.
+    const startingCard = (key: string) =>
+      `<div class="card" style="margin-bottom:16px"><b>Starting ${esc(key)}.</b> <span class="muted">The rig fetches the project and the kit and checks both; the run shows here once the rig reports it, usually within a minute.</span></div>`;
     if (!k) {
       // Saved on control, with no run reported yet: what was asked for, and a way to start one.
       const saved = store.campaignVersions(name);
@@ -1462,7 +1467,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         },
         `${note}${
           waiting
-            ? `<div class="card" style="margin-bottom:16px"><b>Starting ${esc(waiting)}.</b> <span class="muted">The rig fetches the project and the kit and checks both; the run shows here once the rig reports it, usually within a minute.</span></div>`
+            ? startingCard(waiting)
             : `<div class="card" style="margin-bottom:16px"><div class="empty">${saved.length ? "Saved on control, with no run yet." : "Assigned to a rig over the API, MCP or the CLI; no run of it reports now."} <a href="${campaignHref(name)}?start=1" data-open="#start">Start a run.</a></div></div>`
         }${knowledgeSection(c, name, vs, kbFailed)}${campaignOutsideKb(outsideKb, name, csrf(c), now, (q) => c.req.query(q))}${drawer}`,
         vs,
@@ -1498,8 +1503,10 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           : sel.run.status === "running"
             ? pauseMenu(c, sel.rig.id, sel.run.id, back)
             : "";
+      // A run without agents (a try, a rig check) has no one to message and no lanes to restart.
+      const agents = sel.run.has_agents !== false;
       const more =
-        sel.run.status === "running"
+        sel.run.status === "running" && agents
           ? `<details class="menu"><summary class="btn" title="More">⋯</summary><div class="menu-pop">${cmdForm(c, { rig: sel.rig.id, kind: "reset_workers", fields: { run: sel.run.id }, label: "Restart the lanes", back })}<div class="muted small">Ends the lanes' running trials now and the current round: every lane starts again from the champion. Nothing the judge decided is lost.</div></div></details>`
           : "";
       return page(
@@ -1512,7 +1519,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           ],
           summary: `on <a href="/ui/rigs/${encodeURIComponent(sel.rig.id)}">${esc(sel.rig.id)}</a>${sel.rig.stale ? ` <span class="bad">(not reporting)</span>` : ""} · ${esc(modeName(sel.run.mode))} · <span class="label ${st.cls}">${st.icon}${esc(st.text)}</span>`,
           active: "campaigns",
-          actions: `<a class="btn" href="${runLiveHref(sel.rig.id, sel.run.id)}">${icon.terminal}Live</a><a class="btn" href="${runLiveHref(sel.rig.id, sel.run.id, "&compose=1")}">Message</a>${quick}${more}`,
+          actions: `<a class="btn" href="${runLiveHref(sel.rig.id, sel.run.id)}">${icon.terminal}Live</a>${agents ? `<a class="btn" href="${runLiveHref(sel.rig.id, sel.run.id, "&compose=1")}">Message</a>` : ""}${quick}${more}`,
         },
         `${note}${
           /-try-\d+$/.test(sel.run.id)
@@ -1524,6 +1531,11 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     }
 
     // ---------------------------------------- the campaign
+    // A new run of a campaign that has runs: Starting until its rig reports it (only the newest
+    // assignment, so an old link to a run that never came says nothing).
+    const latest = wanted ? store.latestAssignments().get(name) : undefined;
+    const starting =
+      wanted && latest && runKey(latest.rig, latest.run) === wanted ? startingCard(wanted) : "";
     const running = k.runs.filter((x) => x.run.status === "running");
     const earlier = k.runs
       .filter((x) => x.run.status !== "running")
@@ -1558,7 +1570,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         active: "campaigns",
         actions: startBtn,
       },
-      `${note}${
+      `${note}${starting}${
         about || goals
           ? `<div class="card khead"><div>${about ? `<div class="small muted">What it is for</div>` : `<div class="small muted">Goals of its best run</div>`}${about ? `<div class="kabout-big">${esc(about)}</div>` : ""}${goals}</div><div class="small muted right">on ${esc(rigs.join(", "))}${bestRun ? `<br>best: ${esc(bestRun.id)}, ${esc(h.value)} ${esc(h.sub)}` : ""}</div></div>`
           : ""
@@ -2169,7 +2181,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
       return page(
         c,
         { title: "Live", summary: "no run at work", active: "live", flush: true },
-        `<div class="lwrap">${nav}<section class="lcol"><div class="empty" style="margin:auto">No run to watch yet. Runs show here as soon as a rig reports one.</div></section></div>`,
+        `<div class="lwrap">${nav}<section class="lcol"><div class="empty" style="margin:auto">${ended.length ? "No run is at work. Pick one from the list to see its lines." : "No run to watch yet. Runs show here as soon as a rig reports one."}</div></section></div>`,
         vs,
       );
     const { u, r } = sel;
@@ -2241,29 +2253,15 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
                   ? "The review panel reads it before its next review and answers here"
                   : "The advisors read it and answer here";
     const to = lanes.includes(w) || w === "planner" ? w : w === "advisors" ? "advisors" : "all";
-    const set = u.settings;
     // The review panel reads only for a goal it reviews (a goal checked by review).
     const contract = (store.campaignVersions(r.campaign || r.id)[0]?.contract ??
       store.latestAssignments().get(r.campaign || r.id)?.payload.contract) as
       | { goals?: { verify?: { type?: string } }[] }
       | undefined;
     const reviewed = (contract?.goals ?? []).some((g) => g.verify?.type === "review");
-    // The advisors the rig's supervisor has (it reports them); none set up: nothing would read.
-    const sup = u.supervisor as { advisors?: { roles?: Record<string, unknown> } | null } | null;
-    const roles = sup && "advisors" in sup ? (sup.advisors?.roles ?? {}) : undefined;
-    const noAdvisor = (role: "teachers" | "auditor" | "review") =>
-      roles !== undefined &&
-      !(role === "teachers"
-        ? Number(roles.teachers) > 0
-        : role === "auditor"
-          ? roles.auditor === true
-          : Number(roles.panel) > 0);
-    const offBy = (role: "planner" | "teachers" | "auditor" | "review") =>
-      set && set[role] === false
-        ? `The ${role === "review" ? "review panel" : role === "teachers" ? "teacher pair" : role} is off on this rig (Edit rig).`
-        : role !== "planner" && noAdvisor(role)
-          ? `This rig's supervisor has no ${role === "review" ? "review panel" : role === "teachers" ? "teacher pair" : "auditor"} set up, so nothing would read it.`
-          : "";
+    // Who would read nothing: off on the rig, or not set up on its supervisor. Control refuses
+    // a message to them with the same words (issue.ts).
+    const off = (v: string) => nobodyReads(u, v, r);
     const opt = (v: string, label: string, off = "") =>
       `<option value="${esc(v)}" data-hint="${esc(hint(v))}"${v === to ? " selected" : ""}${off ? ` disabled title="${esc(off)}"` : ""}>${esc(label)}</option>`;
     // A message control refused, or the rig refused (its newest one to this run).
@@ -2277,8 +2275,8 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
       r.status === "closed"
         ? `<div class="lcomposer off">This run has finished: its agents take no more messages.</div>`
         : `<form class="lcomposer" method="post" action="/ui/live/message"><input type="hidden" name="csrf" value="${csrf(c)}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(r.id)}"><input type="hidden" name="w" value="${esc(w)}">
-<select name="to" aria-label="To" class="lto">${opt("all", "To everyone working")}${lanes.map((l) => opt(l, `To ${l}`)).join("")}${opt("planner", "To the planner", research ? "A research run plans its rounds with a fixed method: it has no planner to message." : offBy("planner"))}<optgroup label="Advisors">${opt("advisors", "To all advisors", noAdvisor("teachers") && noAdvisor("auditor") && noAdvisor("review") ? "This rig's supervisor has no advisors set up, so nothing would read it." : "")}${opt("teachers", "To the teachers", offBy("teachers"))}${opt("auditor", "To the auditor", research ? "A research run has no attempts to audit." : offBy("auditor"))}${opt("panel", "To the review panel", research ? "A research run has no conclusions to review." : !reviewed ? "This run has no goal the review panel reviews." : offBy("review"))}</optgroup></select>
-<textarea name="text" rows="1" required maxlength="4000" aria-label="Message" placeholder="${esc(hint(to))} · ⌘↩ sends"${c.req.query("compose") ? " autofocus" : ""}></textarea>
+<select name="to" aria-label="To" class="lto">${opt("all", "To everyone working")}${lanes.map((l) => opt(l, `To ${l}`)).join("")}${opt("planner", "To the planner", off("planner"))}<optgroup label="Advisors">${opt("advisors", "To all advisors", off("advisors"))}${opt("teachers", "To the teachers", off("teachers"))}${opt("auditor", "To the auditor", off("auditor"))}${opt("panel", "To the review panel", off("panel") || (!reviewed ? "This run has no goal the review panel reviews." : ""))}</optgroup></select>
+<textarea name="text" rows="1" required data-words maxlength="4000" aria-label="Message" placeholder="${esc(hint(to))} · ⌘↩ sends"${c.req.query("compose") ? " autofocus" : ""}></textarea>
 <label class="lpin" title="Keep it in force: every new trial gets it too, until you remove it"><input type="checkbox" name="keep" value="1">📌</label>
 <button class="primary">${icon.send}Send</button></form>`;
     const meta = [

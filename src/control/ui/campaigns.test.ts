@@ -61,6 +61,58 @@ test("the Campaigns list hides rig checks and finished campaigns unless asked", 
   assert.equal(campaignFilter("bogus"), "default");
 });
 
+test("a paused run reads as paused, whatever decision waits in it", async () => {
+  const { runState } = await import("./components.ts");
+  const r = (status: string, more: Partial<RunView> = {}) =>
+    ({
+      status,
+      audits: [],
+      pending_promotions: [],
+      conclusions: [],
+      reviews: [],
+      ...more,
+    }) as unknown as RunView;
+  const approval = { pending_promotions: [{}] } as unknown as Partial<RunView>;
+  const audit = { audits: [{ decision: null }] } as unknown as Partial<RunView>;
+  assert.equal(runState(r("paused", approval)).text, "Paused");
+  assert.equal(runState(r("paused", audit)).text, "Paused");
+  assert.equal(runState(r("running", approval)).text, "Approval");
+  assert.equal(runState(r("running", audit)).text, "Audit");
+  assert.equal(runState(r("closed", approval)).text, "Finished");
+});
+
+test("the Planner tab counts rounds, and says plainly when the planner is off", async () => {
+  const { plannerTab } = await import("./queue.ts");
+  const tab = (settings: Record<string, unknown> | null, epochs: number) =>
+    plannerTab({
+      u: { id: "rig-a", settings } as unknown as RigView,
+      r: {
+        id: "r-1",
+        mode: "hill_climb",
+        rules: [],
+        handouts: [],
+        queue: [],
+        messages: [],
+        agents: { epochs, planner_valid: epochs - 1, fallbacks: 1 },
+      } as unknown as RunView,
+      now: Date.parse("2026-10-20T01:00:00Z"),
+      csrf: "c",
+      back: "/ui/campaigns/x?run=rig-a%2Fr-1&view=planner",
+      cmd: () => "",
+      model: "m",
+      figures: "",
+      propagate: "",
+    });
+  const on = tab({ planner: true }, 3);
+  assert.match(on, /3 rounds so far: 2 planned by the model, 1 in queue order by the fixed rules/);
+  assert.doesNotMatch(on, /hand-outs:/);
+  assert.match(tab({ planner: true }, 1), /1 round so far:/);
+  assert.match(on, /Send to the planner/);
+  const off = tab({ planner: false }, 3);
+  assert.match(off, /The planner is off on this rig, so it reads no messages/);
+  assert.doesNotMatch(off, /Send to the planner/);
+});
+
 test("a research run's rounds read as set by the research plan, not as a refused plan", async () => {
   const { sentence } = await import("./words.ts");
   const e = (body: Record<string, unknown>) =>

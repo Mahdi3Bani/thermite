@@ -105,17 +105,20 @@ export function modeAvatar(mode: string | null): string {
 }
 export const modeName = (mode: string | null) => MODE[mode ?? ""]?.[1] ?? mode ?? "";
 
-/** What a run needs, or is doing, as one coloured label (Magnesium's status words). */
+/**
+ * What a run needs, or is doing, as one coloured label (Magnesium's status words). A paused run
+ * reads as paused whatever waits in it: its decisions show in Needs you.
+ */
 export function runState(i: RunView): { text: string; cls: string; icon: string } {
   const heldAudit = i.audits.some((a) => a.decision === null || a.decision === "block");
   if (i.status === "closed") return { text: "Finished", cls: "muted", icon: icon.check };
+  if (i.status === "paused") return { text: "Paused", cls: "muted", icon: icon.pause };
   if (i.pending_promotions.length) return { text: "Approval", cls: "warn", icon: icon.warn };
   if (i.conclusions.some((c) => c.decision === null))
     return { text: "Decision", cls: "warn", icon: icon.warn };
   if (i.reviews.some((r) => r.panel === "review_passed" && !r.owner))
     return { text: "Review", cls: "violet", icon: icon.warn };
   if (heldAudit) return { text: "Audit", cls: "warn", icon: icon.shield };
-  if (i.status === "paused") return { text: "Paused", cls: "muted", icon: icon.pause };
   return { text: "Running", cls: "info", icon: icon.live };
 }
 

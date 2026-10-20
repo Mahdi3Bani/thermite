@@ -318,6 +318,13 @@ export const CLIENT_JS = `
     document.querySelectorAll("#qtried tr").forEach((t) => (t.hidden = !(want[0] === "all" || want.includes(t.dataset.r))));
   }));
 
+  // ------------------------------------------------ a message needs words: spaces alone are none
+  document.querySelectorAll("textarea[data-words]").forEach((t) => {
+    const check = () => t.setCustomValidity(t.value.trim() ? "" : "Write a message first.");
+    t.addEventListener("input", check);
+    check();
+  });
+
   // ------------------------------------------------ the composer: Cmd/Ctrl+Enter sends
   const ta = $(".composer textarea");
   if (ta) ta.addEventListener("keydown", (ev) => {
