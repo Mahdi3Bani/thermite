@@ -12,6 +12,7 @@ import {
   CommandPayloads,
 } from "../core/commands.ts";
 import { FolderSchema, MAX_LANES } from "../core/contract.ts";
+import type { BuildInfo } from "../core/version.ts";
 import type { ClusterRigRequest, ControlActions } from "./actions.ts";
 import { CHATGPT_API, CHATGPT_REDIRECT, ChatGPTLogins } from "./chatgpt.ts";
 import {
@@ -59,7 +60,13 @@ import {
 } from "./kb.ts";
 import type { KitRepos } from "./kit-repos.ts";
 import { kitSummary, unpackKit } from "./kit-upload.ts";
-import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
+import {
+  advanceResets,
+  cancelReset,
+  confirmReset,
+  type DeploymentDriver,
+  type RunpodDriver,
+} from "./lifecycle.ts";
 import {
   deployScript,
   MAX_RIG_GPUS,
@@ -103,6 +110,7 @@ import {
 import { untriedOf } from "./queue-copy.ts";
 import { probeRepository } from "./repo-probe.ts";
 import { type RunpodFacts, readRunpod, runpodLine } from "./runpod.ts";
+import type { RunpodRigs } from "./runpod-rigs.ts";
 import { cheapestGpu, DEFAULT_DISK_GB, type RunpodTests, type TestView } from "./runpod-tests.ts";
 import { keyHint, type SecretBox } from "./secrets.ts";
 import {
@@ -257,6 +265,14 @@ export interface DashboardOptions {
   actions?: ControlActions | undefined;
   /** Outside knowledge bases (optional; made by createControlApi, which syncs them on a timer). */
   outsideKb?: OutsideKbs | undefined;
+  /** Rigs the owner launches on GPU clouds (made by createControlApi): the launch form, their pods. */
+  runpodRigs?: RunpodRigs | undefined;
+  /** Their stop, start, restart and terminate (made by createControlApi). */
+  runpodDriver?: RunpodDriver | undefined;
+  /** Control's own build, which each rig's is compared with (default: this process's). */
+  control?: BuildInfo | undefined;
+  /** After this long without a report a rig is offline (default: views.ts's OFFLINE_AFTER_MS). */
+  offlineAfterMs?: number | undefined;
 }
 
 /** The images a rig control sets up runs: the harness (CPU, and CUDA for GPU rigs), the supervisor. */
@@ -390,7 +406,13 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
   const views = (): RigView[] =>
     store
       .rigs()
-      .map((u) => rigView(store, u.id, { staleAfterMs: opts.staleAfterMs }))
+      .map((u) =>
+        rigView(store, u.id, {
+          staleAfterMs: opts.staleAfterMs,
+          offlineAfterMs: opts.offlineAfterMs,
+          control: opts.control,
+        }),
+      )
       .filter((v): v is RigView => v !== undefined);
   /** A form that issues a command; `back` is where the owner lands afterwards. */
   const cmdForm = (

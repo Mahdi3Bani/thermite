@@ -1261,6 +1261,10 @@ export function createControlApi(
       runpodTests,
       actions,
       outsideKb,
+      runpodRigs,
+      runpodDriver,
+      control,
+      offlineAfterMs: opts.offlineAfterMs,
     }),
   );
   app.get("/", (c) => c.redirect("/ui", 302));
