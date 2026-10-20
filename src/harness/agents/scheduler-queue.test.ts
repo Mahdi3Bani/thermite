@@ -397,6 +397,19 @@ describe("the planner as the queue's coordinator", () => {
     assert.equal(again?.title, "long one");
     assert.equal(again?.added_by, "owner");
     assert.match(String(again?.why), /tried again: its trial on lane-1 was interrupted \(x-/);
+    // Its event says it came back from that trial, not that its author added it again.
+    const added = events(s.env, "experiment_added").find((e) => body(e).id === again?.id);
+    assert.deepEqual(body(added).requeued_from, {
+      experiment: x,
+      trial: s.q.get(x)?.trial,
+      lane: "lane-1",
+      result: "interrupted",
+    });
+    assert.equal(
+      events(s.env, "experiment_added").filter((e) => body(e).requeued_from).length,
+      1,
+      "only the experiment that came back",
+    );
   });
 
   test("after a restart, an experiment whose trial a dead controller left open goes back to the queue", async (t) => {

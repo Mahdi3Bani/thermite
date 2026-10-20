@@ -312,6 +312,7 @@ export class Coordinator {
         ),
         by: x.added_by,
         position: "top",
+        requeued: { experiment: x.id, trial, lane: x.lane, result: r.result },
       },
       PLANNER,
     );

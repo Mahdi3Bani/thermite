@@ -229,6 +229,18 @@ export class ExperimentQueue {
       from?: { run: string; id: string } | undefined;
       /** A lane's idea: the trial it came from (in the event, for the record). */
       trial?: string | undefined;
+      /**
+       * Back in the queue because its trial was interrupted or failed: the experiment it repeats
+       * and that trial (in the event as `requeued_from`, so History says why it came back).
+       */
+      requeued?:
+        | {
+            experiment: string;
+            trial: string;
+            lane: string | null;
+            result: "interrupted" | "error";
+          }
+        | undefined;
     },
     actor: string,
   ): Experiment {
@@ -269,6 +281,7 @@ export class ExperimentQueue {
         ...(state === "queued" && input.position !== undefined ? { position: input.position } : {}),
         ...(input.from ? { from_run: input.from.run, from_id: input.from.id } : {}),
         ...(input.trial ? { trial: input.trial } : {}),
+        ...(input.requeued ? { requeued_from: input.requeued } : {}),
       },
     });
     return this.require(run, x.id);
