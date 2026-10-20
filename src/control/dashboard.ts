@@ -99,6 +99,7 @@ import {
   listModels,
   providerBase,
 } from "./providers.ts";
+import { untriedOf } from "./queue-copy.ts";
 import { probeRepository } from "./repo-probe.ts";
 import { type RunpodFacts, readRunpod, runpodLine } from "./runpod.ts";
 import { cheapestGpu, DEFAULT_DISK_GB, type RunpodTests, type TestView } from "./runpod-tests.ts";
@@ -109,6 +110,7 @@ import {
   type Cluster,
   type ClusterRig,
   type ControlStore,
+  cursorOf,
   EFFORTS,
   type Effort,
   fingerprint,
@@ -1244,27 +1246,12 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         })),
     });
   };
-  /** A run's untried experiments, in queue order then its lanes' ideas: a new run's first queue. */
+  /** The untried experiments of the run Start a run names: a new run's first queue. */
   const untried = (vs: RigView[], key: string): QueueSeed[] => {
     const x = vs
       .flatMap((u) => u.runs.map((r) => ({ u, r })))
       .find((y) => runKey(y.u.id, y.r.id) === key);
-    if (!x) return [];
-    const q = x.r.queue;
-    return [
-      ...q
-        .filter((e) => e.state === "queued")
-        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0)),
-      ...q.filter((e) => e.state === "proposed"),
-    ].map((e) => ({
-      title: e.title,
-      ...(e.details ? { details: e.details } : {}),
-      ...(e.family ? { family: e.family } : {}),
-      ...(e.why ? { why: e.why } : {}),
-      by: e.by,
-      state: e.state === "proposed" ? "proposed" : "queued",
-      from: { run: x.r.id, id: e.id },
-    }));
+    return x ? untriedOf(x.r) : [];
   };
   app.post("/ui/campaigns/:campaign/runs", async (c) => {
     const f = await c.req.parseBody();
@@ -2595,17 +2582,27 @@ ${notice}${box}</section></div>`,
 
   app.get("/ui/audit", (c) => {
     const now = Date.now();
-    const rows = store
-      .listAudit(300)
+    // 300 entries a page, newest first; Older and Newer page through every entry (goal 015).
+    const before = cursorOf(c.req.query("before"));
+    const p = store.auditPage(
+      300,
+      {},
+      before !== undefined ? { before } : { after: cursorOf(c.req.query("after")) },
+    );
+    const rows = p.entries
       .map(
         (x) =>
           `<tr><td class="muted nowrap">${esc(ago(x.at, now))} ago</td><td>${esc(x.actor)}</td><td><b>${esc(x.action.replace(/_/g, " "))}</b> <span class="muted xs">${esc(x.action)}</span></td><td class="clip"><code class="muted">${esc(JSON.stringify(x.body).slice(0, 200))}</code></td></tr>`,
       )
       .join("");
+    const links = [
+      p.newer !== null ? `<a href="/ui/audit?after=${p.newer}">Newer</a>` : "",
+      p.older !== null ? `<a href="/ui/audit?before=${p.older}">Older</a>` : "",
+    ].filter(Boolean);
     return page(
       c,
       { title: "Audit log", summary: "who did what through control", active: "audit" },
-      `<div class="card flat"><table><thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table></div>`,
+      `<div class="card flat"><table><thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Detail</th></tr></thead><tbody>${rows || `<tr><td colspan="4" class="empty">No entry here.</td></tr>`}</tbody></table></div>${links.length ? `<div class="pager">${links.join("")}</div>` : ""}`,
     );
   });
 

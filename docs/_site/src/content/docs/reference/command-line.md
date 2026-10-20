@@ -41,13 +41,18 @@ usage: thermite <command> [options]
                                       the only part control's deployment needs
   assign --contract F --run ID [--seed GIT_URL[@COMMIT] | --seed-commit C] [--kit GIT_URL]
          [--model NAME=URL ...] [--direction D] [--agents off] [--promotion auto|owner]
+         [--queue-from [RIG/]RUN]
          (--control URL --token-file F --rig R [--ttl MIN] | --print)
                                       start a run. The rig's supervisor fetches the project and
                                       kit commits from their repositories, and models from their
                                       URLs, before the harness checks them. --seed-commit names a
                                       commit already on the rig (an earlier run's result); a kit
-                                      already there needs no --kit. --print shows the payload
-                                      (for issue_command over MCP) instead of issuing it
+                                      already there needs no --kit. --queue-from starts the new
+                                      run's queue with a past run's untried experiments, read
+                                      from control (on --rig unless RIG/ is given; it needs
+                                      --control and --token-file, with --print too). --print
+                                      shows the payload (for issue_command over MCP) instead of
+                                      issuing it
   assign-payload --contract F --run ID --seed-repo R --seed-commit C --bundle PATH
                  [--bundle-sha256 H] [--kit-repo R --kit-commit C --kit-bundle PATH
                  [--kit-bundle-sha256 H]] [--model NAME=SHA256:PATH ...] [--direction D] [--agents off]
@@ -140,6 +145,7 @@ The hash is what control's settings take; the token itself stays with you. See [
 | `--direction D` | No | | Text kept with the run as `direction`. Thermite does not act on it |
 | `--agents on\|off` | No | `on` | `off` starts a judge-only run: no worker agents, the judge still works |
 | `--promotion auto\|owner` | No | The rig's own setting | The run's promotion rule. `owner` is sent as `owner_approval`: every confirmed win waits for the owner |
+| `--queue-from [RIG/]RUN` | No | Off: the new run's queue starts empty | A past run whose untried experiments start the new run's [experiment queue](../how-to/campaigns/choose-what-runs-next.md). `RUN` alone is a run on `--rig`; `RIG/RUN` names its rig. They are read from control, so it needs `--control` and `--token-file`, with `--print` too. See [below](#copy-a-past-runs-untried-experiments) |
 | `--control URL` | To send it | | Control's address |
 | `--token-file F` | To send it | | A file with the owner's token |
 | `--rig R` | To send it | | The rig that runs it |
@@ -147,6 +153,18 @@ The hash is what control's settings take; the token itself stays with you. See [
 | `--print` | Instead of the four above | | Print the payload as indented JSON and send nothing. The output is what the MCP tool `issue_command` takes as `payload` |
 
 `--seed` and `--seed-commit` together are refused. For a research contract, the run has no seed and no kit, and `--seed`, `--seed-commit` and `--kit` are not used.
+
+#### Copy a past run's untried experiments
+
+`--queue-from` puts the same experiments in the payload's `queue` as **Copy the untried experiments of** in a campaign's **Start a run** panel: the past run's experiments up next, in their order, then its lanes' ideas, at most 500. The tried and dropped ones stay with their run. The command reads them from control (`GET /v1/rigs/<rig>/runs/<run>/untried`, see [the REST API](rest-api.md#rigs-and-their-history)) before it sends or prints anything. Control takes each one's title, details, direction, why and author from its own records of the past run, with every edit, as for a copied experiment over MCP. That holds for a run of the contract's campaign, or of a campaign whose folder it may read; any other run's experiments keep their words, with the author `copied`. Each one names where it came from, as `from: {run, id}`.
+
+```sh
+npx thermite assign --contract contract.json --run sort-speed-3 --seed-commit 0123456789abcdef0123456789abcdef01234567 \
+  --queue-from sort-speed-2 \
+  --control https://control.example.com --token-file ~/thermite-owner-token --rig rig-1
+```
+
+A past run with nothing untried leaves the queue empty: the command says `<run> on <rig> has no untried experiments: the new run's queue starts empty` on standard error, sends no `queue`, and goes on.
 
 The imports it adds to the payload:
 
@@ -168,6 +186,11 @@ Sent, it prints control's answer on one line, such as `{"id":"<command id>","sta
 | `--model <arg>: expected NAME=URL for a model the contract lists` | No `=`, or a name the contract's `models` does not list |
 | `--agents is on or off` | Another value |
 | `--promotion is auto or owner` | Another value |
+| `a run without agents has no queue: leave out --queue-from` | `--queue-from` with `--agents off`. The harness refuses such a payload the same way |
+| `--queue-from reads the past run from control: give --control and --token-file` | `--queue-from` without either |
+| `--queue-from RUN is a run on --rig: give --rig, or RIG/RUN` | `--queue-from` with a run alone and no `--rig` |
+| `--queue-from names a run: RUN or RIG/RUN` | An empty run or rig name, such as `rig-1/` |
+| `<url> -> 404 {"error":"no run <run> on <rig>"}` | Control has no such run on that rig; `no rig <rig>` for a rig it does not know |
 
 ### `assign-payload`
 

@@ -59,7 +59,7 @@ A tester sees what each run is doing, gives it work through one queue of experim
 | [064 · One experiment queue for each run; the planner coordinates it](goals/064-experiment-queue.goal) | `IN_PROGRESS` | 063 |
 | [065 · Journals and a research corpus from every campaign](goals/065-journals-and-corpus.goal) | `IN_PROGRESS` | 062, 064 |
 | [066 · Rules name directions, picked with `:direction:`](goals/066-direction-rules.goal) | `READY` | 064 |
-| [067 · `thermite assign` can copy a past run's untried experiments](goals/067-assign-queue-from.goal) | `READY` | 064 |
+| [067 · `thermite assign` can copy a past run's untried experiments](goals/067-assign-queue-from.goal) | `VERIFIED` | 064 |
 | [068 · MCP servers for a campaign's agents, named by its kit](goals/068-mcp-servers-for-agents.goal) | `READY` | 065 |
 
 ### Install from images
@@ -73,7 +73,7 @@ A tester pulls images in place of building them, and every remote rig has images
 | [012 · Version checks between control and rigs](goals/012-version-checks.goal) | `READY` | [010](goals/010-published-images.goal) |
 | [013 · `thermite doctor`](goals/013-thermite-doctor.goal) | `READY` | — |
 | [014 · The quick start, tested in CI](goals/014-quick-start-in-ci.goal) | `READY` | [005](goals/005-sample-project.goal), [011](goals/011-release-bundle.goal) |
-| [015 · Log paging](goals/015-log-paging.goal) | `READY` | — |
+| [015 · Log paging](goals/015-log-paging.goal) | `VERIFIED` | — |
 | [016 · Small fixes before the release](goals/016-small-fixes.goal) | `READY` | — |
 | [017 · Remove the legacy model names](goals/017-legacy-names.goal) | `READY` | — |
 
