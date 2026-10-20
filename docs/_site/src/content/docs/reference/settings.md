@@ -152,7 +152,7 @@ These four give the rig's settings their first values. **Edit rig** changes the 
 | Variable | Type | Default | Secret | Meaning |
 | --- | --- | --- | --- | --- |
 | `THERMITE_PROMOTION` | `auto` or `owner_approval` | `auto` | no | The promotion policy for runs started without their own. `auto`: a confirmed win becomes the champion on its own, after an audit when the campaign calls for one. `owner_approval`: every promotion waits for the owner. Anything else stops the harness with `THERMITE_PROMOTION must be auto or owner_approval, not <value>` |
-| `THERMITE_MAX_TRIALS` | integer, 1 to 16 | `1` | no | How many trials run at once on this rig, one agent each. **Edit rig** calls it **Workers at a time**. Anything else stops the harness with `THERMITE_MAX_TRIALS must be a whole number from 1 to 16, not <value>: a rig has users for lanes 1 to 16 only` |
+| `THERMITE_MAX_TRIALS` | integer, 0 to 16 | `1` | no | How many trials run at once on this rig, one agent each. **Edit rig** calls it **Workers at a time**. 0 starts no trials: the rig only judges, or runs its advisors. Anything else stops the harness with `THERMITE_MAX_TRIALS must be a whole number from 0 to 16, not <value>: a rig has users for lanes 1 to 16 only` |
 | `THERMITE_TRIAL_MINUTES` | minutes | `20` | no | How long one trial lasts when the campaign's contract sets no `trial_minutes`. **Edit rig** calls it **One trial lasts (minutes)** |
 | `THERMITE_MAX_TURNS` | integer | not set: no limit | no | The most model turns one trial may take. **Edit rig** calls it **Turns per trial** |
 

@@ -122,15 +122,17 @@ describe("the most lanes a rig runs", () => {
     );
   });
 
-  test("THERMITE_MAX_TRIALS: 1 to the most lanes, else the harness does not start", () => {
+  test("THERMITE_MAX_TRIALS: 0 to the most lanes, else the harness does not start", () => {
     assert.equal(lanesFromEnv(undefined), 1);
     assert.equal(lanesFromEnv(""), 1);
+    // 0: a rig that starts no trials (the steering acceptance's rigs run only their advisors).
+    assert.equal(lanesFromEnv("0"), 0);
     assert.equal(lanesFromEnv("2"), 2);
     assert.equal(lanesFromEnv(String(MAX_LANES)), MAX_LANES);
-    for (const bad of ["0", String(MAX_LANES + 1), "2.5", "two"])
+    for (const bad of ["-1", String(MAX_LANES + 1), "2.5", "two"])
       assert.throws(
         () => lanesFromEnv(bad),
-        new RegExp(`THERMITE_MAX_TRIALS must be a whole number from 1 to ${MAX_LANES}, not `),
+        new RegExp(`THERMITE_MAX_TRIALS must be a whole number from 0 to ${MAX_LANES}, not `),
         bad,
       );
   });

@@ -4,15 +4,16 @@ import type { CommandPayloads } from "../core/commands.ts";
 import { MAX_LANES } from "../core/contract.ts";
 
 /**
- * Workers at a time from THERMITE_MAX_TRIALS (unset: 1). A rig runs at most MAX_LANES, as on
- * Edit rig; anything else stops the harness at start with the reason.
+ * Workers at a time from THERMITE_MAX_TRIALS (unset: 1; 0: a rig that starts no trials, such as
+ * one that only judges or runs its advisors). A rig runs at most MAX_LANES, as on Edit rig;
+ * anything else stops the harness at start with the reason.
  */
 export function lanesFromEnv(raw: string | undefined): number {
   if (raw === undefined || raw.trim() === "") return 1;
   const n = Number(raw);
-  if (!Number.isInteger(n) || n < 1 || n > MAX_LANES)
+  if (!Number.isInteger(n) || n < 0 || n > MAX_LANES)
     throw new Error(
-      `THERMITE_MAX_TRIALS must be a whole number from 1 to ${MAX_LANES}, not ${raw}: a rig has users for lanes 1 to ${MAX_LANES} only`,
+      `THERMITE_MAX_TRIALS must be a whole number from 0 to ${MAX_LANES}, not ${raw}: a rig has users for lanes 1 to ${MAX_LANES} only`,
     );
   return n;
 }
