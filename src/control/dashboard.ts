@@ -1921,6 +1921,22 @@ ${
     const sup = u.supervisor as Record<string, unknown> | null;
     const obj = (x: unknown) => (x && typeof x === "object" ? (x as Record<string, unknown>) : {});
     const ex = obj(sup?.export);
+    /** A model file the supervisor downloads or downloaded, as its report says. */
+    const modelLine = (x: unknown) => {
+      const m = obj(x);
+      const size = (b: unknown) => {
+        const n = Number(b);
+        return n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${Math.round(n / 1e6)} MB`;
+      };
+      const name = `<b>${esc(String(m.name ?? "?"))}</b>`;
+      if (m.state === "done") return `${name}: ${size(m.bytes)}, its SHA-256 checked`;
+      if (m.state === "refused")
+        return `${name}: <span class="bad">refused. Its SHA-256 did not match. The file was deleted.</span>`;
+      if (m.state === "failed")
+        return `${name}: <span class="bad">stopped. ${esc(String(m.error ?? "").slice(0, 300))}</span>`;
+      const total = typeof m.total === "number" ? m.total : null;
+      return `${name}: downloading, ${size(m.bytes)}${total ? ` of ${size(total)} (${Math.floor((100 * Number(m.bytes)) / Math.max(1, total))}%)` : ""}`;
+    };
     const adv = sup?.advisors ? obj(sup.advisors) : null;
     const live = u.runs.filter((i) => i.status === "running");
     const runsNow = live
@@ -2053,8 +2069,19 @@ ${
         ? [
             [
               "Results",
-              `${num(ex.exports)} exports${ex.remote === true ? ` · <span title="${esc(ex.last_push_at ?? "")}">pushed ${esc(ago(String(ex.last_push_at ?? ""), now) || "?")} ago</span>` : " · no results repository"}${ex.last_error ? `<div class="bad xs">${esc(String(ex.last_error).slice(0, 300))}</div>` : ""}`,
+              `${num(ex.exports)} exports${
+                ex.remote === true
+                  ? ` · <span title="${esc(ex.last_push_at ?? "")}">pushed ${esc(ago(String(ex.last_push_at ?? ""), now) || "?")} ago</span>`
+                  : ex.to === "control"
+                    ? ex.last_upload_at
+                      ? ` · <span title="${esc(ex.last_upload_at)}">sent to control ${esc(ago(String(ex.last_upload_at), now) || "?")} ago</span>`
+                      : " · sent to control: none yet"
+                    : " · no results repository"
+              }${typeof ex.waiting === "number" && ex.waiting > 0 ? ` · ${num(ex.waiting)} waiting to leave the rig` : ""}${ex.last_error ? `<div class="bad xs">${esc(String(ex.last_error).slice(0, 300))}</div>` : ""}`,
             ],
+            ...(Array.isArray(sup.models) && sup.models.length
+              ? [["Models", (sup.models as unknown[]).slice(0, 5).map(modelLine).join("<br>")]]
+              : []),
             [
               "Advisors",
               adv
@@ -3690,6 +3717,10 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
     report_after_images: "A report reached control from the new images",
     pods_running: "Its pods run again",
     report_after_start: "A report reached control after the start",
+    model_started: "Model download started",
+    model_done: "Model downloaded, its SHA-256 checked",
+    model_refused: "Model refused: its SHA-256 did not match, and the file was deleted",
+    model_failed: "Model download stopped",
   };
   /**
    * Waits for a new rig's first report (or, with `after`, a report after that time), for at most
@@ -5489,7 +5520,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     {
       id: "exports",
       name: "Exports",
-      does: "Every hour, the rig writes its results for the supervisor to send to the results repository.",
+      does: "Every hour, the rig writes its results for the supervisor to send to the results repository, or to control when the rig has none.",
       off: "Results stay on the rig only. If the rig is lost, its results are lost.",
     },
   ];

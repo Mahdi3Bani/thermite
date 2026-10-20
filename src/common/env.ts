@@ -64,7 +64,10 @@ export function redact(text: string): string {
   return text
     .replace(/(\/\/)[^/\s@]+@/g, "$1***@")
     .replace(/\b(Bearer\s+)\S+/gi, "$1***")
-    .replace(/\b(sk-|rpa_|ghp_|gho_|ghs_|github_pat_|glpat-|xox[abp]-)[A-Za-z0-9_-]{6,}/g, "$1***")
+    .replace(
+      /\b(sk-|rpa_|ghp_|gho_|ghs_|github_pat_|glpat-|hf_|xox[abp]-)[A-Za-z0-9_-]{6,}/g,
+      "$1***",
+    )
     .slice(0, 2000);
 }
 

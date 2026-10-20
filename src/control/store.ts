@@ -335,6 +335,23 @@ create table if not exists campaign_version (
   approved_by text,
   primary key (campaign, version)
 );
+-- Exports a rig's supervisor sent to control because the rig has no results repository: each
+-- export's manifest, the files it sends with their sizes and SHA-256 (from the manifest), which
+-- of them arrived and matched, and when the last one did. The files are on disk (exports.ts).
+create table if not exists rig_export (
+  rig text not null,
+  name text not null,
+  manifest text not null,
+  files text not null,
+  done text not null default '[]',
+  bytes integer not null,
+  full integer not null default 0,
+  from_event integer not null,
+  through_event integer not null,
+  created_at text not null,
+  complete_at text,
+  primary key (rig, name)
+);
 create index if not exists rig_live_rig on rig_live (rig, id);
 create index if not exists rig_live_source on rig_live (rig, source, id);
 `;
@@ -371,6 +388,39 @@ function renameUnitsToRigs(db: DatabaseSync): void {
     db.exec("rollback");
     throw err;
   }
+}
+
+/** An export a rig sent to control (its files are on disk: exports.ts). */
+export interface RigExport {
+  rig: string;
+  name: string;
+  manifest: Record<string, unknown>;
+  /** The files the rig sends: each one's size and SHA-256. */
+  files: Record<string, { size: number; sha256: string }>;
+  /** The files that arrived with their SHA-256. */
+  done: string[];
+  bytes: number;
+  full: boolean;
+  from_event: number;
+  through_event: number;
+  created_at: string;
+  complete_at: string | null;
+}
+
+function rigExportOf(r: Row): RigExport {
+  return {
+    rig: String(r.rig),
+    name: String(r.name),
+    manifest: JSON.parse(String(r.manifest)) as Record<string, unknown>,
+    files: JSON.parse(String(r.files)) as RigExport["files"],
+    done: JSON.parse(String(r.done)) as string[],
+    bytes: Number(r.bytes),
+    full: Number(r.full) === 1,
+    from_event: Number(r.from_event),
+    through_event: Number(r.through_event),
+    created_at: String(r.created_at),
+    complete_at: r.complete_at === null ? null : String(r.complete_at),
+  };
 }
 
 export interface IngestReport {
@@ -1501,6 +1551,82 @@ export class ControlStore {
     return r
       ? { patch: Buffer.from(r.patch), sha256: r.sha256, base_commit: r.base_commit }
       : undefined;
+  }
+
+  /**
+   * Starts an export a rig sends (or finds the one it started): "created", "same" when one by
+   * that name has this manifest and these files, "different" when it has others.
+   */
+  beginRigExport(
+    rig: string,
+    name: string,
+    e: {
+      manifest: unknown;
+      files: Record<string, { size: number; sha256: string }>;
+      full: boolean;
+      fromEvent: number;
+      throughEvent: number;
+    },
+  ): "created" | "same" | "different" {
+    const manifest = canonicalJson(e.manifest);
+    const files = canonicalJson(e.files);
+    const had = this.db
+      .prepare("select manifest, files from rig_export where rig = ? and name = ?")
+      .get(rig, name) as { manifest: string; files: string } | undefined;
+    if (had) return had.manifest === manifest && had.files === files ? "same" : "different";
+    const bytes = Object.values(e.files).reduce((n, f) => n + f.size, 0);
+    this.db
+      .prepare(
+        `insert into rig_export (rig, name, manifest, files, bytes, full, from_event, through_event, created_at)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        rig,
+        name,
+        manifest,
+        files,
+        bytes,
+        e.full ? 1 : 0,
+        e.fromEvent,
+        e.throughEvent,
+        new Date().toISOString(),
+      );
+    return "created";
+  }
+
+  /** One export a rig sent to control, with which files arrived. */
+  rigExport(rig: string, name: string): RigExport | undefined {
+    const r = this.db
+      .prepare("select * from rig_export where rig = ? and name = ?")
+      .get(rig, name) as Row | undefined;
+    return r ? rigExportOf(r) : undefined;
+  }
+
+  /** The exports a rig sent to control, newest first. */
+  rigExports(rig: string, limit = 100): RigExport[] {
+    return (
+      this.db
+        .prepare(
+          "select * from rig_export where rig = ? order by created_at desc, name desc limit ?",
+        )
+        .all(rig, limit) as Row[]
+    ).map(rigExportOf);
+  }
+
+  /** A file of an export arrived with its SHA-256; the export is complete with its last file. */
+  rigExportFileDone(rig: string, name: string, path: string): { complete: boolean } {
+    return this.tx(() => {
+      const e = this.rigExport(rig, name);
+      if (!e) throw new Error(`no export ${name} of rig ${rig}`);
+      const done = [...new Set([...e.done, path])].sort();
+      const complete = Object.keys(e.files).every((p) => done.includes(p));
+      this.db
+        .prepare(
+          "update rig_export set done = ?, complete_at = coalesce(complete_at, ?) where rig = ? and name = ?",
+        )
+        .run(JSON.stringify(done), complete ? new Date().toISOString() : null, rig, name);
+      return { complete };
+    });
   }
 
   /**

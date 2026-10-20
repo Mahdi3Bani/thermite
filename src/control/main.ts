@@ -95,6 +95,8 @@ async function main(): Promise<void> {
       outsideKb,
       // Kits written on the new-campaign page, kept as git repositories in control's state.
       kits: new KitRepos(join(dir, "kits")),
+      // Exports from rigs without a results repository, kept in control's state.
+      exportsDir: join(dir, "exports"),
       // How rigs and the machines control sets rigs up on reach control.
       publicUrl: env.THERMITE_CONTROL_PUBLIC_URL || undefined,
       // The images rigs on machines run (none: control can't set rigs up there).

@@ -2,7 +2,6 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   createReadStream,
-  createWriteStream,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -11,14 +10,14 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join, resolve, sep } from "node:path";
-import { Readable, Transform } from "node:stream";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import { log } from "../common/env.ts";
 import { type GitAuth, withGitAuth } from "../common/git-auth.ts";
 import type { SignedCommand } from "../core/commands.ts";
 import { sshCommand } from "./git-export.ts";
+import { downloadModel, ModelDownloads } from "./model-download.ts";
 
 /**
  * Staging for commands that bring content, before the supervisor relays them:
@@ -26,7 +25,8 @@ import { sshCommand } from "./git-export.ts";
  *   repository) and the inbox path the harness will read it from;
  * - an `assign_campaign` command's imports may name a source: a git repository with the
  *   project's or kit's commit, or a URL for a model. The supervisor fetches it into the inbox
- *   (a repository as a bundle of that commit).
+ *   (a repository as a bundle of that commit; a model with its progress reported, see
+ *   model-download.ts).
  * The supervisor cannot change what arrives: the harness checks the commit, the sha256 and the
  * tree the command signs. Fetches run in the background, and the command waits for them.
  * Deterministic code only: no model ever runs git here.
@@ -47,6 +47,12 @@ export interface StagingConfig {
   /** Control's address and this rig's token: kits control keeps are fetched from there. */
   controlUrl?: string | undefined;
   controlToken?: string | undefined;
+  /** Model downloads in progress, for the supervisor's report and the live view. */
+  models?: ModelDownloads | undefined;
+  /** The supervisor's Hugging Face token (gated models): sent to Hugging Face only. */
+  hfToken?: string | undefined;
+  /** How model files are fetched (tests give their own). */
+  fetchImpl?: typeof fetch | undefined;
 }
 
 /** What staging says about a command: relay it, wait, or report that its content failed. */
@@ -137,7 +143,7 @@ type Sourced =
       commit: string;
       source: { git: string; access?: string } | { control: string };
     }
-  | { kind: "model"; path: string; sha256: string; source: { url: string } };
+  | { kind: "model"; path: string; name: string; sha256: string; source: { url: string } };
 
 /** Stagings in progress, and finished ones not yet reported, by command id. */
 const inFlight = new Map<string, Promise<StageResult>>();
@@ -164,10 +170,22 @@ async function stageSources(cfg: StagingConfig, cmd: SignedCommand): Promise<Sta
     if (!(await present(imp, target))) todo.push({ imp, target });
   }
   if (!todo.length) return "ready";
+  const run = (cmd.envelope.payload as { run?: unknown }).run;
   const work = (async (): Promise<StageResult> => {
     try {
       for (const { imp, target } of todo) {
-        if (imp.kind === "model") await fetchModel(imp, target);
+        if (imp.kind === "model")
+          await downloadModel({
+            url: imp.source.url,
+            sha256: imp.sha256,
+            target,
+            path: relative(root, target),
+            name: imp.name,
+            run: typeof run === "string" ? run : undefined,
+            hfToken: cfg.hfToken,
+            downloads: cfg.models ?? new ModelDownloads(),
+            fetchImpl: cfg.fetchImpl,
+          });
         else await bundleFromGit(cfg, imp, target);
       }
       log("supervisor", "staged sources", { command: id, files: todo.map((t) => t.imp.path) });
@@ -199,29 +217,6 @@ async function present(imp: Sourced, target: string): Promise<boolean> {
   if (h.digest("hex") !== imp.sha256) return false;
   verified.add(key);
   return true;
-}
-
-/** A model from its URL, hashed as it streams; only a file with the signed hash lands. */
-async function fetchModel(imp: Extract<Sourced, { kind: "model" }>, target: string): Promise<void> {
-  const res = await fetch(imp.source.url, { redirect: "follow" });
-  if (!res.ok || !res.body) throw new Error(`${imp.source.url}: HTTP ${res.status}`);
-  mkdirSync(dirname(target), { recursive: true });
-  const tmp = `${target}.tmp-${process.pid}-${Date.now()}`;
-  const h = createHash("sha256");
-  const tee = new Transform({
-    transform(chunk, _enc, cb) {
-      h.update(chunk);
-      cb(null, chunk);
-    },
-  });
-  try {
-    await pipeline(Readable.fromWeb(res.body as never), tee, createWriteStream(tmp));
-    const got = h.digest("hex");
-    if (got !== imp.sha256) throw new Error(`${imp.source.url}: sha256 ${got}, not ${imp.sha256}`);
-    renameSync(tmp, target);
-  } finally {
-    rmSync(tmp, { force: true });
-  }
 }
 
 /**

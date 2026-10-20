@@ -11,15 +11,18 @@ import { CHATGPT_API, ChatGPTLogins } from "./chatgpt.ts";
 import type { ClusterKubectl } from "./clusters/kubectl.ts";
 import { Credential, newToken } from "./credential.ts";
 import { createDashboard, type RigImages } from "./dashboard.ts";
+import { ExportFiles, mountExports } from "./exports.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
 import type { KitRepos } from "./kit-repos.ts";
 import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
 import type { MachineSsh } from "./machines/ssh.ts";
 import { mountMcp } from "./mcp.ts";
 import { metricsText } from "./metrics.ts";
+import { modelSteps } from "./model-steps.ts";
 import { OutsideKbs } from "./outside-kb.ts";
 import { claudeModelName, isOpencodeOwn, providerBase } from "./providers.ts";
 import type { probeRepository } from "./repo-probe.ts";
+import { resultsLeft } from "./results-left.ts";
 import { RunpodTests, type TestRequest } from "./runpod-tests.ts";
 import { SecretBox } from "./secrets.ts";
 import {
@@ -116,23 +119,53 @@ const IssueBody = z.object({
 
 /** What a supervisor may say about itself: numbers and short strings only (it is unsigned). */
 const Count = z.number().finite().min(0).max(1e12);
+const Bytes = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const Short = z.string().max(1000);
+const ExportNames = z.array(z.string().regex(/^[0-9A-Za-z-]{1,80}$/)).max(50);
 const SupervisorStats = z.strictObject({
   at: Short,
   relay: z.strictObject({ cursor: Count }).optional(),
   export: z
     .strictObject({
       remote: z.boolean(),
+      /** Where its exports go: the results repository, control, or nowhere off the rig. */
+      to: z.enum(["repository", "control", "none"]).optional(),
       exports: Count,
-      pushed: z.array(z.string().regex(/^[0-9A-Za-z-]{1,80}$/)).max(50),
+      pushed: ExportNames,
       pushed_commit: z
         .string()
         .regex(/^[0-9a-f]{40,64}$/)
         .nullable()
         .optional(),
       last_push_at: Short.nullable(),
+      /** The newest exports it sent to control in full. */
+      uploaded: ExportNames.optional(),
+      last_upload_at: Short.nullable().optional(),
+      /** Exports on the rig that have not left it yet, and champion patches not yet on control. */
+      waiting: Count.optional(),
+      champions_waiting: Count.optional(),
       last_error: Short.nullable(),
     })
+    .optional(),
+  /** Model files it downloads or downloaded for the harness (model-download.ts), newest first. */
+  models: z
+    .array(
+      z.strictObject({
+        name: z.string().max(200),
+        path: Short,
+        sha256: z.string().regex(/^[0-9a-f]{64}$/),
+        from: z.string().max(300),
+        state: z.enum(["downloading", "done", "refused", "failed"]),
+        bytes: Bytes,
+        total: Bytes.nullable(),
+        resumed_from: Bytes,
+        started_at: Short,
+        updated_at: Short,
+        error: Short.optional(),
+        run: z.string().max(80).optional(),
+      }),
+    )
+    .max(20)
     .optional(),
   advisors: z
     .strictObject({
@@ -183,6 +216,8 @@ export interface ControlOptions {
   providerFetch?: typeof fetch | undefined;
   /** The kits control writes itself, served to rigs (none: no kits are served). */
   kits?: KitRepos | undefined;
+  /** Where control keeps the exports rigs send it (none: it takes none). */
+  exportsDir?: string | undefined;
   /** How the new-campaign page reads a project's repository (tests give their own). */
   probeRepo?: typeof probeRepository | undefined;
   /** Control's address as rigs and machines reach it (THERMITE_CONTROL_PUBLIC_URL). */
@@ -387,8 +422,14 @@ export function createControlApi(
   );
 
   // The supervisor's own figures and its daily report (unsigned: the supervisor reports itself).
+  // A model download that starts or ends is a step in the rig's history.
   app.post("/v1/rigs/:rig/supervisor", rigAuth, bodyLimit({ maxSize: 256 * 1024 }), async (c) => {
-    store.setSupervisor(c.req.param("rig"), SupervisorStats.parse(await c.req.json()));
+    const rig = c.req.param("rig");
+    const stats = SupervisorStats.parse(await c.req.json());
+    const before = store.supervisor(rig)?.models;
+    store.setSupervisor(rig, stats);
+    for (const s of modelSteps(before, stats.models))
+      store.rigSetupEvent(rig, s.step, s.ok, s.detail);
     return c.json({ ok: true });
   });
 
@@ -689,6 +730,18 @@ export function createControlApi(
       "x-thermite-sha256": p.sha256,
     });
   });
+
+  // Exports a rig without a results repository sends to control, and the owner reads back.
+  mountExports(app, {
+    store,
+    files: opts.exportsDir ? new ExportFiles(opts.exportsDir) : undefined,
+    rigAuth,
+    admin,
+  });
+  // Have all of a rig's results left it? (What a terminate waits for: goal 023.)
+  app.get("/v1/rigs/:rig/results-left", admin, (c) =>
+    c.json(resultsLeft(store, c.req.param("rig"), { export: c.req.query("export") || undefined })),
+  );
 
   app.post("/v1/rigs/:rig/reports", rigAuth, bodyLimit({ maxSize: 1024 * 1024 }), async (c) => {
     const body = z

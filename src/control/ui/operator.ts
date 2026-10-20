@@ -682,13 +682,13 @@ export function needs(
         kind: "Wipe",
         question: "Wipe this rig's state?",
         headline: `The full reset of ${esc(u.id)} waits for your confirmation`,
-        why: "The rig is paused and its export is pushed; the wipe cannot be undone",
+        why: "The rig is paused and its export has left the rig; the wipe cannot be undone",
         key: `reset-${String(rs.id)}`,
         u,
         since: String(rs.updated_at),
         now,
-        facts: `<dt>What</dt><dd>You started a full reset. The rig is paused, and its export is pushed${rs.export_name ? ` as <code>${esc(rs.export_name)}</code>` : ""}.</dd>
-<dt>Check</dt><dd>Find the export in the results repository before you confirm.</dd>`,
+        facts: `<dt>What</dt><dd>You started a full reset. The rig is paused, and its export${rs.export_name ? ` <code>${esc(rs.export_name)}</code>` : ""} has left the rig.</dd>
+<dt>Check</dt><dd>Find the export in the results repository before you confirm. A rig without one sent it to control: find it there.</dd>`,
         choices: [
           {
             button: `<form class="inline" method="post" action="/ui/resets/${esc(rs.id)}/confirm"><input type="hidden" name="csrf" value="${f.csrf}"><button class="danger">Confirm the wipe</button></form>`,

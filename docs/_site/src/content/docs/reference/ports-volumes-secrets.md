@@ -78,14 +78,14 @@ In a **slot**, a namespace the cluster's operators made for Thermite, the operat
 
 | Container | Path | Holds |
 | --- | --- | --- |
-| Control | `/var/lib/thermite-control` (`THERMITE_CONTROL_DIR`) | `control.db` (rigs, reports, commands, providers, outside knowledge bases with their tokens sealed, [Thermite's knowledge base](knowledge-base.md), the audit log); `control-signing.key` (0600) and `control-signing.pub`; `secrets.key`, which seals every key and sign-in control stores; `kits/`, kits written or uploaded on the **New campaign** page |
+| Control | `/var/lib/thermite-control` (`THERMITE_CONTROL_DIR`) | `control.db` (rigs, reports, commands, providers, outside knowledge bases with their tokens sealed, [Thermite's knowledge base](knowledge-base.md), the audit log); `control-signing.key` (0600) and `control-signing.pub`; `secrets.key`, which seals every key and sign-in control stores; `kits/`, kits written or uploaded on the **New campaign** page; `exports/`, the [exports](exports.md#where-control-keeps-them) of rigs without a results repository |
 | Control | `/keys` | `control-signing.pub`, copied there for rigs (`THERMITE_CONTROL_PUBKEY_EXPORT`) |
 | Harness | `/var/lib/thermite` | The ledger and the rig's report key (`ledger/`), git mirrors (`git/`), kits (`kits/`), imports (`imports/`), models (`models/`), builds (`builds/`), the model route control set (`model-route.json`, root only), the rig's settings (`rig-settings.json`) and its copy of each run's past research (`knowledge/<run>/`) |
 | Harness | `/scratch` | Workspaces, lane caches, the judge's runs and each run's research folder (`thermite/research/<run>/`, with its `knowledge/`). Emptied at every start |
-| Harness | `/inbox` | Read-only: project and kit bundles and models the supervisor fetched |
+| Harness | `/inbox` | Read-only: project and kit bundles and [model files](model-files.md) the supervisor fetched |
 | Harness | `/outbox` | Exports, written by the harness |
 | Harness | `/keys` | Read-only: control's public key |
-| Supervisor | `/var/lib/thermite-supervisor` | Its relay and export state, where each run's past research sync is (`kb-state.json`), its local results repository (`results.git/`), its fetch caches, advisor records and the `ssh` home (`home/`) |
+| Supervisor | `/var/lib/thermite-supervisor` | Its relay and export state, the exports waiting to be sent to control (`export-uploads.json`), where each run's past research sync is (`kb-state.json`), its local results repository (`results.git/`), its fetch caches, advisor records and the `ssh` home (`home/`) |
 | Supervisor | `/inbox` | Read and write: what it fetches for the harness |
 | Supervisor | `/outbox` | Read-only: the harness's exports |
 | Supervisor | `/results` | Compose only: the local results repository the rigs share |
@@ -160,6 +160,7 @@ A test pod has one container disk: 40 GB unless set, 10 to 2,000 GB. Control rem
 | The rig's report key | Harness | `ledger/rig-signing.key` in its state, 0600 | Signs the rig's reports. Made on first start |
 | The results repository key | Supervisor | `THERMITE_RESULTS_KEY_FILE`, `THERMITE_RESULTS_KNOWN_HOSTS` | Optional: an SSH deploy key that can write to the results repository, and its host key. See [Set up the results repository](../how-to/operate/results-repository.md) |
 | A knowledge base token | Supervisor | `kb.token_file` in the [advisors file](advisors-file.md) | Optional |
+| A Hugging Face token | Supervisor | `THERMITE_HF_TOKEN_FILE` | Optional: for [gated model files](model-files.md#gated-models-on-hugging-face). Sent to Hugging Face only, never to the harness |
 | An outside knowledge base's token | Control | Entered in **Settings › Providers**, kept sealed in `control.db` | Optional. Control hands it, with the advisors' models, to the supervisor of each rig it assigned a campaign that may search that knowledge base; the supervisor keeps it in memory. See [Outside knowledge bases](knowledge-base.md#outside-knowledge-bases) |
 
 At start, the harness's broker reads its secret files as root, gives their values only to the controller, and closes their folder to 0700. If a secret file and its folder both stay readable by other users, it stops with `fatal: a secret file stays readable by other users`.

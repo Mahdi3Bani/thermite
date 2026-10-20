@@ -3,6 +3,7 @@ import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { log } from "../common/env.ts";
 import { issueCommand } from "./issue.ts";
+import { exportLeft } from "./results-left.ts";
 import type { ControlStore } from "./store.ts";
 import { rigView } from "./views.ts";
 
@@ -14,9 +15,10 @@ import { rigView } from "./views.ts";
  *   list and delete in the rig's namespace, nothing else); the Deployment recreates them.
  * - Compose: the container engine's API (Docker or Podman) restarts the rig's containers.
  *
- * A full reset: pause the rig's running runs, export, wait until the supervisor reports
- * that export pushed to the results repository, then the signed wipe_state (the harness and the
- * supervisor wipe their own state and restart), then a restart through the driver.
+ * A full reset: pause the rig's running runs, export, wait until that export has left the rig
+ * (the supervisor reports it pushed to the results repository, or control holds all of it), then
+ * the signed wipe_state (the harness and the supervisor wipe their own state and restart), then a
+ * restart through the driver.
  */
 
 export type Component = "harness" | "supervisor";
@@ -231,9 +233,11 @@ function harnessConfirmed(outcome: unknown): boolean {
  *  start          pause the rig's running runs;
  *  quiescing      until the rig reports no queued or running judge jobs (an hour at most);
  *  exporting      a full export (research archive and ledger snapshot), until its result arrives;
- *  verifying      until the supervisor reports that export pushed to the results repository;
- *  awaiting_owner the owner checks the pushed commit and confirms (the supervisor's report is
- *                 unsigned: the owner, not control, is the last check before data goes);
+ *  verifying      until the supervisor reports that export pushed to the results repository,
+ *                 or, for a rig without one, control holds every file of it (results-left.ts);
+ *  awaiting_owner the owner checks the pushed commit (or control's copy) and confirms (the
+ *                 supervisor's report is unsigned: the owner, not control, is the last check
+ *                 before data goes);
  *  wiping         the signed wipe_state; then the restart through the driver.
  *
  * Runs are serialized: a timer and an API call can't advance the same reset twice.
@@ -326,18 +330,21 @@ async function advanceOnce(input: {
           break;
         }
         case "verifying": {
-          // The supervisor reports what reached the results repository.
-          const sup = store.supervisor(rig) as {
-            export?: { remote?: boolean; pushed?: string[]; pushed_commit?: string | null };
-          } | null;
-          if (sup?.export && sup.export.remote === false) {
-            fail("the rig has no results repository: its export cannot be verified");
+          // The export reached the results repository (the supervisor reports the push), or, for
+          // a rig without one, control holds every file of it (control checks its own copy).
+          const name = String(r.export_name);
+          const e = exportLeft(store, rig, name);
+          if (e.never) {
+            fail(`${e.why}: its export cannot be verified`);
             break;
           }
-          if (!sup?.export?.pushed?.includes(String(r.export_name))) break;
+          if (!e.left) break;
           store.updateReset(id, {
             state: "awaiting_owner",
-            detail: `export ${String(r.export_name)} reported pushed${sup.export.pushed_commit ? ` (results repository commit ${sup.export.pushed_commit})` : ""}; check it there, then confirm the wipe`,
+            detail:
+              e.to === "control"
+                ? `export ${name} is on control, every file checked against its manifest; check it there (GET /v1/rigs/${rig}/exports/${name}), then confirm the wipe`
+                : `export ${name} reported pushed${e.commit ? ` (results repository commit ${e.commit})` : ""}; check it there, then confirm the wipe`,
           });
           break;
         }

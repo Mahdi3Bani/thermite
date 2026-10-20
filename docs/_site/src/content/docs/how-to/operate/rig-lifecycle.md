@@ -15,9 +15,9 @@ What you can do to a [rig](../../reference/glossary.md), and where, depends on h
 | Move to new images | Your compose tool | Not yet | **Update to these images** | Not yet |
 | Remove | Your compose tool | **Remove the rig** | **Remove the rig** | A command on its page, then **Retire the rig** |
 | Retire, bring back | Yes | Yes | Yes | Yes |
-| Full reset | Yes | Not yet | Not yet | Not yet |
+| Full reset | Yes | Yes | Yes | Yes |
 
-A full reset needs a [results repository](results-repository.md). Of the rigs Thermite sets up, only the compose stack has one; control can't give one to the others yet ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)). On them, a full reset fails at its `verifying` step.
+A full reset needs the rig's full export off the rig first: in its [results repository](results-repository.md), or, for a rig without one, on control. Of the rigs Thermite sets up, only the compose stack has a results repository; the others send their exports to control ([Exports](../../reference/exports.md#where-exports-go)).
 
 The buttons below are on the rig's page: open **Rigs** in the dashboard's sidebar, then the rig.
 
@@ -151,10 +151,10 @@ Control records the address it gives each rig. A rig set up by a control too old
 
 ## Remove
 
-**Set up by control:** removing the rig deletes its results, because these rigs have no results repository. Control keeps the rig's events, and the patch of each champion the rig has exported. So, before you remove it:
+**Set up by control:** removing the rig deletes everything on it. These rigs have no results repository: they send their exports to control, which keeps them with the rig's events and the patch of each champion the rig has exported. So, before you remove it:
 
-1. On the rig's page, press **Export now**, and wait a minute or two: the rig uploads its champions' patches to control.
-2. Download each run's champion as a patch: see [Take the result](../campaigns/take-the-result.md).
+1. On the rig's page, press **Export now**, and wait a minute or two: the rig sends that export, and its champions' patches, to control.
+2. Check that every result has left the rig: see [Get a rig's results from control](exports-on-control.md#4-check-that-every-result-has-left-the-rig).
 
 Then, in the **Set up by control** block, open "Remove it from …", type `remove rig-1`, and press **Remove the rig**. On a machine, control stops the services and deletes the rig's units, files and volumes. On a cluster, it deletes the namespace it made, or the rig's objects in its slot. Either way it retires the rig, so its token stops working.
 
@@ -182,11 +182,11 @@ To **bring it back**, open its page and press **Bring it back**, or use `POST /v
 
 ## Fully reset a rig
 
-A full reset gives a rig a clean start: it exports everything, checks that the export reached the results repository, and wipes the rig's state only after you confirm.
+A full reset gives a rig a clean start: it exports everything, checks that the export left the rig, and wipes the rig's state only after you confirm.
 
 ### Before you start
 
-- The rig has a results repository. The compose stack does.
+- The rig's exports leave it: to its results repository (the compose stack has one), or to control (every other rig). See [Exports](../../reference/exports.md#where-exports-go).
 - No commands wait for the rig. A pending command holds the reset at its `quiescing` step. [Cancel](cancel-a-command.md) those you don't need.
 - During the reset, `issue_command` refuses an agent's token for the rig, with `rig-1 is being reset by the owner`.
 
@@ -203,7 +203,7 @@ A full reset gives a rig a clean start: it exports everything, checks that the e
    | `start` | Control pauses the rig's running runs, with the reason "full reset" | |
    | `quiescing` | Control waits until no judge job is queued or running, and no command waits for the rig | 1 hour |
    | `exporting` | The rig takes a full export: what is new since its last export, plus its research archive and a copy of its ledger | 30 minutes |
-   | `verifying` | Control waits until the supervisor reports that export pushed to the results repository | 1 hour |
+   | `verifying` | Control waits until the supervisor reports that export pushed to the results repository, or, for a rig without one, until control holds every file of it | 1 hour |
    | `awaiting_owner` | Control waits for you | 24 hours |
    | `confirmed` | You confirmed; control sends the wipe | |
    | `wiping` | After you confirm, the rig checks the export again and wipes its state. Its harness and supervisor start again, and control restarts their containers if it has a deployment driver | 30 minutes |
@@ -217,11 +217,13 @@ A full reset gives a rig a clean start: it exports everything, checks that the e
 
    It prints the start of the commit and its message, `local-1: export <name>, …`. Both must match the **Detail**.
 
+   For a rig that sends its exports to control, the **Detail** says `export <name> is on control, every file checked against its manifest; check it there (GET /v1/rigs/<rig>/exports/<name>), then confirm the wipe`. Read that export's listing, as in [Get a rig's results from control](exports-on-control.md#3-download-an-exports-files): its `complete_at` is set, and `full` is `true`.
+
 4. Press **Confirm the wipe**, on **Reports** or in the **Wipe** item of **Needs you**. To stop instead, press **Cancel** on **Reports** or **Cancel the reset** in **Needs you**. You can cancel until the wipe starts.
 
-5. When the reset is `done`, the rig starts again with an empty ledger. Its old runs no longer show on its page or on the leaderboard: they are in the results repository. Start new campaigns on it as usual, and check **Edit rig**: the choices made there are wiped, and the rig is back to its defaults.
+5. When the reset is `done`, the rig starts again with an empty ledger. Its old runs no longer show on its page or on the leaderboard: they are in the results repository, or on control. Start new campaigns on it as usual, and check **Edit rig**: the choices made there are wiped, and the rig is back to its defaults.
 
-If the reset fails or is cancelled, nothing is wiped and the runs stay paused. The **Detail** says why, for example `the rig has no results repository: its export cannot be verified` or `timed out while quiescing`.
+If the reset fails or is cancelled, nothing is wiped and the runs stay paused. The **Detail** says why, for example `the rig has no results repository, and its supervisor does not send exports to control (an older version): its export cannot be verified` or `timed out while quiescing`.
 
 Over the REST API, with the owner's token: `POST /v1/rigs/<rig>/reset` with `{"confirm":"reset <rig>"}` starts a reset and answers `{"reset":<id>}`. `GET /v1/resets` lists them, and `POST /v1/resets/<id>/confirm` or `/cancel` confirms or cancels one. There is no MCP tool for resets.
 
@@ -230,7 +232,7 @@ Over the REST API, with the owner's token: `POST /v1/rigs/<rig>/reset` with `{"c
 | Wiped | Kept |
 | --- | --- |
 | The harness's state: its ledger, git mirrors, kits, imports, models, builds, research archive and research folders with their copies of past research (`knowledge/`), the **Edit rig** settings and the model route it was handed | The rig's signing key, so control still trusts it (no key to accept) |
-| Its scratch space and outbox | Everything in the results repository, with the full export |
+| Its scratch space and outbox | Everything in the results repository or on control, with the full export |
 | The supervisor's state: its copy of the results, its fetch caches, its known hosts for Git access, its advisors' records, the day's spending and where each run's past research sync had got to | Control's records: the rig's past events, its commands, champion patches and daily reports. The dashboard shows only what the rig records after the reset |
 | | Control's [knowledge base](../../reference/knowledge-base.md): the items of the rig's earlier runs stay in their campaigns' folders |
 | | Files outside the rig's state: the advisors file, its tokens, and its environment settings |
