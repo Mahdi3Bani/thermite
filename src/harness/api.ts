@@ -14,7 +14,7 @@ import { chatgptRequest, chatgptRouteAllowed } from "./chatgpt.ts";
 import { LedgerError } from "./ledger.ts";
 import type { Research } from "./research/research.ts";
 import { Reviews } from "./reviews.ts";
-import { type HarnessService, SubmitRequest } from "./service.ts";
+import { AdvisorQueueRequest, type HarnessService, SubmitRequest } from "./service.ts";
 
 /**
  * Harness HTTP API. Only the rig's own supervisor reaches it over the network; proposers
@@ -345,6 +345,12 @@ export function createHarnessApi(
     return c.json(service.advisorMessages(body));
   });
 
+  // The advisors' additions and moves for a run's experiment queue, each recorded with the
+  // advisor role as who made it. Advisors add and reorder; they don't drop or give out work.
+  app.post("/v1/queue", supervisor, bodyLimit({ maxSize: 256 * 1024 }), async (c) =>
+    c.json(service.advisorQueue(AdvisorQueueRequest.parse(await c.req.json()))),
+  );
+
   // The live log, signed, for the supervisor to relay to control.
   app.get("/v1/live", supervisor, (c) => {
     const after = Number(c.req.query("after") ?? "0");
@@ -411,6 +417,12 @@ export function createHarnessApi(
       .parse(await c.req.json());
     service.trialInbox({ id: trial.id, run: trial.run, lane: trial.lane }).given(body.ids);
     return c.json({ ok: true });
+  });
+
+  // A worker's idea for its run's queue: proposed by its lane (its trial decides run and lane).
+  app.post("/v1/trial/idea", bodyLimit({ maxSize: 64 * 1024 }), async (c) => {
+    const { token } = trialOf(c.req.header("authorization"));
+    return c.json(service.proposeIdea(token, await c.req.json()), 201);
   });
 
   app.post("/v1/exports/done", supervisor, bodyLimit({ maxSize: 256 * 1024 }), async (c) => {

@@ -665,4 +665,33 @@ export const MIGRATIONS: readonly (string | ((db: DatabaseSync) => void))[] = [
       if (lane) insert.run(m.id, lane, trial, m.delivered_at);
     }
   },
+  // 14: each run's experiment queue (goal 064): what to try, who added it and why, its state,
+  // its place among the queued ones (0 first; null once it left the order or before it was
+  // queued), and what became of it: the lane and trial that took it, the attempt and result, or
+  // why it was dropped. Every change to a row is written with its event, in one transaction.
+  `
+  create table experiment (
+    id text primary key,
+    run text not null,
+    title text not null,
+    details text not null default '',
+    family text not null default '',
+    why text not null default '',
+    added_by text not null,
+    state text not null check (state in ('proposed', 'queued', 'assigned', 'done', 'dropped')),
+    place integer,
+    lane text,
+    trial text,
+    attempt text,
+    result text,
+    dropped_by text,
+    dropped_why text,
+    from_run text,
+    from_id text,
+    created_at text not null,
+    updated_at text not null
+  );
+  create index experiment_run on experiment (run, state, place);
+  create index experiment_trial on experiment (trial);
+  `,
 ];

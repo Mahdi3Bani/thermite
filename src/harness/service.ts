@@ -7,8 +7,11 @@ import { sha256Hex } from "../core/canonical.ts";
 import {
   CommandPayloads,
   type Envelope,
+  ExperimentId,
+  ExperimentText,
   type ImportSpec,
   type KeyPairPem,
+  QueuePosition,
   reportBody,
   StructuredDirective,
   signJson,
@@ -37,18 +40,24 @@ import { type Ledger, LedgerError } from "./ledger.ts";
 import { type AdvisorRole, messageText, OwnerMessages } from "./messages.ts";
 import { writeExport } from "./outbox.ts";
 import { receivePropagation } from "./propagation.ts";
+import { type Experiment, ExperimentInput, ExperimentQueue } from "./queue.ts";
 import { type ReviewPackage, Reviews } from "./reviews.ts";
 import { RigSettingsStore } from "./rig-settings.ts";
 import { checkV0 } from "./v0.ts";
 
-/** A directive set may not both avoid a family and try or mandate it. */
-function conflictCheck(set: { kind: string; family?: string | undefined }[]): void {
-  const avoid = new Set(set.filter((d) => d.kind === "avoid" && d.family).map((d) => d.family));
-  const both = set.filter((d) => (d.kind === "try" || d.kind === "mandate") && avoid.has(d.family));
+/** A directive set may not both avoid a direction (a family, or the same words) and ask for it. */
+function conflictCheck(
+  set: { kind: string; family?: string | undefined; match?: string | undefined }[],
+): void {
+  const key = (d: { family?: string | undefined; match?: string | undefined }) =>
+    d.family ? `family ${d.family}` : d.match ? `"${d.match.trim().toLowerCase()}"` : undefined;
+  const avoid = new Set(set.filter((d) => d.kind === "avoid").map(key));
+  avoid.delete(undefined);
+  const both = set.filter((d) => (d.kind === "try" || d.kind === "mandate") && avoid.has(key(d)));
   if (both.length) {
     throw new LedgerError(
       "invalid",
-      `the set both avoids and asks for ${both.map((d) => d.family).join(", ")}`,
+      `the set both avoids and asks for ${both.map((d) => d.family ?? d.match).join(", ")}`,
     );
   }
 }
@@ -63,7 +72,60 @@ const OWNER_ONLY = new Set([
   "message_agent",
   "unkeep_message",
   "rig_settings",
+  "queue_add",
+  "queue_move",
+  "queue_edit",
+  "queue_drop",
+  "queue_accept",
+  "drop_directive",
 ]);
+
+/** An advisor's additions and moves for a run's queue (the supervisor's /v1/queue). */
+export const AdvisorQueueRequest = z.strictObject({
+  run: z.string().min(1).max(100),
+  /** The advisor role that proposes them: it is recorded as who added or moved each one. */
+  role: z.enum(["teacher", "auditor", "panel"]),
+  add: z
+    .array(
+      z.strictObject({
+        title: ExperimentText.title,
+        details: ExperimentText.details.optional(),
+        family: ExperimentText.family.optional(),
+        why: z.string().trim().min(1).max(2000),
+        position: QueuePosition.optional(),
+      }),
+    )
+    .max(20)
+    .default([]),
+  move: z
+    .array(
+      z.strictObject({
+        id: ExperimentId,
+        position: QueuePosition,
+        why: z.string().trim().min(1).max(2000),
+      }),
+    )
+    .max(20)
+    .default([]),
+});
+export type AdvisorQueueRequest = z.infer<typeof AdvisorQueueRequest>;
+
+/** A worker's idea for its run's queue (`thermite-trial idea`, or Pi's idea tool). */
+export const IdeaRequest = z.strictObject({
+  title: ExperimentText.title,
+  details: ExperimentText.details.optional(),
+  family: ExperimentText.family.optional(),
+  why: ExperimentText.why.optional(),
+});
+
+/** What a queue command did, as its result: the experiment, its state and its place. */
+function queueResult(x: Experiment): {
+  experiment: string;
+  state: string;
+  position: number | null;
+} {
+  return { experiment: x.id, state: x.state, position: x.place };
+}
 
 /** Written by an accepted wipe_state; the next controller start wipes the state and removes it. */
 export const WIPE_MARKER = "WIPE_REQUESTED";
@@ -197,6 +259,8 @@ export class HarnessService {
   readonly settings: RigSettingsStore;
   /** The owner's messages to the run's agents, and who read each one. */
   readonly messages: OwnerMessages;
+  /** Each run's experiment queue: what to try next, in order, and what was tried. */
+  readonly queue: ExperimentQueue;
   /** A rig configured with its GPU set: how many cards, and how many the judge has now. */
   gpuSplit?: { set: number; judge: number } | undefined;
   /**
@@ -262,6 +326,7 @@ export class HarnessService {
       settings: () => this.settings.get(),
       contractFor: (run) => this.contractFor(run),
     });
+    this.queue = new ExperimentQueue(this.ledger);
   }
 
   /** A run's promotion policy: its own, chosen when it was assigned, or the rig's default. */
@@ -375,6 +440,54 @@ export class HarnessService {
         this.requireRun(p.run);
         return this.messages.unkeep(p.run, p.message, by);
       }
+      // The owner's changes to a run's experiment queue: each refused in plain words when the
+      // experiment is unknown or in the wrong state.
+      case "queue_add": {
+        const p = CommandPayloads.queue_add.parse(payload);
+        this.openRun(p.run);
+        const x = this.queue.add(
+          p.run,
+          {
+            title: p.title,
+            details: p.details,
+            family: p.family,
+            why: p.why,
+            by: "owner",
+            position: p.position,
+          },
+          by,
+        );
+        return queueResult(x);
+      }
+      case "queue_move": {
+        const p = CommandPayloads.queue_move.parse(payload);
+        this.openRun(p.run);
+        return queueResult(this.queue.move(p.run, p.id, { by: "owner", position: p.position }, by));
+      }
+      case "queue_edit": {
+        const p = CommandPayloads.queue_edit.parse(payload);
+        this.openRun(p.run);
+        const { run, id, ...change } = p;
+        return queueResult(this.queue.edit(run, id, change, { by: "owner" }, by));
+      }
+      case "queue_drop": {
+        const p = CommandPayloads.queue_drop.parse(payload);
+        this.openRun(p.run);
+        return queueResult(this.queue.drop(p.run, p.id, { by: "owner", why: p.why }, by));
+      }
+      case "queue_accept": {
+        const p = CommandPayloads.queue_accept.parse(payload);
+        this.openRun(p.run);
+        return queueResult(
+          this.queue.accept(p.run, p.id, { by: "owner", position: p.position }, by),
+        );
+      }
+      case "drop_directive": {
+        const p = CommandPayloads.drop_directive.parse(payload);
+        this.requireRun(p.run);
+        this.ledger.dropDirective(p.run, p.id, by);
+        return { run: p.run, dropped: p.id };
+      }
       case "reset_workers": {
         // The scheduler acts on the event: it kills the run's running trials, clears the
         // lane bests and ends the epoch, so lanes start again from the champion.
@@ -442,6 +555,14 @@ export class HarnessService {
   private requireRun(id: string) {
     const inst = this.ledger.getRun(id);
     if (!inst) throw new LedgerError("not_found", `no run ${id}`);
+    return inst;
+  }
+
+  /** A run whose queue may still change: one that exists and is not closed. */
+  private openRun(id: string) {
+    const inst = this.requireRun(id);
+    if (inst.status === "closed")
+      throw new LedgerError("invalid", `run ${id} is closed: its queue no longer changes`);
     return inst;
   }
 
@@ -541,6 +662,11 @@ export class HarnessService {
     const contract = parsed.contract;
     // Validate everything before changing anything: a refused assign leaves no trace but events.
     if (this.ledger.getRun(p.run)) throw new Error(`run ${p.run} already exists`);
+    for (const [i, s] of (p.queue ?? []).entries()) {
+      const ok = ExperimentInput.safeParse(s);
+      if (!ok.success)
+        throw new Error(`queue experiment ${i + 1}: ${ok.error.issues[0]?.message ?? "invalid"}`);
+    }
     const existing = this.ledger.getContract(contract.campaign, contract.version);
     if (existing && contractSha(existing) !== parsed.sha) {
       throw new Error(
@@ -610,8 +736,30 @@ export class HarnessService {
         promotion: p.promotion,
         actor: by,
       });
+      // Another run's untried experiments start this run's queue, in order, each with who added
+      // it, why, its state and where it came from.
+      for (const s of p.queue ?? [])
+        this.queue.add(
+          p.run,
+          {
+            title: s.title,
+            details: s.details,
+            family: s.family,
+            why: s.why,
+            by: s.by,
+            state: s.state,
+            from: s.from,
+          },
+          by,
+        );
     });
-    return { run: p.run, contract_sha: parsed.sha, imported, agents: p.agents !== false };
+    return {
+      run: p.run,
+      contract_sha: parsed.sha,
+      imported,
+      agents: p.agents !== false,
+      ...(p.queue?.length ? { queue: p.queue.length } : {}),
+    };
   }
 
   /**
@@ -1016,6 +1164,8 @@ export class HarnessService {
       evidence: registry.evidence(run, 40),
       epochs,
       directives: this.ledger.activeDirectives(run),
+      // The run's experiment queue: the teachers may add experiments and move queued ones.
+      queue: this.queue.brief(run),
       ...(goals ? { goals } : {}),
       budget: {
         ...contract.budget,
@@ -1150,6 +1300,58 @@ export class HarnessService {
     }
     conflictCheck(parsed);
     return this.ledger.addDirectiveSet(run, author, parsed, true);
+  }
+
+  /**
+   * An advisor's additions and moves for a run's queue (the supervisor, for the teacher pair,
+   * the auditor or the review panel): each recorded with the role as who made it. Each move is
+   * applied on its own; one that is refused (an unknown id, an experiment no longer queued) is
+   * said in words and the others still apply.
+   */
+  advisorQueue(input: AdvisorQueueRequest): {
+    added: string[];
+    moved: string[];
+    refused: string[];
+  } {
+    const p = AdvisorQueueRequest.parse(input);
+    this.openRun(p.run);
+    const actor = `supervisor:${p.role}`;
+    const out = { added: [] as string[], moved: [] as string[], refused: [] as string[] };
+    for (const a of p.add)
+      out.added.push(this.queue.add(p.run, { ...a, by: p.role, position: a.position }, actor).id);
+    for (const m of p.move) {
+      try {
+        this.queue.move(p.run, m.id, { by: p.role, position: m.position, why: m.why }, actor);
+        out.moved.push(m.id);
+      } catch (err) {
+        if (!(err instanceof LedgerError)) throw err;
+        out.refused.push(`move ${m.id}: ${err.message}`);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * A worker's idea for its run's queue: proposed, by its lane, until the planner queues or drops
+   * it (or the owner does first). The trial (found by its token) decides the run and the lane.
+   * No limit on how many: none is set by default (the rules for every goal).
+   */
+  proposeIdea(token: string, input: unknown): { experiment: string; state: "proposed" } {
+    const t = new Registry(this.ledger).openTrial(token);
+    const idea = IdeaRequest.parse(input);
+    const x = this.queue.add(
+      t.run,
+      { ...idea, by: t.lane, state: "proposed", trial: t.id },
+      t.lane,
+    );
+    this.live.append({
+      source: `trial:${t.id}`,
+      kind: "status",
+      text: `idea for the queue: ${x.title}`,
+      lane: t.lane,
+      run: t.run,
+    });
+    return { experiment: x.id, state: "proposed" };
   }
 
   // ------------------------------------------------------------ attempts

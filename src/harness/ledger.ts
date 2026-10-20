@@ -84,6 +84,30 @@ export interface AttemptInput {
   files?: { path: string; added: number | null; removed: number | null }[] | undefined;
 }
 
+/** An experiment in a run's queue (goal 064), as its row holds it. */
+export interface ExperimentRow {
+  id: string;
+  run: string;
+  title: string;
+  details: string;
+  family: string;
+  why: string;
+  added_by: string;
+  state: "proposed" | "queued" | "assigned" | "done" | "dropped";
+  /** Its place among the run's queued experiments (0 first); null when it is not queued. */
+  place: number | null;
+  lane: string | null;
+  trial: string | null;
+  attempt: string | null;
+  result: string | null;
+  dropped_by: string | null;
+  dropped_why: string | null;
+  from_run: string | null;
+  from_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export type PromoteResult = { ok: true; seq: number } | { ok: false; currentSeq: number };
 
 /** Verdicts that may move a champion. */
@@ -1148,6 +1172,95 @@ export class Ledger {
     });
   }
 
+  /**
+   * The owner removes a rule for the plan in force (drop_directive), whoever set it. The rule
+   * stays in the record as dropped, with its event.
+   */
+  dropDirective(run: string, id: number, actor: string): void {
+    this.tx(() => {
+      const r = this.run(
+        "update directive set status = 'dropped', superseded_at = ? where id = ? and run = ? and status = 'active'",
+        this.now(),
+        id,
+        run,
+      );
+      if (r.changes === 0)
+        throw new LedgerError("not_found", `no rule ${id} in force in run ${run}`);
+      this.appendEvent(actor, "directive_dropped", run, { id });
+    });
+  }
+
+  // ---------------------------------------------------------------- the experiment queue
+
+  /**
+   * Every change to a run's experiment queue goes through here: the rows it changes (the
+   * experiment, and the queued ones whose place moved) and its one event, in one transaction.
+   * A row keeps its creation time, its author and where it came from; its update time is now.
+   */
+  writeExperiments(
+    rows: Omit<ExperimentRow, "created_at" | "updated_at">[],
+    event: {
+      actor: string;
+      kind: string;
+      run: string;
+      body: { id: string } & Record<string, unknown>;
+    },
+  ): number {
+    return this.tx(() => {
+      const now = this.now();
+      const upsert = this.db.prepare(
+        `insert into experiment (id, run, title, details, family, why, added_by, state, place, lane,
+           trial, attempt, result, dropped_by, dropped_why, from_run, from_id, created_at, updated_at)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         on conflict (id) do update set title = excluded.title, details = excluded.details,
+           family = excluded.family, why = excluded.why, state = excluded.state,
+           place = excluded.place, lane = excluded.lane, trial = excluded.trial,
+           attempt = excluded.attempt, result = excluded.result, dropped_by = excluded.dropped_by,
+           dropped_why = excluded.dropped_why, updated_at = excluded.updated_at
+         where experiment.run = excluded.run`,
+      );
+      for (const r of rows) {
+        const out = upsert.run(
+          r.id,
+          r.run,
+          r.title,
+          r.details,
+          r.family,
+          r.why,
+          r.added_by,
+          r.state,
+          r.place,
+          r.lane,
+          r.trial,
+          r.attempt,
+          r.result,
+          r.dropped_by,
+          r.dropped_why,
+          r.from_run,
+          r.from_id,
+          now,
+          now,
+        );
+        if (Number(out.changes) === 0)
+          throw new LedgerError("conflict", `experiment ${r.id} belongs to another run`);
+      }
+      return this.appendEvent(event.actor, event.kind, event.run, event.body);
+    });
+  }
+
+  /** A run's experiments, oldest first. */
+  experiments(run: string): ExperimentRow[] {
+    return this.all<ExperimentRow>(
+      "select * from experiment where run = ? order by created_at, rowid",
+      run,
+    ).map(toExperiment);
+  }
+
+  getExperiment(id: string): ExperimentRow | undefined {
+    const r = this.get<ExperimentRow>("select * from experiment where id = ?", id);
+    return r ? toExperiment(r) : undefined;
+  }
+
   activeDirectives(run: string): { id: number; author: string; body: unknown }[] {
     return this.all<Row>(
       "select id, author, body from directive where run = ? and status = 'active' order by id",
@@ -1289,6 +1402,10 @@ function toRun(r: Row): RunRow {
     agents: r.agents === undefined || Number(r.agents) !== 0,
     promotion: r.promotion === "auto" || r.promotion === "owner_approval" ? r.promotion : null,
   };
+}
+
+function toExperiment(r: ExperimentRow): ExperimentRow {
+  return { ...r, place: r.place === null ? null : Number(r.place) };
 }
 
 function toJob(r: Row): JobRow {

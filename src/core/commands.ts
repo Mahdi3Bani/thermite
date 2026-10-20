@@ -93,22 +93,66 @@ export type ImportSpec = z.infer<typeof ImportSpec>;
 /**
  * Low-power steering. Strict: a directive cannot carry anything but these fields, so it cannot
  * set a verdict, a contract or text for workers. AVOID, TRY and MANDATE name a direction-registry
- * family; PRIORITY ranks one; LANE_COUNT sets the lanes (up to the contract's count); NOTE is
- * free text for the planner only. The planner sees rationales and notes; workers never do.
+ * family, or free words (`match`) the planner applies to every experiment they fit; PRIORITY
+ * ranks a family; LANE_COUNT sets the lanes (up to the contract's count); NOTE is free text for
+ * the planner only. The planner sees rationales, notes and match words; workers never do.
  */
-export const StructuredDirective = z.strictObject({
-  kind: z.enum(["avoid", "try", "mandate", "priority", "lane_count", "note"]),
-  /** Direction-registry family id the directive refers to (when applicable). */
-  family: z
-    .string()
-    .regex(/^[a-z0-9][a-z0-9-]{1,40}$/)
-    .optional(),
-  value: z.union([z.string().max(1000), z.number()]).optional(),
-  /** Why, with citations; shown to the planner, never to workers. */
-  rationale: z.string().min(1).max(2000),
-  citations: z.array(z.string().min(1).max(500)).max(20).default([]),
-});
+export const StructuredDirective = z
+  .strictObject({
+    kind: z.enum(["avoid", "try", "mandate", "priority", "lane_count", "note"]),
+    /** Direction-registry family id the directive refers to (when applicable). */
+    family: z
+      .string()
+      .regex(/^[a-z0-9][a-z0-9-]{1,40}$/)
+      .optional(),
+    /**
+     * Instead of a family: the direction in the owner's own words (a kind of change, a file, a
+     * direction's name), for the planner to apply to every experiment it matches.
+     */
+    match: z.string().trim().min(1).max(200).optional(),
+    value: z.union([z.string().max(1000), z.number()]).optional(),
+    /** Why, with citations; shown to the planner, never to workers. */
+    rationale: z.string().min(1).max(2000),
+    citations: z.array(z.string().min(1).max(500)).max(20).default([]),
+  })
+  .refine((d) => !(d.family && d.match), {
+    message: "name either a family or match words, not both",
+    path: ["match"],
+  })
+  .refine((d) => !d.match || d.kind === "avoid" || d.kind === "try" || d.kind === "mandate", {
+    message: "match words are for avoid, try and mandate rules",
+    path: ["match"],
+  })
+  // A research run's TRY or MANDATE may name a question by its number (value) instead.
+  .refine(
+    (d) =>
+      !["avoid", "try", "mandate"].includes(d.kind) ||
+      d.family !== undefined ||
+      d.match !== undefined ||
+      (d.kind !== "avoid" && d.value !== undefined),
+    { message: "an avoid, try or mandate rule names a family or match words", path: ["family"] },
+  );
 export type StructuredDirective = z.infer<typeof StructuredDirective>;
+
+/** An experiment in a run's queue (goal 064): `x-` and 12 hex characters. */
+export const ExperimentId = z.string().regex(/^x-[0-9a-f]{12}$/, "an experiment id (x-...)");
+
+/** Where an experiment goes among the queued ones: first, last, or at an index (0 first). */
+export const QueuePosition = z.union([
+  z.literal("top"),
+  z.literal("end"),
+  z.number().int().min(0).max(100_000),
+]);
+export type QueuePosition = z.infer<typeof QueuePosition>;
+
+/** An experiment's text: what to try, its details, its direction and why it is worth trying. */
+export const ExperimentText = {
+  title: z.string().trim().min(1).max(200),
+  details: z.string().max(4000),
+  /** The direction (approach family) in free words, or a family's id. */
+  family: z.string().trim().min(1).max(80),
+  why: z.string().max(2000),
+};
 
 /**
  * One experiment for a run's queue copied from another run (goal 064): what to try, who added it
@@ -191,6 +235,49 @@ export const CommandPayloads = {
     }),
   /** The owner ends a message kept in force (owner only): new briefs no longer carry it. */
   unkeep_message: z.object({ run: IdSchema, message: z.number().int().positive() }),
+  /**
+   * The run's experiment queue (goal 064), the owner's changes (owner only; an operator may issue
+   * them for the owner). Add an experiment (by default at the end of up next), move a queued one,
+   * edit or drop one still waiting, or queue a lane's proposed idea.
+   */
+  queue_add: z.strictObject({
+    run: IdSchema,
+    title: ExperimentText.title,
+    details: ExperimentText.details.optional(),
+    family: ExperimentText.family.optional(),
+    why: ExperimentText.why.optional(),
+    position: QueuePosition.default("end"),
+  }),
+  queue_move: z.strictObject({ run: IdSchema, id: ExperimentId, position: QueuePosition }),
+  queue_edit: z
+    .strictObject({
+      run: IdSchema,
+      id: ExperimentId,
+      title: ExperimentText.title.optional(),
+      details: ExperimentText.details.optional(),
+      family: ExperimentText.family.optional(),
+      why: ExperimentText.why.optional(),
+    })
+    .refine(
+      (p) =>
+        p.title !== undefined ||
+        p.details !== undefined ||
+        p.family !== undefined ||
+        p.why !== undefined,
+      { message: "change at least one of title, details, family and why" },
+    ),
+  queue_drop: z.strictObject({
+    run: IdSchema,
+    id: ExperimentId,
+    why: z.string().trim().min(1).max(2000),
+  }),
+  queue_accept: z.strictObject({
+    run: IdSchema,
+    id: ExperimentId,
+    position: QueuePosition.optional(),
+  }),
+  /** The owner removes a rule for the plan in force (a directive), whoever set it. */
+  drop_directive: z.strictObject({ run: IdSchema, id: z.number().int().positive() }),
   /**
    * Another rig's champion as a candidate here: this rig's judge screens and confirms it
    * against its own champion. The supervisor stages the file from the results repository.
