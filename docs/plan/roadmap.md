@@ -40,7 +40,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [007](goals/007-known-limits.goal) Known limits and the security model · `VERIFIED`
 - [008](goals/008-community-files.goal) Community files and contributor docs · `IN_PROGRESS`
 - [009](goals/009-subscription-sign-in-tests.goal) Real subscription sign-in tests · `READY`
-- [063](goals/063-scan-and-steer.goal) Campaigns, runs and live views you can scan; steering as one message box · `IN_PROGRESS`
+- [063](goals/063-scan-and-steer.goal) Campaigns, runs and live views you can scan; steering as one message box · `VERIFIED`
 
 ### Install from images
 
@@ -55,7 +55,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 
 ### Running campaigns
 
-- [064](goals/064-experiment-queue.goal) One experiment queue for each run; the planner coordinates it · `IN_PROGRESS`
+- [064](goals/064-experiment-queue.goal) One experiment queue for each run; the planner coordinates it · `VERIFIED`
 - [065](goals/065-journals-and-corpus.goal) Journals and a research corpus from every campaign · `IN_PROGRESS`
 - [066](goals/066-direction-rules.goal) Rules name directions, picked with `:direction:` · `READY`
 - [067](goals/067-assign-queue-from.goal) `thermite assign` can copy a past run's untried experiments · `VERIFIED`

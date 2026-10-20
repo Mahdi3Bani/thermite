@@ -160,6 +160,22 @@ test("the queue view keeps the order the events give it, and where each experime
     plan,
     /<b>Round 9<\/b>: <ul><li><b>lane-1<\/b>: vector loads <span class="muted">· it has the fusion code in context/,
   );
+  // The planner's own changes to the queue, newest first, each with its reason; the owner's
+  // changes and the hand-outs' assignments are not repeated as changes.
+  assert.deepEqual(
+    [
+      ...plan.matchAll(
+        /<div class="qhand"><span class="tm">[^<]*<\/span><div>([\s\S]*?)<\/div><\/div>/g,
+      ),
+    ]
+      .map((m) => (m[1] ?? "").replace(/<[^>]+>/g, ""))
+      .filter((s) => !s.startsWith("Round")),
+    [
+      "Added “read the survey” to the queue",
+      "Dropped “fuse the dequantize step” · a rule avoids it",
+      "Added “fuse the dequantize step” to the queue · it won on long",
+    ],
+  );
   assert.match(plan, /name="match"/);
   assert.match(plan, /Tell the planner/);
 });

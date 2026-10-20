@@ -182,6 +182,30 @@ describe("the planner as the queue's coordinator", () => {
     );
   });
 
+  test("the fixed rules put TRY families first when there is a choice, after MANDATE ones", async (t) => {
+    const s = await setup(t);
+    await s.add("plain one", { family: "loops" });
+    await s.add("try one", { family: "simd" });
+    await s.add("always one", { family: "cache" });
+    await command(s.env, "redirect", {
+      run: RUN,
+      directives: [
+        { kind: "try", family: "simd", rationale: "wide vectors", citations: [] },
+        { kind: "mandate", family: "cache", rationale: "the misses dominate", citations: [] },
+      ],
+    });
+    await s.round();
+    assert.deepEqual(s.given(), ["lane-1:always one", "lane-2:try one"]);
+    assert.equal(
+      s.q.queued(RUN)[0]?.title,
+      "plain one",
+      "it waits: TRY adds nothing and drops nothing",
+    );
+    const why = events(s.env, "experiment_assigned").map((e) => String(body(e).why));
+    assert.match(String(why[0]), /a MANDATE rule \(\d+\) names its direction, cache/);
+    assert.match(String(why[1]), /a TRY rule \(\d+\) names its direction, simd/);
+  });
+
   test("a lane prefers the next experiment in its last direction, so it builds on what it learned", async (t) => {
     const s = await setup(t);
     await s.add("loops one", { family: "loops" });
@@ -244,7 +268,10 @@ describe("the planner as the queue's coordinator", () => {
     const s = await setup(t, {
       planner: () => ({
         accept: [{ id: ids.idea, why: "cheap to check", position: "top" }],
-        drop: [{ id: ids.stale, why: "the champion already does it" }],
+        drop: [
+          { id: ids.stale, why: "the champion already does it" },
+          { id: ids.idea2, why: "lane-1's idea covers it" },
+        ],
         add: [{ ref: "n1", title: "wider loads", family: "memory", why: "reads dominate" }],
         move: [{ id: ids.later, position: "end", why: "after the loads" }],
         rules: [
@@ -265,6 +292,11 @@ describe("the planner as the queue's coordinator", () => {
     ids.later = await s.add("later");
     ids.stale = await s.add("stale");
     ids.idea = s.q.add(RUN, { title: "lane idea", by: "lane-1", state: "proposed" }, "lane-1").id;
+    ids.idea2 = s.q.add(
+      RUN,
+      { title: "lane idea two", by: "lane-2", state: "proposed" },
+      "lane-2",
+    ).id;
     await command(s.env, "message_agent", {
       run: RUN,
       to: "planner",
@@ -291,6 +323,13 @@ describe("the planner as the queue's coordinator", () => {
       by: "planner",
       why: "the champion already does it",
     });
+    // A lane's idea the planner drops is dropped by it, with why: it never reaches the queue.
+    assert.deepEqual(body(by("experiment_dropped")[1]), {
+      id: ids.idea2,
+      by: "planner",
+      why: "lane-1's idea covers it",
+    });
+    assert.equal(s.q.get(ids.idea2 ?? "")?.state, "dropped");
     const added = by("experiment_added").find((e) => body(e).title === "wider loads");
     assert.equal(body(added).by, "planner");
     assert.deepEqual(body(by("experiment_moved")[0]), {
@@ -441,6 +480,71 @@ describe("the planner as the queue's coordinator", () => {
       s.q.queued(RUN).map((e) => e.title),
       ["half done"],
     );
+  });
+});
+
+describe("goal runs use the queue", () => {
+  test("a goal run's planner reads the queue and gives out its experiments; without the planner, lanes take them in order", async (t) => {
+    const env = makeJudgeEnv({
+      goal: { opsPerSecond: 90e6 },
+      contract: { lanes: { count: 1, trials_per_epoch: 1 } },
+    });
+    await env.service.applyCommand(env.assign);
+    let planner = true;
+    const ids: string[] = [];
+    const prompts: string[] = [];
+    const fake = await startFakeModel(({ messages, tools }) => {
+      if (!tools.some((x) => x.function.name === "submit_plan")) return { text: "done" };
+      prompts.push(JSON.stringify(messages));
+      return {
+        toolCalls: [
+          {
+            name: "submit_plan",
+            args: { assignments: [{ lane: "lane-1", experiment: ids[1], why: "the fast goal" }] },
+          },
+        ],
+      };
+    });
+    t.after(() => fake.close());
+    const scheduler = new Scheduler({
+      service: env.service,
+      runner: new LocalRunner(env.paths.scratchDir),
+      model: { baseUrl: fake.url, model: "m", apiKey: "k", contextWindow: 32000, maxTokens: 2000 },
+      owner: "scheduler-test",
+      plannerOn: () => planner,
+      goalReportWaitMs: 0,
+      backoffBaseMs: 0,
+      backoffMaxMs: 0,
+      runTrial: async () => ({
+        stopped: "no_submission",
+        turns: 1,
+        toolCalls: 0,
+        tokensIn: 0,
+        tokensOut: 0,
+      }),
+    });
+    for (const title of ["keep it correct", "unroll for the fast goal"])
+      ids.push(String((await command(env, "queue_add", { run: RUN, title })).experiment));
+    const round = async () => {
+      assert.ok(await scheduler.tick());
+      await scheduler.idle();
+      await scheduler.tick();
+    };
+    await round();
+    // The planner was given the queue, and its pick is what lane-1 worked on.
+    assert.match(String(prompts[0]), /\\"up_next\\":\[\{\\"by\\":\\"owner\\",\\"id\\":\\"x-/);
+    planner = false;
+    await round();
+    const given = events(env, "experiment_assigned").map((e) => [body(e).lane, body(e).id]);
+    assert.deepEqual(given, [
+      ["lane-1", ids[1]],
+      ["lane-1", ids[0]],
+    ]);
+    assert.deepEqual(
+      events(env, "experiment_finished").map((e) => body(e).id),
+      [ids[1], ids[0]],
+    );
+    assert.equal(events(env, "planner_handout").length, 2);
   });
 });
 

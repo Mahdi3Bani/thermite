@@ -1,7 +1,7 @@
 ---
 id: "064"
 title: "One experiment queue for each run; the planner coordinates it"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 part: "Running campaigns"
 depends_on: ["063"]
@@ -11,7 +11,7 @@ updated: 2026-10-20
 
 # 064 · One experiment queue for each run; the planner coordinates it
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
 
 ## What
 
@@ -51,16 +51,16 @@ Today the plan exists only for the current round and is redone every round. Idea
 
 ## Done when
 
-- [ ] Each run has a queue in the harness's ledger, with the states above, and every change is an event with who made it.
-- [ ] The planner gives out queued work without overlap, records why, and can add, reorder and drop experiments with a reason.
-- [ ] The advisors can add experiments and reorder the queue; workers can propose ideas, and the planner queues or drops them.
-- [ ] The owner can add, reorder, edit and drop experiments from the dashboard, the API and MCP.
-- [ ] The Experiments tab (a list) and the Planner tab match the approved mockups; Live shows no queue and no rules.
-- [ ] Start a run can copy another run's untried experiments into the new run's queue.
-- [ ] Rules are set on the Planner tab, and the planner can add a rule from the owner's message, recording which message.
-- [ ] Without a planner model, lanes take queued work in order and keep to the rules.
-- [ ] Hill-climb, goal and research runs all use the queue.
-- [ ] Tests cover the queue's states and events, no overlap, each writer's rights, the owner's commands and the fallback.
+- [x] Each run has a queue in the harness's ledger, with the states above, and every change is an event with who made it.
+- [x] The planner gives out queued work without overlap, records why, and can add, reorder and drop experiments with a reason.
+- [x] The advisors can add experiments and reorder the queue; workers can propose ideas, and the planner queues or drops them.
+- [x] The owner can add, reorder, edit and drop experiments from the dashboard, the API and MCP.
+- [x] The Experiments tab (a list) and the Planner tab match the approved mockups; Live shows no queue and no rules.
+- [x] Start a run can copy another run's untried experiments into the new run's queue.
+- [ ] Moved to [066](066-direction-rules.goal) (rules name directions, owner, 2026-10-20): rules set on the Planner tab, and a rule the planner adds from the owner's message, recording which message.
+- [x] Without a planner model, lanes take queued work in order and keep to the rules.
+- [x] Hill-climb, goal and research runs all use the queue.
+- [x] Tests cover the queue's states and events, no overlap, each writer's rights, the owner's commands and the fallback.
 
 ## Decisions
 
@@ -103,6 +103,20 @@ Today the plan exists only for the current round and is redone every round. Idea
   Still to do: the compose acceptances, then the roll. The acceptance tests do not cover the queue yet.
 
 - 2026-10-20: Checked and deployed with 063, on the maintainers' control and rigs (ledger migration 14). The pages are on the docs site. Still open: the acceptance tests do not cover the queue, and `thermite assign` has no option to copy a run's experiments.
+
+- 2026-10-20: Verified. Each box checked against the code, the tests and the pages. The rules box moved to 066, and the `thermite assign` option is 067.
+  - **New tests, in the fast suite.**
+    - `src/control/steering-ui.test.ts` drives the Experiments and Planner tabs as a browser does, through a real harness and a scripted planner model. It covers add, drag, edit and drop; a lane's idea queued and dropped; rules added and removed; Tell the planner; the planner's hand-out and its rule from the message; and Start a run copying the untried experiments, with agents on.
+    - An edit over the REST API.
+    - Over MCP, the queue refused to an agent's token.
+    - The planner dropping a lane's idea.
+    - TRY rules in the fixed rules.
+    - A goal run that uses the queue.
+  - **Fixes from the mockup check.**
+    - **Tried** filters by direction and by who added an experiment, beside its result chips.
+    - **What the planner did** lists the planner's own changes to the queue and the rules it set, each with why, between its hand-outs.
+  - **Not built from the Planner mockup:** a **Lanes** rule in **Add a rule**, and the contract's lane count shown as a rule. They belong to the rules work that moved to 066. A `lane_count` rule goes with `redirect` from the command line.
+  - **The review panel** judges goals on their criteria, and has no way into the queue. The teacher pair adds and moves experiments, and the auditor adds a check.
 ---
 
 Run with `/goal Complete docs/plan/goals/064-experiment-queue.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

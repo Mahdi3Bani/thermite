@@ -49,13 +49,13 @@ Today most of what an agent learns ends with its trial. Only submitted attempts,
 ## Done when
 
 - [ ] Workers, the planner and the advisors write field notes (observations, decisions, surprises, questions, lessons), each with what it is about; the notes are in the ledger with who wrote them and when.
-- [ ] Agents in every mode can record sources, claims and notes in the run's folder.
+- [x] Agents in every mode can record sources, claims and notes in the run's folder.
 - [ ] Each campaign has a folder in Thermite's knowledge base with everything its runs produce, each item with its origin; a run's export also holds its part.
-- [ ] The owner sets, and later changes, which other campaigns' folders a campaign can read; agents can search and read them and never write to them.
+- [x] The owner sets, and later changes, which other campaigns' folders a campaign can read; agents can search and read them and never write to them.
 - [ ] A new campaign's agents can search the folders they may read, and the queue can start from them.
-- [ ] An outside knowledge base (such as GBrain) is optional: control can sync folders to it, and a campaign can read from it as outside context.
-- [ ] The dashboard shows a run's journals beside its experiments.
-- [ ] Tests cover writing, the export, sending to a knowledge base and searching it.
+- [ ] Moved to [068](068-mcp-servers-for-agents.goal) (MCP servers for agents, owner, 2026-10-20): an outside knowledge base (such as GBrain) is optional; control can sync folders to it, and a campaign can read from it as outside context.
+- [x] The dashboard shows a run's journals beside its experiments.
+- [x] Tests cover writing, the export, sending to a knowledge base and searching it.
 
 ## Decisions
 
@@ -113,6 +113,16 @@ Today most of what an agent learns ends with its trial. Only submitted attempts,
     - a choice of how much of the journal a new campaign sees (open question above).
 
 - 2026-10-20: Fixes after the docs review: past research and outside tokens follow control's own assignments; items are filed by control's assignment; copies and briefings over MCP keep to grants; open-fetch teachers get no other campaign's records; the knowledge base's MCP tools are the owner's and the operator's. Then checked (full `npm run check`, all seven compose acceptances, and again after the fixes) and deployed on the maintainers' control and rigs (ledger migration 15). The pages are on the docs site. Still open: the acceptance tests do not drive the knowledge base, and the items synced to a rig are not signed by control (the supervisor is trusted for them, as for the advisors' work).
+
+- 2026-10-20: Each box checked against the code, the tests and the pages. The outside knowledge base box moved to 068. Four boxes are met: research notes in every mode, the grants (the harness owns the `knowledge/` files and rebuilds them from its records), the Journal tab, and the unit tests. Three are not met yet:
+  - **What a note is about.** A note may leave it out: `about` is optional for the workers, the planner and the advisors, and the pages say a note "can" name it. The box says each note names it. Either the box or the code changes; that is the owner's choice.
+  - **Everything a run produces.** A campaign's folder has no trials and no documentation. A source item holds only its address and domain, not the text that was read. The kind `run` exists, but no item of that kind is written: runs are listed apart.
+  - **Past research for a new campaign.**
+    - The planner and the advisors cannot search the folders: they get one line about `knowledge/`.
+    - The New campaign page offers no grants and no past research. So a new campaign's first run reads other campaigns' folders only after a grant, and only a later run (Start a run) can start its queue from them.
+
+  The explanation page's list of parts not built named two that later decisions settled. It now names the knowledge-base search for the planner and the advisors, and links goal 068 for outside knowledge bases.
+
 ---
 
 Run with `/goal Complete docs/plan/goals/065-journals-and-corpus.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

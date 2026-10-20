@@ -695,6 +695,8 @@ details.menu > summary::-webkit-details-marker { display: none; }
 .jk.obs { background: var(--primary-surface); color: var(--info-foreground); } .jk.dec { background: var(--success-surface); color: var(--success-foreground); }
 .jk.sur { background: var(--warning-surface); color: var(--warning-foreground); } .jk.que { background: color-mix(in srgb, #7c3aed 12%, transparent); color: var(--violet-foreground); } .jk.les { background: var(--accent); color: var(--foreground); }
 .jsearch { height: 28px; padding: 0 11px; border-radius: 999px; border: 1px solid var(--input); background: var(--card); font-size: 12.5px; margin-left: auto; width: 220px; max-width: 100%; }
+.qsel { height: 28px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--input); background: var(--card); font-size: 12.5px; width: auto; max-width: 100%; }
+.qsel[data-qd] { margin-left: auto; }
 .jstat { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; font-size: 12.5px; }
 .jstat b { text-align: right; font-variant-numeric: tabular-nums; }
 .jsnote { display: grid; gap: 3px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; overflow-wrap: anywhere; }

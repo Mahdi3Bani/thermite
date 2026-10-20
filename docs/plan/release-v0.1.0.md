@@ -48,7 +48,7 @@ A tester can run Thermite, knows the risks, and knows where to report a problem.
 | [007 · Known limits and the security model](goals/007-known-limits.goal) | `VERIFIED` | — |
 | [008 · Community files and contributor docs](goals/008-community-files.goal) | `IN_PROGRESS` | — |
 | [009 · Real subscription sign-in tests](goals/009-subscription-sign-in-tests.goal) | `READY` | — |
-| [063 · Campaigns, runs and live views you can scan; steering as one message box](goals/063-scan-and-steer.goal) | `IN_PROGRESS` | — |
+| [063 · Campaigns, runs and live views you can scan; steering as one message box](goals/063-scan-and-steer.goal) | `VERIFIED` | — |
 
 ### Running campaigns
 
@@ -56,7 +56,7 @@ A tester sees what each run is doing, gives it work through one queue of experim
 
 | Goal | Status | Depends on |
 | --- | --- | --- |
-| [064 · One experiment queue for each run; the planner coordinates it](goals/064-experiment-queue.goal) | `IN_PROGRESS` | 063 |
+| [064 · One experiment queue for each run; the planner coordinates it](goals/064-experiment-queue.goal) | `VERIFIED` | 063 |
 | [065 · Journals and a research corpus from every campaign](goals/065-journals-and-corpus.goal) | `IN_PROGRESS` | 062, 064 |
 | [066 · Rules name directions, picked with `:direction:`](goals/066-direction-rules.goal) | `READY` | 064 |
 | [067 · `thermite assign` can copy a past run's untried experiments](goals/067-assign-queue-from.goal) | `VERIFIED` | 064 |
