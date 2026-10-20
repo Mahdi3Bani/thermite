@@ -36,7 +36,7 @@ Run these from the repository root before each commit:
 | `node scripts/test.mjs <files>` | The test files your change touches. `npm test` runs them all, one file at a time |
 | `npm run check:public` | That no tracked or staged file holds private names (see below). Stage new files first, or run `node scripts/check-public.mjs --untracked` |
 
-`npm run check` runs the typecheck, the lint, every test and the public check, in that order. One test keeps an example in step: after a change to `examples/smoke-project`, or to `kits/smoke-cpu` outside its candidates, `src/harness/smoke-check.test.ts` fails until `examples/contracts/smoke-cpu-goal.json` names their new commits, and says which field to set to which commit. Continuous integration runs the same checks on Node.js 22 and 24 for every pull request and every push to `main`. It also builds and checks this site, and runs the compose smoke test with Docker.
+`npm run check` runs the typecheck, the lint, every test and the public check, in that order. One test keeps an example in step: after a change to `examples/smoke-project`, or to `kits/smoke-cpu` outside its candidates, `src/harness/smoke-check.test.ts` fails until `examples/contracts/smoke-cpu-goal.json` names their new commits, and says which field to set to which commit. Continuous integration runs the same checks on Node.js 22 and 24 for every pull request and every push to `main`. It also builds and checks this site, runs the compose smoke test with Docker, and builds the one-container rig image and runs its isolation selftest with Docker.
 
 Changes to some parts also need a test that starts containers. Each takes from a few minutes to half an hour:
 
@@ -48,6 +48,7 @@ Changes to some parts also need a test that starts containers. Each takes from a
 | The workers, the planner or the scheduler | `COMPOSE="podman compose" node scripts/agents-acceptance.mjs` |
 | The New campaign page, the campaign builder, a campaign's **Start a run**, kits kept on control, Git access or the supervisor's staging | `COMPOSE="podman compose" node scripts/campaign-acceptance.mjs` |
 | Rigs on Kubernetes, including moving a rig onto new images, or control's image | `COMPOSE="podman compose" node scripts/cluster-acceptance.mjs` |
+| The one-container rig image, the broker's start of the supervisor or the isolation selftest | `COMPOSE="podman compose" node scripts/rig-image-acceptance.mjs` |
 
 The campaign test serves a tiny project with `git daemon` and creates a campaign through the New campaign form, which starts a try of its kit. Then it starts the campaign's own run from the campaign's page, with the agents on. Its rig gets a model route that nothing answers, so the agents fail at once, and the script submits the changes itself. The cluster test sets rigs up on a local kind cluster, in a namespace control creates and in a pre-made slot. Then it restarts control with re-tagged images, moves the slot's rig onto them with **Update to these images**, and checks that the rig reports again from the new pods with its volume claim and secret unchanged.
 

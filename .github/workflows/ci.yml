@@ -1,6 +1,6 @@
 # The fast checks on every pull request and on main, the documentation site's build and checks, then
 # the compose smoke test: control and one rig built from this commit, a campaign assigned through
-# control, a candidate judged.
+# control, a candidate judged. Beside it, the one-container rig image's acceptance.
 name: ci
 
 on:
@@ -70,5 +70,21 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run smoke:compose
+        env:
+          COMPOSE: docker compose
+
+  # The one-container rig image (RunPod's), built on the CPU harness image and started as RunPod
+  # starts it: its isolation selftest, restarts and a clean stop.
+  rig-image:
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      # The script needs Node.js only: the images build Thermite themselves.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node scripts/rig-image-acceptance.mjs
         env:
           COMPOSE: docker compose
