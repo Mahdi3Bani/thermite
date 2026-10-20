@@ -39,6 +39,7 @@ This is the first release that people outside the project can install and test.
 - 2026-10-19, owner: The code moves to `main` only as the last step before the release.
 - 2026-10-20, owner: The code reaches `main` through a pull request merged as a fast-forward, as recommended.
 - 2026-10-20, owner: The clean-machine test on macOS with Docker Desktop is deferred. Linux with Docker runs on a fresh virtual machine; macOS with Podman runs as planned.
+- 2026-10-20, owner: The owner merges the code into `main` and makes the tag. The project is not ready for a version tag yet.
 
 ## Open questions
 

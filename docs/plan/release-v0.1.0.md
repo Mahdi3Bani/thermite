@@ -14,6 +14,7 @@ It has four parts, then the release itself. The parts can run at the same time. 
 - **2026-10-19:** The release also includes a troubleshooting page, an own-registry how-to, the harness image's toolchains, a split of the local development guide, lane limits that agree, a README screenshot and the repository settings.
 - **2026-10-19:** The docs become a documentation site, built with Astro Starlight from `docs/_site/` and arranged by Diátaxis, with `llms.txt` and `llms-full.txt` for agents (goal 060).
 - **2026-10-20:** The owner took the recommended answer to each open decision, except the docs site's address: the site will be served from Cloudflare, under a domain the owner chooses, and the owner deploys it later. The answers are in the table below and in each goal.
+- **2026-10-20:** The owner merges the code into `main` and makes the tag, when the project is ready for one.
 
 ## What a tester gets
 
