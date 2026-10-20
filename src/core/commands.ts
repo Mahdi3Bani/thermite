@@ -110,6 +110,21 @@ export const StructuredDirective = z.strictObject({
 });
 export type StructuredDirective = z.infer<typeof StructuredDirective>;
 
+/**
+ * One experiment for a run's queue copied from another run (goal 064): what to try, who added it
+ * and why, and where it came from. Text only: it never sets a verdict or the contract.
+ */
+export const QueueSeed = z.strictObject({
+  title: z.string().min(1).max(200),
+  details: z.string().max(4000).optional(),
+  family: z.string().min(1).max(80).optional(),
+  why: z.string().max(2000).optional(),
+  by: z.string().min(1).max(80),
+  state: z.enum(["queued", "proposed"]),
+  from: z.object({ run: IdSchema, id: z.string().min(1).max(64) }),
+});
+export type QueueSeed = z.infer<typeof QueueSeed>;
+
 export const CommandPayloads = {
   assign_campaign: z.object({
     run: IdSchema,
@@ -127,6 +142,8 @@ export const CommandPayloads = {
      * ones) or "owner_approval" (every promotion waits for the owner). Unset: the rig's default.
      */
     promotion: z.enum(["auto", "owner_approval"]).optional(),
+    /** Experiments another run had not tried, to start this run's queue with, in order. */
+    queue: z.array(QueueSeed).max(500).optional(),
   }),
   /**
    * A check of the rig itself, run by its harness: the model route (one tool-calling request),

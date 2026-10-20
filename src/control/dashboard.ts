@@ -68,7 +68,7 @@ import {
   openSsh,
   USER,
 } from "./machines/ssh.ts";
-import { startCampaign, startRun } from "./new-campaign.ts";
+import { type QueueSeed, startCampaign, startRun } from "./new-campaign.ts";
 import {
   ANTHROPIC_BASE,
   CLAUDE_MODELS,
@@ -1166,7 +1166,42 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           })),
         })),
       from,
+      copyFrom: campaignViews(vs)
+        .find((k) => k.name === campaign)
+        ?.runs.map((x) => {
+          const up = x.run.queue.filter((q) => q.state === "queued").length;
+          const ideas = x.run.queue.filter((q) => q.state === "proposed").length;
+          return { x, up, ideas };
+        })
+        .filter((y) => y.up + y.ideas > 0)
+        .sort((a, b) => lastActivity(b.x.run).localeCompare(lastActivity(a.x.run)))
+        .map(({ x, up, ideas }) => ({
+          key: runKey(x.rig.id, x.run.id),
+          label: `${x.run.id} (${up} up next${ideas ? `, ${ideas} lane idea${ideas === 1 ? "" : "s"}` : ""})`,
+        })),
     });
+  };
+  /** A run's untried experiments, in queue order then its lanes' ideas: a new run's first queue. */
+  const untried = (vs: RigView[], key: string): QueueSeed[] => {
+    const x = vs
+      .flatMap((u) => u.runs.map((r) => ({ u, r })))
+      .find((y) => runKey(y.u.id, y.r.id) === key);
+    if (!x) return [];
+    const q = x.r.queue;
+    return [
+      ...q
+        .filter((e) => e.state === "queued")
+        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0)),
+      ...q.filter((e) => e.state === "proposed"),
+    ].map((e) => ({
+      title: e.title,
+      ...(e.details ? { details: e.details } : {}),
+      ...(e.family ? { family: e.family } : {}),
+      ...(e.why ? { why: e.why } : {}),
+      by: e.by,
+      state: e.state === "proposed" ? "proposed" : "queued",
+      from: { run: x.r.id, id: e.id },
+    }));
   };
   app.post("/ui/campaigns/:campaign/runs", async (c) => {
     const f = await c.req.parseBody();
@@ -1218,6 +1253,8 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           agents,
           promotion: promotion === "auto" || promotion === "owner_approval" ? promotion : undefined,
           by: "owner:ui",
+          queue:
+            String(f.copy_queue ?? "") === "1" ? untried(vs, String(f.copy_from ?? "")) : undefined,
         },
       );
     } catch (err) {

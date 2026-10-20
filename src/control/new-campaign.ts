@@ -120,6 +120,19 @@ export interface RunInput {
   agents: boolean;
   promotion?: "auto" | "owner_approval" | undefined;
   by: string;
+  /** Experiments another run had not tried, copied into the new run's queue (goal 064). */
+  queue?: QueueSeed[] | undefined;
+}
+
+/** One experiment copied into a new run's queue, with who added it and why. */
+export interface QueueSeed {
+  title: string;
+  details?: string | undefined;
+  family?: string | undefined;
+  why?: string | undefined;
+  by: string;
+  state: "queued" | "proposed";
+  from: { run: string; id: string };
 }
 
 /**
@@ -148,7 +161,13 @@ function againLikeBefore(
     };
   const name = input.agents ? input.campaign : `${input.campaign.slice(0, 54)}-try`;
   const run = deps.store.nextRunName(input.rig, name);
-  const { run: _old, agents: _agents, promotion: _promotion, ...rest } = past.payload;
+  const {
+    run: _old,
+    agents: _agents,
+    promotion: _promotion,
+    queue: _queue,
+    ...rest
+  } = past.payload;
   const issued = issueCommand(deps.store, deps.privateKeyPem, {
     rig: input.rig,
     kind: "assign_campaign",
@@ -157,6 +176,7 @@ function againLikeBefore(
       run,
       ...(input.agents ? {} : { agents: false }),
       ...(input.promotion ? { promotion: input.promotion } : {}),
+      ...(input.queue?.length && input.agents ? { queue: input.queue } : {}),
     },
     issuedBy: input.by,
   });
@@ -218,6 +238,7 @@ export function startRun(
       ...(seed ? { seed } : {}),
       ...(input.agents ? {} : { agents: false }),
       ...(input.promotion ? { promotion: input.promotion } : {}),
+      ...(input.queue?.length && input.agents ? { queue: input.queue } : {}),
       imports,
     },
     issuedBy: input.by,

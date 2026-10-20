@@ -219,6 +219,62 @@ describe("starting a campaign from the page", () => {
     assert.deepEqual(payload.seed, { repo: "p", commit: C });
     assert.equal(payload.promotion, "owner_approval");
     assert.equal(payload.run, "cli-made-1");
+    // Another run's untried experiments go into the new run's queue, in order, with their origin.
+    const seed = [
+      {
+        title: "vector loads",
+        family: "memory-layout",
+        why: "the guide",
+        by: "teacher",
+        state: "queued" as const,
+        from: { run: "cli-made-1", id: "x-2" },
+      },
+      {
+        title: "a unit test",
+        by: "lane-2",
+        state: "proposed" as const,
+        from: { run: "cli-made-1", id: "x-4" },
+      },
+    ];
+    const q = startRun(deps, {
+      campaign: "cli-made",
+      rig: "rig-a",
+      agents: true,
+      by: "owner:ui",
+      queue: seed,
+    });
+    assert.ok(q.ok);
+    if (!q.ok) return;
+    const qp = (
+      JSON.parse(
+        (
+          store.db.prepare("select signed from command where id = ?").get(q.command) as {
+            signed: string;
+          }
+        ).signed,
+      ) as { envelope: { payload: Record<string, unknown> } }
+    ).envelope.payload;
+    assert.deepEqual(qp.queue, seed);
+    // A try (no agents) has no queue.
+    const t = startRun(deps, {
+      campaign: "cli-made",
+      rig: "rig-a",
+      agents: false,
+      by: "owner:ui",
+      queue: seed,
+    });
+    assert.ok(t.ok);
+    if (!t.ok) return;
+    const tp = (
+      JSON.parse(
+        (
+          store.db.prepare("select signed from command where id = ?").get(t.command) as {
+            signed: string;
+          }
+        ).signed,
+      ) as { envelope: { payload: Record<string, unknown> } }
+    ).envelope.payload;
+    assert.equal(tp.queue, undefined);
   });
 
   test("a draft with mistakes changes nothing and says why", () => {
