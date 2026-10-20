@@ -3,7 +3,7 @@ title: "Cancel a pending command"
 description: "Withdraw a signed command that has not reached its rig yet, with the REST API."
 type: how-to
 sidebar:
-  order: 7
+  order: 8
 ---
 
 Everything you or an agent asks a rig to do travels as a [signed command](../../reference/signed-commands.md). Control queues it as **pending** until the rig's supervisor fetches it and hands it to the rig, usually within a few seconds (the supervisor asks every five seconds). A command stays pending longer when the rig is not reporting, or while its supervisor fetches what the command needs, such as a large project or a model. While a command is pending, the owner can cancel it.

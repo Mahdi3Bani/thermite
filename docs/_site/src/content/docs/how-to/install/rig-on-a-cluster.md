@@ -80,7 +80,7 @@ spec:
             except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]   # the RFC 1918 ranges (public-check: allow)
 ```
 
-If the slot has other rules, such as one that denies all traffic, they must still let the supervisor pod (label `app.kubernetes.io/component: supervisor`) reach control's address, the internet and the harness on port 8700.
+If the slot has other rules, such as one that denies all traffic, they must still let the supervisor pod (label `app.kubernetes.io/component: supervisor`) reach control's address, the internet, the harness on port 8700, and any [outside knowledge base](../operate/outside-knowledge-base.md) the rig's advisors may search.
 
 A helper that writes a slot's objects out for the operators is planned ([goal 033](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/033-slot-helper.goal)).
 
@@ -132,7 +132,7 @@ You land on the rig's page: "Control is setting rig-1 up on cluster-1. Its page 
 - ✓ Its objects applied in the cluster: namespace, secret, volume, deployments
 - ✓ First report reached control
 
-Control waits up to 10 minutes for the first report, and the nodes pull the images in that time. If a large image takes longer, the step shows ✕ "no report after 10 minutes: it may not have started", and the block's status says `failed`. When the rig reports later, its page still fills in, the status says `running` again, and a ✓ step follows the ✕: "A report reached control from the new images · it reported again after the wait ended".
+Control waits up to 10 minutes for the first report, and the nodes pull the images in that time. If a large image takes longer, the step shows ✕ "no report after 10 minutes: it may not have started", and the block's status says `failed`. When the rig reports later, its page still fills in, the status says `running` again, and a ✓ step follows the ✕: "First report reached control · it reported after the wait ended".
 
 What control applies, all labelled `app.kubernetes.io/instance: rig-1`:
 
@@ -172,7 +172,7 @@ The rig's page keeps the **Set up by control** block: the cluster, the namespace
 
 - **Stop its pods** or **Start its pods** (the deployments scale to 0 or 1), and **Restart them**. After a start or a restart, the page says `Started.` or `Restarted.`, and the status says `starting`. As after an update, control waits up to 15 minutes for the pods and then up to 10 minutes for a report. The steps "Its pods run again" and "A report reached control after the start" get a ✓, and the status says `running`. If a wait runs out, its step gets ✕ and the status says `failed`.
 - **Update to these images**, when control deploys other images than the rig runs; **Try the update again**, when the last change to its pods failed; **Give it control's new address**, when only control's address changed. See [Update the rig's images](#update-the-rigs-images).
-- **Remove it from cluster-1**: type `remove rig-1` and press **Remove the rig**. Control deletes the namespace it created, or the rig's objects in the slot, and retires the rig's token. The rig's results go with its volume; control keeps only its events and its champions' patches, so [take the result](../campaigns/take-the-result.md) you need first. The page says `Removed from the cluster.`, and the rig stays in **Rigs** as not reporting. To take it off the rig lists too, use **Retire it** at the top of its page: type `retire rig-1` and press **Retire it**.
+- **Remove it from cluster-1**: type `remove rig-1` and press **Remove the rig**. Control deletes the namespace it created, or the rig's objects in the slot, and retires the rig's token. The rig's results go with its volume; control keeps only its events, its champions' patches and what its runs added to Thermite's [knowledge base](../../explanation/journals-and-knowledge.md), so [take the result](../campaigns/take-the-result.md) you need first. The page says `Removed from the cluster.`, and the rig stays in **Rigs** as not reporting. To take it off the rig lists too, use **Retire it** at the top of its page: type `retire rig-1` and press **Retire it**.
 
 Control makes one change at a time. While the status says `starting` or `updating`, it refuses a start, a restart or an update, and the page shows a card that starts with **Not done.**, such as `rig-1 is starting: wait until its page shows it running, or failed.` It refuses an update before it compares any images, even for a rig that already runs control's images. **Stop its pods** and **Remove the rig** are never refused for this, and they end control's wait: a rig you stopped or removed meanwhile doesn't turn `failed` later.
 

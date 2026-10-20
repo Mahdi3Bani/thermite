@@ -80,7 +80,7 @@ A **rule** tells the planner which directions to avoid or to favor. It changes w
 1. On the run's page, press the tab **Planner**. **Rules** lists the rules in force. Each shows its kind, such as `avoid`, what it says, such as `Avoid loop-tiling`, who set it (you, the teachers or the planner), when, and why. With no rules, it says `No rules. The planner follows the queue and its own judgment.`
 2. Open **Add a rule**. It is already open when the run has no rules.
 3. In **Rule**, choose **Avoid** (no lane gets this direction), **Try** (it comes first when there is a choice) or **Always** (one lane works on it at every hand-out).
-4. In **Direction**, name the direction, up to 200 characters: a direction's name, such as `loop-tiling`, or your own words, such as `anything that uses shared memory`. This field doesn't list the run's directions: the **Direction** column of **Up next** and **Tried**, on the **Experiments** tab, shows them. A rule in your own words applies only when the planner's model plans a round, so it is often skipped; for a rule that holds every time, name a direction. See [When a rule in your own words is skipped](#when-a-rule-in-your-own-words-is-skipped).
+4. In **Direction**, name the direction, up to 200 characters: a direction's name, such as `loop-tiling`, or your own words, such as `anything that uses shared memory`. This field doesn't list the run's directions: the **Direction** column of **Up next** and **Tried**, on the **Experiments** tab, shows them. A rule in your own words applies only when the planner's model plans a round, so it is often skipped; for a rule that holds every time, name a direction. The field's help says so too: without the planner's model, `only a rule that names a direction applies: one word with hyphens, such as memory-layout.` See [When a rule in your own words is skipped](#when-a-rule-in-your-own-words-is-skipped).
 5. In **Why**, say why. The planner reads it; the workers never do.
 6. Press **Add the rule**.
 
@@ -153,11 +153,13 @@ The tab also holds the run's **Agent figures** and, once the run has published a
 Each run has its own queue. A new run can start with the experiments another run of the campaign had not tried yet.
 
 1. On the campaign's page, press **Start a run**.
-2. Keep **Agents** on **On**. With **Off: a try**, the field below hides, and a try gets no copy.
+2. Keep **Agents** on **On**. With **Off: a try**, the field below hides, and a try gets no copy: the page that comes back after **Start the run** says `A try (agents off) takes no experiments and no background: what you ticked was left out.`
 3. Under **Experiments to start with**, keep **Copy the untried experiments of** ticked, and choose the run, such as `sort-speed-1 (4 up next, 1 lane idea)`. The field shows only when some run of the campaign has experiments up next or ideas.
 4. Choose the rest as in [Start a run later](start-from-dashboard.md#start-a-run-later), and press **Start the run**.
 
 The new run's **Up next** starts with that run's waiting experiments, in the same order, up to 500, each marked `from sort-speed-1`. That run's ideas wait under **Ideas from the lanes**. Each keeps who added it and why, and the new run's **History** says, for each, `"…" was copied into the queue from run sort-speed-1.` The tried ones stay with their run. Untick the box for an empty queue, which the planner fills.
+
+The same panel can also start the queue from **past research**: the experiments recorded in this campaign's folder in Thermite's knowledge base, or in another campaign's folder that you let it read. Tick them under **From past research**. They join **Up next** after the copied ones, at most 500 in all, each marked with its run, such as `from sort-speed-1`, and with its details ending with where it came from and what it gave, such as `In sort-speed-1 (sort-speed) it was tried: attempt a-0123456789abcdef (submitted), regress (-3.10%).` A run without agents takes none. See [Use past research in a new run](use-past-research.md#start-a-run-from-past-research).
 
 ## From the command line and over MCP
 

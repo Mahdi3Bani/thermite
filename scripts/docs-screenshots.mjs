@@ -138,7 +138,9 @@ try {
     ["campaigns", "/ui/campaigns"],
     ["run", run],
     ["experiments", run && `${run}&view=experiments`],
+    ["journal", run && `${run}&view=journal`],
     ["live", live],
+    ["knowledge", "/ui/knowledge"],
     ["rig", rig],
   ];
   for (const [name, path] of shots) {

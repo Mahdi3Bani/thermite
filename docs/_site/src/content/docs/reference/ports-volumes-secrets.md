@@ -3,7 +3,7 @@ title: "Ports, volumes and secret files"
 description: "Every port, network, volume and secret file of control and a rig, under compose, on machines, on clusters and on RunPod test pods."
 type: reference
 sidebar:
-  order: 13
+  order: 14
 ---
 
 This page lists where each part of Thermite listens, which networks join them, where they keep their state, and which secret files they read. It covers each way of running Thermite: the local compose stack, rigs that control sets up on machines over SSH or with a join command, rigs on Kubernetes clusters, and RunPod test pods. The [glossary](glossary.md) explains the terms; [How the parts fit together](../explanation/how-it-fits-together.md) and [Trust between control and rigs](../explanation/trust.md) explain the design.
@@ -78,20 +78,20 @@ In a **slot**, a namespace the cluster's operators made for Thermite, the operat
 
 | Container | Path | Holds |
 | --- | --- | --- |
-| Control | `/var/lib/thermite-control` (`THERMITE_CONTROL_DIR`) | `control.db` (rigs, reports, commands, providers, the audit log); `control-signing.key` (0600) and `control-signing.pub`; `secrets.key`, which seals every key and sign-in control stores; `kits/`, kits written or uploaded on the **New campaign** page |
+| Control | `/var/lib/thermite-control` (`THERMITE_CONTROL_DIR`) | `control.db` (rigs, reports, commands, providers, outside knowledge bases with their tokens sealed, [Thermite's knowledge base](knowledge-base.md), the audit log); `control-signing.key` (0600) and `control-signing.pub`; `secrets.key`, which seals every key and sign-in control stores; `kits/`, kits written or uploaded on the **New campaign** page |
 | Control | `/keys` | `control-signing.pub`, copied there for rigs (`THERMITE_CONTROL_PUBKEY_EXPORT`) |
-| Harness | `/var/lib/thermite` | The ledger and the rig's report key (`ledger/`), git mirrors (`git/`), kits (`kits/`), imports (`imports/`), models (`models/`), builds (`builds/`), the model route control set (`model-route.json`, root only) and the rig's settings (`rig-settings.json`) |
-| Harness | `/scratch` | Workspaces, lane caches and the judge's runs. Emptied at every start |
+| Harness | `/var/lib/thermite` | The ledger and the rig's report key (`ledger/`), git mirrors (`git/`), kits (`kits/`), imports (`imports/`), models (`models/`), builds (`builds/`), the model route control set (`model-route.json`, root only), the rig's settings (`rig-settings.json`) and its copy of each run's past research (`knowledge/<run>/`) |
+| Harness | `/scratch` | Workspaces, lane caches, the judge's runs and each run's research folder (`thermite/research/<run>/`, with its `knowledge/`). Emptied at every start |
 | Harness | `/inbox` | Read-only: project and kit bundles and models the supervisor fetched |
 | Harness | `/outbox` | Exports, written by the harness |
 | Harness | `/keys` | Read-only: control's public key |
-| Supervisor | `/var/lib/thermite-supervisor` | Its relay and export state, its local results repository (`results.git/`), its fetch caches, advisor records and the `ssh` home (`home/`) |
+| Supervisor | `/var/lib/thermite-supervisor` | Its relay and export state, where each run's past research sync is (`kb-state.json`), its local results repository (`results.git/`), its fetch caches, advisor records and the `ssh` home (`home/`) |
 | Supervisor | `/inbox` | Read and write: what it fetches for the harness |
 | Supervisor | `/outbox` | Read-only: the harness's exports |
 | Supervisor | `/results` | Compose only: the local results repository the rigs share |
 | Supervisor | `/etc/thermite/advisors` | Compose only, read-only: the advisors file, if there is one |
 
-A full reset empties the harness's state, scratch and outbox, keeping only the rig's report key, and the supervisor's home. See [Stop, restart, remove or reset a rig](../how-to/operate/rig-lifecycle.md).
+A full reset empties the harness's state, scratch and outbox, keeping only the rig's report key, and the supervisor's home. Control's knowledge base keeps the items the rig's runs reported before. See [Stop, restart, remove or reset a rig](../how-to/operate/rig-lifecycle.md).
 
 ### Compose volumes
 
@@ -150,7 +150,7 @@ A test pod has one container disk: 40 GB unless set, 10 to 2,000 GB. Control rem
 | The owner's token | Control | `THERMITE_CONTROL_ADMIN_TOKEN_FILE` | For local use. Deployed, control takes the token's SHA-256 instead (`THERMITE_CONTROL_ADMIN_TOKEN_SHA256`). See [Tokens and roles](tokens.md) |
 | The operator's, agent's and reader's tokens | Control | `THERMITE_CONTROL_OPERATOR_TOKEN_FILE`, `THERMITE_CONTROL_AGENT_TOKEN_FILE`, `THERMITE_CONTROL_READ_TOKEN_FILE` | Optional, as above |
 | The rig tokens file | Control | `THERMITE_CONTROL_RIG_TOKENS_FILE` | `{"<rig>": "<token>"}` for rigs not enrolled through control. Read once, at start |
-| The secrets key | Control | `THERMITE_CONTROL_SECRETS_KEY_FILE`, default `secrets.key` in control's state folder | The key that seals every provider key, Git access, machine key, kubeconfig and RunPod key. Made on first start |
+| The secrets key | Control | `THERMITE_CONTROL_SECRETS_KEY_FILE`, default `secrets.key` in control's state folder | The key that seals every provider key, Git access, machine key, kubeconfig, RunPod key and outside knowledge base's token. Made on first start |
 | Control's signing key | Control | `control-signing.key` in control's state folder, 0600 | Signs every command to rigs. Made on first start |
 | The supervisor token | Harness and supervisor | `THERMITE_SUPERVISOR_TOKEN_FILE` (harness), `THERMITE_HARNESS_TOKEN_FILE` (supervisor) | The token the supervisor uses with its harness. Required |
 | The proposer token | Harness | `THERMITE_PROPOSER_TOKEN_FILE` | Optional: lets a person or script submit changes with `thermite submit` |
@@ -160,6 +160,7 @@ A test pod has one container disk: 40 GB unless set, 10 to 2,000 GB. Control rem
 | The rig's report key | Harness | `ledger/rig-signing.key` in its state, 0600 | Signs the rig's reports. Made on first start |
 | The results repository key | Supervisor | `THERMITE_RESULTS_KEY_FILE`, `THERMITE_RESULTS_KNOWN_HOSTS` | Optional: an SSH deploy key that can write to the results repository, and its host key. See [Set up the results repository](../how-to/operate/results-repository.md) |
 | A knowledge base token | Supervisor | `kb.token_file` in the [advisors file](advisors-file.md) | Optional |
+| An outside knowledge base's token | Control | Entered in **Settings › Providers**, kept sealed in `control.db` | Optional. Control hands it, with the advisors' models, to the supervisor of each rig it assigned a campaign that may search that knowledge base; the supervisor keeps it in memory. See [Outside knowledge bases](knowledge-base.md#outside-knowledge-bases) |
 
 At start, the harness's broker reads its secret files as root, gives their values only to the controller, and closes their folder to 0700. If a secret file and its folder both stay readable by other users, it stops with `fatal: a secret file stays readable by other users`.
 

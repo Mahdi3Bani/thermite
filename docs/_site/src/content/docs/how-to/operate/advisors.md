@@ -21,7 +21,8 @@ There are two ways to give them models, and you can mix them:
 | --- | --- | --- |
 | Rigs | Every rig | Only the local compose stack. The units and manifests that control writes for the rigs it sets up, and for rigs you join, have no setting for the file ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)) |
 | Models | A model from **Settings › Providers** for each role | An OpenAI-compatible or Anthropic API, a command-line agent, or Claude Code |
-| Web fetch, knowledge base | No | Yes |
+| Web fetch | No | Yes |
+| Knowledge-base search, for the teachers | An [outside knowledge base](outside-knowledge-base.md) that you let the campaign's advisors search, for teachers on an API key or a ChatGPT subscription | The file's own `kb`, and such outside knowledge bases, for `openai` teachers |
 | Counted toward a spending limit | No: these models count as $0 | Yes, with prices set ([Spending](#spending)) |
 
 A role given a model on **Edit rig** uses it, and the other roles keep what the file says.
@@ -110,7 +111,27 @@ The example uses the `openai` runtime: a model API that the supervisor calls its
 - `cli`: a command-line agent that you install in the supervisor's image. It runs as the supervisor's user, so its `argv` must turn off the agent's own shell and file tools, and the file must say `"restricted": true`: your statement that the `argv` does so.
 - `claude-code`: Claude Code with a Claude subscription. A subscription is easier to give on **Edit rig**, where control keeps its token.
 
-`fetch_domains` lists the sites that the teachers and the auditor may read, for papers and upstream code; leave it out for no web fetch. The optional `kb` field connects a [knowledge base](../../reference/glossary.md): a search service of your own over your notes or documents, reached over MCP, which the teachers may search but not change. The [advisors file reference](../../reference/advisors-file.md#runtimes) has every runtime's fields, and what each role may read and fetch.
+`fetch_domains` lists the sites that the teachers and the auditor may read, for papers and upstream code; leave it out for no web fetch. The optional `kb` field connects a knowledge base of your own: a search service over your notes or documents, reached over MCP, which the teachers may search but not change. With `"*"` (any public site) in `fetch_domains`, the teachers get no knowledge-base search at all, and the brief the supervisor hands them leaves out the background and the past research described in [What they read](#what-they-read-and-their-field-notes). The [advisors file reference](../../reference/advisors-file.md#runtimes) has every runtime's fields, and what each role may read and fetch.
+
+An [outside knowledge base](outside-knowledge-base.md) does the same without the file, on any rig. You set it once in control's **Settings › Providers**: its MCP URL, its token, its search tool and, for copies, its write tool. Then, on a campaign's page, you choose for that campaign:
+
+- **Copy to it:** control writes each new or changed item of the campaign's folder there as a page, with where it came from in the page's front matter.
+- **Let its advisors search it:** the campaign's teacher pair may search it, when their model runs in the supervisor (`the supervisor, read-only tools` on **Edit rig**, or an `openai` runtime in the file). Control gives the address, the token and the search tool, with the advisors' models, only to the supervisors of rigs it assigned a run of that campaign, and its audit log has an `outside_kb_handed` entry each time what a rig gets changes. The combiner, the auditor, the review panel and the workers never call it.
+
+## What they read, and their field notes
+
+Besides the run's own records, the advisors read what the run's agents noted and what you picked from past research. All of it reaches them marked as data, not instructions:
+
+- **The teacher pair's brief** holds the run's 20 newest [field notes](../../explanation/journals-and-knowledge.md), by every writer: the short notes the workers, the planner and the advisors keep as they work. It also holds the run's **background**: the findings, claims, notes and reports from earlier runs that you picked when you started the run ([Use past research in a new run](../campaigns/use-past-research.md)). When the run's `knowledge/` folder holds past research from the folders its campaign may read, the brief has one line that says what it holds; the teachers read no files, and the workers search that folder. For teachers that may fetch any web page (`"*"` in the advisors file's `fetch_domains`), the supervisor leaves the background and that line out of the brief it hands them.
+- **The auditor's and each reviewer's package** hold the background, and neither the field notes nor that line.
+
+Every advisor may also write field notes: each teacher, the combiner, the auditor and each reviewer. A note is an observation, a decision and why, a surprise, an open question or a lesson. The supervisor posts an advisor's notes after its review, audit or verdict, and the rig records each one as written by `<role>:<name>`, such as `teachers:teacher-1`, `auditor:auditor` or `panel:reviewer-2`. They show:
+
+- on the run's **Journal** tab, under the writers **Teachers**, **Auditor** and **Review panel**;
+- in the run's **Live**, under **Advisors**, such as `teachers:teacher-1 noted (lesson): …`;
+- in the workers' briefs, when they are among the run's newest decisions and lessons.
+
+A note the rig can't keep never costs the advisor's work: its review, audit or verdict stands, and **Live** says what went wrong, such as `the field notes of teacher-1: note 2: not recorded: …`.
 
 ## Spending
 

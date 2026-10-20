@@ -3,7 +3,7 @@ title: "Harness image"
 description: "What the harness, supervisor and control images contain: base images, toolchains, users and groups, paths and build arguments."
 type: reference
 sidebar:
-  order: 12
+  order: 13
 ---
 
 Thermite runs as three container images. The **harness** image holds a rig's judge, broker and agents; the **supervisor** image is the rig's link to the outside; the **control** image is the central service. This page lists what each one contains. [Extend the harness image](../how-to/install/extend-harness-image.md) adds your project's tools, and [Push the images to your own registry](../how-to/install/own-registry.md) builds them. The [glossary](glossary.md) explains the terms.
@@ -42,8 +42,8 @@ docker build -t thermite-harness -f containers/harness/Containerfile .
 | Node.js | The one in `NODE_IMAGE` (Node.js 22) | `/usr/local/bin/node`, copied from `NODE_IMAGE`. On another `BASE_IMAGE` only this binary is copied, without npm |
 | Thermite | This repository's build, with its production dependencies | `/opt/thermite` (`dist/`, `node_modules/`, `package.json`) |
 | `thermite` command | Thermite's command line | `/usr/local/bin/thermite`. See [Command line](command-line.md) |
-| `thermite-trial` | The tools an agent uses from its own shell under OpenCode or Claude Code: `submit`, `dev-run`, `status` and `idea`, and a research worker's `research` commands under OpenCode. See [Command line](command-line.md#thermite-trial) | `/usr/local/bin/thermite-trial` |
-| OpenCode | `OPENCODE_VERSION`, 2.0.32 by default. Always installed. One of the [worker harnesses](glossary.md); Pi, the default one, is a library built into Thermite | `/usr/local/bin/opencode` |
+| `thermite-trial` | The tools an agent uses from its own shell under OpenCode or Claude Code: `submit`, `dev-run`, `status`, `idea` and `note` (a [field note](knowledge-base.md#field-notes)), and the `research` commands: all ten for a research worker under OpenCode, and `fetch`, `read_source`, `search_corpus`, `add_claim` and `add_note` in a hill-climb or goal trial. See [Command line](command-line.md#thermite-trial) | `/usr/local/bin/thermite-trial` |
+| OpenCode | `OPENCODE_VERSION`, 2.0.32 by default. Always installed. One of the [worker harnesses](glossary.md); Pi, the default one, is a library built into Thermite. Pi gives its workers Thermite's tools directly: in a code trial `note`, `fetch`, `read_source`, `search_corpus`, `add_claim` and `add_note` beside its others, and in a research trial `note` beside the research tools | `/usr/local/bin/opencode` |
 | Claude Code | `CLAUDE_CODE_VERSION`. Installed only when that argument names a version | `/usr/local/bin/claude` |
 | `thermite-devfence` | Built from `containers/harness/devfence.c` | `/usr/local/bin/thermite-devfence`. The GPU fence: it starts each role's command with the GPU device nodes it may not open left out, using the kernel's Landlock |
 | C and C++ toolchain | From the base image's apt repository; not pinned | `gcc`, `g++`, `libc6-dev`, `make`, `cmake`, `ninja-build`, `ccache` |
@@ -97,8 +97,8 @@ The [isolation check](rig-checks.md#isolation-check) tests these users, and [Iso
 
 | Path | What | Owner and mode |
 | --- | --- | --- |
-| `/var/lib/thermite` | State: the ledger, git mirrors, kits, imports, models and builds (`THERMITE_STATE_DIR`) | `thermite`, 0711. `ledger`, `git`, `kits` and `imports` are 0700; `models` and `builds` 0711, reachable only by exact path |
-| `/scratch` | Workspaces, lane caches and the judge's runs (`THERMITE_SCRATCH_DIR`). Emptied at every start | root, 0755 |
+| `/var/lib/thermite` | State: the ledger, git mirrors, kits, imports, models, builds and the harness's copy of each run's past research, `knowledge/<run>/` (`THERMITE_STATE_DIR`) | `thermite`, 0711. `ledger`, `git`, `kits` and `imports` are 0700; `models` and `builds` 0711, reachable only by exact path |
+| `/scratch` | Workspaces, lane caches, the judge's runs and each run's research folder, `thermite/research/<run>/` with its [`knowledge/`](knowledge-base.md#a-runs-knowledge-folder) (`THERMITE_SCRATCH_DIR`). Emptied at every start; the harness puts a run's `knowledge/` back from its state when the run next needs it | root, 0755 |
 | `/inbox` | What the supervisor fetched for the harness: project and kit bundles, models (`THERMITE_INBOX_DIR`) | Mounted read-only |
 | `/outbox` | Exports the supervisor pushes (`THERMITE_OUTBOX_DIR`) | `thermite` with the supervisor's group (10010:10001), 2750 |
 | `/keys` | Control's public key, `control-signing.pub` | Mounted read-only |

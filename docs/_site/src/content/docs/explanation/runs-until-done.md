@@ -3,7 +3,7 @@ title: "Why Thermite runs until the job is done"
 description: "Why nothing stops research by default, what pacing and back-pressure do instead, what ends each mode, and how to set a limit when you want one."
 type: explanation
 sidebar:
-  order: 12
+  order: 13
 ---
 
 Thermite has no default limit on turns, attempts, failures, money or time. A campaign runs until its job is done, or until you stop it. This page explains why, what keeps a long run orderly without a limit, what ends each kind of campaign, and where to set a limit when you want one.

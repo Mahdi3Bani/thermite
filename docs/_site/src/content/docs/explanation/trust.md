@@ -3,7 +3,7 @@ title: "Trust between control and rigs"
 description: "How signed commands, signed reports and pinned keys let control and its rigs trust each other through the supervisor in between."
 type: explanation
 sidebar:
-  order: 9
+  order: 10
 ---
 
 Control and its rigs often run on different machines, and everything between them passes through each rig's **supervisor**, which also talks to git hosts, model providers and web pages all day. Thermite is built so that the supervisor does not have to be trusted with what matters most: control signs every command, the harness signs every report, and each side checks the other's signature. This page explains those checks and how keys are first trusted.
@@ -77,7 +77,7 @@ The harness signs every report it gives the supervisor: each page of new events,
 4. it does not come from a record the rig has left behind, such as one from before a full reset;
 5. it is not older than the newest report control has taken, and not dated in the future.
 
-So the supervisor cannot forge a report, replay an old one, or drop events from the middle of the stream. Only the harness's signed reports make a rig show **Live** on the dashboard's **Rigs** page. A champion patch that the supervisor uploads is kept only if its SHA-256 matches the one in the rig's signed record of that champion. A run's **Live** view is for watching the work as it happens; the record of what happened is these signed events. The same goes for a run's experiment queue: control builds the **Experiments** and **Planner** tabs from the signed events alone. When a new run copies another run's untried experiments, from **Start a run** or over MCP, control takes each one's title, details, direction, why and author from its own record of the experiment it was copied from, not from what an MCP caller wrote. One that control has no record of keeps the caller's words, marked `copied` as its author.
+So the supervisor cannot forge a report, replay an old one, or drop events from the middle of the stream. Only the harness's signed reports make a rig show **Live** on the dashboard's **Rigs** page. A champion patch that the supervisor uploads is kept only if its SHA-256 matches the one in the rig's signed record of that champion. A run's **Live** view is for watching the work as it happens; the record of what happened is these signed events. The same goes for a run's experiment queue: control builds the **Experiments** and **Planner** tabs from the signed events alone. So does Thermite's knowledge base: every item in a campaign's folder comes from an event in a rig's signed report ([below](#the-knowledge-base-grants-and-outside-knowledge-bases)). When a new run copies another run's untried experiments, from **Start a run** or over MCP, control takes each one's title, details, direction, why and author from its own record of the experiment it was copied from, not from what an MCP caller wrote. One that control has no record of keeps the caller's words, marked `copied` as its author.
 
 ## Pinning the rig's key
 
@@ -99,13 +99,29 @@ So a rig can run where nothing can reach it, such as behind a home router or a f
 
 Control does connect to machines and clusters, over SSH or with kubectl, to set a rig up, start it, stop it and remove it, and to move a rig on a cluster onto new images, reading its deployments' status while it waits for them. It never uses those connections to talk to the running rig. What control did there, step by step, is for the people who run control: over MCP, `rig_setup` shows it to the owner's, operators' and readers' tokens, never to an agent's token, and only the owner and operators see each step's details. Rigs on RunPod, which control would reach through RunPod's proxy, are being built in [goal 019](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/019-rig-only-entry.goal).
 
-Some things reach a rig without a command: the agents' model route, the advisors' models, and the Git access for a private repository. The supervisor fetches each from control with its rig token when it needs it ([Who holds your keys](who-holds-your-keys.md)).
+Some things reach a rig without a command: the agents' model route, the advisors' models, the Git access for a private repository, the past research for its running runs, and, with the advisors' models, any outside knowledge base whose search the owner gave a campaign that control assigned to the rig. The supervisor fetches each from control with its rig token when it needs it ([Who holds your keys](who-holds-your-keys.md)).
+
+## The knowledge base, grants and outside knowledge bases
+
+Thermite's knowledge base lives on control: one folder for each campaign, with everything its runs recorded ([Journals and the knowledge base](journals-and-knowledge.md)). Each part of the system has its own share in it:
+
+- **Control** builds every folder from the events in the rigs' signed reports, and writes no item of its own. It keeps the grants, and serves each rig's supervisor the items of the folders that its running runs' campaigns may read. It answers only for a run that it assigned to that rig, and by the campaign it assigned there, from its own record of its `assign_campaign` commands.
+- **The owner** decides which other campaigns' folders a campaign reads: on the campaign's page, or over MCP with the owner's token or an operator's token (`kb_grant` and `kb_revoke`). Control's audit log records each grant and each removal. Over MCP, only those two tokens list and search the folders (`kb_folders` and `kb_search`); an agent's or a reader's token has none of these tools. The owner also picks a new run's briefing, in **Start a run**.
+- **The briefing** travels inside the signed `assign_campaign` command, so the harness takes it as control signed it. From **Start a run** and over MCP, control takes each item's words from its own record of the item. The owner's REST API and `thermite command` send the words as given.
+- **The supervisor** fetches the past research for its rig's running runs with its rig token, and hands it to the harness. It also hands over the advisors' field notes, which the harness records in each advisor's name.
+- **The harness** writes the past research into each run's `knowledge/` folder, as files that the agents can read and can't change. It never calls control or an outside knowledge base itself.
+- **The agents** read past research, and write field notes, sources, claims and research notes in their own run's records. They write to no folder, and have no way to change a grant.
+- **An outside knowledge base** gets what control copies to it, when the owner switches a copy on: a campaign's whole folder, then each new or changed item. The campaign's teacher pair searches it through its supervisor, when the owner lets it. Its address uses https, or plain http only on localhost, because the token goes with every call. Control keeps the token sealed, and gives it, with the advisors' models, only to the supervisor of a rig that control assigned a campaign that may search it. Control's audit log records each change in what a rig is given (`outside_kb_handed`).
+
+Past research and field notes reach the agents as data, never as a verdict: the judge measures every change the same way, whatever the agents read.
 
 ## Decisions that stay with people
 
 Some steps wait for a person. A full reset, for one, wipes a rig only after its final export has reached the results repository and the owner has looked at the pushed commit there and confirmed the wipe.
 
 ## What the supervisor cannot do
+
+The supervisor carries work into a run as well as out of it. Through its route to the harness, it hands over the advisors' directives, experiments and field notes, and the past research for each run's `knowledge/` folder, all of which the agents read. None of it is a verdict. What it cannot do:
 
 | It cannot… | Because… |
 | --- | --- |

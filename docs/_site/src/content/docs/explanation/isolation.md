@@ -3,7 +3,7 @@ title: "Isolation inside a rig"
 description: "How a rig keeps the agents' code away from the judge, its files, its secrets and each other."
 type: explanation
 sidebar:
-  order: 10
+  order: 11
 ---
 
 A rig runs code it does not trust all day long: the agents' commands, their builds and tests, and the candidate programs the judge times. Thermite's rule that [agents never judge](why-agents-never-judge.md) holds only if that code can't reach the judge. This page explains how the **harness**, the rig's container for the research, keeps each kind of work apart, and how it checks that it does.

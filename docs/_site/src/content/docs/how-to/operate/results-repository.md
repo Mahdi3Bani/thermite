@@ -6,7 +6,7 @@ sidebar:
   order: 3
 ---
 
-Every hour in which something new happened, a rig's harness (its container that holds the judge and the agents) writes an **export**: the new attempts, champions and events since the last one. The rig's supervisor (its other container, the link to the outside) commits each export to git and pushes it to the **results repository**. That repository is the lasting copy of a rig's work. A [full reset](rig-lifecycle.md#fully-reset-a-rig) needs it, and so does [sending a champion to another rig](../campaigns/several-rigs.md).
+Every hour in which something new happened, a rig's harness (its container that holds the judge and the agents) writes an **export**: the new attempts, champions, events and agents' notes since the last one. The rig's supervisor (its other container, the link to the outside) commits each export to git and pushes it to the **results repository**. That repository is the lasting copy of a rig's work. A [full reset](rig-lifecycle.md#fully-reset-a-rig) needs it, and so does [sending a champion to another rig](../campaigns/several-rigs.md).
 
 This page sets up a results repository on your own git host, reached over SSH.
 
@@ -115,8 +115,12 @@ Each rig has two branches. Commits are made by `thermite <thermite@localhost>`.
 | `thermite/<rig>/attempts` | `attempts/<attempt>.patch` and `.json` | Each attempt's change, and its record with the verdict |
 | | `champions/<run>/<seq>.patch` and `.json` | Each published champion, as a patch from the run's starting commit |
 | | `events/<export>.jsonl` | The export's events, one per line. They include the text of your messages to the run's agents and advisors, and the advisors' answers |
+| | `journal/<export>.jsonl` | The [field notes](../../explanation/journals-and-knowledge.md) the agents recorded since the last export, one per line: the short notes the workers, the planner and the advisors keep as they work. Every export has this file, empty when there are none |
+| | `research-notes/<export>.jsonl` | The research notes recorded since the last export, each with the sources it cites. Only when there are some |
+| | `briefing/<export>.jsonl` | For each run created since the last export, its briefing: the background from past research that you picked when you started it ([Use past research in a new run](../campaigns/use-past-research.md)). Only when there is one |
 | | `exports/<export>.json` | The export's manifest: each file with its SHA-256 |
-| | `research/<run>/…` | Only from a full export (a full reset takes one): a research run's archive, and in `research/<run>/folder/` the [research folder](../../explanation/campaign-modes.md#research) of a run whose final report that export holds |
+| | `research/<run>/folder/…` | The [research folder](../../explanation/campaign-modes.md#research) of each run that finished in that export: a research run whose final report it holds, or a hill-climb or goal run that was closed and recorded sources, claims or notes. The past research in the folder's `knowledge/` is left out: those records are in their own runs' exports |
+| | `research/<run>/…`, other files | Only from a full export (a full reset takes one): each run's archive of the web pages it fetched |
 | `thermite/<rig>/ledger` | `ledger.sqlite`, `manifest.json` | A copy of the rig's ledger, at most once a day, and with every full export. Held-out results are left out, so they never leave the rig |
 
 The attempts branch only grows: a file already published there is never replaced. The supervisor commits only files that the export's manifest lists, with the SHA-256 it lists. An export that fails that check is never pushed, and the **Results** row says `export … refused: …`.

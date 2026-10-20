@@ -3,7 +3,7 @@ title: "Take the result"
 description: "Download a run's best change as a patch and apply it to your project."
 type: how-to
 sidebar:
-  order: 12
+  order: 13
 ---
 
 A run's result is its [champion](../../reference/glossary.md): the best version of your project that the judge has confirmed. Thermite never pushes to your project. You download the champion as a patch and apply it yourself, to the commit the run started from.

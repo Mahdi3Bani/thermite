@@ -3,7 +3,7 @@ title: "Where Thermite came from"
 description: "The lessons from long research campaigns that shaped Thermite, and the part of Thermite that answers each one."
 type: explanation
 sidebar:
-  order: 14
+  order: 15
 ---
 
 Thermite grew out of long-running hill-climbing campaigns on inference kernels: AI agents trying, change after change, to make the GPU code behind a model's answers run faster. Those campaigns taught a handful of lessons. Thermite is the system built around them, informed by published work on agent research systems and on evolutionary code search.
@@ -20,7 +20,7 @@ A search for speed has long dry spells. A loop that stops after a fixed number o
 
 A change that loses on the headline number can still hold an idea worth reading later, or worth trying again in another form. Throw it away and the idea is gone.
 
-**In Thermite:** every attempt's change is saved as a git ref before the judge even builds it, and the ledger keeps its verdict and the judge's reasons. Every attempt also goes into the rig's exports. Losses feed the next round of work too: the planner sees recent results from every lane, and each worker sees its own lane's recent attempts with the judge's findings. Each run's experiment queue keeps every experiment tried, with its result, and the ideas that workers propose while they work, so an idea outlives the trial that had it. → [Why agents never judge](why-agents-never-judge.md) and [Agents, lanes and the planner](agents-lanes-planner.md)
+**In Thermite:** every attempt's change is saved as a git ref before the judge even builds it, and the ledger keeps its verdict and the judge's reasons. Every attempt also goes into the rig's exports. Losses feed the next round of work too: the planner sees recent results from every lane, and each worker sees its own lane's recent attempts with the judge's findings. Each run's experiment queue keeps every experiment tried, with its result, and the ideas that workers propose while they work, so an idea outlives the trial that had it. The agents also keep field notes of what they observe and learn, and every campaign's records go into its folder in Thermite's knowledge base, where later runs can read them. → [Why agents never judge](why-agents-never-judge.md), [Agents, lanes and the planner](agents-lanes-planner.md) and [Journals and the knowledge base](journals-and-knowledge.md)
 
 ## Dashboards that vanished on restart
 

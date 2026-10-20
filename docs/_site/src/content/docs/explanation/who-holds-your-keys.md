@@ -3,7 +3,7 @@ title: "Who holds your keys"
 description: "Where Thermite keeps model keys, subscriptions, SSH keys, kubeconfigs, Git access and tokens, and who can read each one."
 type: explanation
 sidebar:
-  order: 13
+  order: 14
 ---
 
 Thermite needs secrets to work: API keys for model providers, logins for subscriptions, SSH keys and kubeconfigs for the places rigs run, access to private repositories, and tokens for people, programs and rigs. This page follows each kind of secret: where it is kept, where it travels, and who can read it.

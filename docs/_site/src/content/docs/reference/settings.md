@@ -32,9 +32,9 @@ The "Secret" column says whether a value is secret: **no**; a **path to a secret
 | Variable | Type | Default | Secret | Meaning |
 | --- | --- | --- | --- | --- |
 | `THERMITE_CONTROL_LISTEN` | `host:port` | `0.0.0.0:8800` | no | Where control serves the dashboard, the REST API and MCP |
-| `THERMITE_CONTROL_DIR` | path | `/var/lib/thermite-control` | directory with secrets | Control's state: its store (`control.db`), its command-signing key pair (`control-signing.key` and `.pub`, made at first start), the secrets key when `THERMITE_CONTROL_SECRETS_KEY_FILE` is not set, and the kits written on the **New campaign** page (`kits/`) |
+| `THERMITE_CONTROL_DIR` | path | `/var/lib/thermite-control` | directory with secrets | Control's state: its store (`control.db`, which also holds [Thermite's knowledge base](knowledge-base.md)), its command-signing key pair (`control-signing.key` and `.pub`, made at first start), the secrets key when `THERMITE_CONTROL_SECRETS_KEY_FILE` is not set, and the kits written on the **New campaign** page (`kits/`) |
 | `THERMITE_CONTROL_PUBKEY_EXPORT` | path | not set | no | A second place to write control's command-signing public key, so that rigs can verify [signed commands](signed-commands.md). The local compose file writes it to a volume the harness reads |
-| `THERMITE_CONTROL_SECRETS_KEY_FILE` | path | `secrets.key` in `THERMITE_CONTROL_DIR`, made on first use | path to a secret | The key that encrypts what control keeps for you: model providers' keys and sign-ins, Git access, GPU cloud keys, machines' SSH keys and cluster kubeconfigs. It must hold a 32-byte key in base64. Without the same key, the stored secrets cannot be read |
+| `THERMITE_CONTROL_SECRETS_KEY_FILE` | path | `secrets.key` in `THERMITE_CONTROL_DIR`, made on first use | path to a secret | The key that encrypts what control keeps for you: model providers' keys and sign-ins, Git access, GPU cloud keys, machines' SSH keys, cluster kubeconfigs and outside knowledge bases' tokens. It must hold a 32-byte key in base64. Without the same key, the stored secrets cannot be read |
 | `THERMITE_CONTROL_STALE_SECONDS` | seconds | `180` | no | A rig that has sent no report for this long shows as stale |
 | `THERMITE_CONTROL_SESSION_DAYS` | days | `30` | no | How long an unused dashboard sign-in lasts |
 
@@ -91,6 +91,12 @@ A lifecycle driver lets control restart a rig's containers: the button **Restart
 
 The `kubernetes` driver restarts a component by deleting its pods, which the rig's Deployment then makes again. Its service account lists and deletes pods in each rig's namespace. It is for rigs deployed on Kubernetes by other means. Rigs that control sets up on a cluster don't use it: control restarts them with the cluster's kubeconfig (**Restart them** on the rig's page), and names the namespaces it creates from the cluster's **Namespace for each rig**, `thermite-{rig}` by default. The driver's default `ar-{rig}` is planned to become `thermite-{rig}` too ([goal 017](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/017-legacy-names.goal)).
 
+### Outside knowledge bases
+
+| Variable | Type | Default | Secret | Meaning |
+| --- | --- | --- | --- | --- |
+| `THERMITE_OUTSIDE_KB_SYNC_SECONDS` | seconds | `300` | no | How often control copies the new and changed items of campaign folders to [outside knowledge bases](knowledge-base.md#outside-knowledge-bases): only the copies switched on, on a campaign's page. With no copy switched on, nothing is called. `0` turns the timer off; **Sync now** on a campaign's page still works |
+
 ## Harness
 
 The harness container runs a **broker**, which runs as root and starts the other processes as separate users, and the **controller**, which is the harness service itself. Both read the variables below.
@@ -146,7 +152,7 @@ These four give the rig's settings their first values. **Edit rig** changes the 
 | --- | --- | --- | --- | --- |
 | `THERMITE_LLM_USD_PER_MTOK_IN` | US dollars | not set | no | The model's price per million input tokens. A contract's `llm_usd` budget is counted only when both prices are set |
 | `THERMITE_LLM_USD_PER_MTOK_OUT` | US dollars | not set | no | The model's price per million output tokens |
-| `THERMITE_RESEARCH_MAX_MB` | mebibytes (MiB) | not set: no limit | no | The most a research run may archive in its corpus. When the corpus is full, more sources are refused with `the corpus is full (<n> MiB archived)`; the run goes on |
+| `THERMITE_RESEARCH_MAX_MB` | mebibytes (MiB) | not set: no limit | no | The most one run may archive in its corpus: a research run's, or the sources a hill-climb or goal run's workers fetch. When the corpus is full, more sources are refused with `the corpus is full (<n> MiB archived)`; the run goes on |
 
 ### The rig's own model
 
@@ -178,7 +184,7 @@ A Claude subscription and Claude Code go only together. Any other pairing stops 
 
 | Variable | Type | Default | Secret | Meaning |
 | --- | --- | --- | --- | --- |
-| `THERMITE_STATE_DIR` | path | `/var/lib/thermite` | directory with secrets | The ledger, the rig's key, kits, builds, models, the rig's settings and the model set on control |
+| `THERMITE_STATE_DIR` | path | `/var/lib/thermite` | directory with secrets | The ledger, the rig's key, kits, builds, models, the rig's settings, the model set on control, and the harness's copy of each run's past research (`knowledge/<run>/`) |
 | `THERMITE_SCRATCH_DIR` | path | `/scratch` | no | Workspaces, builds in progress and runs. The broker empties it at every start |
 | `THERMITE_INBOX_DIR` | path | `/inbox` | no | Where imports arrive from the supervisor. The harness only reads it; the local compose file mounts it read-only |
 | `THERMITE_OUTBOX_DIR` | path | `/outbox` | no | Where exports wait for the supervisor |
@@ -199,7 +205,7 @@ A Claude subscription and Claude Code go only together. Any other pairing stops 
 | `HARNESS_URL` | URL | required | no | The rig's harness, for example `http://harness:8700` |
 | `THERMITE_HARNESS_TOKEN_FILE` | path | required | path to a secret | The supervisor's token for the harness: the same token as the harness's `THERMITE_SUPERVISOR_TOKEN_FILE` |
 | `CONTROL_URL` | URL | not set | no | Control's address. Not set: the supervisor reports nowhere and fetches no commands |
-| `THERMITE_CONTROL_TOKEN_FILE` | path | not set | path to a secret | The rig's token for control. Without it the supervisor still starts, but sends control nothing and fetches nothing from it: no reports, commands, live view, model or advisors' models |
+| `THERMITE_CONTROL_TOKEN_FILE` | path | not set | path to a secret | The rig's token for control. Without it the supervisor still starts, but sends control nothing and fetches nothing from it: no reports, commands, live view, model, advisors' models or past research |
 
 ### How often it talks to control
 
@@ -209,6 +215,7 @@ A Claude subscription and Claude Code go only together. Any other pairing stops 
 | `THERMITE_COMMAND_POLL_SECONDS` | seconds | `5` | no | How often it fetches control's commands. `0`: commands are fetched with each report instead |
 | `THERMITE_LIVE_INTERVAL_MS` | milliseconds | `3000` | no | How often it relays the live view. `0` turns the live view off |
 | `THERMITE_MODEL_ROUTE_POLL_SECONDS` | seconds | `30` | no | How often it asks control for the rig's model and hands a change to the harness. `0` turns this off |
+| `THERMITE_KB_SYNC_SECONDS` | seconds | `180` | no | How often it asks control for the past research each running run's campaign may read, and hands the new and changed items to the harness, for the run's [`knowledge/` folder](knowledge-base.md#a-runs-knowledge-folder). Only with `CONTROL_URL` and the rig's token. `0` turns it off |
 
 ### The results repository
 
@@ -224,7 +231,7 @@ See [Set up the results repository](../how-to/operate/results-repository.md).
 
 | Variable | Type | Default | Secret | Meaning |
 | --- | --- | --- | --- | --- |
-| `THERMITE_SUPERVISOR_HOME` | path | `/var/lib/thermite-supervisor` | no | The supervisor's state: where it is in the event stream, exports done, champions waiting to reach control, advisors' records, the local results repository (`results.git`) and fetched sources (`sources/`) |
+| `THERMITE_SUPERVISOR_HOME` | path | `/var/lib/thermite-supervisor` | no | The supervisor's state: where it is in the event stream, exports done, champions waiting to reach control, advisors' records, where each run's past research sync is (`kb-state.json`), the local results repository (`results.git`) and fetched sources (`sources/`) |
 | `THERMITE_INBOX_DIR` | path | `/inbox` | no | The harness's inbox. The supervisor writes imports there |
 | `THERMITE_OUTBOX_DIR` | path | `/outbox` | no | The harness's outbox. The supervisor reads exports from it |
 | `THERMITE_ADVISORS_FILE` | path to a JSON file | not set | path to a secret | The [advisors file](advisors-file.md): teachers, combiner, auditor and review panel. A role given a model on **Edit rig** uses that model instead. Not set, and no role given a model: no advisors run |

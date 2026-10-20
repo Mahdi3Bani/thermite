@@ -283,7 +283,7 @@ It reads where the broker's socket and the rig's directories are from `THERMITE_
 
 ## `thermite-trial`
 
-`thermite-trial` is in the harness image only (`/usr/local/bin/thermite-trial`, which runs `node /opt/thermite/dist/harness/agents/trial-cli.js`). A worker agent that works through its own shell, under OpenCode or Claude Code, uses it to submit its change, run a command on the device, read an attempt and propose an idea for the run's [experiment queue](signed-commands.md#queue_add). A research worker under OpenCode uses its `research` commands, and may propose ideas too. It runs as the [lane](glossary.md)'s user, in the trial's workspace (a research trial's: its lane's working area), with the trial's own token, which stops working when the trial ends.
+`thermite-trial` is in the harness image only (`/usr/local/bin/thermite-trial`, which runs `node /opt/thermite/dist/harness/agents/trial-cli.js`). A worker agent that works through its own shell, under OpenCode or Claude Code, uses it to submit its change, run a command on the device, read an attempt, propose an idea for the run's [experiment queue](signed-commands.md#queue_add), keep [field notes](knowledge-base.md#field-notes), and record the sources it reads with five of its `research` commands. A research worker under OpenCode uses all its `research` commands, and may propose ideas and keep field notes too. It runs as the [lane](glossary.md)'s user, in the trial's workspace (a research trial's: its lane's working area), with the trial's own token, which stops working when the trial ends.
 
 ```text
 usage:
@@ -291,6 +291,9 @@ usage:
   thermite-trial dev-run [--timeout SECONDS] -- COMMAND...
   thermite-trial status ATTEMPT
   thermite-trial idea TITLE [--why TEXT] [--family TEXT] [--details TEXT]
+  thermite-trial note --kind KIND [--about TYPE:ID] TEXT
+    KIND: observation, decision, surprise, question, lesson or note
+    TYPE: experiment, attempt, source, claim, finding, round, trial or message
   thermite-trial research TOOL ... (thermite-trial research help lists them)
 ```
 
@@ -300,10 +303,11 @@ usage:
 | `dev-run [--timeout SECONDS] -- COMMAND...` | Runs the command on the measurement device, as a [development run](glossary.md), in the trial's workspace | The run's result as indented JSON |
 | `status ATTEMPT` | Shows one of this lane's attempts | The attempt as indented JSON |
 | `idea TITLE [--why TEXT] [--family TEXT] [--details TEXT]` | Proposes another experiment for the run's queue, as the lane's idea: something worth trying that is not the trial's own work. The words after `idea` are its title, cut to 200 characters; `--why` is cut to 2000, `--family` (its direction) to 80 and `--details` to 4000. A repeated option keeps its last value. The idea waits until the planner or the campaign's owner queues it or drops it, and the trial goes on. Without the planner's model (none set, its answer refused, the planner off, or a research run), it waits for the owner. No limit is set on how many | `proposed <experiment id>: it waits until the planner or the campaign's owner queues it or drops it. Your trial goes on.` |
+| `note --kind KIND [--about TYPE:ID] TEXT` | Writes a [field note](knowledge-base.md#field-notes) for the run's journal: an observation, a decision and why, a surprise, a question or a lesson. The words after the options are its text, 1 to 2000 characters. `--kind` is one of the kinds in the usage text, in any case. `--about` names one record of the run it is about, such as `attempt:a-11110003` or `round:12`; a round or a message is named by its number. A repeated option keeps its last value. The note is recorded as the lane's, and the trial goes on. No limit is set on how many | `noted (#<id>). Your trial goes on.` |
 | `research TOOL [WORDS...] [--FLAG VALUE]... [-]` | Runs one of a research trial's tools (below) through the harness's research service. The words fill the tool's main field and the flags its others; `-` reads a JSON object of fields from standard input | The tool's answer: text as it is, anything else as JSON, cut at 14,000 characters |
 | `research help` | Lists the research tools | `research tools:` and each tool's use |
 
-The research tools are a Pi research worker's, without its file tools:
+The research tools are a Pi research worker's, without its file tools. In a hill-climb or goal trial only five of them work: `fetch`, `read_source`, `search_corpus`, `add_claim` and `add_note`. They archive the pages a worker reads and record what they say in the run's research folder. The harness refuses the others there: `a hill-climb run records sources, claims and notes only (fetch, read_source, search_corpus, add_claim, add_note); the rest belongs to research runs` (`a goal run` in a goal campaign). `research help` lists all ten.
 
 | Tool | Words | Flags | What it does |
 | --- | --- | --- | --- |
@@ -312,7 +316,7 @@ The research tools are a Pi research worker's, without its file tools:
 | `search` | `QUERY` | | Searches the web. Rigs have no web search yet, so it returns the reason |
 | `search_corpus` | `TEXT` | | Searches the archived sources for a piece of text, ignoring case |
 | `add_claim` | none | `--text`, `--question N`, `--confidence N`; the quotes only through `-` | Records a claim with exact quotes from archived sources. Unverified quotes leave it a draft. `question` is the index of the campaign question it answers, from 0 |
-| `add_note` | `TEXT` | `--source SOURCE`, repeated | Records a working note, with the sources it relies on |
+| `add_note` | `TEXT` | `--source SOURCE`, repeated | Records a research note, with the sources it relies on: its text cut to 4000 characters, at most 20 sources. An empty text is refused: `a note needs its text`. A research note is not a field note |
 | `propose_hypothesis` | `TEXT` | `--supporting CLAIM`, repeated | Proposes a hypothesis, citing the verified claims that support it |
 | `add_finding` | none | none: every field through `-` | Records a finding: `text`, `summary`, `why_it_matters` and the `supporting` claims. Draft claims, or numbers not in those claims, leave it a draft |
 | `update_section` | none | `--name`, `--body` | Writes or replaces a section of the campaign report |
@@ -345,11 +349,15 @@ Everything it prints goes to standard output.
 | `error: status needs an attempt id` | `2` |
 | `error: idea needs a title: what to try, in a few words` and the usage text | `2` |
 | `error: idea has no --<option>` and the usage text | `2` |
+| `error: note needs --kind: observation, decision, surprise, question, lesson or note` and the usage text | `2` |
+| `error: note needs its text: what you observed, decided or learned` and the usage text | `2` |
+| `error: --about takes TYPE:ID, for example experiment:x-0123456789ab` and the usage text | `2` |
+| `error: note has no --<option>` and the usage text | `2` |
 | `error: no research tool "<name>"` and the list of tools | `2` |
 | `error: <tool> takes no words; use:`, `error: <tool> has no --<flag>; use:` or `error: "-" reads a JSON object from stdin…`, with the tool's use | `2` |
 | `error: --<flag> needs a number` | `2` |
 | The usage text, for an unknown command | `2` |
-| `error: <status>: <body>`, when the harness refuses the call | `1` |
+| `error: <status>: <body>`, when the harness refuses the call, such as `error: 400: {"error":"about: no attempt a-… in run <run>"}` for a note about a record the run does not have | `1` |
 
 ## Programs inside the images
 

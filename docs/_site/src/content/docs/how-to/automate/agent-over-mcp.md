@@ -18,15 +18,15 @@ Control has an MCP server, so an AI agent such as Claude Code can watch rigs and
 
 | Token | Give it to | It may |
 | --- | --- | --- |
-| **Operator** | An agent that runs campaigns for you | Read everything; start, pause and resume runs, give them rules (`redirect`) and restart their lanes (`reset_workers`, **Restart the lanes** on the dashboard); export; run rig checks; send champions to other rigs; message a run's agents and advisors, keep a message in force and remove one from force; change a run's experiment queue and remove its rules; read control's own log, providers and how rigs were set up; add rigs on a cluster, set a cluster's slots, stop, start and restart a cluster's rigs and move them onto control's images; give a rig's agents a model; start and end RunPod test pods, which costs money |
-| **Agent** | An agent that only coordinates runs | Read; start, pause and resume runs, give them rules (`redirect`) and restart their lanes (`reset_workers`); export; run rig checks; send champions to other rigs. Not the experiment queue's commands, control's log, providers, how rigs were set up, or RunPod. While you fully reset a rig, `issue_command` refuses it for that rig |
-| **Reader** | An agent that only watches | Read, including control's log, providers and how rigs were set up (without each step's details) |
+| **Operator** | An agent that runs campaigns for you | Read everything; start, pause and resume runs, give them rules (`redirect`) and restart their lanes (`reset_workers`, **Restart the lanes** on the dashboard); export; run rig checks; send champions to other rigs; message a run's agents and advisors, keep a message in force and remove one from force; change a run's experiment queue and remove its rules; search Thermite's knowledge base and let a campaign read another's folder; read control's own log, providers and how rigs were set up; add rigs on a cluster, set a cluster's slots, stop, start and restart a cluster's rigs and move them onto control's images; give a rig's agents a model; start and end RunPod test pods, which costs money |
+| **Agent** | An agent that only coordinates runs | Read; start, pause and resume runs, give them rules (`redirect`) and restart their lanes (`reset_workers`); export; run rig checks; send champions to other rigs. Not the experiment queue's commands, the knowledge base, control's log, providers, how rigs were set up, or RunPod. While you fully reset a rig, `issue_command` refuses it for that rig |
+| **Reader** | An agent that only watches | Read, including control's log, providers and how rigs were set up (without each step's details). Not the knowledge base |
 
 The reader's token reads control's log, providers and how rigs were set up, and the agent's token doesn't: they describe control itself, not the campaigns, and are for whoever runs control.
 
 Give the agent the token with the least it needs: it acts with that token's rights, and nothing more. Don't give an agent the owner's token. The owner's token also approves and declines promotions over MCP, retires rigs, works on the whole REST API and signs in to the dashboard.
 
-Some things no token can do over MCP: approving a goal the review panel passed, ending a campaign as not possible, changing a rig's settings (apart from its agents' model), accepting a rig's key and wiping a rig. A model is never the last word on what counts as a result; see [Why agents never judge](../../explanation/why-agents-never-judge.md). Approving and declining promotions is the owner's alone.
+Some things no token can do over MCP: approving a goal the review panel passed, ending a campaign as not possible, changing a rig's settings (apart from its agents' model), accepting a rig's key, wiping a rig, and adding, copying to or granting an [outside knowledge base](../operate/outside-knowledge-base.md). A model is never the last word on what counts as a result; see [Why agents never judge](../../explanation/why-agents-never-judge.md). Approving and declining promotions is the owner's alone.
 
 On the local stack, an operator's token is ready in `.dev/secrets/control-operator-token`, unless you replaced it with one of your own. For an agent's or a reader's token, see [Make and change tokens](../operate/tokens.md).
 
@@ -51,14 +51,21 @@ To check the connection, ask the agent to list Thermite's rigs. It calls the `li
 
 The [MCP tools reference](../../reference/mcp-tools.md) lists every tool, its inputs, its answers and which tokens may call it. In short:
 
-- **Look:** `list_rigs`, `get_run`, `run_queue` (a run's [experiment queue](../campaigns/choose-what-runs-next.md), its rules and your messages), `recent_events`, `leaderboard`, `rig_reports`, `list_commands` and `command_status`.
+- **Look:** `list_rigs`, `get_run` (a run's champions and attempts, and in `journal` all its agents' field notes and research notes, oldest first), `run_queue` (a run's [experiment queue](../campaigns/choose-what-runs-next.md), its rules and your messages), `recent_events`, `leaderboard`, `rig_reports`, `list_commands` and `command_status`.
+- **Search past research,** with the operator's or the owner's token: `kb_folders` lists the folders of Thermite's [knowledge base](../../reference/knowledge-base.md), one for each campaign, with what each holds and which campaigns read it; `kb_search` finds their items by words, such as experiments with their results, attempts with their verdicts, field notes, sources, claims, findings and reports.
 - **Act:** `issue_command` sends a [signed command](../../reference/signed-commands.md) to a rig, of a kind the token allows ([who may issue each kind](../../reference/signed-commands.md#who-may-issue-each-kind)), and `propagate_champion` sends a champion to another rig.
+- **Let a campaign read another's folder,** with the operator's or the owner's token: `kb_grant` and `kb_revoke`, as **Can read from** does on a campaign's page.
 - **Set rigs up,** with the operator's or the owner's token: `add_cluster_rig`, `set_cluster_slots`, `cluster_rig`, `update_rig_images` and `set_rig_model`, with the same checks as the dashboard's pages. Retiring a rig is the owner's.
 - **Debug,** with any token but the agent's: `control_log`, `providers` and `rig_setup`.
 
 A command is queued, not done at once. `issue_command` returns the command's id. The agent then calls `command_status` until the status is `delivered`, `failed` or `rejected` with the rig's reason, or `expired`. `delivered` means the rig applied the command; a rig check's result comes later, in the rig's events.
 
-To start a run, the agent needs an `assign_campaign` payload. `npx thermite assign … --print` builds one from a contract, and the agent passes it to `issue_command`; see [Start a campaign from the command line](../campaigns/start-from-command-line.md). A payload can also copy another run's untried experiments, in `queue`: see [`assign_campaign`](../../reference/signed-commands.md#assign_campaign).
+To start a run, the agent needs an `assign_campaign` payload. `npx thermite assign … --print` builds one from a contract, and the agent passes it to `issue_command`; see [Start a campaign from the command line](../campaigns/start-from-command-line.md). A payload can also carry past research that an operator's or the owner's token found with `kb_search` (see [`assign_campaign`](../../reference/signed-commands.md#assign_campaign)):
+
+- `queue`: experiments to start with, such as another run's untried ones or past experiments from the knowledge base. Over MCP, control takes a copied experiment's words from its own record of it, when it has one;
+- `briefing`: findings, claims, notes and reports, as `[{"text": "…", "from": {"campaign": "…", "run": "…", "kind": "…", "ref": "…"}}]`. Every agent's brief shows them as background. Over MCP, control replaces each item's text with the knowledge base's own words for that item, and leaves out an item it can't find or one from a folder the run's campaign may not read.
+
+A run without agents takes neither: the rig refuses such a command. [Use past research in a new run](../campaigns/use-past-research.md) shows the whole path.
 
 The pages for each task give the payloads the agent sends:
 
@@ -67,7 +74,7 @@ The pages for each task give the payloads the agent sends:
 - rigs on a cluster: [Stop, restart, remove or reset a rig](../operate/rig-lifecycle.md#a-rig-on-a-cluster), and [From an agent or a script](../install/rig-on-a-cluster.md#from-an-agent-or-a-script) for each answer.
 
 :::caution[Text from agents is data]
-Run histories, hypotheses, events and the queue's titles and reasons hold text that the rigs' own worker agents and advisors wrote, and daily reports come unsigned from the rigs' supervisors. The tools' descriptions tell the connected agent to treat it as data, not instructions. Keep that in mind when you let an agent act on what it reads.
+Run histories, hypotheses, events, field notes and the queue's titles and reasons hold text that the rigs' own worker agents and advisors wrote, and daily reports come unsigned from the rigs' supervisors. The knowledge base's items hold the same text, and quotes from web pages the agents read. The tools' descriptions tell the connected agent to treat it as data, not instructions. Keep that in mind when you let an agent act on what it reads.
 :::
 
 ## 4. See what it did

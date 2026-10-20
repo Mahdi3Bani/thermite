@@ -199,6 +199,7 @@ An **experiment** is one thing for a lane to try, in a run's [experiment queue](
 
 - Only `proposed` and `queued` experiments can be edited or dropped, and only `queued` ones move. A command that breaks this is refused, for example `experiment <id> is done: only queued experiments move`.
 - One experiment goes to one trial. The planner can give a lane a queued experiment or a lane's idea.
+- **A copied experiment says where it came from.** **Start a run** can begin a new run's queue with another run's untried experiments, and with past experiments from the [knowledge base](knowledge-base.md) folders the campaign may read. Each keeps its first author, and `from_run` names the run it came from. One from past research ends its details with `In <run> (<campaign>) it was <result>.`, or `From <run> (<campaign>).` when that run gave it no result.
 - **An interrupted trial's experiment comes back.** When a trial is interrupted (by **Pause**, **Restart the lanes** or a harness restart) or fails with an error before it submits, its experiment is `done`, and a new experiment with the same text goes to the top of the queue. It keeps its author, and its why starts with `tried again: its trial on <lane> was interrupted (<old id>)`, or `failed` for an error.
 
 ### An experiment's result
@@ -239,7 +240,7 @@ The filter chips above the table each show a count, and group the results by the
 | Review | panel `review_passed` or `review_failed`; owner `accepted` or `rejected` | A goal checked by a review panel counts as met only when the owner accepts it |
 | "Not possible" proposal | `accepted`, `rejected` | Accepting closes the run. Rejecting reopens the approach families it used |
 | Approach family | `live`, `exhausted` | A family becomes `exhausted` when a "not possible" proposal counts it as refuted |
-| Research claim | verified, draft | Verified when every quote is found word for word in its archived source and every number in the claim is in its quotes. A draft lists its problems |
+| Research claim | verified, draft | Verified when every quote is found word for word in its archived source and every number in the claim is in its quotes. A draft lists its problems. Workers in every mode may record claims |
 | Research finding | supported (a finding), draft | A finding counts when every claim it cites is verified and every number in it is in those claims. A draft finding lists its problems. See [Campaign modes](../explanation/campaign-modes.md#research) |
 | Epoch source | `planner`, `fallback` | Who gave out the epoch's work, which the dashboard calls a round. `planner`: the planner model, and History says "The planner planned round N: …". `fallback`: the fixed rules, used in a hill climb or goal campaign when the planner has no model, is off, or gave no usable plan: lanes take queued experiments in order. History then says why: "(by the fixed rules: no model)", "(by the fixed rules: the planner is off on this rig (Edit rig))" or "(by the fixed rules: the model gave no usable plan, because …)". A research run's rounds are always `fallback`, with `plan: "research"` in their `epoch_started` event: the research plan fills the queue on purpose, and History says "The research plan set round N: …" |
 | Promotion policy | `auto`, `owner_approval` | Set for the run when it is assigned, or the rig's default |

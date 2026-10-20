@@ -3,7 +3,7 @@ title: "Sharing a device"
 description: "How the judge and the agents take turns on one GPU, what dedicated GPUs change, what each choice costs, and how CPU rigs share their CPUs."
 type: explanation
 sidebar:
-  order: 11
+  order: 12
 ---
 
 The judge needs a quiet device to time changes on. The agents want the same device, to test and profile their changes before they submit them. This page explains how a rig shares one device between the two, what changes when a rig has GPUs to spare, and what each choice costs. Whether the judge and the agents share a device or have their own is your choice, made for each rig.

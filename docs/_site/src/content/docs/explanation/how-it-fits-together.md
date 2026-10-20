@@ -14,7 +14,7 @@ flowchart TB
   subgraph Control[Control]
     UI[Dashboard]
     API[REST API and MCP]
-    Store[(Store: rigs, reports, commands, campaigns)]
+    Store[(Store: rigs, reports, commands, campaigns, knowledge base)]
   end
   subgraph Rig[A rig, one of many]
     S[Supervisor]
@@ -30,7 +30,7 @@ flowchart TB
 
 ## Control
 
-Control is the one place where people, scripts and AI agents watch and steer the work. It serves a **dashboard** for people, a **REST API** for scripts and an **MCP server** for AI agents. Its **store** keeps what the rigs report, the commands sent to them, and the campaigns, kits, providers and machines you give it, with every key sealed.
+Control is the one place where people, scripts and AI agents watch and steer the work. It serves a **dashboard** for people, a **REST API** for scripts and an **MCP server** for AI agents. Its **store** keeps what the rigs report, the commands sent to them, and the campaigns, kits, providers and machines you give it, with every key sealed. It also keeps **Thermite's knowledge base**: a folder for each campaign, built from what the campaign's runs report ([The knowledge base](#the-knowledge-base)).
 
 Control measures nothing and decides no verdict. It shows what the rigs report and passes on what people decide, as commands that it signs with a key of its own. A decision that only the owner may make, such as approving a promotion, names the owner inside the signed command, and the rig checks that again.
 
@@ -43,9 +43,10 @@ The dashboard follows the levels of the work: a campaign, its runs on the rigs, 
 ![The Campaigns list: four runs at work, each a card with what its lanes and judge are doing and the buttons Live, Message and Pause; two decisions under Waiting for you; and All campaigns with its filters and search box](../../../assets/screenshots/campaigns.webp)
 
 - **Campaigns** puts the runs at work now first, then the decisions that wait for you, then one row per campaign: its runs, its best result, its last activity and its rigs. Filters and a search box narrow the list. By default it hides finished campaigns and rig checks (the campaigns named `rig-check-*` that a rig's smoke check makes, when someone runs it); the **All** and **Rig checks** filters show them.
-- **A campaign's page** shows what the campaign is for, its runs at work, and its earlier runs in one table. In a hill climb, an earlier run whose champion other rigs' judges confirmed is marked `cross-verified on …`, and the line under the title links to the **leaderboard**. **Start a run** starts a run of it on a rig you choose, with its agents on or off. Only a rig with the hardware that the campaign's kit measures on can take it. With the agents on, it can also copy the experiments that another run of the campaign had not tried yet into the new run's queue. A campaign assigned over the API, MCP or the command line can be started again here too, even before a rig reports a run of it: control assigns it as before, with the same contract, starting point and imports, as a new run.
-- **A run's page** has five tabs: **Overview**, **Experiments** (the run's experiment queue: up next, what each lane is on, the lanes' ideas, and everything tried with its result), **Attempts** (with the run's audits and reviews), **History** (what happened, in words: verdicts, rounds and hand-outs, changes to the queue, and rules set or removed) and **Planner** (the rules for the plan, what the planner gave each lane and why, and the agents' figures). Its header holds **Live**, **Message**, **Pause** (or **Resume**) and, while the run is running, **Restart the lanes** under **⋯**.
+- **A campaign's page** shows what the campaign is for, its runs at work, and its earlier runs in one table. In a hill climb, an earlier run whose champion other rigs' judges confirmed is marked `cross-verified on …`, and the line under the title links to the **leaderboard**. **Start a run** starts a run of it on a rig you choose, with its agents on or off. Only a rig with the hardware that the campaign's kit measures on can take it. With the agents on, it can also copy the experiments that another run of the campaign had not tried yet into the new run's queue, and pick items **From past research**: experiments for the queue, and findings, claims, notes and reports as background for every agent's brief. A campaign assigned over the API, MCP or the command line can be started again here too, even before a rig reports a run of it: control assigns it as before, with the same contract, starting point and imports, as a new run. Under the runs, the **Knowledge** section shows the campaign's folder, the other folders its agents may read (**Can read from**) and the campaigns that read it. When an outside knowledge base is set in **Settings › Providers**, an **Outside knowledge bases** section switches a copy of the folder, and its search for the campaign's teachers, on and off.
+- **A run's page** has six tabs: **Overview**, **Experiments** (the run's experiment queue: up next, what each lane is on, the lanes' ideas, and everything tried with its result), **Journal** (the field notes that the lanes, the planner and the advisors write as they work, and the run's research notes), **Attempts** (with the run's audits and reviews), **History** (what happened, in words: verdicts, rounds and hand-outs, changes to the queue, and rules set or removed) and **Planner** (the rules for the plan, what the planner gave each lane and why, and the agents' figures). Its header holds **Live**, **Message**, **Pause** (or **Resume**) and, while the run is running, **Restart the lanes** under **⋯**.
 - **Live** shows one run at a time as its agents, its judge and its advisors work. It has a filter for everyone, for each lane (a lane that starts while the page is open gets one too), the planner, the judge, the advisors, and your own messages. Under the stream, one message box writes to the run's agents and advisors (see [The owner's messages](#the-owners-messages)). A rig's page still opens that rig's own live view, with every session on the rig. That view has no message box: it links to the Live view of each run on the rig.
+- **Knowledge** lists every campaign's folder in the knowledge base, with what it holds and which folders each campaign reads, and searches them all.
 
 ## A rig
 
@@ -55,7 +56,7 @@ The two containers are split by what they are trusted with. The harness runs cod
 
 ### The harness: where the research happens
 
-- **The ledger:** the rig's own database, and the authority on everything that happened: campaigns, runs, attempts, measurements, verdicts, champions, each run's experiment queue, and steering.
+- **The ledger:** the rig's own database, and the authority on everything that happened: campaigns, runs, attempts, measurements, verdicts, champions, each run's experiment queue, the agents' field notes, each run's briefing from past research, and steering.
 - **The judge:** it builds each submitted change, measures it against the champion, gives the verdict and promotes winners.
 - **The scheduler and the planner:** they split each run into **lanes**, give each lane its next **experiment** from the run's queue, never the same one to two lanes, and start **trials**. A research run has no planner: a fixed method, the research plan, adds research tasks to the queue, and the record of each round says so (`plan: "research"`).
 - **Workers:** one fresh agent session per trial. Each runs in the rig's **worker harness**, the program that gives the model its tools (Pi, OpenCode v2 or Claude Code), and works in its own copy of the code.
@@ -67,13 +68,14 @@ The judge, the scheduler and the exports run as separate loops, so a slow model 
 
 ### The supervisor: the rig's link to everything else
 
-The supervisor connects the rig to the outside. It runs five loops side by side, so a slow one never holds up the others:
+The supervisor connects the rig to the outside. It runs six loops side by side, so a slow one never holds up the others:
 
 - **Reports:** it sends the harness's new events to control, pushes the rig's results to git and uploads each new champion's patch to control, once a minute by default.
 - **Commands:** it fetches control's pending commands, fetches any project, kit or champion they name, and hands them to the harness. It asks every 5 seconds by default, so a pause or a message lands quickly.
 - **Live view:** every few seconds, it sends the harness's newest live lines to control, with lines of its own, for **Live** on the dashboard.
 - **Model route:** it hands the harness the agents' model and key chosen on control, by the owner or an operator's agent.
-- **Advisors:** it runs the teachers, the auditor and the review panel, but only those the rig is given, in an advisors file or as models on the rig's **Edit rig** page. The teachers set directives for the planner and add experiments to the run's queue; the auditor can add a check to it. Each step of an advisor round is a line in the run's Live view: what each teacher suggested, the directives set and why, the experiments added, each audit and each review. A message from the owner to the teachers starts their round at once. [Supervision](supervision.md) explains them.
+- **Past research:** every three minutes by default, it fetches from control the new items of the folders that each running run's campaign may read, and hands them to the harness, which writes them into the run's `knowledge/` folder.
+- **Advisors:** it runs the teachers, the auditor and the review panel, but only those the rig is given, in an advisors file or as models on the rig's **Edit rig** page. The teachers set directives for the planner and add experiments to the run's queue; the auditor can add a check to it. Each advisor may also keep field notes, which the supervisor passes to the harness. The teachers can search a knowledge base: one in the advisors file, or an outside one that the owner let the campaign's advisors search. Each step of an advisor round is a line in the run's Live view: what each teacher suggested, the directives set and why, the experiments added, each audit and each review. A message from the owner to the teachers starts their round at once. [Supervision](supervision.md) explains them.
 
 The supervisor does all of the rig's git work. It holds no signing key: it carries commands in and reports out, but it cannot write either one. [Trust between control and rigs](trust.md) explains how that is checked, and [the settings reference](../reference/settings.md#how-often-it-talks-to-control) lists each loop's interval.
 
@@ -106,7 +108,7 @@ sequenceDiagram
 
 - **Commands go in signed.** The harness checks each one before it acts on it. A command that brings content, such as a project, a kit or another rig's champion, names that content by its git commit or its hash. The supervisor fetches it, and the harness accepts it only if it matches.
 - **Reports come out signed.** The harness signs its events with the rig's own key. Control pins that key at the rig's first report, or holds it until the owner accepts it. It takes a report only if it follows on from the ones it already has. So the supervisor relays reports, but it cannot forge, replay or skip events.
-- **Results go to git.** At most once an hour by default, when something new happened, the harness writes an export: its new events, its ledger without the hidden test results, and each new attempt and champion as a patch. The supervisor pushes it to the rig's results repository, when the rig has one. [Set up the results repository](../how-to/operate/results-repository.md) shows how. Rigs that control sets up on machines and clusters, and joined rigs, have none yet ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)).
+- **Results go to git.** At most once an hour by default, when something new happened, the harness writes an export: its new events, its ledger without the hidden test results, each new attempt and champion as a patch, the field notes and research notes recorded since the last export, the briefing of each new run, and each finished run's research folder when it has one. The supervisor pushes it to the rig's results repository, when the rig has one. [Set up the results repository](../how-to/operate/results-repository.md) shows how. Rigs that control sets up on machines and clusters, and joined rigs, have none yet ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)).
 
 **A rig keeps researching when control is down.** The harness has everything it needs for the run it has: the project, the kit, the model route and its own ledger. Reports and commands wait, and catch up when control is back. (One exception: a rig whose agents use a ChatGPT sign-in gets a one-hour access token, and only control renews it.)
 
@@ -195,6 +197,20 @@ The planner's own changes, its hand-outs and each trial's result are written ins
 | `directives_left_out` | Rules that the advisors' or the planner's new set named, left out because the owner had removed them, with why |
 
 Control builds a run's **Experiments** and **Planner** tabs, and the MCP tool `run_queue`, from these events alone, as it does for the owner's messages. The run's **History** tab tells each change in words, such as "You dropped "…": why." or "The planner moved "…" to place 1." [Choose what a run tries next](../how-to/campaigns/choose-what-runs-next.md) shows how to change the queue.
+
+## The knowledge base
+
+The agents write down what they learn as they work: the lanes, the planner and the advisors keep short **field notes**, and workers in every mode can record the sources they read, claims with their quotes and research notes. Each run's ledger keeps them, with who wrote each and when, and they show on the run's **Journal** tab.
+
+Control turns the rigs' records into **Thermite's knowledge base**, with one **folder** for each campaign. It builds the folders from the events in the rigs' signed reports, as it builds every other view, so no agent writes to a folder. A folder holds everything the campaign's runs record: experiments with their results, attempts with their verdicts, field notes and research notes, sources, claims, findings and reports, each with its rig, run, writer and time.
+
+Past research then flows back to the rigs:
+
+- **Into each running run.** The supervisor's past-research loop fetches the items of the folders that the run's campaign may read: its own campaign's other runs, and the folders the owner granted it. The harness writes them under `knowledge/` in the run's research folder, where the workers search them. The planner and the teacher pair get one line that says what is there.
+- **Into a new run's briefing.** **Start a run › From past research** puts ticked experiments in the new run's queue, and ticked findings, claims, notes and reports in its **briefing**, inside the signed `assign_campaign` command. Every agent's brief shows the briefing as background.
+- **Out to an outside knowledge base, when you want one.** Control can copy a campaign's whole folder to an outside knowledge base set in **Settings › Providers**, such as GBrain, and keep the copy current. The campaign's teachers can be allowed to search it. Control connects to that server for the copy, and the supervisor for the teachers' search. Workers never call it.
+
+Each export also carries the run's field notes, its research notes and its briefing to the results repository. [Journals and the knowledge base](journals-and-knowledge.md) explains why it works this way, and [the knowledge base reference](../reference/knowledge-base.md) lists what each folder and file holds.
 
 ## Where rigs run
 

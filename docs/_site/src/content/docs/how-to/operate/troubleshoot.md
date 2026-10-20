@@ -1,12 +1,12 @@
 ---
 title: "Troubleshoot"
-description: "Find out why a check failed, a port clashes, a build is slow, a rig is quiet, a message goes unread, a queue change doesn't take or a sign-in bounces back, and where the logs are."
+description: "Find out why a check failed, a port clashes, a build is slow, a rig is quiet, a message goes unread, a queue change doesn't take, past research or an outside knowledge base doesn't work, or a sign-in bounces back, and where the logs are."
 type: how-to
 sidebar:
-  order: 8
+  order: 9
 ---
 
-Find the problem you see, then follow what to do. The problems are in four groups: [install and sign-in](#install-and-sign-in), [rigs](#rigs), [starting a campaign](#starting-a-campaign), and [runs: trials, messages and the queue](#runs-trials-messages-and-the-queue). A [rig](../../reference/glossary.md) is two containers: the harness, which holds the judge and the agents, and the supervisor, its link to control. Most problems leave a line in a log, so [Where the logs are](#where-the-logs-are) comes first. Most commands below are for the local compose stack; with Podman, write `podman compose` where they say `docker compose`. For a rig on a machine or a cluster, the table below gives the commands that read its logs, and the entries say what to read there.
+Find the problem you see, then follow what to do. The problems are in five groups: [install and sign-in](#install-and-sign-in), [rigs](#rigs), [starting a campaign](#starting-a-campaign), [runs: trials, messages and the queue](#runs-trials-messages-and-the-queue), and [past research and outside knowledge bases](#past-research-and-outside-knowledge-bases). A [rig](../../reference/glossary.md) is two containers: the harness, which holds the judge and the agents, and the supervisor, its link to control. Most problems leave a line in a log, so [Where the logs are](#where-the-logs-are) comes first. Most commands below are for the local compose stack; with Podman, write `podman compose` where they say `docker compose`. For a rig on a machine or a cluster, the table below gives the commands that read its logs, and the entries say what to read there.
 
 ## Where the logs are
 
@@ -126,14 +126,14 @@ A rig control set up on a machine or a cluster may also still be pulling its ima
   kubectl logs -n <namespace> deployment/thermite-rig-1-supervisor          # relay errors, as in the table above
   ```
 
-  When the rig reports later, the block says `running` again, and a ✓ step follows the ✕: "A report reached control from the new images · it reported again after the wait ended". A first setup shows this same line, although no images changed. The ✕ stays in the list.
+  When the rig reports later, the block says `running` again, and a ✓ step follows the ✕: "First report reached control · it reported after the wait ended". The ✕ stays in the list.
 
 After **Update to these images**, **Start its pods** or **Restart them** ([Stop, restart, remove or reset a rig](rig-lifecycle.md#a-rig-on-a-cluster)), the same can happen to the new pods, with other steps:
 
 - "Its pods run the new images" after an update, or "Its pods run again" after a start or a restart, has ✕ and `not running after 15 minutes`, sometimes with kubectl's error. The new pods did not start: look at them with the commands above. An image the nodes can't pull shows `ImagePullBackOff`.
 - "A report reached control from the new images", or "A report reached control after the start", has ✕ and `no report after 10 minutes: it may not have started`. The pods run, but the supervisor did not report: read its log, as above. If the harness keeps restarting, read its log too (`deployment/thermite-rig-1-harness`).
 
-Either way, the block says `failed`. A rig you stop or remove while control waits never gets these ✕ steps: the stop or the removal ends the wait. Fix the cause: the pods keep trying by themselves, for example once the nodes can pull the image. When the rig reports again, the block says `running`, with the ✓ step above.
+Either way, the block says `failed`. A rig you stop or remove while control waits never gets these ✕ steps: the stop or the removal ends the wait. Fix the cause: the pods keep trying by themselves, for example once the nodes can pull the image. When the rig reports again, the block says `running`, and a ✓ step is named for the wait that ended: "A report reached control from the new images" after an update, or "A report reached control after the start" after a start or a restart, each followed by "· it reported after the wait ended".
 
 To have control apply the images again and wait once more, press **Try the update again** in the block. It shows while the status says `failed`, after the line "The last change to its pods failed (see the steps above)." See [Try again after a failure](rig-lifecycle.md#try-again-after-a-failure). Over MCP, `update_rig_images` does the same. Either answers `rig-1's pods restart on control's images again (a retry).` If the new images themselves are at fault, you can go back to the old ones while the new harness never opened the rig's ledger, for example when the new pods never ran: see the caution "Going back to older images" in [A rig on a cluster](rig-lifecycle.md#a-rig-on-a-cluster). If the new harness did run, the older one may refuse the ledger: see [The harness stops at start: the ledger is newer](#the-harness-stops-at-start-the-ledger-is-newer).
 
@@ -202,7 +202,7 @@ Two causes are common on a laptop:
 
 - **You see:** the harness's log says `agents wait for a model route`, and no trials start. Or the **New campaign** page won't start the run: `rig-1 has no model for its agents, so they could not work: choose one under "The agents' model".` On a campaign's page, **Start a run** says **Not started.** and `rig-1 has no model for its agents, so they could not work: choose one under "The agents' model", or give it one on its Edit rig page.`
 - **Why:** the rig has no model yet. A run without agents (**Agents**: **Off: a try**) needs none.
-- **Do:** [connect a model provider](../models/connect-a-provider.md) and give the rig one of its models, on **Settings › Providers**, or under **The agents' model** on the **New campaign** page or in the **Start a run** panel. The rig takes it within a minute. Until then, **Start the campaign** saves the campaign instead of starting it, and **Start the run** starts nothing: [When the rig doesn't have the model yet](../campaigns/start-from-dashboard.md#when-the-rig-doesnt-have-the-model-yet) says where to see that the rig has the model, and how to start the run then. If six trials in a row had already failed, the agents rest for 30 minutes; a new model, or resuming the run, ends that rest at once.
+- **Do:** [connect a model provider](../models/connect-a-provider.md) and give the rig one of its models, on **Settings › Providers**, or under **The agents' model** on the **New campaign** page or in the **Start a run** panel. The rig takes it within a minute. Until then, **Start the campaign** saves the campaign instead of starting it, and **Start the run** starts nothing. Each says so and points to **Settings › Providers**, which shows the rig taking the model until it has it, for example `rig-1 has not taken my-model yet (it does within a minute of being given it; Settings › Providers shows it taking the model until then): start the run after that.` [When the rig doesn't have the model yet](../campaigns/start-from-dashboard.md#when-the-rig-doesnt-have-the-model-yet) says how to start the run then. If six trials in a row had already failed, the agents rest for 30 minutes; a new model, or resuming the run, ends that rest at once.
 
 ### A research campaign's trials all end in errors
 
@@ -277,6 +277,36 @@ A reason about one experiment names its state, then the rule: `only queued exper
   The planner's line in **Live** says the same, such as `round 3: taken from the queue by the fixed rules (no model)`.
 - **Why:** the lanes took experiments from the queue in order, by fixed rules: they skip directions that an **Avoid** rule names, and take those that an **Always** rule, then a **Try** rule, names first. The fixed rules use only rules that name a direction, such as `loop-tiling`; a rule in your own words applies only when the planner's model plans. See [Give the planner a rule](../campaigns/choose-what-runs-next.md#give-the-planner-a-rule).
 - **Do:** nothing is lost: the run goes on. If it happens every round, open the run's **Planner** tab. The **The planner** card names the planner's model, or says `No model: the lanes take the queue in order and keep to the rules.`, and counts the hand-outs made by the model and those made in queue order. Give the planner a model on **Edit rig**, or switch it on there ([Give each agent its own model](../models/model-per-agent.md)).
+
+## Past research and outside knowledge bases
+
+### A run gets no past research
+
+- **You see:** you expect a run to have **past research**: the records of its campaign's other runs, and of the campaigns listed under **Can read from** in the **Knowledge** section of the campaign's page. Its rig's supervisor copies them into the run's `knowledge/` folder, for the workers to search. But the supervisor's log has no `past research synced` line, or it has `past research sync error`.
+- **Why and do:**
+  - **There is nothing to send yet.** A run never gets its own records, only those of its campaign's other runs and of the folders under **Can read from**. A campaign's first run, with nothing under **Can read from**, gets none. **Knowledge** in the sidebar shows how many items each folder holds. To add another campaign's folder, see [Use past research in a new run](../campaigns/use-past-research.md).
+  - **The sync hasn't come yet.** The supervisor syncs every 3 minutes, and only the runs that are running: a paused run gets its items once it runs again. Its setting is `THERMITE_KB_SYNC_SECONDS` (180); `0` turns the sync off ([Settings](../../reference/settings.md#how-often-it-talks-to-control)). A supervisor without control's address and token syncs nothing.
+  - **The sync failed.** `past research sync error` names each run with its error, once until a sync works again. `<run>: control's knowledge base: HTTP 404` means control has no run of that name that it assigned to this rig, or hasn't seen the rig report the run yet: the next sync after the rig's report works. A rig's **Judge smoke** check runs a run of its own, `check-smoke-…`, which control never assigned: an error for it is expected, and harmless.
+  - **Control couldn't index the rig's reports.** The **Audit log** has a `kb_failed` entry with the error, and control's log has `knowledge base catch-up failed`. Control tries again with the rig's next report.
+
+### An outside knowledge base fails its check
+
+- **You see:** on **Settings › Providers**, the row of an [outside knowledge base](outside-knowledge-base.md) shows a reason in red. After **Add it and read its tools**, **Save and check** or **Check**, the page says **Not done.** and, for example, `"team-brain" is kept, but it has no tool "search" to search.`
+- **Why and do:** control connected to the server with the token and read its tool list, or tried to:
+
+| The reason | Do |
+| --- | --- |
+| `could not read its tool list:` and the error | Control could not connect, or the server refused the token. Check the **MCP URL**: the server's streamable HTTP address, as control reaches it. Then paste the token again in **New token** and press **Save and check** |
+| `it has no tool "search" to search` | Set **Search tool** to the name of the server's search tool |
+| `it has no tool "put_page" to write pages` | Set **Write tool** to the name of the server's tool that writes a page, or leave it empty for no copies |
+| `its tool "put_page" takes no slug and content` | That tool can't write Thermite's pages: control calls it with a `slug` and a `content`. Choose another tool, or leave **Write tool** empty |
+| `its token cannot be opened: enter it again` | Control can't open the sealed token, for example after its secrets key changed. Paste the token in **New token** and press **Save and check** |
+
+### A copy to an outside knowledge base fails
+
+- **You see:** on the campaign's page, under **Outside knowledge bases**, the line **Copy to team-brain** says `on · the last sync failed 4m ago:` and the error. On **Settings › Providers**, the knowledge base's row is red, and its copy shows **failing**. Control's log has `outside knowledge base sync failed`, once for each new error.
+- **Why:** when the server refuses a page, the error is `it refused the page for note 3 of sort-speed-1:` and the server's reason. The copy stops at the page the server refused, and each later sync starts again from it, so the pages after it wait. Other errors are the server's or the connection's, or one of the check's reasons above.
+- **Do:** fix the cause on the server, or in the knowledge base's row on **Providers**. Then press **Sync now** on the campaign's page. It says `12 pages written to "team-brain".`, or `2 pages written, then the sync failed:` and the error. `Not synced: a sync of this folder is running.` means a sync is on its way: wait and press **refresh**.
 
 ## Something was refused
 

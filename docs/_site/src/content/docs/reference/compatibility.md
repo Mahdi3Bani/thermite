@@ -3,7 +3,7 @@ title: "Compatibility"
 description: "The Node.js versions, operating systems, container engines, compose tools, Kubernetes, GPUs, CUDA and CPU architectures Thermite works with, and how each is tested."
 type: reference
 sidebar:
-  order: 15
+  order: 16
 ---
 
 This page lists what Thermite needs and what it has been tested with. Each row says how it is tested, or **not tested** where nothing in the repository tests it. A version Thermite does not check is marked so: it may work, but nothing shows it. The [glossary](glossary.md) explains the terms.

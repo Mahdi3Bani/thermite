@@ -3,7 +3,7 @@ title: "Limits and pacing"
 description: "Every limit Thermite has, its default, what it bounds and whether it ends anything. Nothing ends research unless you set it."
 type: reference
 sidebar:
-  order: 14
+  order: 15
 ---
 
 **Nothing ends research by default.** A hill climb runs until someone pauses it. A goal campaign runs until its goals are met or the owner accepts that they are not possible. A research campaign runs for the time its contract gives it. Every cap that can stop a campaign is off until you set it.
@@ -17,7 +17,7 @@ Thermite's limits are of four kinds. Only a cap can stop a run's work, and only 
 | [Back-pressure](#back-pressure) | Holds new work until earlier work settles | Nothing. Work waits, then goes on |
 | [Per-process and per-trial limits](#per-process-and-per-trial-limits) | Bound one build, run, command, check or trial | That one process or trial. The lane goes on |
 
-[The owner's messages](#the-owners-messages) lists how many messages and answers an agent gets, [The experiment queue](#the-experiment-queue) the sizes of a run's queue, and [Control's own limits](#controls-own-limits) cover commands, requests and lists. [Why Thermite runs until the job is done](../explanation/runs-until-done.md) explains this design, and [Set a budget or a stop time](../how-to/campaigns/budget-and-stop-time.md) shows how to set a cap. The [glossary](glossary.md) explains the terms.
+[The owner's messages](#the-owners-messages) lists how many messages and answers an agent gets, [The experiment queue](#the-experiment-queue) the sizes of a run's queue, [Field notes and the knowledge base](#field-notes-and-the-knowledge-base) the sizes of notes, briefings and searches, and [Control's own limits](#controls-own-limits) cover commands, requests and lists. [Why Thermite runs until the job is done](../explanation/runs-until-done.md) explains this design, and [Set a budget or a stop time](../how-to/campaigns/budget-and-stop-time.md) shows how to set a cap. The [glossary](glossary.md) explains the terms.
 
 ## Caps
 
@@ -28,7 +28,7 @@ Thermite's limits are of four kinds. Only a cap can stop a run's work, and only 
 | `budget.llm_usd` | The contract | None | The same, when the agents' token spending reaches it: `the model budget is spent ($<amount>)`. It counts only when the rig sets both `THERMITE_LLM_USD_PER_MTOK_IN` and `THERMITE_LLM_USD_PER_MTOK_OUT` (prices per million tokens) |
 | `min_duration`, `max_duration` | A research contract | `min_duration` is required | The research campaign closes after `max_duration` of running time (paused time does not count), or after `min_duration` when `max_duration` is not set: `the research window is over`. Other modes ignore both |
 | `max_usd_per_day` | The [advisors file](advisors-file.md) | None | The advisors skip their work until the next day (UTC), and a message to the teacher pair starts no round until then. Research goes on. It counts only advisors with prices set |
-| `THERMITE_RESEARCH_MAX_MB` | The harness's settings | None | A research campaign's fetches are refused: `the corpus is full (<n> MiB archived)`. Its other tools go on |
+| `THERMITE_RESEARCH_MAX_MB` | The harness's settings | None | A run's fetches are refused, in any mode: `the corpus is full (<n> MiB archived)`. Its other tools go on |
 | Turns per trial (`max_turns`) | **Edit rig**, or `THERMITE_MAX_TURNS` | None | One trial ends after that many model replies. The lane's next trial starts afresh |
 | A RunPod test's stop time (`stop_after_minutes`) | **End it after (minutes)** on the test pod form, REST or MCP | None | The test pod is removed. At least 5 minutes. A test spends money: see [Test a GPU on RunPod](../how-to/install/runpod-test.md) |
 
@@ -94,8 +94,10 @@ The dashboard calls an epoch a **round**.
 | Teacher reviews of a run | Every 60 minutes, and soon after the owner writes to the teacher pair, or to all the advisors, of a running run | `teacher_minutes` in the advisors file |
 | A new owner's message to the teacher pair, or to all the advisors, looked for between advisor rounds | Every 5 s, when the rig has teachers and its **Teacher pair** switch is on. Finding one ends the wait, and the next round starts, unless the advisors' spending for the day has reached `max_usd_per_day`; a round under way finishes first | Fixed |
 | An audit or review that failed | Tried again every 30 minutes, at most 5 times, then left to the owner | Fixed |
+| Past research synced into each running run's `knowledge/` folder | Every 180 s | `THERMITE_KB_SYNC_SECONDS`. `0` turns it off |
+| Campaign folders copied to outside knowledge bases | Every 300 s for each copy switched on, at once when a copy is switched on, and on **Sync now** | `THERMITE_OUTSIDE_KB_SYNC_SECONDS`. `0` turns the timer off; **Sync now** still works |
 | Research digests | Every 60 minutes | The contract's `report_cadence.digest_minutes` |
-| Research fetches | 6 a minute for each domain: a fetch waits, it is never refused for this | The contract's `fetch_policy.per_domain_per_minute` |
+| Research fetches | 6 a minute for each domain: a fetch waits, it is never refused for this | A research run: the contract's `fetch_policy.per_domain_per_minute`. A hill-climb or goal run: fixed |
 
 ## Back-pressure
 
@@ -147,7 +149,7 @@ Memory is the sum over all the processes the build or run started, sampled every
 | Model route check | 120 s |
 | Isolation check | 30 s for each role |
 | Smoke check | 3 hours for the whole check |
-| A research fetch | 30 s, at most 5 redirects, at most `fetch_policy.max_bytes` (5,000,000 by default) |
+| A research fetch | 30 s, at most 5 redirects, at most `fetch_policy.max_bytes` (5,000,000 by default). In a hill-climb or goal run, 5,000,000 bytes, and `robots.txt` is respected |
 | A research tool's answer | 14,000 characters when it is JSON, for a Pi worker's file tools too. A folder listing shows at most 500 entries, a folder search at most 200 lines |
 | One advisor call (`openai` runtime) | `max_turns` 24 and `timeout_s` 900, unless the advisors file sets them |
 | One advisor call (`cli` and `claude-code` runtimes) | `timeout_s` 1,800, unless the advisors file sets it |
@@ -191,6 +193,26 @@ None of these ends research. Nothing limits how many experiments a run's [experi
 | The queue in the planner's and the teachers' brief | The first 40 up next, the newest 20 ideas, every experiment in progress, and the newest 20 tried, with the judge's verdicts. Details are cut to 600 characters and whys to 400 |
 | The **Planner** tab's hand-outs | The newest 30. Control keeps the newest 50 for each run |
 
+## Field notes and the knowledge base
+
+None of these ends anything. Nothing limits how many [field notes](knowledge-base.md#field-notes) an agent writes, or how many items a campaign's folder holds. The windows below say how much each agent is shown, not how much is kept.
+
+| What | Limit |
+| --- | --- |
+| A field note | 1 to 2,000 characters. What it is about: an id of 1 to 200 characters |
+| A worker's note (`thermite-trial note`, Pi's `note`) | One request of at most 64 KiB |
+| An advisor's notes, posted to the harness | One request of at most 2 MiB for each advisor |
+| A research note (`add_note`) | Cut to 4,000 characters, with at most 20 sources |
+| Field notes in a worker's brief | Its lane's newest 10, and the run's newest 5 decisions and lessons by other writers |
+| Field notes in the planner's and the teacher pair's brief | The run's newest 20 |
+| The run page's **Journal** tab | The newest 500 field notes; the rest are in the campaign's folder and the run's export |
+| A briefing (`assign_campaign`'s `briefing`) | Up to 200 items, each 1 to 4,000 characters |
+| An item of the knowledge base | Title 300 characters, text 20,000 |
+| Search words | The first 8 words of 2 or more characters; at most 300 characters in all |
+| Search results | The **Knowledge** page 100; **Start a run** › **From past research** 40; `kb_search` 1 to 100, default 20 |
+| A run's sync of past research | Pages of up to 500 items from control, posted to the harness in parts of at most 8 MiB. The harness takes at most 32 MiB in one request |
+| A copy to an outside knowledge base | 100 items at a time, one page each, until the folder is written |
+
 ## Control's own limits
 
 | What | Limit |
@@ -212,6 +234,6 @@ None of these ends research. Nothing limits how many experiments a run's [experi
 | A message to an agent | 1 to 4,000 characters |
 | A redirect | 1 to 40 directives, each with a rationale of up to 2,000 characters and up to 20 citations. A rule in your own words (`match`) is 1 to 200 characters |
 | REST lists | `?limit=` from 1 to 5,000. Defaults: events and live lines 500, audit 200, commands 100, reports 20 |
-| MCP lists | `recent_events`: at most the newest 50 events; `list_commands` (`limit`) and `get_run` (`attempts`): 1 to 500, default 50; `run_queue`: `tried` 0 to 500, default 50, with the newest 10 hand-outs and the newest 20 messages; `control_log`: 1 to 500, default 100; `rig_reports` and `runpod_tests`: 1 to 50, default 5 |
+| MCP lists | `kb_search`: 1 to 100, default 20; `recent_events`: at most the newest 50 events; `list_commands` (`limit`) and `get_run` (`attempts`): 1 to 500, default 50; `run_queue`: `tried` 0 to 500, default 50, with the newest 10 hand-outs and the newest 20 messages; `control_log`: 1 to 500, default 100; `rig_reports` and `runpod_tests`: 1 to 50, default 5 |
 | Dashboard lists | A run's newest 300 attempts and 400 history events; the newest 300 audit entries; a campaign's first 8 **Earlier runs**, then **Show N more**. A run's **Live** first loads its newest 600 lines, then asks every 2 s, while the page is in view, for up to 500 new ones |
 | Request bodies from rigs | Reports 32 MiB; live lines 4 MiB; champion patches 64 MiB; daily reports 1 MiB; command results and supervisor figures 256 KiB |

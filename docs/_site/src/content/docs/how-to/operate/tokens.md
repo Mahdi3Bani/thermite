@@ -3,7 +3,7 @@ title: "Make and change tokens"
 description: "Make the owner's token, give people and agents tokens of their own, replace a token, and manage rig tokens."
 type: how-to
 sidebar:
-  order: 6
+  order: 7
 ---
 
 Control knows people and programs by **tokens**: long random strings, each with one role. You make a token on your own computer, keep it, and give control only its SHA-256. The machine control runs on then holds nothing that signs in. This page makes, replaces and ends tokens. [Tokens and roles](../../reference/tokens.md) says what each role may do.

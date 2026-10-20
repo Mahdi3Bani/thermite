@@ -106,7 +106,7 @@ Now give the judge something to judge. The **Judge smoke** check submits twelve 
 
    The page shows the run twice more: on a card under **At work**, above **Checks**, with the lines `no agents on this run: changes come from people` and what the judge is screening; and under **Runs on this rig**, below **Checks**, where it stays after it ends.
 
-3. Choose the name `rig-check-smoke-cpu-69c3d2f6 › check-smoke-…` to watch the run. Its page has the title `check-smoke-…`, followed by `on local-1 · hill climb · Running`. A **hill climb** is a campaign that keeps improving a number, here the program's speed. Below it are the run's tabs: **Overview**, **Experiments**, **Attempts**, **History** and **Planner**. The run's **Overview** tab, open first, lists its **Attempts**: an attempt is one submitted change. Each one shows up, then gets its verdict. Press **refresh** to see more.
+3. Choose the name `rig-check-smoke-cpu-69c3d2f6 › check-smoke-…` to watch the run. Its page has the title `check-smoke-…`, followed by `on local-1 · hill climb · Running`. A **hill climb** is a campaign that keeps improving a number, here the program's speed. Below it are the run's tabs: **Overview**, **Experiments**, **Journal**, **Attempts**, **History** and **Planner**. The run's **Overview** tab, open first, lists its **Attempts**: an attempt is one submitted change. Each one shows up, then gets its verdict. Press **refresh** to see more.
 
    The **Campaigns** page in the sidebar doesn't show this run under **At work now**: that list leaves rig checks out. Step 7 shows where Campaigns keeps them.
 

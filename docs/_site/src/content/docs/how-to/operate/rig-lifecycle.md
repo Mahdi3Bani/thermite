@@ -3,7 +3,7 @@ title: "Stop, restart, remove or reset a rig"
 description: "Stop, start, restart, update, remove, retire, bring back or fully reset a rig, and know what each one keeps."
 type: how-to
 sidebar:
-  order: 5
+  order: 6
 ---
 
 What you can do to a [rig](../../reference/glossary.md), and where, depends on how the rig was set up. This page lists each action for each kind of rig, then gives the steps.
@@ -28,7 +28,7 @@ The buttons below are on the rig's page: open **Rigs** in the dashboard's sideba
 **On a cluster, a start takes a few minutes.** After **Start its pods**, the page says `Started.`, and the block's status, at the right of its heading, says `starting`. Control waits up to 15 minutes for the rig's pods to run, then up to 10 minutes for a report from the rig. Press **refresh** in the status bar, the line along the bottom of the page, to follow it:
 
 - Two steps get a ✓, "Its pods run again" and "A report reached control after the start", and the status says `running`.
-- If a step gets ✕ instead, the status says `failed`: see [A rig on a cluster never reports](troubleshoot.md#a-rig-on-a-cluster-never-reports). The block then offers **Try the update again**, also after a start: it applies the same images again and waits once more. See [Try again after a failure](#try-again-after-a-failure).
+- If a step gets ✕ instead, the status says `failed`: see [A rig on a cluster never reports](troubleshoot.md#a-rig-on-a-cluster-never-reports). When the rig reports later, its status says `running`, and a ✓ step follows the ✕: "A report reached control after the start · it reported after the wait ended". The block also offers **Try the update again** while the status says `failed`, after a start too: it applies the same images again and waits once more. See [Try again after a failure](#try-again-after-a-failure).
 
 **One change at a time on a cluster.** While the status says `starting` or `updating`, control refuses a start, a restart and an image update. The page shows a card that starts with **Not done.** and the reason, such as `rig-1 is starting: wait until its page shows it running, or failed.` **Stop its pods** and **Remove the rig** are never refused for this. They also end control's wait for the pods and the report, so a rig you stopped or removed during a start or an update doesn't turn `failed` later.
 
@@ -102,7 +102,7 @@ Steps:
 
 If control refuses the update, the page shows a card that starts with **Not done.** and the reason, such as `The cluster cluster-1 is no longer in Providers.`, `rig-1 is being updated: wait until its page shows it running, or failed.`, the refusal for a missing address above, or kubectl's error.
 
-If a step gets ✕ instead, with "not running after 15 minutes" or "no report after 10 minutes: it may not have started", the status says `failed`: see [A rig on a cluster never reports](troubleshoot.md#a-rig-on-a-cluster-never-reports). Fix the cause; the pods keep trying by themselves. When the rig reports again, its status says `running`, and a ✓ step follows the ✕: "A report reached control from the new images · it reported again after the wait ended". To have control apply the images again and wait once more, see [Try again after a failure](#try-again-after-a-failure).
+If a step gets ✕ instead, with "not running after 15 minutes" or "no report after 10 minutes: it may not have started", the status says `failed`: see [A rig on a cluster never reports](troubleshoot.md#a-rig-on-a-cluster-never-reports). Fix the cause; the pods keep trying by themselves. When the rig reports again, its status says `running`, and a ✓ step follows the ✕: "A report reached control from the new images · it reported after the wait ended". To have control apply the images again and wait once more, see [Try again after a failure](#try-again-after-a-failure).
 
 After the update, run the rig's **Isolation** and **Judge smoke** checks: control doesn't run them for you ([Check a rig](check-a-rig.md)).
 
@@ -229,9 +229,10 @@ Over the REST API, with the owner's token: `POST /v1/rigs/<rig>/reset` with `{"c
 
 | Wiped | Kept |
 | --- | --- |
-| The harness's state: its ledger, git mirrors, kits, imports, models, builds, research archive and research folders, the **Edit rig** settings and the model route it was handed | The rig's signing key, so control still trusts it (no key to accept) |
+| The harness's state: its ledger, git mirrors, kits, imports, models, builds, research archive and research folders with their copies of past research (`knowledge/`), the **Edit rig** settings and the model route it was handed | The rig's signing key, so control still trusts it (no key to accept) |
 | Its scratch space and outbox | Everything in the results repository, with the full export |
-| The supervisor's state: its copy of the results, its fetch caches, its known hosts for Git access, its advisors' records and the day's spending | Control's records: the rig's past events, its commands, champion patches and daily reports. The dashboard shows only what the rig records after the reset |
+| The supervisor's state: its copy of the results, its fetch caches, its known hosts for Git access, its advisors' records, the day's spending and where each run's past research sync had got to | Control's records: the rig's past events, its commands, champion patches and daily reports. The dashboard shows only what the rig records after the reset |
+| | Control's [knowledge base](../../reference/knowledge-base.md): the items of the rig's earlier runs stay in their campaigns' folders |
 | | Files outside the rig's state: the advisors file, its tokens, and its environment settings |
 
 After the wipe, the rig refuses commands issued before it. Its model route comes back from control within about half a minute.

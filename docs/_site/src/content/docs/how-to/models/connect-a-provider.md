@@ -31,6 +31,8 @@ This guide covers providers reached with an API key, or with no key for OpenCode
    | **Anthropic** | Anthropic's own API | Leave empty for `https://api.anthropic.com` | Required |
    | **OpenCode (its own models)** | OpenCode's own service. Its models run only in OpenCode v2 | Leave empty for `https://opencode.ai/zen/v1` | Leave empty for the free models |
 
+   The list's other groups hold subscriptions, Git access and the places where rigs run. Its last group, **Knowledge (optional)**, holds an outside knowledge base: a service over MCP, such as GBrain, that can keep a copy of what a campaign's runs recorded, and that the campaign's teacher pair (two of its advisors) can search. See [Connect an outside knowledge base](../operate/outside-knowledge-base.md).
+
 3. Fill in the fields. Each label has an ⓘ icon; hover over it to read its description:
 
    | Field | Its ⓘ says | Example |
@@ -63,11 +65,11 @@ The rig's row now says "Its agents run under Pi with my-model from my-litellm." 
 You can also give a rig its agents' model where you start a run:
 
 - under **The agents' model** on the **New campaign** page ([Start a campaign from the dashboard](../campaigns/start-from-dashboard.md#4-where-it-runs));
-- in a campaign's **Start a run** panel, which shows **The agents' model** when the chosen rig has no model and **Agents** is **On**. Its ⓘ says: "For a rig with no model for its agents: the model to give it, as on its Edit rig page. Control gives it to the rig, which takes it within a minute; then start the run again here." Control gives the rig the model and says "rig-1 takes my-model within a minute. When the rig shows it, start the run again." The run doesn't start yet: when the rig's row here says it runs the model, open **Start a run** again and press **Start the run**.
+- in a campaign's **Start a run** panel, which shows **The agents' model** when the chosen rig has no model and **Agents** is **On**. Its ⓘ says: "For a rig with no model for its agents: the model to give it, as on its Edit rig page. Control gives it to the rig, which takes it within a minute; then start the run again here." Control gives the rig the model and says "rig-1 takes my-model within a minute; Settings › Providers shows it taking the model until then. Then start the run again." The run doesn't start yet: when the rig's row here says it runs the model, open **Start a run** again and press **Start the run**.
 
 An agent can do it over MCP with [`set_rig_model`](../../reference/mcp-tools.md#set_rig_model). All three work like **Use** here.
 
-**Start a run** starts a run with agents only once the rig has taken the model that control gave it, wherever you gave it: with **Use** here, on **Edit rig**, over MCP or in an earlier **Start a run**. Pressed too early, **Start the run** answers **Not started.** "rig-1 has not taken my-model yet (it does within a minute of being given it): start the run once its page shows that model." Until then, **Start the campaign** on the **New campaign** page saves the campaign without starting it, and says "Saved. rig-1 has not taken my-model yet (it does within a minute of being given it). When the rig shows it, start the run here."
+**Start a run** starts a run with agents only once the rig has taken the model that control gave it, wherever you gave it: with **Use** here, on **Edit rig**, over MCP or in an earlier **Start a run**. Pressed too early, **Start the run** answers **Not started.** "rig-1 has not taken my-model yet (it does within a minute of being given it; Settings › Providers shows it taking the model until then): start the run after that." Until then, **Start the campaign** on the **New campaign** page saves the campaign without starting it, and says "Saved. rig-1 has not taken my-model yet (it does within a minute of being given it; Settings › Providers shows it taking the model until then). Then start the run here."
 
 A failed check says `Its model check FAILED`, then why. With OpenCode's free models, two reasons are common:
 

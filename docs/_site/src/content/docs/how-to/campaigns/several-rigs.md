@@ -3,7 +3,7 @@ title: "Run a campaign on several rigs"
 description: "Run one campaign on more than one rig, and have another rig confirm the best result."
 type: how-to
 sidebar:
-  order: 11
+  order: 12
 ---
 
 One campaign can run on several [rigs](../../reference/glossary.md) at once, each with its own run, agents and judge. You can then send one rig's [champion](../../reference/glossary.md) to another rig, from the run's **Planner** tab, and the other rig's judge tests it again on its own hardware. If it holds up there too, the result is **cross-verified**.

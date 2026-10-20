@@ -316,6 +316,34 @@ g1.ev(
   },
   "planner",
 );
+// decode-a's journal: the agents' field notes (goal 065).
+const note = (hoursAgo: number, id: number, by: string, body: Record<string, unknown>) =>
+  g1.ev(hoursAgo, "journal_note", "decode-a", { id, by, ...body }, by);
+note(9.2, 1, "lane-1", {
+  kind: "observation",
+  text: "Unrolling past 2 stops paying here: the loop waits on memory reads, not on instructions.",
+  about: { type: "attempt", id: "a-decode-a-035" },
+  lane: "lane-1",
+});
+note(5, 2, "planner", {
+  kind: "decision",
+  text: "Kept lane-1 on shared memory: it has that kernel in its context from its last trial.",
+  about: { type: "round", id: "15" },
+});
+note(4.4, 3, "lane-2", {
+  kind: "surprise",
+  text: "A 19% gain from one change is far above anything before it on the large cases.",
+  about: { type: "attempt", id: "a-decode-a-042" },
+  lane: "lane-2",
+});
+note(4.3, 4, "auditor:auditor-a", {
+  kind: "question",
+  text: "Does the large case reuse the same input on every call? If so, the gain may be the cache.",
+});
+note(1, 5, "teachers:teacher-a", {
+  kind: "lesson",
+  text: "A gain far above the rig's noise needs a fresh input on every call before it can count.",
+});
 const g2 = new Rig("gpu-2");
 hillClimb(g2, "decode-b", 26, [0.048, 0.031, 0.027, 0.036], { pending: true });
 g2.ev(5, "propagation_received", "decode-b", {

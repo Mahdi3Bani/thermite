@@ -11,7 +11,7 @@ A **campaign** is one piece of research: what to improve, reach or find out, and
 | | Hill climb | Goal | Research |
 | --- | --- | --- | --- |
 | The question | How far can this number go without breaking anything else? | Can the project reach these goals? | What can be learned about this question in this time? |
-| An agent's work | One change to the code | One change to the code | Reading sources and recording claims, with quotes, and findings |
+| An agent's work | One change to the code, and any sources, claims and notes it records on the way | One change to the code, and any sources, claims and notes it records on the way | Reading sources and recording claims, with quotes, and findings |
 | What checks it | The judge, by timing the change against the champion with statistics | The judge, by each goal's own test; a person accepts goals that need judgement | Code that finds every quote, word for word, in a page the rig archived, and checks each finding against verified claims |
 | The best result | The champion: the best confirmed version | The champion: the version that meets the most goals | The findings, the verified claims and the report |
 | It ends when | Never on its own: you pause it | Every required goal is met, or you accept that they cannot be | Its time window is over |
@@ -26,6 +26,16 @@ In every mode, **code decides when a campaign is done, never an agent.** No agen
 Nothing ends a campaign by default. There is no limit on turns, attempts, failures or time unless you set one. The contract can set three **budgets**: hours since the run was created (paused time counts too), hours of judging on the device, and money spent on the model (counted only when the rig is told the model's prices). A spent budget **pauses** the run; it never closes it. The **Stop after (hours)** field on the New campaign page sets the first. [Set a budget or a stop time](../how-to/campaigns/budget-and-stop-time.md) explains all three, and [Why Thermite runs until the job is done](runs-until-done.md) explains why there are no defaults.
 
 A rig works on one run at a time. Starting or resuming a run on a rig pauses the run that was running there; a paused run can be resumed later.
+
+### Research in every mode
+
+Reading is not only for research campaigns. A change to code often rests on something read: a paper, upstream code, an issue or a specification. So workers in hill-climb and goal runs can fetch web pages through the rig's archiving fetcher, read and search what the run archived, and record a claim with its exact quotes or a research note with the sources it rests on. Code checks their claims as it checks a research run's ([Research](#research)). Findings, hypotheses and report sections stay with research runs: a hill-climb or goal run refuses them.
+
+Such a run's research folder holds `INDEX.md`, `sources/`, `claims/` and `notes/`, which the harness writes from the run's records and keeps current, and `knowledge/`, the past research described below. Once the run has recorded anything there, each worker's brief points to the folder, and tells the worker to search it before fetching a page again. The fetcher uses fixed values in these runs: it respects `robots.txt`, and fetches at most 6 pages a minute from each site and at most 5,000,000 bytes a page. In Pi, the worker has the tools `fetch`, `read_source`, `search_corpus`, `add_claim` and `add_note`; in OpenCode and Claude Code, the same five as `thermite-trial research` commands.
+
+### Field notes and past research
+
+In every mode, the workers, the planner (where the run has one) and the advisors keep **field notes** as they work: short notes of what they observed, decided and learned, which the run's **Journal** tab shows. Every run's records also go into its campaign's folder in **Thermite's knowledge base** on control. Later runs of the campaign read that folder, and other campaigns' folders when the owner grants them, in their research folder's `knowledge/`. [Journals and the knowledge base](journals-and-knowledge.md) explains both.
 
 ## Hill climb
 
@@ -75,7 +85,7 @@ A research campaign studies a topic for a set time. The contract gives the topic
 
 When verified claims together show something, a worker records a **finding**: the conclusion in one sentence, a summary, why it matters, and the verified claims behind it. Code checks a finding too. It counts only if every claim it cites is verified and every number in it appears in those claims. Otherwise it stays a **draft finding**, with its problems listed. The report gives each finding with its support, and says how many of its claims are independently sourced.
 
-Workers can also write notes, propose hypotheses that cite verified claims, and draft report sections. The report shows those sections as worker sections, never as findings, and flags any number in them that is in no archived source and no verified claim.
+Workers can also write research notes, propose hypotheses that cite verified claims, and draft report sections. The report shows those sections as worker sections, never as findings, and flags any number in them that is in no archived source and no verified claim.
 
 **The research folder.** Each run has a folder of files that its workers search and add to. The harness writes most of it from its records and keeps it current while the workers record. The workers can read what the harness writes and the lanes' saved files, and change only their own lane's working area:
 
@@ -87,20 +97,21 @@ claims/ findings/ hypotheses/ notes/ report/
                   every claim (verified or draft), finding, hypothesis, note and report section
 lanes/<lane>/     each lane's files, as they were when its last trial ended
 work/<lane>/      the lane's working area: syntheses, outlines, drafts, lists of what to read next
+knowledge/        past research from the folders the campaign may read; its README.md says what is where
 ```
 
 A lane's working area is kept for its next trial, so a worker builds on what the trials before it learned. When a trial ends, the harness saves the lane's files, records which trial wrote or removed each one and when, and shows them to the other lanes under `lanes/`. These files are working material, not results: only claims and findings recorded through the research tools are checked and reported.
 
 **What a worker has.** It depends on the rig's [worker harness](../reference/glossary.md), the program the agents run in:
 
-- **In Pi**, a worker has the research tools (fetch, read an archived source, search the archive, record a claim, a note, a hypothesis or a finding, write a report section, and see the progress) and file tools: list, read and search the folder, and write and remove files in its own working area. It has no shell. Its `idea` tool proposes another research task for the queue.
-- **In OpenCode v2**, a worker keeps OpenCode's own tools, including its shell and files, as a hill-climb worker does. It starts in its lane's working area and runs the research tools as `thermite-trial research` commands, and proposes another task with `thermite-trial idea`.
+- **In Pi**, a worker has the research tools (fetch, read an archived source, search the archive, record a claim, a note, a hypothesis or a finding, write a report section, and see the progress) and file tools: list, read and search the folder, and write and remove files in its own working area. It has no shell. Its `idea` tool proposes another research task for the queue, and its `note` tool writes a field note.
+- **In OpenCode v2**, a worker keeps OpenCode's own tools, including its shell and files, as a hill-climb worker does. It starts in its lane's working area and runs the research tools as `thermite-trial research` commands, proposes another task with `thermite-trial idea`, and writes a field note with `thermite-trial note`.
 
 A Claude subscription runs only in Claude Code, which doesn't run research workers, so a research campaign needs another model. OpenCode's own free models work only when the agents run in OpenCode v2. A research campaign needs a model to do anything at all.
 
 **How the work is planned.** Research is planned by fixed rules, not by a model. Each research task is an experiment in the run's [experiment queue](agents-lanes-planner.md#the-experiment-queue): a kind of task (explore, find primary sources, look for contradictions, or consolidate) for one of the campaign's questions. Each round, when the queue holds fewer tasks than the run has **lanes** (lines of search, each with one worker), the research plan adds tasks: the questions with the least coverage first. When an hour passes with no new source and no newly verified claim, primary sources and contradictions come first. Each lane then takes the next task in the queue, whoever added it, so the owner and the teacher pair can add tasks too. A worker's idea for another task waits until the owner queues it or drops it, because no model plans a research run. The report shows what was new in the last hour. The owner can message the lanes and the teacher pair of a research run, but it has no planner, auditor or review panel to message ([How the parts fit together](how-it-fits-together.md#the-owners-messages)).
 
-**What it produces.** The final report and the whole research folder: the archived sources, every claim, finding, hypothesis and note, and the lanes' files. A digest of the report comes every hour by default. The rig's export after the final report carries the folder ([Set up the results repository](../how-to/operate/results-repository.md#what-gets-pushed) says what reaches the repository).
+**What it produces.** The final report and the whole research folder: the archived sources, every claim, finding, hypothesis and note, and the lanes' files. A digest of the report comes every hour by default. The rig's export after the final report carries the folder, without `knowledge/`, and every export carries the run's field notes and research notes ([Set up the results repository](../how-to/operate/results-repository.md#what-gets-pushed) says what reaches the repository).
 
 **When it ends.** When its time window is over. The window is the contract's maximum duration, or its minimum duration when no maximum is set. Only running time counts: time spent paused does not. When the time is up, the trials still running finish, the final report is written and the run is closed. The report has no pass or fail; it is what the claims and findings support.
 

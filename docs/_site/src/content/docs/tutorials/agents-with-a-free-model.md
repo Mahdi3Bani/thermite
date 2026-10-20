@@ -176,7 +176,7 @@ The first change takes a while. The planner works for a few minutes, a trial can
 
 When the agent submits its change, the judge takes over. Open **Overview** in the sidebar and look at **What happened**, newest first. You see `lane-1 submitted` with the agent's description of its change, then the judge screening it: building it and measuring it against the champion. The **champion** is the best version so far. At the start it is the project as it was: champion #1.
 
-Then open **Campaigns**, and on the card under **At work now**, choose `smoke-agents › smoke-agents-1`. The run's page opens. Its title, `smoke-agents-1`, is followed by `on local-1 · hill climb · Running`. On the right of the header are the buttons **Live**, **Message**, **Pause** and **⋯**. Below the header are the run's tabs: **Overview**, **Experiments**, **Attempts**, **History** and **Planner**.
+Then open **Campaigns**, and on the card under **At work now**, choose `smoke-agents › smoke-agents-1`. The run's page opens. Its title, `smoke-agents-1`, is followed by `on local-1 · hill climb · Running`. On the right of the header are the buttons **Live**, **Message**, **Pause** and **⋯**. Below the header are the run's tabs: **Overview**, **Experiments**, **Journal**, **Attempts**, **History** and **Planner**.
 
 Choose **Experiments**. It shows the run's queue of experiments. Three of its parts matter here:
 
@@ -185,6 +185,8 @@ Choose **Experiments**. It shows the run's queue of experiments. Three of its pa
 - **Tried**: every experiment that has ended, newest first, with its result. For a trial that submitted a change, the result is its attempt and a word for how the judge decided it, as in the table below.
 
 The card **Ideas from the lanes** holds what an agent proposes beyond its own experiment; it is usually empty. You can add, reorder and drop experiments yourself, and queue or drop the lanes' ideas. You don't need to here: [Choose what a run tries next](../how-to/campaigns/choose-what-runs-next.md) says how.
+
+The next tab, **Journal**, holds the agents' **field notes**: what they observe, the decisions they make and why, and what they learn, written as they work. Later runs can read them: see [Use past research in a new run](../how-to/campaigns/use-past-research.md).
 
 Choose **Attempts**. Each change the agent submitted is an **attempt**, with one word for how it ended. The word sums up the judge's verdict, as in [Your first run](first-run.md#7-see-what-the-judge-decided):
 
