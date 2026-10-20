@@ -60,3 +60,27 @@ test("the Campaigns list hides rig checks and finished campaigns unless asked", 
   // An unknown filter is the default one.
   assert.equal(campaignFilter("bogus"), "default");
 });
+
+test("a research run's rounds read as set by the research plan, not as a refused plan", async () => {
+  const { sentence } = await import("./words.ts");
+  const e = (body: Record<string, unknown>) =>
+    ({
+      kind: "epoch_started",
+      subject: "r-1",
+      actor: "scheduler",
+      at: "2026-10-20T00:00:00Z",
+      body,
+    }) as never;
+  const assignments = [{ lane: "lane-1", family: "contradict" }];
+  const u = { judge: { jobs: [] }, runs: [] } as never;
+  const research = sentence(
+    u,
+    e({ n: 3, source: "fallback", notes: "research plan (deterministic in v1)", assignments }),
+  );
+  assert.match(
+    String(research?.text ?? JSON.stringify(research)),
+    /The research plan set round 3: lane-1 on contradict\./,
+  );
+  const refused = sentence(u, e({ n: 3, source: "fallback", assignments }));
+  assert.match(String(refused?.text ?? JSON.stringify(refused)), /the model's plan was refused/);
+});

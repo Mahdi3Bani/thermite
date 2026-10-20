@@ -1558,7 +1558,7 @@ describe("control dashboard for an operator", () => {
     const history = await get("/ui/campaigns/opus-simd?run=rig-b%2Fdec-2&view=history");
     assert.match(
       history,
-      /The planner planned epoch 1: lane-1 on filter-bank; lane-2 on range-decoder\./,
+      /The planner planned round 1: lane-1 on filter-bank; lane-2 on range-decoder\./,
     );
     const planner = await get("/ui/campaigns/sum-speed?run=rig-c%2Fsum-1&view=planner");
     assert.match(planner, /Rules for the plan/);

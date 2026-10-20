@@ -142,8 +142,16 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
       const as = Array.isArray(b.assignments)
         ? (b.assignments as { lane?: string; family?: string }[])
         : [];
+      const round = Number.isFinite(Number(b.n)) ? `round ${String(b.n)}` : "a round";
+      // A research run plans its rounds with a fixed method on purpose: not a refused plan.
+      if (b.plan === "research" || String(b.notes ?? "").startsWith("research plan"))
+        return s(
+          `The research plan set ${round}: ${as.map((a) => `${a.lane} on ${a.family}`).join("; ")}.`,
+          "",
+          { run: String(e.subject) },
+        );
       return s(
-        `The planner planned ${Number.isFinite(Number(b.n)) ? `epoch ${String(b.n)}` : "an epoch"}${b.source === "fallback" ? ` (its fallback plan: the model's plan was refused${Array.isArray(b.refused) && b.refused.length ? `, because ${String(b.refused[0]).replace(/^try \d+: /, "")}` : ""})` : ""}: ${as.map((a) => `${a.lane} on ${a.family}`).join("; ")}.`,
+        `The planner planned ${round}${b.source === "fallback" ? ` (its fallback plan: the model's plan was refused${Array.isArray(b.refused) && b.refused.length ? `, because ${String(b.refused[0]).replace(/^try \d+: /, "")}` : ""})` : ""}: ${as.map((a) => `${a.lane} on ${a.family}`).join("; ")}.`,
         "",
         { run: String(e.subject) },
       );

@@ -543,13 +543,15 @@ ${propagate}
       .join("");
     const a = i.agents;
     const diagnostics = `<div class="block"><div class="head"><h2>Agent figures</h2><span class="right">for diagnosing the agents, not the research</span></div><div class="kpis">${[
-      kpi(
-        "Plans",
-        String(a.epochs),
-        a.epochs
-          ? `${Math.round((100 * a.planner_valid) / a.epochs)}% valid · ${a.fallbacks} fallbacks`
-          : "",
-      ),
+      i.mode === "research"
+        ? kpi("Rounds", String(a.epochs), "set by the research plan")
+        : kpi(
+            "Plans",
+            String(a.epochs),
+            a.epochs
+              ? `${Math.round((100 * a.planner_valid) / a.epochs)}% by the model · ${a.fallbacks} fallbacks`
+              : "",
+          ),
       kpi("Trials", String(a.trials), `${a.submitted} submitted`),
       kpi("Tokens", fmtInt(a.tokens_in + a.tokens_out), `${fmtInt(a.tokens_out)} out`),
       kpi("Duplicates", String(a.duplicates), "the same change again"),
@@ -2045,7 +2047,12 @@ ${box}</section></div>`,
     const sel = sources.find((x) => x.source === source);
     const lines = store.liveTail(u.id, 400, source || undefined);
     const after = lines.at(-1)?.id ?? 0;
-    const ended = new Map(sources.map((x) => [x.source, x.ended]));
+    // A trial works while the ledger has it at work; its "trial ended" line may never come (a
+    // restart cuts it off, and the harness closes it as interrupted when it starts again).
+    const atWork = new Set(
+      u.runs.flatMap((r) => Object.values(r.at_work).map((w) => `trial:${w.trial}`)),
+    );
+    const ended = new Map(sources.map((x) => [x.source, x.ended || !atWork.has(x.source)]));
     const list = [
       `<a class="side-row${source ? "" : " on"}" href="/ui/rigs/${encodeURIComponent(u.id)}/live">${icon.live}<span class="two"><span class="name"><b>Everything</b></span><span class="muted xs">all sessions, interleaved</span></span></a>`,
       ...sources.map(

@@ -803,7 +803,11 @@ export function runBrief(
     const t = trials.find((x) => x.lane === lane);
     const plan = r.epoch?.assignments.find((a) => a.lane === lane);
     const work = r.at_work[lane];
-    if ((work || (t && !t.ended)) && r.status === "running") {
+    // The ledger says who is at work; a live session counts only while it is fresh, since a
+    // trial cut off by a restart never writes "trial ended" (the harness closes it as
+    // interrupted when it starts again).
+    const fresh = t && !t.ended && Date.parse(t.last_at) > now - 15 * 60_000;
+    if ((work || fresh) && r.status === "running") {
       const what =
         work?.focus ||
         plan?.focus ||
