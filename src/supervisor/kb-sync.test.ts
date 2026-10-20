@@ -196,6 +196,19 @@ describe("past research, synced from control into the run's folder", () => {
     assert.ok(existsSync(join(s.dir, "smoke-matmul")));
   });
 
+  test("after scratch was cleared, the earlier items come back with the next ones", async () => {
+    const items = [item(1)];
+    const s = await setup(items);
+    const first = await syncKnowledgeOnce(s.cfg, emptyKbSyncState());
+    rmSync(s.dir, { recursive: true, force: true });
+    items.push(item(2));
+    await syncKnowledgeOnce(s.cfg, first.state);
+    assert.deepEqual(readdirSync(join(s.dir, "kernels", "notes")).sort(), [
+      "rig-b--kernels-7--1.md",
+      "rig-b--kernels-7--2.md",
+    ]);
+  });
+
   test("an item's names never lead out of knowledge/", async () => {
     const s = await setup([]);
     s.env.service.writeKnowledge(RUN, [

@@ -137,6 +137,9 @@ export class Knowledge {
     folders?: string[] | undefined,
   ): { written: number; updated: number; removed: string[] } {
     const parsed = items.map((x) => KbItemWire.parse(x));
+    // The earlier items first, when scratch was cleared: the README written below would hide
+    // that they are missing.
+    this.show(run);
     const index = this.index(run);
     const files = join(this.saved(run), "files");
     const shown = this.dir(run);
