@@ -603,9 +603,23 @@ export function createControlApi(
       combiner: await roleRouteOf(rig, "combiner"),
       auditor: await roleRouteOf(rig, "auditor"),
       panel: await roleRouteOf(rig, "panel"),
-      outside_kb: outsideKb.forRig(rig),
+      outside_kb: handOutsideKb(rig),
     });
   });
+  /** Outside knowledge bases' tokens leave control here: audited when what a rig gets changes. */
+  const handed = new Map<string, string>();
+  const handOutsideKb = (rig: string) => {
+    const grants = outsideKb.forRig(rig);
+    const what = grants.map((g) => `${g.name}:${g.campaigns.join(",")}`).join(";");
+    if ((handed.get(rig) ?? "") !== what) {
+      handed.set(rig, what);
+      if (grants.length)
+        store.audit(`rig:${rig}`, "outside_kb_handed", {
+          kbs: grants.map((g) => ({ name: g.name, campaigns: g.campaigns })),
+        });
+    }
+    return grants;
+  };
 
   // Past research for a run's agents (goal 065): the items of the folders the run's campaign may
   // read, after the supervisor's cursor. Only the rig's own runs; never a folder not granted.
@@ -616,8 +630,14 @@ export function createControlApi(
     if (!run) return c.json({ error: "run is required" }, 400);
     if (!Number.isSafeInteger(after) || after < 0)
       return c.json({ error: "after is a whole number from 0" }, 400);
+    // Only a run control assigned to this rig, of the campaign control assigned: a rig cannot
+    // read another campaign's folders by naming it in its own events.
+    const assigned = store.assignedCampaigns(c.req.param("rig")).get(run);
+    if (!assigned) return c.json({ error: `control did not assign run ${run} to this rig` }, 404);
     const sync = store.kb().sync(c.req.param("rig"), run, after);
     if (!sync) return c.json({ error: `this rig has no run ${run}` }, 404);
+    if (sync.campaign !== assigned)
+      return c.json({ error: `run ${run} is not of the campaign control assigned` }, 409);
     return c.json(sync);
   });
 

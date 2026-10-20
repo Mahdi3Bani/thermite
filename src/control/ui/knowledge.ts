@@ -142,8 +142,9 @@ export function journalTab(o: {
   reads: string[];
 }): string {
   const { u, r } = o;
-  const field = r.journal.filter((n) => n.kind !== "note").reverse();
-  const notes = r.journal.filter((n) => n.kind === "note").reverse();
+  // Field notes have the ledger's ids; research notes negative ones (views.ts), whatever the kind.
+  const field = r.journal.filter((n) => n.id > 0).reverse();
+  const notes = r.journal.filter((n) => n.id < 0).reverse();
   const writers = [...new Map(field.map((n) => [writer(n.by).key, writer(n.by)])).values()].sort(
     (a, b) => {
       const rank = (x: string) =>

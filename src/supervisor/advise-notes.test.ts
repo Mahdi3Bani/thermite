@@ -160,6 +160,26 @@ describe("the advisors' field notes", () => {
     assert.ok(work > 0 && firstNote !== undefined && firstNote > work, "notes after the work");
   });
 
+  test("teachers with an open web fetch get no background from past research in their brief", async (t: TestContext) => {
+    const env = makeJudgeEnv({ assign: { briefing: BRIEFING } });
+    await env.service.applyCommand(env.assign);
+    const seen: string[] = [];
+    const fake = await startFakeModel(({ messages }) => {
+      seen.push(JSON.stringify(messages));
+      return { toolCalls: [{ name: "answer", args: { summary: "s", recommendations: [] } }] };
+    });
+    t.after(() => fake.close());
+    const advisors = AdvisorsConfig.parse({
+      teachers: [runtime(fake.url, "teacher-a")],
+      fetch_domains: ["*"],
+    });
+    await adviseOnce(config(env, advisors, []), emptyAdviseState());
+    const brief = seen.find((s) => s.includes("Brief of run js-1")) ?? "";
+    assert.ok(brief, "the teacher ran");
+    assert.doesNotMatch(brief, /Vector loads need 16-byte aligned pointers/);
+    assert.doesNotMatch(brief, /\\"background\\"|\\"past_research\\"/);
+  });
+
   test("the auditor's notes come after its audit, as auditor:<name>; its package has the background", async () => {
     const env = makeJudgeEnv({
       contract: {

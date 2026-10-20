@@ -28,7 +28,7 @@ or its assignment instead: lane limits, trial length, budgets and the run's prom
 | `THERMITE_RIG_HARNESS_IMAGE`, `THERMITE_RIG_SUPERVISOR_IMAGE` | none | The images control deploys rigs from on machines (Rigs › Add a rig). Without both, control can't set rigs up there |
 | `THERMITE_RIG_HARNESS_CUDA_IMAGE` | none | The harness image for rigs with GPUs |
 | `THERMITE_RUNPOD_TEST_IMAGE` | none | The image a RunPod test pod runs when none is given: the CUDA harness image, at a registry RunPod can pull from |
-| `THERMITE_OUTSIDE_KB_SYNC_SECONDS` | 300 | How often control copies the new and changed items of campaign folders to outside knowledge bases (only the copies switched on, on a campaign's page) |
+| `THERMITE_OUTSIDE_KB_SYNC_SECONDS` | 300 | How often control copies the new and changed items of campaign folders to outside knowledge bases (only the copies switched on, on a campaign's page). `0` turns the timer off; Sync now still works |
 | `THERMITE_LIFECYCLE` | none | `compose` or `kubernetes`: lets control restart rigs and finish a full reset |
 | `THERMITE_COMPOSE_PROJECT`, `THERMITE_COMPOSE_SERVICES`, `THERMITE_ENGINE_SOCKET` | `thermite`, `{}`, `/run/engine.sock` | For `compose`: the project, each rig's service names, and the container engine's socket |
 | `THERMITE_K8S_NAMESPACE`, `THERMITE_K8S_SELECTOR_HARNESS`, `THERMITE_K8S_SELECTOR_SUPERVISOR` | `ar-{rig}`, `app.kubernetes.io/component=harness` and `=supervisor` | For `kubernetes`: where each rig's pods are and how to find them |

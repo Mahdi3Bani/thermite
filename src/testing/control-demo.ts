@@ -512,13 +512,13 @@ export function seedDemo(store: ControlStore, now = Date.now()): void {
       ],
       [
         210,
-        "journal_note",
+        "research_note",
         "sum-1",
         {
-          id: 5,
+          note: 1,
           by: "lane-1",
-          kind: "note",
           text: "The benchmark reads 64 MB per call; at 20 GB/s that alone takes 3.2 ms.",
+          sources: [],
         },
       ],
       ...champ(2, 2400, "a-11110001", 0.061),

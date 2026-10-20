@@ -730,7 +730,7 @@ ${goals}${research}${ladder}
 <div class="block"><div class="head"><h2>Recent</h2><span class="right"><a href="${runHref(u.id, i, "history")}">Full history</a></span></div>${recent}</div>
 </div></div>`;
     return `<section class="block" id="${esc(runKey(u.id, i.id))}">
-<nav class="tabs">${sub("overview", "Overview", waiting ? ` <span class="dot warn"></span>` : "")}${sub("experiments", "Experiments", ` <span class="muted">${i.queue.filter((x) => x.state === "queued").length} up next</span>`)}${sub("journal", "Journal", ` <span class="muted">${i.journal.filter((n) => n.kind !== "note").length} notes</span>`)}${sub("attempts", "Attempts", ` <span class="muted">${i.attempts.length}</span>`)}${sub("history", "History")}${sub("planner", "Planner")}</nav>
+<nav class="tabs">${sub("overview", "Overview", waiting ? ` <span class="dot warn"></span>` : "")}${sub("experiments", "Experiments", ` <span class="muted">${i.queue.filter((x) => x.state === "queued").length} up next</span>`)}${sub("journal", "Journal", ` <span class="muted">${((n) => `${n} note${n === 1 ? "" : "s"}`)(i.journal.filter((n) => n.id > 0).length)}</span>`)}${sub("attempts", "Attempts", ` <span class="muted">${i.attempts.length}</span>`)}${sub("history", "History")}${sub("planner", "Planner")}</nav>
 ${body}
 </section>`;
   };
@@ -1347,8 +1347,13 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     }
     if (!r.ok) return back(r.errors.join(" "));
     if (split !== undefined) sendSplit(rig.id, split);
+    // A try takes no queue and no briefing: say so when some were ticked.
+    const leftOut =
+      !agents && (copied.length || pastQueue.length || briefing.length)
+        ? `&ok=${encodeURIComponent("A try (agents off) takes no experiments and no background: what you ticked was left out.")}`
+        : "";
     return c.redirect(
-      `${campaignHref(campaign)}?run=${encodeURIComponent(runKey(rig.id, r.run))}`,
+      `${campaignHref(campaign)}?run=${encodeURIComponent(runKey(rig.id, r.run))}${leftOut}`,
       303,
     );
   });
@@ -1637,7 +1642,7 @@ ${
       c,
       campaign,
       "ok",
-      `${campaign}'s agents no longer read ${reads}'s folder. New runs start without it.`,
+      `${campaign}'s agents no longer read ${reads}'s folder. Runs at work drop it at their next sync.`,
     );
   });
 

@@ -401,7 +401,15 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
       try {
         const brief = (await api("GET", `/v1/brief?run=${encodeURIComponent(inst.id)}`)) as {
           owner_messages?: OwnerMessage[];
+          background?: unknown;
+          past_research?: unknown;
         };
+        // Teachers with an open web fetch get no records of other campaigns: past research and
+        // the briefing stay out of their brief, as the knowledge-base search does.
+        if (domains.includes("*")) {
+          delete brief.background;
+          delete brief.past_research;
+        }
         const given = (brief.owner_messages ?? []).filter((m) => !m.read).map((m) => m.id);
         const run = await teacherRound({
           config: cfg.advisors,

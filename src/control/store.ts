@@ -1046,6 +1046,33 @@ export class ControlStore {
     return x;
   }
 
+  /**
+   * The campaigns control itself assigned to a rig (signed assign_campaign commands it did not
+   * see fail), by run. What a rig may read and be given is decided from these, never from what
+   * the rig's own events claim.
+   */
+  assignedCampaigns(rig: string): Map<string, string> {
+    const out = new Map<string, string>();
+    for (const r of this.db
+      .prepare(
+        "select signed from command where rig = ? and kind = 'assign_campaign' and status not in ('failed', 'rejected', 'expired') order by issued_at",
+      )
+      .all(rig) as { signed: string }[]) {
+      try {
+        const p = (
+          JSON.parse(r.signed) as {
+            envelope?: { payload?: { run?: unknown; contract?: { campaign?: unknown } } };
+          }
+        ).envelope?.payload;
+        if (typeof p?.run === "string" && typeof p.contract?.campaign === "string")
+          out.set(p.run, p.contract.campaign);
+      } catch {
+        // not a command this store wrote
+      }
+    }
+    return out;
+  }
+
   /** One run's newest live lines, newest last (for the Live page's first view). */
   liveRunTail(
     rig: string,

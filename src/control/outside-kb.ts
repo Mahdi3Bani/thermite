@@ -161,6 +161,9 @@ export function mcpUrlProblem(raw: string): string | null {
     return "The MCP URL is not a URL.";
   }
   if (!/^https?:$/.test(u.protocol)) return "The MCP URL starts with https:// or http://.";
+  // The token goes with every call: in clear only to this machine itself.
+  if (u.protocol === "http:" && !["localhost", "127.0.0.1", "[::1]"].includes(u.hostname))
+    return "The MCP URL needs https:// (http:// only for localhost): its token goes with every call.";
   if (u.username || u.password || u.search || u.hash)
     return "The MCP URL has no credentials, query or fragment in it: the token goes in its own field.";
   return null;
@@ -561,30 +564,8 @@ export class OutsideKbs {
 
   /** The campaigns a rig runs or was assigned (from its reports and control's commands). */
   campaignsOfRig(rig: string): string[] {
-    const out = new Set<string>();
-    for (const r of this.db
-      .prepare(
-        "select distinct json_extract(body, '$.campaign') as c from rig_event where rig = ? and kind = 'run_created'",
-      )
-      .all(rig) as Row[])
-      if (str(r.c)) out.add(str(r.c));
-    for (const r of this.db
-      .prepare(
-        "select signed from command where rig = ? and kind = 'assign_campaign' and status in ('pending', 'delivered')",
-      )
-      .all(rig) as Row[]) {
-      try {
-        const c = (
-          JSON.parse(str(r.signed)) as {
-            envelope?: { payload?: { contract?: { campaign?: unknown } } };
-          }
-        ).envelope?.payload?.contract?.campaign;
-        if (typeof c === "string" && c) out.add(c);
-      } catch {
-        // not a command this store wrote
-      }
-    }
-    return [...out].sort();
+    // Control's own assignments only: never what the rig's events claim.
+    return [...new Set(this.store.assignedCampaigns(rig).values())].sort();
   }
 
   /**

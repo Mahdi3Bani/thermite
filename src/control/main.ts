@@ -140,12 +140,18 @@ async function main(): Promise<void> {
   }, 15 * 60_000);
   // Campaign folders copied to outside knowledge bases: their new and changed items, every few
   // minutes (THERMITE_OUTSIDE_KB_SYNC_SECONDS). With no copy switched on, nothing is called.
+  // 0 (or anything not a positive number) turns the timer off; Sync now still works.
   const outsideSyncMs = Number(env.THERMITE_OUTSIDE_KB_SYNC_SECONDS ?? "300") * 1000;
-  const outsideSync = setInterval(() => {
-    outsideKb
-      .syncAll()
-      .catch((err) => log("control", "outside knowledge base sync error", { error: String(err) }));
-  }, outsideSyncMs);
+  const outsideSync =
+    Number.isFinite(outsideSyncMs) && outsideSyncMs > 0
+      ? setInterval(() => {
+          outsideKb
+            .syncAll()
+            .catch((err) =>
+              log("control", "outside knowledge base sync error", { error: String(err) }),
+            );
+        }, outsideSyncMs)
+      : undefined;
   const stop = () => {
     clearInterval(resets);
     clearInterval(tests);

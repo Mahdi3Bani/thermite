@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { describe, type TestContext, test } from "node:test";
 import { generateSigningKeys } from "../core/commands.ts";
+import { assigned } from "../testing/assignments.ts";
 import { type FakeKb, startFakeKb } from "../testing/fake-kb.ts";
 import { createControlApi } from "./api.ts";
 import { KnowledgeBase } from "./kb.ts";
@@ -472,6 +473,9 @@ describe("an outside knowledge base", () => {
       ).outside_kb;
     assert.deepEqual(await routes("rig-a"), [], "no campaign is granted yet");
     assert.ok(outside.setRead("team-brain", "pn-engine", true, "owner:test"));
+    // A rig's own events naming the campaign are not enough: control must have assigned it.
+    assert.deepEqual(await routes("rig-a"), [], "control did not assign pn-engine to rig-a yet");
+    assigned(store, "rig-a", "pn-3", "pn-engine");
     assert.deepEqual(outside.readers("team-brain"), ["pn-engine"]);
     assert.deepEqual(await routes("rig-a"), [
       {
@@ -483,6 +487,11 @@ describe("an outside knowledge base", () => {
       },
     ]);
     assert.deepEqual(await routes("rig-b"), [], "rig-b runs only rl-research");
+    // Each change of what a rig gets is in the audit log (names only, never the token).
+    await routes("rig-a");
+    const handed = store.listAudit(100).filter((a) => a.action === "outside_kb_handed");
+    assert.equal(handed.length, 1, "once per change");
+    assert.ok(!JSON.stringify(handed).includes(TOKEN));
     // Another rig's token can't read rig-a's routes.
     const other = await control.request("/v1/rigs/rig-a/advisor-routes", {
       headers: { authorization: "Bearer rig-b-token-abcdef" },

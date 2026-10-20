@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { generateSigningKeys } from "../core/commands.ts";
 import { KbSync } from "../core/kb.ts";
+import { assigned } from "../testing/assignments.ts";
 import { createControlApi } from "./api.ts";
 import { ControlStore } from "./store.ts";
 
@@ -360,6 +361,9 @@ test("the rigs' route: the rig's own token, its own runs, a KbSync", async () =>
   twoCampaigns(store);
   const get = (path: string, token: string) =>
     control.request(path, { headers: { authorization: `Bearer ${token}` } });
+  // A run control did not assign gets nothing, whatever its own events name.
+  assert.equal((await get("/v1/rigs/rig-b/kb?run=sv-2&after=0", "rig-b-token-abcd")).status, 404);
+  assigned(store, "rig-b", "sv-2", "survey-study");
   const ok = await get("/v1/rigs/rig-b/kb?run=sv-2&after=0", "rig-b-token-abcd");
   assert.equal(ok.status, 200);
   const body = KbSync.parse(await ok.json());
