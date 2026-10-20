@@ -1015,14 +1015,14 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       // Not on the rig yet: it arrives within a minute. Starting now would fail the first trials.
       if (startValue === "start" && rig.model?.model !== model) {
         startValue = "save";
-        modelNote = `${rig.id} takes ${model} within a minute. When the rig shows it, start the run here.`;
+        modelNote = `${rig.id} takes ${model} within a minute. Settings › Providers shows the rig taking it until then; then start the run here.`;
       }
     }
     // Control gave the rig a model it has not taken yet: saved now, started once it has.
     const pending = store.rigModels()[rig.id];
     if (!chosen && startValue === "start" && pending && rig.model?.model !== pending.model) {
       startValue = "save";
-      modelNote = `${rig.id} has not taken ${pending.model} yet (it does within a minute of being given it). When the rig shows it, start the run here.`;
+      modelNote = `${rig.id} has not taken ${pending.model} yet (it does within a minute of being given it; Settings › Providers shows it taking the model until then). Then start the run here.`;
     }
     if (!chosen && startValue === "start" && agentsModelMissing(rig))
       return newCampaignPage(c, {
@@ -1283,7 +1283,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       const model = decodeURIComponent(chosen.split("|")[1] ?? "");
       if (rig.model?.model !== model)
         return c.redirect(
-          `${campaignHref(campaign)}?ok=${encodeURIComponent(`${rig.id} takes ${model} within a minute. When the rig shows it, start the run again.`)}`,
+          `${campaignHref(campaign)}?ok=${encodeURIComponent(`${rig.id} takes ${model} within a minute; Settings › Providers shows it taking the model until then. Then start the run again.`)}`,
           303,
         );
     }
@@ -1291,7 +1291,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     const given = store.rigModels()[rig.id];
     if (agents && !chosen && given && rig.model?.model !== given.model)
       return back(
-        `${rig.id} has not taken ${given.model} yet (it does within a minute of being given it): start the run once its page shows that model.`,
+        `${rig.id} has not taken ${given.model} yet (it does within a minute of being given it; Settings › Providers shows it taking the model until then): start the run after that.`,
       );
     if (agents && !chosen && agentsModelMissing(rig))
       return back(
@@ -5436,7 +5436,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       id: "planner",
       name: "Planner",
       does: "Before each round of trials, it reads what the agents found and gives each worker its next direction.",
-      off: "Lanes take queued experiments in order, by the fixed rules. Rules that name a direction still apply; free-word rules need the planner's model.",
+      off: "Lanes take queued experiments in order, by the fixed rules. Rules that name a direction (one word with hyphens) still apply; free-word rules need the planner's model.",
     },
     {
       id: "auditor",

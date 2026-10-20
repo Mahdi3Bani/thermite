@@ -349,12 +349,18 @@ export function createControlApi(
     const placed = store.clusterRig(rig);
     if (placed?.status === "failed") {
       store.setClusterRigStatus(rig, "running");
-      store.rigSetupEvent(
-        rig,
-        "report_after_images",
-        true,
-        "it reported again after the wait ended",
-      );
+      // Named for the wait that ended: its first report, one after new images, or after a start.
+      const failed = store
+        .rigSetupEvents(rig)
+        .filter((x) => !x.ok)
+        .at(-1)?.step;
+      const step =
+        failed === "first_report"
+          ? "first_report"
+          : failed === "pods_running" || failed === "report_after_start"
+            ? "report_after_start"
+            : "report_after_images";
+      store.rigSetupEvent(rig, step, true, "it reported after the wait ended");
     }
     return c.json({ added });
   });
