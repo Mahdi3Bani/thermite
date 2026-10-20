@@ -290,6 +290,8 @@ export class OutsideKbs {
     },
     by: string,
   ): "created" | "changed" | "needs_token" {
+    const bad = mcpUrlProblem(p.mcp_url);
+    if (bad) throw new Error(bad);
     const old = this.get(p.name);
     if (!p.token && (!old || new URL(old.mcp_url).origin !== new URL(p.mcp_url).origin))
       return "needs_token";

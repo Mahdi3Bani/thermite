@@ -160,6 +160,12 @@ describe("an outside knowledge base", () => {
       "needs_token",
     );
     assert.equal(outside.get("team-brain")?.mcp_url, fake.url, "nothing changed");
+    // A token in the URL is refused, whoever calls.
+    assert.throws(
+      () =>
+        outside.put({ ...keep, mcp_url: `${fake.url}?token=${TOKEN}`, token: TOKEN }, "owner:test"),
+      /no credentials, query or fragment/,
+    );
     assert.equal(
       outside.put({ ...keep, mcp_url: fake.url, write_tool: null }, "owner:test"),
       "changed",
