@@ -24,14 +24,19 @@ Every agent writes down what it learns. Each campaign builds a corpus from that,
   - what it would try next.
   The harness gives each agent the tool to write its journal, and keeps the entries in the run's ledger with who wrote them and when. Agents never edit another agent's entries.
 - **Research notes:** in every mode, not only research mode, agents can record sources they read, claims with their quotes, and notes. The run's folder ([062](062-research-folder.goal)) holds them, built by the harness from its records, and agents search it.
-- **The corpus** of a run:
-  - the journals and notes;
-  - the experiment log ([064](064-experiment-queue.goal)) with each result;
-  - the verified claims and findings;
-  - the final report.
-  It goes into the run's export.
-- **Into a knowledge base:** the owner configures a knowledge base (for example a GBrain-style brain), and control sends a campaign's corpus to it during and after the run. Each item keeps where it came from: campaign, run, agent and time.
-- **From past research:** a new campaign's planner, advisors and workers can search the knowledge base for past experiments, results and findings on related work, and the queue can start with experiments drawn from them.
+- **Thermite's own knowledge base:** control keeps a knowledge base of its own; nothing outside is required.
+  - **A folder per campaign:** each campaign has a folder, scoped to that campaign, that holds everything its runs produce:
+    - the research and the raw sources;
+    - the notes and the documentation;
+    - the trials, the journals and the experiments with their results;
+    - the findings and the final reports.
+
+    Each item keeps where it came from: run, agent and time.
+  - **Read access:** a campaign reads its own folder. The owner can let it read other campaigns' folders, at any time, also after the campaign was made, by changing which folders it can read from. Agents can read and search those folders, and never write to them.
+- **From past research:** a new campaign's planner, advisors and workers search the folders their campaign can read, and the queue can start with past experiments drawn from them.
+- **Outside knowledge bases, optional:** a GBrain-style brain (or another one) is a sync target and a source of extra outside context, not where the research lives:
+  - control can copy campaign folders out to it;
+  - a campaign can be allowed to read from it as outside context.
 
 ## Why
 
@@ -43,9 +48,10 @@ Today most of what an agent learns ends with its trial. Only submitted attempts,
 
 - [ ] Workers, the planner and the advisors write journals; the entries are in the ledger with who wrote them and when.
 - [ ] Agents in every mode can record sources, claims and notes in the run's folder.
-- [ ] A run's export holds its corpus.
-- [ ] Control sends a corpus to a configured knowledge base, with its origin on each item.
-- [ ] A new campaign's agents can search past corpora, and the queue can start from them.
+- [ ] Each campaign has a folder in Thermite's knowledge base with everything its runs produce, each item with its origin; a run's export also holds its part.
+- [ ] The owner sets, and later changes, which other campaigns' folders a campaign can read; agents can search and read them and never write to them.
+- [ ] A new campaign's agents can search the folders they may read, and the queue can start from them.
+- [ ] An outside knowledge base (such as GBrain) is optional: control can sync folders to it, and a campaign can read from it as outside context.
 - [ ] The dashboard shows a run's journals beside its experiments.
 - [ ] Tests cover writing, the export, sending to a knowledge base and searching it.
 
@@ -54,10 +60,11 @@ Today most of what an agent learns ends with its trial. Only submitted attempts,
 - 2026-10-20, owner: all agents write journals and research notes; a campaign's corpus goes into the knowledge base to inform later campaigns. This goal follows the experiment queue ([064](064-experiment-queue.goal)).
 - 2026-10-20, owner: "Build it" (the mockups of 063 and 064); accepted into v0.1.0, built after 064.
 - 2026-10-20: [059](059-knowledge-base-export.goal) (research results into a knowledge base) becomes part of this goal.
+- 2026-10-20, owner, on the first mockups: "gbrain shouldn't be required. thermite should maintain its own kb system. gbrain is more a sync than anything and additional external context brought in." Each campaign keeps everything in its own folder in Thermite's knowledge base; the owner grants a campaign read access to other campaigns' folders, at any time.
 
 ## Open questions
 
-- Which knowledge bases come first, and does control push to them or do they pull from control?
+- Which outside knowledge bases come first after GBrain, and does control push to them or do they pull?
 - How much of a journal does a new campaign see: everything, or only what the planner selects?
 
 ## Progress
