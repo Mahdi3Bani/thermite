@@ -107,6 +107,24 @@ None.
 
 - 2026-10-20: Built on the control side: the Campaigns list (at work, waiting, one row per campaign, filters and search, rig checks hidden); a campaign's page with Start a run (also for campaigns assigned over the API, MCP or the CLI); a run's page with tabs; Live for one run with filters and the one-row message box; research rounds worded as set by the research plan; trials cut off by a restart no longer shown as working. The rig's side of messaging (recipients, kept messages, read receipts, advisors' answers) is in progress.
 
+- 2026-10-20: Fixes from the docs work, on `v1/build`:
+  - **When a message counts as read.** A trial reads the messages in its brief once its agent is at work. A trial that fails first leaves them for the lane's next trial.
+  - **Advisor prompts.** They carry the owner's messages first and never cut them.
+  - **Ledger upgrade.** It counts the advisors' earlier messages as read, so none is given again.
+  - **The day's spending limit.** When it is reached, a message to the teacher pair starts no round, and the live view says once that it waits for the next day.
+  - **Review panel and auditor.** Their reads count only with a posted review or audit, so a retry gives the messages again.
+  - **Advisors' answers.** One malformed answer no longer drops the others.
+  - **Who can receive a message.** Recipients that no reader covers are refused or greyed out.
+  - **Live.**
+    - Messages, receipts and answers draw as soon as their line arrives.
+    - A lane that starts later gets its own filter.
+    - The rig-wide view points to each run's Live.
+  - **The Planner tab** shows a message that was not taken.
+  - **Screen text.** Pause has its reason again. "Finished" is ordered right in the sidebar. The texts for Start a run, Live and the Planner tab match what they do.
+  - **Rigs on a cluster.** A rig offers a retry after a failed update, and control's new address when only that changed. Start, restart and update wait for each other.
+
+  Still to do: the compose acceptances, then the roll.
+
 ---
 
 Run with `/goal Complete docs/plan/goals/063-scan-and-steer.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

@@ -1,7 +1,7 @@
 ---
 id: "064"
 title: "One experiment queue for each run; the planner coordinates it"
-status: READY
+status: IN_PROGRESS
 version: "0.1.0"
 part: "Running campaigns"
 depends_on: ["063"]
@@ -11,7 +11,7 @@ updated: 2026-10-20
 
 # 064 · One experiment queue for each run; the planner coordinates it
 
-**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
 
 ## What
 
@@ -71,7 +71,8 @@ Today the plan exists only for the current round and is redone every round. Idea
 
 ## Open questions
 
-- When a lane proposes an idea, does it wait for the planner, or can the owner choose to queue lanes' ideas directly?
+- Answered 2026-10-20 (see Decisions): a lane's idea waits for the planner, and the owner can queue or drop it first.
+- Free-word rules (`match`) apply only through the planner's model. Without it (none set, its answer refused, the planner off, or a research run), the fixed rules apply only rules that name a direction. Should code also match the words (for example, every word in the experiment's title or direction)?
 
 ## Progress
 
@@ -88,6 +89,16 @@ Today the plan exists only for the current round and is redone every round. Idea
   - **The advisors.** The teacher pair and the combiner can propose experiments and moves, each with why; their brief has the queue. The auditor can put a check at the top of the queue (for example, re-measure an attempt) when it has a doubt it cannot settle. The supervisor sends these to the harness, which records them as the teacher's, the auditor's or the panel's. Advisors add and move; they do not drop.
   - **The workers.** `thermite-trial idea "<title>" [--why …] [--family …] [--details …]` in OpenCode and Claude Code, and the `idea` tool in Pi (code and research trials), propose an experiment by the lane. It waits as proposed until the planner or the owner queues or drops it; the trial goes on. No limit is set by default.
   - Still to do: the operator's command list and `issue_command`'s description in MCP name the new kinds (control, after the merge); the docs pages wait for the docs site.
+
+- 2026-10-20: Merged onto `v1/build`. Over MCP, the operator and the owner can issue `queue_add`, `queue_move`, `queue_edit`, `queue_drop`, `queue_accept` and `drop_directive`; an agent's token cannot. `issue_command` and `run_queue` describe them. Other changes:
+  - A dashboard test drives the queue through a real harness: add, move, drop, a free-word rule and its Remove.
+  - A research trial's experiment reads "finished" on the Experiments tab.
+  - History tells the queue's changes, the hand-outs and the rules. A round by the fixed rules says why: the planner is off, there is no model, or the model gave no usable plan.
+  - Copied experiments keep the author that control's records give them.
+  - A worker's brief marks an experiment from an advisor, a lane or an earlier run as a suggestion to weigh, not instructions.
+  - The Add a rule help says when free words apply.
+
+  Still to do: the compose acceptances, then the roll. The acceptance tests do not cover the queue yet.
 
 ---
 

@@ -170,6 +170,21 @@ export const QueueSeed = z.strictObject({
 export type QueueSeed = z.infer<typeof QueueSeed>;
 
 /**
+ * Background the owner picked from past research when starting a run (goal 065): a finding, a
+ * claim, a note or a report, with where it came from. Every agent's brief shows it as data.
+ */
+export const BriefingSeed = z.strictObject({
+  text: z.string().trim().min(1).max(4000),
+  from: z.object({
+    campaign: z.string().min(1).max(200),
+    run: IdSchema,
+    kind: z.string().min(1).max(40),
+    ref: z.string().min(1).max(200),
+  }),
+});
+export type BriefingSeed = z.infer<typeof BriefingSeed>;
+
+/**
  * Who an owner's message (message_agent) may go to: everyone working, the planner, the advisors
  * (all of them, the teacher pair, the auditor or the review panel), a lane or a worker's trial.
  */
@@ -195,6 +210,8 @@ export const CommandPayloads = {
     promotion: z.enum(["auto", "owner_approval"]).optional(),
     /** Experiments another run had not tried, to start this run's queue with, in order. */
     queue: z.array(QueueSeed).max(500).optional(),
+    /** Background from past research for every agent's brief (goal 065), in order. */
+    briefing: z.array(BriefingSeed).max(200).optional(),
   }),
   /**
    * A check of the rig itself, run by its harness: the model route (one tool-calling request),
