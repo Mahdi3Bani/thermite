@@ -120,7 +120,7 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
       ? "You"
       : by === "planner"
         ? "The planner"
-        : /teacher|combiner/.test(by)
+        : /teacher|combiner/.test(by) || by === "supervisor"
           ? "The teacher pair"
           : /auditor/.test(by)
             ? "The auditor"

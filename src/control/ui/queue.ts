@@ -230,7 +230,7 @@ ${
 }
 <div class="card qcard"><h3>The planner</h3><div class="small">${esc(o.model)}</div><a class="small" href="/ui/rigs/${encodeURIComponent(u.id)}/edit">Change it on Edit rig</a>${
     r.agents.epochs && !research
-      ? `<div class="muted small" style="border-top:1px solid var(--border);padding-top:8px">Last ${r.agents.epochs} hand-outs: ${r.agents.planner_valid} by the model, ${r.agents.fallbacks} in queue order because the model's answer was refused.</div>`
+      ? `<div class="muted small" style="border-top:1px solid var(--border);padding-top:8px">Last ${r.agents.epochs} hand-outs: ${r.agents.planner_valid} by the model, ${r.agents.fallbacks} in queue order by the fixed rules (no model, the planner off, or no usable answer from the model). History says which for each round.</div>`
       : ""
   }</div>
 ${o.propagate ? `<div class="card qcard"><h3>Other rigs</h3>${o.propagate}</div>` : ""}

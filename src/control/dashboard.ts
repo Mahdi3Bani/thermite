@@ -4100,8 +4100,12 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
           return [];
         }
       })();
+      if (now.code !== 0)
+        return {
+          error: `Control could not read ${rig}'s deployment to compare control's address: ${kubeError(now)}`,
+        };
       const was = env.find((x) => x.name === "CONTROL_URL")?.value;
-      if (now.code !== 0 || was === undefined || was === opts.publicUrl.replace(/\/$/, ""))
+      if (was === undefined || was === opts.publicUrl.replace(/\/$/, ""))
         return { ok: `${rig} already runs control's images.` };
     }
     const stopped = r.status === "stopped";
