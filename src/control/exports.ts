@@ -48,7 +48,11 @@ const Manifest = z.looseObject({
   files: z.record(RelPath, Sha256),
 });
 
-const Begin = z.strictObject({
+/**
+ * The start of an export. A field this control does not know is dropped (a newer supervisor may
+ * send more, goal 012): the manifest's SHA-256s, checked on every file, are what guard it.
+ */
+const Begin = z.object({
   manifest: Manifest,
   /** The files the rig sends, each with its size in bytes. */
   files: z.record(RelPath, z.number().int().min(0).max(Number.MAX_SAFE_INTEGER)),
