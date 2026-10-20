@@ -109,7 +109,7 @@ Each note in `journal` is `{id, by, kind, text, about, lane, trial, at}`:
 | Field | Meaning |
 | --- | --- |
 | `id` | The note's number. A research note's is negative, so it never meets a field note's |
-| `by` | Who wrote it: `lane-<n>`, `planner`, or an advisor as `teachers:<name>`, `auditor:<name>` or `panel:<name>` |
+| `by` | Who wrote it: `lane-<n>`, `planner`, or an advisor as `teachers:<name>`, `auditor:<name>` or `panel:<name>`. A research note: its lane, or `research` |
 | `kind` | A [field note](knowledge-base.md#field-notes)'s kind (`observation`, `decision`, `surprise`, `question`, `lesson` or `note`), or `note` for a research note |
 | `text` | The note |
 | `about` | `{type, id}`: the record it is about, or `null`. A research note's is its first source |

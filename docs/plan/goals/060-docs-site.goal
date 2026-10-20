@@ -195,21 +195,30 @@ The docs today are twelve dense pages, written for the people who built Thermite
 
 - 2026-10-19: Rebased onto the development branch at `d3932fe`. Its newer commits (the research folder and findings, research under OpenCode, RunPod spending in Providers, the `set_rig_model` MCP tool, the agents' model on New campaign, the wait after failed trials) are now on the 31 pages they touch, and goal 061 marks what they fixed.
 - 2026-10-19: Verified. `npm run docs:build` builds with no errors or warnings; `npm run docs:check` passes for all 73 pages; `npm run check` passes (typecheck, lint, 367 tests, the public check). CI's docs job and the Pages workflow run for the first time when the code is pushed; turning GitHub Pages on needs the owner's account, and the first deploy follows the code's move to `main` (goal 026).
-- 2026-10-20: The pages follow the development branch to `f6cecd5`, which the release roll ships:
+- 2026-10-20: The pages follow the development branch to `0143506`:
   - goal 063's rebuilt Campaigns list, campaign and run pages, Live and the owner's messages;
   - goal 064's experiment queue;
-  - the fixes that followed both;
+  - goal 065's field notes, the Journal tab, the knowledge base, grants, past research, briefings and outside knowledge bases;
+  - the fixes that followed each one;
   - cluster rigs moving onto control's images.
 
-  The work, in four passes as the branch moved:
+  The work went in several passes as the branch moved:
   - inventories of each set of commits;
   - writers;
   - verifiers checking every changed claim against the code;
-  - one tutorial followed on a local stack (tutorial 1, steps 1 to 6).
+  - fresh readers;
+  - followers.
 
-  A new how-to guide, "Choose what a run tries next", covers the queue and the planner's rules (74 pages now). The screenshots are taken again from the demo, which now has a made-up queue for one run, and the README and home page show a run's page.
+  The followers ran tutorials 1 to 4, Steer a run, and most of Choose what a run tries next on fresh local stacks, through the dashboard's own forms, with OpenCode's free models and the public test project. Goal 065's pages were checked against the code only: no compose acceptance covers that goal yet, and the shared VM was busy.
 
-  Code gaps found on the way went to the development session as they came up, and most are fixed on the branch. The rest wait for its next batch. Security items went to the maintainers' private notes only. Following tutorials 2 to 4 and the queue and steering guides on a local stack waits for the shared Podman VM.
+  Five new pages (78 in all):
+  - how-to guides: "Choose what a run tries next", "Use past research in a new run" and "Connect an outside knowledge base";
+  - reference: "The knowledge base";
+  - explanation: "Journals and the knowledge base".
+
+  The screenshots are taken again from the demo, which now has a made-up queue and field notes for one run. The README and home page show a run's page.
+
+  Code gaps found on the way went to the development session as they came up. Most are fixed on the branch; the rest wait for its next batch. Security items went to the maintainers' private notes only.
 
 ---
 

@@ -78,7 +78,7 @@ When you want a limit, you set it. Each one does exactly what it says, and nothi
 | Turns in one trial | **Turns per trial** on the rig's **Edit rig** page | That one trial ends at the limit; the next one starts |
 | A lane command's time | `lanes.limits.run_timeout_s` in the contract | That one command ends |
 | Advisors' spending per day | `max_usd_per_day` in the advisors file | The advisors skip their work until the next day ([Supervision](supervision.md)) |
-| Size of a research campaign's archive | `THERMITE_RESEARCH_MAX_MB` on the rig | Further fetches are refused |
+| Size of a run's archive of fetched pages, in any mode | `THERMITE_RESEARCH_MAX_MB` on the rig | Further fetches are refused |
 
 A spent budget **pauses** the run. It never closes it, so nothing is lost. While a run is paused, its judge jobs wait in the queue too. The budget belongs to the run's contract, which does not change while the run lives: a new budget means a new contract version and a new run.
 

@@ -6,7 +6,7 @@ sidebar:
   order: 14
 ---
 
-Thermite needs secrets to work: API keys for model providers, logins for subscriptions, SSH keys and kubeconfigs for the places rigs run, access to private repositories, and tokens for people, programs and rigs. This page follows each kind of secret: where it is kept, where it travels, and who can read it.
+Thermite needs secrets to work: API keys for model providers, logins for subscriptions, SSH keys and kubeconfigs for the places rigs run, access to private repositories, tokens for outside knowledge bases, and tokens for people, programs and rigs. This page follows each kind of secret: where it is kept, where it travels, and who can read it.
 
 The design follows a few rules:
 
@@ -30,7 +30,7 @@ flowchart LR
 
 ## Control's sealed store
 
-Everything you add on the dashboard's **Settings › Providers** page is **sealed**: model provider keys, subscription logins, Git access, SSH keys, kubeconfigs and RunPod keys. Control encrypts each one with AES-256-GCM, under a key kept in a separate file, outside its database. A copy of the database alone reveals no secret, and a sealed value that was changed fails to open. The [ports, volumes and secret files reference](../reference/ports-volumes-secrets.md#secret-files) says where each file lives.
+Everything you add on the dashboard's **Settings › Providers** page is **sealed**: model provider keys, subscription logins, Git access, SSH keys, kubeconfigs, RunPod keys and the tokens of outside knowledge bases. Control encrypts each one with AES-256-GCM, under a key kept in a separate file, outside its database. A copy of the database alone reveals no secret, and a sealed value that was changed fails to open. The [ports, volumes and secret files reference](../reference/ports-volumes-secrets.md#secret-files) says where each file lives.
 
 The dashboard shows only a hint of each key: its last four characters, such as `key …abcd`. No page, REST route or MCP tool shows you a key again. The MCP tool `providers` lists what control holds without any key, token or kubeconfig.
 
@@ -72,6 +72,17 @@ A **RunPod key** is sealed too. Control uses it to read the account and to start
 A private repository needs **Git access**: a deploy key that control makes (you add its public half to the repository) or an HTTPS token you paste. Both are sealed. Control hands one to a rig only for a campaign assigned to that rig whose sources name it. The supervisor asks for it at the moment it fetches, and control records each hand-over in its audit log. An SSH key goes into a file in a fresh folder that is removed after the fetch, and a token into an HTTPS header, never into the address or a command line. The host's key is pinned the first time. The access never travels in a signed command, and the harness never sees it: it receives only a git bundle, which it checks against the signed commit.
 
 The **results repository**, where rigs push their exports, uses a deploy key of its own that can write, mounted into the supervisor ([settings](../reference/settings.md#the-results-repository)). The supervisor also uses it to fetch a project or kit whose source names no Git access. [Set up the results repository](../how-to/operate/results-repository.md) shows how.
+
+## Outside knowledge bases
+
+An **outside knowledge base**, such as a GBrain-style brain, is an MCP server that control can copy a campaign's folder to, and that a campaign's teachers can search ([Journals and the knowledge base](journals-and-knowledge.md#what-an-outside-knowledge-base-adds)). It takes a token, which you paste once on **Settings › Providers**. Control seals it like every other secret, and the dashboard shows only its hint, such as `token …abcd`.
+
+- **Control** opens the token to read the server's tool list when you add or check the knowledge base, and to write pages when a campaign's folder is copied there.
+- **A rig** gets the token only when control assigned it a campaign that the owner let search that knowledge base. Control hands it to the supervisor with the advisors' models, and its audit log records what each rig is handed (`outside_kb_handed`). The supervisor keeps it in memory and gives the search only to the teachers of that campaign's runs. The harness and the workers never get it.
+- **On the wire**, the token goes in each request's `Authorization` header, never in the address: control refuses an address with credentials, a query or a fragment in it, and one that is not https, except for localhost.
+- **It stays with its server.** A new address on another server needs the token again, so a sealed token never goes to a server it was not given for. Control takes the token out of the error texts it shows. Deleting the knowledge base deletes its token.
+
+[Connect an outside knowledge base](../how-to/operate/outside-knowledge-base.md) shows the steps.
 
 ## Tokens
 

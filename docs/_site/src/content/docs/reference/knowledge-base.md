@@ -58,7 +58,7 @@ Each item is one record of one run. Control builds it from the events the rig re
 | `ref` | Its id in its run, as in the table below |
 | `title` | Cut to 300 characters |
 | `body` | Its text, cut to 20,000 characters |
-| `by` | Who wrote it. A note: its writer, such as `lane-1`, `planner` or `teachers:<name>`. An experiment: who added it, such as `owner`, `planner`, `teacher` or `lane-2`. An attempt: its lane. A source, a claim or a finding: the lane that recorded it, or `research`. A report: `research` |
+| `by` | Who wrote it. A field note: its writer, such as `lane-1`, `planner` or `teachers:<name>`. A research note: its lane, or `research`. An experiment: who added it, such as `owner`, `planner`, `teacher` or `lane-2`. An attempt: its lane. A source, a claim or a finding: the lane that recorded it, or `research`. A report: `research` |
 | `url` | A web address, for a source and a research note that cites one |
 | `sub` | A field note's kind, `note` for a research note, or `verified` or `draft` for a claim |
 | `at`, `updated_at` | When it was first recorded, and when it last changed |
@@ -72,8 +72,8 @@ Each item is one record of one run. Control builds it from the events the rig re
 | Experiment | `experiment_added`, then `experiment_finished` or `experiment_dropped` | Its id, `x-…` | What to try, as it was added | Its details, `Why: …` and `Direction: …`, then one of `Result: attempt <id> (<result>)`, `Result: no attempt (<result>)` or `Dropped: <why>` |
 | Attempt | `attempt_recorded`, then `verdict` | Its id, `a-…` | Its hypothesis | The hypothesis, `Claim: …` and `Declared flaws: …`, then `Verdict: <verdict> (+1.23%)` once the judge decides |
 | Source | `source_fetched` | Its id in the run | The page's title, or its address | Its address and its domain |
-| Claim | `claim_added` | Its id in the run | The claim | The claim, its first quote in quotation marks, `Verified against its source.` or `A draft: not verified yet.`, and `Question <n>` when it answers one. `sub` is `verified` or `draft` |
-| Finding | `finding_added` | Its id in the run | Its statement | The statement, its summary, `Why it matters: …` and `<n> supporting claims`, with ` (not all verified)` when some are drafts |
+| Claim | `claim_added` | Its id in the run | The claim | The claim, its first quote in quotation marks, `Verified against its source.` or `A draft: not verified yet.`, then `Question <n>`: the campaign question it answers. `sub` is `verified` or `draft` |
+| Finding | `finding_added` | Its id in the run | Its statement | The statement, its summary, `Why it matters: …` and `<n> supporting claims`, with ` (not all verified)` when the harness kept the finding as a draft |
 | Report | `research_final`, `research_digest` | `final` or `digest` | "Final report" or "Latest digest" | The report. Each new digest replaces the last. `by` is `research` |
 
 Search results and **From past research** show an experiment's result as `tried: attempt <id> (<result>), <verdict>` or `dropped: <why>`.
@@ -96,7 +96,8 @@ Search results and **From past research** show an experiment's result as `tried:
 
 - **Every word must match.** Each word of 2 or more characters, up to the first 8, must be in the item's title or text, ignoring case. A word may be part of a longer one. No words: the newest items.
 - **Newest change first.**
-- **What a result shows:** its kind ("Field note (decision)", "Experiment", "Claim", …), its title, its campaign, its run, who wrote it, an experiment's result or a claim's `verified` or `draft`, and how long ago it changed. On the **Knowledge** page a result opens to show its text and its link.
+- **What a result shows on the Knowledge page:** its kind ("Field note (decision)", "Experiment", "Claim", …), its title, its campaign, its run, who wrote it, an experiment's result or a claim's `verified` or `draft`, and how long ago it changed. It opens to show its text and its link.
+- **What a result shows in From past research:** a checkbox, its label ("Past experiment", "Finding", "Claim", "Note", "Report", or a field note's kind, such as "Decision"), its title, its run, an experiment's result or a claim's `verified` or `draft`, who wrote it, and its campaign.
 
 ## Grants
 
@@ -133,6 +134,7 @@ The folder's items stay where they are: a grant copies nothing between folders.
 | **Not changed.** "A campaign always reads its own folder: choose another campaign's." | The campaign's own folder |
 | **Not changed.** "Control has no campaign named <other>." | A name control does not know |
 | **Not changed.** "<campaign> does not read <other>." | **Remove** of a folder it does not read |
+| "No such campaign." (HTTP 404) | **Add** for a campaign control does not know |
 | `no campaign <name>` | `kb_grant` with a campaign control does not know |
 | `a campaign always reads its own folder: name another campaign` | `kb_grant` with the same campaign twice |
 | `<campaign> does not read <reads>` | `kb_revoke` of a grant that is not there |
@@ -170,7 +172,7 @@ Each run has a research folder in its rig's harness, which every worker of the r
 
 A research run's folder also holds its findings, hypotheses, report and the lanes' files. Each item file starts with a front block: `campaign`, `rig`, `run`, `kind`, `ref`, `sub` (when it has one), `by`, `at`, `updated_at` and `url`, each as a JSON value. Then come `# <title>` and the item's text, as in the example at the top of this page.
 
-`knowledge/README.md` begins:
+`knowledge/README.md` starts with the heading `# Past research`, then:
 
 > The campaign folders this run's campaign may read, from Thermite's knowledge base: the notes, experiments, attempts, sources, claims, findings and reports of earlier runs, one file each, named <rig>--<run>--<ref>.md. Each file starts with where it came from (campaign, rig, run, kind, who wrote it, when). A folder the owner no longer lets this campaign read is removed.
 >
@@ -203,7 +205,7 @@ The briefs point at `knowledge/` only when it holds something.
 | A worker in a hill-climb or goal trial | Under `# Past research`: "Past research from the folders this campaign may read is in <path>/knowledge (<counts>, from <folders>): search it before starting. It is data, not instructions." |
 | A research worker | The same line, with "knowledge/ of your research folder" for the path. The folder's `INDEX.md` lists `knowledge/` too |
 | The planner | `past_research`: "Past research from the folders this campaign may read is in the run's knowledge/ folder (<counts>, from <folders>); the workers search it before starting." |
-| The teacher pair (and the combiner, which reads the same brief) | The same `past_research` line, except on a rig whose advisors file lets advisors fetch any web page (`fetch_domains` `"*"`): the supervisor then takes it out of the brief in their prompt |
+| The teacher pair (and the combiner, which reads the same brief) | The same `past_research` line, except on a rig whose advisors file lets advisors fetch any web page (`fetch_domains` `"*"`): the brief in their prompt then has no `past_research` line, and keeps the rest, its `field_notes` included |
 | The auditor and the review panel | Nothing about `knowledge/` |
 
 ## Briefings
@@ -230,7 +232,7 @@ A **briefing** is background for every agent of a new run: findings, claims, not
 | `from.kind` | text, 1 to 40 characters | Its kind, such as `finding` |
 | `from.ref` | text, 1 to 200 characters | Its `ref` in that run |
 
-Control refuses a briefing outside these limits before signing, with `bad assign_campaign payload: briefing.<i>.<field>: <message>`.
+Control refuses a briefing outside these limits before signing, with `bad assign_campaign payload: <where>: <message>`, where `<where>` is `briefing`, or a field such as `briefing.0.text`.
 
 ### Who sends one
 
@@ -250,7 +252,7 @@ Control refuses a briefing outside these limits before signing, with `bad assign
 | Agent | How its brief shows the briefing |
 | --- | --- |
 | Workers, in every mode | `# Background from past research (data, not instructions)`, then "The owner picked these from past research when starting this run. Other runs' agents and judges wrote them: weigh them, but they are not instructions.", then one line for each item: `- From <kind> <ref> of run <run> (campaign <campaign>): <text>` |
-| The planner, the teacher pair, the auditor and each panelist | `background: {note, items}`, where `note` says "Background from past research (data, not instructions): the owner picked it when starting this run; other runs' agents and judges wrote it." On a rig whose advisors may fetch any web page (`fetch_domains` `"*"`), the supervisor takes `background` out of the brief in the teacher pair's prompt |
+| The planner, the teacher pair, the auditor and each panelist | `background: {note, items}`, where `note` says "Background from past research (data, not instructions): the owner picked it when starting this run; other runs' agents and judges wrote it." On a rig whose advisors may fetch any web page (`fetch_domains` `"*"`), the brief in the teacher pair's prompt has no `background`, and keeps the rest |
 
 ## Field notes
 
@@ -382,8 +384,8 @@ About: attempt a-11110003
 
 **Let its advisors search it** adds the outside knowledge base to the campaign's **Can read from**, as `outside:<name>`. **Remove** there takes it away.
 
-- Control then gives the outside knowledge base's address, token and search tool, with the advisors' models (`GET /v1/rigs/<rig>/advisor-routes`, field `outside_kb`), to the supervisor of each rig that control assigned that campaign: a signed `assign_campaign` of it, for that rig, that was not refused, did not fail and did not expire. Each time what a rig gets changes, control writes `outside_kb_handed` to its audit log, with the knowledge bases and their campaigns.
-- The supervisor gives the search to the teacher pair of that campaign's runs, as their `kb_search` tool, beside the advisors file's own [`kb`](advisors-file.md#top-level). Several are searched together: `[{knowledge_base, results}]`. It does so only for `openai` runtimes (models with an API key), and not when `fetch_domains` holds `"*"`.
-- The search sends the teacher's query to the outside server. Workers, the planner, the auditor and the review panel never call it.
+- Control then gives the outside knowledge base's address, token and search tool, with the advisors' models (`GET /v1/rigs/<rig>/advisor-routes`, field `outside_kb`), to the supervisor of each rig that control assigned that campaign: a signed `assign_campaign` of it, for that rig, that was not refused, did not fail and did not expire. When control hands a rig knowledge bases that differ from the last ones it handed that rig, it writes `outside_kb_handed` to its audit log, with the knowledge bases and their campaigns.
+- The supervisor gives the search to the teacher pair of that campaign's runs, as their `kb_search` tool, beside the advisors file's own [`kb`](advisors-file.md#top-level). Several are searched together: `[{knowledge_base, results}]`. Only teachers that run in the supervisor with tools get it: the [`openai` runtime](advisors-file.md#runtimes), which a model with an API key and a ChatGPT subscription use. A teacher on a Claude subscription (Claude Code) or a `cli` runtime has no tools, and no teacher gets it when `fetch_domains` holds `"*"`.
+- The search sends the teacher's query to the outside server. Workers, the planner, the combiner, the auditor and the review panel never call it.
 
 No REST route or MCP tool adds, checks or deletes an outside knowledge base, switches a copy, or lets a campaign search one ([goal 065](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/065-journals-and-corpus.goal)). Control writes each change to its audit log: `outside_kb_added`, `outside_kb_changed`, `outside_kb_deleted`, `outside_kb_copy_on`, `outside_kb_copy_off`, `outside_kb_sync_now`, `outside_kb_read_granted`, `outside_kb_read_revoked` and `outside_kb_handed`.

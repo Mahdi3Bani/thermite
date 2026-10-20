@@ -282,7 +282,7 @@ A reason about one experiment names its state, then the rule: `only queued exper
 
 ### A run gets no past research
 
-- **You see:** you expect a run to have **past research**: the records of its campaign's other runs, and of the campaigns listed under **Can read from** in the **Knowledge** section of the campaign's page. Its rig's supervisor copies them into the run's `knowledge/` folder, for the workers to search. But the supervisor's log has no `past research synced` line, or it has `past research sync error`.
+- **You see:** you expect a run to have **past research**: the records of its campaign's other runs, and of the campaigns listed under **Can read from** in the **Knowledge** section of the campaign's page. Its rig's supervisor fetches them from control, and the harness writes them into the run's `knowledge/` folder, for the workers to search. But the supervisor's log has no `past research synced` line, or it has `past research sync error`.
 - **Why and do:**
   - **There is nothing to send yet.** A run never gets its own records, only those of its campaign's other runs and of the folders under **Can read from**. A campaign's first run, with nothing under **Can read from**, gets none. **Knowledge** in the sidebar shows how many items each folder holds. To add another campaign's folder, see [Use past research in a new run](../campaigns/use-past-research.md).
   - **The sync hasn't come yet.** The supervisor syncs every 3 minutes, and only the runs that are running: a paused run gets its items once it runs again. Its setting is `THERMITE_KB_SYNC_SECONDS` (180); `0` turns the sync off ([Settings](../../reference/settings.md#how-often-it-talks-to-control)). A supervisor without control's address and token syncs nothing.
