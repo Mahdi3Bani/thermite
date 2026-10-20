@@ -71,6 +71,7 @@ async function main(): Promise<void> {
       model,
       call: (op, args) => call("POST", `/v1/research/${op}`, args),
       link,
+      idea: (req) => call("POST", "/v1/trial/idea", req),
     });
     process.stdout.write(`\n${JSON.stringify(result)}\n`);
     return;
@@ -96,6 +97,8 @@ async function main(): Promise<void> {
         timeout_s: req.timeoutS,
         cwd: spec.workspace,
       }),
+    // An idea for the run's queue: the trial's token decides the run and the lane.
+    idea: (req) => call("POST", "/v1/trial/idea", req),
     link,
   });
   process.stdout.write(`\n${JSON.stringify(result)}\n`);

@@ -34,6 +34,55 @@ export interface TrialSpec {
   limits?: LaneLimitValues | undefined;
 }
 
+/** A worker's idea for its run's queue (the idea tool, or `thermite-trial idea`). */
+export interface IdeaInput {
+  title: string;
+  why?: string | undefined;
+  family?: string | undefined;
+  details?: string | undefined;
+}
+
+/**
+ * The idea tool, the same for code and research workers in Pi: the worker proposes an experiment
+ * for the run's queue while it works. It waits as proposed until the planner (or the owner)
+ * queues or drops it, and does not end the trial.
+ */
+export const IDEA_TOOL = {
+  name: "idea",
+  description:
+    "Propose another experiment for the run's queue: something worth trying that is not your assignment. The planner decides whether it is queued; this does not end your trial.",
+  parameters: Type.Object({
+    title: Type.String({ description: "What to try, in a few words" }),
+    why: Type.Optional(Type.String({ description: "Why it is worth trying" })),
+    family: Type.Optional(Type.String({ description: "Its direction (approach family)" })),
+    details: Type.Optional(Type.String({ description: "How, if it needs saying" })),
+  }),
+};
+
+/** Runs the idea tool: the proposal through the harness API, and the answer in words. */
+export async function proposeIdea(
+  idea: (req: IdeaInput) => Promise<{ experiment: string }>,
+  p: Record<string, unknown>,
+): Promise<ReturnType<typeof text>> {
+  const str = (k: string, n: number) =>
+    typeof p[k] === "string" && (p[k] as string).trim()
+      ? (p[k] as string).trim().slice(0, n)
+      : undefined;
+  const title = str("title", 200);
+  if (!title) return text("an idea needs a title: what to try, in a few words");
+  try {
+    const out = await idea({
+      title,
+      why: str("why", 2000),
+      family: str("family", 80),
+      details: str("details", 4000),
+    });
+    return text(`proposed ${out.experiment}: it waits for the planner. Your trial goes on.`);
+  } catch (err) {
+    return text(`the idea was not recorded: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 export interface SubmitOutcome {
   attempt: string;
   lifecycle: string;
@@ -57,6 +106,8 @@ export interface TrialDeps {
   }): Promise<SubmitOutcome>;
   status(attempt: string): Promise<unknown>;
   devRun?(req: { lane: string; command: string; timeoutS?: number }): Promise<unknown>;
+  /** An idea for the run's experiment queue: proposed by this lane, for the planner to take. */
+  idea?(req: IdeaInput): Promise<{ experiment: string }>;
   /** The live view: the session's turns out, the owner's messages in. */
   link?: SessionLink | undefined;
 }
@@ -88,7 +139,8 @@ with a short hypothesis. A separate judge you cannot see or change will measure 
 own timings are only for your guidance and never count. Keep changes inside the editable paths you
 are given. If you find a flaw in your own change, list it in known_flaws: hiding it is worse than
 a smaller result. If you cannot make a useful change, explain why in your final message without
-submitting.`;
+submitting. If you see another experiment worth trying that is not your assignment, propose it
+with the idea tool: the planner decides whether it is queued, and your trial goes on.`;
 
 function text(t: string) {
   return { content: [{ type: "text" as const, text: t }], details: {} };
@@ -252,6 +304,13 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
       Type.Object({ attempt: Type.String() }),
       async (p) => text(JSON.stringify(await deps.status(String(p.attempt)))),
     ),
+    ...(deps.idea
+      ? [
+          tool(IDEA_TOOL.name, IDEA_TOOL.description, IDEA_TOOL.parameters, (p) =>
+            proposeIdea(deps.idea as NonNullable<TrialDeps["idea"]>, p),
+          ),
+        ]
+      : []),
     tool(
       "submit",
       "Submit your change for judging. Call it once, when your change builds and passes your own tests. This ends the trial.",

@@ -93,6 +93,44 @@ describe("thermite-trial, Thermite's tools in an agent's own shell", () => {
     ]);
   });
 
+  test("idea proposes an experiment for the run's queue: its words are the title, flags the rest", async () => {
+    const calls: { method: string; path: string; body?: unknown }[] = [];
+    const env = { harnessUrl: "http://h", auth: "trial.t", workspace: "/w", editablePaths: [] };
+    const call = async (method: string, path: string, body?: unknown) => {
+      calls.push({ method, path, body });
+      return { experiment: "x-0123456789ab", state: "proposed" };
+    };
+    const out = await trialCli(
+      [
+        "idea",
+        "unroll",
+        "the",
+        "tail",
+        "loop",
+        "--why",
+        "the profile shows it",
+        "--family",
+        "unroll",
+      ],
+      env,
+      call,
+    );
+    assert.match(out, /^proposed x-0123456789ab: it waits for the planner/);
+    assert.deepEqual(calls, [
+      {
+        method: "POST",
+        path: "/v1/trial/idea",
+        body: { title: "unroll the tail loop", why: "the profile shows it", family: "unroll" },
+      },
+    ]);
+    assert.match(await trialCli(["idea", "--why", "w"], env, call), /^error: idea needs a title/);
+    assert.match(
+      await trialCli(["idea", "t", "--run", "other"], env, call),
+      /^error: idea has no --run/,
+    );
+    assert.equal(calls.length, 1, "nothing sent for a mistake");
+  });
+
   test("research: each of the research worker's tools is a command, and reaches its operation", async () => {
     const calls: { method: string; path: string; body?: unknown }[] = [];
     const env = { harnessUrl: "http://h", auth: "trial.t", workspace: "/w", editablePaths: [] };

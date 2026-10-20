@@ -11,6 +11,7 @@ import { RESEARCH_TOOLS, researchOutput, researchTool } from "./research-tools.t
  *   thermite-trial submit --hypothesis TEXT [--claim TEXT] [--flaw TEXT]...
  *   thermite-trial dev-run [--timeout SECONDS] -- COMMAND...
  *   thermite-trial status ATTEMPT
+ *   thermite-trial idea TITLE [--why TEXT] [--family TEXT] [--details TEXT]
  *   thermite-trial research TOOL [WORDS...] [--FLAG VALUE]... [-]   (a research trial's tools)
  */
 
@@ -18,6 +19,7 @@ const USAGE = `usage:
   thermite-trial submit --hypothesis TEXT [--claim TEXT] [--flaw TEXT]...
   thermite-trial dev-run [--timeout SECONDS] -- COMMAND...
   thermite-trial status ATTEMPT
+  thermite-trial idea TITLE [--why TEXT] [--family TEXT] [--details TEXT]
   thermite-trial research TOOL ... (thermite-trial research help lists them)`;
 
 export interface TrialCliEnv {
@@ -152,6 +154,23 @@ export async function trialCli(
     const id = rest[0];
     if (!id) return `error: status needs an attempt id\n${USAGE}`;
     return JSON.stringify(await call("GET", `/v1/attempts/${encodeURIComponent(id)}`), null, 2);
+  }
+  if (cmd === "idea") {
+    const title = rest.join(" ").trim();
+    if (!title) return `error: idea needs a title: what to try, in a few words\n${USAGE}`;
+    const unknown = Object.keys(flags).filter((f) => !["why", "family", "details"].includes(f));
+    if (unknown.length) return `error: idea has no --${unknown[0]}\n${USAGE}`;
+    const opt = (f: string, n: number) => {
+      const v = flags[f]?.at(-1)?.trim();
+      return v ? { [f]: v.slice(0, n) } : {};
+    };
+    const out = (await call("POST", "/v1/trial/idea", {
+      title: title.slice(0, 200),
+      ...opt("why", 2000),
+      ...opt("family", 80),
+      ...opt("details", 4000),
+    })) as { experiment: string };
+    return `proposed ${out.experiment}: it waits for the planner, who queues it or drops it. Your trial goes on.`;
   }
   return USAGE;
 }

@@ -11,8 +11,8 @@ import {
   researchOutput,
   researchTool,
 } from "./research-tools.ts";
-import type { TrialResult } from "./worker.ts";
-import { keepGoing, withoutPastThinking } from "./worker.ts";
+import type { IdeaInput, TrialResult } from "./worker.ts";
+import { IDEA_TOOL, keepGoing, proposeIdea, withoutPastThinking } from "./worker.ts";
 
 /**
  * A research trial in Pi: a fresh agent session with the research tools and file tools over its
@@ -43,6 +43,8 @@ export interface ResearchDeps {
   call(op: string, args: Record<string, unknown>): Promise<unknown>;
   /** The live view: the session's turns out, the owner's messages in. */
   link?: SessionLink | undefined;
+  /** A research task for the run's queue, proposed by this lane (the idea tool). */
+  idea?: ((req: IdeaInput) => Promise<{ experiment: string }>) | undefined;
 }
 
 const out = (value: unknown) => ({
@@ -122,14 +124,33 @@ export async function runResearchTrial(
     tool("update_section", Type.Object({ name: Type.String(), body: Type.String() })),
     tool("progress", Type.Object({})),
     ...(spec.folder ? folderTools(spec.folder, result) : []),
+    ...(deps.idea
+      ? [
+          {
+            name: IDEA_TOOL.name,
+            label: IDEA_TOOL.name,
+            description: IDEA_TOOL.description,
+            parameters: IDEA_TOOL.parameters,
+            execute: async (_id: string, params: unknown) => {
+              result.toolCalls++;
+              return proposeIdea(
+                deps.idea as NonNullable<ResearchDeps["idea"]>,
+                params as Record<string, unknown>,
+              );
+            },
+          } as AgentTool,
+        ]
+      : []),
   ];
 
   const { models, model, thinkingLevel } = buildModel(deps.model);
   const agent = new Agent({
     initialState: {
-      systemPrompt: spec.folder
-        ? `${RESEARCH_SYSTEM}\n\n${researchFolderNote(spec.folder)} Use the file tools (list_files, read_file, search_files, write_file, remove_file) for it.`
-        : RESEARCH_SYSTEM,
+      systemPrompt: `${
+        spec.folder
+          ? `${RESEARCH_SYSTEM}\n\n${researchFolderNote(spec.folder)} Use the file tools (list_files, read_file, search_files, write_file, remove_file) for it.`
+          : RESEARCH_SYSTEM
+      }${deps.idea ? "\n\nTo propose another research task for the run's queue, use the idea tool: the planner decides whether it is queued, and your trial goes on." : ""}`,
       model,
       tools,
       thinkingLevel,

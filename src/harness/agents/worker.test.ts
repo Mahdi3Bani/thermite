@@ -653,6 +653,82 @@ describe("worker trial", () => {
     assert.equal(readFileSync(`${ws.repo}/src/kernel/work.mjs`, "utf8"), FAST_KERNEL);
   });
 
+  test("a worker proposes an idea for the run's queue with its idea tool, and its trial goes on", async () => {
+    const env = makeJudgeEnv();
+    await env.service.applyCommand(env.assign);
+    const runner = new LocalRunner(env.paths.scratchDir);
+    const champion = env.ledger.currentChampion("js-1");
+    const ws = await prepareWorkspace({
+      runner,
+      scratchDir: env.paths.scratchDir,
+      mirror: env.service.mirrorFor("proj"),
+      commit: champion.commit_sha,
+      lane: "lane-1",
+    });
+    const replies: string[] = [];
+    const fake = await startFakeModel(({ messages }) => {
+      const tools = messages.filter((m) => m.role === "tool");
+      if (tools.length) replies[tools.length - 1] = JSON.stringify(tools.at(-1)?.content);
+      if (tools.length === 0)
+        return {
+          toolCalls: [
+            {
+              name: "idea",
+              args: { title: "unroll the tail", why: "the profile", family: "unroll" },
+            },
+          ],
+        };
+      if (tools.length === 1) return { toolCalls: [{ name: "idea", args: { title: "  " } }] };
+      if (tools.length === 2)
+        return {
+          toolCalls: [
+            { name: "write_file", args: { path: "src/kernel/work.mjs", content: FAST_KERNEL } },
+          ],
+        };
+      if (tools.length === 3) return { toolCalls: [{ name: "submit", args: { hypothesis: "h" } }] };
+      return { text: "done" };
+    });
+    const ideas: unknown[] = [];
+    const r = await runTrial(
+      {
+        trialId: "t3",
+        run: "js-1",
+        lane: "lane-1",
+        workspace: ws.repo,
+        parentCommit: champion.commit_sha,
+        editablePaths: ["src/kernel/**"],
+        brief: "b",
+        wallMs: 60_000,
+        maxTurns: 20,
+      },
+      {
+        runner,
+        laneTool,
+        model: {
+          baseUrl: fake.url,
+          model: "t",
+          apiKey: "k",
+          contextWindow: 32000,
+          maxTokens: 2000,
+        },
+        submit: (req) => env.service.submitAttempt({ ...req, lane: req.lane }, "proposer") as never,
+        status: async (id) => env.service.attemptStatus(id),
+        idea: async (req) => {
+          ideas.push(req);
+          return { experiment: "x-0123456789ab" };
+        },
+      },
+    );
+    await fake.close();
+    assert.equal(r.stopped, "submitted", "the idea did not end the trial");
+    assert.equal(r.toolCalls, 4);
+    assert.deepEqual(ideas, [
+      { title: "unroll the tail", why: "the profile", family: "unroll", details: undefined },
+    ]);
+    assert.match(String(replies[0]), /proposed x-0123456789ab: it waits for the planner/);
+    assert.match(String(replies[1]), /an idea needs a title/);
+  });
+
   test("a worker's lane work goes through the API: its own lane, its own workspace, tool or shell only", async () => {
     const env = makeJudgeEnv();
     await env.service.applyCommand(env.assign);
