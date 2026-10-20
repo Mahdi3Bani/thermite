@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { makeJudgeEnv } from "../testing/judge-env.ts";
-import { smokeCheck } from "./smoke-check.ts";
+import { seedSmokeRepos, smokeCheck } from "./smoke-check.ts";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -57,6 +59,30 @@ describe("the smoke rig check", () => {
       pollMs: 100,
     });
     assert.equal(again.ok, true, again.summary);
+  });
+
+  test("the smoke kit's goal contract names the smoke check's own project and kit commits", async () => {
+    const file = "examples/contracts/smoke-cpu-goal.json";
+    const contract = JSON.parse(readFileSync(join(repoRoot, file), "utf8")) as {
+      project: { repo: string; commit: string; kit: { repo: string; commit: string } };
+    };
+    const s = await seedSmokeRepos(
+      repoRoot,
+      "smoke-cpu",
+      mkdtempSync(join(tmpdir(), "thermite-smoke-")),
+    );
+    const named = [
+      ["project.repo", contract.project.repo, s.projectRepo, "project's repository name"],
+      ["project.commit", contract.project.commit, s.project, "commit of examples/smoke-project"],
+      ["project.kit.repo", contract.project.kit.repo, s.kitRepo, "kit's repository name"],
+      ["project.kit.commit", contract.project.kit.commit, s.kit, "commit of kits/smoke-cpu"],
+    ];
+    for (const [field, got, want, what] of named)
+      assert.equal(
+        got,
+        want,
+        `${file}: set ${field} to ${want}, the smoke check's ${what} (it is ${got})`,
+      );
   });
 
   test("a target without a smoke kit is reported, not attempted", async () => {

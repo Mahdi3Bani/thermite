@@ -65,6 +65,27 @@ async function seedRepo(from: string, to: string, skip: string[]): Promise<strin
   return git(to, "rev-parse", "HEAD");
 }
 
+/**
+ * The smoke project's and kit's repositories, seeded in `work` (project/ and kit/, the kit
+ * without its candidates), with their names and commits. The same files always give the same
+ * commits: a contract may name them (examples/contracts/smoke-cpu-goal.json does).
+ */
+export async function seedSmokeRepos(
+  checksDir: string,
+  kitName: "smoke-cpu" | "smoke-cuda",
+  work: string,
+): Promise<{ projectRepo: string; project: string; kitRepo: string; kit: string }> {
+  const kitDir = join(checksDir, "kits", kitName);
+  const projectDir = join(
+    checksDir,
+    "examples",
+    kitName === "smoke-cuda" ? "smoke-cuda-project" : "smoke-project",
+  );
+  const project = await seedRepo(projectDir, join(work, "project"), []);
+  const kit = await seedRepo(kitDir, join(work, "kit"), ["candidates"]);
+  return { projectRepo: `${kitName}-project`, project, kitRepo: `${kitName}-kit`, kit };
+}
+
 export async function smokeCheck(o: {
   service: HarnessService;
   targetType: string;
@@ -80,11 +101,6 @@ export async function smokeCheck(o: {
     o.targetType === "cuda-gpu" ? "smoke-cuda" : o.targetType === "cpu" ? "smoke-cpu" : undefined;
   if (!kitName) return { ok: false, summary: `there is no smoke kit for a ${o.targetType} target` };
   const kitDir = join(o.checksDir, "kits", kitName);
-  const projectDir = join(
-    o.checksDir,
-    "examples",
-    kitName === "smoke-cuda" ? "smoke-cuda-project" : "smoke-project",
-  );
   if (!existsSync(join(kitDir, "kit.json")))
     return { ok: false, summary: `the smoke kit is not in this image (${kitDir})` };
   const ledger = o.service.ledger;
@@ -92,10 +108,7 @@ export async function smokeCheck(o: {
   const work = join(o.scratchDir, "thermite", "rig-check-smoke");
   rmSync(work, { recursive: true, force: true });
   mkdirSync(join(work, "repos"), { recursive: true });
-  const project = await seedRepo(projectDir, join(work, "project"), []);
-  const kit = await seedRepo(kitDir, join(work, "kit"), ["candidates"]);
-  const projectRepo = `${kitName}-project`;
-  const kitRepo = `${kitName}-kit`;
+  const { projectRepo, project, kitRepo, kit } = await seedSmokeRepos(o.checksDir, kitName, work);
   for (const [dir, name] of [
     ["project", projectRepo],
     ["kit", kitRepo],
