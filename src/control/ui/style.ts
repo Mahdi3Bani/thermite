@@ -667,7 +667,7 @@ details.menu > summary::-webkit-details-marker { display: none; }
 .qidea { display: grid; gap: 4px; padding: 8px 10px; border: 1px dashed var(--input); border-radius: 8px; }
 .qb { display: flex; gap: 6px; margin-top: 2px; } .qb form { display: inline; }
 .qres { font-weight: 600; font-size: 12.5px; }
-.qres.win { color: var(--success-foreground); } .qres.wait { color: var(--warning-foreground); } .qres.loss { color: var(--error-foreground); } .qres.flat, .qres.none { color: var(--muted-foreground); font-weight: 500; }
+.qres.win, .qres.done { color: var(--success-foreground); } .qres.wait { color: var(--warning-foreground); } .qres.loss { color: var(--error-foreground); } .qres.flat, .qres.none { color: var(--muted-foreground); font-weight: 500; }
 .qrules { display: grid; gap: 8px; }
 .qrule { display: grid; grid-template-columns: 70px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); font-size: 13px; }
 .qrule form { display: inline; }

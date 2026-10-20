@@ -43,7 +43,7 @@ const src = (by: string) => {
 export function triedResult(
   r: RunView,
   x: ExperimentView,
-): { cls: "win" | "wait" | "loss" | "flat" | "none"; text: string } {
+): { cls: "win" | "wait" | "loss" | "flat" | "done" | "none"; text: string } {
   if (x.state === "dropped")
     return {
       cls: "none",
@@ -52,6 +52,9 @@ export function triedResult(
   const a: AttemptView | undefined = x.attempt
     ? r.attempts.find((y) => y.id === x.attempt)
     : undefined;
+  // A research trial ends without an attempt: its sources, claims and findings are its result.
+  if (!a && x.result === "finished")
+    return { cls: "done", text: "finished: its research is in the run's notes" };
   if (!a)
     return {
       cls: "none",
@@ -115,7 +118,7 @@ export function experimentsTab(o: {
         `<div class="qidea"><div>${esc(x.title)}</div>${x.why ? `<div class="muted xs">${esc(clip(x.why, 200))}</div>` : ""}<div class="muted xs">${src(x.by)} · ${esc(ago(x.at, o.now))} ago</div><div class="qb">${o.cmd({ rig: u.id, kind: "queue_accept", fields: fields(x), label: "Queue it", cls: "sm", back: o.back })}${o.cmd({ rig: u.id, kind: "queue_drop", fields: fields(x, { why: "the owner dropped this idea" }), label: "Drop", cls: "sm ghost", back: o.back })}</div></div>`,
     )
     .join("");
-  const counts = { win: 0, wait: 0, loss: 0, flat: 0, none: 0 };
+  const counts = { win: 0, wait: 0, loss: 0, flat: 0, done: 0, none: 0 };
   const triedRows = tried
     .map((x) => {
       const res = triedResult(r, x);
@@ -136,7 +139,7 @@ ${add}
 <div class="block" style="margin-top:26px" id="tried"><div class="head"><h2>Tried</h2><span class="n">${tried.length}</span><span class="right">every experiment that ended, with its result, newest first</span></div>
 ${
   tried.length
-    ? `<div class="ktools" id="qf">${chip("all", "All", tried.length)}${chip("win wait", "Wins", counts.win + counts.wait)}${chip("loss", "Slower or broke a goal", counts.loss)}${chip("flat", "No gain", counts.flat)}${chip("none", "No attempt or dropped", counts.none)}</div>
+    ? `<div class="ktools" id="qf">${chip("all", "All", tried.length)}${chip("win wait", "Wins", counts.win + counts.wait)}${chip("loss", "Slower or broke a goal", counts.loss)}${chip("flat", "No gain", counts.flat)}${counts.done ? chip("done", "Research finished", counts.done) : ""}${chip("none", "No attempt or dropped", counts.none)}</div>
 <div class="card flat"><table class="ktable"><thead><tr><th>Experiment</th><th>Direction</th><th>Added by</th><th>Where</th><th>Result</th><th>When</th></tr></thead><tbody id="qtried">${triedRows}</tbody></table></div>`
     : `<div class="card"><div class="empty">Nothing tried yet.</div></div>`
 }</div>`;

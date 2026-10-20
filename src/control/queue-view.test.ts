@@ -71,6 +71,13 @@ test("the queue view keeps the order the events give it, and where each experime
       { id: "x-2", lane: "lane-1", trial: "t-1", result: "no_attempt" },
     ],
     ["control:owner:ui", "experiment_accepted", { id: "x-4", by: "owner" }],
+    ["planner", "experiment_added", { id: "x-5", title: "read the survey", by: "planner" }],
+    ["planner", "experiment_assigned", { id: "x-5", lane: "lane-2", trial: "t-2", by: "planner" }],
+    [
+      "harness",
+      "experiment_finished",
+      { id: "x-5", lane: "lane-2", trial: "t-2", result: "finished" },
+    ],
     [
       "planner",
       "planner_handout",
@@ -132,6 +139,9 @@ test("the queue view keeps the order the events give it, and where each experime
   assert.match(exp, /lane-2&#39;s idea|lane-2's idea/);
   assert.match(exp, /dropped by planner: a rule avoids it/);
   assert.match(exp, /<span class="qres none">no attempt<\/span>/);
+  // A research trial's experiment ends "finished": its result is its research, not a missing attempt.
+  assert.match(exp, /<span class="qres done">finished: its research is in the run's notes<\/span>/);
+  assert.match(exp, /data-qf="done">Research finished <span class="n">1<\/span>/);
   assert.match(exp, /data-kind="queue_move"/);
   const plan = plannerTab({
     u,

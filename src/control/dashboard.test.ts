@@ -1181,6 +1181,76 @@ describe("control dashboard", () => {
     assert.equal(cmd?.issued_by, "owner:ui");
   });
 
+  test("the Experiments and Planner tabs change the run's queue and rules on the rig", async () => {
+    const s = await stack();
+    await s.env.service.applyCommand(s.env.assign);
+    await s.relay();
+    const tab = "/ui/campaigns/js-sum?run=rig-a%2Fjs-1&view=experiments";
+    const plan = "/ui/campaigns/js-sum?run=rig-a%2Fjs-1&view=planner";
+    const send = async (form: Record<string, string>) => {
+      const r = await s.post("/ui/commands", {
+        rig: "rig-a",
+        run: "js-1",
+        csrf: s.csrfFrom(await (await s.get(tab)).text()),
+        back: tab,
+        ...form,
+      });
+      assert.equal(r.status, 303);
+      await s.relay(); // the signed command to the harness
+      await s.relay(); // its events back to control
+      const [cmd] = s.store.listCommands(1);
+      assert.equal(cmd?.kind, form.kind);
+      assert.notEqual(cmd?.status, "failed", JSON.stringify(cmd?.outcome));
+    };
+    await send({ kind: "queue_add", title: "unroll the loop by 4", why: "fewer branches" });
+    await send({
+      kind: "queue_add",
+      title: "vector loads",
+      family: "memory-layout",
+      position: "top",
+    });
+    let html = await (await s.get(tab)).text();
+    assert.match(html, /<span class="qn">1<\/span><div class="qmain"><div class="qt">vector loads/);
+    assert.match(
+      html,
+      /<span class="qn">2<\/span><div class="qmain"><div class="qt">unroll the loop by 4<\/div><div class="qwhy">fewer branches/,
+    );
+    const idOf = (title: string) =>
+      new RegExp(
+        `data-id="(x-[0-9a-f]{12})"(?:(?!data-id=)[\\s\\S])*?<div class="qt">${title}<`,
+      ).exec(html)?.[1] ?? "";
+    const unroll = idOf("unroll the loop by 4");
+    const vector = idOf("vector loads");
+    assert.ok(unroll && vector);
+    // Move one to the top, drop the other: the drop and its reason are in Tried.
+    await send({ kind: "queue_move", id: unroll, position: "top" });
+    await send({ kind: "queue_drop", id: vector, why: "measured slower last run" });
+    html = await (await s.get(tab)).text();
+    assert.match(
+      html,
+      /<span class="qn">1<\/span><div class="qmain"><div class="qt">unroll the loop by 4/,
+    );
+    assert.doesNotMatch(html, /<div class="qt">vector loads/);
+    assert.match(html, /dropped by you: measured slower last run/);
+    // A rule in the owner's own words, added to the rules in force, then removed.
+    await send({
+      kind: "redirect",
+      directive: "try",
+      match: "anything with vector loads",
+      rationale: "the guide says twice the bandwidth",
+      add: "1",
+    });
+    let planner = await (await s.get(plan)).text();
+    assert.match(planner, /Try anything with vector loads/);
+    const rule = /name="kind" value="drop_directive"[\s\S]*?name="id" value="(\d+)"/.exec(
+      planner,
+    )?.[1];
+    assert.ok(rule, "the rule has a Remove button");
+    await send({ kind: "drop_directive", id: rule });
+    planner = await (await s.get(plan)).text();
+    assert.doesNotMatch(planner, /Try anything with vector loads/);
+  });
+
   test("Live for one run: filters for each lane, the judge and you; one message box", async () => {
     const s = await stack();
     await s.env.service.applyCommand(s.env.assign);
