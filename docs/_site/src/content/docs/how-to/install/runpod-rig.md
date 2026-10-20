@@ -17,18 +17,7 @@ The dashboard has no launch form or buttons for these rigs yet ([goal 022](https
 ## Before you start
 
 - **A RunPod account in Settings › Providers**, added with an API key that may write. [Test a GPU on RunPod](runpod-test.md#1-add-the-runpod-account) gives the steps. A test pod there is a cheap way to check a GPU type first.
-- **The one-container rig image, in a registry RunPod can pull from without a login.** Thermite does not publish it yet, and control passes RunPod no registry credentials. Build it on the CUDA harness image ([Push the images to your own registry](own-registry.md)), then push it:
-
-  ```sh
-  r=registry.example.com/thermite
-  tag=$(git rev-parse --short=12 HEAD)
-  docker build -t $r/thermite-rig:$tag-cuda --build-arg HARNESS_IMAGE=$r/thermite-harness:$tag-cuda \
-    -f containers/rig/Containerfile .
-  docker push $r/thermite-rig:$tag-cuda
-  ```
-
-  [The one-container rig image](../../reference/harness-image.md#the-one-container-rig-image) says what it holds.
-- **Optional: `THERMITE_RUNPOD_RIG_IMAGE` on control**, set to that image, so a launch needs no image. `compose.yaml` does not pass it to control: with the compose stack, set it in an [override file](one-machine.md#settings-and-override-files), or give the image at each launch.
+- **The rig image, on control.** A pod runs the [one-container rig image](../../reference/harness-image.md#the-one-container-rig-image): the CUDA harness and the supervisor in one container. Each release publishes it on `ghcr.io` ([Published images](../../reference/harness-image.md#published-images)), and the release's `compose.yaml` gives it to control, pinned by its digest, in `THERMITE_RUNPOD_RIG_IMAGE`. With a release's `compose.yaml` there is nothing to do: a launch runs that image. A control that runs from the source code's `compose.yaml` has no rig image until you name one in `.env`: a published one, such as `ghcr.io/iammrduncan/thermite-rig:0.1.0-cuda`, or [one of your own](#use-a-rig-image-of-your-own).
 - **The owner's token in a file.** On the local compose stack it is `.dev/secrets/control-admin-token`. Only the owner may launch, stop, start or terminate a rig on RunPod.
 - **A way out to the internet for control.** Control needs no public address: it connects to the pod, and the pod never connects to control ([Rigs in pull mode](../../explanation/trust.md#rigs-in-pull-mode)). The local compose stack is enough.
 
@@ -47,8 +36,7 @@ Rigs launch on Secure cloud, on demand. Community cloud and spot pods come in a 
 ## 2. Launch the rig
 
 ```sh
-thermite runpod launch runpod --gpu "RTX A4000" --spend-limit 20 --idle-stop 60 \
-  --image registry.example.com/thermite/thermite-rig:1a2b3c4d5e6f-cuda $c
+thermite runpod launch runpod --gpu "RTX A4000" --spend-limit 20 --idle-stop 60 $c
 ```
 
 `runpod` is the account's name in **Providers**. It prints the rig on one line, then `Launched: RunPod bills the pod from now. Control enrolls it once it runs; follow it with thermite runpod list.`
@@ -60,6 +48,7 @@ rp-1a2b3c4d · pod abc123xyz · PROVISIONING · 1 × RTX A4000 (Secure) · $0.25
 - **`--spend-limit USD`**: control stops the pod once it has cost this much.
 - **`--idle-stop MIN`**: control stops the pod once no run has run on the rig for this many minutes, counted from its enrollment or its last start at the earliest.
 - **`--gpus N`** gives the pod more GPUs, and **`--setting NAME=VALUE`** the rig's settings, such as `--setting THERMITE_JUDGE_GPUS=1`. By default the rig measures on CUDA with all the pod's GPUs.
+- **`--image IMAGE`** runs another rig image than control's ([Use a rig image of your own](#use-a-rig-image-of-your-own)).
 
 [`thermite runpod launch`](../../reference/command-line.md#runpod-launch) lists every option. The same launch over the REST API, or with the MCP tool [`runpod_launch`](../../reference/mcp-tools.md#runpod_launch):
 
@@ -67,7 +56,7 @@ rp-1a2b3c4d · pod abc123xyz · PROVISIONING · 1 × RTX A4000 (Secure) · $0.25
 curl -sS -X POST http://127.0.0.1:8800/v1/gpu-clouds/runpod/rigs \
   -H "Authorization: Bearer $(cat .dev/secrets/control-admin-token)" \
   -H 'content-type: application/json' \
-  -d '{"gpu":"RTX A4000","spend_limit_usd":20,"idle_stop_minutes":60,"image":"registry.example.com/thermite/thermite-rig:1a2b3c4d5e6f-cuda"}'
+  -d '{"gpu":"RTX A4000","spend_limit_usd":20,"idle_stop_minutes":60}'
 ```
 
 The pod's environment holds only public values and a one-time enrollment code. Control's RunPod key and every other secret stay on control. A launch that RunPod refuses starts nothing and leaves no rig: the answer says why, such as `RunPod answered 400 for POST /v2/pods (Bad Request: …)`.
@@ -144,6 +133,32 @@ Run the second only after you have checked the export on control, as [Fully rese
 ## Every change is in the rig's history
 
 `GET /v1/rigs/<rig>/runpod` answers the rig with its `history`, oldest first, and the MCP tool [`rig_setup`](../../reference/mcp-tools.md#rig_setup) lists the same steps: the launch, each stop, start, restart and terminate, and each full reset, with what happened. The MCP tool [`runpod_rig`](../../reference/mcp-tools.md#runpod_rig) stops, starts, restarts, terminates and resets a rig, with the owner's token.
+
+## Use a rig image of your own
+
+Build the rig image yourself when the published one does not fit: you [added your project's tools to the harness](extend-harness-image.md), you changed Thermite's code, or you want a build of your own commit. RunPod must pull the image without a login, because control gives RunPod no registry credentials.
+
+1. Build the CUDA harness and push it to your registry, as [Push the images to your own registry](own-registry.md) says. The rig image is built on it.
+2. Build the rig image on that harness, then push it:
+
+   ```sh
+   r=registry.example.com/thermite
+   tag=$(git rev-parse --short=12 HEAD)
+   docker build -t $r/thermite-rig:$tag-cuda --build-arg HARNESS_IMAGE=$r/thermite-harness:$tag-cuda \
+     -f containers/rig/Containerfile .
+   docker push $r/thermite-rig:$tag-cuda
+   ```
+
+   Build both images for amd64, as the release does. On a Mac with Apple silicon, add `--platform linux/amd64` to each `docker build`. Use a new tag for every build.
+3. Tell control. Name the image in `.env` next to `compose.yaml`, then run `docker compose up -d` with your `-f` options:
+
+   ```sh title=".env (part)"
+   THERMITE_RUNPOD_RIG_IMAGE=registry.example.com/thermite/thermite-rig:1a2b3c4d5e6f-cuda
+   ```
+
+   Every launch then runs it. Or give it to one launch only: `--image` on the command line, `"image"` over the REST API, or `image` in the MCP tool `runpod_launch`.
+
+To tell that it worked: `GET /v1/rigs/<rig>/runpod` answers the launched rig with your image in `image`.
 
 ## What does not work yet
 

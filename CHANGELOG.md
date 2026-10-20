@@ -9,7 +9,7 @@ Each release of Thermite, newest first. Versions 0.x make no upgrade promise: re
 - Install from published images, with no build. Each release attaches a compose file that pins the images by digest, and `thermite local init` makes the stack's secret files. Building from source stays for contributors.
 - The images:
   - control, the CPU harness and the supervisor, for amd64 and arm64;
-  - the CUDA harness, for amd64.
+  - the CUDA harness, and the one-container rig image for RunPod built on it, for amd64. The release's compose file gives control the rig image, so a launch on RunPod needs no image.
 - `thermite doctor` checks the machine. It covers the container engine, the compose tool, ports, disk, the clock, the GPU toolkit, and whether control and the model can be reached, and it says how to fix each problem.
 - Control and every rig report their versions. Control marks a rig that is behind it, refuses a rig it cannot work with, and shows a rig that stopped reporting as stale or offline.
 

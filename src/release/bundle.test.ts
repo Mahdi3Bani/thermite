@@ -36,6 +36,7 @@ const input = (over: Partial<BundleInput> = {}): BundleInput => ({
     harness: digest("b"),
     "harness-cuda": digest("c"),
     supervisor: digest("d"),
+    "rig-cuda": digest("e"),
   },
   ...over,
 });
@@ -80,6 +81,11 @@ describe("the release bundle", () => {
       /THERMITE_RIG_HARNESS_CUDA_IMAGE: "\$\{THERMITE_RIG_HARNESS_CUDA_IMAGE:-ghcr\.io\/example\/thermite-harness@sha256:c{64}\}"/,
     );
     assert.match(compose, /THERMITE_RIG_SUPERVISOR_IMAGE: "\$\{[A-Z_]+:-[^}]+@sha256:d{64}\}"/);
+    // Control launches rigs on RunPod from this release's rig image unless .env names another.
+    assert.match(
+      compose,
+      /THERMITE_RUNPOD_RIG_IMAGE: "\$\{THERMITE_RUNPOD_RIG_IMAGE:-ghcr\.io\/example\/thermite-rig@sha256:e{64}\}"/,
+    );
     assert.match(compose, /^# Thermite \d+\.\d+\.\d+/);
   });
 
@@ -113,6 +119,20 @@ describe("the release bundle", () => {
     assert.deepEqual(templateDrift(COMPOSE, TEMPLATE.replace("  init:", "  setup:")), [
       "the template has no init service",
     ]);
+    // Control's RunPod rig image is in both files; only the release's pinned image may differ.
+    const runpodLine = /^ {6}THERMITE_RUNPOD_RIG_IMAGE: .*\n/m;
+    assert.match(TEMPLATE, runpodLine);
+    assert.match(
+      templateDrift(COMPOSE, TEMPLATE.replace(runpodLine, "")).join(),
+      /THERMITE_RUNPOD_RIG_IMAGE/,
+    );
+    assert.match(
+      templateDrift(
+        COMPOSE,
+        TEMPLATE.replace("@@RIG_CUDA_IMAGE@@", "ghcr.io/example/thermite-rig:latest"),
+      ).join(),
+      /thermite-rig:latest/,
+    );
   });
 
   test("the readme names the version, the images and their tags", () => {
@@ -125,6 +145,8 @@ describe("the release bundle", () => {
     );
     assert.ok(readme.includes(`ghcr.io/example/thermite-harness:${PACKAGE_VERSION}-cuda`));
     assert.ok(readme.includes(`ghcr.io/example/thermite-control@${digest("a")}`));
+    assert.ok(readme.includes(`ghcr.io/example/thermite-rig:${PACKAGE_VERSION}-cuda`));
+    assert.ok(readme.includes(`ghcr.io/example/thermite-rig@${digest("e")}`));
   });
 
   test("refuses bad input", () => {
@@ -144,6 +166,11 @@ describe("the release bundle", () => {
     assert.match(
       problems({ digests: missing as BundleInput["digests"] }).join(),
       /supervisor: no digest/,
+    );
+    const { "rig-cuda": __, ...noRig } = input().digests;
+    assert.match(
+      problems({ digests: noRig as BundleInput["digests"] }).join(),
+      /^rig-cuda: no digest$/,
     );
   });
 
@@ -182,6 +209,12 @@ describe("the release bundle", () => {
       `ghcr.io/example/thermite-control@${digest("1")}`,
     );
     assert.ok(readFileSync(join(out, "README.md"), "utf8").includes(digest("4")));
+    // The fifth file is the rig image's: control's default for rigs on RunPod.
+    assert.ok(
+      compose.includes(
+        `THERMITE_RUNPOD_RIG_IMAGE: "\${THERMITE_RUNPOD_RIG_IMAGE:-ghcr.io/example/thermite-rig@${digest("5")}}"`,
+      ),
+    );
     writeFileSync(join(digests, "harness-cuda"), "");
     await assert.rejects(run(process.execPath, args), (e: { code?: number; stderr?: string }) => {
       assert.equal(e.code, 1);

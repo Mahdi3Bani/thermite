@@ -6,9 +6,10 @@
 //     --registry ghcr.io/owner --repo-url https://github.com/owner/thermite \
 //     --digests DIR --out DIR
 //
-// The --digests folder holds one file per image, named control, harness, harness-cuda and
-// supervisor, each with that image's digest (sha256:…). It refuses a version that does not match
-// package.json's, and a template that has drifted from compose.yaml.
+// The --digests folder holds one file per image, named control, harness, harness-cuda,
+// supervisor and rig-cuda (the one-container rig image for RunPod), each with that image's digest
+// (sha256:…). It refuses a version that does not match package.json's, and a template that has
+// drifted from compose.yaml.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";

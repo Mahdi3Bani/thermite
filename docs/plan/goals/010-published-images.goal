@@ -15,7 +15,7 @@ updated: 2026-10-20
 
 ## What
 
-Each image carries its version and source commit, as OCI labels and in a variable the services report. On each tag, a workflow builds the control, harness and supervisor images for amd64 and arm64, and a CUDA harness image, and pushes them to GHCR. Claude Code stays out of published images.
+Each image carries its version and source commit, as OCI labels and in a variable the services report. On each tag, a workflow builds the control, harness and supervisor images for amd64 and arm64, a CUDA harness image, and the one-container rig image for RunPod on that CUDA harness, and pushes them to GHCR. Claude Code stays out of published images.
 
 ## Why
 
@@ -31,6 +31,7 @@ Rigs on machines, on clusters and on RunPod pull images. Building from source ta
 
 - 2026-10-18, owner: Claude Code is downloaded only when an image is built with that option. It is never in a published image.
 - 2026-10-20, owner: The image packages are public.
+- 2026-10-20, lead: The release also publishes the one-container rig image that rigs on RunPod run, built on the CUDA harness of the same run, so a tester has an image to launch.
 
 ## Open questions
 
@@ -43,6 +44,7 @@ None.
 - 2026-10-20: The harness image package pulls without signing in. Control's and the supervisor's packages are not on GHCR yet; the release workflow publishes them, and each must then pull without signing in.
 - 2026-10-20: The release workflow is built: `.github/workflows/release.yml`. On a `v*` tag it checks the tag against `package.json`, builds the control, CPU harness and supervisor images for amd64 and arm64 (arm64 under QEMU: the pinned Node base is multi-architecture, and the maintainers' compose builds already run on arm64) and the CUDA harness for amd64, from the existing Containerfiles, and pushes them to `ghcr.io/<owner>/thermite-control`, `thermite-harness` (the CUDA image under `-cuda` tags) and `thermite-supervisor`. Tags: the version and the 12-character commit. Labels and index annotations: source, version, revision, title, description, licence. Build arguments: `THERMITE_COMMIT` for every image (goal 012's reported commit), `THERMITE_IMAGE_ID` for the harnesses (`0.1.0-cuda+<commit>`, reported in the hardware report and in build keys; an empty value now counts as not set), never `CLAUDE_CODE_VERSION`. The CUDA base is `nvidia/cuda:12.6.3-devel-ubuntu22.04`, pinned by digest in the workflow. Run by hand (`workflow_dispatch`), it builds everything and the bundle (goal 011) and pushes nothing. The repository has no Helm chart (goal 058 is later), so none is published. Pages: harness image reference (published images), own registry, compatibility, settings, kit manifest, contributing, the contributor guide.
 - 2026-10-20: Not yet run: the workflow needs a tag, which the maintainers push. Next: a dry run from the Actions tab, then the first tag; then each new package is made public, pulled on a fresh machine, and the CUDA harness's isolation self-test is run there.
+- 2026-10-20: The workflow also publishes the one-container rig image that RunPod pods run (goal 020): `ghcr.io/<owner>/thermite-rig`, tagged `<version>-cuda` and `<commit>-cuda`, for amd64. The CUDA job builds it right after the CUDA harness, on that harness named by its digest: for a tag, the image just pushed to GHCR; for a dry run, which pushes nothing out, a copy pushed only to a registry service inside the job (`registry:3.0.0`, pinned by digest, as in the quick-start test), which ends with the job. It has the same labels and annotations as the other images, under `thermite-rig`, and keeps the CUDA harness's `THERMITE_COMMIT` and `THERMITE_IMAGE_ID`. Its digest goes to the bundle as `rig-cuda` (goal 011). Pages: the image reference (published images, build arguments, the one-container rig image), compatibility, contributing, the contributor guide, the changelog. Checked: the workflows parse as YAML. Not run: the workflow itself, which needs GitHub. After the first tag, the new `thermite-rig` package is made public too.
 
 ---
 

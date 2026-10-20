@@ -12,6 +12,8 @@ export const IMAGES = {
   // The CUDA harness is the same package as the CPU harness, under tags ending in -cuda.
   "harness-cuda": { repository: "thermite-harness", suffix: "-cuda" },
   supervisor: { repository: "thermite-supervisor", suffix: "" },
+  // The one-container rig image RunPod pods run, built on the CUDA harness. Control launches it.
+  "rig-cuda": { repository: "thermite-rig", suffix: "-cuda" },
 } as const;
 
 export type ImageKey = keyof typeof IMAGES;
@@ -80,10 +82,12 @@ export function placeholders(input: BundleInput): Record<string, string> {
     HARNESS_IMAGE: ref("harness"),
     HARNESS_CUDA_IMAGE: ref("harness-cuda"),
     SUPERVISOR_IMAGE: ref("supervisor"),
+    RIG_CUDA_IMAGE: ref("rig-cuda"),
     CONTROL_TAG: tag("control"),
     HARNESS_TAG: tag("harness"),
     HARNESS_CUDA_TAG: tag("harness-cuda"),
     SUPERVISOR_TAG: tag("supervisor"),
+    RIG_CUDA_TAG: tag("rig-cuda"),
   };
 }
 
@@ -106,7 +110,10 @@ export function render(template: string, values: Record<string, string>, only?: 
   return out;
 }
 
-/** The placeholders each template must use: the compose file pins all four images. */
+/**
+ * The placeholders each template must use: the compose file pins all five images (the CUDA
+ * harness and the rig image as control's defaults for the rigs it sets up and launches).
+ */
 export const COMPOSE_NEEDS = [
   "VERSION",
   "REPO_URL",
@@ -114,6 +121,7 @@ export const COMPOSE_NEEDS = [
   "HARNESS_IMAGE",
   "HARNESS_CUDA_IMAGE",
   "SUPERVISOR_IMAGE",
+  "RIG_CUDA_IMAGE",
 ];
 export const README_NEEDS = [
   "VERSION",
@@ -123,6 +131,7 @@ export const README_NEEDS = [
   "HARNESS_IMAGE",
   "HARNESS_CUDA_IMAGE",
   "SUPERVISOR_IMAGE",
+  "RIG_CUDA_IMAGE",
 ];
 
 // --- Keeping the template in step with compose.yaml -------------------------------------------

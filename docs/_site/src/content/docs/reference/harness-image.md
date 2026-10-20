@@ -32,9 +32,10 @@ For each release, the release workflow (`.github/workflows/release.yml`) builds 
 | Control | `ghcr.io/iammrduncan/thermite-control` | The version, such as `0.1.0`, and the first 12 characters of the commit | amd64, arm64 |
 | Harness, CPU | `ghcr.io/iammrduncan/thermite-harness` | The same | amd64, arm64 |
 | Harness, CUDA | `ghcr.io/iammrduncan/thermite-harness` | The same, each with `-cuda` added: `0.1.0-cuda` | amd64 |
-| Supervisor | `ghcr.io/iammrduncan/thermite-supervisor` | The same | amd64, arm64 |
+| Supervisor | `ghcr.io/iammrduncan/thermite-supervisor` | The version and the commit | amd64, arm64 |
+| One-container rig, CUDA | `ghcr.io/iammrduncan/thermite-rig` | The version and the commit, each with `-cuda` added: `0.1.0-cuda` | amd64 |
 
-The workflow sets no `CLAUDE_CODE_VERSION`, so no published image carries Claude Code. A release's `compose.yaml` names each image by its digest, not by a tag. Each image also has these labels (and, for an image of two architectures, the same annotations on its index):
+The workflow builds the one-container rig image on the CUDA harness it built in the same run, named by that image's digest. The workflow sets no `CLAUDE_CODE_VERSION`, so no published image carries Claude Code. A release's `compose.yaml` names each image by its digest, not by a tag, and gives control the rig image as `THERMITE_RUNPOD_RIG_IMAGE`, the image a [rig launched on RunPod](rest-api.md#rigs-on-a-gpu-cloud) runs. Each image also has these labels (and, for an image of two architectures, the same annotations on its index):
 
 | Label | Value |
 | --- | --- |
@@ -44,7 +45,7 @@ The workflow sets no `CLAUDE_CODE_VERSION`, so no published image carries Claude
 | `org.opencontainers.image.title`, `org.opencontainers.image.description` | The image's name and what it is |
 | `org.opencontainers.image.licenses` | `MIT` |
 
-The workflow builds each image with `THERMITE_COMMIT` set to the full commit, so each service reports that commit with the version in its `package.json` ([Rig versions](rest-api.md#rig-versions)). It builds the harness images with `THERMITE_IMAGE_ID` too, set to the image's tag and short commit, such as `0.1.0-cuda+1a2b3c4d5e6f`: the harness reports it as its image in the rig's hardware report, which the rig's page shows, and puts it in every build's key ([Build cache](kit-manifest.md#build-cache)). In an image built from a checkout without these arguments, both are empty, which counts as not set.
+The workflow builds control, the harness images and the supervisor with `THERMITE_COMMIT` set to the full commit, so each service reports that commit with the version in its `package.json` ([Rig versions](rest-api.md#rig-versions)). It builds the harness images with `THERMITE_IMAGE_ID` too, set to the image's tag and short commit, such as `0.1.0-cuda+1a2b3c4d5e6f`: the harness reports it as its image in the rig's hardware report, which the rig's page shows, and puts it in every build's key ([Build cache](kit-manifest.md#build-cache)). In an image built from a checkout without these arguments, both are empty, which counts as not set. The rig image's build passes neither: it keeps the CUDA harness's values, such as `0.1.0-cuda+1a2b3c4d5e6f`, so a rig on RunPod reports the CUDA harness it is built on.
 
 ## Build arguments
 
@@ -56,7 +57,7 @@ The workflow builds each image with `THERMITE_COMMIT` set to the full commit, so
 | `CLAUDE_CODE_VERSION` | Harness, supervisor | empty | A Claude Code release to install. Empty: Claude Code is not installed |
 | `KUBECTL_VERSION` | Control | `v1.37.1` | The kubectl release installed. Its sha256 is pinned for amd64 and arm64 only |
 | `THERMITE_COMMIT` | All three | empty | The source commit the image is built from. The image sets the environment variable of the same name, and the service reports it with Thermite's version: see [Rig versions](rest-api.md#rig-versions) |
-| `HARNESS_IMAGE` | One-container rig | none: required | The harness image the rig image is built on. See [The one-container rig image](#the-one-container-rig-image) |
+| `HARNESS_IMAGE` | One-container rig | none: required | The harness image the rig image is built on. The release workflow names the CUDA harness it built, by its digest. See [The one-container rig image](#the-one-container-rig-image) |
 | `TARGETARCH` | All three | set by the builder | Chooses the arm64 or x64 package of OpenCode, Claude Code and kubectl |
 | `THERMITE_IMAGE_ID` | Harness | empty | The image's identity, kept as the variable of the same name, which the harness reports. The release workflow sets it to the tag and the short commit |
 
@@ -154,6 +155,8 @@ At start the broker also closes `/tmp`, `/var/tmp` and `/dev/shm` to the roles (
 ## The one-container rig image
 
 A RunPod pod runs one container. The one-container rig image runs a rig's harness and its supervisor in it, in [pull mode](../explanation/trust.md#rigs-in-pull-mode): control connects to the supervisor's port, and the rig never connects to control. The broker runs as root, as in the harness image, and also starts the supervisor under the supervisor's own user, beside the role users. The owner launches it on RunPod from control, over the REST API, MCP or the command line ([Rigs on a GPU cloud](rest-api.md#rigs-on-a-gpu-cloud)). The dashboard's launch form comes with [goal 022](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/022-runpod-launch.goal).
+
+Each release publishes it on the CUDA harness, as `ghcr.io/iammrduncan/thermite-rig` ([Published images](#published-images)), and the release's `compose.yaml` makes it control's `THERMITE_RUNPOD_RIG_IMAGE`. [Use a rig image of your own](../how-to/install/runpod-rig.md#use-a-rig-image-of-your-own) builds and pushes one.
 
 It is the harness image with the supervisor added. Build the harness image first, on a CUDA 12.x base for a GPU pod, and name it in `HARNESS_IMAGE`. The CPU harness image works the same, for a test:
 

@@ -15,7 +15,9 @@
 //   - the release's files come from a server on this machine, not from GitHub's releases;
 //   - the source (`git clone`, and the campaign's repository) is this checkout's tracked files,
 //     committed and tagged as the release, and served by git daemon;
-//   - the bundle's CUDA harness names the CPU harness: no step here uses a GPU;
+//   - the bundle's CUDA harness names the CPU harness: no step here uses a GPU; and its rig image
+//     for RunPod is pinned by the CPU harness's digest, which names no image: no step launches a
+//     pod;
 //   - the agents' model is the scripted model of the agents acceptance, added as an
 //     OpenAI-compatible provider in place of OpenCode's free models, so no key and no network
 //     model are needed; the worker harness is OpenCode v2, as the page says;
@@ -340,8 +342,10 @@ async function buildImages(commit) {
       digests[key],
     );
   }
-  // The bundle names a CUDA harness for rigs on GPU machines. This test starts none.
+  // The bundle names a CUDA harness for rigs on GPU machines, and a rig image for RunPod. This
+  // test starts neither: control passes the rig image's name to RunPod only at a launch.
   digests["harness-cuda"] = digests.harness;
+  digests["rig-cuda"] = digests.harness;
   return digests;
 }
 

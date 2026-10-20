@@ -51,7 +51,8 @@ The compose file pins each image by its digest. The same images also have the ta
 | Harness, CPU | `@@HARNESS_IMAGE@@` | `@@HARNESS_TAG@@` |
 | Harness, CUDA | `@@HARNESS_CUDA_IMAGE@@` | `@@HARNESS_CUDA_TAG@@` |
 | Supervisor | `@@SUPERVISOR_IMAGE@@` | `@@SUPERVISOR_TAG@@` |
+| Rig for RunPod, CUDA | `@@RIG_CUDA_IMAGE@@` | `@@RIG_CUDA_TAG@@` |
 
-The compose file runs the CPU harness. Control sets rigs up on other machines and clusters from the CPU harness, the CUDA harness (for GPU rigs) and the supervisor. The images do not contain Claude Code.
+The compose file runs the CPU harness. Control sets rigs up on other machines and clusters from the CPU harness, the CUDA harness (for GPU rigs) and the supervisor. It launches rigs on RunPod from the rig image: the CUDA harness and the supervisor in one container. The images do not contain Claude Code.
 
 The source code is at <@@REPO_URL@@>, under the MIT license.

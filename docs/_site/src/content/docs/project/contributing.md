@@ -97,7 +97,7 @@ Continuous integration (`.github/workflows/ci.yml`) runs on every pull request, 
 
 A new commit on a pull request cancels the run for the commit before it. Every push to `main` or `v1/build` gets a whole run of its own.
 
-A second workflow, `.github/workflows/release.yml`, runs on a tag that starts with `v`. It builds the control, harness (CPU and CUDA) and supervisor images, pushes them to `ghcr.io`, and attaches the release bundle (`compose.yaml` and `README.md`, made by `scripts/release-bundle.ts`) to a draft GitHub Release. Run by hand from the **Actions** tab, it builds the same images and bundle but pushes nothing. The [contributor guide](https://github.com/iammrduncan/thermite/blob/main/docs/local-development.md#releases) describes each step.
+A second workflow, `.github/workflows/release.yml`, runs on a tag that starts with `v`. It builds the control, harness (CPU and CUDA) and supervisor images, and the one-container rig image for RunPod on the CUDA harness, pushes them to `ghcr.io`, and attaches the release bundle (`compose.yaml` and `README.md`, made by `scripts/release-bundle.ts`) to a draft GitHub Release. Run by hand from the **Actions** tab, it builds the same images and bundle but pushes nothing. The [contributor guide](https://github.com/iammrduncan/thermite/blob/main/docs/local-development.md#releases) describes each step.
 
 `.github/dependabot.yml` asks Dependabot for updates once a week: Thermite's packages, this site's packages and the GitHub Actions in the workflow. For each of the three, the minor and patch updates come together in one pull request. A major update comes alone, and so does every Starlight update, because Starlight is still 0.x.
 
