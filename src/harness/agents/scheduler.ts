@@ -1,13 +1,14 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { log } from "../../common/env.ts";
-import type { StructuredDirective } from "../../core/commands.ts";
+import type { StoredRule } from "../../core/commands.ts";
 import {
   type Contract,
   laneLimits,
   MAX_LANES,
   type ResearchContract,
 } from "../../core/contract.ts";
+import { asToken } from "../../core/directions.ts";
 import type { NoteInput } from "../../core/journal.ts";
 import type { LiveKind } from "../../core/live.ts";
 import type { Role, Runner } from "../broker/runner.ts";
@@ -30,6 +31,7 @@ import {
   type PlannerInput,
   type PlannerPast,
   plan,
+  toDesign,
 } from "./planner.ts";
 import { type Assignment, type EpochRecord, Registry } from "./registry.ts";
 import type { ResearchTrialSpec } from "./research-worker.ts";
@@ -429,11 +431,13 @@ export class Scheduler {
    * directive about a family the owner has a directive for, or a supervisor lane count when the
    * owner set one, does not apply.
    */
-  private directives(run: string): { id: number; body: StructuredDirective }[] {
+  private directives(run: string): { id: number; body: StoredRule }[] {
+    // An old rule in words (legacy, goal 066) stays in force for the planner's model; it has no
+    // family, so the code below and the fixed rules never keep it.
     const all = this.ledger.activeDirectives(run).map((d) => ({
       id: d.id,
       owner: d.author.startsWith("control:"),
-      body: d.body as StructuredDirective,
+      body: d.body as StoredRule,
     }));
     const ownerFamilies = new Set(
       all.filter((d) => d.owner && d.body.family).map((d) => d.body.family),
@@ -620,6 +624,7 @@ export class Scheduler {
       queue: this.o.service.queue.brief(run),
       laneState: this.coordinator.laneState(run, lanes),
       directives: this.directives(run),
+      directions: this.o.service.queue.directions(run),
       laneBests: Object.fromEntries(lanes.map((l) => [l, this.registry.laneBest(run, l)])),
       campaignNotes: contract.notes,
       ownerMessages: owner.map((m) => ({ id: m.id, text: messageText(m) })),
@@ -695,8 +700,16 @@ export class Scheduler {
         owner.map((m) => m.id),
         "planner",
       );
+    // New directions, with the rules that named them before the run had them (goal 066).
+    const waiting = toDesign(input);
     for (const f of p.newFamilies)
-      this.registry.addFamily(run, f.id, f.description, `planner:${p.source}`);
+      this.registry.addFamily(
+        run,
+        f.id,
+        f.description,
+        `planner:${p.source}`,
+        waiting.find((d) => d.name === f.id)?.rules.map((r) => r.id),
+      );
     // The hand-out: the model's answer applied to the queue, or the fixed rules. Every lane gets
     // an experiment for its next trial; none goes to two lanes.
     const given = new Set<string>();
@@ -762,7 +775,9 @@ export class Scheduler {
             `${a.lane}: ${a.family}, ${a.focus}${a.parent === "lane_best" ? " (from the lane's best)" : ""}`,
         ),
         ...(p.newFamilies.length
-          ? [`new families: ${p.newFamilies.map((f) => f.id).join(", ")}`]
+          ? [
+              `new directions: ${p.newFamilies.map((f) => `${asToken(f.id)} (${f.description})`).join("; ")}`,
+            ]
           : []),
         ...(p.rawViolations.length ? [`refused: ${p.rawViolations.slice(0, 3).join("; ")}`] : []),
         ...(skipped.length ? [`skipped: ${skipped.slice(0, 3).join("; ")}`] : []),

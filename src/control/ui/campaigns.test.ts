@@ -96,6 +96,7 @@ test("the Planner tab counts rounds, and says plainly when the planner is off", 
         id: "r-1",
         mode: "hill_climb",
         rules: [],
+        directions: [],
         handouts: [],
         queue: [],
         messages: [],
@@ -201,7 +202,35 @@ test("History tells the queue's changes, the hand-outs and the rules in words", 
       id: 3,
       body: { kind: "avoid", match: "shared memory" },
     }),
-    "You set a rule for the plan: avoid shared memory.",
+    "You set a rule for the plan: avoid “shared memory”.",
+  );
+  // A rule names a direction as :name: (goal 066); the planner says when it designs a new one.
+  assert.equal(
+    say("directive", "control:owner:ui", {
+      id: 4,
+      body: { kind: "mandate", family: "shared-memory-tiling" },
+    }),
+    "You set a rule for the plan: mandate :shared-memory-tiling:.",
+  );
+  assert.equal(
+    say("family_added", "planner:planner", {
+      family: "shared-memory-tiling",
+      description: "tiles staged in shared memory",
+      for_rules: [4],
+    }),
+    "The planner designed the new direction :shared-memory-tiling: for rule 4: tiles staged in shared memory.",
+  );
+  assert.equal(
+    say("family_added", "planner:planner", { family: "split-k", description: "split k" }),
+    "The run has a new direction, :split-k: (split k).",
+  );
+  assert.equal(
+    say("directives_left_out", "supervisor", {
+      rules: [{ kind: "avoid", family: "blogs" }],
+      why: "A research run's directions are its task kinds.",
+      reason: "unknown_direction",
+    }),
+    "The teacher pair named a direction this research run doesn't have (avoid :blogs:): left out. A research run's directions are its task kinds.",
   );
   // An experiment back in the queue after its trial was interrupted: not its author's act.
   const back = {

@@ -154,13 +154,14 @@ describe("the planner as the queue's coordinator", () => {
 
   test("the fixed rules skip AVOID families and put MANDATE families first", async (t) => {
     const s = await setup(t);
-    await s.add("unroll it", { family: "unroll" });
+    await s.add("unroll it", { family: "Loop unroll" });
     await s.add("tile it", { family: "Tiling" });
     await s.add("vectorize it", { family: "simd" });
+    // A direction with spaces, as :name:, is the same direction as the experiment's words.
     await command(s.env, "redirect", {
       run: RUN,
       directives: [
-        { kind: "avoid", family: "unroll", rationale: "flat twice", citations: [] },
+        { kind: "avoid", family: ":loop unroll:", rationale: "flat twice", citations: [] },
         {
           kind: "mandate",
           family: "simd",
@@ -274,10 +275,12 @@ describe("the planner as the queue's coordinator", () => {
         ],
         add: [{ ref: "n1", title: "wider loads", family: "memory", why: "reads dominate" }],
         move: [{ id: ids.later, position: "end", why: "after the loads" }],
+        // The owner's plain words make a rule for a new direction the planner designs.
+        new_families: [{ id: "Timer code", description: "any change to the timing code" }],
         rules: [
           {
             kind: "avoid",
-            match: "anything that touches the timer",
+            family: ":timer code:",
             rationale: "the owner asked",
             from_message: 1,
           },
@@ -308,7 +311,7 @@ describe("the planner as the queue's coordinator", () => {
     assert.match(String(s.prompts[0]), /\\"proposed\\":\[\{\\"by\\":\\"lane-1\\"/);
     assert.match(
       String(s.prompts[0]),
-      /\{\\"id\\":1,\\"text\\":\\"never touch the timer code\\"\}/,
+      /\{\\"directions\\":\[\],\\"id\\":1,\\"text\\":\\"never touch the timer code\\"\}/,
     );
     // Its changes, each by the planner, with why.
     const by = (kind: string) => events(s.env, kind).filter((e) => e.actor === "planner");
@@ -346,14 +349,19 @@ describe("the planner as the queue's coordinator", () => {
     ]);
     assert.equal(h.notes, "loads first");
     // The rule: a directive by the planner that records the owner's message it came from.
+    // It names the direction the planner designed, which the run now has, in the planner's words.
     const rule = events(s.env, "directive").find((e) => e.actor === "planner");
     assert.deepEqual(body(rule).body, {
       kind: "avoid",
-      match: "anything that touches the timer",
+      family: "timer-code",
       rationale: "the owner asked",
       citations: [],
       from_message: 1,
     });
+    const made = events(s.env, "family_added").find((e) => body(e).family === "timer-code");
+    assert.equal(made?.actor, "planner:planner");
+    assert.equal(body(made).description, "any change to the timing code");
+    assert.ok(s.q.directions(RUN).includes("timer-code"));
     assert.equal(body(events(s.env, "epoch_started")[0]).source, "planner");
     // The message was read by the planner that answered it.
     assert.deepEqual(
@@ -390,7 +398,7 @@ describe("the planner as the queue's coordinator", () => {
     assert.equal(events(s.env, "directive").length, 0);
   });
 
-  test("rules given by match words reach the planner's prompt", async (t) => {
+  test("an old rule in words stays in force for the planner's model, marked legacy; code never keeps it", async (t) => {
     const s = await setup(t, {
       planner: () => ({
         assignments: [
@@ -399,20 +407,88 @@ describe("the planner as the queue's coordinator", () => {
         ],
       }),
     });
-    await command(s.env, "redirect", {
+    // A rule in words from before rules named directions: a new one can't be made, so the
+    // ledger gets it as an older harness wrote it.
+    s.env.service.ledger.addDirectiveSet(
+      RUN,
+      "control:owner:ui",
+      [{ kind: "avoid", match: "anything with vector loads", rationale: "old", citations: [] }],
+      false,
+    );
+    const refused = await s.env.service.applyCommand(
+      s.env.sign("redirect", {
+        run: RUN,
+        directives: [{ kind: "try", match: "anything", rationale: "r", citations: [] }],
+      }),
+    );
+    assert.equal(refused.status, "rejected");
+    assert.match(JSON.stringify(refused), /a rule no longer takes match/);
+    await s.round();
+    assert.match(
+      String(s.prompts[0]),
+      /\\"kind\\":\\"avoid\\",\\"legacy\\":true,\\"match\\":\\"anything with vector loads\\"/,
+    );
+    assert.match(String(s.prompts[0]), /A directive marked legacy is an old rule/);
+    // Nothing for it to design: it names no direction.
+    assert.doesNotMatch(String(s.prompts[0]), /\\"to_design\\"/);
+  });
+
+  test("a rule for a direction the run doesn't have: the planner designs it, says so, and the rule names it", async (t) => {
+    let x = "";
+    const s = await setup(t, {
+      lanes: 1,
+      // The first answer designs nothing; the second does.
+      planner: (_p, call) => ({
+        ...(call > 1
+          ? {
+              new_families: [
+                { id: "shared-memory-tiling", description: "tiles staged in shared memory" },
+              ],
+              add: [
+                {
+                  ref: "n1",
+                  title: "stage the tiles in shared memory",
+                  family: "shared memory tiling",
+                  why: "the rule asks for it",
+                },
+              ],
+            }
+          : {}),
+        assignments: [{ lane: "lane-1", experiment: call > 1 ? "n1" : x, why: "w" }],
+      }),
+    });
+    x = await s.add("only");
+    // The owner names it in plain words with spaces; a :name: names the same direction.
+    const r = await command(s.env, "redirect", {
       run: RUN,
       directives: [
-        {
-          kind: "try",
-          match: "anything with vector loads",
-          rationale: "the guide says so",
-          citations: [],
-        },
+        { kind: "try", family: "Shared memory tiling", rationale: "won elsewhere", citations: [] },
       ],
+      replace: false,
     });
+    assert.deepEqual(r.new_directions, ["shared-memory-tiling"]);
+    assert.ok(!s.q.directions(RUN).includes("shared-memory-tiling"), "not the run's yet");
     await s.round();
-    assert.match(String(s.prompts[0]), /\\"match\\":\\"anything with vector loads\\"/);
-    assert.match(String(s.prompts[0]), /A directive with match words names a direction/);
+    // The first answer designed nothing: refused, with what to do. The retry designed it.
+    const prompt = String(s.prompts[0]);
+    assert.match(prompt, /\\"to_design\\":\[\{\\"name\\":\\"shared-memory-tiling\\"/);
+    const epoch = body(events(s.env, "epoch_started")[0]);
+    assert.equal(epoch.source, "planner");
+    assert.match(
+      JSON.stringify(epoch.refused),
+      /names :shared-memory-tiling:, a direction this run doesn't have yet: design it in new_families/,
+    );
+    const made = events(s.env, "family_added").find(
+      (e) => body(e).family === "shared-memory-tiling",
+    );
+    assert.equal(made?.actor, "planner:planner");
+    assert.deepEqual(body(made), {
+      family: "shared-memory-tiling",
+      description: "tiles staged in shared memory",
+      for_rules: [Number((r.directives as number[])[0])],
+    });
+    assert.ok(s.q.directions(RUN).includes("shared-memory-tiling"));
+    assert.deepEqual(s.given(), ["lane-1:stage the tiles in shared memory"]);
   });
 
   test("an interrupted trial's experiment goes back to the top of the queue", async (t) => {

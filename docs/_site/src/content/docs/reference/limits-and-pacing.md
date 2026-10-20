@@ -183,12 +183,12 @@ None of these ends research. Nothing limits how many experiments a run's [experi
 | --- | --- |
 | An experiment's title | 1 to 200 characters |
 | Its details | Up to 4,000 characters |
-| Its direction | 1 to 80 characters: a family's name or your own words |
+| Its direction | 1 to 80 characters: a direction's name, `:name:`, or your own words |
 | Its why | Up to 2,000 characters. Dropping an experiment needs a why of 1 to 2,000 characters |
 | A place in the queue | `top`, `end`, or an index from 0 to 100,000 among the queued experiments, 0 first. An index past the last puts it last |
 | A lane's idea | One request of at most 64 KiB. No limit on how many |
 | Experiments copied into a new run by **Start a run** or `thermite assign --queue-from` (`assign_campaign`'s `queue`) | 500. Both copy at most the first 500: the run's experiments up next, in order, then its lanes' ideas. A command with more is refused. With **Agents** off, **Start a run** copies none, and `thermite assign` refuses `--queue-from` |
-| The planner's answer | At most 20 experiments added, 40 moves, 40 drops, 40 ideas accepted, 5 rules and 8 new families |
+| The planner's answer | At most 20 experiments added, 40 moves, 40 drops, 40 ideas accepted, 5 rules and 8 new directions |
 | A teacher's or the combiner's answer | Up to 10 experiments and 10 moves, each with a why. One that doesn't fit is left out; a list of more than 50 is ignored. Its review still counts |
 | The auditor's answer | One check |
 | The advisors' experiments in one request to the harness | Up to 20 experiments and 20 moves |
@@ -234,7 +234,8 @@ None of these ends anything. Nothing limits how many [field notes](knowledge-bas
 | A daily report | 200,000 characters |
 | A kit uploaded on the **New campaign** page | 64 MB and 2,000 files |
 | A message to an agent | 1 to 4,000 characters, after control trims it. One with no words: `Write a message first.` |
-| A redirect | 1 to 40 directives, each with a rationale of up to 2,000 characters and up to 20 citations. A rule in your own words (`match`) is 1 to 200 characters |
+| A redirect | 1 to 40 directives, each with a rationale of up to 2,000 characters and up to 20 citations |
+| A direction's name | 2 to 41 lowercase letters, digits and dashes, written in letters, digits, spaces and dashes, plain or as `:name:` |
 | REST lists | `?limit=` from 1 to 5,000. Defaults: events and live lines 500, audit 200, commands 100, reports 20 |
 | MCP lists | `kb_search`: 1 to 100, default 20; `recent_events`: at most the newest 50 events; `list_commands` (`limit`) and `get_run` (`attempts`): 1 to 500, default 50; `run_queue`: `tried` 0 to 500, default 50, with the newest 10 hand-outs and the newest 20 messages; `control_log`: 1 to 500 a page, default 100, with `before` and `after` for the other pages; `rig_reports` and `runpod_tests`: 1 to 50, default 5 |
 | Dashboard lists | A run's newest 300 attempts and 400 history events; 300 audit entries a page, with **Older** and **Newer** for the rest; a campaign's first 8 **Earlier runs**, then **Show N more**. A run's **Live** first loads its newest 600 lines, then asks every 2 s, while the page is in view, for up to 500 new ones |

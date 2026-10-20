@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { type CommandKind, CommandPayloads, signEnvelope } from "../core/commands.ts";
 import { MAX_LANES } from "../core/contract.ts";
+import { RESEARCH_TASK_KINDS, researchDirectionRefusal } from "../core/directions.ts";
 import type { ControlStore } from "./store.ts";
 import { type RigView, type RunView, rigView } from "./views.ts";
 
@@ -113,6 +114,27 @@ export function assignRefusal(payload: unknown): string {
   return "";
 }
 
+/**
+ * Why control refuses a set of rules (redirect) before signing it, or "". A rule may name a
+ * direction the run doesn't have yet: the planner designs it (goal 066). A research run has no
+ * planner, so there only its task kinds may be named. The rig's harness checks the same.
+ */
+export function redirectRefusal(store: ControlStore, rig: string, payload: unknown): string {
+  const p = payload as { run?: unknown; directives?: { family?: unknown }[] } | null;
+  if (typeof p?.run !== "string") return "";
+  const r = rigView(store, rig)?.runs.find((x) => x.id === p.run);
+  if (r?.mode !== "research") return "";
+  const kinds: readonly string[] = RESEARCH_TASK_KINDS;
+  const unknown = [
+    ...new Set(
+      (p.directives ?? [])
+        .map((d) => d.family)
+        .filter((f): f is string => typeof f === "string" && !kinds.includes(f)),
+    ),
+  ];
+  return unknown.length ? researchDirectionRefusal(unknown) : "";
+}
+
 /** A command outcome that came from the harness's signed report, not from the supervisor. */
 export function harnessConfirmed(outcome: unknown): boolean {
   return (outcome as { source?: string } | null)?.source === "harness";
@@ -153,6 +175,8 @@ export function issueCommand(
     );
   }
   const payload = parsed.data;
+  const ruled = input.kind === "redirect" ? redirectRefusal(store, input.rig, payload) : "";
+  if (ruled) throw new Error(ruled);
   const now = Date.now();
   const signed = signEnvelope(
     {

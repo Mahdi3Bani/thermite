@@ -4,6 +4,8 @@ import { describe, test } from "node:test";
 import { ControlStore } from "../control/store.ts";
 import { rigView } from "../control/views.ts";
 import type { CommandKind } from "../core/commands.ts";
+import { parseContract } from "../core/contract.ts";
+import { researchFixture } from "../testing/fixtures.ts";
 import { makeHarnessEnv } from "../testing/harness-env.ts";
 import { Registry } from "./agents/registry.ts";
 import { createHarnessApi } from "./api.ts";
@@ -322,21 +324,24 @@ describe("the owner's queue commands", () => {
     assert.match(String(redirect.result.error), /run smoke-1 is closed: its queue and rules/);
   });
 
-  test("drop_directive removes a rule in force, whoever set it; a rule names a family or match words", async () => {
+  test("drop_directive removes a rule in force, whoever set it; a rule names a direction", async () => {
     const s = await setup();
+    s.q.add(RUN, { title: "tile it", family: "Tiling", by: "owner" }, "control:owner:ui");
     const set = await s.command("redirect", {
       run: RUN,
       directives: [
-        {
-          kind: "avoid",
-          match: "anything that touches the timer",
-          rationale: "it is the judge's",
-          citations: [],
-        },
-        { kind: "try", family: "tiling", rationale: "won elsewhere", citations: [] },
+        // Plain words with spaces, or :name:, name a direction; one the run doesn't have yet
+        // is new, and the planner designs it.
+        { kind: "avoid", family: "Timer code", rationale: "it is the judge's", citations: [] },
+        { kind: "try", family: ":tiling:", rationale: "won elsewhere", citations: [] },
       ],
     });
     assert.ok(set.accepted, JSON.stringify(set));
+    assert.deepEqual(set.result.new_directions, ["timer-code"]);
+    assert.deepEqual(
+      s.env.service.ledger.activeDirectives(RUN).map((d) => (d.body as { family: string }).family),
+      ["timer-code", "tiling"],
+    );
     const supervisorIds = s.env.service.addDirectives(
       RUN,
       [{ kind: "try", family: "unroll", rationale: "r", citations: ["a-1"] }],
@@ -372,27 +377,167 @@ describe("the owner's queue commands", () => {
       replace: false,
     });
     assert.ok(owner.accepted, JSON.stringify(owner));
-    // A rule's direction is a family or match words, never both, and match is for avoid, try or
-    // mandate only: control's own check refuses the rest before signing.
-    for (const bad of [
-      { kind: "avoid", family: "tiling", match: "tiles", rationale: "x" },
-      { kind: "priority", match: "tiles", rationale: "x" },
-      { kind: "avoid", rationale: "names nothing" },
-    ]) {
+    // A rule names a direction: words (match) are no longer a rule, nor is text that can't be a
+    // direction's name. The harness refuses them, in plain words, as control does before signing.
+    for (const [bad, why] of [
+      [
+        { kind: "avoid", family: "tiling", match: "tiles", rationale: "x" },
+        /no longer takes match/,
+      ],
+      [{ kind: "priority", match: "tiles", rationale: "x" }, /no longer takes match/],
+      [{ kind: "avoid", rationale: "names nothing" }, /names a direction \(family\)/],
+      [
+        { kind: "avoid", family: "anything with $hared memory!", rationale: "x" },
+        /is not a direction's name: write it in letters, digits, spaces and dashes/,
+      ],
+      [
+        {
+          kind: "avoid",
+          family: "a direction whose name is far too long to be one",
+          rationale: "x",
+        },
+        /too long for a direction's name/,
+      ],
+    ] as const) {
       const r = await s.env.service.applyCommand(
         s.env.sign("redirect", { run: RUN, directives: [bad] }),
       );
       assert.equal(r.status, "rejected", JSON.stringify(bad));
+      assert.match(JSON.stringify(r), why);
     }
-    // The owner's set both avoiding and asking for the same words is refused.
+    // The owner's set both avoiding and asking for the same direction is refused, however written.
     const both = await s.command("redirect", {
       run: RUN,
       directives: [
-        { kind: "avoid", match: "Vector loads", rationale: "x", citations: [] },
-        { kind: "try", match: "vector loads", rationale: "y", citations: [] },
+        { kind: "avoid", family: "Vector loads", rationale: "x", citations: [] },
+        { kind: "try", family: ":vector-loads:", rationale: "y", citations: [] },
       ],
     });
-    assert.match(String(both.result.error), /both avoids and asks for/);
+    assert.match(String(both.result.error), /both avoids and asks for vector-loads/);
+  });
+
+  test("an old rule in words stays in force, marked legacy, until the owner removes it", async () => {
+    const s = await setup();
+    // As an older harness wrote it: a new one can't be made.
+    const [old] = s.env.service.ledger.addDirectiveSet(
+      RUN,
+      "control:owner:ui",
+      [{ kind: "avoid", match: "anything with shared memory", rationale: "slow", citations: [] }],
+      false,
+    );
+    const brief = s.env.service.brief(RUN) as { directives: Record<string, unknown>[] };
+    assert.deepEqual(brief.directives[0], {
+      id: old,
+      author: "control:owner:ui",
+      body: {
+        kind: "avoid",
+        match: "anything with shared memory",
+        rationale: "slow",
+        citations: [],
+      },
+      legacy: true,
+    });
+    // Control marks it too, from the rig's events; it names no direction.
+    const r = controlQueue(s.events());
+    assert.deepEqual(
+      r.rules.map((x) => [x.id, x.legacy]),
+      [[old, true]],
+    );
+    assert.deepEqual(r.directions, []);
+    // The advisors' next set doesn't drop it: only the owner removes it.
+    s.env.service.addDirectives(
+      RUN,
+      [{ kind: "note", value: "a note", rationale: "r", citations: ["a-1"] }],
+      "supervisor",
+    );
+    assert.ok(s.env.service.ledger.activeDirectives(RUN).some((d) => d.id === old));
+    const gone = await s.command("drop_directive", { run: RUN, id: old });
+    assert.ok(gone.accepted, JSON.stringify(gone));
+    assert.ok(!s.env.service.ledger.activeDirectives(RUN).some((d) => d.id === old));
+  });
+
+  test("a research run's directions are its task kinds: it has no planner to design a new one", async () => {
+    const env = makeHarnessEnv("rig-r");
+    const parsed = parseContract(researchFixture);
+    if (!parsed.ok) throw new Error(parsed.errors.join("; "));
+    const out = await env.service.applyCommand(
+      env.sign("assign_campaign", {
+        run: "r-1",
+        contract: parsed.contract,
+        contract_sha: parsed.sha,
+        imports: [],
+      }),
+    );
+    assert.equal(out.status, "applied", JSON.stringify(out));
+    assert.deepEqual(env.service.queue.directions("r-1"), [
+      "consolidate",
+      "contradict",
+      "explore",
+      "primary",
+    ]);
+    const rule = (family: string) =>
+      env.service.applyCommand(
+        env.sign("redirect", {
+          run: "r-1",
+          directives: [{ kind: "avoid", family, rationale: "r", citations: [] }],
+          replace: false,
+        }),
+      );
+    const bad = await rule("shared memory");
+    assert.match(
+      JSON.stringify(bad),
+      /A research run's directions are its task kinds: :explore:, :primary:, :contradict:, :consolidate:\. It has no planner to design a new direction/,
+    );
+    const kind = await rule(":contradict:");
+    assert.ok(kind.status === "applied" && kind.accepted, JSON.stringify(kind));
+    // An advisor's rule for another direction is left out, with why; the rest of its set stands.
+    const r = env.service.setAdvisorRules(
+      "r-1",
+      [
+        { kind: "try", family: "primary", rationale: "r", citations: ["a"] },
+        { kind: "avoid", family: "blogs", rationale: "r", citations: ["a"] },
+      ],
+      "supervisor",
+    );
+    assert.equal(r.ids.length, 1);
+    assert.deepEqual(
+      r.left_out.map((x) => x.rule),
+      ["avoid blogs"],
+    );
+  });
+
+  test("the run's directions: its experiments', its registry's and its attempts', the same in control's view", async () => {
+    const s = await setup();
+    s.q.add(RUN, { title: "a", family: "Shared memory tiling", by: "owner" }, "x");
+    s.q.add(RUN, { title: "b", family: ":split k:", by: "owner" }, "x");
+    s.q.add(RUN, { title: "c", by: "owner" }, "x");
+    new Registry(s.env.service.ledger).addFamily(
+      RUN,
+      "dequant-fusion",
+      "fuse it",
+      "planner:planner",
+    );
+    assert.deepEqual(s.q.directions(RUN), ["dequant-fusion", "shared-memory-tiling", "split-k"]);
+    // A :name: in an experiment's direction is kept without its colons.
+    assert.equal(s.q.queued(RUN)[1]?.family, "split k");
+    await s.command("redirect", {
+      run: RUN,
+      directives: [
+        { kind: "mandate", family: "split-k", rationale: "x", citations: [] },
+        { kind: "avoid", family: "brand new", rationale: "y", citations: [] },
+      ],
+    });
+    const r = controlQueue(s.events());
+    assert.deepEqual(
+      r.directions.map((d) => [d.name, d.queued, d.to_design, d.rules.map((x) => x.kind)]),
+      [
+        ["brand-new", 0, true, ["avoid"]],
+        ["dequant-fusion", 0, false, []],
+        ["shared-memory-tiling", 1, false, []],
+        ["split-k", 1, false, ["mandate"]],
+      ],
+    );
+    assert.equal(r.directions.find((d) => d.name === "dequant-fusion")?.description, "fuse it");
   });
 
   test("assign_campaign's queue seeds the new run's queue in order, keeping who added each, why, state and where it came from", async () => {

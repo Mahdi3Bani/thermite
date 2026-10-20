@@ -91,8 +91,9 @@ The **planner** coordinates the lanes. It is one model call at the start of each
 - the objective, the champion, the approach families tried and their verdicts, recent attempts from every lane, and each lane's best result;
 - the queue: up next in order, the lanes' ideas, what each lane is on now, and the newest experiments tried, with the judge's verdict and change for each attempt;
 - each lane's last direction and experiment;
-- the rules in force, including rules in the owner's own words;
-- the owner's messages to the planner and to everyone working that it has not read yet, each with its number;
+- the rules in force, each naming a direction, and any old rule in the owner's own words, marked legacy;
+- the run's directions, and the ones that rules name but the run doesn't have yet, which it must design;
+- the owner's messages to the planner and to everyone working that it has not read yet, each with its number and the directions it names as `:name:`;
 - in a goal campaign, the judge's latest report on which goals the champion meets;
 - the run's newest 20 **field notes**, by the lanes, the advisors and the planner itself ([Field notes and past research](#field-notes-and-past-research));
 - when the run has them, its background from past research, which the owner picked when starting the run, and one line that says what the run's `knowledge/` folder holds. The planner searches that folder, read only: with its `search_past_research` tool in Pi, or with its own read tools on the folder's files in OpenCode and Claude Code.
@@ -105,8 +106,8 @@ The planner answers with:
 
 - **an experiment for each lane:** one from up next, a lane's idea, one it adds in the same answer, or a new one described in place; a starting point, either the champion or the lane's own best result; and why;
 - **changes to the queue,** each with why: experiments to add, queued ones to move or drop, and ideas to queue or drop;
-- **rules that an owner's message asks for,** such as "stop trying tiling". Each records the message it came from;
-- new approach families, each with a short description. The planner makes up families as it goes;
+- **rules that an owner's message asks for,** such as "stop :loop tiling:" or "never touch the timer code". Each names a direction and records the message it came from. A `:name:` in the message names the direction exactly; for plain words, the planner picks the run's direction that fits, or designs a new one;
+- **new directions** (approach families), each with its name and what it means, in the planner's own words. It designs each direction that a rule names but the run doesn't have yet, and any new one a rule of its own names. It may make up others as it goes;
 - its own **field notes**, such as a key decision of the round and why. They are kept even when the plan itself is refused, and recorded as the planner's.
 
 ### What code checks
@@ -122,11 +123,13 @@ Code checks the answer before anything changes. It refuses an answer that:
 - gives out an experiment in a direction that an **Avoid** rule names, or gives no lane one in a direction that an **Always** rule names;
 - moves an experiment that isn't queued, drops one that isn't queued or an idea, or queues something that isn't an idea;
 - names a new approach family, or the direction of an experiment it adds or describes in place, after a kind of rule (`avoid`, `try`, `mandate`, `priority`, `lane_count` or `note`), so that no lane shows as "on try";
-- adds a rule for a message that wasn't in its input.
+- adds a rule for a message that wasn't in its input, or a rule that names no direction;
+- adds a rule for a direction that is neither the run's nor designed in the same answer;
+- leaves undesigned a direction that a rule in force names but the run doesn't have yet.
 
 A refused answer goes back to the model once, with the errors. If the second answer fails too, or the model can't be reached, the lanes take work by the fixed rules below. Planner trouble never pauses research.
 
-Code checks the **Avoid** and **Always** rules that name a direction. A rule in plain words, such as "anything that uses shared memory", is for the model to apply: it is told to treat those words like a direction's name. Code doesn't check them, and the fixed rules don't use them. So when no model answer comes (the planner is switched off, its model can't be reached or its answer is refused), and in a research run, only the rules that name a direction apply.
+Every rule names a direction, so code keeps every rule, with or without the model: the checks above, and the fixed rules below. A direction is written in plain words or as `:name:`; its name is its words in lowercase, joined by dashes, so `:Shared memory tiling:` names `shared-memory-tiling`. An experiment belongs to the direction its words make. An old rule in plain words, such as "anything that uses shared memory", from before rules named directions, stays in force, marked legacy: only the model reads it, and code doesn't keep it.
 
 A good answer is then applied in order: ideas queued and experiments dropped, new ones added, moves, the new rules, and last the hand-out. If the queue changed since the planner read it, for example because the owner moved or dropped that experiment in the meantime, the change is skipped, and the hand-out says so. A lane whose experiment can no longer be given out takes one by the fixed rules. Each **hand-out**, what went to which lane and why, is recorded. The run's **Planner** tab lists the hand-outs, and the planner's own changes to the queue and the rules with their reasons, under **What the planner did**, and its **History** tab gives each one a line, such as "The planner gave out round 4: lane-1 on "…"."
 
@@ -145,15 +148,17 @@ The same rules give out work within a round. A lane's first trial takes the expe
 
 The planner uses the workers' model unless it has a model of its own on **Edit rig**. When the **Planner** switch there is off, the lanes take the queue by the fixed rules every round, and a message to the planner is refused, because nothing would read it. The run's **Planner** tab then says so, with a link to **Edit rig**, in place of its message box.
 
-The run's **Live** view, under its **Planner** filter, shows each plan, as "round 4: planned by the model" or "round 4: taken from the queue by the fixed rules", with why the fixed rules gave out the work, such as "(the model gave no usable plan)". The run's **History** tab records each round as "The planner planned round 4". When the fixed rules gave out the round's work, the line says why, such as "(by the fixed rules: the planner is off on this rig (Edit rig))" or "(by the fixed rules: the model gave no usable plan, because try 1: …; try 2: …)", with why each of its answers was refused. History also has a line for each change to the queue, such as "The teacher pair added "…" to the queue.", and for each rule set or removed.
+The run's **Live** view, under its **Planner** filter, shows each plan, as "round 4: planned by the model" or "round 4: taken from the queue by the fixed rules", with why the fixed rules gave out the work, such as "(the model gave no usable plan)". The run's **History** tab records each round as "The planner planned round 4". When the fixed rules gave out the round's work, the line says why, such as "(by the fixed rules: the planner is off on this rig (Edit rig))" or "(by the fixed rules: the model gave no usable plan, because try 1: …; try 2: …)", with why each of its answers was refused. History also has a line for each change to the queue, such as "The teacher pair added "…" to the queue.", for each rule set or removed, and for each new direction, such as "The run has a new direction, :split-k: (…)."
 
 ### Directives
 
-A **directive** is a recorded instruction that steers the planner. It comes from the owner, from the supervisor's teacher pair, or from the planner itself when an owner's message asks for a rule. It can tell the planner to avoid a direction, try it, always assign it or rank it, use fewer lanes, or note something. An avoid, try or always directive names a direction by its name, such as `loop-tiling`, or in plain words, whoever sets it.
+A **directive** is a recorded instruction that steers the planner. It comes from the owner, from the supervisor's teacher pair, or from the planner itself when an owner's message asks for a rule. It can tell the planner to avoid a direction, try it, always assign it or rank it, use fewer lanes, or note something. An avoid, try or always directive names a direction, whoever sets it, such as `:loop tiling:`.
+
+A directive may name a direction the run doesn't have yet. Code keeps it by name from the start. The planner's model then designs the direction at its next round: it says what the direction means, in its own words, and adds experiments in it when the rule asks for them. The run then has the direction, and its **History** says "The planner designed the new direction :loop-tiling: for rule 9: …". Without the model, an **Always** rule's new direction gets a fixed description from the fixed rules. A research run has no planner to design one, so there a directive may name only a task kind.
 
 The owner's directives come first: a teacher's or the planner's directive about a family the owner has a directive for does not apply. A directive's reasons and notes are for the planner only; workers never see them. A directive can steer the search, but it can never change a verdict.
 
-The dashboard calls directives **rules**. A run's **Planner** tab lists the rules in force, with who set each and why; a rule the planner added shows the message it came from. **Add a rule** takes the direction in your own words: words shaped like a direction's name, such as `loop-tiling`, are sent as that name, and anything else as plain words. **Remove** takes a rule out of force, whoever set it, and keeps it out. The teachers' next set replaces their last one, and the planner adds rules when an owner's message asks, but neither brings back a rule the owner removed: the harness leaves out any rule of the same kind, on the same direction or words, and records that it did. Only the owner's own rule, from **Add a rule** or `redirect`, can set it again. [Choose what a run tries next](../how-to/campaigns/choose-what-runs-next.md) shows how, and [Supervision](supervision.md) explains the teachers.
+The dashboard calls directives **rules**. A run's **Planner** tab lists the rules in force, with who set each and why; a rule the planner added shows the message it came from. **Add a rule** takes one direction in plain words, or one or more as `:name:`. **Remove** takes a rule out of force, whoever set it, and keeps it out. The teachers' next set replaces their last one, and the planner adds rules when an owner's message asks, but neither brings back a rule the owner removed: the harness leaves out any rule of the same kind, on the same direction, and records that it did. Only the owner's own rule, from **Add a rule** or `redirect`, can set it again. [Choose what a run tries next](../how-to/campaigns/choose-what-runs-next.md) shows how, and [Supervision](supervision.md) explains the teachers.
 
 ### Lane bests and fork rounds
 

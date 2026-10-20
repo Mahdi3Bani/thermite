@@ -69,7 +69,11 @@ export class Registry {
     return new Date().toISOString();
   }
 
-  addFamily(run: string, id: string, description: string, by: string): void {
+  /**
+   * A new direction for the run. `forRules`: the rules in force that named it before the run had
+   * it, when the planner designed it for them (goal 066); its event says so.
+   */
+  addFamily(run: string, id: string, description: string, by: string, forRules?: number[]): void {
     this.ledger.tx(() => {
       const r = this.ledger.db
         .prepare(
@@ -77,7 +81,11 @@ export class Registry {
         )
         .run(run, id, description.slice(0, 500), by, this.now());
       if (Number(r.changes) > 0)
-        this.ledger.appendEvent(by, "family_added", run, { family: id, description });
+        this.ledger.appendEvent(by, "family_added", run, {
+          family: id,
+          description,
+          ...(forRules?.length ? { for_rules: forRules } : {}),
+        });
     });
   }
 

@@ -1,3 +1,4 @@
+import { asToken } from "../../core/directions.ts";
 import type { AttemptView, JudgeJob, RigView, RunView, StoredEvent } from "../views.ts";
 
 /**
@@ -118,7 +119,7 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
   const who = (by: string) =>
     by === "owner" || by.startsWith("control:owner")
       ? "You"
-      : by === "planner"
+      : by === "planner" || by.startsWith("planner:")
         ? "The planner"
         : /teacher|combiner/.test(by) || by === "supervisor"
           ? "The teacher pair"
@@ -314,7 +315,8 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
     }
     case "directive": {
       const d = (b.body ?? {}) as { kind?: string; family?: string; match?: string };
-      const what = d.family ?? d.match;
+      // A direction as :name: (goal 066); an old rule's words in quotes.
+      const what = d.family ? asToken(d.family) : d.match ? `“${d.match}”` : undefined;
       return s(
         `${who(e.actor)} set a rule for the plan${d.kind ? `: ${d.kind}${what ? ` ${what}` : ""}` : ""}.`,
         "",
@@ -325,8 +327,26 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
       const rules = Array.isArray(b.rules)
         ? (b.rules as { kind?: string; family?: string; match?: string }[])
         : [];
+      const named = rules
+        .map((r) => `${r.kind ?? ""} ${r.family ? asToken(r.family) : (r.match ?? "")}`.trim())
+        .join("; ");
       return s(
-        `${who(e.actor)} named ${rules.length === 1 ? "a rule" : `${rules.length} rules`} you removed (${rules.map((r) => `${r.kind ?? ""} ${r.family ?? r.match ?? ""}`.trim()).join("; ")}): left out.`,
+        b.reason === "unknown_direction"
+          ? `${who(e.actor)} named ${rules.length === 1 ? "a direction" : "directions"} this research run doesn't have (${named}): left out. ${String(b.why ?? "")}`.trim()
+          : `${who(e.actor)} named ${rules.length === 1 ? "a rule" : `${rules.length} rules`} you removed (${named}): left out.`,
+        "",
+        { run: String(e.subject) },
+      );
+    }
+    case "family_added": {
+      const name = asToken(String(b.family ?? ""));
+      const what =
+        typeof b.description === "string" && b.description ? `: ${clip(b.description, 200)}` : "";
+      const rules = Array.isArray(b.for_rules) ? b.for_rules.map(String) : [];
+      return s(
+        rules.length
+          ? `${who(e.actor)} designed the new direction ${name} for rule ${rules.join(", ")}${what}.`
+          : `The run has a new direction, ${name}${typeof b.description === "string" && b.description ? ` (${clip(b.description, 200)})` : ""}.`,
         "",
         { run: String(e.subject) },
       );

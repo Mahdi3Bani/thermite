@@ -1,3 +1,4 @@
+import { asToken, directionList, RESEARCH_TASK_KINDS } from "../../core/directions.ts";
 import type { AttemptView, ExperimentView, RigView, RunView } from "../views.ts";
 import { ago, esc, icon } from "./components.ts";
 import { infoLabel } from "./new-campaign.ts";
@@ -195,31 +196,54 @@ export function plannerTab(o: {
   propagate: string;
   /** Why the owner's last message to the planner was not sent or not taken, if so. */
   refused?: string | undefined;
+  /** Why control did not send the owner's last rule from Add a rule, if so. */
+  ruleRefused?: string | undefined;
 }): string {
   const { u, r } = o;
   const research = r.mode === "research";
   const ruleRow = (x: RunView["rules"][number]) => {
     const kind = String(x.body.kind ?? "");
-    const what = String(x.body.family ?? x.body.match ?? x.body.value ?? "");
-    const word =
-      kind === "mandate"
+    // A direction shows as :name: (goal 066); an old rule in words, in quotes.
+    const family = typeof x.body.family === "string" ? x.body.family : "";
+    const what = family
+      ? asToken(family)
+      : x.legacy
+        ? `“${String(x.body.match ?? "")}”`
+        : String(x.body.value ?? "");
+    const word = x.legacy
+      ? "words"
+      : kind === "mandate"
         ? "always"
         : kind === "lane_count"
           ? "lanes"
           : kind === "note"
             ? "note"
             : kind;
+    const verb =
+      kind === "mandate"
+        ? "Always give"
+        : kind === "try"
+          ? "Try"
+          : kind === "avoid"
+            ? "Avoid"
+            : kind;
     const said =
       kind === "lane_count"
         ? `${what} lanes`
         : kind === "note"
           ? what
-          : `${word === "always" ? "Always give" : word === "try" ? "Try" : word === "avoid" ? "Avoid" : word} ${what}${word === "always" ? " a lane" : ""}`;
+          : `${verb} ${what}${kind === "mandate" ? " a lane" : ""}`;
     const fromMsg =
       typeof x.body.from_message === "number"
         ? r.messages.find((m) => m.id === x.body.from_message)
         : undefined;
-    return `<div class="qrule"><span class="qkind ${esc(word)}">${esc(word)}</span><div><b>${esc(said)}</b> <span class="muted small">· set by</span> ${src(x.author)} <span class="muted xs">${esc(ago(x.at, o.now))} ago</span><div class="muted small">${esc(String(x.body.rationale ?? ""))}${fromMsg ? ` <span class="muted">(from your message: “${esc(clip(fromMsg.text, 120))}”)</span>` : ""}</div></div>${o.cmd({ rig: u.id, kind: "drop_directive", fields: { run: r.id, id: String(x.id) }, label: "Remove", cls: "sm ghost", back: o.back })}</div>`;
+    const dir = family ? r.directions.find((d) => d.name === family) : undefined;
+    const note = x.legacy
+      ? `<div class="xs warn" style="margin-top:3px">${icon.warn} An old rule in words, from before rules named directions. Code doesn't keep it. Only the planner's model reads it, and a round planned without the model ignores it. Remove it, and add a rule that names a direction instead.</div>`
+      : dir?.to_design
+        ? `<div class="xs" style="margin-top:3px">A new direction. The planner designs it at its next round, then adds it to the run's directions.</div>`
+        : "";
+    return `<div class="qrule"><span class="qkind ${esc(word)}">${esc(word)}</span><div><b>${esc(said)}</b> <span class="muted small">· set by</span> ${src(x.author)} <span class="muted xs">${esc(ago(x.at, o.now))} ago</span><div class="muted small">${esc(String(x.body.rationale ?? ""))}${fromMsg ? ` <span class="muted">(from your message: “${esc(clip(fromMsg.text, 120))}”)</span>` : ""}</div>${note}</div>${o.cmd({ rig: u.id, kind: "drop_directive", fields: { run: r.id, id: String(x.id) }, label: "Remove", cls: "sm ghost", back: o.back })}</div>`;
   };
   const entry = (at: string, html: string) =>
     `<div class="qhand"><span class="tm">${esc(at.slice(11, 16))}</span><div>${html}</div></div>`;
@@ -230,7 +254,11 @@ export function plannerTab(o: {
   // The planner's own changes to the queue and the rules it set, each with its reason. A copy
   // back in the queue after its trial stopped is not a change of the planner's: History has it.
   const changed = (r.timeline ?? [])
-    .filter((e) => e.actor === "planner" && !e.body.requeued_from)
+    .filter(
+      (e) =>
+        (e.actor === "planner" || (e.kind === "family_added" && e.actor.startsWith("planner:"))) &&
+        !e.body.requeued_from,
+    )
     .map((e) => {
       const b = e.body;
       const x = r.queue.find((y) => y.id === String(b.id));
@@ -248,12 +276,15 @@ export function plannerTab(o: {
               : e.kind === "experiment_dropped"
                 ? `Dropped ${t}${why(b.why)}`
                 : e.kind === "directive"
-                  ? `Set the rule ${esc(String(d.kind ?? ""))} ${esc(String(d.family ?? d.match ?? d.value ?? ""))}${why(d.rationale)}${
+                  ? `Set the rule ${esc(String(d.kind ?? ""))} ${esc(typeof d.family === "string" ? asToken(d.family) : String(d.match ?? d.value ?? ""))}${why(d.rationale)}${
                       typeof d.from_message === "number"
                         ? ` <span class="muted">(from your message: “${esc(clip(r.messages.find((m) => m.id === d.from_message)?.text ?? `#${d.from_message}`, 120))}”)</span>`
                         : ""
                     }`
-                  : "";
+                  : // A direction the planner designed for rules that named it (goal 066).
+                    e.kind === "family_added" && Array.isArray(b.for_rules) && b.for_rules.length
+                    ? `Designed the direction ${esc(asToken(String(b.family ?? "")))} for rule ${esc(b.for_rules.join(", "))}${why(b.description)}`
+                    : "";
       return { at: e.at, html: said };
     })
     .filter((c) => c.html);
@@ -265,9 +296,9 @@ export function plannerTab(o: {
   return `<div class="qcols"><div>
 <div class="head"><h2>Rules</h2><span class="n">${r.rules.length}</span><span class="right">the planner keeps these when it gives out work; a rule changes what lanes work on, never a verdict</span></div>
 <div class="qrules">${r.rules.map(ruleRow).join("") || `<div class="card"><div class="empty">No rules. The planner follows the queue and its own judgment.</div></div>`}</div>
-<details class="adv" style="margin-top:10px"${r.rules.length ? "" : " open"}><summary>Add a rule</summary><div><form method="post" action="/ui/commands" class="qruleform"><input type="hidden" name="csrf" value="${esc(o.csrf)}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(r.id)}"><input type="hidden" name="kind" value="redirect"><input type="hidden" name="add" value="1"><input type="hidden" name="back" value="${esc(o.back)}">
+<details class="adv" style="margin-top:10px"${r.rules.length && !o.ruleRefused ? "" : " open"}><summary>Add a rule</summary><div>${o.ruleRefused ? `<div class="lnotice">${icon.warn}<span><b>Not added.</b> ${esc(o.ruleRefused)}</span></div>` : ""}<form method="post" action="/ui/commands" class="qruleform"><input type="hidden" name="csrf" value="${esc(o.csrf)}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(r.id)}"><input type="hidden" name="kind" value="redirect"><input type="hidden" name="add" value="1"><input type="hidden" name="back" value="${esc(o.back)}">
 <label class="sfd">${infoLabel("Rule", "Avoid: no lane gets this direction. Try: it comes first when there is a choice. Always: one lane works on it at every hand-out.")}<select name="directive"><option value="avoid">Avoid</option><option value="try">Try</option><option value="mandate">Always</option></select></label>
-<label class="sfd">${infoLabel("Direction", "In your own words: a direction this run has used, a kind of change (anything with shared memory), or a file. The planner's model applies words to every experiment they match. Without its model (none set, its answer refused, the planner off, or a research run) only a rule that names a direction applies: one word with hyphens, such as memory-layout.")}<input name="match" required maxlength="200" placeholder="for example: anything that uses shared memory"></label>
+<label class="sfd">${infoLabel("Direction", `The direction the rule is about, in plain words, such as shared memory tiling, or as :shared memory tiling:. To name more than one, write each as :name:; each gets its own rule. Code keeps every rule at each hand-out, with or without the planner's model. ${research ? `A research run's directions are its task kinds: ${directionList(RESEARCH_TASK_KINDS)}.` : `A direction this run doesn't have yet is new: the planner designs it at its next round. This run's directions: ${r.directions.filter((d) => !d.to_design).length ? directionList(r.directions.filter((d) => !d.to_design).map((d) => d.name)) : "none yet"}.`}`)}<input name="direction" required maxlength="400" placeholder="for example: shared memory tiling"></label>
 <label class="sfd">${infoLabel("Why", "Kept with the rule and shown to the planner.")}<input name="rationale" required maxlength="2000" placeholder="for example: measured slower twice"></label>
 <button class="primary">Add the rule</button></form></div></details>
 <div class="head" style="margin-top:26px"><h2>What the planner did</h2><span class="right">each hand-out, and each change it made to the queue or the rules, with why</span></div>
@@ -280,7 +311,7 @@ ${
     : u.settings?.planner === false
       ? // The rig's own settings (Edit rig): with the planner off, nothing would read a message.
         `<div class="card qcard"><h3>Tell the planner</h3><div class="small">The planner is off on this rig, so it reads no messages. The lanes take the queue in order and keep to the rules. <a href="/ui/rigs/${encodeURIComponent(u.id)}/edit">Switch it on in Edit rig</a> to tell it something.</div></div>`
-      : `<div class="card qcard"><h3>Tell the planner</h3>${o.refused ? `<div class="lnotice">${icon.warn}<span><b>Not sent.</b> ${esc(o.refused)}</span></div>` : ""}<form method="post" action="/ui/live/message"><input type="hidden" name="csrf" value="${esc(o.csrf)}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(r.id)}"><input type="hidden" name="to" value="planner"><input type="hidden" name="back" value="${esc(o.back)}"><textarea name="text" rows="4" required data-words maxlength="4000" placeholder="for example: stop trying tiling, and put vector loads first" style="width:100%"></textarea><div class="muted small" style="margin:6px 0">The planner reads it when it next gives out work. From what you say it can add or drop experiments, reorder the queue and add rules; each change shows here and in Experiments, with your message as its reason.</div><button class="primary">Send to the planner</button></form></div>`
+      : `<div class="card qcard"><h3>Tell the planner</h3>${o.refused ? `<div class="lnotice">${icon.warn}<span><b>Not sent.</b> ${esc(o.refused)}</span></div>` : ""}<form method="post" action="/ui/live/message"><input type="hidden" name="csrf" value="${esc(o.csrf)}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(r.id)}"><input type="hidden" name="to" value="planner"><input type="hidden" name="back" value="${esc(o.back)}"><textarea name="text" rows="4" required data-words maxlength="4000" placeholder="for example: stop :loop tiling:, and put vector loads first" style="width:100%"></textarea><div class="muted small" style="margin:6px 0">The planner reads it when it next gives out work. From what you say it can add or drop experiments, reorder the queue and add rules; each change shows here and in Experiments, with your message as its reason. Each rule names a direction. Write :name: to name one exactly. For plain words, the planner picks the direction that fits, or designs a new one.</div><button class="primary">Send to the planner</button></form></div>`
 }
 <div class="card qcard"><h3>The planner</h3><div class="small">${esc(o.model)}</div><a class="small" href="/ui/rigs/${encodeURIComponent(u.id)}/edit">Change it on Edit rig</a>${
     r.agents.epochs && !research

@@ -135,7 +135,7 @@ It prints the command's id and `"status":"pending"`. In each payload, `run` is t
 | `resume_run` | `{"run":"sort-speed-1"}` |
 | `reset_workers` (**Restart the lanes**) | `{"run":"sort-speed-1"}` |
 | `redirect`, added to the rules in force | `{"run":"sort-speed-1","directives":[{"kind":"avoid","family":"loop-tiling","rationale":"three trials regressed"}],"replace":false}` |
-| `redirect`, in your own words, added to the rules in force | `{"run":"sort-speed-1","directives":[{"kind":"try","match":"anything with vector loads","rationale":"twice the bandwidth"}],"replace":false}` |
+| `redirect`, a direction in plain words or `:name:`, added to the rules in force | `{"run":"sort-speed-1","directives":[{"kind":"try","family":":vector loads:","rationale":"twice the bandwidth"}],"replace":false}` |
 | `redirect`, replacing the rules you sent before this way | `{"run":"sort-speed-1","directives":[{"kind":"avoid","family":"loop-tiling","rationale":"three trials regressed"}]}` |
 | `drop_directive` (**Remove** on a rule) | `{"run":"sort-speed-1","id":7}` |
 | `message_agent` | `{"run":"sort-speed-1","to":"lane-2","text":"Look at the cache misses first."}` |
@@ -144,7 +144,7 @@ It prints the command's id and `"status":"pending"`. In each payload, `run` is t
 
 The changes to the experiment queue, `queue_add`, `queue_move`, `queue_edit`, `queue_drop` and `queue_accept`, are in [Choose what a run tries next](choose-what-runs-next.md#from-the-command-line-and-over-mcp).
 
-A `redirect` takes up to 40 directives, each with a `kind`, a `rationale`, and, where the kind needs one, a `family` (a direction's name), `match` (your own words, up to 200 characters, for `avoid`, `try` and `mandate` only) or a `value`:
+A `redirect` takes up to 40 directives, each with a `kind`, a `rationale`, and, where the kind needs one, a `family` (its direction, in plain words or as `:name:`) or a `value`:
 
 | `kind` | What it does |
 | --- | --- |
@@ -156,10 +156,10 @@ A `redirect` takes up to 40 directives, each with a `kind`, a `rationale`, and, 
 | `note` | Free text for the planner |
 
 - Without `"replace": false`, a set replaces the rules sent earlier the same way, and only those. The command line and the REST API share one set. Over MCP, each token's role has its own: the owner's, the operator's and the agent's. The dashboard's **Add a rule** always adds. Rules from elsewhere stay: remove them with `drop_directive`.
-- A set that both avoids a direction and asks for it, by name or in the same words, is refused: `the set both avoids and asks for <direction>`.
-- A directive with both `family` and `match` is refused: `bad redirect payload: directives.0.match: name either a family or match words, not both`. So is `match` on another kind: `… match words are for avoid, try and mandate rules`.
-- Rules in your own words apply only when the planner's model plans a round; the fixed rules skip them: see [When a rule in your own words is skipped](choose-what-runs-next.md#when-a-rule-in-your-own-words-is-skipped).
-- Only the planner sees rationales, notes and match words; workers never do.
+- Control sends each `family` as the direction's name: `:Vector loads:` goes as `vector-loads`. A direction the run doesn't have yet is taken, and the planner designs it at its next round: see [Directions](choose-what-runs-next.md#directions). A research run takes only its task kinds.
+- A set that both avoids a direction and asks for it is refused: `the set both avoids and asks for <direction>`.
+- A rule in words is refused: `bad redirect payload: directives.0: a rule no longer takes match: name its direction in family, in plain words or as :name:`. So is a `family` that can't be a direction's name: `… is not a direction's name: write it in letters, digits, spaces and dashes, such as shared memory tiling or :shared memory tiling:`.
+- Only the planner sees rationales and notes; workers never do.
 - Your directives come before any that the rig's advisors or the planner set on the same `family`.
 - `drop_directive` removes one rule in force, whoever set it. Its `id` is the rule's number, from `run_queue`'s `rules`. A rule that is not in force is refused: `no rule 7 in force in run sort-speed-1`. In a finished run, `drop_directive` and `redirect` are both refused: `run sort-speed-1 is closed: its queue and rules no longer change`. Only you, or an operator, can set a removed rule again, with a `redirect`; the advisors, the planner and the agent's token can't: see [Remove a rule](choose-what-runs-next.md#remove-a-rule).
 

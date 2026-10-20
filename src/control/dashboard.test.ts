@@ -1232,23 +1232,23 @@ describe("control dashboard", () => {
     );
     assert.doesNotMatch(html, /<div class="qt">vector loads/);
     assert.match(html, /dropped by you: measured slower last run/);
-    // A rule in the owner's own words, added to the rules in force, then removed.
+    // A rule naming a direction in plain words, added to the rules in force, then removed.
     await send({
       kind: "redirect",
       directive: "try",
-      match: "anything with vector loads",
+      direction: "vector loads",
       rationale: "the guide says twice the bandwidth",
       add: "1",
     });
     let planner = await (await s.get(plan)).text();
-    assert.match(planner, /Try anything with vector loads/);
+    assert.match(planner, /Try :vector-loads:/);
     const rule = /name="kind" value="drop_directive"[\s\S]*?name="id" value="(\d+)"/.exec(
       planner,
     )?.[1];
     assert.ok(rule, "the rule has a Remove button");
     await send({ kind: "drop_directive", id: rule });
     planner = await (await s.get(plan)).text();
-    assert.doesNotMatch(planner, /Try anything with vector loads/);
+    assert.doesNotMatch(planner, /Try :vector-loads:/);
   });
 
   test("Live for one run: filters for each lane, the judge and you; one message box", async () => {
