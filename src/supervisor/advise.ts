@@ -227,6 +227,50 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
     }
   };
 
+  /**
+   * An advisor's experiments and moves for a run's queue, recorded with its role as who made
+   * them. A failure is the advisor's error line; the advisor's other work stands.
+   */
+  const toQueue = async (
+    run: string,
+    role: "teacher" | "auditor",
+    add: {
+      title: string;
+      details?: string | undefined;
+      family?: string | undefined;
+      why: string;
+      position?: string | undefined;
+    }[],
+    move: { id: string; position: string | number; why: string }[],
+  ): Promise<unknown> => {
+    if (!add.length && !move.length) return undefined;
+    try {
+      const r = (await api("POST", "/v1/queue", { run, role, add, move })) as {
+        added: string[];
+        moved: string[];
+        refused: string[];
+      };
+      const who = role === "teacher" ? "the teacher pair" : "the auditor";
+      say(
+        run,
+        "text",
+        [
+          add.length
+            ? `${who} added to the queue: ${add.map((a) => clip(a.title, 120)).join("; ")}`
+            : "",
+          r.moved.length ? `${who} moved ${r.moved.join(", ")}` : "",
+          r.refused.length ? `refused: ${r.refused.join("; ")}` : "",
+        ]
+          .filter(Boolean)
+          .join(". "),
+      );
+      return r;
+    } catch (err) {
+      fail(`the queue for ${run}`, err, run);
+      return undefined;
+    }
+  };
+
   // The teacher pair, per running run, on its cadence, and at once for a new owner's message.
   if (cfg.advisors.teachers.length && !overBudget()) {
     const { runs } = (await api("GET", "/v1/runs")) as { runs: RunRow[] };
@@ -298,7 +342,9 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         } else {
           say(inst.id, "status", "the teacher pair set no directives");
         }
-        record(`teachers-${inst.id}`, { ...run, posted });
+        // Their experiments for the run's queue, and moves of queued ones.
+        const queued = await toQueue(inst.id, "teacher", run.experiments, run.moves);
+        record(`teachers-${inst.id}`, { ...run, posted, queued });
       } catch (err) {
         fail(`teachers for ${inst.id}`, err, inst.id);
       }
@@ -350,7 +396,18 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           "text",
           `audit of ${pkg.attempt} (try ${next.tries[key] ?? 1}): ${r.output.decision}${posted?.effect ? `, ${posted.effect}` : ""}. ${clip(r.output.reasons, 400)}`,
         );
-        record(`audit-${pkg.attempt}`, { decision: r.output, posted });
+        // A doubt the auditor could not settle: a check at the top of the run's queue.
+        const check = r.output.check;
+        const queued =
+          check && pkg.run
+            ? await toQueue(
+                pkg.run,
+                "auditor",
+                [{ ...check, family: "check", position: "top" }],
+                [],
+              )
+            : undefined;
+        record(`audit-${pkg.attempt}`, { decision: r.output, posted, queued });
       } catch (err) {
         fail(`audit of ${pkg.attempt}`, err, pkg.run);
       }
