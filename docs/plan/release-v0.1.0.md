@@ -41,7 +41,7 @@ A tester can run Thermite, knows the risks, and knows where to report a problem.
 | [001 · Plans in public docs](goals/001-plans-in-public.goal) | `VERIFIED` | — |
 | [002 · CI on every push, and repository settings](goals/002-ci-and-repository-settings.goal) | `IN_PROGRESS` | — |
 | [003 · No default spend limit for advisors](goals/003-advisors-no-default-cap.goal) | `VERIFIED` | — |
-| [004 · Scan the history for secrets](goals/004-secret-scan.goal) | `READY` | — |
+| [004 · Scan the history for secrets](goals/004-secret-scan.goal) | `IN_PROGRESS` | — |
 | [005 · A sample project in `examples/`](goals/005-sample-project.goal) | `READY` | — |
 | [060 · The documentation site](goals/060-docs-site.goal) | `VERIFIED` | — |
 | [006 · Docs for testers](goals/006-docs-for-testers.goal) | `DROPPED`, merged into 060 | — |

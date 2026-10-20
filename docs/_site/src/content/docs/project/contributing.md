@@ -61,11 +61,27 @@ Continuous integration (`.github/workflows/ci.yml`) runs on every pull request, 
 | --- | --- |
 | **checks (Node 22)**, **checks (Node 24)** | `npm ci`, the typecheck, the lint, every test and the public check, on each Node.js version |
 | **docs site** | `npm run docs:build` and `npm run docs:check` |
+| **secret scan** | gitleaks over the whole history of the commit (see below) |
 | **compose-smoke** | The compose smoke test with Docker, after both **checks** jobs pass |
 
 A new commit on a pull request cancels the run for the commit before it. Every push to `main` or `v1/build` gets a whole run of its own.
 
 `.github/dependabot.yml` asks Dependabot for updates once a week: Thermite's packages, this site's packages and the GitHub Actions in the workflow. For each of the three, the minor and patch updates come together in one pull request. A major update comes alone, and so does every Starlight update, because Starlight is still 0.x.
+
+### The secret scan
+
+The **secret scan** job runs [gitleaks](https://github.com/gitleaks/gitleaks) 8.30.1 with its default rules over every commit in the history, not only the last one. CI downloads that release and checks it against the SHA-256 from the release's checksums file before it runs it. When the scan finds something, it prints the file, the commit and the rule with the value hidden, and the job fails.
+
+Some tests use made-up values in the shape of a key, such as a fake RunPod key. [`.gitleaks.toml`](https://github.com/iammrduncan/thermite/blob/main/.gitleaks.toml) names each one by its rule, its file and its exact value, and the scan skips only those. When a test needs a new made-up key, add an entry for that file and that value, never a wider pattern.
+
+To run the same scan on your copy, run this from the root of your clone. With Docker, write `docker` in place of `podman`.
+
+```sh
+podman run --rm -v "$PWD":/repo:ro ghcr.io/gitleaks/gitleaks:v8.30.1 \
+  git /repo --config /repo/.gitleaks.toml --redact --log-opts="--full-history HEAD"
+```
+
+It ends with `no leaks found` when the history is clean.
 
 ## Work on the dashboard
 

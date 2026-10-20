@@ -16,7 +16,7 @@ npm ci
 npm run check            # typecheck, lint, tests, public-content check
 ```
 
-CI (`.github/workflows/ci.yml`) runs on every pull request and every push to `main` and to the development branch, `v1/build`. It runs the same checks on Node 22 and 24, builds and checks the documentation site, then runs the compose smoke test with Docker. [What CI runs](_site/src/content/docs/project/contributing.md#what-ci-runs) describes each job, and [AGENTS.md](../AGENTS.md#checks) lists every check and when each one is needed.
+CI (`.github/workflows/ci.yml`) runs on every pull request and every push to `main` and to the development branch, `v1/build`. It runs the same checks on Node 22 and 24, builds and checks the documentation site, scans the whole history for secrets with gitleaks (the allowlists for made-up keys are in `.gitleaks.toml`), then runs the compose smoke test with Docker. [What CI runs](_site/src/content/docs/project/contributing.md#what-ci-runs) describes each job, and [AGENTS.md](../AGENTS.md#checks) lists every check and when each one is needed.
 
 The documentation site has its own build and checks: see [Writing the documentation](writing-docs.md).
 

@@ -33,7 +33,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [001](goals/001-plans-in-public.goal) Plans in public docs · `VERIFIED`
 - [002](goals/002-ci-and-repository-settings.goal) CI on every push, and repository settings · `IN_PROGRESS`
 - [003](goals/003-advisors-no-default-cap.goal) No default spend limit for advisors · `VERIFIED`
-- [004](goals/004-secret-scan.goal) Scan the history for secrets · `READY`
+- [004](goals/004-secret-scan.goal) Scan the history for secrets · `IN_PROGRESS`
 - [005](goals/005-sample-project.goal) A sample project in `examples/` · `READY`
 - [060](goals/060-docs-site.goal) The documentation site · `VERIFIED`
 - [006](goals/006-docs-for-testers.goal) Docs for testers · `DROPPED`, merged into 060
