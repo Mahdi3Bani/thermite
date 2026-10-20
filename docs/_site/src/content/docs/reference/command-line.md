@@ -358,7 +358,7 @@ It prints the rig on one line, then `Launched: RunPod bills the pod from now. Co
 | --- | --- | --- | --- |
 | `--gpu G` | Yes | | A GPU type's id or name in RunPod's list |
 | `--gpus N` | No | `1` | GPUs in the pod: 1 to 8 |
-| `--cloud-type SECURE\|COMMUNITY` | No | `SECURE` | Secure cloud on demand, or Community cloud |
+| `--cloud-type SECURE` | No | `SECURE` | Secure cloud on demand. Control refuses `COMMUNITY` until a later version |
 | `--datacenter DC` | No | any | A data center's id |
 | `--image I` | No | control's `THERMITE_RUNPOD_RIG_IMAGE` | The one-container rig image |
 | `--disk GB` | No | `40` | The container's own disk |

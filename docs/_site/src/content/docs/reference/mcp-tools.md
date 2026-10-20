@@ -602,7 +602,7 @@ Returns a list of rigs, each a `runpod rig` as [Rigs on a GPU cloud](rest-api.md
 | `cloud` | string | | "The GPU cloud's name in Providers" |
 | `gpu` | string | | "A GPU type's id or name, from providers" |
 | `gpu_count` | whole number, 1 to 8, optional | 1 | GPUs in the pod |
-| `cloud_type` | `SECURE` or `COMMUNITY`, optional | `SECURE` | Secure cloud on demand, or Community cloud |
+| `cloud_type` | `SECURE`, optional | `SECURE` | Secure cloud on demand. `COMMUNITY` is refused until a later version |
 | `datacenter` | string, optional | any | "A data center's id" |
 | `image` | string, optional | `THERMITE_RUNPOD_RIG_IMAGE` | The one-container rig image the pod runs |
 | `container_disk_gb` | whole number, 10 to 2000, optional | 40 | The container's own disk in GB |

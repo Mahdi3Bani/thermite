@@ -198,7 +198,7 @@ What a launch takes:
 | --- | --- | --- | --- |
 | `gpu` | string | required | A GPU type's id or name from RunPod's list (**Providers**, or the MCP tool `providers`) |
 | `gpu_count` | 1 to 8 | `1` | GPUs in the pod |
-| `cloud_type` | `SECURE` or `COMMUNITY` | `SECURE` | Secure cloud on demand, or Community cloud. The GPU type must be offered there |
+| `cloud_type` | `SECURE` | `SECURE` | Secure cloud on demand. `COMMUNITY` is refused: Community cloud comes in a later version. The GPU type must be offered on Secure cloud |
 | `datacenter` | string | any: RunPod chooses | A data center's id from RunPod's list |
 | `image` | string | control's `THERMITE_RUNPOD_RIG_IMAGE` | The one-container rig image (CUDA), at a registry RunPod can pull from |
 | `container_disk_gb` | 10 to 2000 | `40` | The container's own disk, which RunPod empties when the pod stops |
@@ -222,7 +222,8 @@ A launch refuses with one of these, as 409 `{"error": ...}`:
 - `no GPU cloud "<name>"`
 - `name a GPU type: its id or name in RunPod's list`
 - `RunPod lists no GPU type "<gpu>"`
-- `<gpu> is not offered on Secure cloud` (or `Community cloud`)
+- `<gpu> is not offered on Secure cloud`
+- `Community cloud comes in a later version: rigs launch on Secure cloud, on demand`
 - `RunPod lists no data center "<datacenter>"`
 - `a pod has 1 to 8 GPUs`
 - `the container's disk is 10 to 2000 GB`, `the volume is 10 to 10000 GB`

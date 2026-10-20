@@ -211,14 +211,13 @@ describe("rigs on RunPod: the launch", () => {
     assert.equal((audit?.body as { pod?: string } | undefined)?.pod, "pod1");
   });
 
-  test("Community when asked, with GPUs, a data center, an expiry for the code and the owner's settings", async () => {
+  test("GPUs, a data center, an expiry for the code and the owner's settings", async () => {
     const s = setup();
     const v = await s.rigs.launch(
       "runpod",
       {
         gpu: "NVIDIA RTX A4000",
         gpu_count: 2,
-        cloud_type: "COMMUNITY",
         datacenter: "EU-RO-1",
         container_disk_gb: 60,
         volume_gb: 300,
@@ -231,7 +230,7 @@ describe("rigs on RunPod: the launch", () => {
       "owner:mcp",
     );
     const [body] = s.created();
-    assert.equal(body?.cloud, "COMMUNITY");
+    assert.equal(body?.cloud, "SECURE");
     assert.equal(body?.gpu.count, 2);
     assert.equal(body?.dataCenterId, "EU-RO-1");
     assert.equal(body?.disk, 60);
@@ -244,7 +243,7 @@ describe("rigs on RunPod: the launch", () => {
       THERMITE_JUDGE_GPUS: "1",
       THERMITE_TARGET_CLASS: "a4000",
     });
-    assert.equal(v.price_per_hr, 0.34, "Community's price for two GPUs");
+    assert.equal(v.price_per_hr, 0.5, "Secure cloud's price for two GPUs");
     assert.equal(v.spend_limit_usd, 20);
     assert.equal(v.idle_stop_minutes, 45);
   });
@@ -254,7 +253,7 @@ describe("rigs on RunPod: the launch", () => {
     const refused: [Parameters<RunpodRigs["launch"]>[1], RegExp][] = [
       [{ gpu: "" }, /name a GPU type/],
       [{ gpu: "B200" }, /RunPod lists no GPU type "B200"/],
-      [{ gpu: "H100 SXM", cloud_type: "COMMUNITY" }, /H100 SXM is not offered on Community cloud/],
+      [{ gpu: "RTX A4000", cloud_type: "COMMUNITY" }, /Community cloud comes in a later version/],
       [{ gpu: "RTX A4000", datacenter: "US-XX-9" }, /no data center "US-XX-9"/],
       [{ gpu: "RTX A4000", gpu_count: 9 }, /1 to 8 GPUs/],
       [{ gpu: "RTX A4000", volume_gb: 5 }, /volume is 10 to 10000 GB/],

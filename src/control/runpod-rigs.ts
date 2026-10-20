@@ -38,7 +38,7 @@ export interface LaunchRequest {
   /** A GPU type's id or name, from RunPod's list. */
   gpu: string;
   gpu_count?: number | undefined;
-  /** Default: SECURE, on demand. */
+  /** SECURE, on demand: the owner's decision of 2026-10-20 ("Community and spot come later"). */
   cloud_type?: "SECURE" | "COMMUNITY" | undefined;
   /** A data center's id; not given: RunPod chooses. */
   datacenter?: string | undefined;
@@ -136,6 +136,10 @@ export class RunpodRigs {
     const count = req.gpu_count ?? 1;
     if (!wholeIn(count, 1, 8)) throw new Error("a pod has 1 to 8 GPUs");
     const cloudType = req.cloud_type ?? "SECURE";
+    if (cloudType !== "SECURE")
+      throw new Error(
+        "Community cloud comes in a later version: rigs launch on Secure cloud, on demand",
+      );
     const disk = req.container_disk_gb ?? DEFAULT_CONTAINER_DISK_GB;
     if (!wholeIn(disk, 10, 2000)) throw new Error("the container's disk is 10 to 2000 GB");
     const volume = req.volume_gb ?? DEFAULT_VOLUME_GB;
