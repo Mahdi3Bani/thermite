@@ -16,7 +16,7 @@ npm ci
 npm run check            # typecheck, lint, tests, public-content check
 ```
 
-CI (`.github/workflows/ci.yml`) runs on every pull request and every push to `main` and to the development branch, `v1/build`. It runs the same checks on Node 22 and 24, builds and checks the documentation site, scans the whole history for secrets with gitleaks (the allowlists for made-up keys are in `.gitleaks.toml`), then runs the compose smoke test with Docker. [What CI runs](_site/src/content/docs/project/contributing.md#what-ci-runs) describes each job, and [AGENTS.md](../AGENTS.md#checks) lists every check and when each one is needed.
+CI (`.github/workflows/ci.yml`) runs on every pull request and every push to `main` and to the development branch, `v1/build`. It runs the same checks on Node 22 and 24, builds and checks the documentation site, scans the whole history for secrets with gitleaks (the allowlists for made-up keys are in `.gitleaks.toml`), then runs the compose smoke test with Docker. On pushes, and on pull requests that touch the containers, compose, the release bundle, the quick start's pages or the sample, it also runs [the quick-start test](#the-quick-start-test). [What CI runs](_site/src/content/docs/project/contributing.md#what-ci-runs) describes each job, and [AGENTS.md](../AGENTS.md#checks) lists every check and when each one is needed.
 
 The documentation site has its own build and checks: see [Writing the documentation](writing-docs.md).
 
@@ -140,6 +140,22 @@ COMPOSE="podman compose" npm run acceptance:judge
 - daily reports;
 - a restart, when an engine socket is available;
 - a full reset.
+
+## The quick-start test
+
+`node scripts/quick-start-acceptance.mjs` follows the quick start as a tester does: [Your first run](_site/src/content/docs/tutorials/first-run.md), then [Hand the work to agents](_site/src/content/docs/tutorials/agents-with-a-free-model.md) to the judge's first verdict on the sample in `examples/matmul-cpu`.
+
+1. **The release, from your copy.** It builds the control, harness and supervisor images, and writes the release bundle for them with `scripts/release-bundle.ts`, pinned by digest. With Podman the images stay in local storage. With Docker they go to a registry container on `127.0.0.1`, so that each one has a digest. The CUDA harness is not built: the bundle names the CPU harness in its place, and no step uses it.
+2. **The pages' own steps.** `src/testing/quick-start.ts` reads the tutorials, the command line section of [Install Thermite on one machine](_site/src/content/docs/how-to/install/one-machine.md#the-command-line) and [Check the machine](_site/src/content/docs/how-to/operate/troubleshoot.md#check-the-machine). The test runs each shell block as written, in a new folder, with the line for your container tool. It types the values the pages give, presses the buttons they name, and checks the words they quote: the init's last line, Overview's first line, the smoke check's result and its verdict counts, the model check, the kit's summary, the campaign's start and its pause.
+3. **Only what cannot work before a release.** The release's files come from a small server on your computer, and the source from your copy's tracked files, committed and tagged as the release and served by `git daemon`. The agents' model is the scripted model of the agents test (`scripts/lib/scripted-model.mjs`), added as an OpenAI-compatible provider, under OpenCode v2 as the page says. **Look it up** reads only `https://` addresses, so the test looks the tag up itself. The doctor checks the scripted model's address. When a page no longer has what one of these changes is for, the test fails.
+
+It needs port 8800 free and no volumes of a compose project named `thermite`: it stops before it builds anything otherwise. It removes its stack, its volumes, its images, dangling images and its folder at the end, and writes a report to `.dev/acceptance/`. `KEEP=1` leaves the stack and the folder.
+
+```sh
+COMPOSE="podman compose" node scripts/quick-start-acceptance.mjs
+```
+
+A change to the steps of those pages runs this test in CI. Run `node scripts/test.mjs src/testing/quick-start.test.ts` first: it reads the pages as the test does, and fails at once when a step, a value or a quoted line it needs has gone.
 
 ## Other acceptance tests
 

@@ -70,6 +70,9 @@ Changes to some parts also need a test that starts containers. Each takes from a
 | Rigs on Kubernetes, including moving a rig onto new images, or control's image | `COMPOSE="podman compose" node scripts/cluster-acceptance.mjs` |
 | The one-container rig image, the broker's start of the supervisor, its wait for enrollment or the isolation selftest | `COMPOSE="podman compose" node scripts/rig-image-acceptance.mjs` |
 | Rigs on RunPod: their launch, stop, start, restart and terminate, or the fake RunPod API | `COMPOSE="podman compose" node scripts/runpod-acceptance.mjs` |
+| The quick start's pages, the images or compose, the release bundle, or the sample in `examples/` | `COMPOSE="podman compose" node scripts/quick-start-acceptance.mjs` |
+
+The quick-start test follows [Your first run](../tutorials/first-run.md) and [Hand the work to agents](../tutorials/agents-with-a-free-model.md) as a tester does. It builds the images from your copy and writes a release bundle for them with `scripts/release-bundle.ts`. Then it runs each shell block of the pages as they are written, in a new folder, and uses the values, buttons and words the pages give: `src/testing/quick-start.ts` reads them. It changes only what cannot work before a release is published: the release's files and the source come from servers on your computer, and the agents' model is the scripted model of the agents test. It runs the rig's checks and `thermite doctor`, then the sample campaign to the judge's first verdict. It takes about 7 minutes when the images' layers are already built, and about 20 when they are not. When you change one of those pages, run `node scripts/test.mjs src/testing/quick-start.test.ts`: it fails at once when a page no longer has what the test reads.
 
 The campaign test serves a tiny project with `git daemon` and creates a campaign through the New campaign form, which starts a try of its kit. Then it starts the campaign's own run from the campaign's page, with the agents on. Its rig gets a model route that nothing answers, so the agents fail at once, and the script submits the changes itself. The cluster test sets rigs up on a local kind cluster, in a namespace control creates and in a pre-made slot. Then it restarts control with re-tagged images, moves the slot's rig onto them with **Update to these images**, and checks that the rig reports again from the new pods with its volume claim and secret unchanged. The RunPod test runs control in the script against a fake RunPod API (`src/testing/fake-runpod.ts`, which the unit tests use too) that answers no other host: each pod it makes is a container of the rig image on a volume, reached through a stand-in for RunPod's proxy. It never calls RunPod and spends nothing.
 
@@ -79,7 +82,7 @@ One test is run by hand only, with the owner's OK, because it spends money: `scr
 
 ## What CI runs
 
-Continuous integration (`.github/workflows/ci.yml`) runs on every pull request, and on every push to `main` and to the development branch, `v1/build`. It has these jobs:
+Continuous integration (`.github/workflows/ci.yml`) runs on every pull request, and on every push to `main` and to the development branch, `v1/build`. It has these jobs, and runs **quick-start** on a pull request only when the change can affect the quick start:
 
 | Job | What it runs |
 | --- | --- |
@@ -89,6 +92,8 @@ Continuous integration (`.github/workflows/ci.yml`) runs on every pull request, 
 | **compose-smoke** | The compose smoke test with Docker, after both **checks** jobs pass |
 | **rig image** | Builds the one-container rig image, enrolls it in pull mode from control's code in the script, and runs its isolation self-test with Docker (`scripts/rig-image-acceptance.mjs`) |
 | **runpod** | Launches a rig on the fake RunPod API, whose pod is a container of the rig image, then stops, starts and terminates it, with Docker (`scripts/runpod-acceptance.mjs`) |
+| **quick start, needed?** | Decides whether **quick-start** runs: always on a push, and on a pull request only when it changes the containers, a compose file, the release bundle, the quick start's pages, `examples/`, the smoke kit or the test itself |
+| **quick-start** | The quick-start test with Docker (`scripts/quick-start-acceptance.mjs`), after both **checks** jobs pass. It stops after 60 minutes. Its report, with each check and how long each step took, is the run's artifact `quick-start-report` |
 
 A new commit on a pull request cancels the run for the commit before it. Every push to `main` or `v1/build` gets a whole run of its own.
 

@@ -48,7 +48,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [011](goals/011-release-bundle.goal) A release bundle · `IN_PROGRESS`
 - [012](goals/012-version-checks.goal) Version checks between control and rigs · `IN_PROGRESS`
 - [013](goals/013-thermite-doctor.goal) `thermite doctor` · `VERIFIED`
-- [014](goals/014-quick-start-in-ci.goal) The quick start, tested in CI · `READY`
+- [014](goals/014-quick-start-in-ci.goal) The quick start, tested in CI · `IN_PROGRESS`
 - [015](goals/015-log-paging.goal) Log paging · `VERIFIED`
 - [016](goals/016-small-fixes.goal) Small fixes before the release · `IN_PROGRESS`
 - [017](goals/017-legacy-names.goal) Remove the legacy model names · `VERIFIED`

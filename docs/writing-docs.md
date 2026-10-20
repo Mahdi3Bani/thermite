@@ -85,6 +85,16 @@ sidebar:
 
 The built site has `/llms.txt`, which lists every page with its description, and `/llms-full.txt`, which holds every page in one file. There are also `llms-small.txt` and one file for each section. Every page also has a Markdown copy at its address with `.md` added. These come from the pages themselves, so nothing needs updating by hand.
 
+## Pages a test follows
+
+A test follows the quick start as a tester would: [Your first run](_site/src/content/docs/tutorials/first-run.md), [Hand the work to agents](_site/src/content/docs/tutorials/agents-with-a-free-model.md), and the command line and Check the machine sections of the install and troubleshooting pages. It runs their shell blocks as written, types the value each step gives a field (**Campaign name**: `matmul-agents`), presses the buttons they name in bold and checks the lines they quote. So in those pages:
+
+- keep each step's commands in its own `sh` block, and mark a line for one container tool with `# Docker` or `# Podman`, or give the other tool's line after `# or:`;
+- keep the steps numbered (`## 4. Sign in`): the test finds them by number;
+- quote what the screen shows exactly, in a code span.
+
+`node scripts/test.mjs src/testing/quick-start.test.ts` reads the pages as the test does, in a second. The whole test is `scripts/quick-start-acceptance.mjs`: see [the contributor guide](local-development.md#the-quick-start-test).
+
 ## When Thermite changes
 
 A change to what Thermite does updates the pages that describe it in the same commit, written by whoever changes the code. That covers screens and their text, commands, settings, routes, events, errors and limits. Run `npm run docs:build` and `npm run docs:check` before that commit. Never leave pages for a later pass: a goal is not verified until its pages match the code. The [rules for every goal](plan/README.md#rules-for-every-goal) say so.
