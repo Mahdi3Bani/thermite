@@ -312,6 +312,16 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
         { run: String(e.subject) },
       );
     }
+    case "directives_left_out": {
+      const rules = Array.isArray(b.rules)
+        ? (b.rules as { kind?: string; family?: string; match?: string }[])
+        : [];
+      return s(
+        `${who(e.actor)} named ${rules.length === 1 ? "a rule" : `${rules.length} rules`} you removed (${rules.map((r) => `${r.kind ?? ""} ${r.family ?? r.match ?? ""}`.trim()).join("; ")}): left out.`,
+        "",
+        { run: String(e.subject) },
+      );
+    }
     case "directive_dropped":
       return s(`${who(e.actor)} removed rule ${String(b.id)}.`, "", { run: String(e.subject) });
     // The run's experiment queue (goal 064): what was added, moved, dropped and given out.

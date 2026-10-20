@@ -112,10 +112,10 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
       try {
         return json(await fn(args));
       } catch (err) {
-        return {
-          ...json({ error: err instanceof Error ? err.message : String(err) }),
-          isError: true,
-        };
+        const error = err instanceof Error ? err.message : String(err);
+        // A refusal is in the audit log too, as the dashboard's are.
+        store.audit(actor, "refused", { tool: `mcp:${tool}`, why: redact(error) });
+        return { ...json({ error }), isError: true };
       }
     };
   };

@@ -1161,9 +1161,9 @@ export class Ledger {
   addDirectiveSet(run: string, author: string, bodies: unknown[], replace: boolean): number[] {
     return this.tx(() => {
       let keep = bodies;
-      // A rule the owner removed never comes back with an advisor's or the planner's next set;
-      // only the owner can set it again.
-      if (!author.startsWith("control:")) {
+      // A rule the owner removed never comes back with an advisor's, the planner's or an agent's
+      // next set; only the owner (or an operator for the owner) can set it again.
+      if (author !== "control:owner" && !author.startsWith("control:owner:")) {
         const gone = new Set(
           this.all<Row>("select body from directive where run = ? and status = 'dropped'", run).map(
             (r) => ruleKey(JSON.parse(String(r.body))),

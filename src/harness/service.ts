@@ -436,7 +436,7 @@ export class HarnessService {
       }
       case "redirect": {
         const p = CommandPayloads.redirect.parse(payload);
-        this.requireRun(p.run);
+        this.openRun(p.run);
         conflictCheck(p.directives);
         const ids = this.ledger.addDirectiveSet(p.run, by, p.directives, p.replace);
         return { run: p.run, directives: ids };
@@ -570,7 +570,7 @@ export class HarnessService {
   private openRun(id: string) {
     const inst = this.requireRun(id);
     if (inst.status === "closed")
-      throw new LedgerError("invalid", `run ${id} is closed: its queue no longer changes`);
+      throw new LedgerError("invalid", `run ${id} is closed: its queue and rules no longer change`);
     return inst;
   }
 
@@ -670,6 +670,9 @@ export class HarnessService {
     const contract = parsed.contract;
     // Validate everything before changing anything: a refused assign leaves no trace but events.
     if (this.ledger.getRun(p.run)) throw new Error(`run ${p.run} already exists`);
+    // A run without agents (a try) has no queue: nothing would take its experiments.
+    if (p.agents === false && p.queue?.length)
+      throw new Error("a run without agents has no queue: leave out the experiments to copy");
     for (const [i, s] of (p.queue ?? []).entries()) {
       const ok = ExperimentInput.safeParse(s);
       if (!ok.success)

@@ -315,6 +315,11 @@ describe("the owner's queue commands", () => {
     assert.match(String(r.result.error), /run smoke-1 is closed/);
     const d = await s.command("drop_directive", { run: RUN, id: 1 });
     assert.match(String(d.result.error), /run smoke-1 is closed/);
+    const redirect = await s.command("redirect", {
+      run: RUN,
+      directives: [{ kind: "try", family: "unroll", rationale: "late", citations: [] }],
+    });
+    assert.match(String(redirect.result.error), /run smoke-1 is closed: its queue and rules/);
   });
 
   test("drop_directive removes a rule in force, whoever set it; a rule names a family or match words", async () => {

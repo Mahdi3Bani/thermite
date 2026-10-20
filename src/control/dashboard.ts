@@ -762,7 +762,7 @@ ${body}
 <div class="block" id="needs"><div class="head"><h2>Needs you</h2><span class="n">${feed.length}</span><span class="right">open one for its evidence and what each choice does</span></div>
 ${feed.length ? `<div class="dqs">${feed.map((n) => n.html).join("")}</div>` : `<div class="card"><div class="empty">Nothing waits for you. The campaigns go on by themselves.</div></div>`}</div>
 <div class="block"><div class="head"><h2>At work</h2><span class="n">${running}</span></div>
-${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.length ? "No run is running." : "No campaign yet. Assign one to a rig through control's API or MCP."}</div></div>`}</div>
+${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.length ? "No run is running." : opts.kits ? "No campaign yet. Make one with New campaign on the Campaigns page, or assign one to a rig through control's API, MCP or the CLI." : "No campaign yet. Assign one to a rig through control's API, MCP or the CLI."}</div></div>`}</div>
 <div class="block"><div class="head"><h2>What happened</h2><span class="right">newest first</span></div>${activity}</div>`,
       vs,
     );
@@ -776,9 +776,10 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     const feed = needs(c, vs, now, "/ui/campaigns");
     const waitingFor = (u: RigView, r: RunView) =>
       feed.filter((n) => n.rig === u.id && n.run === r.id).length;
+    // Rig checks have their own filter: At work counts the campaigns' runs only.
     const atWork = vs.flatMap((u) =>
       u.runs
-        .filter((r) => r.status === "running")
+        .filter((r) => r.status === "running" && !isRigCheck(r.campaign ?? ""))
         .map((r) => workCardFor(c, u, r, now, waitingFor(u, r), "/ui/campaigns")),
     );
     const waiting = vs
@@ -1287,7 +1288,8 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
   ) =>
     workCard(
       runBrief(store, u, r, now, { heading: true }),
-      `<a class="btn sm" href="${runLiveHref(u.id, r.id)}">${icon.terminal}Live</a><a class="btn sm" href="${runLiveHref(u.id, r.id, "&compose=1")}">Message</a>${pauseMenu(c, u.id, r.id, back, "sm ghost")}`,
+      // A run without agents (a try, a rig check) has no one to message.
+      `<a class="btn sm" href="${runLiveHref(u.id, r.id)}">${icon.terminal}Live</a>${r.has_agents === false ? "" : `<a class="btn sm" href="${runLiveHref(u.id, r.id, "&compose=1")}">Message</a>`}${pauseMenu(c, u.id, r.id, back, "sm ghost")}`,
       waiting,
     );
 
@@ -4136,11 +4138,9 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     store.audit(by, "cluster_rig_images", { rig, from: old, to: images });
     if (stopped)
       return {
-        ok: retry
-          ? `${rig} runs control's images when it starts again.`
-          : addressOnly
-            ? `${rig} gets control's new address when it starts again.`
-            : `${rig} runs the new images when it starts again.`,
+        ok: addressOnly
+          ? `${rig} gets control's new address when it starts again.`
+          : `${rig} runs the new images when it starts again.`,
       };
     store.setClusterRigStatus(rig, "updating");
     void awaitNewPods(r, k).catch(() => {});
