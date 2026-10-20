@@ -29,6 +29,25 @@ const USAGE = `usage:
     TYPE: experiment, attempt, source, claim, finding, round, trial or message
   thermite-trial research TOOL ... (thermite-trial research help lists them)`;
 
+/**
+ * One word that names a command, or asks for help or a list, is never an idea's title: `idea
+ * list` is a guess at a command, and would otherwise propose an experiment titled "list".
+ */
+const COMMAND_WORDS = new Set([
+  "submit",
+  "dev-run",
+  "status",
+  "idea",
+  "note",
+  "research",
+  "list",
+  "ls",
+  "show",
+  "help",
+  "-h",
+  "--help",
+]);
+
 export interface TrialCliEnv {
   harnessUrl: string;
   auth: string;
@@ -165,6 +184,8 @@ export async function trialCli(
   if (cmd === "idea") {
     const title = rest.join(" ").trim();
     if (!title) return `error: idea needs a title: what to try, in a few words\n${USAGE}`;
+    if (rest.length === 1 && COMMAND_WORDS.has(title.toLowerCase()))
+      return `error: "${title}" is a command word, not an idea. idea proposes an experiment: give what to try, in a few words. thermite-trial does not list the run's ideas or queue.\n${USAGE}`;
     const unknown = Object.keys(flags).filter((f) => !["why", "family", "details"].includes(f));
     if (unknown.length) return `error: idea has no --${unknown[0]}\n${USAGE}`;
     const opt = (f: string, n: number) => {

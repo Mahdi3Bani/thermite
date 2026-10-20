@@ -131,7 +131,18 @@ describe("thermite-trial, Thermite's tools in an agent's own shell", () => {
       await trialCli(["idea", "t", "--run", "other"], env, call),
       /^error: idea has no --run/,
     );
+    for (const word of ["list", "help", "--help", "Submit"])
+      assert.match(
+        await trialCli(["idea", "--", word], env, call),
+        new RegExp(`^error: "${word}" is a command word, not an idea`),
+      );
     assert.equal(calls.length, 1, "nothing sent for a mistake");
+    await trialCli(["idea", "list", "the", "loads", "first"], env, call);
+    assert.deepEqual(
+      calls.at(-1)?.body,
+      { title: "list the loads first" },
+      "a command word inside a longer title is fine",
+    );
   });
 
   test("note writes a field note: its words are the text, --kind and --about the rest", async () => {
