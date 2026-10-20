@@ -77,6 +77,8 @@ Today the plan exists only for the current round and is redone every round. Idea
 
 - 2026-10-20: Goal written from the owner's direction. Mockups of the Experiments tab (a list chosen over a board), the Planner tab, and copying untried experiments in Start a run.
 
+- 2026-10-20: Built on the control side: the run's queue, rules, hand-outs and messages built from the rig's events; the Experiments tab (up next with drag, move to the top, drop and add; lanes' ideas; everything tried with filters); the Planner tab (rules with who set them, a rule in free words, tell the planner, hand-outs); Start a run copies another run's untried experiments; MCP `run_queue`. Next: the rig's side (the queue in the ledger, the planner as coordinator, the advisors' and workers' writes, the owner's commands).
+
 ---
 
 Run with `/goal Complete docs/plan/goals/064-experiment-queue.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

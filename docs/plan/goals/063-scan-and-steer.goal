@@ -96,6 +96,8 @@ None.
   - A trial cut off by a restart shows "working" for ever.
   - Research rounds appear in the timeline as "the model's plan was refused", though they are planned by a fixed method on purpose.
 
+- 2026-10-20: Built on the control side: the Campaigns list (at work, waiting, one row per campaign, filters and search, rig checks hidden); a campaign's page with Start a run (also for campaigns assigned over the API, MCP or the CLI); a run's page with tabs; Live for one run with filters and the one-row message box; research rounds worded as set by the research plan; trials cut off by a restart no longer shown as working. The rig's side of messaging (recipients, kept messages, read receipts, advisors' answers) is in progress.
+
 ---
 
 Run with `/goal Complete docs/plan/goals/063-scan-and-steer.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
