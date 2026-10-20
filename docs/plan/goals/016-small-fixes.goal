@@ -6,7 +6,7 @@ version: "0.1.0"
 part: "Install from images"
 depends_on: []
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # 016 · Small fixes before the release
@@ -44,6 +44,7 @@ None.
 - 2026-10-19: Goal written from the v0.1.0 release plan.
 - 2026-10-19: Research trials run in OpenCode when the agents' harness is OpenCode, so OpenCode's free models can serve a research run. The worker keeps OpenCode's own tools and runs the research tools as `thermite-trial research` commands. Unit tests cover the trial, the commands and control's check; the acceptance tests do not cover it yet.
 - 2026-10-19: Two fixes from running the docs' guides on local stand-ins. A rig set up on a machine (over SSH or with a join command) never reported: its keys folder was made under `umask 077`, so the harness's controller could not read control's public key; the folder is now 0755. Through OpenCode, the planner was still asked for its Pi tool, because the sentence the prompt replaced was split over two lines; the task and the two ways to answer are now separate texts. Each has a test; the rig deploy acceptance has not run again.
+- 2026-10-20: The rig deploy acceptance passed with the keys-folder fix (a machine rig reports). OpenCode research trials ran on a real rig: the first two finished (22 and 43 turns) and recorded sources, verified claims and findings through `thermite-trial research`. The acceptance tests still do not cover OpenCode research trials.
 
 ---
 

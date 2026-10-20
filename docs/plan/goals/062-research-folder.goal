@@ -6,7 +6,7 @@ version: "0.1.0"
 part: "Research mode"
 depends_on: []
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # 062 · A research folder agents can search and write
@@ -52,6 +52,7 @@ None.
 
 - 2026-10-19: Goal written from the owner's direction (first numbered 060, which another branch's goal already had).
 - 2026-10-19: Built: the folder (research/folder.ts), findings (`add_finding`, checked against verified claims, in the report), file tools for Pi workers, OpenCode trials in the lane's working area, the lanes' files saved and recorded at each trial's end, and the folder in the export with the final report. Unit tests cover each part. Not yet run in a real research campaign on a rig.
+- 2026-10-20: First research run on a rig, with OpenCode workers on a free model. In its first two trials the workers fetched 11 sources, recorded 41 claims (37 verified) and 6 findings (4 supported by verified claims), and wrote 18 files to their working areas, which the harness saved when each trial ended. Still to see on that run: a lane's next trial and the other lanes reading those files, and the export when the run ends.
 
 ---
 
