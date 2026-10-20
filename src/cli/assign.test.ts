@@ -8,8 +8,12 @@ import { describe, test } from "node:test";
 import { promisify } from "node:util";
 import { serve } from "@hono/node-server";
 import { createControlApi } from "../control/api.ts";
+import { RunpodRigs } from "../control/runpod-rigs.ts";
+import { SecretBox } from "../control/secrets.ts";
 import { ControlStore } from "../control/store.ts";
+import { ControlTunnels } from "../control/tunnel.ts";
 import { generateSigningKeys } from "../core/commands.ts";
+import { FAKE_RUNPOD_KEY, fakeRunpod } from "../testing/fake-runpod.ts";
 
 const run = promisify(execFile);
 const CLI = join(import.meta.dirname, "thermite.ts");
@@ -232,6 +236,70 @@ describe("thermite assign --queue-from (goal 067)", () => {
         empty.stderr.trim(),
         "bare-1 on rig-a has no untried experiments: the new run's queue starts empty",
       );
+    } finally {
+      server.close();
+    }
+  });
+});
+
+describe("thermite command on a RunPod rig whose pod is stopped (goal 022)", () => {
+  test("a resume starts the pod first: the answer on standard output, its words on standard error", async () => {
+    const keys = generateSigningKeys();
+    const store = new ControlStore(":memory:");
+    const secrets = SecretBox.ephemeral();
+    store.addGpuCloud({
+      name: "runpod",
+      kind: "runpod",
+      key_sealed: secrets.seal(FAKE_RUNPOD_KEY),
+      key_hint: "…cdef",
+      by: "owner:ui",
+    });
+    const cloud = fakeRunpod();
+    const tunnels = new ControlTunnels(store, secrets, keys.privateKeyPem);
+    const rigs = new RunpodRigs(store, secrets, tunnels, {
+      fetch: cloud.fetch,
+      image: "ghcr.io/example/thermite-rig:test-cuda",
+      privateKeyPem: keys.privateKeyPem,
+    });
+    const v = await rigs.launch("runpod", { gpu: "RTX A4000" }, "owner:api");
+    assert.ok(store.pinTunnelRig(v.rig, "sign", "box"));
+    // Its harness never reported, so it holds no result: the stop is at once.
+    assert.equal((await rigs.stop(v.rig, "owner:api")).status, "EXITED");
+    const api = createControlApi(
+      store,
+      { admin: "owner-token-abcdef", rigs: {} },
+      keys.privateKeyPem,
+      { staleAfterMs: 180_000, secrets, tunnels, runpodRigs: rigs },
+    );
+    const server = serve({ fetch: api.fetch, hostname: "127.0.0.1", port: 0 });
+    await new Promise((r) => server.once("listening", r));
+    try {
+      const dir = mkdtempSync(join(tmpdir(), "thermite-wake-"));
+      const owner = join(dir, "owner-token");
+      writeFileSync(owner, "owner-token-abcdef\n", { mode: 0o600 });
+      const at = [
+        "--control",
+        `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+        "--token-file",
+        owner,
+        "--rig",
+        v.rig,
+      ];
+      const words = `${v.rig}'s pod was stopped: control started it. The run starts once the pod runs.`;
+      const r = await cli("command", ...at, "--kind", "resume_run", "--payload", '{"run":"run-1"}');
+      assert.equal(r.code, 0, r.stderr);
+      const out = JSON.parse(r.stdout) as { id: string; status: string; woke: string };
+      assert.deepEqual([out.status, out.woke], ["pending", words]);
+      assert.equal(r.stderr.trim(), words);
+      assert.deepEqual(
+        cloud.actions().map((a) => a.action),
+        ["stop", "start"],
+      );
+      // The pod runs now: the next command says nothing more.
+      const next = await cli("command", ...at, "--kind", "export_now", "--payload", "{}");
+      assert.equal(next.code, 0, next.stderr);
+      assert.equal(next.stderr, "");
+      assert.deepEqual(Object.keys(JSON.parse(next.stdout)), ["id", "status"]);
     } finally {
       server.close();
     }

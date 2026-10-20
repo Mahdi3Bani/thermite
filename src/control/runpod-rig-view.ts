@@ -4,7 +4,8 @@ import type { StoredRunpodRig, TunnelRig } from "./store.ts";
 /**
  * A rig the owner launched on a GPU cloud, as control keeps it (runpod-rigs.ts): what it was
  * launched with, its pod as control last saw it, its price, what it has cost, and the owner's
- * spend limit and idle stop. Neither has a default: each applies only when the owner set it.
+ * spend limit and idle stop. Neither has a default today: each applies only when the owner set
+ * it (runpod-rigs.ts's DEFAULT_IDLE_STOP_MINUTES keeps the idle stop's default: none).
  */
 export interface RigState {
   image: string;
@@ -34,7 +35,7 @@ export interface RigState {
   idle_stop_minutes: number | null;
   /** When the idle stop was set: idle time counts from here at the earliest. */
   idle_from: string | null;
-  /** The last time control saw a run running on the rig. */
+  /** The last time a run was at work on the rig, as control saw it (runpod-rigs.ts's lastWork). */
   busy_at: string | null;
   /** When control stopped the pod, and why: a limit the owner set, or the owner's stop. */
   stopped_at: string | null;
@@ -103,7 +104,7 @@ export function spentBy(s: RigState, now: number): number {
 
 /**
  * Since when the rig is idle for its idle stop: the latest of when the stop was set, when the
- * pod enrolled, when it last started running and when a run last ran. Null without an idle
+ * pod enrolled, when it last started running and when a run was last at work. Null without an idle
  * stop, before enrollment, or while the pod is not running.
  */
 export function idleSince(s: RigState, enrolledAt: string | null): string | null {

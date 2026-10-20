@@ -40,7 +40,13 @@ import {
 import type { Credential } from "./credential.ts";
 import { newToken } from "./credential.ts";
 import { makeDeployKey } from "./git-keys.ts";
-import { issueCommand, nobodyReads, propagateChampion, reviewsAGoal } from "./issue.ts";
+import {
+  issueCommand,
+  issueWaking,
+  nobodyReads,
+  propagateChampion,
+  reviewsAGoal,
+} from "./issue.ts";
 import {
   JOIN_HOURS,
   type JoinedSpec,
@@ -1097,14 +1103,15 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       });
     const uploadId = (draft.kit as { source?: string; upload?: string } | undefined)?.upload;
     const upload = uploadId ? await uploaded(uploadId).catch(() => undefined) : undefined;
-    let r: ReturnType<typeof startCampaign>;
+    let r: Awaited<ReturnType<typeof startCampaign>>;
     try {
-      r = startCampaign(
+      r = await startCampaign(
         {
           store,
           kits: opts.kits,
           privateKeyPem: opts.privateKeyPem,
           uploads: (id) => (id === uploadId ? upload?.files : undefined),
+          runpodRigs: opts.runpodRigs,
         },
         {
           draft,
@@ -1122,7 +1129,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     if (r.run && split !== undefined) sendSplit(rig.id, split);
     return c.redirect(
       r.run
-        ? `${campaignHref(r.campaign)}?run=${encodeURIComponent(runKey(rig.id, r.run))}`
+        ? `${campaignHref(r.campaign)}?run=${encodeURIComponent(runKey(rig.id, r.run))}${r.woke ? `&ok=${encodeURIComponent(r.woke)}` : ""}`
         : modelNote
           ? `${campaignHref(r.campaign)}?ok=${encodeURIComponent(`Saved. ${modelNote}`)}`
           : campaignHref(r.campaign),
@@ -1372,10 +1379,15 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     // The copy box shows only with agents on: for a try it is ignored, whatever the form sent.
     const copied =
       agents && String(f.copy_queue ?? "") === "1" ? untried(vs, String(f.copy_from ?? "")) : [];
-    let r: ReturnType<typeof startRun>;
+    let r: Awaited<ReturnType<typeof startRun>>;
     try {
-      r = startRun(
-        { store, kits: opts.kits as KitRepos, privateKeyPem: opts.privateKeyPem },
+      r = await startRun(
+        {
+          store,
+          kits: opts.kits as KitRepos,
+          privateKeyPem: opts.privateKeyPem,
+          runpodRigs: opts.runpodRigs,
+        },
         {
           campaign,
           rig: rig.id,
@@ -1400,10 +1412,13 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     if (split !== undefined) sendSplit(rig.id, split);
     // A try takes no queue and no briefing: say so when the owner ticked past research it showed
     // (the page hides it for a try, and sends none of it; without the page's script it shows).
-    const leftOut =
+    const notes = [
+      r.woke ?? "",
       !agents && (pastQueue.length || briefing.length)
-        ? `&ok=${encodeURIComponent("A try (agents off) takes no experiments and no background: what you ticked was left out.")}`
-        : "";
+        ? "A try (agents off) takes no experiments and no background: what you ticked was left out."
+        : "",
+    ].filter(Boolean);
+    const leftOut = notes.length ? `&ok=${encodeURIComponent(notes.join(" "))}` : "";
     return c.redirect(
       `${campaignHref(campaign)}?run=${encodeURIComponent(runKey(rig.id, r.run))}${leftOut}`,
       303,
@@ -5967,20 +5982,25 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       unkeep_message: { run, message: Number(f.message) },
     };
     if (!(kind in payloads)) return c.text("this command is not available from the dashboard", 400);
+    let woke: string | null;
     try {
-      issueCommand(store, opts.privateKeyPem, {
+      // A run resumed on a stopped RunPod pod starts the pod first.
+      ({ woke } = await issueWaking(store, opts.privateKeyPem, opts.runpodRigs, {
         rig: String(f.rig),
         kind,
         payload: payloads[kind],
         issuedBy: "owner:ui",
-      });
+        owner: true,
+      }));
     } catch (err) {
       return c.text(`refused: ${err instanceof Error ? err.message : String(err)}`, 400);
     }
     // The page says the command went; the rig's answer shows where the command was given.
     const to = backTo(f, `/ui/rigs/${encodeURIComponent(String(f.rig))}`);
     const [path, hash] = to.split("#");
-    const sent = `Control sent the command to ${String(f.rig)}. The rig does it in less than 10 seconds. This page shows the result.`;
+    const sent = woke
+      ? `${woke} Control sent the command to ${String(f.rig)}: the rig does it once its pod runs. This page shows the result.`
+      : `Control sent the command to ${String(f.rig)}. The rig does it in less than 10 seconds. This page shows the result.`;
     return c.redirect(
       `${path}${path?.includes("?") ? "&" : "?"}sent=${encodeURIComponent(sent)}${hash ? `#${hash}` : ""}`,
       303,

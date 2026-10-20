@@ -14,7 +14,7 @@ import {
 import { createControlApi } from "./api.ts";
 import { podPortUrl } from "./runpod.ts";
 import type { RunpodRigView } from "./runpod-rig-view.ts";
-import { RunpodRigs } from "./runpod-rigs.ts";
+import { DEFAULT_IDLE_STOP_MINUTES, RunpodRigs } from "./runpod-rigs.ts";
 import { SecretBox } from "./secrets.ts";
 import { ControlStore } from "./store.ts";
 import { ControlTunnels } from "./tunnel.ts";
@@ -60,32 +60,35 @@ function setup(o: { noCapacity?: boolean; image?: string | undefined } = {}) {
     clock += ms;
     await rigs.advance();
   };
-  return { store, secrets, cloud, control, tunnels, rigs, created, advance };
+  /** The rig's harness reports these events at control's clock now, as its signed reports would. */
+  let seq = 0;
+  const report = (rig: string, ...events: [kind: string, subject: string, body?: object][]) => {
+    store.ingest({
+      rig,
+      ledger_id: "l1",
+      cursor: seq,
+      next: seq + events.length,
+      summary: {},
+      events: events.map(([kind, subject, body], i) => ({
+        id: seq + i + 1,
+        at: new Date(clock).toISOString(),
+        actor: "t",
+        kind,
+        subject,
+        body: body ?? {},
+      })),
+    });
+    seq += events.length;
+  };
+  return { store, secrets, cloud, control, tunnels, rigs, created, advance, report };
 }
 
-/** The rig's harness reports a run that runs (or one that ended), as its signed reports would. */
-function reportRun(store: ControlStore, rig: string, status: "running" | "completed", n: number) {
-  const ev = (id: number, kind: string, body: Record<string, unknown>) => ({
-    id,
-    at: new Date(Date.now() + id).toISOString(),
-    actor: "t",
-    kind,
-    subject: "c-1",
-    body,
-  });
-  store.ingest({
-    rig,
-    ledger_id: "l1",
-    cursor: n - 1,
-    next: n,
-    summary: {},
-    events: [
-      status === "running"
-        ? ev(n, "run_created", { campaign: "camp", mode: "hill_climb", seed: { repo: "p" } })
-        : ev(n, "run_status", { status: "completed" }),
-    ],
-  });
-}
+const RUN = "c-1";
+const runCreated = (): [string, string, object] => [
+  "run_created",
+  RUN,
+  { campaign: "camp", mode: "hill_climb", seed: { repo: "p" } },
+];
 
 describe("rigs on RunPod: the launch", () => {
   test("a pod of the rig image in pull mode: Secure by default, the volume, the port, the launch values and nothing else", async () => {
@@ -126,6 +129,7 @@ describe("rigs on RunPod: the launch", () => {
     assert.equal(v.price_per_hr, 0.25);
     assert.equal(v.spend_usd, 0);
     assert.equal(v.spend_limit_usd, null);
+    assert.equal(v.idle_stop_minutes, DEFAULT_IDLE_STOP_MINUTES, "the default: none, until set");
     assert.equal(v.idle_stop_minutes, null);
     assert.equal(v.enrolled_at, null);
     const audit = s.store.listAudit(10).find((a) => a.action === "runpod_rig_launched");
@@ -276,7 +280,7 @@ describe("rigs on RunPod: price, spend and the owner's limits", () => {
     assert.equal(s.cloud.stops().length, 1);
   });
 
-  test("an idle stop counts only after enrollment, and only while no run runs", async () => {
+  test("an idle stop counts only after enrollment, and only while no run is at work", async () => {
     const s = setup();
     const v = await s.rigs.launch(
       "runpod",
@@ -287,13 +291,17 @@ describe("rigs on RunPod: price, spend and the owner's limits", () => {
     await s.advance(HOUR);
     assert.deepEqual(s.cloud.stops(), []);
     assert.equal(s.rigs.view(v.rig)?.idle_since, null);
-    // Enrolled, with a run running: busy.
+    // Enrolled, with a lane's trial in progress: at work, however long the trial takes.
     assert.ok(s.store.pinTunnelRig(v.rig, "sign", "box"));
-    reportRun(s.store, v.rig, "running", 1);
+    s.report(v.rig, runCreated(), ["trial_started", RUN, { lane: "lane-1", trial: "t-1" }]);
     for (let i = 0; i < 4; i++) await s.advance(20 * 60_000);
-    assert.deepEqual(s.cloud.stops(), [], "a run runs");
-    // The run ends: 30 minutes later control stops the pod, its results sent out first.
-    reportRun(s.store, v.rig, "completed", 2);
+    assert.deepEqual(s.cloud.stops(), [], "a trial is in progress");
+    // The run finishes: 30 minutes later control stops the pod, its results sent out first.
+    s.report(
+      v.rig,
+      ["trial_finished", RUN, { lane: "lane-1", trial: "t-1", stopped: "done" }],
+      ["run_status", RUN, { status: "closed", reason: "done" }],
+    );
     await s.advance(20 * 60_000);
     assert.deepEqual(s.cloud.stops(), []);
     await s.advance(20 * 60_000);
@@ -311,7 +319,78 @@ describe("rigs on RunPod: price, spend and the owner's limits", () => {
     const stopped = s.rigs.view(v.rig) as RunpodRigView;
     assert.equal(stopped.stopped_by, "idle_stop");
     assert.equal(stopped.op, null);
-    assert.match(stopped.notes.join(" "), /no run ran on it for 30 minutes, the idle stop you set/);
+    assert.match(
+      stopped.notes.join(" "),
+      /no run was at work on it for 30 minutes, the idle stop you set/,
+    );
+  });
+
+  test("a running run with nothing under way and no new event is idle: blocked, it is paused and the pod stops", async () => {
+    const s = setup();
+    const v = await s.rigs.launch(
+      "runpod",
+      { gpu: "RTX A4000", idle_stop_minutes: 30 },
+      "owner:api",
+    );
+    assert.ok(s.store.pinTunnelRig(v.rig, "sign", "box"));
+    // The run runs, but no trial is in progress and no judge job waits: it waits for the owner.
+    s.report(v.rig, runCreated(), ["promotion_awaiting_approval", RUN, { attempt: "a-1" }]);
+    await s.advance(20 * 60_000);
+    assert.deepEqual(s.cloud.stops(), []);
+    assert.equal(s.rigs.view(v.rig)?.op, null);
+    await s.advance(15 * 60_000);
+    const asked = s.rigs.view(v.rig) as RunpodRigView;
+    assert.deepEqual([asked.op?.kind, asked.op?.why], ["stop", "idle_stop"]);
+    // The stop pauses the blocked run; the next start resumes it.
+    assert.deepEqual(asked.op?.paused, [RUN]);
+  });
+
+  test("a running run's new events count as work: the planner's gap between trials is not idle", async () => {
+    const s = setup();
+    const v = await s.rigs.launch(
+      "runpod",
+      { gpu: "RTX A4000", idle_stop_minutes: 30 },
+      "owner:api",
+    );
+    assert.ok(s.store.pinTunnelRig(v.rig, "sign", "box"));
+    s.report(v.rig, runCreated());
+    await s.advance(20 * 60_000);
+    // The planner planned a round, 20 minutes in: the idle time counts from here.
+    s.report(v.rig, ["epoch_planned", RUN, { n: 1, source: "planner", assignments: [] }]);
+    await s.advance(20 * 60_000);
+    assert.equal(s.rigs.view(v.rig)?.op, null, "20 minutes since its last event");
+    await s.advance(15 * 60_000);
+    assert.equal(s.rigs.view(v.rig)?.op?.why, "idle_stop", "35 minutes since its last event");
+  });
+
+  test("a paused run is idle, and its queued judge jobs are not work; a judge job that runs is", async () => {
+    const s = setup();
+    const v = await s.rigs.launch(
+      "runpod",
+      { gpu: "RTX A4000", idle_stop_minutes: 30 },
+      "owner:api",
+    );
+    assert.ok(s.store.pinTunnelRig(v.rig, "sign", "box"));
+    // A job queued for the run, then the run paused: the job waits for the resume.
+    s.report(
+      v.rig,
+      runCreated(),
+      ["job_queued", "j-1", { kind: "measure", attempt: null }],
+      ["run_status", RUN, { status: "paused", reason: "the owner paused it" }],
+    );
+    // Another job runs on the judge: work, whatever its run.
+    s.report(
+      v.rig,
+      ["job_queued", "j-2", { kind: "rig_check", attempt: null }],
+      ["job_leased", "j-2", {}],
+    );
+    for (let i = 0; i < 4; i++) await s.advance(20 * 60_000);
+    assert.equal(s.rigs.view(v.rig)?.op, null, "the judge is at work");
+    s.report(v.rig, ["job_finished", "j-2", { state: "done" }]);
+    await s.advance(20 * 60_000);
+    assert.equal(s.rigs.view(v.rig)?.op, null);
+    await s.advance(15 * 60_000);
+    assert.equal(s.rigs.view(v.rig)?.op?.why, "idle_stop", "only a paused run and its queued job");
   });
 
   test("limits are set and cleared later; an idle stop set later counts from then", async () => {
@@ -419,6 +498,23 @@ describe("rigs on RunPod over REST and MCP: the owner's alone", () => {
       cmd: ["sh"],
     });
     assert.equal(extra.status, 400);
+    // An idle stop left out takes the default; null says "none" whatever the default.
+    const none = await call("/v1/gpu-clouds/runpod/rigs", tokens.admin, {
+      gpu: "RTX A4000",
+      idle_stop_minutes: null,
+    });
+    assert.equal(none.status, 201);
+    assert.equal(((await none.json()) as RunpodRigView).idle_stop_minutes, null);
+    const left = await call("/v1/gpu-clouds/runpod/rigs", tokens.admin, { gpu: "RTX A4000" });
+    assert.equal(
+      ((await left.json()) as RunpodRigView).idle_stop_minutes,
+      DEFAULT_IDLE_STOP_MINUTES,
+    );
+    const short = await call("/v1/gpu-clouds/runpod/rigs", tokens.admin, {
+      gpu: "RTX A4000",
+      idle_stop_minutes: 2,
+    });
+    assert.equal(short.status, 409);
   });
 
   test("MCP: only the owner may launch or set limits; the operator, readers and the owner see the rigs; agents nothing", async () => {
@@ -455,6 +551,13 @@ describe("rigs on RunPod over REST and MCP: the owner's alone", () => {
     const v = JSON.parse((r.content as { text: string }[])[0]?.text ?? "{}") as RunpodRigView;
     assert.equal(v.created_by, "owner:mcp");
     assert.equal(v.idle_stop_minutes, 20);
+    const off = await client.callTool({
+      name: "runpod_launch",
+      arguments: { cloud: "runpod", gpu: "RTX A4000", idle_stop_minutes: null },
+    });
+    assert.notEqual(off.isError, true);
+    const o = JSON.parse((off.content as { text: string }[])[0]?.text ?? "{}") as RunpodRigView;
+    assert.equal(o.idle_stop_minutes, null, "null: no idle stop, whatever the default");
     const listed = await operator.callTool({ name: "runpod_rigs", arguments: {} });
     assert.match((listed.content as { text: string }[])[0]?.text ?? "", new RegExp(v.rig));
   });

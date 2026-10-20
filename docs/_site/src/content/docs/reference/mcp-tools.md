@@ -209,7 +209,7 @@ Returns `[{id, rig, kind, issued_by, issued_at, status, acked_at, outcome}]`, ne
 
 **Issue a signed command.** Owner, operator and agent.
 
-> Queue a command for a rig; control signs it and the rig's supervisor relays it. Kinds: `<kinds>`. The payload must match the kind (for example pause_run {run, reason}; redirect {run, directives:[{kind: avoid\|try\|mandate\|priority\|lane_count\|note, family? or match? (free words, for avoid\|try\|mandate), value?, rationale, citations}], replace?: false (add to the rules in force)}; approve_promotion {run, attempt}; message_agent {run, to: all\|lane-N\|trial:ID\|planner\|advisors\|teachers\|auditor\|panel, text, keep?: true (all or a lane: kept in force until unkeep_message {run, message})}; queue_add {run, title, details?, family?, why?, position?: top\|end\|index (0 first)}; queue_move {run, id, position}; queue_edit {run, id, title?, details?, family?, why?}; queue_drop {run, id, why}; queue_accept {run, id, position?} (a lane's idea into the queue); drop_directive {run, id} (a rule in force, whoever set it); assign_campaign {run, contract, contract_sha, seed, imports}, where an import may name a source the rig's supervisor fetches: {git: URL} for a project or kit commit, {url: URL} for a model. `thermite assign --print` builds an assign_campaign payload). Returns the command id; poll command_status: a source that cannot be fetched fails the command with the reason.
+> Queue a command for a rig; control signs it and the rig's supervisor relays it. Kinds: `<kinds>`. The payload must match the kind (for example pause_run {run, reason}; redirect {run, directives:[{kind: avoid\|try\|mandate\|priority\|lane_count\|note, family? or match? (free words, for avoid\|try\|mandate), value?, rationale, citations}], replace?: false (add to the rules in force)}; approve_promotion {run, attempt}; message_agent {run, to: all\|lane-N\|trial:ID\|planner\|advisors\|teachers\|auditor\|panel, text, keep?: true (all or a lane: kept in force until unkeep_message {run, message})}; queue_add {run, title, details?, family?, why?, position?: top\|end\|index (0 first)}; queue_move {run, id, position}; queue_edit {run, id, title?, details?, family?, why?}; queue_drop {run, id, why}; queue_accept {run, id, position?} (a lane's idea into the queue); drop_directive {run, id} (a rule in force, whoever set it); assign_campaign {run, contract, contract_sha, seed, imports}, where an import may name a source the rig's supervisor fetches: {git: URL} for a project or kit commit, {url: URL} for a model. `thermite assign --print` builds an assign_campaign payload). Returns the command id. On a rig launched on RunPod whose pod is stopped, assign_campaign and resume_run start the pod first (the owner's token only; another token is refused), and the answer's woke says so in words. Poll command_status: a source that cannot be fetched fails the command with the reason.
 
 That is the description the owner and the operator see. `<kinds>` is the caller's kinds, comma-separated, as in [Command kinds for each role](#command-kinds-for-each-role). The agent's description leaves out the examples for `message_agent`, `unkeep_message` and the six queue kinds, which it can't issue: after `approve_promotion {run, attempt};` it goes straight on with `assign_campaign {run, contract, contract_sha, seed, imports}, …`.
 
@@ -222,9 +222,10 @@ That is the description the owner and the operator see. `<kinds>` is the caller'
 
 For `assign_campaign`, control first takes each item of `briefing` from its own record: the [knowledge base](knowledge-base.md#briefings)'s item that the item's `from` names (`campaign`, `run`, `kind` and `ref`), with that item's words in place of the caller's `text`. It leaves out an item it cannot find, finds more than once, or that is in a folder the run's campaign may not read; with none left, it sends no `briefing`. Then it takes each experiment in `queue` from its own record, whatever the caller sent: the `title`, `details`, `family`, `why` and `by` that the rigs' signed events give the experiment named in its `from`, with every edit applied. It does this only when the run that `from` names is [filed](knowledge-base.md#campaign-folders) in the folder of the new run's campaign, or of a campaign whose folder that campaign may read. Any other experiment keeps the caller's words, and its `by` is `copied`: one that control has no record of (no rig reported it, or more than one did), and one from a run in any other folder, or in none. To an experiment taken from its record, control adds the line `In <run> (<campaign>) it was <result>.` after the details when the experiment's item in the knowledge base has a result, as **Start a run** does, and cuts `details` to 4,000 characters. Only MCP does this: the REST API and `thermite command` send `briefing` and `queue` as given.
 
-Returns `{id}`. Errors:
+Returns `{id}`. When the command is an `assign_campaign` or a `resume_run` for a [rig launched on RunPod](rest-api.md#rigs-on-a-gpu-cloud) whose pod is stopped, it returns `{id, woke}`, with `woke` `<rig>'s pod was stopped: control started it. The run starts once the pod runs.`: control started the pod first, and the command waits until the pod runs, as for [`POST /v1/commands`](rest-api.md#signed-commands). Only the owner's token starts a pod. Errors:
 
 - `<rig> is being reset by the owner` (the agent's token only)
+- for `assign_campaign` and `resume_run` on a stopped RunPod pod: with the operator's or the agent's token, `<rig>'s pod on RunPod is stopped, and only the owner can start it: start the pod from the rig's page, or start the run with the owner's token`; with the owner's, when the pod can't start, `Not sent: control could not start <rig>'s pod on RunPod for it.` and the reason, such as no GPU free at RunPod, the spend limit reached, or a stop under way. Nothing is queued
 - `unknown rig <rig>`
 - `Control sends no commands to <rig>.` and the reason, for a rig control [refuses](rest-api.md#when-control-refuses-a-rig)
 - for `assign_campaign`, a contract that asks for more lanes than a rig runs: `This contract asks for <n> lanes. A rig runs 16 at most: it has users for lanes 1 to 16 only. Set lanes.count to 16 or fewer.`
@@ -624,7 +625,7 @@ Returns a list of rigs, each a `runpod rig` as [Rigs on a GPU cloud](rest-api.md
 | `enroll_within_minutes` | number above 0, optional | no expiry | "The enrollment code expires this long after the launch" |
 | `settings` | object, optional | a GPU rig on all the pod's GPUs | "The rig's settings at enrollment" |
 | `spend_limit_usd` | number above 0, optional | none | "Stop the pod once it has cost this much" |
-| `idle_stop_minutes` | number, 5 or more, optional | none | "Stop the pod after this many minutes with no run running" |
+| `idle_stop_minutes` | number, 5 or more, or null, optional | none | "Stop the pod after this many minutes with no run at work: no run running, or every run paused, blocked or finished. null: no idle stop; left out: the default". The default is none. [When a rig is idle](rest-api.md#when-a-rig-is-idle) says what counts as at work |
 
 Returns the `runpod rig`. The pod is billed from now until it is stopped or removed. Each field, and each refusal, is as for [`POST /v1/gpu-clouds/<name>/rigs`](rest-api.md#rigs-on-a-gpu-cloud).
 
@@ -632,13 +633,13 @@ Returns the `runpod rig`. The pod is billed from now until it is stopped or remo
 
 **Set a RunPod rig's limits.** Owner only.
 
-> Sets or clears a RunPod rig's spend limit and idle stop. A number sets one, null clears it, and one left out stays. Control stops the pod when it reaches a limit that is set; its volume stays. The owner's token only.
+> Sets or clears a RunPod rig's spend limit and idle stop. A number sets one, null clears it, and one left out stays. Control stops the pod when it reaches a limit that is set; its volume stays. The idle stop counts the minutes no run is at work: no run running, or every run paused, blocked or finished. The owner's token only.
 
 | Input | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `rig` | string | | The rig, from `runpod_rigs` |
 | `spend_limit_usd` | number above 0, or null, optional | kept | Stop the pod once it has cost this much; null: no spend limit |
-| `idle_stop_minutes` | number, 5 or more, or null, optional | kept | Stop the pod after this many minutes with no run running; null: no idle stop |
+| `idle_stop_minutes` | number, 5 or more, or null, optional | kept | Stop the pod after this many minutes with no run at work; null: no idle stop |
 
 Returns the `runpod rig`. Errors: `no rig <rig> on a GPU cloud`, `a spend limit is a number of US dollars above 0`, `an idle stop is 5 minutes or more`.
 

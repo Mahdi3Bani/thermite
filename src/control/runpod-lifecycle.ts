@@ -45,6 +45,8 @@ export interface RigOp {
   export: string | null;
   /** The runs it paused. */
   paused: string[];
+  /** What a start is for, in words, when a run's assignment started it ("to assign run x"). */
+  note?: string | null | undefined;
 }
 
 /** A stop waits this long at most for the results to leave; the volume keeps the rest. */
@@ -217,7 +219,7 @@ export class RunpodLifecycle {
         ? `asked by ${by}`
         : why === "spend_limit"
           ? `it had cost ${money(spentBy(s, this.now()))}, which reached the spend limit you set (${money(s.spend_limit_usd ?? 0)})`
-          : `no run ran on it for ${s.idle_stop_minutes} minutes, the idle stop you set`;
+          : `no run was at work on it for ${s.idle_stop_minutes} minutes, the idle stop you set`;
     if (why === "owner") this.store.audit(by, "runpod_rig_stop", { rig: r.rig, pod: r.pod });
     if (!harnessReported(this.store, r.rig)) {
       this.history(
@@ -247,9 +249,16 @@ export class RunpodLifecycle {
 
   /**
    * Starts a stopped pod now. Refused, in words, when RunPod has no GPU free for it, and while the
-   * pod has cost its spend limit. Once it runs, the runs the last stop paused are resumed.
+   * pod has cost its spend limit. Once it runs, the runs the last stop paused are resumed. `note`
+   * says what the start is for, when a run's assignment asked for it ("to assign run x").
    */
-  async start(r: StoredRunpodRig, s: RigState, key: string, by: string): Promise<void> {
+  async start(
+    r: StoredRunpodRig,
+    s: RigState,
+    key: string,
+    by: string,
+    note?: string,
+  ): Promise<void> {
     const refused = this.busy(r, s);
     if (refused) throw new Error(refused);
     if (!isStopped(s.status))
@@ -259,8 +268,10 @@ export class RunpodLifecycle {
       throw new Error(
         `${r.rig} has cost ${money(spent)}, which is at its spend limit (${money(s.spend_limit_usd)}): raise or clear the limit first`,
       );
-    this.store.audit(by, "runpod_rig_start", { rig: r.rig, pod: r.pod });
-    await this.startPod(r, s, key, this.newOp("start", by, null, "starting"));
+    this.store.audit(by, "runpod_rig_start", { rig: r.rig, pod: r.pod, ...(note ? { note } : {}) });
+    const op = this.newOp("start", by, null, "starting");
+    if (note) op.note = note;
+    await this.startPod(r, s, key, op);
   }
 
   /** Restarts the pod: a stop with no export (its volume stays), then a start. */
@@ -469,7 +480,7 @@ export class RunpodLifecycle {
       );
     else if (why === "idle_stop")
       s.notes.push(
-        `Stopped by control: no run ran on it for ${s.idle_stop_minutes} minutes, the idle stop you set. Its volume stays.`,
+        `Stopped by control: no run was at work on it for ${s.idle_stop_minutes} minutes, the idle stop you set. Its volume stays.`,
       );
     this.history(r.rig, "runpod_stopped", true, results);
     this.store.audit(why === "owner" ? by : "control", "runpod_rig_stopped", {
@@ -505,7 +516,12 @@ export class RunpodLifecycle {
     s.stopped_by = null;
     this.phase(op, "starting");
     s.op = op;
-    this.history(r.rig, "runpod_starting", true, `asked by ${op.by}`);
+    this.history(
+      r.rig,
+      "runpod_starting",
+      true,
+      `asked by ${op.by}${op.note ? ` ${op.note}` : ""}`,
+    );
     // What RunPod says now: the pod may run at once.
     const pod = await getPod(key, r.pod, this.fetchImpl).catch((e) => {
       log("control", "could not read a pod after its start", {

@@ -60,7 +60,7 @@ export function launchBody(o: LaunchOptions): Record<string, unknown> {
       ? { spend_limit_usd: number("--spend-limit", o["spend-limit"], false) }
       : {}),
     ...(o["idle-stop"] !== undefined
-      ? { idle_stop_minutes: number("--idle-stop", o["idle-stop"], false) }
+      ? { idle_stop_minutes: limit("--idle-stop", o["idle-stop"], false) }
       : {}),
   };
   return body;

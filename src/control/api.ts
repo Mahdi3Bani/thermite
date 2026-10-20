@@ -14,7 +14,7 @@ import type { ClusterKubectl } from "./clusters/kubectl.ts";
 import { Credential, newToken } from "./credential.ts";
 import { createDashboard, type RigImages } from "./dashboard.ts";
 import { ExportFiles, mountExports } from "./exports.ts";
-import { issueCommand, propagateChampion } from "./issue.ts";
+import { issueWaking, propagateChampion, WakeRefused } from "./issue.ts";
 import type { KitRepos } from "./kit-repos.ts";
 import {
   advanceResets,
@@ -1054,16 +1054,18 @@ export function createControlApi(
     // A wipe goes only through the full reset (export, verified push, the owner's confirmation).
     if (body.kind === "wipe_state")
       return c.json({ error: "wipe_state is issued only by a full reset" }, 400);
-    let id: string;
+    let issued: { id: string; woke: string | null };
     try {
-      ({ id } = issueCommand(store, privateKeyPem, {
+      // A run assigned or resumed on a stopped RunPod pod starts the pod first.
+      issued = await issueWaking(store, privateKeyPem, runpodRigs, {
         rig: body.rig,
         kind: body.kind,
         payload: body.payload,
         ttlMinutes: body.ttl_minutes,
         // The admin token is the owner's; who issued a command is control's to say, not the client's.
         issuedBy: "owner:api",
-      }));
+        owner: true,
+      });
     } catch (err) {
       // A refused command (a bad payload, a message nothing would read) is the client's to fix,
       // and in the audit log as the dashboard's and MCP's refusals are.
@@ -1073,9 +1075,16 @@ export function createControlApi(
         kind: body.kind,
         why: redact(error),
       });
-      return c.json({ error }, error.startsWith("unknown rig") ? 404 : 400);
+      return c.json(
+        { error },
+        err instanceof WakeRefused ? 409 : error.startsWith("unknown rig") ? 404 : 400,
+      );
     }
-    return c.json({ id, status: "pending" }, 201);
+    // `woke` only when control started the rig's stopped pod first: other answers stay as they were.
+    return c.json(
+      { id: issued.id, status: "pending", ...(issued.woke ? { woke: issued.woke } : {}) },
+      201,
+    );
   });
 
   app.get("/v1/commands", admin, (c) =>
@@ -1157,7 +1166,7 @@ export function createControlApi(
     enroll_within_minutes: z.number().positive().optional(),
     settings: z.partialRecord(z.enum(POD_CONFIG_ENV), z.string()).optional(),
     spend_limit_usd: z.number().positive().optional(),
-    idle_stop_minutes: z.number().optional(),
+    idle_stop_minutes: z.number().nullable().optional(),
   });
   const LimitsBody = z.strictObject({
     spend_limit_usd: z.number().positive().nullable().optional(),

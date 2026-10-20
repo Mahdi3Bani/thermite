@@ -173,7 +173,7 @@ describe("Git access for private repositories", () => {
     assert.equal(g && s.secrets.open(g.secret_sealed), "glpat-new-value-5678");
     assert.match(await s.page("/ui/settings"), /token …5678 · user oauth2/);
     // Access a campaign fetches with can't be deleted.
-    const saved = startCampaign(
+    const saved = await startCampaign(
       { store: s.store, kits: s.kits, privateKeyPem: s.keys.privateKeyPem },
       {
         draft: draft("gitlab-token"),
@@ -207,7 +207,7 @@ describe("Git access for private repositories", () => {
       });
     assert.equal((await ask("rig-a", "rig-token-aaaaaa")).status, 404);
     s.store.setConfiguredRigs(["rig-a", "rig-b"]);
-    const r = startCampaign(
+    const r = await startCampaign(
       { store: s.store, kits: s.kits, privateKeyPem: s.keys.privateKeyPem },
       {
         draft: draft("gitlab-token"),
@@ -306,7 +306,7 @@ describe("Git access for private repositories", () => {
         username: "oauth2",
       });
       s.store.setConfiguredRigs(["rig-a"]);
-      const r = startCampaign(
+      const r = await startCampaign(
         { store: s.store, kits: s.kits, privateKeyPem: s.keys.privateKeyPem },
         {
           draft: {
