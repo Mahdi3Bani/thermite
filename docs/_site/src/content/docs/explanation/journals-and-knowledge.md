@@ -167,4 +167,4 @@ A rig's exports carry its runs' records to its results repository, and the journ
 
 The folder goes without `knowledge/`: those files are other runs' records, which those runs' own exports carry. [The export](../reference/knowledge-base.md#the-export) lists each file's fields, and [Set up the results repository](../how-to/operate/results-repository.md) says where each file lands.
 
-Some parts are not built yet: a search tool over `knowledge/` for the planner and the advisors, workers reading an outside knowledge base, REST and MCP tools to set up an outside knowledge base or switch its copies, and a choice of how much of a journal a new campaign sees ([goal 065](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/065-journals-and-corpus.goal)).
+Not built yet: a search tool over `knowledge/` for the planner and the advisors ([goal 065](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/065-journals-and-corpus.goal)). Outside knowledge bases are planned to become MCP servers that a kit names, which workers reach too ([goal 068](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/068-mcp-servers-for-agents.goal)).

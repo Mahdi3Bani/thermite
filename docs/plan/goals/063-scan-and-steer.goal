@@ -1,7 +1,7 @@
 ---
 id: "063"
 title: "Campaigns, runs and live views you can scan; steering as one message box"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 part: "Tester basics"
 depends_on: []
@@ -11,7 +11,7 @@ updated: 2026-10-20
 
 # 063 · Campaigns, runs and live views you can scan; steering as one message box
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
 
 ## What
 
@@ -59,16 +59,16 @@ The owner's feedback on 2026-10-20:
 
 ## Done when
 
-- [ ] The Campaigns list, a campaign's page and Live match the approved mockups; the run page's Steer tab is gone.
-- [ ] Start a run works from every campaign's page, including campaigns that were not made on the New campaign page.
-- [ ] Live lists runs at work first, has one entry per lane and one for the advisors, and marks ended trials correctly.
-- [ ] The advisors' entry in Live shows each teacher run, rule set, audit and review as it happens, with its reason.
-- [ ] The owner can message all advisors, the teachers, the auditor or the review panel; each reads the message as described above and its answer appears in Live and the run's Sent list.
-- [ ] A message reaches the chosen agents. Pi workers read it at their next step. OpenCode and Claude Code workers read it at their next step too, or the page says plainly when they will.
-- [ ] Control shows who has read each message, from the rig's own record, not only that the rig stored it.
-- [ ] A research run offers no planner as a recipient. "Everyone working" and messages kept in force reach its lanes.
-- [ ] No message is lost: a message taken from the queue is always given to an agent.
-- [ ] Tests cover the lists and filters, start a run, the lane grouping in Live, delivery to each kind of worker, and read receipts.
+- [x] The Campaigns list, a campaign's page and Live match the approved mockups; the run page's Steer tab is gone.
+- [x] Start a run works from every campaign's page, including campaigns that were not made on the New campaign page.
+- [x] Live lists runs at work first, has one entry per lane and one for the advisors, and marks ended trials correctly.
+- [x] The advisors' entry in Live shows each teacher run, rule set, audit and review as it happens, with its reason.
+- [x] The owner can message all advisors, the teachers, the auditor or the review panel; each reads the message as described above and its answer appears in Live and the run's Sent list.
+- [x] A message reaches the chosen agents. Pi workers read it at their next step. OpenCode and Claude Code workers read it at their next step too, or the page says plainly when they will.
+- [x] Control shows who has read each message, from the rig's own record, not only that the rig stored it.
+- [x] A research run offers no planner as a recipient. "Everyone working" and messages kept in force reach its lanes.
+- [x] No message is lost: a message taken from the queue is always given to an agent.
+- [x] Tests cover the lists and filters, start a run, the lane grouping in Live, delivery to each kind of worker, and read receipts.
 
 ## Decisions
 
@@ -126,6 +126,21 @@ None.
   Still to do: the compose acceptances, then the roll.
 
 - 2026-10-20: Checked and deployed. The full `npm run check` and the compose acceptances (smoke, agents, Claude Code, steering, control, campaign, cluster) passed. The maintainers' control and rigs run it, each rig's ledger kept and its isolation check passing. The pages are on the docs site. Still open: the acceptance tests do not drive Live's message box or the Planner tab.
+
+- 2026-10-20: Verified. Each box checked against the code, the tests and the pages.
+  - **Tests that drive the pages.** `src/control/steering-ui.test.ts`, in the fast suite, drives Live's message box and the run page's tabs as a browser does. It reads each form from the page's HTML and posts it as a person fills it in; for a drag, it sends the request that the dashboard's script sends. A real harness takes the commands through the supervisor's relay, and its events and live lines come back to control the same way. No browser runs: the script only shows and hides what control drew.
+  - **What they cover.**
+    - Every recipient, keep and Remove.
+    - The greyed-out recipients of a hill climb and of a research run, and the rig's refusal of a lane that the run doesn't have.
+    - The receipts and the advisors' answers under **You**, which is the run's Sent list since the Steer tab went.
+    - Control's record of who read each message, built from the rig's events.
+    - The hint for Pi, OpenCode and Claude Code workers.
+    - A kept message in each new trial of a research run.
+    - A lane that stops working after **Restart the lanes** or a restart of the harness.
+    - Start a run's rig states: free, busy, other hardware.
+  - **A fix from the mockup check.** The approved Live mockup has **Restart the lanes** under **⋯** in Live's header. It was missing; it is built now.
+  - **Rig checks** are control's own runs, hidden from the Campaigns list. They have no Start a run.
+  - **Older receipts.** Live shows a run's newest 600 lines. Older receipts are in MCP `run_queue`, which lists each message with who read it.
 ---
 
 Run with `/goal Complete docs/plan/goals/063-scan-and-steer.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
