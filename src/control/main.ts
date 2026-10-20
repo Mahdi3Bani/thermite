@@ -10,6 +10,7 @@ import { KitRepos } from "./kit-repos.ts";
 import { advanceResets, driverFromEnv } from "./lifecycle.ts";
 import { OutsideKbs } from "./outside-kb.ts";
 import { refreshGpuClouds } from "./runpod.ts";
+import { RunpodRigs } from "./runpod-rigs.ts";
 import { RunpodTests } from "./runpod-tests.ts";
 import { SecretBox } from "./secrets.ts";
 import { ControlStore } from "./store.ts";
@@ -87,6 +88,11 @@ async function main(): Promise<void> {
   const outsideKb = new OutsideKbs(store, store.kb(), secrets);
   // Rigs in pull mode (on RunPod): control connects to each, in the loop below.
   const tunnels = new ControlTunnels(store, secrets, privateKeyPem);
+  // Rigs the owner launches on RunPod: their pods, prices and spend, followed by the loop below.
+  const runpodRigs = new RunpodRigs(store, secrets, tunnels, {
+    image: env.THERMITE_RUNPOD_RIG_IMAGE || undefined,
+    staleAfterMs,
+  });
   const server = serve({
     fetch: createControlApi(store, tokens, privateKeyPem, {
       staleAfterMs,
@@ -101,6 +107,7 @@ async function main(): Promise<void> {
       runpodTests,
       outsideKb,
       tunnels,
+      runpodRigs,
       // Kits written on the new-campaign page, kept as git repositories in control's state.
       kits: new KitRepos(join(dir, "kits")),
       // Exports from rigs without a results repository, kept in control's state.
@@ -148,6 +155,10 @@ async function main(): Promise<void> {
   const pulls = setInterval(() => {
     tunnels.advance().catch((err) => log("control", "pull mode error", { error: String(err) }));
   }, 250);
+  // Rigs on RunPod: each pod's status, price and spend; the owner's limits, where set.
+  const launched = setInterval(() => {
+    runpodRigs.advance().catch((err) => log("control", "runpod rig error", { error: String(err) }));
+  }, 30_000);
   // GPU clouds' prices, pods and spend, read again every 15 minutes.
   const clouds = setInterval(() => {
     refreshGpuClouds(store, secrets).catch((err) =>
@@ -172,6 +183,7 @@ async function main(): Promise<void> {
     clearInterval(resets);
     clearInterval(tests);
     clearInterval(pulls);
+    clearInterval(launched);
     clearInterval(clouds);
     clearInterval(outsideSync);
     server.close();

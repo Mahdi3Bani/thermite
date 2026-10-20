@@ -4,6 +4,7 @@ import type { Hono } from "hono";
 import { z } from "zod";
 import { redact } from "../common/env.ts";
 import type { CommandKind } from "../core/commands.ts";
+import { POD_CONFIG_ENV } from "../core/tunnel.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import type { ControlActions } from "./actions.ts";
 import type { Credential } from "./credential.ts";
@@ -11,6 +12,12 @@ import { issueCommand, propagateChampion } from "./issue.ts";
 import { briefingSeedOf, isOutside, type KbKind } from "./kb.ts";
 import type { OutsideKbs } from "./outside-kb.ts";
 import { copiedFromRecords } from "./queue-copy.ts";
+import {
+  type LaunchRequest,
+  type LimitsChange,
+  MIN_IDLE_STOP_MINUTES,
+  type RunpodRigs,
+} from "./runpod-rigs.ts";
 import type { RunpodTests } from "./runpod-tests.ts";
 import type { ControlStore } from "./store.ts";
 import { campaignModes, leaderboard, rigView } from "./views.ts";
@@ -80,6 +87,8 @@ export interface McpOptions {
   control?: BuildInfo | undefined;
   /** Test pods on GPU clouds; without it the RunPod tools are not offered. */
   runpodTests?: RunpodTests | undefined;
+  /** Rigs the owner launches on GPU clouds; without it the RunPod rig tools are not offered. */
+  runpodRigs?: RunpodRigs | undefined;
   /** Actions the dashboard carries out (actions.ts); MCP offers those it has. */
   actions?: ControlActions | undefined;
   /** Outside knowledge bases (goal 065): kb_grant and kb_revoke grant their search with them. */
@@ -162,6 +171,17 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
           last_seen: v.last_seen,
           version: v.version,
           jobs: v.jobs,
+          // A rig launched on a GPU cloud: its pod's status, price and spend so far.
+          runpod: v.runpod
+            ? {
+                pod: v.runpod.pod,
+                status: v.runpod.status,
+                price_per_hr: v.runpod.price_per_hr,
+                spend_usd: v.runpod.spend_usd,
+                spend_limit_usd: v.runpod.spend_limit_usd,
+                idle_stop_minutes: v.runpod.idle_stop_minutes,
+              }
+            : null,
           runs: v.runs.map((i) => {
             const champ = i.champion.filter((c) => !c.reopened).at(-1);
             return {
@@ -874,6 +894,84 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
             inputSchema: { id: z.string().min(1) },
           },
           audited("runpod_test_end", (a: { id: string }) => tests.end(a.id, actor)),
+        );
+      }
+    }
+
+    const launched = opts.runpodRigs;
+    if (launched) {
+      server.registerTool(
+        "runpod_rigs",
+        {
+          title: "Rigs on RunPod",
+          description:
+            "Rigs the owner launched on a GPU cloud, newest first: each one's pod and its status at RunPod, what it was launched with, its price per hour, what it has cost so far (spend_usd), its enrollment, and the owner's spend limit and idle stop, if set.",
+          inputSchema: {
+            cloud: z.string().min(1).optional().describe("The GPU cloud's name in Providers"),
+          },
+        },
+        audited("runpod_rigs", (a: { cloud?: string }) => launched.list(a.cloud)),
+      );
+      // Launching spends money: the owner's alone (owner, 2026-10-20). An operator may not.
+      if (role === "owner") {
+        server.registerTool(
+          "runpod_launch",
+          {
+            title: "Launch a rig on RunPod",
+            description:
+              "Spends money. Launches a rig on a GPU cloud from Providers: one pod of Thermite's one-container rig image, in pull mode, billed by the hour until it is stopped or removed. Control enrolls it and follows its price and spend (runpod_rigs). Defaults: 1 GPU, Secure cloud on demand, any data center, control's rig image, a 40 GB container disk, a 100 GB volume, no spend limit, no idle stop. The owner's token only.",
+            inputSchema: {
+              cloud: z.string().min(1).describe("The GPU cloud's name in Providers"),
+              gpu: z.string().min(1).describe("A GPU type's id or name, from providers"),
+              gpu_count: z.number().int().min(1).max(8).optional(),
+              cloud_type: z.enum(["SECURE", "COMMUNITY"]).optional(),
+              datacenter: z.string().min(1).optional().describe("A data center's id"),
+              image: z.string().min(1).optional(),
+              container_disk_gb: z.number().int().min(10).max(2000).optional(),
+              volume_gb: z.number().int().min(10).max(10_000).optional(),
+              rig: z.string().min(1).optional().describe("Lowercase letters, digits and dashes"),
+              enroll_within_minutes: z
+                .number()
+                .positive()
+                .optional()
+                .describe("The enrollment code expires this long after the launch"),
+              settings: z
+                .partialRecord(z.enum(POD_CONFIG_ENV), z.string())
+                .optional()
+                .describe("The rig's settings at enrollment"),
+              spend_limit_usd: z
+                .number()
+                .positive()
+                .optional()
+                .describe("Stop the pod once it has cost this much"),
+              idle_stop_minutes: z
+                .number()
+                .min(MIN_IDLE_STOP_MINUTES)
+                .optional()
+                .describe("Stop the pod after this many minutes with no run running"),
+            },
+          },
+          audited("runpod_launch", (a: LaunchRequest & { cloud: string }) => {
+            const { cloud, ...req } = a;
+            return launched.launch(cloud, req, actor);
+          }),
+        );
+        server.registerTool(
+          "runpod_rig_limits",
+          {
+            title: "Set a RunPod rig's limits",
+            description:
+              "Sets or clears a RunPod rig's spend limit and idle stop. A number sets one, null clears it, and one left out stays. Control stops the pod when it reaches a limit that is set; its volume stays. The owner's token only.",
+            inputSchema: {
+              rig: z.string().min(1),
+              spend_limit_usd: z.number().positive().nullable().optional(),
+              idle_stop_minutes: z.number().min(MIN_IDLE_STOP_MINUTES).nullable().optional(),
+            },
+          },
+          audited("runpod_rig_limits", (a: LimitsChange & { rig: string }) => {
+            const { rig, ...change } = a;
+            return launched.limits(rig, change, actor);
+          }),
         );
       }
     }

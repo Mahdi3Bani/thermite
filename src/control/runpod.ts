@@ -1,8 +1,9 @@
 /**
  * RunPod as a place for rigs (Settings › Providers): control seals the owner's API key and reads,
  * with RunPod's REST API v2, the GPU types with their prices and stock, the data centers, the
- * network volumes and the account's pods. Reading spends nothing. The only thing control starts
- * is a test pod, when the owner or an operator asks for one (runpod-tests.ts).
+ * network volumes and the account's pods. Reading spends nothing. Control starts pods only when
+ * asked: a test pod, by the owner or an operator (runpod-tests.ts), and a rig, by the owner alone
+ * (runpod-rigs.ts).
  */
 
 import type { SecretBox } from "./secrets.ts";
@@ -130,14 +131,25 @@ export interface RunpodPodSpec {
   gpu: string;
   gpuCount: number;
   cloud: "SECURE" | "COMMUNITY";
+  /** The container's own disk, gone when the pod stops. */
   diskGb: number;
   minCudaVersion?: string | undefined;
+  /** A data center's id; not given: RunPod chooses. */
+  datacenter?: string | undefined;
+  /** The pod's volume, kept when it stops, mounted at volumeMountPath; not given: none. */
+  volumeGb?: number | undefined;
+  volumeMountPath?: string | undefined;
   ports: string[];
   env: Record<string, string>;
-  cmd: string[];
+  /** Not given: the image's own entry point and command. */
+  cmd?: string[] | undefined;
 }
 
-/** Starts a pod (it is billed from now). */
+/**
+ * Starts a pod (it is billed from now). The data center and the volume use the names of the
+ * pod's own record (`dataCenterId`) and of RunPod's pods (`volume`, its `size` and `mountPath`);
+ * the first launch of a rig on RunPod confirms them (goal 022).
+ */
 export async function createPod(
   key: string,
   spec: RunpodPodSpec,
@@ -153,9 +165,13 @@ export async function createPod(
     },
     cloud: spec.cloud,
     disk: spec.diskGb,
+    ...(spec.datacenter ? { dataCenterId: spec.datacenter } : {}),
+    ...(spec.volumeGb
+      ? { volume: { size: spec.volumeGb, mountPath: spec.volumeMountPath ?? "/workspace" } }
+      : {}),
     ports: spec.ports,
     env: spec.env,
-    cmd: spec.cmd,
+    ...(spec.cmd ? { cmd: spec.cmd } : {}),
   };
   const r = await runpodCall(key, "POST", "/v2/pods", body, fetchImpl);
   if (!r) throw new Error("RunPod answered without the new pod");

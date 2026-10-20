@@ -15,7 +15,7 @@ This page lists where each part of Thermite listens, which networks join them, w
 | 8800/tcp | Control: the dashboard (`/ui`), the REST API (`/v1`), MCP (`/mcp`) and `/metrics` | People, scripts and agents; every rig's supervisor | `THERMITE_CONTROL_LISTEN`, default `0.0.0.0:8800` |
 | 8700/tcp | The harness API | The rig's own supervisor. Inside the harness container, its workers and tools on `127.0.0.1` | `THERMITE_LISTEN`, default `0.0.0.0:8700` |
 | none | The supervisor | Outside pull mode it listens on no port. It connects out to its harness and to control | |
-| 8790/tcp | The supervisor of a rig in [pull mode](../explanation/trust.md#rigs-in-pull-mode), on every interface | Control alone, through RunPod's proxy, under a random path. Everything else gets an empty 404 | `THERMITE_TUNNEL_PORT`, `8790` in control's launch values |
+| 8790/tcp | The supervisor of a rig in [pull mode](../explanation/trust.md#rigs-in-pull-mode), on every interface | Control alone, through RunPod's proxy, under a random path. Everything else gets an empty 404 | `THERMITE_TUNNEL_PORT`, `8790` in control's launch values and in the one-container rig image |
 | A free port on `127.0.0.1` | The supervisor in pull mode: its own calls to control wait there for control's next exchange | The supervisor alone: the port takes only a token that lives in the supervisor's memory, and answers anything else with an empty 404 | Chosen at start |
 | 22/tcp, or the machine's own | A machine's SSH server | Control, to check the machine and set rigs up on it | The machine's **SSH port** on the Providers page, 22 by default |
 | The cluster's API server | Kubernetes | Control's `kubectl`, to set rigs up on a cluster, and later to stop, start, restart, update or remove them | The cluster's kubeconfig |
@@ -159,7 +159,7 @@ A test pod has one container disk: 40 GB unless set, 10 to 2,000 GB. Control rem
 | The proposer token | Harness | `THERMITE_PROPOSER_TOKEN_FILE` | Optional: lets a person or script submit changes with `thermite submit` |
 | The model key | Harness | `THERMITE_MODEL_API_KEY_FILE` | The agents' model key, when the rig's own settings give the model. A model from control comes with its key instead |
 | The rig's control token | Supervisor | `THERMITE_CONTROL_TOKEN_FILE` | The rig's token for control |
-| Control's public key | Harness | `THERMITE_CONTROL_PUBKEY_FILE` | Checks every command's signature. The harness waits up to 120 s for it at start. In pull mode, enrollment writes it (`control.pub` in `THERMITE_TUNNEL_ENROLLED_DIR`) |
+| Control's public key | Harness | `THERMITE_CONTROL_PUBKEY_FILE` | Checks every command's signature. The harness waits up to 120 s for it at start. In pull mode, enrollment leaves it in `control.pub` in `THERMITE_TUNNEL_ENROLLED_DIR`; in the one-container rig image, root checks its SHA-256 against the launch's and copies it to `THERMITE_CONTROL_PUBKEY_FILE` before the harness starts |
 | The rig's report key | Harness | `ledger/rig-signing.key` in its state, 0600 | Signs the rig's reports. Made on first start |
 | The pod's keys | Supervisor, in pull mode | `keys.json` in `THERMITE_TUNNEL_DIR`, 0600 | Sign the pod's answers to control and open what control seals to the pod. Made on first start; control pins their public halves at enrollment |
 | The enrollment code | Supervisor, in pull mode | `THERMITE_TUNNEL_ENROLL_CODE` in the pod's environment | A one-time code. It never crosses the network, and the first enrollment spends it. The supervisor takes it out of its own environment at start |

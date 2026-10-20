@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { basename, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { newToken } from "../control/credential.ts";
+import type { RunpodRigView } from "../control/runpod-rig-view.ts";
 import { generateSigningKeys } from "../core/commands.ts";
 import { CommitSchema, parseContract } from "../core/contract.ts";
 import { doctor, doctorExit, formatReport, machineProbes } from "./doctor.ts";
@@ -57,6 +58,21 @@ const USAGE = `usage: thermite <command> [options]
                                       list the rigs (owner's token): reporting, stale or
                                       offline, and each one's Thermite version against
                                       control's, with what to do when it is behind or refused
+  runpod launch CLOUD --gpu G [--gpus N] [--cloud-type SECURE|COMMUNITY] [--datacenter DC]
+         [--image I] [--disk GB] [--volume GB] [--rig NAME] [--enroll-within MIN]
+         [--setting NAME=VALUE ...] [--spend-limit USD] [--idle-stop MIN]
+         --control URL --token-file F
+                                      spends money: launch a rig on the GPU cloud CLOUD from
+                                      Providers (owner's token), a pod of the one-container rig
+                                      image in pull mode. Defaults: 1 GPU, SECURE, any data
+                                      center, control's rig image, a 40 GB disk, a 100 GB
+                                      volume, no spend limit, no idle stop
+  runpod list [CLOUD] --control URL --token-file F [--json]
+                                      list the rigs launched on GPU clouds (owner's token):
+                                      each pod's status, price per hour, spend so far and limits
+  runpod limits RIG [--spend-limit USD|off] [--idle-stop MIN|off] --control URL --token-file F
+                                      set or clear a RunPod rig's spend limit and idle stop
+                                      (owner's token)
   command --control URL --token-file F --rig U --kind K --payload JSON|@file [--ttl MIN]
                                       issue a signed command through control (admin token)
   submit --harness URL --token-file F --run ID --patch-file P --hypothesis TEXT
@@ -459,6 +475,74 @@ async function main(argv: string[]): Promise<void> {
         await post(`${at}/${encodeURIComponent(rig)}/retire`, token, {});
         process.stdout.write(`${rig} is retired: its token no longer works\n`);
         return;
+      }
+      fail(USAGE);
+      return;
+    }
+    case "runpod": {
+      const [sub, ...args] = rest;
+      const { values, positionals } = parseArgs({
+        args,
+        allowPositionals: true,
+        options: {
+          control: { type: "string" },
+          "token-file": { type: "string" },
+          json: { type: "boolean" },
+          gpu: { type: "string" },
+          gpus: { type: "string" },
+          "cloud-type": { type: "string" },
+          datacenter: { type: "string" },
+          image: { type: "string" },
+          disk: { type: "string" },
+          volume: { type: "string" },
+          rig: { type: "string" },
+          "enroll-within": { type: "string" },
+          setting: { type: "string", multiple: true },
+          "spend-limit": { type: "string" },
+          "idle-stop": { type: "string" },
+        },
+      });
+      if (!values.control || !values["token-file"]) fail(USAGE);
+      const control = values.control.replace(/\/$/, "");
+      const token = readFileSync(values["token-file"], "utf8").trim();
+      const { formatRunpodRigs, launchBody, limitsBody } = await import("./runpod.ts");
+      const named = positionals[0];
+      try {
+        if (sub === "launch" && named) {
+          const rig = (await post(
+            `${control}/v1/gpu-clouds/${encodeURIComponent(named)}/rigs`,
+            token,
+            launchBody(values),
+          )) as RunpodRigView;
+          process.stdout.write(
+            `${formatRunpodRigs([rig])}Launched: RunPod bills the pod from now. Control enrolls it once it runs; follow it with thermite runpod list.\n`,
+          );
+          return;
+        }
+        if (sub === "list") {
+          const rigs = named
+            ? ((await get(
+                `${control}/v1/gpu-clouds/${encodeURIComponent(named)}/rigs`,
+                token,
+              )) as RunpodRigView[])
+            : (((await get(`${control}/v1/rigs`, token)) as { runpod?: RunpodRigView[] }).runpod ??
+              []);
+          process.stdout.write(
+            values.json ? `${JSON.stringify(rigs, null, 2)}\n` : formatRunpodRigs(rigs),
+          );
+          return;
+        }
+        if (sub === "limits" && named) {
+          const rig = (await post(
+            `${control}/v1/rigs/${encodeURIComponent(named)}/runpod/limits`,
+            token,
+            limitsBody(values),
+          )) as RunpodRigView;
+          process.stdout.write(formatRunpodRigs([rig]));
+          return;
+        }
+      } catch (err) {
+        fail(err instanceof Error ? err.message : String(err));
       }
       fail(USAGE);
       return;

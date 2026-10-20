@@ -1,5 +1,6 @@
 import { type Hardware, readHardware } from "../core/hardware.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
+import { type RunpodRigView, runpodRigView } from "./runpod-rig-view.ts";
 import type { ControlStore } from "./store.ts";
 import { type RigVersions, rigVersions } from "./versions.ts";
 
@@ -360,6 +361,8 @@ export interface RigView {
   settings: RigSettingsView | null;
   /** A rig whose GPU split control may change (its GPU set and the judge's share now). */
   gpu_split: { set: number; judge: number } | null;
+  /** A rig the owner launched on a GPU cloud: its pod, its price and what it has cost so far. */
+  runpod?: RunpodRigView | undefined;
 }
 
 export interface RigModelView {
@@ -1046,6 +1049,7 @@ export function rigView(
     | undefined;
   const now = opts.now ?? Date.now();
   const allJobs = [...jobs.values()];
+  const launched = store.runpodRig(u.id);
   return {
     id: u.id,
     last_seen: u.last_seen,
@@ -1068,6 +1072,7 @@ export function rigView(
       jobs: allJobs.slice(-200),
     },
     checks,
+    ...(launched ? { runpod: runpodRigView(launched, store.tunnelRig(u.id), now) } : {}),
   };
 }
 

@@ -103,17 +103,20 @@ jobs:
           COMPOSE: docker compose
 
   # The one-container rig image (RunPod's), built on the CPU harness image and started as RunPod
-  # starts it: its isolation selftest, restarts and a clean stop.
+  # starts it: enrollment by control in pull mode, its isolation selftest, restarts and a clean
+  # stop.
   rig-image:
     needs: checks
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      # The script needs Node.js only: the images build Thermite themselves.
+      # The images build Thermite themselves; the script runs control's side of pull mode itself.
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: npm
+      - run: npm ci
       - run: node scripts/rig-image-acceptance.mjs
         env:
           COMPOSE: docker compose

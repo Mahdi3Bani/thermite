@@ -16,6 +16,7 @@ import {
   TUNNEL_MAX_REQUEST,
 } from "../core/tunnel.ts";
 import { createHarnessApi } from "../harness/api.ts";
+import { readEnrollment } from "../harness/broker/one-container.ts";
 import { relayCommandsOnce, relayOnce } from "../supervisor/relay.ts";
 import { PodTunnel, pullModeOptions, startPullMode } from "../supervisor/tunnel-pod.ts";
 import { makeHarnessEnv } from "../testing/harness-env.ts";
@@ -353,6 +354,21 @@ describe("pull mode: control connects to a rig through a proxy", () => {
       assert.equal(
         readFileSync(join(s.opts.enrolledDir, "rig.env"), "utf8"),
         `THERMITE_RIG_ID=${s.rig}\nTHERMITE_TARGET=cpu\nTHERMITE_MAX_TRIALS=2\n`,
+      );
+      // Root in the one-container image takes what the pod wrote: the key the launch named and
+      // the settings by name.
+      assert.deepEqual(
+        readEnrollment({
+          dir: s.opts.enrolledDir,
+          rig: s.rig,
+          controlKeySha256: keySha256(s.control.publicKeyPem),
+          owner: process.getuid?.() ?? 0,
+        }),
+        {
+          state: "ready",
+          controlKeyPem: s.control.publicKeyPem,
+          settings: { THERMITE_TARGET: "cpu", THERMITE_MAX_TRIALS: "2" },
+        },
       );
       // Spent at the pod: a second enrollment, even signed by control with the right code.
       const n2 = newNonce();

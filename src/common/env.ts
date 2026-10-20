@@ -42,30 +42,16 @@ export function parseListen(value: string): { host: string; port: number } {
   return { host, port };
 }
 
-/**
- * Waits for a file to appear (for keys written by another container at first start). Without a
- * timeout it waits as long as it takes; `waiting` is then told at once and every `sayEveryMs`.
- */
-export async function waitForFile(
-  path: string,
-  timeoutMs: number | undefined,
-  opts: { waiting?: (waitedMs: number) => void; sayEveryMs?: number; pollMs?: number } = {},
-): Promise<string> {
-  const start = Date.now();
-  let said = -Infinity;
+/** Waits for a file to appear (for keys written by another container at first start). */
+export async function waitForFile(path: string, timeoutMs: number): Promise<string> {
+  const deadline = Date.now() + timeoutMs;
   for (;;) {
     if (existsSync(path)) {
       const text = readFileSync(path, "utf8");
       if (text.trim()) return text;
     }
-    const waited = Date.now() - start;
-    if (timeoutMs !== undefined && waited > timeoutMs)
-      throw new Error(`timed out waiting for ${path}`);
-    if (opts.waiting && waited - said >= (opts.sayEveryMs ?? 60_000)) {
-      said = waited;
-      opts.waiting(waited);
-    }
-    await new Promise((r) => setTimeout(r, opts.pollMs ?? 500));
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${path}`);
+    await new Promise((r) => setTimeout(r, 500));
   }
 }
 

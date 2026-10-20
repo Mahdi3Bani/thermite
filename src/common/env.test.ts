@@ -6,26 +6,17 @@ import { describe, test } from "node:test";
 import { waitForFile } from "./env.ts";
 
 describe("waiting for a file", () => {
-  test("with a timeout, it gives up", async () => {
+  test("it gives up after its timeout", async () => {
     const path = join(mkdtempSync(join(tmpdir(), "wait-")), "control-signing.pub");
-    await assert.rejects(waitForFile(path, 50, { pollMs: 10 }), /timed out waiting for/);
+    await assert.rejects(waitForFile(path, 50), /timed out waiting for/);
   });
 
-  test("without one, it waits past any timeout, says so, and returns the file once written", async () => {
+  test("an empty file is not there yet; the file is returned once written", async () => {
     const path = join(mkdtempSync(join(tmpdir(), "wait-")), "control-signing.pub");
-    const said: number[] = [];
-    const waiting = waitForFile(path, undefined, {
-      waiting: (ms) => said.push(ms),
-      sayEveryMs: 40,
-      pollMs: 10,
-    });
-    await new Promise((r) => setTimeout(r, 150));
-    // An empty file is not there yet.
     writeFileSync(path, "");
-    await new Promise((r) => setTimeout(r, 30));
+    const waiting = waitForFile(path, 10_000);
+    await new Promise((r) => setTimeout(r, 700));
     writeFileSync(path, "the key\n");
     assert.equal(await waiting, "the key\n");
-    assert.ok(said.length >= 2, `said ${said.length} times`);
-    assert.ok((said[0] ?? 99) < 20, "it says so at once");
   });
 });

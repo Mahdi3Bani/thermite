@@ -50,9 +50,9 @@ Control checks a token against the owner's first, then the operator's, the agent
 | `propagate_champion` | Yes | Yes | Yes | No |
 | `kb_folders`, `kb_search`, `kb_grant`, `kb_revoke` | Yes | Yes | No | No |
 | `rig_setup` | Yes | Yes | No | Yes, without each step's `detail` |
-| `control_log`, `providers`, `runpod_tests` | Yes | Yes | No | Yes |
+| `control_log`, `providers`, `runpod_tests`, `runpod_rigs` | Yes | Yes | No | Yes |
 | `add_cluster_rig`, `set_rig_model`, `cluster_rig`, `update_rig_images`, `set_cluster_slots`, `runpod_test_start`, `runpod_test_end` | Yes | Yes | No | No |
-| `retire_rig`, `bring_back_rig` | Yes | No | No | No |
+| `retire_rig`, `bring_back_rig`, `runpod_launch`, `runpod_rig_limits` | Yes | No | No | No |
 
 ### Command kinds for each role
 
@@ -88,7 +88,7 @@ Tools are listed in the order the server offers them. Each description is quoted
 
 > Every rig: reporting, stale or offline, last report, its Thermite versions against control's (behind, refused and why, or unknown), and for each campaign run its mode, status, champion and relative gain over the baseline.
 
-No inputs. Returns `[{rig, state, stale, last_seen, version, jobs, runs}]`, where each run is `{run, campaign, mode, status, champion_seq, gain_over_baseline, verdicts, pending_promotions}`. `state` is `reporting`, `stale` or `offline`, and `stale` is true for the last two. `version` is `{state, notice, refused, control, harness, supervisor}`: the rig's builds against control's, `behind` with a notice to update the rig's images, or `refused` with the reason control refuses its reports and commands. [Rig versions](rest-api.md#rig-versions) describes each field. It lists the rigs that have reported, or that control refuses, and are not retired.
+No inputs. Returns `[{rig, state, stale, last_seen, version, jobs, runpod, runs}]`, where `runpod` is `{pod, status, price_per_hr, spend_usd, spend_limit_usd, idle_stop_minutes}` for a rig launched on a GPU cloud and `null` for any other, and each run is `{run, campaign, mode, status, champion_seq, gain_over_baseline, verdicts, pending_promotions}`. `state` is `reporting`, `stale` or `offline`, and `stale` is true for the last two. `version` is `{state, notice, refused, control, harness, supervisor}`: the rig's builds against control's, `behind` with a notice to update the rig's images, or `refused` with the reason control refuses its reports and commands. [Rig versions](rest-api.md#rig-versions) describes each field. It lists the rigs that have reported, or that control refuses, and are not retired.
 
 ### get_run
 
@@ -578,6 +578,56 @@ Returns the test. The pod is billed until control removes it: when the test ends
 | `id` | string | | The test's id, from `runpod_tests` |
 
 Returns the test. Error: `no test <id>`.
+
+### runpod_rigs
+
+**Rigs on RunPod.** Owner, operator and reader.
+
+> Rigs the owner launched on a GPU cloud, newest first: each one's pod and its status at RunPod, what it was launched with, its price per hour, what it has cost so far (spend_usd), its enrollment, and the owner's spend limit and idle stop, if set.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `cloud` | string, optional | every cloud | "The GPU cloud's name in Providers" |
+
+Returns a list of rigs, each a `runpod rig` as [Rigs on a GPU cloud](rest-api.md#rigs-on-a-gpu-cloud) describes it: its pod, `status`, `price_per_hr`, `spend_usd`, limits, enrollment and notes.
+
+### runpod_launch
+
+**Launch a rig on RunPod.** Owner only.
+
+> Spends money. Launches a rig on a GPU cloud from Providers: one pod of Thermite's one-container rig image, in pull mode, billed by the hour until it is stopped or removed. Control enrolls it and follows its price and spend (runpod_rigs). Defaults: 1 GPU, Secure cloud on demand, any data center, control's rig image, a 40 GB container disk, a 100 GB volume, no spend limit, no idle stop. The owner's token only.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `cloud` | string | | "The GPU cloud's name in Providers" |
+| `gpu` | string | | "A GPU type's id or name, from providers" |
+| `gpu_count` | whole number, 1 to 8, optional | 1 | GPUs in the pod |
+| `cloud_type` | `SECURE` or `COMMUNITY`, optional | `SECURE` | Secure cloud on demand, or Community cloud |
+| `datacenter` | string, optional | any | "A data center's id" |
+| `image` | string, optional | `THERMITE_RUNPOD_RIG_IMAGE` | The one-container rig image the pod runs |
+| `container_disk_gb` | whole number, 10 to 2000, optional | 40 | The container's own disk in GB |
+| `volume_gb` | whole number, 10 to 10000, optional | 100 | The pod's volume at `/workspace` in GB, where the rig keeps its state |
+| `rig` | string, optional | `rp-` and 8 hexadecimal characters | "Lowercase letters, digits and dashes" |
+| `enroll_within_minutes` | number above 0, optional | no expiry | "The enrollment code expires this long after the launch" |
+| `settings` | object, optional | a GPU rig on all the pod's GPUs | "The rig's settings at enrollment" |
+| `spend_limit_usd` | number above 0, optional | none | "Stop the pod once it has cost this much" |
+| `idle_stop_minutes` | number, 5 or more, optional | none | "Stop the pod after this many minutes with no run running" |
+
+Returns the `runpod rig`. The pod is billed from now until it is stopped or removed. Each field, and each refusal, is as for [`POST /v1/gpu-clouds/<name>/rigs`](rest-api.md#rigs-on-a-gpu-cloud).
+
+### runpod_rig_limits
+
+**Set a RunPod rig's limits.** Owner only.
+
+> Sets or clears a RunPod rig's spend limit and idle stop. A number sets one, null clears it, and one left out stays. Control stops the pod when it reaches a limit that is set; its volume stays. The owner's token only.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `rig` | string | | The rig, from `runpod_rigs` |
+| `spend_limit_usd` | number above 0, or null, optional | kept | Stop the pod once it has cost this much; null: no spend limit |
+| `idle_stop_minutes` | number, 5 or more, or null, optional | kept | Stop the pod after this many minutes with no run running; null: no idle stop |
+
+Returns the `runpod rig`. Errors: `no rig <rig> on a GPU cloud`, `a spend limit is a number of US dollars above 0`, `an idle stop is 5 minutes or more`.
 
 ## The audit log
 

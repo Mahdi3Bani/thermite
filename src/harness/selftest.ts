@@ -7,11 +7,13 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  type Stats,
   statSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { keySha256 } from "../core/tunnel.ts";
 import { BrokerClient } from "./broker/client.ts";
 import {
   cardsOf,
@@ -37,7 +39,7 @@ import { copyForRun } from "./judge/measure.ts";
  * to read, list or write what the role must not reach. Every probe must be refused, except a
  * `readable` or `reachable` probe, which must succeed. In the one-container rig image it also
  * checks the container as a whole (containerChecks): the supervisor's user, its GPU access,
- * set-id files and RunPod's variables.
+ * set-id files, RunPod's variables, the enrollment code and, in pull mode, control's key.
  */
 
 export interface Probe {
@@ -211,6 +213,11 @@ export interface OneContainerTargets {
   supervisorToken: string;
   /** The inbox it writes and the controller reads. */
   inboxDir: string;
+  /**
+   * Pull mode: the harness's copy of control's key (root's), and the SHA-256 the launch named
+   * (THERMITE_TUNNEL_CONTROL_KEY_SHA256, which the broker passes the controller).
+   */
+  controlKey?: { file: string; sha256: string } | undefined;
 }
 
 /** What the selftest probes of the supervisor in the one-container image; none elsewhere. */
@@ -219,7 +226,14 @@ export function oneContainerTargets(
 ): OneContainerTargets | undefined {
   if (!oneContainer(env)) return undefined;
   const p = supervisorPaths(env);
-  return { supervisorHome: p.home, supervisorToken: p.tokenFile, inboxDir: p.inbox };
+  const file = env.THERMITE_CONTROL_PUBKEY_FILE;
+  const sha256 = env.THERMITE_TUNNEL_CONTROL_KEY_SHA256;
+  return {
+    supervisorHome: p.home,
+    supervisorToken: p.tokenFile,
+    inboxDir: p.inbox,
+    ...(file && sha256 ? { controlKey: { file, sha256 } } : {}),
+  };
 }
 
 /** A process's real, effective, saved and file ids, and no_new_privs (/proc/<pid>/status). */
@@ -326,17 +340,21 @@ export function setIdCheck(root = "/", skip: string[] = []): string {
 }
 
 /**
- * RunPod's variables in the rig's processes: PID 1 and everything started under it, as far as
- * this process may read their environments (all of them as root). A process started from outside
- * (a shell opened with `exec`) is not part of the rig and is left out. "none (...)" or "FOUND".
+ * The rig's processes, PID 1 and everything started under it, with their uid and their
+ * environment's entries where this process may read it (all of them as root with ptrace's
+ * capability, otherwise its own user's). A process started from outside (a shell opened with
+ * `exec`) is not part of the rig and is left out.
  */
-export function runpodCheck(procDir = "/proc"): string {
+function rigProcesses(procDir: string): { pid: number; uid: number; environ?: string[] }[] {
   const parent = new Map<number, number>();
+  const uid = new Map<number, number>();
   for (const name of existsSync(procDir) ? readdirSync(procDir) : []) {
     if (!/^\d+$/.test(name)) continue;
     try {
-      const ppid = /^PPid:\s*(\d+)/m.exec(readFileSync(join(procDir, name, "status"), "utf8"));
+      const status = readFileSync(join(procDir, name, "status"), "utf8");
+      const ppid = /^PPid:\s*(\d+)/m.exec(status);
       if (ppid) parent.set(Number(name), Number(ppid[1]));
+      uid.set(Number(name), Number(/^Uid:\s*(\d+)/m.exec(status)?.[1] ?? -1));
     } catch {
       // gone
     }
@@ -350,29 +368,99 @@ export function runpodCheck(procDir = "/proc"): string {
     }
     return false;
   };
-  const found: string[] = [];
-  let read = 0;
-  let rig = 0;
-  for (const pid of parent.keys()) {
-    if (!underInit(pid)) continue;
-    rig++;
-    let text: string;
+  const pids = [...parent.keys()].filter(underInit).sort((a, b) => a - b);
+  return pids.map((pid) => {
     try {
-      text = readFileSync(join(procDir, String(pid), "environ"), "latin1");
+      const text = readFileSync(join(procDir, String(pid), "environ"), "latin1");
+      return { pid, uid: uid.get(pid) ?? -1, environ: text.split("\0") };
     } catch {
-      continue;
+      return { pid, uid: uid.get(pid) ?? -1 };
     }
-    read++;
-    for (const kv of text.split("\0"))
-      if (kv.startsWith("RUNPOD_")) found.push(`${kv.split("=")[0]} (pid ${pid})`);
-  }
+  });
+}
+
+/**
+ * RunPod's variables in the rig's processes (rigProcesses), as far as this process may read
+ * their environments. "none (read N of M processes)" or "FOUND".
+ */
+export function runpodCheck(procDir = "/proc"): string {
+  const procs = rigProcesses(procDir);
+  const found = procs.flatMap((p) =>
+    (p.environ ?? [])
+      .filter((kv) => kv.startsWith("RUNPOD_"))
+      .map((kv) => `${kv.split("=")[0]} (pid ${p.pid})`),
+  );
   if (found.length) return `FOUND ${found.slice(0, 8).join(", ")}`;
-  return `none (read ${read} of ${rig} processes)`;
+  return `none (read ${procs.filter((p) => p.environ).length} of ${procs.length} processes)`;
+}
+
+/**
+ * Pull mode's enrollment code in the rig's processes: only root's and the supervisor's own first
+ * process may have started with it (the supervisor takes it out of its environment at start, so
+ * nothing it starts has it; the controller never gets it). "none (read N of M processes)" or
+ * "FOUND".
+ */
+export function enrollCodeCheck(procDir = "/proc"): string {
+  const procs = rigProcesses(procDir);
+  const supervisor = new Set(pidsRunning(SUPERVISOR_SCRIPT, procDir));
+  const found = procs
+    .filter(
+      (p) =>
+        p.uid !== 0 &&
+        !supervisor.has(p.pid) &&
+        (p.environ ?? []).some((kv) => kv.startsWith("THERMITE_TUNNEL_ENROLL_CODE=")),
+    )
+    .map((p) => `pid ${p.pid} (uid ${p.uid})`);
+  if (found.length) return `FOUND THERMITE_TUNNEL_ENROLL_CODE in ${found.slice(0, 8).join(", ")}`;
+  return `none (read ${procs.filter((p) => p.environ).length} of ${procs.length} processes)`;
+}
+
+/**
+ * The key the harness trusts for control's commands, in pull mode: root's copy, which neither
+ * the supervisor nor a role can change (the file and each folder above it, up to `top`, are
+ * `rootUid`'s and writable by no one else), and the key the launch named by its SHA-256.
+ */
+export function controlKeyCheck(
+  file: string,
+  sha256: string,
+  opts: { rootUid?: number; top?: string } = {},
+): string {
+  const rootUid = opts.rootUid ?? 0;
+  const top = opts.top ?? "/";
+  let pem: string;
+  try {
+    const st = lstatSync(file);
+    if (!st.isFile()) return `WRONG: ${file} is not a plain file`;
+    const wrong = (p: string, s: Stats) =>
+      s.uid !== rootUid || s.mode & 0o022
+        ? `WRONG: ${p} is uid ${s.uid}, mode ${(s.mode & 0o777).toString(8)}: another user could change it`
+        : undefined;
+    const bad = wrong(file, st);
+    if (bad) return bad;
+    for (let d = dirname(file); ; d = dirname(d)) {
+      const s = lstatSync(d);
+      if (!s.isDirectory()) return `WRONG: ${d} is not a folder`;
+      const badDir = wrong(d, s);
+      if (badDir) return badDir;
+      if (d === top || d === dirname(d)) break;
+    }
+    pem = readFileSync(file, "utf8");
+  } catch (err) {
+    return `MISSING: ${file} (${(err as NodeJS.ErrnoException).code ?? String(err)})`;
+  }
+  try {
+    if (keySha256(pem) !== sha256.toLowerCase())
+      return "WRONG: it is not the key the launch named by its SHA-256";
+  } catch {
+    return "WRONG: it is not a public key";
+  }
+  return "root's, the key the launch named";
 }
 
 /**
  * The one-container image's checks of the container as a whole: the supervisor's user, its GPU
- * access, set-id files and RunPod's variables.
+ * access, set-id files, RunPod's variables and the enrollment code; in pull mode, also the key
+ * the harness trusts.
  */
 export async function containerChecks(opts: {
   brokerDir: string;
@@ -381,12 +469,17 @@ export async function containerChecks(opts: {
   procDir?: string;
   rootDir?: string;
   waitMs?: number;
+  controlKey?: { file: string; sha256: string } | undefined;
 }): Promise<Record<string, string>> {
   return {
     "supervisor-user": await supervisorUserCheck(opts.procDir, opts.waitMs),
     "supervisor-gpu": supervisorGpuCheck(opts.brokerDir),
     "setid-files": setIdCheck(opts.rootDir, opts.skip),
     "runpod-variables": runpodCheck(opts.procDir),
+    "enroll-code": enrollCodeCheck(opts.procDir),
+    ...(opts.controlKey
+      ? { "control-key": controlKeyCheck(opts.controlKey.file, opts.controlKey.sha256) }
+      : {}),
   };
 }
 
@@ -467,7 +560,11 @@ export async function isolationSelftest(opts: {
   const skipped: string[] = [];
   // First, as it waits for a supervisor that is still starting.
   const container = opts.oneContainer
-    ? await containerChecks({ brokerDir: dirname(opts.socketPath), skip: [opts.scratchDir] })
+    ? await containerChecks({
+        brokerDir: dirname(opts.socketPath),
+        skip: [opts.scratchDir],
+        controlKey: opts.oneContainer.controlKey,
+      })
     : undefined;
   const probes: Probe[] = [
     { name: "ledger", op: "read", path: join(opts.stateDir, "ledger", "ledger.db") },
@@ -498,6 +595,9 @@ export async function isolationSelftest(opts: {
     const sup = pidsRunning(SUPERVISOR_SCRIPT)[0];
     if (sup) probes.push({ name: "supervisor-environ", op: "read", path: `/proc/${sup}/environ` });
     else skipped.push("supervisor-environ (supervisor not found)");
+    // Pull mode: the key the harness trusts for control's commands.
+    if (pod.controlKey)
+      probes.push({ name: "control-key-write", op: "access", path: pod.controlKey.file });
   }
   const kitFile = firstKitFile(join(opts.stateDir, "kits"));
   if (kitFile) probes.push({ name: "kit-by-path", op: "read", path: kitFile });

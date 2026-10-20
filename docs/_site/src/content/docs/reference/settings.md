@@ -67,6 +67,7 @@ Setting both variables of one role stops control at start with `set THERMITE_CON
 | `THERMITE_RIG_SUPERVISOR_IMAGE` | image reference | not set | no | The supervisor image for those rigs |
 | `THERMITE_RIG_HARNESS_CUDA_IMAGE` | image reference | not set | no | The harness image for rigs with GPUs. Not set: a rig with GPUs is refused with "Control has no CUDA harness image configured (THERMITE_RIG_HARNESS_CUDA_IMAGE)." |
 | `THERMITE_RUNPOD_TEST_IMAGE` | image reference | not set | no | The image a [RunPod test pod](../how-to/install/runpod-test.md) runs when the test names none. It must be an image RunPod can pull |
+| `THERMITE_RUNPOD_RIG_IMAGE` | image reference | not set | no | The [one-container rig image](harness-image.md#the-one-container-rig-image) (CUDA) a [rig launched on RunPod](rest-api.md#rigs-on-a-gpu-cloud) runs when the launch names none. It must be an image RunPod can pull. Not set, and none given: the launch is refused |
 
 Without `THERMITE_RIG_HARNESS_IMAGE` and `THERMITE_RIG_SUPERVISOR_IMAGE`, **Add a rig** says "Control has no rig images configured (THERMITE_RIG_HARNESS_IMAGE, THERMITE_RIG_SUPERVISOR_IMAGE), so it can't set rigs up yet." Without `THERMITE_CONTROL_PUBLIC_URL` it says "Control's address for rigs is not set (THERMITE_CONTROL_PUBLIC_URL), so a rig would not know where to report."
 
@@ -109,17 +110,16 @@ The harness container runs a **broker**, which runs as root and starts the other
 | `THERMITE_RIG_ID` | string | required | no | The rig's name, as control knows it |
 | `THERMITE_TARGET` | `cpu` or `cuda-gpu` | `cpu` | no | The [target](glossary.md) driver. Anything else stops the harness with `no target driver <value>; this build has cpu and cuda-gpu` |
 | `THERMITE_TARGET_CLASS` | string | `generic-cpu` on `cpu`, `cuda-gpu` on `cuda-gpu` | no | A name for the kind of device. The dashboard shows it with the rig's hardware, and the **New campaign** page and the smoke check copy it into the contracts they write. Nothing compares it |
-| `THERMITE_CONTROL_PUBKEY_FILE` | path | required | no | Control's command-signing public key, to verify signed commands. The harness waits up to 120 seconds for the file to appear, then stops with `timed out waiting for <path>`. With `THERMITE_ONE_CONTAINER=1` it waits as long as it takes, and logs `waiting for control's public key` at once and every 10 minutes |
+| `THERMITE_CONTROL_PUBKEY_FILE` | path | required | no | Control's command-signing public key, to verify signed commands. The harness waits up to 120 seconds for the file to appear, then stops with `timed out waiting for <path>`. In the one-container rig image in pull mode, the broker writes it from enrollment before it starts the harness |
 | `THERMITE_LISTEN` | `host:port` | `0.0.0.0:8700` | no | Where the harness serves its API, for the rig's supervisor, a proposer's `thermite submit` and the agents' tools. Rigs that control sets up expect port 8700 |
 
 ### The one-container rig image
 
-The [one-container rig image](harness-image.md#the-one-container-rig-image) sets `THERMITE_ONE_CONTAINER` itself, with the places it uses. The broker then also reads the supervisor's `THERMITE_SUPERVISOR_HOME` and `THERMITE_INBOX_DIR`, to prepare them, and the isolation selftest probes them.
+The [one-container rig image](harness-image.md#the-one-container-rig-image) sets `THERMITE_ONE_CONTAINER` itself, with the places it uses. The broker then also reads the supervisor's `THERMITE_SUPERVISOR_HOME` and `THERMITE_INBOX_DIR`, to prepare them, and the isolation selftest probes them. In [pull mode](#pull-mode), which the image turns on, the broker also reads `THERMITE_TUNNEL_ENROLLED_DIR` and `THERMITE_TUNNEL_CONTROL_KEY_SHA256`, and starts the harness once the pod is enrolled ([How it starts](harness-image.md#how-it-starts)).
 
 | Variable | Type | Default | Secret | Meaning |
 | --- | --- | --- | --- | --- |
-| `THERMITE_ONE_CONTAINER` | `1` | off | no | `1`: the rig's supervisor runs in this container. The broker prepares its places and its token, writes control's key from `THERMITE_CONTROL_PUBKEY`, and starts it as its own user. A broker that is not root then stops with `fatal: the one-container image must run as root`, and one without `THERMITE_SUPERVISOR_TOKEN_FILE` with `fatal: the one-container image needs THERMITE_SUPERVISOR_TOKEN_FILE` |
-| `THERMITE_CONTROL_PUBKEY` | PEM, or PEM in base64 | not set | no | Control's command-signing public key, given at launch. With `THERMITE_ONE_CONTAINER=1` the broker writes it to `THERMITE_CONTROL_PUBKEY_FILE`. A value that is not an Ed25519 public key is not written: the broker logs `control's public key from the launch is not usable; the harness waits` |
+| `THERMITE_ONE_CONTAINER` | `1` | off | no | `1`: the rig's supervisor runs in this container. The broker prepares its places and its token, and starts it as its own user. A broker that is not root then stops with `fatal: the one-container image must run as root`, and one without `THERMITE_SUPERVISOR_TOKEN_FILE` with `fatal: the one-container image needs THERMITE_SUPERVISOR_TOKEN_FILE`. With `THERMITE_TUNNEL_PORT` set too, it starts the harness only once root has checked control's key from enrollment against the launch's SHA-256 and copied it to `THERMITE_CONTROL_PUBKEY_FILE` |
 
 ### GPUs and CPUs
 
@@ -220,19 +220,19 @@ A Claude subscription and Claude Code go only together. Any other pairing stops 
 
 ### Pull mode
 
-In [pull mode](../explanation/trust.md#rigs-in-pull-mode), the supervisor never connects to control: control connects to it. A rig on RunPod runs this way. Control makes the launch values below for each rig, as public material and one one-time code; launching a rig on RunPod from control comes with [goal 022](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/022-runpod-launch.goal). A missing or bad value stops the supervisor at start: `pull mode needs <NAME>`, `THERMITE_TUNNEL_PORT must be a port number, not <value>`, `THERMITE_TUNNEL_CONTROL_BOX is not a public key`, `THERMITE_TUNNEL_CONTROL_KEY_SHA256 must be 64 hexadecimal characters` or `THERMITE_TUNNEL_ENROLL_UNTIL must be an ISO time`.
+In [pull mode](../explanation/trust.md#rigs-in-pull-mode), the supervisor never connects to control: control connects to it. A rig on RunPod runs this way. Control makes the launch values below for each rig, as public material and one one-time code, and puts them in the pod's environment when the owner [launches a rig on RunPod](rest-api.md#rigs-on-a-gpu-cloud). A missing or bad value stops the supervisor at start: `pull mode needs <NAME>`, `THERMITE_TUNNEL_PORT must be a port number, not <value>`, `THERMITE_TUNNEL_CONTROL_BOX is not a public key`, `THERMITE_TUNNEL_CONTROL_KEY_SHA256 must be 64 hexadecimal characters` or `THERMITE_TUNNEL_ENROLL_UNTIL must be an ISO time`.
 
 | Variable | Type | Default | Secret | Meaning |
 | --- | --- | --- | --- | --- |
 | `THERMITE_TUNNEL_PORT` | port | not set: no pull mode | no | Turns pull mode on. The supervisor serves this port, on every interface, for control alone. `CONTROL_URL` and `THERMITE_CONTROL_TOKEN_FILE` are not read: the supervisor's calls to control go to a port of its own on `127.0.0.1` and wait there for control. Control's launch values set it to `8790` |
-| `THERMITE_TUNNEL_POD` | string | `RUNPOD_POD_ID`, which RunPod sets in every pod | no | The pod's ID. Every request from control names it, and a request for another pod is refused |
+| `THERMITE_TUNNEL_POD` | string | `RUNPOD_POD_ID`, which RunPod sets in every pod | no | The pod's ID. Every request from control names it, and a request for another pod is refused. The one-container rig image's entry point sets it from `RUNPOD_POD_ID`, which it then removes |
 | `THERMITE_TUNNEL_PREFIX` | 64 hexadecimal characters | required in pull mode | no | A launch value: the random path the port answers under. A request to any other path is refused before its body is read |
 | `THERMITE_TUNNEL_CONTROL_KEY_SHA256` | SHA-256 | required in pull mode | hash | A launch value: the SHA-256 of control's command-signing public key. Control's first request brings the key; the pod takes it only if its SHA-256 is this one |
 | `THERMITE_TUNNEL_CONTROL_BOX` | base64 | required in pull mode | no | A launch value: the rig's public key at control (X25519, on one line). What the pod sends control is sealed to it |
 | `THERMITE_TUNNEL_ENROLL_CODE` | 64 hexadecimal characters | required in pull mode | one-time code | A launch value: the enrollment code. It never crosses the network: each side proves that it holds it. The supervisor takes it out of its own environment at start, so nothing it starts inherits it. The pod's first enrollment spends it |
 | `THERMITE_TUNNEL_ENROLL_UNTIL` | ISO time | not set: the code does not expire | no | A launch value, only when the launch set an expiry: after this time the pod refuses to enroll |
 | `THERMITE_TUNNEL_DIR` | path | `tunnel` in `THERMITE_SUPERVISOR_HOME` | directory with secrets | The pod's own keys (made at its first start, file `keys.json`, mode 0600), its enrollment, and the request nonces it has seen. Mode 0700. A full reset keeps it, so control's trust in the pod stays. Give the harness the same value: its isolation self-test then checks that no role can read the keys |
-| `THERMITE_TUNNEL_ENROLLED_DIR` | path | `enrolled` in `THERMITE_SUPERVISOR_HOME` | no | Where enrollment leaves public files for the harness: control's key (`control.pub`), and the rig's settings from control (`rig.json`, and `rig.env` as `NAME=value` lines). `control.pub` is written last. A full reset keeps it |
+| `THERMITE_TUNNEL_ENROLLED_DIR` | path | `enrolled` in `THERMITE_SUPERVISOR_HOME` | no | Where enrollment leaves public files: control's key (`control.pub`), and the rig's settings from control (`rig.json`, and `rig.env` as `NAME=value` lines). `control.pub` is written last. In the one-container rig image, root checks them and gives the harness its own copy of the key. A full reset keeps it |
 
 In pull mode the supervisor also takes `RUNPOD_API_KEY`, which RunPod puts in a pod's environment, out of its own environment. Thermite never uses it on the pod: control holds its own RunPod key.
 
@@ -276,7 +276,7 @@ Two commands read variables. `thermite doctor` reads `THERMITE_CONTROL_PORT`, th
 - the secret files it checks no role can read: `THERMITE_SUPERVISOR_TOKEN_FILE`, `THERMITE_PROPOSER_TOKEN_FILE` and `THERMITE_MODEL_API_KEY_FILE`, and, when `THERMITE_TUNNEL_DIR` is set, the pull mode keys in it (`keys.json`);
 - the places: `THERMITE_BROKER_DIR`, `THERMITE_STATE_DIR`, `THERMITE_SCRATCH_DIR` and `THERMITE_OUTBOX_DIR`;
 - the GPU settings: `THERMITE_GPU_INDEX`, `THERMITE_DEV_GPU_INDEX`, `THERMITE_GPUS` and `THERMITE_JUDGE_GPUS`;
-- in the one-container rig image, `THERMITE_ONE_CONTAINER`, and the supervisor's places it probes: `THERMITE_SUPERVISOR_HOME` and `THERMITE_INBOX_DIR`.
+- in the one-container rig image, `THERMITE_ONE_CONTAINER`, and the supervisor's places it probes: `THERMITE_SUPERVISOR_HOME` and `THERMITE_INBOX_DIR`; in pull mode also `THERMITE_CONTROL_PUBKEY_FILE` and `THERMITE_TUNNEL_CONTROL_KEY_SHA256`, to check the key the harness trusts.
 
 ## Rigs that control sets up
 

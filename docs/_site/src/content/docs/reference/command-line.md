@@ -75,6 +75,21 @@ usage: thermite <command> [options]
                                       list the rigs (owner's token): reporting, stale or
                                       offline, and each one's Thermite version against
                                       control's, with what to do when it is behind or refused
+  runpod launch CLOUD --gpu G [--gpus N] [--cloud-type SECURE|COMMUNITY] [--datacenter DC]
+         [--image I] [--disk GB] [--volume GB] [--rig NAME] [--enroll-within MIN]
+         [--setting NAME=VALUE ...] [--spend-limit USD] [--idle-stop MIN]
+         --control URL --token-file F
+                                      spends money: launch a rig on the GPU cloud CLOUD from
+                                      Providers (owner's token), a pod of the one-container rig
+                                      image in pull mode. Defaults: 1 GPU, SECURE, any data
+                                      center, control's rig image, a 40 GB disk, a 100 GB
+                                      volume, no spend limit, no idle stop
+  runpod list [CLOUD] --control URL --token-file F [--json]
+                                      list the rigs launched on GPU clouds (owner's token):
+                                      each pod's status, price per hour, spend so far and limits
+  runpod limits RIG [--spend-limit USD|off] [--idle-stop MIN|off] --control URL --token-file F
+                                      set or clear a RunPod rig's spend limit and idle stop
+                                      (owner's token)
   command --control URL --token-file F --rig U --kind K --payload JSON|@file [--ttl MIN]
                                       issue a signed command through control (admin token)
   submit --harness URL --token-file F --run ID --patch-file P --hypothesis TEXT
@@ -91,9 +106,9 @@ usage: thermite <command> [options]
 
 ## Rules for every command
 
-- **Options.** Each option takes its value as the next word or after `=`. In `doctor`, `token new`, `assign`, `assign-payload`, `rig`, `command`, `submit` and `status`, an option the command does not know, or a word it does not expect, ends the command with Node's own message and exit code 2.
+- **Options.** Each option takes its value as the next word or after `=`. In `doctor`, `token new`, `assign`, `assign-payload`, `rig`, `runpod`, `command`, `submit` and `status`, an option the command does not know, or a word it does not expect, ends the command with Node's own message and exit code 2.
 - **Older option names.** `--instance` is read as `--run`, and `--unit` as `--rig`. These are the names from before runs and rigs were renamed.
-- **Control's token.** The commands that talk to control (`assign`, `command`, `rig add`, `rig token`, `rig retire`, `rig list`) send the contents of `--token-file`, trimmed, as `Authorization: Bearer <token>`. Only the owner's token works on these routes; any other token gets `401 {"error":"unauthorized"}`. See [Tokens and roles](tokens.md).
+- **Control's token.** The commands that talk to control (`assign`, `command`, `rig add`, `rig token`, `rig retire`, `rig list`, `runpod launch`, `runpod list`, `runpod limits`) send the contents of `--token-file`, trimmed, as `Authorization: Bearer <token>`. Only the owner's token works on these routes; any other token gets `401 {"error":"unauthorized"}`. See [Tokens and roles](tokens.md).
 - **Control's address.** `--control` is control's base address, such as `https://control.example.com`. A trailing `/` is removed.
 - **Refusals.** When control or the harness refuses a request, the command prints `<url> -> <status> <body>` on standard error and exits 2. `status` is the exception: see [below](#status). A request body that does not match the route gives `400 {"error":"invalid request"}`; a command that control refuses before signing it gives `400` with the reason (for example a payload that does not fit its kind, or a message that nothing would read), or `404` for an unknown rig; another refusal from inside control gives `500` with the reason. The [REST API reference](rest-api.md) lists the routes.
 
@@ -327,6 +342,49 @@ rig-3: enrolled, no report yet
 - **Enrolled rigs** that never reported come last.
 
 [Rig versions](rest-api.md#rig-versions) says what each state means and when control refuses a rig. Against a control from before version checks, the first line is `control: no version (control is older than version checks)`, and each rig's state and version are `unknown`.
+
+### `runpod launch`
+
+`thermite runpod launch CLOUD` **spends money**. It launches a rig on the GPU cloud `CLOUD` from **Providers** (`POST /v1/gpu-clouds/CLOUD/rigs`): one pod of the [one-container rig image](harness-image.md#the-one-container-rig-image), in [pull mode](../explanation/trust.md#rigs-in-pull-mode), billed by the hour until it is stopped or removed. Only the owner's token may launch. Control enrolls the rig once its pod runs.
+
+```sh
+thermite runpod launch runpod --gpu "RTX A4000" --spend-limit 20 --idle-stop 60 \
+  --control https://control.example.com --token-file ~/.thermite/owner-token
+```
+
+It prints the rig on one line, then `Launched: RunPod bills the pod from now. Control enrolls it once it runs; follow it with thermite runpod list.`
+
+| Option | Required | Default | Meaning |
+| --- | --- | --- | --- |
+| `--gpu G` | Yes | | A GPU type's id or name in RunPod's list |
+| `--gpus N` | No | `1` | GPUs in the pod: 1 to 8 |
+| `--cloud-type SECURE\|COMMUNITY` | No | `SECURE` | Secure cloud on demand, or Community cloud |
+| `--datacenter DC` | No | any | A data center's id |
+| `--image I` | No | control's `THERMITE_RUNPOD_RIG_IMAGE` | The one-container rig image |
+| `--disk GB` | No | `40` | The container's own disk |
+| `--volume GB` | No | `100` | The pod's volume at `/workspace`, which keeps the rig's state |
+| `--rig NAME` | No | `rp-` and 8 hexadecimal characters | The rig's name |
+| `--enroll-within MIN` | No | no expiry | The enrollment code expires this many minutes after the launch |
+| `--setting NAME=VALUE` | No | a GPU rig on all the pod's GPUs | One of the rig's settings at enrollment; give it again for each |
+| `--spend-limit USD` | No | none | Control stops the pod once it has cost this much |
+| `--idle-stop MIN` | No | none | Control stops the pod once no run has run on the rig for this many minutes |
+| `--control URL`, `--token-file F` | Yes | | Control's address, and a file with the owner's token |
+
+[Rigs on a GPU cloud](rest-api.md#rigs-on-a-gpu-cloud) gives each field's limits and every refusal. An option with a value it can't take ends the command with exit code 2 and a reason, such as `--gpus takes a whole number, not "two"` or `--cloud-type is SECURE or COMMUNITY, not "spot"`.
+
+### `runpod list`
+
+`thermite runpod list --control URL --token-file F` lists the rigs launched on GPU clouds, from `GET /v1/rigs`. With `CLOUD`, only that cloud's (`GET /v1/gpu-clouds/CLOUD/rigs`). `--json` prints control's answer instead.
+
+```text
+rp-1a2b3c4d · pod pod1 · RUNNING · 1 × RTX A4000 (Secure) · $0.25/h · spent $1.50 · spend limit $20.00 · no idle stop · enrolled
+```
+
+Each line has the rig, its pod, the pod's status at RunPod (`gone` once RunPod no longer has it), its GPUs and cloud, its price per hour, what it has cost so far, its limits and its enrollment. An indented line under it says `stopped by control: spend limit` (or `idle stop`) when control stopped the pod, and `last error:` with what control's last read of the pod found. With no rig it prints `no rig on a GPU cloud`.
+
+### `runpod limits`
+
+`thermite runpod limits RIG --spend-limit USD --idle-stop MIN` sets a rig's limits (`POST /v1/rigs/RIG/runpod/limits`), and prints the rig's line. `off` clears a limit, and a limit left out stays: `--spend-limit off` removes the spend limit and keeps the idle stop. Without either option it ends with `give --spend-limit, --idle-stop or both (a number, or off)`. Only the owner's token may change them.
 
 ### `command`
 
