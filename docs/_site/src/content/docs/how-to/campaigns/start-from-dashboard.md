@@ -38,16 +38,18 @@ Research campaigns skip this step.
 | --- | --- |
 | **Repository** | The project's address, such as `https://git.example.com/you/project.git`. Rigs fetch it themselves. Thermite never pushes to it |
 | **Start from** | A branch, a tag or a full commit. Empty: the default branch. Control pins it to one commit, so every run starts from the same code |
+| **Folder in the repository** | Empty when the project is the whole repository. For a project in one folder of a repository, the folder's path from the top, such as `examples/matmul-cpu/project`. The rig fetches the whole repository, and the run starts from the folder: the agents see only its files. **Files the agents may change**, the kit's commands and the champion's patch are then paths inside the folder |
 | **Repository access** | **Public: no key**, or a Git access from **Settings** |
 | **Files the agents may change** | Patterns, one per line, such as `src/**`. A change to any other file is refused before it is built |
 | **Lines never allowed** (under **Advanced**) | Regular expressions, one per line, such as `clock_gettime`. A change that adds a matching line is refused |
 
-Press **Look it up**. Control reads the repository's file names, not their contents, and shows a line such as `Found: main is at 1a2b3c4 · 214 files. Rigs fetch it from there.` with a few folders as buttons. Press a folder to add it to **Files the agents may change**. If you skip **Look it up**, control looks the commit up when you start.
+Press **Look it up**. Control reads the repository's file names, not their contents, and shows a line such as `Found: main is at 1a2b3c4 · 214 files. Rigs fetch it from there.` with a few folders as buttons. With a folder, it counts and suggests only the folder's files, from the folder's top: `Found: main is at 1a2b3c4 · 4 files in examples/matmul-cpu/project. Rigs fetch it from there.` Press a folder to add it to **Files the agents may change**. If you skip **Look it up**, control looks the commit up when you start.
 
 :::caution
 - Without Git access, control reads only `https://` addresses. Others give `the repository must be an https:// URL, or choose Git access for a private one`.
 - A private repository without access gives `control cannot read it without a key: is the repository private?`
-- If you change **Repository** or **Start from** after **Look it up**, press it again: the page keeps the commit it found first.
+- A folder the commit doesn't have gives `main has no folder examples/none, or the folder has no files`, and a path that leaves the repository, such as `../src`, gives `The folder is a path in the repository, such as examples/matmul-cpu/project: no / at either end, and no part that starts with a dot.`
+- If you change **Repository**, **Start from** or **Folder in the repository** after **Look it up**, press it again: the page keeps the commit it found first.
 :::
 
 ## 3. How to measure

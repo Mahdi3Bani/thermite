@@ -55,7 +55,7 @@ With Podman, write `podman compose` in place of `docker compose`. The first star
 
 1. Open <http://127.0.0.1:8800/ui> and sign in with the token in `.dev/secrets/control-admin-token`.
 2. Go to **Rigs › local-1 › Checks** and run **smoke**. The rig builds a small benchmark and submits known changes to its judge: a real speed-up, a no-op, broken builds and attempts to cheat. Each one gets its expected verdict in about ten minutes on a CPU.
-3. Add a model under **Settings › Providers** (any OpenAI-compatible endpoint with tool calling, Anthropic, or OpenCode), then start a campaign on your own project from **Campaigns › New campaign**.
+3. Add a model under **Settings › Providers** (any OpenAI-compatible endpoint with tool calling, Anthropic, or OpenCode), then start a campaign from **Campaigns › New campaign**: on the sample project in [`examples/matmul-cpu`](examples/matmul-cpu/README.md), a folder of this repository, or on your own project.
 
 The [quick start](docs/_site/src/content/docs/tutorials/first-run.md) walks through every step, including taking the winning patch back to your project. To build Thermite from its source code instead, see the [contributor guide](docs/local-development.md).
 

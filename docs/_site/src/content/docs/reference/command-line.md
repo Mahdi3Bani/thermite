@@ -210,7 +210,7 @@ The hash is what control's settings take; the token itself stays with you. See [
 | `--ttl MIN` | No | `60` | Minutes before the command expires if the rig has not taken it: a whole number from 1 to 10080 (7 days) |
 | `--print` | Instead of the four above | | Print the payload as indented JSON and send nothing. The output is what the MCP tool `issue_command` takes as `payload` |
 
-`--seed` and `--seed-commit` together are refused. For a research contract, the run has no seed and no kit, and `--seed`, `--seed-commit` and `--kit` are not used.
+`--seed` and `--seed-commit` together are refused. When the contract's project is one folder of its repository (`project.folder`), `--seed` and `--seed-commit` still name the whole repository and its commit: the harness starts the run from that folder of the commit. For a research contract, the run has no seed and no kit, and `--seed`, `--seed-commit` and `--kit` are not used.
 
 #### Copy a past run's untried experiments
 

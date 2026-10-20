@@ -128,4 +128,80 @@ describe("champion patches reach control", () => {
       /href="\/ui\/rigs\/rig-a\/runs\/r-1\/champions\/2\.patch">download champion #2 as a patch<\/a> <span class="muted small">\(applies to bbbbbbbb\)/,
     );
   });
+
+  test("a project in a folder: the patch applies to that folder of the repository's commit, and says how", async () => {
+    const patch = Buffer.from("diff --git a/src/kernel/matmul.c b/src/kernel/matmul.c\n+faster\n");
+    const sha256 = createHash("sha256").update(patch).digest("hex");
+    const store = new ControlStore(":memory:");
+    const control = createControlApi(
+      store,
+      { admin: "admin-token-abcdef", rigs: { "rig-a": "rig-token-abcdef" } },
+      makeJudgeEnv().keys.privateKeyPem,
+    );
+    const folder = "examples/matmul-cpu/project";
+    const at = new Date().toISOString();
+    store.ingest({
+      rig: "rig-a",
+      ledger_id: "ledger-a",
+      cursor: 0,
+      next: 2,
+      generated_at: at,
+      summary: {},
+      events: [
+        {
+          id: 1,
+          at,
+          actor: "harness",
+          kind: "run_created",
+          subject: "r-1",
+          body: {
+            campaign: "c",
+            version: 1,
+            mode: "hill_climb",
+            // The run's first commit is the folder's own; the repository's commit is the source.
+            seed: { repo: "proj", commit: "d".repeat(40), folder, source_commit: "c".repeat(40) },
+          },
+        },
+        {
+          id: 2,
+          at,
+          actor: "harness",
+          kind: "champion_published",
+          subject: "r-1",
+          body: { seq: 2, repo: "proj", base_commit: "d".repeat(40), tree: "t", sha256 },
+        },
+      ],
+    } as never);
+    const sent = await control.request("/v1/rigs/rig-a/champions/r-1/2/patch", {
+      method: "POST",
+      headers: { authorization: "Bearer rig-token-abcdef" },
+      body: new Uint8Array(patch),
+    });
+    assert.equal(sent.status, 201, await sent.clone().text());
+    const login = await control.request("/ui/login", {
+      method: "POST",
+      body: new URLSearchParams({ token: "admin-token-abcdef" }),
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+    });
+    const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
+    const run = await (
+      await control.request("/ui/campaigns/c?run=rig-a%2Fr-1", { headers: { cookie } })
+    ).text();
+    assert.match(
+      run,
+      /download champion #2 as a patch<\/a> <span class="muted small">\(applies to the folder examples\/matmul-cpu\/project at cccccccc: git apply --directory=examples\/matmul-cpu\/project\)/,
+    );
+    assert.match(
+      run,
+      /started from the folder examples\/matmul-cpu\/project of proj at cccccccc\./,
+    );
+    // The file is named after the repository's commit, the one its owner has.
+    const file = await control.request("/ui/rigs/rig-a/runs/r-1/champions/2.patch", {
+      headers: { cookie },
+    });
+    assert.match(
+      file.headers.get("content-disposition") ?? "",
+      /r-1-champion-2-on-cccccccc\.patch/,
+    );
+  });
 });

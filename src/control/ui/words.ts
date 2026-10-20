@@ -140,12 +140,17 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
   });
   switch (e.kind) {
     case "run_created": {
-      const seed = (b.seed ?? {}) as { repo?: string; commit?: string };
-      return s(
-        `Run ${e.subject} started from ${seed.repo ?? "its project"} at ${String(seed.commit ?? "").slice(0, 8)}.`,
-        "",
-        { run: String(e.subject) },
-      );
+      const seed = (b.seed ?? {}) as {
+        repo?: string;
+        commit?: string;
+        folder?: string;
+        source_commit?: string;
+      };
+      // A project in a folder: the folder of the repository's commit, as its owner knows it.
+      const from = seed.folder
+        ? `the folder ${seed.folder} of ${seed.repo ?? "its repository"} at ${String(seed.source_commit ?? "").slice(0, 8)}`
+        : `${seed.repo ?? "its project"} at ${String(seed.commit ?? "").slice(0, 8)}`;
+      return s(`Run ${e.subject} started from ${from}.`, "", { run: String(e.subject) });
     }
     case "run_status":
       return s(

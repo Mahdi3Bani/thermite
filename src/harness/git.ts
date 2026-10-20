@@ -59,6 +59,47 @@ export async function resolveCommit(mirror: string, rev: string): Promise<string
 }
 
 /**
+ * A project that is one folder of its repository starts from a commit whose tree is that folder
+ * at the repository's commit. The commit is written byte for byte here (no parent, a fixed
+ * author and time, a message naming the folder and the commit), so every rig makes the same
+ * one from the same signed commit and folder: champions move between rigs on the same base.
+ */
+export async function folderCommit(
+  mirror: string,
+  commit: string,
+  folder: string,
+): Promise<string> {
+  // After the colon everything is the path: whether it is a folder is asked on its own.
+  const tree = await git(mirror, ["rev-parse", "--verify", "--quiet", `${commit}:${folder}`]).then(
+    (id) => id.trim(),
+    () => "",
+  );
+  const type = tree
+    ? await git(mirror, ["cat-file", "-t", tree]).then(
+        (t) => t.trim(),
+        () => "",
+      )
+    : "";
+  if (type !== "tree") throw new GitError(`commit ${commit} has no folder ${folder}`);
+  const body =
+    `tree ${tree}\n` +
+    "author thermite <thermite@localhost> 0 +0000\n" +
+    "committer thermite <thermite@localhost> 0 +0000\n" +
+    `\n${folder} at ${commit}\n`;
+  const p = run("git", ["hash-object", "-t", "commit", "-w", "--stdin"], {
+    cwd: mirror,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_CONFIG_NOSYSTEM: "1" },
+  });
+  p.child.stdin?.end(body);
+  try {
+    return (await p).stdout.trim();
+  } catch (err) {
+    const e = err as { stderr?: string; message: string };
+    throw new GitError(`git hash-object failed: ${e.stderr?.trim() || e.message}`);
+  }
+}
+
+/**
  * Fetches a bundle into refs/thermite/imports/<importId>/* and checks that it contains the
  * expected commit. On mismatch the fetched refs are removed and an error is thrown.
  */

@@ -4,12 +4,14 @@
 // on the page; control writes the kit, keeps it, stores the contract and signs the assignment.
 // The rig's supervisor fetches the project from the git server and the kit from control (with
 // the rig's token), the harness checks both by commit, and the run starts. Then the same kit,
-// uploaded as a .zip, starts a second campaign's try. Last, the private path: control makes a
-// deploy key, an SSH server that accepts only that key serves the project, and a third campaign
-// from it is fetched by the rig with the key.
+// uploaded as a .zip, starts a second campaign's try. Then a project in a folder of its
+// repository: the sample in examples/matmul-cpu, served as part of a larger repository, with its
+// kit uploaded as the quick start makes it; the rig fetches the repository and the try starts from
+// the folder. Last, the private path: control makes a deploy key, an SSH server that accepts only
+// that key serves the project, and a campaign from it is fetched by the rig with the key.
 // Usage: COMPOSE="podman compose" node scripts/campaign-acceptance.mjs (or "docker compose").
 import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -52,6 +54,32 @@ git("commit", "--quiet", "-m", "a tiny benchmark");
 const commit = git("rev-parse", "HEAD");
 execFileSync("git", ["clone", "--quiet", "--bare", work, join(root, "tiny.git")]);
 writeFileSync(join(root, "tiny.git", "git-daemon-export-ok"), "");
+// A larger repository that holds the sample project and its kit in a folder, beside other files.
+const sampleWork = join(root, "sample-work");
+mkdirSync(sampleWork);
+cpSync(join("examples", "matmul-cpu"), join(sampleWork, "examples", "matmul-cpu"), {
+  recursive: true,
+});
+writeFileSync(join(sampleWork, "README.md"), "A repository whose project is in a folder.\n");
+const sampleGit = (...a) =>
+  execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...a], {
+    cwd: sampleWork,
+    encoding: "utf8",
+  }).trim();
+sampleGit("init", "--quiet", "-b", "main");
+sampleGit("add", "-A");
+sampleGit("commit", "--quiet", "-m", "the sample in a folder");
+const sampleCommit = sampleGit("rev-parse", "HEAD");
+execFileSync("git", ["clone", "--quiet", "--bare", sampleWork, join(root, "sample.git")]);
+writeFileSync(join(root, "sample.git", "git-daemon-export-ok"), "");
+// The kit's archive, made as the quick start makes it: one top folder, kit/.
+execFileSync("tar", [
+  "-czf",
+  join(root, "matmul-cpu-kit.tar.gz"),
+  "-C",
+  "examples/matmul-cpu",
+  "kit",
+]);
 const port = 19418;
 const daemon = spawn(
   "git",
@@ -265,6 +293,97 @@ try {
     "the uploaded kit's try measured every case",
     uploadedTry?.body?.blocks === 2,
     uploadedTry?.body,
+  );
+
+  // A project in a folder of its repository: the sample, with its kit uploaded.
+  const sampleForm = new FormData();
+  sampleForm.append("csrf", csrf);
+  sampleForm.append(
+    "archive",
+    new File([readFileSync(join(root, "matmul-cpu-kit.tar.gz"))], "matmul-cpu-kit.tar.gz"),
+  );
+  const sampleUp = await fetch(`${control}/ui/campaigns/new/kit`, {
+    method: "POST",
+    body: sampleForm,
+    headers: { cookie },
+  });
+  const sampleKit = await sampleUp.json();
+  check(
+    "control checked the sample's kit, packed as the quick start packs it",
+    sampleUp.status === 200 &&
+      sampleKit.name === "matmul-cpu" &&
+      sampleKit.cells?.join(" ") === "small large held",
+    sampleKit,
+  );
+  const folder = "examples/matmul-cpu/project";
+  const fromFolder = await fetch(`${control}/ui/campaigns/new`, {
+    method: "POST",
+    body: new URLSearchParams({
+      csrf,
+      draft: JSON.stringify({
+        mode: "hill_climb",
+        campaign: "acc-folder",
+        title: "Acceptance: a project in a folder of its repository",
+        project: {
+          url: `git://${hostName}:${port}/sample.git`,
+          ref: "main",
+          commit: sampleCommit,
+          repo: "sample",
+          folder,
+          editable_paths: ["src/kernel/**"],
+          forbidden_patterns: ["__real_", "__wrap_", "thermite_ref_calls"],
+        },
+        kit: {
+          source: "upload",
+          upload: sampleKit.id,
+          cells: ["small", "large", "held"],
+          held_out: ["held"],
+        },
+        score: { name: "flops_per_s", direction: "max", min_effect: 0.1 },
+        lanes: 1,
+      }),
+      rig: "local-1",
+      start_value: "try",
+    }),
+    headers: { cookie },
+    redirect: "manual",
+  });
+  check(
+    "control took a campaign whose project is a folder, and started its try",
+    fromFolder.status === 303 &&
+      /acc-folder-try-1/.test(String(fromFolder.headers.get("location"))),
+    {
+      status: fromFolder.status,
+      location: fromFolder.headers.get("location"),
+      page:
+        fromFolder.status === 303 ? undefined : (await fromFolder.text()).match(/<li>[^<]*<\/li>/g),
+    },
+  );
+  const folderRun = await until(
+    "the folder's try starts on the rig",
+    async () =>
+      (await events()).find((e) => e.kind === "run_created" && e.subject === "acc-folder-try-1"),
+    300_000,
+    3000,
+  );
+  check(
+    "the rig fetched the whole repository and started from the folder",
+    folderRun?.body?.seed?.folder === folder &&
+      folderRun?.body?.seed?.source_commit === sampleCommit &&
+      folderRun?.body?.seed?.commit !== sampleCommit,
+    folderRun?.body?.seed,
+  );
+  const folderTry = await until(
+    "the judge measures the sample from its folder",
+    async () =>
+      (await events()).find((e) => e.kind === "calibration" && e.subject === "acc-folder-try-1"),
+    600_000,
+    3000,
+  );
+  check(
+    "the sample's kit built the folder's project and measured every case",
+    folderTry?.body?.blocks === 2,
+    folderTry?.body,
   );
 
   // The private path. A stand-in Git host on control's network accepts only keys in its

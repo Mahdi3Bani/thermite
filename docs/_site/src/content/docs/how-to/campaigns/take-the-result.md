@@ -37,6 +37,16 @@ git apply ~/Downloads/sort-speed-1-champion-3-on-0123abcd.patch
 
 `git apply --check` prints nothing when the patch applies cleanly. Then build and test the project as you usually do, and commit the change on a branch of your own.
 
+### A project in a folder of its repository
+
+When the campaign's project is one folder of its repository (**Folder in the repository** on the **New campaign** page, `project.folder` in a [contract](../../reference/contract.md)), the patch's paths start at that folder. The note beside the link says so: `(applies to the folder examples/matmul-cpu/project at 0123abcd: git apply --directory=examples/matmul-cpu/project)`. `0123abcd` is the repository's commit the run started from, and the file is named after it. Apply the patch at the top of the repository, with `--directory`:
+
+```sh
+git checkout 0123abcd
+git apply --check --directory=examples/matmul-cpu/project ~/Downloads/sort-speed-1-champion-3-on-0123abcd.patch
+git apply --directory=examples/matmul-cpu/project ~/Downloads/sort-speed-1-champion-3-on-0123abcd.patch
+```
+
 If your branch has moved on since that commit, either commit the change on a branch made from that commit and merge it into yours, or apply it on your branch with `git apply -3`, which falls back on a three-way merge and marks any conflicts. `-3` needs that commit in your clone.
 
 ## Download it from a script
@@ -49,7 +59,7 @@ curl -sS -D headers.txt -o champion.patch \
   http://127.0.0.1:8800/v1/rigs/local-1/champions/sort-speed-1/3/patch
 ```
 
-The headers name the full starting commit in `x-thermite-base-commit` and the patch's SHA-256 in `x-thermite-sha256`. Compare the SHA-256 with the file's own: `sha256sum champion.patch` on Linux, `shasum -a 256 champion.patch` on a Mac. Before the patch is there, control answers `404` with `{"error":"no patch for that champion"}`.
+The headers name the full starting commit in `x-thermite-base-commit` and the patch's SHA-256 in `x-thermite-sha256`. For a project in a folder, the starting commit is the run's own: the folder's files, with no parent, which only the rig has. Apply the patch to the repository's commit that the dashboard's note names, as above. Compare the SHA-256 with the file's own: `sha256sum champion.patch` on Linux, `shasum -a 256 champion.patch` on a Mac. Before the patch is there, control answers `404` with `{"error":"no patch for that champion"}`.
 
 ## Keep every result
 

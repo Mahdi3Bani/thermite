@@ -11,6 +11,7 @@ import {
   type CommandKind,
   CommandPayloads,
 } from "../core/commands.ts";
+import { FolderSchema } from "../core/contract.ts";
 import type { ClusterRigRequest, ControlActions } from "./actions.ts";
 import { CHATGPT_API, CHATGPT_REDIRECT, ChatGPTLogins } from "./chatgpt.ts";
 import {
@@ -621,9 +622,13 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
     ]
       .filter(Boolean)
       .join(" ");
+    // A project in a folder: the patch's paths start at that folder of the repository's commit.
+    const appliesTo = i.seed_folder
+      ? `applies to the folder ${esc(i.seed_folder.folder)} at ${esc(i.seed_folder.commit.slice(0, 8))}: git apply --directory=${esc(i.seed_folder.folder)}`
+      : `applies to ${esc(i.published?.base_commit.slice(0, 8) ?? "")}`;
     const patch =
       i.published && store.championPatch(u.id, i.id, i.published.seq)
-        ? `<a href="/ui/rigs/${encodeURIComponent(u.id)}/runs/${encodeURIComponent(i.id)}/champions/${i.published.seq}.patch">download champion #${i.published.seq} as a patch</a> <span class="muted small">(applies to ${esc(i.published.base_commit.slice(0, 8))})</span>`
+        ? `<a href="/ui/rigs/${encodeURIComponent(u.id)}/runs/${encodeURIComponent(i.id)}/champions/${i.published.seq}.patch">download champion #${i.published.seq} as a patch</a> <span class="muted small">(${appliesTo})</span>`
         : "";
     // The champions, newest first: what each one changed and what it gained.
     const ladder =
@@ -926,13 +931,28 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
   app.get("/ui/campaigns/new", (c) =>
     opts.kits ? newCampaignPage(c) : c.text("This control keeps no kits.", 404),
   );
-  // The project's head at a ref and its paths (not its contents), for the page's suggestions.
+  // The project's head at a ref and its paths (not its contents), for the page's suggestions:
+  // a project in a folder of its repository gets that folder's paths.
   app.get("/ui/campaigns/new/probe", async (c) => {
     const url = c.req.query("url") ?? "";
     const ref = c.req.query("ref") || "HEAD";
+    const folder = c.req.query("folder") || undefined;
+    if (folder && !FolderSchema.safeParse(folder).success)
+      return c.json(
+        {
+          error:
+            "The folder is a path in the repository, such as examples/matmul-cpu/project: no / at either end, and no part that starts with a dot.",
+        },
+        400,
+      );
     try {
       return c.json(
-        await (opts.probeRepo ?? probeRepository)(url, ref, accessFor(c.req.query("access"))),
+        await (opts.probeRepo ?? probeRepository)(
+          url,
+          ref,
+          accessFor(c.req.query("access")),
+          folder,
+        ),
       );
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
@@ -989,14 +1009,19 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         errors: [`${rig.id} has not reported its hardware yet, so its target is unknown.`],
       });
     // The project pinned to a commit: control looks the ref up when the page did not.
-    const project = draft.project as { url?: string; ref?: string; commit?: string } | undefined;
+    const project = draft.project as
+      | { url?: string; ref?: string; commit?: string; folder?: unknown }
+      | undefined;
     if (project?.url && !project.commit) {
+      // A folder that is not a valid path is refused below, with the builder's own words.
+      const folder = FolderSchema.safeParse(project.folder);
       try {
         project.commit = (
           await (opts.probeRepo ?? probeRepository)(
             project.url,
             project.ref || "HEAD",
             accessFor((project as { access?: string }).access),
+            folder.success ? folder.data : undefined,
           )
         ).commit;
       } catch (err) {
@@ -2130,7 +2155,11 @@ ${placed ? placedBlock(placed, t) : ""}${onCluster ? clusterPlacedBlock(onCluste
       ? store.championPatch(c.req.param("rig"), c.req.param("run"), Number(m[1]))
       : undefined;
     if (!m || !p) return c.text("No patch for that champion yet.", 404);
-    const name = `${c.req.param("run")}-champion-${m[1]}-on-${p.base_commit.slice(0, 8)}.patch`;
+    // A project in a folder: named after the repository's commit, the one its owner has.
+    const folder = views()
+      .find((u) => u.id === c.req.param("rig"))
+      ?.runs.find((r) => r.id === c.req.param("run"))?.seed_folder;
+    const name = `${c.req.param("run")}-champion-${m[1]}-on-${(folder?.commit ?? p.base_commit).slice(0, 8)}.patch`;
     return c.body(new Uint8Array(p.patch), 200, {
       "content-type": "text/x-diff; charset=utf-8",
       "content-disposition": `attachment; filename="${name.replace(/[^\w.-]/g, "_")}"`,

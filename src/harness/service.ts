@@ -28,6 +28,7 @@ import { type AuditDecision, type AuditPackage, Audits } from "./audits.ts";
 import { Conclusions } from "./conclusions.ts";
 import {
   createAttemptCommit,
+  folderCommit,
   GitError,
   hasCommit,
   initMirror,
@@ -748,6 +749,10 @@ export class HarnessService {
       if (problems.length)
         throw new Error(`the kit does not fit the contract: ${problems.join("; ")}`);
     }
+    // A project in one folder of its repository starts from that folder: the run's first
+    // champion is the folder's own commit, made from the signed commit (git.ts, folderCommit).
+    const folder = contract.mode !== "research" ? contract.project.folder : undefined;
+    let start = seed.commit;
     if (contract.mode !== "research") {
       const mirror = this.mirrorFor(seed.repo);
       if (!(await hasCommit(mirror, seed.commit))) {
@@ -755,8 +760,9 @@ export class HarnessService {
           `seed commit ${seed.commit} is not in ${seed.repo}; import its bundle first`,
         );
       }
+      if (folder) start = await folderCommit(mirror, seed.commit, folder);
       // The ref first: if the ledger write below fails, a retry simply overwrites it.
-      await updateRef(mirror, `refs/thermite/runs/${p.run}/champion`, seed.commit);
+      await updateRef(mirror, `refs/thermite/runs/${p.run}/champion`, start);
     }
     this.ledger.tx(() => {
       this.ledger.storeContract(contract, parsed.sha, by);
@@ -766,7 +772,8 @@ export class HarnessService {
         contract,
         contractSha: parsed.sha,
         seedRepo: seed.repo,
-        seedCommit: seed.commit,
+        seedCommit: start,
+        ...(folder ? { seedFolder: { folder, commit: seed.commit } } : {}),
         direction: p.direction,
         agents: p.agents,
         promotion: p.promotion,
@@ -794,6 +801,7 @@ export class HarnessService {
     return {
       run: p.run,
       contract_sha: parsed.sha,
+      ...(folder ? { start: { folder, commit: start } } : {}),
       imported,
       agents: p.agents !== false,
       ...(p.queue?.length ? { queue: p.queue.length } : {}),
