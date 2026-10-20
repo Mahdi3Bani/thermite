@@ -34,7 +34,24 @@ describe("signed reports at control", () => {
     await new Promise((r) => setTimeout(r, 10));
     env.service.ledger.appendEvent("t", "two", null, {});
     const fresh = env.service.snapshot(0, 100) as Record<string, unknown>;
+    // A cluster rig control marked failed (its wait ended) that reports again is running again.
+    store.addClusterRig({
+      rig: "rig-a",
+      cluster: "k",
+      namespace: "ns",
+      placement: "slot",
+      spec: {
+        gpus: 0,
+        gpuMode: "device-plugin",
+        storageGi: 10,
+        images: { harness: "h", supervisor: "s" },
+      },
+      created_by: "owner:ui",
+    });
+    store.setClusterRigStatus("rig-a", "failed");
     assert.equal((await post(fresh)).status, 200);
+    assert.equal(store.clusterRig("rig-a")?.status, "running");
+    assert.ok(store.rigSetupEvents("rig-a").some((x) => x.step === "report_after_images" && x.ok));
     // An older report (a replay) is refused: the rig cannot be frozen in an old state.
     const replay = await post(old);
     assert.equal(replay.status, 409);

@@ -325,7 +325,20 @@ export function createControlApi(
     }
     if (Date.parse(body.generated_at) > Date.now() + 5 * 60_000)
       return c.json({ error: "report from the future" }, 409);
-    return c.json({ added: store.ingest(body as IngestReport) });
+    const added = store.ingest(body as IngestReport);
+    // A rig control marked failed (its update or start waited too long) that reports again
+    // works: say so, and show it as running.
+    const placed = store.clusterRig(rig);
+    if (placed?.status === "failed") {
+      store.setClusterRigStatus(rig, "running");
+      store.rigSetupEvent(
+        rig,
+        "report_after_images",
+        true,
+        "it reported again after the wait ended",
+      );
+    }
+    return c.json({ added });
   });
 
   app.get("/v1/rigs/:rig/commands/pending", rigAuth, (c) =>

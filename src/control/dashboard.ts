@@ -4009,7 +4009,8 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     const k = store.cluster(r.cluster);
     if (!k) return { error: `The cluster ${r.cluster} is no longer in Providers.` };
     const addressOnly = old.harness === images.harness && old.supervisor === images.supervisor;
-    if (addressOnly) {
+    // After a failed update the images are already recorded: applying them again retries it.
+    if (addressOnly && r.status !== "failed") {
       // Same images: only a changed address for control is worth a restart.
       const now = await kube.kubectl(
         clusterTarget(k),
@@ -4033,6 +4034,11 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       if (now.code !== 0 || was === undefined || was === opts.publicUrl.replace(/\/$/, ""))
         return { ok: `${rig} already runs control's images.` };
     }
+    // One change at a time: an update or a start still waiting for its pods is not overlapped.
+    if (r.status === "updating" || r.status === "starting")
+      return {
+        error: `${rig} is ${r.status === "updating" ? "being updated" : "starting"}: wait until its page shows it running, or failed.`,
+      };
     const stopped = r.status === "stopped";
     const out = await kube.kubectl(
       clusterTarget(k),
@@ -4364,26 +4370,20 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     return c.text(body, 200, { "cache-control": "no-store" });
   });
 
-  app.post("/ui/rigs/:rig/cluster/:action", async (c) => {
-    const r = store.clusterRig(c.req.param("rig"));
-    const action = c.req.param("action");
-    const back = (k: "ok" | "error", msg: string) =>
-      c.redirect(
-        `/ui/rigs/${encodeURIComponent(c.req.param("rig"))}?${k}=${encodeURIComponent(msg)}`,
-        303,
-      );
-    if (!r || r.status === "removed") return back("error", "Control didn't set this rig up.");
-    if (action === "images") {
-      const done = await updateClusterRigImages(r.rig, "owner:ui");
-      return "error" in done ? back("error", done.error) : back("ok", done.ok);
-    }
-    if (!["stop", "start", "restart", "remove"].includes(action))
-      return back("error", "No such action.");
-    const f = await c.req.parseBody();
-    if (action === "remove" && String(f.confirm ?? "").trim() !== `remove ${r.rig}`)
-      return back("error", `Type "remove ${r.rig}" to remove it.`);
+  /** Stop, start, restart or remove a rig control set up on a cluster (its page, or MCP). */
+  const clusterRigAction = async (
+    r: ClusterRig,
+    action: "stop" | "start" | "restart" | "remove",
+    by: string,
+  ): Promise<{ ok: string } | { error: string }> => {
+    if (
+      // Stop and remove always work; a start or restart waits for the change under way.
+      (action === "start" || action === "restart") &&
+      (r.status === "updating" || r.status === "starting" || r.status === "deploying")
+    )
+      return { error: `${r.rig} is ${r.status}: wait until its page shows it running, or failed.` };
     const k = store.cluster(r.cluster);
-    if (!k) return back("error", `The cluster ${r.cluster} is no longer in Providers.`);
+    if (!k) return { error: `The cluster ${r.cluster} is no longer in Providers.` };
     const sel = `app.kubernetes.io/instance=${r.rig}`;
     const runs: string[][] =
       action === "stop" || action === "start"
@@ -4432,18 +4432,52 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
           false,
           kubeError(out),
         );
-        return back("error", kubeError(out));
+        return { error: kubeError(out) };
       }
     }
     const step = action === "remove" ? "remove_cluster" : action;
     store.rigSetupEvent(r.rig, step, true);
-    store.setClusterRigStatus(
-      r.rig,
-      action === "stop" ? "stopped" : action === "remove" ? "removed" : "running",
+    if (action === "start" || action === "restart") {
+      // Running once its pods are and it has reported, as after an update.
+      store.setClusterRigStatus(r.rig, "starting");
+      void awaitNewPods(r, k).catch(() => {});
+    } else store.setClusterRigStatus(r.rig, action === "stop" ? "stopped" : "removed");
+    if (action === "remove") store.retireRig(r.rig, by);
+    store.audit(by, `cluster_rig_${action}`, { rig: r.rig, cluster: r.cluster });
+    return { ok: `${STEP_WORDS[step]}.` };
+  };
+
+  if (opts.actions)
+    opts.actions.clusterRigAction = async (rig, action, by) => {
+      const r = store.clusterRig(rig);
+      if (!r || r.status === "removed")
+        return { error: `Control didn't set ${rig} up on a cluster.` };
+      return clusterRigAction(r, action, by);
+    };
+  app.post("/ui/rigs/:rig/cluster/:action", async (c) => {
+    const r = store.clusterRig(c.req.param("rig"));
+    const action = c.req.param("action");
+    const back = (k: "ok" | "error", msg: string) =>
+      c.redirect(
+        `/ui/rigs/${encodeURIComponent(c.req.param("rig"))}?${k}=${encodeURIComponent(msg)}`,
+        303,
+      );
+    if (!r || r.status === "removed") return back("error", "Control didn't set this rig up.");
+    if (action === "images") {
+      const done = await updateClusterRigImages(r.rig, "owner:ui");
+      return "error" in done ? back("error", done.error) : back("ok", done.ok);
+    }
+    if (!["stop", "start", "restart", "remove"].includes(action))
+      return back("error", "No such action.");
+    const f = await c.req.parseBody();
+    if (action === "remove" && String(f.confirm ?? "").trim() !== `remove ${r.rig}`)
+      return back("error", `Type "remove ${r.rig}" to remove it.`);
+    const done = await clusterRigAction(
+      r,
+      action as "stop" | "start" | "restart" | "remove",
+      "owner:ui",
     );
-    if (action === "remove") store.retireRig(r.rig, "owner:ui");
-    store.audit("owner:ui", `cluster_rig_${action}`, { rig: r.rig, cluster: r.cluster });
-    return back("ok", `${STEP_WORDS[step]}.`);
+    return "error" in done ? back("error", done.error) : back("ok", done.ok);
   });
   app.post("/ui/rigs/:rig/machine/:action", async (c) => {
     const r = store.machineRig(c.req.param("rig"));

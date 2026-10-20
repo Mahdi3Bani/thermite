@@ -397,6 +397,8 @@ describe("clusters in Providers and Add a rig", () => {
       "/ui/rigs/cpu-1",
     );
     await new Promise((r) => setTimeout(r, 20));
+    // Its first report (the fake cluster has no rig to send one) makes it running.
+    before.store.setClusterRigStatus("cpu-1", "running");
     assert.doesNotMatch(await before.page("/ui/rigs/cpu-1"), /Update to these images/);
     assert.match(
       await before.post("/ui/rigs/cpu-1/cluster/images", {}),
@@ -444,6 +446,15 @@ describe("clusters in Providers and Add a rig", () => {
     );
     assert.match(page, /Its pods run the new images/);
     assert.doesNotMatch(page, /Update to these images/);
+    // While it waits for a report from the new images, another change is refused; a report after
+    // a failed wait shows it running again.
+    assert.equal(s.store.clusterRig("cpu-1")?.status, "updating");
+    const busy = await control(f.k, { store: s.store, secrets: s.secrets, tag: "9" });
+    assert.match(
+      await busy.post("/ui/rigs/cpu-1/cluster/images", {}),
+      /error=cpu-1 is being updated/,
+    );
+    assert.match(await busy.post("/ui/rigs/cpu-1/cluster/restart", {}), /error=cpu-1 is updating/);
     // A stopped rig stays stopped: it runs the new images when it starts again.
     assert.match(await s.post("/ui/rigs/cpu-1/cluster/stop", {}), /ok=Stopped/);
     const later = await control(f.k, { store: s.store, secrets: s.secrets, tag: "3" });

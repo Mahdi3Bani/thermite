@@ -43,6 +43,12 @@ export interface ControlActions {
    * tokens (the rig's page, or MCP's update_rig_images).
    */
   updateRigImages?: (rig: string, by: string) => Promise<{ ok: string } | { error: string }>;
+  /** Stop, start or restart a rig control set up on a cluster, as on its page. */
+  clusterRigAction?: (
+    rig: string,
+    action: "stop" | "start" | "restart",
+    by: string,
+  ) => Promise<{ ok: string } | { error: string }>;
   /** Sets the slots of a cluster of pre-made slots and reads it again; an error in words. */
   setClusterSlots?: (cluster: string, slots: string[], by: string) => Promise<string | null>;
 }

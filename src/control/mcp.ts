@@ -499,6 +499,23 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
         ),
       );
     }
+    if (canCommand && actions?.clusterRigAction) {
+      const act = actions.clusterRigAction;
+      server.registerTool(
+        "cluster_rig",
+        {
+          title: "Stop, start or restart a cluster rig",
+          description:
+            "For a rig control set up on a cluster, as on its page: stop scales its pods to zero (its volume, tokens, runs and results stay); start brings them back on the images control recorded for it (so a stopped rig updated with update_rig_images starts on its new images); restart restarts its pods. After start or restart, rig_setup shows it starting, then running once its pods run and it reports, or failed.",
+          inputSchema: { rig: z.string().min(1), action: z.enum(["stop", "start", "restart"]) },
+        },
+        audited("cluster_rig", async (a: { rig: string; action: "stop" | "start" | "restart" }) => {
+          const r = await act(a.rig, a.action, actor);
+          if ("error" in r) throw new Error(r.error);
+          return { rig: a.rig, said: r.ok };
+        }),
+      );
+    }
     if (canCommand && actions?.updateRigImages) {
       const update = actions.updateRigImages;
       server.registerTool(
@@ -506,7 +523,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
         {
           title: "Update a rig's images",
           description:
-            "For a rig control set up on a cluster: its pods restart on the images control now deploys, as the rig's page does. Its volume, tokens, runs and results stay; a trial in progress stops, and the harness plans it again. Follow it with the rig's setup events and list_rigs.",
+            "For a rig control set up on a cluster: its pods restart on the images control now deploys, as the rig's page does. Its volume, tokens, runs and results stay; a trial in progress stops, and the harness plans it again. Follow it with rig_setup and list_rigs. A failed update can be tried again; one already under way is refused.",
           inputSchema: { rig: z.string().min(1) },
         },
         audited("update_rig_images", async (a: { rig: string }) => {
