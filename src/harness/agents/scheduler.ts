@@ -12,6 +12,7 @@ import type { NoteInput } from "../../core/journal.ts";
 import type { LiveKind } from "../../core/live.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { NOTES_ARE_DATA, notesData, notesText } from "../journal.ts";
+import { clipReason } from "../judge/reasons.ts";
 import { briefingText, pastResearchLine } from "../knowledge.ts";
 import type { Ledger } from "../ledger.ts";
 import { messageText, type OwnerMessage } from "../messages.ts";
@@ -32,6 +33,10 @@ import { type Assignment, type EpochRecord, Registry } from "./registry.ts";
 import type { ResearchTrialSpec } from "./research-worker.ts";
 import type { TrialResult, TrialSpec } from "./worker.ts";
 import { prepareWorkspace } from "./workspace.ts";
+
+/** How much of the judge's reasons a brief shows: for each of a lane's attempts, for each goal. */
+const BRIEF_REASON_CHARS = 1200;
+const BRIEF_GOAL_CHARS = 600;
 
 /**
  * The agent scheduler (SLA pattern). Each epoch (a round) the planner, as the coordinator of the
@@ -524,7 +529,7 @@ export class Scheduler {
       goals: body.goals.map((g) => ({
         goal: g.goal,
         status: g.status,
-        reasons: g.reasons.slice(0, 500),
+        reasons: clipReason(g.reasons, BRIEF_GOAL_CHARS),
       })),
     };
   }
@@ -1542,14 +1547,18 @@ export class Scheduler {
       ? mine
           .map((e) => {
             const v = e.verdict ? this.ledger.currentVerdict(e.attempt) : undefined;
+            // Its start and its end, where a crash's error usually is.
             const reasons = v
-              ? String(
-                  (
-                    this.ledger.db.prepare("select reasons from verdict where id = ?").get(v.id) as
-                      | { reasons: string }
-                      | undefined
-                  )?.reasons ?? "",
-                ).slice(0, 600)
+              ? clipReason(
+                  String(
+                    (
+                      this.ledger.db
+                        .prepare("select reasons from verdict where id = ?")
+                        .get(v.id) as { reasons: string } | undefined
+                    )?.reasons ?? "",
+                  ),
+                  BRIEF_REASON_CHARS,
+                )
               : "";
             const v0 = this.ledger.getAttempt(e.attempt)?.v0;
             const violations = v0
@@ -1594,7 +1603,7 @@ export class Scheduler {
         ? `# What the champion meets (the judge's check of champion #${report.champion_seq})\n${report.goals
             .map(
               (g) =>
-                `- ${g.goal}: ${g.status}${g.status === "met" ? "" : `. ${g.reasons.slice(0, 300)}`}`,
+                `- ${g.goal}: ${g.status}${g.status === "met" ? "" : `. ${clipReason(g.reasons, BRIEF_GOAL_CHARS)}`}`,
             )
             .join("\n")}\n`
         : "",

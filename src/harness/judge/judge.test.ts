@@ -4,6 +4,7 @@ import { CRASH_KERNEL, FAST_KERNEL, makeJudgeEnv, WRONG_KERNEL } from "../../tes
 import { LocalRunner } from "../broker/runner.ts";
 import { CpuDriver } from "../targets/cpu.ts";
 import { Judge, serial } from "./judge.ts";
+import { clipReason, REASON_CHARS } from "./reasons.ts";
 
 /** Verdict history with reasons, for assertion messages. */
 function why(
@@ -172,6 +173,33 @@ describe("judge pipeline (local runner, Node test kit)", () => {
     assert.equal(env.ledger.currentVerdict(wrong)?.verdict, "invalid");
     assert.equal(env.ledger.currentVerdict(crash)?.verdict, "crash_candidate");
     assert.equal(env.ledger.currentChampion("js-1").seq, 1);
+  });
+
+  test("a crash's reason keeps the end of a long error output, within its bound", async () => {
+    const env = await setup();
+    // Much more output than a reason keeps, with the error that matters at its end.
+    const noisy = `import { writeSync } from "node:fs";
+export function work() {
+  writeSync(2, "warning: noise\\n".repeat(400) + "fatal: index 42 is out of range\\n");
+  process.exit(3);
+}
+`;
+    const id = await env.submit(noisy, "a crash with a long error output");
+    await env.drain();
+    assert.equal(env.ledger.currentVerdict(id)?.verdict, "crash_candidate", why(env, id));
+    const { reasons } = env.ledger.db
+      .prepare("select reasons from verdict where attempt = ? order by id desc limit 1")
+      .get(id) as { reasons: string };
+    assert.match(reasons, /^exit 3: warning: noise/);
+    assert.match(reasons, /fatal: index 42 is out of range\n$/);
+    assert.ok(reasons.length <= REASON_CHARS, `${reasons.length} characters`);
+    assert.ok(reasons.length > 1000, "far more than the 400 characters it kept before");
+    // Control gets the same reason with the verdict.
+    const event = env.ledger
+      .eventsAfter(0, 10_000)
+      .events.filter((e) => e.kind === "verdict" && e.subject === id)
+      .at(-1);
+    assert.equal((event?.body as { reasons?: string } | undefined)?.reasons, reasons);
   });
 
   test("a change that does not build is invalid", async () => {
@@ -387,5 +415,20 @@ describe("judge pipeline (local runner, Node test kit)", () => {
       .map((r) => r.name);
     snap.close();
     assert.ok(!tables.includes("held_out"));
+  });
+});
+
+describe("failure reasons", () => {
+  test("a long reason keeps its start and its end, within the bound", () => {
+    assert.equal(clipReason("short"), "short");
+    const exact = "x".repeat(REASON_CHARS);
+    assert.equal(clipReason(exact), exact);
+    const long = `exit 1: ${"a".repeat(5000)}${"b".repeat(5000)}the error`;
+    const cut = clipReason(long);
+    assert.equal(cut.length, REASON_CHARS);
+    assert.ok(cut.startsWith("exit 1: aaa"));
+    assert.ok(cut.endsWith("bbbthe error"));
+    assert.match(cut, / … /);
+    assert.equal(clipReason(long, 100).length, 100);
   });
 });
