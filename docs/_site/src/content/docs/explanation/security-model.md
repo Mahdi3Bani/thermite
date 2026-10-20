@@ -85,6 +85,8 @@ The harness's network depends on where the rig runs. Its supervisor needs the in
 | **Kubernetes**, in a slot that the cluster's operators made | What the operators' network rules allow. Control refuses a slot unless those rules keep the harness off the private ranges | What the operators' rules allow |
 | **RunPod** | Rigs on RunPod are not built yet ([goals 019 to 025](https://github.com/iammrduncan/thermite/blob/main/docs/plan/roadmap.md#rigs-on-runpod)). Today control starts only short test pods there (below) | |
 
+On Kubernetes, neither of a rig's pods gets a service-account token. Nothing in them calls the cluster's API: control starts, stops and updates the rig.
+
 [Ports, volumes and secret files](../reference/ports-volumes-secrets.md#networks) lists each network and rule.
 
 A **RunPod test pod** runs Thermite's CUDA harness image with a probe in place of the broker, and no agents. The probe checks the platform, starts the broker as a rig would, runs the isolation self-test, and serves what it found on port 8000. Control reads that report through RunPod's public HTTP proxy, at an address with a random token in its path. The report holds names and results only, never the value of a variable. Control removes the pod when the test ends ([Test a GPU on RunPod](../how-to/install/runpod-test.md)).

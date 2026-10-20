@@ -150,7 +150,12 @@ export function clusterRigObjects(p: ClusterRigPlan, s: ClusterRigSecrets): Obj[
           "app.kubernetes.io/component": component,
         },
       },
-      template: { metadata: { labels: labels(p.rig, component) }, spec: pod },
+      // Neither part calls the Kubernetes API (control drives the rig's lifecycle), so neither
+      // pod gets the namespace's service-account token.
+      template: {
+        metadata: { labels: labels(p.rig, component) },
+        spec: { automountServiceAccountToken: false, ...pod },
+      },
     },
   });
   const objects: Obj[] = [];
