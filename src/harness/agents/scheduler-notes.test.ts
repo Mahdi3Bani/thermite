@@ -26,10 +26,12 @@ async function setup(
   const env = makeJudgeEnv({ lanes: { count: 2, trials_per_epoch: 1 }, assign });
   await env.service.applyCommand(env.assign);
   const prompts: string[] = [];
+  const offered: string[][] = [];
   const fake = await startFakeModel(({ messages, tools }) => {
     if (!tools.some((x) => x.function.name === "submit_plan")) return { text: "done" };
     const prompt = JSON.stringify(messages);
     prompts.push(prompt);
+    offered.push(tools.map((x) => x.function.name));
     return { toolCalls: [{ name: "submit_plan", args: planner(prompt, prompts.length) }] };
   });
   t.after(() => fake.close());
@@ -53,7 +55,7 @@ async function setup(
     await scheduler.idle();
     await scheduler.tick();
   };
-  return { env, s: env.service, prompts, briefs, round };
+  return { env, s: env.service, prompts, offered, briefs, round };
 }
 
 const lane = (lane: string, by = lane) => ({
@@ -175,6 +177,12 @@ describe("field notes in planning and briefs", () => {
     assert.match(prompt, /tiling helps only above L2/);
     assert.match(prompt, /Vector loads need 16-byte aligned pointers/);
     assert.match(prompt, /past_research/);
+    // The planner (in Pi) is told its search, read only, and given it.
+    assert.match(
+      prompt,
+      /1 experiment, from kernels\. search_past_research searches it, read only/,
+    );
+    assert.deepEqual(x.offered[0]?.sort(), ["search_past_research", "submit_plan"]);
     assert.match(prompt, /Field notes: write down what you learn/);
     const brief = x.briefs["lane-1"]?.[0] ?? "";
     assert.match(

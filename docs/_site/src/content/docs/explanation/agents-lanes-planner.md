@@ -95,7 +95,7 @@ The **planner** coordinates the lanes. It is one model call at the start of each
 - the owner's messages to the planner and to everyone working that it has not read yet, each with its number;
 - in a goal campaign, the judge's latest report on which goals the champion meets;
 - the run's newest 20 **field notes**, by the lanes, the advisors and the planner itself ([Field notes and past research](#field-notes-and-past-research));
-- when the run has them, its background from past research, which the owner picked when starting the run, and one line that says what the run's `knowledge/` folder holds.
+- when the run has them, its background from past research, which the owner picked when starting the run, and one line that says what the run's `knowledge/` folder holds. The planner searches that folder, read only: with its `search_past_research` tool in Pi, or with its own read tools on the folder's files in OpenCode and Claude Code.
 
 The field notes and the background are marked as data to weigh, not instructions.
 
@@ -183,7 +183,7 @@ Every agent starts fresh, but what agents learn need not end with them. As they 
 
 Each brief shows a window of the notes: a worker's has its lane's newest 10 and the run's newest 5 decisions and lessons by other writers; the planner's and the teacher pair's have the run's newest 20. Nothing limits how many notes an agent writes.
 
-Past research reaches a run as data too. Control keeps a folder for each campaign in **Thermite's knowledge base**, built from the rigs' reports. The rig's supervisor brings the items of the folders that the run's campaign may read into the run's research folder, under `knowledge/`, where the workers search them; the planner and the teacher pair get one line on what is there, except teachers that may fetch any web page. The owner can also pick items when starting a run (**Start a run › From past research**): experiments for the queue, and findings, claims, notes and reports as background for every brief.
+Past research reaches a run as data too. Control keeps a folder for each campaign in **Thermite's knowledge base**, built from the rigs' reports. The rig's supervisor brings the items of the folders that the run's campaign may read into the run's research folder, under `knowledge/`, where the workers search them; the planner and the advisors search them too, read only, with a tool, except teachers that may fetch any web page. The owner can also pick items when starting a run (**Start a run › From past research**): experiments for the queue, and findings, claims, notes and reports as background for every brief.
 
 [Journals and the knowledge base](journals-and-knowledge.md) explains why the agents keep notes, and how a campaign comes to read another campaign's folder.
 

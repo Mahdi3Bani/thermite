@@ -16,11 +16,13 @@ import type { HarnessService } from "../service.ts";
 import { Coordinator, focusOf, type Handout, PLANNER, resultOf } from "./coordinator.ts";
 import { type ModelConfig, usageLimitRetry } from "./model.ts";
 import {
+  type Ask,
   attribute,
   fallbackPlan,
   type GoalReport,
   lanesOf,
   type PlannerInput,
+  type PlannerPast,
   plan,
 } from "./planner.ts";
 import { type Assignment, type EpochRecord, Registry } from "./registry.ts";
@@ -58,15 +60,31 @@ export interface SchedulerOptions {
    * harness runs, and each plan and trial takes the route current when it starts.
    */
   model?: ModelConfig | (() => ModelConfig | undefined) | undefined;
-  /** A planner call through OpenCode, for OpenCode's own models: the answer's text. */
+  /**
+   * A planner call through OpenCode, for OpenCode's own models: the answer's text. `read`: a
+   * folder it may read and search (the run's past research), read only.
+   */
   askOpencode?:
-    | ((model: ModelConfig, prompt: string, signal?: AbortSignal) => Promise<string>)
+    | ((
+        model: ModelConfig,
+        prompt: string,
+        signal?: AbortSignal,
+        o?: { read?: string | undefined },
+      ) => Promise<string>)
     | undefined;
   /** The planner's own model route, when control gave the planner one. */
   plannerModel?: (() => ModelConfig | undefined) | undefined;
-  /** A planner call through Claude Code, for a Claude subscription (only Claude Code may use one). */
+  /**
+   * A planner call through Claude Code, for a Claude subscription (only Claude Code may use one).
+   * `read`: a folder it may read and search with read-only tools (the run's past research).
+   */
   askClaude?:
-    | ((model: ModelConfig, prompt: string, signal?: AbortSignal) => Promise<string>)
+    | ((
+        model: ModelConfig,
+        prompt: string,
+        signal?: AbortSignal,
+        o?: { read?: string | undefined },
+      ) => Promise<string>)
     | undefined;
   /** Runs one trial (in a child process in the harness; in-process in tests); abortable. */
   runTrial: (spec: TrialSpec, signal: AbortSignal) => Promise<TrialResult>;
@@ -598,7 +616,6 @@ export class Scheduler {
       // past research is: all data for the planner to weigh.
       notes: notesData(this.o.service.journal.newest(run, 20)),
       briefing: this.ledger.briefing(run),
-      pastResearch: this.pastResearch(run, "advisor"),
     };
     const live = this.o.service.live;
     live.append({
@@ -616,14 +633,26 @@ export class Scheduler {
       const m = this.o.plannerModel?.() ?? this.modelNow();
       // OpenCode's own models are reached only through OpenCode; every other provider, through Pi.
       // A Claude subscription, only through Claude Code: without it the planner refuses the route.
-      const ask =
+      const ask: Ask | undefined =
         m?.api === "opencode" && this.o.askOpencode
-          ? (prompt: string, sig?: AbortSignal) =>
-              (this.o.askOpencode as NonNullable<SchedulerOptions["askOpencode"]>)(m, prompt, sig)
+          ? (prompt, sig, o) =>
+              (this.o.askOpencode as NonNullable<SchedulerOptions["askOpencode"]>)(
+                m,
+                prompt,
+                sig,
+                o,
+              )
           : m?.api === "claude" && this.o.askClaude
-            ? (prompt: string, sig?: AbortSignal) =>
-                (this.o.askClaude as NonNullable<SchedulerOptions["askClaude"]>)(m, prompt, sig)
+            ? (prompt, sig, o) =>
+                (this.o.askClaude as NonNullable<SchedulerOptions["askClaude"]>)(m, prompt, sig, o)
             : undefined;
+      // The run's past research, read only: Pi's planner searches it with its tool; through
+      // OpenCode or Claude Code, the planner reads the run's knowledge/ files with its own tools.
+      const knowledge = this.o.service.knowledge;
+      input.pastResearch = this.pastResearch(run, ask ? "files" : "tool");
+      const past: PlannerPast | undefined = input.pastResearch
+        ? { search: (q, o) => knowledge.search(run, q, o), dir: knowledge.dir(run) }
+        : undefined;
       // The planner off on this rig: the fixed fallback plan, said so in the epoch's record.
       if (this.o.plannerOn && !this.o.plannerOn()) {
         const f = fallbackPlan(input);
@@ -636,7 +665,7 @@ export class Scheduler {
           assignments: f.assignments,
           newFamilies: f.newFamilies,
         };
-      } else p = await plan(input, m, ctrl.signal, ask);
+      } else p = await plan(input, m, ctrl.signal, ask, past);
     } finally {
       this.planning = undefined;
     }
@@ -785,7 +814,10 @@ export class Scheduler {
   }
 
   /** Where a run's past research is, when its folder has some: one line for a brief. */
-  private pastResearch(run: string, reader: "worker" | "research" | "advisor"): string | undefined {
+  private pastResearch(
+    run: string,
+    reader: "worker" | "research" | "files" | "tool",
+  ): string | undefined {
     const s = this.o.service.knowledge.summary(run);
     return s ? pastResearchLine(s, reader) : undefined;
   }

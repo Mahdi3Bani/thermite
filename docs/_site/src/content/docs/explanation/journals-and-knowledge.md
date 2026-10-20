@@ -130,7 +130,7 @@ A grant can change at any time, also after the campaign was made:
 
 ## How past research reaches a run
 
-Past research reaches a run in three ways.
+Past research reaches a run in three ways, and every agent of the run can search it.
 
 **The run's `knowledge/` folder.** Every few minutes (`THERMITE_KB_SYNC_SECONDS`, 180 seconds by default; see [Settings](../reference/settings.md#how-often-it-talks-to-control)), each rig's supervisor asks control for the new and changed items of the folders that each running run's campaign may read: its own campaign's other runs, and the folders granted to it. The run's own records are left out, because the run has them already. Control answers only for a run that it assigned to that rig, and by the campaign it assigned. The supervisor hands the items to the harness, which writes each as one Markdown file under `knowledge/` in the run's research folder. Each file starts with where its item came from: campaign, rig, run, kind, who wrote it and when. A `knowledge/README.md` says what is where. Workers read and search the folder with their own tools, and can't change it. The harness never calls control itself.
 
@@ -141,7 +141,7 @@ Past research reaches a run in three ways.
 
 The briefing travels in the signed `assign_campaign` command that starts the run, and is fixed once the run exists. A run started over MCP can carry a briefing too; control then takes each item's words from its own record of the item, not from the caller. A run without agents, such as a try of a kit, has no briefs and no queue, so it takes neither.
 
-**One line for those who read no files.** The planner and the teacher pair don't read files, so their brief has one line that says what the run's `knowledge/` folder holds (its counts, and the folders they came from) and that the workers search it before starting. A worker's brief has a line like it, which says where the folder is. Teachers that may fetch any web page get neither this line nor the briefing, in their prompt or from their `brief` tool; their brief keeps the run's field notes.
+**A search for those who read no files.** The planner and the advisors (the teacher pair, the auditor and each panelist) search the same items with a read-only tool, `search_past_research`, and their brief has one line that says what the run's `knowledge/` folder holds. They read past research as the workers do; they can't write to it, because the tool only reads the harness's copy. A planner in OpenCode or Claude Code reads the folder's files with its own read tools instead, and an advisor in Claude Code gets the tool over MCP from its supervisor, as its only tool. A worker's brief has a line like it, which says where the folder is. Teachers that may fetch any web page get no search, no line and no briefing, in their prompt or from their `brief` tool; their brief keeps the run's field notes. A search beside an open fetch could carry another campaign's records out to any web address.
 
 ## Data to weigh, never a verdict
 
@@ -170,4 +170,4 @@ A rig's exports carry its runs' records to its results repository, and the journ
 
 The folder goes without `knowledge/`: those files are other runs' records, which those runs' own exports carry. [The export](../reference/knowledge-base.md#the-export) lists each file's fields, and [Set up the results repository](../how-to/operate/results-repository.md) says where each file lands.
 
-Not built yet: a search tool over `knowledge/` for the planner and the advisors ([goal 065](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/065-journals-and-corpus.goal)). Outside knowledge bases are planned to become MCP servers that a kit names, which workers reach too ([goal 068](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/068-mcp-servers-for-agents.goal)).
+Outside knowledge bases are planned to become MCP servers that a kit names, which workers reach too ([goal 068](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/068-mcp-servers-for-agents.goal)).

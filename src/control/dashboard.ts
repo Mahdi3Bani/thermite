@@ -5529,7 +5529,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     /** Where one agent runs with a model of that kind (the client script says the same). */
     const runsText = (role: AgentRole, kind: string) =>
       kind === "claude"
-        ? "Claude Code, no tools"
+        ? "Claude Code, past research only"
         : role === "planner"
           ? kind === "opencode"
             ? "OpenCode"
@@ -5600,7 +5600,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         tip: "Three reviewers that grade goals that need judgement. The judge's numbers never come from them. All three use this model.",
       },
     ];
-    const agentRows = `<div class="hd">Agent</div><div class="hd">Model</div><div class="hd">${infoLabel("Effort", "How long the model thinks before it answers. More effort: better answers, slower, and more of a subscription's window. Providers other than a Claude subscription take up to high.")}</div><div class="hd">${infoLabel("Runs in", "The program that runs the agent. A Claude subscription works only in Claude Code, Anthropic's own program. Advisors in Claude Code get no tools; advisors with an API key run in the supervisor with read-only tools: the campaign brief, plus a guarded web fetch and the knowledge base only where the rig's advisors file sets them up.")}</div>
+    const agentRows = `<div class="hd">Agent</div><div class="hd">Model</div><div class="hd">${infoLabel("Effort", "How long the model thinks before it answers. More effort: better answers, slower, and more of a subscription's window. Providers other than a Claude subscription take up to high.")}</div><div class="hd">${infoLabel("Runs in", "The program that runs the agent. A Claude subscription works only in Claude Code, Anthropic's own program. Agents in Claude Code get no tools but a read-only search of the run's past research. Advisors with an API key run in the supervisor with read-only tools: the campaign brief and the search of past research, plus a guarded web fetch and the knowledge base only where the rig's advisors file sets them up.")}</div>
 <div>${infoLabel("Workers", "The agents that change the code, one per lane. They run for many turns, so they use the most of a subscription.")}</div><select name="choice" data-role="workers" data-label="the workers' model">${optionsFor("its own settings", want)}</select>${effortSelect("effort", want?.effort)}<div class="runs-in"><select name="harness" data-harness aria-label="harness"><option value="pi"${!want?.harness || want.harness === "pi" ? " selected" : ""}>Pi</option><option value="opencode"${want?.harness === "opencode" ? " selected" : ""}>OpenCode v2</option><option value="claude-code"${want?.harness === "claude-code" ? " selected" : ""}>Claude Code</option></select></div>
 ${ROLE_ROWS.map(
   (r) =>

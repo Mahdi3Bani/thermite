@@ -32,7 +32,7 @@ The planner coordinates each run's experiment queue, the run's ordered list of t
 3. For each agent you want to change, choose a model in its **Model** list, and an **Effort** (see below).
 4. For the workers, also choose where they run, in the **Runs in** column: **Pi**, **OpenCode v2** or **Claude Code**. When you choose a Claude subscription's model, the page sets **Claude Code** for you.
 
-   For the other agents, **Runs in** shows where each one will run, for example "the supervisor, read-only tools" or "Claude Code, no tools".
+   For the other agents, **Runs in** shows where each one will run, for example "the supervisor, read-only tools" or "Claude Code, past research only".
 
 5. Read the list under **What changes when you save**, at the foot of the page. It says each change in a sentence, such as "You change the auditor's model to my-model."
 6. Press **Save changes**.
@@ -66,13 +66,13 @@ A change to the rig's settings on this page, such as a switch in section **1 · 
 | --- | --- | --- | --- |
 | An API key (OpenAI-compatible, Anthropic) or a ChatGPT subscription | Pi or OpenCode v2, as you choose | Pi | The supervisor, with read-only tools |
 | OpenCode's own provider | OpenCode v2 only | OpenCode | Not allowed |
-| A Claude subscription | Claude Code | Claude Code, with no tools | Claude Code, with no tools |
+| A Claude subscription | Claude Code | Claude Code, with no tools but read-only file tools for the run's past research | Claude Code, with no tools but a read-only search of the run's past research |
 
 A Claude subscription needs Claude Code in the images: in the harness image for the workers and the planner, and in the supervisor image for the advisors. See [Use a Claude subscription](claude-subscription.md).
 
 Where the workers run also sets when they read a message you send them from **Live**. A worker in Pi reads it at its next step. OpenCode v2 and Claude Code take no message while they work: when the program stops before the worker has submitted a change and the trial has time left, the rig starts it again with your message; otherwise the lane's next trial reads it. The planner reads its messages when it plans the next round. See [When each agent reads it](../campaigns/steer-a-run.md#when-each-agent-reads-it).
 
-The advisors' read-only tools are the campaign's brief, plus a guarded web fetch and a knowledge base where the rig's advisors file sets them up. A knowledge base is a search service of your own, reached over MCP, that the teachers may search but not change: see the `kb` field in the [advisors file reference](../../reference/advisors-file.md#top-level).
+The advisors' read-only tools are the campaign's brief and a search of the run's past research, plus a guarded web fetch and a knowledge base where the rig's advisors file sets them up. A knowledge base is a search service of your own, reached over MCP, that the teachers may search but not change: see the `kb` field in the [advisors file reference](../../reference/advisors-file.md#top-level).
 
 The teacher pair can also search an [outside knowledge base](../operate/outside-knowledge-base.md): one you add on **Settings › Providers**, then allow for a campaign with **Let its advisors search it** on the campaign's page. This works for teachers given a model on this page too, from an API key or a ChatGPT subscription. Teachers on a Claude subscription run with no tools, and the other advisors never get this search. On a rig whose advisors file lets advisors fetch any web page (`fetch_domains` `"*"`), no advisor gets it.
 

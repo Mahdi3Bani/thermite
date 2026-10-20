@@ -13,6 +13,7 @@ import {
   reviewOne,
   teacherRound,
 } from "./advisors.ts";
+import type { PastSearch } from "./past-mcp.ts";
 
 /**
  * The supervisor's advisor loop: the teacher pair reviews each running run on its cadence, and at
@@ -24,6 +25,11 @@ import {
  * The owner's messages reach an advisor in its brief or package (owner_messages). When the
  * advisor has run with them, the supervisor tells the harness which it was given and what it
  * answered, and the harness records the reads and the answers.
+ *
+ * The teacher pair, the auditor and the review panel may search the run's past research (the
+ * folders its campaign may read in Thermite's knowledge base), read only, through the harness's
+ * copy of the run's knowledge/: the same items the workers search. A teacher that may fetch any
+ * web page gets no past research at all.
  */
 
 export interface AdviseConfig {
@@ -227,6 +233,20 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
     ...(fetchUrl ? { fetchUrl } : {}),
     ...(domains.includes("*") ? {} : { kbSearch: kbSearchFor(cfg.advisors, campaign) }),
   });
+  // The run's past research, read only: a search of the harness's copy of its knowledge/, for a
+  // run whose brief or package says it has some (past_research).
+  const pastSearchFor =
+    (run: string): PastSearch =>
+    (query, o = {}) =>
+      api(
+        "GET",
+        `/v1/knowledge?${new URLSearchParams({
+          run,
+          q: query.slice(0, 300),
+          ...(o.kinds?.length ? { kinds: o.kinds.join(",") } : {}),
+          ...(o.limit ? { limit: String(Math.max(1, Math.min(50, Math.floor(o.limit)))) } : {}),
+        }).toString()}`,
+      );
   // A run's campaign, from the harness's list (read once a round, and only when control granted
   // outside knowledge bases). A list that can't be read gives no campaign: no outside search.
   let campaigns: Map<string, string> | undefined;
@@ -422,6 +442,9 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           brief,
           tools: {
             ...toolsFor(inst.campaign || (await campaignOf(inst.id))),
+            // Teachers with an open fetch search no past research either.
+            // Only when the run has some: the brief says so in past_research.
+            ...(openFetch || !brief.past_research ? {} : { pastSearch: pastSearchFor(inst.id) }),
             brief: async () =>
               closed(
                 (await api("GET", `/v1/brief?run=${encodeURIComponent(inst.id)}`)) as {
@@ -484,7 +507,12 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
   // The auditor: open audits. An audit can block, never pass; the harness enforces that too.
   if (cfg.advisors.auditor && !overBudget()) {
     const { audits } = (await api("GET", "/v1/audits/pending")) as {
-      audits: { attempt: string; run?: string; owner_messages?: OwnerMessage[] }[];
+      audits: {
+        attempt: string;
+        run?: string;
+        owner_messages?: OwnerMessage[];
+        past_research?: string;
+      }[];
     };
     // The owner's messages go to the auditor once, with the first audit that gets them.
     const told = new Set<number>();
@@ -497,7 +525,10 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         const r = await auditOne({
           config: cfg.advisors,
           pkg: { ...pkg, owner_messages: owner },
-          tools: toolsFor(await campaignOf(pkg.run)),
+          tools: {
+            ...toolsFor(await campaignOf(pkg.run)),
+            ...(pkg.run && pkg.past_research ? { pastSearch: pastSearchFor(pkg.run) } : {}),
+          },
         });
         count(r);
         if (!r.output) {
@@ -552,7 +583,13 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
   // The review panel: every panelist reviews blind; the harness needs at least two.
   if (cfg.advisors.panel.length && !overBudget()) {
     const { reviews } = (await api("GET", "/v1/reviews/pending")) as {
-      reviews: { id: number; run?: string; goal?: string; owner_messages?: OwnerMessage[] }[];
+      reviews: {
+        id: number;
+        run?: string;
+        goal?: string;
+        owner_messages?: OwnerMessage[];
+        past_research?: string;
+      }[];
     };
     const told = new Set<number>();
     for (const pkg of reviews) {
@@ -565,7 +602,11 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         const answers: { message: number; text: string; advisor: string }[] = [];
         const journal: { by: string; notes: NoteInput[] }[] = [];
         for (const runtime of cfg.advisors.panel) {
-          const r = await reviewOne({ runtime, pkg: { ...pkg, owner_messages: owner } });
+          const r = await reviewOne({
+            runtime,
+            pkg: { ...pkg, owner_messages: owner },
+            ...(pkg.run && pkg.past_research ? { pastSearch: pastSearchFor(pkg.run) } : {}),
+          });
           count(r);
           if (!r.output) continue;
           results.push({ reviewer: runtime.name, pass: r.output.pass, reasons: r.output.reasons });
