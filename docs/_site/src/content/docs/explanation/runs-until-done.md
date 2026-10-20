@@ -30,7 +30,7 @@ flowchart LR
   R -- research campaign: its time window is over --> C
 ```
 
-A hill climb has no arrow to **Closed**: a faster program can always be tried, so it runs until you pause it. The dashboard labels a closed run **Finished**.
+A hill climb has no arrow to **Closed**: a faster program can always be tried, so it runs until you pause it. The dashboard labels a closed run **Finished**, and a paused run **Paused**, even while a decision waits in it: the decision still shows under **Needs you**.
 
 ## What keeps a long run in order
 

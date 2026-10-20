@@ -126,4 +126,4 @@ Some things are not built yet:
 - You have a **list of conditions** that the work must meet, and you want to know if it can: a **goal** campaign.
 - You have a **question**, and a few hours or days to spend on it: a **research** campaign.
 
-The first step of the **New campaign** page, **Aim**, offers the three as **Hillclimbing**, **Reach a list of goals** and **Research a question**. [Your own project](../tutorials/your-own-project.md) starts a hill climb there.
+The first step of the **New campaign** page, **Aim**, offers the three as **Hill climb**, **Reach a list of goals** and **Research a question**. [Your own project](../tutorials/your-own-project.md) starts a hill climb there.

@@ -46,7 +46,7 @@ Control's key pair is `control-signing.key` and `control-signing.pub` in control
 
 | Step | Where | What happens |
 | --- | --- | --- |
-| 1. Issue | Control | Control checks that it knows the rig (it has reported and is not retired, is enrolled, or is in the rig tokens file), checks the payload against the kind's schema, signs the envelope and stores the command as `pending`. A signed command larger than 3.5 MiB is refused: `the <kind> command is too large to deliver` |
+| 1. Issue | Control | Control checks that it knows the rig (it has reported and is not retired, is enrolled, or is in the rig tokens file), checks the payload against the kind's schema, signs the envelope and stores the command as `pending`. For a `message_agent`, it first trims the text and refuses a message that nothing on the rig would read (see [`message_agent`](#message_agent)). A signed command larger than 3.5 MiB is refused: `the <kind> command is too large to deliver` |
 | 2. Fetch | Supervisor | The supervisor asks control for its rig's pending commands, oldest first, every `THERMITE_COMMAND_POLL_SECONDS` seconds (default 5) |
 | 3. Stage | Supervisor | If the command names content to fetch (a project, a kit, a model or another rig's champion), the supervisor fetches it into the rig's inbox first. The command stays `pending` while it waits |
 | 4. Apply | Harness | The supervisor posts the command to the harness, which checks it and applies it once |
@@ -112,9 +112,9 @@ The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_revie
 | `pause_run` | **Pause**, then **Pause the run** in its menu, in a run's header, in the header of the run's **Live**, and on the run's card under **At work now** | Yes | Yes | Yes | Yes | |
 | `resume_run` | **Resume** in a run's header, in the header of the run's **Live**, and on a paused run's row under **Earlier runs** | Yes | Yes | Yes | Yes | |
 | `redirect` | **Add the rule** on a run's **Planner** tab (one rule, in a direction's name or your own words, added to the earlier ones) | Yes | Yes | Yes | Yes | |
-| `reset_workers` | **Restart the lanes**, under **⋯** in a run's header | Yes | Yes | Yes | Yes | |
+| `reset_workers` | **Restart the lanes**, under **⋯** in the header of a running run with agents | Yes | Yes | Yes | Yes | |
 | `export_now` | **Export now** on a rig's page | Yes | Yes | Yes | Yes | |
-| `message_agent` | **Send** in the message box of a run's **Live**; **Send to the planner** on a run's **Planner** tab | Yes | Yes | Yes | No | Yes |
+| `message_agent` | **Send** in the message box of a run's **Live**; **Send to the planner** on a run's **Planner** tab, while the planner is on | Yes | Yes | Yes | No | Yes |
 | `unkeep_message` | **Remove** in the **📌 &lt;n&gt; kept** list of a run's **Live** | Yes | Yes | Yes | No | Yes |
 | `queue_add` | **Add** under **Up next** on a run's **Experiments** tab | Yes | Yes | Yes | No | Yes |
 | `queue_move` | **↑ Top**, or dragging an experiment, under **Up next** on a run's **Experiments** tab | Yes | Yes | Yes | No | Yes |
@@ -169,7 +169,7 @@ Each experiment in `queue` has these fields:
 | `state` | `queued` or `proposed` | `queued`: up next. `proposed`: a lane's idea, which stays an idea in the new run |
 | `from` | `{run, id}` | The run and the experiment it was copied from |
 
-Over MCP, control does not keep the caller's words for a copied experiment that it can take from its own record. It takes `title`, `details`, `family`, `why` and `by` from its record of the experiment that `from` names: the rigs' signed events, with every edit applied. A field that the record does not have is left out. It does this only when the run that `from` names is [filed](knowledge-base.md#campaign-folders) in the folder of the new run's campaign (`contract.campaign`), or of a campaign whose folder that campaign may read ([Grants](knowledge-base.md#grants)). Any other experiment keeps the caller's words, and its `by` is `copied`: one that control has no record of (no rig reported it, or more than one did), and one from a run in any other folder, or in none.
+Over MCP, control does not keep the caller's words for a copied experiment that it can take from its own record. It takes `title`, `details`, `family`, `why` and `by` from its record of the experiment that `from` names: the rigs' signed events, with every edit applied. A field that the record does not have is left out. It does this only when the run that `from` names is [filed](knowledge-base.md#campaign-folders) in the folder of the new run's campaign (`contract.campaign`), or of a campaign whose folder that campaign may read ([Grants](knowledge-base.md#grants)). Any other experiment keeps the caller's words, and its `by` is `copied`: one that control has no record of (no rig reported it, or more than one did), and one from a run in any other folder, or in none. To an experiment taken from its record, control adds the line `In <run> (<campaign>) it was <result>.` after the details when the experiment's item in the [knowledge base](knowledge-base.md#items) has a result, as **Start a run** does, and cuts `details` to 4,000 characters.
 
 Each item in `briefing` has these fields:
 
@@ -180,7 +180,7 @@ Each item in `briefing` has these fields:
 
 Over MCP, control does not keep the caller's words for a briefing either. It looks up the knowledge base's item that `from` names and puts that item's words in `text`. It leaves out an item it cannot find, one it finds more than once (run names are unique on one rig only), and one from a folder the new run's campaign may not read. With none left, it sends no `briefing`. It does this before it looks up the copied experiments. The REST API (`POST /v1/commands`) and `thermite command` send `briefing` and `queue` as given: control looks nothing up. `thermite assign` has no option for either.
 
-**Start a run** on a campaign's page also works for a campaign that was assigned over the REST API, MCP or the command line, with no version saved on control. Control then signs again the campaign's newest `assign_campaign` whose status is `pending` or `delivered`, as a new run: the same `contract`, `seed`, `imports` and `direction`, with a new `run`, and `agents` and `promotion` from the panel. With **Agents** on and **Copy the untried experiments of** ticked, the panel also sends `queue`: the chosen run's experiments still up next, in their order, then its lanes' ideas, at most 500 of them. Its help says "They join the new run's queue in the same order, up to 500." With **Agents** off, the panel hides that field, and control sends no `queue` even when the form has it: a run without agents has no queue. Its **From past research** sends the ticked past experiments in `queue`, after the copied ones (at most 500 in all), and the ticked findings, claims, notes and reports in `briefing`, each looked up again in control's knowledge base. With **Agents** off it sends neither, and says "A try (agents off) takes no experiments and no background: what you ticked was left out." [Use past research in a new run](../how-to/campaigns/use-past-research.md) gives the steps.
+**Start a run** on a campaign's page also works for a campaign that was assigned over the REST API, MCP or the command line, with no version saved on control. Control then signs again the campaign's newest `assign_campaign` whose status is `pending` or `delivered`, as a new run: the same `contract`, `seed`, `imports` and `direction`, with a new `run`, and `agents` and `promotion` from the panel. With **Agents** on and **Copy the untried experiments of** ticked, the panel also sends `queue`: the chosen run's experiments still up next, in their order, then its lanes' ideas, at most 500 of them. Its help says "They join the new run's queue in the same order, up to 500." With **Agents** off, the panel hides that field, and control sends no `queue` even when the form has it: a run without agents has no queue. Its **From past research** sends the ticked past experiments in `queue`, after the copied ones (at most 500 in all), and the ticked findings, claims, notes and reports in `briefing`, each looked up again in control's knowledge base. With **Agents** off, the panel hides **From past research** too and sends none of it. If ticked items reach control all the same (the page shown without its script), control leaves them out, starts the try, and says "A try (agents off) takes no experiments and no background: what you ticked was left out." [Use past research in a new run](../how-to/campaigns/use-past-research.md) gives the steps.
 
 The harness creates the run only after every check passes. In order, it refuses:
 
@@ -278,7 +278,9 @@ The dashboard calls directives **rules**. **Add the rule** on a run's **Planner*
 | `run` | lowercase id | The run |
 | `reseed_commit` | commit | Accepted by the schema, but the harness refuses it: `re-seeding lanes is not available in this version; reset without it` |
 
-The run's running trials end, along with the current [epoch](glossary.md) (a round, on the dashboard), and every lane starts again from the champion. The experiment each ended trial was on ends with the result `interrupted`, and a copy of it goes to the top of the run's queue, with the same author and the reason `tried again: its trial on <lane> was interrupted (<old id>)`, followed by the old reason. Result: `{"run", "reset": true}`.
+The run's running trials end, along with the current [epoch](glossary.md) (a round, on the dashboard), and every lane starts again from the champion. The experiment each ended trial was on ends with the result `interrupted`, and a copy of it goes to the top of the run's queue, with the same author and the reason `tried again: its trial on <lane> was interrupted (<old id>)`, followed by the old reason. The copy's `experiment_added` event also has `requeued_from`: `{experiment, trial, lane, result}`, the experiment it repeats, its trial, the lane and `interrupted`. Result: `{"run", "reset": true}`.
+
+The run page's **History** says "You restarted the lanes: their trials ended, and every lane starts again from the champion." (with the issuer's name in place of "You" for the agent's token), and, for each copy, `<author>'s experiment "<title>" went back in the queue: its trial was interrupted.`, such as "The planner's experiment …" or "Your experiment …". The dashboard offers **Restart the lanes** only on a running run with agents: a run without agents (a try, a rig check) has no lanes.
 
 ### `message_agent`
 
@@ -288,7 +290,7 @@ The owner's message to the run's agents. The judge is code and takes no messages
 | --- | --- | --- | --- |
 | `run` | lowercase id | required | The run |
 | `to` | one of the recipients below | required | Who gets it |
-| `text` | text, 1 to 4000 characters | required | The message |
+| `text` | text, 1 to 4000 characters | required | The message. Control trims it before it signs it |
 | `keep` | boolean | `false` | `true` keeps the message in force: it goes into the brief of every new trial it is for, until an [`unkeep_message`](#unkeep_message) removes it. Only for `all` or a lane |
 
 | `to` | Who reads it |
@@ -310,14 +312,31 @@ Each reader reads a message once: each lane, the planner and each advisor role. 
 | A worker in Pi | At its next step: after its model's current turn |
 | A worker in OpenCode or Claude Code | When its current run ends without a submission. The harness then continues the session with the message |
 | A worker that has submitted | It does not read it: a submission ends the trial, and the lane's next trial reads the message in its brief |
-| The planner | At its next plan, if its model answers. While the planner is off, or its model can't be reached, the message waits |
+| The planner | At its next plan whose model's plan is used. While the planner is off, its model can't be reached, or code refuses its plan on both tries (the fixed rules give out the round's work), the message waits for the next plan |
 | The teacher pair | In its next round, once at least one teacher has given its review. For a running run, a message starts that round: between rounds the supervisor looks for one every 5 seconds, and a round under way finishes first. When the advisors have reached the day's [spending limit](advisors-file.md#spending), a message starts no round; the run's live view says once `the advisors reached the day's spending limit (<limit> USD): the teacher pair reads your message after midnight UTC` |
 | The auditor | With its next audit, once the audit is posted to the harness |
 | The review panel | With its next review, once the review is posted. If a panelist gives no answer, the review is not posted, and its next try gives every panelist the message again |
 
 An advisor's brief or package puts the owner's messages first, and they are never cut when it is shortened. The teacher pair, the auditor and the review panel are asked to answer each message they are given, in one or two sentences, and the harness records each answer. An answer with no text is left out, and one malformed answer does not lose the advisor's others. A message kept in force goes into every new trial's brief under `# Messages from the campaign's owner, in force`; the others go under `# Messages from the campaign's owner`.
 
-Control refuses `keep` with any other `to` before signing: `bad message_agent payload: keep: only a message to everyone working (all) or to a lane can be kept in force`. The harness refuses a message in these cases, and records no message:
+Control checks every message before it signs it, wherever it comes from: a run's **Live** or **Planner** tab, the REST API, `thermite command` or MCP. It trims the text, and refuses a message with no words in it, or one that nothing on the rig would read. It judges that from what the rig last reported: the run, the rig's settings (**Edit rig**) and the advisor roles its supervisor has set up. While the rig has not reported the run, or its supervisor has not reported its roles, control does not refuse for that reason, and the harness decides, as below. Control refuses with these messages:
+
+| Message | When |
+| --- | --- |
+| `Write a message first.` | `text` is empty, or only spaces |
+| `This run has no agents (the judge alone tries the kit), so nothing would read it.` | `all`, `planner`, a lane or a trial, in a run started without agents |
+| `A research run plans its rounds with a fixed method: it has no planner to message.` | `planner`, in a research run |
+| `The planner is off on this rig (Edit rig), so nothing would read it.` | `planner`, with the planner switched off on **Edit rig** |
+| `A research run has no attempts to audit.` | `auditor`, in a research run |
+| `A research run has no conclusions to review.` | `panel`, in a research run |
+| `The teacher pair is off on this rig (Edit rig), so nothing would read it.`, and the same with `auditor` or `review panel` | `teachers`, `auditor` or `panel`, with that role switched off on **Edit rig** |
+| `This rig's supervisor has no teacher pair set up, so nothing would read it.`, and the same with `auditor` or `review panel` | `teachers`, `auditor` or `panel`, when the rig's supervisor reports that it has no such role |
+| `This rig's supervisor has no advisors set up, so nothing would read it.` | `advisors`, when the supervisor reports none of the three roles |
+| `No advisor would read it.`, followed by the reason for each role, in the order teacher pair, auditor, review panel | `advisors`, when each of the three roles has one of the reasons above |
+
+Over the REST API and `thermite command`, a refusal is `500 {"error":"<message>"}`, written to control's audit log as `failed`. Over MCP, `issue_command` answers `{"error":"<message>"}` with `isError: true`, written as `refused`. On the dashboard it shows as **Not sent.** and the message (below), written as `refused`. A run's **Live** also greys out each recipient that control would refuse, with the same words when you point at it, and its message box asks for words before it sends: "Write a message first."
+
+Control refuses `keep` with any other `to` before signing: `bad message_agent payload: keep: only a message to everyone working (all) or to a lane can be kept in force`. The harness checks again when it applies the command. It refuses a message in these cases, and records no message:
 
 | Message | When |
 | --- | --- |
@@ -334,7 +353,7 @@ Control refuses `keep` with any other `to` before signing: `bad message_agent pa
 | `run <run> has <n> lanes`, or `… has 1 lane` | A lane beyond the contract's number of lanes. A lane within it, but above the number a `lane_count` rule leaves at work, is accepted |
 | `no trial t-… in run <run>` | A trial the run does not have |
 
-The run's **Live** shows the rig's refusal of the newest message to the run, from wherever it was sent, as **Not sent.** `The rig refused your last message: <reason>` above its message box, the next time the page loads. The run's **Planner** tab does the same for the newest message to the planner, above **Tell the planner**: **Not sent.** `The rig refused your last message to the planner: <reason>`. A message from the dashboard that control refuses before it signs it shows in the same place at once, as **Not sent.** and control's reason. Control's audit log records that refusal as `refused`, with the page's path and the reason ([Audit log actions](rest-api.md#audit-log-actions)).
+The run's **Live** shows the rig's refusal of the newest message to the run, from wherever it was sent, as **Not sent.** `The rig refused your last message: <reason>` above its message box, the next time the page loads. The run's **Planner** tab does the same for the newest message to the planner, above **Tell the planner**: **Not sent.** `The rig refused your last message to the planner: <reason>`. A message from the dashboard that control refuses before it signs it shows in the same place at once, as **Not sent.** and control's reason. Control's audit log records that refusal as `refused`, with the page's path and the reason ([Audit log actions](rest-api.md#audit-log-actions)). While the planner is off on **Edit rig**, the **Planner** tab has no form under **Tell the planner**, only "The planner is off on this rig, so it reads no messages. The lanes take the queue in order and keep to the rules. Switch it on in Edit rig to tell it something.", with **Switch it on in Edit rig** as a link to the rig's **Edit rig** page.
 
 The harness writes the live line `Owner to <to> (#<id>): <text>`, with `, kept in force` after the id for a kept message. A run's **Live** shows a signed line as **To** the recipient and the text. A line for everyone working, a lane, the planner or the advisors shows so at once, in its own words. A line for a trial shows as a plain line until the run's `agent_message` event, below, reaches control with the rig's report; **Live** then draws it again in place, with the event's words. Result: `{"message": <id>, "to", "keep", "readers", "note"}`. `readers` lists who will read it: lanes, `planner`, `teachers`, `auditor` or `panel`. `note` is there only for a trial that has ended: `trial t-… has ended; lane-<n>'s next trial reads this`.
 
@@ -349,7 +368,7 @@ Removes a message from force: new trials' briefs no longer carry it, and no read
 | `run` | lowercase id | The run |
 | `message` | positive whole number | The message's id: `message` in the result of its `message_agent` |
 
-The harness refuses: `no message <id> in run <run>`, `message <id> is not kept in force`, and `message <id> was already removed from force at <time>`. The live view shows `the owner's message #<id> is no longer in force`, and the ledger records `agent_message_unkept`. Result: `{"message": <id>, "unkept": true}`.
+The harness refuses: `no message <id> in run <run>`, `message <id> is not kept in force`, and `message <id> was already removed from force at <time>`. The harness writes the live line `the owner's message #<id> is no longer in force`, and the ledger records `agent_message_unkept`. A run's **Live** shows that line, when the harness signed it, under **You** (and the message's lane, for a message to a lane) as `📌 You removed your kept message: “<text>”. New trials no longer get it.`, the text cut to 120 characters, or with `(#<id>)` in place of the text when control does not have the message. Result: `{"message": <id>, "unkept": true}`.
 
 ### `queue_add`
 
@@ -514,7 +533,9 @@ The rig's own settings, as on its **Edit rig** page. Only the fields that change
 | `promotion` | `auto` or `owner_approval` | The rig's promotion rule, for runs that set none |
 | `judge_gpus` | 1 to 8, or `null` | On a rig given its set of GPUs, how many are the judge's. `null`: the rig's default. A change restarts the harness to regroup the cards |
 
-The harness keeps the settings, applies them at once and reports them. Result: `{"settings": <all the rig's settings>}`.
+The harness keeps the settings, applies them at once and reports them, with a `rig_settings_changed` event that holds the change and the settings after it. Result: `{"settings": <all the rig's settings>}`.
+
+The **History** of the run at work at the time says what changed, such as "You changed the rig's settings: the planner off, 3 lanes, no turn limit." Each field reads as `the judge`, `the workers`, `the planner`, `the auditor`, `the teacher pair`, `the review panel` or `exports` with `on` or `off`; `<n> lanes` (`1 lane`); `trials of <n> min`; `at most <n> turns a trial` or `no turn limit`; `confirmed wins kept at once` or `confirmed wins wait for you`; and `<n> GPUs for the judge` (`1 GPU for the judge`) or `the judge's usual share of GPUs`.
 
 ### `accept_review`
 

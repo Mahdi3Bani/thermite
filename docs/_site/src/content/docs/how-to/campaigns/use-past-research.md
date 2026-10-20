@@ -71,7 +71,7 @@ A campaign's agents always read its own folder: what the campaign's other runs r
 1. Open the campaign's page: **Campaigns** in the sidebar, then the campaign. (The folder's name on **Knowledge**, or **What it can read** on a run's **Journal** tab, opens the same place.)
 2. Go down to **Knowledge**, after the runs. It counts what the campaign's own folder holds, with the buttons **Search it** and **Open the folder**, which open the **Knowledge** page. At the side, **Who reads sort-speed's folder** names the campaigns that may read this campaign's folder, or says `No other campaign.`
 3. Under **Can read from**, choose a campaign in **Add a folder**. Each is listed with its mode and items, such as `merge-speed (hill climb · 86 items)`. A campaign whose runs haven't reported yet is listed too: its items come as its runs report.
-4. Press **Add**.
+4. Press **Add**. Beside it, the form says `Runs at work see the change at their next sync.`
 
 The campaign's page comes back at its **Knowledge** section, and the top of the page says `sort-speed's agents may now read merge-speed's folder. Runs at work get it at their next sync.` The folder shows under **Can read from**, with its mode, its items and when it last changed. On **merge-speed**'s page, **Who reads merge-speed's folder** now names `sort-speed`.
 
@@ -79,7 +79,7 @@ If control can't add it, the **Knowledge** section says **Not changed.** and why
 
 To stop it, press **Remove** beside the folder under **Can read from**. The page says `sort-speed's agents no longer read merge-speed's folder. Runs at work drop it at their next sync.` New runs start without it. Experiments and a briefing that a run already took from that folder stay with the run.
 
-You can add and remove folders at any time, also while runs are at work. Under **Can read from** you may also find an outside knowledge base that the campaign's advisors may search, marked `outside knowledge base, read as outside context`: see [Connect an outside knowledge base](../operate/outside-knowledge-base.md).
+You can add and remove folders at any time, also while runs are at work. Under **Can read from** you may also find an outside knowledge base that the campaign's teacher pair may search, marked `outside knowledge base, read as outside context`. **Remove** beside it ends that search, and the page says, for example, `sort-speed's advisors no longer search the outside knowledge base "team-brain", from their next round.` See [Connect an outside knowledge base](../operate/outside-knowledge-base.md).
 
 ### What the agents then see
 
@@ -119,7 +119,7 @@ What the new run gets:
 
   The planner, the teacher pair, the auditor and the review panel get the same items as `background`, also marked as data. Teachers that may fetch any web page don't get them, in their prompt or from their `brief` tool. A run's briefing is fixed when the run starts: nothing changes it later. [Briefings](../../reference/knowledge-base.md#briefings) has its fields and limits.
 
-With **Agents** on **Off: a try**, the run takes neither. Control leaves the ticked items out, and the page that comes back says `A try (agents off) takes no experiments and no background: what you ticked was left out.`
+With **Agents** on **Off: a try**, **From past research** hides, and nothing ticked in it is sent: a try takes neither experiments nor a briefing.
 
 If an item can no longer be used, for example because you removed its folder from **Can read from** after the panel opened, the campaign's page says **Not started.** `An item from past research is not one this campaign may read and start from: search again.`, with the panel open again.
 
@@ -131,10 +131,10 @@ The [MCP tools](../../reference/mcp-tools.md) for the knowledge base:
 | --- | --- | --- |
 | [`kb_folders`](../../reference/mcp-tools.md#kb_folders) | The owner's and an operator's | Lists the folders, each with its mode, its counts by kind, its runs, its newest change, `read_by` (the campaigns granted to read it) and `reads` (the folders it reads besides its own) |
 | [`kb_search`](../../reference/mcp-tools.md#kb_search) | The owner's and an operator's | Takes `q` (the words), and optionally `campaigns` (the folders to search; every folder when left out), `kinds` and `limit` (1 to 100, 20 unless set). Returns the matching items, newest first, each with `campaign`, `rig`, `run`, `kind`, `ref`, `title`, `body`, `by` and, for an experiment, its `result` |
-| [`kb_grant`](../../reference/mcp-tools.md#kb_grant) | The owner's and an operator's | Takes `campaign` and `reads`, as **Add** does: from now on, `campaign`'s agents may read the folder of `reads` |
+| [`kb_grant`](../../reference/mcp-tools.md#kb_grant) | The owner's and an operator's | Takes `campaign` and `reads`, as **Add** does: from now on, `campaign`'s agents may read the folder of `reads`. With `reads` set to `outside:<name>`, it lets the campaign's teacher pair search that [outside knowledge base](../operate/outside-knowledge-base.md) instead, as **Let its advisors search it** does |
 | [`kb_revoke`](../../reference/mcp-tools.md#kb_revoke) | The owner's and an operator's | Takes the same, as **Remove** does |
 
-The agent's and the reader's tokens don't have these tools. `kb_grant` refuses `no campaign <name>` and `a campaign always reads its own folder: name another campaign`; `kb_revoke` refuses `<campaign> does not read <reads>`.
+The agent's and the reader's tokens don't have these tools. `kb_grant` refuses `no campaign <name>`, `a campaign always reads its own folder: name another campaign`, and `no outside knowledge base <name>` for an `outside:` name that isn't set in **Providers**. `kb_revoke` refuses `<campaign> does not read <reads>`, or `<campaign> does not search the outside knowledge base <name>`.
 
 To start a run from past research, add to the [`assign_campaign`](../../reference/signed-commands.md#assign_campaign) payload:
 
@@ -152,7 +152,7 @@ To start a run from past research, add to the [`assign_campaign`](../../referenc
 }
 ```
 
-Over MCP, send the payload with `issue_command`, kind `assign_campaign`. Control looks each briefing item up by its `from` and puts in the item's own text, whatever `text` says. It leaves out an item it can't find, one it finds on more than one rig, and one in a folder the run's campaign may not read; with none left, the run has no briefing. It takes a past experiment's words from its own record when the experiment comes from a folder the run's campaign may read, as for any copied experiment. Any other keeps the words you sent, with the author `copied`.
+Over MCP, send the payload with `issue_command`, kind `assign_campaign`. Control looks each briefing item up by its `from` and puts in the item's own text, whatever `text` says. It leaves out an item it can't find, one it finds on more than one rig, and one in a folder the run's campaign may not read; with none left, the run has no briefing. It takes a past experiment's words from its own record when the experiment comes from a folder the run's campaign may read, as for any copied experiment, and, as **Start a run** does, ends its details with what became of it when the folder has that, such as `In sort-speed-1 (sort-speed) it was tried: attempt a-0123456789abcdef (submitted), regress (-3.10%).` Any other keeps the words you sent, with the author `copied`.
 
 The command line has no tools for the knowledge base, and `thermite assign` has no option for a briefing. Print the payload, add `briefing`, and send it with `thermite command`. Unlike MCP, `thermite command` and the REST API send the briefing and the experiments as you give them: control doesn't look them up. For example:
 

@@ -348,6 +348,7 @@ Everything it prints goes to standard output.
 | `error: dev-run needs a command after --` | `2` |
 | `error: status needs an attempt id` | `2` |
 | `error: idea needs a title: what to try, in a few words` and the usage text | `2` |
+| `error: "<title>" is a command word, not an idea. idea proposes an experiment: give what to try, in a few words. thermite-trial does not list the run's ideas or queue.` and the usage text, for a one-word title that names a command | `2` |
 | `error: idea has no --<option>` and the usage text | `2` |
 | `error: note needs --kind: observation, decision, surprise, question, lesson or note` and the usage text | `2` |
 | `error: note needs its text: what you observed, decided or learned` and the usage text | `2` |

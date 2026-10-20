@@ -38,6 +38,8 @@ The stack, its settings and how to operate it are described on the site:
 
 The `two-rigs` profile adds a second rig (`local-2`), which the control and steering acceptance tests use. `compose.lifecycle.yaml` lets control restart containers through the engine's socket; it is for development only.
 
+`compose.yaml` passes the optional settings through from your shell or `.env`, each with its default. That includes the knowledge base's two timers: `THERMITE_KB_SYNC_SECONDS` for both rigs' supervisors (180), and `THERMITE_OUTSIDE_KB_SYNC_SECONDS` for control (300). Set one lower to see past research or an outside copy move sooner, or to `0` to turn that timer off; **Sync now** still copies a folder by hand.
+
 ## The dashboard demo
 
 To work on the dashboard without a stack, run a demo with synthetic campaigns and rigs:
@@ -54,7 +56,7 @@ The documentation's screenshots come from the demo, whose data is made up. With 
 
 Goal 065's parts are covered by unit tests, which `npm test` runs like any other: field notes (`src/harness/journal.test.ts`, `src/harness/agents/scheduler-notes.test.ts`), research in every mode (`src/harness/research/research-everywhere.test.ts`), the export (`src/harness/export-notes.test.ts`), the supervisor's past-research sync (`src/supervisor/kb-sync.test.ts`), the advisors' notes (`src/supervisor/advise-notes.test.ts`), control's knowledge base and its pages (`src/control/kb.test.ts`, `src/control/kb-ui.test.ts`) and outside knowledge bases (`src/control/outside-kb.test.ts`, `src/supervisor/advise-outside-kb.test.ts`).
 
-- **A fake outside knowledge base** (`src/testing/fake-kb.ts`) stands in for a GBrain-style brain: an MCP server on a free local port that takes one bearer token, with a search tool and a page-writing tool shaped like GBrain's `put_page`. It keeps every page, call and request, so a test can look at what control and the supervisor sent.
+- **A fake outside knowledge base** (`src/testing/fake-kb.ts`) stands in for a GBrain-style brain: an MCP server on a free local port that takes one bearer token, with a search tool and a page-writing tool shaped like GBrain's `put_page`. It keeps every page, call and request, so a test can look at what control and the supervisor sent. A test can make it refuse every page (`failWrites`), or only the pages whose slug holds some words (`failPage`), as a server does that refuses one page for good.
 - **Control's assignments** (`src/testing/assignments.ts`): control serves a rig's past research and outside knowledge bases only for runs it assigned, so a test that seeds a rig's events records control's own assignment of the run with `assigned(store, rig, run, campaign)`.
 
 No compose acceptance test covers them yet.
@@ -76,6 +78,10 @@ COMPOSE="podman-compose" npm run smoke:compose
 ```
 
 Set `KEEP=1` to leave the stack running afterwards. To run it beside another stack, give it its own project and control port: `THERMITE_PROJECT=thermite-smoke THERMITE_CONTROL_PORT=8801`.
+
+### The smoke project's commits
+
+A rig's smoke check (one of its [rig checks](_site/src/content/docs/how-to/operate/check-a-rig.md)) makes git repositories from `examples/smoke-project` and `kits/smoke-cpu` (without its candidates). The same files always give the same commits, and `examples/contracts/smoke-cpu-goal.json`, the contract of the [goal-campaign tutorial](_site/src/content/docs/tutorials/first-goal-campaign.md), names them. So a change to either folder changes the commits the contract must name. A unit test in `src/harness/smoke-check.test.ts` makes the repositories as the smoke check does and compares: when it fails, it says which field of the contract to set to which commit.
 
 ## The judge acceptance test
 

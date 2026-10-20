@@ -92,7 +92,7 @@ In the dashboard, open **Campaigns** in the sidebar, and press **New campaign** 
 
 On **1 Aim**:
 
-1. Keep **Hillclimbing** chosen. A **hill climb** improves one measured number, here how long the program takes.
+1. Keep **Hill climb** chosen. A **hill climb** improves one measured number, here how long the program takes.
 2. **Campaign name**: `primes-speed`
 3. **Title**: `Count primes faster`
 4. Press **Next**.
@@ -104,7 +104,7 @@ On **2 Project**:
 1. **Repository**: your repository's `https` address from step 2.
 2. **Start from**: `main`
 3. **Repository access**: keep **Public: no key**.
-4. Press **Look it up**. Control reads your repository and says `Found: main is at`, a short commit id, and how many files it has. Every run starts from exactly that commit.
+4. Press **Look it up**. Control reads your repository and says `Found: main is at`, a short commit id, and how many files it has: `· 1 file. Rigs fetch it from there.` Every run starts from exactly that commit.
 
    If it says `control cannot read it without a key: is the repository private?` instead, check the address, and check that the repository is public. If it says `the repository has no branch or tag named main`, check **Start from**, and that step 2's push went through.
 5. **Files the agents may change**: `primes.c`. A change to any other file is refused before it is built.
@@ -145,7 +145,7 @@ On **4 Where it runs**, the card for `local-1` is chosen. It shows the rig's har
 
 ## 8. Try the kit first
 
-On **5 Review and start**, a sentence sums up the campaign. It starts with `primes-speed will make its runs faster`, and it names `primes.c` as the only file to change and `local-1` as the rig.
+On **5 Review and start**, a sentence sums up the campaign. It starts with `primes-speed will make its runs faster`, names `primes.c` as the only file to change, and ends `1 agent works on local-1.`
 
 Press **Try the kit first**. This starts a run with no agents: the judge builds your project and runs it, so you see the kit work before an agent spends any time on it.
 
@@ -174,11 +174,11 @@ The try shows that the kit works. Now start the real run, with an agent.
 5. Open **More options**, and set **When a change is confirmed better** to **ask me every time**. Every change the judge confirms will wait for you before it becomes the new best version.
 6. At the bottom, the panel sums it up: `Starts a new run on local-1, with agents on` and your model. Press **Start the run**.
 
-The campaign's page still shows the try under **At work now** at first. After a minute, press **refresh**: as in step 8, the same address now opens the new run's own page, `primes-speed-1`, and its top line ends `Running`. The new run keeps what you set on the New campaign page, such as **Stop after (hours)**, whose hours count from this run's start.
+The campaign's page comes back with a card at the top, `Starting local-1/primes-speed-1.`, and still shows the try under **At work now**. After a minute, press **refresh**: as in step 8, the same address now opens the new run's own page, `primes-speed-1`, and its top line ends `Running`. The new run keeps what you set on the New campaign page, such as **Stop after (hours)**, whose hours count from this run's start.
 
 The try has stopped. To see it, press **primes-speed** in the line at the top: the campaign's page lists the try under **Earlier runs** as **Paused**, with `replaced by primes-speed-1` under **Why it stopped**. Press `primes-speed › primes-speed-1` under **At work now** to go back to the run's page.
 
-As in [Hand the work to agents](agents-with-a-free-model.md#7-watch-the-agent-work), the planner works first, often for less than a minute. While it plans, the **Now** block on the run's **Overview** shows `planner` and `planning round 1 (1 lane)`. The run's page may open only after the planner is done. Then the agent starts, and **Now** shows `lane-1` with the experiment it works on: the one thing the planner gave it to try, from the run's **queue** of experiments. The run's **Experiments** tab shows that queue, and its **Journal** tab the field notes the agents keep as they work. A **lane** is one line of search, worked by one **trial** after another: each trial is one agent's session, which submits at most one change.
+As in [Hand the work to agents](agents-with-a-free-model.md#7-watch-the-agent-work), the planner works first, often for less than a minute. While it plans, the **Now** block on the run's **Overview** shows `planner` and `planning round 1 (1 lane)`, and **Agents**, under **The run**, says `On: they start work at the first round`. The run's page may open only after the planner is done. Then the agent starts, and **Now** shows `lane-1` with the experiment it works on: the one thing the planner gave it to try, from the run's **queue** of experiments. The run's **Experiments** tab shows that queue, and its **Journal** tab the field notes the agents keep as they work. A **lane** is one line of search, worked by one **trial** after another: each trial is one agent's session, which submits at most one change.
 
 To watch the agent:
 
@@ -246,7 +246,7 @@ git commit -am "Count primes faster, as Thermite's judge confirmed"
 
 The agent keeps looking for more speed until you stop it. At the top of the run's page, on the right, press **Pause**, between **Message** and **⋯**. A small menu opens. In its field **why (optional)**, type `result taken home`, then press **Pause the run**.
 
-The page says `Control sent the command to local-1.`, and the agent's current trial stops too. Within a minute, after a **refresh**, the button says **Resume**, and the **Now** block says `This run is paused: result taken home. Nothing new starts until it is resumed.` The top line ends **Paused**, or still **Audit** while a change waits for you.
+The page says `Control sent the command to local-1.`, and the agent's current trial stops too. Within a minute, after a **refresh**, the button says **Resume**, and the **Now** block says `This run is paused: result taken home. Nothing new starts until it is resumed.` The top line ends **Paused**, even while a change waits for you: it stays under **Needs you**.
 
 A paused run uses no model: no agent works on it until you resume it. The runs from the earlier tutorials are paused or finished too. To stop Thermite itself, see [step 8 of Your first run](first-run.md#8-stop-or-keep-thermite).
 

@@ -220,13 +220,14 @@ That is the description the owner and the operator see. `<kinds>` is the caller'
 | `payload` | object | | The kind's payload, as [Signed commands](signed-commands.md) gives it |
 | `ttl_minutes` | whole number, 1 to 10080 | 60 | Minutes until the command expires if the rig has not taken it |
 
-For `assign_campaign`, control first takes each item of `briefing` from its own record: the [knowledge base](knowledge-base.md#briefings)'s item that the item's `from` names (`campaign`, `run`, `kind` and `ref`), with that item's words in place of the caller's `text`. It leaves out an item it cannot find, finds more than once, or that is in a folder the run's campaign may not read; with none left, it sends no `briefing`. Then it takes each experiment in `queue` from its own record, whatever the caller sent: the `title`, `details`, `family`, `why` and `by` that the rigs' signed events give the experiment named in its `from`, with every edit applied. It does this only when the run that `from` names is [filed](knowledge-base.md#campaign-folders) in the folder of the new run's campaign, or of a campaign whose folder that campaign may read. Any other experiment keeps the caller's words, and its `by` is `copied`: one that control has no record of (no rig reported it, or more than one did), and one from a run in any other folder, or in none. Only MCP does this: the REST API and `thermite command` send `briefing` and `queue` as given.
+For `assign_campaign`, control first takes each item of `briefing` from its own record: the [knowledge base](knowledge-base.md#briefings)'s item that the item's `from` names (`campaign`, `run`, `kind` and `ref`), with that item's words in place of the caller's `text`. It leaves out an item it cannot find, finds more than once, or that is in a folder the run's campaign may not read; with none left, it sends no `briefing`. Then it takes each experiment in `queue` from its own record, whatever the caller sent: the `title`, `details`, `family`, `why` and `by` that the rigs' signed events give the experiment named in its `from`, with every edit applied. It does this only when the run that `from` names is [filed](knowledge-base.md#campaign-folders) in the folder of the new run's campaign, or of a campaign whose folder that campaign may read. Any other experiment keeps the caller's words, and its `by` is `copied`: one that control has no record of (no rig reported it, or more than one did), and one from a run in any other folder, or in none. To an experiment taken from its record, control adds the line `In <run> (<campaign>) it was <result>.` after the details when the experiment's item in the knowledge base has a result, as **Start a run** does, and cuts `details` to 4,000 characters. Only MCP does this: the REST API and `thermite command` send `briefing` and `queue` as given.
 
 Returns `{id}`. Errors:
 
 - `<rig> is being reset by the owner` (the agent's token only)
 - `unknown rig <rig>`
 - `bad <kind> payload: <field>: <message>`, with `payload` in place of a field for a rule about the whole payload, such as `bad queue_edit payload: payload: change at least one of title, details, family and why`
+- for `message_agent`, `Write a message first.` and the refusals of a message that nothing on the rig would read, such as `The planner is off on this rig (Edit rig), so nothing would read it.`: [`message_agent`](signed-commands.md#message_agent) lists them
 - `the <kind> command is too large to deliver`
 
 ### propagate_champion
@@ -283,22 +284,26 @@ Returns items `{id, seq, campaign, rig, run, kind, ref, title, body, by, url, su
 
 **Let a campaign read another's folder.** Owner and operator.
 
-> From now on, the campaign's agents may search and read the other campaign's folder in Thermite's knowledge base; they never write to it. Its runs at work receive the folder at their supervisor's next sync, and new runs start with it. A campaign always reads its own folder.
+> From now on, the campaign's agents may search and read the other campaign's folder in Thermite's knowledge base; they never write to it. Its runs at work receive the folder at their supervisor's next sync, and new runs start with it. A campaign always reads its own folder. reads: `outside:<name>` instead lets the campaign's teacher pair search that outside knowledge base (read only), as the campaign page's Let its advisors search it does.
 
 | Input | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `campaign` | string | | "The campaign whose agents read" |
-| `reads` | string | | "The other campaign whose folder they read" |
+| `reads` | string | | "The other campaign whose folder they read, or `outside:<name>` for an outside knowledge base" |
 
 Returns `{granted, reads}`: `granted` is false when the campaign read that folder already, and `reads` is every folder it reads now besides its own. Errors: `no campaign <name>` (a campaign control does not know, for either input), `a campaign always reads its own folder: name another campaign`. Control writes a new grant to its audit log as `kb_grant`. [Grants](knowledge-base.md#grants) says what a grant gives.
+
+With `reads` set to `outside:<name>`, `kb_grant` lets the campaign's teacher pair search the [outside knowledge base](knowledge-base.md#outside-context-for-the-teacher-pair) of that name, as **Let its advisors search it** on the campaign's page does, and `reads` then lists it as `outside:<name>`. `campaign` must still be a campaign control knows. An outside knowledge base not set in **Providers** is refused: `no outside knowledge base <name>`. Control writes a new grant to its audit log as `outside_kb_read_granted`, not `kb_grant`.
 
 ### kb_revoke
 
 **Stop a campaign reading another's folder.** Owner and operator.
 
-> The campaign's agents no longer read the other campaign's folder. New runs start without it.
+> The campaign's agents no longer read the other campaign's folder. New runs start without it. reads: `outside:<name>` ends the teacher pair's search of that outside knowledge base.
 
-The same inputs as `kb_grant`. Returns `{revoked: true, reads}`. Error: `<campaign> does not read <reads>`. Control writes it to its audit log as `kb_revoke`. Each running run of the campaign loses the folder from its `knowledge/` at its supervisor's next sync. `reads` may also name an outside knowledge base as `outside:<name>`, which ends the teacher pair's search of it.
+The same inputs as `kb_grant`. Returns `{revoked: true, reads}`. Error: `<campaign> does not read <reads>`. Control writes it to its audit log as `kb_revoke`. Each running run of the campaign loses the folder from its `knowledge/` at its supervisor's next sync.
+
+With `reads` set to `outside:<name>`, `kb_revoke` ends the teacher pair's search of that outside knowledge base, as **Remove** under **Can read from** on the campaign's page does. A campaign that does not search it is refused: `<campaign> does not search the outside knowledge base <name>`. Control writes it to its audit log as `outside_kb_read_revoked`. A grant left over from an outside knowledge base no longer set in **Providers** is removed without that entry.
 
 ### rig_setup
 

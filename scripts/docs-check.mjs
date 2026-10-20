@@ -62,6 +62,16 @@ function frontMatter(text) {
   };
 }
 
+// A placeholder such as <campaign> outside code is read as an HTML tag, and the site hides it.
+const htmlTags =
+  /^<\/?(a|b|br|code|details|div|em|i|img|kbd|li|ol|p|span|strong|sub|summary|sup|table|td|th|tr|ul|Aside|Card|CardGrid|LinkCard|Steps|TabItem|Tabs)\b/;
+function placeholders(body) {
+  const prose = body.replace(/```[\s\S]*?```/g, "").replace(/``[^`]*``|`[^`\n]*`/g, "");
+  return [...prose.matchAll(/<\/?[A-Za-z][\w-]*(?:\s[^>\n]*)?>/g)]
+    .map((m) => m[0])
+    .filter((tag) => !htmlTags.test(tag));
+}
+
 const pages = walk(docsRoot, /\.mdx?$/)
   .map((file) => {
     const slug = relative(docsRoot, file)
@@ -89,6 +99,11 @@ for (const page of pages) {
   if (/^#\s/m.test(page.body.replace(/```[\s\S]*?```/g, "")))
     problem(page.file, "a level-1 heading in the body; the title comes from the front matter");
   if (/:::note\[Being written\]/.test(page.body) && !allowStubs) problem(page.file, "still a stub");
+  for (const tag of new Set(placeholders(page.body)))
+    problem(
+      page.file,
+      `${tag} outside code is read as an HTML tag and hidden; put it in backticks`,
+    );
 }
 
 // --- Links and anchors ------------------------------------------------------------------------

@@ -14,7 +14,7 @@ Each run keeps an **experiment queue**: a list, in order, of what its [lanes](..
 
 ## Before you start
 
-- A run with agents that is running or paused. A finished run still shows the forms, but the rig refuses every change to its queue or its rules, and **Commands** shows why: `run sort-speed-1 is closed: its queue and rules no longer change`. On a run without agents, such as a try or a run started with `--agents off`, the forms work, but no lane ever takes an experiment, rules have nothing to steer, and the rig refuses a message to the planner: `run sort-speed-1 has no agents (the judge alone tries the kit): nothing would read this message`.
+- A run with agents that is running or paused. A finished run still shows the forms, but the rig refuses every change to its queue or its rules, and **Commands** shows why: `run sort-speed-1 is closed: its queue and rules no longer change`. On a run without agents, such as a try or a run started with `--agents off`, the forms work, but no lane ever takes an experiment, rules have nothing to steer, and control refuses a message to the planner: **Not sent.** `This run has no agents (the judge alone tries the kit), so nothing would read it.`
 - The owner's sign-in on the dashboard. From the command line, the owner's token; over MCP, the owner's or an operator's token. See [Who may do what](steer-a-run.md#who-may-do-what).
 
 ## Open the Experiments tab
@@ -45,7 +45,7 @@ Only experiments that wait can change: a lane that has started on one keeps it. 
 
 **In progress** shows what each lane is on: `lane-1 · since 9m ago`, the experiment's title and who added it, or `No lane is at work.` An experiment moves here when a lane's trial starts on it, and to **Tried** when the trial ends.
 
-When **Pause**, **Restart the lanes** or a restart of the rig's harness ends a trial early, its experiment wasn't really tried. It shows under **Tried** as `no attempt: interrupted`, and a copy goes back to the top of **Up next**, with a reason that starts `tried again: its trial on lane-1 was interrupted`. A trial that fails with an error comes back the same way. See [Steer a run](steer-a-run.md) for pausing and restarting.
+When **Pause**, **Restart the lanes** or a restart of the rig's harness ends a trial early, its experiment wasn't really tried. It shows under **Tried** as `no attempt: interrupted`, and a copy goes back to the top of **Up next**, by the same author, with a reason that starts `tried again: its trial on lane-1 was interrupted`. A trial that fails with an error comes back the same way. **History** says, for example, `Your experiment "…" went back in the queue: its trial was interrupted.`, or `lane-2's experiment "…" went back in the queue: its trial failed.` See [Steer a run](steer-a-run.md) for pausing and restarting.
 
 Others write to the queue too, and **Added by** names them:
 
@@ -117,7 +117,9 @@ The card **Tell the planner**, on the **Planner** tab of a hill climb or goal ru
 
 The page says `Sent to the rig. The planner reads it when it next gives out work; Commands shows whether the rig took it.` The planner reads it when it plans the next round with its model's answer, and **Live** shows `✓ planner read your message: …`. A lane's later trials in a round don't wait for the planner, so the next round can be a while off; **Restart the lanes** starts one at once. From what you say, the planner can add, move or drop experiments, queue or drop ideas, and add rules. A rule it adds from your message shows `set by planner`, with `(from your message: “…”)`. A change it makes to the queue carries its own reason. If the model's answer is refused, the fixed rules plan the round and your message is not read: it waits for the next plan, and **History** says `(by the fixed rules: the model gave no usable plan, because …)`.
 
-If control refuses the message, the card shows **Not sent.** and the reason at once. If the rig refuses it, within seconds, the card shows it after a **refresh**, such as **Not sent.** `The rig refused your last message to the planner: the planner is off on this rig (Edit rig), so nothing would read this message`. The notice goes once you send the planner a newer message. [Send the agents a message](steer-a-run.md#send-the-agents-a-message) covers messages to the other agents.
+With the planner switched off on **Edit rig**, the card has no form. It says `The planner is off on this rig, so it reads no messages. The lanes take the queue in order and keep to the rules.`, and its link **Switch it on in Edit rig** opens the rig's settings. Control refuses a message to a planner that is off however it is sent: `The planner is off on this rig (Edit rig), so nothing would read it.`
+
+If control refuses the message, the card shows **Not sent.** and the reason at once, such as `Write a message first.` for a message of only spaces. If the rig refuses it, within seconds, the card shows it after a **refresh**, as **Not sent.** `The rig refused your last message to the planner:` and the rig's reason. The notice goes once you send the planner a newer message. [Send the agents a message](steer-a-run.md#send-the-agents-a-message) covers messages to the other agents.
 
 A research run has no planner model: its card **The plan** says `A research run sets each round with a fixed method: it takes the experiments in queue order and keeps to the rules. There is no planner model to tell.`
 
@@ -133,7 +135,7 @@ A research run has no planner model: its card **The plan** says `A research run 
 
 The model's notes follow, or, when the fixed rules gave out the work, a note that says why and ends `lanes took queued experiments in order`, such as `the model gave no usable plan: lanes took queued experiments in order`. A lane's later trial in a round has a hand-out of its own, noted such as `lane-1's trial 2 of 3 in round 4`. The tab shows the newest 30; before the first, it says `No hand-out yet.`
 
-The run's **History** tab tells each round in a sentence, such as `The planner planned round 4: lane-1 on loop-tiling; lane-2 on vectorize.` A round that the fixed rules planned says why, such as `(by the fixed rules: the planner is off on this rig (Edit rig))` or `(by the fixed rules: the model gave no usable plan, because …)`. Each hand-out follows, such as `The planner gave out round 4: lane-1 on "vectorize the scale loads (half2)".` A research round reads `The research plan set round 4: …`.
+The run's **History** tab tells each round in a sentence, such as `The planner planned round 4: lane-1 on loop-tiling; lane-2 on vectorize.` A round that the fixed rules planned says why, such as `(by the fixed rules: the planner is off on this rig (Edit rig))` or `(by the fixed rules: the model gave no usable plan, because …)`. After `because` comes the problem with the model's answer, or, when there were several, each in turn with its try: `try 1: …; try 2: …`. Each hand-out follows, such as `The planner gave out round 4: lane-1 on "vectorize the scale loads (half2)".` A research round reads `The research plan set round 4: …`.
 
 ## Check the planner's model
 
@@ -144,7 +146,9 @@ The card **The planner** says which model plans:
 - `No model: the lanes take the queue in order and keep to the rules.`;
 - `Not reported by this rig's harness.`
 
-**Change it on Edit rig** opens the rig's settings: see [Give each agent its own model](../models/model-per-agent.md). Below, a line counts the rounds, such as `Last 12 hand-outs: 10 by the model, 2 in queue order by the fixed rules (no model, the planner off, or no usable answer from the model). History says which for each round.`
+**Change it on Edit rig** opens the rig's settings: see [Give each agent its own model](../models/model-per-agent.md). Below, a line counts the rounds, such as `12 rounds so far: 10 planned by the model, 2 in queue order by the fixed rules (no model, the planner off, or no usable answer from the model). History says which for each round.`
+
+A change on **Edit rig**, such as switching the planner off, shows in the **History** of the run at work on that rig, such as `You changed the rig's settings: the planner off.`
 
 The tab also holds the run's **Agent figures** and, once the run has published a champion, **Other rigs**: see [Run a campaign on several rigs](several-rigs.md).
 
@@ -153,13 +157,13 @@ The tab also holds the run's **Agent figures** and, once the run has published a
 Each run has its own queue. A new run can start with the experiments another run of the campaign had not tried yet.
 
 1. On the campaign's page, press **Start a run**.
-2. Keep **Agents** on **On**. With **Off: a try**, the field below hides, and a try gets no copy: the page that comes back after **Start the run** says `A try (agents off) takes no experiments and no background: what you ticked was left out.`
+2. Keep **Agents** on **On**. With **Off: a try**, the field below hides, and a try gets no copy.
 3. Under **Experiments to start with**, keep **Copy the untried experiments of** ticked, and choose the run, such as `sort-speed-1 (4 up next, 1 lane idea)`. The field shows only when some run of the campaign has experiments up next or ideas.
 4. Choose the rest as in [Start a run later](start-from-dashboard.md#start-a-run-later), and press **Start the run**.
 
 The new run's **Up next** starts with that run's waiting experiments, in the same order, up to 500, each marked `from sort-speed-1`. That run's ideas wait under **Ideas from the lanes**. Each keeps who added it and why, and the new run's **History** says, for each, `"…" was copied into the queue from run sort-speed-1.` The tried ones stay with their run. Untick the box for an empty queue, which the planner fills.
 
-The same panel can also start the queue from **past research**: the experiments recorded in this campaign's folder in Thermite's knowledge base, or in another campaign's folder that you let it read. Tick them under **From past research**. They join **Up next** after the copied ones, at most 500 in all, each marked with its run, such as `from sort-speed-1`, and with its details ending with where it came from and what it gave, such as `In sort-speed-1 (sort-speed) it was tried: attempt a-0123456789abcdef (submitted), regress (-3.10%).` A run without agents takes none. See [Use past research in a new run](use-past-research.md#start-a-run-from-past-research).
+The same panel can also start the queue from **past research**: the experiments recorded in this campaign's folder in Thermite's knowledge base, or in another campaign's folder that you let it read. Tick them under **From past research**. They join **Up next** after the copied ones, at most 500 in all, each marked with its run, such as `from sort-speed-1`, and with its details ending with where it came from and what it gave, such as `In sort-speed-1 (sort-speed) it was tried: attempt a-0123456789abcdef (submitted), regress (-3.10%).` With **Off: a try**, **From past research** hides too, and a run without agents takes none. See [Use past research in a new run](use-past-research.md#start-a-run-from-past-research).
 
 ## From the command line and over MCP
 

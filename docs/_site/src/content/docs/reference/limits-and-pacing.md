@@ -50,7 +50,7 @@ None of these ends research. A trial that ends at its time is followed by the la
 | Trials per lane per epoch | 3 | The contract's `lanes.trials_per_epoch` |
 | Reminders to a Pi worker | When 85% of the trial's time is used, 10 turns before a turn cap, and at 80% of the model's context window | Fixed |
 | Nudges when a worker stops without submitting | 2. An OpenCode or Claude Code worker is continued again for as long as the owner's messages wait for its trial and its last run made progress | Fixed (Pi, OpenCode and Claude Code). Then the trial ends; the trial's time limit still applies |
-| Time to finish after a submission | 5 s: the submission is recorded, then the lane's agent stops (its closing reply, and any note or idea after the submission, is not kept) | Fixed (OpenCode and Claude Code; Pi stops at once) |
+| Time to finish after a submission | 5 s after the submission is recorded, the lane's agent is stopped. Its closing reply is not waited for, and a note or idea it has not written by then is not recorded | Fixed (OpenCode and Claude Code; Pi stops at once: no tool call runs after its submission) |
 | Model call retries in a Pi trial | Waits of 5 s, doubling to 60 s. The trial ends after 6 failed calls in a row, 5 cut-off replies in a row, or a full context | Fixed |
 | A lane's wait after unproductive trials | 15 s, doubling for each one in a row, at most 10 minutes. Unproductive: an error, no submission, or an attempt that is `rejected_v0` or `duplicate` (research: an error) | Fixed |
 | A run's cool-down after 6 trials in a row end in errors | 30 minutes, with an `agents_cooldown` event. A new model given to the rig, or the run resumed, after the last of those errors ends it at once | Fixed |
@@ -94,7 +94,7 @@ The dashboard calls an epoch a **round**.
 | Teacher reviews of a run | Every 60 minutes, and soon after the owner writes to the teacher pair, or to all the advisors, of a running run | `teacher_minutes` in the advisors file |
 | A new owner's message to the teacher pair, or to all the advisors, looked for between advisor rounds | Every 5 s, when the rig has teachers and its **Teacher pair** switch is on. Finding one ends the wait, and the next round starts, unless the advisors' spending for the day has reached `max_usd_per_day`; a round under way finishes first | Fixed |
 | An audit or review that failed | Tried again every 30 minutes, at most 5 times, then left to the owner | Fixed |
-| Past research synced into each running run's `knowledge/` folder | Every 180 s | `THERMITE_KB_SYNC_SECONDS`. `0` turns it off |
+| Past research synced into each running run's `knowledge/` folder | Every 180 s. A run that control says it did not assign, such as a rig check's run, is asked about again 1 hour later, or once it has stopped running and runs again | `THERMITE_KB_SYNC_SECONDS`. `0` turns it off. The hour is fixed |
 | Campaign folders copied to outside knowledge bases | Every 300 s for each copy switched on, at once when a copy is switched on, and on **Sync now** | `THERMITE_OUTSIDE_KB_SYNC_SECONDS`. `0` turns the timer off; **Sync now** still works |
 | Research digests | Every 60 minutes | The contract's `report_cadence.digest_minutes` |
 | Research fetches | 6 a minute for each domain: a fetch waits, it is never refused for this | A research run: the contract's `fetch_policy.per_domain_per_minute`. A hill-climb or goal run: fixed |
@@ -211,7 +211,7 @@ None of these ends anything. Nothing limits how many [field notes](knowledge-bas
 | Search words | The first 8 words of 2 or more characters; at most 300 characters in all |
 | Search results | The **Knowledge** page 100; **Start a run** › **From past research** 40; `kb_search` 1 to 100, default 20 |
 | A run's sync of past research | Pages of up to 500 items from control, posted to the harness in parts of at most 8 MiB. The harness takes at most 32 MiB in one request |
-| A copy to an outside knowledge base | 100 items at a time, one page each, until the folder is written |
+| A copy to an outside knowledge base | 100 items at a time, one page each, until the folder is written. A page the outside server refuses stops the sync, and each later sync tries it once more; after 3 refusals in a row it is skipped, and the copy goes on |
 
 ## Control's own limits
 
@@ -231,7 +231,7 @@ None of these ends anything. Nothing limits how many [field notes](knowledge-bas
 | The live view | The newest 20,000 lines of each rig |
 | A daily report | 200,000 characters |
 | A kit uploaded on the **New campaign** page | 64 MB and 2,000 files |
-| A message to an agent | 1 to 4,000 characters |
+| A message to an agent | 1 to 4,000 characters, after control trims it. One with no words: `Write a message first.` |
 | A redirect | 1 to 40 directives, each with a rationale of up to 2,000 characters and up to 20 citations. A rule in your own words (`match`) is 1 to 200 characters |
 | REST lists | `?limit=` from 1 to 5,000. Defaults: events and live lines 500, audit 200, commands 100, reports 20 |
 | MCP lists | `kb_search`: 1 to 100, default 20; `recent_events`: at most the newest 50 events; `list_commands` (`limit`) and `get_run` (`attempts`): 1 to 500, default 50; `run_queue`: `tried` 0 to 500, default 50, with the newest 10 hand-outs and the newest 20 messages; `control_log`: 1 to 500, default 100; `rig_reports` and `runpod_tests`: 1 to 50, default 5 |

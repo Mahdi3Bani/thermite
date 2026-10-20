@@ -167,12 +167,14 @@ A run's page and its **Live** header show the run with one label: the first that
 | Label | When |
 | --- | --- |
 | **Finished** | The run is `closed` |
+| **Paused** | The run is `paused`, even when a decision waits in it |
 | **Approval** | A result waits for the owner's approval |
 | **Decision** | A "not possible" proposal waits for the owner |
 | **Review** | The review panel passed a goal, and the owner has not answered yet |
 | **Audit** | An audit is open or has blocked a result |
-| **Paused** | The run is `paused` |
 | **Running** | Otherwise |
+
+What waits in a paused run still shows in **Needs you**, as for a running one.
 
 A campaign's page lists its paused and closed runs under **Earlier runs**, with the state **Paused** or **Finished** and, under **Why it stopped**, the reason the run recorded.
 
@@ -181,7 +183,7 @@ A campaign's page lists its paused and closed runs under **Earlier runs**, with 
 A **campaign** has no state of its own: its runs do.
 
 - **The Campaigns page** (in the sidebar) counts a campaign as at work when one of its runs is running, paused when none runs and one is paused, and finished when every run is closed. Campaigns named `rig-check-…`, which the [smoke check](rig-checks.md#smoke-check) makes, are rig checks. The filters are **Active and paused** (the default), **At work**, **Paused**, **Rig checks** and **All**. The default hides finished campaigns and rig checks; **All** shows every campaign. The **Runs** column counts each campaign's runs as "N at work", "N paused" and "N finished".
-- **The sidebar's Campaigns section** lists up to 12 campaigns that have a run that is not closed. Each shows its most urgent run's label, in this order: **Approval**, **Decision**, **Review**, **Audit**, **Running**, **Paused**.
+- **The sidebar's Campaigns section** lists up to 12 campaigns that have a run that is not closed. Each shows its most urgent run's label, in this order: **Approval**, **Decision**, **Review**, **Audit**, **Running**, **Paused**. A paused run's label is always **Paused**, so a campaign whose only open run is paused shows **Paused**.
 
 A campaign appears on the **Campaigns** page once a rig reports a run of it. A campaign saved on the **New campaign** page with no run yet is not listed there; its own page says "Saved on control, with no run yet. Start a run." That page also opens for a campaign assigned over MCP, the REST API or the command line whose run no rig reports now. It then says "Assigned to a rig over the API, MCP or the CLI; no run of it reports now. Start a run."
 
@@ -199,8 +201,8 @@ An **experiment** is one thing for a lane to try, in a run's [experiment queue](
 
 - Only `proposed` and `queued` experiments can be edited or dropped, and only `queued` ones move. A command that breaks this is refused, for example `experiment <id> is done: only queued experiments move`.
 - One experiment goes to one trial. The planner can give a lane a queued experiment or a lane's idea.
-- **A copied experiment says where it came from.** **Start a run** can begin a new run's queue with another run's untried experiments, and with past experiments from the [knowledge base](knowledge-base.md) folders the campaign may read. Each keeps its first author, and `from_run` names the run it came from. One from past research ends its details with `In <run> (<campaign>) it was <result>.`, or `From <run> (<campaign>).` when that run gave it no result.
-- **An interrupted trial's experiment comes back.** When a trial is interrupted (by **Pause**, **Restart the lanes** or a harness restart) or fails with an error before it submits, its experiment is `done`, and a new experiment with the same text goes to the top of the queue. It keeps its author, and its why starts with `tried again: its trial on <lane> was interrupted (<old id>)`, or `failed` for an error.
+- **A copied experiment says where it came from.** **Start a run** can begin a new run's queue with another run's untried experiments, and with past experiments from the [knowledge base](knowledge-base.md) folders the campaign may read. Each keeps its first author, and `from_run` names the run it came from. One from past research ends its details with `In <run> (<campaign>) it was <result>.`, or `From <run> (<campaign>).` when that run gave it no result. A copied experiment that MCP's `issue_command` takes from control's records gets the same `In <run> (<campaign>) it was <result>.` line when its item has a result.
+- **An interrupted trial's experiment comes back.** When a trial is interrupted (by **Pause**, **Restart the lanes** or a harness restart) or fails with an error before it submits, its experiment is `done`, and a new experiment with the same text goes to the top of the queue. It keeps its author, and its why starts with `tried again: its trial on <lane> was interrupted (<old id>)`, or `failed` for an error. Its `experiment_added` event has `requeued_from`: `{experiment, trial, lane, result}`, with `interrupted` or `error` as the result. **History** says `<author>'s experiment "<title>" went back in the queue: its trial was interrupted.`, or `… its trial failed.`, such as "The planner's experiment …" or "Your experiment …".
 
 ### An experiment's result
 
@@ -242,7 +244,7 @@ The filter chips above the table each show a count, and group the results by the
 | Approach family | `live`, `exhausted` | A family becomes `exhausted` when a "not possible" proposal counts it as refuted |
 | Research claim | verified, draft | Verified when every quote is found word for word in its archived source and every number in the claim is in its quotes. A draft lists its problems. Workers in every mode may record claims |
 | Research finding | supported (a finding), draft | A finding counts when every claim it cites is verified and every number in it is in those claims. A draft finding lists its problems. See [Campaign modes](../explanation/campaign-modes.md#research) |
-| Epoch source | `planner`, `fallback` | Who gave out the epoch's work, which the dashboard calls a round. `planner`: the planner model, and History says "The planner planned round N: …". `fallback`: the fixed rules, used in a hill climb or goal campaign when the planner has no model, is off, or gave no usable plan: lanes take queued experiments in order. History then says why: "(by the fixed rules: no model)", "(by the fixed rules: the planner is off on this rig (Edit rig))" or "(by the fixed rules: the model gave no usable plan, because …)". A research run's rounds are always `fallback`, with `plan: "research"` in their `epoch_started` event: the research plan fills the queue on purpose, and History says "The research plan set round N: …" |
+| Epoch source | `planner`, `fallback` | Who gave out the epoch's work, which the dashboard calls a round. `planner`: the planner model, and History says "The planner planned round N: …". `fallback`: the fixed rules, used in a hill climb or goal campaign when the planner has no model, is off, or gave no usable plan: lanes take queued experiments in order. History then says why: "(by the fixed rules: no model)", "(by the fixed rules: the planner is off on this rig (Edit rig))" or "(by the fixed rules: the model gave no usable plan, because …)", with the reason; after more than one try, each try's reason in turn: "try 1: …; try 2: …". A research run's rounds are always `fallback`, with `plan: "research"` in their `epoch_started` event: the research plan fills the queue on purpose, and History says "The research plan set round N: …" |
 | Promotion policy | `auto`, `owner_approval` | Set for the run when it is assigned, or the rig's default |
 
 [Signed commands](signed-commands.md) lists the states of a command, and [Stop, restart, remove or reset a rig](../how-to/operate/rig-lifecycle.md) the steps of a full reset.

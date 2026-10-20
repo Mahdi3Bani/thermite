@@ -36,7 +36,7 @@ Run these from the repository root before each commit:
 | `node scripts/test.mjs <files>` | The test files your change touches. `npm test` runs them all, one file at a time |
 | `npm run check:public` | That no tracked or staged file holds private names (see below). Stage new files first, or run `node scripts/check-public.mjs --untracked` |
 
-`npm run check` runs the typecheck, the lint, every test and the public check, in that order. Continuous integration runs the same checks on Node.js 22 and 24 for every pull request and every push to `main`. It also builds and checks this site, and runs the compose smoke test with Docker.
+`npm run check` runs the typecheck, the lint, every test and the public check, in that order. One test keeps an example in step: after a change to `examples/smoke-project`, or to `kits/smoke-cpu` outside its candidates, `src/harness/smoke-check.test.ts` fails until `examples/contracts/smoke-cpu-goal.json` names their new commits, and says which field to set to which commit. Continuous integration runs the same checks on Node.js 22 and 24 for every pull request and every push to `main`. It also builds and checks this site, and runs the compose smoke test with Docker.
 
 Changes to some parts also need a test that starts containers. Each takes from a few minutes to half an hour:
 

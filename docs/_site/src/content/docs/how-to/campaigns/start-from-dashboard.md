@@ -24,7 +24,7 @@ Choose a card. [Campaign modes](../../explanation/campaign-modes.md) explains ea
 
 | Card | Use it to |
 | --- | --- |
-| **Hillclimbing** | Improve one measured number, such as speed, size or accuracy |
+| **Hill climb** | Improve one measured number, such as speed, size or accuracy |
 | **Reach a list of goals** | Work until checks you write all pass |
 | **Research a question** | Collect sourced findings. No code changes |
 
@@ -128,7 +128,7 @@ Choose the rig. Each card shows its hardware, whether it is idle, and its agents
 :::
 
 :::caution[How many agents work at once]
-The rig's **Workers at a time** decides it: on **Rigs**, open the rig, press **Edit rig**, and find it in the **Workers (agents)** row. It is 1 unless changed, so with the defaults the two lanes take turns, one trial at a time: the run's card shows one lane at work and the other with `next:` and its experiment. Raise it for agents to work side by side ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)). The summary at **5 Review and start** counts lanes as agents too.
+The rig's **Workers at a time** decides it: on **Rigs**, open the rig, press **Edit rig**, and find it in the **Workers (agents)** row. It is 1 unless changed, so with the defaults the two lanes take turns, one trial at a time: the run's card shows one lane at work and the other with `next:` and its experiment. Raise it for agents to work side by side ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)). The summary at **5 Review and start** counts lanes as agents too, such as `2 agents work on rig-1.`
 :::
 
 Under **Advanced**:
@@ -156,7 +156,7 @@ The **Campaigns** list shows a campaign only once a rig reports a run of it. A c
 
 ## Check that it started
 
-- After **Start the campaign** or **Try the kit first**, the campaign's page opens. For a new campaign, it says, for example, `Starting rig-1/sort-speed-1.` Wait a minute and press **refresh** in the status bar, the line along the bottom of the page: pages don't reload by themselves. Once the rig reports the run, the page shows the run's own page instead, with the tabs **Overview**, **Experiments**, **Journal**, **Attempts**, **History** and **Planner**. On **Campaigns** in the sidebar, the run also shows under **At work now**, and the campaign in the list below it.
+- After **Start the campaign** or **Try the kit first**, the campaign's page opens. Until the rig reports the run, it says, for example, `Starting rig-1/sort-speed-1.`, also for a campaign that has runs already. Wait a minute and press **refresh** in the status bar, the line along the bottom of the page: pages don't reload by themselves. Once the rig reports the run, the page shows the run's own page instead, with the tabs **Overview**, **Experiments**, **Journal**, **Attempts**, **History** and **Planner**. On **Campaigns** in the sidebar, the run also shows under **At work now**, and the campaign in the list below it.
 - A try's run is named like `sort-speed-try-1`, and its page says **A try of the kit.** Its results look right when the starting point builds and runs every case, and **History** has no `The judge's job (…) failed` line: see [Read the dry run](test-a-kit.md#3-read-the-dry-run). Then press **start the campaign** in that note: the **Start a run** panel opens. Keep **Agents** on **On**, and press **Start the run**. A rig runs one run at a time, so the new run pauses the try.
 - After **Save without starting**, the page says `Saved on control, with no run yet.` and offers **Start a run**.
 - If the page says `Saved.` and that the rig takes a model, nothing started yet: see the next section.
@@ -193,13 +193,13 @@ Press **Start a run** at the top of the campaign's page. A panel opens, headed *
 | **Agents** | **On**: the agents propose changes, and the judge measures each one. **Off: a try**: no agents, only the judge, which measures the starting point. A try needs no model |
 | **The agents' model** | Shows with **Agents** **On**, for a rig with no model: the model to give it, as on its **Edit rig** page. Control then gives the rig the model and starts nothing yet: see [When the rig doesn't have the model yet](#when-the-rig-doesnt-have-the-model-yet) |
 | **Experiments to start with** | **Copy the untried experiments of** and a run of this campaign, such as `sort-speed-1 (4 up next, 1 lane idea)`: the new run's [experiment queue](choose-what-runs-next.md) starts with that run's waiting experiments, in the same order, and its lanes' ideas, each with who added it and why, up to 500. Ticked by default. It shows only with **Agents** **On**, and only when a run of the campaign has experiments up next or ideas. Untick it for an empty queue, which the planner fills |
-| **From past research** | A search of the folders this campaign may read: its own and those you let it read. It lists the newest 40 experiments, findings, claims, notes and reports, and the box **Search past experiments, findings and notes** searches those folders. Ticked experiments join the new run's queue, after the copied ones; a ticked finding, claim, note or report becomes background in every agent's brief. With **Agents** on **Off: a try**, the run takes none of them, and the page that comes back says `A try (agents off) takes no experiments and no background: what you ticked was left out.` See [Start a run from past research](use-past-research.md#start-a-run-from-past-research) |
+| **From past research** | A search of the folders this campaign may read: its own and those you let it read. It lists the newest 40 experiments, findings, claims, notes and reports, and the box **Search past experiments, findings and notes** searches those folders. Ticked experiments join the new run's queue, after the copied ones; a ticked finding, claim, note or report becomes background in every agent's brief. It shows only with **Agents** **On**: with **Off: a try**, it hides, and nothing ticked in it is sent. See [Start a run from past research](use-past-research.md#start-a-run-from-past-research) |
 | **When a change is confirmed better** | Under **More options**: **the rig's default**, **always keep it** or **ask me every time** |
 | **GPUs for the judge** | Under **More options**: as in step 4. Empty: the rig's current split |
 
 The line at the foot sums it up, such as `Starts a new run on rig-1, with agents on <model>.` or `Starts a new run on rig-1, as a try: the judge only.` With **Agents** on **On** and items ticked under **From past research**, it ends with a sentence such as `It starts from 3 items of past research.` Press **Start the run**. The run uses the latest saved version. It is named `<campaign>-<n>`, or `<campaign>-try-<n>` without agents, with the first number not yet used on that rig, such as `sort-speed-2`.
 
-The campaign's page comes back. Wait a minute and press **refresh**: once the rig reports the new run, the page shows the run's own page. The run also shows under **At work now** on the campaign's page. If control can't start it, the campaign's page says **Not started.** and the reason, with the panel open again, such as:
+The campaign's page comes back, with a card at the top such as `Starting rig-1/sort-speed-2. The rig fetches the project and the kit and checks both; the run shows here once the rig reports it, usually within a minute.` Wait a minute and press **refresh**: once the rig reports the new run, the page shows the run's own page. The run also shows under **At work now** on the campaign's page. If control can't start it, the campaign's page says **Not started.** and the reason, with the panel open again, such as:
 
 - `rig-1 has no model for its agents, so they could not work: choose one under "The agents' model", or give it one on its Edit rig page.`
 - `rig-1 has not taken my-model yet (it does within a minute of being given it; Settings › Providers shows it taking the model until then): start the run after that.`: see [When the rig doesn't have the model yet](#when-the-rig-doesnt-have-the-model-yet).

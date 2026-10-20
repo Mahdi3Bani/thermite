@@ -228,12 +228,12 @@ The dashboard refuses to start a research run with agents in the last case. A ru
 ### A message to the agents was refused
 
 - **You see:** after **Send** in **Live**, your message never shows in the stream. Above the message box, a strip says **Not sent.** and why:
-  - when control refused the message, its reason shows at once;
-  - when the rig refused it, the strip says `The rig refused your last message:` and the rig's reason. It shows once the rig has answered, so press **refresh** in the status bar after a few seconds.
+  - when control refused the message, its reason shows at once, and the message is not on **Commands**;
+  - when the rig refused it, the strip says `The rig refused your last message:` and the rig's reason. It shows once the rig has answered, so press **refresh** in the status bar after a few seconds. On **Commands**, the message's **message agent** row is **failed**, with the rig's reason in **Outcome**.
 
-  On **Commands**, the message's **message agent** row is **failed**, with the rig's reason in **Outcome**. The strip stays until a later message to the run goes through. It also shows the rig's refusal of a message sent over MCP, the REST API or the command line.
-- **Why:** the rig refuses a message that nothing would read, such as one to a lane the run doesn't have, to a part that is off on **Edit rig**, or to the planner of a research run. The reason says which; [`message_agent`](../../reference/signed-commands.md#message_agent) lists every reason.
-- **Do:** write to a recipient that the **To** list in **Live** doesn't grey out, or switch the part on, on **Edit rig**. If the message isn't on **Commands** at all, control refused it before signing it: the **Audit log** has it as a `refused` entry. A message from **Tell the planner**, on a run's **Planner** tab, shows its refusal in that card, above the box.
+  The rig's refusal stays until a later message to the run goes through, and shows also for a message sent over MCP, the REST API or the command line. A message from **Tell the planner**, on a run's **Planner** tab, shows its refusal in that card, above the box.
+- **Why:** a message that nothing would read is refused. Control refuses, before signing it, a message with no words (`Write a message first.`), and one to a recipient that **Live** greys out, with the same words: everyone working, a lane or the planner of a run without agents, such as a try; a part that is off on **Edit rig**, such as `The planner is off on this rig (Edit rig), so nothing would read it.`; an advisor the rig's supervisor hasn't set up, such as `This rig's supervisor has no auditor set up, so nothing would read it.`; or the planner, auditor or review panel of a research run. The rig refuses what control can't check, such as a lane the run doesn't have. [Steer a run](../campaigns/steer-a-run.md#if-a-message-doesnt-arrive) lists control's reasons, and [`message_agent`](../../reference/signed-commands.md#message_agent) the rig's.
+- **Do:** write to a recipient that the **To** list in **Live** doesn't grey out, switch the part on, on **Edit rig**, or give the advisor a model. Control's refusals are in the **Audit log**, as `refused` entries for the dashboard and MCP, and `failed` for the REST API.
 
 ### A message shows, but nobody reads it
 
@@ -263,20 +263,20 @@ A reason about one experiment names its state, then the rule: `only queued exper
 
 ### An experiment came back at the top of the queue
 
-- **You see:** an experiment that a lane already worked on is first under **Up next** again. Its reason starts with `tried again: its trial on lane-2 was interrupted` or `… failed`, and the old experiment's id.
+- **You see:** an experiment that a lane already worked on is first under **Up next** again. Its reason starts with `tried again: its trial on lane-2 was interrupted` or `… failed`, and the old experiment's id. The run's **History** says, for example, `Your experiment "…" went back in the queue: its trial was interrupted.`
 - **Why:** when a trial ends because it was interrupted, by **Pause**, **Restart the lanes** or a restart of the harness, or because of an error, its experiment was not really tried. It is marked as done, and a copy goes to the top of the queue, with the same author.
 - **Do:** nothing, or press **Drop** on it if it should not be tried again. A trial that ended for another reason, such as its time running out, doesn't come back.
 
 ### History says a round followed the fixed rules
 
 - **You see:** in a run's **History**, a round's line says why the planner's model didn't plan it, such as `The planner planned round 3 (by the fixed rules: no model): lane-1 on loop-tiling.` The words in brackets name the cause:
-  - `(by the fixed rules: the model gave no usable plan, because …)`: in two tries, the model didn't answer or gave a plan that code refused. The reason after `because` is the first problem;
+  - `(by the fixed rules: the model gave no usable plan, because …)`: in two tries, the model didn't answer or gave a plan that code refused. After `because` comes the problem, or, when there were several, each with its try: `try 1: …; try 2: …`;
   - `(by the fixed rules: no model)`: the rig has no model for the planner, of its own or the workers';
   - `(by the fixed rules: the planner is off on this rig (Edit rig))`: the **Planner** switch is off on **Edit rig**.
 
   The planner's line in **Live** says the same, such as `round 3: taken from the queue by the fixed rules (no model)`.
 - **Why:** the lanes took experiments from the queue in order, by fixed rules: they skip directions that an **Avoid** rule names, and take those that an **Always** rule, then a **Try** rule, names first. The fixed rules use only rules that name a direction, such as `loop-tiling`; a rule in your own words applies only when the planner's model plans. See [Give the planner a rule](../campaigns/choose-what-runs-next.md#give-the-planner-a-rule).
-- **Do:** nothing is lost: the run goes on. If it happens every round, open the run's **Planner** tab. The **The planner** card names the planner's model, or says `No model: the lanes take the queue in order and keep to the rules.`, and counts the hand-outs made by the model and those made in queue order. Give the planner a model on **Edit rig**, or switch it on there ([Give each agent its own model](../models/model-per-agent.md)).
+- **Do:** nothing is lost: the run goes on. If it happens every round, open the run's **Planner** tab. The **The planner** card names the planner's model, or says `No model: the lanes take the queue in order and keep to the rules.`, and counts the rounds, such as `12 rounds so far: 10 planned by the model, 2 in queue order by the fixed rules …`. Give the planner a model on **Edit rig**, or switch it on there ([Give each agent its own model](../models/model-per-agent.md)).
 
 ## Past research and outside knowledge bases
 
@@ -286,7 +286,8 @@ A reason about one experiment names its state, then the rule: `only queued exper
 - **Why and do:**
   - **There is nothing to send yet.** A run never gets its own records, only those of its campaign's other runs and of the folders under **Can read from**. A campaign's first run, with nothing under **Can read from**, gets none. **Knowledge** in the sidebar shows how many items each folder holds. To add another campaign's folder, see [Use past research in a new run](../campaigns/use-past-research.md).
   - **The sync hasn't come yet.** The supervisor syncs every 3 minutes, and only the runs that are running: a paused run gets its items once it runs again. Its setting is `THERMITE_KB_SYNC_SECONDS` (180); `0` turns the sync off ([Settings](../../reference/settings.md#how-often-it-talks-to-control)). A supervisor without control's address and token syncs nothing.
-  - **The sync failed.** `past research sync error` names each run with its error, once until a sync works again. `<run>: control's knowledge base: HTTP 404` means control has no run of that name that it assigned to this rig, or hasn't seen the rig report the run yet: the next sync after the rig's report works. A rig's **Judge smoke** check runs a run of its own, `check-smoke-…`, which control never assigned: an error for it is expected, and harmless.
+  - **Control didn't assign the run.** Control sends past research only for a run it assigned to that rig. For any other run, such as the `check-smoke-…` run of a rig's **Judge smoke** check, control has nothing: the supervisor logs no error, and asks about that run again after an hour. A run control assigned but hasn't seen the rig report yet gets its items at the next sync after the rig's report.
+  - **The sync failed.** `past research sync error` names each run with its error, once until a sync works again, such as `<run>: control's knowledge base: HTTP` and the status control answered.
   - **Control couldn't index the rig's reports.** The **Audit log** has a `kb_failed` entry with the error, and control's log has `knowledge base catch-up failed`. Control tries again with the rig's next report.
 
 ### An outside knowledge base fails its check
@@ -305,7 +306,7 @@ A reason about one experiment names its state, then the rule: `only queued exper
 ### A copy to an outside knowledge base fails
 
 - **You see:** on the campaign's page, under **Outside knowledge bases**, the line **Copy to team-brain** says `on · the last sync failed 4m ago:` and the error. On **Settings › Providers**, the knowledge base's row is red, and its copy shows **failing**. Control's log has `outside knowledge base sync failed`, once for each new error.
-- **Why:** when the server refuses a page, the error is `it refused the page for note 3 of sort-speed-1:` and the server's reason. The copy stops at the page the server refused, and each later sync starts again from it, so the pages after it wait. Other errors are the server's or the connection's, or one of the check's reasons above.
+- **Why:** when the server refuses a page, the error is `it refused the page for note 3 of sort-speed-1:` and the server's reason. The copy stops at the page the server refused, and the next sync starts again from it, so the pages after it wait. When the server refuses the same page three syncs in a row, control skips it, writes the rest, and no longer calls the sync failed: the line says `last sync …` with the pages written, then `· 1 item skipped, the server refused it 3 syncs in a row` and the last one skipped, and the **Audit log** has an `outside_kb_item_skipped` entry. A skipped page is not written later on its own; it is written again only when its item changes. Other errors are the server's or the connection's, or one of the check's reasons above.
 - **Do:** fix the cause on the server, or in the knowledge base's row on **Providers**. Then press **Sync now** on the campaign's page. It says `12 pages written to "team-brain".`, or `2 pages written, then the sync failed:` and the error. `Not synced: a sync of this folder is running.` means a sync is on its way: wait and press **refresh**.
 
 ## Something was refused

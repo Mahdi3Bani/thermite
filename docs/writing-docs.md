@@ -20,6 +20,7 @@ The site's dependencies are pinned to exact versions and kept apart from Thermit
 - a `thermite` command or option that the command line does not have;
 - a setting that the code does not read, or a setting the code reads that [the settings reference](_site/src/content/docs/reference/settings.md) leaves out;
 - a contract, `kit.json` or `advisors.json` example that the real schema refuses;
+- a placeholder in angle brackets, such as `<campaign>`, outside a code span: the site reads it as an HTML tag and hides it, so write it in backticks;
 - a page missing from `llms.txt` or `llms-full.txt`, or without its Markdown copy;
 - a page that is still a stub.
 
