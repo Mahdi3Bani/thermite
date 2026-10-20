@@ -18,6 +18,7 @@ import {
   verifyCommand,
 } from "../core/commands.ts";
 import { type Contract, contractSha, parseContract } from "../core/contract.ts";
+import { isLegacyRule, researchDirectionRefusal } from "../core/directions.ts";
 import type { Hardware } from "../core/hardware.ts";
 import { type LiveKind, LiveLog, liveBody } from "../core/live.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
@@ -50,21 +51,26 @@ import { type ReviewPackage, Reviews } from "./reviews.ts";
 import { RigSettingsStore } from "./rig-settings.ts";
 import { checkV0 } from "./v0.ts";
 
-/** A directive set may not both avoid a direction (a family, or the same words) and ask for it. */
-function conflictCheck(
-  set: { kind: string; family?: string | undefined; match?: string | undefined }[],
-): void {
-  const key = (d: { family?: string | undefined; match?: string | undefined }) =>
-    d.family ? `family ${d.family}` : d.match ? `"${d.match.trim().toLowerCase()}"` : undefined;
-  const avoid = new Set(set.filter((d) => d.kind === "avoid").map(key));
-  avoid.delete(undefined);
-  const both = set.filter((d) => (d.kind === "try" || d.kind === "mandate") && avoid.has(key(d)));
+/** A directive set may not both avoid a direction and ask for it. */
+function conflictCheck(set: { kind: string; family?: string | undefined }[]): void {
+  const avoid = new Set(set.filter((d) => d.kind === "avoid" && d.family).map((d) => d.family));
+  const both = set.filter(
+    (d) => (d.kind === "try" || d.kind === "mandate") && d.family && avoid.has(d.family),
+  );
   if (both.length) {
     throw new LedgerError(
       "invalid",
-      `the set both avoids and asks for ${both.map((d) => d.family ?? d.match).join(", ")}`,
+      `the set both avoids and asks for ${both.map((d) => d.family).join(", ")}`,
     );
   }
+}
+
+/** The directions a set of rules names that the run does not have (goal 066), in order. */
+function unknownIn(set: { family?: string | undefined }[], known: readonly string[]): string[] {
+  const out: string[] = [];
+  for (const d of set)
+    if (d.family && !known.includes(d.family) && !out.includes(d.family)) out.push(d.family);
+  return out;
 }
 
 /** Command kinds only the owner may issue (control records the issuer in the signed envelope). */
@@ -459,8 +465,18 @@ export class HarnessService {
         const p = CommandPayloads.redirect.parse(payload);
         this.openRun(p.run);
         conflictCheck(p.directives);
+        // A direction the run doesn't have yet is the planner's to design at its next round
+        // (goal 066). A research run has no planner: it takes only its task kinds.
+        const known = this.queue.directions(p.run);
+        const unknown = unknownIn(p.directives, known);
+        if (unknown.length && this.contractFor(p.run).mode === "research")
+          throw new LedgerError("invalid", researchDirectionRefusal(unknown));
         const ids = this.ledger.addDirectiveSet(p.run, by, p.directives, p.replace);
-        return { run: p.run, directives: ids };
+        return {
+          run: p.run,
+          directives: ids,
+          ...(unknown.length ? { new_directions: unknown } : {}),
+        };
       }
       case "message_agent":
         return this.messages.send(CommandPayloads.message_agent.parse(payload), by);
@@ -1229,9 +1245,13 @@ export class HarnessService {
       editable_paths: "editable_paths" in contract ? contract.editable_paths : [],
       champion: { seq: champion.seq, attempt: champion.attempt },
       families: registry.families(run),
+      // The run's directions (goal 066). A rule may also name a new one: the planner designs it.
+      directions: this.queue.directions(run),
       evidence: registry.evidence(run, 40),
       epochs,
-      directives: this.ledger.activeDirectives(run),
+      directives: this.ledger
+        .activeDirectives(run)
+        .map((d) => (isLegacyRule(d.body) ? { ...d, legacy: true } : d)),
       // The run's experiment queue: the teachers may add experiments and move queued ones.
       queue: this.queue.brief(run),
       ...(goals ? { goals } : {}),
@@ -1359,6 +1379,20 @@ export class HarnessService {
    * (planner only) are limited. Nothing here can touch a verdict, a contract or a worker's brief.
    */
   addDirectives(run: string, directives: unknown, author: string): number[] {
+    return this.setAdvisorRules(run, directives, author).ids;
+  }
+
+  /**
+   * addDirectives, with the rules it left out. A rule may name a direction the run doesn't have
+   * yet: the planner designs it (goal 066). A research run has no planner, so there a rule for
+   * another direction than a task kind is left out, recorded as a `directives_left_out` event
+   * with why. The rest of the set stands.
+   */
+  setAdvisorRules(
+    run: string,
+    directives: unknown,
+    author: string,
+  ): { ids: number[]; left_out: { rule: string; why: string }[] } {
     const inst = this.requireRun(run);
     if (inst.status === "closed") throw new LedgerError("invalid", `run ${run} is closed`);
     const parsed = z.array(StructuredDirective).min(1).max(20).parse(directives);
@@ -1370,7 +1404,25 @@ export class HarnessService {
       throw new LedgerError("invalid", "at most 3 notes per directive set");
     }
     conflictCheck(parsed);
-    return this.ledger.addDirectiveSet(run, author, parsed, true);
+    const research = this.contractFor(run).mode === "research";
+    const known = this.queue.directions(run);
+    const unknown = research ? unknownIn(parsed, known) : [];
+    const keep = parsed.filter((d) => !d.family || !unknown.includes(d.family));
+    const why = unknown.length ? researchDirectionRefusal(unknown) : "";
+    return this.ledger.tx(() => {
+      if (unknown.length)
+        this.ledger.appendEvent(author, "directives_left_out", run, {
+          rules: parsed.filter((d) => !keep.includes(d)),
+          why,
+          reason: "unknown_direction",
+        });
+      return {
+        ids: this.ledger.addDirectiveSet(run, author, keep, true),
+        left_out: parsed
+          .filter((d) => !keep.includes(d))
+          .map((d) => ({ rule: `${d.kind} ${d.family}`, why })),
+      };
+    });
   }
 
   /**

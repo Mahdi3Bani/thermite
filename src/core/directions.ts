@@ -1,0 +1,165 @@
+import { z } from "zod";
+
+/**
+ * A run's directions (goal 066): the approach families its experiments belong to. A rule for the
+ * plan names one, wherever a rule is made or named: the dashboard's rule box, the owner's commands
+ * over REST, MCP and the command line, a message to the planner, and the planner's and the
+ * advisors' answers.
+ *
+ * A direction is written in plain words (`shared memory tiling`) or as `:shared memory tiling:`;
+ * the colons are optional around one direction, and mark each one in a longer text. Case, spaces
+ * and dashes don't matter: `:Shared memory tiling:` and `shared-memory-tiling` are the same
+ * direction, whose name is its words in lowercase joined by dashes (directionKey). A rule may name
+ * a direction the run doesn't have yet: the planner designs it, in its own words, at its next
+ * round. Rules in words that name no direction (`match`) are no longer made; old ones stay in
+ * force for the planner's model only, as legacy.
+ */
+
+/** A direction's name: 2 to 41 lowercase letters, digits and dashes, not starting with a dash. */
+export const DIRECTION_NAME = /^[a-z0-9][a-z0-9-]{1,40}$/;
+
+/** A research run's directions are its task kinds, whether or not a task of each is queued. */
+export const RESEARCH_TASK_KINDS = ["explore", "primary", "contradict", "consolidate"] as const;
+
+/** Lowercase words joined by dashes: "Loop  order" is loop-order. */
+function slug(words: string): string {
+  return words
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+/, "")
+    .replace(/-+$/, "");
+}
+
+/**
+ * The direction an experiment's words stand for: the words when they are a direction's name
+ * already, else the words made into one ("Loop order" is loop-order, ":split k:" is split-k), cut
+ * to a name's length. None for words that make no name.
+ */
+export function directionOf(family: string): string | undefined {
+  const id = slug(family).slice(0, 41).replace(/-+$/, "");
+  return DIRECTION_NAME.test(id) ? id : undefined;
+}
+
+/** How a direction may be written in a rule: letters, digits, spaces and dashes. */
+const WRITTEN = /^[A-Za-z0-9][A-Za-z0-9 -]*$/;
+
+/**
+ * A direction as a rule names it, `shared memory tiling` or `:shared memory tiling:`, as its name
+ * (shared-memory-tiling). None for other text, or words too long for a name.
+ */
+export function directionName(text: string): string | undefined {
+  const t = text.trim();
+  const inner = /^:(.*):$/.exec(t)?.[1]?.trim() ?? t;
+  if (!WRITTEN.test(inner)) return undefined;
+  const id = slug(inner);
+  return DIRECTION_NAME.test(id) ? id : undefined;
+}
+
+/** Why a written direction is not one, in plain words; "" when it is. */
+export function notADirection(text: string): string {
+  if (directionName(text)) return "";
+  const t = text.trim().slice(0, 80);
+  const inner = /^:(.*):$/.exec(text.trim())?.[1]?.trim() ?? text.trim();
+  return WRITTEN.test(inner) && slug(inner).length > 41
+    ? `"${t}" is too long for a direction's name: use at most 41 letters, digits, spaces and dashes`
+    : `"${t}" is not a direction's name: write it in letters, digits, spaces and dashes, such as shared memory tiling or :shared memory tiling:`;
+}
+
+// A `:name:` in a longer text: it stands on its own (`10:30:45` names nothing), and starts and
+// ends with a letter or a digit.
+const TOKEN = /(?<![A-Za-z0-9:]):([A-Za-z0-9](?:[A-Za-z0-9 -]{0,58}[A-Za-z0-9])?):(?![A-Za-z0-9])/g;
+
+/** Every direction a text names as `:name:`, such as an owner's message, in order, once each. */
+export function directionTokens(text: string): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(TOKEN)) {
+    const name = directionName(m[1] as string);
+    if (name && !out.includes(name)) out.push(name);
+  }
+  return out;
+}
+
+/**
+ * A rule box's text: one direction in plain words (`shared memory tiling`), or one or more as
+ * `:name:`, apart by spaces, commas or "and". `rest` is the text left beside `:name:` directions,
+ * which a rule box refuses: reasons go in Why.
+ */
+export function parseDirections(text: string): { names: string[]; rest: string } {
+  const t = text.trim();
+  if (!t) return { names: [], rest: "" };
+  const tokens = [...t.matchAll(TOKEN)];
+  if (!tokens.length) {
+    const one = directionName(t);
+    return one ? { names: [one], rest: "" } : { names: [], rest: t };
+  }
+  const names = directionTokens(t);
+  const rest = t
+    .replace(TOKEN, " ")
+    .replace(/[\s,]+|\band\b/gi, " ")
+    .trim();
+  return { names, rest };
+}
+
+/** A direction as a rule shows it. */
+export const asToken = (name: string) => `:${name}:`;
+
+/** A list of directions in words: the first `max`, then how many more. */
+export function directionList(names: readonly string[], max = 30): string {
+  const shown = names.slice(0, max).map(asToken).join(", ");
+  return names.length > max ? `${shown} and ${names.length - max} more` : shown;
+}
+
+/**
+ * Why a research run refuses a rule naming another direction than its task kinds: it has no
+ * planner to design a new one.
+ */
+export function researchDirectionRefusal(unknown: readonly string[]): string {
+  return `A research run's directions are its task kinds: ${directionList(RESEARCH_TASK_KINDS)}. It has no planner to design ${unknown.length === 1 ? "a new direction" : "new directions"}, so a rule for ${directionList(unknown)} would do nothing. Name a task kind.`;
+}
+
+/**
+ * A rule's direction in a command or an answer, kept as its name: plain words or `:name:`.
+ * Anything else is refused in plain words.
+ */
+export const DirectionRef = z
+  .string()
+  .trim()
+  .transform((s, ctx) => {
+    const name = directionName(s);
+    if (name) return name;
+    ctx.issues.push({ code: "custom", input: s, message: notADirection(s) });
+    return z.NEVER;
+  });
+
+/**
+ * An old rule in words (`match`, from before rules named directions): kept in force, but only
+ * the planner's model reads it, and code never keeps it.
+ */
+export function isLegacyRule(body: unknown): boolean {
+  const b = (body ?? {}) as { match?: unknown; family?: unknown };
+  return typeof b.match === "string" && !b.family;
+}
+
+/**
+ * The directions rules name that the run doesn't have yet, each with those rules: the planner
+ * designs each one at its next round (goal 066). In order of the first rule naming each.
+ */
+export function directionsToDesign(
+  rules: readonly { id: number; body: unknown }[],
+  known: readonly string[],
+): { name: string; rules: { id: number; kind: string; rationale: string }[] }[] {
+  const out: { name: string; rules: { id: number; kind: string; rationale: string }[] }[] = [];
+  for (const r of rules) {
+    const b = (r.body ?? {}) as { kind?: unknown; family?: unknown; rationale?: unknown };
+    const f = b.family;
+    if (typeof f !== "string" || !f || known.includes(f)) continue;
+    let d = out.find((x) => x.name === f);
+    if (!d) {
+      d = { name: f, rules: [] };
+      out.push(d);
+    }
+    d.rules.push({ id: r.id, kind: String(b.kind ?? ""), rationale: String(b.rationale ?? "") });
+  }
+  return out;
+}

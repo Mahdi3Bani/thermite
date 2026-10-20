@@ -12,6 +12,7 @@ import {
   CommandPayloads,
 } from "../core/commands.ts";
 import { FolderSchema, MAX_LANES } from "../core/contract.ts";
+import { notADirection, parseDirections } from "../core/directions.ts";
 import type { ClusterRigRequest, ControlActions } from "./actions.ts";
 import { CHATGPT_API, CHATGPT_REDIRECT, ChatGPTLogins } from "./chatgpt.ts";
 import {
@@ -709,6 +710,8 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
                 })(),
                 figures: diagnostics,
                 propagate,
+                // A rule from Add a rule that control refused.
+                ruleRefused: c.req.query("ruleerror") ?? "",
                 // A message to the planner that control or the rig refused.
                 refused:
                   c.req.query("msgerror") ||
@@ -5881,6 +5884,9 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
     const kind = String(f.kind) as CommandKind;
     if (!COMMAND_KINDS.includes(kind)) return c.text("unknown command", 400);
     const run = String(f.run ?? "");
+    // The rule box (goal 066): one direction in plain words, or one or more as :name:. Each
+    // direction gets its own rule; one the run doesn't have yet is designed by the planner.
+    const ruled = parseDirections(String(f.direction ?? ""));
     // Kinds the rig's harness doesn't know yet are refused above (COMMAND_KINDS).
     const payloads: Partial<Record<string, unknown>> = {
       pause_run: { run, reason: String(f.reason || "paused from the dashboard") },
@@ -5894,18 +5900,12 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       conclude: { run, proposal: Number(f.proposal), accept: f.accept === "true" },
       redirect: {
         run,
-        directives: [
-          {
-            kind: String(f.directive ?? "avoid"),
-            // A direction's name as it is; anything else as words the planner matches.
-            ...(() => {
-              const d = String(f.match ?? f.family ?? "").trim();
-              return /^[a-z0-9][a-z0-9-]{1,40}$/.test(d) ? { family: d } : { match: d };
-            })(),
-            rationale: String(f.rationale ?? ""),
-            citations: [],
-          },
-        ],
+        directives: ruled.names.map((family) => ({
+          kind: String(f.directive ?? "avoid"),
+          family,
+          rationale: String(f.rationale ?? ""),
+          citations: [],
+        })),
         replace: f.add !== "1",
       },
       // The experiment queue (goal 064).
@@ -5945,6 +5945,22 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       unkeep_message: { run, message: Number(f.message) },
     };
     if (!(kind in payloads)) return c.text("this command is not available from the dashboard", 400);
+    // A rule from the Planner tab that can't be sent goes back there, with why (ruleerror).
+    const ruleBack = (why: string) => {
+      const [path, hash] = backTo(f, `/ui/rigs/${encodeURIComponent(String(f.rig))}`).split("#");
+      return c.redirect(
+        `${path}${path?.includes("?") ? "&" : "?"}ruleerror=${encodeURIComponent(why)}${hash ? `#${hash}` : ""}`,
+        303,
+      );
+    };
+    if (kind === "redirect" && (ruled.rest || !ruled.names.length))
+      return ruleBack(
+        ruled.rest
+          ? ruled.names.length
+            ? `Only directions go in Direction: "${clip(ruled.rest, 80)}" is not one. Write each direction as :name:, or one direction in plain words. Put your reasons in Why.`
+            : `${notADirection(ruled.rest)}.`
+          : "Name a direction: plain words, such as shared memory tiling, or :name:.",
+      );
     try {
       issueCommand(store, opts.privateKeyPem, {
         rig: String(f.rig),
@@ -5953,7 +5969,9 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
         issuedBy: "owner:ui",
       });
     } catch (err) {
-      return c.text(`refused: ${err instanceof Error ? err.message : String(err)}`, 400);
+      const why = err instanceof Error ? err.message : String(err);
+      if (kind === "redirect") return ruleBack(why);
+      return c.text(`refused: ${why}`, 400);
     }
     // The page says the command went; the rig's answer shows where the command was given.
     const to = backTo(f, `/ui/rigs/${encodeURIComponent(String(f.rig))}`);

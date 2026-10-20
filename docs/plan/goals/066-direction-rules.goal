@@ -1,7 +1,7 @@
 ---
 id: "066"
 title: "Rules name directions, picked with :direction:"
-status: READY
+status: IN_PROGRESS
 version: "0.1.0"
 part: "Running campaigns"
 depends_on: ["064"]
@@ -11,15 +11,16 @@ updated: 2026-10-20
 
 # 066 · Rules name directions, picked with `:direction:`
 
-**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
 
 ## What
 
 A rule for the plan always names a direction (an approach family). Rules in free words go away.
 
-- **The syntax:** a direction is written `:direction-name:`, wherever a rule is made: the Planner tab, a message to the planner, MCP and the CLI.
+- **The syntax:** a direction is written `:direction name:`, wherever a rule is made: the Planner tab, a message to the planner, MCP and the CLI. Names may hold spaces (`:shared memory tiling:`), and the colons are optional around one direction.
 - **The picker:** typing `:` on the Planner tab opens a list of the run's directions to pick from, as emoji pickers work in Slack, Discord or Claude Code.
-- **Removed:** the free-text Direction box and the `match` field of a rule (`StructuredDirective.match`, the dashboard's form, the planner's and the advisors' answers).
+- **New directions:** a rule may name a direction the run doesn't have yet. The planner designs and creates it.
+- **Removed:** the `match` field of a rule (`StructuredDirective.match`, the dashboard's form, the planner's and the advisors' answers).
 - **What stays:** code enforces every rule each round, with or without the planner's model.
 
 ## Why
@@ -28,27 +29,40 @@ The owner, 2026-10-20: rules use direction names only. A rule in free words reac
 
 ## Done when
 
-- [ ] Every rule names a direction, and `match` is gone from the commands, the planner, the advisors and the dashboard.
+- [x] Every rule names a direction, and `match` is gone from the commands, the planner, the advisors and the dashboard.
 - [ ] The Planner tab's rule box takes `:direction:`, with a picker of the run's directions on `:`, as in the approved mockup.
-- [ ] A rule naming an unknown direction is refused in plain words, or makes the direction (decided with the mockup).
-- [ ] Rules already in force with `match` words keep working or are shown as such until removed (decided with the mockup).
+- [x] A rule naming an unknown direction is refused in plain words, or makes the direction (decided with the mockup).
+- [x] Rules already in force with `match` words keep working or are shown as such until removed (decided with the mockup).
 - [ ] Tests cover the syntax, the picker's list, and the refusals.
-- [ ] The docs pages that describe rules follow.
+- [x] The docs pages that describe rules follow.
 
 ## Decisions
 
 - 2026-10-20, owner: "no. use directions name. Also I wasn't aware of tags like that and how its used in directions free form box. We should probably use a syntax for the tag and make that explicit on what tags are available such as :tag-name: and when you hit `:` it shows a list of tags available to use just like how in claude code or in discord/slack that shows you a list of emoji's you can use."
-- 2026-10-20, owner: On the mockup: direction names may contain spaces; a direction the run does not have is designed and created by the planner; the `:name:` syntax is offered but not required, so plain words to the planner also make rules. The mockup is revised and shown again, without the separate Add a rule form.
+- 2026-10-20, owner, on the mockup: "If we do it this way remove the second add rule comment. Tags should support spaces, and if a tag doesn't exist then the planner should design and create it. Don't require the user to always enter a `::` tag." As built:
+  - **Spaces:** a direction is written in letters, digits, spaces and dashes, plain or as `:name:`. Its name is its words in lowercase joined by dashes (`:Shared memory tiling:` is `shared-memory-tiling`), the same name an experiment's own words make, so rules and experiments meet.
+  - **Unknown directions:** taken, never refused. Code keeps the rule by name from the start. At its next round the planner's model must design the direction (its name and what it means, in its own words); an answer that leaves it undesigned is refused. The new direction is recorded as `family_added` with the rules it was designed for, shown in **What the planner did** and in History. Without the model, an **Always** rule's new direction gets the fixed rules' description. A research run has no planner, so it takes only its task kinds.
+  - **`::` is optional:** plain words in a message to the planner still make rules; the planner turns them into a direction, existing or new. A `:name:` names one exactly. The rule box takes one direction in plain words, or one or more as `:name:`.
+- 2026-10-20, built this way until the owner chooses: **old rules in free words** stay in force, marked legacy, and are shown as not kept by code (only the planner's model reads them). They are never dropped silently; the owner removes them. No ledger migration: a rule in words is told by its body (`match` and no family), in the ledger and in control's view alike.
 
 ## Open questions
 
-- Can a rule name a direction the run has not used yet (a new one), or only one in its registry?
+- Answered 2026-10-20 (see Decisions): a rule can name a direction the run has not used yet; the planner designs and creates it.
+- Open: old rules in free words, kept and marked (built), or removed at the update.
 
 ## Progress
 
 - 2026-10-20: Goal written from the owner's decision. A mockup comes first.
 - 2026-10-20: From 064's check against its approved Planner mockup, two parts of the rule box are not built: a **Lanes** rule in **Add a rule**, and the contract's lane count shown as a rule ("set by the campaign", with Change). 064's rules box moved here, so these come with this goal's rule box, if the new mockup keeps them.
-- 2026-10-20: The owner's notes on the mockup recorded; a revised mockup follows.
+- 2026-10-20: Built everything behind the Planner tab's screen, with the owner's choices from the mockup:
+  - **Core** (`src/core/directions.ts`): a direction's name, `:name:` tokens in a text, the rule box's parsing, the plain-words refusals, and legacy rules. `StructuredDirective.family` takes plain words or `:name:` and is signed as the name; `match` is refused in plain words. An experiment's direction written `:name:` is kept without the colons.
+  - **The harness:** the run's directions (each experiment's, the registry's, the attempts', and a research run's task kinds); `redirect` answers with `new_directions`; a research run refuses other directions. The planner reads the run's `directions`, `to_design` and each message's `:name:` directions; its rules name a direction the run has or one it designs in the same answer; it must design each direction a rule in force names but the run lacks. Legacy rules reach it marked `legacy`. The advisors' brief has `directions`; their directives are checked one by one, and the supervisor sends their experiments before their rules.
+  - **Control:** each run's `directions` (name, description, tried, wins, queued, lanes, rules, to_design) and `families` in its view, `GET /v1/rigs/<rig>/runs/<run>/directions`, `directions` in MCP's `run_queue`, rules marked `legacy`, History lines for new directions, and `issue_command`'s description.
+  - **The Planner tab, smallest change:** **Direction** takes one direction in plain words or several as `:name:`, and its help lists the run's directions; a refused rule comes back as **Not added.** with why; rules show `:name:`, old rules in words show as such, and a new direction says the planner designs it; **What the planner did** shows the directions it designed; **Tell the planner** says how to name a direction.
+  - **Tests:** the syntax and refusals (`src/core/directions.test.ts`), the harness's refusals, directions, legacy rules and research runs (`src/harness/queue.test.ts`), the planner's rules and designs (`planner.test.ts`, `scheduler-queue.test.ts`, including code keeping a `:name:` rule without the model), the advisors' answers (`advisors.test.ts`), control's view (`queue-view.test.ts`), History words (`campaigns.test.ts`), the Planner tab through a real harness (`steering-ui.test.ts`, `dashboard.test.ts`), and REST, MCP and the CLI (`src/control/directions.test.ts`).
+  - **Pages:** rules, directions and old rules (Choose what a run tries next), Steer a run, the planner, supervision, the glossary, signed commands, the advisors file, MCP tools, the REST API, limits, compatibility and troubleshooting.
+  - **Acceptance script changed:** `scripts/control-acceptance.mjs` sends the dashboard's rule as `direction`.
+  - **Left, waits for the revised mockup:** the Planner tab's screen: the `:` picker of the run's directions, the rule box's new form (the owner asked to remove the second Add a rule), a **Lanes** rule and the contract's lane count as a rule, and the run's directions list on the tab. The tests of the picker come with it.
 
 ---
 

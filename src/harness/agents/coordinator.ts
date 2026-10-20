@@ -1,4 +1,4 @@
-import type { StructuredDirective } from "../../core/commands.ts";
+import type { StoredRule } from "../../core/commands.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import { directionOf, type Experiment, type ExperimentQueue, inFamily } from "../queue.ts";
 import type { NewFamily, QueuePlan } from "./planner.ts";
@@ -19,7 +19,8 @@ import type { Assignment, Registry } from "./registry.ts";
 /** Who gives out work and changes the queue for the coordinator, in the record. */
 export const PLANNER = "planner";
 
-export type Directive = { id: number; body: StructuredDirective };
+/** A rule in force. One in words (legacy, goal 066) has no family: code never keeps it. */
+export type Directive = { id: number; body: StoredRule };
 
 /** A lane's work for its next trial: the experiment and why the lane got it. */
 export interface Handout {
@@ -232,8 +233,7 @@ export class Coordinator {
         PLANNER,
         plan.rules.map((r) => ({
           kind: r.kind,
-          ...(r.family ? { family: r.family } : {}),
-          ...(r.match ? { match: r.match } : {}),
+          family: r.family,
           rationale: r.rationale,
           citations: [],
           from_message: r.from_message,

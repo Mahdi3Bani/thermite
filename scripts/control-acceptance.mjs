@@ -137,7 +137,7 @@ try {
     kind: "redirect",
     run: "smoke-1",
     directive: "avoid",
-    family: "loop-unrolling",
+    direction: ":loop unrolling:",
     rationale: "acceptance test",
   });
   await until(

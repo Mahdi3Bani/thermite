@@ -103,6 +103,17 @@ test("the queue view keeps the order the events give it, and where each experime
       },
     ],
     ["control:owner:ui", "directive_dropped", { id: 7 }],
+    // A rule for a new direction (goal 066), then the planner designs it.
+    [
+      "control:owner:ui",
+      "directive",
+      { id: 9, body: { kind: "mandate", family: "split-k", rationale: "won elsewhere" } },
+    ],
+    [
+      "planner:planner",
+      "family_added",
+      { family: "split-k", description: "split the reduction over k", for_rules: [9] },
+    ],
   ]);
   const up = r.queue
     .filter((x) => x.state === "queued")
@@ -115,9 +126,45 @@ test("the queue view keeps the order the events give it, and where each experime
   assert.equal(r.queue.find((x) => x.id === "x-1")?.dropped_why, "a rule avoids it");
   assert.equal(r.handouts.length, 1);
   assert.deepEqual(
-    r.rules.map((x) => x.id),
-    [8],
+    r.rules.map((x) => [x.id, x.legacy]),
+    [
+      [8, true],
+      [9, false],
+    ],
   );
+  // The run's directions: each experiment's, and the one the planner designed for rule 9.
+  assert.deepEqual(r.directions, [
+    {
+      name: "dequant-fusion",
+      description: null,
+      tried: 0,
+      wins: 0,
+      queued: 0,
+      lanes: [],
+      rules: [],
+      to_design: false,
+    },
+    {
+      name: "memory-layout",
+      description: null,
+      tried: 1,
+      wins: 0,
+      queued: 0,
+      lanes: [],
+      rules: [],
+      to_design: false,
+    },
+    {
+      name: "split-k",
+      description: "split the reduction over k",
+      tried: 0,
+      wins: 0,
+      queued: 0,
+      lanes: [],
+      rules: [{ id: 9, kind: "mandate" }],
+      to_design: false,
+    },
+  ]);
   // The tabs: up next in order with who added each; tried with its result; rules with who set them.
   const cmd = (f: { kind: string; label: string }) =>
     `<form data-kind="${f.kind}">${f.label}</form>`;
@@ -154,8 +201,18 @@ test("the queue view keeps the order the events give it, and where each experime
     figures: "",
     propagate: "",
   });
-  assert.match(plan, /Try anything with vector loads/);
+  // An old rule in words shows as such, with Remove; a rule names its direction as :name:.
+  assert.match(
+    plan,
+    /<span class="qkind words">words<\/span><div><b>Try “anything with vector loads”<\/b>/,
+  );
+  assert.match(
+    plan,
+    /An old rule in words, from before rules named directions\. Code doesn't keep it\./,
+  );
+  assert.match(plan, /<b>Always give :split-k: a lane<\/b>/);
   assert.doesNotMatch(plan, /gemv-tiling/);
+  assert.match(plan, /This run's directions: :dequant-fusion:, :memory-layout:, :split-k:\./);
   assert.match(
     plan,
     /<b>Round 9<\/b>: <ul><li><b>lane-1<\/b>: vector loads <span class="muted">· it has the fusion code in context/,
@@ -171,11 +228,13 @@ test("the queue view keeps the order the events give it, and where each experime
       .map((m) => (m[1] ?? "").replace(/<[^>]+>/g, ""))
       .filter((s) => !s.startsWith("Round")),
     [
+      "Designed the direction :split-k: for rule 9 · split the reduction over k",
       "Added “read the survey” to the queue",
       "Dropped “fuse the dequantize step” · a rule avoids it",
       "Added “fuse the dequantize step” to the queue · it won on long",
     ],
   );
-  assert.match(plan, /name="match"/);
+  assert.match(plan, /<input name="direction" required/);
+  assert.doesNotMatch(plan, /name="match"/);
   assert.match(plan, /Tell the planner/);
 });

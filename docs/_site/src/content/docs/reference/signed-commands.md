@@ -111,7 +111,7 @@ The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_revie
 | `rig_check` | **Run it** in a rig's **Checks**; **Check** on **Settings** | Yes | Yes | Yes | Yes | |
 | `pause_run` | **Pause**, then **Pause the run** in its menu, in a run's header, in the header of the run's **Live**, and on the run's card under **At work now** | Yes | Yes | Yes | Yes | |
 | `resume_run` | **Resume** in a run's header, in the header of the run's **Live**, and on a paused run's row under **Earlier runs** | Yes | Yes | Yes | Yes | |
-| `redirect` | **Add the rule** on a run's **Planner** tab (one rule, in a direction's name or your own words, added to the earlier ones) | Yes | Yes | Yes | Yes | |
+| `redirect` | **Add the rule** on a run's **Planner** tab (one rule for each direction named, added to the earlier ones) | Yes | Yes | Yes | Yes | |
 | `reset_workers` | **Restart the lanes**, under **⋯** in the header of a running run with agents, on its page and in Live | Yes | Yes | Yes | Yes | |
 | `export_now` | **Export now** on a rig's page | Yes | Yes | Yes | Yes | |
 | `message_agent` | **Send** in the message box of a run's **Live**; **Send to the planner** on a run's **Planner** tab, while the planner is on | Yes | Yes | Yes | No | Yes |
@@ -249,30 +249,32 @@ Each directive has only these fields:
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `kind` | `avoid`, `try`, `mandate`, `priority`, `lane_count` or `note` | `avoid`, `try` and `mandate` (**Always** on the dashboard) name a direction, by its family or in words; `priority` ranks a family; `lane_count` sets how many lanes work, up to the contract's count; `note` is text for the planner only |
-| `family` | 2 to 41 characters of `a`–`z`, `0`–`9` and `-`, starting with a letter or digit | The direction family it refers to, when the kind needs one |
-| `match` | text, 1 to 200 characters, trimmed | In place of `family`, for `avoid`, `try` and `mandate` only: the direction in your own words, such as `anything that uses shared memory`. The planner applies it to every experiment it fits |
+| `kind` | `avoid`, `try`, `mandate`, `priority`, `lane_count` or `note` | `avoid`, `try` and `mandate` (**Always** on the dashboard) name a direction; `priority` ranks one; `lane_count` sets how many lanes work, up to the contract's count; `note` is text for the planner only |
+| `family` | letters, digits, spaces and dashes, plain or as `:name:`, that make a name of 2 to 41 characters | The direction it is about, when the kind needs one. Control signs it as the direction's name: its words in lowercase, joined by dashes, so `:Shared memory tiling:` becomes `shared-memory-tiling` |
 | `value` | text up to 1000 characters, or a number | The value, when the kind needs one. A research run's `try` or `mandate` may give a question's number here instead of a `family` |
 | `rationale` | text, 1 to 2000 characters | Why. The planner sees it; workers never do |
 | `citations` | up to 20 texts of 1 to 500 characters | Sources. Default `[]` |
 
-Control refuses a directive that breaks these rules before signing, with `bad redirect payload: directives.<i>.<field>: <message>`, `<i>` counting from 0:
+Control refuses a directive that breaks these rules before signing, with `bad redirect payload: directives.<i>[.<field>]: <message>`, `<i>` counting from 0:
 
 | Field and message | When |
 | --- | --- |
-| `match: name either a family or match words, not both` | Both `family` and `match` |
-| `match: match words are for avoid, try and mandate rules` | `match` on another kind |
-| `family: an avoid, try or mandate rule names a family or match words` | An `avoid`, `try` or `mandate` with neither (and, for `try` and `mandate`, no `value`) |
+| `a rule no longer takes match: name its direction in family, in plain words or as :name:` | The directive has `match`, a rule in words |
+| `family: "<text>" is not a direction's name: write it in letters, digits, spaces and dashes, such as shared memory tiling or :shared memory tiling:` | Other characters in `family` |
+| `family: "<text>" is too long for a direction's name: use at most 41 letters, digits, spaces and dashes` | A name over 41 characters |
+| `family: an avoid, try or mandate rule names a direction (family)` | An `avoid`, `try` or `mandate` with no `family` (and, for `try` and `mandate`, no `value`) |
 
-A set that both avoids a direction and tries or mandates it is refused: `the set both avoids and asks for <families or words>`. Match words count as the same when they are equal ignoring case. A closed run is refused: `run <run> is closed: its queue and rules no longer change`. Result: `{"run", "directives": [<ids>]}`.
+A `family` may name a direction the run doesn't have yet. The rig takes it, and the planner's model designs the direction at its next round: it says what the direction means, in its own words, and the run then has it ([Directions](../how-to/campaigns/choose-what-runs-next.md#directions)). A research run has no planner to design one: control and the rig refuse there any direction but a task kind, `A research run's directions are its task kinds: :explore:, :primary:, :contradict:, :consolidate:. It has no planner to design a new direction, so a rule for :<name>: would do nothing. Name a task kind.`
 
-Only the planner's model applies match words. The fixed rules that give out work without it (no model, a model answer that code refused, the planner switched off, and every research run) keep only the directives that name a `family`.
+A set that both avoids a direction and tries or mandates it is refused: `the set both avoids and asks for <directions>`. A closed run is refused: `run <run> is closed: its queue and rules no longer change`. Result: `{"run", "directives": [<ids>]}`, with `"new_directions": [<names>]` when the set names directions the run doesn't have yet.
 
-`redirect` is not the only source of match words. The teacher pair's set (each teacher's recommendations, and the combiner's directives: see [What each role must answer](advisors-file.md#what-each-role-must-answer)) and a rule that the planner adds because an owner's message asked for it may also name `match` for an `avoid`, `try` or `mandate` rule.
+A rule in words (`match`) set before rules named directions stays in force: the rig marks it legacy, and only the planner's model reads it. The fixed rules that give out work without the model (no model, a model answer that code refused, the planner switched off, and every research run) keep only the directives that name a `family`.
+
+`redirect` is not the only source of rules. The teacher pair's set (each teacher's recommendations, and the combiner's directives: see [What each role must answer](advisors-file.md#what-each-role-must-answer)) and a rule that the planner adds because an owner's message asked for it name a direction the same way.
 
 The owner's `redirect`, or an operator's for the owner, can set again a rule that was removed with [`drop_directive`](#drop_directive). An agent token's `redirect`, the teacher pair's set and the planner's cannot.
 
-The dashboard calls directives **rules**. **Add the rule** on a run's **Planner** tab sends one directive, `avoid`, `try` or `mandate`, with `replace: false`: it adds to the rules given from the dashboard before, and replaces none. Its **Direction** goes as `family` when it is shaped like a family's name (2 to 41 lowercase letters, digits and dashes, such as `loop-tiling`), and as `match` otherwise. [`drop_directive`](#drop_directive) removes one rule.
+The dashboard calls directives **rules**. **Add the rule** on a run's **Planner** tab sends one directive for each direction in **Direction**, `avoid`, `try` or `mandate`, with `replace: false`: it adds to the rules given from the dashboard before, and replaces none. **Direction** takes one direction in plain words, or one or more as `:name:`. [`drop_directive`](#drop_directive) removes one rule.
 
 ### `reset_workers`
 
@@ -383,7 +385,7 @@ Adds an experiment to the run's **experiment queue**. Each run has its own queue
 | `run` | lowercase id | required | The run |
 | `title` | text, 1 to 200 characters, trimmed | required | What to try |
 | `details` | text up to 4000 characters | none | More about it |
-| `family` | text, 1 to 80 characters, trimmed | none | Its direction: in your own words, or a direction family's name |
+| `family` | text, 1 to 80 characters, trimmed | none | Its direction: in your own words, or a direction's name. Written as `:name:`, it is kept without the colons |
 | `why` | text up to 2000 characters | none | Why it is worth trying. The planner reads it, and so does the worker whose lane gets the experiment |
 | `position` | `"top"`, `"end"`, or a whole number from 0 to 100000 | `"end"` | Where it goes among the queued experiments |
 

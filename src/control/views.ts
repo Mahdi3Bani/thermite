@@ -1,3 +1,4 @@
+import { directionOf, isLegacyRule, RESEARCH_TASK_KINDS } from "../core/directions.ts";
 import { type Hardware, readHardware } from "../core/hardware.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import { type RunpodRigView, runpodRigView } from "./runpod-rig-view.ts";
@@ -201,8 +202,21 @@ export interface RunView {
   timeline: StoredEvent[];
   /** False for a run with no worker agents (a try: the judge alone). */
   has_agents: boolean;
-  /** The rules for the plan in force (directives): who set each, when, and the rule. */
-  rules: { id: number; author: string; at: string; body: Record<string, unknown> }[];
+  /**
+   * The rules for the plan in force (directives): who set each, when, and the rule. `legacy`: an
+   * old rule in words, from before rules named directions (goal 066); code does not keep it.
+   */
+  rules: {
+    id: number;
+    author: string;
+    at: string;
+    body: Record<string, unknown>;
+    legacy: boolean;
+  }[];
+  /** The run's directions (goal 066), by name, with what each holds and the rules naming it. */
+  directions: DirectionView[];
+  /** The directions the run's registry has, from family_added events: what each means, and who added it. */
+  families: { name: string; description: string; by: string; at: string; for_rules: number[] }[];
   /** The experiment queue (goal 064): every experiment, with its state; up next in order. */
   queue: ExperimentView[];
   /** The planner's hand-outs, newest last (at most 50): what went to which lane, and why. */
@@ -233,6 +247,28 @@ export interface JournalNoteView {
   lane: string | null;
   trial: string | null;
   at: string;
+}
+
+/**
+ * One of a run's directions (goal 066): an approach family its experiments belong to. A rule names
+ * one; a picker lists them.
+ */
+export interface DirectionView {
+  /** Its name: lowercase words joined by dashes. `:shared memory tiling:` names shared-memory-tiling. */
+  name: string;
+  /** What it means, in the words of whoever added it (the planner's, for one it designed). */
+  description: string | null;
+  /** Its experiments that were tried (done), and of those, the wins: champion, promoted or confirmed. */
+  tried: number;
+  wins: number;
+  /** Its experiments up next. */
+  queued: number;
+  /** The lanes at work in it now. */
+  lanes: string[];
+  /** The rules in force that name it. */
+  rules: { id: number; kind: string }[];
+  /** Only a rule names it so far: the planner designs it at its next round. */
+  to_design: boolean;
 }
 
 /** One experiment in a run's queue: what to try, who added it and why, and what became of it. */
@@ -484,6 +520,8 @@ export function rigView(
         timeline: [],
         has_agents: true,
         rules: [],
+        directions: [],
+        families: [],
         queue: [],
         handouts: [],
         messages: [],
@@ -858,11 +896,29 @@ export function rigView(
       case "directive": {
         const v = inst(String(e.subject));
         v.directives++;
+        const body = (b.body as Record<string, unknown> | null) ?? {};
         v.rules.push({
           id: Number(b.id),
           author: e.actor,
           at: e.at,
-          body: (b.body as Record<string, unknown> | null) ?? {},
+          body,
+          legacy: isLegacyRule(body),
+        });
+        break;
+      }
+      case "family_added": {
+        const name = typeof b.family === "string" ? b.family : "";
+        if (!name) break;
+        const v = inst(String(e.subject));
+        if (v.families.some((f) => f.name === name)) break;
+        v.families.push({
+          name,
+          description: typeof b.description === "string" ? b.description : "",
+          by: e.actor,
+          at: e.at,
+          for_rules: Array.isArray(b.for_rules)
+            ? b.for_rules.map(Number).filter(Number.isFinite)
+            : [],
         });
         break;
       }
@@ -1039,6 +1095,7 @@ export function rigView(
     }
     v.agents.attempts = v.attempts.length;
     v.agents.duplicates = v.attempts.filter((a) => a.lifecycle === "duplicate").length;
+    v.directions = runDirections(v);
   }
   const summary = u.summary as
     | {
@@ -1286,4 +1343,76 @@ function queueEvent(v: RunView, e: StoredEvent): void {
       x.result = str("result") ?? str("stopped") ?? null;
       break;
   }
+}
+
+/**
+ * A run's directions (goal 066), as the harness counts them: each experiment's direction, each
+ * direction its registry added, each family an attempt or a trial had, the task kinds of a
+ * research run, and each direction a rule in force names, which waits for the planner to design
+ * it while nothing else has it. Sorted by name.
+ */
+export function runDirections(v: RunView): DirectionView[] {
+  const out = new Map<string, DirectionView>();
+  const at = (name: string | undefined, made = true): DirectionView | undefined => {
+    if (!name) return undefined;
+    let d = out.get(name);
+    if (!d) {
+      d = {
+        name,
+        description: null,
+        tried: 0,
+        wins: 0,
+        queued: 0,
+        lanes: [],
+        rules: [],
+        to_design: !made,
+      };
+      out.set(name, d);
+    } else if (made) d.to_design = false;
+    return d;
+  };
+  const won = (attempt: string | null) => {
+    if (!attempt) return false;
+    if (v.champion.some((c) => c.attempt === attempt && !c.reopened)) return true;
+    const a = v.attempts.find((x) => x.id === attempt);
+    return (
+      a?.lifecycle === "promoted" ||
+      a?.verdict === "win_confirmed" ||
+      a?.verdict === "goal_progress"
+    );
+  };
+  for (const f of v.families) {
+    const d = at(directionOf(f.name));
+    if (d && f.description) d.description = f.description;
+  }
+  if (v.mode === "research") for (const k of RESEARCH_TASK_KINDS) at(k);
+  for (const a of v.attempts) at(a.family ? directionOf(a.family) : undefined);
+  for (const t of v.trials) at(t.family ? directionOf(t.family) : undefined);
+  const busy = new Set<string>();
+  for (const x of v.queue) {
+    const d = at(x.family ? directionOf(x.family) : undefined);
+    if (!d) continue;
+    if (x.state === "queued") d.queued++;
+    if (x.state === "done") {
+      d.tried++;
+      if (won(x.attempt)) d.wins++;
+    }
+    if (x.state === "assigned" && x.lane) {
+      busy.add(x.lane);
+      if (!d.lanes.includes(x.lane)) d.lanes.push(x.lane);
+    }
+  }
+  // A lane at work on a trial without an experiment (before the queue) counts by its family.
+  for (const [lane, w] of Object.entries(v.at_work)) {
+    if (busy.has(lane)) continue;
+    const d = at(w.family ? directionOf(w.family) : undefined);
+    if (d && !d.lanes.includes(lane)) d.lanes.push(lane);
+  }
+  for (const r of v.rules) {
+    if (r.legacy || typeof r.body.family !== "string") continue;
+    at(r.body.family, false)?.rules.push({ id: r.id, kind: String(r.body.kind ?? "") });
+  }
+  for (const d of out.values())
+    d.lanes.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  return [...out.values()].sort((a, b) => a.name.localeCompare(b.name));
 }

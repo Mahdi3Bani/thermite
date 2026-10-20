@@ -408,9 +408,10 @@ export function createControlApi(
     }
     if (!path.startsWith("/ui/") || c.req.method !== "POST") return;
     const to = c.res.headers.get("location");
-    // Pages send a refusal back as error, or as msgerror for a message to agents.
+    // Pages send a refusal back as error, as msgerror for a message to agents, or as ruleerror
+    // for a rule from the Planner tab.
     const back = to ? new URL(to, "http://control").searchParams : undefined;
-    const why = back?.get("error") ?? back?.get("msgerror") ?? null;
+    const why = back?.get("error") ?? back?.get("msgerror") ?? back?.get("ruleerror") ?? null;
     if (why || status >= 400) {
       const reason = redact(why ?? `status ${status}`);
       log("control", "refused", { path, why: reason });
@@ -1121,6 +1122,18 @@ export function createControlApi(
       campaign: r.campaign,
       queue: copiedFromRecords(store, campaign, untriedOf(r).slice(0, 500)),
     });
+  });
+
+  // A run's directions (goal 066), each with its counts and the rules naming it, and the rules in
+  // force: what a rule may name, and what a picker of directions lists.
+  app.get("/v1/rigs/:rig/runs/:run/directions", admin, (c) => {
+    const rig = c.req.param("rig");
+    const run = c.req.param("run");
+    const v = rigView(store, rig, { staleAfterMs: opts.staleAfterMs });
+    if (!v) return c.json({ error: `no rig ${rig}` }, 404);
+    const r = v.runs.find((x) => x.id === run);
+    if (!r) return c.json({ error: `no run ${run} on ${rig}` }, 404);
+    return c.json({ rig, run, mode: r.mode, directions: r.directions, rules: r.rules });
   });
 
   // Test pods on a GPU cloud (the owner's token; MCP gives operators the same).

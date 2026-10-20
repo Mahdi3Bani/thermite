@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { ExperimentText, type QueuePosition } from "../core/commands.ts";
+import { DIRECTION_NAME, directionOf, RESEARCH_TASK_KINDS } from "../core/directions.ts";
 import { type ExperimentRow, type Ledger, LedgerError } from "./ledger.ts";
 
 /**
@@ -37,21 +38,7 @@ export function newExperimentId(): string {
   return `x-${randomBytes(6).toString("hex")}`;
 }
 
-/**
- * The direction-registry family an experiment's direction stands for: its family when that is
- * already a family's id, else its words made into one ("Loop order" is loop-order). None for an
- * experiment with no direction, or words that make no id.
- */
-export function directionOf(family: string): string | undefined {
-  const id = family
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+/, "")
-    .slice(0, 41)
-    .replace(/-+$/, "");
-  return /^[a-z0-9][a-z0-9-]{1,40}$/.test(id) ? id : undefined;
-}
+export { directionOf };
 
 /** Whether an experiment's direction is the family a rule names (exactly, or as its id). */
 export function inFamily(x: Pick<Experiment, "family">, family: string): boolean {
@@ -133,6 +120,28 @@ export class ExperimentQueue {
       .filter((x) => x.state === "done" || x.state === "dropped")
       .sort((a, b) => (a.updated_at < b.updated_at ? 1 : a.updated_at > b.updated_at ? -1 : 0))
       .slice(0, limit);
+  }
+
+  /**
+   * The run's directions (goal 066), by name: the direction of each of its experiments, in any
+   * state; each family in its direction registry; each family an attempt was tagged with; and, in
+   * a research run, the task kinds. A rule may name only these. Sorted by name.
+   */
+  directions(run: string): string[] {
+    const names = new Set<string>();
+    for (const x of this.all(run)) {
+      const d = x.family ? directionOf(x.family) : undefined;
+      if (d) names.add(d);
+    }
+    const rows = this.ledger.db
+      .prepare(
+        "select id as name from family where run = ? union select family as name from attempt where run = ? and family is not null",
+      )
+      .all(run, run) as { name: string }[];
+    for (const r of rows) if (DIRECTION_NAME.test(r.name)) names.add(r.name);
+    if (this.ledger.getRun(run)?.mode === "research")
+      for (const k of RESEARCH_TASK_KINDS) names.add(k);
+    return [...names].sort((a, b) => a.localeCompare(b));
   }
 
   /** The experiment a trial works (or worked) on, if it had one. */

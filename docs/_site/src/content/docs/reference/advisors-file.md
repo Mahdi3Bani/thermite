@@ -198,13 +198,14 @@ A directive, in a teacher's recommendations and the combiner's set, has these fi
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `kind` | `"avoid"`, `"try"`, `"mandate"`, `"priority"`, `"lane_count"` or `"note"` | What the planner should do. `note` is text for the planner only |
-| `family` | 2 to 41 characters of `a`–`z`, `0`–`9` and `-`, starting with a letter or digit | The direction family it is about. An `avoid`, `try` or `mandate` directive needs one or `match`, unless a `try` or `mandate` gives a `value` instead, such as a research question's number |
-| `match` | text, 1 to 200 characters, trimmed | Optional. In place of `family`, for `avoid`, `try` and `mandate` only: the direction in words, such as a kind of change or a file. The planner's model applies it to every experiment it fits |
+| `family` | letters, digits, spaces and dashes, plain or as `:name:`, that make a name of 2 to 41 characters | The direction it is about, kept as its name: `:Shared memory tiling:` is `shared-memory-tiling`. An `avoid`, `try` or `mandate` directive needs one, unless a `try` or `mandate` gives a `value` instead, such as a research question's number |
 | `value` | text up to 1000 characters, or a number | Optional |
 | `rationale` | text, 1 to 2000 characters | Why |
 | `citations` | up to 20 texts of 1 to 500 characters | Attempt ids from the brief, addresses or paper ids. Default `[]` |
 
-A teacher's recommendations and the combiner's directives may both name `match`. The teachers' instructions say: "An AVOID, TRY or MANDATE may name match words (a kind of change, a file) instead of a family." The combiner's say to use only the fields "kind (avoid, try, mandate, priority, lane_count, note), family or match (words, for avoid, try and mandate), value, rationale, citations". In the answer's schema, `match` reads "Instead of a family: words for avoid, try or mandate". A directive that names both `family` and `match`, or `match` for another kind, is not a valid directive: in the combiner's answer it makes the answer not fit its schema; in a teacher's recommendations it does not cost the teacher its review, but without a combiner the supervisor drops it. The fixed rules that give out work without the planner's model use only the directives that name a `family`.
+The brief's `directions` lists the run's directions. The teachers' instructions say a rule names "one of the run's directions (brief.directions), or a new one, which the planner designs at its next round". In the answer's schema, `family` reads "The rule's direction, in plain words or as :name:: one of the run's directions (brief.directions), or a new one, which the planner designs". The supervisor sends the advisors' experiments to the queue before their rules.
+
+Each directive is checked on its own. One that is not valid, such as one that gives words in `match` or a `family` that can't be a direction's name, is dropped, with why, in the teachers' record (`a rule no longer takes match: …`); it costs neither the review nor the combiner's set. In a research run, which has no planner to design a direction, the harness leaves out a rule for any direction but a task kind, records `directives_left_out` with why, and the supervisor's line in **Live** says `Left out by the rig: …`.
 
 ### Experiments and moves for the queue
 

@@ -77,36 +77,44 @@ To narrow the list further, choose a direction in **Every direction**, or an aut
 
 ## Give the planner a rule
 
-A **rule** tells the planner which directions to avoid or to favor. It changes what the lanes work on, never a verdict.
+A **rule** tells the planner which **direction** to avoid or to favor. A direction is an approach that experiments belong to, such as `loop tiling`. Every rule names one, and code keeps every rule at each hand-out, with or without the planner's model. A rule changes what the lanes work on, never a verdict.
 
-1. On the run's page, press the tab **Planner**. **Rules** lists the rules in force. Each shows its kind, such as `avoid`, what it says, such as `Avoid loop-tiling`, who set it (you, the teachers or the planner), when, and why. With no rules, it says `No rules. The planner follows the queue and its own judgment.`
+1. On the run's page, press the tab **Planner**. **Rules** lists the rules in force. Each shows its kind, such as `avoid`, what it says, such as `Avoid :loop-tiling:`, who set it (you, the teachers or the planner), when, and why. With no rules, it says `No rules. The planner follows the queue and its own judgment.`
 2. Open **Add a rule**. It is already open when the run has no rules.
 3. In **Rule**, choose **Avoid** (no lane gets this direction), **Try** (it comes first when there is a choice) or **Always** (one lane works on it at every hand-out).
-4. In **Direction**, name the direction, up to 200 characters: a direction's name, such as `loop-tiling`, or your own words, such as `anything that uses shared memory`. This field doesn't list the run's directions: the **Direction** column of **Up next** and **Tried**, on the **Experiments** tab, shows them. A rule in your own words applies only when the planner's model plans a round, so it is often skipped; for a rule that holds every time, name a direction. The field's help says so too: without the planner's model, `only a rule that names a direction applies: one word with hyphens, such as memory-layout.` See [When a rule in your own words is skipped](#when-a-rule-in-your-own-words-is-skipped).
+4. In **Direction**, name the direction in plain words, such as `shared memory tiling`, or as `:shared memory tiling:`. To name more than one, write each as `:name:`, such as `:loop tiling: :split k:`; each gets its own rule. The field's help (its **ⓘ**) lists the run's directions. See [Directions](#directions).
 5. In **Why**, say why. The planner reads it; the workers never do.
 6. Press **Add the rule**.
 
-The page says that control sent the command. Once the rig has reported, within a minute, the rule shows under **Rules**, such as `Try cache-blocking · set by you`, with its why, and **History** says, for example, `You set a rule for the plan: avoid loop-tiling.` Each rule you add here adds to the rules in force.
+The page says that control sent the command. Once the rig has reported, within a minute, the rule shows under **Rules**, such as `Try :cache-blocking: · set by you`, with its why, and **History** says, for example, `You set a rule for the plan: avoid :loop-tiling:.` Each rule you add here adds to the rules in force.
 
-### When a rule in your own words is skipped
+If control can't send the rule, **Add a rule** opens again with **Not added.** and why, such as `"anything with $hared memory!" is not a direction's name: write it in letters, digits, spaces and dashes, such as shared memory tiling or :shared memory tiling:.`, or, for words beside a `:name:`, `Only directions go in Direction: "because it is slow" is not one. Write each direction as :name:, or one direction in plain words. Put your reasons in Why.`
 
-Thermite sends what you write in **Direction** in one of two ways:
+### Directions
 
-- **As a direction's name**, when it is 2 to 41 lowercase letters, digits and dashes, such as `loop-tiling`, or one plain word, such as `tiling`. The run need not have used the direction yet. The rule fits experiments whose direction is that name, or whose direction's words make it: `Loop tiling` makes `loop-tiling`. So **Avoid** `tiling` doesn't fit an experiment in `loop-tiling`.
-- **As your own words**, for anything else. Only the planner's model applies words, to every experiment they fit, when it plans a round.
+A direction's name is its words in lowercase, joined by dashes: `:Shared memory tiling:`, `shared memory tiling` and `shared-memory-tiling` all name `shared-memory-tiling`. It holds letters, digits, spaces and dashes, and makes at most 41 characters. An experiment belongs to the direction its own **Direction** words make: `Loop tiling` is `loop-tiling`. So **Avoid** `tiling` doesn't fit an experiment in `loop-tiling`.
 
-Without the model's plan, the lanes take work by fixed rules, and those skip every rule in your own words. That is the case for a lane's later trials in a round, for every round when the planner is off on **Edit rig** or its model can't be reached or gives no usable plan, and for every research run. A free or small model often gives no usable plan, so with one, most hand-outs skip such rules. For a rule that holds every time, name the direction:
+The run's directions are the directions of its experiments, the ones the planner made, and those of its attempts. The REST API and MCP list them, each with its counts: see [From the command line and over MCP](#from-the-command-line-and-over-mcp).
 
-- **Always** puts an experiment, `Work on the "<direction>" direction`, at the top when nothing in that direction waits or is in progress.
-- **Try** adds nothing: it puts the waiting experiments in that direction first. To have a new direction worked on, add an experiment in it, or use **Always**.
+A rule may name a direction the run doesn't have yet. It is new: its rule shows `A new direction. The planner designs it at its next round, then adds it to the run's directions.` At its next round, the planner's model must design it: say what it means, in its own words, and add experiments in it when the rule asks for them. The planner's answer is refused until it does. **What the planner did** then shows `Designed the direction :split-k: for rule 9 · split the reduction over k`, and **History** says `The planner designed the new direction :split-k: for rule 9: split the reduction over k.`
 
-When the model plans, code still refuses an answer that gives a lane an **Avoid** direction, or gives no lane an **Always** direction, by name. In a research run, the directions are the task kinds `explore`, `primary`, `contradict` and `consolidate`: name one of them. [When there is no planner answer](../../explanation/agents-lanes-planner.md#when-there-is-no-planner-answer) explains the fixed rules.
+The rules hold without the model too, by name. Without the model's plan, the lanes take work by the fixed rules: for a lane's later trials in a round, for every round when the planner is off on **Edit rig** or its model can't be reached or gives no usable plan, and for every research run. Then:
+
+- **Avoid** skips every waiting experiment in that direction.
+- **Always** puts an experiment, `Work on the "<direction>" direction`, at the top when nothing in that direction waits or is in progress. For a new direction, the fixed rules add it to the run's directions too, as `the "<direction>" direction (named by rule 9)`.
+- **Try** adds nothing: it puts the waiting experiments in that direction first. A new direction waits for the planner's model, or for an experiment in it.
+
+When the model plans, code still refuses an answer that gives a lane an **Avoid** direction, or gives no lane an **Always** direction. A research run has no planner to design a new direction: its directions are its task kinds, `:explore:`, `:primary:`, `:contradict:` and `:consolidate:`, and control refuses a rule for any other: `A research run's directions are its task kinds: :explore:, :primary:, :contradict:, :consolidate:. It has no planner to design a new direction, so a rule for :blog-posts: would do nothing. Name a task kind.` [When there is no planner answer](../../explanation/agents-lanes-planner.md#when-there-is-no-planner-answer) explains the fixed rules.
+
+### Old rules in words
+
+Before rules named directions, a rule could be in your own words, such as "anything that uses shared memory". Such a rule stays in force, marked `words`, with `An old rule in words, from before rules named directions. Code doesn't keep it. Only the planner's model reads it, and a round planned without the model ignores it. Remove it, and add a rule that names a direction instead.` Thermite never removes it by itself. A new rule in words can't be made.
 
 ### Remove a rule
 
 Press **Remove** beside the rule. It works on any rule, whoever set it. Once the rig has reported, the rule leaves **Rules**, and **History** says `You removed rule 7.`
 
-A rule you removed stays removed. When the advisors, the planner or the agent's token send the same rule again, of the same kind and with the same direction or words, the rig leaves it out of their set, and records an event `directives_left_out` with the rule and `"why": "the owner removed these rules"`. **History** says, for example, `The teacher pair named a rule you removed (avoid loop-tiling): left out.` Only you bring it back: with **Add a rule**, or a `redirect` sent with the owner's or an operator's token.
+A rule you removed stays removed. When the advisors, the planner or the agent's token send the same rule again, of the same kind and with the same direction, the rig leaves it out of their set, and records an event `directives_left_out` with the rule and `"why": "the owner removed these rules"`. **History** says, for example, `The teacher pair named a rule you removed (avoid :loop-tiling:): left out.` Only you bring it back: with **Add a rule**, or a `redirect` sent with the owner's or an operator's token.
 
 The kinds the dashboard doesn't offer, `priority`, `lane_count` and `note`, go with `redirect` from the [command line](steer-a-run.md#steer-from-the-command-line).
 
@@ -114,10 +122,10 @@ The kinds the dashboard doesn't offer, `priority`, `lane_count` and `note`, go w
 
 The card **Tell the planner**, on the **Planner** tab of a hill climb or goal run, sends the planner a message.
 
-1. Write it, such as `stop trying tiling, and put vector loads first`.
+1. Write it, such as `stop :loop tiling:, and put vector loads first`.
 2. Press **Send to the planner**.
 
-The page says `Sent to the rig. The planner reads it when it next gives out work; Commands shows whether the rig took it.` The planner reads it when it plans the next round with its model's answer, and **Live** shows `✓ planner read your message: …`. A lane's later trials in a round don't wait for the planner, so the next round can be a while off; **Restart the lanes** starts one at once. From what you say, the planner can add, move or drop experiments, queue or drop ideas, and add rules. A rule it adds from your message shows `set by planner`, with `(from your message: “…”)`. A change it makes to the queue carries its own reason. If the model's answer is refused, the fixed rules plan the round and your message is not read: it waits for the next plan, and **History** says `(by the fixed rules: the model gave no usable plan, because …)`.
+The page says `Sent to the rig. The planner reads it when it next gives out work; Commands shows whether the rig took it.` The planner reads it when it plans the next round with its model's answer, and **Live** shows `✓ planner read your message: …`. A lane's later trials in a round don't wait for the planner, so the next round can be a while off; **Restart the lanes** starts one at once. From what you say, the planner can add, move or drop experiments, queue or drop ideas, and add rules. Each rule it adds names a direction. Write `:name:` to name one exactly, such as `:loop tiling:`. For plain words, such as `never touch the timer code`, the planner picks the run's direction that fits, or designs a new one, as [Directions](#directions) says. A rule it adds from your message shows `set by planner`, with `(from your message: “…”)`. A change it makes to the queue carries its own reason. If the model's answer is refused, the fixed rules plan the round and your message is not read: it waits for the next plan, and **History** says `(by the fixed rules: the model gave no usable plan, because …)`.
 
 With the planner switched off on **Edit rig**, the card has no form. It says `The planner is off on this rig, so it reads no messages. The lanes take the queue in order and keep to the rules.`, and its link **Switch it on in Edit rig** opens the rig's settings. Control refuses a message to a planner that is off however it is sent: `The planner is off on this rig (Edit rig), so nothing would read it.`
 
@@ -143,7 +151,8 @@ Between the hand-outs, in time order, are the planner's own changes to the queue
 - `Added “wider loads” to the queue · reads dominate`, also for an experiment the fixed plan added, such as `· the queue was empty, so the fixed plan added it`
 - `Moved “overlap the next tile” to place 4 · it depends on the fusion result`
 - `Dropped “shared-memory tiling, third form” · a rule avoids it`
-- `Set the rule avoid anything that touches the timer · you asked for it (from your message: “Never touch the timer code.”)`
+- `Set the rule avoid :timer-code: · you asked for it (from your message: “Never touch the timer code.”)`
+- `Designed the direction :timer-code: for rule 12 · any change to the timing code`, for a direction a rule in force named before the run had it
 
 The tab shows the newest 30 entries; before the first, it says `No hand-out yet.`
 
@@ -199,12 +208,14 @@ It prints the command's id and `"status":"pending"`. The kinds, with an example 
 | `queue_drop` | `{"run":"sort-speed-1","id":"x-0123456789ab","why":"measured slower twice"}` |
 | `queue_accept` | `{"run":"sort-speed-1","id":"x-0123456789ab","position":"top"}` |
 | `drop_directive` | `{"run":"sort-speed-1","id":7}` |
-| `redirect` | `{"run":"sort-speed-1","directives":[{"kind":"avoid","match":"anything that uses shared memory","rationale":"slower on this GPU"}],"replace":false}` |
+| `redirect` | `{"run":"sort-speed-1","directives":[{"kind":"avoid","family":":shared memory tiling:","rationale":"slower on this GPU"}],"replace":false}` |
 
 - An experiment's id is `x-` and 12 hexadecimal characters; a rule's id is a number. **Commands** shows a new experiment's id in its row's **Outcome**, such as `"experiment":"x-0123456789ab"`. To read every id, use the MCP tool `run_queue`, or the REST API with the owner's token: `curl -s -H "Authorization: Bearer $(cat .dev/secrets/control-admin-token)" http://127.0.0.1:8800/v1/rigs/local-1/view`. In its answer, find the run in `runs`: its `queue` lists each experiment with its `id`, `title` and `state`, and its `rules` each rule with its `id`.
 - A `position` is `"top"`, `"end"`, or a number: the place among the experiments up next, 0 first. Unlike the dashboard, `queue_add` and `queue_accept` put an experiment at the end unless you give one.
 - `queue_edit` changes the title, details, direction (`family`) or why of an experiment that waits, as **Edit** on the dashboard does. A field you leave out stays as it was; an empty `details` or `why` clears it.
-- In `redirect`, a rule names a direction's name with `family`, or your own words with `match`; `"replace": false` adds to the rules in force.
+- In `redirect`, each rule names its direction in `family`, in plain words or as `:name:`; control sends the name, such as `shared-memory-tiling`. `"replace": false` adds to the rules in force. A direction the run doesn't have yet is taken, and the rig's answer lists it: `"new_directions":["shared-memory-tiling"]`. The planner designs it at its next round. `match`, a rule in words, is refused: `bad redirect payload: directives.0: a rule no longer takes match: name its direction in family, in plain words or as :name:`.
+- `queue_add` and `queue_edit` take an experiment's direction (`family`) as `:name:` too, and keep it without the colons.
+- To read the run's directions, use `run_queue` over MCP, or `GET /v1/rigs/local-1/runs/sort-speed-1/directions` over REST. Each direction has its `name`, its `description` when the planner or the registry gave one, its experiments `tried`, its `wins` among them, those `queued`, the `lanes` on it now, the `rules` that name it, and `to_design`: true while only a rule names it and the planner has not designed it yet. A rule in `rules` has `legacy: true` when it is an [old rule in words](#old-rules-in-words).
 
 [Signed commands](../../reference/signed-commands.md) has every field, limit and refusal. Control refuses a payload that doesn't fit at once, such as `bad queue_edit payload: payload: change at least one of title, details, family and why`. The rig's own refusals show on **Commands**, where the row is **failed** with the reason under **Outcome**, such as:
 
@@ -214,7 +225,7 @@ It prints the command's id and `"status":"pending"`. The kinds, with an example 
 - `no rule 7 in force in run sort-speed-1`;
 - `run sort-speed-1 is closed: its queue and rules no longer change`, for every kind here, `redirect` too.
 
-Over MCP, the owner's and an operator's tokens send the same kinds and payloads with the `issue_command` tool, then follow them with `command_status`. The agent's token can't change the queue or remove a rule, though it may add rules with `redirect`. Every token can read the queue with `run_queue`: up next in order, the lanes' ideas, what each lane is on, the newest experiments tried (`tried`, 50 unless set, up to 500), the rules in force, the newest 10 hand-outs and your newest 20 messages. See [Let an agent run Thermite over MCP](../automate/agent-over-mcp.md).
+Over MCP, the owner's and an operator's tokens send the same kinds and payloads with the `issue_command` tool, then follow them with `command_status`. The agent's token can't change the queue or remove a rule, though it may add rules with `redirect`. Every token can read the queue with `run_queue`: up next in order, the lanes' ideas, what each lane is on, the newest experiments tried (`tried`, 50 unless set, up to 500), the rules in force, the run's directions, the newest 10 hand-outs and your newest 20 messages. See [Let an agent run Thermite over MCP](../automate/agent-over-mcp.md).
 
 ## How to tell it worked
 

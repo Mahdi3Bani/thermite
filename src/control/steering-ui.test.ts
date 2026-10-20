@@ -891,20 +891,47 @@ describe("the run page's Experiments and Planner tabs", () => {
       /<tr data-r="none"[^>]*><td><b>unroll the loop by 4<\/b>[\s\S]*?dropped by you: measured slower last run/,
     );
 
-    // Two rules from Add a rule: a direction's name goes as the name, other words as words.
+    // Rules from Add a rule (goal 066): a direction as :name:, or in plain words with spaces. A
+    // direction the run doesn't have yet is new: the planner designs it.
     await s.submit(form(plan, "Add the rule"), {
       directive: "avoid",
-      match: "loop-tiling",
+      direction: ":loop tiling:",
       rationale: "three trials regressed",
     });
     await s.sync();
     plan = await s.get(PLAN);
     await s.submit(form(plan, "Add the rule"), {
       directive: "try",
-      match: "anything with vector loads",
+      direction: "Vector loads",
       rationale: "the guide says twice the bandwidth",
     });
     await s.sync();
+    // Text that is not a direction, or words beside :name:, are refused, back on the tab.
+    for (const [direction, refusal] of [
+      [
+        "anything with $hared memory!",
+        /^"anything with \$hared memory!" is not a direction's name: write it in letters, digits, spaces and dashes/,
+      ],
+      [
+        ":loop tiling: because it is slow",
+        /^Only directions go in Direction: "because it is slow" is not one\. Write each direction as :name:, or one direction in plain words\./,
+      ],
+    ] as const) {
+      const back = await s.submit(form(plan, "Add the rule"), {
+        directive: "avoid",
+        direction,
+        rationale: "x",
+      });
+      const why = back.split("&ruleerror=")[1] ?? "";
+      assert.ok(back.startsWith(decodeURIComponent(PLAN)), back);
+      assert.match(why, refusal);
+      const shown = await s.get(`${PLAN}&ruleerror=${encodeURIComponent(why)}`);
+      assert.match(
+        shown,
+        /<details class="adv" style="margin-top:10px" open><summary>Add a rule<\/summary><div><div class="lnotice">[\s\S]*?<b>Not added\.<\/b>/,
+      );
+      assert.ok(unesc(shown).includes(why));
+    }
     assert.deepEqual(
       s.signed("redirect").map((p) => (p.directives as Record<string, unknown>[])[0]),
       [
@@ -916,7 +943,7 @@ describe("the run page's Experiments and Planner tabs", () => {
         },
         {
           kind: "try",
-          match: "anything with vector loads",
+          family: "vector-loads",
           rationale: "the guide says twice the bandwidth",
           citations: [],
         },
@@ -925,9 +952,9 @@ describe("the run page's Experiments and Planner tabs", () => {
     plan = await s.get(PLAN);
     assert.match(
       plan,
-      /<b>Avoid loop-tiling<\/b> <span class="muted small">· set by<\/span> <span class="qsrc you">you<\/span>[\s\S]*?three trials regressed/,
+      /<b>Avoid :loop-tiling:<\/b> <span class="muted small">· set by<\/span> <span class="qsrc you">you<\/span>[\s\S]*?three trials regressed<\/div><div class="xs" style="margin-top:3px">A new direction\. The planner designs it at its next round, then adds it to the run's directions\.<\/div>/,
     );
-    assert.match(plan, /<b>Try anything with vector loads<\/b>/);
+    assert.match(plan, /<b>Try :vector-loads:<\/b>/);
 
     // Tell the planner: back on the tab, which says the message went.
     const told = await s.submit(form(plan, "Send to the planner"), {
@@ -958,10 +985,17 @@ describe("the run page's Experiments and Planner tabs", () => {
                     { lane: "lane-1", experiment: prefetch, why: "the top of the queue" },
                     { lane: "lane-2", experiment: vector, why: "the rule: vector loads first" },
                   ],
+                  // It designs the new directions the owner's rules name, and one for the rule
+                  // the owner's plain words ask for.
+                  new_families: [
+                    { id: "loop-tiling", description: "tile the loops for the cache" },
+                    { id: "vector loads", description: "wider loads, such as half2" },
+                    { id: ":timer code:", description: "any change to the timing code" },
+                  ],
                   rules: [
                     {
                       kind: "avoid",
-                      match: "anything that touches the timer",
+                      family: "timer code",
                       rationale: "the owner asked for it",
                       from_message: message,
                     },
@@ -1007,7 +1041,17 @@ describe("the run page's Experiments and Planner tabs", () => {
     );
     assert.match(
       plan,
-      /<b>Avoid anything that touches the timer<\/b> <span class="muted small">· set by<\/span> <span class="qsrc planner">planner<\/span>[\s\S]*?the owner asked for it <span class="muted">\(from your message: “Never touch the timer code\.”\)<\/span>/,
+      /<b>Avoid :timer-code:<\/b> <span class="muted small">· set by<\/span> <span class="qsrc planner">planner<\/span>[\s\S]*?the owner asked for it <span class="muted">\(from your message: “Never touch the timer code\.”\)<\/span>/,
+    );
+    // The directions it designed for your rules, in its words; they are the run's now.
+    assert.match(
+      plan,
+      /<div>Designed the direction :loop-tiling: for rule \d+ <span class="muted">· tile the loops for the cache<\/span><\/div>/,
+    );
+    assert.doesNotMatch(plan, /A new direction\. The planner designs it/);
+    assert.match(
+      plan,
+      /This run's directions: [^<]*:loop-tiling:[^<]*:timer-code:[^<]*:vector-loads:/,
     );
     assert.match(
       plan,
@@ -1016,7 +1060,7 @@ describe("the run page's Experiments and Planner tabs", () => {
     // Its log has the rule it set too, with why and the message it came from.
     assert.match(
       plan,
-      /<div class="qhand"><span class="tm">\d\d:\d\d<\/span><div>Set the rule avoid anything that touches the timer <span class="muted">· the owner asked for it<\/span> <span class="muted">\(from your message: “Never touch the timer code\.”\)<\/span><\/div><\/div>/,
+      /<div class="qhand"><span class="tm">\d\d:\d\d<\/span><div>Set the rule avoid :timer-code: <span class="muted">· the owner asked for it<\/span> <span class="muted">\(from your message: “Never touch the timer code\.”\)<\/span><\/div><\/div>/,
     );
     assert.ok(
       yours(await s.get("/ui/live?run=rig-a%2Fjs-1")).includes(
@@ -1086,12 +1130,12 @@ describe("the run page's Experiments and Planner tabs", () => {
     );
 
     // Remove one of your rules; the planner's stays.
-    await s.submit(form(plan, "Remove", "Try anything with vector loads"));
+    await s.submit(form(plan, "Remove", "Try :vector-loads:"));
     await s.sync();
     plan = await s.get(PLAN);
-    assert.doesNotMatch(plan, /Try anything with vector loads/);
-    assert.match(plan, /<b>Avoid loop-tiling<\/b>/);
-    assert.match(plan, /<b>Avoid anything that touches the timer<\/b>/);
+    assert.doesNotMatch(plan, /Try :vector-loads:/);
+    assert.match(plan, /<b>Avoid :loop-tiling:<\/b>/);
+    assert.match(plan, /<b>Avoid :timer-code:<\/b>/);
 
     // History tells each change, who made it and why.
     const history = await s.get(HISTORY);
@@ -1100,8 +1144,9 @@ describe("the run page's Experiments and Planner tabs", () => {
       `You moved ${q}prefetch the next block${q} to place 2\\.`,
       `You edited ${q}vector loads \\(half2\\)${q}\\.`,
       `You dropped ${q}unroll the loop by 4${q}: measured slower last run\\.`,
-      "You set a rule for the plan: avoid loop-tiling\\.",
-      "The planner set a rule for the plan: avoid anything that touches the timer\\.",
+      "You set a rule for the plan: avoid :loop-tiling:\\.",
+      "The planner designed the new direction :loop-tiling: for rule \\d+: tile the loops for the cache\\.",
+      "The planner set a rule for the plan: avoid :timer-code:\\.",
       `The planner gave out round 1: lane-1 on ${q}prefetch the next block${q}; lane-2 on ${q}vector loads \\(half2\\)${q}\\.`,
       `lane-1 proposed ${q}fuse the two loops${q} as an idea for the queue\\.`,
       `You queued the idea ${q}fuse the two loops${q}\\.`,

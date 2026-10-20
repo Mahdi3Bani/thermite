@@ -55,6 +55,21 @@ describe("advisors", () => {
                     citations: ["arxiv:1"],
                   },
                   { kind: "try", family: "guesswork", rationale: "no source", citations: [] },
+                  // A direction written :name: with spaces (goal 066); words are no rule.
+                  {
+                    kind: "try",
+                    family: ":shared memory tiling:",
+                    rationale: "the paper's kernel",
+                    citations: ["arxiv:2"],
+                  },
+                  { kind: "avoid", match: "anything slow", rationale: "r", citations: ["a"] },
+                ],
+                experiments: [
+                  {
+                    title: "stage the tiles in shared memory",
+                    family: "shared memory tiling",
+                    why: "arxiv:2 does it",
+                  },
                 ],
               },
             },
@@ -107,9 +122,23 @@ describe("advisors", () => {
       .map((d) => d.body as { kind: string; family: string });
     assert.deepEqual(active, [
       { kind: "mandate", family: "tiling", rationale: "both reviews", citations: ["arxiv:1"] },
+      {
+        kind: "try",
+        family: "shared-memory-tiling",
+        rationale: "the paper's kernel",
+        citations: ["arxiv:2"],
+      },
     ]);
     const record = readdirSync(join(home, "advisors")).find((f) => f.includes("teachers"));
-    assert.match(readFileSync(join(home, "advisors", String(record)), "utf8"), /no citation/);
+    const said = readFileSync(join(home, "advisors", String(record)), "utf8");
+    assert.match(said, /no citation/);
+    assert.match(said, /a rule no longer takes match/);
+    // The experiments went in first, so the rule names a direction the run already has.
+    const all = env.ledger.eventsAfter(0, 100_000).events;
+    const added = all.find((e) => e.kind === "experiment_added");
+    const rule = all.find((e) => e.kind === "directive");
+    assert.ok(added && rule && added.id < rule.id);
+    assert.ok(env.service.queue.directions("js-1").includes("shared-memory-tiling"));
     // Not due again within the cadence.
     const again = await adviseOnce(
       {

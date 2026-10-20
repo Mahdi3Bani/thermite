@@ -9,6 +9,7 @@ import {
 import { z } from "zod";
 import { canonicalJson } from "./canonical.ts";
 import { CommitSchema, IdSchema, MAX_LANES, MAX_LANES_REASON, Sha256Schema } from "./contract.ts";
+import { DirectionRef, directionName } from "./directions.ts";
 
 /**
  * Control commands. Control signs every command with its Ed25519 key; the harness verifies
@@ -92,10 +93,13 @@ export type ImportSpec = z.infer<typeof ImportSpec>;
 
 /**
  * Low-power steering. Strict: a directive cannot carry anything but these fields, so it cannot
- * set a verdict, a contract or text for workers. AVOID, TRY and MANDATE name a direction-registry
- * family, or free words (`match`) the planner applies to every experiment they fit; PRIORITY
- * ranks a family; LANE_COUNT sets the lanes (up to the contract's count); NOTE is free text for
- * the planner only. The planner sees rationales, notes and match words; workers never do.
+ * set a verdict, a contract or text for workers. AVOID, TRY and MANDATE name a direction (goal
+ * 066), in plain words or as `:name:`, kept as its name; code keeps them at every hand-out. A
+ * direction the run doesn't have yet is the planner's to design at its next round. PRIORITY ranks a
+ * direction; LANE_COUNT sets the lanes (up to the contract's count); NOTE is free text for the
+ * planner only. The planner sees rationales and notes; workers never do. A rule in words that
+ * names no direction (`match`) is no longer made: one already in a ledger stays in force as
+ * legacy (isLegacyRule).
  */
 /** The kinds of directive. None of them is ever a direction's name (a lane "on try"). */
 export const DIRECTIVE_KINDS = [
@@ -108,41 +112,44 @@ export const DIRECTIVE_KINDS = [
 ] as const;
 
 export const StructuredDirective = z
-  .strictObject({
-    kind: z.enum(DIRECTIVE_KINDS),
-    /** Direction-registry family id the directive refers to (when applicable). */
-    family: z
-      .string()
-      .regex(/^[a-z0-9][a-z0-9-]{1,40}$/)
-      .optional(),
-    /**
-     * Instead of a family: the direction in the owner's own words (a kind of change, a file, a
-     * direction's name), for the planner to apply to every experiment it matches.
-     */
-    match: z.string().trim().min(1).max(200).optional(),
-    value: z.union([z.string().max(1000), z.number()]).optional(),
-    /** Why, with citations; shown to the planner, never to workers. */
-    rationale: z.string().min(1).max(2000),
-    citations: z.array(z.string().min(1).max(500)).max(20).default([]),
-  })
-  .refine((d) => !(d.family && d.match), {
-    message: "name either a family or match words, not both",
-    path: ["match"],
-  })
-  .refine((d) => !d.match || d.kind === "avoid" || d.kind === "try" || d.kind === "mandate", {
-    message: "match words are for avoid, try and mandate rules",
-    path: ["match"],
-  })
+  .strictObject(
+    {
+      kind: z.enum(DIRECTIVE_KINDS),
+      /** The direction the directive is about: plain words or `:name:`, kept as its name. */
+      family: DirectionRef.optional(),
+      value: z.union([z.string().max(1000), z.number()]).optional(),
+      /** Why, with citations; shown to the planner, never to workers. */
+      rationale: z.string().min(1).max(2000),
+      citations: z.array(z.string().min(1).max(500)).max(20).default([]),
+    },
+    {
+      error: (iss) =>
+        iss.code === "unrecognized_keys" && iss.keys.includes("match")
+          ? "a rule no longer takes match: name its direction in family, in plain words or as :name:"
+          : undefined,
+    },
+  )
   // A research run's TRY or MANDATE may name a question by its number (value) instead.
   .refine(
     (d) =>
       !["avoid", "try", "mandate"].includes(d.kind) ||
       d.family !== undefined ||
-      d.match !== undefined ||
       (d.kind !== "avoid" && d.value !== undefined),
-    { message: "an avoid, try or mandate rule names a family or match words", path: ["family"] },
+    {
+      message: "an avoid, try or mandate rule names a direction (family)",
+      path: ["family"],
+    },
   );
 export type StructuredDirective = z.infer<typeof StructuredDirective>;
+
+/**
+ * A rule as a ledger holds it: a directive, the owner's message a planner's rule came from, and,
+ * for an old rule in words (legacy), its words.
+ */
+export type StoredRule = StructuredDirective & {
+  from_message?: number | undefined;
+  match?: string | undefined;
+};
 
 /** An experiment in a run's queue (goal 064): `x-` and 12 hex characters. */
 export const ExperimentId = z.string().regex(/^x-[0-9a-f]{12}$/, "an experiment id (x-...)");
@@ -159,8 +166,19 @@ export type QueuePosition = z.infer<typeof QueuePosition>;
 export const ExperimentText = {
   title: z.string().trim().min(1).max(200),
   details: z.string().max(4000),
-  /** The direction (approach family) in free words, or a family's id. */
-  family: z.string().trim().min(1).max(80),
+  /**
+   * The direction (approach family): a direction's name, or words, whose direction is the name
+   * they make (directionOf). Written `:name:`, it is kept without the colons.
+   */
+  family: z
+    .string()
+    .trim()
+    .min(1)
+    .max(80)
+    .transform((s) => {
+      const inner = /^:(.+):$/.exec(s)?.[1]?.trim();
+      return inner && directionName(inner) ? inner : s;
+    }),
   why: z.string().max(2000),
 };
 

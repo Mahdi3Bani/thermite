@@ -76,6 +76,91 @@ describe("planner", () => {
     );
   });
 
+  test("rules name directions (goal 066): the run's, or new ones the planner designs in its words", () => {
+    const input: PlannerInput = {
+      ...base,
+      directions: ["tiling", "unroll"],
+      queue: {
+        up_next: [{ id: "x-000000000001", title: "tile it", family: "tiling", by: "owner" }],
+        proposed: [],
+        in_progress: [],
+        tried: [],
+      },
+      directives: [
+        // The owner's rule for a direction the run doesn't have yet: the planner designs it.
+        {
+          id: 7,
+          body: { kind: "try", family: "split-k", rationale: "won elsewhere", citations: [] },
+        },
+        // An old rule in words: the model's alone, never designed.
+        { id: 8, body: { kind: "avoid", match: "anything slow", rationale: "x", citations: [] } },
+      ],
+      ownerMessages: [
+        { id: 1, text: "stop :tiling: for now" },
+        { id: 2, text: "and never touch the timer code" },
+      ],
+    };
+    const assignments = [
+      { lane: "lane-1", experiment: "x-000000000001", why: "w" },
+      { lane: "lane-2", title: "split the k loop", family: "split k", why: "rule 7" },
+    ];
+    const context = JSON.parse(plannerContext(input)) as Record<string, unknown>;
+    assert.deepEqual(context.directions, ["tiling", "unroll"]);
+    assert.deepEqual(context.to_design, [
+      { name: "split-k", rules: [{ id: 7, kind: "try", rationale: "won elsewhere" }] },
+    ]);
+    assert.deepEqual(
+      (context.owner_messages as { directions: string[] }[]).map((m) => m.directions),
+      [["tiling"], []],
+    );
+    assert.equal((context.directives as { legacy?: boolean }[])[1]?.legacy, true);
+    // Not designed, a rule for a new direction, words: each refused with what to do.
+    const bad = validatePlan(
+      {
+        assignments,
+        rules: [
+          { kind: "avoid", family: "timer code", rationale: "asked", from_message: 2 },
+          { kind: "avoid", match: "the timer", rationale: "asked", from_message: 2 },
+          { kind: "avoid", family: "tiling", rationale: "asked", from_message: 5 },
+        ],
+      },
+      input,
+    );
+    assert.deepEqual(bad.errors, [
+      "rule 7 names :split-k:, a direction this run doesn't have yet: design it in new_families, with its name and what it means, in your words",
+      "rules: :timer-code: is not one of the run's directions: to make a rule for a new direction, design it in new_families too",
+      "rules: a rule names its direction in family: a rule no longer takes match",
+      "rules: message 5 is not one of the owner's messages given to you",
+    ]);
+    // Designed in the answer: the rules stand, by name, from the owner's plain words or :name:.
+    const good = validatePlan(
+      {
+        assignments,
+        new_families: [
+          { id: ":split k:", description: "split the reduction over k across blocks" },
+          { id: "Timer code", description: "any change to the timing code" },
+        ],
+        rules: [
+          { kind: "avoid", family: ":tiling:", rationale: "you said so", from_message: 1 },
+          { kind: "avoid", family: "timer code", rationale: "asked", from_message: 2 },
+        ],
+      },
+      input,
+    );
+    assert.deepEqual(good.errors, []);
+    assert.deepEqual(
+      good.plan?.newFamilies.map((f) => f.id),
+      ["split-k", "timer-code"],
+    );
+    assert.deepEqual(
+      good.plan?.rules.map((r) => [r.kind, r.family, r.from_message]),
+      [
+        ["avoid", "tiling", 1],
+        ["avoid", "timer-code", 2],
+      ],
+    );
+  });
+
   test("a kind of rule is never a direction's name", () => {
     const bad = validatePlan(
       {

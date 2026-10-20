@@ -469,14 +469,19 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         // The teachers that reviewed had the owner's messages in their brief: they read them.
         if (run.reviews.some((r) => r.review))
           await receipts(inst.id, "teachers", given, run.answers);
+        // Their experiments for the run's queue, and moves of queued ones, before the rules: a
+        // rule may then name the direction of an experiment they just added.
+        const queued = await toQueue(inst.id, "teacher", run.experiments, run.moves);
         let posted: unknown;
         if (run.directives?.length) {
           posted = await api("POST", "/v1/directives", {
             run: inst.id,
             directives: run.directives,
           });
+          const left = ((posted as { left_out?: { rule: string; why: string }[] } | undefined)
+            ?.left_out ?? []) as { rule: string; why: string }[];
           s.directive_sets++;
-          s.directives += run.directives.length;
+          s.directives += run.directives.length - left.length;
           say(
             inst.id,
             "text",
@@ -485,15 +490,15 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
                 (d) =>
                   `${d.kind}${d.family ? ` ${d.family}` : ""}${d.value !== undefined ? ` ${String(d.value)}` : ""} (why: ${clip(d.rationale, 200)})`,
               )
-              .join("; ")}${run.dropped.length ? `. Dropped: ${run.dropped.join("; ")}` : ""}`,
+              .join(
+                "; ",
+              )}${run.dropped.length ? `. Dropped: ${run.dropped.join("; ")}` : ""}${left.length ? `. Left out by the rig: ${left.map((l) => l.rule).join("; ")}: ${left[0]?.why ?? ""}` : ""}`,
           );
         } else if (run.error) {
           fail(`teachers for ${inst.id}`, run.error, inst.id);
         } else {
           say(inst.id, "status", "the teacher pair set no directives");
         }
-        // Their experiments for the run's queue, and moves of queued ones.
-        const queued = await toQueue(inst.id, "teacher", run.experiments, run.moves);
         // Then each teacher's (and the combiner's) field notes, once the round's work is posted.
         const noted: unknown[] = [];
         for (const j of run.journal) noted.push(await notesOut(inst.id, "teachers", j.by, j.notes));

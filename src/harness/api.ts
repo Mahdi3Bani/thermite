@@ -255,7 +255,8 @@ export function createHarnessApi(
     const body = z
       .object({ run: z.string().min(1), directives: z.unknown() })
       .parse(await c.req.json());
-    return c.json({ ids: service.addDirectives(body.run, body.directives, "supervisor") });
+    // Rules naming a direction the run doesn't have are left out, each with why (goal 066).
+    return c.json(service.setAdvisorRules(body.run, body.directives, "supervisor"));
   });
 
   // The supervisor's deterministic inputs for its teacher pair, auditor and review panel, and
