@@ -19,7 +19,7 @@ Work is organized as **Campaign ▸ Run ▸ Lane ▸ Trial ▸ Attempt**. A camp
 | **Judge** | The code that measures, decides verdicts and promotes. Agents cannot modify it |
 | **Kit** | A project's judge-side recipe for building, running, timing and checking candidates, with its references and hidden checks. Pinned by commit; agents never see it. See [Kits](kits.md) |
 | **Lane** | One worker's line of search inside a run, with its own best candidate |
-| **Live view** | The dashboard's view of a rig's agent sessions and judge as they work. The owner can message a worker, a lane, the planner or the advisors from it; the judge takes no messages |
+| **Live view** | The dashboard's view of a rig's agent sessions and judge as they work. The owner can message everyone working, a lane, a worker, the planner or the advisors from it, and see who read each message; the judge takes no messages |
 | **Ledger** | The harness's authoritative record of everything that happened |
 | **Mode** | Hill climb, goal or research |
 | **Planner** | A stateless model call each epoch that assigns lanes their directions |

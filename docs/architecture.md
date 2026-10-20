@@ -30,7 +30,7 @@ The harness does the research. It contains:
 - **The ledger:** the authoritative record of campaigns, attempts, measurements, verdicts, champions, directives and budgets.
 - **The judge:** gates, statistics, verdicts and promotion. Only the judge decides what counts.
 - **Executors and target drivers:** they run official measurements on the rig's target, such as a GPU or a CPU set, with the clock owned by the executor.
-- **The planner:** a stateless model call each epoch that assigns directions to lanes from a deterministic summary of the ledger.
+- **The planner:** a stateless model call each epoch that assigns directions to lanes from a deterministic summary of the ledger. A research run has no planner: a fixed method plans its rounds, and each round's `epoch_started` record says so (`plan: "research"`, with its notes).
 - **Workers:** one fresh agent session per trial, each in its own workspace, proposing one change per trial.
   - A lane's commands have no time limit unless the contract sets one. What they start in the background runs on, as in a shell, until the trial ends.
   - Memory and disk limits cover everything a lane runs.
@@ -46,8 +46,44 @@ The supervisor is the rig's link to everything outside:
 - **Reporting.** Every 60 seconds it polls the harness and sends new results, champion changes, worker statistics and costs to control.
 - **Commands.** It picks up control's signed commands and relays them to the harness.
 - **Git and data.** It handles all git work: it pushes the harness's exports to the results repository, fetches the projects, kits and models an assignment names into the harness's inbox, and stages other rigs' published champions there for propagation. A kit written or uploaded on control's new-campaign page is fetched from control itself, with the rig's token. The harness verifies every commit and hash against a signed command before using anything.
-- **Teaching.** Hourly, two frontier models review the rig's progress and research externally. A neutral combiner turns their reviews into structured directives for the planner.
+- **Teaching.** Hourly, two frontier models review the rig's progress and research externally. A neutral combiner turns their reviews into structured directives for the planner. A message from the owner to the teachers starts their round at once.
 - **Audits.** A fresh-context auditor reviews surprising results. An audit can hold a result back; it can never pass one.
+- **The advisors in Live.** Each step of an advisor round is a line in the live view, with its run: what each teacher suggested, the directives the combiner set and why, each audit (its attempt, try, decision and reason) and each review (each panelist's decision and reason, and the outcome).
+
+### The owner's messages
+
+The owner writes to a run's agents from one message box in Live. Each message is a signed owner command (`message_agent`), so no agent and no other token can write as the owner. The judge takes no messages: it is code, and what anyone writes must not change a measurement.
+
+- **Recipients.**
+  - **Everyone working** (`all`): every lane, and the planner of a hill-climb or goal run. A research run has no planner: its rounds are planned by a fixed method.
+  - **A lane** (`lane-N`), or one **trial** of a lane (`trial:ID`). A message to a trial that ends before it reads it goes to that lane's next trial, which is told so.
+  - **The planner**, in hill-climb and goal runs.
+  - **The advisors**: all of them (`advisors`), the teacher pair (`teachers`), the auditor (`auditor`) or the review panel (`panel`).
+- **Refusals.** The harness refuses a message that nothing would read, and says why: the planner of a research run, a part switched off on Edit rig, the auditor of a research run, the review panel of a run with no goal it reviews, a lane the run does not have, a trial it does not know, or a closed run. Control then shows the message as failed, not delivered.
+- **Kept in force.** A message to everyone working or to a lane can be kept in force. Every new trial's brief (all the lanes', or that lane's) then carries it, under "Messages from the campaign's owner, in force", until the owner removes it (`unkeep_message`).
+- **Reads.** Each reader reads a message once: each lane, the planner, and each advisor role. A read is recorded only when the text was given to the agent, never when it was only fetched. A message taken from the queue is always given to an agent, or it stays waiting.
+- **When each agent reads a message:**
+
+  | Agent | When it reads a message |
+  | --- | --- |
+  | A Pi worker | At its next step: after the model's current turn, before its next model call. A message that arrives as a time or turn limit stops the trial waits for the lane's next trial. |
+  | An OpenCode worker | When its current `opencode run` ends without a submission: the harness continues the session with the message. A run ends when the model stops of its own accord, so this can be many minutes, or the end of the trial. |
+  | A Claude Code worker | As for OpenCode: when its current `claude -p` run ends without a submission, the harness resumes the session with the message. |
+  | Any worker, after it submits | It does not read it. A submission ends the trial; the lane's next trial reads the message in its brief, and can act on it. |
+  | A lane with no running trial | In the brief of its next trial. |
+  | The planner | In its next plan, when its model answers. A planner that is off, or a model that can't be reached, leaves the message waiting. |
+  | The teacher pair | In a round that starts at once, not at the next hour: the supervisor looks for new messages every few seconds between rounds, and a round already under way finishes first. A round that fails leaves the message for the next one. |
+  | The auditor, the review panel | In the package of their next audit or review. One comes only when the judge holds a result for audit, or a champion needs a review. |
+
+  OpenCode and Claude Code take no message into a run that is under way, so the harness cannot give them one at their next step. Doing so would need OpenCode's server with a session API, or Claude Code's streaming input; neither is in v0.1.0.
+- **Answers.** Each advisor that is given a message answers it in one or two sentences in its structured output. The supervisor sends the reads and answers to the harness, which records them.
+- **Records.** Everything is in the run's ledger, so control shows the messages and who read them from the rig's own record:
+  - `agent_message` {id, to, keep, text, chars}: the message, with the owner's text;
+  - `agent_message_read` {message, by, trial?}: the first read by each reader (a lane, `planner`, `teachers`, `auditor` or `panel`), with the trial for a lane;
+  - `agent_message_unkept` {message}: the owner removed a message from force;
+  - `advisor_answer` {message, role, text, advisor?}: an advisor's answer.
+
+  Live shows the message when it is sent, a line on the reader's stream when it reads it, and each advisor's answer.
 
 ## The control service
 
@@ -60,7 +96,7 @@ The supervisor is the rig's link to everything outside:
     - A run's page has four tabs: an overview (its decisions, what it is doing now, its goals, the champion chart, what happened and its latest attempts); all its attempts, with its audits and reviews; its history, in words; and the planner (the rules for the plan and the agent figures). Live, Message, Pause and, under ⋯, Restart the lanes sit in its header.
   - **Attempts:** each attempt has a page with the change, the judge's findings and its history.
   - **Rigs:** each rig's hardware, what its judge is doing, results export, advisors and signing key, and the runs it holds.
-  - **Live:** one run at a time, the runs at work listed first. The run's stream gets the page: one filter each for everyone, each lane, the planner, the judge, the advisors and the owner's own messages; a trial's start and end read as dividers, an agent's text as paragraphs, a tool call as one line with its result. Under it, one message box writes to the lane being watched (or everyone working, the planner, or the advisors), and can keep a message in force. The harness signs the lines its workers, planner and judge write, and the supervisor relays them every few seconds with its own lines, which are unsigned. A rig's page still opens every session on that rig. The judge is code and takes no messages.
+  - **Live:** one run at a time, the runs at work listed first. The run's stream gets the page: one filter each for everyone, each lane, the planner, the judge, the advisors and the owner's own messages; a trial's start and end read as dividers, an agent's text as paragraphs, a tool call as one line with its result. Under it, one message box writes to the lane being watched (or everyone working, the planner, or the advisors), and can keep a message in force. The harness signs the lines its workers, planner and judge write, and the supervisor relays them every few seconds with its own lines, which are unsigned. A rig's page still opens every session on that rig. When each agent reads a message is under [the owner's messages](#the-owners-messages). The judge is code and takes no messages.
 - **API and MCP.** Every view is available to scripts and agents, with scoped tokens and an audit log.
   - An agent's token can steer: assign, pause, resume, redirect, reset workers, export, propagate.
   - An operator's token, which the owner gives an agent that runs campaigns for them, can do the same and also message the run's agents on the owner's behalf.
@@ -71,6 +107,7 @@ The supervisor is the rig's link to everything outside:
   - redirect it;
   - reset its workers;
   - pause or resume it;
+  - message its agents, keep a message in force, or remove one from force (the owner only);
   - propagate one rig's best result to another rig, where that rig's own judge re-measures it;
   - check a rig: its model route (one tool-calling request), its isolation selftest (which the harness also runs at every start), or a judge-only smoke campaign on its own target, each reported back as pass or fail;
   - export the rig's results to git.
