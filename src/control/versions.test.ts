@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, test } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { generateSigningKeys, reportBody, signJson } from "../core/commands.ts";
 import {
   BUILD_HEADERS,
   type BuildInfo,
@@ -332,5 +337,162 @@ describe("versions between control and its rigs", () => {
     assert.equal(rigs[0]?.version.control.version, "99.0.0");
     assert.match(String(rigs[0]?.version.notice), /Update the rig's images\./);
     await client.close();
+  });
+});
+
+describe("a newer rig's fields that control does not know", () => {
+  /** A supervisor from a newer build, on a protocol this control works with. */
+  const newer = hdrs({ version: "99.0.0", protocol: PROTOCOL, oldest_protocol: OLDEST_PROTOCOL });
+  const asRig = (extra: Record<string, string> = {}) => ({
+    authorization: `Bearer ${tokens.rigs["rig-a"]}`,
+    "content-type": "application/json",
+    ...newer,
+    ...extra,
+  });
+
+  test("a newer supervisor's figures and daily report are taken; the fields control does not know are dropped", async () => {
+    const s = setup();
+    s.rig.supervisor = newer;
+    await relayOnce(s.cfg, { cursor: 0 });
+    const at = new Date().toISOString();
+    const figures = (relay: unknown) => ({
+      at,
+      relay,
+      // Fields a later build might add, at every level.
+      uptime_s: 4000,
+      export: {
+        remote: false,
+        to: "control",
+        exports: 1,
+        pushed: [],
+        last_push_at: null,
+        last_error: null,
+        bandwidth: { bytes_per_s: 10 },
+      },
+      models: [
+        {
+          name: "weights",
+          path: "models/weights.bin",
+          sha256: "a".repeat(64),
+          from: "https://models.example/weights.bin",
+          state: "downloading",
+          bytes: 10,
+          total: 100,
+          resumed_from: 0,
+          started_at: at,
+          updated_at: at,
+          mirror: "second",
+        },
+      ],
+      advisors: {
+        teacher_runs: 2,
+        directive_sets: 1,
+        directives: 3,
+        audits: 0,
+        reviews: 0,
+        errors: 0,
+        tokens_in: 100,
+        tokens_out: 20,
+        usd: 0,
+        cache_hits: 7,
+        roles: { teachers: 2, combiner: true, auditor: false, panel: 0, scout: 1 },
+      },
+    });
+    const r = await s.api.request("/v1/rigs/rig-a/supervisor", {
+      method: "POST",
+      headers: asRig(),
+      body: JSON.stringify(figures({ cursor: 3, lag_ms: 20 })),
+    });
+    assert.equal(r.status, 200, await r.clone().text());
+    // Stored as this control knows them: nothing it does not know is kept or shown.
+    const sup = s.store.supervisor("rig-a") as Record<string, unknown>;
+    assert.deepEqual(sup.relay, { cursor: 3 });
+    assert.equal("uptime_s" in sup, false);
+    assert.equal("bandwidth" in (sup.export as object), false);
+    assert.equal("mirror" in ((sup.models as object[])[0] as object), false);
+    const advisors = sup.advisors as { cache_hits?: number; roles: Record<string, unknown> };
+    assert.equal(advisors.cache_hits, undefined);
+    assert.deepEqual(advisors.roles, { teachers: 2, combiner: true, auditor: false, panel: 0 });
+    // The rest is used: the download is a step in the rig's history.
+    assert.ok(s.store.rigSetupEvents("rig-a").some((e) => e.step === "model_started"));
+    // A field control knows keeps its check.
+    const bad = await s.api.request("/v1/rigs/rig-a/supervisor", {
+      method: "POST",
+      headers: asRig(),
+      body: JSON.stringify(figures({ cursor: "three" })),
+    });
+    assert.equal(bad.status, 400);
+    // The daily report, with a field from a later build.
+    const daily = await s.api.request("/v1/rigs/rig-a/reports", {
+      method: "POST",
+      headers: asRig(),
+      body: JSON.stringify({ kind: "daily", body: "# The day", format: "markdown" }),
+    });
+    assert.equal(daily.status, 201, await daily.clone().text());
+    // The rig is ahead of control, not refused.
+    const listed = (await s.listed()).rigs.find((x) => x.id === "rig-a");
+    assert.equal(listed?.version.state, "ahead");
+    assert.equal(listed?.version.refused, null);
+  });
+
+  test("a newer supervisor's export is taken with a field control does not know", async () => {
+    const store = new ControlStore(":memory:");
+    const api = createControlApi(store, tokens, makeHarnessEnv("rig-a").keys.privateKeyPem, {
+      staleAfterMs: 180_000,
+      exportsDir: join(mkdtempSync(join(tmpdir(), "thermite-versions-")), "exports"),
+    });
+    const bytes = Buffer.from("one\n");
+    const r = await api.request("/v1/rigs/rig-a/exports/20261020T120000Z-0123abcd", {
+      method: "POST",
+      headers: asRig(),
+      body: JSON.stringify({
+        manifest: {
+          rig: "rig-a",
+          from_event: 0,
+          through_event: 1,
+          files: { "events.jsonl": createHash("sha256").update(bytes).digest("hex") },
+        },
+        files: { "events.jsonl": bytes.length },
+        compression: "none",
+      }),
+    });
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.deepEqual(((await r.json()) as { received: unknown }).received, { "events.jsonl": 0 });
+  });
+
+  test("a signed report stays exact: a field a newer harness signed fails the signature; one the supervisor adds is dropped", async () => {
+    const s = setup();
+    s.env.service.ledger.appendEvent("t", "one", null, {});
+    const snap = s.env.service.snapshot(0, 100) as Omit<
+      Parameters<typeof reportBody>[0],
+      "events"
+    > & {
+      events: Record<string, unknown>[];
+    };
+    const ingest = (body: unknown) =>
+      s.api.request("/v1/rigs/rig-a/ingest", {
+        method: "POST",
+        headers: asRig(),
+        body: JSON.stringify(body),
+      });
+    const withField = snap.events.map((e, i) => (i ? e : { ...e, trial: "t-1" }));
+    // A newer harness that signs an event field this control does not know: refused, since
+    // control checks the signature over the fields it reads.
+    const keys = generateSigningKeys();
+    const signed = { ...snap, events: withField };
+    const newer = await ingest({
+      ...signed,
+      rig_pubkey: keys.publicKeyPem,
+      signature: signJson(reportBody(signed), keys.privateKeyPem),
+    });
+    assert.equal(newer.status, 403);
+    assert.deepEqual(await newer.json(), { error: "bad report signature" });
+    // The harness's own report, with fields a supervisor added outside and inside it: taken,
+    // and what control does not know is not kept.
+    const taken = await ingest({ ...snap, events: withField, relayed_by: "a later supervisor" });
+    assert.equal(taken.status, 200, await taken.clone().text());
+    const stored = s.store.events("rig-a", 0, 100);
+    assert.ok(stored.length > 0);
+    assert.doesNotMatch(JSON.stringify(stored), /t-1|relayed_by/);
   });
 });

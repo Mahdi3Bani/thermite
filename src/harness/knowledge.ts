@@ -9,7 +9,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { KbItemWire, kbPlural } from "../core/kb.ts";
+import { log } from "../common/env.ts";
+import { type KbItemWire, kbPlural, readKbItems, untoldKinds } from "../core/kb.ts";
 import type { BriefingItem } from "./ledger.ts";
 
 /**
@@ -176,6 +177,8 @@ function readItem(md: string): Omit<KnowledgeHit, "file"> | undefined {
 export class Knowledge {
   private readonly stateRoot: string;
   private readonly folderRoot: (run: string) => string;
+  /** Kinds of item left out because this build does not know them: each is logged once. */
+  private readonly toldKinds = new Set<string>();
 
   /**
    * `stateRoot`: the harness's own copy, one directory per run; `folderRoot`: a run's research
@@ -207,16 +210,27 @@ export class Knowledge {
 
   /**
    * Items from control's knowledge base, into the run's folder (and the harness's copy). An item
-   * already there is overwritten. With `folders` (the campaign folders the run may read now), a
-   * folder no longer among them is removed whole, so a revoked grant leaves nothing behind.
-   * Returns how many files were new, how many were updated, and the folders removed.
+   * already there is overwritten. An item of a kind this build does not know (from a newer
+   * control) is left out, and its kind logged once. With `folders` (the campaign folders the run
+   * may read now), a folder no longer among them is removed whole, so a revoked grant leaves
+   * nothing behind. Returns how many files were new, how many were updated, the folders removed,
+   * and how many items were left out.
    */
   write(
     run: string,
     items: unknown[],
     folders?: string[] | undefined,
-  ): { written: number; updated: number; removed: string[] } {
-    const parsed = items.map((x) => KbItemWire.parse(x));
+  ): { written: number; updated: number; removed: string[]; skipped: number } {
+    const read = readKbItems(items);
+    const parsed = read.items;
+    for (const [kind, n] of untoldKinds(this.toldKinds, read.unknownKinds))
+      log("harness", "past research of an unknown kind left out", {
+        run,
+        kind,
+        items: n,
+        why: "control is newer than this rig: update the rig's images to get these items",
+      });
+    const skipped = items.length - parsed.length;
     // The earlier items first, when scratch was cleared: the README written below would hide
     // that they are missing.
     this.show(run);
@@ -254,7 +268,7 @@ export class Knowledge {
       writeAtomic(join(shown, "README.md"), readme);
       writeAtomic(join(this.saved(run), "index.json"), JSON.stringify(index));
     }
-    return { written, updated, removed };
+    return { written, updated, removed, skipped };
   }
 
   /** The harness's copy shown in the folder again, when scratch was cleared. */

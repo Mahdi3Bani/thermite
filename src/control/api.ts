@@ -97,6 +97,12 @@ function bearer(header: string | undefined): string {
   return header?.startsWith("Bearer ") ? header.slice(7) : "";
 }
 
+/**
+ * The harness's signed report, as its supervisor relays it. A field this control does not know is
+ * dropped, in the report or in an event, and the signature (over reportBody) is checked on what is
+ * left. So the signed part stays exact: a field a newer harness signs there fails the check. New
+ * data goes in an event's `body` or the `summary`, which are kept as they came (goal 012).
+ */
 const IngestBody = z.object({
   rig: z.string().min(1),
   ledger_id: z.string().min(1),
@@ -131,16 +137,21 @@ const IssueBody = z.object({
     .default(60),
 });
 
-/** What a supervisor may say about itself: numbers and short strings only (it is unsigned). */
+/**
+ * What a supervisor may say about itself: numbers and short strings only (it is unsigned). A field
+ * this control does not know, at any level, is dropped, never stored or shown: a newer supervisor
+ * that reports more still has the rest of its figures taken (goal 012). The fields it knows keep
+ * their checks.
+ */
 const Count = z.number().finite().min(0).max(1e12);
 const Bytes = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const Short = z.string().max(1000);
 const ExportNames = z.array(z.string().regex(/^[0-9A-Za-z-]{1,80}$/)).max(50);
-const SupervisorStats = z.strictObject({
+const SupervisorStats = z.object({
   at: Short,
-  relay: z.strictObject({ cursor: Count }).optional(),
+  relay: z.object({ cursor: Count }).optional(),
   export: z
-    .strictObject({
+    .object({
       remote: z.boolean(),
       /** Where its exports go: the results repository, control, or nowhere off the rig. */
       to: z.enum(["repository", "control", "none"]).optional(),
@@ -164,7 +175,7 @@ const SupervisorStats = z.strictObject({
   /** Model files it downloads or downloaded for the harness (model-download.ts), newest first. */
   models: z
     .array(
-      z.strictObject({
+      z.object({
         name: z.string().max(200),
         path: Short,
         sha256: z.string().regex(/^[0-9a-f]{64}$/),
@@ -182,7 +193,7 @@ const SupervisorStats = z.strictObject({
     .max(20)
     .optional(),
   advisors: z
-    .strictObject({
+    .object({
       teacher_runs: Count,
       directive_sets: Count,
       directives: Count,
@@ -195,7 +206,7 @@ const SupervisorStats = z.strictObject({
       last_error: Short.optional(),
       /** Which advisor roles the rig has configured (so control knows if an auditor decides). */
       roles: z
-        .strictObject({
+        .object({
           teachers: Count,
           combiner: z.boolean(),
           auditor: z.boolean(),

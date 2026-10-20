@@ -1467,7 +1467,7 @@ export class HarnessService {
     run: string,
     items: unknown[],
     folders?: string[] | undefined,
-  ): { written: number; updated: number; removed: string[] } {
+  ): { written: number; updated: number; removed: string[]; skipped: number } {
     this.requireRun(run);
     return this.knowledge.write(run, items, folders);
   }

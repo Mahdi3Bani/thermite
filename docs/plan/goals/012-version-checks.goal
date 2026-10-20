@@ -31,6 +31,7 @@ With published images, control and its rigs will run different versions.
 
 - 2026-10-20, owner (through the lead's brief): A rig that sends no version is `unknown`: shown, never refused. Control refuses a rig only when both protocol versions are known and incompatible. An update of control must never cut off rigs on the previous build, and a test shows it.
 - 2026-10-20, owner (through the lead's brief): The screen display (the **Rigs** list badge and the rig page) waits for a mockup the owner is approving. This goal builds what is behind it first.
+- 2026-10-20, release lead (a fix the v0.1.0 builders found): the compatibility rule covers fields too. Control drops a field it does not know in what a supervisor sends unsigned (its figures, daily reports, acknowledgements, an export's start, its own live lines) and takes the rest, so a newer supervisor is never refused for reporting more. Kept exact: the harness's signed reports and live batches (control checks the signature over the fields it reads, so new harness data goes in an event's body or the summary, and a new signed field is a new protocol), and a pod's enrollment answer in pull mode.
 
 ## Open questions
 
@@ -41,6 +42,7 @@ None.
 - 2026-10-19: Goal written from the v0.1.0 release plan.
 - 2026-10-20: Built behind the screen (`976c88b`). Each build reports Thermite's version from `package.json`, its commit from `THERMITE_COMMIT` (a new build argument of all three images, which goal 010's release workflow should pass), and protocol 1 with the oldest protocol it works with (`src/core/version.ts`). The harness reports its build in its signed report; the supervisor in `x-thermite-*` headers on every call to control. Control records each part's build, compares it with its own, and gives `state` (`reporting`, `stale`, or `offline` after `THERMITE_CONTROL_OFFLINE_SECONDS`, 900 s by default) and `version` in `GET /v1/rigs`, a rig's view, MCP's `list_rigs` and the new `thermite rig list`. A test keeps `OLDEST_PROTOCOL` at the protocol before `PROTOCOL`.
 - 2026-10-20: Left: the dashboard's **Rigs** badge and rig page, from the owner's mockup. Then the first Done-when item can be ticked.
+- 2026-10-20: Version skew from a newer supervisor fixed. Control's schema for the supervisor's figures (`POST /v1/rigs/<rig>/supervisor`) was strict at every level, so a newer supervisor that reported one more figure had all of them refused; so was an export's start. Both now drop the fields control does not know, and keep their checks on the fields it knows; the daily report, acknowledgements and the supervisor's live lines already did. The signed report, the live batches and the pull-mode enrollment answer stay exact (see Decisions). Tests in `src/control/versions.test.ts`: a newer supervisor's figures with extra fields at every level, its daily report and its export start are taken, the extra fields are not stored, a bad known field is still refused, and the rig shows `ahead`; a field a newer harness signs fails the signature, while one a supervisor adds is dropped. Pages: REST API › Fields control does not know, Compatibility.
 
 ---
 

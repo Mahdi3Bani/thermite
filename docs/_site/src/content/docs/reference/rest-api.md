@@ -383,6 +383,22 @@ Control writes `rig_refused` to its audit log when it starts to refuse a rig, or
 
 A new release keeps working with the protocol before its own, so an update of control never cuts off the rigs that still run the release before it.
 
+### Fields control does not know
+
+A rig on a newer build may send fields that control does not know. Where nothing depends on the exact shape, control drops such a field, at any level, and takes the rest. The fields it knows keep their checks. This holds for:
+
+- the supervisor's figures, `POST /v1/rigs/<rig>/supervisor`: control stores and shows only the fields it knows;
+- the daily report, `POST /v1/rigs/<rig>/reports`;
+- a command's acknowledgement, `POST /v1/rigs/<rig>/commands/<id>/ack`;
+- the start of an export, `POST /v1/rigs/<rig>/exports/<name>`. Each file is still checked against the manifest's SHA-256;
+- the supervisor's own lines in `POST /v1/rigs/<rig>/live`;
+- the parts of the harness's report and live batch that are outside the signature.
+
+These stay exact, because a signature or a key exchange depends on them:
+
+- **The harness's signed report and live batches.** Control drops what it does not know, then checks the signature over what is left. A field that a newer harness signs in the report or in an event fails the check, with 403 `bad report signature` (`bad live signature` for live lines). A field that the supervisor adds is dropped, and the report is taken. New data from the harness goes in an event's `body` or in the report's `summary`, which control keeps as they came. A change to the signed fields is a new protocol.
+- **A pod's enrollment answer** in [pull mode](../explanation/trust.md#rigs-in-pull-mode), which hands control the pod's keys: an answer with a field control does not know is refused, and the pod is not enrolled.
+
 ### Reporting, stale and offline
 
 A rig's `state` says whether it reports: `reporting` after a report within `THERMITE_CONTROL_STALE_SECONDS` (180 s by default), `stale` after that, and `offline` after `THERMITE_CONTROL_OFFLINE_SECONDS` (900 s by default) without a report. A rig that never sent a report is `offline`. See [Settings](settings.md#address-and-state).

@@ -19,12 +19,16 @@ Inside the harness, every kind of work runs as its own Unix user. These are **ro
 | `thermite` | The controller: the ledger, the judge, the planner and scheduler, and the harness API |
 | `builder` | The judge's builds of each change, under the kit's limits |
 | `run` | The judge's timed runs of a change. On a rig with several judge GPUs, each further card has a timing user of its own |
+| `planner` | The planner's calls, when it runs in OpenCode or Claude Code |
+| `model-check` | The model check, when it runs in OpenCode or Claude Code |
 | `lane-1` … `lane-16` | One lane's commands and file tools. On a GPU, a lane's development runs also run as its user, with the device's group added |
 | `agent-1` … `agent-16` | One lane's worker agent process, when it runs in Pi, the built-in worker harness |
 
 The [harness image reference](../reference/harness-image.md#users-and-groups) lists every user.
 
 The operating system enforces these users. A lane's commands run as `lane-3`, so they can read and write only what `lane-3` may, whatever the code tries.
+
+No two kinds of work share a user. When a user's work ends, the broker stops what that user still runs, so that nothing a run started outlives it: after each command, or, for what a lane's commands leave running, when the lane's trial ends. A user shared by two kinds of work would let one's cleanup stop the other.
 
 ```mermaid
 flowchart TB

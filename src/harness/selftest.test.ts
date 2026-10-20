@@ -8,11 +8,13 @@ import { describe, test } from "node:test";
 import { keySha256 } from "../core/tunnel.ts";
 import { SUPERVISOR_RECORD } from "./broker/one-container.ts";
 import {
+  callsBusy,
   containerChecks,
   controlKeyCheck,
   enrollCodeCheck,
   type IsolationReport,
   isFailure,
+  isolationBusy,
   isolationSummary,
   oneContainerTargets,
   PROBE,
@@ -71,6 +73,31 @@ function probe(probes: Probe[], env: Record<string, string> = {}): Record<string
   assert.equal(r.status, 0, r.stderr);
   return JSON.parse(r.stdout) as Record<string, string>;
 }
+
+describe("when the isolation selftest waits", () => {
+  test("a live planner call or model check makes it wait: a probe would kill its user's processes", () => {
+    const planner = { uid: 10040 };
+    const check = { uid: 10041 };
+    const lane = { uid: 10101 };
+    assert.equal(callsBusy([]), undefined);
+    assert.equal(callsBusy([lane, { uid: 0 }]), undefined);
+    assert.equal(
+      callsBusy([planner]),
+      "a planner call is running: wait for it to end (each probe kills its role's processes)",
+    );
+    assert.equal(
+      callsBusy([check, planner]),
+      "a planner call and a model check are running: wait for them to end (each probe kills its role's processes)",
+    );
+    // With no ledger yet, only the live calls count.
+    const state = mkdtempSync(join(tmpdir(), "thermite-busy-"));
+    assert.equal(
+      isolationBusy(state, () => []),
+      undefined,
+    );
+    assert.match(String(isolationBusy(state, () => [check])), /^a model check is running/);
+  });
+});
 
 describe("the isolation selftest's results", () => {
   test("what fails it", () => {

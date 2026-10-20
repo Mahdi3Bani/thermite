@@ -3,9 +3,11 @@ import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { CampaignDraft } from "../control/campaign-builder.ts";
 import { assignRefusal } from "../control/issue.ts";
-import { IDS, RoleSchema, RunRequest } from "../harness/broker/runner.ts";
-import { nprocFor } from "../harness/broker/server.ts";
+import { CHECK_ROLE, PLANNER_ROLE } from "../harness/agents/opencode.ts";
+import { IDS, RoleSchema, RunRequest, roleIds } from "../harness/broker/runner.ts";
+import { ALL_ROLES, nprocFor } from "../harness/broker/server.ts";
 import { lanesFromEnv } from "../harness/rig-settings.ts";
+import { probedRoles } from "../harness/selftest.ts";
 import { CommandPayloads, MESSAGE_TARGET } from "./commands.ts";
 import {
   LANE_PROCESSES,
@@ -39,6 +41,47 @@ describe("the most lanes a rig runs", () => {
     assert.ok(loop, "the Containerfile's loop that makes the lane users");
     assert.equal(Number(loop[1]), MAX_LANES);
     assert.equal(IDS.maxLanes, MAX_LANES);
+  });
+
+  test("at the most lanes, no two roles share a user, and the image makes each with its ids", () => {
+    // Every run ends by killing its user's processes: a shared user lets one role's cleanup
+    // kill another's work (lane 16's worker and the planner once shared agent-16).
+    assert.equal(MAX_LANES, 16);
+    const roles = [...ALL_ROLES];
+    for (const r of [PLANNER_ROLE, CHECK_ROLE]) assert.ok(roles.includes(r), r);
+    for (let n = 1; n <= MAX_LANES; n++)
+      for (const r of [`lane-${n}`, `lane-${n}-dev`, `agent-${n}`]) assert.ok(roles.includes(r), r);
+    const owners = new Map<number, string>([
+      [IDS.thermite.uid, "thermite"],
+      [IDS.supervisor.uid, "supervisor"],
+    ]);
+    for (const role of roles) {
+      const { uid } = roleIds(role);
+      assert.equal(owners.get(uid), undefined, `${role} shares uid ${uid} with ${owners.get(uid)}`);
+      owners.set(uid, role);
+    }
+    assert.equal(new Set(roles).size, roles.length);
+    // The planner calls and model checks run as neither a lane's user nor each other's.
+    const laneUsers = Array.from({ length: MAX_LANES }, (_, i) => [
+      `lane-${i + 1}`,
+      `lane-${i + 1}-dev`,
+      `agent-${i + 1}`,
+    ]).flat();
+    assert.notEqual(roleIds(PLANNER_ROLE).uid, roleIds(CHECK_ROLE).uid);
+    for (const r of [PLANNER_ROLE, CHECK_ROLE])
+      for (const lane of laneUsers)
+        assert.notEqual(roleIds(r).uid, roleIds(lane).uid, `${r} and ${lane}`);
+    // The planner's and the model check's users are in the image, with the broker's ids.
+    const file = String(
+      readFileSync(new URL("../../containers/harness/Containerfile", import.meta.url)),
+    );
+    for (const role of [PLANNER_ROLE, CHECK_ROLE]) {
+      const { uid, gid } = roleIds(role);
+      assert.match(file, new RegExp(`groupadd -g ${gid} ${role} &&`), role);
+      assert.match(file, new RegExp(`useradd -u ${uid} -g ${role} .* ${role} \\\\`), role);
+    }
+    // The isolation selftest probes them.
+    for (const role of [PLANNER_ROLE, CHECK_ROLE]) assert.ok(probedRoles().includes(role), role);
   });
 
   test("the broker's roles and the owner's message recipients stop at the same lane", () => {

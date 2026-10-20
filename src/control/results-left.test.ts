@@ -269,8 +269,10 @@ describe("model downloads in the rig's report and history", () => {
         ["model_refused", false, "other: Its SHA-256 is 0123, not the signed 4567."],
       ],
     );
-    // The report is checked: nothing but the known fields.
-    assert.equal((await report([model({ token: "x" })])).status, 400);
+    // The report is checked: a known field must be valid, and nothing but the known fields is
+    // kept (a field a newer supervisor adds is dropped, never stored or shown).
+    assert.equal((await report([model({ token: "x" })])).status, 200);
+    assert.doesNotMatch(JSON.stringify(store.supervisor("rig-a")), /token/);
     assert.equal((await report([model({ sha256: "not-a-hash" })])).status, 400);
   });
 });

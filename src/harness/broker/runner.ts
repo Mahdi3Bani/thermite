@@ -37,6 +37,13 @@ export const IDS = {
   laneDevBase: 10200,
   /** Each lane's worker agent process: its own user, with no access to the lane's files. */
   agentBase: 10300,
+  /**
+   * Planner calls through OpenCode or Claude Code. A user of their own: every run ends by killing
+   * its user's processes, so no lane, and no model check, may share it.
+   */
+  planner: { uid: 10040, gid: 10040 },
+  /** Model checks through OpenCode or Claude Code, apart from the lanes and the planner. */
+  modelCheck: { uid: 10041, gid: 10041 },
   /** Lanes with users in the image: the most a contract or a rig's settings may ask for. */
   maxLanes: MAX_LANES,
 } as const;
@@ -45,7 +52,7 @@ export const IDS = {
 export const RoleSchema = z
   .string()
   .regex(
-    /^(builder|run|run-[1-7]|lane-([1-9]|1[0-6])|lane-([1-9]|1[0-6])-dev|agent-([1-9]|1[0-6]))$/,
+    /^(builder|run|run-[1-7]|planner|model-check|lane-([1-9]|1[0-6])|lane-([1-9]|1[0-6])-dev|agent-([1-9]|1[0-6]))$/,
     "unknown role",
   );
 export type Role = z.infer<typeof RoleSchema>;
@@ -53,6 +60,8 @@ export type Role = z.infer<typeof RoleSchema>;
 export function roleIds(role: Role): { uid: number; gid: number } {
   if (role === "builder") return IDS.builder;
   if (role === "run") return IDS.run;
+  if (role === "planner") return IDS.planner;
+  if (role === "model-check") return IDS.modelCheck;
   const judge = /^run-([1-7])$/.exec(role);
   if (judge) {
     const i = Number(judge[1]);
