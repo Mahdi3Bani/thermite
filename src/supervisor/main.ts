@@ -164,12 +164,21 @@ async function main(): Promise<void> {
       : null,
   });
   let stopping = false;
-  process.on("SIGTERM", () => {
+  const stop = (signal: string) => {
+    if (stopping) return;
     stopping = true;
-  });
-  process.on("SIGINT", () => {
-    stopping = true;
-  });
+    log("supervisor", "stopping", { signal, pull_mode: Boolean(pull) });
+    // Pull mode: a call waits at the tunnel's local port until control's next exchange takes it
+    // (up to two minutes). On a stop, those calls end at once (503), so every loop ends now and
+    // the supervisor exits within its host's grace time, whether or not control is connected.
+    pull?.tunnel
+      .stop()
+      .catch((err) =>
+        log("supervisor", "pull mode's ports did not close on the stop", { error: String(err) }),
+      );
+  };
+  process.on("SIGTERM", () => stop("SIGTERM"));
+  process.on("SIGINT", () => stop("SIGINT"));
 
   const toControl = async (path: string, body: unknown) => {
     if (!controlUrl || !controlToken) return;
