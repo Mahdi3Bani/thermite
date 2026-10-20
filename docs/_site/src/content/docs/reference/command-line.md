@@ -111,6 +111,18 @@ usage: thermite <command> [options]
                                       confirm the wipe of the rig's full reset (owner's token)
   runpod cancel-reset RIG --control URL --token-file F
                                       cancel the rig's full reset before its wipe (owner's token)
+  run start CAMPAIGN --rig R [--agents off] [--provider P --model M] [--promotion auto|owner]
+         [--judge-gpus N] [--queue-from [RIG/]RUN] [--past ID ...] --control URL --token-file F
+                                      start a run of a campaign control keeps (owner's token), as
+                                      Start a run on the campaign's page does, with its checks and
+                                      refusals: a campaign saved on the New campaign page or
+                                      assigned before. --provider and --model give the rig's
+                                      agents that model first: the run does not start, and the
+                                      command exits 1; run it again once the rig has the model.
+                                      --queue-from starts the queue with a run's untried
+                                      experiments (on --rig unless RIG/ is given); --past adds
+                                      items of Thermite's knowledge base by id. It prints the new
+                                      run and its command id; a stopped RunPod pod starts first
   command --control URL --token-file F --rig U --kind K --payload JSON|@file [--ttl MIN]
                                       issue a signed command through control (admin token).
                                       assign_campaign and resume_run on a RunPod rig whose pod
@@ -129,9 +141,9 @@ usage: thermite <command> [options]
 
 ## Rules for every command
 
-- **Options.** Each option takes its value as the next word or after `=`. In `doctor`, `token new`, `assign`, `assign-payload`, `rig`, `runpod`, `command`, `submit` and `status`, an option the command does not know, or a word it does not expect, ends the command with Node's own message and exit code 2.
+- **Options.** Each option takes its value as the next word or after `=`. In `doctor`, `token new`, `assign`, `assign-payload`, `rig`, `runpod`, `run start`, `command`, `submit` and `status`, an option the command does not know, or a word it does not expect, ends the command with Node's own message and exit code 2.
 - **Older option names.** `--instance` is read as `--run`, and `--unit` as `--rig`. These are the names from before runs and rigs were renamed.
-- **Control's token.** The commands that talk to control (`assign`, `command`, `rig add`, `rig token`, `rig retire`, `rig list`, and every `runpod` command) send the contents of `--token-file`, trimmed, as `Authorization: Bearer <token>`. Only the owner's token works on these routes; any other token gets `401 {"error":"unauthorized"}`. See [Tokens and roles](tokens.md).
+- **Control's token.** The commands that talk to control (`assign`, `run start`, `command`, `rig add`, `rig token`, `rig retire`, `rig list`, and every `runpod` command) send the contents of `--token-file`, trimmed, as `Authorization: Bearer <token>`. Only the owner's token works on these routes; any other token gets `401 {"error":"unauthorized"}`. See [Tokens and roles](tokens.md).
 - **Control's address.** `--control` is control's base address, such as `https://control.example.com`. A trailing `/` is removed.
 - **Refusals.** When control or the harness refuses a request, the command prints `<url> -> <status> <body>` on standard error and exits 2. `status` is the exception: see [below](#status). A request body that does not match the route gives `400 {"error":"invalid request"}`; a command that control refuses before signing it gives `400` with the reason (for example a payload that does not fit its kind, or a message that nothing would read), or `404` for an unknown rig; another refusal from inside control gives `500` with the reason. The [REST API reference](rest-api.md) lists the routes.
 
@@ -140,7 +152,7 @@ usage: thermite <command> [options]
 | Code | When |
 | --- | --- |
 | `0` | The command did its work. Also `thermite`, `help` and `--help` |
-| `1` | `doctor` found a check that failed; `contract validate` found the contract invalid; `selftest isolation` found a probe that was not refused |
+| `1` | `doctor` found a check that failed; `contract validate` found the contract invalid; `run start` gave the rig a model and did not start the run yet; `selftest isolation` found a probe that was not refused |
 | `2` | Missing or wrong options (the usage text goes to standard error); an unknown command (the usage text goes to standard output); a refused request; any other error, with its message on standard error |
 
 ## Commands
@@ -437,6 +449,32 @@ A full reset of a RunPod rig, with the owner's token: every result leaves the po
 | `thermite runpod cancel-reset RIG` | `POST /v1/resets/<id>/cancel`, likewise | `Reset <id> is cancelled: nothing was wiped, and RIG's runs stay paused.` |
 
 With no reset of the rig under way, `confirm-wipe` and `cancel-reset` end with `no full reset of RIG is under way` and exit code 2. [Restart and full reset](rest-api.md#restart-and-full-reset) gives a reset's states.
+
+### `run start`
+
+`thermite run start` starts a run of a campaign control keeps, as **Start a run** on the campaign's page does (`POST /v1/campaigns/<campaign>/runs`). The campaign is one saved on the **New campaign** page, or one assigned before with `thermite assign`, the REST API or MCP; control then assigns it again with the same contract, starting point and imports. Control runs the dashboard's own code for it, with the same checks and refusals.
+
+```sh
+npx thermite run start sort-speed --rig rig-1 --queue-from sort-speed-1 \
+  --control https://control.example.com --token-file ~/thermite-owner-token
+```
+
+It prints control's answer on one line, such as `{"started":true,"campaign":"sort-speed","rig":"rig-1","run":"sort-speed-2","command":"<command id>","status":"pending"}`, and writes on standard error what else to know: `sort-speed-1 is at work on rig-1, and pauses when this run starts (a rig runs one run at a time).`, `sort-speed-1 on rig-1 has no untried experiments: the new run's queue starts empty.`, or, on a [rig launched on RunPod](rest-api.md#rigs-on-a-gpu-cloud) whose pod was stopped, `rp-1a2b3c4d's pod was stopped: control started it. The run starts once the pod runs.`
+
+| Option | Required | Default | Meaning |
+| --- | --- | --- | --- |
+| `CAMPAIGN` | Yes | | The campaign, as on its page |
+| `--rig R` | Yes | | The rig the run starts on |
+| `--agents on\|off` | No | `on` | `off`: a try, with no agents. The judge measures the starting code on every case once |
+| `--provider P` and `--model M` | No | | For a rig with no model for its agents: give it model `M` of provider `P` in **Providers** first. The run does not start: the answer is `{"started":false,"said":"rig-1 takes M within a minute; …"}`, `said` goes to standard error, and the command exits 1. Run it again without them once the rig runs the model |
+| `--promotion auto\|owner` | No | the rig's default | When a change is confirmed better: keep it at once, or wait for the owner |
+| `--judge-gpus N` | No | the rig's current split | For a rig with several GPUs: how many the judge measures on. The rig's harness restarts to apply a new split |
+| `--queue-from [RIG/]RUN` | No | | Another run of this campaign, on `--rig` unless `RIG/` is given: its untried experiments start the new run's queue |
+| `--past ID` | No | | An item of Thermite's knowledge base, by the id MCP's `kb_search` gives; give it again for more. Experiments join the queue; findings, claims, notes and reports go to every agent's brief |
+| `--control URL` | Yes | | Control's address |
+| `--token-file F` | Yes | | A file with the owner's token |
+
+Before it sends anything, it ends with exit code 2 and one of these: `--rig names the rig the run starts on`, `--agents is on or off`, `--promotion is auto or owner`, `--provider and --model go together: the agents' model is one of a provider's models`, `--queue-from names a run: RUN or RIG/RUN`, `--judge-gpus takes a whole number, not "…"` or `--past takes a whole number, not "…"`. Control's refusals come back as `<url> -> <status> <body>` with the words of **Start a run**, such as `-> 409 {"error":"rig-1 has no model for its agents, so they could not work: …"}`: [Campaigns](rest-api.md#campaigns) lists them. MCP's [`start_run`](mcp-tools.md#start_run) does the same with an operator's token too.
 
 ### `command`
 

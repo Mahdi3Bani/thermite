@@ -1,7 +1,9 @@
+import type { StartRunOutcome, StartRunRequest } from "./start-run.ts";
+
 /**
  * Actions the dashboard carries out that MCP offers too, so an agent can do what the owner does
  * on a page, through the same checks. createControlApi hands one object to both: the dashboard
- * fills it in, MCP calls it.
+ * fills it in, MCP calls it (and the REST API, for Start a run).
  */
 
 /** Adding a rig on a cluster control knows (Add a rig, or MCP's add_cluster_rig). */
@@ -56,4 +58,10 @@ export interface ControlActions {
    * What it found is a step in the rig's history. Null when control can't reach where it runs.
    */
   checkRigPlace?: (rig: string, by: string) => Promise<{ ok: boolean; words: string } | null>;
+  /**
+   * Starts a run of a campaign control keeps, as a campaign page's Start a run does, with its
+   * checks and its refusals in words (REST, MCP's start_run and `thermite run start`). `owner`:
+   * whether the owner's token asks, which alone starts a stopped RunPod pod.
+   */
+  startRun?: (r: StartRunRequest, by: string, owner: boolean) => Promise<StartRunOutcome>;
 }

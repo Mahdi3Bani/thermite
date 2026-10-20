@@ -140,13 +140,15 @@ The [MCP tools](../../reference/mcp-tools.md) for the knowledge base:
 | Tool | Tokens | What it does |
 | --- | --- | --- |
 | [`kb_folders`](../../reference/mcp-tools.md#kb_folders) | The owner's and an operator's | Lists the folders, each with its mode, its counts by kind, its runs, its newest change, `read_by` (the campaigns granted to read it) and `reads` (the folders it reads besides its own) |
-| [`kb_search`](../../reference/mcp-tools.md#kb_search) | The owner's and an operator's | Takes `q` (the words), and optionally `campaigns` (the folders to search; every folder when left out), `kinds` and `limit` (1 to 100, 20 unless set). Returns the matching items, newest first, each with `campaign`, `rig`, `run`, `kind`, `ref`, `title`, `body`, `by` and, for an experiment, its `result` |
+| [`kb_search`](../../reference/mcp-tools.md#kb_search) | The owner's and an operator's | Takes `q` (the words), and optionally `campaigns` (the folders to search; every folder when left out), `kinds` and `limit` (1 to 100, 20 unless set). Returns the matching items, newest first, each with its `id`, `campaign`, `rig`, `run`, `kind`, `ref`, `title`, `body`, `by` and, for an experiment, its `result` |
 | [`kb_grant`](../../reference/mcp-tools.md#kb_grant) | The owner's and an operator's | Takes `campaign` and `reads`, as **Add** does: from now on, `campaign`'s agents may read the folder of `reads`. With `reads` set to `outside:<name>`, it lets the campaign's teacher pair search that [outside knowledge base](../operate/outside-knowledge-base.md) instead, as **Let its advisors search it** does |
 | [`kb_revoke`](../../reference/mcp-tools.md#kb_revoke) | The owner's and an operator's | Takes the same, as **Remove** does |
 
 The agent's and the reader's tokens don't have these tools. `kb_grant` refuses `no campaign <name>`, `a campaign always reads its own folder: name another campaign`, and `no outside knowledge base <name>` for an `outside:` name that isn't set in **Providers**. `kb_revoke` refuses `<campaign> does not read <reads>`, or `<campaign> does not search the outside knowledge base <name>`.
 
-To start a run from past research, add to the [`assign_campaign`](../../reference/signed-commands.md#assign_campaign) payload:
+To start another run of a campaign that control keeps, call [`start_run`](../../reference/mcp-tools.md#start_run) with `past`: the `id` of each item that `kb_search` returned, such as `{"campaign": "sort-speed", "rig": "rig-1", "past": [12, 40]}`. It takes them as **From past research** does: experiments join the queue, and findings, claims, notes and reports go to the briefing, each with control's own words for it. It refuses an item from a folder the campaign may not read: `An item from past research is not one this campaign may read and start from: search again.` From the command line, `thermite run start sort-speed --rig rig-1 --past 12 --past 40` does the same with the owner's token: see [Start a run from a script or an agent](start-from-dashboard.md#start-a-run-from-a-script-or-an-agent).
+
+To start a run from a contract with past research, add to the [`assign_campaign`](../../reference/signed-commands.md#assign_campaign) payload:
 
 - `briefing`: up to 200 items, each `{text, from: {campaign, run, kind, ref}}`, with the `campaign`, `run`, `kind` and `ref` of a finding, claim, note or report that `kb_search` returned;
 - `queue`: past experiments, each with the fields that `assign_campaign` lists, and `from: {run, id}` with the experiment's `run` and its `ref`.
@@ -164,7 +166,7 @@ To start a run from past research, add to the [`assign_campaign`](../../referenc
 
 Over MCP, send the payload with `issue_command`, kind `assign_campaign`. Control looks each briefing item up by its `from` and puts in the item's own text, whatever `text` says. It leaves out an item it can't find, one it finds on more than one rig, and one in a folder the run's campaign may not read; with none left, the run has no briefing. It takes a past experiment's words from its own record when the experiment comes from a folder the run's campaign may read, as for any copied experiment, and, as **Start a run** does, ends its details with what became of it when the folder has that, such as `In sort-speed-1 (sort-speed) it was tried: attempt a-0123456789abcdef (submitted), regress (-3.10%).` Any other keeps the words you sent, with the author `copied`.
 
-The command line has no tools for the knowledge base, and `thermite assign` has no option for a briefing. Print the payload, add `briefing`, and send it with `thermite command`. Unlike MCP, `thermite command` and the REST API send the briefing and the experiments as you give them: control doesn't look them up. For example:
+The command line can't search the knowledge base, and `thermite assign` has no option for a briefing. Print the payload, add `briefing`, and send it with `thermite command`. Unlike MCP, `thermite command` and the REST API send the briefing and the experiments as you give them: control doesn't look them up. For example:
 
 ```sh
 npx thermite assign --contract contract.json --run sort-speed-4 \

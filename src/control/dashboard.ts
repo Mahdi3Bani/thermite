@@ -136,6 +136,7 @@ import {
 } from "./runpod-rigs.ts";
 import { cheapestGpu, DEFAULT_DISK_GB, type RunpodTests, type TestView } from "./runpod-tests.ts";
 import { keyHint, type SecretBox } from "./secrets.ts";
+import type { StartRunOutcome, StartRunRequest } from "./start-run.ts";
 import {
   AGENT_ROLES,
   type AgentRole,
@@ -1254,12 +1255,12 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     return judge === g.judge ? undefined : judge;
   };
   /** Sends the rig its new GPU split, signed for the owner; the rig restarts its harness to apply it. */
-  const sendSplit = (rig: string, judge: number) =>
+  const sendSplit = (rig: string, judge: number, by = "owner:ui") =>
     issueCommand(store, opts.privateKeyPem, {
       rig,
       kind: "rig_settings",
       payload: { judge_gpus: judge },
-      issuedBy: "owner:ui",
+      issuedBy: by,
     });
 
   // ---------------------------------------------------------------- another run of a campaign
@@ -1353,66 +1354,79 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         })),
     });
   };
-  /** The untried experiments of the run Start a run names: a new run's first queue. */
-  const untried = (vs: RigView[], key: string): QueueSeed[] => {
-    const x = vs
-      .flatMap((u) => u.runs.map((r) => ({ u, r })))
-      .find((y) => runKey(y.u.id, y.r.id) === key);
-    return x ? untriedOf(x.r) : [];
-  };
-  app.post("/ui/campaigns/:campaign/runs", async (c) => {
-    const f = await c.req.parseBody();
-    const campaign = c.req.param("campaign");
-    const vs = views();
-    const rig = vs.find((u) => u.id === String(f.rig ?? ""));
-    const back = (m: string) =>
-      c.redirect(`${campaignHref(campaign)}?start=1&error=${encodeURIComponent(m)}`, 303);
+  /**
+   * Start a run: what the panel's form below, REST's POST /v1/campaigns/<name>/runs, MCP's
+   * start_run and `thermite run start` all do (actions.startRun), with the same checks and the
+   * same refusals in words. `by` is who asks; `owner`, whether the owner's token asks, which alone
+   * starts a stopped RunPod pod.
+   */
+  const startARun = async (
+    req: StartRunRequest,
+    by: string,
+    owner: boolean,
+  ): Promise<StartRunOutcome> => {
+    const refuse = (error: string, status: 400 | 404 | 409 = 409): StartRunOutcome => ({
+      state: "refused",
+      error,
+      status,
+    });
+    const { campaign, agents } = req;
     if (!startFrom(campaign))
-      return c.text("Control has no saved version or earlier assignment of this campaign.", 404);
-    if (!rig) return back("Choose a rig.");
-    const agents = String(f.agents ?? "on") !== "off";
-    const chosen = String(f.agents_model ?? "").trim();
+      return refuse("Control has no saved version or earlier assignment of this campaign.", 404);
+    const vs = views();
+    const rig = vs.find((u) => u.id === req.rig);
+    if (!rig)
+      return req.rig
+        ? refuse(`No rig is called ${req.rig}. Choose a rig.`, 404)
+        : refuse("Choose a rig.", 400);
+    // The panel shows these only with agents on; a try (agents off) has no agents and no queue.
+    if (!agents && (req.model || req.queueFrom || req.past?.length))
+      return refuse(
+        "A try (agents off) takes no model, no experiments and no background: leave them out, or start the run with agents.",
+        400,
+      );
+    const chosen = req.model
+      ? `${encodeURIComponent(req.model.provider)}|${encodeURIComponent(req.model.model)}`
+      : "";
     const mode =
       (store.campaignVersions(campaign)[0]?.contract as { mode?: string } | undefined)?.mode ??
       (store.latestAssignments().get(campaign)?.payload.contract as { mode?: string } | undefined)
         ?.mode;
     const researchModel =
       mode === "research" && agents ? opencodeOnlyModel(rig, chosen || undefined) : undefined;
-    if (researchModel) return back(researchNeedsOpencode(rig.id, researchModel));
-    if (agents && chosen) {
+    if (researchModel) return refuse(researchNeedsOpencode(rig.id, researchModel));
+    if (agents && req.model) {
       // The rig gets the model first; it arrives within a minute, and the run starts after that.
-      const given = giveRigModel(rig.id, chosen, harnessFor(chosen, ""));
-      if ("error" in given) return back(given.error);
-      const model = decodeURIComponent(chosen.split("|")[1] ?? "");
+      const given = giveRigModel(rig.id, chosen, harnessFor(chosen, ""), undefined, by);
+      if ("error" in given) return refuse(given.error, 400);
+      const model = req.model.model;
       if (rig.model?.model !== model)
-        return c.redirect(
-          `${campaignHref(campaign)}?ok=${encodeURIComponent(`${rig.id} takes ${model} within a minute; Settings › Providers shows it taking the model until then. Then start the run again.`)}`,
-          303,
-        );
+        return {
+          state: "model_given",
+          said: `${rig.id} takes ${model} within a minute; Settings › Providers shows it taking the model until then. Then start the run again.`,
+        };
     }
     // Control gave the rig a model it has not taken yet: the agents would start with none.
     const given = store.rigModels()[rig.id];
-    if (agents && !chosen && given && rig.model?.model !== given.model)
-      return back(
+    if (agents && !req.model && given && rig.model?.model !== given.model)
+      return refuse(
         `${rig.id} has not taken ${given.model} yet (it does within a minute of being given it; Settings › Providers shows it taking the model until then): start the run after that.`,
       );
-    if (agents && !chosen && agentsModelMissing(rig))
-      return back(
+    if (agents && !req.model && agentsModelMissing(rig))
+      return refuse(
         `${rig.id} has no model for its agents, so they could not work: choose one under "The agents' model", or give it one on its Edit rig page.`,
       );
-    const promotion = String(f.promotion ?? "");
-    const split = splitFor(rig, String(f.judge_gpus ?? ""));
-    if (typeof split === "string") return back(split);
+    const split = splitFor(rig, String(req.judgeGpus ?? ""));
+    if (typeof split === "string") return refuse(split, 400);
     // From past research (goal 065): only items of folders this campaign may read, looked up
     // here by id. Experiments join the queue; findings, claims, notes and reports brief the agents.
     const kb = store.kb();
     const readable = new Set(kb.readable(campaign));
-    const picked = [(await c.req.parseBody({ all: true })).past ?? []]
-      .flat()
-      .map((x) => kb.item(Number(x)));
+    const picked = (req.past ?? []).map((x) => kb.item(x));
     if (picked.some((x) => !x || !readable.has(x.campaign) || !PICKABLE[x.kind]))
-      return back(
+      return refuse(
         "An item from past research is not one this campaign may read and start from: search again.",
+        400,
       );
     const past = picked.filter((x): x is KbItem => x !== undefined);
     const pastQueue = past
@@ -1423,9 +1437,24 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       .filter((x) => PICKABLE[x.kind] === "briefing")
       .map(briefingSeedOf)
       .filter((x): x is BriefingSeed => x !== undefined);
-    // The copy box shows only with agents on: for a try it is ignored, whatever the form sent.
-    const copied =
-      agents && String(f.copy_queue ?? "") === "1" ? untried(vs, String(f.copy_from ?? "")) : [];
+    // The untried experiments of another run of this campaign, as the panel lists them.
+    const notes: string[] = [];
+    let copied: QueueSeed[] = [];
+    if (req.queueFrom) {
+      const { rig: on, run } = req.queueFrom;
+      const from = vs
+        .find((u) => u.id === on)
+        ?.runs.find((r) => r.id === run && r.campaign === campaign);
+      if (!from)
+        return refuse(
+          `${on} has no run ${run} of ${campaign}: copy from a run of this campaign.`,
+          404,
+        );
+      copied = untriedOf(from);
+      if (!copied.length)
+        notes.push(`${run} on ${on} has no untried experiments: the new run's queue starts empty.`);
+    }
+    const busy = rig.runs.find((r) => r.status === "running");
     let r: Awaited<ReturnType<typeof startRun>>;
     try {
       r = await startRun(
@@ -1442,32 +1471,88 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
             ? { type: rig.hardware.target.type, class: rig.hardware.target.class }
             : undefined,
           agents,
-          promotion: promotion === "auto" || promotion === "owner_approval" ? promotion : undefined,
-          by: "owner:ui",
-          // A try (agents off) has no queue; a command carries at most 500 experiments.
+          promotion: req.promotion,
+          by,
+          owner,
+          // A command carries at most 500 experiments.
           queue:
-            agents && copied.length + pastQueue.length
-              ? [...copied, ...pastQueue].slice(0, 500)
-              : undefined,
+            copied.length + pastQueue.length ? [...copied, ...pastQueue].slice(0, 500) : undefined,
           briefing: briefing.length ? briefing : undefined,
         },
       );
     } catch (err) {
       r = { ok: false, errors: [err instanceof Error ? err.message : String(err)] };
     }
-    if (!r.ok) return back(r.errors.join(" "));
-    if (split !== undefined) sendSplit(rig.id, split);
+    if (!r.ok) return refuse(r.errors.join(" "));
+    if (split !== undefined) sendSplit(rig.id, split, by);
+    return {
+      state: "started",
+      campaign,
+      rig: rig.id,
+      run: r.run,
+      command: r.command,
+      woke: r.woke,
+      pauses: busy?.id,
+      notes,
+    };
+  };
+  if (opts.actions) opts.actions.startRun = startARun;
+  app.post("/ui/campaigns/:campaign/runs", async (c) => {
+    const f = await c.req.parseBody();
+    const campaign = c.req.param("campaign");
+    const back = (m: string) =>
+      c.redirect(`${campaignHref(campaign)}?start=1&error=${encodeURIComponent(m)}`, 303);
+    const agents = String(f.agents ?? "on") !== "off";
+    const promotion = String(f.promotion ?? "");
+    const choice = String(f.agents_model ?? "").trim();
+    let model: StartRunRequest["model"];
+    if (choice) {
+      const [p, m] = choice.split("|");
+      try {
+        model = { provider: decodeURIComponent(p ?? ""), model: decodeURIComponent(m ?? "") };
+      } catch {
+        // A malformed choice names no provider's model: refused as one.
+        model = { provider: "", model: "" };
+      }
+    }
+    const key = String(f.copy_from ?? "");
+    const slash = key.indexOf("/");
+    const pastIds = [(await c.req.parseBody({ all: true })).past ?? []].flat().map(Number);
+    const out = await startARun(
+      {
+        campaign,
+        rig: String(f.rig ?? ""),
+        agents,
+        // The model, the copy box and past research show only with agents on: for a try they
+        // are left out, whatever the form sent.
+        model: agents ? model : undefined,
+        promotion: promotion === "auto" || promotion === "owner_approval" ? promotion : undefined,
+        judgeGpus: String(f.judge_gpus ?? ""),
+        queueFrom:
+          agents && String(f.copy_queue ?? "") === "1" && slash > 0
+            ? { rig: key.slice(0, slash), run: key.slice(slash + 1) }
+            : undefined,
+        past: agents ? pastIds : undefined,
+      },
+      "owner:ui",
+      true,
+    );
+    if (out.state === "refused")
+      return out.status === 404 && !startFrom(campaign) ? c.text(out.error, 404) : back(out.error);
+    if (out.state === "model_given")
+      return c.redirect(`${campaignHref(campaign)}?ok=${encodeURIComponent(out.said)}`, 303);
     // A try takes no queue and no briefing: say so when the owner ticked past research it showed
     // (the page hides it for a try, and sends none of it; without the page's script it shows).
     const notes = [
-      r.woke ?? "",
-      !agents && (pastQueue.length || briefing.length)
+      out.woke ?? "",
+      ...out.notes,
+      !agents && pastIds.length
         ? "A try (agents off) takes no experiments and no background: what you ticked was left out."
         : "",
     ].filter(Boolean);
     const leftOut = notes.length ? `&ok=${encodeURIComponent(notes.join(" "))}` : "";
     return c.redirect(
-      `${campaignHref(campaign)}?run=${encodeURIComponent(runKey(rig.id, r.run))}${leftOut}`,
+      `${campaignHref(campaign)}?run=${encodeURIComponent(runKey(out.rig, out.run))}${leftOut}`,
       303,
     );
   });

@@ -37,6 +37,7 @@ import { runpodResetRefusal } from "./runpod-lifecycle.ts";
 import { type LaunchRequest, type LimitsChange, RunpodRigs } from "./runpod-rigs.ts";
 import { RunpodTests, type TestRequest } from "./runpod-tests.ts";
 import { SecretBox } from "./secrets.ts";
+import { bodyRefusal, StartRunBody, startRunAnswer, startRunRequest } from "./start-run.ts";
 import {
   type AgentRole,
   type ControlStore,
@@ -1108,6 +1109,29 @@ export function createControlApi(
   app.get("/v1/commands", admin, (c) =>
     c.json({ commands: store.listCommands(clampLimit(c.req.query("limit"), 100)) }),
   );
+
+  // Start a run of a campaign control keeps (goal 029): the twin of a campaign page's Start a
+  // run, through the dashboard's own code (actions.startRun), with its refusals in words. The
+  // owner's token, as on the dashboard; MCP's start_run takes an operator's too.
+  app.post("/v1/campaigns/:campaign/runs", admin, bodyLimit({ maxSize: 256 * 1024 }), async (c) => {
+    const start = actions.startRun;
+    if (!start) return c.json({ error: "this control starts no runs" }, 404);
+    const campaign = c.req.param("campaign");
+    const raw: unknown = await c.req.json().catch(() => undefined);
+    const body = StartRunBody.safeParse(raw);
+    const out = body.success
+      ? await start(startRunRequest(campaign, body.data), "owner:api", true)
+      : ({ state: "refused", error: bodyRefusal(body.error), status: 400 } as const);
+    if (out.state === "refused") {
+      // In the audit log, as the dashboard's and MCP's refusals are.
+      store.audit("owner:api", "refused", {
+        path: `/v1/campaigns/${campaign}/runs`,
+        why: redact(out.error),
+      });
+      return c.json({ error: out.error }, out.status);
+    }
+    return c.json(startRunAnswer(out), out.state === "started" ? 201 : 202);
+  });
 
   // A page of the audit log, newest first; older and newer are the cursors for the next pages.
   app.get("/v1/audit", admin, (c) => {

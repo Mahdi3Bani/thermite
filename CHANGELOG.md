@@ -26,7 +26,7 @@ Each release of Thermite, newest first. Versions 0.x make no upgrade promise: re
 ### Campaigns
 
 - Three campaign modes: hill climb, goal and research.
-- The New campaign page and Start a run. A campaign's project can be a folder inside a repository. A sample project and its kit are in `examples/matmul-cpu`.
+- The New campaign page and Start a run. Start a run also works without the browser: `POST /v1/campaigns/<campaign>/runs`, the MCP tool `start_run` and `thermite run start` take the same fields and give the same refusals. A campaign's project can be a folder inside a repository. A sample project and its kit are in `examples/matmul-cpu`.
 - Campaigns, runs and Live per run, built for scanning. The owner messages the agents and the advisors from one message box, and sees who read each message.
 - One experiment queue for each run. The planner coordinates it. The owner, the advisors and the lanes add to it, and `thermite assign --queue-from` copies another run's untried experiments.
 - Field notes from the workers, the planner and the advisors. Thermite keeps its own knowledge base, with a folder for each campaign, and the owner grants which campaigns may read which folders. Workers, the planner and the advisors can search what they may read.

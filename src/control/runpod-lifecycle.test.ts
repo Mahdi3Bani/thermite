@@ -815,6 +815,65 @@ describe("RunPod rigs: a run assigned or resumed on a stopped pod starts it firs
     );
   });
 
+  test("Start a run's twins: REST and the owner's start_run start the stopped pod first; an operator's is refused", async () => {
+    const s = setup();
+    const rig = await stoppedRig(s);
+    // The campaign was assigned before, over the API: Start a run assigns it again.
+    issueCommand(s.store, s.control.privateKeyPem, {
+      rig,
+      kind: "assign_campaign",
+      payload: assignment("camp-1"),
+      issuedBy: "owner:api",
+    });
+    const before = pendingOf(s.store, rig).length;
+    const operator = await connect(s.api, TOKENS.operator);
+    const refused = await operator.callTool({
+      name: "start_run",
+      arguments: { campaign: "camp", rig, agents: false },
+    });
+    assert.equal(refused.isError, true);
+    assert.match(text(refused), /pod on RunPod is stopped, and only the owner can start it/);
+    assert.deepEqual(starts(s), []);
+    assert.equal(pendingOf(s.store, rig).length, before, "nothing was queued");
+    const r = await s.call("/v1/campaigns/camp/runs", { rig, agents: false });
+    assert.equal(r.status, 201);
+    const out = await json<{ run: string; command: string; woke?: string }>(r);
+    assert.equal(
+      out.woke,
+      `${rig}'s pod was stopped: control started it. The run starts once the pod runs.`,
+    );
+    assert.deepEqual(starts(s), [{ action: "start" }]);
+    assert.ok(pendingOf(s.store, rig).some((c) => c.id === out.command));
+    assert.match(
+      String(s.store.rigSetupEvents(rig).find((e) => e.step === "runpod_starting")?.detail),
+      new RegExp(`asked by owner:api to assign run ${out.run}`),
+    );
+
+    // Another stopped pod: the owner's start_run starts it the same way.
+    const t = setup();
+    const other = await stoppedRig(t);
+    issueCommand(t.store, t.control.privateKeyPem, {
+      rig: other,
+      kind: "assign_campaign",
+      payload: assignment("camp-1"),
+      issuedBy: "owner:api",
+    });
+    const owner = await connect(t.api, TOKENS.admin);
+    const o = JSON.parse(
+      text(
+        await owner.callTool({
+          name: "start_run",
+          arguments: { campaign: "camp", rig: other, agents: false },
+        }),
+      ),
+    ) as { run: string; woke?: string };
+    assert.match(String(o.woke), /pod was stopped: control started it/);
+    assert.match(
+      String(t.store.rigSetupEvents(other).find((e) => e.step === "runpod_starting")?.detail),
+      new RegExp(`asked by owner:mcp to assign run ${o.run}`),
+    );
+  });
+
   test("the dashboard: Start a run and a resume start the stopped pod first, and the page says so", async () => {
     const s = setup();
     const rig = await stoppedRig(s);

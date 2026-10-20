@@ -29,6 +29,7 @@ import {
   type RunpodRigs,
 } from "./runpod-rigs.ts";
 import type { RunpodTests } from "./runpod-tests.ts";
+import { type StartRunBody, startRunAnswer, startRunFields, startRunRequest } from "./start-run.ts";
 import type { ControlStore } from "./store.ts";
 import { campaignModes, leaderboard, rigView } from "./views.ts";
 
@@ -767,6 +768,33 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
             return { rig: a.rig, model: a.model, said: r.ok };
           },
         ),
+      );
+    }
+    // Start a run, as a campaign page's Start a run does, through the dashboard's own code: the
+    // owner's token and an operator's, which may assign runs with issue_command too.
+    if (canCommand && actions?.startRun) {
+      const start = actions.startRun;
+      server.registerTool(
+        "start_run",
+        {
+          title: "Start a run of a campaign",
+          description: `As a campaign page's Start a run does, with the same checks and refusals in words: a new run of a campaign control keeps (saved on the New campaign page, or assigned before; control then assigns it again with the same contract, starting point and imports) on a rig whose hardware the campaign's kit measures on. On a busy rig the run at work pauses, as a rig runs one run at a time. Returns the new run and its command id (follow it with command_status), with notes in words. A rig with no model for its agents is refused: give agents_model (control gives the rig that model first and answers started: false; start the run again once the rig has it), or use set_rig_model. On a rig launched on RunPod whose pod is stopped, control starts the pod first (the owner's token only; another token is refused), and woke says so.${role === "owner" ? "" : " judge_gpus is the owner's alone."}`,
+          inputSchema: {
+            campaign: z.string().min(1).describe("The campaign, as on its page"),
+            ...startRunFields,
+          },
+        },
+        audited("start_run", async (a: StartRunBody & { campaign: string }) => {
+          const { campaign, ...body } = a;
+          // A new GPU split restarts the rig's harness: Edit rig's, which is the owner's.
+          if (role !== "owner" && body.judge_gpus !== undefined)
+            throw new Error(
+              "Only the owner's token changes a rig's GPU split: leave out judge_gpus.",
+            );
+          const out = await start(startRunRequest(campaign, body), actor, role === "owner");
+          if (out.state === "refused") throw new Error(out.error);
+          return startRunAnswer(out);
+        }),
       );
     }
     if (canCommand && actions?.clusterRigAction) {
