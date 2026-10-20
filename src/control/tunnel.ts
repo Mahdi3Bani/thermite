@@ -61,7 +61,9 @@ export function tunnelRouteAllowed(rig: string, method: string, path: string): b
     (post && ["ingest", "supervisor", "live", "reports"].includes(rest)) ||
     (get && ["commands/pending", "model-route", "advisor-routes", "kb"].includes(rest)) ||
     (post && /^commands\/[A-Za-z0-9._-]+\/ack$/.test(rest)) ||
+    // Results out (goal 024): champion patches and exports, for a rig with no results repository.
     (post && /^champions\/[A-Za-z0-9._-]+\/[0-9]+\/patch$/.test(rest)) ||
+    (post && /^exports\/[0-9TZ]{8,20}-[0-9a-f]{8}(\/file)?$/.test(rest)) ||
     (get && /^git-access\/[A-Za-z0-9._-]+$/.test(rest)) ||
     (get && /^git\/kits\/[A-Za-z0-9._-]+\.git\/[A-Za-z0-9._/-]+$/.test(rest))
   );

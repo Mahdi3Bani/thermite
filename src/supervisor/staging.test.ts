@@ -163,7 +163,7 @@ describe("staging sources by reference", () => {
       assert.equal(await staged(cfg, assign("m-1", [model(sha, "models/m.bin")])), "ready");
       assert.deepEqual(readFileSync(join(inboxDir, "models", "m.bin")), bytes);
       const wrong = await staged(cfg, assign("m-2", [model("0".repeat(64), "models/w.bin")]));
-      assert.match(JSON.stringify(wrong), /staging: .*sha256/);
+      assert.match(JSON.stringify(wrong), /staging: model m from .* refused: its SHA-256 is /);
       assert.ok(!existsSync(join(inboxDir, "models", "w.bin")), "a wrong file never lands");
       const repo = join(root, "empty");
       mkdirSync(repo);

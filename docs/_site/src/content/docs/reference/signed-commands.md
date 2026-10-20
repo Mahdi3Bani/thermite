@@ -580,7 +580,7 @@ The owner's answer to the harness's proposal that a goal campaign's goals cannot
 | `{"git": "<URL>"}` | `repo_bundle`, `kit_bundle` | A git repository that has the commit: an `https://`, `ssh://`, `git://` or `file://` address, or `user@host:path`, up to 2000 characters. The supervisor fetches the commit and writes it to `path` as a bundle |
 | `{"git": "<URL>", "access": "<name>"}` | `repo_bundle`, `kit_bundle` | The same, with Git access that control keeps for a private repository, by name. See [Use a private repository](../how-to/campaigns/private-repository.md) |
 | `{"control": "kits/<name>"}` | `kit_bundle` | A kit that control wrote and keeps itself |
-| `{"url": "<URL>"}` | `model` | An `http://` or `https://` address, up to 4000 characters |
+| `{"url": "<URL>"}` | `model` | An `http://` or `https://` address, up to 4000 characters. The supervisor downloads the file and keeps it only with the import's `sha256`, reporting its progress. See [Model files on a rig](model-files.md) |
 
 A source that cannot be fetched makes the command `failed` with `{"error": "staging: <reason>"}`. Without a source, the file must already be in the inbox.
 

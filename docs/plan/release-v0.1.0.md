@@ -97,7 +97,7 @@ The owner launches a GPU rig on RunPod from control, runs campaigns on it, and s
 | [021 · Enrollment codes](goals/021-enrollment-codes.goal) | `VERIFIED` | — |
 | [022 · Launch a rig on RunPod](goals/022-runpod-launch.goal) | `READY` | [010](goals/010-published-images.goal), [019](goals/019-rig-only-entry.goal), [020](goals/020-runpod-rig-image.goal), [021](goals/021-enrollment-codes.goal) |
 | [023 · Stop, start and terminate RunPod rigs](goals/023-runpod-lifecycle.goal) | `READY` | [022](goals/022-runpod-launch.goal) |
-| [024 · Models into the pod, results out](goals/024-runpod-models-and-results.goal) | `READY` | — |
+| [024 · Models into the pod, results out](goals/024-runpod-models-and-results.goal) | `IN_PROGRESS` | — |
 | [025 · RunPod tests and how-to](goals/025-runpod-tests-and-docs.goal) | `READY` | [022](goals/022-runpod-launch.goal), [023](goals/023-runpod-lifecycle.goal), [024](goals/024-runpod-models-and-results.goal) |
 
 ### The release
