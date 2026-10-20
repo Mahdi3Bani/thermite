@@ -222,7 +222,7 @@ Each export also carries the run's field notes, its research notes and its brief
 
 ## Where rigs run
 
-The same two images run in each of these ways, and every rig reports to control in the same way, by dialing out:
+The same two images run in each of these ways, and every rig here reports to control in the same way, by dialing out:
 
 | Way | What it is | Who sets it up and manages it |
 | --- | --- | --- |
@@ -231,7 +231,7 @@ The same two images run in each of these ways, and every rig reports to control 
 | **A Kubernetes cluster** | The two containers in two pods on one node, in a namespace control creates or one the cluster's operators made for Thermite | Control, from **Rigs › Add a rig** and the rig's page |
 | **Joined by you** | The same as the two ways above, for a machine or namespace that control cannot connect to | You: a one-time join command sets it up, and the rig's page shows the commands to manage it |
 
-GPU rigs under compose are not built yet ([goal 037](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/037-gpu-compose.goal)). Control can start short test pods on RunPod to check a GPU there, but rigs on RunPod are still being built ([goal 019](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/019-rig-only-entry.goal)).
+GPU rigs under compose are not built yet ([goal 037](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/037-gpu-compose.goal)). Control can start short test pods on RunPod to check a GPU there. A rig on RunPod runs in **pull mode**: it never dials out, and control connects to it through RunPod's proxy, with every request signed and every body sealed ([Rigs in pull mode](trust.md#rigs-in-pull-mode)). Launching such a rig from control comes with [goal 022](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/022-runpod-launch.goal).
 
 **New images for a rig on a cluster.** After control itself is updated, it may deploy other images than a rig it set up on a cluster runs. The rig's page then offers **Update to these images**, and MCP has `update_rig_images`. Control applies the rig's two deployments again with its images and its address for rigs, then waits for the new pods and for a report from them, and shows each step on the rig's page. Only the deployments change. The rig's secret (so its tokens), its volume, its service and its network rules stay, and so do its runs and results. A trial in progress stops, and its experiment goes back to the top of the run's queue. A stopped rig stays stopped, and runs the new images when it starts. A newer harness upgrades the rig's ledger, so an older image may not open it again. Rigs on machines, and rigs you joined, can't be moved to new images from control yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
 

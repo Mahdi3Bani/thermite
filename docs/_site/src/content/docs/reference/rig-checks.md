@@ -106,7 +106,7 @@ It prints the whole report as JSON and exits with 1 when isolation does not hold
 | `runs-list` | List | The directory of the judge's runs |
 | `tmp-create`, `var-tmp-create`, `shm-create` | Create a file | `/tmp`, `/var/tmp`, `/dev/shm` |
 | `kit-by-path` | Read | A checked-out `kit.json`, reached by its full path. Skipped before any kit is checked out |
-| `secret:<file>` | Read | Each secret file: the supervisor token, the proposer token and the model key files. The rig check also tries the stored model route |
+| `secret:<file>` | Read | Each secret file: the supervisor token, the proposer token and the model key files. The rig check also tries the stored model route. Where the harness shares its container with a supervisor in [pull mode](../explanation/trust.md#rigs-in-pull-mode) (`THERMITE_TUNNEL_DIR` set), also the pod's own keys, `keys.json` |
 | `build-overwrite` | Write | A file of a stored build. Skipped before any build exists |
 | `run-kit-write`, `run-kit-create` | Write, create a file | A run's read-only copy of kit files, made the way the judge makes it |
 | `controller-environ` | Read | The environment of the harness's controller process |

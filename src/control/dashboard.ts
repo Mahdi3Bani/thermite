@@ -118,6 +118,7 @@ import {
   type MachineRig,
   type ModelProvider,
   type ProviderType,
+  type TunnelRig,
 } from "./store.ts";
 import { ADD_RIG_JS } from "./ui/add-rig-client.ts";
 import {
@@ -1862,6 +1863,7 @@ ${
     const placed = store.machineRig(c.req.param("rig"));
     const onCluster = store.clusterRig(c.req.param("rig"));
     const joined = store.joinedRig(c.req.param("rig"));
+    const pulled = store.tunnelRig(c.req.param("rig"));
     const flashOk = c.req.query("ok");
     const flashError = c.req.query("error");
     const flash = flashError
@@ -1896,6 +1898,18 @@ ${
         vs,
       );
     if (!u && joined) return joinedPage(c, joined, flash);
+    if (!u && pulled)
+      return page(
+        c,
+        {
+          title: pulled.rig,
+          crumbs: [{ href: "/ui/rigs", text: "Rigs" }],
+          summary: `pull mode · ${pulled.enrolled_at ? "enrolled" : "not enrolled"}`,
+          active: "rigs",
+        },
+        `<p class="run-said">Control connects to ${esc(pulled.rig)} through RunPod's proxy. Its page fills in once the rig reports for the first time.</p>${flash}${pullBlock(pulled, now)}`,
+        vs,
+      );
     if (!u && placed)
       return page(
         c,
@@ -1965,6 +1979,9 @@ ${
         ? `<b class="bad">Its ${failed.map(([, n]) => n.toLowerCase()).join(" and ")} check${failed.length > 1 ? "s" : ""} failed.</b>`
         : "",
       key.pending ? `<b class="warn">Its report key waits for your acceptance.</b>` : "",
+      pulled?.error
+        ? `<b class="bad">Control's last connection to its pod failed: ${esc(pulled.error)}</b>`
+        : "",
     ]
       .filter(Boolean)
       .join(" ");
@@ -2109,7 +2126,7 @@ ${runsNow ? `<div class="block"><div class="head"><h2>At work</h2><span class="n
 </div><div class="side">
 <div class="block"><div class="head"><h2>What it runs on</h2></div>${h ? `<div class="card"><dl class="facts">${hw}</dl></div><details class="card flat matrix" data-k="hw-${esc(u.id)}" style="margin-top:10px"><summary>Every detail</summary>${hardwareCard(h, now)}</details>` : hardwareCard(h, now)}</div>
 <div class="block"><div class="head"><h2>The rig</h2></div><div class="card"><dl class="facts">${rigFacts}</dl>${sup ? `<div class="muted xs" style="margin-top:8px">The supervisor reports its figures itself (unsigned).</div>` : ""}</div></div>
-${placed ? placedBlock(placed, t) : ""}${onCluster ? clusterPlacedBlock(onCluster, t) : ""}${joined ? joinedBlock(joined, t, undefined, true) : ""}
+${placed ? placedBlock(placed, t) : ""}${onCluster ? clusterPlacedBlock(onCluster, t) : ""}${joined ? joinedBlock(joined, t, undefined, true) : ""}${pulled ? pullBlock(pulled, now) : ""}
 <div class="block"><div class="head"><h2>Recent</h2><span class="right">newest first</span></div>${events}</div>
 </div></div>`,
       vs,
@@ -3798,6 +3815,22 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
               : "";
     return `<div class="block"><div class="head"><h2>Set up by control</h2><span class="right">${esc(r.status)}</span></div><div class="card"><dl class="facts"><dt>Cluster</dt><dd><a href="/ui/settings">${esc(r.cluster)}</a> (Providers)</dd><dt>Namespace</dt><dd>${esc(r.namespace)} <span class="muted">(${r.placement === "created" ? "made by control" : "a slot"})</span></dd><dt>GPUs</dt><dd>${s.gpus ? `${s.gpus} through ${s.gpuMode === "dra" ? `DRA (${esc(s.deviceClass ?? "")})` : "NVIDIA's device plugin"}: ${splitWords(s.gpus, s.judgeGpus)}` : "none: it measures on the CPU"}${s.node ? ` · on ${esc(s.node)}` : ""}</dd><dt>Storage</dt><dd>${s.storageGi} GB${s.storageClass ? ` · ${esc(s.storageClass)}` : ""}</dd><dt>Images</dt><dd class="mono small">${esc(s.images.harness)}<br>${esc(s.images.supervisor)}</dd></dl>
 <div class="tl" style="margin-top:10px">${setupSteps(r.rig) || `<div class="muted small">No step yet.</div>`}</div>${manage}${update}</div></div>`;
+  };
+  /** A rig in pull mode: its pod, its enrollment, control's last connection and the refusals. */
+  const pullBlock = (r: TunnelRig, now: number) => {
+    const state = !r.pod
+      ? "waiting for its pod"
+      : r.enrolled_at
+        ? "enrolled"
+        : "waiting for enrollment";
+    const enrollment = r.enrolled_at
+      ? `Enrolled ${esc(ago(r.enrolled_at, now))} ago. Control pinned the pod's keys, and the code is spent.`
+      : r.code_expires_at
+        ? Date.parse(r.code_expires_at) < now
+          ? `<span class="bad">The code expired ${esc(ago(r.code_expires_at, now))} ago. Launch the rig again.</span>`
+          : `Not yet. The code expires in ${esc(span(new Date(now).toISOString(), Date.parse(r.code_expires_at)))}.`
+        : "Not yet. The code does not expire.";
+    return `<div class="block"><div class="head"><h2>Pull mode</h2><span class="right">${esc(state)}</span></div><div class="card"><p class="small" style="margin-top:0">Control connects to this rig through RunPod's proxy. The rig never connects to control. The pod answers only requests that control signed.</p><dl class="facts"><dt>Pod</dt><dd>${r.pod ? esc(r.pod) : `<span class="muted">not launched yet</span>`}</dd>${r.url ? `<dt>Address</dt><dd class="mono small">${esc(r.url)}</dd>` : ""}<dt>Enrollment</dt><dd>${enrollment}</dd><dt>Last exchange</dt><dd>${r.last_exchange_at ? `${esc(ago(r.last_exchange_at, now))} ago` : `<span class="muted">none yet</span>`}</dd><dt>Refused requests</dt><dd>${r.refused_total}${r.refused_total ? ` <span class="muted small">Requests that control did not sign. The pod gave each one an empty 404.</span>` : ""}</dd>${r.error ? `<dt>Last error</dt><dd class="bad">${esc(r.error)}</dd>` : ""}</dl></div></div>`;
   };
   /** What a rig control set up on a cluster is deployed with, with its images or others. */
   const clusterPlan = (r: ClusterRig, images = r.spec.images) => ({

@@ -445,6 +445,8 @@ async function main(argv: string[]): Promise<void> {
         env.THERMITE_PROPOSER_TOKEN_FILE,
         env.THERMITE_MODEL_API_KEY_FILE,
         env.QWEN_API_KEY_FILE,
+        // In one container with the supervisor (pull mode): the keys its tunnel signs with.
+        env.THERMITE_TUNNEL_DIR ? join(env.THERMITE_TUNNEL_DIR, "keys.json") : undefined,
       ].filter((f): f is string => Boolean(f));
       const report = await isolationSelftest({
         socketPath: join(env.THERMITE_BROKER_DIR ?? "/run/thermite", "broker.sock"),

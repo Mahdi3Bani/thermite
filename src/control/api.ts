@@ -32,6 +32,7 @@ import {
   type ModelProvider,
   RIG_ID,
 } from "./store.ts";
+import { ControlTunnels } from "./tunnel.ts";
 import { leaderboard, rigView } from "./views.ts";
 
 /**
@@ -200,6 +201,11 @@ export interface ControlOptions {
   /** The image a RunPod test pod runs when none is given (THERMITE_RUNPOD_TEST_IMAGE). */
   runpodTestImage?: string | undefined;
   /**
+   * Rigs in pull mode, which control connects to; control's loop advances them (main.ts). Made
+   * here when not given. Their calls are answered by this API, in-process.
+   */
+  tunnels?: ControlTunnels | undefined;
+  /**
    * Outside knowledge bases (optional); control's loop syncs their copies (main.ts). Made here
    * when not given.
    */
@@ -225,6 +231,24 @@ export function createControlApi(
     opts.runpodTests ??
     new RunpodTests(store, secrets, { fetch: opts.cloudFetch, image: opts.runpodTestImage });
   const outsideKb = opts.outsideKb ?? new OutsideKbs(store, store.kb(), secrets);
+  // A rig in pull mode makes the same calls as any rig; control's end of the tunnel brings them
+  // here in-process, bound to the rig whose signed answer carried them.
+  const tunnels = opts.tunnels ?? new ControlTunnels(store, secrets, privateKeyPem);
+  tunnels.serveWith((rig, call) =>
+    Promise.resolve(
+      app.request(
+        call.path,
+        {
+          method: call.method,
+          headers: call.headers,
+          ...(call.method === "GET" || call.method === "HEAD"
+            ? {}
+            : { body: new Uint8Array(call.body) }),
+        },
+        { tunnelRig: rig },
+      ),
+    ),
+  );
   const opt = (t: string | Credential | undefined) =>
     t === undefined ? undefined : Credential.from(t);
   const creds = {
@@ -776,7 +800,9 @@ export function createControlApi(
     return c.json({ ok: true });
   });
 
-  app.get("/v1/rigs", admin, (c) => c.json({ rigs: store.rigs(), enrolled: store.enrolledRigs() }));
+  app.get("/v1/rigs", admin, (c) =>
+    c.json({ rigs: store.rigs(), enrolled: store.enrolledRigs(), pull: store.tunnelRigs() }),
+  );
 
   // Enrollment: control makes a rig's token, shows it once and keeps only its SHA-256, so a new
   // rig needs no change to control's deployment and no restart.

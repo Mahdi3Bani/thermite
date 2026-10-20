@@ -12,6 +12,7 @@ import { refreshGpuClouds } from "./runpod.ts";
 import { RunpodTests } from "./runpod-tests.ts";
 import { SecretBox } from "./secrets.ts";
 import { ControlStore } from "./store.ts";
+import { ControlTunnels } from "./tunnel.ts";
 
 /** Control service entry point. Generates its signing key on first start. */
 async function main(): Promise<void> {
@@ -81,6 +82,8 @@ async function main(): Promise<void> {
   });
   // Outside knowledge bases (optional): copies of campaign folders, synced by the loop below.
   const outsideKb = new OutsideKbs(store, store.kb(), secrets);
+  // Rigs in pull mode (on RunPod): control connects to each, in the loop below.
+  const tunnels = new ControlTunnels(store, secrets, privateKeyPem);
   const server = serve({
     fetch: createControlApi(store, tokens, privateKeyPem, {
       staleAfterMs,
@@ -93,6 +96,7 @@ async function main(): Promise<void> {
       secrets,
       runpodTests,
       outsideKb,
+      tunnels,
       // Kits written on the new-campaign page, kept as git repositories in control's state.
       kits: new KitRepos(join(dir, "kits")),
       // How rigs and the machines control sets rigs up on reach control.
@@ -132,6 +136,11 @@ async function main(): Promise<void> {
       .advance()
       .catch((err) => log("control", "runpod test error", { error: String(err) }));
   }, 15_000);
+  // Rigs in pull mode: each rig's next exchange starts as soon as its last one ends (an exchange
+  // waits up to 20 s at the pod for the rig's calls), each failing rig after its retry time.
+  const pulls = setInterval(() => {
+    tunnels.advance().catch((err) => log("control", "pull mode error", { error: String(err) }));
+  }, 250);
   // GPU clouds' prices, pods and spend, read again every 15 minutes.
   const clouds = setInterval(() => {
     refreshGpuClouds(store, secrets).catch((err) =>
@@ -155,6 +164,7 @@ async function main(): Promise<void> {
   const stop = () => {
     clearInterval(resets);
     clearInterval(tests);
+    clearInterval(pulls);
     clearInterval(clouds);
     clearInterval(outsideSync);
     server.close();

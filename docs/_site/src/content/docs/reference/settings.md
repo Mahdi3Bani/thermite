@@ -23,7 +23,7 @@ Settings that belong to one campaign live in its [contract](contract.md) or in t
 - **Addresses.** A `_LISTEN` setting is `host:port`. An empty host means every interface (`0.0.0.0`). A bad value stops the service with `bad listen address <value>`.
 - **Logs.** Every service writes one JSON object per line to its output: `{"at", "component", "msg", ...}`.
 
-The "Secret" column says whether a value is secret: **no**; a **path to a secret** (the file must be kept private); a **hash** (safe to keep in plain configuration); or a **directory with secrets** (a volume that holds keys).
+The "Secret" column says whether a value is secret: **no**; a **path to a secret** (the file must be kept private); a **hash** (safe to keep in plain configuration); a **directory with secrets** (a volume that holds keys); or a **one-time code**, which is good for one enrollment only.
 
 ## Control
 
@@ -191,6 +191,7 @@ A Claude subscription and Claude Code go only together. Any other pairing stops 
 | `THERMITE_OUTBOX_GID` | group id | `10001` | no | The supervisor's group, which may read the outbox |
 | `THERMITE_EXPORT_MINUTES` | minutes | `60` | no | How often the harness exports its results. Fractions work |
 | `THERMITE_BROKER_DIR` | path | `/run/thermite` | no | The directory of the broker's socket, `broker.sock` |
+| `THERMITE_TUNNEL_DIR` | path | not set | no | Only where the harness shares its container with a supervisor in [pull mode](#pull-mode): the supervisor's tunnel directory. The isolation self-test then checks that no role can read the keys in it |
 | `THERMITE_CHECKS_DIR` | path | `/opt/thermite/checks` in the image; outside it, the checkout | no | Where the [smoke check](rig-checks.md) finds its kits and projects |
 | `THERMITE_ALLOW_UNSEPARATED` | `1` | off | no | `1`: when the harness container does not run as root, the broker starts the harness anyway, with no separate users for the roles. Meant for development only. Without it, a broker that is not root stops with `fatal: not root, so roles cannot be separated` |
 | `THERMITE_IMAGE_ID` | string | not set | no | Reported as the image in the rig's hardware report and in each build's toolchain record. Thermite's images do not set it yet ([goal 010](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/010-published-images.goal)) |
@@ -206,6 +207,24 @@ A Claude subscription and Claude Code go only together. Any other pairing stops 
 | `THERMITE_HARNESS_TOKEN_FILE` | path | required | path to a secret | The supervisor's token for the harness: the same token as the harness's `THERMITE_SUPERVISOR_TOKEN_FILE` |
 | `CONTROL_URL` | URL | not set | no | Control's address. Not set: the supervisor reports nowhere and fetches no commands |
 | `THERMITE_CONTROL_TOKEN_FILE` | path | not set | path to a secret | The rig's token for control. Without it the supervisor still starts, but sends control nothing and fetches nothing from it: no reports, commands, live view, model, advisors' models or past research |
+
+### Pull mode
+
+In [pull mode](../explanation/trust.md#rigs-in-pull-mode), the supervisor never connects to control: control connects to it. A rig on RunPod runs this way. Control makes the launch values below for each rig, as public material and one one-time code; launching a rig on RunPod from control comes with [goal 022](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/022-runpod-launch.goal). A missing or bad value stops the supervisor at start: `pull mode needs <NAME>`, `THERMITE_TUNNEL_PORT must be a port number, not <value>`, `THERMITE_TUNNEL_CONTROL_BOX is not a public key`, `THERMITE_TUNNEL_CONTROL_KEY_SHA256 must be 64 hexadecimal characters` or `THERMITE_TUNNEL_ENROLL_UNTIL must be an ISO time`.
+
+| Variable | Type | Default | Secret | Meaning |
+| --- | --- | --- | --- | --- |
+| `THERMITE_TUNNEL_PORT` | port | not set: no pull mode | no | Turns pull mode on. The supervisor serves this port, on every interface, for control alone. `CONTROL_URL` and `THERMITE_CONTROL_TOKEN_FILE` are not read: the supervisor's calls to control go to a port of its own on `127.0.0.1` and wait there for control. Control's launch values set it to `8790` |
+| `THERMITE_TUNNEL_POD` | string | `RUNPOD_POD_ID`, which RunPod sets in every pod | no | The pod's ID. Every request from control names it, and a request for another pod is refused |
+| `THERMITE_TUNNEL_PREFIX` | 64 hexadecimal characters | required in pull mode | no | A launch value: the random path the port answers under. A request to any other path is refused before its body is read |
+| `THERMITE_TUNNEL_CONTROL_KEY_SHA256` | SHA-256 | required in pull mode | hash | A launch value: the SHA-256 of control's command-signing public key. Control's first request brings the key; the pod takes it only if its SHA-256 is this one |
+| `THERMITE_TUNNEL_CONTROL_BOX` | base64 | required in pull mode | no | A launch value: the rig's public key at control (X25519, on one line). What the pod sends control is sealed to it |
+| `THERMITE_TUNNEL_ENROLL_CODE` | 64 hexadecimal characters | required in pull mode | one-time code | A launch value: the enrollment code. It never crosses the network: each side proves that it holds it. The supervisor takes it out of its own environment at start, so nothing it starts inherits it. The pod's first enrollment spends it |
+| `THERMITE_TUNNEL_ENROLL_UNTIL` | ISO time | not set: the code does not expire | no | A launch value, only when the launch set an expiry: after this time the pod refuses to enroll |
+| `THERMITE_TUNNEL_DIR` | path | `tunnel` in `THERMITE_SUPERVISOR_HOME` | directory with secrets | The pod's own keys (made at its first start, file `keys.json`, mode 0600), its enrollment, and the request nonces it has seen. Mode 0700. A full reset keeps it, so control's trust in the pod stays. Give the harness the same value: its isolation self-test then checks that no role can read the keys |
+| `THERMITE_TUNNEL_ENROLLED_DIR` | path | `enrolled` in `THERMITE_SUPERVISOR_HOME` | no | Where enrollment leaves public files for the harness: control's key (`control.pub`), and the rig's settings from control (`rig.json`, and `rig.env` as `NAME=value` lines). `control.pub` is written last. A full reset keeps it |
+
+In pull mode the supervisor also takes `RUNPOD_API_KEY`, which RunPod puts in a pod's environment, out of its own environment. Thermite never uses it on the pod: control holds its own RunPod key.
 
 ### How often it talks to control
 
@@ -243,7 +262,7 @@ The `thermite` command takes control's or the harness's address and a token file
 
 Only `thermite selftest isolation`, which runs inside the harness container, reads variables. It reads the harness's own settings, with the same defaults:
 
-- the secret files it checks no role can read: `THERMITE_SUPERVISOR_TOKEN_FILE`, `THERMITE_PROPOSER_TOKEN_FILE`, `THERMITE_MODEL_API_KEY_FILE` and `QWEN_API_KEY_FILE`;
+- the secret files it checks no role can read: `THERMITE_SUPERVISOR_TOKEN_FILE`, `THERMITE_PROPOSER_TOKEN_FILE`, `THERMITE_MODEL_API_KEY_FILE` and `QWEN_API_KEY_FILE`, and, when `THERMITE_TUNNEL_DIR` is set, the pull mode keys in it (`keys.json`);
 - the places: `THERMITE_BROKER_DIR`, `THERMITE_STATE_DIR`, `THERMITE_SCRATCH_DIR` and `THERMITE_OUTBOX_DIR`;
 - the GPU settings: `THERMITE_GPU_INDEX`, `THERMITE_DEV_GPU_INDEX`, `THERMITE_GPUS` and `THERMITE_JUDGE_GPUS`.
 
