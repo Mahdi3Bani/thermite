@@ -87,6 +87,11 @@ export const RunRequest = z.object({
    */
   spareExe: z.string().min(1).startsWith("/").optional(),
   disk: z.object({ path: z.string().min(1), limitBytes: z.number().int().positive() }).optional(),
+  /**
+   * The role's processes and threads at once (RLIMIT_NPROC): a contract's lanes.limits.processes
+   * for a lane's users. Unset: the broker's default for the role.
+   */
+  nproc: z.number().int().min(16).max(65_536).optional(),
   /** Written to the child's stdin (file contents for workers' file tools). */
   stdin: z
     .string()

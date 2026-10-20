@@ -64,6 +64,11 @@ const LaneLimits = z.strictObject({
   dev_run_rss_mib: z.number().int().min(256).max(16_384).optional(),
   /** A worker's whole trial. Unset: the rig's default (THERMITE_TRIAL_MINUTES). */
   trial_minutes: z.number().int().min(1).max(1440).optional(),
+  /**
+   * Processes and threads each of a lane's users may have at once (RLIMIT_NPROC): its commands
+   * and OpenCode or Claude Code, its development runs, and its Pi worker. Unset: 256.
+   */
+  processes: z.number().int().min(64).max(65_536).optional(),
 });
 
 const Common = {
@@ -336,7 +341,6 @@ export function parseContract(input: unknown): ContractParse {
   return { ok: true, contract: r.data, sha: contractSha(r.data) };
 }
 
-/** The content hash of a validated contract: sha256 of its canonical JSON. */
 export interface LaneLimitValues {
   /** Unset: a lane command runs until it ends (no default time limit; owner, 2026-10-16). */
   runTimeoutS?: number | undefined;
@@ -346,10 +350,15 @@ export interface LaneLimitValues {
   devRunTimeoutS?: number | undefined;
   devRunRssMib: number;
   trialMinutes?: number | undefined;
+  /** RLIMIT_NPROC for each of the lane's users (lane, development and agent). */
+  processes: number;
 }
 
 /** A dev run's limit on a device the judge shares, when the contract sets none. */
 export const SHARED_DEV_RUN_S = 300;
+
+/** A lane user's processes and threads when the contract sets none (the broker's own default). */
+export const LANE_PROCESSES = 256;
 
 /** A contract's lane limits, with the defaults for anything it leaves out. */
 export function laneLimits(contract: Pick<Contract, "lanes">): LaneLimitValues {
@@ -361,9 +370,11 @@ export function laneLimits(contract: Pick<Contract, "lanes">): LaneLimitValues {
     devRunTimeoutS: l.dev_run_timeout_s,
     devRunRssMib: l.dev_run_rss_mib ?? 4096,
     trialMinutes: l.trial_minutes,
+    processes: l.processes ?? LANE_PROCESSES,
   };
 }
 
+/** The content hash of a validated contract: sha256 of its canonical JSON. */
 export function contractSha(contract: Contract): string {
   return canonicalSha(contract);
 }

@@ -242,7 +242,11 @@ describe("the OpenCode harness", () => {
 
   test("a memory or disk limit that stops OpenCode is named, with its figures", async () => {
     const limits = laneLimits({
-      lanes: { count: 2, trials_per_epoch: 1, limits: { run_rss_mib: 4096, workspace_mib: 16384 } },
+      lanes: {
+        count: 2,
+        trials_per_epoch: 1,
+        limits: { run_rss_mib: 4096, workspace_mib: 16384, processes: 2048 },
+      },
     });
     assert.match(limitsNote(limits), /Memory: 4096 MiB .*OpenCode itself included/);
     assert.match(limitsNote(limits), /command that takes it over the limit is killed/);
@@ -263,6 +267,7 @@ describe("the OpenCode harness", () => {
       killRole: async () => 0,
     } as unknown as Runner;
     const runs: string[] = [];
+    const nprocs: (number | undefined)[] = [];
     const r = await runOpencodeTrial(
       {
         trialId: "t-3",
@@ -281,6 +286,7 @@ describe("the OpenCode harness", () => {
           ...runner,
           run: (req: RunRequest) => {
             runs.push(req.argv.join(" "));
+            if (req.argv.includes("run")) nprocs.push(req.nproc);
             return runner.run(req);
           },
         } as Runner,
@@ -299,6 +305,8 @@ describe("the OpenCode harness", () => {
     );
     // Not continued: a breach ends the trial.
     assert.equal(runs.filter((x) => x.includes(" run ")).length, 1);
+    // OpenCode runs as the lane, under the contract's process limit.
+    assert.deepEqual(nprocs, [2048]);
     // The agent was told its limits.
     assert.ok(runs.some((x) => x.includes("Memory: 4096 MiB")));
     const disk = breachError(

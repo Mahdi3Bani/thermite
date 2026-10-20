@@ -80,7 +80,7 @@ export interface HarnessApiExtras {
         run(
           input: unknown,
           trial: string,
-          limits?: { rssMib: number; diskMib: number },
+          limits?: { rssMib: number; diskMib: number; timeoutS?: number; processes?: number },
         ): Promise<unknown>;
       }
     | undefined;
@@ -522,6 +522,8 @@ export function createHarnessApi(
         ? { disk: { path: req.disk.path, limitBytes: Math.min(req.disk.limitBytes, diskCap) } }
         : {}),
       ...(req.stdin !== undefined ? { stdin: req.stdin } : {}),
+      // From the contract, never from the request.
+      nproc: limits.processes,
       captureBytes: Math.min(req.captureBytes ?? 64 * 1024, 32 * 1024 * 1024),
       // As in a shell: what a command starts in the background runs on until the trial ends.
       keepBackground: true,
@@ -549,6 +551,7 @@ export function createHarnessApi(
         {
           rssMib: limits.devRunRssMib,
           diskMib: limits.workspaceMib,
+          processes: limits.processes,
           ...(limits.devRunTimeoutS !== undefined ? { timeoutS: limits.devRunTimeoutS } : {}),
         },
       )) as object,

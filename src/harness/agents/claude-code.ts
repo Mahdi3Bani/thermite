@@ -439,6 +439,7 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
       rssLimitBytes: limits.runRssMib * 1024 * 1024,
       ...(claudeExe() ? { spareExe: claudeExe() } : {}),
       disk: { path: area, limitBytes: limits.workspaceMib * 1024 * 1024 },
+      nproc: limits.processes,
       captureBytes: 4096,
     });
     let done = false;

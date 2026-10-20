@@ -112,7 +112,7 @@ export class DevRuns {
   run(
     input: unknown,
     trial: string,
-    limits: { rssMib: number; diskMib: number; timeoutS?: number } = {
+    limits: { rssMib: number; diskMib: number; timeoutS?: number; processes?: number } = {
       rssMib: 4096,
       diskMib: 2048,
     },
@@ -183,7 +183,7 @@ export class DevRuns {
     req: z.infer<typeof DevRunRequest>,
     cwd: string,
     trial: string,
-    limits: { rssMib: number; diskMib: number },
+    limits: { rssMib: number; diskMib: number; processes?: number },
     timeoutS: number | undefined,
     onStart: () => void,
   ): Promise<unknown> {
@@ -208,6 +208,7 @@ export class DevRuns {
           ...(timeoutS !== undefined ? { timeoutMs: timeoutS * 1000 } : {}),
           rssLimitBytes: limits.rssMib * 1024 * 1024,
           disk: { path: cwd, limitBytes: limits.diskMib * 1024 * 1024 },
+          ...(limits.processes !== undefined ? { nproc: limits.processes } : {}),
           captureBytes: 32 * 1024,
           // Without a device (a CPU target) a dev run is a lane command run in the judge's turn.
           ...(this.gpu

@@ -3,10 +3,17 @@ import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { CampaignDraft } from "../control/campaign-builder.ts";
 import { assignRefusal } from "../control/issue.ts";
-import { IDS, RoleSchema } from "../harness/broker/runner.ts";
+import { IDS, RoleSchema, RunRequest } from "../harness/broker/runner.ts";
+import { nprocFor } from "../harness/broker/server.ts";
 import { lanesFromEnv } from "../harness/rig-settings.ts";
 import { CommandPayloads, MESSAGE_TARGET } from "./commands.ts";
-import { MAX_LANES, MAX_LANES_REASON, parseContract } from "./contract.ts";
+import {
+  LANE_PROCESSES,
+  laneLimits,
+  MAX_LANES,
+  MAX_LANES_REASON,
+  parseContract,
+} from "./contract.ts";
 
 /** A small valid research contract with the given lane count. */
 const research = (count: number) => ({
@@ -83,5 +90,39 @@ describe("the most lanes a rig runs", () => {
         new RegExp(`THERMITE_MAX_TRIALS must be a whole number from 1 to ${MAX_LANES}, not `),
         bad,
       );
+  });
+});
+
+describe("a lane's process limit", () => {
+  const withLimits = (limits: Record<string, number>) => ({
+    ...research(2),
+    lanes: { count: 2, trials_per_epoch: 1, limits },
+  });
+
+  test("the contract sets it, from 64 to 65,536; unset, it is 256", () => {
+    const set = parseContract(withLimits({ processes: 4096 }));
+    assert.ok(set.ok);
+    assert.equal(laneLimits(set.contract).processes, 4096);
+    const unset = parseContract(research(2));
+    assert.ok(unset.ok);
+    assert.equal(laneLimits(unset.contract).processes, LANE_PROCESSES);
+    assert.equal(LANE_PROCESSES, 256);
+    for (const bad of [63, 65_537, 300.5]) {
+      const r = parseContract(withLimits({ processes: bad }));
+      assert.ok(!r.ok, String(bad));
+      assert.match(r.errors.join("; "), /^lanes\.limits\.processes: /);
+    }
+  });
+
+  test("the broker uses the limit the controller asks for, else the role's own", () => {
+    assert.equal(nprocFor({ role: "lane-3", nproc: 4096 }), 4096);
+    assert.equal(nprocFor({ role: "agent-3", nproc: 4096 }), 4096);
+    assert.equal(nprocFor({ role: "lane-3" }), 256);
+    assert.equal(nprocFor({ role: "run" }), 256);
+    assert.equal(nprocFor({ role: "builder" }), 512);
+    const req = { role: "lane-1", argv: ["true"], cwd: "/scratch/x" };
+    assert.ok(RunRequest.safeParse({ ...req, nproc: 65_536 }).success);
+    for (const nproc of [0, 15, 65_537, 2.5])
+      assert.ok(!RunRequest.safeParse({ ...req, nproc }).success, String(nproc));
   });
 });

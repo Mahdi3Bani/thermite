@@ -62,6 +62,14 @@ function clearSetIdBits(dir: string): void {
 /** Per-role process limits (RLIMIT_NPROC): builds may run parallel compilers. */
 const NPROC: Record<string, number> = { builder: 512 };
 
+/**
+ * A run's process limit: what the controller asked for (a lane's, from its contract), else the
+ * role's default, 512 for builds and 256 for every other role.
+ */
+export function nprocFor(r: Pick<RunRequest, "role" | "nproc">): number {
+  return r.nproc ?? NPROC[r.role] ?? 256;
+}
+
 export async function handle(req: Req, opts: BrokerServerOptions): Promise<unknown> {
   switch (req.op) {
     case "run": {
@@ -102,7 +110,7 @@ export async function handle(req: Req, opts: BrokerServerOptions): Promise<unkno
         rssLimitBytes: r.rssLimitBytes,
         spareExe: r.spareExe,
         disk: r.disk,
-        nproc: NPROC[r.role] ?? 256,
+        nproc: nprocFor(r),
         stdin: r.stdin,
         captureBytes: r.captureBytes,
         // A lane's user runs both its plain commands and its dev runs: each is supervised and

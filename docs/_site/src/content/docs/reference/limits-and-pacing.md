@@ -124,7 +124,7 @@ The [kit manifest](kit-manifest.md) sets these; the defaults apply when it does 
 | Run (`run`) | 300 s | 1,024 MiB | 256 MiB | 256 |
 | Check (`check`) | 120 s | none | none | none |
 
-Memory is the sum over all the processes the build or run started, sampled every 100 ms. Disk is the working directory, sampled every 500 ms; more than 50,000 files and folders, or more than 128 levels, also counts as over the disk limit. Only the last 64 KiB of output is kept.
+Memory is the sum over all the processes the build or run started, sampled every 100 ms. Disk is the working directory, sampled every 500 ms; more than 50,000 files and folders, or more than 128 levels, also counts as over the disk limit. Only the last 64 KiB of output is kept. Tasks are the processes and threads the build's or run's user may have at once (`RLIMIT_NPROC`); the kit does not set them.
 
 ### Lanes and agents
 
@@ -135,6 +135,7 @@ Memory is the sum over all the processes the build or run started, sampled every
 | The trial's workspace, build folders included | 2,048 MiB | `workspace_mib` (256 to 65,536) |
 | One development run | None on a development device of its own; 300 s on a device the judge shares | `dev_run_timeout_s` (10 to 3,600) |
 | Memory of one development run | 4,096 MiB | `dev_run_rss_mib` (256 to 16,384) |
+| Processes and threads at once, for each of a lane's users: its commands with OpenCode or Claude Code, its development runs, its Pi worker | 256. At the limit, starting one more fails with `Resource temporarily unavailable` | `processes` (64 to 65,536) |
 | A lane's build cache | 8 GB (`CCACHE_MAXSIZE`) | Fixed |
 | One file-tool call of a Pi worker | 30 s | Fixed |
 | Preparing a submission's patch | 60 s | Fixed |

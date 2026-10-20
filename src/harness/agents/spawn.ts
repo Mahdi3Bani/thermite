@@ -80,6 +80,8 @@ export async function spawnTrial(
       },
       timeoutMs: spec.wallMs + 120_000,
       rssLimitBytes: 2 * 1024 * 1024 * 1024,
+      // The contract's process limit for the lane's users; without it, the broker's default.
+      ...(spec.limits ? { nproc: spec.limits.processes } : {}),
       captureBytes: 1024 * 1024,
     });
     const last = r.stdout.trim().split("\n").pop() ?? "";
