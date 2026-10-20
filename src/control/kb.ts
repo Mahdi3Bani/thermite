@@ -123,6 +123,8 @@ create table if not exists kb_grant_item (
   primary key (campaign, reads, item)
 );
 create index if not exists kb_grant_item_seq on kb_grant_item (campaign, seq);
+-- What the folders were built with: the reading's version (see READING).
+create table if not exists kb_meta (key text primary key, value text not null);
 `;
 
 type Row = Record<string, unknown>;
@@ -130,6 +132,22 @@ type Row = Record<string, unknown>;
 const PAGE = 2000;
 /** Items a rig's sync answers at most at once (it asks again while `more` is true). */
 export const SYNC_PAGE = 500;
+/**
+ * The reading's version. A store built by an earlier reading reads its events once more for the
+ * kinds of item added since (runs, trials, documents, hypotheses), so the runs before an upgrade
+ * have them too. The items it had already are left as they were.
+ */
+const READING = "2";
+const SINCE_READING_1 = [
+  "run_created",
+  "run_status",
+  "champion_promoted",
+  "trial_started",
+  "trial_finished",
+  "research_doc",
+  "hypothesis_added",
+];
+
 /** An outside knowledge base in a campaign's grants (goal 065, optional): not a folder here. */
 export const isOutside = (folder: string) => folder.startsWith("outside:");
 
@@ -168,6 +186,7 @@ export class KnowledgeBase {
    * the rig's, and a ledger the rig has left (a reset) adds nothing more.
    */
   catchUp(): number {
+    this.readAgain();
     let total = 0;
     for (;;) {
       const cur = Number(
@@ -209,6 +228,59 @@ export class KnowledgeBase {
     }
   }
 
+  /**
+   * Once, after an upgrade: the events indexed before READING read again for the kinds of item
+   * added since, from each rig's current ledger, as catchUp reads them. A run keeps the folder it
+   * was filed in. Nothing is written when the store is already at READING.
+   */
+  private readAgain(): void {
+    const at = (
+      this.db.prepare("select value from kb_meta where key = 'reading'").get() as
+        | { value: string }
+        | undefined
+    )?.value;
+    if (at === READING) return;
+    const through = Number(
+      (this.db.prepare("select seq from kb_cursor where id = 1").get() as { seq: number }).seq,
+    );
+    const kinds = SINCE_READING_1.map(() => "?").join(", ");
+    for (let after = 0; ; ) {
+      const rows = this.db
+        .prepare(
+          `select e.seq, e.rig, e.ledger_id, e.at, e.actor, e.kind, e.subject, e.body from rig_event e
+           join rig r on r.id = e.rig and r.ledger_id = e.ledger_id
+           where e.seq > ? and e.seq <= ? and e.kind in (${kinds}) order by e.seq limit ?`,
+        )
+        .all(after, through, ...SINCE_READING_1, PAGE) as Row[];
+      this.tx(() => {
+        for (const r of rows) {
+          let body: unknown;
+          try {
+            body = JSON.parse(str(r.body));
+          } catch {
+            continue; // as in catchUp
+          }
+          if (!body || typeof body !== "object") continue;
+          const src = { rig: str(r.rig), ledger: str(r.ledger_id) };
+          indexEvent(this.target(src, { keepRuns: true }), {
+            at: str(r.at),
+            actor: str(r.actor),
+            kind: str(r.kind),
+            subject: str(r.subject),
+            body: body as Row,
+          });
+        }
+      });
+      if (rows.length < PAGE) break;
+      after = Number(rows.at(-1)?.seq ?? through);
+    }
+    this.db
+      .prepare(
+        "insert into kb_meta (key, value) values ('reading', ?) on conflict(key) do update set value = excluded.value",
+      )
+      .run(READING);
+  }
+
   /** The campaign of the newest assign_campaign control issued for this run on this rig. */
   private assigned(rig: string, run: string): string | undefined {
     const r = this.db
@@ -242,14 +314,21 @@ export class KnowledgeBase {
     )?.campaign;
   }
 
-  /** Where one rig ledger's events put their items: the folder control files each run in. */
-  private target(src: { rig: string; ledger: string }): KbIndexTarget {
+  /**
+   * Where one rig ledger's events put their items: the folder control files each run in.
+   * `keepRuns`: a run filed already stays in its folder (reading old events again).
+   */
+  private target(
+    src: { rig: string; ledger: string },
+    o: { keepRuns?: boolean } = {},
+  ): KbIndexTarget {
     const { rig, ledger } = src;
     return {
       // Filed under the campaign control assigned this run on this rig. A run control did not
       // assign keeps the campaign its event names, unless control assigned that campaign
       // somewhere: a rig cannot file items into a campaign it was not given.
       runCreated: (run, named) => {
+        if (o.keepRuns && this.campaignOf(rig, ledger, run)) return;
         const assigned = this.assigned(rig, run);
         const campaign = assigned ?? (named && !this.assignedAnywhere(named) ? named : "");
         if (campaign)

@@ -596,6 +596,40 @@ test("a folder holds everything a run produces: the run, its trials, its documen
   assert.equal(full.find((e) => e.kind === "source_fetched")?.body.text, text);
 });
 
+test("after an upgrade, the runs indexed before get their run and trial items, once, in their folder", () => {
+  const store = new ControlStore(":memory:");
+  assigned(store, "rig-a", "gs-3", "gemv-speed");
+  ingest(store, "rig-a", [
+    ["harness", "run_created", "gs-3", { campaign: "gemv-speed", mode: "goal" }],
+    [
+      "scheduler",
+      "trial_started",
+      "gs-3",
+      { trial: "t-1", lane: "lane-1", epoch: 1, family: "loads" },
+    ],
+    ["lane-1", "journal_note", "gs-3", { id: 1, by: "lane-1", kind: "lesson", text: "kept" }],
+    ["control:owner", "run_status", "gs-3", { status: "paused", reason: "a pause" }],
+  ]);
+  const kb = store.kb();
+  // As an earlier reading left the store: no run or trial items, and no reading's version.
+  store.db.exec("delete from kb_item where kind in ('run', 'trial'); delete from kb_meta;");
+  const note = kb.search("kept", ["gemv-speed"])[0];
+  assert.equal(kb.catchUp(), 0, "no new event");
+  assert.deepEqual(kb.folder("gemv-speed").counts, { note: 1, run: 1, trial: 1 });
+  const [run] = kb.search("", ["gemv-speed"], { kinds: ["run"] });
+  assert.match(String(run?.body), /Status: paused \(a pause\)$/);
+  assert.equal(run?.campaign, "gemv-speed");
+  assert.equal(
+    kb.search("kept", ["gemv-speed"])[0]?.seq,
+    note?.seq,
+    "an item it had stays as it was",
+  );
+  // Once only: a later call reads nothing again.
+  store.db.exec("delete from kb_item where kind = 'trial'");
+  kb.catchUp();
+  assert.equal(kb.folder("gemv-speed").counts.trial, undefined);
+});
+
 test("a rig files a run's items only under a campaign control gave it", () => {
   const store = new ControlStore(":memory:");
   // Control assigned gemv-speed to rig-a's g-1.

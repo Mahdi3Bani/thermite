@@ -99,6 +99,7 @@ Search results and **From past research** show an experiment's result as `tried:
 - **Only the rig's current ledger.** Control reads the events of each rig's current ledger. After a rig's full reset, the items from its earlier ledger stay in their folders.
 - **Only from the rigs' events.** No agent, and no person, writes an item. Control never deletes one.
 - **An unchanged event changes nothing:** the item keeps its `seq`, so no rig receives it again.
+- **Once, after an upgrade:** a control whose knowledge base was built before runs, trials, documents and hypotheses were items reads the events it had indexed once more for those kinds, from each rig's current ledger, so the runs before the upgrade have their run and trial items too. Each run stays in its folder, and the items it had stay as they were. Sources read before the upgrade keep only their address: their events carried no text.
 
 ## Search
 
