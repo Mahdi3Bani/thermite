@@ -61,7 +61,7 @@ To work on the dashboard without a stack, run the dashboard demo. It serves made
 node --experimental-strip-types scripts/dashboard-demo.ts   # http://127.0.0.1:8810/ui
 ```
 
-The demo has no campaign saved on control or assigned through it, no owner's messages and no experiment queue, so it shows no **Start a run**, no kept messages and an empty queue. The dashboard's tests cover those. This site's screenshots come from the demo, because its data is made up: with the demo running, `node scripts/docs-screenshots.mjs` takes them again. [Running Thermite locally](https://github.com/iammrduncan/thermite/blob/main/docs/local-development.md) has more for contributors.
+One of the demo's runs has a made-up experiment queue: experiments tried, in progress and up next, a lane's idea and a hand-out. The demo has no campaign saved on control or assigned through it and no owner's messages, so it shows no **Start a run** and no kept messages. The dashboard's tests cover those. This site's screenshots come from the demo, because its data is made up: with the demo running, `node scripts/docs-screenshots.mjs` takes them again. [Running Thermite locally](https://github.com/iammrduncan/thermite/blob/main/docs/local-development.md) has more for contributors.
 
 ## Keep the repository public-safe
 

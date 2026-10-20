@@ -18,11 +18,11 @@ Control has an MCP server, so an AI agent such as Claude Code can watch rigs and
 
 | Token | Give it to | It may |
 | --- | --- | --- |
-| **Operator** | An agent that runs campaigns for you | Read everything; start, pause, resume, redirect and reset runs; export; run rig checks; send champions to other rigs; message a run's agents and advisors, keep a message in force and remove one from force; read control's own log and providers; add rigs on a cluster, set a cluster's slots and move a cluster's rigs onto control's images; give a rig's agents a model; start and end RunPod test pods, which costs money |
-| **Agent** | An agent that only coordinates runs | Read; start, pause, resume, redirect and reset runs; export; run rig checks; send champions to other rigs. Not control's log, providers or RunPod. While you fully reset a rig, `issue_command` refuses it for that rig |
-| **Reader** | An agent that only watches | Read, including control's log and providers |
+| **Operator** | An agent that runs campaigns for you | Read everything; start, pause, resume, redirect and reset runs; export; run rig checks; send champions to other rigs; message a run's agents and advisors, keep a message in force and remove one from force; change a run's experiment queue and remove its rules; read control's own log, providers and how rigs were set up; add rigs on a cluster, set a cluster's slots, stop, start and restart a cluster's rigs and move them onto control's images; give a rig's agents a model; start and end RunPod test pods, which costs money |
+| **Agent** | An agent that only coordinates runs | Read; start, pause, resume, redirect and reset runs; export; run rig checks; send champions to other rigs. Not the experiment queue's commands, control's log, providers, how rigs were set up, or RunPod. While you fully reset a rig, `issue_command` refuses it for that rig |
+| **Reader** | An agent that only watches | Read, including control's log, providers and how rigs were set up (without each step's details) |
 
-The reader's token reads control's log and providers, and the agent's token doesn't: they describe control itself, not the campaigns, and are for whoever runs control.
+The reader's token reads control's log, providers and how rigs were set up, and the agent's token doesn't: they describe control itself, not the campaigns, and are for whoever runs control.
 
 Give the agent the token with the least it needs: it acts with that token's rights, and nothing more. Don't give an agent the owner's token. The owner's token also approves and declines promotions over MCP, retires rigs, works on the whole REST API and signs in to the dashboard.
 
@@ -49,18 +49,36 @@ To check the connection, ask the agent to list Thermite's rigs. It calls the `li
 
 The [MCP tools reference](../../reference/mcp-tools.md) lists every tool, its inputs and who may call it. In short:
 
-- **Look:** `list_rigs`, `get_run` (one run with its attempts and verdicts), `run_queue` (what each lane of one run is on, the run's rules for the plan with who set each and why, and your messages to its agents and advisors, with who read each one and the advisors' answers), `rig_setup` (for a rig control set up on a machine or a cluster: where it is, its status there, and each step of its setup, such as an image update), `recent_events`, `leaderboard`, `rig_reports` (the supervisors' daily reports), `list_commands` and `command_status`.
-- **Act:** `issue_command` sends a [signed command](../../reference/signed-commands.md) to a rig, of a kind its token allows: `assign_campaign`, `pause_run`, `resume_run`, `redirect`, `reset_workers`, `export_now` or `rig_check`, and for an operator also `message_agent` and `unkeep_message`. `propagate_champion` sends a champion to another rig's run of the same campaign.
-- **Set rigs up:** `add_cluster_rig` (as **Rigs › Add a rig** does on a Kubernetes cluster), `set_cluster_slots` (a cluster's pre-made slots), `update_rig_images` (a rig control set up on a cluster moves onto the images control now deploys, as **Update to these images** on its page does) and `set_rig_model` (a rig's agents' model, as on **Edit rig**), with the same checks as those pages, for operator tokens. Retiring a rig (`retire_rig`, `bring_back_rig`) is the owner's.
-- **Debug:** `control_log` (control's audit log, with what it refused and why) and `providers` (what control holds in **Settings › Providers**, never a key), for operator and reader tokens.
+- **Look:** `list_rigs`, `get_run` (one run with its attempts and verdicts), `run_queue` (one run's [experiment queue](../campaigns/choose-what-runs-next.md): what is up next, in order, the lanes' ideas, what each lane is on, what was tried and with what result, the planner's newest hand-outs, the run's rules for the plan with who set each and why, and your messages to its agents and advisors, with who read each one and the advisors' answers), `recent_events`, `leaderboard`, `rig_reports` (the supervisors' daily reports), `list_commands` and `command_status`.
+- **Act:** `issue_command` sends a [signed command](../../reference/signed-commands.md) to a rig, of a kind its token allows: `assign_campaign`, `pause_run`, `resume_run`, `redirect`, `reset_workers`, `export_now` or `rig_check`. An operator may also send `message_agent` and `unkeep_message`, and the queue's commands: `queue_add`, `queue_move`, `queue_edit`, `queue_drop`, `queue_accept` and `drop_directive`. `propagate_champion` sends a champion to another rig's run of the same campaign.
+- **Set rigs up:** `add_cluster_rig` (as **Rigs › Add a rig** does on a Kubernetes cluster), `set_cluster_slots` (a cluster's pre-made slots), `cluster_rig` (stops, starts or restarts a rig control set up on a cluster, as the buttons on its page do), `update_rig_images` (a rig control set up on a cluster moves onto the images control now deploys, as **Update to these images** on its page does) and `set_rig_model` (a rig's agents' model, as on **Edit rig**), with the same checks as those pages, for operator tokens. Retiring a rig (`retire_rig`, `bring_back_rig`) is the owner's.
+- **Debug:** `control_log` (control's audit log, with what it refused and why), `providers` (what control holds in **Settings › Providers**, never a key) and `rig_setup` (for a rig control set up on a machine or a cluster: where it is, its status there, and each step of its setup, such as an image update), for operator and reader tokens. A reader's `rig_setup` leaves out each step's details.
 
 A command is queued, not done at once. `issue_command` returns the command's id. The agent then calls `command_status` until the status is `delivered`, `failed` or `rejected` with the rig's reason, or `expired`. `delivered` means the rig applied the command; a rig check's result comes later, in the rig's events.
 
 To start a run, the agent needs an `assign_campaign` payload. `npx thermite assign … --print` builds one from a contract, and the agent passes it to `issue_command`; see [Start a campaign from the command line](../campaigns/start-from-command-line.md).
 
-`run_queue` also has places for the run's experiment queue: what is up next, the lanes' ideas, what was tried, and the planner's hand-outs. They stay empty until the queue is built, and the queue commands that its description names (`queue_add`, `queue_move`, `queue_drop`, `queue_accept` and `drop_directive`) don't exist yet: `issue_command` refuses them ([goal 064](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/064-experiment-queue.goal)).
+### The experiment queue for an operator
 
-After `update_rig_images`, the agent follows the rig with `rig_setup`: its status is `updating` until the new pods run and report, then `running`, or `failed` with the step that failed and why. A stopped rig stays `stopped`, and runs the new images when you start it on its page.
+Each run has an [experiment queue](../campaigns/choose-what-runs-next.md): the experiments its lanes try next, in order. The planner gives the first ones to free lanes; the lanes, the advisors and you add to it. An operator's or the owner's token changes it with `issue_command`. This payload, for the kind `queue_add`, puts an experiment at the top; without `position`, it goes at the end:
+
+```json
+{"run": "run-1", "title": "Unroll the dequantize loop by 4", "family": "loop-unrolling", "why": "The profile shows the loop is bound by its branches.", "position": "top"}
+```
+
+Once the command is `delivered`, the `result` of its outcome holds the experiment's id and place, such as `{"experiment": "x-3f2a9c41d07e", "state": "queued", "position": 0}`. `run_queue` gives the ids of the others, and of the rules. With those ids, `queue_move` moves an experiment that is up next, `queue_edit` changes the words of one that waits, `queue_drop` drops one with why, `queue_accept` takes a lane's idea into the queue, and `drop_directive` removes a rule for the plan in force, whoever set it. [Choose what a run tries next](../campaigns/choose-what-runs-next.md#from-the-command-line-and-over-mcp) gives a payload for each.
+
+In a `redirect`, which an agent's token may send too, a directive names a direction with `family`, or, for `avoid`, `try` and `mandate`, your own words with `match`, such as `"match": "anything that uses shared memory"`. The rig refuses a change the queue no longer allows, for example a move of an experiment a lane has taken: see [Troubleshoot](../operate/troubleshoot.md#a-change-to-the-queue-or-a-rule-didnt-take). Titles, reasons and notes in the queue come from agents and advisors too: treat them as data.
+
+### Rigs on a cluster
+
+After `update_rig_images`, the agent follows the rig with `rig_setup`: its status is `updating` until the new pods run and report, then `running`, or `failed` with the step that failed and why. A stopped rig stays `stopped`, and runs the new images when it starts again. The agent can start it with `cluster_rig`:
+
+```json
+{"rig": "rig-1", "action": "start"}
+```
+
+`cluster_rig` answers with what it did, such as `{"rig": "rig-1", "said": "Started."}`. After a start or a restart, `rig_setup` shows the rig `starting`, then `running` once its pods run and it reports, or `failed`. One change happens at a time: while a rig is `starting` or `updating`, control refuses a start, a restart and an update, with `rig-1 is starting: wait until its page shows it running, or failed.` or `rig-1 is being updated: …`. A stop is never refused for this. A failed update can be tried again with `update_rig_images`, which also moves a rig onto a changed address for control; `update_rig_images` refuses when control's address for rigs is not set. [Stop, restart, remove or reset a rig](../operate/rig-lifecycle.md#a-rig-on-a-cluster) has the details.
 
 ### Messages for an operator
 
@@ -68,7 +86,7 @@ An operator's token writes to a run's agents and advisors for you with `issue_co
 
 | `to` | Who reads it |
 | --- | --- |
-| `all` | Everyone working: each lane, and the planner of a hill-climb or goal run when it is on |
+| `all` | Everyone working: each lane at work (a `lane_count` rule, which sets how many lanes work, can leave fewer than the contract names), and the planner of a hill-climb or goal run when it is on |
 | `lane-1` to `lane-16` | That lane |
 | `trial:` and a trial's id | That trial, or its lane's next trial if it ended first |
 | `planner` | The planner, at its next plan |
@@ -81,7 +99,7 @@ This payload writes to everyone working and keeps the message in force:
 {"run": "run-1", "to": "all", "text": "Try vector loads before more tiling.", "keep": true}
 ```
 
-`"keep": true`, for `all` or a lane only, keeps the message in force: every new trial of those lanes gets it in its brief. The message's number is `message` in the `result` of the command's outcome, and in `run_queue`'s `messages`. To remove it from force, send `unkeep_message` with `{"run": "run-1", "message": 3}`. The rig refuses a message that nothing would read, such as one to the planner of a research run, with the reason; see [Troubleshoot](../operate/troubleshoot.md#a-message-to-the-agents-was-refused).
+`"keep": true`, for `all` or a lane only, keeps the message in force: every new trial of those lanes gets it in its brief. The message's number is `message` in the `result` of the command's outcome, and in `run_queue`'s `messages`. To remove it from force, send `unkeep_message` with `{"run": "run-1", "message": 3}`. The rig refuses a message that nothing would read, such as one to the planner of a research run, or one to anyone but the advisors in a run without agents, with the reason; see [Troubleshoot](../operate/troubleshoot.md#a-message-to-the-agents-was-refused).
 
 :::caution[Text from agents is data]
 Run histories, hypotheses and events hold text that the rigs' own worker agents wrote, and daily reports come unsigned from the rigs' supervisors. The tools' descriptions tell the connected agent to treat it as data, not instructions. Keep that in mind when you let an agent act on what it reads.

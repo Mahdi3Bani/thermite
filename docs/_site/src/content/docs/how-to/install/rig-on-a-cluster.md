@@ -34,7 +34,7 @@ Rigs that control sets up, on a machine, on a cluster or with a join command, ge
 
 ### What created namespaces need
 
-Rights across the cluster, since the namespaces don't exist yet: to create and delete namespaces, and in them to create, change and delete deployments, services, secrets, persistent volume claims and network policies (and resource claim templates for DRA). Control also scales and restarts the deployments to stop, start and restart the rig. To move the rig onto new images, it applies the deployments again and reads their status (`get`) until the new pods run. With rights to read nodes, storage classes and device classes, its check of the cluster shows them; without them it shows less. Control never reads pods.
+Rights across the cluster, since the namespaces don't exist yet: to create and delete namespaces, and in them to create, change and delete deployments, services, secrets, persistent volume claims and network policies (and resource claim templates for DRA). Control also scales and restarts the deployments to stop, start and restart the rig. To move the rig onto new images, it applies the deployments again. After a start, a restart or a move, it reads the deployments' status (`get`) until the new pods run. With rights to read nodes, storage classes and device classes, its check of the cluster shows them; without them it shows less. Control never reads pods.
 
 Thermite's own cluster test uses the cluster's admin kubeconfig for this placement, so there is no tested narrower role to copy. If the cluster's operators won't give control rights across the cluster, use slots.
 
@@ -132,7 +132,7 @@ You land on the rig's page: "Control is setting rig-1 up on cluster-1. Its page 
 - ✓ Its objects applied in the cluster: namespace, secret, volume, deployments
 - ✓ First report reached control
 
-Control waits up to 10 minutes for the first report, and the nodes pull the images in that time. If a large image takes longer, the step shows ✕ "no report after 10 minutes: it may not have started"; the rig's page still fills in when it reports.
+Control waits up to 10 minutes for the first report, and the nodes pull the images in that time. If a large image takes longer, the step shows ✕ "no report after 10 minutes: it may not have started", and the block's status says `failed`. When the rig reports later, its page still fills in, the status says `running` again, and a ✓ step follows the ✕: "A report reached control from the new images · it reported again after the wait ended".
 
 What control applies, all labelled `app.kubernetes.io/instance: rig-1`:
 
@@ -164,15 +164,17 @@ kubectl logs -n thermite-rig-1 deployment/thermite-rig-1-supervisor
 | `ErrImagePull` or `ImagePullBackOff` | The nodes can't pull an image | Make the image pullable without signing in: [Push the images to your own registry](own-registry.md) |
 | `Running`, and still no report | The supervisor's log says why | [A rig is quiet](../operate/troubleshoot.md#a-rig-is-quiet) |
 
-Once the cause is fixed, the pods start and the rig reports by itself. If the rig needs other choices (another storage class, node or number of GPUs), remove it (below) and add a new one under a new name: a removed rig's name can't be used again. New images need no new rig: see [Update the rig's images](#update-the-rigs-images).
+Once the cause is fixed, the pods start and the rig reports by itself, and its status goes back to `running`. If the rig needs other choices (another storage class, node or number of GPUs), remove it (below) and add a new one under a new name: a removed rig's name can't be used again. New images need no new rig: see [Update the rig's images](#update-the-rigs-images).
 
 ## Afterwards
 
-The rig's page keeps the **Set up by control** block: the cluster, the namespace ("made by control" or "a slot"), the GPUs, the storage, the images and each step so far. Its heading shows the rig's status there, such as `running`, `stopped`, `updating` or `failed`. Its buttons:
+The rig's page keeps the **Set up by control** block: the cluster, the namespace ("made by control" or "a slot"), the GPUs, the storage, the images and each step so far. Its heading shows the rig's status there, such as `running`, `stopped`, `starting`, `updating` or `failed`. Its buttons:
 
-- **Stop its pods** or **Start its pods** (the deployments scale to 0 or 1), and **Restart them**.
+- **Stop its pods** or **Start its pods** (the deployments scale to 0 or 1), and **Restart them**. After a start or a restart, the page says `Started.` or `Restarted.`, and the status says `starting`. As after an update, control waits up to 15 minutes for the pods and then up to 10 minutes for a report. The steps "Its pods run the new images" and "A report reached control from the new images" get a ✓, even when no image changed, and the status says `running`. If a wait runs out, its step gets ✕ and the status says `failed`.
 - **Update to these images**, only when control deploys other images than the rig runs: see [Update the rig's images](#update-the-rigs-images).
 - **Remove it from cluster-1**: type `remove rig-1` and press **Remove the rig**. Control deletes the namespace it created, or the rig's objects in the slot, and retires the rig's token. The rig's results go with its volume; control keeps only its events and its champions' patches, so [take the result](../campaigns/take-the-result.md) you need first. The page says `Removed from the cluster.`, and the rig stays in **Rigs** as not reporting. To take it off the rig lists too, use **Retire it** at the top of its page: type `retire rig-1` and press **Retire it**.
+
+Control makes one change at a time. While the status says `starting` or `updating`, it refuses a start, a restart or an update, and the page shows a card that starts with **Not done.**, such as `rig-1 is starting: wait until its page shows it running, or failed.` **Stop its pods** and **Remove the rig** always work.
 
 Next, [check the rig](../operate/check-a-rig.md), then [give it a model](../models/connect-a-provider.md).
 
@@ -180,16 +182,28 @@ Next, [check the rig](../operate/check-a-rig.md), then [give it a model](../mode
 
 After you update Thermite, push the new images and restart control with them ([Push the images to your own registry](own-registry.md)). The rig keeps running its old images until you move it: its **Set up by control** block then says "Control now deploys other images:" and offers **Update to these images**. Control applies the rig's two deployments again with the new images, waits for the new pods and a report from them, and lists each step in the block. The rig's volume, tokens, runs and results stay.
 
+- **Control's address for rigs must be set** (`THERMITE_CONTROL_PUBLIC_URL`). The update writes it into the rig's supervisor again, so a changed address reaches the rig too. Without it, control refuses: `Control's address for rigs is not set (THERMITE_CONTROL_PUBLIC_URL): the rig would no longer know where to report.`
+- **One change at a time:** wait until the status says `running` or `failed` before you update again.
+- **A failed update can be tried again,** over MCP with `update_rig_images` ([below](#from-an-agent-or-a-script)). The page doesn't show **Update to these images** again, because control has already recorded the new images. A change of control's address alone is also made over MCP: the button shows only when an image's name differs.
+
 For the steps, what changes and what to check afterwards, see [Move a rig onto new images](../operate/rig-lifecycle.md#a-rig-on-a-cluster).
 
 ## From an agent or a script
 
-Over MCP, the owner's and the operator's tokens have three tools for clusters (see [MCP tools](../../reference/mcp-tools.md)):
+Over MCP, the owner's and the operator's tokens have four tools for clusters (see [MCP tools](../../reference/mcp-tools.md)):
 
 - `add_cluster_rig` adds a rig on a cluster in Providers, with the same checks as **Add a rig**. Its fields are `rig`, `cluster`, `slot`, `gpus`, `judge_gpus`, `gpu_mode` (`device-plugin` or `dra:<device class>`), `node`, `storage_class`, `storage_gb`, `cpus` and `memory_gib`. It answers with the rig's name and `"status": "deploying"`; follow the rig with `rig_setup` and `list_rigs`.
 - `set_cluster_slots` replaces the list of slots of a cluster that uses slots. A slot that holds a rig must stay in the list.
-- `update_rig_images` moves a rig onto control's images, as **Update to these images** does. Its one field is `rig`. Its answer's `said` is `rig-1's pods restart on the new images.`, `rig-1 runs the new images when it starts again.` (a stopped rig) or `rig-1 already runs control's images.`
+- `cluster_rig` stops, starts or restarts a rig, as the buttons on its page do. Its fields are `rig` and `action`: `stop`, `start` or `restart`. Its answer's `said` is `Stopped.`, `Started.` or `Restarted.` After a start or a restart, follow the rig with `rig_setup`: it says `starting`, then `running` once the pods run and the rig reports, or `failed`. Removing a rig is done on the dashboard.
+- `update_rig_images` moves a rig onto control's images, as **Update to these images** does. Its one field is `rig`. Its answer's `said` is one of:
+  - `rig-1's pods restart on the new images.`;
+  - `rig-1 runs the new images when it starts again.` (a stopped rig);
+  - `rig-1's pods restart with control's new address.`, when only control's address for rigs changed;
+  - `rig-1 gets control's new address when it starts again.` (a stopped rig);
+  - `rig-1 already runs control's images.`: the images and control's address are the same as the rig's.
 
-`rig_setup` (field `rig`) shows a rig that control set up: the cluster, the namespace, the placement, the rig's status there, its images, and each step, oldest first. A step is `{at, step, ok, detail}`, with the step's id rather than the page's words, such as `applied`, `first_report`, `images`, `images_running` or `report_after_images`. A failed step has `"ok": false` and the reason in `detail`. Use it to follow a new rig or an update.
+  A failed update can be tried again with it. An update while the rig is `updating` or `starting` is refused, and so is one without control's address for rigs, with the same reasons as on the page.
+
+`rig_setup` (field `rig`) shows a rig that control set up: the cluster, the namespace, the placement, the rig's status there, its images, and each step, oldest first. A step is `{at, step, ok, detail}`, with the step's id rather than the page's words, such as `applied`, `first_report`, `images`, `images_running` or `report_after_images`. A failed step has `"ok": false` and the reason in `detail`. Use it to follow a new rig, a start or an update. It is for those who run control: the agent token doesn't have it, and a reader's token gets each step with `detail` set to `null`.
 
 Once the rig shows on **Rigs**, `set_rig_model` gives its agents a model from **Providers**, as **Edit rig** does. Adding the cluster itself is done on the dashboard.

@@ -101,7 +101,7 @@ The harness checks every command in this order. A command that fails a check mar
 | It is not being applied right now | None: the harness answers `in_progress`, and the supervisor asks again later | Stays `pending` |
 | An owner-only kind was issued by the owner (`issued_by` is `owner` or starts with `owner:`) | `<kind> is the owner's to issue, not <issuer>'s` | `failed` |
 
-The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_review`, `conclude`, `wipe_state`, `message_agent`, `unkeep_message` and `rig_settings`. The owner-only check is the first step of applying a command, so a command it refuses is recorded like any applied command, as not accepted. Every applied command is recorded in the ledger with the actor `control:<issued_by>`.
+The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_review`, `conclude`, `wipe_state`, `message_agent`, `unkeep_message`, `rig_settings`, and the six kinds that change a run's experiment queue and its rules: `queue_add`, `queue_move`, `queue_edit`, `queue_drop`, `queue_accept` and `drop_directive`. The owner-only check is the first step of applying a command, so a command it refuses is recorded like any applied command, as not accepted. Every applied command is recorded in the ledger with the actor `control:<issued_by>`.
 
 ## Who may issue each kind
 
@@ -109,13 +109,19 @@ The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_revie
 | --- | --- | --- | --- | --- | --- | --- |
 | `assign_campaign` | **New campaign**; **Start the run** in the **Start a run** panel of a campaign's page | Yes; `thermite assign` | Yes | Yes | Yes | |
 | `rig_check` | **Run it** in a rig's **Checks**; **Check** on **Settings** | Yes | Yes | Yes | Yes | |
-| `pause_run` | **Pause** in a run's header, in the header of the run's **Live**, and on the run's card under **At work now** | Yes | Yes | Yes | Yes | |
+| `pause_run` | **Pause**, then **Pause the run** in its menu, in a run's header, in the header of the run's **Live**, and on the run's card under **At work now** | Yes | Yes | Yes | Yes | |
 | `resume_run` | **Resume** in a run's header, in the header of the run's **Live**, and on a paused run's row under **Earlier runs** | Yes | Yes | Yes | Yes | |
-| `redirect` | **Add the rule** on a run's **Planner** tab (one rule, added to the earlier ones) | Yes | Yes | Yes | Yes | |
+| `redirect` | **Add the rule** on a run's **Planner** tab (one rule, in a direction's name or your own words, added to the earlier ones) | Yes | Yes | Yes | Yes | |
 | `reset_workers` | **Restart the lanes**, under **⋯** in a run's header | Yes | Yes | Yes | Yes | |
 | `export_now` | **Export now** on a rig's page | Yes | Yes | Yes | Yes | |
-| `message_agent` | **Send** in the message box of a run's **Live**; **Send to the planner** on a run's **Planner** tab; the message box of a rig's own live view (**Live** on the rig's page) | Yes | Yes | Yes | No | Yes |
+| `message_agent` | **Send** in the message box of a run's **Live**; **Send to the planner** on a run's **Planner** tab | Yes | Yes | Yes | No | Yes |
 | `unkeep_message` | **Remove** in the **📌 &lt;n&gt; kept** list of a run's **Live** | Yes | Yes | Yes | No | Yes |
+| `queue_add` | **Add** under **Up next** on a run's **Experiments** tab | Yes | Yes | Yes | No | Yes |
+| `queue_move` | **↑ Top**, or dragging an experiment, under **Up next** on a run's **Experiments** tab | Yes | Yes | Yes | No | Yes |
+| `queue_edit` | None | Yes | Yes | Yes | No | Yes |
+| `queue_drop` | **Drop**, then **Drop it**, on an experiment under **Up next**; **Drop** on a lane's idea under **Ideas from the lanes** | Yes | Yes | Yes | No | Yes |
+| `queue_accept` | **Queue it** on a lane's idea under **Ideas from the lanes** | Yes | Yes | Yes | No | Yes |
+| `drop_directive` | **Remove** on a rule on a run's **Planner** tab | Yes | Yes | Yes | No | Yes |
 | `propagate` | **Send champion #&lt;n&gt;** on a run's **Planner** tab, under **Other rigs** | `POST /v1/propagate`, or `POST /v1/commands` | `propagate_champion` | `propagate_champion` | `propagate_champion` | |
 | `approve_promotion` | **Needs you**: **Make it the champion**, **Overrule the auditor** | Yes | Yes | No | No | Yes |
 | `decline_promotion` | **Needs you**: **Reject it** | Yes | Yes | No | No | Yes |
@@ -124,9 +130,9 @@ The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_revie
 | `rig_settings` | **Save changes** on **Edit rig**; **GPUs for the judge** on **New campaign** and in the **Start a run** panel | Yes | No | No | No | Yes |
 | `wipe_state` | Only as a step of a full reset | No: `wipe_state is issued only by a full reset` | No | No | No | Yes |
 
-Control's own lists decide what each MCP role may issue; the harness's owner-only check is a second gate behind them. The operator acts for the owner, so its `owner:operator` passes that gate for `message_agent` and `unkeep_message`. During the owner's full reset of a rig, MCP's `issue_command` refuses an agent's token for that rig: `<rig> is being reset by the owner`. [Tokens and roles](tokens.md) describes each token.
+Control's own lists decide what each MCP role may issue; the harness's owner-only check is a second gate behind them. The operator acts for the owner, so its `owner:operator` passes that gate for `message_agent`, `unkeep_message` and the six queue kinds. During the owner's full reset of a rig, MCP's `issue_command` refuses an agent's token for that rig: `<rig> is being reset by the owner`. [Tokens and roles](tokens.md) describes each token.
 
-A run's **Experiments** tab, which will hold the run's experiment queue, and **Remove** on a rule on its **Planner** tab send commands that are not kinds yet: control answers `unknown command` until the rig's side of the queue lands ([goal 064](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/064-experiment-queue.goal)).
+The dashboard has no button for `queue_edit`: an experiment's words change only over the REST API, the command line or MCP. [Choose what runs next](../how-to/campaigns/choose-what-runs-next.md) walks through the **Experiments** and **Planner** tabs.
 
 ## Every kind
 
@@ -148,9 +154,21 @@ Starts a run of a campaign on the rig.
 | `imports` | list of [imports](#imports) | `[]` | What the rig must take in first: the project, the kit, models |
 | `agents` | boolean | worker agents run | `false`: a judge-only run |
 | `promotion` | `auto` or `owner_approval` | the rig's own setting | The run's promotion rule |
-| `queue` | up to 500 experiments, each `{title, details?, family?, why?, by, state, from: {run, id}}`, `state` being `queued` or `proposed` | none | Untried experiments copied from another run, in order, for the new run's queue. Rigs accept the field and do nothing with it until the rig's side of the experiment queue lands ([goal 064](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/064-experiment-queue.goal)) |
+| `queue` | up to 500 experiments, each as below | none | Experiments to start the new run's [experiment queue](#queue_add) with, in order: usually another run's untried ones |
 
-**Start a run** on a campaign's page also works for a campaign that was assigned over the REST API, MCP or the command line, with no version saved on control. Control then signs again the campaign's newest `assign_campaign` whose status is `pending` or `delivered`, as a new run: the same `contract`, `seed`, `imports` and `direction`, with a new `run`, and `agents` and `promotion` from the panel.
+Each experiment in `queue` has these fields:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `title` | text, 1 to 200 characters | What to try |
+| `details` | text up to 4000 characters | Optional. More about it |
+| `family` | text, 1 to 80 characters | Optional. Its direction, in words or as a direction family's name |
+| `why` | text up to 2000 characters | Optional. Why it is worth trying |
+| `by` | text, 1 to 80 characters | Who added it in the first place, such as `owner`, `planner`, `teacher` or `lane-2`. The new run keeps it as the experiment's author |
+| `state` | `queued` or `proposed` | `queued`: up next. `proposed`: a lane's idea, which stays an idea in the new run |
+| `from` | `{run, id}` | The run and the experiment it was copied from |
+
+**Start a run** on a campaign's page also works for a campaign that was assigned over the REST API, MCP or the command line, with no version saved on control. Control then signs again the campaign's newest `assign_campaign` whose status is `pending` or `delivered`, as a new run: the same `contract`, `seed`, `imports` and `direction`, with a new `run`, and `agents` and `promotion` from the panel. With **Agents** on and **Copy the untried experiments of** ticked, the panel also sends `queue`: the chosen run's experiments still up next, in their order, then its lanes' ideas. `thermite assign` has no option for `queue`.
 
 The harness creates the run only after every check passes. In order, it refuses:
 
@@ -159,6 +177,7 @@ The harness creates the run only after every check passes. In order, it refuses:
 | `invalid contract: …` | The contract does not pass its schema |
 | `contract hash does not match contract_sha` | The hash differs |
 | `run <run> already exists` | The run id is taken on this rig |
+| `queue experiment <n>: <the first problem>` | An experiment in `queue` whose `title` or `family` is only spaces. `<n>` counts from 1 |
 | `contract <campaign> v<version> exists with other content` | The rig has this contract version with different content |
 | `model <name> is not listed in the contract` | A `model` import the contract does not list |
 | `a <mode> campaign needs a seed commit` | No `seed` for a hill climb or goal campaign |
@@ -169,7 +188,7 @@ The harness creates the run only after every check passes. In order, it refuses:
 | `the kit does not fit the contract: …` | The kit lacks what the contract needs |
 | `seed commit <commit> is not in <repo>; import its bundle first` | The seed commit is not on the rig |
 
-Then it creates the run as running, and pauses the rig's other running runs with the reason `replaced by <run>`. Result: `{"run", "contract_sha", "imported", "agents"}`.
+Then it creates the run as running, and pauses the rig's other running runs with the reason `replaced by <run>`. In the same step it adds each experiment in `queue` to the end of the new run's queue, in order. Each keeps its author, its reason, its state and where it came from, with one `experiment_added` event (see [`queue_add`](#queue_add)). Result: `{"run", "contract_sha", "imported", "agents"}`, plus `"queue": <n>` when `queue` held any experiments.
 
 ### `rig_check`
 
@@ -187,9 +206,9 @@ Result: `{"check", "id", "started": true}`. The finding arrives later as a `rig_
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `run` | lowercase id | The run |
-| `reason` | text, at least 1 character | Why. The dashboard sends `paused from the dashboard` |
+| `reason` | text, at least 1 character | Why. The dashboard sends what you write in **why (optional)** in the **Pause** menu, at most 500 characters, or `paused from the dashboard` when you leave it empty |
 
-The run becomes `paused` with the reason. Result: `{"run", "status": "paused"}`.
+The run becomes `paused` with the reason. Its lanes' running trials end; the experiment each was on goes back to the top of the run's queue, as for [`reset_workers`](#reset_workers). Result: `{"run", "status": "paused"}`.
 
 ### `resume_run`
 
@@ -213,15 +232,26 @@ Each directive has only these fields:
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `kind` | `avoid`, `try`, `mandate`, `priority`, `lane_count` or `note` | `avoid`, `try` and `mandate` (**Always** on the dashboard) name a direction family; `priority` ranks one; `lane_count` sets how many lanes work, up to the contract's count; `note` is text for the planner only |
+| `kind` | `avoid`, `try`, `mandate`, `priority`, `lane_count` or `note` | `avoid`, `try` and `mandate` (**Always** on the dashboard) name a direction, by its family or in words; `priority` ranks a family; `lane_count` sets how many lanes work, up to the contract's count; `note` is text for the planner only |
 | `family` | 2 to 41 characters of `a`–`z`, `0`–`9` and `-`, starting with a letter or digit | The direction family it refers to, when the kind needs one |
-| `value` | text up to 1000 characters, or a number | The value, when the kind needs one |
+| `match` | text, 1 to 200 characters, trimmed | In place of `family`, for `avoid`, `try` and `mandate` only: the direction in your own words, such as `anything that uses shared memory`. The planner applies it to every experiment it fits |
+| `value` | text up to 1000 characters, or a number | The value, when the kind needs one. A research run's `try` or `mandate` may give a question's number here instead of a `family` |
 | `rationale` | text, 1 to 2000 characters | Why. The planner sees it; workers never do |
 | `citations` | up to 20 texts of 1 to 500 characters | Sources. Default `[]` |
 
-A set that both avoids a family and tries or mandates it is refused: `the set both avoids and asks for <families>`. Result: `{"run", "directives": [<ids>]}`.
+Control refuses a directive that breaks these rules before signing, with `bad redirect payload: directives.<i>.<field>: <message>`, `<i>` counting from 0:
 
-The dashboard calls directives **rules**. **Add the rule** on a run's **Planner** tab sends one directive, `avoid`, `try` or `mandate`, with `replace: false`: it adds to the rules given from the dashboard before, and replaces none. Its **Direction** must be a direction family's name, which it sends as `family`. Other words are refused before signing, with `refused: bad redirect payload: directives.0: Unrecognized key: "match"`: rules in your own words wait for [goal 064](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/064-experiment-queue.goal).
+| Field and message | When |
+| --- | --- |
+| `match: name either a family or match words, not both` | Both `family` and `match` |
+| `match: match words are for avoid, try and mandate rules` | `match` on another kind |
+| `family: an avoid, try or mandate rule names a family or match words` | An `avoid`, `try` or `mandate` with neither (and, for `try` and `mandate`, no `value`) |
+
+A set that both avoids a direction and tries or mandates it is refused: `the set both avoids and asks for <families or words>`. Match words count as the same when they are equal ignoring case. Result: `{"run", "directives": [<ids>]}`.
+
+Only the planner's model applies match words. The fixed rules that give out work without it (no model, a model answer that code refused, the planner switched off, and every research run) keep only the directives that name a `family`.
+
+The dashboard calls directives **rules**. **Add the rule** on a run's **Planner** tab sends one directive, `avoid`, `try` or `mandate`, with `replace: false`: it adds to the rules given from the dashboard before, and replaces none. Its **Direction** goes as `family` when it is shaped like a family's name (2 to 41 lowercase letters, digits and dashes, such as `loop-tiling`), and as `match` otherwise. [`drop_directive`](#drop_directive) removes one rule.
 
 ### `reset_workers`
 
@@ -230,7 +260,7 @@ The dashboard calls directives **rules**. **Add the rule** on a run's **Planner*
 | `run` | lowercase id | The run |
 | `reseed_commit` | commit | Accepted by the schema, but the harness refuses it: `re-seeding lanes is not available in this version; reset without it` |
 
-The run's running trials end, along with the current [epoch](glossary.md) (a round, on the dashboard), and every lane starts again from the champion. Result: `{"run", "reset": true}`.
+The run's running trials end, along with the current [epoch](glossary.md) (a round, on the dashboard), and every lane starts again from the champion. The experiment each ended trial was on ends with the result `interrupted`, and a copy of it goes to the top of the run's queue, with the same author and the reason `tried again: its trial on <lane> was interrupted (<old id>)`, followed by the old reason. Result: `{"run", "reset": true}`.
 
 ### `message_agent`
 
@@ -245,7 +275,7 @@ The owner's message to the run's agents. The judge is code and takes no messages
 
 | `to` | Who reads it |
 | --- | --- |
-| `all` | Everyone working: every lane, and the planner of a hill-climb or goal run whose planner is on |
+| `all` | Everyone working: each lane at work, and the planner of a hill-climb or goal run whose planner is on. The lanes at work are the contract's `lanes.count`, or fewer when the newest `lane_count` rule in force says so |
 | `lane-1` to `lane-16` | That [lane](glossary.md) |
 | `trial:t-` and 8 to 32 hexadecimal characters | That trial. If it ends before it reads the message, its lane's next trial reads it, with a note that it was sent to an earlier trial |
 | `planner` | The planner. A research run has none |
@@ -274,6 +304,7 @@ Control refuses `keep` with any other `to` before signing: `bad message_agent pa
 | Message | When |
 | --- | --- |
 | `run <run> is closed: nothing will read this message` | The run is closed |
+| `run <run> has no agents (the judge alone tries the kit): nothing would read this message` | `all`, `planner`, a lane or a trial, in a run started without agents |
 | `a research run plans its rounds with a fixed method; it has no planner to message` | `planner`, in a research run |
 | `the planner is off on this rig (Edit rig), so nothing would read this message` | `planner`, with the planner switched off on **Edit rig** |
 | `the teacher pair is off on this rig (Edit rig), so nothing would read this message` | `teachers`, with the teacher pair switched off |
@@ -282,12 +313,14 @@ Control refuses `keep` with any other `to` before signing: `bad message_agent pa
 | `the review panel is off on this rig (Edit rig), so nothing would read this message` | `panel`, with the review panel switched off |
 | `this run has no goal the review panel reviews, so the panel would never read this message` | `panel`, in a run with no goal checked by review |
 | `none of the advisors would read this message: <each reason, joined by "; ">` | `advisors`, when no role would read it |
-| `run <run> has <n> lanes`, or `… has 1 lane` | A lane beyond the contract's number of lanes |
+| `run <run> has <n> lanes`, or `… has 1 lane` | A lane beyond the contract's number of lanes. A lane within it, but above the number a `lane_count` rule leaves at work, is accepted |
 | `no trial t-… in run <run>` | A trial the run does not have |
 
-The harness writes the live line `Owner to <to> (#<id>): <text>`, with `, kept in force` after the id for a kept message; a run's **Live** shows it as **To** the recipient and the text. Result: `{"message": <id>, "to", "keep", "readers", "note"}`. `readers` lists who will read it: lanes, `planner`, `teachers`, `auditor` or `panel`. `note` is there only for a trial that has ended: `trial t-… has ended; lane-<n>'s next trial reads this`.
+The run's **Live** shows the rig's refusal of the newest message to the run, from wherever it was sent, as **Not sent.** `The rig refused your last message: <reason>` above its message box, the next time the page loads.
 
-The run's ledger records the message with its text (`agent_message`), each reader's first read (`agent_message_read`) and each advisor's answer (`advisor_answer`). The run's **Live** shows all three.
+The harness writes the live line `Owner to <to> (#<id>): <text>`, with `, kept in force` after the id for a kept message. A run's **Live** shows it as **To** the recipient and the text once the run's `agent_message` event, below, has reached control with the rig's report, and takes the words from that event; until then it shows as a plain line. Result: `{"message": <id>, "to", "keep", "readers", "note"}`. `readers` lists who will read it: lanes, `planner`, `teachers`, `auditor` or `panel`. `note` is there only for a trial that has ended: `trial t-… has ended; lane-<n>'s next trial reads this`.
+
+The run's ledger records the message with its text (`agent_message`), each reader's first read (`agent_message_read`) and each advisor's answer (`advisor_answer`). The run's **Live** shows the message, each read and each answer from the harness's signed live lines that match the run's `agent_message` events.
 
 ### `unkeep_message`
 
@@ -299,6 +332,89 @@ Removes a message from force: new trials' briefs no longer carry it, and no read
 | `message` | positive whole number | The message's id: `message` in the result of its `message_agent` |
 
 The harness refuses: `no message <id> in run <run>`, `message <id> is not kept in force`, and `message <id> was already removed from force at <time>`. The live view shows `the owner's message #<id> is no longer in force`, and the ledger records `agent_message_unkept`. Result: `{"message": <id>, "unkept": true}`.
+
+### `queue_add`
+
+Adds an experiment to the run's **experiment queue**. Each run has its own queue: the [experiments](glossary.md) still to try, in order (**Up next**), the lanes' ideas that wait for a decision, and every experiment tried, with what became of it. At the start of each round the planner gives the experiments at the top to free lanes, never the same one to two lanes. [Choose what runs next](../how-to/campaigns/choose-what-runs-next.md) shows the queue on the dashboard.
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `run` | lowercase id | required | The run |
+| `title` | text, 1 to 200 characters, trimmed | required | What to try |
+| `details` | text up to 4000 characters | none | More about it |
+| `family` | text, 1 to 80 characters, trimmed | none | Its direction: in your own words, or a direction family's name |
+| `why` | text up to 2000 characters | none | Why it is worth trying. The planner reads it, and so does the worker whose lane gets the experiment |
+| `position` | `"top"`, `"end"`, or a whole number from 0 to 100000 | `"end"` | Where it goes among the queued experiments |
+
+The dashboard's **Add** puts the experiment at the top, unless **Where** says **at the end**. Over the REST API, the command line and MCP it goes to the end unless `position` says otherwise.
+
+These rules hold for the five queue kinds:
+
+- An experiment's id is `x-` and 12 hexadecimal characters, such as `x-3f6c2a8e5b1d`. Control refuses another before signing: `bad <kind> payload: id: an experiment id (x-...)`.
+- An experiment's place is its index among the queued experiments, 0 first. A number puts it at that index among the others; a number past the last puts it at the end.
+- The harness refuses a run it doesn't have (`no run <run>`), a closed run (`run <run> is closed: its queue no longer changes`), and an experiment the run doesn't have (`no experiment <id> in run <run>`).
+- The harness writes the experiment and one event in one step. The event's actor is `control:<issued_by>`, such as `control:owner:ui`, and its `by` is `owner`, whoever issued the command.
+
+The new experiment is up next, with `owner` as its author. Result: `{"experiment": "x-…", "state": "queued", "position": <n>}`, `position` being its place now. Event: `experiment_added`, `{id, title, details?, family?, why?, by, state, position}`.
+
+### `queue_move`
+
+Moves an experiment that is up next to another place.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `run` | lowercase id | The run |
+| `id` | experiment id | The experiment |
+| `position` | `"top"`, `"end"`, or a whole number from 0 to 100000 | Its new place |
+
+**↑ Top** on the dashboard sends `"top"`; dragging an experiment sends its new index. The harness refuses an experiment that is not up next: `experiment <id> is <state>: only queued experiments move`. Result as for `queue_add`. Event: `experiment_moved`, `{id, by, position}`.
+
+### `queue_edit`
+
+Changes the words of an experiment that still waits: one up next, or a lane's idea.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `run` | lowercase id | The run |
+| `id` | experiment id | The experiment |
+| `title`, `details`, `family`, `why` | as for `queue_add` | The new words. Give at least one; the others stay as they are |
+
+Control refuses an edit with none before signing: `bad queue_edit payload: payload: change at least one of title, details, family and why`. The harness refuses an experiment that no longer waits: `experiment <id> is <state>: only proposed or queued experiments can be edited`. Result as for `queue_add`; `position` is `null` for a lane's idea. Event: `experiment_edited`, `{id, by}` and the fields that changed.
+
+### `queue_drop`
+
+Drops an experiment that still waits, so no lane tries it. It stays in the run's record as dropped, with who dropped it and why.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `run` | lowercase id | The run |
+| `id` | experiment id | The experiment |
+| `why` | text, 1 to 2000 characters, trimmed | Why. Required |
+
+**Drop it** on the dashboard sends what you write in its **why** field. **Drop** on a lane's idea sends `the owner dropped this idea`. The harness refuses an experiment that no longer waits: `experiment <id> is <state>: only proposed or queued experiments can be dropped`. Result: `{"experiment": "x-…", "state": "dropped", "position": null}`. Event: `experiment_dropped`, `{id, by, why}`.
+
+### `queue_accept`
+
+Queues a lane's idea: an experiment a worker proposed (with `thermite-trial idea` or Pi's `idea` tool) goes up next. The planner also queues or drops ideas as it plans.
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `run` | lowercase id | required | The run |
+| `id` | experiment id | required | The idea |
+| `position` | `"top"`, `"end"`, or a whole number from 0 to 100000 | the end | Where it goes |
+
+**Queue it** on the dashboard sends no position, so the idea goes to the end. The harness refuses anything but an idea: `experiment <id> is <state>, not a proposed idea`. Result as for `queue_add`. Event: `experiment_accepted`, `{id, by, position?}`.
+
+### `drop_directive`
+
+Removes one [directive](#redirect), a rule for the plan, whoever set it: the owner, the teacher pair or the planner.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `run` | lowercase id | The run |
+| `id` | positive whole number | The directive's id: one of `directives` in its `redirect`'s result, or `id` in the run's `rules` ([`run_queue`](mcp-tools.md#run_queue)) |
+
+The harness refuses: `no run <run>`, and `no rule <id> in force in run <run>`. It checks that the run exists, not that it is open. The directive stays in the record with the status `dropped`, and the ledger records `directive_dropped`, `{id}`. The teacher pair's next set of directives replaces its earlier set, so a rule of theirs comes back if they give it again. Result: `{"run", "dropped": <id>}`.
 
 ### `propagate`
 
@@ -364,7 +480,7 @@ The rig's own settings, as on its **Edit rig** page. Only the fields that change
 | `judge` | boolean | The judge builds and measures. Off: changes wait in its queue |
 | `workers` | boolean | Workers start trials. Off: no new trial starts |
 | `lanes` | 1 to 16 | Trials at the same time |
-| `planner` | boolean | The planner gives each worker its direction. Off: a fixed plan made without a model |
+| `planner` | boolean | The planner's model gives each lane its experiment at the start of each round. Off: lanes take the queued experiments in order, by fixed rules, with no model |
 | `auditor` | boolean | The supervisor's auditor runs, where configured |
 | `teachers` | boolean | The supervisor's teacher pair and combiner run, where configured |
 | `review` | boolean | The supervisor's review panel runs, where configured |

@@ -20,7 +20,7 @@ Before you report a problem, try [Troubleshoot](../how-to/operate/troubleshoot.m
 
 ## What to put in a report
 
-1. **What you did, what you expected, and what happened.** Copy messages exactly, such as the text of a card that starts with **Not done.** or **Not started.** on the dashboard, or a failed command's outcome on the **Commands** page.
+1. **What you did, what you expected, and what happened.** Copy messages exactly, such as the text of a card that starts with **Not done.** or **Not started.** on the dashboard, a line that starts with **Not sent.** in a run's **Live** view, or a failed command's outcome on the **Commands** page.
 2. **Which Thermite you run.** Thermite has no version command yet, so give the commit you built from:
 
    ```sh

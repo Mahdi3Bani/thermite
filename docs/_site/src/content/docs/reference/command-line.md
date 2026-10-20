@@ -234,11 +234,19 @@ It prints `RIG has a new token, in FILE; its old token no longer works`. An exis
 | `--control URL` | Yes | | Control's address |
 | `--token-file F` | Yes | | A file with the owner's token |
 | `--rig U` | Yes | | The rig |
-| `--kind K` | Yes | | The command's kind, such as `pause_run` or `rig_check` |
+| `--kind K` | Yes | | The command's kind, such as `pause_run`, `rig_check` or `queue_add` |
 | `--payload JSON\|@file` | Yes | | The payload as JSON, or `@` and a file that holds it |
 | `--ttl MIN` | No | `60` | Minutes before it expires: 1 to 10080 |
 
-Control refuses `wipe_state` with `400 {"error":"wipe_state is issued only by a full reset"}`, and a payload that does not fit its kind with `500 {"error":"bad <kind> payload: …"}`. `GET /v1/commands/<id>` and the dashboard's **Commands** page show the command's status.
+It takes every kind but `wipe_state`, the owner's commands for a run's experiment queue among them. For example, this adds an experiment at the top of `run-1`'s queue (without `position`, it goes to the end):
+
+```sh
+npx thermite command --control https://control.example.com --token-file ~/thermite-owner-token \
+  --rig rig-1 --kind queue_add \
+  --payload '{"run":"run-1","title":"unroll the inner loop by 4","why":"the profile shows loop overhead","position":"top"}'
+```
+
+Control refuses `wipe_state` with `400 {"error":"wipe_state is issued only by a full reset"}`, and a payload that does not fit its kind with `500 {"error":"bad <kind> payload: …"}`. `GET /v1/commands/<id>` and the dashboard's **Commands** page show the command's status. A command the rig refuses, such as a `queue_move` for an experiment that is no longer queued, shows there as `failed`, with the reason.
 
 ### `submit`
 
@@ -275,13 +283,14 @@ It reads where the broker's socket and the rig's directories are from `THERMITE_
 
 ## `thermite-trial`
 
-`thermite-trial` is in the harness image only (`/usr/local/bin/thermite-trial`, which runs `node /opt/thermite/dist/harness/agents/trial-cli.js`). A worker agent that works through its own shell, under OpenCode or Claude Code, uses it to submit its change, run a command on the device and read an attempt. A research worker under OpenCode uses its `research` commands. It runs as the [lane](glossary.md)'s user, in the trial's workspace (a research trial's: its lane's working area), with the trial's own token, which stops working when the trial ends.
+`thermite-trial` is in the harness image only (`/usr/local/bin/thermite-trial`, which runs `node /opt/thermite/dist/harness/agents/trial-cli.js`). A worker agent that works through its own shell, under OpenCode or Claude Code, uses it to submit its change, run a command on the device, read an attempt and propose an idea for the run's [experiment queue](signed-commands.md#queue_add). A research worker under OpenCode uses its `research` commands, and may propose ideas too. It runs as the [lane](glossary.md)'s user, in the trial's workspace (a research trial's: its lane's working area), with the trial's own token, which stops working when the trial ends.
 
 ```text
 usage:
   thermite-trial submit --hypothesis TEXT [--claim TEXT] [--flaw TEXT]...
   thermite-trial dev-run [--timeout SECONDS] -- COMMAND...
   thermite-trial status ATTEMPT
+  thermite-trial idea TITLE [--why TEXT] [--family TEXT] [--details TEXT]
   thermite-trial research TOOL ... (thermite-trial research help lists them)
 ```
 
@@ -290,6 +299,7 @@ usage:
 | `submit --hypothesis TEXT [--claim TEXT] [--flaw TEXT]...` | Stages and diffs only the trial's editable paths, then submits the change. The hypothesis and the claim are cut to 2000 characters, each flaw to 1000. Submitting ends the trial | `submitted <attempt>: <lifecycle>. The trial ends with this submission.`, with `; refused: <violations>` before the last sentence when the change broke a rule |
 | `dev-run [--timeout SECONDS] -- COMMAND...` | Runs the command on the measurement device, as a [development run](glossary.md), in the trial's workspace | The run's result as indented JSON |
 | `status ATTEMPT` | Shows one of this lane's attempts | The attempt as indented JSON |
+| `idea TITLE [--why TEXT] [--family TEXT] [--details TEXT]` | Proposes another experiment for the run's queue, as the lane's idea: something worth trying that is not the trial's own work. The words after `idea` are its title, cut to 200 characters; `--why` is cut to 2000, `--family` (its direction) to 80 and `--details` to 4000. A repeated option keeps its last value. The idea waits until the planner or the owner queues it or drops it, and the trial goes on. No limit is set on how many | `proposed <experiment id>: it waits for the planner, who queues it or drops it. Your trial goes on.` |
 | `research TOOL [WORDS...] [--FLAG VALUE]... [-]` | Runs one of a research trial's tools (below) through the harness's research service. The words fill the tool's main field and the flags its others; `-` reads a JSON object of fields from standard input | The tool's answer: text as it is, anything else as JSON, cut at 14,000 characters |
 | `research help` | Lists the research tools | `research tools:` and each tool's use |
 
@@ -333,6 +343,8 @@ Everything it prints goes to standard output.
 | `error: there are no changes inside the editable paths (<paths>)` | `2` |
 | `error: dev-run needs a command after --` | `2` |
 | `error: status needs an attempt id` | `2` |
+| `error: idea needs a title: what to try, in a few words` and the usage text | `2` |
+| `error: idea has no --<option>` and the usage text | `2` |
 | `error: no research tool "<name>"` and the list of tools | `2` |
 | `error: <tool> takes no words; use:`, `error: <tool> has no --<flag>; use:` or `error: "-" reads a JSON object from stdin…`, with the tool's use | `2` |
 | `error: --<flag> needs a number` | `2` |

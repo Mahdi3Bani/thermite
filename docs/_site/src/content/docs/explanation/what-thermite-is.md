@@ -21,11 +21,11 @@ Take an example. You have a matrix-multiply routine and you want it faster, with
 
 When you are happy with the result, you download the champion as a patch for your project.
 
-In the picture below, a **planner** splits the search into **lanes** and gives each lane a direction. A **trial** is one session of one agent, called a **worker**, in one lane. The **ledger** is the record of every result.
+In the picture below, the search is split into **lanes**, and a **planner** gives each lane its next **experiment** from the run's queue of things to try. A **trial** is one session of one agent, called a **worker**, in one lane. The **ledger** is the record of every result, and holds the queue.
 
 ```mermaid
 flowchart LR
-  Planner["Planner<br/>(gives each lane a direction)"] --> Workers["Workers<br/>(a fresh agent for each trial)"]
+  Planner["Planner<br/>(gives each lane an experiment)"] --> Workers["Workers<br/>(a fresh agent for each trial)"]
   Workers -- a change and a claim --> Judge["Judge<br/>(code the agents cannot change)"]
   Judge -- confirmed win --> Champion[(Champion)]
   Judge -- every result, with its reasons --> Ledger[(Ledger)]
@@ -50,10 +50,10 @@ You need Linux or macOS and Docker or Podman. A GPU is optional, and so is a pai
 - **Agents propose; code judges.** An agent never grades its own work. It submits a change and a claim, and a judge that it can neither read nor change measures the change and decides what counts. "The agent says it is faster" and "it is faster" stay separate. → [Why agents never judge](why-agents-never-judge.md)
 - **It runs until the job is done.** There are no default limits on turns, attempts, failures or time. A campaign runs until its goals are met, its research window ends or you stop it. Only the limits you set apply. → [Why Thermite runs until the job is done](runs-until-done.md)
 - **The harness owns the memory.** The **harness** is the rig's container where the judge and the agents work. Every agent call starts fresh, from a brief that the rig builds out of its record of what was tried, measured and decided. A crashed or confused agent session loses nothing, because no state lives in it. → [Agents, lanes and the planner](agents-lanes-planner.md)
-- **Many isolated workers, one planner.** The search is split into **lanes**. Each lane's worker sees only its own copy of the code and its own lane's results. A planner gives each lane a direction and tries to spread the lanes over different approaches, so the search stays wide instead of settling early on one idea. → [Agents, lanes and the planner](agents-lanes-planner.md)
+- **Many isolated workers, one planner, one queue.** The search is split into **lanes**. Each lane's worker sees only its own copy of the code and its own lane's results. Each run keeps one queue of experiments to try, which anyone can see: the planner, the advisors and you add to it, and the workers propose ideas for it. The planner hands the lanes their next experiments, never the same one to two lanes, so the search stays wide instead of settling early on one idea. → [Agents, lanes and the planner](agents-lanes-planner.md)
 - **Keep the best, and keep everything else.** Each campaign builds on its best confirmed result. Every attempt that loses is kept as well, with its code and the reason it lost, because an idea can lose on the main number and still be worth reading later.
 - **Three kinds of research.** Push a number up without breaking anything else; work until a list of goals is met, or until you accept the evidence that they cannot be; or research a question for a set time and get a report whose findings rest on quotes that code has checked. → [Campaign modes](campaign-modes.md)
-- **One place to watch and steer.** One dashboard, with a REST API and MCP, shows every campaign on every rig. People and their agents can pause, redirect, message and reassign the work. → [How the parts fit together](how-it-fits-together.md)
+- **One place to watch and steer.** One dashboard, with a REST API and MCP, shows every campaign on every rig. People and their agents can pause, redirect, message and reassign the work, and choose what each run tries next. → [How the parts fit together](how-it-fits-together.md)
 
 ## What Thermite does not do
 

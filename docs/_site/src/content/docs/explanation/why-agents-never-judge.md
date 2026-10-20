@@ -24,7 +24,7 @@ So in Thermite, agents only propose. A **judge**, which is ordinary code that th
 | Use the measuring device for their own test runs while the judge is not using it, or a device of their own on a rig that has one | Run anything on the judge's device while it is timing |
 | Submit a change, with what they expect from it and any flaws they know of | Submit a number that counts |
 | See the verdict and the judge's reasons for their own lane's attempts | See hidden test results, other agents' workspaces or any credentials |
-| Follow the directions the planner gives them | Decide that a campaign is finished |
+| Work on the experiment the planner gives them, and propose ideas for the run's queue | Decide that a campaign is finished |
 
 The [isolation](isolation.md) page explains how a rig enforces this: each agent works as its own operating-system user, with no way into the judge's files.
 
@@ -84,7 +84,7 @@ A campaign can run on several [rigs](../reference/glossary.md) at once. Two devi
 
 ## Steering without judging
 
-People and advisors can steer the search. The teacher pair, one of the advisors, points lanes towards or away from directions and changes priorities, through directives to the planner. The owner can do the same, and can also pause a run and message its agents and advisors. Only the owner can send a message (an operator's token sends it in the owner's name). The advisors only answer the owner's messages: they never message the agents. Every instruction is recorded with who gave it and why. None of them can set a verdict, change a running contract or write a measurement.
+People and advisors can steer the search. The teacher pair, one of the advisors, points lanes towards or away from directions and changes priorities, through directives to the planner, and adds experiments to the run's queue. The owner can do the same, and can also pause a run and message its agents and advisors. Only the owner can send a message (an operator's token sends it in the owner's name). The advisors only answer the owner's messages: they never message the agents. An experiment that an advisor adds reaches a lane only as work to try, and the judge measures what comes of it like any other change. Every instruction is recorded with who gave it and why. None of them can set a verdict, change a running contract or write a measurement.
 
 The judge takes no messages at all. It is code, not an agent, so there is nothing in it to persuade, and no message can change a measurement.
 

@@ -45,11 +45,12 @@ Control checks a token against the owner's first, then the operator's, the agent
 
 | Tool | Owner | Operator | Agent | Reader |
 | --- | --- | --- | --- | --- |
-| `list_rigs`, `get_run`, `run_queue`, `rig_setup`, `recent_events`, `leaderboard`, `rig_reports`, `list_commands`, `command_status` | Yes | Yes | Yes | Yes |
+| `list_rigs`, `get_run`, `run_queue`, `recent_events`, `leaderboard`, `rig_reports`, `list_commands`, `command_status` | Yes | Yes | Yes | Yes |
 | `issue_command` | Yes, the owner's kinds | Yes, the operator's kinds | Yes, the agent's kinds | No |
 | `propagate_champion` | Yes | Yes | Yes | No |
+| `rig_setup` | Yes | Yes | No | Yes, without each step's `detail` |
 | `control_log`, `providers`, `runpod_tests` | Yes | Yes | No | Yes |
-| `add_cluster_rig`, `set_rig_model`, `update_rig_images`, `set_cluster_slots`, `runpod_test_start`, `runpod_test_end` | Yes | Yes | No | No |
+| `add_cluster_rig`, `set_rig_model`, `cluster_rig`, `update_rig_images`, `set_cluster_slots`, `runpod_test_start`, `runpod_test_end` | Yes | Yes | No | No |
 | `retire_rig`, `bring_back_rig` | Yes | No | No | No |
 
 ### Command kinds for each role
@@ -60,9 +61,10 @@ Control checks a token against the owner's first, then the operator's, the agent
 | --- | --- | --- | --- |
 | `assign_campaign`, `pause_run`, `resume_run`, `redirect`, `reset_workers`, `export_now`, `rig_check` | Yes | Yes | Yes |
 | `message_agent`, `unkeep_message` | Yes | Yes | No |
+| `queue_add`, `queue_move`, `queue_edit`, `queue_drop`, `queue_accept`, `drop_directive` | Yes | Yes | No |
 | `approve_promotion`, `decline_promotion` | Yes | No | No |
 
-No token issues `rig_settings`, `accept_review`, `conclude`, `propagate` or `wipe_state` over MCP. The owner changes a rig's settings and accepts reviews and "not possible" endings on the dashboard. `propagate` goes through `propagate_champion`, and `wipe_state` only through a full reset. A kind the role may not issue, or one that does not exist, is input that does not match the tool: `MCP error -32602: Input validation error: …`.
+The six queue kinds change a run's [experiment queue](signed-commands.md#queue_add) and remove its rules; the harness takes them only from the owner, and the operator acts for the owner. No token issues `rig_settings`, `accept_review`, `conclude`, `propagate` or `wipe_state` over MCP. The owner changes a rig's settings and accepts reviews and "not possible" endings on the dashboard. `propagate` goes through `propagate_champion`, and `wipe_state` only through a full reset. A kind the role may not issue, or one that does not exist, is input that does not match the tool: `MCP error -32602: Input validation error: …`.
 
 While the owner fully resets a rig, `issue_command` with the agent's token refuses that rig: `<rig> is being reset by the owner`.
 
@@ -113,43 +115,36 @@ Returns the run as the dashboard sees it: its champions, attempts (newest first)
 | `run` | string | | The run's id |
 | `tried` | whole number, 0 to 500 | 50 | How many of the newest tried experiments to return |
 
-Returns `{run, mode, status, up_next, proposed, in_progress, at_work, tried, rules, handouts, messages}`. Errors: `no rig <rig>`, `no run <run> on <rig>`.
+Returns `{run, mode, status, up_next, proposed, in_progress, at_work, tried, rules, handouts, messages}`. Errors: `no rig <rig>`, `no run <run> on <rig>`. Control builds it from the events the rig reported, so it is as fresh as the rig's last report.
 
-| Field | What it holds today |
+| Field | What it holds |
 | --- | --- |
+| `up_next` | The experiments queued to run next, in order: the first has `position` 0 |
+| `proposed` | The lanes' ideas that wait for the planner or the owner, oldest first |
+| `in_progress` | The experiments a lane's trial is working on now |
 | `at_work` | Each lane at work, as `{"lane-<n>": {trial, family, focus, since}}`: its trial, its direction, what it is on and since when |
-| `rules` | The rules for the plan in force: the run's [directives](signed-commands.md#redirect), each `{id, author, at, body}`. `author` is who set it: `control:` and the command's issuer, such as `control:owner:ui`, or `supervisor` for the teachers' directives; `body` is the directive, with its `rationale` |
+| `tried` | The experiments that ended, done or dropped, newest first: at most `tried` of them |
+| `rules` | The rules for the plan in force: the run's [directives](signed-commands.md#redirect), each `{id, author, at, body}`. `author` is who set it: `control:` and the command's issuer, such as `control:owner:ui`; `supervisor` for the teacher pair's directives; or `planner` for a rule the planner added because an owner's message asked for it. `body` is the directive, with its `rationale`; a rule in your own words has `match`, and a planner's rule has `from_message`, the id of the message it came from |
+| `handouts` | The planner's 10 newest hand-outs, newest first, each `{at, round, by, assignments: [{lane, experiment, why}], notes}`: which experiment went to which lane at the start of a round, and why |
 | `messages` | The owner's 20 newest messages to the run's agents, newest first, each `{id, to, text, keep, unkept, at, reads, answers}`. `reads` is `[{by, trial, at}]`: each reader's first read. `answers` is `[{role, text, at}]`: the advisors' answers. Messages an older harness recorded, without read receipts, are not listed |
-| `up_next`, `proposed`, `in_progress`, `tried`, `handouts` | Empty lists. They will hold the queue's experiments and the planner's hand-outs once the rig's side of the experiment queue lands ([goal 064](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/064-experiment-queue.goal)) |
 
-Of the kinds the description names, only `redirect` exists today. `issue_command` refuses the others as input that does not match.
+Each experiment in `up_next`, `proposed`, `in_progress` and `tried` has these fields:
 
-### rig_setup
-
-**How a rig was set up.** All roles.
-
-> For a rig control set up or manages on a machine or a cluster: where it is, its status there (for example deploying, running, updating, stopped) and each step of its setup and management, oldest first (applied, pods running, first report, images updated, failures with why). Use it after add_cluster_rig or update_rig_images. Holds no keys or tokens.
-
-| Input | Type | Default | Meaning |
-| --- | --- | --- | --- |
-| `rig` | string | | The rig |
-
-For a rig control set up on a cluster, it returns `{rig, on: "cluster", cluster, namespace, placement, status, images: {harness, supervisor}, steps}`. For one it set up on a machine over SSH, `{rig, on: "machine", machine, status, steps}`. `steps` is `[{at, step, ok, detail}]`, oldest first. `ok` is false for a step that failed, and `detail` then says why; otherwise it can say what the step did, such as the images it changed.
-
-| `step` | On the rig's page |
+| Field | Meaning |
 | --- | --- |
-| `enrolled` | Enrolled with control: a token of its own |
-| `applied` | Its objects applied in the cluster: namespace, secret, volume, deployments |
-| `deploy` | Setting it up. Written when setting it up failed, with why |
-| `deployed` | Files and units written, images ready, services started (a machine) |
-| `first_report` | First report reached control |
-| `stop`, `start`, `restart` | Stopped; Started; Restarted |
-| `images` | Its deployments applied with new images |
-| `images_running` | Its pods run the new images |
-| `report_after_images` | A report reached control from the new images |
-| `remove_cluster`, `remove` | Removed from the cluster; Removed from the machine |
+| `id` | `x-` and 12 hexadecimal characters |
+| `title`, `details`, `family`, `why` | What to try, more about it, its direction and why it is worth trying. An empty text when not given |
+| `by` | Who added it: `owner`, `planner`, `teacher` (the teacher pair), `auditor`, or `lane-<n>` for a lane's idea. A copied experiment keeps its first author |
+| `state` | `proposed` (a lane's idea), `queued` (up next), `assigned` (a lane's trial works on it), `done` or `dropped` |
+| `position` | Its place among the queued experiments, 0 first. `null` once it is not queued |
+| `lane`, `trial` | The lane and the trial that took it |
+| `attempt` | The attempt its trial submitted, if any |
+| `result` | For a `done` experiment: `submitted`, `no_attempt`, or how its trial ended without one: `interrupted`, `error`, `wall`, `turns`, `context`, or `finished` for a research trial |
+| `dropped_by`, `dropped_why` | Who dropped it and why |
+| `from_run` | The run it was copied from, when a new run started with another run's experiments |
+| `at`, `updated_at` | When it was added, and when it last changed |
 
-A cluster rig's `status` is `deploying`, `starting`, `running`, `updating`, `stopped`, `failed` or `removed`; a machine rig's is one of the same, except `updating`. A rig that joined with a join command, or one control did not set up, gives `control did not set <rig> up`.
+The description's list of kinds leaves out `queue_edit`, which `issue_command` also takes from the owner's and the operator's tokens. Of the kinds it names, the agent's token can issue only `redirect`.
 
 ### recent_events
 
@@ -201,9 +196,9 @@ Returns `[{id, rig, kind, issued_by, issued_at, status, acked_at, outcome}]`, ne
 
 **Issue a signed command.** Owner, operator and agent.
 
-> Queue a command for a rig; control signs it and the rig's supervisor relays it. Kinds: `<kinds>`. The payload must match the kind (for example pause_run {run, reason}; redirect {run, directives:[{kind: avoid\|try\|mandate\|priority\|lane_count\|note, family?, value?, rationale, citations}]}; approve_promotion {run, attempt}; message_agent {run, to: all\|lane-N\|trial:ID\|planner\|advisors\|teachers\|auditor\|panel, text, keep?: true (all or a lane: kept in force until unkeep_message {run, message})}; assign_campaign {run, contract, contract_sha, seed, imports}, where an import may name a source the rig's supervisor fetches: {git: URL} for a project or kit commit, {url: URL} for a model. `thermite assign --print` builds an assign_campaign payload). Returns the command id; poll command_status: a source that cannot be fetched fails the command with the reason.
+> Queue a command for a rig; control signs it and the rig's supervisor relays it. Kinds: `<kinds>`. The payload must match the kind (for example pause_run {run, reason}; redirect {run, directives:[{kind: avoid\|try\|mandate\|priority\|lane_count\|note, family? or match? (free words, for avoid\|try\|mandate), value?, rationale, citations}], replace?: false (add to the rules in force)}; approve_promotion {run, attempt}; message_agent {run, to: all\|lane-N\|trial:ID\|planner\|advisors\|teachers\|auditor\|panel, text, keep?: true (all or a lane: kept in force until unkeep_message {run, message})}; queue_add {run, title, details?, family?, why?, position?: top\|end\|index (0 first)}; queue_move {run, id, position}; queue_edit {run, id, title?, details?, family?, why?}; queue_drop {run, id, why}; queue_accept {run, id, position?} (a lane's idea into the queue); drop_directive {run, id} (a rule in force, whoever set it); assign_campaign {run, contract, contract_sha, seed, imports}, where an import may name a source the rig's supervisor fetches: {git: URL} for a project or kit commit, {url: URL} for a model. `thermite assign --print` builds an assign_campaign payload). Returns the command id; poll command_status: a source that cannot be fetched fails the command with the reason.
 
-`<kinds>` is the caller's kinds, comma-separated, as in [Command kinds for each role](#command-kinds-for-each-role).
+`<kinds>` is the caller's kinds, comma-separated, as in [Command kinds for each role](#command-kinds-for-each-role). The examples are the same for every role, the queue kinds' included: the agent's token sees them, but can't issue them.
 
 | Input | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -216,7 +211,7 @@ Returns `{id}`. Errors:
 
 - `<rig> is being reset by the owner` (the agent's token only)
 - `unknown rig <rig>`
-- `bad <kind> payload: <field>: <message>`
+- `bad <kind> payload: <field>: <message>`, with `payload` in place of a field for a rule about the whole payload, such as `bad queue_edit payload: payload: change at least one of title, details, family and why`
 - `the <kind> command is too large to deliver`
 
 ### propagate_champion
@@ -245,6 +240,33 @@ Returns `{id, seq}`: the `propagate` command's id and the champion's number. The
 | `id` | string | | The command's id, from `issue_command` or `list_commands` |
 
 Returns `{status, outcome}`. Error: `no command <id>`.
+
+### rig_setup
+
+**How a rig was set up.** Owner, operator and reader. The reader's answer has `detail: null` in every step.
+
+> For a rig control set up or manages on a machine or a cluster: where it is, its status there (for example deploying, running, updating, stopped) and each step of its setup and management, oldest first (applied, pods running, first report, images updated, failures with why). Use it after add_cluster_rig or update_rig_images. Holds no keys or tokens.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `rig` | string | | The rig |
+
+For a rig control set up on a cluster, it returns `{rig, on: "cluster", cluster, namespace, placement, status, images: {harness, supervisor}, steps}`. For one it set up on a machine over SSH, `{rig, on: "machine", machine, status, steps}`. `steps` is `[{at, step, ok, detail}]`, oldest first. `ok` is false for a step that failed, and `detail` then says why; otherwise it can say what the step did, such as the images it changed.
+
+| `step` | On the rig's page |
+| --- | --- |
+| `enrolled` | Enrolled with control: a token of its own |
+| `applied` | Its objects applied in the cluster: namespace, secret, volume, deployments |
+| `deploy` | Setting it up. Written when setting it up failed, with why |
+| `deployed` | Files and units written, images ready, services started (a machine) |
+| `first_report` | First report reached control |
+| `stop`, `start`, `restart` | Stopped; Started; Restarted |
+| `images` | Its deployments applied with new images. Its `detail` names the images that changed, or `control's address for rigs → <url>` when only that changed |
+| `images_running` | Its pods run the new images. Also written after a cluster rig's `start` or `restart` |
+| `report_after_images` | A report reached control from the new images. Also written after a cluster rig's `start` or `restart`, and, with the detail `it reported again after the wait ended`, when a cluster rig marked `failed` reports again |
+| `remove_cluster`, `remove` | Removed from the cluster; Removed from the machine |
+
+A cluster rig's `status` is `deploying`, `starting`, `running`, `updating`, `stopped`, `failed` or `removed`; a machine rig's is one of the same, except `updating`. After a cluster rig's start or restart, its status is `starting` until its pods run and it reports, then `running`; or `failed` when its pods don't run within 15 minutes, or no report comes within 10 minutes after that. A cluster rig marked `failed` that reports again is `running`. A rig that joined with a join command, or one control did not set up, gives `control did not set <rig> up`.
 
 ### control_log
 
@@ -340,31 +362,58 @@ It refuses with the same words as **Add a rig**:
 
 It sets the workers' model for every run on the rig, as **Edit rig** does. Returns `{rig, model, said}`, where `said` is the dashboard's words: `<rig> takes <model> from "<provider>" under <harness> within a minute, and checks it.` Besides `mcp:set_rig_model`, the audit log records `rig_model_given` with the caller's actor. Errors: `no rig <rig>`, `That provider does not list that model.`, and `OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig.` (with `harness: "pi"`).
 
+### cluster_rig
+
+**Stop, start or restart a cluster rig.** Owner and operator.
+
+> For a rig control set up on a cluster, as on its page: stop scales its pods to zero (its volume, tokens, runs and results stay); start brings them back on the images control recorded for it (so a stopped rig updated with update_rig_images starts on its new images); restart restarts its pods. After start or restart, rig_setup shows it starting, then running once its pods run and it reports, or failed.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `rig` | string | | A rig control set up on a Kubernetes cluster |
+| `action` | `stop`, `start` or `restart` | | What to do, as **Stop its pods**, **Start its pods** and **Restart them** on the rig's page |
+
+`stop` scales the rig's two deployments to zero, and the rig's status becomes `stopped`. `start` scales them back to one, and `restart` restarts their pods. After either, the status is `starting`: control waits, in the background, up to 15 minutes for the pods and then up to 10 minutes for a report from them, and the rig is then `running`, or `failed` with the step that failed. [`rig_setup`](#rig_setup) shows each step. Removing a rig is not in MCP.
+
+Returns `{rig, said}`, where `said` is `Stopped.`, `Started.` or `Restarted.`. Errors:
+
+- `Control didn't set <rig> up on a cluster.` (also for a removed rig)
+- `<rig> is <status>: wait until its page shows it running, or failed.`: a `start` or `restart` while the rig is `updating`, `starting` or `deploying`. A `stop` is not refused for this
+- `The cluster <cluster> is no longer in Providers.`
+- kubectl's own error
+
+Besides `mcp:cluster_rig`, the audit log records `cluster_rig_stop`, `cluster_rig_start` or `cluster_rig_restart` with the caller's actor.
+
 ### update_rig_images
 
 **Update a rig's images.** Owner and operator.
 
-> For a rig control set up on a cluster: its pods restart on the images control now deploys, as the rig's page does. Its volume, tokens, runs and results stay; a trial in progress stops, and the harness plans it again. Follow it with the rig's setup events and list_rigs.
+> For a rig control set up on a cluster: its pods restart on the images control now deploys, as the rig's page does. Its volume, tokens, runs and results stay; a trial in progress stops, and the harness plans it again. Follow it with rig_setup and list_rigs. A failed update can be tried again; one already under way is refused.
 
 | Input | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `rig` | string | | A rig control set up on a Kubernetes cluster |
 
-It does what **Update to these images** does on the rig's page. Control applies the rig's two deployments again with the images it now deploys: `THERMITE_RIG_HARNESS_IMAGE`, or `THERMITE_RIG_HARNESS_CUDA_IMAGE` for a rig with GPUs, and `THERMITE_RIG_SUPERVISOR_IMAGE` (see [Settings](settings.md#rigs-that-control-sets-up)). The rig's secret, volume, service and network rules stay as they are. Control then waits, in the background, up to 15 minutes for the new pods and then up to 10 minutes for a report from them; [`rig_setup`](#rig_setup) shows each step. The rig's status is `updating` until then, and `running` after, or `failed` with the step that failed.
+It does what **Update to these images** does on the rig's page. Control applies the rig's two deployments again with the images it now deploys: `THERMITE_RIG_HARNESS_IMAGE`, or `THERMITE_RIG_HARNESS_CUDA_IMAGE` for a rig with GPUs, and `THERMITE_RIG_SUPERVISOR_IMAGE`, and with control's address for rigs, `THERMITE_CONTROL_PUBLIC_URL`, as the supervisor's `CONTROL_URL` (see [Settings](settings.md#rigs-that-control-sets-up)). The rig's secret, volume, service and network rules stay as they are. Control then waits, in the background, up to 15 minutes for the new pods and then up to 10 minutes for a report from them; [`rig_setup`](#rig_setup) shows each step. The rig's status is `updating` until then, and `running` after, or `failed` with the step that failed.
+
+When the image names are the same as the rig's, control reads the `CONTROL_URL` of the rig's supervisor deployment. If it differs from `THERMITE_CONTROL_PUBLIC_URL`, control applies the deployments again with the new address; the page's button shows only for new images, so this tool is the way to move a rig onto a changed address. For a rig whose status is `failed`, control applies the images again even when they are the ones it recorded, without reading the address: that is how a failed update is tried again.
 
 Returns `{rig, said}`, where `said` is one of:
 
 - `<rig>'s pods restart on the new images.`
-- `<rig> runs the new images when it starts again.`: the rig is stopped, and stays stopped.
-- `<rig> already runs control's images.`: nothing changed.
+- `<rig>'s pods restart with control's new address.`: the same images, with the new address. It is also the answer when a failed update is tried again
+- `<rig> runs the new images when it starts again.`, or `<rig> gets control's new address when it starts again.`: the rig is stopped, and stays stopped until it is started, with [`cluster_rig`](#cluster_rig) or **Start its pods** on its page
+- `<rig> already runs control's images.`: the same images and the same address, or the supervisor's deployment could not be read. Nothing changed
 
 Errors:
 
 - `Control didn't set <rig> up on a cluster.` (also for a removed rig)
 - `<rig> is still being set up.`
+- `Control's address for rigs is not set (THERMITE_CONTROL_PUBLIC_URL): the rig would no longer know where to report.`
 - `Control has no rig images configured.`
 - `Control has no CUDA harness image configured (THERMITE_RIG_HARNESS_CUDA_IMAGE).`
 - `The cluster <cluster> is no longer in Providers.`
+- `<rig> is being updated: wait until its page shows it running, or failed.`, or `<rig> is starting: …`: another update, or a start, is still waiting for its pods
 - kubectl's own error
 
 Besides `mcp:update_rig_images`, the audit log records `cluster_rig_images` with the old and the new images. A rig on a machine, or one joined with a join command, has no image update yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
@@ -456,4 +505,4 @@ Control writes every tool call to its audit log before the tool runs, reads incl
 
 ## Not in MCP yet
 
-Some things the owner does on the dashboard or over REST have no tool yet: cancelling a command, accepting a review or a "not possible" ending, changing a rig's settings other than its agents' model (`set_rig_model`), restarting and resetting a rig, stopping, starting and removing a rig control set up, accepting a rig's key and enrolling a rig. They are planned in [goal 029](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/029-api-mcp-coverage.goal). MCP takes bearer tokens only; signing in with OAuth is [goal 030](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/030-oauth-sign-in.goal). `control_log` returns the newest 500 entries at most; paging is [goal 015](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/015-log-paging.goal).
+Some things the owner does on the dashboard or over REST have no tool yet: cancelling a command, accepting a review or a "not possible" ending, changing a rig's settings other than its agents' model (`set_rig_model`), restarting a rig's containers and resetting a rig, removing a rig control set up, stopping, starting and restarting one it set up on a machine (`cluster_rig` covers a cluster rig), accepting a rig's key and enrolling a rig. They are planned in [goal 029](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/029-api-mcp-coverage.goal). MCP takes bearer tokens only; signing in with OAuth is [goal 030](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/030-oauth-sign-in.goal). `control_log` returns the newest 500 entries at most; paging is [goal 015](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/015-log-paging.goal).

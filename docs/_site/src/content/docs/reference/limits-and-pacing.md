@@ -17,7 +17,7 @@ Thermite's limits are of four kinds. Only a cap can stop a run's work, and only 
 | [Back-pressure](#back-pressure) | Holds new work until earlier work settles | Nothing. Work waits, then goes on |
 | [Per-process and per-trial limits](#per-process-and-per-trial-limits) | Bound one build, run, command, check or trial | That one process or trial. The lane goes on |
 
-[The owner's messages](#the-owners-messages) lists how many messages and answers an agent gets, and [Control's own limits](#controls-own-limits) cover commands, requests and lists. [Why Thermite runs until the job is done](../explanation/runs-until-done.md) explains this design, and [Set a budget or a stop time](../how-to/campaigns/budget-and-stop-time.md) shows how to set a cap. The [glossary](glossary.md) explains the terms.
+[The owner's messages](#the-owners-messages) lists how many messages and answers an agent gets, [The experiment queue](#the-experiment-queue) the sizes of a run's queue, and [Control's own limits](#controls-own-limits) cover commands, requests and lists. [Why Thermite runs until the job is done](../explanation/runs-until-done.md) explains this design, and [Set a budget or a stop time](../how-to/campaigns/budget-and-stop-time.md) shows how to set a cap. The [glossary](glossary.md) explains the terms.
 
 ## Caps
 
@@ -64,7 +64,7 @@ The dashboard calls an epoch a **round**.
 | --- | --- | --- |
 | Epoch cap | 3 hours. With `budget.wall_hours`, 6% of it, between 30 minutes and 3 hours | An epoch ends when every lane's trials are done and settled, or at the cap once no trial runs |
 | Fork rounds | Every 20 epochs (epochs 21, 41, …). With `budget.wall_hours`, at one third and two thirds of it | Every lane starts again from the champion |
-| Planner call | 180 s with Pi; 300 s with OpenCode or Claude Code | A failed or timed-out plan, or the planner turned off, gives the fixed fallback plan. Planner trouble never pauses research. A research run makes no planner call: a fixed method plans its rounds |
+| Planner call | 180 s with Pi; 300 s with OpenCode or Claude Code | An answer that code refuses is asked for once more, with the problems. After that, or after a failed or timed-out call, with no model, or with the planner turned off, lanes take queued experiments by the fixed rules (the [fallback](glossary.md)). Planner trouble never pauses research. A research run makes no planner call: its research plan fills the queue |
 | Goal campaign: wait for the goal report | Up to 2 hours, or until 3 checks of the champion failed | Then the epoch is planned without it |
 
 ### The judge
@@ -171,6 +171,26 @@ None of these ends anything. A message itself is 1 to 4,000 characters (see [Con
 | An advisor's answers to the owner's messages | Up to 50 in one answer, each cut to 1,000 characters. One longer than 20,000 characters, or anything else in `answers` that does not fit, empties that advisor's `answers`; its review, audit or verdict still counts. See [Advisors file](advisors-file.md#answers-to-the-owners-messages) |
 | How soon the teacher pair reads a new message | In the next teacher round. While the run is running and no round is under way, that round starts within about 5 s, unless the advisors' spending for the day has reached `max_usd_per_day`. See [The rig and control](#the-rig-and-control) |
 
+## The experiment queue
+
+None of these ends research. Nothing limits how many experiments a run's [experiment queue](glossary.md) holds, or how many ideas the lanes propose. [Experiment states](verdicts.md#experiment-states) describes the queue itself.
+
+| What | Limit |
+| --- | --- |
+| An experiment's title | 1 to 200 characters |
+| Its details | Up to 4,000 characters |
+| Its direction | 1 to 80 characters: a family's name or your own words |
+| Its why | Up to 2,000 characters. Dropping an experiment needs a why of 1 to 2,000 characters |
+| A place in the queue | `top`, `end`, or an index from 0 to 100,000 among the queued experiments, 0 first. An index past the last puts it last |
+| A lane's idea | One request of at most 64 KiB. No limit on how many |
+| Experiments copied into a new run by **Start a run** (`assign_campaign`'s `queue`) | 500 |
+| The planner's answer | At most 20 experiments added, 40 moves, 40 drops, 40 ideas accepted, 5 rules and 8 new families |
+| A teacher's or the combiner's answer | Up to 10 experiments and 10 moves, each with a why. One that doesn't fit is left out; a list of more than 50 is ignored. Its review still counts |
+| The auditor's answer | One check |
+| The advisors' experiments in one request to the harness | Up to 20 experiments and 20 moves |
+| The queue in the planner's and the teachers' brief | The first 40 up next, the newest 20 ideas, every experiment in progress, and the newest 20 tried, with the judge's verdicts. Details are cut to 600 characters and whys to 400 |
+| The **Planner** tab's hand-outs | The newest 30. Control keeps the newest 50 for each run |
+
 ## Control's own limits
 
 | What | Limit |
@@ -190,8 +210,8 @@ None of these ends anything. A message itself is 1 to 4,000 characters (see [Con
 | A daily report | 200,000 characters |
 | A kit uploaded on the **New campaign** page | 64 MB and 2,000 files |
 | A message to an agent | 1 to 4,000 characters |
-| A redirect | 1 to 40 directives, each with a rationale of up to 2,000 characters and up to 20 citations |
+| A redirect | 1 to 40 directives, each with a rationale of up to 2,000 characters and up to 20 citations. A rule in your own words (`match`) is 1 to 200 characters |
 | REST lists | `?limit=` from 1 to 5,000. Defaults: events and live lines 500, audit 200, commands 100, reports 20 |
-| MCP lists | `recent_events`: at most the newest 50 events; `list_commands` (`limit`) and `get_run` (`attempts`): 1 to 500, default 50; `control_log`: 1 to 500, default 100; `rig_reports` and `runpod_tests`: 1 to 50, default 5 |
+| MCP lists | `recent_events`: at most the newest 50 events; `list_commands` (`limit`) and `get_run` (`attempts`): 1 to 500, default 50; `run_queue`: `tried` 0 to 500, default 50, with the newest 10 hand-outs and the newest 20 messages; `control_log`: 1 to 500, default 100; `rig_reports` and `runpod_tests`: 1 to 50, default 5 |
 | Dashboard lists | A run's newest 300 attempts and 400 history events; the newest 300 audit entries; a campaign's first 8 **Earlier runs**, then **Show N more**. A run's **Live** first loads its newest 600 lines, then asks every 2 s, while the page is in view, for up to 500 new ones |
 | Request bodies from rigs | Reports 32 MiB; live lines 4 MiB; champion patches 64 MiB; daily reports 1 MiB; command results and supervisor figures 256 KiB |

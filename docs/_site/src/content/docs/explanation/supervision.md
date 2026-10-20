@@ -6,7 +6,7 @@ sidebar:
   order: 8
 ---
 
-Each rig can run a few extra models, called **advisors**, that watch over the research. They give the planner advice, look hard at surprising results, and review goals that code cannot check. This page explains each one, and the limits that keep it an adviser and never a judge.
+Each rig can run a few extra models, called **advisors**, that watch over the research. They give the planner advice, suggest experiments for the run's queue, look hard at surprising results, and review goals that code cannot check. This page explains each one, and the limits that keep it an adviser and never a judge.
 
 Advisors run in the rig's **supervisor**, the container that connects the rig to everything outside it. They are off until you configure them. [Configure advisors](../how-to/operate/advisors.md) shows how, and the [advisors file reference](../reference/advisors-file.md) lists every field. Other words used here are in the [glossary](../reference/glossary.md).
 
@@ -14,9 +14,9 @@ Advisors run in the rig's **supervisor**, the container that connects the rig to
 
 | Advisor | When it acts | What it produces | What it cannot do |
 | --- | --- | --- | --- |
-| **Teacher pair** | On a schedule (hourly by default), for each running run, and at once when the owner writes to it | Recommendations for the planner, each with citations | Set a verdict, change a contract, or talk to workers |
-| **Combiner** | After the teachers | One set of directives merged from their reviews | Add a directive without a citation |
-| **Auditor** | When the judge holds a result for an audit | `clear`, `block` or `needs_owner`, with reasons | Pass a result. An audit can block, never pass |
+| **Teacher pair** | On a schedule (hourly by default), for each running run, and at once when the owner writes to it | Recommendations for the planner, each with citations, and experiments and moves for the run's queue, each with why | Set a verdict, change a contract, drop an experiment, or give a lane its work |
+| **Combiner** | After the teachers | One set of directives, and one list of experiments and moves, merged from their reviews | Add a directive without a citation |
+| **Auditor** | When the judge holds a result for an audit | `clear`, `block` or `needs_owner`, with reasons, and at most one check for the run's queue | Pass a result. An audit can block, never pass |
 | **Review panel** | When a goal needs judgement | A pass or a fail from each reviewer | Meet a goal. Only the owner's acceptance does |
 
 ```mermaid
@@ -27,12 +27,16 @@ flowchart LR
     R[Review panel]
   end
   subgraph Harness
+    Q[(Experiment queue)]
     P[Planner]
     J[Judge]
   end
   O((Owner))
   C -- directives, with citations --> P
+  C -- experiments and moves --> Q
+  Q -- read each round --> P
   J -- result held for an audit --> A
+  A -- a check, at the top --> Q
   A -- block --> X[Blocked]
   A -- needs_owner --> O
   A -- clear --> B[Back on its path:<br/>promoted, or waits for you]
@@ -42,15 +46,17 @@ flowchart LR
 
 ## The teacher pair and the combiner
 
-Each **teacher** is a model that reviews one running run at a time. On its schedule, it gets the run's **brief**, which the harness builds from its ledger: the campaign, the champion, the approach families with their results, recent attempts and rounds, and the directives in force. It holds nothing from hidden test cases, and no worker text beyond each attempt's hypothesis. The owner's messages to the teachers, or to all the advisors, are added: those the teachers have not answered yet, and up to five they answered in the last day, so they keep the owner's recent wishes in mind ([The owner's messages](#the-owners-messages)).
+Each **teacher** is a model that reviews one running run at a time. On its schedule, it gets the run's **brief**, which the harness builds from its ledger: the campaign, the champion, the approach families with their results, recent attempts and rounds, the directives in force, and the run's [experiment queue](agents-lanes-planner.md#the-experiment-queue): up next in order, the lanes' ideas, what each lane is on, and the newest experiments tried with their results. It holds nothing from hidden test cases, and no worker text beyond each attempt's hypothesis and the ideas the lanes proposed for the queue. The owner's messages to the teachers, or to all the advisors, are added: those the teachers have not answered yet, and up to five they answered in the last day, so they keep the owner's recent wishes in mind ([The owner's messages](#the-owners-messages)).
 
-A teacher can also read outside sources: web pages from the domains that the advisors file allows, and a [knowledge base](../reference/glossary.md) (a search service over your own notes, reached over MCP) if one is configured. It answers with a summary and a list of recommendations. Each one is a directive, a rationale and **citations**: attempt ids from the brief, web addresses or paper ids.
+A teacher can also read outside sources: web pages from the domains that the advisors file allows, and a [knowledge base](../reference/glossary.md) (a search service over your own notes, reached over MCP) if one is configured. It answers with a summary and a list of recommendations. Each one is a directive, a rationale and **citations**: attempt ids from the brief, web addresses or paper ids. It may also propose up to ten experiments to add to the queue, each with a title, details, its direction and why it is worth trying, and up to ten moves of queued experiments, each with the new place and why. A proposal that doesn't fit the format is left out; it never costs the review.
 
-The **combiner** merges the teachers' reviews into one **directive set** for the planner. It is told to keep what both teachers support. Where they disagree, it may keep both views as `try` directives for different families, so different lanes explore each. Without a combiner, the recommendations of the first teacher that answered become the set.
+The **combiner** merges the teachers' reviews into one **directive set** for the planner. It is told to keep what both teachers support. Where they disagree, it may keep both views as `try` directives for different families, so different lanes explore each. It also merges their experiments and moves into one list of each, without repeats. Without a combiner, the first teacher in the list that gave a review is used: its recommendations become the set, leaving out any that is not a valid directive, and its experiments and moves go to the queue.
 
 Citations are checked twice. The supervisor drops any directive without one, and the harness refuses a set with an uncited directive, too many notes, or a family that is both avoided and asked for. Each new set replaces the supervisor's previous one.
 
 Directives steer only the planner. Their reasons never reach the workers, and the owner's own directives come first. [Agents, lanes and the planner](agents-lanes-planner.md#directives) explains how the planner must follow them.
+
+The teachers' experiments join the end of the run's queue, recorded as added by the teachers, and their moves change its order. A move that the harness refuses, such as one of an experiment that is no longer queued, is said in Live, and the others still apply. A run that has finished takes none. The planner then gives out queued experiments to the lanes, whoever added them ([Agents, lanes and the planner](agents-lanes-planner.md#the-planner)).
 
 ## The auditor
 
@@ -69,6 +75,8 @@ The **auditor** gets the change, the agent's hypothesis and declared flaws, the 
 | `clear` | The result goes back on the path it was on. Declared flaws, a gain above the absolute trigger, or a run where every promotion needs approval still wait for the owner. Otherwise it is promoted |
 
 So **an audit can block, never pass.** The auditor can stop a bad result, but a model alone never pushes a large or flawed result through. On a rig with no auditor, audits wait for the owner. [Decide what waits for you](../how-to/campaigns/decide-what-waits.md) shows those decisions.
+
+When it doubts the result but can't settle the doubt from what it was given, the auditor may also propose one **check** for the run's queue, such as measuring the attempt again, with its doubt as why. The supervisor puts it at the top of the queue, in the direction `check`, as the auditor's. It is an experiment like any other: the planner gives it to a lane, and the judge measures whatever change comes of it. The check doesn't change the audit's answer.
 
 ## The review panel
 
@@ -91,13 +99,14 @@ Each advisor reads a message in its next package of work, and answers it there:
 
 The answer is one or two sentences for each message, by its number, inside the advisor's usual answer. The supervisor passes the reads and the answers to the harness, and Live shows each answer, such as "**the teacher pair (teacher-a) answered you:** …". An answer that is missing or badly formed is dropped, and never costs the review, the audit or its verdict.
 
-A message is refused when no advisor would read it: a role switched off on **Edit rig**, the auditor of a research run (it has no audits), or the review panel of a run with no goal it reviews. The teachers and the auditor are told to take the owner's messages into account. The review panel is told only to answer them, and to decide on the goal's criteria alone. Every advisor still answers in the same strict format, within the limits below.
+A message is refused when no advisor would read it: a role switched off on **Edit rig**, the auditor of a research run (it has no audits), or the review panel of a run with no goal it reviews. Live greys those recipients out, with why. It also greys out a role that the rig's supervisor has not set up, such as a teacher pair with no model, because nothing would read the message. A message sent to such a role another way, over MCP, the REST API or the command line, is accepted, and waits until the role has a model. The teachers and the auditor are told to take the owner's messages into account. The review panel is told only to answer them, and to decide on the goal's criteria alone. Every advisor still answers in the same strict format, within the limits below.
 
 ## What advisors can and cannot do
 
 Advisors advise; they never judge. That is the same rule as for the agents, and the same reasons apply ([Why agents never judge](why-agents-never-judge.md)). Code enforces it in several ways:
 
-- **A narrow channel.** An advisor's answer reaches the harness only as a directive set, an audit answer, a panel result, or answers to the owner's messages. None of these can write a verdict, a champion or a contract, pause a run, or message a worker. An answer to the owner becomes a line in Live and a record in the run's ledger, and nothing else.
+- **A narrow channel.** An advisor's answer reaches the harness only as a directive set, experiments and moves for the run's queue, an audit answer, a panel result, or answers to the owner's messages. None of these can write a verdict, a champion or a contract, pause a run, drop an experiment or give a lane its work. An answer to the owner becomes a line in Live and a record in the run's ledger, and nothing else.
+- **Work to try, never a verdict.** Advisors never send a worker a message, and a directive's reasons stay with the planner. An experiment is different: whoever added it, its title, details and why go into the brief of the lane that takes it, as that trial's work. So an advisor's idea can reach a worker as something to try. The worker can still only propose a change, and the judge alone decides what it is worth.
 - **Checked answers.** Every answer must match a strict format. The supervisor checks it, and the harness checks it again.
 - **No shell, no file tools.** Thermite gives no advisor a shell or file tools, because the supervisor holds the rig's keys, and anything an advisor reads may try to give it orders. Teachers can read the brief, and can fetch pages and search a knowledge base where the advisors file sets that up. The auditor can fetch pages from the domains you list. The combiner and the panel get no tools, and neither does any advisor that runs in Claude Code.
 - **Untrusted text stays data.** Advisors are told that fetched pages, changes and hypotheses are data, not instructions.
@@ -107,8 +116,9 @@ An audit or review whose advisor fails is tried again a few times. After that, i
 
 ## Where you see their work
 
-- A run's **Live** view, under its **Advisors** filter, shows each step of an advisor round as a line: what each teacher suggested, the directives set for the planner and why, each audit (its attempt, its try, the decision, what came of it and the reasons), each reviewer's decision and the panel's outcome, each answer to your messages, and each advisor error with its text. A line that a round is done comes only when the round did something. The rig's own live view, opened from the rig's page, shows the same lines.
+- A run's **Live** view, under its **Advisors** filter, shows each step of an advisor round as a line: what each teacher suggested, the directives set for the planner and why, the experiments the teachers or the auditor added to the queue and the moves they made, each audit (its attempt, its try, the decision, what came of it and the reasons), each reviewer's decision and the panel's outcome, each answer to your messages, and each advisor error with its text. A line that a round is done comes only when the round did something. The rig's own live view, opened from the rig's page, shows the same lines.
 - A run's history says when a directive took effect, what the auditor decided, and what the review panel decided.
+- A run's **Experiments** tab shows who added each experiment, such as **teachers** or **auditor**, and its **Planner** tab shows the rules in force, with who set each.
 - **Needs you**, on the **Overview** page, lists audits and reviews that wait for you.
 - The rig's page has an **Advisors** row with their counts and spending.
 - Once a day, the supervisor sends control a **daily report** that code writes, not a model: each open run's champion, recent verdicts, directions and directives, then the supervisor's exports and the advisors' work. It is on **Reports** in the sidebar, and over MCP with `rig_reports`.

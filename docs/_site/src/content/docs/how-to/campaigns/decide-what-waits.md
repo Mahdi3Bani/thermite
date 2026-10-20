@@ -3,7 +3,7 @@ title: "Decide what waits for you"
 description: "Approve or decline promotions, audits, reviews and \"not possible\" endings."
 type: how-to
 sidebar:
-  order: 9
+  order: 10
 ---
 
 Some things wait for the owner's word: a change that would become the new best, an audit, a subjective goal, a proposal to end a campaign, a rig's new key and a full reset. This page shows where they wait and what each button does. Campaigns go on while a decision waits: agents keep working from the current [champion](../../reference/glossary.md).

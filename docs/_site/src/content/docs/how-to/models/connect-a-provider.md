@@ -63,9 +63,11 @@ The rig's row now says "Its agents run under Pi with my-model from my-litellm." 
 You can also give a rig its agents' model where you start a run:
 
 - under **The agents' model** on the **New campaign** page ([Start a campaign from the dashboard](../campaigns/start-from-dashboard.md#4-where-it-runs));
-- in a campaign's **Start a run** panel, which shows **The agents' model** when the chosen rig has no model and **Agents** is **On**. Control gives the rig the model and says "rig-1 takes my-model within a minute. When the rig shows it, start the run again." The run doesn't start yet: when the rig's row here says it runs the model, open **Start a run** again and press **Start the run**.
+- in a campaign's **Start a run** panel, which shows **The agents' model** when the chosen rig has no model and **Agents** is **On**. Its ⓘ says: "For a rig with no model for its agents: the model to give it, as on its Edit rig page. Control gives it to the rig, which takes it within a minute; then start the run again here." Control gives the rig the model and says "rig-1 takes my-model within a minute. When the rig shows it, start the run again." The run doesn't start yet: when the rig's row here says it runs the model, open **Start a run** again and press **Start the run**.
 
 An agent can do it over MCP with [`set_rig_model`](../../reference/mcp-tools.md#set_rig_model). All three work like **Use** here.
+
+**Start a run** starts a run with agents only once the rig has taken the model that control gave it, wherever you gave it: with **Use** here, on **Edit rig**, over MCP or in an earlier **Start a run**. Pressed too early, **Start the run** answers **Not started.** "rig-1 has not taken my-model yet (it does within a minute of being given it): start the run once its page shows that model."
 
 A failed check says `Its model check FAILED`, then why. With OpenCode's free models, two reasons are common:
 

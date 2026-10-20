@@ -78,7 +78,7 @@ Every field this example leaves out takes its default. The repository has one ex
 
 ### Lanes
 
-A [lane](glossary.md) is one worker's line of search. An epoch is one round of planning: the planner gives each lane a direction, and each lane then runs its trials one after another. The dashboard calls an epoch a **round**.
+A [lane](glossary.md) is one worker's line of search. An epoch is one round of planning: the planner gives each lane an experiment from the run's [experiment queue](glossary.md), and each lane then runs its trials one after another, each later one on the next queued experiment. The dashboard calls an epoch a **round**.
 
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -280,6 +280,7 @@ The `assign_campaign` [signed command](signed-commands.md) carries the contract 
 | `invalid contract: <errors>` | The contract does not validate |
 | `contract hash does not match contract_sha` | The hash in the command is not the contract's |
 | `run <run> already exists` | The rig has a run with that name |
+| `queue experiment <n>: <problem>` | The command copies experiments into the new run's [experiment queue](glossary.md) (**Start a run** › **Copy the untried experiments of**), and the `<n>`th of them, counting from 1, does not fit an experiment's [limits](limits-and-pacing.md#the-experiment-queue) |
 | `contract <campaign> v<version> exists with other content` | The rig has this campaign and version with a different hash |
 | `model <name> is not listed in the contract` | The command imports a model that `models` does not list |
 | `model <name> (<sha256>) has not been imported` | A model in `models` is not on the rig |

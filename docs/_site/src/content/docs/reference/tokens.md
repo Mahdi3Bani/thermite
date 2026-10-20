@@ -13,13 +13,13 @@ Control knows people and programs by **tokens**: long random strings sent as `Au
 | Role | Setting | Dashboard | REST API | MCP |
 | --- | --- | --- | --- | --- |
 | **Owner** | `THERMITE_CONTROL_ADMIN_TOKEN_SHA256` or `THERMITE_CONTROL_ADMIN_TOKEN_FILE` (required) | Signs in. The only token that can | Every route | Every tool. Commands up to approving and declining promotions |
-| **Operator** | `THERMITE_CONTROL_OPERATOR_TOKEN_SHA256` or `_FILE` (optional) | No | No | Reads; steers; messages a run's agents and removes messages kept in force; adds cluster rigs, sets a cluster's slots and moves cluster rigs onto control's images; gives rigs' agents a model; starts and ends RunPod tests; reads control's log and providers |
-| **Agent** | `THERMITE_CONTROL_AGENT_TOKEN_SHA256` or `_FILE` (optional) | No | No | Reads and steers. No control log, no providers, no RunPod, no tools that set rigs up. Refused during a full reset |
-| **Reader** | `THERMITE_CONTROL_READ_TOKEN_SHA256` or `_FILE` (optional) | No | `/metrics` and `GET /v1/rigs/<rig>/live` only | Read tools, control's log, providers and RunPod tests (read only) |
+| **Operator** | `THERMITE_CONTROL_OPERATOR_TOKEN_SHA256` or `_FILE` (optional) | No | No | Reads; steers; messages a run's agents and removes messages kept in force; changes a run's [experiment queue](signed-commands.md#queue_add) and removes its rules; adds cluster rigs, sets a cluster's slots, stops, starts and restarts cluster rigs, and moves them onto control's images; gives rigs' agents a model; starts and ends RunPod tests; reads control's log, providers and how control set a rig up, with each step's details |
+| **Agent** | `THERMITE_CONTROL_AGENT_TOKEN_SHA256` or `_FILE` (optional) | No | No | Reads and steers. No changes to a run's experiment queue, no control log, no providers, no rig setup steps, no RunPod, no tools that set rigs up. Refused during a full reset |
+| **Reader** | `THERMITE_CONTROL_READ_TOKEN_SHA256` or `_FILE` (optional) | No | `/metrics` and `GET /v1/rigs/<rig>/live` only | Read tools, control's log, providers, how control set a rig up (without each step's details) and RunPod tests (read only) |
 
-"Reads" means the [MCP](mcp-tools.md) read tools, which every token has: the rigs, a run and its attempts, a run's rules and the owner's messages to its agents, with who read them (`run_queue`), how control set a rig up (`rig_setup`), events, the leaderboard, daily reports and commands.
+"Reads" means the [MCP](mcp-tools.md) read tools, which every token has: the rigs, a run and its attempts, a run's experiment queue, rules, the planner's hand-outs and the owner's messages to its agents, with who read them (`run_queue`), events, the leaderboard, daily reports and commands. How control set a rig up (`rig_setup`) is for the owner, the operator and the reader, not the agent.
 
-"Steers" means these [signed commands](signed-commands.md): assign a campaign, pause and resume a run, redirect it, reset its workers, export now and run a rig check, plus sending a champion to another rig. The operator may also message the agents (`message_agent`) and remove a message kept in force (`unkeep_message`). Only the owner approves or declines a promotion.
+"Steers" means these [signed commands](signed-commands.md): assign a campaign, pause and resume a run, redirect it, reset its workers, export now and run a rig check, plus sending a champion to another rig. The operator may also message the agents (`message_agent`), remove a message kept in force (`unkeep_message`), change a run's experiment queue (`queue_add`, `queue_move`, `queue_edit`, `queue_drop`, `queue_accept`) and remove a rule (`drop_directive`). Only the owner approves or declines a promotion.
 
 Some things no token can do over MCP: changing a rig's settings, accepting a review or a "not possible" ending, and wiping a rig. The owner does them on the dashboard, and a wipe only as part of a full reset.
 
@@ -46,7 +46,7 @@ The harness has tokens of its own, which never reach control:
 | --- | --- | --- |
 | Supervisor token | `THERMITE_SUPERVISOR_TOKEN_FILE` on the harness, `THERMITE_HARNESS_TOKEN_FILE` on the supervisor (required) | The supervisor, to talk to its harness |
 | Proposer token | `THERMITE_PROPOSER_TOKEN_FILE` on the harness (optional) | A person or script submitting changes with `thermite submit` |
-| Trial token | Made by the harness for each trial | One worker's tools during one trial. It stops working when the trial ends |
+| Trial token | Made by the harness for each trial | One worker's tools during one trial, such as submitting its change or proposing an idea for the run's experiment queue. It stops working when the trial ends |
 
 ## Making, changing and ending tokens
 

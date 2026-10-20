@@ -17,11 +17,12 @@ Thermite has not had a release yet. The work now is toward **v0.1.0**, its first
 - add rigs on their own machines over SSH and on their Kubernetes clusters;
 - launch GPU rigs on RunPod.
 
-Thermite's core is built: the judge, control and its dashboard, the agents, and the advisors that supervise them. This site describes what is built today. Still to come in v0.1.0:
+Thermite's core is built: the judge, control and its dashboard, the agents, and the advisors that supervise them. This site describes what is built today, including two goals of this release that are built, or mostly built:
 
-- published images, the sample project, a command that checks your machine, and rigs on RunPod;
-- the rest of the dashboard's new campaign, run and live views, with steering as one message box. Most of it is built, and this site describes those parts ([goal 063](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/063-scan-and-steer.goal));
-- one experiment queue for each run, which the planner coordinates ([goal 064](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/064-experiment-queue.goal)).
+- the dashboard's new campaign, run and live views, with steering as one message box. Most of it is built, and this site describes those parts ([goal 063](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/063-scan-and-steer.goal));
+- one experiment queue for each run, which the planner coordinates. It is built; acceptance tests that run it on a rig are still to come ([goal 064](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/064-experiment-queue.goal)).
+
+Still to come in v0.1.0: published images, the sample project, a command that checks your machine, and rigs on RunPod.
 
 The [roadmap file](https://github.com/iammrduncan/thermite/blob/main/docs/plan/roadmap.md) lists every v0.1.0 goal with its status, and the [release plan](https://github.com/iammrduncan/thermite/blob/main/docs/plan/release-v0.1.0.md) gives the release's scope and the steps to ship it.
 

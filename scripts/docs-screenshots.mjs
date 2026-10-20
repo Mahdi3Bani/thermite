@@ -137,6 +137,7 @@ try {
     ["overview", "/ui"],
     ["campaigns", "/ui/campaigns"],
     ["run", run],
+    ["experiments", run && `${run}&view=experiments`],
     ["live", live],
     ["rig", rig],
   ];

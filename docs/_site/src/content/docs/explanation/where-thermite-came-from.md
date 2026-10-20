@@ -20,7 +20,7 @@ A search for speed has long dry spells. A loop that stops after a fixed number o
 
 A change that loses on the headline number can still hold an idea worth reading later, or worth trying again in another form. Throw it away and the idea is gone.
 
-**In Thermite:** every attempt's change is saved as a git ref before the judge even builds it, and the ledger keeps its verdict and the judge's reasons. Every attempt also goes into the rig's exports. Losses feed the next round of work too: the planner sees recent results from every lane, and each worker sees its own lane's recent attempts with the judge's findings. → [Why agents never judge](why-agents-never-judge.md) and [Agents, lanes and the planner](agents-lanes-planner.md)
+**In Thermite:** every attempt's change is saved as a git ref before the judge even builds it, and the ledger keeps its verdict and the judge's reasons. Every attempt also goes into the rig's exports. Losses feed the next round of work too: the planner sees recent results from every lane, and each worker sees its own lane's recent attempts with the judge's findings. Each run's experiment queue keeps every experiment tried, with its result, and the ideas that workers propose while they work, so an idea outlives the trial that had it. → [Why agents never judge](why-agents-never-judge.md) and [Agents, lanes and the planner](agents-lanes-planner.md)
 
 ## Dashboards that vanished on restart
 
@@ -32,7 +32,7 @@ When the record of a campaign lives in the process that shows it, a restart lose
 
 Oversight added afterwards, by typing into a terminal, leaves no record of who asked for what, or why, and nothing stops it from overruling the measurements.
 
-**In Thermite:** every rig has a supervisor container built in. Its advisors, when the rig has them, steer the planner with directives that carry their reasons and citations, and an audit can hold a result back but never pass one. Every instruction a person gives goes through control as a signed, recorded command, from the dashboard, the REST API or MCP. None of them can set a verdict. → [Supervision](supervision.md) and [Steer a run](../how-to/campaigns/steer-a-run.md)
+**In Thermite:** every rig has a supervisor container built in. Its advisors, when the rig has them, steer the planner with directives that carry their reasons and citations, add experiments to the run's queue with why, and an audit can hold a result back but never pass one. Every instruction a person gives goes through control as a signed, recorded command, from the dashboard, the REST API or MCP. None of them can set a verdict. → [Supervision](supervision.md) and [Steer a run](../how-to/campaigns/steer-a-run.md)
 
 ## "The agent says it's faster" is not "it is faster"
 

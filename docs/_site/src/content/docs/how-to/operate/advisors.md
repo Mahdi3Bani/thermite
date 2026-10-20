@@ -8,10 +8,12 @@ sidebar:
 
 A rig's supervisor can run **advisors**: models that watch the research but never judge it.
 
-- The **teacher pair** reads each running run's progress, every hour by default and at once when you write to it, and suggests directions, each with a source.
-- The **combiner** joins the two teachers' advice into one set of directions for the planner.
-- The **auditor** answers the judge's audits: it can block a change before it becomes the champion, never pass one on its own.
+- The **teacher pair** reads each running run's progress, every hour by default and at once when you write to it, and suggests directions, each with a source. It can also add experiments to the run's [experiment queue](../campaigns/choose-what-runs-next.md), the list of what the lanes try next, and move experiments that wait there.
+- The **combiner** joins the two teachers' advice into one set of directions for the planner, and one list of experiments and moves.
+- The **auditor** answers the judge's audits: it can block a change before it becomes the champion, never pass one on its own. When it has a doubt it can't settle, it can put a check at the top of the run's queue, which a lane then works on like any other experiment.
 - The **review panel** grades goals that code cannot check. A pass still needs your acceptance.
+
+Advisors add and move experiments, each with a reason. They never drop one, take a lane's idea into the queue or give out work: the planner and you do that.
 
 No advisor runs until you give it a model. **Edit rig** also has a switch for each part, which is **on** by default; a switch only lets a role run once it has a model. [Supervision](../../explanation/supervision.md) explains what each one may and may not do.
 
@@ -123,14 +125,17 @@ Wait a minute, then press **refresh** in the status bar, the line along the bott
   - `the teacher pair reviews run-1`;
   - `teacher teacher-a: …`, with what it suggests, or `teacher teacher-b gave no review: …`;
   - `directives for the planner: …`, each with its reason, or `the teacher pair set no directives`;
+  - `the teacher pair added to the queue: …`, with the titles of the experiments it added, and `the teacher pair moved …`, with their ids;
   - `audit of …`, with the try, the auditor's decision, what it did to the result and why;
+  - `the auditor added to the queue: …`, with the title of its check;
   - `review …`, with each reviewer's pass or fail and why, then the panel's outcome;
   - `advisor round done: …`, the round's counts, when the round did something.
 
   The rig's own live view (the **Live** button on the rig's page) shows the same lines when you choose **Supervisor** in its list.
 - When the teachers' advice reaches a run, its history says `A steering directive took effect.`
+- The run's **Experiments** tab shows the experiments the advisors added, with **teachers** or **auditor** as who added each one.
 
-A count of errors that grows means a role keeps failing. Each error is a line in **Live** with its reason, such as `audit of …: advisor auditor has no key`, and the supervisor's log has an `advisor error` line with the same reason.
+A count of errors that grows means a role keeps failing. Each error is a line in **Live** with its reason, such as `audit of …: advisor auditor has no key`, and the supervisor's log has an `advisor error` line with the same reason. When the rig can't record an advisor's experiments and moves at all, the error line starts with `the queue for run-1:`. A move that the rig refuses, for example of an experiment a lane has taken since, shows after `refused:` in the advisor's own line, and the other changes still apply.
 
 ## Write to the advisors
 
@@ -143,4 +148,10 @@ You can write to a run's advisors, as you write to its agents. On the run's **Li
 
 Write, then press **Send**. The placeholder in the box says when the reader takes it. When an advisor reads your message, **Live** shows a line such as "✓ the teacher pair read your message", and each advisor that read it answers in one or two sentences: "the teacher pair (teacher-a) answered you: …". Choose **You** to see only your messages, the reads and the answers. The combiner sees your messages in the teachers' brief, but doesn't answer.
 
-Roles that the run can't have, or that are off on **Edit rig**, are greyed out in the list, with why: a research run has no audits and nothing for the panel to review. A message to a role with its switch on but no model is accepted, but nothing reads it until you give the role a model. [Steer a run](../campaigns/steer-a-run.md) covers messages to the agents.
+A role that couldn't read your message is greyed out in the list, with one of these reasons:
+
+- the run can't have it: a research run has no audits and nothing for the panel to review, and the review panel reads only in a run with a goal it reviews (`This run has no goal the review panel reviews.`);
+- it is off on **Edit rig**: `The auditor is off on this rig (Edit rig).`;
+- the rig's supervisor has not set it up, because it has no model: `This rig's supervisor has no auditor set up, so nothing would read it.` **To all advisors** is greyed out when none of the three is set up.
+
+The last reason shows only once the rig's supervisor has reported which advisors it has. The rig itself checks only the **Edit rig** switches: a message sent over MCP, the REST API or the command line to a role with its switch on but no model is accepted, and nothing reads it until you give the role a model. [Steer a run](../campaigns/steer-a-run.md) covers messages to the agents.

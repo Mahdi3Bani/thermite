@@ -197,6 +197,125 @@ g1.ev(3 / 60, "trial_started", "decode-a", {
   family: "split-k",
   focus: "split K across two warps to hide load latency",
 });
+// decode-a's experiment queue: tried, in progress, up next and a lane's idea.
+const experiment = (
+  hoursAgo: number,
+  id: string,
+  by: string,
+  family: string,
+  title: string,
+  why: string,
+  state: "queued" | "proposed" = "queued",
+) =>
+  g1.ev(
+    hoursAgo,
+    "experiment_added",
+    "decode-a",
+    { id, by, family, title, why, state, position: "end" },
+    by,
+  );
+experiment(
+  10,
+  "x-01",
+  "planner",
+  "tiling",
+  "unroll the 4-row tile by 2",
+  "the 4-row tile left registers free",
+);
+g1.ev(9.6, "experiment_assigned", "decode-a", { id: "x-01", lane: "lane-1", trial: "t-1a2b3c4d" });
+g1.ev(9, "experiment_finished", "decode-a", {
+  id: "x-01",
+  lane: "lane-1",
+  attempt: "a-decode-a-035",
+});
+experiment(
+  8,
+  "x-02",
+  "owner",
+  "zero-point",
+  "precompute the per-group zero point",
+  "it might save a subtract per element",
+);
+g1.ev(
+  7.5,
+  "experiment_dropped",
+  "decode-a",
+  { id: "x-02", by: "owner", why: "measured slower twice in earlier runs" },
+  "owner",
+);
+experiment(
+  3,
+  "x-03",
+  "teacher-pair",
+  "smem-activations",
+  "keep the activation vector in shared memory",
+  "every row tile reads the same vector from global memory",
+);
+experiment(
+  2,
+  "x-04",
+  "planner",
+  "split-k",
+  "split K across two warps to hide load latency",
+  "lane-2's last change showed the loads stall",
+);
+experiment(
+  1.5,
+  "x-05",
+  "owner",
+  "vector-loads",
+  "vectorize the scale loads (half2)",
+  "the profile shows scalar loads in the hot loop",
+);
+experiment(
+  1.2,
+  "x-06",
+  "planner",
+  "prefetch",
+  "prefetch the next block while reducing",
+  "the reduction leaves the memory unit idle",
+);
+experiment(
+  0.8,
+  "x-07",
+  "auditor",
+  "check",
+  "re-measure the held change on the large cases",
+  "its gain on large inputs is far above the other cases",
+);
+experiment(
+  0.3,
+  "x-08",
+  "lane-2",
+  "memory",
+  "use a wider memory transaction for the codes",
+  "the codes are read 4 bytes at a time",
+  "proposed",
+);
+g1.ev(9 / 60, "experiment_assigned", "decode-a", {
+  id: "x-03",
+  lane: "lane-1",
+  trial: "t-4f1c9a2e7b3d5c01",
+});
+g1.ev(3 / 60, "experiment_assigned", "decode-a", {
+  id: "x-04",
+  lane: "lane-2",
+  trial: "t-9b2e6d4a1c8f3e77",
+});
+g1.ev(
+  9 / 60,
+  "planner_handout",
+  "decode-a",
+  {
+    round: 17,
+    assignments: [
+      { lane: "lane-1", experiment: "x-03", why: "builds on lane-1's last direction" },
+      { lane: "lane-2", experiment: "x-04", why: "next in the queue; no lane is on it" },
+    ],
+    notes: "",
+  },
+  "planner",
+);
 const g2 = new Rig("gpu-2");
 hillClimb(g2, "decode-b", 26, [0.048, 0.031, 0.027, 0.036], { pending: true });
 g2.ev(5, "propagation_received", "decode-b", {

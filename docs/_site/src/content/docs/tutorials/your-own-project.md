@@ -161,14 +161,14 @@ To fix a field, open **New campaign** again. It starts empty: fill it in again w
 The try shows that the kit works. Now start the real run, with an agent.
 
 1. On the try's page, in the note **A try of the kit.**, press the link **start the campaign**. The campaign's page opens, with the panel **Start a run of primes-speed** on its right.
-2. **Where it runs**: the card for `local-1` is chosen. It is marked **busy**, because the try is still at work there. That is expected: the new run replaces the try, because a rig works on one run at a time.
+2. **Where it runs**: the card for `local-1` is chosen. It is marked **busy**, and says `Busy: primes-speed-try-1 is at work there, and pauses when this run starts (a rig runs one run at a time).` That is expected: the new run replaces the try.
 3. **Agents**: keep **On**. Under it, the panel says `The rig's agents, on` and the name of the free model you gave `local-1`.
 4. Open **More options**, and set **When a change is confirmed better** to **ask me every time**. Every change the judge confirms will wait for you before it becomes the new best version.
 5. At the bottom, the panel sums it up: `Starts a new run on local-1, with agents on` and your model. Press **Start the run**.
 
 The campaign's page still shows the try under **At work now** at first. After a minute, press **refresh**: the same address now opens the new run's own page, `primes-speed-1`, and its top line ends `Running`. The try has stopped: the campaign's page now lists it under **Earlier runs** as **Paused**, with `replaced by primes-speed-1` under **Why it stopped**.
 
-As in [Hand the work to agents](agents-with-a-free-model.md#7-watch-the-agent-work), the planner works first: for a few minutes the **Now** block on the run's **Overview** shows `planner` and `planning epoch 1`. Then the agent starts, and **Now** shows `lane-1` with what it works on. A **lane** is one line of search, worked by one **trial** after another: each trial is one agent's session, which submits at most one change.
+As in [Hand the work to agents](agents-with-a-free-model.md#7-watch-the-agent-work), the planner works first: for a few minutes the **Now** block on the run's **Overview** shows `planner` and `planning epoch 1`. Then the agent starts, and **Now** shows `lane-1` with the experiment it works on: the one thing the planner gave it to try, from the run's **queue** of experiments. The run's **Experiments** tab shows that queue. A **lane** is one line of search, worked by one **trial** after another: each trial is one agent's session, which submits at most one change.
 
 To watch the agent:
 
@@ -203,7 +203,7 @@ The change itself stays on the rig until the rig's next **export**: it copies th
 :::tip[If nothing waits for you after half an hour]
 Press **Live** at the top of the run's page to see what the agent is doing, and open the run's **History** tab for trials that ended. A trial can end without a change; the next trial then tries again. A busy free model ends trials with `Rate limit exceeded. Please try again later.` If every trial ends that way, give `local-1` another free model, as under [What you need](#what-you-need). The next trial uses it.
 
-If **History** says that the planner planned a round with `its fallback plan`, the planner's call to the model failed, often because a free model was busy. The run goes on with a simple plan, and the next round asks the planner again.
+If **History** says that the planner planned a round with `its fallback plan`, the model gave the planner no plan it could use, often because a free model was busy. The lane then takes the next experiment in the run's queue by fixed rules, or a new one the fixed rules add when the queue is empty. The next round asks the model again.
 :::
 
 ## 11. Take the result home
@@ -230,7 +230,9 @@ git commit -am "Count primes faster, as Thermite's judge confirmed"
 
 ## 12. Pause the campaign
 
-The agent keeps looking for more speed until you stop it. At the top of the run's page, on the right, press **Pause**, between **Message** and **⋯**. The page says `Control sent the command to local-1.`, and the agent's current trial stops too. Within a minute, after a **refresh**, the top line ends **Paused**, the button says **Resume**, and the **Now** block says `Nothing new starts until it is resumed.`
+The agent keeps looking for more speed until you stop it. At the top of the run's page, on the right, press **Pause**, between **Message** and **⋯**. A small menu opens. In its field **why (optional)**, type `result taken home`, then press **Pause the run**.
+
+The page says `Control sent the command to local-1.`, and the agent's current trial stops too. Within a minute, after a **refresh**, the top line ends **Paused**, the button says **Resume**, and the **Now** block says `This run is paused: result taken home. Nothing new starts until it is resumed.`
 
 ## What you did
 

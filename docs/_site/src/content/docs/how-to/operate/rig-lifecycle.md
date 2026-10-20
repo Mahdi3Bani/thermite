@@ -10,8 +10,8 @@ What you can do to a [rig](../../reference/glossary.md), and where, depends on h
 
 | Action | The local compose stack | Set up by control on a machine | Set up by control on a cluster | Joined yourself |
 | --- | --- | --- | --- | --- |
-| Stop and start | Your compose tool | **Stop its services**, **Start its services** | **Stop its pods**, **Start its pods** | Commands on its page, which you run there |
-| Restart | Your compose tool | **Restart them** | **Restart them** | A command on its page |
+| Stop and start | Your compose tool | **Stop its services**, **Start its services** | **Stop its pods**, **Start its pods**, or MCP's `cluster_rig` | Commands on its page, which you run there |
+| Restart | Your compose tool | **Restart them** | **Restart them**, or MCP's `cluster_rig` | A command on its page |
 | Move to new images | Your compose tool | Not yet | **Update to these images** | Not yet |
 | Remove | Your compose tool | **Remove the rig** | **Remove the rig** | A command on its page, then **Retire the rig** |
 | Retire, bring back | Yes | Yes | Yes | Yes |
@@ -25,6 +25,13 @@ The buttons below are on the rig's page: open **Rigs** in the dashboard's sideba
 
 **A rig set up by control** has a **Set up by control** block on its page. Press **Stop its services** (a machine) or **Stop its pods** (a cluster). The block shows `stopped`, and the button becomes **Start its services** or **Start its pods**. Its runs stay as they are. After three minutes without a report, the rig shows **Not reporting** until you start it again.
 
+**On a cluster, a start takes a few minutes.** After **Start its pods**, the page says `Started.`, and the block's status, at the right of its heading, says `starting`. Control waits up to 15 minutes for the rig's pods to run, then up to 10 minutes for a report from the rig. Press **refresh** in the status bar, the line along the bottom of the page, to follow it:
+
+- Two steps get a ✓, "Its pods run the new images" and "A report reached control from the new images", and the status says `running`. The steps say "new images" even when no image changed.
+- If a step gets ✕ instead, the status says `failed`: see [A rig on a cluster never reports](troubleshoot.md#a-rig-on-a-cluster-never-reports).
+
+**One change at a time on a cluster.** While the status says `starting` or `updating`, control refuses a start, a restart and an image update. The page shows a card that starts with **Not done.** and the reason, such as `rig-1 is starting: wait until its page shows it running, or failed.` **Stop its pods** and **Remove the rig** are never refused for this.
+
 **A rig you joined yourself** has a **You run it yourself** block. Open "Stop, start, restart or remove it: you run these there", and run the **Stop** or **Start** command where the rig runs. Control can't reach that place, so it can't do it for you.
 
 **The compose stack** is stopped and started with your compose tool, for example `docker compose stop supervisor harness` and `docker compose start harness supervisor`.
@@ -33,7 +40,7 @@ The buttons below are on the rig's page: open **Rigs** in the dashboard's sideba
 
 A restart stops and starts the rig's two containers: its harness, which holds the judge and the agents, and its supervisor. It does not export first. Restarting the harness ends its running [trials](../../reference/glossary.md), and its judge jobs start again.
 
-- **Set up by control:** press **Restart them** in the **Set up by control** block. The page says `Restarted.`
+- **Set up by control:** press **Restart them** in the **Set up by control** block. The page says `Restarted.` On a cluster, the status then says `starting` until the pods run and the rig reports, as after **Start its pods**.
 - **Joined:** run the **Restart** command from the rig's page, there.
 - **The compose stack:** restart its containers with your compose tool, for example `docker compose restart harness supervisor` (`harness-2 supervisor-2` for `local-2`).
 
@@ -79,8 +86,9 @@ Control moves the rig's two deployments, its harness and its supervisor, onto th
 Before you start:
 
 - **Control runs with the new images,** and was restarted after you set them: `THERMITE_RIG_HARNESS_IMAGE` (`THERMITE_RIG_HARNESS_CUDA_IMAGE` for a rig with GPUs) and `THERMITE_RIG_SUPERVISOR_IMAGE` ([settings](../../reference/settings.md#rigs-that-control-sets-up)). [Push the images to your own registry](../install/own-registry.md) says how. Give each new build a new tag: control compares the images' names, not their contents, and offers the update only when a name differs.
-- **Control's address is still set** (`THERMITE_CONTROL_PUBLIC_URL`): the update writes it into the rig's supervisor again.
+- **Control's address for rigs is set** (`THERMITE_CONTROL_PUBLIC_URL`): the update writes it into the rig's supervisor again. Without it, control refuses the update with `Control's address for rigs is not set (THERMITE_CONTROL_PUBLIC_URL): the rig would no longer know where to report.`
 - **The cluster is still in Settings › Providers.**
+- **The rig is not starting or being updated.** Its status says `running`, `stopped` or `failed`.
 
 Steps:
 
@@ -94,7 +102,14 @@ Steps:
 
 3. Wait, then press **refresh** in the status bar, the line along the bottom of the page. Control waits up to 15 minutes for the new pods to run, then up to 10 minutes for a report from them. Two more steps get a ✓, "Its pods run the new images" and "A report reached control from the new images", and the status is `running` again.
 
-If a step gets ✕ instead, with "not running after 15 minutes" or "no report after 10 minutes: it may not have started", the status says `failed`: see [A rig on a cluster never reports](troubleshoot.md#a-rig-on-a-cluster-never-reports). If control refuses the update, the page shows a card that starts with **Not done.** and the reason, such as `The cluster cluster-1 is no longer in Providers.` or kubectl's error.
+If control refuses the update, the page shows a card that starts with **Not done.** and the reason, such as `The cluster cluster-1 is no longer in Providers.`, `rig-1 is being updated: wait until its page shows it running, or failed.`, the refusal for a missing address above, or kubectl's error.
+
+If a step gets ✕ instead, with "not running after 15 minutes" or "no report after 10 minutes: it may not have started", the status says `failed`: see [A rig on a cluster never reports](troubleshoot.md#a-rig-on-a-cluster-never-reports). Fix the cause; the pods keep trying by themselves. When the rig reports again, its status says `running`, and a ✓ step follows the ✕: "A report reached control from the new images · it reported again after the wait ended".
+
+The page no longer offers **Update to these images** for these images, because control recorded them at the first try. To have control try again and wait once more:
+
+- press **Restart them**: the pods restart on the images control recorded, and control waits for them and a report, as after an update;
+- or, over MCP, call `update_rig_images` again: with the status `failed`, it applies the recorded images again.
 
 After the update, run the rig's **Isolation** and **Judge smoke** checks: control doesn't run them for you ([Check a rig](check-a-rig.md)).
 
@@ -107,14 +122,23 @@ What changes and what stays:
 | | Its service, its network rules and, with DRA, its resource claim template |
 | | Its place: the cluster, the namespace or slot, the node, the GPUs and the storage |
 
-- **A stopped rig stays stopped.** The page says `rig-1 runs the new images when it starts again.`, the step ends with "at its next start", and control waits for nothing. **Start its pods** then starts it on the new images.
-- **A trial in progress stops**, as with a restart. When the harness starts again, it closes the trial as interrupted, and the lane goes on with a new one.
+- **A stopped rig stays stopped.** The page says `rig-1 runs the new images when it starts again.`, the step ends with "at its next start", and control waits for nothing. **Start its pods** then starts it on the new images: the status says `starting`, then `running` once the pods run and the rig reports.
+- **A trial in progress stops**, as with a restart. When the harness starts again, it closes the trial as interrupted, and the lane goes on with a new one. The trial's experiment goes back to the top of the run's [experiment queue](../campaigns/choose-what-runs-next.md).
 
 :::caution[Going back to older images]
 A newer harness may upgrade the rig's ledger when it opens it, and an older harness refuses a ledger that a newer one upgraded. So moving a rig back to older images may leave it unable to start: see [The harness stops at start: the ledger is newer](troubleshoot.md#the-harness-stops-at-start-the-ledger-is-newer). Thermite can't roll a rig back yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
 :::
 
-Over MCP, the owner's and an operator's tokens do the same with `update_rig_images`, and `rig_setup` shows the rig's status and each step: see [From an agent or a script](../install/rig-on-a-cluster.md#from-an-agent-or-a-script). The REST API has no route for it.
+Over MCP, the owner's and an operator's tokens do the same with `update_rig_images`. They stop, start and restart the rig with `cluster_rig`, for example `{"rig": "rig-1", "action": "start"}`; it has no `remove`. `rig_setup` shows the rig's status and each step: see [From an agent or a script](../install/rig-on-a-cluster.md#from-an-agent-or-a-script). The REST API has no route for these.
+
+### When only control's address changed
+
+When you move control to a new address and set `THERMITE_CONTROL_PUBLIC_URL` to it, but its images stay the same, the rig's page offers no button: **Update to these images** shows only when an image's name differs. Over MCP, the owner's or an operator's token can call `update_rig_images`. Control reads the address in the rig's supervisor deployment, and when it differs from `THERMITE_CONTROL_PUBLIC_URL`, it applies the deployments again with the new address:
+
+- It says `rig-1's pods restart with control's new address.`, and control waits for the pods and a report, as after an update.
+- For a stopped rig, it says `rig-1 gets control's new address when it starts again.`
+- The step "Its deployments applied with new images" has the detail `control's address for rigs →` and the new address.
+- When the address is the same, or control can't read the deployment, it says `rig-1 already runs control's images.` and changes nothing.
 
 ## Remove
 

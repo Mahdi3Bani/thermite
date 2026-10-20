@@ -8,6 +8,8 @@ sidebar:
 
 A rig runs several kinds of agent, and they need different things. The workers make many calls, so a cheap or local model may suit them. The planner and the advisors make a few calls each, where a stronger model can pay off. On a rig's **Edit rig** page you give each of them its own model, and an effort: how long the model thinks before it answers.
 
+The planner coordinates each run's experiment queue, the run's ordered list of things to try. At the start of each round it gives each [lane](../../reference/glossary.md) (one line of search in the run) an experiment from the queue, and it may add, move or drop experiments. See [Choose what a run tries next](../campaigns/choose-what-runs-next.md).
+
 ## Before you start
 
 - At least one provider is added on **Settings › Providers**, with models listed. See [Connect a model provider](connect-a-provider.md).
@@ -21,7 +23,7 @@ A rig runs several kinds of agent, and they need different things. The workers m
    | Agent | Its ⓘ says | With no model chosen |
    | --- | --- | --- |
    | **Workers** | "The agents that change the code, one per lane. They run for many turns, so they use the most of a subscription." | **its own settings**: the rig's `THERMITE_MODEL_*` settings. Without those, the agents have no model and wait |
-   | **Planner** | "Gives each worker its direction at the start of each epoch. A few calls per epoch." | **same as the workers** |
+   | **Planner** | "Gives each worker its direction at the start of each round. A few calls per round." | **same as the workers** |
    | **Teacher pair** | "Two advisors that read the recent work every hour and suggest directions, each with a source. Both use this model." | **the rig's advisors file** |
    | **Combiner** | "Joins the two teachers' advice into one set of directions." | **the rig's advisors file** |
    | **Auditor** | "Looks for a hidden flaw in a change before it can become the champion." | **the rig's advisors file** |
@@ -41,18 +43,20 @@ The workers and the planner take a new model within a minute. The advisors read 
 
 When the workers' or the planner's model changes, the rig runs its model check at once. The check tests only the workers' model. For the other agents, watch a run on the rig in **Live** (in the sidebar), the dashboard's view of one run's agents at work. Choose a filter above the stream:
 
-- **Planner**: the planner's lines. Each plan says whether the model made it ("planned by the model") or the rig fell back to its fixed plan ("the fallback plan"), and why a model's plan was refused. A research run has no planner, and no such filter.
+- **Planner**: the planner's lines. Each round's line says whether the model planned it ("planned by the model") or the lanes took their experiments without it ("taken from the queue by the fixed rules"), and a "refused:" line says why a model's plan was refused. A research run plans its rounds with a fixed method and no planner model, so it has no such filter.
 - **Advisors**: the advisors' lines. Each error is a line of its own with its text, and an "advisor round done" line counts what a round did, errors included.
+
+A run's **Planner** tab also shows the planner's model, in the card **The planner**: for example "my-model, its own model (from my-litellm)", or "my-model, the agents' model (Edit rig can give the planner its own)". Under **What the planner did**, it shows each hand-out: which experiment went to which lane, and why. See [Check the planner's model](../campaigns/choose-what-runs-next.md#check-the-planners-model).
 
 ## An agent with no model
 
 - **Workers** with no model use the rig's own settings. See [Use the rig's own settings instead](connect-a-provider.md#use-the-rigs-own-settings-instead).
-- **The planner** with no model of its own uses the workers' model. Its **Runs in** cell says where it then runs.
+- **The planner** with no model of its own uses the workers' model. Its **Runs in** cell says where it then runs. When the **Planner** switch in section **1 · Parts of the rig** is off, or the model gives no valid plan in two tries, the lanes take queued experiments in order, by fixed rules. That order skips the directions an **Avoid** rule names and puts **Always** and **Try** directions first, but it ignores rules written in your own words: only the planner's model applies those.
 - **An advisor** with no model uses the role from the rig's advisors file. If the file has none, or the rig has no file, that advisor does not run. See [Configure advisors](../operate/advisors.md).
 
 An advisor also runs only while its switch is on in section **1 · Parts of the rig**: **Auditor**, **Teacher pair** or **Review panel**. The combiner follows the **Teacher pair** switch. The switches are on by default, but a switch that is on runs nothing until its advisor also has a model, here or in the advisors file. Why each advisor exists is in [Supervision](../../explanation/supervision.md).
 
-The switches also decide who can get your messages. In **Live**'s message box, the **To** list greys out the planner and each advisor whose switch is off, and says why; the rig refuses a message to them. An advisor whose switch is on but which has no model takes your message, and nothing reads it until the advisor has a model. See [Send the agents a message](../campaigns/steer-a-run.md#send-the-agents-a-message).
+The switches also decide who can get your messages. In **Live**'s message box, the **To** list greys out the planner and each advisor whose switch is off, and says why; the rig refuses a message to them. Once the rig's supervisor has reported, the list also greys out an advisor it hasn't set up, such as one whose switch is on but which has no model: "This rig's supervisor has no auditor set up, so nothing would read it." Over MCP, the REST API or the command line, the rig still takes a message to such an advisor, and nothing reads it until the advisor has a model. See [Send the agents a message](../campaigns/steer-a-run.md#send-the-agents-a-message).
 
 ## Where each agent runs
 
@@ -99,7 +103,7 @@ Thermite has two money limits, and neither covers every agent on this page:
 | An advisor given its model on this page | Nothing: it counts as $0 |
 | An advisor in the advisors file | The file's `max_usd_per_day`, but only for `openai` runtimes with prices. Rigs that control sets up have no advisors file yet |
 
-For the rest, give each campaign a stop time (**Stop after (hours)** on the **New campaign** page, or `budget.wall_hours`), set a spending limit at the provider if it has one, and watch the provider's own usage page. **Pause**, at the top of a run's page or in **Live**, stops a run's workers and planner at once ([Steer a run](../campaigns/steer-a-run.md)). See [Set a budget or a stop time](../campaigns/budget-and-stop-time.md), [Configure advisors](../operate/advisors.md#spending), and the gaps listed in [goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal).
+For the rest, give each campaign a stop time (**Stop after (hours)** on the **New campaign** page, or `budget.wall_hours`), set a spending limit at the provider if it has one, and watch the provider's own usage page. **Pause**, at the top of a run's page or in **Live**, then **Pause the run**, stops a run's workers and planner at once ([Steer a run](../campaigns/steer-a-run.md)). See [Set a budget or a stop time](../campaigns/budget-and-stop-time.md), [Configure advisors](../operate/advisors.md#spending), and the gaps listed in [goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal).
 
 ## If something goes wrong
 

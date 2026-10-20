@@ -3,7 +3,7 @@ title: "Run a campaign on several rigs"
 description: "Run one campaign on more than one rig, and have another rig confirm the best result."
 type: how-to
 sidebar:
-  order: 10
+  order: 11
 ---
 
 One campaign can run on several [rigs](../../reference/glossary.md) at once, each with its own run, agents and judge. You can then send one rig's [champion](../../reference/glossary.md) to another rig, whose judge tests it again on its own hardware. If it holds up there too, the result is **cross-verified**.
@@ -24,7 +24,8 @@ A rig runs one run at a time, so each rig gets its own run.
 
 1. Open **Campaigns** in the sidebar, then the campaign, and press **Start a run** at the top of its page. A panel opens.
 2. Under **Where it runs**, choose the next rig. A rig with other hardware than the campaign's kit is greyed out.
-3. Keep **Agents** on **On**, and press **Start the run**.
+3. Keep **Agents** on **On**. When another run of the campaign has experiments waiting in its [queue](choose-what-runs-next.md), **Experiments to start with** copies them into the new run's queue unless you untick it. Each run then works through its own copy.
+4. Press **Start the run**.
 
 This works for a campaign made on the **New campaign** page, which runs its latest saved version, and for one started from the command line, the REST API or MCP. For those, control assigns the campaign again as it assigned its newest run: the same contract, starting commit and imports, as a new run. The new rig must get the project and the kit the same way: if you put them in the first rig's inbox as bundles, or the first rig already had them (`--seed-commit`, or no `--kit`), put them on the new rig too. You can also run `thermite assign` again for each rig, with the same contract and starting commit: see [Start a campaign from the command line](start-from-command-line.md).
 
@@ -55,7 +56,8 @@ A confirmed change waits there as any other change would: a gain above the contr
 When it holds up and becomes the receiving run's champion, the source run is cross-verified by the receiving rig. To see it:
 
 - On the receiving run's page, the **Attempts** tab's **Champions from other rigs** table shows each champion that arrived, with its **Result here**: `judging`, `accepted`, or `rejected` with the verdict.
-- The **Leaderboard** page, at `/ui/leaderboard` on control, such as `http://127.0.0.1:8800/ui/leaderboard`, lists every hill climb's runs with a **Cross-verified** column: `by local-2`, or `not yet`. No menu links to it: type its address ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)).
+- On the campaign's page, under **Earlier runs**, the **Result** of a paused or finished run whose champion held up elsewhere carries a ✓ pill, `cross-verified on local-2`. A run still at work, shown as a card under **At work now**, has no pill.
+- The **Leaderboard** page lists every hill climb's runs with a **Cross-verified** column: `by local-2`, or `not yet`. A hill climb's page links it: **leaderboard**, at the end of the line under the campaign's name. Its address is `/ui/leaderboard` on control, such as `http://127.0.0.1:8800/ui/leaderboard`. The sidebar has no link to it ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)).
 - `GET /v1/leaderboard` and the MCP tool `leaderboard` list the rigs under `verified_by`.
 
 Cross-verification counts for the champion that was sent. When the source run finds a newer champion, that one is `not yet` cross-verified until it too is sent and holds up.

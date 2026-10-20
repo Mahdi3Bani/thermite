@@ -10,7 +10,7 @@ In this tutorial you give your rig a free AI model, then start a campaign in whi
 
 At the end you'll have seen Thermite's whole loop: agents propose, the judge measures, and only a change that is confirmed better can become the new best version.
 
-It takes half an hour to an hour, most of it waiting. An agent may work on one idea for up to 20 minutes, and the judge then measures what it made. New words are explained as they come, and the [glossary](../reference/glossary.md) has them all.
+It takes half an hour to an hour, most of it waiting. An agent may work for up to 20 minutes on one thing to try, and the judge then measures what it made. New words are explained as they come, and the [glossary](../reference/glossary.md) has them all.
 
 ## What you need
 
@@ -141,7 +141,7 @@ The command sets no `--promotion`, so the run follows the rig's own rule. On `lo
 
 Open **Campaigns** in the sidebar. After a minute, press **refresh**. Under **At work now**, a card shows `smoke-agents › smoke-agents-1`, on `local-1`: the campaign, then its run. Under **All campaigns**, the row `smoke-agents` shows your contract's title, `Make the smoke project's matrix multiply faster`, and `1 at work` under **Runs**.
 
-For the first few minutes, while the planner works, the card's `lanes` line says `no agents on this run: changes come from people`. Don't worry: `lane-1` takes its place once the planner has given the lane its work.
+For the first few minutes, while the planner works, the card's `lanes` line says `waiting for the first round`. `lane-1` takes its place once the planner has given the lane its work.
 
 :::tip[If the run does not appear]
 Open **Commands** in the sidebar. The `assign campaign` line shows **failed**, and its outcome says why. If it says that a kit commit or a seed commit (the project commit a run starts from) is not in `smoke-cpu-kit` or `smoke-cpu-project`, the smoke check has not run on this rig. Run **Judge smoke** (step 6 of [Your first run](first-run.md)), then the same command again.
@@ -154,12 +154,12 @@ Open **Live** in the sidebar. It shows the run at work, `smoke-agents-1`. The li
 Under the header is a row of filters, which choose whose lines you see:
 
 - **Everyone** is chosen at first, and shows every line.
-- **lane-1** is the agent itself. It gets a fresh copy of the project, works on one idea, and ends by submitting its change. This is one **trial**, and it lasts at most 20 minutes.
-- **Planner** works first. Before each round of work, it reads what has happened so far and gives each lane a direction to try.
+- **lane-1** is the agent itself. It gets a fresh copy of the project, works on the one thing the planner gave it to try, and ends by submitting its change. This is one **trial**, and it lasts at most 20 minutes.
+- **Planner** works first. Before each round of work, it reads what has happened so far and gives each lane an **experiment**: one thing to try. It takes experiments from the run's **queue**, the list of what to try next, and adds new ones of its own.
 - **Judge** is the code that measures each change. It is not an agent, and takes no messages.
 - **Advisors** shows the rig's advisors, models that review the work, and **You** shows your own messages. You won't need them here.
 
-The **lane-1** filter appears when the planner is done, a few minutes after the run starts: press **refresh** in the status bar to see it. Choose **lane-1**. A green dot on it means it is working. Its trial starts with the line `lane-1 · trial started` and the direction it was given. Each line after that is one step: a command the agent ran, or a file it read or wrote, with what came back. Most agents look around the project and read `src/kernel/matmul.c`, then change it, build it and try it.
+The **lane-1** filter appears when the planner is done, a few minutes after the run starts: press **refresh** in the status bar to see it. Choose **lane-1**. A green dot on it means it is working. Its trial starts with the line `lane-1 · trial started`, followed by the experiment it was given: its direction (the kind of change), then what to try. Each line after that is one step: a command the agent ran, or a file it read or wrote, with what came back. Most agents look around the project and read `src/kernel/matmul.c`, then change it, build it and try it.
 
 New lines come in by themselves. The rest of this page, like every other page, needs **refresh**.
 
@@ -171,7 +171,15 @@ The first change takes a while. The planner works for a few minutes, a trial can
 
 When the agent submits its change, the judge takes over. Open **Overview** and look at **What happened**, newest first. You see `lane-1 submitted` with the agent's description of its change, then the judge screening it: building it and measuring it against the champion. The **champion** is the best version so far. At the start it is the project as it was: champion #1.
 
-Then open **Campaigns**, and on the card under **At work now**, choose `smoke-agents › smoke-agents-1`. The run's page opens. Its title, `smoke-agents-1`, is followed by `on local-1 · hill climb · Running`. On the right of the header are the buttons **Live**, **Message**, **Pause** and **⋯**. Below the header are the run's tabs: **Overview**, **Experiments**, **Attempts**, **History** and **Planner**. (**Experiments** will hold the run's queue of experiments, which is not built yet: [goal 064](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/064-experiment-queue.goal).)
+Then open **Campaigns**, and on the card under **At work now**, choose `smoke-agents › smoke-agents-1`. The run's page opens. Its title, `smoke-agents-1`, is followed by `on local-1 · hill climb · Running`. On the right of the header are the buttons **Live**, **Message**, **Pause** and **⋯**. Below the header are the run's tabs: **Overview**, **Experiments**, **Attempts**, **History** and **Planner**.
+
+Choose **Experiments**. It shows the run's queue of experiments. Three of its parts matter here:
+
+- **Up next**: the experiments that wait for a lane, in order. The planner fills it as it plans, so it may be empty.
+- **In progress**: what `lane-1` works on now, while its trial runs.
+- **Tried**: every experiment that has ended, newest first, with its result. For a trial that submitted a change, the result is its attempt and a word for how the judge decided it, as in the table below.
+
+You can add, reorder and drop experiments yourself. You don't need to here: [Choose what a run tries next](../how-to/campaigns/choose-what-runs-next.md) says how.
 
 Choose **Attempts**. Each change the agent submitted is an **attempt**, with one word for how it ended. The word sums up the judge's verdict, as in [Your first run](first-run.md#7-see-what-the-judge-decided):
 
@@ -186,12 +194,12 @@ Choose **Attempts**. Each change the agent submitted is an **attempt**, with one
 | **Declined** | You rejected it |
 | **Champion #2** | It was confirmed faster on fresh runs and became the new best version |
 
-[Outcome words on the dashboard](../reference/verdicts.md#outcome-words-on-the-dashboard) lists every word. Open an attempt to read the judge's reasons. Not every idea works, and that is normal: the agent's next trial reads the judge's reasons for its last attempts and tries again. When a change is confirmed faster and nothing holds it, it becomes **champion #2**, every later trial starts from it, and the **Champions** chart on the run's **Overview** tab shows the gain.
+[Outcome words on the dashboard](../reference/verdicts.md#outcome-words-on-the-dashboard) lists every word. Open an attempt to read the judge's reasons. Not every experiment works, and that is normal: the agent's next trial reads the judge's reasons for its last attempts and tries again. When a change is confirmed faster and nothing holds it, it becomes **champion #2**, every later trial starts from it, and the **Champions** chart on the run's **Overview** tab shows the gain.
 
 :::tip[Nothing yet after half an hour?]
-- On **Live**, choose **lane-1**. If it has its green dot and new lines keep coming, the agent is still on its idea: wait.
+- On **Live**, choose **lane-1**. If it has its green dot and new lines keep coming, the agent is still on its experiment: wait.
 - In **What happened**, a line that says `lane-1's trial` … `ended without a submission` gives the reason. A free model is sometimes busy: `Rate limit exceeded. Please try again later.` The next trial tries again. If every trial ends this way, give the rig another model whose name ends in `-free`, as in step 2, or pause the run (step 9) and resume it later.
-- If **What happened** says that the planner planned a round with `its fallback plan`, the planner's call to the model failed, often because a free model was busy. The run goes on with a simple plan, and the next round asks the planner again.
+- If **What happened** says that the planner planned a round with `its fallback plan`, the model gave the planner no plan it could use, often because a free model was busy. The lane then takes the next experiment in the queue by fixed rules, or a new one the fixed rules add when the queue is empty. The next round asks the model again.
 :::
 
 ### If a change waits for you
@@ -207,9 +215,9 @@ The item says `You selected Reject it`. After a **refresh**, **What happened** s
 
 ## 9. Pause the campaign
 
-A hill climb never ends by itself, and Thermite sets no time limit unless you ask for one: see [Why Thermite runs until the job is done](../explanation/runs-until-done.md). When you have seen enough, open the run's page: **Campaigns**, then `smoke-agents › smoke-agents-1` on the card under **At work now**. In the page's header, press **Pause**, just right of **Message**.
+A hill climb never ends by itself, and Thermite sets no time limit unless you ask for one: see [Why Thermite runs until the job is done](../explanation/runs-until-done.md). When you have seen enough, open the run's page: **Campaigns**, then `smoke-agents › smoke-agents-1` on the card under **At work now**. In the page's header, press **Pause**, just right of **Message**. A small menu opens. In its field **why (optional)**, type `seen enough for now`, then press **Pause the run**.
 
-A line at the top of the page says that control sent the command to `local-1`. Within a minute, after a **refresh**, the run shows **Paused** beside its name, and the button says **Resume**. On the **Overview** tab, the **Now** block says `paused from the dashboard` and `Nothing new starts until it is resumed.`
+A line at the top of the page says that control sent the command to `local-1`. If `lane-1` was in a trial, the trial stops, and its experiment goes back to the top of **Up next**, to be tried again when the run resumes. Within a minute, after a **refresh**, the run shows **Paused** beside its name, and the button says **Resume**. On the **Overview** tab, the **Now** block says `This run is paused: seen enough for now. Nothing new starts until it is resumed.`
 
 The rig keeps its model. [Your own project](your-own-project.md) uses it.
 

@@ -30,7 +30,7 @@ flowchart LR
   R -- research campaign: its time window is over --> C
 ```
 
-A hill climb has no arrow to **Closed**: a faster program can always be tried, so it runs until you pause it.
+A hill climb has no arrow to **Closed**: a faster program can always be tried, so it runs until you pause it. The dashboard labels a closed run **Finished**.
 
 ## What keeps a long run in order
 
@@ -64,7 +64,7 @@ No agent can end a campaign. What ends one is written in code, the same for ever
 | **Goal** | Every required goal is met (or, if the contract says so, enough of them), confirmed by two independent checks of the champion. Or you accept a "not possible" proposal | It has no time limit of its own |
 | **Research** | Its time window is over: the contract's maximum duration, or its minimum duration when it sets no maximum. Only running time counts | The window is part of every research contract: its author sets it |
 
-A run that has stopped is **paused**, not closed, and keeps everything it found. A **closed** run is finished. Either way, its champion and its results stay, ready to take. [Campaign modes](campaign-modes.md) explains each ending in full.
+A run that has stopped is **paused**, not closed, and keeps everything it found, including its experiment queue: the experiments its lanes were on go back to the top. A **closed** run is finished. Either way, its champion and its results stay, ready to take. [Campaign modes](campaign-modes.md) explains each ending in full.
 
 ## Setting a limit
 

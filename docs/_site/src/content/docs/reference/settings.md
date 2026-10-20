@@ -61,7 +61,7 @@ Setting both variables of one role stops control at start with `set THERMITE_CON
 
 | Variable | Type | Default | Secret | Meaning |
 | --- | --- | --- | --- | --- |
-| `THERMITE_CONTROL_PUBLIC_URL` | URL | not set | no | Control's address as rigs and machines reach it, for example `https://control.example.com`. Rigs that control sets up report there. Not set: **Add a rig** and join commands are blocked, and a machine's check skips the "reaches control" test |
+| `THERMITE_CONTROL_PUBLIC_URL` | URL | not set | no | Control's address as rigs and machines reach it, for example `https://control.example.com`. Rigs that control sets up report there. Not set: **Add a rig** and join commands are blocked, a machine's check skips the "reaches control" test, and a cluster rig's image update is refused |
 | `THERMITE_RIG_HARNESS_IMAGE` | image reference | not set | no | The harness image for CPU rigs that control sets up on machines and clusters. Needs `THERMITE_RIG_SUPERVISOR_IMAGE` too: without both, control can't set rigs up |
 | `THERMITE_RIG_SUPERVISOR_IMAGE` | image reference | not set | no | The supervisor image for those rigs |
 | `THERMITE_RIG_HARNESS_CUDA_IMAGE` | image reference | not set | no | The harness image for rigs with GPUs. Not set: a rig with GPUs is refused with "Control has no CUDA harness image configured (THERMITE_RIG_HARNESS_CUDA_IMAGE)." |
@@ -249,7 +249,7 @@ A rig set up from **Add a rig**, on a machine or a cluster, or with a join comma
 | Harness | `THERMITE_RIG_ID`; `THERMITE_TARGET` (`cpu`, or `cuda-gpu` with GPUs); for one GPU, `THERMITE_GPU_INDEX=0`; for several, `THERMITE_GPUS` and `THERMITE_JUDGE_GPUS`; `THERMITE_CONTROL_PUBKEY_FILE`; `THERMITE_SUPERVISOR_TOKEN_FILE` |
 | Supervisor | `THERMITE_RIG_ID`; `HARNESS_URL` (port 8700); `CONTROL_URL` (from `THERMITE_CONTROL_PUBLIC_URL`); `THERMITE_HARNESS_TOKEN_FILE`; `THERMITE_CONTROL_TOKEN_FILE` |
 
-An image update of a rig on a cluster writes its two deployments again from control's settings at that moment, so the supervisor's `CONTROL_URL` is taken from `THERMITE_CONTROL_PUBLIC_URL` again.
+An image update of a rig on a cluster writes its two deployments again from control's settings at that moment, so the supervisor's `CONTROL_URL` is taken from `THERMITE_CONTROL_PUBLIC_URL` again. Without `THERMITE_CONTROL_PUBLIC_URL`, the update is refused: `Control's address for rigs is not set (THERMITE_CONTROL_PUBLIC_URL): the rig would no longer know where to report.` When only this address changed, the MCP tool [`update_rig_images`](mcp-tools.md#update_rig_images) moves the rig onto it with the same images; the rig's page offers **Update to these images** only for new image names.
 
 ## Older names
 

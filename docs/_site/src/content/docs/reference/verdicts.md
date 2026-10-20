@@ -1,6 +1,6 @@
 ---
 title: "Verdicts and states"
-description: "Every verdict the judge gives, and every state an attempt, a run and a campaign can be in."
+description: "Every verdict the judge gives, and every state an attempt, a run, a campaign and an experiment can be in."
 type: reference
 sidebar:
   order: 11
@@ -143,7 +143,7 @@ A **run** is a campaign at work on one rig. The rig records one of three states 
 | `running` | The run is assigned to the rig | none |
 | | The owner or an agent resumes it (`resume_run`) | none |
 | | The smoke check ends and resumes a run it paused | `resumed after the smoke check` |
-| `paused` | Someone pauses it (`pause_run`) | the reason given; the dashboard's **Pause** sends `paused from the dashboard` |
+| `paused` | Someone pauses it (`pause_run`) | the reason given. The dashboard's **Pause** sends what you typed in **why (optional)**, or `paused from the dashboard` when you typed nothing |
 | | Another run is assigned or resumed on the same rig: a rig works on one run at a time | `replaced by <run>` |
 | | The contract's `budget.wall_hours` has passed since the run was created | `the wall-time budget is spent` |
 | | The judge's time on the run reaches `budget.device_hours` | `the device-hours budget is spent` |
@@ -166,7 +166,7 @@ A run's page and its **Live** header show the run with one label: the first that
 
 | Label | When |
 | --- | --- |
-| **Closed** | The run is `closed` |
+| **Finished** | The run is `closed` |
 | **Approval** | A result waits for the owner's approval |
 | **Decision** | A "not possible" proposal waits for the owner |
 | **Review** | The review panel passed a goal, and the owner has not answered yet |
@@ -183,7 +183,38 @@ A **campaign** has no state of its own: its runs do.
 - **The Campaigns page** (in the sidebar) counts a campaign as at work when one of its runs is running, paused when none runs and one is paused, and finished when every run is closed. Campaigns named `rig-check-…`, which the [smoke check](rig-checks.md#smoke-check) makes, are rig checks. The filters are **Active and paused** (the default), **At work**, **Paused**, **Rig checks** and **All**. The default hides finished campaigns and rig checks; **All** shows every campaign. The **Runs** column counts each campaign's runs as "N at work", "N paused" and "N finished".
 - **The sidebar's Campaigns section** lists up to 12 campaigns that have a run that is not closed. Each shows its most urgent run's label, in this order: **Approval**, **Decision**, **Review**, **Audit**, **Running**, **Paused**.
 
-A campaign appears on the **Campaigns** page once a rig reports a run of it. A campaign saved on the **New campaign** page with no run yet is not listed there; its own page says "Saved, with no run yet. Start a run."
+A campaign appears on the **Campaigns** page once a rig reports a run of it. A campaign saved on the **New campaign** page with no run yet is not listed there; its own page says "Saved, with no run yet. Start a run." That page opens the same way for a campaign assigned over MCP, the REST API or the command line whose run no rig has reported yet.
+
+## Experiment states
+
+An **experiment** is one thing for a lane to try, in a run's [experiment queue](glossary.md). The harness keeps each run's experiments in its ledger, and records every change as an event that names who made it. The run page's **Experiments** tab shows them; [Choose what a run tries next](../how-to/campaigns/choose-what-runs-next.md) shows how to change them.
+
+| State | Meaning | On the **Experiments** tab |
+| --- | --- | --- |
+| `proposed` | A lane's idea, waiting for the planner or the owner to queue it or drop it | **Ideas from the lanes** |
+| `queued` | Waiting its turn. Its place is its index among the queued experiments, 0 first | **Up next** |
+| `assigned` | A lane's trial works on it | **In progress** |
+| `done` | Its trial ended, with its attempt or the reason there is none | **Tried** |
+| `dropped` | Someone dropped it, and said why. It stays in the record | **Tried** |
+
+- Only `proposed` and `queued` experiments can be edited or dropped, and only `queued` ones move. A command that breaks this is refused, for example `experiment <id> is done: only queued experiments move`.
+- One experiment goes to one trial. The planner can give a lane a queued experiment or a lane's idea.
+- **An interrupted trial's experiment comes back.** When a trial is interrupted (by **Pause**, **Restart the lanes** or a harness restart) or fails with an error before it submits, its experiment is `done`, and a new experiment with the same text goes to the top of the queue. It keeps its author, and its why starts with `tried again: its trial on <lane> was interrupted (<old id>)`, or `failed` for an error.
+
+### An experiment's result
+
+**Tried** lists every experiment that is `done` or `dropped`, newest first. Its **Result** column says what became of each:
+
+| Result | When |
+| --- | --- |
+| `<attempt>: <outcome>` | Its trial submitted an attempt. The outcome is the attempt's [outcome word](#outcome-words-on-the-dashboard), such as `Won` or `Lost`, followed by `, waits for you` while it waits for your approval |
+| `<attempt>: not judged yet` | Its trial submitted an attempt that control has no record of yet |
+| `no attempt` | The worker stopped without submitting |
+| `no attempt: <reason>` | Its trial ended without an attempt: `interrupted`, `error`, `wall` (its time ran out), `turns` (the turn cap) or `context` (the model's context was full) |
+| `finished: its research is in the run's notes` | A research task whose trial ended on its own. Its sources, claims and findings are its result |
+| `dropped by <who>: <why>` | Someone dropped it: `you` (the owner, or an operator for the owner) or the `planner`. An idea dropped with its **Drop** button under **Ideas from the lanes** has the why `the owner dropped this idea` |
+
+The filters above the table group the results: **Wins** (`Champion #N`, `Promoted`, `Won`, or waiting for your approval), **Slower or broke a goal** (`Blocked` or `Broken`), **No gain** (every other outcome), **Research finished** (shown only when there are some) and **No attempt or dropped**.
 
 ## Other states
 
@@ -200,7 +231,7 @@ A campaign appears on the **Campaigns** page once a rig reports a run of it. A c
 | Approach family | `live`, `exhausted` | A family becomes `exhausted` when a "not possible" proposal counts it as refuted |
 | Research claim | verified, draft | Verified when every quote is found word for word in its archived source and every number in the claim is in its quotes. A draft lists its problems |
 | Research finding | supported (a finding), draft | A finding counts when every claim it cites is verified and every number in it is in those claims. A draft finding lists its problems. See [Campaign modes](../explanation/campaign-modes.md#research) |
-| Epoch source | `planner`, `fallback` | Who planned the epoch, which the dashboard calls a round. `planner`: the planner model, and History says "The planner planned round N: …". `fallback`: a fixed plan. In a hill climb or goal campaign that is the plan Thermite uses when the planner fails or is off, and History adds "(its fallback plan: …)". A research run's rounds are always `fallback`, with `plan: "research"` in their `epoch_started` event: a fixed method plans them on purpose, and History says "The research plan set round N: …" |
+| Epoch source | `planner`, `fallback` | Who gave out the epoch's work, which the dashboard calls a round. `planner`: the planner model, and History says "The planner planned round N: …". `fallback`: the fixed rules, used in a hill climb or goal campaign when the planner has no model, is off, or its answer was refused: lanes take queued experiments in order. History then adds "(its fallback plan: the model's plan was refused …)", whichever the cause. A research run's rounds are always `fallback`, with `plan: "research"` in their `epoch_started` event: the research plan fills the queue on purpose, and History says "The research plan set round N: …" |
 | Promotion policy | `auto`, `owner_approval` | Set for the run when it is assigned, or the rig's default |
 
 [Signed commands](signed-commands.md) lists the states of a command, and [Stop, restart, remove or reset a rig](../how-to/operate/rig-lifecycle.md) the steps of a full reset.

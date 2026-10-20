@@ -162,14 +162,14 @@ You submit it from inside the rig's harness container, the way an agent would. T
 
 ## 7. Watch the goal be met
 
-It takes about a minute. Stay on the page of `goal-1`. Press **refresh** after a minute, and again until the line at the top says **Closed** after `on local-1 · goal`. Under **Recent**, on the **Overview** tab, the story unfolds, newest first; the **History** tab keeps all of it. In order:
+It takes about a minute. Stay on the page of `goal-1`. Press **refresh** after a minute, and again until the line at the top says **Finished** after `on local-1 · goal`. Under **Recent**, on the **Overview** tab, the story unfolds, newest first; the **History** tab keeps all of it. In order:
 
 1. The judge screens your change: it builds it and checks the goal. It says the change `looked like goal progress; being confirmed on fresh runs`, and `Newly met: faster.`
 2. It checks the change again on fresh runs: `confirmed: it meets more goals and loses none`. At the same moment your change `became champion #2`. Champion #1 was the project as it started.
 3. The judge checks the goals of the new champion: `1 of 1 goals met, every required goal`.
 4. It checks them a second time, because ending a campaign is final and one check is not enough. Then: `Every required goal is met: the campaign is complete.`
 
-The run's state is now **Closed**, and the **Goals** block says `1 of 1 met`, with a ✓ beside `faster`. Open **Campaigns** in the sidebar: no run of the campaign is under **At work now** any more, and in the table, the row for **smoke-cpu-goal** says `1/1 goals met` under **Best so far**. Nothing more runs: a goal campaign stops once its goals are met.
+The run's state is now **Finished**, and the **Goals** block says `1 of 1 met`, with a ✓ beside `faster`. Open **Campaigns** in the sidebar: no run of the campaign is under **At work now** any more, and in the table, the row for **smoke-cpu-goal** says `1/1 goals met` under **Best so far**. Nothing more runs: a goal campaign stops once its goals are met.
 
 ## What you did
 
