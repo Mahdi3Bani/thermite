@@ -94,6 +94,18 @@ const USAGE = `usage: thermite <command> [options]
                                       confirm the wipe of the rig's full reset (owner's token)
   runpod cancel-reset RIG --control URL --token-file F
                                       cancel the rig's full reset before its wipe (owner's token)
+  run start CAMPAIGN --rig R [--agents off] [--provider P --model M] [--promotion auto|owner]
+         [--judge-gpus N] [--queue-from [RIG/]RUN] [--past ID ...] --control URL --token-file F
+                                      start a run of a campaign control keeps (owner's token), as
+                                      Start a run on the campaign's page does, with its checks and
+                                      refusals: a campaign saved on the New campaign page or
+                                      assigned before. --provider and --model give the rig's
+                                      agents that model first: the run does not start, and the
+                                      command exits 1; run it again once the rig has the model.
+                                      --queue-from starts the queue with a run's untried
+                                      experiments (on --rig unless RIG/ is given); --past adds
+                                      items of Thermite's knowledge base by id. It prints the new
+                                      run and its command id; a stopped RunPod pod starts first
   command --control URL --token-file F --rig U --kind K --payload JSON|@file [--ttl MIN]
                                       issue a signed command through control (admin token).
                                       assign_campaign and resume_run on a RunPod rig whose pod
@@ -629,6 +641,44 @@ async function main(argv: string[]): Promise<void> {
         fail(err instanceof Error ? err.message : String(err));
       }
       fail(USAGE);
+      return;
+    }
+    case "run": {
+      const [sub, campaign, ...args] = rest;
+      if (sub !== "start" || !campaign || campaign.startsWith("-")) fail(USAGE);
+      const { values } = parseArgs({
+        args,
+        options: {
+          rig: { type: "string" },
+          agents: { type: "string" },
+          provider: { type: "string" },
+          model: { type: "string" },
+          promotion: { type: "string" },
+          "judge-gpus": { type: "string" },
+          "queue-from": { type: "string" },
+          past: { type: "string", multiple: true },
+          control: { type: "string" },
+          "token-file": { type: "string" },
+        },
+      });
+      if (!values.control || !values["token-file"])
+        fail("give --control and --token-file: control starts the run");
+      const { runStartBody, runStartSaid } = await import("./run.ts");
+      let body: Record<string, unknown>;
+      try {
+        body = runStartBody(values);
+      } catch (err) {
+        fail(err instanceof Error ? err.message : String(err));
+      }
+      const out = (await post(
+        `${values.control.replace(/\/$/, "")}/v1/campaigns/${encodeURIComponent(campaign)}/runs`,
+        readFileSync(values["token-file"], "utf8").trim(),
+        body,
+      )) as { started?: boolean; said?: string; woke?: string; notes?: string[] };
+      process.stdout.write(`${JSON.stringify(out)}\n`);
+      process.stderr.write(runStartSaid(out));
+      // Not started yet (the rig was given a model first): a script must not take it as started.
+      if (out.started === false) process.exitCode = 1;
       return;
     }
     case "command": {

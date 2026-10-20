@@ -48,11 +48,11 @@ Request bodies are JSON, except a champion's patch and a piece of an export's fi
 | Status | Body | When |
 | --- | --- | --- |
 | 401 | `{"error":"unauthorized"}` | No token, a wrong token, or a token that may not call the route |
-| 400 | `{"error":"invalid request"}` | The body does not match the route's schema. The schema's own message is not sent back. Control writes it to its output and to its audit log, as action `failed` |
+| 400 | `{"error":"invalid request"}` | The body does not match the route's schema. The schema's own message is not sent back. Control writes it to its output and to its audit log, as action `failed`. `POST /v1/campaigns/<campaign>/runs` answers `bad request: <field>: <message>` instead, as [Campaigns](#campaigns) says |
 | 403 | `{"error":"this rig is retired in control"}` | A rig-facing route, called for a retired rig |
 | 409 | `{"error":"Control cannot work with this rig: …"}` | A rig-facing route, called for a rig whose protocol control cannot work with. See [Rig versions](#rig-versions) |
 | 403, 404, 409, 422 | `{"error":"<why>"}` | Route by route, as the tables below say |
-| 500 | `{"error":"<why>"}` | A refusal while control does the work, such as a refused propagation or a reset in the wrong state. It does not always mean a fault in control. A command that control refuses (`POST /v1/commands`) answers 400 with the reason, 404 for an unknown rig, or 409 when it would start a stopped RunPod pod that control could not start |
+| 500 | `{"error":"<why>"}` | A refusal while control does the work, such as a refused propagation or a reset in the wrong state. It does not always mean a fault in control. A command that control refuses (`POST /v1/commands`) answers 400 with the reason, 404 for an unknown rig, or 409 when it would start a stopped RunPod pod that control could not start. A run that control does not start (`POST /v1/campaigns/<campaign>/runs`) answers 400, 404 or 409 with the reason, as [Campaigns](#campaigns) lists |
 
 Every request that ends in an error inside control, or with a 5xx status, is written to control's output as a JSON line with `"msg":"request failed"`, and to the [audit log](#audit-log-actions) as action `failed` by actor `control`.
 
@@ -100,7 +100,7 @@ A live line's `kind` is `text`, `thinking`, `tool`, `result`, `message`, `status
 | `POST /v1/commands/<id>/cancel` | Owner | Withdraws a command that is still pending | None | `{"cancelled":true}`. 404 `{"error":"no such pending command"}` |
 | `POST /v1/propagate` | Owner | Sends one rig's published champion to another rig's run of the same campaign, as a `propagate` command that lasts 24 hours | `{from_rig, run, to_rig, to_run}` | 201 `{"id":"<command id>","seq":<champion seq>}`. 500 with the reason, listed below |
 
-**A run on a stopped RunPod pod.** An `assign_campaign` or a `resume_run` for a [rig launched on RunPod](#rigs-on-a-gpu-cloud) whose pod is stopped starts the pod first, then queues the command, which waits until the pod runs and the rig fetches it. Control checks and signs the command before it starts anything, so a command it refuses never starts a pod. `woke` then says `<rig>'s pod was stopped: control started it. The run starts once the pod runs.`, and the rig's history has the start, with what it was for (`asked by owner:api to assign run <run>`). When the pod can't start, nothing is queued, and the answer is 409 with the start's refusal: no GPU free at RunPod, the spend limit reached, or a stop or terminate under way (`a stop of <rig>'s pod is under way: wait until it has stopped, then start the run again (control then starts the pod first)`). Other kinds, a pod that runs or one already starting, start nothing, and the answer has no `woke`. The dashboard's **Start a run**, a run's **Resume** and MCP's `issue_command` with the owner's token do the same; MCP refuses another token's command for a stopped pod, as only the owner starts a pod.
+**A run on a stopped RunPod pod.** An `assign_campaign` or a `resume_run` for a [rig launched on RunPod](#rigs-on-a-gpu-cloud) whose pod is stopped starts the pod first, then queues the command, which waits until the pod runs and the rig fetches it. Control checks and signs the command before it starts anything, so a command it refuses never starts a pod. `woke` then says `<rig>'s pod was stopped: control started it. The run starts once the pod runs.`, and the rig's history has the start, with what it was for (`asked by owner:api to assign run <run>`). When the pod can't start, nothing is queued, and the answer is 409 with the start's refusal: no GPU free at RunPod, the spend limit reached, or a stop or terminate under way (`a stop of <rig>'s pod is under way: wait until it has stopped, then start the run again (control then starts the pod first)`). Other kinds, a pod that runs or one already starting, start nothing, and the answer has no `woke`. The dashboard's **Start a run** and its twins ([`POST /v1/campaigns/<campaign>/runs`](#campaigns), MCP's `start_run` and `thermite run start`), a run's **Resume** and MCP's `issue_command` with the owner's token do the same; MCP refuses another token's command or `start_run` for a stopped pod, as only the owner starts a pod.
 
 `POST /v1/commands` takes the owner's commands for a run's experiment queue like any other kind: `queue_add`, `queue_move`, `queue_edit`, `queue_drop`, `queue_accept` and `drop_directive`. A command's status is `pending`, `delivered`, `rejected`, `failed` or `expired`; [Statuses](signed-commands.md#statuses) says what each means and what its outcome holds. A cancelled command shows `failed`, with the outcome `{"cancelled_by":"owner:api"}`. [Cancel a pending command](../how-to/operate/cancel-a-command.md) gives the steps.
 
@@ -115,6 +115,47 @@ A live line's `kind` is `text`, `thinking`, `tool`, `result`, `message`, `status
 - `Control sends no commands to <rig>.` and the reason, when control [refuses](#rig-versions) the receiving rig
 
 [Run a campaign on several rigs](../how-to/campaigns/several-rigs.md) says when to propagate.
+
+### Campaigns
+
+| Route | Token | What it does | Request | Answer |
+| --- | --- | --- | --- | --- |
+| `POST /v1/campaigns/<campaign>/runs` | Owner | Starts a run of a campaign control keeps, as **Start a run** on the campaign's page does, through the dashboard's own code. Control records `owner:api` as the command's issuer | `{rig, agents?, agents_model?, promotion?, judge_gpus?, queue_from?, past?}`, below | 201 `{started: true, campaign, rig, run, command, status: "pending", woke?, notes?}`. 202 `{started: false, said}` when control gave the rig a model first. 400, 404 or 409 `{"error":"<why>"}`, below |
+
+`<campaign>` is a campaign saved on control from the **New campaign** page, or one assigned before over the API, MCP or the command line. For a saved one, control signs an assignment of its latest version, as the rig fetches the project and the kit from where the campaign says. For one assigned before, control assigns its newest `assign_campaign` again, with the same contract, starting point and imports, as a new run ([`assign_campaign`](signed-commands.md#assign_campaign)).
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `rig` | string | | The rig the run starts on. A rig runs one run at a time: the run at work there pauses when this one starts |
+| `agents` | boolean | `true` | `false`: a try, with no agents. The judge measures the starting code on every case once. The run is named `<campaign>-try-<n>` |
+| `agents_model` | `{provider, model}` | none | For a rig with no model for its agents: a model from a provider in **Providers**. Control gives it to the rig, with the harness the model needs, and answers 202 without starting the run. Send the request again, without the field, once the rig runs the model |
+| `promotion` | `auto` or `owner_approval` | the rig's default | When a change is confirmed better: keep it at once, or wait for the owner |
+| `judge_gpus` | whole number | the rig's current split | For a rig with several GPUs: how many the judge measures on. Control sends the rig a `rig_settings` with the new split after the run's command, and the rig's harness restarts to apply it |
+| `queue_from` | `{rig, run}` | none | Another run of this campaign. Its untried experiments start the new run's queue: up next in their order, then its lanes' ideas, each with its words and author from control's records |
+| `past` | array of whole numbers | none | Items of Thermite's knowledge base by id, from folders the campaign may read. MCP's [`kb_search`](mcp-tools.md#kb_search) gives the ids. Experiments join the queue after the copied ones, each with what became of it in its run; findings, claims, notes and reports become the run's `briefing`, with the knowledge base's words |
+
+The queue holds at most 500 experiments. In the 201 answer, `run` is the new run's name and `command` its `assign_campaign` command's id, for `GET /v1/commands/<id>`. `woke` is there when control started the rig's stopped RunPod pod first, as [below](#signed-commands) for `POST /v1/commands`. `notes` is there when there is more to know, such as `sort-speed-1 is at work on rig-1, and pauses when this run starts (a rig runs one run at a time).` or `sort-speed-1 on rig-1 has no untried experiments: the new run's queue starts empty.` In the 202 answer, `said` is `<rig> takes <model> within a minute; Settings › Providers shows it taking the model until then. Then start the run again.`
+
+Control refuses, in the words of **Start a run**, and signs nothing:
+
+| Status | Error |
+| --- | --- |
+| 404 | `Control has no saved version or earlier assignment of this campaign.` |
+| 404 | `No rig is called <rig>. Choose a rig.` |
+| 404 | `<rig> has no run <run> of <campaign>: copy from a run of this campaign.` (`queue_from`) |
+| 400 | `bad request: <field>: <message>`: a body that does not have these fields, or has others |
+| 400 | `A try (agents off) takes no model, no experiments and no background: leave them out, or start the run with agents.` |
+| 400 | `An item from past research is not one this campaign may read and start from: search again.` |
+| 400 | `That provider does not list that model.`, and the other refusals of a model on **Edit rig** |
+| 400 | `<rig> has no GPU set to split: its GPUs are set where it is deployed.` or `With <n> GPUs the judge takes 1 to <m> of them, and the agents at most 8.` |
+| 409 | `<rig> has no model for its agents, so they could not work: choose one under "The agents' model", or give it one on its Edit rig page.` |
+| 409 | `<rig> has not taken <model> yet (it does within a minute of being given it; Settings › Providers shows it taking the model until then): start the run after that.` |
+| 409 | `<rig> measures on <type>, and this campaign's kit measures on <type>: choose a rig with that hardware` |
+| 409 | `<model> is one of OpenCode's free models, which work only inside OpenCode, and <rig>'s agents would run in Pi: a research run there could not work. …`, for a research campaign |
+| 409 | `Not sent: control could not start <rig>'s pod on RunPod for it.` and the reason |
+| 409 | `Control sends no commands to <rig>.` and the reason, for a rig control [refuses](#rig-versions) |
+
+Each refusal is in the [audit log](#audit-log-actions) as `refused`, with the route's path and why. MCP's [`start_run`](mcp-tools.md#start_run) and [`thermite run start`](command-line.md#run-start) do the same; [Start a run from a script or an agent](../how-to/campaigns/start-from-dashboard.md#start-a-run-from-a-script-or-an-agent) shows them side by side.
 
 ### Rig keys, enrollment and retirement
 
@@ -452,7 +493,7 @@ Control writes one entry for each of these to its audit log. `GET /v1/audit`, th
 
 | Group | Actions |
 | --- | --- |
-| Requests | `failed` (a request that ended in an error), `refused` (a dashboard action control turned down, with the page's path and why, including a message to the agents that control refused before signing it, which the page shows as **Not sent.**; an MCP call it turned down, with `tool: "mcp:<tool>"` and why, a refused message included; or a `POST /v1/commands` it refused, with `path`, `kind` and why), `mcp:<tool>` (every MCP tool call, with its inputs) |
+| Requests | `failed` (a request that ended in an error), `refused` (a dashboard action control turned down, with the page's path and why, including a message to the agents that control refused before signing it, which the page shows as **Not sent.**; an MCP call it turned down, with `tool: "mcp:<tool>"` and why, a refused message included; a `POST /v1/commands` it refused, with `path`, `kind` and why; or a `POST /v1/campaigns/<campaign>/runs` it refused, with `path` and why), `mcp:<tool>` (every MCP tool call, with its inputs) |
 | Sign-in | `login`, `login_throttled` |
 | Commands | `command_issued`, `command_acked`, `command_expired`, `command_cancelled` |
 | Rigs and keys | `rig_enrolled`, `rig_token_rotated`, `rig_retired`, `rig_brought_back`, `rig_key_pinned`, `rig_key_changed`, `rig_key_accepted`, `report_rejected`, `report_refused`, `rig_refused` and `rig_refusal_ended` (by `rig:<rig>`: control started or stopped refusing the rig for its protocol, with the reason and the builds; see [Rig versions](#rig-versions)), `git_access_handed` |

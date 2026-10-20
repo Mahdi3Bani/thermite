@@ -81,7 +81,7 @@ If it never enrolls, **Pull mode** shows the last error, and `thermite runpod li
 
 Start campaigns on it as on any rig: [from the dashboard](../campaigns/start-from-dashboard.md) or [from the command line](../campaigns/start-from-command-line.md).
 
-When its pod is stopped, starting or resuming a run on it starts the pod first: **Start a run**, a new campaign's first run and **Resume** on the dashboard, `POST /v1/commands`, the MCP tool `issue_command` and `thermite assign` or `thermite command`. The run starts once the pod runs. The dashboard and the command line say `rp-1a2b3c4d's pod was stopped: control started it. The run starts once the pod runs.` Only the owner's token starts a pod: an operator's or an agent's command for a stopped pod is refused. When RunPod has no GPU free, or the pod has cost its spend limit, the run is not started, and the reason says why.
+When its pod is stopped, starting or resuming a run on it starts the pod first: **Start a run**, a new campaign's first run and **Resume** on the dashboard, `POST /v1/commands` and `POST /v1/campaigns/<campaign>/runs`, the MCP tools `issue_command` and `start_run`, and `thermite assign`, `thermite run start` or `thermite command`. The run starts once the pod runs. The dashboard and the command line say `rp-1a2b3c4d's pod was stopped: control started it. The run starts once the pod runs.` Only the owner's token starts a pod: an operator's or an agent's command for a stopped pod is refused. When RunPod has no GPU free, or the pod has cost its spend limit, the run is not started, and the reason says why.
 
 ## 5. Watch its cost and change its limits
 

@@ -209,7 +209,40 @@ The campaign's page comes back, with a card at the top such as `Starting rig-1/s
 - `rig-1 has no model for its agents, so they could not work: choose one under "The agents' model", or give it one on its Edit rig page.`
 - `rig-1 has not taken my-model yet (it does within a minute of being given it; Settings › Providers shows it taking the model until then): start the run after that.`: see [When the rig doesn't have the model yet](#when-the-rig-doesnt-have-the-model-yet).
 - `An item from past research is not one this campaign may read and start from: search again.`: an item ticked under **From past research** is no longer in a folder the campaign may read, for example because its folder was removed after the panel opened. Search again, and tick the items again.
+- `rig-1 has no run sort-speed-1 of sort-speed: copy from a run of this campaign.`: the run chosen under **Copy the untried experiments of** is gone, for example after a full reset of its rig. Open the panel again and choose another run.
 
-For a research campaign with agents, it refuses a rig whose agents would run OpenCode's free models in Pi, with the message above.
+For a research campaign with agents, it refuses a rig whose agents would run OpenCode's free models in Pi, with the message above. If the run you chose to copy from has tried every experiment since the panel opened, the run starts with an empty queue, and the page says `sort-speed-1 on rig-1 has no untried experiments: the new run's queue starts empty.`
 
 **Start a run** also works for a campaign started from the command line, the REST API or MCP, even before a rig reports a run of it: see [Start a campaign from the command line](start-from-command-line.md#start-further-runs). For runs on other rigs, see [Run a campaign on several rigs](several-rigs.md).
+
+### Start a run from a script or an agent
+
+**Start a run** has a twin on the REST API, on MCP and on the command line. Each one runs the dashboard's own code, so it takes the same fields, checks the same things and refuses with the same words. With the owner's token file of the local stack:
+
+```sh
+npx thermite run start sort-speed --rig rig-1 --queue-from sort-speed-1 \
+  --control http://127.0.0.1:8800 --token-file .dev/secrets/control-admin-token
+```
+
+It prints the new run and its command:
+
+```json
+{"started":true,"campaign":"sort-speed","rig":"rig-1","run":"sort-speed-2","command":"<command id>","status":"pending"}
+```
+
+| Panel field | Command line | REST and MCP |
+| --- | --- | --- |
+| **Where it runs** | `--rig rig-1` | `"rig": "rig-1"` |
+| **Agents** **Off: a try** | `--agents off` | `"agents": false` |
+| **The agents' model** | `--provider zen --model my-model` | `"agents_model": {"provider": "zen", "model": "my-model"}` |
+| **Copy the untried experiments of** | `--queue-from sort-speed-1` for a run on the `--rig`, or `--queue-from rig-2/sort-speed-1` for a run on another rig | `"queue_from": {"rig": "rig-1", "run": "sort-speed-1"}` |
+| **From past research** | `--past 12 --past 40` | `"past": [12, 40]` |
+| **When a change is confirmed better** | `--promotion auto` or `--promotion owner` | `"promotion": "auto"` or `"owner_approval"` |
+| **GPUs for the judge** | `--judge-gpus 2` | `"judge_gpus": 2` |
+
+- **The command line** and **the REST API** (`POST /v1/campaigns/sort-speed/runs`) take the owner's token: see [the route](../../reference/rest-api.md#campaigns) and [`thermite run start`](../../reference/command-line.md#run-start).
+- **MCP's** [`start_run`](../../reference/mcp-tools.md#start_run) takes the owner's token or an operator's. An operator's call can't change the GPU split, and can't start a stopped pod on RunPod.
+- **Past research** is named by each item's id, which MCP's [`kb_search`](../../reference/mcp-tools.md#kb_search) gives.
+- **A model given first.** With `--provider` and `--model` (or `agents_model`), control gives the rig the model and starts nothing yet, as the panel does. The answer is `{"started":false,"said":"rig-1 takes my-model within a minute; …"}`, and the command line exits with 1. Run it again without the model once the rig has taken it.
+- **Notes.** The answer's `notes` say what else to know, such as `sort-speed-1 is at work on rig-1, and pauses when this run starts (a rig runs one run at a time).` The command line writes them on standard error.
+- **Refusals** come back in the panel's words, such as `409` and `{"error":"rig-1 has no model for its agents, so they could not work: …"}` over REST. The command line writes the route, the status and that answer on standard error, and exits with 2.

@@ -51,7 +51,7 @@ Control checks a token against the owner's first, then the operator's, the agent
 | `kb_folders`, `kb_search`, `kb_grant`, `kb_revoke` | Yes | Yes | No | No |
 | `rig_setup` | Yes | Yes | No | Yes, without each step's `detail` |
 | `control_log`, `providers`, `runpod_tests`, `runpod_rigs` | Yes | Yes | No | Yes |
-| `add_cluster_rig`, `set_rig_model`, `cluster_rig`, `update_rig_images`, `set_cluster_slots`, `runpod_test_start`, `runpod_test_end` | Yes | Yes | No | No |
+| `add_cluster_rig`, `set_rig_model`, `start_run`, `cluster_rig`, `update_rig_images`, `set_cluster_slots`, `runpod_test_start`, `runpod_test_end` | Yes | Yes | No | No |
 | `retire_rig`, `bring_back_rig`, `runpod_launch`, `runpod_rig_limits`, `runpod_rig` | Yes | No | No | No |
 
 ### Command kinds for each role
@@ -65,7 +65,7 @@ Control checks a token against the owner's first, then the operator's, the agent
 | `queue_add`, `queue_move`, `queue_edit`, `queue_drop`, `queue_accept`, `drop_directive` | Yes | Yes | No |
 | `approve_promotion`, `decline_promotion` | Yes | No | No |
 
-The six queue kinds change a run's [experiment queue](signed-commands.md#queue_add) and remove its rules; the harness takes them only from the owner, and the operator acts for the owner. No token issues `rig_settings`, `accept_review`, `conclude`, `propagate` or `wipe_state` over MCP. The owner changes a rig's settings and accepts reviews and "not possible" endings on the dashboard. `propagate` goes through `propagate_champion`, and `wipe_state` only through a full reset. A kind the role may not issue, or one that does not exist, is input that does not match the tool: `MCP error -32602: Input validation error: …`.
+The six queue kinds change a run's [experiment queue](signed-commands.md#queue_add) and remove its rules; the harness takes them only from the owner, and the operator acts for the owner. No token issues `rig_settings`, `accept_review`, `conclude`, `propagate` or `wipe_state` with `issue_command`. The owner changes a rig's settings and accepts reviews and "not possible" endings on the dashboard; the one exception is a new GPU split, which the owner's [`start_run`](#start_run) sends as a `rig_settings`, as **Start a run** does. `propagate` goes through `propagate_champion`, and `wipe_state` only through a full reset. A kind the role may not issue, or one that does not exist, is input that does not match the tool: `MCP error -32602: Input validation error: …`.
 
 While the owner fully resets a rig, `issue_command` with the agent's token refuses that rig: `<rig> is being reset by the owner`.
 
@@ -455,6 +455,49 @@ It refuses with the same words as **Add a rig**:
 
 It sets the workers' model for every run on the rig, as **Edit rig** does. Returns `{rig, model, said}`, where `said` is the dashboard's words: `<rig> takes <model> from "<provider>" under <harness> within a minute, and checks it.` Besides `mcp:set_rig_model`, the audit log records `rig_model_given` with the caller's actor. Errors: `no rig <rig>`, `That provider does not list that model.`, `OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig.` (with `harness: "pi"` or `"codex"`), and `Codex runs only with a ChatGPT subscription or an OpenAI-compatible provider: choose Pi or OpenCode v2 for this provider.` (with `harness: "codex"` and an Anthropic or OpenCode provider). A Claude subscription's model runs in Claude Code whatever `harness` says.
 
+### start_run
+
+**Start a run of a campaign.** Owner and operator.
+
+> As a campaign page's Start a run does, with the same checks and refusals in words: a new run of a campaign control keeps (saved on the New campaign page, or assigned before; control then assigns it again with the same contract, starting point and imports) on a rig whose hardware the campaign's kit measures on. On a busy rig the run at work pauses, as a rig runs one run at a time. Returns the new run and its command id (follow it with command_status), with notes in words. A rig with no model for its agents is refused: give agents_model (control gives the rig that model first and answers started: false; start the run again once the rig has it), or use set_rig_model. On a rig launched on RunPod whose pod is stopped, control starts the pod first (the owner's token only; another token is refused), and woke says so.
+
+The operator's description ends with one more sentence: `judge_gpus is the owner's alone.` The tool runs the dashboard's own code for **Start a run**, so it checks, signs and refuses as the panel does; [Start a run later](../how-to/campaigns/start-from-dashboard.md#start-a-run-later) describes the panel. The operator may call it because the operator may already assign runs with `issue_command`.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `campaign` | string | | The campaign, as on its page: one saved on control, or one assigned before over the API, MCP or the command line |
+| `rig` | string | | The rig the run starts on (**Where it runs**) |
+| `agents` | boolean, optional | `true` | `false`: a try, with no agents. The judge measures the starting code on every case once (**Agents** › **Off: a try**) |
+| `agents_model` | `{provider, model}`, optional | none | For a rig with no model for its agents: a model from a provider in **Providers** (**The agents' model**). Control gives the rig the model, with the harness the model needs, and does not start the run yet |
+| `promotion` | `auto` or `owner_approval`, optional | the rig's default | When a change is confirmed better: keep it at once, or wait for the owner (**When a change is confirmed better**) |
+| `judge_gpus` | whole number, optional | the rig's current split | For a rig with several GPUs: how many the judge measures on (**GPUs for the judge**). The owner's token only. It changes the rig's split for every run on it, and the rig's harness restarts to apply it |
+| `queue_from` | `{rig, run}`, optional | none | Another run of this campaign: its untried experiments start the new run's queue, up next in their order, then its lanes' ideas (**Copy the untried experiments of**) |
+| `past` | array of whole numbers, optional | none | Items of Thermite's knowledge base by their `id`, as [`kb_search`](#kb_search) gives it, from folders the campaign may read (**From past research**). Experiments join the queue after the copied ones; findings, claims, notes and reports go to every agent's brief as background |
+
+The new run's queue holds at most 500 experiments: the copied ones first, then the past ones. The words of each copied and past experiment, and of each briefing item, come from control's own records, as the panel takes them. Besides `mcp:start_run`, the audit log has the `assign_campaign` command, issued by the caller's actor, and `rig_model_given` when the call gave the rig a model.
+
+It returns one of these:
+
+- The run started: `{started: true, campaign, rig, run, command, status: "pending", woke?, notes?}`. `run` is the new run's name, such as `gemv-speed-2`, or `gemv-speed-try-1` for a try. `command` is the `assign_campaign` command's id, for [`command_status`](#command_status). `woke` is there when control started the rig's stopped RunPod pod first, as for [`issue_command`](#issue_command). `notes` is there when there is more to know: `<run> is at work on <rig>, and pauses when this run starts (a rig runs one run at a time).`, or `<run> on <rig> has no untried experiments: the new run's queue starts empty.`
+- The rig was given a model first: `{started: false, said}`, with `said` `<rig> takes <model> within a minute; Settings › Providers shows it taking the model until then. Then start the run again.` Call `start_run` again, without `agents_model`, once [`list_rigs`](#list_rigs) or **Settings › Providers** shows the rig runs the model.
+
+Errors, in the words of **Start a run**:
+
+- `Control has no saved version or earlier assignment of this campaign.`
+- `No rig is called <rig>. Choose a rig.`
+- `<rig> has no model for its agents, so they could not work: choose one under "The agents' model", or give it one on its Edit rig page.`
+- `<rig> has not taken <model> yet (it does within a minute of being given it; Settings › Providers shows it taking the model until then): start the run after that.`
+- `<rig> measures on <type>, and this campaign's kit measures on <type>: choose a rig with that hardware`
+- `<model> is one of OpenCode's free models, which work only inside OpenCode, and <rig>'s agents would run in Pi: a research run there could not work. Set the agents' harness to OpenCode, or give the rig a model Pi can use.`
+- `A try (agents off) takes no model, no experiments and no background: leave them out, or start the run with agents.`
+- `<rig> has no run <run> of <campaign>: copy from a run of this campaign.`
+- `An item from past research is not one this campaign may read and start from: search again.`
+- `That provider does not list that model.`, and the other refusals of [`set_rig_model`](#set_rig_model)
+- `<rig> has no GPU set to split: its GPUs are set where it is deployed.`, or `With <n> GPUs the judge takes 1 to <m> of them, and the agents at most 8.`
+- `Only the owner's token changes a rig's GPU split: leave out judge_gpus.` (the operator's token)
+- for a rig on RunPod whose pod is stopped: with the operator's token, `<rig>'s pod on RunPod is stopped, and only the owner can start it: start the pod from the rig's page, or start the run with the owner's token`; with the owner's, when the pod can't start, `Not sent: control could not start <rig>'s pod on RunPod for it.` and the reason
+- `Control sends no commands to <rig>.` and the reason, for a rig control [refuses](rest-api.md#when-control-refuses-a-rig)
+
 ### cluster_rig
 
 **Stop, start or restart a cluster rig.** Owner and operator.
@@ -664,4 +707,4 @@ Control writes every tool call to its audit log before the tool runs, reads incl
 
 ## Not in MCP yet
 
-Some things the owner does on the dashboard or over REST have no tool yet: cancelling a command, accepting a review or a "not possible" ending, changing a rig's settings other than its agents' model (`set_rig_model`), restarting a rig's containers and resetting a rig (`runpod_rig` does both for a rig on RunPod), removing a rig control set up, stopping, starting and restarting one it set up on a machine (`cluster_rig` covers a cluster rig), accepting a rig's key and enrolling a rig. They are planned in [goal 029](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/029-api-mcp-coverage.goal). MCP takes bearer tokens only; signing in with OAuth is [goal 030](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/030-oauth-sign-in.goal). `control_log` returns the newest 500 entries at most; paging is [goal 015](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/015-log-paging.goal).
+Some things the owner does on the dashboard or over REST have no tool yet: cancelling a command, accepting a review or a "not possible" ending, changing a rig's settings other than its agents' model (`set_rig_model`) and its GPU split (the owner's `start_run`), restarting a rig's containers and resetting a rig (`runpod_rig` does both for a rig on RunPod), removing a rig control set up, stopping, starting and restarting one it set up on a machine (`cluster_rig` covers a cluster rig), accepting a rig's key and enrolling a rig. They are planned in [goal 029](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/029-api-mcp-coverage.goal). MCP takes bearer tokens only; signing in with OAuth is [goal 030](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/030-oauth-sign-in.goal). `control_log` returns the newest 500 entries at most; paging is [goal 015](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/015-log-paging.goal).

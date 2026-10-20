@@ -239,7 +239,12 @@ describe("the new-campaign page", () => {
     const kinds = s.store.listCommands(10).map((c) => c.kind);
     assert.deepEqual(kinds, ["assign_campaign", "assign_campaign"]);
     const bad = await s.post("/ui/campaigns/matmul-speed/runs", { csrf: s.csrf, rig: "nope" });
-    assert.match(String(bad.headers.get("location")), /error=Choose%20a%20rig/);
+    assert.match(
+      decodeURIComponent(String(bad.headers.get("location"))),
+      /error=No rig is called nope\. Choose a rig\.$/,
+    );
+    const none = await s.post("/ui/campaigns/matmul-speed/runs", { csrf: s.csrf });
+    assert.match(String(none.headers.get("location")), /error=Choose%20a%20rig\.$/);
   });
 
   test("an uploaded kit is checked and summed up, then kept by control for the campaign", async () => {

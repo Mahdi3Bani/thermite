@@ -17,7 +17,8 @@ import type { CampaignSources, ControlStore } from "./store.ts";
  * the owner sees the kit work before agents spend anything.
  *
  * A run on a rig launched on RunPod whose pod is stopped starts the pod first (issue.ts's
- * issueWaking): these pages are the owner's, who alone may start a pod.
+ * issueWaking): only the owner may start a pod, so a run an operator starts over MCP is refused
+ * there (RunInput.owner).
  */
 
 export interface StartInput {
@@ -133,6 +134,11 @@ export interface RunInput {
   agents: boolean;
   promotion?: "auto" | "owner_approval" | undefined;
   by: string;
+  /**
+   * Whether the owner's token asks: only the owner starts a stopped RunPod pod (issueWaking).
+   * Default: true, as for the dashboard and the owner's REST API.
+   */
+  owner?: boolean | undefined;
   /** Experiments another run had not tried, copied into the new run's queue (goal 064). */
   queue?: QueueSeed[] | undefined;
   /** Background from past research for every agent's brief, with where each came from (065). */
@@ -193,7 +199,7 @@ async function againLikeBefore(deps: Deps, input: RunInput): Promise<RunStarted>
       ...(input.briefing?.length && input.agents ? { briefing: input.briefing } : {}),
     },
     issuedBy: input.by,
-    owner: true,
+    owner: input.owner ?? true,
   });
   return { ok: true, campaign: input.campaign, run, command: issued.id, woke: issued.woke };
 }
@@ -255,7 +261,7 @@ export async function startRun(deps: Deps, input: RunInput): Promise<RunStarted>
       imports,
     },
     issuedBy: input.by,
-    owner: true,
+    owner: input.owner ?? true,
   });
   return { ok: true, campaign: input.campaign, run, command: issued.id, woke: issued.woke };
 }
