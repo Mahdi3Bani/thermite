@@ -268,7 +268,7 @@ test("a campaign's read grants: forms with the form token, refused for itself, a
     ),
   );
   page = await (await s.get("/ui/campaigns/gemv-speed")).text();
-  assert.match(page, /<b>survey-study<\/b> <span class="muted small">research · 3 items/);
+  assert.match(page, /<b>survey-study<\/b> <span class="muted small">research · 4 items/);
   assert.match(
     page,
     /action="\/ui\/campaigns\/gemv-speed\/kb\/revoke"><input type="hidden" name="csrf" value="[0-9a-f]+"><input type="hidden" name="reads" value="survey-study">/,
@@ -303,7 +303,7 @@ test("the Knowledge page: every folder with its counts and grants, and a search 
   const page = await (await s.get("/ui/knowledge")).text();
   assert.match(page, /<a href="\/ui\/knowledge" class="on">/, "the sidebar's Knowledge entry");
   assert.match(page, /id="folder-gemv-speed"/);
-  assert.match(page, /<b>gemv-speed<\/b><\/a> <span class="muted small">goal · 7 items<\/span>/);
+  assert.match(page, /<b>gemv-speed<\/b><\/a> <span class="muted small">goal · 8 items<\/span>/);
   assert.match(page, /1 run · 3 field notes · 2 experiments · 1 attempt · 1 note/);
   assert.match(page, /read by: <b>gemv-speed<\/b>/);
   assert.match(page, /reads: survey-study/);

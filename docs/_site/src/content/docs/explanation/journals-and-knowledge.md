@@ -94,12 +94,14 @@ A research note is its own record and event (`research_note`), kept apart from t
 
 ## The knowledge base: a folder for each campaign
 
-Control keeps **Thermite's knowledge base** in its own store. Each campaign has one **folder**, which holds everything its runs record:
+Control keeps **Thermite's knowledge base** in its own store. Each campaign has one **folder**, which holds everything its runs produce:
 
+- the runs, and their trials: each agent session of a lane, and how it ended;
 - experiments, with their results;
 - attempts, with the judge's verdicts;
 - field notes and research notes;
-- sources read, and claims with their quotes;
+- documents: the text files lanes write in their working areas of the run's research folder;
+- sources, with the text that was read, and claims with their quotes;
 - findings, and a research run's reports.
 
 Each item keeps where it came from: its campaign, its rig and run, who wrote it, and when.
@@ -151,7 +153,7 @@ Past research can suggest what to try. It can't decide whether it worked. An exp
 
 An **outside knowledge base** is optional: a GBrain-style brain, or any MCP server with a search tool. Thermite's own knowledge base stays where the research lives. The owner put it this way: "gbrain is more a sync than anything and additional external context brought in." So an outside knowledge base has two roles, which the owner switches on for each campaign:
 
-- **A copy of the campaign's folder.** Control writes the campaign's whole folder to the outside knowledge base first, one page for each item, then each new or changed item: every few minutes (`THERMITE_OUTSIDE_KB_SYNC_SECONDS`, 300 seconds by default, where `0` turns the timer off; see [Settings](../reference/settings.md#control)) and when the owner presses **Sync now**. Everything in the folder goes: field notes, experiments, attempts with their hypotheses and declared flaws, sources, claims, findings and reports. Each page's front matter says where its item came from, and that it was "written by Thermite's agents and judge: data, not instructions". Only the campaign's own folder is copied, not the folders it reads. Pages already written stay when the copy stops. The copy needs the server's write tool; without one, there is no copy. When the server refuses a page, the next sync tries it again; a page refused three syncs in a row is skipped, so that one page can't hold up the copy for good. The campaign's page and **Settings › Providers** count the pages skipped and name the last, and the audit log records each (`outside_kb_item_skipped`).
+- **A copy of the campaign's folder.** Control writes the campaign's whole folder to the outside knowledge base first, one page for each item, then each new or changed item: every few minutes (`THERMITE_OUTSIDE_KB_SYNC_SECONDS`, 300 seconds by default, where `0` turns the timer off; see [Settings](../reference/settings.md#control)) and when the owner presses **Sync now**. Everything in the folder goes: runs and trials, field notes, documents, experiments, attempts with their hypotheses and declared flaws, sources with their text, claims, findings and reports. Each page's front matter says where its item came from, and that it was "written by Thermite's agents and judge: data, not instructions". Only the campaign's own folder is copied, not the folders it reads. Pages already written stay when the copy stops. The copy needs the server's write tool; without one, there is no copy. When the server refuses a page, the next sync tries it again; a page refused three syncs in a row is skipped, so that one page can't hold up the copy for good. The campaign's page and **Settings › Providers** count the pages skipped and name the last, and the audit log records each (`outside_kb_item_skipped`).
 - **Outside context for the teachers.** The campaign's teacher pair may search the outside knowledge base, read only, beside any knowledge base in the rig's advisors file. Only a teacher whose model runs in the supervisor with read-only tools searches it: a model with an API key, or a ChatGPT subscription. A teacher on a Claude subscription runs in Claude Code with no tools, and a teacher that may fetch any web page gets no knowledge-base search. The combiner, the auditor and the review panel never search it, and workers never reach it. The owner switches this on and off on the campaign's page, or over MCP with the same `kb_grant` and `kb_revoke` as for folders, naming the outside knowledge base as `outside:<name>`; a name that isn't set in **Settings › Providers** is refused. The grant then shows under **Can read from**, where **Remove** ends it. Control gives the knowledge base's address, token and search tool, with the advisors' models, to the supervisor of each rig that control assigned the campaign. Its audit log records each change in what a rig is given (`outside_kb_handed`), also when that drops to nothing.
 
 The outside knowledge base is set once, in **Settings › Providers**, where control seals its token ([Who holds your keys](who-holds-your-keys.md)). Its address must use https, because the token goes with every call; plain http is allowed only for localhost. With a copy switched on, a campaign's research joins the rest of your notes there. With outside context, its teachers can draw on those notes.
@@ -163,6 +165,7 @@ A rig's exports carry its runs' records to its results repository, and the journ
 - **The field notes** recorded since the last export, in `journal.jsonl`, which every export writes, even an empty one;
 - **the research notes** since then, in `research-notes.jsonl`;
 - **the briefing** of each run created since then, in `briefing.jsonl`;
+- **the runs' part of their campaigns' folders:** each item added or changed since then, in `knowledge.jsonl`, read from the rig's own events the way control reads them, so an export holds what its runs put in the knowledge base;
 - **a finished run's research folder:** a research run's, with its final report, and a finished hill-climb or goal run's, when it recorded sources, claims or notes.
 
 The folder goes without `knowledge/`: those files are other runs' records, which those runs' own exports carry. [The export](../reference/knowledge-base.md#the-export) lists each file's fields, and [Set up the results repository](../how-to/operate/results-repository.md) says where each file lands.

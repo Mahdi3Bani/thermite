@@ -6,6 +6,7 @@ import { log } from "../../common/env.ts";
 import { canonicalJson } from "../../core/canonical.ts";
 import type { ResearchContract } from "../../core/contract.ts";
 import { parseDuration } from "../../core/duration.ts";
+import { KB_BODY_MAX } from "../../core/kb-index.ts";
 import { CODE_RESEARCH_TOOLS, researchTool } from "../agents/research-tools.ts";
 import { type Ledger, LedgerError } from "../ledger.ts";
 import { Fetcher, FetchRefused, htmlToText } from "./fetcher.ts";
@@ -230,7 +231,8 @@ export class Research {
           f.textPath,
           lane ?? "research",
         );
-      // Its address and title too, so a knowledge base can show what was read from events alone.
+      // Its address, its title and the text that was read (cut to an item's length), so the
+      // campaign's folder in the knowledge base holds the source itself, from events alone.
       this.ledger.appendEvent(lane ?? "research", "source_fetched", run, {
         source: id,
         domain: f.domain,
@@ -238,6 +240,7 @@ export class Research {
         bytes: f.bytes,
         url: clip(f.url, 2000),
         title: f.title ? clip(f.title, 500) : null,
+        text: clip(f.text, KB_BODY_MAX),
       });
     });
     const row = this.get("select * from source where id = ?", id) as Row;

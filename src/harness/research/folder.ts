@@ -13,6 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { KB_BODY_MAX } from "../../core/kb-index.ts";
 import type { ResearchFolderPaths } from "../agents/research-tools.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { countsText, type Knowledge } from "../knowledge.ts";
@@ -95,6 +96,26 @@ function copyTree(from: string, to: string): Map<string, { sha256: string; bytes
     seen.set(rel, { sha256: createHash("sha256").update(data).digest("hex"), bytes: data.length });
   }
   return seen;
+}
+
+/** A file of a lane's saved area, in its manifest; `doc`: recorded as a document of the run. */
+interface SavedFile {
+  sha256: string;
+  bytes: number;
+  doc?: boolean | undefined;
+}
+
+/** The largest file a lane writes that is also kept as a document of the run (1 MiB). */
+export const DOC_MAX_BYTES = 1024 * 1024;
+
+/** A file's text when it is text (UTF-8, no NUL byte); undefined for any other file. */
+function textOf(data: Buffer): string | undefined {
+  if (data.includes(0)) return undefined;
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(data);
+  } catch {
+    return undefined; // not UTF-8: a binary file, not a document
+  }
 }
 
 /** A name safe as one path part: a section's name, say. */
@@ -424,7 +445,10 @@ export class ResearchFolder {
 
   /**
    * A lane's trial has ended (its processes are gone): its working area is taken back, its files
-   * saved and recorded (what changed since the last save), and shown to the other lanes.
+   * saved and recorded (what changed since the last save), and shown to the other lanes. Each
+   * text file it wrote (UTF-8, up to DOC_MAX_BYTES) is also a document of the run: one
+   * `research_doc` event with its text, cut to an item's length, which the campaign's folder in
+   * the knowledge base keeps; a document taken out of the area is said removed the same way.
    */
   async captureLane(
     run: string,
@@ -439,13 +463,25 @@ export class ResearchFolder {
     const saved = this.saved(run, lane);
     const manifestPath = `${saved}.json`;
     const before = existsSync(manifestPath)
-      ? (JSON.parse(readFileSync(manifestPath, "utf8")) as Record<
-          string,
-          { sha256: string; bytes: number }
-        >)
+      ? (JSON.parse(readFileSync(manifestPath, "utf8")) as Record<string, SavedFile>)
       : {};
     const tmp = `${saved}.tmp-${randomUUID().slice(0, 8)}`;
-    const now = copyTree(work, tmp);
+    const now: Map<string, SavedFile> = copyTree(work, tmp);
+    // The documents: text files, read from the saved copy (the lane can no longer change it).
+    const docs = new Map<string, { text: string; clipped: boolean }>();
+    for (const [rel, f] of now) {
+      if (before[rel]?.sha256 === f.sha256) {
+        if (before[rel]?.doc) f.doc = true;
+        continue;
+      }
+      const text = f.bytes <= DOC_MAX_BYTES ? textOf(readNoFollow(join(tmp, rel))) : undefined;
+      if (text === undefined) continue;
+      f.doc = true;
+      docs.set(rel, {
+        text: text.length > KB_BODY_MAX ? `${text.slice(0, KB_BODY_MAX - 1)}…` : text,
+        clipped: text.length > KB_BODY_MAX,
+      });
+    }
     const at = new Date().toISOString();
     let written = 0;
     let removed = 0;
@@ -457,11 +493,30 @@ export class ResearchFolder {
         if (before[rel]?.sha256 === f.sha256) continue;
         add.run(run, lane, trial, rel, "written", f.bytes, f.sha256, at);
         written++;
+        const doc = docs.get(rel);
+        if (doc)
+          this.ledger.appendEvent(lane, "research_doc", run, {
+            lane,
+            trial,
+            path: rel,
+            change: "written",
+            bytes: f.bytes,
+            sha256: f.sha256,
+            text: doc.text,
+            ...(doc.clipped ? { clipped: true } : {}),
+          });
       }
-      for (const rel of Object.keys(before)) {
+      for (const [rel, f] of Object.entries(before)) {
         if (now.has(rel)) continue;
         add.run(run, lane, trial, rel, "removed", null, null, at);
         removed++;
+        if (f.doc)
+          this.ledger.appendEvent(lane, "research_doc", run, {
+            lane,
+            trial,
+            path: rel,
+            change: "removed",
+          });
       }
       if (written || removed)
         this.ledger.appendEvent(lane, "research_files_saved", run, {

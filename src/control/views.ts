@@ -402,7 +402,8 @@ export function rigEvents(
   const out: StoredEvent[] = [];
   let after = 0;
   for (;;) {
-    const page = store.events(rig, after, 5000, ledgerId) as StoredEvent[];
+    // The pages need no source's or document's text: the knowledge base keeps it.
+    const page = store.events(rig, after, 5000, ledgerId, { lean: true }) as StoredEvent[];
     out.push(...page);
     if (page.length < 5000) return out;
     after = (page.at(-1) as StoredEvent).seq;

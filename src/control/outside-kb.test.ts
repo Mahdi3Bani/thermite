@@ -187,10 +187,15 @@ describe("an outside knowledge base", () => {
     add(outside, fake);
     assert.equal(outside.setCopy("team-brain", "pn-engine", true, "owner:test"), "on");
     const first = await outside.sync("team-brain", "pn-engine");
-    assert.deepEqual(first, { written: 3, error: undefined });
+    assert.deepEqual(first, { written: 4, error: undefined });
     assert.deepEqual(
       [...fake.pages.keys()].sort(),
-      [slug("attempt", "pn-3-a-1"), slug("experiment", "pn-3-x-1"), slug("note", "pn-3-1")].sort(),
+      [
+        slug("attempt", "pn-3-a-1"),
+        slug("experiment", "pn-3-x-1"),
+        slug("note", "pn-3-1"),
+        slug("run", "pn-3-pn-3"),
+      ].sort(),
     );
     // The other campaign's folder is not copied.
     assert.ok(![...fake.pages.values()].some((c) => c.includes("another campaign")));
@@ -219,7 +224,7 @@ describe("an outside knowledge base", () => {
       written: 0,
       error: undefined,
     });
-    assert.equal(writes(fake).length, 3);
+    assert.equal(writes(fake).length, 4);
 
     // The judge's verdict changes the attempt: its page is written again, alone.
     ingest(
@@ -232,13 +237,13 @@ describe("an outside knowledge base", () => {
       written: 1,
       error: undefined,
     });
-    assert.equal(writes(fake).length, 4);
+    assert.equal(writes(fake).length, 5);
     assert.match(
       fake.pages.get(slug("attempt", "pn-3-a-1")) ?? "",
       /Verdict: win_confirmed \(\+6\.10%\)/,
     );
     const copy = outside.copies({ campaign: "pn-engine" })[0];
-    assert.equal(copy?.written, 4);
+    assert.equal(copy?.written, 5);
     assert.equal(copy?.last_written, 1);
     assert.equal(copy?.last_error, null);
 
@@ -276,7 +281,7 @@ describe("an outside knowledge base", () => {
     outside.setCopy("team-brain", "pn-engine", false, "owner:test");
     assert.deepEqual(outside.copies(), []);
     outside.setCopy("team-brain", "pn-engine", true, "owner:test");
-    assert.equal((await outside.sync("team-brain", "pn-engine")).written, 4);
+    assert.equal((await outside.sync("team-brain", "pn-engine")).written, 5);
   });
 
   test("an item the server refuses three syncs in a row is skipped: the copy goes on and says which", async (t) => {
@@ -333,7 +338,7 @@ describe("an outside knowledge base", () => {
     copy = outside.copies()[0];
     assert.equal(copy?.last_error, null);
     section = campaignOutsideKb(outside, "pn-engine", "t", now, () => undefined);
-    assert.match(section, /0 pages written · 2 since it was switched on · 1 item skipped/);
+    assert.match(section, /0 pages written · 3 since it was switched on · 1 item skipped/);
   });
 
   test("with no write tool there is no copy and no sync", async (t) => {
@@ -463,7 +468,7 @@ describe("an outside knowledge base", () => {
       // The first sync starts with the copy; wait for it to end.
       for (let i = 0; i < 400 && !outside.copies({ campaign: "pn-engine" })[0]?.last_at; i++)
         await new Promise((r) => setTimeout(r, 25));
-      assert.equal(outside.copies({ campaign: "pn-engine" })[0]?.last_written, 3);
+      assert.equal(outside.copies({ campaign: "pn-engine" })[0]?.last_written, 4);
       fake.failWrites = `token ${TOKEN} is not allowed to write`;
       ingest(
         store,

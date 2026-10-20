@@ -12,6 +12,7 @@ import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { canonicalJson } from "../core/canonical.ts";
 import { patchBytes } from "./git.ts";
+import { knowledgePart } from "./kb-part.ts";
 import type { Ledger } from "./ledger.ts";
 import { championFiles } from "./propagation.ts";
 
@@ -19,7 +20,8 @@ import { championFiles } from "./propagation.ts";
  * Outbox export. The harness has no git credentials and no remote access: it writes exports
  * into the shared outbox, and the supervisor pushes them to the results repository as packed
  * commits. An export holds patches and manifests for attempts recorded since the last export,
- * the events since then, the runs' field notes, research notes and briefings since then, a
+ * the events since then, the runs' field notes, research notes and briefings since then, the
+ * runs' part of their campaigns' folders in the knowledge base that changed since then, a
  * consistent ledger snapshot, each new run champion as a patch against its seed (what other rigs
  * need to judge it themselves), and the research folder of each run that finished.
  */
@@ -153,6 +155,14 @@ export async function writeExport(input: {
     if (briefing.length) {
       writeFileSync(join(tmp, "briefing.jsonl"), jsonl(briefing));
       notesRel.push("briefing.jsonl");
+    }
+    // The runs' part of their campaigns' folders (knowledge.jsonl): each item that an event
+    // since the last export added or changed, as it stands now, with its origin, read as
+    // control reads it into the knowledge base.
+    const part = knowledgePart(ledger, input.rig, since, through);
+    if (part.length) {
+      writeFileSync(join(tmp, "knowledge.jsonl"), jsonl(part));
+      notesRel.push("knowledge.jsonl");
     }
 
     // A research campaign's output is its report and its whole folder: claims, findings, notes,
