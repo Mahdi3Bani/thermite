@@ -104,8 +104,6 @@ export interface PlanResult {
   valid: boolean;
   /** What was wrong with the model's raw output, per try (the directive-compliance record). */
   rawViolations: string[];
-  /** True when the model gave an answer (valid or not): its prompt, owner messages included, reached it. */
-  answered?: boolean | undefined;
   /** The fixed plan (fallback): a direction for each lane, used when the queue has nothing. */
   assignments: Assignment[];
   newFamilies: NewFamily[];
@@ -481,7 +479,6 @@ export async function plan(
   ask?: Ask,
 ): Promise<PlanResult> {
   const rawViolations: string[] = [];
-  let answered = false;
   // The field notes of every answer, read leniently: a refused plan keeps its notes.
   const journal: NoteInput[] = [];
   const keepNotes = (raw: unknown) => {
@@ -503,7 +500,6 @@ export async function plan(
         rawViolations.push(`try ${tries}: ${err instanceof Error ? err.message : String(err)}`);
         continue;
       }
-      answered = true;
       keepNotes(raw);
       const { errors, plan: p } = validatePlan(raw, input);
       if (!errors.length && p) {
@@ -513,7 +509,6 @@ export async function plan(
           tries,
           valid: true,
           rawViolations,
-          answered,
           ...(journal.length ? { journal } : {}),
           assignments: queue.handout.map((h) => {
             const x = familyAndTitle(h.experiment, input, queue);
@@ -541,7 +536,6 @@ export async function plan(
     tries: model ? 2 : 0,
     valid: false,
     rawViolations,
-    answered,
     assignments: f.assignments,
     newFamilies: f.newFamilies,
     ...(journal.length ? { journal } : {}),

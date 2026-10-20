@@ -647,9 +647,9 @@ export class Scheduler {
       this.plannerNotes(run, p.journal);
       return;
     }
-    // Read only when the model answered with them in its prompt: a planner that is off, or a
-    // model that could not be reached, leaves them waiting for the next plan.
-    if (owner.length && p.answered)
+    // Read only when the model's plan was valid and used: a planner that is off, a model that
+    // could not be reached, or plans refused on both tries leave them waiting for the next plan.
+    if (owner.length && p.source === "planner")
       this.o.service.messages.read(
         owner.map((m) => m.id),
         "planner",

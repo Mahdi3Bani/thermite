@@ -44,7 +44,12 @@ const reads = (env: { service: { ledger: Env["ledger"] } }) =>
 /** A hill climb with one lane, a planner that records its prompt and trials that record their brief. */
 async function setup(
   t: TestContext,
-  o: { plannerOn?: () => boolean; turns?: (trial: number) => number } = {},
+  o: {
+    plannerOn?: () => boolean;
+    turns?: (trial: number) => number;
+    /** True: the planner's answer gives no lane an experiment, so the plan is refused. */
+    refuse?: () => boolean;
+  } = {},
 ) {
   const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
   await env.service.applyCommand(env.assign);
@@ -58,9 +63,9 @@ async function setup(
           name: "submit_plan",
           args: {
             new_families: [{ id: "speed", description: "make the sum faster" }],
-            assignments: [
-              { lane: "lane-1", family: "speed", focus: "go faster", parent: "champion" },
-            ],
+            assignments: o.refuse?.()
+              ? []
+              : [{ lane: "lane-1", family: "speed", focus: "go faster", parent: "champion" }],
           },
         },
       ],
@@ -164,6 +169,24 @@ describe("the owner's messages in plans and briefs", () => {
       env.service.messages.waitingForPlanner("js-1").map((m) => m.id),
       [1],
     );
+  });
+
+  test("a plan refused on both tries leaves the planner's messages for the next plan", async (t) => {
+    let refuse = true;
+    const { env, planned, epoch } = await setup(t, { refuse: () => refuse });
+    await command(env, "message_agent", { run: "js-1", to: "planner", text: "spread wider" });
+    await epoch();
+    assert.equal(planned.length, 2, "two tries, both refused: the fixed rules planned the round");
+    assert.deepEqual(reads(env), [], "not read: the model's plan was not used");
+    assert.deepEqual(
+      env.service.messages.waitingForPlanner("js-1").map((m) => m.id),
+      [1],
+    );
+    refuse = false;
+    await epoch();
+    assert.match(String(planned[2]), /spread wider/, "the next plan gets it");
+    assert.deepEqual(reads(env), ["1:planner"]);
+    assert.deepEqual(env.service.messages.waitingForPlanner("js-1"), []);
   });
 });
 
