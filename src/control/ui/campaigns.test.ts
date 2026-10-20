@@ -213,7 +213,11 @@ test("History tells the queue's changes, the hand-outs and the rules in words", 
     'Your experiment "vector loads" went back in the queue: its trial was interrupted.',
   );
   assert.equal(
-    say("experiment_added", "planner", { ...back, by: "planner", back_from_trial: "t-1" }),
+    say("experiment_added", "planner", {
+      ...back,
+      by: "planner",
+      requeued_from: { experiment: "x-1", trial: "t-1", lane: "lane-1", result: "interrupted" },
+    }),
     'The planner\'s experiment "vector loads" went back in the queue: its trial was interrupted.',
   );
   assert.equal(

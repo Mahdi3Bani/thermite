@@ -341,14 +341,14 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
     // The run's experiment queue (goal 064): what was added, moved, dropped and given out.
     case "experiment_added": {
       // An experiment whose trial was interrupted (or failed) goes back to the queue as a new one
-      // by its author: not the author's act. The harness marks it (back_from_trial); an older
-      // one says so only in its why.
+      // by its author: not the author's act. The harness marks it (requeued_from: the
+      // experiment, trial, lane and result); an older one says so only in its why.
       const again = /^tried again: its trial on \S+ (was interrupted|failed) \(/.exec(
         String(b.why ?? ""),
       );
-      if (b.back_from_trial || again) {
+      if (b.requeued_from || again) {
         const by = who(String(b.by ?? e.actor));
-        const back = b.back_from_trial as { result?: unknown } | undefined;
+        const back = b.requeued_from as { result?: unknown } | undefined;
         const failed = again?.[1] === "failed" || back?.result === "error";
         return s(
           `${by === "You" ? "Your" : `${by}'s`} experiment "${clip(String(b.title ?? ""), 120)}" went back in the queue: its trial ${failed ? "failed" : "was interrupted"}.`,
