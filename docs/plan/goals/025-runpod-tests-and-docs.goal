@@ -1,17 +1,17 @@
 ---
 id: "025"
 title: "RunPod tests and how-to"
-status: READY
+status: IN_PROGRESS
 version: "0.1.0"
 part: "Rigs on RunPod"
 depends_on: ["022", "023", "024"]
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # 025 · RunPod tests and how-to
 
-**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Rigs on RunPod · **Depends on:** [022](022-runpod-launch.goal), [023](023-runpod-lifecycle.goal), [024](024-runpod-models-and-results.goal)
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Rigs on RunPod · **Depends on:** [022](022-runpod-launch.goal), [023](023-runpod-lifecycle.goal), [024](024-runpod-models-and-results.goal)
 
 ## What
 
@@ -25,11 +25,13 @@ The RunPod path must be tested without paid GPU time on every change.
 
 - [ ] CI covers launch, enrollment, stop, start and terminate against the fake API.
 - [ ] The paid run is recorded in Progress.
-- [ ] The how-to is in the docs index.
+- [x] The how-to is in the docs index.
 
 ## Decisions
 
-None yet.
+- 2026-10-20, builder: the fake RunPod API is one module, `src/testing/fake-runpod.ts`, for the unit tests and the acceptance alike. It answers RunPod's REST API v2 (the calls `src/control/runpod.ts` makes) and RunPod's proxy, refuses every other host, and takes hooks that put something real behind a pod. Its answer when RunPod has no GPU free is made up in RunPod's style: the paid run shows RunPod's own words.
+- 2026-10-20, builder: in the acceptance, each pod is a container of the one-container rig image (the CPU harness under it), on a volume at `/workspace`. A stop removes the container and keeps the volume, as RunPod empties a stopped pod's disk; a start makes it again on the volume. Control runs in the script, as in the rig image's acceptance.
+- 2026-10-20, builder: the paid acceptance is a script the owner runs by hand against a real control (`scripts/runpod-paid-acceptance.mjs`), with a spend limit the owner gives and `--i-accept-the-cost`. It talks to control's REST API only. It also covers what goals 019 and 020 left for a real pod: the isolation check on RunPod, and requests to the pod's address from outside.
 
 ## Open questions
 
@@ -38,6 +40,11 @@ None.
 ## Progress
 
 - 2026-10-19: Goal written from the v0.1.0 release plan.
+- 2026-10-20: **The fake API.** `src/testing/fake-runpod.ts`: pods move as RunPod's do (made, started, running, stopped with no GPU, gone), a running pod costs its GPU's price, and the options refuse a launch (no capacity), refuse a start (no GPU free), or take RunPod down. `src/control/runpod-rigs.test.ts` and `src/control/runpod-lifecycle.test.ts` use it; `src/testing/rig-results.ts` plays the harness's export and the supervisor's upload for them. The older fakes in `runpod.test.ts` and `runpod-tests.test.ts` stay: they test billing and the test pods' probe.
+- 2026-10-20: **The acceptance.** `scripts/runpod-acceptance.mjs`: the owner launches a rig over REST; the pod enrolls through the fake proxy and reports; a stop sends its export to control, then stops the pod cleanly with its volume kept; a start brings it back with the same keys and enrollment, and it reports; a terminate sends a full export to control, then removes the pod and its volume and retires the rig. Every change is in the rig's history, and RunPod's API sees a create, a stop, a start and a delete, nothing more. It passed under rootless Podman (a few minutes, most of it building the images) and cleaned up after itself. It is CI's new `runpod` job, with Docker; it has not run there yet.
+- 2026-10-20: **The paid run, written, not run.** `scripts/runpod-paid-acceptance.mjs --control URL --token-file F --gpu G --spend-limit USD --i-accept-the-cost` launches one pod through control and checks the launch on Secure cloud, enrollment, reports, the isolation check at start, that requests to `https://<pod>-8790.proxy.runpod.net` from outside all get the same empty 404, the stop with its export on control, the start (or RunPod's plain refusal when no GPU is free), and the terminate. On a failure it stops the pod and says how to end it. It needs the owner's OK to spend; record its output here.
+- 2026-10-20: **The how-to.** [Run a rig on RunPod](../../_site/src/content/docs/how-to/install/runpod-rig.md), in the install how-tos and in Start here: the account in Providers, the image, the launch over the command line, REST and MCP (the dashboard has no form yet, as it says), limits, stop, start, restart, results, terminate and the full reset.
+- 2026-10-20: Left: the first CI run of the `runpod` job, and the paid run.
 
 ---
 

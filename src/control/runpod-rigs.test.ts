@@ -4,6 +4,13 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { generateSigningKeys } from "../core/commands.ts";
 import { keySha256 } from "../core/tunnel.ts";
+import { FAKE_RUNPOD_KEY, fakeRunpod } from "../testing/fake-runpod.ts";
+import {
+  exportName,
+  exportOnControl,
+  harnessApplies,
+  supervisorReports,
+} from "../testing/rig-results.ts";
 import { createControlApi } from "./api.ts";
 import { podPortUrl } from "./runpod.ts";
 import type { RunpodRigView } from "./runpod-rig-view.ts";
@@ -12,95 +19,9 @@ import { SecretBox } from "./secrets.ts";
 import { ControlStore } from "./store.ts";
 import { ControlTunnels } from "./tunnel.ts";
 
-const KEY = "rpa_test-key-0123456789abcdef";
+const KEY = FAKE_RUNPOD_KEY;
 const IMAGE = "ghcr.io/example/thermite-rig:test-cuda";
 const HOUR = 3_600_000;
-
-/**
- * RunPod's REST API behind a fake fetch, with every call it got. Never the real one: no request
- * leaves the test. A pod runs once read, costs `cost` per GPU an hour, and stops when asked.
- */
-function fakeRunpod(o: { noCapacity?: boolean } = {}) {
-  type Pod = { status: string; gpu: string; count: number; cloud: string };
-  const pods = new Map<string, Pod>();
-  const calls: { method: string; path: string; body?: unknown }[] = [];
-  let n = 0;
-  const json = (body: unknown, status = 200) =>
-    new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-  const perGpu = (p: Pod) => (p.cloud === "COMMUNITY" ? 0.17 : 0.25);
-  const podJson = (id: string, p: Pod) => ({
-    id,
-    status: p.status,
-    cost: p.status === "RUNNING" ? perGpu(p) * p.count : 0,
-    gpu: { id: p.gpu, count: p.count },
-    dataCenterId: "EU-RO-1",
-  });
-  const f = (async (input: string | URL | Request, init?: RequestInit) => {
-    const url = new URL(String(input));
-    const method = init?.method ?? "GET";
-    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
-    calls.push({ method, path: url.pathname, body });
-    if (url.host !== "api.runpod.io") throw new Error(`only RunPod's API, not ${url.host}`);
-    if (new Headers(init?.headers).get("authorization") !== `Bearer ${KEY}`)
-      return json({ title: "Unauthorized" }, 401);
-    const path = url.pathname;
-    if (path === "/v2/catalog/gpus")
-      return json({
-        gpus: [
-          {
-            id: "NVIDIA H100 80GB HBM3",
-            name: "H100 SXM",
-            memory: 80,
-            secure: true,
-            price: { secure: 2.69 },
-            availability: "LOW",
-          },
-          {
-            id: "NVIDIA RTX A4000",
-            name: "RTX A4000",
-            memory: 16,
-            secure: true,
-            community: true,
-            price: { secure: 0.25, community: 0.17 },
-            availability: "HIGH",
-          },
-        ],
-      });
-    if (path === "/v2/catalog/datacenters")
-      return json({ dataCenters: [{ id: "EU-RO-1", name: "Romania", region: "Europe" }] });
-    if (path === "/v2/pods" && method === "GET")
-      return json({ pods: [...pods].map(([id, p]) => podJson(id, p)) });
-    if (path === "/v2/pods" && method === "POST") {
-      if (o.noCapacity)
-        return json({ title: "Bad Request", detail: "no capacity for that GPU" }, 400);
-      const id = `pod${++n}`;
-      pods.set(id, {
-        status: "PROVISIONING",
-        gpu: body.gpu.id,
-        count: body.gpu.count,
-        cloud: body.cloud,
-      });
-      return json(podJson(id, pods.get(id) as Pod), 201);
-    }
-    if (path.startsWith("/v2/") && !path.startsWith("/v2/pods/")) return json({});
-    const m = /^\/v2\/pods\/([^/]+)(\/action)?$/.exec(path);
-    const p = m ? pods.get(m[1] ?? "") : undefined;
-    if (!m || !p) return json({ title: "Not Found" }, 404);
-    if (method === "DELETE") {
-      pods.delete(m[1] ?? "");
-      return new Response(null, { status: 204 });
-    }
-    if (m[2]) {
-      p.status = body.action === "stop" ? "EXITED" : "RUNNING";
-      return json(podJson(m[1] ?? "", p));
-    }
-    if (p.status === "PROVISIONING") p.status = "RUNNING";
-    return json(podJson(m[1] ?? "", p));
-  }) as typeof fetch;
-  const stops = () =>
-    calls.filter((c) => c.method === "POST" && c.path.endsWith("/action")).map((c) => c.body);
-  return { f, calls, pods, stops };
-}
 
 function setup(o: { noCapacity?: boolean; image?: string | undefined } = {}) {
   const store = new ControlStore(":memory:");
@@ -118,9 +39,10 @@ function setup(o: { noCapacity?: boolean; image?: string | undefined } = {}) {
   const now = () => clock;
   const tunnels = new ControlTunnels(store, secrets, control.privateKeyPem, { now });
   const rigs = new RunpodRigs(store, secrets, tunnels, {
-    fetch: cloud.f,
+    fetch: cloud.fetch,
     image: "image" in o ? o.image : IMAGE,
     now,
+    privateKeyPem: control.privateKeyPem,
   });
   const created = () =>
     cloud.calls.filter((c) => c.method === "POST" && c.path === "/v2/pods").map((c) => c.body) as {
@@ -370,14 +292,25 @@ describe("rigs on RunPod: price, spend and the owner's limits", () => {
     reportRun(s.store, v.rig, "running", 1);
     for (let i = 0; i < 4; i++) await s.advance(20 * 60_000);
     assert.deepEqual(s.cloud.stops(), [], "a run runs");
-    // The run ends: 30 minutes later the pod stops.
+    // The run ends: 30 minutes later control stops the pod, its results sent out first.
     reportRun(s.store, v.rig, "completed", 2);
     await s.advance(20 * 60_000);
     assert.deepEqual(s.cloud.stops(), []);
     await s.advance(20 * 60_000);
+    const asked = s.rigs.view(v.rig) as RunpodRigView;
+    assert.deepEqual(
+      [asked.op?.kind, asked.op?.why, asked.op?.phase],
+      ["stop", "idle_stop", "exporting"],
+    );
+    assert.deepEqual(s.cloud.stops(), [], "not before the rig's results have left it");
+    harnessApplies(s.store, v.rig, exportName(1));
+    supervisorReports(s.store, v.rig);
+    exportOnControl(s.store, v.rig, exportName(1));
+    await s.advance(30_000);
     assert.deepEqual(s.cloud.stops(), [{ action: "stop" }]);
     const stopped = s.rigs.view(v.rig) as RunpodRigView;
     assert.equal(stopped.stopped_by, "idle_stop");
+    assert.equal(stopped.op, null);
     assert.match(stopped.notes.join(" "), /no run ran on it for 30 minutes, the idle stop you set/);
   });
 

@@ -3,7 +3,7 @@ title: "Test a GPU on RunPod"
 description: "Start a short test pod on RunPod from control, and read what it found and what it cost."
 type: how-to
 sidebar:
-  order: 8
+  order: 9
 ---
 
 :::caution[This spends money]
@@ -12,7 +12,7 @@ A test pod is a real RunPod pod. RunPod bills it by the second from the moment i
 
 A test pod tells you whether a [rig](../../reference/glossary.md) could run on RunPod: whether Thermite's harness gets root and the capabilities it needs there, whether the agents can be kept off the judge's GPU, and whether Thermite's isolation self-test passes. Control starts one pod of the CUDA harness image, reads its report, and removes it.
 
-Rigs on RunPod themselves are planned ([goals 019 to 025](https://github.com/iammrduncan/thermite/blob/main/docs/plan/roadmap.md#rigs-on-runpod)). The test pod is what exists today.
+A test pod is no rig: it runs no campaign. To run one there, see [Run a rig on RunPod](runpod-rig.md).
 
 ## Before you start
 

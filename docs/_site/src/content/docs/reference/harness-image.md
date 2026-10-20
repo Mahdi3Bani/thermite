@@ -219,7 +219,7 @@ The supervisor's environment is the broker's, without RunPod's variables and wit
 | The controller exits | Does what it does in the harness image: ends the controller's processes and every role's, and starts it again, with the key root copied at this start |
 | The supervisor exits | Ends whatever the supervisor started (its process group and every process of its user), logs `supervisor exited; restarting`, and starts it again |
 | A part exits again soon | Waits 2 seconds before the next start, then twice as long each time, up to 30 seconds. After a run of more than a minute it waits 1 second |
-| It gets `SIGTERM` or `SIGINT`, as when the pod stops | Passes the signal to both parts and starts neither again. Once both have ended, it ends every role's processes, logs `stopped` and exits with the controller's exit code. A stop while it waits for enrollment ends the supervisor the same way |
+| It gets `SIGTERM` or `SIGINT`, as when the pod stops | Passes the signal to both parts and starts neither again. Once both have ended, it ends every role's processes, logs `stopped` and exits with the controller's exit code. A stop while it waits for enrollment ends the supervisor the same way. The supervisor logs `stopping` and closes pull mode's ports at once: its calls that wait for control's next exchange end with 503, so it ends within seconds whether or not control is connected |
 
 ### Paths
 

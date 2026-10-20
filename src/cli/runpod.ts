@@ -99,12 +99,34 @@ export function formatRunpodRigs(rigs: RunpodRigView[]): string {
         r.idle_stop_minutes !== null ? `idle stop ${r.idle_stop_minutes} min` : "no idle stop",
         r.enrolled_at ? "enrolled" : "not enrolled yet",
       ];
-      const stopped = r.stopped_by
-        ? `\n  stopped by control: ${r.stopped_by === "spend_limit" ? "spend limit" : "idle stop"}`
-        : "";
+      const stopped = !r.stopped_by
+        ? ""
+        : r.stopped_by === "owner"
+          ? "\n  stopped by the owner"
+          : `\n  stopped by control: ${r.stopped_by === "spend_limit" ? "spend limit" : "idle stop"}`;
+      const op = r.op_words ? `\n  under way: ${r.op_words}` : "";
       const error = r.error ? `\n  last error: ${r.error}` : "";
-      return `${parts.join(" · ")}${stopped}${error}`;
+      return `${parts.join(" · ")}${stopped}${op}${error}`;
     })
     .join("\n")
     .concat("\n");
+}
+
+/** What a lifecycle command did, in a line after the rig's. */
+export function lifecycleSaid(sub: "stop" | "start" | "restart" | "terminate"): string {
+  return {
+    stop: "Stopping: its runs are paused and its results go out first, then the pod stops. Follow it with thermite runpod list.\n",
+    start:
+      "Started: RunPod bills the pod from now. The runs the last stop paused resume once it runs.\n",
+    restart: "Restarting: the pod stops, then starts again. Its volume stays.\n",
+    terminate:
+      "Terminating: its runs are paused, and the pod is removed only once every result has left it. Follow it with thermite runpod list.\n",
+  }[sub];
+}
+
+/** The reset of `rig` that has not ended, from GET /v1/resets; throws, in words, when none. */
+export function openResetOf(resets: { id: number; rig: string; state: string }[], rig: string) {
+  const r = resets.find((x) => x.rig === rig && !["done", "failed", "cancelled"].includes(x.state));
+  if (!r) throw new Error(`no full reset of ${rig} is under way`);
+  return r;
 }

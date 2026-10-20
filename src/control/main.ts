@@ -88,10 +88,12 @@ async function main(): Promise<void> {
   const outsideKb = new OutsideKbs(store, store.kb(), secrets);
   // Rigs in pull mode (on RunPod): control connects to each, in the loop below.
   const tunnels = new ControlTunnels(store, secrets, privateKeyPem);
-  // Rigs the owner launches on RunPod: their pods, prices and spend, followed by the loop below.
+  // Rigs the owner launches on RunPod: their pods, prices and spend, and each stop, start,
+  // restart and terminate under way, followed by the loop below.
   const runpodRigs = new RunpodRigs(store, secrets, tunnels, {
     image: env.THERMITE_RUNPOD_RIG_IMAGE || undefined,
     staleAfterMs,
+    privateKeyPem,
   });
   const server = serve({
     fetch: createControlApi(store, tokens, privateKeyPem, {
@@ -155,7 +157,8 @@ async function main(): Promise<void> {
   const pulls = setInterval(() => {
     tunnels.advance().catch((err) => log("control", "pull mode error", { error: String(err) }));
   }, 250);
-  // Rigs on RunPod: each pod's status, price and spend; the owner's limits, where set.
+  // Rigs on RunPod: each pod's status, price and spend; the owner's limits, where set; the stop,
+  // start, restart or terminate under way.
   const launched = setInterval(() => {
     runpodRigs.advance().catch((err) => log("control", "runpod rig error", { error: String(err) }));
   }, 30_000);

@@ -434,6 +434,20 @@ describe("pull mode: control connects to a rig through a proxy", () => {
     }
   });
 
+  test("a stop ends the supervisor's calls that wait for control, at once", async () => {
+    const s = await setup();
+    assert.equal(await s.tunnels.step(s.rig), "enrolled");
+    // Control does not connect now: the call waits at the local port (here up to 10 s).
+    const waiting = s.call(`/v1/rigs/${s.rig}/commands/pending`);
+    await new Promise((r) => setTimeout(r, 200));
+    const t0 = Date.now();
+    await s.stop();
+    const r = await waiting;
+    assert.equal(r.status, 503);
+    assert.equal(await r.text(), "stopping");
+    assert.ok(Date.now() - t0 < 2000, "not after the call's own time limit");
+  });
+
   test("everyone but control gets the same empty 404, a lane in the pod included, and nothing changes", async () => {
     const s = await setup();
     try {

@@ -363,7 +363,9 @@ try {
     console.log("SKIP nodes a container can't regroup: needs rootless Podman on a machine VM");
   }
 
-  // A supervisor that exits starts again; so does the controller.
+  // A supervisor that exits starts again; so does the controller. Until the new supervisor serves
+  // its port, control's pulls fail ("pull mode … fetch failed" in this script's output) and wait
+  // a little longer each time: that is expected here.
   const before = pidsOf("dist/supervisor/main.js");
   kill("dist/supervisor/main.js");
   await waitFor("supervisor exited; restarting", 30_000);
@@ -395,17 +397,27 @@ try {
     kept.stat,
   );
 
-  // A stop ends both parts, and the container exits with 0.
+  // A stop ends both parts, and the container exits with 0, even with control away. Control
+  // stops connecting first, and the supervisor's calls (its reports, its poll for commands) wait
+  // at its local port for control's next exchange, for up to two minutes each: the stop must end
+  // them at once, not wait for control. (The engine's stop below also blocks this process, so
+  // control could not answer during it anyway.)
+  clearInterval(pump);
+  await sleep(8000);
   const t0 = Date.now();
   sh(["stop", "-t", "60", name]);
   const stopS = Math.round((Date.now() - t0) / 1000);
   const code = sh(["inspect", name, "--format", "{{.State.ExitCode}}"]).trim();
   const stopped = logLines("stopped").length;
+  const supervisorStopping = logLines("stopping").filter(
+    (l) => l.component === "supervisor" && l.pull_mode === true,
+  ).length;
   check(
-    code === "0" && stopped === 1 && stopS < 60,
-    "a stop ends both parts cleanly",
-    `exit ${code}, ${stopS} s, "stopped" logged ${stopped} time(s)`,
+    code === "0" && stopped === 1 && supervisorStopping === 1 && stopS < 60,
+    "a stop ends both parts cleanly, with control away",
+    `exit ${code}, ${stopS} s, "stopped" logged ${stopped} time(s), the supervisor stopping in pull mode ${supervisorStopping} time(s)`,
   );
+  if (code !== "0" || stopped !== 1) console.log(`the rig's last output:\n${logs().slice(-4000)}`);
 } catch (err) {
   console.error(err instanceof Error ? err.message : String(err));
   failed++;

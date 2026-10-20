@@ -1,7 +1,8 @@
 # On every pull request and every push to main and to the development branch (v1/build): the fast
 # checks, the documentation site's build and checks, a secret scan of the history, then the compose
 # smoke test: control and one rig built from this commit, a campaign assigned through control, a
-# candidate judged. Beside it, the one-container rig image's acceptance.
+# candidate judged. Beside it, the one-container rig image's acceptance, and rigs on RunPod against
+# the fake RunPod API.
 name: ci
 
 on:
@@ -118,5 +119,23 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node scripts/rig-image-acceptance.mjs
+        env:
+          COMPOSE: docker compose
+
+  # Rigs on RunPod against the fake RunPod API, with no RunPod and nothing paid: control in the
+  # script launches a rig whose pod is a container of the one-container rig image, enrolls it,
+  # takes its reports, then stops, starts and terminates it, its results sent to control first.
+  runpod:
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: node scripts/runpod-acceptance.mjs
         env:
           COMPOSE: docker compose

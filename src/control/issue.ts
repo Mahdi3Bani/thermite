@@ -113,6 +113,11 @@ export function assignRefusal(payload: unknown): string {
   return "";
 }
 
+/** A command outcome that came from the harness's signed report, not from the supervisor. */
+export function harnessConfirmed(outcome: unknown): boolean {
+  return (outcome as { source?: string } | null)?.source === "harness";
+}
+
 /**
  * Issues a signed command for a rig: the one path the API, the dashboard and MCP all use.
  * The payload is validated against its kind's schema before signing; the rig's harness

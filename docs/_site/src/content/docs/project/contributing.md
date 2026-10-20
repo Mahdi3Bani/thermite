@@ -69,8 +69,11 @@ Changes to some parts also need a test that starts containers. Each takes from a
 | The New campaign page, the campaign builder, a campaign's **Start a run**, kits kept on control, Git access or the supervisor's staging | `COMPOSE="podman compose" node scripts/campaign-acceptance.mjs` |
 | Rigs on Kubernetes, including moving a rig onto new images, or control's image | `COMPOSE="podman compose" node scripts/cluster-acceptance.mjs` |
 | The one-container rig image, the broker's start of the supervisor, its wait for enrollment or the isolation selftest | `COMPOSE="podman compose" node scripts/rig-image-acceptance.mjs` |
+| Rigs on RunPod: their launch, stop, start, restart and terminate, or the fake RunPod API | `COMPOSE="podman compose" node scripts/runpod-acceptance.mjs` |
 
-The campaign test serves a tiny project with `git daemon` and creates a campaign through the New campaign form, which starts a try of its kit. Then it starts the campaign's own run from the campaign's page, with the agents on. Its rig gets a model route that nothing answers, so the agents fail at once, and the script submits the changes itself. The cluster test sets rigs up on a local kind cluster, in a namespace control creates and in a pre-made slot. Then it restarts control with re-tagged images, moves the slot's rig onto them with **Update to these images**, and checks that the rig reports again from the new pods with its volume claim and secret unchanged.
+The campaign test serves a tiny project with `git daemon` and creates a campaign through the New campaign form, which starts a try of its kit. Then it starts the campaign's own run from the campaign's page, with the agents on. Its rig gets a model route that nothing answers, so the agents fail at once, and the script submits the changes itself. The cluster test sets rigs up on a local kind cluster, in a namespace control creates and in a pre-made slot. Then it restarts control with re-tagged images, moves the slot's rig onto them with **Update to these images**, and checks that the rig reports again from the new pods with its volume claim and secret unchanged. The RunPod test runs control in the script against a fake RunPod API (`src/testing/fake-runpod.ts`, which the unit tests use too) that answers no other host: each pod it makes is a container of the rig image on a volume, reached through a stand-in for RunPod's proxy. It never calls RunPod and spends nothing.
+
+One test is run by hand only, with the owner's OK, because it spends money: `scripts/runpod-paid-acceptance.mjs` launches one real pod through a real control, with a spend limit you give, and checks it from launch to terminate.
 
 [AGENTS.md](https://github.com/iammrduncan/thermite/blob/main/AGENTS.md#checks) lists every acceptance test and when it is needed. These tests use local stand-ins only: a scripted model, a container with an SSH server, a local Kubernetes cluster in containers. They never touch a real host or cluster. The scripts clean up when their stack comes down. After a run that you stopped by hand, remove dangling images (`docker image prune -f` or `podman image prune -f`) and, with Podman on a Mac, trim its virtual machine's disk (`podman machine ssh sudo fstrim -a`). Never prune tagged images: they may belong to other projects.
 
@@ -85,6 +88,7 @@ Continuous integration (`.github/workflows/ci.yml`) runs on every pull request, 
 | **secret scan** | gitleaks over the whole history of the commit (see below) |
 | **compose-smoke** | The compose smoke test with Docker, after both **checks** jobs pass |
 | **rig image** | Builds the one-container rig image, enrolls it in pull mode from control's code in the script, and runs its isolation self-test with Docker (`scripts/rig-image-acceptance.mjs`) |
+| **runpod** | Launches a rig on the fake RunPod API, whose pod is a container of the rig image, then stops, starts and terminates it, with Docker (`scripts/runpod-acceptance.mjs`) |
 
 A new commit on a pull request cancels the run for the commit before it. Every push to `main` or `v1/build` gets a whole run of its own.
 

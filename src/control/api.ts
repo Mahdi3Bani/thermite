@@ -16,7 +16,13 @@ import { createDashboard, type RigImages } from "./dashboard.ts";
 import { ExportFiles, mountExports } from "./exports.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
 import type { KitRepos } from "./kit-repos.ts";
-import { advanceResets, cancelReset, confirmReset, type DeploymentDriver } from "./lifecycle.ts";
+import {
+  advanceResets,
+  cancelReset,
+  confirmReset,
+  type DeploymentDriver,
+  RunpodDriver,
+} from "./lifecycle.ts";
 import type { MachineSsh } from "./machines/ssh.ts";
 import { mountMcp } from "./mcp.ts";
 import { metricsText } from "./metrics.ts";
@@ -26,6 +32,7 @@ import { claudeModelName, isOpencodeOwn, providerBase } from "./providers.ts";
 import { copiedFromRecords, untriedOf } from "./queue-copy.ts";
 import type { probeRepository } from "./repo-probe.ts";
 import { resultsLeft } from "./results-left.ts";
+import { runpodResetRefusal } from "./runpod-lifecycle.ts";
 import { type LaunchRequest, type LimitsChange, RunpodRigs } from "./runpod-rigs.ts";
 import { RunpodTests, type TestRequest } from "./runpod-tests.ts";
 import { SecretBox } from "./secrets.ts";
@@ -300,7 +307,10 @@ export function createControlApi(
       fetch: opts.cloudFetch,
       image: opts.runpodRigImage,
       staleAfterMs: opts.staleAfterMs,
+      privateKeyPem,
     });
+  // Rigs on RunPod have their own driver, beside the one THERMITE_LIFECYCLE names for the others.
+  const runpodDriver = new RunpodDriver(runpodRigs);
   tunnels.serveWith((rig, call) =>
     Promise.resolve(
       app.request(
@@ -853,9 +863,13 @@ export function createControlApi(
     return c.json(r, 201);
   });
 
-  // Lifecycle (owner): restart through the deployment driver; the full reset with state wipe.
+  // Lifecycle (owner): restart through the deployment driver (RunPod's for a rig on RunPod); the
+  // full reset with state wipe.
   app.post("/v1/rigs/:rig/restart", admin, async (c) => {
-    if (!opts.driver) return c.json({ error: "no deployment driver is configured" }, 409);
+    const rig = c.req.param("rig");
+    const onRunpod = runpodDriver.serves(rig);
+    const driver = onRunpod ? runpodDriver : opts.driver;
+    if (!driver) return c.json({ error: "no deployment driver is configured" }, 409);
     const body = z
       .object({
         components: z
@@ -864,9 +878,13 @@ export function createControlApi(
           .default(["harness", "supervisor"]),
       })
       .parse(await c.req.json().catch(() => ({})));
-    const rig = c.req.param("rig");
     store.audit("owner:api", "restart", { rig, components: body.components });
-    return c.json({ restarted: await opts.driver.restart(rig, body.components) });
+    if (!onRunpod) return c.json({ restarted: await driver.restart(rig, body.components) });
+    try {
+      return c.json({ restarted: await driver.restart(rig, body.components, "owner:api") });
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 409);
+    }
   });
 
   app.post("/v1/rigs/:rig/reset", admin, async (c) => {
@@ -874,6 +892,9 @@ export function createControlApi(
     const body = z.object({ confirm: z.string() }).parse(await c.req.json());
     if (body.confirm !== `reset ${rig}`)
       return c.json({ error: `confirm with "reset ${rig}"` }, 400);
+    // A rig on RunPod: its pod must run, with no stop, start or terminate under way.
+    const refused = runpodResetRefusal(store, rig);
+    if (refused) return c.json({ error: refused }, 409);
     const id = store.createReset(rig, "owner:api");
     await advanceResets({
       store,
@@ -1141,8 +1162,45 @@ export function createControlApi(
     }
   });
   app.get("/v1/rigs/:rig/runpod", admin, (c) => {
-    const v = runpodRigs.view(c.req.param("rig"));
-    return v ? c.json(v) : c.json({ error: "not found" }, 404);
+    const rig = c.req.param("rig");
+    const v = runpodRigs.view(rig);
+    return v
+      ? c.json({ ...v, history: runpodRigs.history(rig) })
+      : c.json({ error: "not found" }, 404);
+  });
+  // Stop, start and terminate a rig's pod (the owner's alone, as the launch). Restart and the full
+  // reset are the routes every rig has: /v1/rigs/<rig>/restart and /v1/rigs/<rig>/reset.
+  const lifecycleRefused = (err: unknown) => {
+    const error = err instanceof Error ? err.message : String(err);
+    return { error, status: /^no rig /.test(error) ? (404 as const) : (409 as const) };
+  };
+  app.post("/v1/rigs/:rig/runpod/stop", admin, async (c) => {
+    try {
+      return c.json(await runpodDriver.stop(c.req.param("rig"), "owner:api"));
+    } catch (err) {
+      const r = lifecycleRefused(err);
+      return c.json({ error: r.error }, r.status);
+    }
+  });
+  app.post("/v1/rigs/:rig/runpod/start", admin, async (c) => {
+    try {
+      return c.json(await runpodDriver.start(c.req.param("rig"), "owner:api"));
+    } catch (err) {
+      const r = lifecycleRefused(err);
+      return c.json({ error: r.error }, r.status);
+    }
+  });
+  app.post("/v1/rigs/:rig/runpod/terminate", admin, async (c) => {
+    const body = z.strictObject({ confirm: z.string() }).parse(await c.req.json());
+    const rig = c.req.param("rig");
+    if (body.confirm !== `terminate ${rig}`)
+      return c.json({ error: `confirm with "terminate ${rig}"` }, 400);
+    try {
+      return c.json(await runpodDriver.terminate(rig, "owner:api", body.confirm));
+    } catch (err) {
+      const r = lifecycleRefused(err);
+      return c.json({ error: r.error }, r.status);
+    }
   });
   app.post("/v1/rigs/:rig/runpod/limits", admin, async (c) => {
     const body: LimitsChange = LimitsBody.parse(await c.req.json());
@@ -1206,6 +1264,8 @@ export function createControlApi(
     control,
     runpodTests,
     runpodRigs,
+    runpodDriver,
+    driver: opts.driver,
     actions,
     outsideKb,
   });

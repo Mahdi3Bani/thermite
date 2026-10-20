@@ -1,6 +1,7 @@
 import { log, redact } from "../common/env.ts";
 import { POD_CONFIG_ENV, PodConfig } from "../core/tunnel.ts";
-import { createPod, getPod, podAction, readRunpod, terminatePod } from "./runpod.ts";
+import { createPod, getPod, readRunpod, terminatePod } from "./runpod.ts";
+import { RUNPOD_STEP_WORDS, RunpodLifecycle } from "./runpod-lifecycle.ts";
 import {
   idleSince,
   type RigState,
@@ -9,7 +10,7 @@ import {
   spentBy,
 } from "./runpod-rig-view.ts";
 import type { SecretBox } from "./secrets.ts";
-import type { ControlStore } from "./store.ts";
+import type { ControlStore, StoredRunpodRig } from "./store.ts";
 import type { ControlTunnels } from "./tunnel.ts";
 import { rigView } from "./views.ts";
 
@@ -20,8 +21,10 @@ import { rigView } from "./views.ts";
  * and names the pod (attach); control's loop then enrolls it and exchanges with it.
  *
  * Control follows each pod (`advance`, every 30 s): its status, its price and what it has cost
- * so far. It stops the pod only when the owner set a spend limit or an idle stop and the pod
- * reached it. Nothing else stops it: no limit is set for the owner.
+ * so far. It stops the pod when the owner asks, or when the owner set a spend limit or an idle
+ * stop and the pod reached it; nothing else stops it: no limit is set for the owner. The owner
+ * also starts, restarts and terminates it (goal 023): runpod-lifecycle.ts, through which every
+ * stop, the limits' included, sends the rig's results out first.
  */
 
 /** The one-container image is CUDA 12.6; RunPod places the pod only on hosts whose driver runs it. */
@@ -88,7 +91,10 @@ export class RunpodRigs {
   private readonly image: string | undefined;
   private readonly now: () => number;
   private readonly staleAfterMs: number;
+  private readonly life: RunpodLifecycle;
   private busy = false;
+  /** One change to a rig's state at a time: control's loop and the owner's asks wait their turn. */
+  private readonly locks = new Map<string, Promise<void>>();
 
   constructor(
     store: ControlStore,
@@ -99,6 +105,8 @@ export class RunpodRigs {
       image?: string | undefined;
       now?: (() => number) | undefined;
       staleAfterMs?: number | undefined;
+      /** Control's command-signing key: a stop or a terminate pauses runs and asks for exports. */
+      privateKeyPem?: string | undefined;
     } = {},
   ) {
     this.store = store;
@@ -108,6 +116,30 @@ export class RunpodRigs {
     this.image = opts.image;
     this.now = opts.now ?? Date.now;
     this.staleAfterMs = opts.staleAfterMs ?? 180_000;
+    this.life = new RunpodLifecycle({
+      store,
+      fetch: this.fetchImpl,
+      now: this.now,
+      privateKeyPem: opts.privateKeyPem,
+      staleAfterMs: this.staleAfterMs,
+    });
+  }
+
+  /** Runs `fn` once every earlier change to this rig has ended; its outcome is the caller's. */
+  private async locked<T>(rig: string, fn: () => Promise<T>): Promise<T> {
+    const before = this.locks.get(rig) ?? Promise.resolve();
+    const run = before.then(fn);
+    // The next change waits for this one to end, whether it worked or not.
+    const ended = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.locks.set(rig, ended);
+    try {
+      return await run;
+    } finally {
+      if (this.locks.get(rig) === ended) this.locks.delete(rig);
+    }
   }
 
   /** The image a launch uses when none is given (control's THERMITE_RUNPOD_RIG_IMAGE). */
@@ -253,6 +285,12 @@ export class RunpodRigs {
       notes: [],
     };
     this.store.addRunpodRig({ rig: minted.rig, cloud, pod: pod.id, state, by });
+    this.store.rigSetupEvent(
+      minted.rig,
+      "runpod_launched",
+      true,
+      `by ${by}: pod ${pod.id}, ${count} × ${gpu.name} on ${cloudType === "SECURE" ? "Secure" : "Community"} cloud${state.price_per_hr === null ? "" : `, ${money(state.price_per_hr)} an hour`}`,
+    );
     this.store.audit(by, "runpod_rig_launched", {
       rig: minted.rig,
       cloud,
@@ -296,7 +334,8 @@ export class RunpodRigs {
     if (this.busy) return;
     this.busy = true;
     try {
-      for (const r of this.store.runpodRigs({ active: true })) await this.step(r.rig);
+      for (const r of this.store.runpodRigs({ active: true }))
+        await this.locked(r.rig, () => this.step(r.rig));
     } finally {
       this.busy = false;
     }
@@ -332,7 +371,9 @@ export class RunpodRigs {
         s.ended_at = now;
         s.billed_since = null;
         s.running_since = null;
+        s.op = null;
         s.notes.push("RunPod no longer has the pod.");
+        this.store.rigSetupEvent(rig, "runpod_gone", false, "it was removed outside Thermite");
         active = false;
       } else {
         s.status = pod.status;
@@ -342,7 +383,15 @@ export class RunpodRigs {
         s.billed_since = running ? now : null;
         s.running_since = running ? (s.running_since ?? now) : null;
         s.error = null;
-        if (running) await this.limit(r.rig, r.pod, key, s, nowMs);
+        if (s.op) active = await this.life.step(r, s, key, pod);
+        else if (running) {
+          // Started again (here, or in RunPod's console): no longer stopped.
+          if (pod.status === "RUNNING") {
+            s.stopped_at = null;
+            s.stopped_by = null;
+          }
+          await this.limit(r, key, s, nowMs);
+        }
       }
     } catch (err) {
       s.error = redact(err instanceof Error ? err.message : String(err));
@@ -351,24 +400,14 @@ export class RunpodRigs {
     this.store.saveRunpodRig(rig, s, active);
   }
 
-  /** The owner's limits, if set: a pod that reached one is stopped. */
-  private async limit(
-    rig: string,
-    pod: string,
-    key: string,
-    s: RigState,
-    nowMs: number,
-  ): Promise<void> {
-    const enrolledAt = this.store.tunnelRig(rig)?.enrolled_at ?? null;
-    if (s.idle_stop_minutes !== null && enrolledAt && this.working(rig))
+  /** The owner's limits, if set: a pod that reached one is stopped, its results sent out first. */
+  private async limit(r: StoredRunpodRig, key: string, s: RigState, nowMs: number): Promise<void> {
+    const enrolledAt = this.store.tunnelRig(r.rig)?.enrolled_at ?? null;
+    if (s.idle_stop_minutes !== null && enrolledAt && this.working(r.rig))
       s.busy_at = new Date(nowMs).toISOString();
     const spent = spentBy(s, nowMs);
-    let why: { by: "spend_limit" | "idle_stop"; words: string } | undefined;
-    if (s.spend_limit_usd !== null && spent >= s.spend_limit_usd)
-      why = {
-        by: "spend_limit",
-        words: `it had cost ${money(spent)}, which reached the spend limit you set (${money(s.spend_limit_usd)})`,
-      };
+    let why: "spend_limit" | "idle_stop" | undefined;
+    if (s.spend_limit_usd !== null && spent >= s.spend_limit_usd) why = "spend_limit";
     else {
       const since = idleSince(s, enrolledAt);
       if (
@@ -376,27 +415,83 @@ export class RunpodRigs {
         since &&
         nowMs - Date.parse(since) >= s.idle_stop_minutes * 60_000
       )
-        why = {
-          by: "idle_stop",
-          words: `no run ran on it for ${s.idle_stop_minutes} minutes, the idle stop you set`,
-        };
+        why = "idle_stop";
     }
-    if (!why) return;
-    await podAction(key, pod, "stop", this.fetchImpl);
-    const at = new Date(nowMs).toISOString();
-    s.spent_usd = spent;
-    s.billed_since = null;
-    s.running_since = null;
-    s.stopped_at = at;
-    s.stopped_by = why.by;
-    s.status = "EXITED";
-    s.notes.push(`Stopped by control: ${why.words}. Its volume stays.`);
-    this.store.audit("control", "runpod_rig_stopped", {
-      rig,
-      pod,
-      why: why.by,
-      spend_usd: Math.round(spent * 100) / 100,
+    if (why) await this.life.beginStop(r, s, key, "control", why);
+  }
+
+  /** A rig control follows, its state and its key; throws, in words, when there is none. */
+  private ready(rig: string): { r: StoredRunpodRig; s: RigState; key: string } {
+    const r = this.store.runpodRig(rig);
+    if (!r) throw new Error(`no rig ${rig} on a GPU cloud`);
+    const key = this.key(r.cloud);
+    if (!key)
+      throw new Error(
+        `the GPU cloud "${r.cloud}" was deleted, so control can't reach pod ${r.pod}: see RunPod's console`,
+      );
+    return { r, s: r.state as RigState, key };
+  }
+
+  /**
+   * Runs one of the owner's asks on a rig, under its lock: what was done is saved even when the
+   * ask then fails (a refused start, say), and the error comes back in words.
+   */
+  private ask(
+    rig: string,
+    fn: (r: StoredRunpodRig, s: RigState, key: string) => Promise<void>,
+  ): Promise<RunpodRigView> {
+    return this.locked(rig, async () => {
+      const { r, s, key } = this.ready(rig);
+      const before = JSON.stringify(s);
+      try {
+        await fn(r, s, key);
+      } finally {
+        if (JSON.stringify(s) !== before)
+          this.store.saveRunpodRig(rig, s, s.status !== "TERMINATED");
+      }
+      return this.view(rig) as RunpodRigView;
     });
+  }
+
+  /**
+   * Stops a rig's pod: its running runs paused, and its results sent out first (an export), then
+   * the pod stopped once they have left it, or after STOP_WAIT_MS; its volume keeps the rest.
+   * Control's loop moves the stop on. The owner's alone.
+   */
+  stop(rig: string, by: string): Promise<RunpodRigView> {
+    return this.ask(rig, (r, s, key) => this.life.beginStop(r, s, key, by, "owner"));
+  }
+
+  /** Starts a stopped pod now; refused, in words, when RunPod has no GPU free for it. */
+  start(rig: string, by: string): Promise<RunpodRigView> {
+    return this.ask(rig, (r, s, key) => this.life.start(r, s, key, by));
+  }
+
+  /** Stops the pod and starts it again (no export: its volume stays). */
+  restart(rig: string, by: string): Promise<RunpodRigView> {
+    return this.ask(rig, (r, s, key) => this.life.restart(r, s, key, by));
+  }
+
+  /**
+   * Terminates a rig's pod once every result has left it. `confirm` must be "terminate <rig>".
+   * Refused, and the pod left running with its runs paused, when a result can't leave.
+   */
+  terminate(rig: string, by: string, confirm: string): Promise<RunpodRigView> {
+    if (confirm !== `terminate ${rig}`)
+      return Promise.reject(new Error(`confirm with "terminate ${rig}"`));
+    return this.ask(rig, async (r, s, key) => {
+      await this.life.beginTerminate(r, s, key, by);
+    });
+  }
+
+  /**
+   * The rig's history: its launch, stops, starts, resets and the rest, oldest first, each RunPod
+   * step also in words (null for another kind of step, such as a model download).
+   */
+  history(rig: string) {
+    return this.store
+      .rigSetupEvents(rig)
+      .map((e) => ({ ...e, words: RUNPOD_STEP_WORDS[e.step] ?? null }));
   }
 
   view(rig: string): RunpodRigView | undefined {

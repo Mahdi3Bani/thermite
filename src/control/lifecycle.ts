@@ -2,8 +2,11 @@ import { readFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { log } from "../common/env.ts";
-import { issueCommand } from "./issue.ts";
-import { exportLeft } from "./results-left.ts";
+import { harnessConfirmed, issueCommand } from "./issue.ts";
+import { exportLeft, resultsLeft } from "./results-left.ts";
+import { runpodResetRefusal } from "./runpod-lifecycle.ts";
+import type { RunpodRigView } from "./runpod-rig-view.ts";
+import type { RunpodRigs } from "./runpod-rigs.ts";
 import type { ControlStore } from "./store.ts";
 import { rigView } from "./views.ts";
 
@@ -14,18 +17,22 @@ import { rigView } from "./views.ts";
  * - Kubernetes: control's service account deletes the rig's pods (its Role allows pods get,
  *   list and delete in the rig's namespace, nothing else); the Deployment recreates them.
  * - Compose: the container engine's API (Docker or Podman) restarts the rig's containers.
+ * - RunPod: for the rigs control launched on RunPod, whatever THERMITE_LIFECYCLE says, RunPod's
+ *   API stops, starts, restarts and terminates the rig's pod (RunpodDriver; runpod-lifecycle.ts).
  *
  * A full reset: pause the rig's running runs, export, wait until that export has left the rig
  * (the supervisor reports it pushed to the results repository, or control holds all of it), then
  * the signed wipe_state (the harness and the supervisor wipe their own state and restart), then a
- * restart through the driver.
+ * restart through the driver. On RunPod the reset waits until every result has left the pod, and
+ * keeps the pod and its GPU: the two parts restart themselves in it.
  */
 
 export type Component = "harness" | "supervisor";
 
 export interface DeploymentDriver {
   readonly kind: string;
-  restart(rig: string, components: Component[]): Promise<string[]>;
+  /** Restarts the rig's parts; `by` is who asked, for the drivers that record it. */
+  restart(rig: string, components: Component[], by?: string): Promise<string[]>;
 }
 
 /** One HTTP(S) request with a JSON body, over TCP or a Unix socket. */
@@ -204,6 +211,49 @@ export class ComposeDriver implements DeploymentDriver {
   }
 }
 
+/**
+ * Rigs control launched on RunPod (runpod-rigs.ts): one container per pod, driven through RunPod's
+ * API. It serves only those rigs, beside the driver THERMITE_LIFECYCLE names for the others, and
+ * needs no setting: control holds the RunPod key in Providers. Each change goes through the
+ * rig's results first (runpod-lifecycle.ts) and is a step in the rig's history.
+ */
+export class RunpodDriver implements DeploymentDriver {
+  readonly kind = "runpod";
+  private readonly rigs: RunpodRigs;
+
+  constructor(rigs: RunpodRigs) {
+    this.rigs = rigs;
+  }
+
+  /** Whether the rig is one control launched on RunPod and still follows. */
+  serves(rig: string): boolean {
+    return Boolean(this.rigs.view(rig)?.active);
+  }
+
+  /** Stops the pod and starts it again; its volume stays. Both parts restart together. */
+  async restart(rig: string, components: Component[], by = "owner:api"): Promise<string[]> {
+    if (!(components.includes("harness") && components.includes("supervisor")))
+      throw new Error(
+        "a rig on RunPod runs its harness and its supervisor in one container: they restart together",
+      );
+    const v = await this.rigs.restart(rig, by);
+    return [`pod ${v.pod}: it stops, then starts again`];
+  }
+
+  stop(rig: string, by: string): Promise<RunpodRigView> {
+    return this.rigs.stop(rig, by);
+  }
+
+  start(rig: string, by: string): Promise<RunpodRigView> {
+    return this.rigs.start(rig, by);
+  }
+
+  /** Removes the pod, but only once every result has left it; `confirm` is "terminate <rig>". */
+  terminate(rig: string, by: string, confirm: string): Promise<RunpodRigView> {
+    return this.rigs.terminate(rig, by, confirm);
+  }
+}
+
 /** The driver configured for this control, if any. */
 export function driverFromEnv(env: NodeJS.ProcessEnv = process.env): DeploymentDriver | undefined {
   if (env.THERMITE_LIFECYCLE === "kubernetes") return KubernetesDriver.inCluster(env);
@@ -227,11 +277,6 @@ const STEP_LIMIT_MS: Record<string, number> = {
 };
 
 let advancing: Promise<void> | undefined;
-
-/** A command outcome that came from the harness's signed report, not from the supervisor. */
-function harnessConfirmed(outcome: unknown): boolean {
-  return (outcome as { source?: string } | null)?.source === "harness";
-}
 
 /**
  * Advances every open full reset by one step. Each step waits for evidence before the next:
@@ -283,11 +328,14 @@ async function advanceOnce(input: {
         // The owner who asked for the reset: the harness accepts wipe_state only from the owner.
         issuedBy: String(r.requested_by),
       }).id;
+    // A rig control launched on RunPod: every result leaves the pod, which stays, with its GPU.
+    const onRunpod = Boolean(store.runpodRig(rig));
     const fail = (detail: string) => {
       store.updateReset(id, {
         state: "failed",
         detail: `${detail} (the rig's campaigns stay paused: resume them when it is safe)`,
       });
+      if (onRunpod) store.rigSetupEvent(rig, "reset_failed", false, detail);
       log("control", "reset failed", { rig, detail });
     };
     const limit = STEP_LIMIT_MS[state];
@@ -298,6 +346,13 @@ async function advanceOnce(input: {
     try {
       switch (state) {
         case "start": {
+          const refused = runpodResetRefusal(store, rig);
+          if (refused) {
+            fail(refused);
+            break;
+          }
+          if (onRunpod)
+            store.rigSetupEvent(rig, "reset_requested", true, `asked by ${String(r.requested_by)}`);
           const v = rigView(store, rig, { staleAfterMs: input.staleAfterMs });
           for (const i of v?.runs.filter((x) => x.status === "running") ?? []) {
             issue("pause_run", { run: i.id, reason: "full reset" });
@@ -345,6 +400,8 @@ async function advanceOnce(input: {
             break;
           }
           if (!e.left) break;
+          // On RunPod, every result too: what waits on the pod is gone after the wipe.
+          if (onRunpod && !resultsLeft(store, rig, { export: name }).left) break;
           store.updateReset(id, {
             state: "awaiting_owner",
             detail:
@@ -373,7 +430,12 @@ async function advanceOnce(input: {
             break;
           }
           let restart = "the rig restarted itself (no deployment driver configured)";
-          if (input.driver) {
+          if (onRunpod) {
+            // RunPod's driver keeps the pod: a stop could give its GPU to someone else.
+            restart =
+              "the pod and its GPU stay: the harness and the supervisor restarted themselves in it";
+            store.rigSetupEvent(rig, "reset_done", true, `export ${String(r.export_name)}`);
+          } else if (input.driver) {
             try {
               restart = `restarted ${(await input.driver.restart(rig, ["harness", "supervisor"])).join(", ")}`;
             } catch (err) {
@@ -410,6 +472,8 @@ export function cancelReset(store: ControlStore, id: number, by: string): void {
     state: "cancelled",
     detail: `cancelled by ${by}; the rig's campaigns stay paused until resumed`,
   });
+  if (store.runpodRig(String(r.rig)))
+    store.rigSetupEvent(String(r.rig), "reset_cancelled", true, `by ${by}`);
 }
 
 /**

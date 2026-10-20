@@ -11,8 +11,16 @@ import type { ControlActions } from "./actions.ts";
 import type { Credential } from "./credential.ts";
 import { issueCommand, propagateChampion } from "./issue.ts";
 import { briefingSeedOf, isOutside, type KbKind } from "./kb.ts";
+import {
+  advanceResets,
+  cancelReset,
+  confirmReset,
+  type DeploymentDriver,
+  type RunpodDriver,
+} from "./lifecycle.ts";
 import type { OutsideKbs } from "./outside-kb.ts";
 import { copiedFromRecords } from "./queue-copy.ts";
+import { runpodResetRefusal } from "./runpod-lifecycle.ts";
 import {
   type LaunchRequest,
   type LimitsChange,
@@ -90,6 +98,10 @@ export interface McpOptions {
   runpodTests?: RunpodTests | undefined;
   /** Rigs the owner launches on GPU clouds; without it the RunPod rig tools are not offered. */
   runpodRigs?: RunpodRigs | undefined;
+  /** Their lifecycle driver (stop, start, restart, terminate): runpod_rig, the owner's. */
+  runpodDriver?: RunpodDriver | undefined;
+  /** The driver for other rigs, which a full reset restarts after its wipe. */
+  driver?: DeploymentDriver | undefined;
   /** Actions the dashboard carries out (actions.ts); MCP offers those it has. */
   actions?: ControlActions | undefined;
   /** Outside knowledge bases (goal 065): kb_grant and kb_revoke grant their search with them. */
@@ -516,15 +528,25 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
       {
         title: "How a rig was set up",
         description:
-          "For a rig control set up or manages on a machine or a cluster: where it is, its status there (for example deploying, running, updating, stopped) and each step of its setup and management, oldest first (applied, pods running, first report, images updated, failures with why). Use it after add_cluster_rig or update_rig_images. Holds no keys or tokens.",
+          "For a rig control set up or manages on a machine, a cluster or RunPod: where it is, its status there (for example deploying, running, updating, stopped; on RunPod, the pod's status and the change under way) and each step of its setup and management, oldest first (applied, pods running, first report, images updated, a RunPod pod launched, stopped, started or terminated, a full reset, failures with why). Use it after add_cluster_rig, update_rig_images or runpod_rig. Holds no keys or tokens.",
         inputSchema: { rig: z.string().min(1) },
       },
       audited("rig_setup", (a: { rig: string }) => {
         const cluster = store.clusterRig(a.rig);
         const machine = store.machineRig(a.rig);
-        if (!cluster && !machine) throw new Error(`control did not set ${a.rig} up`);
+        const runpod = opts.runpodRigs?.view(a.rig);
+        if (!cluster && !machine && !runpod) throw new Error(`control did not set ${a.rig} up`);
         return {
           rig: a.rig,
+          ...(runpod
+            ? {
+                on: "runpod",
+                cloud: runpod.cloud,
+                pod: runpod.pod,
+                status: runpod.active ? runpod.status : "TERMINATED",
+                op: runpod.op,
+              }
+            : {}),
           ...(cluster
             ? {
                 on: "cluster",
@@ -970,6 +992,92 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
             return launched.limits(rig, change, actor);
           }),
         );
+        const pods = opts.runpodDriver;
+        if (pods)
+          server.registerTool(
+            "runpod_rig",
+            {
+              title: "Stop, start, restart, terminate or reset a RunPod rig",
+              description:
+                'For a rig launched on RunPod; the owner\'s token only. stop: pauses its running runs, sends its results out of the pod (an export), then stops the pod; its GPU is no longer billed and its volume stays. start: starts a stopped pod and resumes the runs the stop paused; it says so when RunPod has no GPU free. restart: stops the pod and starts it again, with no export (its volume stays). terminate (confirm "terminate <rig>"): pauses its runs, sends every result out, and removes the pod only when all have left it; else it refuses, and the pod keeps running with its runs paused. reset (confirm "reset <rig>"): a full reset; every result leaves the pod, then the rig\'s state is wiped once you confirm with confirm_wipe; the pod and its GPU stay. cancel_reset cancels a reset before its wipe. A stop or a terminate takes minutes: follow it with runpod_rigs and rig_setup.',
+              inputSchema: {
+                rig: z.string().min(1),
+                action: z.enum([
+                  "stop",
+                  "start",
+                  "restart",
+                  "terminate",
+                  "reset",
+                  "confirm_wipe",
+                  "cancel_reset",
+                ]),
+                confirm: z
+                  .string()
+                  .optional()
+                  .describe('For terminate: "terminate <rig>"; for reset: "reset <rig>"'),
+              },
+            },
+            audited(
+              "runpod_rig",
+              async (a: {
+                rig: string;
+                action:
+                  | "stop"
+                  | "start"
+                  | "restart"
+                  | "terminate"
+                  | "reset"
+                  | "confirm_wipe"
+                  | "cancel_reset";
+                confirm?: string;
+              }) => {
+                if (!launched.view(a.rig)) throw new Error(`no rig ${a.rig} on a GPU cloud`);
+                const step = () =>
+                  advanceResets({
+                    store,
+                    privateKeyPem: opts.privateKeyPem,
+                    driver: opts.driver,
+                    staleAfterMs: opts.staleAfterMs,
+                  });
+                const open = () => {
+                  const r = store.openReset(a.rig);
+                  if (!r) throw new Error(`no full reset of ${a.rig} is under way`);
+                  return Number(r.id);
+                };
+                switch (a.action) {
+                  case "stop":
+                    return pods.stop(a.rig, actor);
+                  case "start":
+                    return pods.start(a.rig, actor);
+                  case "restart":
+                    await pods.restart(a.rig, ["harness", "supervisor"], actor);
+                    return launched.view(a.rig);
+                  case "terminate":
+                    return pods.terminate(a.rig, actor, a.confirm ?? "");
+                  case "reset": {
+                    if (a.confirm !== `reset ${a.rig}`)
+                      throw new Error(`confirm with "reset ${a.rig}"`);
+                    const refused = runpodResetRefusal(store, a.rig);
+                    if (refused) throw new Error(refused);
+                    const id = store.createReset(a.rig, actor);
+                    await step();
+                    return { rig: a.rig, reset: store.resets(50).find((r) => Number(r.id) === id) };
+                  }
+                  case "confirm_wipe": {
+                    const id = open();
+                    confirmReset(store, id, actor);
+                    await step();
+                    return { rig: a.rig, reset: store.resets(50).find((r) => Number(r.id) === id) };
+                  }
+                  case "cancel_reset": {
+                    const id = open();
+                    cancelReset(store, id, actor);
+                    return { rig: a.rig, reset: store.resets(50).find((r) => Number(r.id) === id) };
+                  }
+                }
+              },
+            ),
+          );
       }
     }
   }

@@ -52,7 +52,7 @@ Control checks a token against the owner's first, then the operator's, the agent
 | `rig_setup` | Yes | Yes | No | Yes, without each step's `detail` |
 | `control_log`, `providers`, `runpod_tests`, `runpod_rigs` | Yes | Yes | No | Yes |
 | `add_cluster_rig`, `set_rig_model`, `cluster_rig`, `update_rig_images`, `set_cluster_slots`, `runpod_test_start`, `runpod_test_end` | Yes | Yes | No | No |
-| `retire_rig`, `bring_back_rig`, `runpod_launch`, `runpod_rig_limits` | Yes | No | No | No |
+| `retire_rig`, `bring_back_rig`, `runpod_launch`, `runpod_rig_limits`, `runpod_rig` | Yes | No | No | No |
 
 ### Command kinds for each role
 
@@ -311,13 +311,13 @@ With `reads` set to `outside:<name>`, `kb_revoke` ends the teacher pair's search
 
 **How a rig was set up.** Owner, operator and reader. The reader's answer has `detail: null` in every step.
 
-> For a rig control set up or manages on a machine or a cluster: where it is, its status there (for example deploying, running, updating, stopped) and each step of its setup and management, oldest first (applied, pods running, first report, images updated, failures with why). Use it after add_cluster_rig or update_rig_images. Holds no keys or tokens.
+> For a rig control set up or manages on a machine, a cluster or RunPod: where it is, its status there (for example deploying, running, updating, stopped; on RunPod, the pod's status and the change under way) and each step of its setup and management, oldest first (applied, pods running, first report, images updated, a RunPod pod launched, stopped, started or terminated, a full reset, failures with why). Use it after add_cluster_rig, update_rig_images or runpod_rig. Holds no keys or tokens.
 
 | Input | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `rig` | string | | The rig |
 
-For a rig control set up on a cluster, it returns `{rig, on: "cluster", cluster, namespace, placement, status, images: {harness, supervisor}, steps}`. For one it set up on a machine over SSH, `{rig, on: "machine", machine, status, steps}`. `steps` is `[{at, step, ok, detail}]`, oldest first. `ok` is false for a step that failed, and `detail` then says why; otherwise it can say what the step did, such as the images it changed.
+For a rig control set up on a cluster, it returns `{rig, on: "cluster", cluster, namespace, placement, status, images: {harness, supervisor}, steps}`. For one it set up on a machine over SSH, `{rig, on: "machine", machine, status, steps}`. For one the owner launched on RunPod, `{rig, on: "runpod", cloud, pod, status, op, steps}`: `status` is the pod's at RunPod, such as `RUNNING` or `EXITED`, or `TERMINATED` once it is gone, and `op` is the stop, start, restart or terminate under way, as in [Rigs on a GPU cloud](rest-api.md#rigs-on-a-gpu-cloud), or `null`. `steps` is `[{at, step, ok, detail}]`, oldest first. `ok` is false for a step that failed, and `detail` then says why; otherwise it can say what the step did, such as the images it changed.
 
 | `step` | On the rig's page |
 | --- | --- |
@@ -333,6 +333,19 @@ For a rig control set up on a cluster, it returns `{rig, on: "cluster", cluster,
 | `pods_running` | Its pods run again. Written after a cluster rig's `start` or `restart` |
 | `report_after_start` | A report reached control after the start. Written after a cluster rig's `start` or `restart`, and, with the detail `it reported after the wait ended`, when a cluster rig marked `failed` while waiting after a start or restart reports after all |
 | `remove_cluster`, `remove` | Removed from the cluster; Removed from the machine |
+| `model_started`, `model_done`, `model_refused`, `model_failed` | A model download started, finished with its SHA-256 checked, was refused (its SHA-256 did not match) or stopped ([Model files on a rig](model-files.md)) |
+| `runpod_launched` | Launched on RunPod. Its `detail` gives who launched it, the pod, the GPUs, the cloud and the price |
+| `runpod_stopping` | Stopping the pod: its runs paused, and its results sent out first. Its `detail` says who asked, or which limit was reached, and the runs it paused |
+| `runpod_stopped` | Pod stopped: its GPU is no longer billed, and its volume stays. Its `detail` says whether every result left the pod first, or what stayed on its volume |
+| `runpod_restarting` | Restarting the pod: it stops, then starts again |
+| `runpod_starting` | Pod started at RunPod: waiting for it to run |
+| `runpod_start_refused` | RunPod did not start the pod. `ok` is false, and `detail` gives RunPod's answer: when RunPod has no GPU free for the pod, it says so |
+| `runpod_running` | The pod runs again. Its `detail` gives its GPUs and the runs it resumed. `ok` is false when it runs with fewer GPUs than it was launched with, or a run could not be resumed |
+| `runpod_terminating` | Terminating the pod: its runs paused, and every result sent out first |
+| `runpod_terminated` | Pod terminated: RunPod removed it and its volume, and the rig is retired |
+| `runpod_terminate_refused` | Not terminated: the pod keeps running, with its runs paused. `ok` is false, and `detail` says which result could not leave and why |
+| `runpod_gone` | RunPod no longer has the pod: it was removed outside Thermite |
+| `reset_requested`, `reset_done`, `reset_failed`, `reset_cancelled` | A full reset of a rig on RunPod: asked, done (the pod and its GPU stay), failed with why, or cancelled |
 
 A cluster rig's `status` is `deploying`, `starting`, `running`, `updating`, `stopped`, `failed` or `removed`; a machine rig's is one of the same, except `updating`. After a cluster rig's start or restart, its status is `starting` until its pods run and it reports, then `running`; or `failed` when its pods don't run within 15 minutes, or no report comes within 10 minutes after that. A stop or a removal during that wait, or during an update's, ends the wait: control writes no more steps for it, and the rig is not marked `failed` later. A cluster rig marked `failed` that reports again is `running`. A rig that joined with a join command, or one control did not set up, gives `control did not set <rig> up`.
 
@@ -629,10 +642,24 @@ Returns the `runpod rig`. The pod is billed from now until it is stopped or remo
 
 Returns the `runpod rig`. Errors: `no rig <rig> on a GPU cloud`, `a spend limit is a number of US dollars above 0`, `an idle stop is 5 minutes or more`.
 
+### runpod_rig
+
+**Stop, start, restart, terminate or reset a RunPod rig.** Owner only.
+
+> For a rig launched on RunPod; the owner's token only. stop: pauses its running runs, sends its results out of the pod (an export), then stops the pod; its GPU is no longer billed and its volume stays. start: starts a stopped pod and resumes the runs the stop paused; it says so when RunPod has no GPU free. restart: stops the pod and starts it again, with no export (its volume stays). terminate (confirm "terminate &lt;rig&gt;"): pauses its runs, sends every result out, and removes the pod only when all have left it; else it refuses, and the pod keeps running with its runs paused. reset (confirm "reset &lt;rig&gt;"): a full reset; every result leaves the pod, then the rig's state is wiped once you confirm with confirm_wipe; the pod and its GPU stay. cancel_reset cancels a reset before its wipe. A stop or a terminate takes minutes: follow it with runpod_rigs and rig_setup.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `rig` | string | | The rig, from `runpod_rigs` |
+| `action` | `stop`, `start`, `restart`, `terminate`, `reset`, `confirm_wipe` or `cancel_reset` | | What to do |
+| `confirm` | string, optional | | For `terminate`: `terminate <rig>`. For `reset`: `reset <rig>` |
+
+`stop`, `start`, `restart` and `terminate` return the `runpod rig`, with `op` and `op_words` while a stop or a terminate is under way. They do what the routes of [Rigs on a GPU cloud](rest-api.md#stop-start-restart-and-terminate) do, with the same refusals, recorded as done by `owner:mcp`. `reset`, `confirm_wipe` and `cancel_reset` return `{rig, reset}`, where `reset` is the full reset as `GET /v1/resets` lists it. `reset` starts one as `POST /v1/rigs/<rig>/reset` does; `confirm_wipe` and `cancel_reset` act on the rig's reset that has not ended. Errors besides the routes' refusals: `no rig <rig> on a GPU cloud`, `confirm with "reset <rig>"`, `no full reset of <rig> is under way`, `reset <id> is <state>, not waiting for confirmation`.
+
 ## The audit log
 
 Control writes every tool call to its audit log before the tool runs, reads included, as the action `mcp:<tool>` with the call's inputs and the role's actor. A call whose inputs do not match the tool is refused before that, and is not written. `control_log` leaves these entries out unless `include_mcp` is true. `GET /v1/audit` on the [REST API](rest-api.md#audit-log) always includes them. [Tokens and roles](tokens.md#in-the-audit-log) lists every actor.
 
 ## Not in MCP yet
 
-Some things the owner does on the dashboard or over REST have no tool yet: cancelling a command, accepting a review or a "not possible" ending, changing a rig's settings other than its agents' model (`set_rig_model`), restarting a rig's containers and resetting a rig, removing a rig control set up, stopping, starting and restarting one it set up on a machine (`cluster_rig` covers a cluster rig), accepting a rig's key and enrolling a rig. They are planned in [goal 029](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/029-api-mcp-coverage.goal). MCP takes bearer tokens only; signing in with OAuth is [goal 030](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/030-oauth-sign-in.goal). `control_log` returns the newest 500 entries at most; paging is [goal 015](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/015-log-paging.goal).
+Some things the owner does on the dashboard or over REST have no tool yet: cancelling a command, accepting a review or a "not possible" ending, changing a rig's settings other than its agents' model (`set_rig_model`), restarting a rig's containers and resetting a rig (`runpod_rig` does both for a rig on RunPod), removing a rig control set up, stopping, starting and restarting one it set up on a machine (`cluster_rig` covers a cluster rig), accepting a rig's key and enrolling a rig. They are planned in [goal 029](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/029-api-mcp-coverage.goal). MCP takes bearer tokens only; signing in with OAuth is [goal 030](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/030-oauth-sign-in.goal). `control_log` returns the newest 500 entries at most; paging is [goal 015](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/015-log-paging.goal).

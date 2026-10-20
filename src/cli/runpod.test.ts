@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { RunpodRigView } from "../control/runpod-rig-view.ts";
-import { formatRunpodRigs, launchBody, limitsBody } from "./runpod.ts";
+import { formatRunpodRigs, launchBody, lifecycleSaid, limitsBody, openResetOf } from "./runpod.ts";
 
 describe("thermite runpod", () => {
   test("launch: the options become the API's body, and nothing is set that was not given", () => {
@@ -83,5 +83,35 @@ describe("thermite runpod", () => {
       /\n {2}stopped by control: spend limit\n$/,
     );
     assert.equal(formatRunpodRigs([]), "no rig on a GPU cloud\n");
+    // Stopped by the owner, and a change under way.
+    assert.match(
+      formatRunpodRigs([{ ...rig, stopped_by: "owner", status: "EXITED" }]),
+      /\n {2}stopped by the owner\n$/,
+    );
+    assert.match(
+      formatRunpodRigs([
+        { ...rig, op_words: "terminating: waiting for every result to leave the pod" },
+      ]),
+      /\n {2}under way: terminating: waiting for every result to leave the pod\n$/,
+    );
+  });
+
+  test("stop, start, restart and terminate say what comes next; a reset is found by its rig", () => {
+    assert.match(
+      lifecycleSaid("stop"),
+      /^Stopping: its runs are paused and its results go out first/,
+    );
+    assert.match(lifecycleSaid("start"), /RunPod bills the pod from now/);
+    assert.match(lifecycleSaid("terminate"), /removed only once every result has left it/);
+    const resets = [
+      { id: 3, rig: "rp-1", state: "done" },
+      { id: 4, rig: "rp-2", state: "awaiting_owner" },
+      { id: 5, rig: "rp-1", state: "awaiting_owner" },
+    ];
+    assert.equal(openResetOf(resets, "rp-1").id, 5);
+    assert.throws(
+      () => openResetOf(resets.slice(0, 1), "rp-1"),
+      /no full reset of rp-1 is under way/,
+    );
   });
 });

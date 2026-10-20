@@ -73,6 +73,25 @@ const USAGE = `usage: thermite <command> [options]
   runpod limits RIG [--spend-limit USD|off] [--idle-stop MIN|off] --control URL --token-file F
                                       set or clear a RunPod rig's spend limit and idle stop
                                       (owner's token)
+  runpod stop RIG --control URL --token-file F
+                                      stop a RunPod rig's pod (owner's token): its runs paused
+                                      and its results sent out first; its volume stays
+  runpod start RIG --control URL --token-file F
+                                      start a stopped pod again, and resume the runs its stop
+                                      paused; refused when RunPod has no GPU free (owner's token)
+  runpod restart RIG --control URL --token-file F
+                                      stop the pod and start it again (owner's token)
+  runpod terminate RIG --control URL --token-file F
+                                      remove the pod for good, once every result has left it;
+                                      refused, with the pod kept running, when one can't leave
+                                      (owner's token)
+  runpod reset RIG --control URL --token-file F
+                                      start a full reset of a RunPod rig: every result out,
+                                      then the wipe after your confirmation (owner's token)
+  runpod confirm-wipe RIG --control URL --token-file F
+                                      confirm the wipe of the rig's full reset (owner's token)
+  runpod cancel-reset RIG --control URL --token-file F
+                                      cancel the rig's full reset before its wipe (owner's token)
   command --control URL --token-file F --rig U --kind K --payload JSON|@file [--ttl MIN]
                                       issue a signed command through control (admin token)
   submit --harness URL --token-file F --run ID --patch-file P --hypothesis TEXT
@@ -505,9 +524,60 @@ async function main(argv: string[]): Promise<void> {
       if (!values.control || !values["token-file"]) fail(USAGE);
       const control = values.control.replace(/\/$/, "");
       const token = readFileSync(values["token-file"], "utf8").trim();
-      const { formatRunpodRigs, launchBody, limitsBody } = await import("./runpod.ts");
+      const { formatRunpodRigs, launchBody, lifecycleSaid, limitsBody, openResetOf } = await import(
+        "./runpod.ts"
+      );
       const named = positionals[0];
       try {
+        if (
+          (sub === "stop" || sub === "start" || sub === "restart" || sub === "terminate") &&
+          named
+        ) {
+          const at = `${control}/v1/rigs/${encodeURIComponent(named)}`;
+          // Restart is the route every rig has; the others are RunPod's own.
+          if (sub === "restart") await post(`${at}/restart`, token, {});
+          const rig = (
+            sub === "restart"
+              ? await get(`${at}/runpod`, token)
+              : await post(
+                  `${at}/runpod/${sub}`,
+                  token,
+                  // Naming the rig in the command is the confirmation.
+                  sub === "terminate" ? { confirm: `terminate ${named}` } : {},
+                )
+          ) as RunpodRigView;
+          process.stdout.write(`${formatRunpodRigs([rig])}${lifecycleSaid(sub)}`);
+          return;
+        }
+        // A rig on RunPod only: any other rig gets 404 here, and nothing starts.
+        if (["reset", "confirm-wipe", "cancel-reset"].includes(sub ?? "") && named)
+          await get(`${control}/v1/rigs/${encodeURIComponent(named)}/runpod`, token);
+        if (sub === "reset" && named) {
+          const r = (await post(`${control}/v1/rigs/${encodeURIComponent(named)}/reset`, token, {
+            confirm: `reset ${named}`,
+          })) as { reset: number };
+          process.stdout.write(
+            `Full reset ${r.reset} of ${named} started: its runs are paused, and every result leaves the pod. Check the export, then confirm the wipe with thermite runpod confirm-wipe ${named}.\n`,
+          );
+          return;
+        }
+        if ((sub === "confirm-wipe" || sub === "cancel-reset") && named) {
+          const { resets } = (await get(`${control}/v1/resets`, token)) as {
+            resets: { id: number; rig: string; state: string }[];
+          };
+          const r = openResetOf(resets, named);
+          await post(
+            `${control}/v1/resets/${r.id}/${sub === "confirm-wipe" ? "confirm" : "cancel"}`,
+            token,
+            {},
+          );
+          process.stdout.write(
+            sub === "confirm-wipe"
+              ? `The wipe of reset ${r.id} is confirmed: ${named}'s state is wiped, and the pod and its GPU stay.\n`
+              : `Reset ${r.id} is cancelled: nothing was wiped, and ${named}'s runs stay paused.\n`,
+          );
+          return;
+        }
         if (sub === "launch" && named) {
           const rig = (await post(
             `${control}/v1/gpu-clouds/${encodeURIComponent(named)}/rigs`,
