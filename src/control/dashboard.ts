@@ -3993,13 +3993,42 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     if (!r || r.status === "removed")
       return { error: `Control didn't set ${rig} up on a cluster.` };
     if (r.status === "deploying") return { error: `${rig} is still being set up.` };
+    // The supervisor's CONTROL_URL comes from here: without it the rig would lose its way back.
+    if (!opts.publicUrl)
+      return {
+        error:
+          "Control's address for rigs is not set (THERMITE_CONTROL_PUBLIC_URL): the rig would no longer know where to report.",
+      };
     const images = controlImages(r.spec.gpus);
     if (typeof images === "string") return { error: images };
     const old = r.spec.images;
-    if (old.harness === images.harness && old.supervisor === images.supervisor)
-      return { ok: `${rig} already runs control's images.` };
     const k = store.cluster(r.cluster);
     if (!k) return { error: `The cluster ${r.cluster} is no longer in Providers.` };
+    const addressOnly = old.harness === images.harness && old.supervisor === images.supervisor;
+    if (addressOnly) {
+      // Same images: only a changed address for control is worth a restart.
+      const now = await kube.kubectl(
+        clusterTarget(k),
+        ["get", "deployment", clusterNames(rig).supervisor, "-n", r.namespace, "-o", "json"],
+        undefined,
+        30_000,
+      );
+      const env = (() => {
+        try {
+          const d = JSON.parse(now.stdout) as {
+            spec?: {
+              template?: { spec?: { containers?: { env?: { name: string; value?: string }[] }[] } };
+            };
+          };
+          return d.spec?.template?.spec?.containers?.[0]?.env ?? [];
+        } catch {
+          return [];
+        }
+      })();
+      const was = env.find((x) => x.name === "CONTROL_URL")?.value;
+      if (now.code !== 0 || was === undefined || was === opts.publicUrl.replace(/\/$/, ""))
+        return { ok: `${rig} already runs control's images.` };
+    }
     const stopped = r.status === "stopped";
     const out = await kube.kubectl(
       clusterTarget(k),
@@ -4012,20 +4041,30 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       return { error: kubeError(out) };
     }
     store.setClusterRigImages(rig, images);
-    const changed = [
-      old.harness !== images.harness ? `harness ${old.harness} → ${images.harness}` : "",
-      old.supervisor !== images.supervisor
-        ? `supervisor ${old.supervisor} → ${images.supervisor}`
-        : "",
-    ]
-      .filter(Boolean)
-      .join("; ");
+    const changed =
+      [
+        old.harness !== images.harness ? `harness ${old.harness} → ${images.harness}` : "",
+        old.supervisor !== images.supervisor
+          ? `supervisor ${old.supervisor} → ${images.supervisor}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("; ") || `control's address for rigs → ${opts.publicUrl}`;
     store.rigSetupEvent(rig, "images", true, stopped ? `${changed}; at its next start` : changed);
     store.audit(by, "cluster_rig_images", { rig, from: old, to: images });
-    if (stopped) return { ok: `${rig} runs the new images when it starts again.` };
+    if (stopped)
+      return {
+        ok: addressOnly
+          ? `${rig} gets control's new address when it starts again.`
+          : `${rig} runs the new images when it starts again.`,
+      };
     store.setClusterRigStatus(rig, "updating");
     void awaitNewPods(r, k).catch(() => {});
-    return { ok: `${rig}'s pods restart on the new images.` };
+    return {
+      ok: addressOnly
+        ? `${rig}'s pods restart with control's new address.`
+        : `${rig}'s pods restart on the new images.`,
+    };
   };
   if (opts.actions) opts.actions.updateRigImages = updateClusterRigImages;
   const addClusterRigFrom = async (

@@ -87,6 +87,7 @@ describe("control over MCP", () => {
     const readerTools = (await reader.listTools()).tools.map((t) => t.name);
     assert.ok(!readerTools.includes("issue_command"));
     assert.ok(readerTools.includes("list_rigs"));
+    assert.ok(readerTools.includes("rig_setup"));
     // A reader sees a run's queue, its rules, hand-outs and messages (goal 064).
     const queue = text(
       await reader.callTool({ name: "run_queue", arguments: { rig: "rig-a", run: "js-1" } }),
@@ -164,6 +165,10 @@ describe("control over MCP", () => {
       "approvals stay the owner's",
     );
     const agent = await connect(control, "agent-token-abcdef");
+    // A campaign's agents don't read control itself: no log, providers or rig setup details.
+    const agentTools = (await agent.listTools()).tools.map((t) => t.name);
+    for (const t of ["rig_setup", "control_log", "providers"])
+      assert.ok(!agentTools.includes(t), t);
     assert.equal(
       await issue(agent, "message_agent", { run: "js-1", to: "planner", text: "x" }),
       undefined,

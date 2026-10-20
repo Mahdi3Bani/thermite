@@ -173,36 +173,6 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
   );
 
   server.registerTool(
-    "rig_setup",
-    {
-      title: "How a rig was set up",
-      description:
-        "For a rig control set up or manages on a machine or a cluster: where it is, its status there (for example deploying, running, updating, stopped) and each step of its setup and management, oldest first (applied, pods running, first report, images updated, failures with why). Use it after add_cluster_rig or update_rig_images. Holds no keys or tokens.",
-      inputSchema: { rig: z.string().min(1) },
-    },
-    audited("rig_setup", (a: { rig: string }) => {
-      const cluster = store.clusterRig(a.rig);
-      const machine = store.machineRig(a.rig);
-      if (!cluster && !machine) throw new Error(`control did not set ${a.rig} up`);
-      return {
-        rig: a.rig,
-        ...(cluster
-          ? {
-              on: "cluster",
-              cluster: cluster.cluster,
-              namespace: cluster.namespace,
-              placement: cluster.placement,
-              status: cluster.status,
-              images: cluster.spec.images,
-            }
-          : {}),
-        ...(machine ? { on: "machine", machine: machine.machine, status: machine.status } : {}),
-        steps: store.rigSetupEvents(a.rig),
-      };
-    }),
-  );
-
-  server.registerTool(
     "recent_events",
     {
       title: "Recent events",
@@ -326,6 +296,39 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
 
   // Control itself, for whoever runs it (not the agents of a campaign): its log and its providers.
   if (role !== "agent") {
+    server.registerTool(
+      "rig_setup",
+      {
+        title: "How a rig was set up",
+        description:
+          "For a rig control set up or manages on a machine or a cluster: where it is, its status there (for example deploying, running, updating, stopped) and each step of its setup and management, oldest first (applied, pods running, first report, images updated, failures with why). Use it after add_cluster_rig or update_rig_images. Holds no keys or tokens.",
+        inputSchema: { rig: z.string().min(1) },
+      },
+      audited("rig_setup", (a: { rig: string }) => {
+        const cluster = store.clusterRig(a.rig);
+        const machine = store.machineRig(a.rig);
+        if (!cluster && !machine) throw new Error(`control did not set ${a.rig} up`);
+        return {
+          rig: a.rig,
+          ...(cluster
+            ? {
+                on: "cluster",
+                cluster: cluster.cluster,
+                namespace: cluster.namespace,
+                placement: cluster.placement,
+                status: cluster.status,
+                images: cluster.spec.images,
+              }
+            : {}),
+          ...(machine ? { on: "machine", machine: machine.machine, status: machine.status } : {}),
+          // A failed step's detail can name the cluster's API server or a host: owner and operator only.
+          steps: store
+            .rigSetupEvents(a.rig)
+            .map((x) => (role === "owner" || role === "operator" ? x : { ...x, detail: null })),
+        };
+      }),
+    );
+
     server.registerTool(
       "control_log",
       {

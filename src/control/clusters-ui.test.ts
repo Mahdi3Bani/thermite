@@ -86,6 +86,21 @@ function fakeCluster(
       const slot = /^auth can-i create deployments -n (\S+)$/.exec(a);
       if (slot) return ok(o.slots?.[slot[1] as string] ? "yes\n" : "no\n");
       if (args[0] === "get" && args[1] === "deployments") return ok("");
+      // One deployment by name: the supervisor, with the control address it was deployed with.
+      if (args[0] === "get" && args[1] === "deployment" && args[3] === "-n")
+        return ok(
+          JSON.stringify({
+            spec: {
+              template: {
+                spec: {
+                  containers: [
+                    { env: [{ name: "CONTROL_URL", value: "https://control.example.com" }] },
+                  ],
+                },
+              },
+            },
+          }),
+        );
       // A rig's two deployments, each running its newest pod.
       if (args[0] === "get" && args[1] === "deployment")
         return ok(
@@ -147,7 +162,7 @@ function fakeCluster(
 /** Control over a fake cluster; `tag` names the rig images it deploys (another control, later). */
 async function control(
   k: ClusterKubectl,
-  o: { store?: ControlStore; secrets?: SecretBox; tag?: string } = {},
+  o: { store?: ControlStore; secrets?: SecretBox; tag?: string; publicUrl?: string | null } = {},
 ) {
   const store = o.store ?? new ControlStore(":memory:");
   const secrets = o.secrets ?? SecretBox.ephemeral();
@@ -160,7 +175,7 @@ async function control(
       staleAfterMs: 180_000,
       secrets,
       clusterKubectl: k,
-      publicUrl: "https://control.example.com",
+      publicUrl: o.publicUrl === null ? undefined : (o.publicUrl ?? "https://control.example.com"),
       rigImages: {
         harness: `registry.example.com/harness:${tag}`,
         harnessCuda: `registry.example.com/harness-cuda:${tag}`,
@@ -443,6 +458,39 @@ describe("clusters in Providers and Add a rig", () => {
       [0, 0],
     );
     assert.equal(later.store.clusterRig("cpu-1")?.status, "stopped");
+    // Without control's address for rigs, the update is refused: the rig would lose its way back.
+    const lost = await control(f.k, {
+      store: s.store,
+      secrets: s.secrets,
+      tag: "4",
+      publicUrl: null,
+    });
+    assert.match(
+      await lost.post("/ui/rigs/cpu-1/cluster/images", {}),
+      /error=Control's address for rigs is not set/,
+    );
+    // The same images, but control's address changed: the update carries the new address.
+    const moved = await control(f.k, {
+      store: s.store,
+      secrets: s.secrets,
+      tag: "3",
+      publicUrl: "https://control2.example.com",
+    });
+    f.calls.length = 0;
+    assert.match(
+      await moved.post("/ui/rigs/cpu-1/cluster/images", {}),
+      /ok=cpu-1 gets control's new address when it starts again/,
+    );
+    assert.match(
+      String(f.calls.find((c) => c.args[0] === "apply")?.stdin),
+      /control2\.example\.com/,
+    );
+    // And with the same address, nothing to do.
+    const same = await control(f.k, { store: s.store, secrets: s.secrets, tag: "3" });
+    assert.match(
+      await same.post("/ui/rigs/cpu-1/cluster/images", {}),
+      /ok=cpu-1 already runs control's images/,
+    );
   });
 
   test("CPU slots: the quota sets the rig's CPUs and memory; slots added later; a rig added over MCP", async () => {
