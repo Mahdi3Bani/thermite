@@ -12,7 +12,7 @@ import {
   CommandPayloads,
 } from "../core/commands.ts";
 import { FolderSchema, MAX_LANES } from "../core/contract.ts";
-import type { BuildInfo } from "../core/version.ts";
+import { type BuildInfo, buildInfo } from "../core/version.ts";
 import type { ClusterRigRequest, ControlActions } from "./actions.ts";
 import { CHATGPT_API, CHATGPT_REDIRECT, ChatGPTLogins } from "./chatgpt.ts";
 import {
@@ -74,11 +74,14 @@ import {
   type RunpodDriver,
 } from "./lifecycle.ts";
 import {
+  checkScript,
   deployScript,
   MAX_RIG_GPUS,
   manageScript,
   RIG_NAME,
   type RigAction,
+  readCheck,
+  updateScript,
 } from "./machines/deploy.ts";
 import {
   CHECK_SCRIPT,
@@ -115,8 +118,18 @@ import {
 } from "./providers.ts";
 import { untriedOf } from "./queue-copy.ts";
 import { probeRepository } from "./repo-probe.ts";
+import { exportLeft, resultsLeft } from "./results-left.ts";
+import { RigUpdates, UPDATE_STEP_WORDS } from "./rig-update.ts";
 import { type RunpodFacts, readRunpod, runpodLine } from "./runpod.ts";
-import type { RunpodRigs } from "./runpod-rigs.ts";
+import { runpodResetRefusal } from "./runpod-lifecycle.ts";
+import {
+  DEFAULT_IDLE_STOP_MINUTES,
+  DEFAULT_VOLUME_GB,
+  type LaunchRequest,
+  type LimitsChange,
+  MIN_IDLE_STOP_MINUTES,
+  type RunpodRigs,
+} from "./runpod-rigs.ts";
 import { cheapestGpu, DEFAULT_DISK_GB, type RunpodTests, type TestView } from "./runpod-tests.ts";
 import { keyHint, type SecretBox } from "./secrets.ts";
 import {
@@ -199,11 +212,22 @@ import {
   runBrief,
   runLiveHref,
   runRow,
+  type TimelineRow,
   timeline,
   waitingOn,
 } from "./ui/operator.ts";
 import { PROVIDERS_JS } from "./ui/providers-client.ts";
 import { experimentsTab, plannerTab } from "./ui/queue.ts";
+import {
+  type RigPlace,
+  stateBanners,
+  stateRows,
+  stateSummary,
+  versionFact,
+} from "./ui/rig-states.ts";
+import { type LaunchForm, launchBody } from "./ui/runpod-launch.ts";
+import { RUNPOD_LAUNCH_JS } from "./ui/runpod-launch-client.ts";
+import { HISTORY_FILTERS, podBlock, podRows, podRuns, readySteps } from "./ui/runpod-rig.ts";
 import { STYLE } from "./ui/style.ts";
 import { auditReason, clip, jobText, runStatusText, signed, span } from "./ui/words.ts";
 import {
@@ -211,6 +235,7 @@ import {
   campaignModes,
   campaignViews,
   leaderboard,
+  OFFLINE_AFTER_MS,
   type RigSettingsView,
   type RigView,
   type RunView,
@@ -279,6 +304,8 @@ export interface DashboardOptions {
   control?: BuildInfo | undefined;
   /** After this long without a report a rig is offline (default: views.ts's OFFLINE_AFTER_MS). */
   offlineAfterMs?: number | undefined;
+  /** Updates of rigs to control's version (tests give their own, with short waits). */
+  rigUpdates?: RigUpdates | undefined;
 }
 
 /** The images a rig control sets up runs: the harness (CPU, and CUDA for GPU rigs), the supervisor. */
@@ -292,6 +319,20 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
   const app = new Hono();
   const chatgpt = opts.chatgpt ?? new ChatGPTLogins(store, opts.secrets, opts.providerFetch);
   const outsideKb = opts.outsideKb ?? new OutsideKbs(store, store.kb(), opts.secrets);
+  // Control's own build, which each rig's is compared with, and the window after which a rig
+  // that does not report is offline.
+  const control = opts.control ?? buildInfo();
+  const offlineAfterMs = Math.max(opts.offlineAfterMs ?? OFFLINE_AFTER_MS, opts.staleAfterMs);
+  // Update to control's version, from a rig's page: each runs on in the background.
+  const updates =
+    opts.rigUpdates ??
+    new RigUpdates({
+      store,
+      privateKeyPem: opts.privateKeyPem,
+      control,
+      staleAfterMs: opts.staleAfterMs,
+      offlineAfterMs: opts.offlineAfterMs,
+    });
   // Only control's own script runs: even an escaping mistake cannot become code.
   app.use("/ui/*", async (c, next) => {
     await next();
@@ -1923,17 +1964,20 @@ ${
         ? `<div class="card" style="margin-bottom:16px"><b class="ok">${esc(flashOk)}</b></div>`
         : "";
     const retired = store.rigRetired(c.req.param("rig"));
+    const launched = opts.runpodRigs?.view(c.req.param("rig"));
     if (!u && retired)
       return page(
         c,
         {
           title: c.req.param("rig"),
           crumbs: [{ href: "/ui/rigs", text: "Rigs" }],
-          summary: `<span class="muted">retired</span>`,
+          summary: launched
+            ? `<span class="muted">${launched.active ? "retired" : "terminated"}</span> · RunPod`
+            : `<span class="muted">retired</span>`,
           active: "rigs",
         },
-        `${flash}<div class="card"><p>Retired ${esc(ago(retired.at, now))} ago by ${esc(retired.by)}. It is out of the rig lists, its campaigns' pages and Needs you, and control refuses its reports. Its records stay.</p>
-<form method="post" action="/ui/rigs/${encodeURIComponent(c.req.param("rig"))}/bring-back" class="row" style="gap:8px"><input type="hidden" name="csrf" value="${csrf(c)}"><button>Bring it back</button><span class="muted small">It shows again, and its reports are taken again. A token control made for it stays ended: give it a new one if it needs one.</span></form></div>`,
+        `${flash}<div class="card"><p>Retired ${esc(ago(retired.at, now))} ago by ${esc(retired.by)}. It is out of the rig lists, its campaigns' pages and Needs you, and control refuses its reports. Its records stay.${launched && !launched.active ? ` Its pod is terminated. It cost <b>$${(launched.spend_usd ?? launched.spent_usd).toFixed(2)}</b> while it ran, as control counted it.` : ""}</p>
+<form method="post" action="/ui/rigs/${encodeURIComponent(c.req.param("rig"))}/bring-back" class="row" style="gap:8px"><input type="hidden" name="csrf" value="${csrf(c)}"><button>Bring it back</button><span class="muted small">It shows again, and its reports are taken again. A token control made for it stays ended: give it a new one if it needs one.</span></form></div>${launched ? `${podSection(c, c.req.param("rig"), now)}${podHistory(undefined, c.req.param("rig"), [], now)}` : ""}`,
         vs,
       );
     if (!u && onCluster)
@@ -1949,6 +1993,18 @@ ${
         vs,
       );
     if (!u && joined) return joinedPage(c, joined, flash);
+    if (!u && pulled && launched)
+      return page(
+        c,
+        {
+          title: pulled.rig,
+          crumbs: [{ href: "/ui/rigs", text: "Rigs" }],
+          summary: `${podSummary(launched)} · ${pulled.enrolled_at ? "enrolled" : "not enrolled yet"}`,
+          active: "rigs",
+        },
+        `<p class="run-said">${podSaid(launched, now)} Its page fills in once the rig reports for the first time.</p>${flash}<div class="card" style="margin-bottom:16px"><div class="card-head"><span class="title">Getting it ready</span></div>${readySteps(launched, false)}</div>${podSection(c, pulled.rig, now)}<div class="cols run-cols"><div>${podHistory(undefined, pulled.rig, [], now)}</div><div class="side">${pullBlock(pulled, now)}</div></div>`,
+        vs,
+      );
     if (!u && pulled)
       return page(
         c,
@@ -1983,6 +2039,24 @@ ${
     const t = csrf(c);
     const key = store.rigKey(u.id);
     const back = `/ui/rigs/${encodeURIComponent(u.id)}`;
+    const place = placeOf(u.id);
+    const rp = u.runpod;
+    const podStopped = Boolean(rp?.active && rp.status === "EXITED");
+    const steps = store.rigSetupEvents(u.id);
+    const stateIn = {
+      u,
+      place,
+      control,
+      controlSince: store.controlBuildSince(),
+      staleAfterMs: opts.staleAfterMs,
+      offlineAfterMs,
+      steps,
+      updating: updates.waiting(u.id),
+      podStopped,
+      csrf: t,
+      now,
+    };
+    const refusedNow = u.version.state === "refused";
     const sup = u.supervisor as Record<string, unknown> | null;
     const obj = (x: unknown) => (x && typeof x === "object" ? (x as Record<string, unknown>) : {});
     const ex = obj(sup?.export);
@@ -2031,9 +2105,14 @@ ${
     const queued = u.judge.queued.length;
     // The rig in a few sentences: is it reporting, what runs on it, its judge, what is wrong.
     const said = [
-      u.stale
-        ? `<b class="bad">${esc(u.id)} has ${neverReported(u) ? "not reported yet" : `not reported for ${esc(span(u.last_seen, now))}`}.</b>`
-        : `${esc(u.id)} is live; it reported ${esc(ago(u.last_seen, now))} ago.`,
+      rp ? podSaid(rp, now) : "",
+      refusedNow
+        ? `<b class="bad">Control refuses ${esc(u.id)}: it takes none of its reports.</b>`
+        : podStopped
+          ? "Its pod is stopped: its runs are paused, and only its volume costs money."
+          : u.stale
+            ? `<b class="bad">${esc(u.id)} has ${neverReported(u) ? "not reported yet" : `not reported for ${esc(span(u.last_seen, now))}`}.</b>`
+            : `${esc(u.id)} is live; it reported ${esc(ago(u.last_seen, now))} ago.`,
       live.length
         ? `It runs ${live.map((i) => `<a href="${runHref(u.id, i)}">${esc(i.campaign || i.id)} › ${esc(i.id)}</a>`).join(" and ")}.`
         : u.runs.length
@@ -2052,24 +2131,26 @@ ${
     ]
       .filter(Boolean)
       .join(" ");
-    const checkRows = checks
-      .map(([k, name, what]) => {
-        const r = u.checks[k];
-        const res = !r
-          ? `<span class="chip">not run yet</span>`
-          : r.finished_at === null
-            ? `<span class="chip info">running</span>`
-            : r.ok
-              ? `<span class="chip ok">passed</span>`
-              : `<span class="chip bad">failed</span>`;
-        const when = !r
-          ? ""
-          : r.finished_at === null
-            ? `started ${esc(ago(r.started_at, now))} ago`
-            : `${esc(ago(r.finished_at, now))} ago`;
-        return `<div class="ck"><span class="ck-res">${res}</span><span class="ck-main"><span><b>${esc(name)}</b> <span class="muted small">${when}</span></span>${r?.finished_at && r.summary ? `<span class="ck-sum ${r.ok ? "" : "bad"}">${esc(r.summary)}</span>` : ""}<span class="ck-what">${esc(what)}</span></span>${cmdForm(c, { rig: u.id, kind: "rig_check", fields: { check: k }, label: r && r.finished_at === null ? "Running…" : "Run it", back })}</div>`;
-      })
-      .join("");
+    const checkRows = refusedNow
+      ? `<div class="empty">Control sends no command to a refused rig, so its checks can't run. Update it first.</div>`
+      : checks
+          .map(([k, name, what]) => {
+            const r = u.checks[k];
+            const res = !r
+              ? `<span class="chip">not run yet</span>`
+              : r.finished_at === null
+                ? `<span class="chip info">running</span>`
+                : r.ok
+                  ? `<span class="chip ok">passed</span>`
+                  : `<span class="chip bad">failed</span>`;
+            const when = !r
+              ? ""
+              : r.finished_at === null
+                ? `started ${esc(ago(r.started_at, now))} ago`
+                : `${esc(ago(r.finished_at, now))} ago`;
+            return `<div class="ck"><span class="ck-res">${res}</span><span class="ck-main"><span><b>${esc(name)}</b> <span class="muted small">${when}</span></span>${r?.finished_at && r.summary ? `<span class="ck-sum ${r.ok ? "" : "bad"}">${esc(r.summary)}</span>` : ""}<span class="ck-what">${esc(what)}</span></span>${cmdForm(c, { rig: u.id, kind: "rig_check", fields: { check: k }, label: r && r.finished_at === null ? "Running…" : "Run it", back })}</div>`;
+          })
+          .join("");
     const runRows = u.runs.map((i) => runRow(u, i, now, "campaign")).join("");
     const jobs = u.judge.jobs
       .slice(-8)
@@ -2130,7 +2211,23 @@ ${
           .map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`)
           .join("")
       : "";
+    const refusal = u.version.refused;
     const rigFacts = [
+      [
+        "Last report",
+        neverReported(u)
+          ? "none yet"
+          : `${esc(ago(u.last_seen, now))} ago, at ${esc(u.last_seen.slice(11, 16))} UTC${refusedNow ? " (the last one control took)" : ""}`,
+      ],
+      ...(refusal
+        ? [
+            [
+              "Calls refused",
+              `${refusal.calls} in the last ${esc(span(refusal.since, now))}${refusal.last_at ? ` · the last one ${esc(ago(refusal.last_at, now))} ago` : ""}`,
+            ],
+          ]
+        : []),
+      ...(place.words ? [["Placed on", esc(place.words)]] : []),
       ["Key", `<code>${esc(key.pubkey ? fingerprint(key.pubkey) : "not pinned")}</code>`],
       ["Ledger", `<code>${esc(u.ledger_id ?? "")}</code>`],
       ...(sup
@@ -2161,51 +2258,58 @@ ${
     ]
       .map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`)
       .join("");
-    const events = timeline(
-      u.recent.map((e) => ({ u, e })),
-      now,
-      { limit: 12 },
-    );
+    const events = rp
+      ? podHistory(u, u.id, stateRows(stateIn), now)
+      : `<div class="block"><div class="head"><h2>Recent</h2><span class="right">newest first</span></div>${timeline(
+          u.recent.map((e) => ({ u, e })),
+          now,
+          { limit: 12, extra: stateRows(stateIn) },
+        )}</div>`;
     const keyCard = key.pending
       ? `<div class="card warn" style="margin-bottom:16px"><div class="card-head">${icon.key}<span class="title">${key.pubkey ? "This rig now signs its reports with a different key" : "This rig's first report key waits for your acceptance"}</span></div>
 <p class="small">Its reports are refused until you accept the key. A full reset keeps a rig's key: a change is expected only when the rig's identity was rebuilt on purpose. Check the fingerprint with the rig's deployment before accepting.</p>
 <div class="row"><code>${esc(fingerprint(key.pending))}</code><span class="grow"></span><form class="inline" method="post" action="/ui/rigs/${encodeURIComponent(u.id)}/key/accept"><input type="hidden" name="csrf" value="${t}"><input type="hidden" name="fingerprint" value="${esc(fingerprint(key.pending))}"><button class="primary">Accept this key</button></form></div></div>`
       : "";
+    const retireForm = `<form method="post" action="/ui/rigs/${encodeURIComponent(u.id)}/retire" class="stack" style="gap:8px"><input type="hidden" name="csrf" value="${t}">
+<div class="small"><b>Retire it.</b> <span class="muted">For a rig that is gone: it leaves the rig lists, its campaigns' pages and Needs you, and control refuses its reports. Its records stay, and you can bring it back. It stops nothing where the rig runs.</span>${rp?.active ? ` <b class="warn">Its pod keeps running at RunPod, and costs money: terminate it instead, under The pod.</b>` : ""}</div>
+<input name="confirm" placeholder="type: retire ${esc(u.id)}" data-confirm="retire ${esc(u.id)}" aria-label="Type retire ${esc(u.id)} to confirm"><button class="danger" style="justify-content:center">Retire it</button></form>`;
     const actions = `<a class="btn" href="/ui/rigs/${encodeURIComponent(u.id)}/edit">Edit rig</a><a class="btn" href="/ui/rigs/${encodeURIComponent(u.id)}/live">${icon.terminal}Live</a>
 ${cmdForm(c, { rig: u.id, kind: "export_now", label: "Export now", back })}
 <details class="menu"><summary class="btn">${icon.dots}</summary><div class="menu-body">
-${opts.driver ? `<form method="post" action="/ui/rigs/${encodeURIComponent(u.id)}/restart"><input type="hidden" name="csrf" value="${t}"><button style="width:100%;justify-content:center">Restart the rig's containers</button></form>` : `<div class="muted small">No deployment driver: restarts are not available.</div>`}
+${
+  rp
+    ? `<div class="muted small">Stop, start, restart, full reset and terminate are on the page, under The pod.</div>`
+    : `${opts.driver ? `<form method="post" action="/ui/rigs/${encodeURIComponent(u.id)}/restart"><input type="hidden" name="csrf" value="${t}"><button style="width:100%;justify-content:center">Restart the rig's containers</button></form>` : `<div class="muted small">No deployment driver: restarts are not available.</div>`}
 <div class="divider" style="margin:2px 0"></div>
 <form method="post" action="/ui/rigs/${encodeURIComponent(u.id)}/reset" class="stack" style="gap:8px"><input type="hidden" name="csrf" value="${t}">
 <div class="small"><b>Full reset.</b> <span class="muted">Pause, export, verify the push, then wipe after your confirmation.</span></div>
-<input name="confirm" placeholder="type: reset ${esc(u.id)}"><button class="danger" style="justify-content:center">Start the full reset</button></form>
+<input name="confirm" placeholder="type: reset ${esc(u.id)}" data-confirm="reset ${esc(u.id)}" aria-label="Type reset ${esc(u.id)} to confirm"><button class="danger" style="justify-content:center">Start the full reset</button></form>`
+}
 <div class="divider" style="margin:2px 0"></div>
-<form method="post" action="/ui/rigs/${encodeURIComponent(u.id)}/retire" class="stack" style="gap:8px"><input type="hidden" name="csrf" value="${t}">
-<div class="small"><b>Retire it.</b> <span class="muted">For a rig that is gone: it leaves the rig lists, its campaigns' pages and Needs you, and control refuses its reports. Its records stay, and you can bring it back. It stops nothing on the machine.</span></div>
-<input name="confirm" placeholder="type: retire ${esc(u.id)}"><button class="danger" style="justify-content:center">Retire it</button></form></div></details>`;
+${retireForm}</div></details>`;
     return page(
       c,
       {
         title: u.id,
         crumbs: [{ href: "/ui/rigs", text: "Rigs" }],
-        summary: u.stale
-          ? `<span class="bad">not reporting</span>`
-          : `<span class="ok">live</span>`,
+        summary: `${stateSummary(stateIn)}${rp ? ` · RunPod${podRuns(rp) && rp.price_per_hr !== null ? ` · $${rp.price_per_hr.toFixed(2)}/h` : ""}` : ""}`,
         actions,
         active: "rigs",
       },
       `<p class="run-said">${said}</p>
-${flash}${keyCard}
+${flash}${stateBanners(stateIn)}${keyCard}
+${rp ? podSection(c, u.id, now) : ""}
 ${runsNow ? `<div class="block"><div class="head"><h2>At work</h2><span class="n">${live.length}</span></div>${runsNow}</div>` : ""}
 <div class="cols run-cols"><div>
 <div class="block"><div class="head"><h2>Checks</h2><span class="right">run by the rig itself; each result also goes to its history</span></div><div class="card flat">${checkRows}</div></div>
-<div class="block"><div class="head"><h2>Runs on this rig</h2><span class="n">${u.runs.length}</span></div>${runRows ? `<div class="card flat">${runRows}</div>` : `<div class="card"><div class="empty">No campaign assigned.</div></div>`}</div>
+<div class="block"><div class="head"><h2>Runs on this rig</h2><span class="n">${u.runs.length}</span>${u.state !== "reporting" || refusedNow ? `<span class="right">as of its last report${neverReported(u) ? "" : `, ${esc(ago(u.last_seen, now))} ago`}</span>` : ""}</div>${runRows ? `<div class="card flat">${runRows}</div>` : `<div class="card"><div class="empty">No campaign assigned.</div></div>`}</div>
+${rp ? events : ""}
 <div class="block"><div class="head"><h2>The judge's last jobs</h2></div>${jobs ? `<div class="card flat tl">${jobs}</div>` : `<div class="card"><div class="empty">No job yet.</div></div>`}</div>
 </div><div class="side">
 <div class="block"><div class="head"><h2>What it runs on</h2></div>${h ? `<div class="card"><dl class="facts">${hw}</dl></div><details class="card flat matrix" data-k="hw-${esc(u.id)}" style="margin-top:10px"><summary>Every detail</summary>${hardwareCard(h, now)}</details>` : hardwareCard(h, now)}</div>
-<div class="block"><div class="head"><h2>The rig</h2></div><div class="card"><dl class="facts">${rigFacts}</dl>${sup ? `<div class="muted xs" style="margin-top:8px">The supervisor reports its figures itself (unsigned).</div>` : ""}</div></div>
+<div class="block"><div class="head"><h2>The rig</h2></div><div class="card"><dl class="facts">${versionFact(stateIn)}${rigFacts}</dl>${sup ? `<div class="muted xs" style="margin-top:8px">The supervisor reports its figures itself (unsigned).</div>` : ""}</div></div>
 ${placed ? placedBlock(placed, t) : ""}${onCluster ? clusterPlacedBlock(onCluster, t) : ""}${joined ? joinedBlock(joined, t, undefined, true) : ""}${pulled ? pullBlock(pulled, now) : ""}
-<div class="block"><div class="head"><h2>Recent</h2><span class="right">newest first</span></div>${events}</div>
+${rp ? "" : events}
 </div></div>`,
       vs,
     );
@@ -2834,6 +2938,18 @@ ${notice}${box}</section></div>`,
 
   app.post("/ui/rigs/:rig/restart", async (c) => {
     const rig = c.req.param("rig");
+    // A rig on RunPod: RunPod's own driver, whatever THERMITE_LIFECYCLE says.
+    if (opts.runpodDriver?.serves(rig)) {
+      store.audit("owner:ui", "restart", { rig });
+      const to = (k: "ok" | "error", m: string) =>
+        c.redirect(`/ui/rigs/${encodeURIComponent(rig)}?${k}=${encodeURIComponent(m)}#pod`, 303);
+      try {
+        await opts.runpodDriver.restart(rig, ["harness", "supervisor"], "owner:ui");
+      } catch (err) {
+        return to("error", err instanceof Error ? err.message : String(err));
+      }
+      return to("ok", "Restarting: the pod stops, then starts again.");
+    }
     if (!opts.driver) return c.text("no deployment driver is configured", 409);
     store.audit("owner:ui", "restart", { rig });
     try {
@@ -2849,6 +2965,13 @@ ${notice}${box}</section></div>`,
     const f = await c.req.parseBody();
     if (String(f.confirm ?? "") !== `reset ${rig}`)
       return c.text(`type "reset ${rig}" to confirm a full reset`, 400);
+    // A rig on RunPod: its pod must run, with no stop, start or terminate under way.
+    const onRunpod = runpodResetRefusal(store, rig);
+    if (onRunpod)
+      return c.redirect(
+        `/ui/rigs/${encodeURIComponent(rig)}?error=${encodeURIComponent(onRunpod)}#pod`,
+        303,
+      );
     try {
       store.createReset(rig, "owner:ui");
       await advanceResets({
@@ -3611,8 +3734,8 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
           : "";
         return `<details class="dq${g.check_error ? " dq-bad" : ""}" data-k="cloud-${esc(g.name)}"><summary>
 <span class="dq-kind"><span class="kind r">GPU cloud</span></span>
-<span class="dq-main"><span class="dq-head">${esc(g.name)} <span class="muted" style="font-weight:400">· RunPod</span></span>${status}<span class="dq-sub"><span class="chip">key ${esc(g.key_hint)}</span><span class="chip info">control starts only the test pods you ask for</span>${opts.runpodTests?.list(g.name, 1).some((x) => x.active) ? `<span class="chip warn">a test pod is running</span>` : ""}${running.length ? `<span class="chip warn">${running.length} pod${running.length === 1 ? "" : "s"} running: billed while they run</span>` : ""}</span></span>
-<span class="dq-side"><span class="dq-btns">${form("check", "Read again")}</span></span>
+<span class="dq-main"><span class="dq-head">${esc(g.name)} <span class="muted" style="font-weight:400">· RunPod</span></span>${status}<span class="dq-sub"><span class="chip">key ${esc(g.key_hint)}</span><span class="chip info">control starts only the pods you ask for</span>${opts.runpodTests?.list(g.name, 1).some((x) => x.active) ? `<span class="chip warn">a test pod is running</span>` : ""}${running.length ? `<span class="chip warn">${running.length} pod${running.length === 1 ? "" : "s"} running: billed while they run</span>` : ""}</span></span>
+<span class="dq-side"><span class="dq-btns">${form("check", "Read again")}<a class="btn sm" href="/ui/rigs/add/runpod?cloud=${gName}">Launch a rig</a></span></span>
 </summary><div class="dq-body">${facts}${testSection(gName, g.name, f, t)}
 <form method="post" action="/ui/settings/clouds/${gName}/key" class="form-grid" autocomplete="off" style="margin-top:10px"><input type="hidden" name="csrf" value="${t}"><label>${infoLabel("New API key", "Control seals the new key, reads the account with it, and forgets the old one.")}<input name="runpod_key" type="password" autocomplete="new-password" maxlength="4096" placeholder="empty keeps the key ending ${esc(g.key_hint)}"></label><div class="form-end"><button>Replace the key</button></div></form>
 <div style="margin-top:10px">${form("delete", "Delete this GPU cloud", "sm danger")} <span class="muted small">Control forgets the key. Nothing at RunPod changes.</span></div></div></details>`;
@@ -3804,6 +3927,8 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
     model_done: "Model downloaded, its SHA-256 checked",
     model_refused: "Model refused: its SHA-256 did not match, and the file was deleted",
     model_failed: "Model download stopped",
+    check: "Control checked where it runs",
+    ...UPDATE_STEP_WORDS,
   };
   /**
    * Waits for a new rig's first report (or, with `after`, a report after that time), for at most
@@ -4173,7 +4298,17 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
 <form id="add-rig" method="post" action="/ui/rigs/add" autocomplete="off"><input type="hidden" name="csrf" value="${t}">
 <div class="sec"><h2>1 · Where</h2><p class="lead">A machine or a cluster control knows. They are added, checked and prepared under <a href="/ui/settings">Settings › Providers</a>.</p>
 <div class="stack">${cards}${clusterCards}${cards || clusterCards ? "" : `<div class="card"><div class="empty">No machine or cluster yet.</div></div>`}<a class="ch" href="/ui/settings"><span><b>+ A new machine or cluster</b><br><span class="muted small">A Linux machine control can reach with an SSH key, or a Kubernetes cluster through a kubeconfig. Add it in Providers, then come back.</span></span></a></div>
-<p class="lead" style="margin-top:14px">Or run it yourself, where control can't connect:</p><div class="stack">${joinCards}</div></div>
+<p class="lead" style="margin-top:14px">Or run it yourself, where control can't connect:</p><div class="stack">${joinCards}</div>
+<p class="lead" style="margin-top:14px">Or launch it on a GPU you rent by the hour:</p><div class="stack">${
+        store
+          .gpuClouds()
+          .map(
+            (g) =>
+              `<a class="ch" href="/ui/rigs/add/runpod?cloud=${encodeURIComponent(g.name)}"><span><b>${esc(g.name)} · RunPod</b><br><span class="muted small">Control starts a pod with Thermite's rig image, enrolls it and follows its price. RunPod bills it by the second while it runs. Opens Launch on RunPod.</span></span></a>`,
+          )
+          .join("") ||
+        `<a class="ch" href="/ui/settings"><span><b>+ A RunPod account</b><br><span class="muted small">Add it in Providers with an API key that may start pods, then come back to launch a rig on it.</span></span></a>`
+      }</div></div>
 <div class="sec"><h2>2 · GPUs and resources</h2><p class="lead">As control last read the place. One GPU is shared by the judge and the agents. With more, some are the judge's and the rest the agents': half each by default, and on a machine the lowest-numbered GPUs are the judge's.</p>${gpuLists}<label class="fd" id="judge-pick" hidden style="max-width:280px;margin-top:10px">${infoLabel("GPUs for the judge", "How many of the chosen GPUs the judge measures on: the lowest-numbered ones. The rest are the agents' for their own test runs. More judge GPUs check more changes at once; more agent GPUs let more lanes test at once. Default: half, rounded up.")}<input name="judge_gpus" inputmode="numeric" maxlength="2" placeholder="half"></label>${clusterSections}${joinSections}<div class="nc-does" id="gpu-note"></div></div>
 <div class="sec"><h2>3 · Name and start</h2><div class="g3">
 <label class="fd">${infoLabel("Rig name", "The rig's name in Thermite: lowercase letters, digits and dashes. It names the rig's runs, history and files, so it can't change later.")}<input name="rig" required maxlength="63" placeholder="gpu-box-1-a"></label>
@@ -4988,6 +5123,501 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     store.audit("owner:ui", `machine_rig_${action}`, { rig: r.rig, machine: r.machine });
     return back("ok", `${STEP_WORDS[action]}.`);
   });
+  // ---------------------------------------------------------------- a rig's state (goal 012)
+  /** Where a rig runs, and what control can do there: update it, check it, restart it. */
+  const placeOf = (rig: string): RigPlace => {
+    const r = encodeURIComponent(rig);
+    const m = store.machineRig(rig);
+    if (m && m.status !== "removed") {
+      const known = store.machine(m.machine);
+      const images = controlImages(m.gpus.length);
+      const noUpdate = !known
+        ? `The machine ${m.machine} is no longer in Settings › Providers, so control can't reach it.`
+        : typeof images === "string"
+          ? images
+          : !opts.publicUrl
+            ? "Control's address for rigs is not set (THERMITE_CONTROL_PUBLIC_URL): the rig would no longer know where to report."
+            : m.status === "deploying"
+              ? `${rig} is still being set up.`
+              : undefined;
+      return {
+        kind: "machine",
+        words: `${m.machine}, a machine over SSH · Podman · systemd`,
+        update: !noUpdate,
+        noUpdate,
+        check: Boolean(known),
+        checkWhat: "its machine",
+        restart: known ? `/ui/rigs/${r}/machine/restart` : null,
+      };
+    }
+    const k = store.clusterRig(rig);
+    if (k && k.status !== "removed") {
+      const known = store.cluster(k.cluster);
+      const images = controlImages(k.spec.gpus);
+      const noUpdate = !known
+        ? `The cluster ${k.cluster} is no longer in Settings › Providers, so control can't reach it.`
+        : typeof images === "string"
+          ? images
+          : !opts.publicUrl
+            ? "Control's address for rigs is not set (THERMITE_CONTROL_PUBLIC_URL): the rig would no longer know where to report."
+            : k.status === "deploying"
+              ? `${rig} is still being set up.`
+              : undefined;
+      return {
+        kind: "cluster",
+        words: `${k.cluster}, namespace ${k.namespace}`,
+        update: !noUpdate,
+        noUpdate,
+        check: Boolean(known),
+        checkWhat: "the cluster",
+        restart: known ? `/ui/rigs/${r}/cluster/restart` : null,
+      };
+    }
+    const pod = opts.runpodRigs?.view(rig);
+    if (pod)
+      return {
+        kind: "runpod",
+        words: `RunPod, pod ${pod.pod}${pod.datacenter ? ` in ${pod.datacenter}` : ""}`,
+        update: false,
+        check: false,
+        checkWhat: "its pod",
+        restart: pod.active && podRuns(pod) ? `/ui/rigs/${r}/runpod/restart` : null,
+      };
+    if (store.joinedRig(rig))
+      return {
+        kind: "joined",
+        words: "a place you set it up on yourself",
+        update: false,
+        check: false,
+        checkWhat: "where it runs",
+        restart: null,
+      };
+    return {
+      kind: "other",
+      words: "",
+      update: false,
+      check: false,
+      checkWhat: "where it runs",
+      restart: opts.driver ? `/ui/rigs/${r}/restart` : null,
+    };
+  };
+  /** Moves a rig control set up on a machine onto control's images, over SSH; what changed. */
+  const updateMachineRig = async (rig: string): Promise<string> => {
+    const r = store.machineRig(rig);
+    if (!r || r.status === "removed") throw new Error(`Control didn't set ${rig} up on a machine.`);
+    const m = store.machine(r.machine);
+    if (!m) throw new Error(`The machine ${r.machine} is no longer in Settings › Providers.`);
+    const images = controlImages(r.gpus.length);
+    if (typeof images === "string") throw new Error(images);
+    if (!opts.publicUrl)
+      throw new Error("Control's address for rigs is not set (THERMITE_CONTROL_PUBLIC_URL).");
+    store.setMachineRigStatus(rig, "updating");
+    const out = await ssh.sshScript(
+      {
+        address: m.address,
+        port: m.port,
+        user: m.user,
+        privateKey: opts.secrets.open(m.key_sealed),
+        hostKeys: m.host_keys,
+      },
+      updateScript({
+        rig,
+        controlUrl: opts.publicUrl,
+        images,
+        gpus: r.gpus,
+        judgeGpus: r.judge_gpus,
+        root: r.root,
+      }),
+      [],
+      30 * 60_000,
+    );
+    if (out.code !== 0) {
+      store.setMachineRigStatus(rig, "failed");
+      throw new Error(tail(out.stderr) || `the update exited ${out.code}`);
+    }
+    store.setMachineRigImages(rig, images);
+    store.setMachineRigStatus(rig, "running");
+    store.audit("owner:ui", "machine_rig_images", { rig, from: r.images, to: images });
+    const changed = [
+      r.images.harness !== images.harness ? `harness ${r.images.harness} → ${images.harness}` : "",
+      r.images.supervisor !== images.supervisor
+        ? `supervisor ${r.images.supervisor} → ${images.supervisor}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("; ");
+    return `${changed || `the same image names, pulled again: ${images.harness}, ${images.supervisor}`}; its services restarted`;
+  };
+  /** Moves a rig control set up on a cluster onto control's images; what changed. */
+  const updateClusterRig = async (rig: string): Promise<string> => {
+    const k = store.clusterRig(rig);
+    const want = k ? controlImages(k.spec.gpus) : undefined;
+    if (
+      k &&
+      want &&
+      typeof want !== "string" &&
+      want.harness === k.spec.images.harness &&
+      want.supervisor === k.spec.images.supervisor &&
+      k.status !== "failed"
+    )
+      throw new Error(
+        `${rig} runs the images control deploys already (${want.harness}, ${want.supervisor}), and they are not Thermite ${control.version}'s: set control's rig images to ${control.version}'s, then update again`,
+      );
+    const done = await updateClusterRigImages(rig, "owner:ui");
+    if ("error" in done) throw new Error(done.error);
+    return done.ok;
+  };
+  app.post("/ui/rigs/:rig/update", (c) => {
+    const rig = c.req.param("rig");
+    const back = (k: "ok" | "error", m: string) =>
+      c.redirect(`/ui/rigs/${encodeURIComponent(rig)}?${k}=${encodeURIComponent(m)}#version`, 303);
+    const place = placeOf(rig);
+    if (!place.update)
+      return back(
+        "error",
+        place.noUpdate ??
+          `Control didn't set ${rig} up on a machine or a cluster, so it can't move it onto its images. Pull the ${control.version} images where it runs, and start it again with them.`,
+      );
+    try {
+      void updates.begin(rig, "owner:ui", {
+        apply: () => (place.kind === "machine" ? updateMachineRig(rig) : updateClusterRig(rig)),
+      });
+    } catch (err) {
+      return back("error", err instanceof Error ? err.message : String(err));
+    }
+    store.audit("owner:ui", "rig_update", { rig, to: control.version });
+    return back(
+      "ok",
+      `The update of ${rig} to ${control.version} began. Its steps show below: press refresh to follow them.`,
+    );
+  });
+  /** What a cluster's API says about a rig's two deployments, in words: ok when both run. */
+  const checkClusterRig = async (rig: string): Promise<{ ok: boolean; words: string }> => {
+    const r = store.clusterRig(rig);
+    const k = r ? store.cluster(r.cluster) : undefined;
+    if (!r || !k) return { ok: false, words: "The cluster is no longer in Settings › Providers." };
+    const n = clusterNames(rig);
+    const out = await kube.kubectl(
+      clusterTarget(k),
+      ["get", "deployment", n.harness, n.supervisor, "-n", r.namespace, "-o", "json"],
+      undefined,
+      60_000,
+    );
+    if (out.code !== 0)
+      return { ok: false, words: `${r.cluster}'s API did not answer: ${kubeError(out)}` };
+    type D = {
+      metadata?: { name?: string };
+      spec?: { replicas?: number };
+      status?: { readyReplicas?: number };
+    };
+    let items: D[] = [];
+    try {
+      items = (JSON.parse(out.stdout) as { items?: D[] }).items ?? [];
+    } catch {
+      return { ok: false, words: `${r.cluster}'s API gave an answer control can't read.` };
+    }
+    const part = (name: string, word: string) => {
+      const d = items.find((x) => x.metadata?.name === name);
+      if (!d) return { ok: false, text: `the ${word} has no deployment` };
+      const want = d.spec?.replicas ?? 1;
+      const ready = d.status?.readyReplicas ?? 0;
+      return {
+        ok: want > 0 && ready >= want,
+        text: `the ${word} has ${ready} of ${want} pod${want === 1 ? "" : "s"} ready`,
+      };
+    };
+    const h = part(n.harness, "harness");
+    const s = part(n.supervisor, "supervisor");
+    return {
+      ok: h.ok && s.ok,
+      words: `${h.ok && s.ok ? "Both deployments run" : "Not both deployments run"}: ${h.text}, ${s.text}.`,
+    };
+  };
+  /**
+   * Checks where a rig control set up runs (Check again on its page, and control by itself when the
+   * rig turns stale and offline: rig-watch.ts): over SSH on a machine, through the cluster's API on
+   * a cluster. What it found is a step in the rig's history. Null when control can't reach it.
+   */
+  const checkPlace = async (
+    rig: string,
+    by: string,
+  ): Promise<{ ok: boolean; words: string } | null> => {
+    const place = placeOf(rig);
+    if (!place.check) return null;
+    let found: { ok: boolean; words: string };
+    if (place.kind === "machine") {
+      const r = store.machineRig(rig);
+      const m = r ? store.machine(r.machine) : undefined;
+      if (!r || !m) return null;
+      try {
+        const out = await ssh.sshScript(
+          {
+            address: m.address,
+            port: m.port,
+            user: m.user,
+            privateKey: opts.secrets.open(m.key_sealed),
+            hostKeys: m.host_keys,
+          },
+          checkScript(r),
+          [],
+          60_000,
+        );
+        found =
+          out.code === 0
+            ? readCheck(rig, out.stdout)
+            : {
+                ok: false,
+                words: `The check on ${r.machine} failed: ${tail(out.stderr) || `exit ${out.code}`}`,
+              };
+      } catch (err) {
+        found = {
+          ok: false,
+          words: `Control could not log in to ${r.machine} over SSH: ${err instanceof Error ? err.message : String(err)}`,
+        };
+      }
+    } else found = await checkClusterRig(rig);
+    store.rigSetupEvent(rig, "check", found.ok, found.words);
+    store.audit(by, "rig_check_place", { rig, ok: found.ok });
+    return found;
+  };
+  if (opts.actions) opts.actions.checkRigPlace = checkPlace;
+  app.post("/ui/rigs/:rig/check", async (c) => {
+    const rig = c.req.param("rig");
+    const back = (k: "ok" | "error", m: string) =>
+      c.redirect(`/ui/rigs/${encodeURIComponent(rig)}?${k}=${encodeURIComponent(m)}`, 303);
+    const found = await checkPlace(rig, "owner:ui");
+    if (!found) return back("error", "Control can't reach where this rig runs.");
+    return back(found.ok ? "ok" : "error", found.words);
+  });
+
+  // ---------------------------------------------------------------- RunPod rigs (goals 022, 023)
+  /** "rp-1 is a RunPod pod with 1 × A100 PCIe, on Secure cloud in EU-RO-1. It has cost $9.80…" */
+  const podSaid = (v: NonNullable<RigView["runpod"]>, now: number) => {
+    const spent = v.spend_usd ?? v.spent_usd;
+    if (!v.active || v.status === "TERMINATED")
+      return `${esc(v.rig)}'s pod is terminated. It cost <b>$${spent.toFixed(2)}</b> in all.`;
+    return `${esc(v.rig)} is a RunPod pod with ${v.gpu_count} × ${esc(v.gpu_name)}, on ${v.cloud_type === "SECURE" ? "Secure" : "Community"} cloud${v.datacenter ? ` in ${esc(v.datacenter)}` : ""}. It has cost <b>$${spent.toFixed(2)}</b> since it was launched ${esc(ago(v.launched_at, now))} ago.`;
+  };
+  const podSummary = (v: NonNullable<RigView["runpod"]>) =>
+    !v.active || v.status === "TERMINATED"
+      ? `<span class="muted">terminated</span> · RunPod`
+      : v.status === "EXITED"
+        ? `<span class="muted">stopped</span> · RunPod`
+        : `<span class="${v.status === "RUNNING" ? "ok" : "warn"}">${esc(v.status.toLowerCase())}</span> · RunPod${v.price_per_hr !== null ? ` · $${v.price_per_hr.toFixed(2)}/h` : ""}`;
+  /** A RunPod rig's pod block: its cost, limits, lifecycle and the results still in it. */
+  const podSection = (c: Ctx, rig: string, now: number) => {
+    const v = opts.runpodRigs?.view(rig);
+    if (!v) return "";
+    const name = v.op?.export ?? v.last_export ?? null;
+    return podBlock({
+      v,
+      t: csrf(c),
+      now,
+      results: resultsLeft(store, rig),
+      lastExport: name ? { name, left: exportLeft(store, rig, name) } : null,
+      resetOpen: Boolean(store.openReset(rig)),
+      minIdle: MIN_IDLE_STOP_MINUTES,
+    });
+  };
+  /** A RunPod rig's history: the pod's steps, the rig's events and its state's lines, filtered. */
+  const podHistory = (u: RigView | undefined, rig: string, extra: TimelineRow[], now: number) =>
+    `<div class="block"><div class="head"><h2>History</h2><span class="right">newest first</span></div>${HISTORY_FILTERS}${timeline(
+      u ? u.recent.map((e) => ({ u, e })) : [],
+      now,
+      {
+        limit: 40,
+        kinds: true,
+        extra: [...podRows(store.rigSetupEvents(rig)), ...extra],
+        id: "hist",
+      },
+    )}</div>`;
+  const podActions = {
+    stop: "Stopping: its runs are paused and its results go out first, then the pod stops.",
+    start: "Starting: RunPod starts the pod, and its paused runs resume once it runs.",
+    restart: "Restarting: the pod stops, then starts again.",
+    terminate:
+      "Terminating: its runs are paused, and the pod is removed only once every result has left it.",
+  } as const;
+  /** A number from a form field: empty is null (none), anything else must be a number. */
+  const amount = (raw: unknown): number | null | "bad" => {
+    const v = String(raw ?? "")
+      .trim()
+      .replace(/^\$/, "");
+    if (!v) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : "bad";
+  };
+  app.post("/ui/rigs/:rig/runpod/:action", async (c) => {
+    const rig = c.req.param("rig");
+    const action = c.req.param("action");
+    const back = (k: "ok" | "error", m: string, at = "#pod") =>
+      c.redirect(`/ui/rigs/${encodeURIComponent(rig)}?${k}=${encodeURIComponent(m)}${at}`, 303);
+    const rigs = opts.runpodRigs;
+    if (!rigs?.view(rig)) return back("error", `${rig} is not a rig control launched on RunPod.`);
+    const f = await c.req.parseBody();
+    try {
+      if (action === "limits") {
+        const lim = amount(f.spend_limit_usd);
+        const idle = amount(f.idle_stop_minutes);
+        if (lim === "bad" || (lim !== null && !(lim > 0)))
+          return back("error", "A spend limit is an amount in US dollars above 0, such as 40.");
+        if (
+          idle === "bad" ||
+          (idle !== null && !(Number.isInteger(idle) && idle >= MIN_IDLE_STOP_MINUTES))
+        )
+          return back(
+            "error",
+            `An idle stop is a whole number of minutes, ${MIN_IDLE_STOP_MINUTES} or more.`,
+          );
+        const change: LimitsChange = { spend_limit_usd: lim, idle_stop_minutes: idle };
+        const v = rigs.limits(rig, change, "owner:ui");
+        return back(
+          "ok",
+          `Saved. ${v.spend_limit_usd === null ? "No spend limit." : `Control stops the pod at $${v.spend_limit_usd.toFixed(2)}.`} ${v.idle_stop_minutes === null ? "It never stops by itself." : `It stops after ${v.idle_stop_minutes} minutes with no run at work.`}`,
+        );
+      }
+      if (action === "stop") await rigs.stop(rig, "owner:ui");
+      else if (action === "start") await rigs.start(rig, "owner:ui");
+      else if (action === "restart") await rigs.restart(rig, "owner:ui");
+      else if (action === "terminate") {
+        const confirm = String(f.confirm ?? "").trim();
+        if (confirm !== `terminate ${rig}`)
+          return back("error", `Type "terminate ${rig}" to terminate it.`);
+        await rigs.terminate(rig, "owner:ui", confirm);
+      } else return back("error", "No such action.");
+    } catch (err) {
+      return back("error", err instanceof Error ? err.message : String(err));
+    }
+    return back("ok", podActions[action as keyof typeof podActions]);
+  });
+  app.get("/ui/assets/runpod-launch.js", (c) =>
+    c.body(RUNPOD_LAUNCH_JS, 200, {
+      "content-type": "text/javascript; charset=utf-8",
+      "cache-control": "no-cache",
+    }),
+  );
+  /** The launch form, for one RunPod account in Providers, maybe with what was typed and why not. */
+  const launchPage = (c: Ctx, form: LaunchForm, error?: string) => {
+    const clouds = store.gpuClouds().map((g) => ({
+      name: g.name,
+      key_hint: g.key_hint,
+      facts: g.facts as RunpodFacts | null,
+      checked_at: g.checked_at,
+      error: g.check_error,
+    }));
+    const cloud = clouds.find((g) => g.name === form.cloud) ?? clouds[0];
+    const crumbs = [
+      { href: "/ui/rigs", text: "Rigs" },
+      { href: "/ui/rigs/add", text: "Add a rig" },
+    ];
+    if (!cloud || !opts.runpodRigs)
+      return page(
+        c,
+        { title: "Launch on RunPod", crumbs, active: "rigs" },
+        `<div class="card"><p>Control has no RunPod account yet. Add one under <a href="/ui/settings">Settings › Providers</a>, with an API key that may start pods, then come back.</p></div>`,
+      );
+    return page(
+      c,
+      { title: "Launch on RunPod", crumbs, active: "rigs" },
+      `${launchBody({
+        clouds,
+        cloud,
+        image: opts.runpodRigs.defaultImage(),
+        idleDefault: DEFAULT_IDLE_STOP_MINUTES,
+        minIdle: MIN_IDLE_STOP_MINUTES,
+        volumeGb: DEFAULT_VOLUME_GB,
+        csrf: csrf(c),
+        now: Date.now(),
+        form,
+        error,
+      })}<script src="/ui/assets/runpod-launch.js" defer></script>`,
+    );
+  };
+  app.get("/ui/rigs/add/runpod", (c) =>
+    launchPage(c, { cloud: c.req.query("cloud") }, c.req.query("error") || undefined),
+  );
+  app.post("/ui/rigs/add/runpod", async (c) => {
+    const f = await c.req.parseBody();
+    const one = (k: string) => String(f[k] ?? "").trim();
+    const form: LaunchForm = {
+      cloud: one("cloud"),
+      gpu: one("gpu"),
+      gpu_count: one("gpu_count"),
+      judge_gpus: one("judge_gpus"),
+      datacenter: one("datacenter"),
+      volume_gb: one("volume_gb"),
+      image_choice: one("image_choice"),
+      image: one("image"),
+      spend_limit_usd: one("spend_limit_usd"),
+      idle_stop_minutes: one("idle_stop_minutes"),
+      rig: one("rig"),
+    };
+    // Read again: the account's prices and stock, then the form as it was.
+    if (one("read")) {
+      const why = await checkCloudNow(form.cloud ?? "");
+      return c.redirect(
+        `/ui/rigs/add/runpod?cloud=${encodeURIComponent(form.cloud ?? "")}${why ? `&error=${encodeURIComponent(why)}` : ""}`,
+        303,
+      );
+    }
+    const rigs = opts.runpodRigs;
+    if (!rigs || !store.gpuCloud(form.cloud ?? ""))
+      return launchPage(c, form, "Choose a RunPod account from Settings › Providers.");
+    const count = Number(form.gpu_count || "1");
+    if (!(Number.isInteger(count) && count >= 1 && count <= 8))
+      return launchPage(c, form, "A pod has 1 to 8 GPUs.");
+    const judge = form.judge_gpus ? Number(form.judge_gpus) : undefined;
+    if (
+      count >= 2 &&
+      judge !== undefined &&
+      !(Number.isInteger(judge) && judge >= 1 && judge < count)
+    )
+      return launchPage(c, form, `With ${count} GPUs, the judge takes 1 to ${count - 1} of them.`);
+    const volume = Number(form.volume_gb || String(DEFAULT_VOLUME_GB));
+    if (!(Number.isInteger(volume) && volume >= 10 && volume <= 10_000))
+      return launchPage(c, form, "The volume is 10 to 10000 GB.");
+    const lim = amount(form.spend_limit_usd);
+    if (lim === "bad" || (lim !== null && !(lim > 0)))
+      return launchPage(c, form, "A spend limit is an amount in US dollars above 0, such as 40.");
+    const idle = amount(form.idle_stop_minutes);
+    if (
+      idle === "bad" ||
+      (idle !== null && !(Number.isInteger(idle) && idle >= MIN_IDLE_STOP_MINUTES))
+    )
+      return launchPage(
+        c,
+        form,
+        `An idle stop is a whole number of minutes, ${MIN_IDLE_STOP_MINUTES} or more.`,
+      );
+    const own = form.image_choice === "own" || !rigs.defaultImage();
+    if (own && !form.image) return launchPage(c, form, "Give your image's name and tag.");
+    const req: LaunchRequest = {
+      gpu: form.gpu ?? "",
+      gpu_count: count,
+      cloud_type: "SECURE",
+      datacenter: form.datacenter || undefined,
+      volume_gb: volume,
+      image: own ? form.image : undefined,
+      rig: form.rig || undefined,
+      ...(lim !== null ? { spend_limit_usd: lim } : {}),
+      // Cleared by the owner: none, whatever control's default is.
+      idle_stop_minutes: idle,
+      ...(count >= 2 && judge !== undefined
+        ? { settings: { THERMITE_JUDGE_GPUS: String(judge) } }
+        : {}),
+    };
+    if (!req.gpu) return launchPage(c, form, "Choose a GPU.");
+    try {
+      const v = await rigs.launch(form.cloud ?? "", req, "owner:ui");
+      return c.redirect(
+        `/ui/rigs/${encodeURIComponent(v.rig)}?ok=${encodeURIComponent(`Launched: RunPod bills pod ${v.pod} from now${v.price_per_hr !== null ? ` at $${v.price_per_hr.toFixed(2)} an hour` : ""}. Control enrolls it once it runs.`)}`,
+        303,
+      );
+    } catch (err) {
+      return launchPage(c, form, err instanceof Error ? err.message : String(err));
+    }
+  });
+
   /** Reads the machine's facts now (read-only), and keeps them or why it could not. */
   const checkMachine = async (name: string): Promise<string | null> => {
     const m = store.machine(name);

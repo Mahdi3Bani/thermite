@@ -154,7 +154,7 @@ At start the broker also closes `/tmp`, `/var/tmp` and `/dev/shm` to the roles (
 
 ## The one-container rig image
 
-A RunPod pod runs one container. The one-container rig image runs a rig's harness and its supervisor in it, in [pull mode](../explanation/trust.md#rigs-in-pull-mode): control connects to the supervisor's port, and the rig never connects to control. The broker runs as root, as in the harness image, and also starts the supervisor under the supervisor's own user, beside the role users. The owner launches it on RunPod from control, over the REST API, MCP or the command line ([Rigs on a GPU cloud](rest-api.md#rigs-on-a-gpu-cloud)). The dashboard's launch form comes with [goal 022](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/022-runpod-launch.goal).
+A RunPod pod runs one container. The one-container rig image runs a rig's harness and its supervisor in it, in [pull mode](../explanation/trust.md#rigs-in-pull-mode): control connects to the supervisor's port, and the rig never connects to control. The broker runs as root, as in the harness image, and also starts the supervisor under the supervisor's own user, beside the role users. The owner launches it on RunPod from control, over the REST API, MCP or the command line ([Rigs on a GPU cloud](rest-api.md#rigs-on-a-gpu-cloud)). The dashboard launches it too, with **Launch on RunPod** ([Run a rig on RunPod](../how-to/install/runpod-rig.md)).
 
 Each release publishes it on the CUDA harness, as `ghcr.io/iammrduncan/thermite-rig` ([Published images](#published-images)), and the release's `compose.yaml` makes it control's `THERMITE_RUNPOD_RIG_IMAGE`. [Use a rig image of your own](../how-to/install/runpod-rig.md#use-a-rig-image-of-your-own) builds and pushes one.
 

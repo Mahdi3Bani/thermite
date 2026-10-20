@@ -4,7 +4,7 @@ import {
   incompatibility,
   type ReportedBuild,
 } from "../core/version.ts";
-import type { ControlStore, RigComponent, StoredBuild } from "./store.ts";
+import type { ControlStore, RigComponent, RigRefusal, StoredBuild } from "./store.ts";
 
 /**
  * Control's view of each rig's builds against its own: it records what the rig's harness and
@@ -24,8 +24,11 @@ export interface RigVersions {
   state: VersionState;
   /** What the owner should know, in plain words; null when the rig runs control's version. */
   notice: string | null;
-  /** Why control refuses the rig, and since when; null when it does not. */
-  refused: { reason: string; since: string } | null;
+  /**
+   * Why control refuses the rig, and since when, with how many of its calls control refused since
+   * and when the last came; null when it does not.
+   */
+  refused: RigRefusal | null;
   /** Control's own build, which the rig is compared with. */
   control: BuildInfo;
   /** What each part last reported, and since when; null when it reported no version. */

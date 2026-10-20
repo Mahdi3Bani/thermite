@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { redact } from "../../common/env.ts";
 import { shq } from "./ssh.ts";
 
 /**
@@ -91,8 +92,14 @@ const userSession = (root: boolean) =>
 
 export const unitName = (rig: string, part: "harness" | "supervisor") => `thermite-${rig}-${part}`;
 
+/** What a rig's units are made of: the rest of a plan is for its first setup. */
+export type UnitPlan = Pick<
+  RigPlan,
+  "rig" | "controlUrl" | "images" | "gpus" | "judgeGpus" | "root"
+>;
+
 /** The Quadlet units, by file name. */
-export function rigUnits(p: RigPlan): Record<string, string> {
+export function rigUnits(p: UnitPlan): Record<string, string> {
   const { unitDir } = rigPaths(p);
   const h = unitName(p.rig, "harness");
   const s = unitName(p.rig, "supervisor");
@@ -221,6 +228,83 @@ export function deployScript(p: RigPlan, secrets: RigSecrets): string {
     `echo started`,
   ];
   return lines.join("\n");
+}
+
+/**
+ * The update script: a rig control set up moves onto other images. The images are pulled first,
+ * while the rig still runs; then its two container units are written again and both services
+ * restart. Its secrets, keys, volumes and networks stay, so its ledger, runs, tokens and key do.
+ * An image the registry no longer serves but the machine holds is used as it is.
+ */
+export function updateScript(p: UnitPlan): string {
+  if (!RIG_NAME.test(p.rig))
+    throw new Error("a rig's name is lowercase letters, digits and dashes");
+  const { dir, units, systemctl } = rigPaths(p);
+  const q = (path: string) => `"${path}"`;
+  const containers = Object.entries(rigUnits(p)).filter(([name]) => name.endsWith(".container"));
+  return [
+    "set -eu",
+    ...userSession(p.root),
+    "umask 077",
+    `if [ ! -d ${q(dir)} ]; then echo "rig ${p.rig} is not on this machine" >&2; exit 3; fi`,
+    `for image in ${shq(p.images.harness)} ${shq(p.images.supervisor)}; do podman pull -q "$image" >/dev/null || podman image exists "$image"; done`,
+    ...containers.map(([name, text]) => writeFile(q(`${units}/${name}`), text, "0644")),
+    `${systemctl} daemon-reload`,
+    `${systemctl} restart ${unitName(p.rig, "harness")}.service ${unitName(p.rig, "supervisor")}.service`,
+    "echo updated",
+  ].join("\n");
+}
+
+/**
+ * The check script (read-only): whether the rig's two services are active, its containers' states,
+ * and the supervisor's last log lines, which say why a rig that runs does not report.
+ */
+export function checkScript(p: Pick<RigPlan, "rig" | "root">): string {
+  if (!RIG_NAME.test(p.rig))
+    throw new Error("a rig's name is lowercase letters, digits and dashes");
+  const { systemctl } = rigPaths(p);
+  const h = unitName(p.rig, "harness");
+  const s = unitName(p.rig, "supervisor");
+  return [
+    "set -u",
+    ...userSession(p.root),
+    `echo "harness=$(${systemctl} is-active ${h}.service 2>/dev/null || true)"`,
+    `echo "supervisor=$(${systemctl} is-active ${s}.service 2>/dev/null || true)"`,
+    `podman ps -a --filter name=${shq(`^(${h}|${s})$`)} --format 'ps={{.Names}}|{{.Status}}' 2>/dev/null || true`,
+    `podman logs --tail 3 ${s} 2>&1 | tail -n 3 | sed 's/^/log=/' || true`,
+  ].join("\n");
+}
+
+/** What the check script found, in words: ok when both services are active. */
+export function readCheck(rig: string, out: string): { ok: boolean; words: string } {
+  const lines = out.split("\n").map((l) => l.trim());
+  const val = (k: string) => lines.find((l) => l.startsWith(`${k}=`))?.slice(k.length + 1) || "";
+  const states = {
+    harness: val("harness") || "unknown",
+    supervisor: val("supervisor") || "unknown",
+  };
+  const status = (part: "harness" | "supervisor") =>
+    lines
+      .find((l) => l.startsWith(`ps=${unitName(rig, part)}|`))
+      ?.split("|")[1]
+      ?.trim() ?? "";
+  const ok = states.harness === "active" && states.supervisor === "active";
+  const part = (name: "harness" | "supervisor") =>
+    `the ${name} is ${states[name] === "active" ? "running" : states[name]}${status(name) ? ` (${status(name).toLowerCase()})` : ""}`;
+  const said = ok
+    ? `Both containers run: ${part("harness")}, ${part("supervisor")}.`
+    : `Not both containers run: ${part("harness")}, ${part("supervisor")}.`;
+  const log = lines
+    .filter((l) => l.startsWith("log="))
+    .map((l) => l.slice(4).trim())
+    .filter(Boolean)
+    .map((l) => l.slice(0, 200));
+  return {
+    ok,
+    words: redact(
+      log.length ? `${said} The supervisor's last log lines: ${log.join(" · ")}` : said,
+    ).slice(0, 900),
+  };
 }
 
 export type RigAction = "stop" | "start" | "restart" | "remove" | "status";

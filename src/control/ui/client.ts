@@ -339,6 +339,22 @@ export const CLIENT_JS = `
     check();
   });
 
+  // ------------------------------------------------ typed confirmations: the button waits for the words
+  const confirms = () => document.querySelectorAll("input[data-confirm]").forEach((i) => {
+    const b = i.form && i.form.querySelector("button");
+    if (b && !i.disabled) b.disabled = i.value.trim() !== i.dataset.confirm;
+  });
+  document.addEventListener("input", (ev) => { if (ev.target.matches && ev.target.matches("input[data-confirm]")) confirms(); });
+  confirms();
+
+  // ------------------------------------------------ a rig's history: everything, the pod, the runs or the judge
+  const hf = $("#hf");
+  if (hf) hf.querySelectorAll("[data-h]").forEach((b) => b.addEventListener("click", () => {
+    const k = b.dataset.h;
+    hf.querySelectorAll("[data-h]").forEach((x) => x.classList.toggle("on", x === b));
+    document.querySelectorAll("#hist .tl-row").forEach((r) => (r.hidden = !(k === "all" || r.dataset.k === k)));
+  }));
+
   // ------------------------------------------------ the composer: Cmd/Ctrl+Enter sends
   const ta = $(".composer textarea");
   if (ta) ta.addEventListener("keydown", (ev) => {

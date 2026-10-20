@@ -4,11 +4,13 @@ import { serve } from "@hono/node-server";
 import { log, optionalSecretFromFile, parseListen } from "../common/env.ts";
 import { generateSigningKeys } from "../core/commands.ts";
 import { buildInfo } from "../core/version.ts";
+import type { ControlActions } from "./actions.ts";
 import { createControlApi } from "./api.ts";
 import { Credential } from "./credential.ts";
 import { KitRepos } from "./kit-repos.ts";
 import { advanceResets, driverFromEnv } from "./lifecycle.ts";
 import { OutsideKbs } from "./outside-kb.ts";
+import { checkQuietRigs } from "./rig-watch.ts";
 import { refreshGpuClouds } from "./runpod.ts";
 import { RunpodRigs } from "./runpod-rigs.ts";
 import { RunpodTests } from "./runpod-tests.ts";
@@ -95,10 +97,13 @@ async function main(): Promise<void> {
     staleAfterMs,
     privateKeyPem,
   });
+  // What the dashboard does that the loop below calls too: checking where a quiet rig runs.
+  const actions: ControlActions = {};
   const server = serve({
     fetch: createControlApi(store, tokens, privateKeyPem, {
       staleAfterMs,
       offlineAfterMs,
+      actions,
       driver,
       // Optional: the owner accepts each rig's first report key (no trust on first use).
       requireKeyAcceptance: env.THERMITE_CONTROL_REQUIRE_KEY_ACCEPT === "1",
@@ -162,6 +167,18 @@ async function main(): Promise<void> {
   const launched = setInterval(() => {
     runpodRigs.advance().catch((err) => log("control", "runpod rig error", { error: String(err) }));
   }, 30_000);
+  // Rigs control set up that stopped reporting: their containers checked once when they turn
+  // stale, and once more when they turn offline (rig-watch.ts).
+  let watching = false;
+  const quiet = setInterval(() => {
+    if (watching) return;
+    watching = true;
+    checkQuietRigs({ store, check: actions.checkRigPlace, staleAfterMs, offlineAfterMs })
+      .catch((err) => log("control", "quiet rig check error", { error: String(err) }))
+      .finally(() => {
+        watching = false;
+      });
+  }, 60_000);
   // GPU clouds' prices, pods and spend, read again every 15 minutes.
   const clouds = setInterval(() => {
     refreshGpuClouds(store, secrets).catch((err) =>
@@ -187,6 +204,7 @@ async function main(): Promise<void> {
     clearInterval(tests);
     clearInterval(pulls);
     clearInterval(launched);
+    clearInterval(quiet);
     clearInterval(clouds);
     clearInterval(outsideSync);
     server.close();

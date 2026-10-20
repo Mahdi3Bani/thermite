@@ -191,7 +191,8 @@ describe("RunPod in Providers", () => {
     );
     assert.match(page, /1 pod running: billed while they run/);
     assert.match(page, /kits: 50 GB in EU-RO-1/);
-    assert.match(page, /control starts only the test pods you ask for/);
+    assert.match(page, /control starts only the pods you ask for/);
+    assert.match(page, /href="\/ui\/rigs\/add\/runpod\?cloud=runpod">Launch a rig<\/a>/);
     // Spend, from RunPod's billing.
     assert.match(page, /\$12\.34 spent this month/);
     assert.match(

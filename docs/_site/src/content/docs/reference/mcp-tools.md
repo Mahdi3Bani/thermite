@@ -510,7 +510,7 @@ Errors:
 - `Control could not read <rig>'s deployment to compare control's address: <kubectl's error>`: the same images, and the supervisor's deployment could not be read
 - kubectl's own error
 
-Besides `mcp:update_rig_images`, the audit log records `cluster_rig_images` with the old and the new images. A rig on a machine, or one joined with a join command, has no image update yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
+Besides `mcp:update_rig_images`, the audit log records `cluster_rig_images` with the old and the new images. A rig on a machine moves onto control's images only with **Update to** control's version on its page; one joined with a join command has no image update yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
 
 ### set_cluster_slots
 
