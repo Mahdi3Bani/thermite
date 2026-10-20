@@ -1,7 +1,7 @@
 ---
 id: "064"
 title: "One experiment queue for each run; the planner coordinates it"
-status: PROPOSED
+status: READY
 version: "0.1.0"
 part: "Running campaigns"
 depends_on: ["063"]
@@ -11,7 +11,7 @@ updated: 2026-10-20
 
 # 064 · One experiment queue for each run; the planner coordinates it
 
-**Status:** `PROPOSED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
 
 ## What
 
@@ -65,6 +65,7 @@ Today the plan exists only for the current round and is redone every round. Idea
 ## Decisions
 
 - 2026-10-20, owner: the five points above, a queue and log of experiments, with the planner as its coordinator. Next after this: journals and a research corpus ([065](065-journals-and-corpus.goal)).
+- 2026-10-20, owner, on the final mockups: "yes these all look better. Build it". Accepted into v0.1.0, built after 063. Lanes' ideas wait for the planner; the owner can queue or drop them first.
 - 2026-10-20, owner, on the mockups: the Experiments tab is a list, not a board. A rule's direction is free text, not a pick list. One queue per run, with an option to copy a past run's untried experiments into a new run.
 - 2026-10-20: the queue is part of the run's research state, so it lives in the harness's ledger, as the settled decision on research state requires. The planner stays a fresh model call with no memory of its own: the queue is the memory, and the harness keeps it.
 

@@ -74,6 +74,7 @@ The owner's feedback on 2026-10-20:
 
 - 2026-10-20, owner: the five points of feedback above. Designs are chosen by mockup first, as for the earlier dashboard pages.
 - 2026-10-20: the recipients are the agents (lanes, planner) and the advisors. The judge takes no messages: it is code, and what anyone writes must not change a measurement. Only the owner can message an advisor (a signed owner command); agents cannot.
+- 2026-10-20, owner, on the final mockups: "yes these all look better. Build it". "Everyone working" reaches the lanes and the planner; the advisors have their own choice.
 - 2026-10-20, owner, on the Live mockup: choosing a lane (or everyone) at the top of Live also sets who the message box writes to. The lane you watch is the lane you write to, and choosing a recipient below shows that lane's stream.
 - 2026-10-20, owner, on the Live mockup: "why can't I view advisors?" Live gets an Advisors entry with the advisors' work as it happens.
 - 2026-10-20, owner, on Live with a side panel: "the live tab gives you an area the size of a pea to actually see messages... what the actual overloaded screen is this?" Live has no side panel; the stream gets the room.
@@ -83,7 +84,7 @@ The owner's feedback on 2026-10-20:
 
 ## Open questions
 
-- Should "everyone working" also reach the advisors, or only the lanes and the planner? The mockups send it to the lanes and the planner; the advisors have their own choice.
+None.
 
 ## Progress
 

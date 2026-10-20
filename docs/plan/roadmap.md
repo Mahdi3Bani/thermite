@@ -54,8 +54,8 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 
 ### Running campaigns
 
-- [064](goals/064-experiment-queue.goal) One experiment queue for each run; the planner coordinates it · `PROPOSED`
-- [065](goals/065-journals-and-corpus.goal) Journals and a research corpus from every campaign · `PROPOSED`
+- [064](goals/064-experiment-queue.goal) One experiment queue for each run; the planner coordinates it · `READY`
+- [065](goals/065-journals-and-corpus.goal) Journals and a research corpus from every campaign · `READY`
 
 ### Research mode
 

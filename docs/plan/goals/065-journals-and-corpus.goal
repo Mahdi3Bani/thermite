@@ -1,7 +1,7 @@
 ---
 id: "065"
 title: "Journals and a research corpus from every campaign"
-status: PROPOSED
+status: READY
 version: "0.1.0"
 part: "Running campaigns"
 depends_on: ["062", "064"]
@@ -11,7 +11,7 @@ updated: 2026-10-20
 
 # 065 · Journals and a research corpus from every campaign
 
-**Status:** `PROPOSED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
 
 ## What
 
@@ -52,6 +52,7 @@ Today most of what an agent learns ends with its trial. Only submitted attempts,
 ## Decisions
 
 - 2026-10-20, owner: all agents write journals and research notes; a campaign's corpus goes into the knowledge base to inform later campaigns. This goal follows the experiment queue ([064](064-experiment-queue.goal)).
+- 2026-10-20, owner: "Build it" (the mockups of 063 and 064); accepted into v0.1.0, built after 064.
 - 2026-10-20: [059](059-knowledge-base-export.goal) (research results into a knowledge base) becomes part of this goal.
 
 ## Open questions
