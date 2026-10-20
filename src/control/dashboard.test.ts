@@ -1239,15 +1239,15 @@ describe("control dashboard", () => {
           at,
           source: "supervisor",
           kind: "message",
-          text: "Owner to lane-1: keep it simple",
+          text: "Owner to lane-1 (#4, kept in force): keep it simple",
           run: "js-1",
         },
         {
           seq: 7,
           at,
           source: "trial:t-0123456789abcdef",
-          kind: "message",
-          text: "Owner: keep it simple",
+          kind: "status",
+          text: "read the owner's message #4 (in force): keep it simple",
           lane: "lane-1",
           run: "js-1",
         },
@@ -1260,6 +1260,14 @@ describe("control dashboard", () => {
           text: "another run's line",
           lane: "lane-1",
           run: "other-1",
+        },
+        {
+          seq: 10,
+          at,
+          source: "supervisor",
+          kind: "text",
+          text: "the teacher pair (teacher-a) answered the owner's message #5: Understood, question 2 first.",
+          run: "js-1",
         },
       ],
       true,
@@ -1280,9 +1288,14 @@ describe("control dashboard", () => {
     // The owner's message and the lane reading it; the filter it belongs to.
     assert.match(
       html,
-      /data-who="you lane-1"[^>]*><span class="lv-t"[^>]*>[^<]*<\/span><div class="lv-body"><div class="you"><b>To lane-1:<\/b> keep it simple/,
+      /data-who="you lane-1"[^>]*><span class="lv-t"[^>]*>[^<]*<\/span><div class="lv-body"><div class="you"><b>To lane-1:<\/b> keep it simple <span class="muted xs">📌 kept in force<\/span>/,
     );
-    assert.match(html, /✓ lane-1 read your message: “keep it simple”/);
+    assert.match(html, /✓ lane-1 read your message \(in force\): “keep it simple”/);
+    // An advisor's answer, under the advisors and under you.
+    assert.match(
+      html,
+      /data-who="you advisors"[^>]*>[\s\S]*?<b>the teacher pair \(teacher-a\) answered you:<\/b> <p>Understood, question 2 first\.<\/p>/,
+    );
     // Filters: everyone, each lane, planner, judge, advisors, you; the box writes to the lane watched.
     assert.match(html, /<a class="lchip on" data-w="lane-1"/);
     assert.match(html, /data-w="judge"/);
@@ -1296,7 +1309,7 @@ describe("control dashboard", () => {
     const json = (await (await s.get("/ui/live.json?run=rig-a/js-1&after=0")).json()) as {
       entries: { src: string; html: string }[];
     };
-    assert.equal(json.entries.length, 8);
+    assert.equal(json.entries.length, 9);
     assert.ok(json.entries.every((e) => e.html.includes("data-who=")));
     // Sending from the box: a signed owner command to the lane, back to the same filter.
     const sent = await s.post("/ui/live/message", {

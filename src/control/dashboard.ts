@@ -1957,14 +1957,27 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
       chip("advisors", "Advisors"),
       chip("you", "You", "your messages, and who read them"),
     ].join("");
+    const kept = r.messages.filter((m) => m.keep && !m.unkept);
+    const keptBox = kept.length
+      ? `<details class="lkept"><summary class="lchip" title="Your messages kept in force">📌 ${kept.length} kept</summary><div class="menu-pop"><div class="muted small">Every new trial gets these, until you remove them.</div>${kept
+          .map(
+            (m) =>
+              `<div class="krow"><span class="small"><b>To ${esc(m.to === "all" ? "everyone" : m.to)}:</b> ${esc(clip(m.text, 200))}</span>${cmdForm(c, { rig: u.id, kind: "unkeep_message", fields: { run: r.id, message: String(m.id) }, label: "Remove", cls: "sm ghost", back: runLiveHref(u.id, r.id) })}</div>`,
+          )
+          .join("")}</div></details>`
+      : "";
     // The message box: who it goes to, and when they read it (the placeholder says).
+    // When they read it depends on the agents' harness: Pi between steps; OpenCode and Claude
+    // Code when their current run ends (or in the lane's next trial).
+    const pi = !u.model || u.model.harness === "pi";
+    const when = pi ? "at its next step" : "when its current run ends, or in its next trial";
     const hint = (to: string) =>
       to === "all"
         ? research
-          ? "Each agent reads it at its next step"
-          : "Each agent reads it at its next step; the planner at its next plan"
+          ? `Each agent reads it ${pi ? "at its next step" : "when its current run ends"}`
+          : `Each agent reads it ${pi ? "at its next step" : "when its current run ends"}; the planner at its next plan`
         : to.startsWith("lane-")
-          ? `${to}${r.at_work[to] ? ` (on ${r.at_work[to]?.family})` : ""} reads it at its next step`
+          ? `${to}${r.at_work[to] ? ` (on ${r.at_work[to]?.family})` : ""} reads it ${when}`
           : to === "planner"
             ? "The planner reads it when it plans the next round"
             : to === "teachers"
@@ -1975,13 +1988,18 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
                   ? "The review panel reads it before its next review and answers here"
                   : "The advisors read it and answer here";
     const to = lanes.includes(w) || w === "planner" ? w : w === "advisors" ? "advisors" : "all";
+    const set = u.settings;
+    const offBy = (role: "planner" | "teachers" | "auditor" | "review") =>
+      set && set[role] === false
+        ? `The ${role === "review" ? "review panel" : role === "teachers" ? "teacher pair" : role} is off on this rig (Edit rig).`
+        : "";
     const opt = (v: string, label: string, off = "") =>
       `<option value="${esc(v)}" data-hint="${esc(hint(v))}"${v === to ? " selected" : ""}${off ? ` disabled title="${esc(off)}"` : ""}>${esc(label)}</option>`;
     const box =
       r.status === "closed"
         ? `<div class="lcomposer off">This run has finished: its agents take no more messages.</div>`
         : `<form class="lcomposer" method="post" action="/ui/live/message"><input type="hidden" name="csrf" value="${csrf(c)}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(r.id)}"><input type="hidden" name="w" value="${esc(w)}">
-<select name="to" aria-label="To" class="lto">${opt("all", "To everyone working")}${lanes.map((l) => opt(l, `To ${l}`)).join("")}${opt("planner", "To the planner", research ? "A research run plans its rounds with a fixed method: it has no planner to message." : "")}<optgroup label="Advisors">${opt("advisors", "To all advisors")}${opt("teachers", "To the teachers")}${opt("auditor", "To the auditor", research ? "A research run has no attempts to audit." : "")}${opt("panel", "To the review panel", research ? "A research run has no conclusions to review." : "")}</optgroup></select>
+<select name="to" aria-label="To" class="lto">${opt("all", "To everyone working")}${lanes.map((l) => opt(l, `To ${l}`)).join("")}${opt("planner", "To the planner", research ? "A research run plans its rounds with a fixed method: it has no planner to message." : offBy("planner"))}<optgroup label="Advisors">${opt("advisors", "To all advisors")}${opt("teachers", "To the teachers", offBy("teachers"))}${opt("auditor", "To the auditor", research ? "A research run has no attempts to audit." : offBy("auditor"))}${opt("panel", "To the review panel", research ? "A research run has no conclusions to review." : offBy("review"))}</optgroup></select>
 <textarea name="text" rows="1" required maxlength="4000" aria-label="Message" placeholder="${esc(hint(to))} · ⌘↩ sends"${c.req.query("compose") ? " autofocus" : ""}></textarea>
 <label class="lpin" title="Keep it in force: every new trial gets it too, until you remove it"><input type="checkbox" name="keep" value="1">📌</label>
 <button class="primary">${icon.send}Send</button></form>`;
@@ -2029,7 +2047,7 @@ ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? "
         active: "live",
         flush: true,
       },
-      `<div class="lwrap" id="lwrap">${nav}<section class="lcol">${head}<div class="lchips">${chips}<span class="grow"></span><button class="lchip on lfollow" type="button" aria-pressed="true" title="Follow new lines">↓ Follow</button></div>
+      `<div class="lwrap" id="lwrap">${nav}<section class="lcol">${head}<div class="lchips">${chips}<span class="grow"></span>${keptBox}<button class="lchip on lfollow" type="button" aria-pressed="true" title="Follow new lines">↓ Follow</button></div>
 <div class="transcript lstream" id="transcript" data-rig="${esc(u.id)}" data-run="${esc(r.id)}" data-w="${esc(w)}" data-after="${after}">${runLinesHtml(lines, now) || `<div class="empty">No live lines yet. They appear here as the run's agents and judge work.</div>`}</div>
 ${box}</section></div>`,
       vs,
@@ -5405,6 +5423,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       },
       queue_accept: { run, id: String(f.id ?? "") },
       drop_directive: { run, id: Number(f.id) },
+      unkeep_message: { run, message: Number(f.message) },
     };
     if (!(kind in payloads)) return c.text("this command is not available from the dashboard", 400);
     try {

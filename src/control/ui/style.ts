@@ -618,6 +618,12 @@ details.menu > summary::-webkit-details-marker { display: none; }
 .lv-md p { margin: 0 0 6px; } .lv-md p:last-child { margin: 0; } .lv-md code { font-size: 12px; }
 .lv-you .you { display: inline-block; background: var(--primary-surface); border: 1px solid color-mix(in srgb, var(--primary) 25%, transparent); border-radius: 10px; padding: 6px 11px; white-space: pre-wrap; }
 .lv-read .lv-body { font-size: 12px; }
+.lv-answer .answer { display: inline-block; background: var(--card); border: 1px solid var(--border); border-left: 3px solid #0d9488; border-radius: 10px; padding: 6px 11px; }
+.lv-answer .answer p { display: inline; margin: 0; }
+.lkept { position: relative; flex: none; } .lkept > summary { list-style: none; } .lkept > summary::-webkit-details-marker { display: none; }
+.lkept .menu-pop { top: 30px; width: 340px; }
+.lkept .krow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: start; padding-top: 8px; border-top: 1px solid var(--border); }
+.lkept .krow form { display: inline; }
 .lcomposer { display: flex; gap: 6px; align-items: flex-end; padding: 8px 14px; border-top: 1px solid var(--border); background: var(--card); }
 .lcomposer.off { color: var(--muted-foreground); font-size: 13px; padding: 12px 16px; }
 .lcomposer textarea { flex: 1; min-height: 34px; max-height: 160px; height: 34px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--input); resize: none; line-height: 1.4; background: var(--background); font-size: 13.5px; }

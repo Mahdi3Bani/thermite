@@ -209,7 +209,7 @@ export function mdLite(text: string): string {
 /** The filters a line belongs to on a run's Live page: its lane, planner, judge, advisors, you. */
 export function whoTags(e: LiveEntry): string {
   const tags = new Set<string>();
-  const to = /^Owner to ([^:]+): /.exec(e.text)?.[1];
+  const to = /^Owner to ([^\s(:]+)/.exec(e.text)?.[1];
   if (e.kind === "message") {
     tags.add("you");
     if (to) {
@@ -220,6 +220,9 @@ export function whoTags(e: LiveEntry): string {
       return [...tags].join(" ");
     }
   }
+  // Reading or answering the owner's message: also under "you".
+  if (/(^|\bread )the owner's message #\d+|answered the owner's message #\d+/.test(e.text))
+    tags.add("you");
   if (e.source.startsWith("trial:")) tags.add(e.lane ?? "lanes");
   else if (e.source === "planner") tags.add("planner");
   else if (e.source === "judge") tags.add("judge");
@@ -268,13 +271,28 @@ export function runEntryHtml(e: LiveEntry, now?: number): string {
       return `<div class="lv-div" data-who="${esc(who)}" data-src="${esc(e.source)}" data-id="${e.id}"><span><b>${esc(lane || "trial")}</b> · trial ended${end[1] ? ` · ${esc(clip(end[1], 160))}` : ""}</span></div>`;
   }
   if (e.kind === "message") {
-    const to = /^Owner to ([^:]+): ([\s\S]*)$/.exec(e.text);
+    const to = /^Owner to ([^\s(:]+)(?: \(#(\d+)(, kept in force)?\))?: ([\s\S]*)$/.exec(e.text);
     if (to)
-      return `<div class="lv-row lv-you" data-who="${esc(who)}" data-src="${esc(e.source)}" data-id="${e.id}">${liveTime(e.at, now)}<div class="lv-body"><div class="you"><b>To ${esc(RECIPIENT[to[1] ?? ""] ?? to[1] ?? "")}:</b> ${esc(to[2] ?? "")}</div></div></div>`;
-    const read = /^Owner: ([\s\S]*)$/.exec(e.text);
-    if (read)
-      return `<div class="lv-row lv-read" data-who="${esc(`${who} ${lane}`.trim())}" data-src="${esc(e.source)}" data-id="${e.id}">${liveTime(e.at, now)}<div class="lv-body"><span class="muted">✓ ${esc(runSourceName(e.source, e.lane))} read your message: “${esc(clip(read[1] ?? "", 120))}”</span></div></div>`;
+      return `<div class="lv-row lv-you" data-who="${esc(who)}" data-src="${esc(e.source)}" data-id="${e.id}"${to[2] ? ` data-msg="${esc(to[2])}"` : ""}>${liveTime(e.at, now)}<div class="lv-body"><div class="you"><b>To ${esc(RECIPIENT[to[1] ?? ""] ?? to[1] ?? "")}:</b> ${esc(to[4] ?? "")}${to[3] ? ` <span class="muted xs">📌 kept in force</span>` : ""}</div></div></div>`;
+    // Older harnesses wrote a worker's read as "Owner: …".
+    const old = /^Owner: ([\s\S]*)$/.exec(e.text);
+    if (old)
+      return `<div class="lv-row lv-read" data-who="${esc(`${who} you ${lane}`.trim())}" data-src="${esc(e.source)}" data-id="${e.id}">${liveTime(e.at, now)}<div class="lv-body"><span class="muted">✓ ${esc(runSourceName(e.source, e.lane))} read your message: “${esc(clip(old[1] ?? "", 120))}”</span></div></div>`;
   }
+  // An agent or an advisor read the owner's message: a receipt.
+  const read =
+    /^(?:(the teacher pair|the auditor|the review panel) )?read the owner's message #(\d+)( \(in force\))?: ([\s\S]*)$/.exec(
+      e.text,
+    );
+  if (e.kind === "status" && read)
+    return `<div class="lv-row lv-read" data-who="${esc(who)}" data-src="${esc(e.source)}" data-id="${e.id}">${liveTime(e.at, now)}<div class="lv-body"><span class="muted">✓ ${esc(read[1] ?? runSourceName(e.source, e.lane))} read your message${read[3] ? " (in force)" : ""}: “${esc(clip(read[4] ?? "", 120))}”</span></div></div>`;
+  // An advisor's answer to the owner.
+  const ans =
+    /^(the teacher pair|the auditor|the review panel)(?: \(([^)]*)\))? answered the owner's message #(\d+): ([\s\S]*)$/.exec(
+      e.text,
+    );
+  if (ans)
+    return `<div class="lv-row lv-answer" data-who="${esc(who)}" data-src="${esc(e.source)}" data-id="${e.id}">${liveTime(e.at, now)}<div class="lv-body"><div class="answer"><b>${esc(ans[1] ?? "")}${ans[2] ? ` (${esc(ans[2])})` : ""} answered you:</b> ${mdLite(ans[4] ?? "")}</div></div></div>`;
   return tag(liveEntryHtml(e, { showWho: true, name: runSourceName, now, md: true }));
 }
 
