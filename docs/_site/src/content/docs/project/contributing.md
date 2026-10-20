@@ -6,11 +6,31 @@ sidebar:
   order: 3
 ---
 
-Thermite is open source under the [MIT license](https://github.com/iammrduncan/thermite/blob/main/LICENSE), and changes are welcome. This page shows how to set up a working copy, which checks a change must pass, and the rules every change keeps.
+Thermite is open source under the [MIT license](https://github.com/iammrduncan/thermite/blob/main/LICENSE), and changes are welcome. This page shows how to send a change, how to set up a working copy, which checks a change must pass, and the rules every change keeps.
 
-A full contributor guide, `CONTRIBUTING.md`, comes with [goal 008](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/008-community-files.goal), along with a code of conduct and issue and pull request templates. Until then, the repository's [AGENTS.md](https://github.com/iammrduncan/thermite/blob/main/AGENTS.md) and [CONVENTIONS.md](https://github.com/iammrduncan/thermite/blob/main/CONVENTIONS.md) hold the rules, and this page sums them up.
+The repository holds the rules, and this page sums them up:
+
+| File | What it holds |
+| --- | --- |
+| [CONTRIBUTING.md](https://github.com/iammrduncan/thermite/blob/main/CONTRIBUTING.md) | The essentials: the terms, how to send a change, and the checks |
+| [The contributor guide](https://github.com/iammrduncan/thermite/blob/main/docs/local-development.md) | Every check, the compose stack you develop against, the dashboard demo and each acceptance test |
+| [CONVENTIONS.md](https://github.com/iammrduncan/thermite/blob/main/CONVENTIONS.md) | The design rules that every change keeps, and the rules for code and tests |
+| [AGENTS.md](https://github.com/iammrduncan/thermite/blob/main/AGENTS.md) | The same rules, written for a coding agent that works on the repository |
+| [CODE_OF_CONDUCT.md](https://github.com/iammrduncan/thermite/blob/main/CODE_OF_CONDUCT.md) | The code of conduct: the Contributor Covenant 2.1 |
+| [SECURITY.md](https://github.com/iammrduncan/thermite/blob/main/SECURITY.md) | How to report a security problem privately |
+
+There is no contributor agreement to sign and no sign-off line to add to your commits. What you contribute is published under the project's MIT license.
 
 Before you start on a large change, say what you plan in a [GitHub issue](https://github.com/iammrduncan/thermite/issues) or on [Discord](https://discord.gg/3Qs2uejUf9), so that it fits the [roadmap](roadmap.md).
+
+## Send a change
+
+1. Fork the repository on GitHub, and make a branch in your fork.
+2. Make the change in small commits, each with a clear message that says what it does.
+3. Run the checks below.
+4. Open a pull request. Its form asks what the change does and why, which checks you ran, and which pages you changed.
+
+A new screen, or a real change to one, needs a mockup that the maintainers agreed to first: open an issue with it before you build the screen.
 
 ## Set up
 
@@ -91,7 +111,7 @@ To work on the dashboard without a stack, run the dashboard demo. It serves made
 node --experimental-strip-types scripts/dashboard-demo.ts   # http://127.0.0.1:8810/ui
 ```
 
-One of the demo's runs has a made-up experiment queue: experiments tried, in progress and up next, a lane's idea and a hand-out. The same run has made-up field notes on its **Journal** tab, and the **Knowledge** page shows the demo campaigns' folders. The demo has no campaign saved on control or assigned through it and no owner's messages, so it shows no **Start a run** and no kept messages. The dashboard's tests cover those. This site's screenshots come from the demo, because its data is made up: with the demo running, `node scripts/docs-screenshots.mjs` takes them again, the run's **Journal** tab and the **Knowledge** page among them. [Running Thermite locally](https://github.com/iammrduncan/thermite/blob/main/docs/local-development.md) has more for contributors.
+One of the demo's runs has a made-up experiment queue: experiments tried, in progress and up next, a lane's idea and a hand-out. The same run has made-up field notes on its **Journal** tab, and the **Knowledge** page shows the demo campaigns' folders. The demo has no campaign saved on control or assigned through it and no owner's messages, so it shows no **Start a run** and no kept messages. The dashboard's tests cover those. This site's screenshots come from the demo, because its data is made up: with the demo running, `node scripts/docs-screenshots.mjs` takes them again, the run's **Journal** tab and the **Knowledge** page among them. [The contributor guide](https://github.com/iammrduncan/thermite/blob/main/docs/local-development.md) has more.
 
 ## Keep the repository public-safe
 

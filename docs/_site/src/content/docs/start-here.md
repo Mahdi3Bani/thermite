@@ -17,6 +17,8 @@ Thermite lets AI agents work on a project for as long as it takes, while a judge
 
 A GPU is optional, and so is a paid AI model: you can start with a free one.
 
+Before you give Thermite a model, read [Known limits](reference/known-limits.md). Agents run the code that a model writes on your computer, and under compose that code can reach your local network. [The security model](explanation/security-model.md) says what each part of Thermite can reach and what it trusts.
+
 ## Pick your path
 
 ### Try it on one computer

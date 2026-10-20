@@ -18,6 +18,8 @@ It takes about half an hour. Most of that is the first build of Thermite's conta
 - **Docker** with Docker Compose, or **Podman** with `podman compose`. These run Thermite's parts as containers. `podman compose` hands the work to a compose program, `docker-compose` or `podman-compose`, so install one of them too. On a Mac, Podman runs the containers in a small virtual machine, which must be started (`podman machine start`).
 - **Node.js** 22.19 or later, and **git**.
 
+Thermite's agents run code that an AI model writes, on your computer. This tutorial uses no agents, but read [Known limits](../reference/known-limits.md) before you give Thermite a model: it says what that code can reach, and why to set a budget before you use a paid key. [The security model](../explanation/security-model.md) says what each part of Thermite can reach and what it trusts.
+
 ## 1. Get Thermite
 
 Open a terminal and copy Thermite to your computer:

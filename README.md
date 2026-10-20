@@ -42,6 +42,8 @@ Each project comes with a **kit**: the judge's half of the project, which says h
 
 You need Linux or macOS, Node.js 22.19 or later, git, and Podman or Docker with compose. A model is optional at first: the judge works without one.
 
+Before you give Thermite a model, read the [known limits](docs/_site/src/content/docs/reference/known-limits.md). Agents run the code that a model writes on your computer, and under compose that code can reach your local network. [The security model](docs/_site/src/content/docs/explanation/security-model.md) says what each part can reach and what it trusts.
+
 ```sh
 git clone https://github.com/iammrduncan/thermite.git
 cd thermite
@@ -91,7 +93,7 @@ flowchart TB
   S --> Net[Git, the internet, frontier models]
 ```
 
-- A **rig** is two containers. The **harness** does the research and can reach only DNS, the internet and its model endpoint. The **supervisor** does everything that needs more reach: git, reporting and relaying signed commands from control.
+- A **rig** is two containers. The **harness** does the research. It needs only DNS, the internet and its model endpoint; on Kubernetes, network rules keep it to those, and under compose or on a machine it can also reach the local network ([known limits](docs/_site/src/content/docs/reference/known-limits.md)). The **supervisor** does everything that needs more reach: git, reporting and relaying signed commands from control.
 - Rigs run under docker-compose or podman-compose on one machine. **Control** can also set rigs up on your own machines over SSH, or on a Kubernetes cluster.
 - **Target drivers** connect the judge to what is measured: CUDA GPUs and CPUs today.
 
@@ -104,15 +106,19 @@ More in [architecture](docs/_site/src/content/docs/explanation/how-it-fits-toget
 | [Quick start](docs/_site/src/content/docs/tutorials/first-run.md) | Go from a clean clone to a campaign on your own project |
 | [Write a kit](docs/_site/src/content/docs/how-to/campaigns/write-a-kit.md) | Teach the judge how to build, run and check your project |
 | [Judging and integrity](docs/_site/src/content/docs/explanation/why-agents-never-judge.md) | See how results are accepted without trusting the agents |
+| [Known limits](docs/_site/src/content/docs/reference/known-limits.md) | Know the risks and what is not built yet, before you run it |
+| [The security model](docs/_site/src/content/docs/explanation/security-model.md) | See what each part can reach and what it trusts |
 | [Settings reference](docs/_site/src/content/docs/reference/settings.md) | Configure control, the harness and the supervisor |
-| [Running locally](docs/local-development.md) | Run the checks, the compose stack and the acceptance tests |
+| [Contributor guide](docs/local-development.md) | Run the checks, the compose stack and the acceptance tests |
 | [Glossary](docs/_site/src/content/docs/reference/glossary.md) | Look up a term |
 
 ## Community and contributing
 
-Questions, ideas and results go in our [Discord](https://discord.gg/3Qs2uejUf9).
+Questions, ideas and results go in our [Discord](https://discord.gg/3Qs2uejUf9). Bugs and feature requests go in [GitHub issues](https://github.com/iammrduncan/thermite/issues).
 
-Read [CONVENTIONS.md](CONVENTIONS.md) before you change the code. Before you open a pull request, run `npm run check` (typecheck, lint, tests and the public-content check). [Running locally](docs/local-development.md) lists the compose and acceptance tests for changes to containers, the judge or control.
+- **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) has the essentials. There is no contributor agreement and no sign-off rule. Read [CONVENTIONS.md](CONVENTIONS.md) before you change the code, and run `npm run check` (typecheck, lint, tests and the public-content check) before you open a pull request. The [contributor guide](docs/local-development.md) lists the compose and acceptance tests for changes to containers, the judge or control.
+- **Code of conduct:** the [Contributor Covenant 2.1](CODE_OF_CONDUCT.md).
+- **Security:** report a problem privately, as [SECURITY.md](SECURITY.md) says, never in a public issue.
 
 ## License
 
