@@ -1,16 +1,17 @@
 ---
 id: "056"
 title: "A Codex CLI harness"
-status: PROPOSED
-version: "later"
+status: READY
+version: "0.1.0"
+part: "Running campaigns"
 depends_on: []
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # 056 · A Codex CLI harness
 
-**Status:** `PROPOSED` · **Version:** [later](../roadmap.md#later)
+**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
 
 ## What
 
@@ -22,11 +23,13 @@ Some owners will want OpenAI's own agent program.
 
 ## Done when
 
-- [ ] A trial runs in the Codex CLI through the harness.
+- [ ] A trial runs in the Codex CLI through the harness, on Sign in with ChatGPT, as trials run in Claude Code on a Claude subscription.
+- [ ] Edit rig, `set_rig_model` and the rig's settings offer Codex as a harness for a ChatGPT sign-in, beside Pi and OpenCode.
+- [ ] The planner and the model check run under it too, with the same isolation as the other harnesses, and the acceptance tests cover it with a stand-in.
 
 ## Decisions
 
-None yet.
+- 2026-10-20, owner: a ChatGPT sign-in should also run workers in the Codex CLI, not only in Pi and OpenCode. The goal moves into v0.1.0.
 
 ## Open questions
 
@@ -35,6 +38,7 @@ None.
 ## Progress
 
 - 2026-10-19: Goal written from the roadmap.
+- 2026-10-20: Moved into v0.1.0 at the owner's word, after the owner signed in with ChatGPT on control.
 
 ---
 

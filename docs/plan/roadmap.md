@@ -60,6 +60,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [066](goals/066-direction-rules.goal) Rules name directions, picked with `:direction:` · `READY`
 - [067](goals/067-assign-queue-from.goal) `thermite assign` can copy a past run's untried experiments · `VERIFIED`
 - [068](goals/068-mcp-servers-for-agents.goal) MCP servers for a campaign's agents, named by its kit · `READY`
+- [056](goals/056-codex-harness.goal) A Codex CLI harness · `READY`
 
 ### Research mode
 
@@ -134,7 +135,6 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [053](goals/053-cross-rig-planning.goal) Planning across rigs · `PROPOSED`
 - [054](goals/054-signed-artifacts.goal) Signed receipts and images · `PROPOSED`
 - [055](goals/055-runpod-inference.goal) RunPod for inference · `PROPOSED`
-- [056](goals/056-codex-harness.goal) A Codex CLI harness · `PROPOSED`
 - [057](goals/057-finalize-champions.goal) Finalize a champion into reviewable branches · `PROPOSED`
 - [058](goals/058-helm-and-npm.goal) Helm charts and an npm package · `PROPOSED`
 - [059](goals/059-knowledge-base-export.goal) Research results into a knowledge base · `DROPPED` (now part of 065)
