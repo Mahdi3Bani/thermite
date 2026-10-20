@@ -103,6 +103,7 @@ grep -i '^x-thermite' headers.txt
 | `400 {"error":"invalid request"}` | The JSON body has a missing or wrong field. The answer doesn't say which, but the `failed` entry in the audit log does (see below). The [reference](../../reference/rest-api.md) gives each route's fields |
 | `404` | Control doesn't have what the route names: a rig, when you read its view; a command; a champion patch; a pending command to cancel; or a key waiting with that fingerprint |
 | `409` | The action can't happen now, for example `{"error":"no deployment driver is configured"}` for a restart |
-| `500` with a reason | Control refused an action, for example `{"error":"unknown rig rig-9"}` for a command to a rig it doesn't know, or `{"error":"bad pause_run payload: …"}` |
+| `400` or `404` with a reason, for a command | Control refused the command before signing it, for example `{"error":"bad pause_run payload: …"}`, a message that nothing would read (`400`), or `{"error":"unknown rig rig-9"}` for a rig it doesn't know (`404`) |
+| `500` with a reason | Control refused another action while doing it, for example a propagation it can't make |
 
-Control also writes each `invalid request` and each `500` to its audit log, as a `failed` entry with the route and the reason. `GET /v1/audit?limit=20` lists the newest entries.
+Control also writes each `invalid request` and each `500` to its audit log, as a `failed` entry with the route and the reason. A command it refuses before signing it (`400` or `404` with a reason) is only in the answer. `GET /v1/audit?limit=20` lists the newest entries.

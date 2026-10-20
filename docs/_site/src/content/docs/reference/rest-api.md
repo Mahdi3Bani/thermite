@@ -51,7 +51,7 @@ Request bodies are JSON, except a champion's patch, which is sent as raw bytes.
 | 400 | `{"error":"invalid request"}` | The body does not match the route's schema. The schema's own message is not sent back. Control writes it to its output and to its audit log, as action `failed` |
 | 403 | `{"error":"this rig is retired in control"}` | A rig-facing route, called for a retired rig |
 | 403, 404, 409, 422 | `{"error":"<why>"}` | Route by route, as the tables below say |
-| 500 | `{"error":"<why>"}` | A refusal while control does the work, such as `unknown rig rig-9`, `bad pause_run payload: …`, a refused propagation or a reset in the wrong state. It does not always mean a fault in control |
+| 500 | `{"error":"<why>"}` | A refusal while control does the work, such as a refused propagation or a reset in the wrong state. It does not always mean a fault in control. A command that control refuses (`POST /v1/commands`) answers 400 with the reason, or 404 for an unknown rig |
 
 Every request that ends in an error inside control, or with a 5xx status, is written to control's output as a JSON line with `"msg":"request failed"`, and to the [audit log](#audit-log-actions) as action `failed` by actor `control`.
 

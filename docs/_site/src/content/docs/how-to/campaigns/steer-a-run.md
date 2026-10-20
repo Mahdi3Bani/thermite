@@ -49,7 +49,7 @@ With **why (optional)** left empty, the reason is `paused from the dashboard`. T
 
    A recipient that would never read it is greyed out. Hover over it to read why:
    - the planner, the auditor and the review panel of a research run, such as `A research run plans its rounds with a fixed method: it has no planner to message.`;
-   - the planner of a run without agents: `This run has no agents (the judge alone tries the kit), so nothing would read it.`;
+   - everyone working, each lane and the planner of a run without agents, such as a try: `This run has no agents (the judge alone tries the kit), so nothing would read it.` On such a run the box starts on **To all advisors**;
    - the review panel of a run with no goal it reviews: `This run has no goal the review panel reviews.`;
    - any role that is switched off on the rig's **Edit rig** page, such as `The auditor is off on this rig (Edit rig), so nothing would read it.`;
    - an advisor that the rig's supervisor has not set up, such as one switched on with no model: `This rig's supervisor has no teacher pair set up, so nothing would read it.` **To all advisors** is greyed out when the supervisor has none set up, or when no advisor would read it, which starts `No advisor would read it.`
@@ -112,7 +112,7 @@ Control refuses a message with no words, or one that nothing would read, before 
 - `This rig's supervisor has no auditor set up, so nothing would read it.`, with the teacher pair or the review panel in its place, for an advisor the rig's supervisor hasn't set up, such as one with no model;
 - for **To all advisors**, `This rig's supervisor has no advisors set up, so nothing would read it.` when it has none, and `No advisor would read it.` with each advisor's reason when none of them would.
 
-In **Live** and on the **Planner** tab, a strip above the box shows **Not sent.** and control's reason at once. Over MCP, `issue_command` answers `{"error":"…"}` with the reason. The REST API and `thermite command` get an answer of **500** with `{"error":"…"}`. Nothing reaches **Commands**: the **Audit log** has the refusal.
+In **Live** and on the **Planner** tab, a strip above the box shows **Not sent.** and control's reason at once. Over MCP, `issue_command` answers `{"error":"…"}` with the reason. The REST API and `thermite command` get an answer of **400** with `{"error":"…"}`. Nothing reaches **Commands**. A refusal from **Live**, the **Planner** tab or MCP is in the **Audit log**, as `refused`; one over the REST API or `thermite command` is only in its answer.
 
 Control knows which advisors a rig has set up only once the rig's supervisor has reported them. Until then, it sends a message to an advisor that is switched on, and nothing reads it until the advisor has a model. See [Configure advisors](../operate/advisors.md).
 
