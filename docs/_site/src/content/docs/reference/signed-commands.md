@@ -101,29 +101,32 @@ The harness checks every command in this order. A command that fails a check mar
 | It is not being applied right now | None: the harness answers `in_progress`, and the supervisor asks again later | Stays `pending` |
 | An owner-only kind was issued by the owner (`issued_by` is `owner` or starts with `owner:`) | `<kind> is the owner's to issue, not <issuer>'s` | `failed` |
 
-The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_review`, `conclude`, `wipe_state`, `message_agent` and `rig_settings`. The owner-only check is the first step of applying a command, so a command it refuses is recorded like any applied command, as not accepted. Every applied command is recorded in the ledger with the actor `control:<issued_by>`.
+The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_review`, `conclude`, `wipe_state`, `message_agent`, `unkeep_message` and `rig_settings`. The owner-only check is the first step of applying a command, so a command it refuses is recorded like any applied command, as not accepted. Every applied command is recorded in the ledger with the actor `control:<issued_by>`.
 
 ## Who may issue each kind
 
 | Kind | Dashboard (`owner:ui`) | REST and `thermite` (`owner:api`) | MCP owner (`owner:mcp`) | MCP operator (`owner:operator`) | MCP agent (`agent:mcp`) | Owner only |
 | --- | --- | --- | --- | --- | --- | --- |
-| `assign_campaign` | **New campaign**; **Start the run** on a campaign's page | Yes; `thermite assign` | Yes | Yes | Yes | |
+| `assign_campaign` | **New campaign**; **Start the run** in the **Start a run** panel of a campaign's page | Yes; `thermite assign` | Yes | Yes | Yes | |
 | `rig_check` | **Run it** in a rig's **Checks**; **Check** on **Settings** | Yes | Yes | Yes | Yes | |
-| `pause_run` | **Pause** | Yes | Yes | Yes | Yes | |
-| `resume_run` | **Resume** | Yes | Yes | Yes | Yes | |
-| `redirect` | **Steer** (one directive) | Yes | Yes | Yes | Yes | |
-| `reset_workers` | **Reset workers** | Yes | Yes | Yes | Yes | |
-| `export_now` | **Export now** | Yes | Yes | Yes | Yes | |
-| `message_agent` | The rig's live view: **Live** in the sidebar, or **Live sessions** on a run's **Steering** view | Yes | Yes | Yes | No | Yes |
-| `propagate` | **Send champion #&lt;n&gt;** | `POST /v1/propagate`, or `POST /v1/commands` | `propagate_champion` | `propagate_champion` | `propagate_champion` | |
+| `pause_run` | **Pause** in a run's header, in the header of the run's **Live**, and on the run's card under **At work now** | Yes | Yes | Yes | Yes | |
+| `resume_run` | **Resume** in a run's header, in the header of the run's **Live**, and on a paused run's row under **Earlier runs** | Yes | Yes | Yes | Yes | |
+| `redirect` | **Add the rule** on a run's **Planner** tab (one rule, added to the earlier ones) | Yes | Yes | Yes | Yes | |
+| `reset_workers` | **Restart the lanes**, under **⋯** in a run's header | Yes | Yes | Yes | Yes | |
+| `export_now` | **Export now** on a rig's page | Yes | Yes | Yes | Yes | |
+| `message_agent` | **Send** in the message box of a run's **Live**; **Send to the planner** on a run's **Planner** tab; the message box of a rig's own live view (**Live** on the rig's page) | Yes | Yes | Yes | No | Yes |
+| `unkeep_message` | **Remove** in the **📌 &lt;n&gt; kept** list of a run's **Live** | Yes | Yes | Yes | No | Yes |
+| `propagate` | **Send champion #&lt;n&gt;** on a run's **Planner** tab, under **Other rigs** | `POST /v1/propagate`, or `POST /v1/commands` | `propagate_champion` | `propagate_champion` | `propagate_champion` | |
 | `approve_promotion` | **Needs you**: **Make it the champion**, **Overrule the auditor** | Yes | Yes | No | No | Yes |
 | `decline_promotion` | **Needs you**: **Reject it** | Yes | Yes | No | No | Yes |
 | `accept_review` | **Needs you**: **Accept**, **Reject** | Yes | No | No | No | Yes |
 | `conclude` | **Needs you**: **End it: not possible**, **Keep going** | Yes | No | No | No | Yes |
-| `rig_settings` | **Edit rig**: **Save changes**, and **GPUs for the judge** | Yes | No | No | No | Yes |
+| `rig_settings` | **Save changes** on **Edit rig**; **GPUs for the judge** on **New campaign** and in the **Start a run** panel | Yes | No | No | No | Yes |
 | `wipe_state` | Only as a step of a full reset | No: `wipe_state is issued only by a full reset` | No | No | No | Yes |
 
-Control's own lists decide what each MCP role may issue; the harness's owner-only check is a second gate behind them. The operator acts for the owner, so its `owner:operator` passes that gate for `message_agent`. During the owner's full reset of a rig, MCP's `issue_command` refuses an agent's token for that rig: `<rig> is being reset by the owner`. [Tokens and roles](tokens.md) describes each token.
+Control's own lists decide what each MCP role may issue; the harness's owner-only check is a second gate behind them. The operator acts for the owner, so its `owner:operator` passes that gate for `message_agent` and `unkeep_message`. During the owner's full reset of a rig, MCP's `issue_command` refuses an agent's token for that rig: `<rig> is being reset by the owner`. [Tokens and roles](tokens.md) describes each token.
+
+A run's **Experiments** tab, which will hold the run's experiment queue, and **Remove** on a rule on its **Planner** tab send commands that are not kinds yet: control answers `unknown command` until the rig's side of the queue lands ([goal 064](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/064-experiment-queue.goal)).
 
 ## Every kind
 
@@ -145,6 +148,9 @@ Starts a run of a campaign on the rig.
 | `imports` | list of [imports](#imports) | `[]` | What the rig must take in first: the project, the kit, models |
 | `agents` | boolean | worker agents run | `false`: a judge-only run |
 | `promotion` | `auto` or `owner_approval` | the rig's own setting | The run's promotion rule |
+| `queue` | up to 500 experiments, each `{title, details?, family?, why?, by, state, from: {run, id}}`, `state` being `queued` or `proposed` | none | Untried experiments copied from another run, in order, for the new run's queue. Rigs accept the field and do nothing with it until the rig's side of the experiment queue lands ([goal 064](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/064-experiment-queue.goal)) |
+
+**Start a run** on a campaign's page also works for a campaign that was assigned over the REST API, MCP or the command line, with no version saved on control. Control then signs again the campaign's newest `assign_campaign` whose status is `pending` or `delivered`, as a new run: the same `contract`, `seed`, `imports` and `direction`, with a new `run`, and `agents` and `promotion` from the panel.
 
 The harness creates the run only after every check passes. In order, it refuses:
 
@@ -181,7 +187,7 @@ Result: `{"check", "id", "started": true}`. The finding arrives later as a `rig_
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `run` | lowercase id | The run |
-| `reason` | text, at least 1 character | Why. The dashboard sends `paused from the dashboard` when none is given |
+| `reason` | text, at least 1 character | Why. The dashboard sends `paused from the dashboard` |
 
 The run becomes `paused` with the reason. Result: `{"run", "status": "paused"}`.
 
@@ -207,13 +213,15 @@ Each directive has only these fields:
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `kind` | `avoid`, `try`, `mandate`, `priority`, `lane_count` or `note` | `avoid`, `try` and `mandate` (always assign) name a direction family; `priority` ranks one; `lane_count` sets how many lanes work, up to the contract's count; `note` is text for the planner only |
+| `kind` | `avoid`, `try`, `mandate`, `priority`, `lane_count` or `note` | `avoid`, `try` and `mandate` (**Always** on the dashboard) name a direction family; `priority` ranks one; `lane_count` sets how many lanes work, up to the contract's count; `note` is text for the planner only |
 | `family` | 2 to 41 characters of `a`–`z`, `0`–`9` and `-`, starting with a letter or digit | The direction family it refers to, when the kind needs one |
 | `value` | text up to 1000 characters, or a number | The value, when the kind needs one |
 | `rationale` | text, 1 to 2000 characters | Why. The planner sees it; workers never do |
 | `citations` | up to 20 texts of 1 to 500 characters | Sources. Default `[]` |
 
 A set that both avoids a family and tries or mandates it is refused: `the set both avoids and asks for <families>`. Result: `{"run", "directives": [<ids>]}`.
+
+The dashboard calls directives **rules**. **Add the rule** on a run's **Planner** tab sends one directive, `avoid`, `try` or `mandate`, with `replace: false`: it adds to the rules given from the dashboard before, and replaces none. Its **Direction** must be a direction family's name, which it sends as `family`. Other words are refused before signing, with `refused: bad redirect payload: directives.0: Unrecognized key: "match"`: rules in your own words wait for [goal 064](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/064-experiment-queue.goal).
 
 ### `reset_workers`
 
@@ -222,19 +230,75 @@ A set that both avoids a family and tries or mandates it is refused: `the set bo
 | `run` | lowercase id | The run |
 | `reseed_commit` | commit | Accepted by the schema, but the harness refuses it: `re-seeding lanes is not available in this version; reset without it` |
 
-The run's running trials end, along with the current epoch, and every lane starts again from the champion. Result: `{"run", "reset": true}`.
+The run's running trials end, along with the current [epoch](glossary.md) (a round, on the dashboard), and every lane starts again from the champion. Result: `{"run", "reset": true}`.
 
 ### `message_agent`
 
-The owner's message to one of the run's agents.
+The owner's message to the run's agents. The judge is code and takes no messages.
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `run` | lowercase id | required | The run |
+| `to` | one of the recipients below | required | Who gets it |
+| `text` | text, 1 to 4000 characters | required | The message |
+| `keep` | boolean | `false` | `true` keeps the message in force: it goes into the brief of every new trial it is for, until an [`unkeep_message`](#unkeep_message) removes it. Only for `all` or a lane |
+
+| `to` | Who reads it |
+| --- | --- |
+| `all` | Everyone working: every lane, and the planner of a hill-climb or goal run whose planner is on |
+| `lane-1` to `lane-16` | That [lane](glossary.md) |
+| `trial:t-` and 8 to 32 hexadecimal characters | That trial. If it ends before it reads the message, its lane's next trial reads it, with a note that it was sent to an earlier trial |
+| `planner` | The planner. A research run has none |
+| `advisors` | The teacher pair, the auditor and the review panel, each once, except those that a refusal below names |
+| `teachers` | The teacher pair |
+| `auditor` | The auditor |
+| `panel` | The review panel |
+
+Each reader reads a message once: each lane, the planner and each advisor role. Only a message kept in force is given again, to each new trial. The harness records a read when it gives the text to the agent (in a brief, at a step, in a continued session or in an advisor's package), not when the text is only fetched. When each one reads it:
+
+| Reader | When |
+| --- | --- |
+| A lane with no trial at work | In the brief of its next trial |
+| A worker in Pi | At its next step: after its model's current turn |
+| A worker in OpenCode or Claude Code | When its current run ends without a submission. The harness then continues the session with the message |
+| A worker that has submitted | It does not read it: a submission ends the trial, and the lane's next trial reads the message in its brief |
+| The planner | At its next plan, if its model answers. While the planner is off, or its model can't be reached, the message waits |
+| The teacher pair | In its next round. For a running run, a message starts that round: between rounds the supervisor looks for one every 5 seconds, and a round under way finishes first |
+| The auditor | With its next audit |
+| The review panel | With its next review |
+
+The teacher pair, the auditor and the review panel are asked to answer each message they are given, in one or two sentences, and the harness records each answer. A message kept in force goes into every new trial's brief under `# Messages from the campaign's owner, in force`; the others go under `# Messages from the campaign's owner`.
+
+Control refuses `keep` with any other `to` before signing: `bad message_agent payload: keep: only a message to everyone working (all) or to a lane can be kept in force`. The harness refuses a message in these cases, and records no message:
+
+| Message | When |
+| --- | --- |
+| `run <run> is closed: nothing will read this message` | The run is closed |
+| `a research run plans its rounds with a fixed method; it has no planner to message` | `planner`, in a research run |
+| `the planner is off on this rig (Edit rig), so nothing would read this message` | `planner`, with the planner switched off on **Edit rig** |
+| `the teacher pair is off on this rig (Edit rig), so nothing would read this message` | `teachers`, with the teacher pair switched off |
+| `the auditor is off on this rig (Edit rig), so nothing would read this message` | `auditor`, with the auditor switched off |
+| `a research run has no audits, so the auditor would never read this message` | `auditor`, in a research run |
+| `the review panel is off on this rig (Edit rig), so nothing would read this message` | `panel`, with the review panel switched off |
+| `this run has no goal the review panel reviews, so the panel would never read this message` | `panel`, in a run with no goal checked by review |
+| `none of the advisors would read this message: <each reason, joined by "; ">` | `advisors`, when no role would read it |
+| `run <run> has <n> lanes`, or `… has 1 lane` | A lane beyond the contract's number of lanes |
+| `no trial t-… in run <run>` | A trial the run does not have |
+
+The harness writes the live line `Owner to <to> (#<id>): <text>`, with `, kept in force` after the id for a kept message; a run's **Live** shows it as **To** the recipient and the text. Result: `{"message": <id>, "to", "keep", "readers", "note"}`. `readers` lists who will read it: lanes, `planner`, `teachers`, `auditor` or `panel`. `note` is there only for a trial that has ended: `trial t-… has ended; lane-<n>'s next trial reads this`.
+
+The run's ledger records the message with its text (`agent_message`), each reader's first read (`agent_message_read`) and each advisor's answer (`advisor_answer`). The run's **Live** shows all three.
+
+### `unkeep_message`
+
+Removes a message from force: new trials' briefs no longer carry it, and no reader that has not read it yet is given it.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `run` | lowercase id | The run |
-| `to` | `planner`, `advisors`, `lane-1` to `lane-16`, or `trial:t-` and 8 to 32 hexadecimal characters | Who gets it: the planner at its next plan; the advisors at their next brief (the teacher pair reads it); a lane's running trial, or else its next one; or one running trial |
-| `text` | text, 1 to 4000 characters | The message |
+| `message` | positive whole number | The message's id: `message` in the result of its `message_agent` |
 
-The live view shows `Owner to <to>: <text>`. Result: `{"message": <id>, "to"}`.
+The harness refuses: `no message <id> in run <run>`, `message <id> is not kept in force`, and `message <id> was already removed from force at <time>`. The live view shows `the owner's message #<id> is no longer in force`, and the ledger records `agent_message_unkept`. Result: `{"message": <id>, "unkept": true}`.
 
 ### `propagate`
 

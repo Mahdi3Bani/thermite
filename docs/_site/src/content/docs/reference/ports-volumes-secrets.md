@@ -16,7 +16,7 @@ This page lists where each part of Thermite listens, which networks join them, w
 | 8700/tcp | The harness API | The rig's own supervisor. Inside the harness container, its workers and tools on `127.0.0.1` | `THERMITE_LISTEN`, default `0.0.0.0:8700` |
 | none | The supervisor | It listens on no port. It connects out to its harness and to control | |
 | 22/tcp, or the machine's own | A machine's SSH server | Control, to check the machine and set rigs up on it | The machine's **SSH port** on the Providers page, 22 by default |
-| The cluster's API server | Kubernetes | Control's `kubectl`, to set rigs up on a cluster | The cluster's kubeconfig |
+| The cluster's API server | Kubernetes | Control's `kubectl`, to set rigs up on a cluster, and later to stop, start, restart, update or remove them | The cluster's kubeconfig |
 | 8000/tcp | A RunPod test pod's probe | Control, through RunPod's proxy, at an address with a random token in its path | Fixed |
 | 8810/tcp | The dashboard demo (`scripts/dashboard-demo.ts`) | A browser | `--port` |
 
@@ -135,7 +135,7 @@ Removing a rig removes these five volumes, the two networks, the unit files and 
 | Its subpaths | `state` → `/var/lib/thermite`; `scratch` → `/scratch`; `inbox` → `/inbox` (read-only in the harness); `outbox` → `/outbox` (read-only in the supervisor); `supervisor` → `/var/lib/thermite-supervisor` |
 | Init container `prepare` | Runs the harness image to make the folders and set their owners before each pod starts |
 
-Both pods run on the same node, so they can share the volume.
+Both pods run on the same node, so they can share the volume. An update to control's images (**Update to these images** on the rig's page) applies the rig's two Deployments again and leaves its volume claim, its Secret and its Service as they are, so the rig keeps its state and its tokens.
 
 ### RunPod test pods
 

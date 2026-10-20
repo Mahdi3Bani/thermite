@@ -13,7 +13,7 @@ Point Thermite at a project and a goal: make a kernel faster without breaking it
 
 > **Status:** work is toward v0.1.0, the first public release. The judge, control, agents and supervision are built and pass their acceptance tests. See the [release plan](docs/plan/release-v0.1.0.md) and the [roadmap](docs/plan/roadmap.md).
 
-![The dashboard's page for one campaign: two runs on two rigs, a decision that waits for the owner, the champion's gains over time and what each lane works on now](docs/_site/src/assets/screenshots/campaign.webp)
+![The dashboard's page for one run: a decision that waits for the owner, the champion's gains over time and what each lane works on now](docs/_site/src/assets/screenshots/run.webp)
 
 ## Why Thermite
 

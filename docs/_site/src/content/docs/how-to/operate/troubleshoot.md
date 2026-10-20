@@ -1,6 +1,6 @@
 ---
 title: "Troubleshoot"
-description: "Find out why a check failed, a port clashes, a build is slow, a rig is quiet or a sign-in bounces back, and where the logs are."
+description: "Find out why a check failed, a port clashes, a build is slow, a rig is quiet, a message goes unread or a sign-in bounces back, and where the logs are."
 type: how-to
 sidebar:
   order: 8
@@ -17,7 +17,8 @@ Every part of Thermite writes one JSON object per line, such as `{"at":"…","co
 | Control, the harness and the supervisor of the local stack | `docker compose logs control`, `docker compose logs harness`, `docker compose logs supervisor`. Add `-f` after `logs` to follow them |
 | A rig on a machine, set up by control or joined | On the machine, logged in over SSH as the user the rig runs as (not with `sudo -u`): `journalctl --user -u thermite-rig-1-supervisor.service`, and the same for `thermite-rig-1-harness.service`. For a rig that runs as root: `sudo journalctl -u thermite-rig-1-supervisor.service` |
 | A rig on a cluster, set up by control or joined | `kubectl logs -n <namespace> deployment/thermite-rig-1-supervisor` (or `-harness`) |
-| What a rig did | The rig's page: **Recent** for its history, **Checks** for its checks, and the **Set up by control** or **You run it yourself** block for each setup step |
+| What a rig did | The rig's page: **Recent** for its history, **Checks** for its checks, and the **Set up by control** or **You run it yourself** block for each setup step. For a rig control set up, the MCP tool `rig_setup` lists the same steps |
+| What a run's agents and advisors are doing | **Live** in the sidebar, or **Live** on the run's page: the run's lines as they come. Choose **Advisors** for each step of the advisors' rounds, with each advisor error and its reason. Choose **You** for your messages, who read them and the advisors' answers |
 | What control did, refused or failed at | **Audit log** in the sidebar (the newest 300 entries), `GET /v1/audit`, or the MCP tool `control_log`. Dashboard refusals are entries named `refused`, and requests that ended in an error are named `failed`, each with the reason (for a refusal shown as a plain page, such as `bad form token`, only its HTTP status) |
 | Where each command went | **Commands** in the sidebar: each command's status (`pending`, `delivered`, `rejected`, `failed`, `expired`) and the rig's answer in **Outcome** |
 
@@ -123,6 +124,19 @@ A rig control set up on a machine or a cluster may also still be pulling its ima
 
   When the rig reports later, its page fills in, but the step keeps its ✕ ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)).
 
+After **Update to these images** ([Move a rig onto new images](rig-lifecycle.md#a-rig-on-a-cluster)), the same can happen to the new pods, with other steps:
+
+- "Its pods run the new images" has ✕ and `not running after 15 minutes`, sometimes with kubectl's error. The new pods did not start: look at them with the commands above. An image the nodes can't pull shows `ImagePullBackOff`.
+- "A report reached control from the new images" has ✕ and `no report after 10 minutes: it may not have started`. The pods run, but the supervisor did not report: read its log, as above. If the harness keeps restarting, read its log too (`deployment/thermite-rig-1-harness`).
+
+Either way, the block says `failed`. Fix the cause: the pods keep trying by themselves, for example once the nodes can pull the image. When the rig reports again, its page fills in, but the step keeps its ✕ and the block keeps `failed`, as for a new rig. If the new images themselves are at fault, set control's image settings back to the old ones, restart control, and press **Update to these images** again. An older harness may refuse a ledger that a newer one opened: see [The harness stops at start: the ledger is newer](#the-harness-stops-at-start-the-ledger-is-newer).
+
+## The harness stops at start: the ledger is newer
+
+- **You see:** the harness keeps restarting, and its log has a `fatal` line with `this ledger is at schema version 13, newer than this code's 12: run a newer Thermite, or restore the ledger from before the upgrade` (the numbers vary).
+- **Why:** a newer harness opened the rig's ledger and upgraded it. An older harness never opens a newer ledger, so that it can't damage the record.
+- **Do:** run the newer harness image again: on the compose stack, rebuild from the newer commit; on a rig on a cluster, set control's images to the newer ones and press **Update to these images**. Going back to an older version needs the ledger from before the upgrade ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
+
 ## A join command stops at a check and then doesn't work
 
 - **You see:** the join command stops with a line such as `thermite: Podman is missing: install Podman 4.4 or later, then make a new join command`. Run again, it fails with curl's `The requested URL returned error: 401`.
@@ -178,9 +192,9 @@ Two causes are common on a laptop:
 
 ## Agents don't start
 
-- **You see:** the harness's log says `agents wait for a model route`, and no trials start. Or the **New campaign** page won't start the run: `rig-1 has no model for its agents, so they could not work: choose one under "The agents' model".`
-- **Why:** the rig has no model yet.
-- **Do:** [connect a model provider](../models/connect-a-provider.md) and give the rig one of its models, on **Settings › Providers** or under **The agents' model** on the **New campaign** page. If six trials in a row had already failed, the agents rest for 30 minutes; a new model, or resuming the run, ends that rest at once.
+- **You see:** the harness's log says `agents wait for a model route`, and no trials start. Or the **New campaign** page won't start the run: `rig-1 has no model for its agents, so they could not work: choose one under "The agents' model".` On a campaign's page, **Start a run** says **Not started.** and `rig-1 has no model for its agents, so they could not work: choose one under "The agents' model", or give it one on its Edit rig page.`
+- **Why:** the rig has no model yet. A run without agents (**Agents**: **Off: a try**) needs none.
+- **Do:** [connect a model provider](../models/connect-a-provider.md) and give the rig one of its models, on **Settings › Providers**, or under **The agents' model** on the **New campaign** page or in the **Start a run** panel. From **Start a run**, control gives the rig the model first and says `rig-1 takes <model> within a minute. When the rig shows it, start the run again.`: press **Start a run** again once the rig's page shows the model. If six trials in a row had already failed, the agents rest for 30 minutes; a new model, or resuming the run, ends that rest at once.
 
 ## A research campaign's trials all end in errors
 
@@ -193,15 +207,54 @@ Two causes are common on a laptop:
 | `research workers run in Pi or OpenCode, and a Claude subscription runs only in Claude Code: give this rig another model for research` | Give the rig a model from another provider |
 | `<model> is one of OpenCode's own models, which work only inside OpenCode: set this rig's agents' harness to OpenCode on its Edit rig page` | Set the workers' **Runs in** to **OpenCode v2** on **Edit rig** |
 
-The dashboard refuses to start a research run in the last case. A run started from the command line, or on a rig whose model changed after the start, can still meet it. See [Write a contract](../campaigns/write-a-contract.md#4-write-a-research-campaign).
+The dashboard refuses to start a research run with agents in the last case. A run started from the command line, or on a rig whose model changed after the start, can still meet it. See [Write a contract](../campaigns/write-a-contract.md#4-write-a-research-campaign).
+
+## A trial stopped without a "trial ended" line
+
+- **You see:** in a run's **Live**, a lane's trial started, but no "trial ended" line follows it. The lane's next trial may already have started.
+- **Why:** the rig's harness restarted while the trial ran, for example after **Restart them**, **Update to these images**, a restart with your compose tool, or a crash. A restart stops the running trials. When the harness starts again, it closes them as `interrupted`, without a "trial ended" line. Control shows a trial as working only while the rig says it is at work, or for 15 minutes after its last line.
+- **Do:** nothing. The lane goes on with a new trial, and a change the trial had already submitted stands.
+
+## A message to the agents was refused
+
+- **You see:** after **Send** in **Live**, your message never shows in the stream. On **Commands**, its **message agent** row is **failed**, with the rig's reason in **Outcome**.
+- **Why:** the rig refuses a message that nothing would read, rather than keep it waiting for ever. The **To** list in **Live** greys out most of these recipients, with the reason, but a message sent over MCP or the REST API can still meet them:
+
+| Reason in **Outcome** | Do |
+| --- | --- |
+| `a research run plans its rounds with a fixed method; it has no planner to message` | Write to everyone working, or to a lane |
+| `the planner is off on this rig (Edit rig), so nothing would read this message`, or the same for the teacher pair, the auditor or the review panel | Switch the part on, on **Edit rig**, or write to someone else |
+| `a research run has no audits, so the auditor would never read this message` | Write to the teachers instead |
+| `this run has no goal the review panel reviews, so the panel would never read this message` | The panel reads messages only in a goal run with a goal it reviews |
+| `none of the advisors would read this message:` and each one's reason | As above, for each advisor |
+| `run run-1 has 2 lanes` | Choose a lane the run has |
+| `run run-1 is closed: nothing will read this message` | The run has finished: nothing reads messages there |
+
+If the message isn't on **Commands** at all, control refused it before signing it, and **Live** doesn't say so: **Audit log** has a `refused` entry with the reason.
+
+A message to an advisor that has no model is not refused: the rig checks only the **Edit rig** switches. It waits, and nothing reads it until you give the role a model ([Configure advisors](advisors.md)).
+
+## A message shows, but nobody reads it
+
+- **You see:** your message shows in **Live**, but no "✓ … read your message" line follows.
+- **Why:** each agent reads a message at a set time, and the box's placeholder says when:
+  - a Pi worker at its next step;
+  - an OpenCode or Claude Code worker when its current run ends without a submission, which can take many minutes;
+  - a worker that has already submitted doesn't read it: its lane's next trial does;
+  - the planner at its next plan, and only when its model answers;
+  - the teachers in a round that starts at once, for a run that is running;
+  - the auditor and the review panel only with their next audit or review, which come only when the judge holds a result for audit or a goal waits for review.
+- **Do:** wait. To have every new trial of a lane, or of all lanes, read a message, keep it in force with 📌 when you send it. [Steer a run](../campaigns/steer-a-run.md) has more on messages.
 
 ## Something was refused
 
 Thermite says why it refuses something. Where you see it depends on how you asked:
 
-- **The dashboard** shows `Not done.` and the reason on the rig and Providers pages. Some actions answer with a plain page that says `refused:` and the reason: use your browser's **Back** button.
+- **The dashboard** shows `Not done.` and the reason on the rig and Providers pages, and `Not started.` in a campaign's **Start a run** panel. Some actions answer with a plain page that says `refused:` and the reason: use your browser's **Back** button. Two plain pages come from parts that are not built yet:
+  - `refused: bad redirect payload: directives.0: Unrecognized key: "match"` after **Add the rule** on a run's **Planner** tab: today a rule takes a direction's name, such as `loop-tiling` (lowercase letters, digits and dashes), not other words.
+  - `unknown command` from the buttons of a run's **Experiments** tab, or **Remove** on a rule: they wait for the experiment queue ([goal 064](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/064-experiment-queue.goal)).
 - **The REST API** answers `401 {"error":"unauthorized"}` for a token that isn't the owner's, and `400 {"error":"invalid request"}` for a body with a wrong field, without saying which. Other refusals answer **500** with the reason, for example `{"error":"unknown rig rig-9"}` or `{"error":"bad pause_run payload: run: …"}`.
-- **MCP** tools answer `{"error":"…"}` with the reason.
+- **MCP** tools answer `{"error":"…"}` with the reason. A command kind that the token may not issue, or that doesn't exist, such as the queue commands that `run_queue`'s description names, fails the tool's own input check with `Input validation error` instead.
 - **A rig** that refuses a command marks it `rejected` or `failed` on **Commands**, with the reason in **Outcome**. For example, `not now: …` for a busy rig, or `<kind> is the owner's to issue, not …'s` for a command only the owner may give.
 
 Control writes the dashboard's refusals and failed requests to its audit log as well. To list them over MCP, call `control_log` with `action: "refused"` or `action: "failed"`.

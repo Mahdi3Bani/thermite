@@ -14,7 +14,7 @@ Some things wait for the owner's word: a change that would become the new best, 
 
 Open **Overview**, the first page in the sidebar on the left. Its **Needs you** block lists every decision across every rig, grouped by kind, oldest first. When nothing waits, it says `Nothing waits for you. The campaigns go on by themselves.`
 
-The count also shows beside **Overview** in the sidebar, and as **Needs you** in the status bar, the line along the bottom of every page. A run's own **Overview** view, on its campaign's page, lists that run's decisions, and a change's own page has a **Your decision** box.
+The count also shows beside **Overview** in the sidebar, and as **Needs you** in the status bar, the line along the bottom of every page. The **Campaigns** list, under **Waiting for you**, and each campaign's page say how many decisions wait in each run, such as `2 decisions wait for you`, with a **Review** button. It opens the run's page, whose **Overview** tab lists that run's decisions under **Needs you**. A change's own page has a **Your decision** box.
 
 ## Decide
 
@@ -44,7 +44,7 @@ When the judge confirms that a change is better, the run's rule decides what hap
 - **ask me every time** (`owner_approval`): it waits for you as **Your decision**.
 - **the rig's default**: the rule on the rig's **Edit rig** page, under **3 · When a change becomes the champion**: **Automatically** unless changed, or **Ask me for each change**.
 
-You choose a run's rule with **When a change is confirmed better** on the **New campaign** page, or `--promotion` on `thermite assign`. The run's **Steering** view shows the rule in force.
+You choose a run's rule with **When a change is confirmed better**, on the **New campaign** page or under **More options** in a campaign's **Start a run** panel, or with `--promotion` on `thermite assign`. The run's **Overview** tab shows the rule in force, in the block **The run**, as **Promotion**: `Automatic when the judge confirms; audits and big gains still wait for you`, `Only with your approval`, or `The rig's default (set where the rig is deployed)`.
 
 **Make it the champion** makes the change the next champion: agents start their next work from it. If the champion changed while the change waited, the judge first tests it again against the new champion. If the agent declared flaws, approving accepts them, and the record shows your name. **Reject it** keeps the change from becoming the champion, and the record shows that you rejected it.
 

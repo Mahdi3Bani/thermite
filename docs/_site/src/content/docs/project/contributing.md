@@ -46,8 +46,22 @@ Changes to some parts also need a test that starts containers. Each takes from a
 | The judge, kits or the harness image | `COMPOSE="podman compose" npm run acceptance:judge` |
 | Control, the dashboard, MCP or the relay | `COMPOSE="podman compose" node scripts/control-acceptance.mjs` |
 | The workers, the planner or the scheduler | `COMPOSE="podman compose" node scripts/agents-acceptance.mjs` |
+| The New campaign page, the campaign builder, a campaign's **Start a run**, kits kept on control, Git access or the supervisor's staging | `COMPOSE="podman compose" node scripts/campaign-acceptance.mjs` |
+| Rigs on Kubernetes, including moving a rig onto new images, or control's image | `COMPOSE="podman compose" node scripts/cluster-acceptance.mjs` |
+
+The campaign test serves a tiny project with `git daemon` and creates a campaign through the New campaign form, which starts a try of its kit. Then it starts the campaign's own run from the campaign's page, with the agents on. Its rig gets a model route that nothing answers, so the agents fail at once, and the script submits the changes itself. The cluster test sets rigs up on a local kind cluster, in a namespace control creates and in a pre-made slot. Then it restarts control with re-tagged images, moves the slot's rig onto them with **Update to these images**, and checks that the rig reports again from the new pods with its volume claim and secret unchanged.
 
 [AGENTS.md](https://github.com/iammrduncan/thermite/blob/main/AGENTS.md#checks) lists every acceptance test and when it is needed. These tests use local stand-ins only: a scripted model, a container with an SSH server, a local Kubernetes cluster in containers. They never touch a real host or cluster. The scripts clean up when their stack comes down. After a run that you stopped by hand, remove dangling images (`docker image prune -f` or `podman image prune -f`) and, with Podman on a Mac, trim its virtual machine's disk (`podman machine ssh sudo fstrim -a`). Never prune tagged images: they may belong to other projects.
+
+## Work on the dashboard
+
+To work on the dashboard without a stack, run the dashboard demo. It serves made-up campaigns and rigs, and prints the token to sign in with:
+
+```sh
+node --experimental-strip-types scripts/dashboard-demo.ts   # http://127.0.0.1:8810/ui
+```
+
+The demo has no campaign saved on control or assigned through it, no owner's messages and no experiment queue, so it shows no **Start a run**, no kept messages and an empty queue. The dashboard's tests cover those. This site's screenshots come from the demo, because its data is made up: with the demo running, `node scripts/docs-screenshots.mjs` takes them again. [Running Thermite locally](https://github.com/iammrduncan/thermite/blob/main/docs/local-development.md) has more for contributors.
 
 ## Keep the repository public-safe
 

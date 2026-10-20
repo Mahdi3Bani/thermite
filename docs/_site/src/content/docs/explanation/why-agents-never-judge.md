@@ -84,6 +84,8 @@ A campaign can run on several [rigs](../reference/glossary.md) at once. Two devi
 
 ## Steering without judging
 
-People and advisors can steer the search. They can point lanes towards or away from directions, change priorities, message the agents, pause and redirect. Every instruction is recorded with who gave it and why. None of them can set a verdict, change a running contract or write a measurement.
+People and advisors can steer the search. The teacher pair, one of the advisors, points lanes towards or away from directions and changes priorities, through directives to the planner. The owner can do the same, and can also pause a run and message its agents and advisors. Only the owner can send a message (an operator's token sends it in the owner's name). The advisors only answer the owner's messages: they never message the agents. Every instruction is recorded with who gave it and why. None of them can set a verdict, change a running contract or write a measurement.
+
+The judge takes no messages at all. It is code, not an agent, so there is nothing in it to persuade, and no message can change a measurement.
 
 The [supervision](supervision.md) page explains the advisors: the teachers, the auditor and the review panel.

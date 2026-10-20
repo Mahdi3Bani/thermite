@@ -1,6 +1,6 @@
 ---
 title: "Configure advisors"
-description: "Turn on the teachers, the combiner, the auditor and the review panel that watch over a rig's research."
+description: "Turn on the teachers, the combiner, the auditor and the review panel that watch over a rig's research, and write to them."
 type: how-to
 sidebar:
   order: 4
@@ -8,7 +8,7 @@ sidebar:
 
 A rig's supervisor can run **advisors**: models that watch the research but never judge it.
 
-- The **teacher pair** reads each running run's progress, every hour by default, and suggests directions, each with a source.
+- The **teacher pair** reads each running run's progress, every hour by default and at once when you write to it, and suggests directions, each with a source.
 - The **combiner** joins the two teachers' advice into one set of directions for the planner.
 - The **auditor** answers the judge's audits: it can block a change before it becomes the champion, never pass one on its own.
 - The **review panel** grades goals that code cannot check. A pass still needs your acceptance.
@@ -119,9 +119,28 @@ The example uses the `openai` runtime: a model API that the supervisor calls its
 Wait a minute, then press **refresh** in the status bar, the line along the bottom of the rig's page:
 
 - The **Advisors** row of the **The rig** block shows `N teacher rounds · N directive sets · N audits · N errors · $N.NN` instead of `none configured`.
-- The rig's live view shows `advisor round started` and `advisor round done: …` lines when you choose **Supervisor** in its list. Open it with the **Live** button on the rig's page, or from **Live** in the sidebar.
+- A run's **Live** page shows each step of the advisors' rounds for that run when you choose **Advisors**. Open it with **Live** on the run's page, or **Live** in the sidebar, which opens a run at work. The lines read, for example:
+  - `the teacher pair reviews run-1`;
+  - `teacher teacher-a: …`, with what it suggests, or `teacher teacher-b gave no review: …`;
+  - `directives for the planner: …`, each with its reason, or `the teacher pair set no directives`;
+  - `audit of …`, with the try, the auditor's decision, what it did to the result and why;
+  - `review …`, with each reviewer's pass or fail and why, then the panel's outcome;
+  - `advisor round done: …`, the round's counts, when the round did something.
+
+  The rig's own live view (the **Live** button on the rig's page) shows the same lines when you choose **Supervisor** in its list.
 - When the teachers' advice reaches a run, its history says `A steering directive took effect.`
 
-A count of errors that grows means a role keeps failing. The supervisor's log has an `advisor error` line with the reason, such as `audit of …: advisor auditor has no key`.
+A count of errors that grows means a role keeps failing. Each error is a line in **Live** with its reason, such as `audit of …: advisor auditor has no key`, and the supervisor's log has an `advisor error` line with the same reason.
 
-Messages you send to "the advisors (next brief)" from the live view go into the run's brief for a day, which the teachers and the combiner read. See [Steer a run](../campaigns/steer-a-run.md).
+## Write to the advisors
+
+You can write to a run's advisors, as you write to its agents. On the run's **Live** page, in the box under the stream, choose under **To**:
+
+- **To the teachers**: the teacher pair reads it in a round that starts at once, instead of at its next scheduled round. The supervisor looks for new messages every few seconds between rounds; a round already under way finishes first. The teachers advise only running runs, so for a paused run they read it when it runs again. A round that fails leaves the message for the next scheduled round.
+- **To the auditor**: it reads it with its next audit, which comes only when the judge holds a result for audit.
+- **To the review panel**: it reads it with its next review, which comes only when a goal waits for review.
+- **To all advisors**: each of the three that can read it, once each.
+
+Write, then press **Send**. The placeholder in the box says when the reader takes it. When an advisor reads your message, **Live** shows a line such as "✓ the teacher pair read your message", and each advisor that read it answers in one or two sentences: "the teacher pair (teacher-a) answered you: …". Choose **You** to see only your messages, the reads and the answers. The combiner sees your messages in the teachers' brief, but doesn't answer.
+
+Roles that the run can't have, or that are off on **Edit rig**, are greyed out in the list, with why: a research run has no audits and nothing for the panel to review. A message to a role with its switch on but no model is accepted, but nothing reads it until you give the role a model. [Steer a run](../campaigns/steer-a-run.md) covers messages to the agents.

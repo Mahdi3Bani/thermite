@@ -13,11 +13,13 @@ Control knows people and programs by **tokens**: long random strings sent as `Au
 | Role | Setting | Dashboard | REST API | MCP |
 | --- | --- | --- | --- | --- |
 | **Owner** | `THERMITE_CONTROL_ADMIN_TOKEN_SHA256` or `THERMITE_CONTROL_ADMIN_TOKEN_FILE` (required) | Signs in. The only token that can | Every route | Every tool. Commands up to approving and declining promotions |
-| **Operator** | `THERMITE_CONTROL_OPERATOR_TOKEN_SHA256` or `_FILE` (optional) | No | No | Reads; steers; messages a run's agents; adds cluster rigs; gives rigs' agents a model; starts and ends RunPod tests; reads control's log and providers |
-| **Agent** | `THERMITE_CONTROL_AGENT_TOKEN_SHA256` or `_FILE` (optional) | No | No | Reads and steers. No control log, no providers, no RunPod. Refused during a full reset |
+| **Operator** | `THERMITE_CONTROL_OPERATOR_TOKEN_SHA256` or `_FILE` (optional) | No | No | Reads; steers; messages a run's agents and removes messages kept in force; adds cluster rigs, sets a cluster's slots and moves cluster rigs onto control's images; gives rigs' agents a model; starts and ends RunPod tests; reads control's log and providers |
+| **Agent** | `THERMITE_CONTROL_AGENT_TOKEN_SHA256` or `_FILE` (optional) | No | No | Reads and steers. No control log, no providers, no RunPod, no tools that set rigs up. Refused during a full reset |
 | **Reader** | `THERMITE_CONTROL_READ_TOKEN_SHA256` or `_FILE` (optional) | No | `/metrics` and `GET /v1/rigs/<rig>/live` only | Read tools, control's log, providers and RunPod tests (read only) |
 
-"Steers" means these [signed commands](signed-commands.md): assign a campaign, pause and resume a run, redirect it, reset its workers, export now and run a rig check, plus sending a champion to another rig. The operator may also message the agents. Only the owner approves or declines a promotion.
+"Reads" means the [MCP](mcp-tools.md) read tools, which every token has: the rigs, a run and its attempts, a run's rules and the owner's messages to its agents, with who read them (`run_queue`), how control set a rig up (`rig_setup`), events, the leaderboard, daily reports and commands.
+
+"Steers" means these [signed commands](signed-commands.md): assign a campaign, pause and resume a run, redirect it, reset its workers, export now and run a rig check, plus sending a champion to another rig. The operator may also message the agents (`message_agent`) and remove a message kept in force (`unkeep_message`). Only the owner approves or declines a promotion.
 
 Some things no token can do over MCP: changing a rig's settings, accepting a review or a "not possible" ending, and wiping a rig. The owner does them on the dashboard, and a wipe only as part of a full reset.
 

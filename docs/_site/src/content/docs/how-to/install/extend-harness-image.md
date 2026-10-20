@@ -61,7 +61,12 @@ Set control's harness image to yours, then restart control (with the compose sta
 - `THERMITE_RIG_HARNESS_IMAGE` for CPU rigs;
 - `THERMITE_RIG_HARNESS_CUDA_IMAGE` for GPU rigs.
 
-**Rigs › Add a rig** shows it under **Images**, and every rig you add from then on runs it. A rig keeps the image it was set up with: control can't move an existing rig to a new image yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)), so add a new rig.
+**Rigs › Add a rig** shows it under **Images**, and every rig you add from then on runs it.
+
+A rig you already have keeps the image it runs:
+
+- **A rig that control set up on a cluster** can move onto your image. Its page then offers **Update to these images** ([Move a rig onto new images](../operate/rig-lifecycle.md#a-rig-on-a-cluster)). Every such rig whose image differs from control's offers it, so press it only on the rigs that should have your tools.
+- **A rig on a machine, or one you joined yourself,** can't move to a new image yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)), so add a new rig.
 
 Thermite doesn't know which rigs carry your tools. A kit names only its target (`cpu` or `cuda-gpu`), and on a rig without the tools the judge's builds of your project fail. Start campaigns that need them only on rigs added from your image; a name that says so, such as `rig-fortran-1`, helps.
 

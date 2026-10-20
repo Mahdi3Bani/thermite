@@ -6,7 +6,7 @@ sidebar:
   order: 3
 ---
 
-Control can set [rigs](../../reference/glossary.md) up on a Kubernetes cluster with a kubeconfig you give it once. Each rig is two pods, its harness and its supervisor, which share one volume on one node. Control applies them, waits for the rig's first report, and later stops, starts and removes it.
+Control can set [rigs](../../reference/glossary.md) up on a Kubernetes cluster with a kubeconfig you give it once. Each rig is two pods, its harness and its supervisor, which share one volume on one node. Control applies them, waits for the rig's first report, and later stops, starts and removes it, or moves it onto new images.
 
 Control places each rig in one of two ways:
 
@@ -34,7 +34,7 @@ Rigs that control sets up, on a machine, on a cluster or with a join command, ge
 
 ### What created namespaces need
 
-Rights across the cluster, since the namespaces don't exist yet: to create and delete namespaces, and in them to create, change and delete deployments, services, secrets, persistent volume claims and network policies (and resource claim templates for DRA). Control also scales and restarts the deployments to stop, start and restart the rig. With rights to read nodes, storage classes and device classes, its check of the cluster shows them; without them it shows less. Control never reads pods.
+Rights across the cluster, since the namespaces don't exist yet: to create and delete namespaces, and in them to create, change and delete deployments, services, secrets, persistent volume claims and network policies (and resource claim templates for DRA). Control also scales and restarts the deployments to stop, start and restart the rig. To move the rig onto new images, it applies the deployments again and reads their status (`get`) until the new pods run. With rights to read nodes, storage classes and device classes, its check of the cluster shows them; without them it shows less. Control never reads pods.
 
 Thermite's own cluster test uses the cluster's admin kubeconfig for this placement, so there is no tested narrower role to copy. If the cluster's operators won't give control rights across the cluster, use slots.
 
@@ -164,22 +164,32 @@ kubectl logs -n thermite-rig-1 deployment/thermite-rig-1-supervisor
 | `ErrImagePull` or `ImagePullBackOff` | The nodes can't pull an image | Make the image pullable without signing in: [Push the images to your own registry](own-registry.md) |
 | `Running`, and still no report | The supervisor's log says why | [A rig is quiet](../operate/troubleshoot.md#a-rig-is-quiet) |
 
-Once the cause is fixed, the pods start and the rig reports by itself. If the rig needs other choices (another storage class, node or number of GPUs), remove it (below) and add a new one under a new name: a removed rig's name can't be used again.
+Once the cause is fixed, the pods start and the rig reports by itself. If the rig needs other choices (another storage class, node or number of GPUs), remove it (below) and add a new one under a new name: a removed rig's name can't be used again. New images need no new rig: see [Update the rig's images](#update-the-rigs-images).
 
 ## Afterwards
 
-The rig's page keeps the **Set up by control** block: the cluster, the namespace ("made by control" or "a slot"), the GPUs, the storage and the images. Its buttons:
+The rig's page keeps the **Set up by control** block: the cluster, the namespace ("made by control" or "a slot"), the GPUs, the storage, the images and each step so far. Its heading shows the rig's status there, such as `running`, `stopped`, `updating` or `failed`. Its buttons:
 
 - **Stop its pods** or **Start its pods** (the deployments scale to 0 or 1), and **Restart them**.
+- **Update to these images**, only when control deploys other images than the rig runs: see [Update the rig's images](#update-the-rigs-images).
 - **Remove it from cluster-1**: type `remove rig-1` and press **Remove the rig**. Control deletes the namespace it created, or the rig's objects in the slot, and retires the rig's token. The rig's results go with its volume; control keeps only its events and its champions' patches, so [take the result](../campaigns/take-the-result.md) you need first. The page says `Removed from the cluster.`, and the rig stays in **Rigs** as not reporting. To take it off the rig lists too, use **Retire it** at the top of its page: type `retire rig-1` and press **Retire it**.
 
 Next, [check the rig](../operate/check-a-rig.md), then [give it a model](../models/connect-a-provider.md).
 
+## Update the rig's images
+
+After you update Thermite, push the new images and restart control with them ([Push the images to your own registry](own-registry.md)). The rig keeps running its old images until you move it: its **Set up by control** block then says "Control now deploys other images:" and offers **Update to these images**. Control applies the rig's two deployments again with the new images, waits for the new pods and a report from them, and lists each step in the block. The rig's volume, tokens, runs and results stay.
+
+For the steps, what changes and what to check afterwards, see [Move a rig onto new images](../operate/rig-lifecycle.md#a-rig-on-a-cluster).
+
 ## From an agent or a script
 
-Over MCP, the owner's and the operator's tokens have two tools for clusters (see [MCP tools](../../reference/mcp-tools.md)):
+Over MCP, the owner's and the operator's tokens have three tools for clusters (see [MCP tools](../../reference/mcp-tools.md)):
 
-- `add_cluster_rig` adds a rig on a cluster in Providers, with the same checks as **Add a rig**. Its fields are `rig`, `cluster`, `slot`, `gpus`, `judge_gpus`, `gpu_mode` (`device-plugin` or `dra:<device class>`), `node`, `storage_class`, `storage_gb`, `cpus` and `memory_gib`. It answers with the rig's name and `"status": "deploying"`; follow the rig with `list_rigs`.
+- `add_cluster_rig` adds a rig on a cluster in Providers, with the same checks as **Add a rig**. Its fields are `rig`, `cluster`, `slot`, `gpus`, `judge_gpus`, `gpu_mode` (`device-plugin` or `dra:<device class>`), `node`, `storage_class`, `storage_gb`, `cpus` and `memory_gib`. It answers with the rig's name and `"status": "deploying"`; follow the rig with `rig_setup` and `list_rigs`.
 - `set_cluster_slots` replaces the list of slots of a cluster that uses slots. A slot that holds a rig must stay in the list.
+- `update_rig_images` moves a rig onto control's images, as **Update to these images** does. Its one field is `rig`. Its answer's `said` is `rig-1's pods restart on the new images.`, `rig-1 runs the new images when it starts again.` (a stopped rig) or `rig-1 already runs control's images.`
+
+`rig_setup` (field `rig`) shows a rig that control set up: the cluster, the namespace, the placement, the rig's status there, its images, and each step, oldest first. A step is `{at, step, ok, detail}`, with the step's id rather than the page's words, such as `applied`, `first_report`, `images`, `images_running` or `report_after_images`. A failed step has `"ok": false` and the reason in `detail`. Use it to follow a new rig or an update.
 
 Once the rig shows on **Rigs**, `set_rig_model` gives its agents a model from **Providers**, as **Edit rig** does. Adding the cluster itself is done on the dashboard.

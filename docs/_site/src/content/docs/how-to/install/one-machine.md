@@ -195,7 +195,10 @@ The dashboard is then at `http://127.0.0.1:8801/ui`. Inside the stack, control k
 
   Add your `-f` options to the last line, as in [the example above](#settings-and-override-files). If your images carry Claude Code, `-f compose.claude.yaml` keeps it in the new images; a build without that file leaves it out. `dev:init` keeps every token file that exists, the empty owner's file too, and adds any file a newer version needs. Compose rebuilds the images and replaces the containers whose images changed. The volumes stay. When the harness restarts, running trials and judge jobs start again.
 
-After an update, run the rig's **Judge smoke** check ([Check a rig](../operate/check-a-rig.md)). Rigs on other machines keep the images they were set up with: control cannot upgrade them yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
+After an update, run the rig's **Judge smoke** check ([Check a rig](../operate/check-a-rig.md)). This updates only the local stack. Rigs elsewhere keep the images they run:
+
+- a rig that control set up on a cluster moves onto new images from its page, once you have pushed them and set them on control ([Push the images to your own registry](own-registry.md), then [Move a rig onto new images](../operate/rig-lifecycle.md#a-rig-on-a-cluster));
+- a rig on another machine, or one you joined yourself, can't be moved yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
 
 ## Let rigs on other machines reach control
 

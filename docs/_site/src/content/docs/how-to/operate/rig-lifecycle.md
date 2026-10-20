@@ -1,6 +1,6 @@
 ---
 title: "Stop, restart, remove or reset a rig"
-description: "Stop, start, restart, remove, retire, bring back or fully reset a rig, and know what each one keeps."
+description: "Stop, start, restart, update, remove, retire, bring back or fully reset a rig, and know what each one keeps."
 type: how-to
 sidebar:
   order: 5
@@ -12,6 +12,7 @@ What you can do to a [rig](../../reference/glossary.md), and where, depends on h
 | --- | --- | --- | --- | --- |
 | Stop and start | Your compose tool | **Stop its services**, **Start its services** | **Stop its pods**, **Start its pods** | Commands on its page, which you run there |
 | Restart | Your compose tool | **Restart them** | **Restart them** | A command on its page |
+| Move to new images | Your compose tool | Not yet | **Update to these images** | Not yet |
 | Remove | Your compose tool | **Remove the rig** | **Remove the rig** | A command on its page, then **Retire the rig** |
 | Retire, bring back | Yes | Yes | Yes | Yes |
 | Full reset | Yes | Not yet | Not yet | Not yet |
@@ -62,6 +63,58 @@ curl -sS -X POST -H "Authorization: Bearer $(cat .dev/secrets/control-admin-toke
 ```
 
 It answers `{"restarted":["supervisor"]}`, or `409 {"error":"no deployment driver is configured"}`.
+
+## Move a rig onto new images
+
+A rig keeps the images it was set up with until you move it. What you can do depends on the kind of rig:
+
+- **The compose stack:** rebuild its images and start it again with your compose tool, as [Stop, start and update](../install/one-machine.md#stop-start-and-update) says.
+- **Set up by control on a cluster:** control moves it onto the images it now deploys, as below.
+- **Set up by control on a machine, or joined yourself:** not yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)). Add a new rig from the new images instead.
+
+### A rig on a cluster
+
+Control moves the rig's two deployments, its harness and its supervisor, onto the images it now deploys. The rig's volume, tokens, runs and results stay.
+
+Before you start:
+
+- **Control runs with the new images,** and was restarted after you set them: `THERMITE_RIG_HARNESS_IMAGE` (`THERMITE_RIG_HARNESS_CUDA_IMAGE` for a rig with GPUs) and `THERMITE_RIG_SUPERVISOR_IMAGE` ([settings](../../reference/settings.md#rigs-that-control-sets-up)). [Push the images to your own registry](../install/own-registry.md) says how. Give each new build a new tag: control compares the images' names, not their contents, and offers the update only when a name differs.
+- **Control's address is still set** (`THERMITE_CONTROL_PUBLIC_URL`): the update writes it into the rig's supervisor again.
+- **The cluster is still in Settings › Providers.**
+
+Steps:
+
+1. Open **Rigs** and choose the rig. Its **Set up by control** block says "Control now deploys other images:" with the two image names, then:
+
+   > Its pods restart on these images. Its volume, tokens, runs and results stay. A trial in progress stops, and the harness plans it again. After a newer harness has opened its ledger, an older image may not open it.
+
+2. Press **Update to these images**.
+
+   The page says `rig-1's pods restart on the new images.` The block's status, at the right of its heading, says `updating`, and **Images** names the new images. A new step reads "Its deployments applied with new images", with the old and the new name of each image that changed.
+
+3. Wait, then press **refresh** in the status bar, the line along the bottom of the page. Control waits up to 15 minutes for the new pods to run, then up to 10 minutes for a report from them. Two more steps get a ✓, "Its pods run the new images" and "A report reached control from the new images", and the status is `running` again.
+
+If a step gets ✕ instead, with "not running after 15 minutes" or "no report after 10 minutes: it may not have started", the status says `failed`: see [A rig on a cluster never reports](troubleshoot.md#a-rig-on-a-cluster-never-reports). If control refuses the update, the page shows a card that starts with **Not done.** and the reason, such as `The cluster cluster-1 is no longer in Providers.` or kubectl's error.
+
+After the update, run the rig's **Isolation** and **Judge smoke** checks: control doesn't run them for you ([Check a rig](check-a-rig.md)).
+
+What changes and what stays:
+
+| Changes | Stays |
+| --- | --- |
+| The images of the rig's two deployments | Its secret, so its tokens and control's public key |
+| Anything else that control now writes into the deployments, such as the address the supervisor reports to | Its volume, so its [ledger](../../reference/glossary.md) (the rig's record), runs, results and signing key |
+| | Its service, its network rules and, with DRA, its resource claim template |
+| | Its place: the cluster, the namespace or slot, the node, the GPUs and the storage |
+
+- **A stopped rig stays stopped.** The page says `rig-1 runs the new images when it starts again.`, the step ends with "at its next start", and control waits for nothing. **Start its pods** then starts it on the new images.
+- **A trial in progress stops**, as with a restart. When the harness starts again, it closes the trial as interrupted, and the lane goes on with a new one.
+
+:::caution[Going back to older images]
+A newer harness may upgrade the rig's ledger when it opens it, and an older harness refuses a ledger that a newer one upgraded. So moving a rig back to older images may leave it unable to start: see [The harness stops at start: the ledger is newer](troubleshoot.md#the-harness-stops-at-start-the-ledger-is-newer). Thermite can't roll a rig back yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
+:::
+
+Over MCP, the owner's and an operator's tokens do the same with `update_rig_images`, and `rig_setup` shows the rig's status and each step: see [From an agent or a script](../install/rig-on-a-cluster.md#from-an-agent-or-a-script). The REST API has no route for it.
 
 ## Remove
 

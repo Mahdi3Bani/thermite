@@ -114,7 +114,7 @@ Each rig has two branches. Commits are made by `thermite <thermite@localhost>`.
 | --- | --- | --- |
 | `thermite/<rig>/attempts` | `attempts/<attempt>.patch` and `.json` | Each attempt's change, and its record with the verdict |
 | | `champions/<run>/<seq>.patch` and `.json` | Each published champion, as a patch from the run's starting commit |
-| | `events/<export>.jsonl` | The export's events, one per line |
+| | `events/<export>.jsonl` | The export's events, one per line. They include the text of your messages to the run's agents and advisors, and the advisors' answers |
 | | `exports/<export>.json` | The export's manifest: each file with its SHA-256 |
 | | `research/<run>/…` | Only from a full export (a full reset takes one): a research run's archive, and in `research/<run>/folder/` the [research folder](../../explanation/campaign-modes.md#research) of a run whose final report that export holds |
 | `thermite/<rig>/ledger` | `ledger.sqlite`, `manifest.json` | A copy of the rig's ledger, at most once a day, and with every full export. Held-out results are left out, so they never leave the rig |

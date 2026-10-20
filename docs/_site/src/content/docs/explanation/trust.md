@@ -53,7 +53,9 @@ Commands expire after an hour by default, so an old command that was never deliv
 
 ### Who issued it
 
-The issuer is inside the signature: the owner through the dashboard, the REST API or MCP, an operator acting for the owner, or an agent. Some kinds are the owner's alone, such as approving a promotion, accepting a review, wiping the rig and changing its settings. The harness accepts those kinds only from an issuer in the owner's name, and control decides which kinds each token may ask for. So an agent's token can't get an owner's command through, even though it reaches control. [Tokens and roles](../reference/tokens.md) says what each token may do.
+The issuer is inside the signature: the owner through the dashboard, the REST API or MCP, an operator acting for the owner, or an agent. Some kinds are the owner's alone, such as approving a promotion, accepting a review, wiping the rig, changing its settings, and messaging the run's agents and advisors. The harness accepts those kinds only from an issuer in the owner's name, and control decides which kinds each token may ask for. So an agent's token can't get an owner's command through, even though it reaches control. An operator's token, which the owner gives an agent that runs campaigns for them, may send messages, in the owner's name.
+
+This is how only the owner can write to the agents and the advisors. The advisors can answer the owner's messages, through the supervisor, but they can't send one, and the judge takes no messages at all: it is code, and no message can change a measurement. [Tokens and roles](../reference/tokens.md) says what each token may do.
 
 ### Content checked by hash
 
@@ -67,7 +69,7 @@ The supervisor tells control quickly whether a command was delivered, but that i
 
 ## Signed reports
 
-The harness signs every report it gives the supervisor: each page of new events, with the rig's name, the record's id, where the page starts and ends, and when it was made. It signs the lines of the rig's live view too. Control takes a report only when:
+The harness signs every report it gives the supervisor: each page of new events, with the rig's name, the record's id, where the page starts and ends, and when it was made. Control takes a report only when:
 
 1. it names the rig it arrived for;
 2. its signature is good, made with the key control pinned for that rig;
@@ -75,7 +77,7 @@ The harness signs every report it gives the supervisor: each page of new events,
 4. it does not come from a record the rig has left behind, such as one from before a full reset;
 5. it is not older than the newest report control has taken, and not dated in the future.
 
-So the supervisor cannot forge a report, replay an old one, or drop events from the middle of the stream. Only the harness's signed reports make a rig show **Live** on the dashboard's **Rigs** page. A champion patch that the supervisor uploads is kept only if its SHA-256 matches the one in the rig's signed record of that champion.
+So the supervisor cannot forge a report, replay an old one, or drop events from the middle of the stream. Only the harness's signed reports make a rig show **Live** on the dashboard's **Rigs** page. A champion patch that the supervisor uploads is kept only if its SHA-256 matches the one in the rig's signed record of that champion. A run's **Live** view is for watching the work as it happens; the record of what happened is these signed events.
 
 ## Pinning the rig's key
 
@@ -95,7 +97,7 @@ The supervisor listens on no port. The harness publishes no port to the outside,
 
 So a rig can run where nothing can reach it, such as behind a home router or a firewall, as long as it can reach control. And **rigs keep researching when control is down**: commands wait at control, and reports catch up when it is back.
 
-Control does connect to machines and clusters, over SSH or with kubectl, to set a rig up, start it, stop it and remove it. It never uses those connections to talk to the running rig. Rigs on RunPod, which control would reach through RunPod's proxy, are being built in [goal 019](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/019-rig-only-entry.goal).
+Control does connect to machines and clusters, over SSH or with kubectl, to set a rig up, start it, stop it and remove it, and to move a rig on a cluster onto new images, reading its deployments' status while it waits for them. It never uses those connections to talk to the running rig. Rigs on RunPod, which control would reach through RunPod's proxy, are being built in [goal 019](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/019-rig-only-entry.goal).
 
 Some things reach a rig without a command: the agents' model route, the advisors' models, and the Git access for a private repository. The supervisor fetches each from control with its rig token when it needs it ([Who holds your keys](who-holds-your-keys.md)).
 

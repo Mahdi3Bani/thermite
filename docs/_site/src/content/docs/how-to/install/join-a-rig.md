@@ -8,7 +8,7 @@ sidebar:
 
 Some places control can't connect to: a machine behind NAT, or a Kubernetes namespace whose operators give Thermite no kubeconfig. For those, control gives you one **join command**. You run it where the [rig](../../reference/glossary.md) goes; it fetches the rig's files from control and starts the rig, which then reports to control like any other.
 
-Control holds no credential for the place, and can't reach it afterwards. Stopping, restarting and removing the rig are commands you run there yourself; the rig's page shows them.
+Control holds no credential for the place, and can't reach it afterwards. Stopping, restarting and removing the rig are commands you run there yourself; the rig's page shows them. Control can't move a joined rig onto newer images yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
 
 :::note[What these rigs don't have yet]
 Rigs that control sets up, on a machine, on a cluster or with a join command, get only the few settings listed in [Rigs that control sets up](../../reference/settings.md#rigs-that-control-sets-up). Compared with the local stack, they have:

@@ -39,7 +39,10 @@ You return to the rig's page, which says, for example, "Control sent a new model
 
 The workers and the planner take a new model within a minute. The advisors read their models from control each time they run, so an advisor uses its new model from its next round.
 
-When the workers' or the planner's model changes, the rig runs its model check at once. The check tests only the workers' model. For the other agents, watch **Live** in the sidebar, the dashboard's view of the agents at work: the planner's lines, and the supervisor's "advisor round done" lines, which count the advisors' errors.
+When the workers' or the planner's model changes, the rig runs its model check at once. The check tests only the workers' model. For the other agents, watch a run on the rig in **Live** (in the sidebar), the dashboard's view of one run's agents at work. Choose a filter above the stream:
+
+- **Planner**: the planner's lines. Each plan says whether the model made it ("planned by the model") or the rig fell back to its fixed plan ("the fallback plan"), and why a model's plan was refused. A research run has no planner, and no such filter.
+- **Advisors**: the advisors' lines. Each error is a line of its own with its text, and an "advisor round done" line counts what a round did, errors included.
 
 ## An agent with no model
 
@@ -48,6 +51,8 @@ When the workers' or the planner's model changes, the rig runs its model check a
 - **An advisor** with no model uses the role from the rig's advisors file. If the file has none, or the rig has no file, that advisor does not run. See [Configure advisors](../operate/advisors.md).
 
 An advisor also runs only while its switch is on in section **1 · Parts of the rig**: **Auditor**, **Teacher pair** or **Review panel**. The combiner follows the **Teacher pair** switch. The switches are on by default, but a switch that is on runs nothing until its advisor also has a model, here or in the advisors file. Why each advisor exists is in [Supervision](../../explanation/supervision.md).
+
+The switches also decide who can get your messages. In **Live**'s message box, the **To** list greys out the planner and each advisor whose switch is off, and says why; the rig refuses a message to them. An advisor whose switch is on but which has no model takes your message, and nothing reads it until the advisor has a model. See [Send the agents a message](../campaigns/steer-a-run.md#send-the-agents-a-message).
 
 ## Where each agent runs
 
@@ -58,6 +63,8 @@ An advisor also runs only while its switch is on in section **1 · Parts of the 
 | A Claude subscription | Claude Code | Claude Code, with no tools | Claude Code, with no tools |
 
 A Claude subscription needs Claude Code in the images: in the harness image for the workers and the planner, and in the supervisor image for the advisors. See [Use a Claude subscription](claude-subscription.md).
+
+Where the workers run also sets when they read a message you send them from **Live**. A worker in Pi reads it at its next step. OpenCode v2 and Claude Code take no message while they work: when the program stops before the worker has submitted a change and the trial has time left, the rig starts it again with your message; otherwise the lane's next trial reads it. The planner reads its messages when it plans the next round. See [When each agent reads it](../campaigns/steer-a-run.md#when-each-agent-reads-it).
 
 The advisors' read-only tools are the campaign's brief, plus a guarded web fetch and a knowledge base only where the rig's advisors file sets them up. A knowledge base is a search service of your own, reached over MCP, that the teachers may search but not change: see the `kb` field in the [advisors file reference](../../reference/advisors-file.md#top-level).
 
@@ -92,7 +99,7 @@ Thermite has two money limits, and neither covers every agent on this page:
 | An advisor given its model on this page | Nothing: it counts as $0 |
 | An advisor in the advisors file | The file's `max_usd_per_day`, but only for `openai` runtimes with prices. Rigs that control sets up have no advisors file yet |
 
-For the rest, give each campaign a stop time (**Stop after (hours)** on the **New campaign** page, or `budget.wall_hours`), set a spending limit at the provider if it has one, and watch the provider's own usage page. **Pause** stops a run's workers and planner at once ([Steer a run](../campaigns/steer-a-run.md)). See [Set a budget or a stop time](../campaigns/budget-and-stop-time.md), [Configure advisors](../operate/advisors.md#spending), and the gaps listed in [goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal).
+For the rest, give each campaign a stop time (**Stop after (hours)** on the **New campaign** page, or `budget.wall_hours`), set a spending limit at the provider if it has one, and watch the provider's own usage page. **Pause**, at the top of a run's page or in **Live**, stops a run's workers and planner at once ([Steer a run](../campaigns/steer-a-run.md)). See [Set a budget or a stop time](../campaigns/budget-and-stop-time.md), [Configure advisors](../operate/advisors.md#spending), and the gaps listed in [goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal).
 
 ## If something goes wrong
 
@@ -104,4 +111,4 @@ A refused change shows on the rig's page, in a card that starts with **Not done.
 | "Claude Code runs only with a Claude subscription here: choose Pi or OpenCode v2 for this provider." | Set the workers' **Runs in** to **Pi** or **OpenCode v2**. |
 | "OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig." | Set the workers' **Runs in** to **OpenCode v2**. |
 | "The auditor cannot use OpenCode's own models: they run only in OpenCode. Choose another model." (or another role) | Choose a model from another provider for that advisor. |
-| "This rig's harness is older: it does not report its settings and cannot take them." | The rig's images are older than control. The workers' model still works. On the local stack, build the images again ([Stop, start and update](../install/one-machine.md#stop-start-and-update)). A rig that control set up can't move to newer images yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)): add a new rig from newer images ([Push the images to your own registry](../install/own-registry.md)). |
+| "This rig's harness is older: it does not report its settings and cannot take them." | The rig's images are older than control. The workers' model still works. On the local stack, build the images again ([Stop, start and update](../install/one-machine.md#stop-start-and-update)). A rig that control set up on a cluster moves onto newer images from its page: see [Move a rig onto new images](../operate/rig-lifecycle.md#a-rig-on-a-cluster). A rig on a machine, or one you joined, can't move yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)): add a new rig from newer images ([Push the images to your own registry](../install/own-registry.md)). |

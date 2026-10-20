@@ -69,6 +69,8 @@ Setting both variables of one role stops control at start with `set THERMITE_CON
 
 Without `THERMITE_RIG_HARNESS_IMAGE` and `THERMITE_RIG_SUPERVISOR_IMAGE`, **Add a rig** says "Control has no rig images configured (THERMITE_RIG_HARNESS_IMAGE, THERMITE_RIG_SUPERVISOR_IMAGE), so it can't set rigs up yet." Without `THERMITE_CONTROL_PUBLIC_URL` it says "Control's address for rigs is not set (THERMITE_CONTROL_PUBLIC_URL), so a rig would not know where to report."
 
+A rig keeps the images it was set up with. When control restarts with other image names in these settings, each rig it set up on a cluster offers the new images on its page: "Control now deploys other images:", the two names and **Update to these images**. The MCP tool [`update_rig_images`](mcp-tools.md#update_rig_images) does the same. A rig that is still being set up is not offered them. A rig with GPUs is compared with `THERMITE_RIG_HARNESS_CUDA_IMAGE`, any other with `THERMITE_RIG_HARNESS_IMAGE`, and both with `THERMITE_RIG_SUPERVISOR_IMAGE`. Control compares the names, not the images' contents. Rigs on machines and joined rigs are not offered an update ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
+
 ### Restarts and full resets
 
 A lifecycle driver lets control restart a rig's containers: the button **Restart the rig's containers** on the rig's page, and the last step of a full reset. Without a driver, the rig's page says `No deployment driver: restarts are not available.`, and a full reset still ends: the rig's containers restart themselves after the wipe. See [Stop, restart, remove or reset a rig](../how-to/operate/rig-lifecycle.md).
@@ -203,7 +205,7 @@ A Claude subscription and Claude Code go only together. Any other pairing stops 
 
 | Variable | Type | Default | Secret | Meaning |
 | --- | --- | --- | --- | --- |
-| `THERMITE_POLL_SECONDS` | seconds | `60` | no | How often it reports the harness's events to control and pushes new exports to the results repository. The advisors' rounds use the same interval, but never run less than 30 seconds apart |
+| `THERMITE_POLL_SECONDS` | seconds | `60` | no | How often it reports the harness's events to control and pushes new exports to the results repository. The pause between the advisors' rounds is the same interval, but at least 30 seconds. On a rig with teachers, a message from the owner to the teacher pair of a running run ends the pause early: during it, the supervisor looks for one every 5 seconds |
 | `THERMITE_COMMAND_POLL_SECONDS` | seconds | `5` | no | How often it fetches control's commands. `0`: commands are fetched with each report instead |
 | `THERMITE_LIVE_INTERVAL_MS` | milliseconds | `3000` | no | How often it relays the live view. `0` turns the live view off |
 | `THERMITE_MODEL_ROUTE_POLL_SECONDS` | seconds | `30` | no | How often it asks control for the rig's model and hands a change to the harness. `0` turns this off |
@@ -246,6 +248,8 @@ A rig set up from **Add a rig**, on a machine or a cluster, or with a join comma
 | --- | --- |
 | Harness | `THERMITE_RIG_ID`; `THERMITE_TARGET` (`cpu`, or `cuda-gpu` with GPUs); for one GPU, `THERMITE_GPU_INDEX=0`; for several, `THERMITE_GPUS` and `THERMITE_JUDGE_GPUS`; `THERMITE_CONTROL_PUBKEY_FILE`; `THERMITE_SUPERVISOR_TOKEN_FILE` |
 | Supervisor | `THERMITE_RIG_ID`; `HARNESS_URL` (port 8700); `CONTROL_URL` (from `THERMITE_CONTROL_PUBLIC_URL`); `THERMITE_HARNESS_TOKEN_FILE`; `THERMITE_CONTROL_TOKEN_FILE` |
+
+An image update of a rig on a cluster writes its two deployments again from control's settings at that moment, so the supervisor's `CONTROL_URL` is taken from `THERMITE_CONTROL_PUBLIC_URL` again.
 
 ## Older names
 

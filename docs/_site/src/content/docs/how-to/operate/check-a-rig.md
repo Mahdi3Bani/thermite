@@ -38,7 +38,7 @@ A result reaches the dashboard with the rig's next report, which comes every min
 
 The check shows **passed** or **failed** and one sentence about what it found. The same sentence goes to the rig's history.
 
-While **Judge smoke** runs, a campaign named `rig-check-smoke-cpu-` and eight letters and digits appears under **Campaigns** in the sidebar, with a run named `check-smoke-` and eight more. You can open it and watch the judge work. The run closes when the check is done.
+While **Judge smoke** runs, a campaign named `rig-check-smoke-cpu-` and eight letters and digits appears under **Campaigns** in the sidebar, with a run named `check-smoke-` and eight more. You can open it and watch the judge work. The run closes when the check is done. Later, the **Campaigns** page lists it under its **Rig checks** filter: it hides rig checks unless you ask for them.
 
 ## Run a check from the command line or an agent
 

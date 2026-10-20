@@ -46,9 +46,9 @@ To work on the dashboard without a stack, run a demo with synthetic campaigns an
 node --experimental-strip-types scripts/dashboard-demo.ts   # http://127.0.0.1:8810/ui
 ```
 
-It prints the token to sign in with. The dashboard's tests use a smaller fixture with the shapes the harness writes (`src/testing/control-demo.ts`): a goal campaign with attempts held for audits, a run at work, and a hill climb with an approval and an auditor's block.
+It prints the token to sign in with. The demo has no campaign saved on control or assigned through it, no owner's messages and no experiment queue, so it shows no **Start a run**, no kept messages and an empty queue; the dashboard's tests cover those. The dashboard's tests use a smaller fixture with the shapes the harness writes (`src/testing/control-demo.ts`): a goal campaign with attempts held for audits, a run at work, and a hill climb with an approval and an auditor's block.
 
-The documentation's screenshots come from the demo, whose data is made up. With the demo running, `node scripts/docs-screenshots.mjs` takes them again.
+The documentation's screenshots come from the demo, whose data is made up. With the demo running, `node scripts/docs-screenshots.mjs` takes them again: the Overview, the Campaigns list, a run's page, Live for a run at work and a rig's page, at 1440×900 in the light theme, as WebP files in `docs/_site/src/assets/screenshots/`. It needs a local Chrome or Chromium (`--chrome PATH`); `--out DIR` writes the files elsewhere, to look at them first.
 
 ## The smoke test
 
@@ -91,7 +91,7 @@ COMPOSE="podman compose" npm run acceptance:judge
 
 ## Agents without a model
 
-`node scripts/agents-acceptance.mjs` checks the agent machinery without a real model: a scripted model on your machine plans one epoch and plays two workers, which edit, build, use the device and submit through the real harness image.
+`node scripts/agents-acceptance.mjs` checks the agent machinery without a real model: a scripted model on your machine plans one round and plays two workers, which edit, build, use the device and submit through the real harness image.
 
 ## A long research run
 
@@ -106,7 +106,7 @@ COMPOSE="podman compose" npm run acceptance:judge
 
 `node scripts/steering-acceptance.mjs` runs two rigs with a scripted model on your machine. It checks:
 
-- directives from the teacher pair and their attribution in the next epoch;
+- directives from the teacher pair and their attribution in the next round;
 - an audit block holding a confirmed win, and a cleared audit letting the next one promote;
 - propagation of a champion to the second rig, judged there and shown cross-verified;
 - the supervisor's limits (it cannot submit, and it cannot forge a command);
@@ -116,7 +116,10 @@ COMPOSE="podman compose" npm run acceptance:judge
 
 ## Other acceptance tests
 
-[AGENTS.md](../AGENTS.md#checks) lists the rest, each with when it is needed: control (two rigs), new campaign, machines over SSH, clusters on kind, rig deploy, multi-GPU and Claude Code. Each uses local stand-ins, never a real host or cluster.
+[AGENTS.md](../AGENTS.md#checks) lists the rest, each with when it is needed: control (two rigs), new campaign, machines over SSH, clusters on kind, rig deploy, multi-GPU and Claude Code. Each uses local stand-ins, never a real host or cluster. Two of them check more than their names say:
+
+- **New campaign** (`scripts/campaign-acceptance.mjs`) creates a campaign through the New campaign form, which starts a try of its kit, then starts the campaign's own run from the campaign's page (**Start a run**) with the agents on. The rig gets a model route that nothing answers (`THERMITE_MODEL_BASE_URL=http://127.0.0.1:9/v1`), so control lets the agents start and they fail at once; the script submits the changes itself.
+- **Clusters on kind** (`scripts/cluster-acceptance.mjs`) keeps control's records on a Podman volume. After the slot's rig reports, it tags both rig images `:accept-update`, loads them into kind and restarts control with them. Then it checks that the rig's page offers **Update to these images**, that the rig's new pods run those images and report again, and that its volume claim and secret are unchanged. Only the slot and a CPU rig are tested.
 
 ## Clean up
 

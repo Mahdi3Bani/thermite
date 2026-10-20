@@ -35,7 +35,8 @@ Keep a few changes with known outcomes next to the kit, in a `candidates` folder
 
 Use one of:
 
-- **Try the kit first** on the **New campaign** page, or the **Start another run** card on a campaign's page with **a try of the kit: no agents**. That card refuses a rig whose agents have no model, even for a try: there, use **Try the kit first** or the command line;
+- **Try the kit first** on the **New campaign** page;
+- **Start a run** on a campaign's page: in the panel, choose the rig under **Where it runs**, choose **Off: a try** under **Agents**, and press **Start the run**. A try needs no model, so the rig need not have one. This works for a campaign started from the command line too;
 - `--agents off` on the command line. Run `npx thermite` in your Thermite folder, after `npm ci` and `npm run build` (see [the command line](../../reference/command-line.md)). The example uses the owner's token file of the local stack, `.dev/secrets/control-admin-token`. If you made an owner's token of your own, use its file instead.
 
   ```sh
@@ -49,9 +50,9 @@ The run starts from the project's unchanged commit, and no agent starts.
 
 ## 3. Read the dry run
 
-Open the run's page, and press **refresh** in the status bar, the line along the bottom of the page, now and then.
+From the dashboard, the try's run is named like `sort-speed-try-1`. Open its page: on the campaign's page, press the run's name on its card under **At work now**. Press **refresh** in the status bar, the line along the bottom of the page, now and then.
 
-- **A hill climb:** the judge times the starting point against itself, to learn how much the rig's timings vary. It does this when no other judge work waits, and again every 24 hours. **History** then says, for example, `The judge measured the rig's noise: ±1.84% per block.`, and **Steering › Agent figures** shows it as **Rig noise**. Choose a `min_effect` well above that noise. On a noisy rig, widen `acceptance.equivalence_band` too. This dry run doesn't run the held-out cells: the real improvement in step 5 is the first change they check.
+- **A hill climb:** the judge times the starting point against itself, to learn how much the rig's timings vary. It does this when no other judge work waits, and again every 24 hours. **History** then says, for example, `The judge measured the rig's noise: ±1.84% per block.`, and the **Planner** tab's **Agent figures** show it as **Rig noise**. Choose a `min_effect` well above that noise. On a noisy rig, widen `acceptance.equivalence_band` too. This dry run doesn't run the held-out cells: the real improvement in step 5 is the first change they check.
 - **A goal campaign:** the judge builds the starting point and checks every goal. **History** says, for example, `The judge checked champion #1: 1 of 3 goals met.`, and the run's **Overview** lists each goal with why it is unmet. Each should be unmet for the reason you expect, not because a run failed.
 
 If the starting point does not build, or a run of it fails, **History** shows `The judge's job (…) failed: …` with the cause. Fix the kit, commit it, raise the contract's `version`, and start a new run. For a campaign made on the **New campaign** page, fill in the page again with the same **Campaign name** instead: that saves a new version. If the run never starts, open **Commands** in the sidebar for the reason: [If it is refused](start-from-command-line.md#if-it-is-refused) says what to do for each.
@@ -89,7 +90,7 @@ Submit the real improvement last. Each patch applies to the current champion, so
 
 ## 6. Read the verdicts
 
-Open the run's **Attempts** view. Each change shows its outcome. The dashboard learns a verdict with the rig's next report, within a minute: until then the change shows **Judging**, so press **refresh**. Open one for **What happened to it** and **The judge's reasons**. From the harness container, without the wait, `thermite status --harness http://127.0.0.1:8700 --token-file /run/secrets/harness-proposer-token --attempt <id>` prints its state and verdict.
+Open the run's **Attempts** tab. Each change shows its outcome. The dashboard learns a verdict with the rig's next report, within a minute: until then the change shows **Judging**, so press **refresh**. Open one for **What happened to it** and **The judge's reasons**. From the harness container, without the wait, `thermite status --harness http://127.0.0.1:8700 --token-file /run/secrets/harness-proposer-token --attempt <id>` prints its state and verdict.
 
 Two things can hold a winner back:
 
@@ -101,4 +102,4 @@ Two things can hold a winner back:
 - Each known candidate got the verdict you expected.
 - The dry run met or missed each goal for the reason you expected, or showed a noise well below `min_effect`.
 
-Then start the campaign with agents. For a campaign made on the **New campaign** page, use the **Start the campaign** card on the try's page, with **with agents**. For one started from the command line, assign a new run without `--agents off`: its try's page says to start the campaign below, but has no such card. A rig runs one run at a time, so the new run pauses the try.
+Then start the campaign with agents. The page of a try, a run whose name ends in `-try-` and a number, says **A try of the kit.** and links **start the campaign**: press it, and the **Start a run** panel opens on the campaign's page. Keep **Agents** on **On**, and press **Start the run**. This works for a campaign made on the **New campaign** page and for one started from the command line, which control assigns again as before, now with agents. From the command line, you can also assign a new run without `--agents off`. A rig runs one run at a time, so the new run pauses the try.

@@ -17,7 +17,7 @@ Thermite's limits are of four kinds. Only a cap can stop a run's work, and only 
 | [Back-pressure](#back-pressure) | Holds new work until earlier work settles | Nothing. Work waits, then goes on |
 | [Per-process and per-trial limits](#per-process-and-per-trial-limits) | Bound one build, run, command, check or trial | That one process or trial. The lane goes on |
 
-[Control's own limits](#controls-own-limits) cover commands, requests and lists. [Why Thermite runs until the job is done](../explanation/runs-until-done.md) explains this design, and [Set a budget or a stop time](../how-to/campaigns/budget-and-stop-time.md) shows how to set a cap. The [glossary](glossary.md) explains the terms.
+[The owner's messages](#the-owners-messages) lists how many messages and answers an agent gets, and [Control's own limits](#controls-own-limits) cover commands, requests and lists. [Why Thermite runs until the job is done](../explanation/runs-until-done.md) explains this design, and [Set a budget or a stop time](../how-to/campaigns/budget-and-stop-time.md) shows how to set a cap. The [glossary](glossary.md) explains the terms.
 
 ## Caps
 
@@ -49,7 +49,7 @@ None of these ends research. A trial that ends at its time is followed by the la
 | Lanes planned per epoch | 2 | The contract's `lanes.count`. A redirect's `lane_count` can lower it |
 | Trials per lane per epoch | 3 | The contract's `lanes.trials_per_epoch` |
 | Reminders to a Pi worker | When 85% of the trial's time is used, 10 turns before a turn cap, and at 80% of the model's context window | Fixed |
-| Nudges when a worker stops without submitting | 2 | Fixed (Pi, OpenCode and Claude Code). Then the trial ends |
+| Nudges when a worker stops without submitting | 2. An OpenCode or Claude Code worker is continued again for as long as the owner's messages wait for its trial and its last run made progress | Fixed (Pi, OpenCode and Claude Code). Then the trial ends; the trial's time limit still applies |
 | Time to finish after a submission | 60 s | Fixed (OpenCode and Claude Code) |
 | Model call retries in a Pi trial | Waits of 5 s, doubling to 60 s. The trial ends after 6 failed calls in a row, 5 cut-off replies in a row, or a full context | Fixed |
 | A lane's wait after unproductive trials | 15 s, doubling for each one in a row, at most 10 minutes. Unproductive: an error, no submission, or an attempt that is `rejected_v0` or `duplicate` (research: an error) | Fixed |
@@ -58,11 +58,13 @@ None of these ends research. A trial that ends at its time is followed by the la
 
 ### Epochs and planning
 
+The dashboard calls an epoch a **round**.
+
 | What | Default | Notes |
 | --- | --- | --- |
 | Epoch cap | 3 hours. With `budget.wall_hours`, 6% of it, between 30 minutes and 3 hours | An epoch ends when every lane's trials are done and settled, or at the cap once no trial runs |
 | Fork rounds | Every 20 epochs (epochs 21, 41, …). With `budget.wall_hours`, at one third and two thirds of it | Every lane starts again from the champion |
-| Planner call | 180 s with Pi; 300 s with OpenCode or Claude Code | A failed or timed-out plan, or the planner turned off, gives the fixed fallback plan. Planner trouble never pauses research |
+| Planner call | 180 s with Pi; 300 s with OpenCode or Claude Code | A failed or timed-out plan, or the planner turned off, gives the fixed fallback plan. Planner trouble never pauses research. A research run makes no planner call: a fixed method plans its rounds |
 | Goal campaign: wait for the goal report | Up to 2 hours, or until 3 checks of the champion failed | Then the epoch is planned without it |
 
 ### The judge
@@ -88,7 +90,9 @@ None of these ends research. A trial that ends at its time is followed by the la
 | The model route checked on control | Every 30 s | `THERMITE_MODEL_ROUTE_POLL_SECONDS` |
 | A rig shown as not reporting | After 180 s without a report | `THERMITE_CONTROL_STALE_SECONDS` |
 | A GPU cloud in **Providers** read again: prices, pods and spend | Every 15 minutes, and on **Read again** | Fixed |
-| Teacher reviews of a run | Every 60 minutes | `teacher_minutes` in the advisors file |
+| Advisor rounds | 60 s after the last round ended, never less than 30 s, unless a new owner's message to the teacher pair ends the wait (below) | `THERMITE_POLL_SECONDS` |
+| Teacher reviews of a run | Every 60 minutes, and soon after the owner writes to the teacher pair, or to all the advisors, of a running run | `teacher_minutes` in the advisors file |
+| A new owner's message to the teacher pair, or to all the advisors, looked for between advisor rounds | Every 5 s, when the rig has teachers and its **Teacher pair** switch is on. Finding one ends the wait, and the next round starts; a round under way finishes first | Fixed |
 | An audit or review that failed | Tried again every 30 minutes, at most 5 times, then left to the owner | Fixed |
 | Research digests | Every 60 minutes | The contract's `report_cadence.digest_minutes` |
 | Research fetches | 6 a minute for each domain: a fetch waits, it is never refused for this | The contract's `fetch_policy.per_domain_per_minute` |
@@ -156,6 +160,17 @@ Memory is the sum over all the processes the build or run started, sampled every
 | Judge and development GPUs | 8 of each |
 | GPUs on a rig control sets up on a machine or cluster | 16; 8 on a namespace joined with a join command |
 
+## The owner's messages
+
+None of these ends anything. A message itself is 1 to 4,000 characters (see [Control's own limits](#controls-own-limits)), and [Signed commands](signed-commands.md#message_agent) describes who reads it.
+
+| What | Limit |
+| --- | --- |
+| Messages kept in force | No limit: each one stays in every new trial's brief until the owner removes it |
+| The owner's messages in an advisor's brief or package | Up to 20 that the role has not read. The teachers' brief also shows up to 5 that they read in the last 24 hours |
+| An advisor's answers to the owner's messages | Up to 50 in one answer, each cut to 1,000 characters. One longer than 20,000 characters, or anything else in `answers` that does not fit, empties that advisor's `answers`; its review, audit or verdict still counts. See [Advisors file](advisors-file.md#answers-to-the-owners-messages) |
+| How soon the teacher pair reads a new message | In the next teacher round. While the run is running and no round is under way, that round starts within about 5 s, unless the advisors' spending for the day has reached `max_usd_per_day`. See [The rig and control](#the-rig-and-control) |
+
 ## Control's own limits
 
 | What | Limit |
@@ -178,5 +193,5 @@ Memory is the sum over all the processes the build or run started, sampled every
 | A redirect | 1 to 40 directives, each with a rationale of up to 2,000 characters and up to 20 citations |
 | REST lists | `?limit=` from 1 to 5,000. Defaults: events and live lines 500, audit 200, commands 100, reports 20 |
 | MCP lists | `recent_events`: at most the newest 50 events; `list_commands` (`limit`) and `get_run` (`attempts`): 1 to 500, default 50; `control_log`: 1 to 500, default 100; `rig_reports` and `runpod_tests`: 1 to 50, default 5 |
-| Dashboard lists | A run's newest 300 attempts and 400 history events; the newest 300 audit entries |
+| Dashboard lists | A run's newest 300 attempts and 400 history events; the newest 300 audit entries; a campaign's first 8 **Earlier runs**, then **Show N more**. A run's **Live** first loads its newest 600 lines, then asks every 2 s, while the page is in view, for up to 500 new ones |
 | Request bodies from rigs | Reports 32 MiB; live lines 4 MiB; champion patches 64 MiB; daily reports 1 MiB; command results and supervisor figures 256 KiB |

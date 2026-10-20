@@ -3,10 +3,10 @@
 // data is made up. Start the demo first, then run this with a local Chrome or Chromium:
 //
 //   node --experimental-strip-types scripts/dashboard-demo.ts &
-//   node scripts/docs-screenshots.mjs [--chrome PATH] [--demo http://127.0.0.1:8810]
+//   node scripts/docs-screenshots.mjs [--chrome PATH] [--demo http://127.0.0.1:8810] [--out DIR]
 //
-// It writes WebP files to docs/_site/src/assets/screenshots/. Each shot is the page as a person
-// sees it at 1440×900 in the light theme.
+// It writes WebP files to docs/_site/src/assets/screenshots/ (or --out, to look at them first).
+// Each shot is the page as a person sees it at 1440×900 in the light theme.
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,10 +22,11 @@ const { values } = parseArgs({
     },
     demo: { type: "string", default: "http://127.0.0.1:8810" },
     token: { type: "string", default: "demo-admin-token-0123456789" },
+    out: { type: "string" },
   },
 });
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const out = join(root, "docs/_site/src/assets/screenshots");
+const out = values.out ? resolve(values.out) : join(root, "docs/_site/src/assets/screenshots");
 mkdirSync(out, { recursive: true });
 
 const port = 9300 + Math.floor(Math.random() * 500);
@@ -126,12 +127,17 @@ try {
       `[...document.querySelectorAll('a')].map(a => a.getAttribute('href'))` +
         `.find(h => h === '/ui/campaigns/decode-speed')`,
     )) ?? (await firstLink("/ui/campaigns/"));
+  await go(`${values.demo}${campaign}`);
+  const run = await firstLink(`${campaign}?run=`);
+  const live = await firstLink("/ui/live?run=");
   await go(`${values.demo}/ui/rigs`);
   const rig = await firstLink("/ui/rigs/");
 
   const shots = [
     ["overview", "/ui"],
-    ["campaign", campaign],
+    ["campaigns", "/ui/campaigns"],
+    ["run", run],
+    ["live", live],
     ["rig", rig],
   ];
   for (const [name, path] of shots) {

@@ -57,7 +57,7 @@ On the default base, the apt packages are Debian 12 ("bookworm") packages. The b
 
 GPU rigs need the same image built on a CUDA 12.x development image, with `--build-arg BASE_IMAGE=<image>`. The image's comment says why 12.x: CUDA 13 dropped older GPU architectures. A development image is needed because the CUDA smoke kit builds with `nvcc`. The repository names no exact CUDA image tag. RunPod test pods ask for hosts with CUDA 12.6 or later.
 
-The CPU image has no `nvcc`, so it cannot build GPU kits. Control finds the CUDA image through `THERMITE_RIG_HARNESS_CUDA_IMAGE` (rigs it sets up) and `THERMITE_RUNPOD_TEST_IMAGE` (test pods). Compose runs CPU rigs only.
+The CPU image has no `nvcc`, so it cannot build GPU kits. Control finds the CUDA image through `THERMITE_RIG_HARNESS_CUDA_IMAGE` (rigs it sets up, and the image it moves a cluster rig with GPUs onto) and `THERMITE_RUNPOD_TEST_IMAGE` (test pods). Compose runs CPU rigs only.
 
 ### Users and groups
 

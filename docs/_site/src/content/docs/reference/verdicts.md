@@ -162,7 +162,7 @@ A **run** is a campaign at work on one rig. The rig records one of three states 
 
 ### Run labels on the dashboard
 
-The dashboard shows each run with one label: the first that applies, in this order.
+A run's page and its **Live** header show the run with one label: the first that applies, in this order.
 
 | Label | When |
 | --- | --- |
@@ -174,11 +174,16 @@ The dashboard shows each run with one label: the first that applies, in this ord
 | **Paused** | The run is `paused` |
 | **Running** | Otherwise |
 
+A campaign's page lists its paused and closed runs under **Earlier runs**, with the state **Paused** or **Finished** and, under **Why it stopped**, the reason the run recorded.
+
 ## Campaign states
 
-A **campaign** has no state of its own: its runs do. The dashboard labels a campaign with its most urgent run's label, in this order: **Approval**, **Decision**, **Review**, **Audit**, **Running**, **Paused**, **Closed**. A campaign with no run shows **Idle**.
+A **campaign** has no state of its own: its runs do.
 
-A campaign appears on the **Campaigns** page (in the sidebar) once a rig reports a run of it. A campaign saved on the **New campaign** page with no run yet shows "Saved, with no run yet." on its own page.
+- **The Campaigns page** (in the sidebar) counts a campaign as at work when one of its runs is running, paused when none runs and one is paused, and finished when every run is closed. Campaigns named `rig-check-…`, which the [smoke check](rig-checks.md#smoke-check) makes, are rig checks. The filters are **Active and paused** (the default), **At work**, **Paused**, **Rig checks** and **All**. The default hides finished campaigns and rig checks; **All** shows every campaign. The **Runs** column counts each campaign's runs as "N at work", "N paused" and "N finished".
+- **The sidebar's Campaigns section** lists up to 12 campaigns that have a run that is not closed. Each shows its most urgent run's label, in this order: **Approval**, **Decision**, **Review**, **Audit**, **Running**, **Paused**.
+
+A campaign appears on the **Campaigns** page once a rig reports a run of it. A campaign saved on the **New campaign** page with no run yet is not listed there; its own page says "Saved, with no run yet. Start a run."
 
 ## Other states
 
@@ -195,7 +200,7 @@ A campaign appears on the **Campaigns** page (in the sidebar) once a rig reports
 | Approach family | `live`, `exhausted` | A family becomes `exhausted` when a "not possible" proposal counts it as refuted |
 | Research claim | verified, draft | Verified when every quote is found word for word in its archived source and every number in the claim is in its quotes. A draft lists its problems |
 | Research finding | supported (a finding), draft | A finding counts when every claim it cites is verified and every number in it is in those claims. A draft finding lists its problems. See [Campaign modes](../explanation/campaign-modes.md#research) |
-| Epoch source | `planner`, `fallback` | Who planned the epoch: the planner model, or the fixed plan Thermite uses when the planner fails or is off |
+| Epoch source | `planner`, `fallback` | Who planned the epoch, which the dashboard calls a round. `planner`: the planner model, and History says "The planner planned round N: …". `fallback`: a fixed plan. In a hill climb or goal campaign that is the plan Thermite uses when the planner fails or is off, and History adds "(its fallback plan: …)". A research run's rounds are always `fallback`, with `plan: "research"` in their `epoch_started` event: a fixed method plans them on purpose, and History says "The research plan set round N: …" |
 | Promotion policy | `auto`, `owner_approval` | Set for the run when it is assigned, or the rig's default |
 
 [Signed commands](signed-commands.md) lists the states of a command, and [Stop, restart, remove or reset a rig](../how-to/operate/rig-lifecycle.md) the steps of a full reset.

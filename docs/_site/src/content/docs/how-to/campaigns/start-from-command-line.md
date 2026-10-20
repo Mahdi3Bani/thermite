@@ -58,7 +58,7 @@ With neither `--seed` nor `--seed-commit`, the contract's `project.commit` must 
 ## 3. Check that it started
 
 - On the dashboard, open **Commands** in the sidebar. The **assign campaign** row shows **delivered** once the harness took it, or **failed** with the reason: see [If it is refused](#if-it-is-refused).
-- Open **Campaigns**. The campaign shows once the rig reports its run, usually within a minute. Press **refresh** in the status bar, the line along the bottom of the page: pages don't reload by themselves.
+- Open **Campaigns**. The run shows under **At work now**, and the campaign in the list below, once the rig reports the run, usually within a minute. Press **refresh** in the status bar, the line along the bottom of the page: pages don't reload by themselves.
 - From a script, ask control with the owner's token:
 
   ```sh
@@ -68,7 +68,11 @@ With neither `--seed` nor `--seed-commit`, the contract's `project.commit` must 
 
   Its `status` is `pending`, `delivered`, `rejected`, `failed` or `expired`, and `outcome` holds the rig's answer.
 
-Assigning a run pauses the run that was running on that rig: a rig runs one run at a time. A campaign started this way has no **Start another run** card on the dashboard: assign each further run the same way.
+Assigning a run pauses the run that was running on that rig: a rig runs one run at a time.
+
+## Start further runs
+
+Assign each further run the same way, with a new `--run` name. Or, once the campaign shows on the dashboard, open its page and press **Start a run**: choose the rig under **Where it runs**, **Agents** **On** or **Off: a try**, and press **Start the run**. Control assigns the campaign again as it assigned its newest run, with the same contract, starting commit and imports, as a new run named after the campaign, such as `sort-speed-2`, or `sort-speed-try-1` without agents. **Agents**, and **When a change is confirmed better** under **More options**, come from the panel, not from the old assignment. A run on another rig needs that rig to get the project and the kit the same way: see [Run a campaign on several rigs](several-rigs.md).
 
 ## Send it from an agent over MCP
 

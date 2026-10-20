@@ -105,7 +105,7 @@ You land on the rig's page: "Control is setting rig-1 up on gpu-host-1. Its page
 - ✓ Files and units written, images ready, services started. The first pull of the images can take a while: control allows 30 minutes for this step.
 - ✓ First report reached control. Control waits up to 10 minutes for it.
 
-A step that fails shows ✕ and the reason. When the rig reports, its page fills in: "rig-1 is live; it reported … ago."
+A step that fails shows ✕ and the reason. When the rig reports, its page fills in: "rig-1 is live; it reported … ago." Over MCP, `rig_setup` shows the rig's status there and the same steps, by their ids ([MCP tools](../../reference/mcp-tools.md)).
 
 If the setup step says "rig rig-1 exists on this machine already", an earlier rig of that name left its folder on the machine, and control wrote nothing. Control can't set this rig up again under the same name, so add the rig again under a new name. If you don't need the earlier rig, remove what it left first: on this rig's page, under **Remove it from gpu-host-1**, type `remove rig-1` and press **Remove the rig**. That deletes the earlier rig's units, files and volumes on the machine, with the results in them, and retires this rig. A removed rig's name can't be used again.
 
@@ -124,6 +124,8 @@ The rig's page keeps the **Set up by control** block: the machine, the GPUs (for
 
 - **Stop its services** or **Start its services**, and **Restart them**.
 - **Remove it from gpu-host-1**: type `remove rig-1` and press **Remove the rig**. It deletes the rig's units, files and volumes on the machine and retires its token. The rig's results go with its volumes; control keeps only its events and its champions' patches, so [take the result](../campaigns/take-the-result.md) you need first. The page says `Removed from the machine.`, and the rig stays in **Rigs** as not reporting. To take it off the rig lists too, use **Retire it** at the top of its page: type `retire rig-1` and press **Retire it**.
+
+The rig keeps the images it was set up with: control can't move a rig on a machine onto newer images yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)). Rigs that control set up on a cluster can ([Move a rig onto new images](../operate/rig-lifecycle.md#a-rig-on-a-cluster)).
 
 Next, [check the rig](../operate/check-a-rig.md): **Isolation** has already run at start; run **Judge smoke**. Then [give it a model](../models/connect-a-provider.md).
 

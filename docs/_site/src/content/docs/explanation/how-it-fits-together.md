@@ -36,6 +36,17 @@ Control measures nothing and decides no verdict. It shows what the rigs report a
 
 There is one control service, with one store. That keeps every campaign in one place and makes control simple to run. The price is that steering waits while control is down; the research does not (see [How they talk](#how-they-talk)). [The REST API](../reference/rest-api.md), [the MCP tools](../reference/mcp-tools.md) and [Tokens and roles](../reference/tokens.md) say what each way in offers and who may use it.
 
+### The dashboard's pages
+
+The dashboard follows the levels of the work: a campaign, its runs on the rigs, and what each run's agents are doing.
+
+![The Campaigns list: four runs at work, each a card with what its lanes and judge are doing and the buttons Live, Message and Pause; two decisions under Waiting for you; and All campaigns with its filters and search box](../../../assets/screenshots/campaigns.webp)
+
+- **Campaigns** puts the runs at work now first, then the decisions that wait for you, then one row per campaign: its runs, its best result, its last activity and its rigs. Filters and a search box narrow the list. By default it hides finished campaigns and rig checks (the campaigns named `rig-check-*` that a rig's smoke check makes, when someone runs it); the **All** and **Rig checks** filters show them.
+- **A campaign's page** shows what the campaign is for, its runs at work, and its earlier runs in one table. **Start a run** starts a run of it on a rig you choose, with its agents on or off. Only a rig with the hardware that the campaign's kit measures on can take it. A campaign assigned over the API, MCP or the command line can be started again here too: control assigns it as before, with the same contract, starting point and imports, as a new run.
+- **A run's page** has five tabs: **Overview**, **Experiments**, **Attempts** (with the run's audits and reviews), **History** and **Planner** (the rules for the plan, and the agents' figures). Its header holds **Live**, **Message**, **Pause** (or **Resume**) and, while the run is running, **Restart the lanes** under **⋯**. The **Experiments** tab will hold the run's experiment queue, which is still being built ([goal 064](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/064-experiment-queue.goal)).
+- **Live** shows one run at a time as its agents, its judge and its advisors work. It has a filter for everyone, for each lane, the planner, the judge, the advisors, and your own messages. Under the stream, one message box writes to the run's agents and advisors (see [The owner's messages](#the-owners-messages)). A rig's page still opens that rig's own live view, with every session on the rig.
+
 ## A rig
 
 A rig is one **harness** container and one **supervisor** container, with the devices that it measures on. A rig works on one **run** (one campaign on this rig) at a time, and one machine can host several rigs.
@@ -46,7 +57,7 @@ The two containers are split by what they are trusted with. The harness runs cod
 
 - **The ledger:** the rig's own database, and the authority on everything that happened: campaigns, runs, attempts, measurements, verdicts, champions and steering.
 - **The judge:** it builds each submitted change, measures it against the champion, gives the verdict and promotes winners.
-- **The scheduler and the planner:** they split each run into **lanes**, plan each round of work, and start **trials**.
+- **The scheduler and the planner:** they split each run into **lanes**, plan each round of work, and start **trials**. A research run has no planner: a fixed method plans its rounds, and the record of each round says so (`plan: "research"`).
 - **Workers:** one fresh agent session per trial. Each runs in the rig's **worker harness**, the program that gives the model its tools (Pi, OpenCode v2 or Claude Code), and works in its own copy of the code.
 - **A small broker,** the only part that runs as root. It starts every other process as its own operating-system user, so no agent, build or measured run can read the judge's files.
 
@@ -60,9 +71,9 @@ The supervisor connects the rig to the outside. It runs five loops side by side,
 
 - **Reports:** it sends the harness's new events to control, pushes the rig's results to git and uploads each new champion's patch to control, once a minute by default.
 - **Commands:** it fetches control's pending commands, fetches any project, kit or champion they name, and hands them to the harness. It asks every 5 seconds by default, so a pause or a message lands quickly.
-- **Live view:** it sends the harness's newest live lines to control, for the rig's live view on the dashboard (**Live** in the sidebar).
+- **Live view:** every few seconds, it sends the harness's newest live lines to control, with lines of its own, for **Live** on the dashboard.
 - **Model route:** it hands the harness the agents' model and key chosen on control, by the owner or an operator's agent.
-- **Advisors:** it runs the teachers, the auditor and the review panel, but only those the rig is given, in an advisors file or as models on the rig's **Edit rig** page. [Supervision](supervision.md) explains them.
+- **Advisors:** it runs the teachers, the auditor and the review panel, but only those the rig is given, in an advisors file or as models on the rig's **Edit rig** page. Each step of an advisor round is a line in the run's Live view: what each teacher suggested, the directives set and why, each audit and each review. A message from the owner to the teachers starts their round at once. [Supervision](supervision.md) explains them.
 
 The supervisor does all of the rig's git work. It holds no signing key: it carries commands in and reports out, but it cannot write either one. [Trust between control and rigs](trust.md) explains how that is checked, and [the settings reference](../reference/settings.md#how-often-it-talks-to-control) lists each loop's interval.
 
@@ -101,6 +112,63 @@ sequenceDiagram
 
 To set up and manage a rig, control does connect to the machine over SSH, or to the cluster's API. That reaches the machine or the cluster, never the rig's containers.
 
+## The owner's messages
+
+The owner can write to a run's agents and advisors while they work. The message box is under the run's stream in **Live**, and the **Message** button on a run opens it; the run's **Planner** tab has a box for the planner alone. Each message is a signed command, `message_agent`, that only the owner may issue. An operator's token, which the owner gives an agent that runs campaigns for them, may send one in the owner's name. No worker, planner or advisor can send one. The judge takes no messages: it is code, and no message can change a measurement.
+
+```mermaid
+sequenceDiagram
+  participant O as Owner, in Live
+  participant C as Control
+  participant H as Harness
+  participant A as Agent or advisor
+  O->>C: a message
+  C->>H: message_agent, signed by control, carried by the supervisor
+  H->>H: would anything read it? If not, refused, with why
+  H->>A: the text, when that reader next takes messages
+  A-->>H: read (an advisor also answers)
+  H-->>C: the message, each read and each answer, in its signed events
+  C-->>O: Live shows them
+```
+
+**Who can read it.** A message goes to one of these:
+
+- **everyone working** (`all`): every lane, and the planner of a hill-climb or goal run when the planner is on;
+- one **lane** (`lane-N`), or one **trial** of a lane (`trial:ID`). A message to a trial that ends before it reads it goes to the lane's next trial, which is told so;
+- **the planner**;
+- **the advisors**: all of them (`advisors`), or only the teacher pair (`teachers`), the auditor (`auditor`) or the review panel (`panel`).
+
+Live's box offers all of them but a single trial, which the rig's own live view, the API and MCP can reach.
+
+**Refusals.** The harness refuses a message that nothing would read, and says why. For example: the planner of a research run, a part switched off on **Edit rig**, the auditor of a research run, the review panel of a run with no goal it reviews, a lane the run doesn't have, or a closed run. The command then shows as failed on the **Commands** page, with the reason.
+
+**Kept in force.** A message to everyone working or to a lane can be kept in force (📌 in Live's message box). Every new trial's brief then carries it, under its own heading, until the owner removes it: **Remove** in Live's list of kept messages, or the `unkeep_message` command. Other messages are given once to each reader.
+
+**When each reader reads it.** Each reader (each lane, the planner, and each advisor role) reads a message once; only a message kept in force is read again, by each new trial. A read counts only when the text is put in front of the agent: in its brief, at its next step, in a continued session or in an advisor's package. Fetching a message is not reading it.
+
+| Reader | When it reads a message |
+| --- | --- |
+| A lane with no trial running | In the brief of its next trial |
+| A Pi worker | At its next step: when the model's current turn ends, before its next call to the model |
+| An OpenCode or Claude Code worker | When its current run of `opencode run` or `claude -p` ends without a submission. The harness then continues the session with the message. These programs take no message into a run that is under way, and a run goes on until the model stops by itself, the agent submits or the trial's time is up |
+| Any worker, after it submits | It doesn't. A submission ends the trial, and the lane's next trial reads the message in its brief, where it can act on it |
+| The planner | In its next plan, if its model answers. While the planner is off or its model can't be reached, the message waits |
+| The teacher pair | In a round that starts at once, for a running run. Between rounds, the supervisor looks for new messages to the teachers every few seconds; a round already under way finishes first |
+| The auditor and the review panel | In the package of their next audit or review. One comes only when the judge holds a result for an audit, or a goal needs a review |
+
+**Answers.** Each advisor that reads a message is asked to answer it in one or two sentences, as part of the answer it gives anyway. The supervisor passes the reads and the answers to the harness, which records them. An answer is for the owner only: it can't change a verdict, pause a run or reach a worker. [Supervision](supervision.md#the-owners-messages) says more.
+
+**Records.** The harness keeps all of it in the run's ledger, as events. They reach control in the rig's signed reports, and go into the rig's exports:
+
+| Event | What it records |
+| --- | --- |
+| `agent_message` | The message: its text, who it is for, and whether it is kept in force |
+| `agent_message_read` | Each reader's first read: a lane (with its trial), the planner or an advisor role |
+| `agent_message_unkept` | The owner took a message out of force |
+| `advisor_answer` | An advisor's answer |
+
+Live shows a message when it is sent, a ✓ line as each reader reads it, and each advisor's answer. Its **You** filter gathers them. [Steer a run](../how-to/campaigns/steer-a-run.md) shows how to send one, and the [signed commands reference](../reference/signed-commands.md) gives the command's fields.
+
 ## Where rigs run
 
 The same two images run in each of these ways, and every rig reports to control in the same way, by dialing out:
@@ -113,6 +181,8 @@ The same two images run in each of these ways, and every rig reports to control 
 | **Joined by you** | The same as the two ways above, for a machine or namespace that control cannot connect to | You: a one-time join command sets it up, and the rig's page shows the commands to manage it |
 
 GPU rigs under compose are not built yet ([goal 037](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/037-gpu-compose.goal)). Control can start short test pods on RunPod to check a GPU there, but rigs on RunPod are still being built ([goal 019](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/019-rig-only-entry.goal)).
+
+**New images for a rig on a cluster.** After control itself is updated, it may deploy other images than a rig it set up on a cluster runs. The rig's page then offers **Update to these images**, and MCP has `update_rig_images`. Control applies the rig's two deployments again with its images, then waits for the new pods and for a report from them, and shows each step on the rig's page. Only the deployments change. The rig's secret (so its tokens), its volume, its service and its network rules stay, and so do its runs and results. A trial in progress stops, and the harness plans it again. A stopped rig stays stopped, and runs the new images when it starts. A newer harness upgrades the rig's ledger, so an older image may not open it again. Rigs on machines, and rigs you joined, can't be moved to new images from control yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
 
 The how-to guides give the steps for each way: [Install Thermite on one machine](../how-to/install/one-machine.md), [Add a rig on a machine over SSH](../how-to/install/rig-on-a-machine.md), [Add a rig on a Kubernetes cluster](../how-to/install/rig-on-a-cluster.md) and [Join a rig yourself](../how-to/install/join-a-rig.md). [Stop, restart, remove or reset a rig](../how-to/operate/rig-lifecycle.md) explains what each of those keeps.
 

@@ -63,7 +63,7 @@ These secrets let control set rigs up. They never go to a rig.
 
 - **An SSH key** for a machine is pasted, or made by control for you to add to the machine. Control uses it with the OpenSSH client in its own image, from a file that exists only for the call. You compare and trust the machine's host key once, and control refuses a machine that later presents another one.
 - **A kubeconfig** for a cluster is given to kubectl the same way, in a file that exists only for the call. Control takes only a kubeconfig that holds everything inline: no login plugins and no references to other files.
-- **The rig's own tokens** reach a machine inside the setup script, on standard input, never on a command line. On the machine they sit in a folder that only its user can open. On a cluster they are a Kubernetes secret in the rig's namespace.
+- **The rig's own tokens** reach a machine inside the setup script, on standard input, never on a command line. On the machine they sit in a folder that only its user can open. On a cluster they are a Kubernetes secret in the rig's namespace, which moving the rig onto new images leaves as it is.
 
 A **RunPod key** is sealed too. Control uses it to read the account and to start and stop the test pods you ask for.
 

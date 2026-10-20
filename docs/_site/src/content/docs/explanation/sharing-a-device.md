@@ -57,7 +57,7 @@ Both sides are **pools**:
 - **The judge's pool.** Each judge card has its own executor, its own timing user, its own set of CPUs close to the card, and its own measure of noise. A comparison always times the change and the champion on the same card, in the same job, so cards are never compared with each other. A change that wins its first screening on one card is confirmed on another. Builds run one at a time for the whole rig. All judge cards must be the same GPU model; if they differ, only the first one judges, and the rig says so.
 - **The agents' pool.** A development run takes any free card, and waits only when all of them are busy. A lane still has one development run at a time. There is no time limit unless the contract sets one, because no judge is waiting for the card.
 
-By default the judge gets half the cards, rounded up, and on a machine control sets up, the lowest-numbered ones. For a rig set up with its set of GPUs, **GPUs for the judge** changes the split: on the rig's **Edit rig** page, on the **New campaign** page, or when you start another run of a campaign. A new split restarts the rig's harness: running trials end, and the judge's jobs in progress start over. A rig takes up to 8 cards of each kind.
+By default the judge gets half the cards, rounded up, and on a machine control sets up, the lowest-numbered ones. For a rig set up with its set of GPUs, **GPUs for the judge** changes the split: on the rig's **Edit rig** page, on the **New campaign** page, or under **More options** when you **Start a run** from a campaign's page. A new split restarts the rig's harness: running trials end, and the judge's jobs in progress start over. A rig takes up to 8 cards of each kind.
 
 ## What each choice costs
 

@@ -96,19 +96,27 @@ Now give the judge something to judge. The **Judge smoke** check submits twelve 
 
    A message says that control sent the command to `local-1`.
 
-2. Open **Campaigns** in the sidebar. Within a minute, after a **refresh**, a campaign named `rig-check-smoke-cpu-` and some letters appears. Under its name is one **run**, `check-smoke-` and some letters: the campaign at work on your rig.
+2. Open **Campaigns** in the sidebar. Within a minute, after a **refresh**, the check shows under **At work now**, on a card headed `rig-check-smoke-cpu-` and some letters, then `›` and `check-smoke-` and some letters. The first name is the check's **campaign**. The second is its **run**: the campaign at work on your rig.
 
-   That run is the check. Choose it to watch: its page starts with the line `Run check-smoke-…`, and each change shows up, then gets its verdict. Press **refresh** to see more.
+   Lower down, **All campaigns** says `No campaign here.`, then `Rig checks are hidden`. Control keeps rig checks out of that table unless you ask for them, as you will in step 7.
 
-3. Two or three minutes after you pressed **Run it**, go back to **Rigs** › **local-1** and press **refresh**.
+3. On the card, choose the name `rig-check-smoke-cpu-… › check-smoke-…` to watch the run. Its page has the title `check-smoke-…`, followed by `on local-1 · hill climb · Running`. Its first tab, **Overview**, lists the run's **Attempts**: each change shows up, then gets its verdict. Press **refresh** to see more.
 
-   **Judge smoke** shows **passed**, with `smoke on smoke-cpu: all 12 candidates were judged as expected`. While it works, it shows **running**.
+4. Two or three minutes after you pressed **Run it**, go back to **Rigs** › **local-1** and press **refresh**.
+
+   **Judge smoke** shows **passed**, with `smoke on smoke-cpu: all 12 candidates were judged as expected (run check-smoke-…)`. While it works, it shows **running**.
 
    If it shows **failed**, the sentence beside it says why. The usual reason on a laptop is a computer too busy for fair timing: close other heavy programs and press **Run it** again. See [A check failed](../how-to/operate/troubleshoot.md#a-check-failed).
 
 ## 7. See what the judge decided
 
-Open the check's run again: in **Campaigns**, choose `check-smoke-…`, then **Attempts** in the line at the top of the run. **How the judge decided** counts the judge's **verdicts**, its decision on each change: `invalid 4`, `neutral 3`, `rejected v0 2`, `crash candidate 2` and `win confirmed 1`. Below it, each change is listed by what it tries, and starts with one word for how it ended. Here is what the judge did with some of the twelve:
+Open the check's run again. The check is over, so its run is no longer under **At work now**, and the table hides rig checks. Ask for them:
+
+1. Open **Campaigns** in the sidebar, and choose the filter **Rig checks**, above the table. The table now lists `rig-check-smoke-cpu-…`, marked **rig check**, with `1 finished` under **Runs**.
+2. Choose `rig-check-smoke-cpu-…`. On the campaign's page, under **Earlier runs**, the run `check-smoke-…` shows **Finished**, and **Why it stopped** says `the smoke check is done`.
+3. Choose `check-smoke-…`, then the **Attempts** tab at the top of the run's page.
+
+**How the judge decided** counts the judge's **verdicts**, its decision on each change: `invalid 4`, `neutral 3`, `rejected v0 2`, `crash candidate 2` and `win confirmed 1`. Below it, each change is listed by what it tries, and starts with one word for how it ended. Here is what the judge did with some of the twelve:
 
 | The change | Its word | The verdict | Why |
 | --- | --- | --- | --- |

@@ -83,22 +83,22 @@ The writers and verifiers of the documentation site (goal [060](060-docs-site.go
 - [ ] Saving **Edit rig** is not all or nothing: it stops at the first refused role, and earlier roles stay saved (`src/control/dashboard.ts`).
 - [ ] Small rough edges: a cluster's **Nodes** fact shows raw memory (`8095856Ki`); a joined rig's steps list `✓ First report reached control` twice; the Providers header reads `1 models are read…`; the harness list shows **Pi** for a rig that runs OpenCode v2 from its own settings; a keyless provider's edit form shows `empty keeps the key ending ` with nothing after it; a short key shows as `key …`; Edit rig's message when roles go back to the advisors file repeats itself.
 - [ ] A run started with agents shows **Agents: None** until the planner has planned its first epoch, so it looks as if no agent will work (`src/control/ui/operator.ts`). Found by running tutorial 4.
-- [ ] After **Start the run** on an existing campaign, the page still shows the old run, with no sign that the new one is starting (`src/control/dashboard.ts`). Found by running tutorial 4.
+- [ ] After **Start a run** on an existing campaign, the page shows the campaign page until the rig reports the new run, with no sign that it is starting (`src/control/dashboard.ts`). Found by running tutorial 4.
 - [ ] A change refused by the static checks shows **Judging** for ever, and its page says the judge has not decided: `outcome()` looks for a `rejected_v0` verdict, but such attempts have only a `rejected_v0` lifecycle (`src/control/ui/operator.ts`, `src/harness/service.ts`). When fixed, update the tables in tutorials 1 and 2.
-- [ ] Any run whose name ends in `-try-<n>` is shown as a try of the kit, with a **Start the campaign** card, even when it was started from the command line (`src/control/dashboard.ts`).
-- [ ] The Steering card says "The judge still finishes the jobs already queued", but a paused run's queued jobs wait until it resumes; only the job in progress finishes (`src/control/dashboard.ts`, `src/harness/ledger.ts`).
+- [ ] Any run whose name ends in `-try-<n>` is shown as a try of the kit, even when it was started from the command line; the name is the only check. Its card now links to **Start a run**, which also works for campaigns started from the command line (`src/control/dashboard.ts`).
+- [x] Gone with the run page's Steering tab (goal 063): no dashboard text describes Pause now. The Steering card said "The judge still finishes the jobs already queued", but a paused run's queued jobs wait until it resumes.
 - [ ] An attempt that the static checks refuse shows "Judging" for ever, because it never gets a verdict (`src/control/ui/operator.ts`).
 - [ ] Attempt and verdict words are incomplete: "Lost" covers six verdicts alike, `rejected_v0` and `gating` show as raw states, and `tradeoff` and `infeasible` have no plain word (`src/control/ui/words.ts`).
 - [ ] "Make it the champion" shows the hypothesis, the file names and the line counts, but not the diff, which stays on the rig until it is exported (`src/control/ui/operator.ts`).
 - [ ] No page lists the projects and kits that a rig holds with their full commits; the dashboard shows 8-character prefixes, and full commits are only in events.
-- [ ] The Leaderboard page has no link anywhere in the dashboard (`src/control/ui/components.ts`).
-- [ ] The dashboard sends only avoid, try and always-assign directives, one at a time; `priority`, `lane_count` and `note` need the command line, REST or MCP (`src/control/dashboard.ts`).
-- [ ] An advisor's error shows only as a count on the rig's Advisors row; its text, and a failed teacher's reason, are only in the supervisor's log or files (`src/control/dashboard.ts`, `src/supervisor/advise.ts`).
+- [ ] The Leaderboard page has no link anywhere in the dashboard (`src/control/ui/components.ts`). Since goal 063 removed the campaign page's Cross-verified column, it is the only page that shows cross-verification.
+- [ ] The dashboard sends only avoid, try and always rules, one at a time, from the run's Planner tab, and only adds to the rules in force; `priority`, `lane_count` and `note`, and replacing the rules, need the command line, REST or MCP (`src/control/dashboard.ts`, `src/control/ui/queue.ts`).
+- [x] Fixed in part in `2b16289`: each advisor error, and a teacher that gave no review with its reason, is now a line in Live under **Advisors**. The rig's Advisors row still shows only a count (`src/control/dashboard.ts`, `src/supervisor/advise.ts`).
 - [ ] Accepting a rig's key whose fingerprint changed since the page loaded returns to the rig page with no message (`src/control/dashboard.ts`).
 
 ### New campaign
 
-- [ ] The campaign page's start card refuses a rig with no model even for "a try of the kit: no agents": the model check runs before the card reads the Agents choice (`src/control/dashboard.ts`).
+- [x] Fixed in `b233d44`. The campaign page's start card refused a rig with no model even for "a try of the kit: no agents"; the model check now runs only for a run with agents (`src/control/dashboard.ts`).
 - [ ] New campaign decides whether to start at once from the model's name alone, so the same name from another provider starts the run before the rig has the new model (`src/control/new-campaign.ts`; worked out from the code).
 - [ ] The help for **Questions** says "Every finding must answer one of them", but findings name no question; only claims do (`src/control/ui/new-campaign.ts`).
 - [ ] The try's description says it "runs every case once", but a try of a hill climb measures the starting point's noise on the measured cases only and never runs a hidden case (`src/control/ui/new-campaign.ts`). Found by running tutorial 4.
@@ -247,6 +247,8 @@ The docs describe only what exists. Each gap here is a place where a tester expe
 - 2026-10-19: Goal written from the gaps the docs writers and verifiers recorded.
 - 2026-10-19: Two items fixed on the development branch: rigs on machines that never reported (`4ec8705`), and the planner under OpenCode (`9a8f803`). The docs pages already describe the intended behaviour.
 - 2026-10-19: The development branch also fixed the age of a rig that never reported (`5e4a7d6`), and part of research on OpenCode's free models (`e8a557b`, `301853e`, `d1d34e8`). The docs pages now describe both, and the tutorials no longer call the planner under OpenCode a known fault.
+
+- 2026-10-20: The development branch's goal 063 work (`b233d44` to `eeb7c5b`: new campaign and run pages, Live for one run, the owner's messages) fixed the start card's model check and, in part, where advisor errors show; the Steering card's wording went with the Steering tab. Four other items changed wording and stay open. The docs pages now describe the new screens.
 
 ---
 

@@ -81,7 +81,7 @@ With Podman, use `podman push` the same way. Podman refuses a registry served ov
 
 Push the control image too if control runs from it elsewhere. The local compose stack builds its own images and pulls none.
 
-**Use a new tag for every build.** A machine pulls an image only when it does not have that tag already, and a cluster's pods use `IfNotPresent`. An image pushed again under an old tag never reaches a machine or node that has the old one.
+**Use a new tag for every build.** A machine pulls an image only when it does not have that tag already, and a cluster's pods use `IfNotPresent`. An image pushed again under an old tag never reaches a machine or node that has the old one. Control also offers a rig on a cluster new images only when their names differ from the ones it runs.
 
 ## 3. Tell control
 
@@ -102,10 +102,12 @@ THERMITE_RIG_SUPERVISOR_IMAGE=registry.example.com/thermite/thermite-supervisor:
 
 **Rigs › Add a rig** now lists them under **Images**, and a new rig is set up from them. A GPU rig gets the CUDA harness.
 
+A rig that control set up on a cluster keeps the images it runs until you move it: its page then offers **Update to these images**. See [Move a rig onto new images](../operate/rig-lifecycle.md#a-rig-on-a-cluster).
+
 ## What does not work yet
 
 - **Registry sign-in.** Control gives rigs no credentials for a private registry, so a machine's Podman, or a cluster's nodes, must pull the images without signing in.
-- **Moving a rig to new images.** A rig keeps the images it was set up with. Control can't upgrade it yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)): add a new rig from the new images.
+- **Moving other rigs to new images.** A rig that control set up on a machine, or one you joined yourself (on a machine or in a namespace), keeps the images it was set up with. Control can't move it yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)): add a new rig from the new images. Rigs that control set up on a cluster can move, as above.
 - **Versions reported by the images.** A rig's harness does not report which image it runs ([goal 010](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/010-published-images.goal)). For a rig control set up, its page shows the image names control used.
 
 To add your own tools to the harness, see [Extend the harness image](extend-harness-image.md).

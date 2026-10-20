@@ -60,13 +60,13 @@ Every field this example leaves out takes its default. The repository has one ex
 | `schema_version` | `1` | required | The contract format |
 | `campaign` | id | required | The campaign's name |
 | `version` | integer ≥ 1 | required | The contract's version. Any change needs a new number: a rig refuses the same campaign and version with other content |
-| `title` | text | required | A title for people. Workers' briefs, audits and research reports show it |
+| `title` | text | required | A title for people. Workers' briefs, audits and research reports show it, and so do the dashboard's **Campaigns** page and the campaign's own page, as what the campaign is for |
 | `mode` | `hill_climb`, `goal` or `research` | required | The kind of campaign. It decides which other fields the contract has |
 | `project.repo` | text | required | The project's repository name on the rig. A run's starting commit is imported under this name, which must then be an id. The repository's address is not in the contract: it comes with the run's start (`thermite assign --seed`, or **Repository** on the **New campaign** page). Research contracts have no project, but still give a name, for example `research` |
 | `project.commit` | full commit id | none | A starting commit. The harness does not read it; `thermite assign` uses it when you give no commit of your own |
 | `project.kit.repo` | text | none | The kit's repository name on the rig. A kit is imported under this name, which must then be an id |
 | `project.kit.commit` | full commit id | none | The kit commit the judge uses. Hill climb and goal campaigns need `project.kit`: without it the judge cannot measure |
-| `target.type` | text | none | The kind of device the campaign measures on, such as `cpu` or `cuda-gpu`. Required in hill climb (`hill_climb campaigns need a target`). Control compares it with the rig's target when it starts a run of a saved campaign. The harness compares the kit's own `target` with the rig |
+| `target.type` | text | none | The kind of device the campaign measures on, such as `cpu` or `cuda-gpu`. Required in hill climb (`hill_climb campaigns need a target`). Control compares it with the rig's target when the dashboard starts a run: on the **New campaign** page, or with **Start a run** on the campaign's page. The harness compares the kit's own `target` with the rig |
 | `target.class` | text | none | A name for the device class, such as `generic-cpu`. Required with `target.type`. Accepted, not used yet |
 | `models` | list of `{name, sha256}` | `[]` | [Model files](glossary.md) the campaign uses: data files the project loads that are not in its repository, such as a model's weights. Not the agents' AI model. Each must be on the rig, or imported by the command that starts the run. The kit reaches one as `{models:<sha256>}`, and agents are told where they are |
 | `lanes` | object | `{"count": 2, "trials_per_epoch": 3}` | How the work is split. See [Lanes](#lanes) |
@@ -78,7 +78,7 @@ Every field this example leaves out takes its default. The repository has one ex
 
 ### Lanes
 
-A [lane](glossary.md) is one worker's line of search. An epoch is one round of planning: the planner gives each lane a direction, and each lane then runs its trials one after another.
+A [lane](glossary.md) is one worker's line of search. An epoch is one round of planning: the planner gives each lane a direction, and each lane then runs its trials one after another. The dashboard calls an epoch a **round**.
 
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |

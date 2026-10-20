@@ -56,7 +56,7 @@ Two acceptance tests need Podman and refuse Docker: rig deploy and cluster. [Ins
 | --- | --- | --- |
 | Kubernetes version | No minimum is stated. Control's image carries `kubectl` v1.37.1 | A kind cluster on Podman (cluster acceptance), with kind's default node image. The kind version is not pinned |
 | APIs used | `v1`, `apps/v1`, `networking.k8s.io/v1`; `resource.k8s.io/v1` for GPUs through dynamic resource allocation | |
-| Placements | `created` (control makes the namespace), `slot` (a namespace made for Thermite), `joined` (a namespace join command) | Cluster acceptance tests `created` and `slot`, with CPU rigs only |
+| Placements | `created` (control makes the namespace), `slot` (a namespace made for Thermite), `joined` (a namespace join command) | Cluster acceptance tests `created` and `slot`, with CPU rigs only. In the slot it also moves the rig onto newly tagged images (**Update to these images**), and checks that the rig reports again with its volume claim and secret unchanged |
 | GPUs through the device plugin (`nvidia.com/gpu`) | Control can set a rig up this way | Not tested |
 | GPUs through dynamic resource allocation (a device class) | Control can set a rig up this way | Not tested |
 | NetworkPolicy | Control writes them for `created` and `joined` placements, and checks a slot's rules before it uses the slot. They need a network plugin that enforces them | Cluster acceptance: a created namespace gets its policies, and a slot without the needed rule is refused |
@@ -89,6 +89,16 @@ Without Landlock, and with device nodes that cannot be given their own groups, a
 | Supervisor | Not stated. Claude Code, when built in, comes as its arm64 or x64 package | CI builds it on amd64 |
 
 No test in the repository builds the images for more than one architecture. [Push the images to your own registry](../how-to/install/own-registry.md) builds them yourself, and [Harness image](harness-image.md) lists what each contains.
+
+## Control and rig versions
+
+Control and its rigs do not compare their versions. Control can move a rig it set up on a cluster onto the images it now deploys (**Update to these images** on the rig's page); rigs on machines and joined rigs keep their images ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
+
+| Case | What happens | How it is tested |
+| --- | --- | --- |
+| A rig's harness is older than control | It refuses a command kind it does not have with `malformed command`, and a payload its own schema does not allow with `bad payload: …`. A harness from before messages could be kept in force refuses `unkeep_message` and a `message_agent` to `all`, `teachers`, `auditor` or `panel`, and drops `keep` from other messages, which then are not kept in force | Not tested |
+| A harness opens a ledger an older harness wrote | It upgrades the ledger | The harness's tests |
+| A harness opens a ledger a newer harness upgraded | It refuses the ledger, and the harness does not start: `this ledger is at schema version <n>, newer than this code's <m>: run a newer Thermite, or restore the ledger from before the upgrade`. A rig moved back onto an older image can hit this | The harness's tests |
 
 ## What is not known
 

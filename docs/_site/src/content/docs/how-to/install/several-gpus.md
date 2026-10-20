@@ -41,7 +41,7 @@ Once a rig has its GPU set, three places change the judge's share. When the shar
 
 - **Edit rig**: on the rig's page press **Edit rig**, then under **4 · Where it runs** set **GPUs for the judge**. It says "Now: 2 for the judge, 2 for the agents." The box **What changes when you save** lists the restart. Press **Save changes**.
 - **New campaign**: under **Where it runs** › **Advanced**, **GPUs for the judge**.
-- **A campaign's page**: the **Start another run** form (**Start a run** on a campaign with no run yet) has **GPUs for the judge**.
+- **A campaign's page**: press **Start a run** at the top. The panel has **GPUs for the judge** under **More options**.
 
 :::caution[A campaign changes the whole rig]
 The last two change the rig's split for every run on it, not just the new one, and the restart ends the trials and judge jobs of the other runs there too; they start again. Leave **GPUs for the judge** empty to keep the rig's current split.

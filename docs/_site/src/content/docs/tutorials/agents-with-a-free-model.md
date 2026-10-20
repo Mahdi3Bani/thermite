@@ -114,7 +114,7 @@ You don't need every line. What matters here:
 - `objective`: make `flops_per_s`, the matrix multiply's speed, higher. A change must be at least 10% faster (`min_effect` is 0.1) to count.
 - `cells`: the kit's test cases, which the dashboard calls cases. The judge measures every change on `small` and `large`, and keeps `held` back as a hidden test, run only to double-check a change that already looks better.
 - `editable_paths` and `forbidden_patterns`: the agent may change only files in `src/kernel/`, and may not add a line that matches one of these patterns, such as a call to a timer. A change that breaks either rule is refused before it is built.
-- `lanes`: one **lane**, a line of search worked by one agent at a time. The planner plans in rounds called **epochs**, and in each one the lane gets three trials (`trials_per_epoch`).
+- `lanes`: one **lane**, a line of search worked by one agent at a time. The planner plans in rounds, which the contract calls **epochs** and the dashboard calls rounds. In each one the lane gets three trials (`trials_per_epoch`).
 
 The other fields give the file's format (`schema_version`), the campaign's name and version, the kind of machine it runs on (`target`), and how carefully the judge measures (`acceptance`). [Contract](../reference/contract.md) explains every field.
 
@@ -139,7 +139,9 @@ npx thermite assign --contract contract.json --run smoke-agents-1 \
 
 The command sets no `--promotion`, so the run follows the rig's own rule. On `local-1` that rule is automatic: a change the judge confirms becomes the best version without waiting for you, unless it is held for a second look (see step 8).
 
-Open **Campaigns** in the sidebar. After a minute, press **refresh**: the campaign `smoke-agents` is there, with its run `smoke-agents-1` under it and the state **Running**.
+Open **Campaigns** in the sidebar. After a minute, press **refresh**. Under **At work now**, a card shows `smoke-agents › smoke-agents-1`, on `local-1`: the campaign, then its run. Under **All campaigns**, the row `smoke-agents` shows your contract's title, `Make the smoke project's matrix multiply faster`, and `1 at work` under **Runs**.
+
+For the first few minutes, while the planner works, the card's `lanes` line says `no agents on this run: changes come from people`. Don't worry: `lane-1` takes its place once the planner has given the lane its work.
 
 :::tip[If the run does not appear]
 Open **Commands** in the sidebar. The `assign campaign` line shows **failed**, and its outcome says why. If it says that a kit commit or a seed commit (the project commit a run starts from) is not in `smoke-cpu-kit` or `smoke-cpu-project`, the smoke check has not run on this rig. Run **Judge smoke** (step 6 of [Your first run](first-run.md)), then the same command again.
@@ -147,23 +149,31 @@ Open **Commands** in the sidebar. The `assign campaign` line shows **failed**, a
 
 ## 7. Watch the agent work
 
-Open **Live** in the sidebar, then **local-1**. The header shows your agents: **OpenCode v2**, your model, and `(from opencode)`. On the left, **Sessions** lists **Everything** and a line for each part at work:
+Open **Live** in the sidebar. It shows the run at work, `smoke-agents-1`. The list on its left, **At work**, holds every run at work: here, only this one. In a narrow window that list is hidden, and **☰** in the header shows it. In the header above the lines, the run's name is followed by **Running**, then `local-1` (the rig) and how the run stands: its round and its gain so far. On the right are the buttons **Open the run** and **Pause**.
 
+Under the header is a row of filters, which choose whose lines you see:
+
+- **Everyone** is chosen at first, and shows every line.
+- **lane-1** is the agent itself. It gets a fresh copy of the project, works on one idea, and ends by submitting its change. This is one **trial**, and it lasts at most 20 minutes.
 - **Planner** works first. Before each round of work, it reads what has happened so far and gives each lane a direction to try.
-- **Worker · lane-1** is the agent itself. It gets a fresh copy of the project, works on one idea, and ends by submitting its change. This is one **trial**, and it lasts at most 20 minutes.
-- **Judge** is the code that measures each change. It is not an agent.
+- **Judge** is the code that measures each change. It is not an agent, and takes no messages.
+- **Advisors** shows the rig's advisors, models that review the work, and **You** shows your own messages. You won't need them here.
 
-The worker's line appears when the planner is done, a few minutes after the run starts. Choose **Worker · lane-1**, marked **working**. Each line is one step: a command the agent ran, or a file it read or wrote, with what came back. Most agents look around the project and read `src/kernel/matmul.c`, then change it, build it and try it. Only Live updates itself; other pages need **refresh**.
+The **lane-1** filter appears when the planner is done, a few minutes after the run starts: press **refresh** in the status bar to see it. Choose **lane-1**. A green dot on it means it is working. Its trial starts with the line `lane-1 · trial started` and the direction it was given. Each line after that is one step: a command the agent ran, or a file it read or wrote, with what came back. Most agents look around the project and read `src/kernel/matmul.c`, then change it, build it and try it.
 
-The box at the bottom lets you send the agent a message. You won't need it here: see [Steer a run](../how-to/campaigns/steer-a-run.md). Choose **Judge** and the box says why it takes no messages.
+New lines come in by themselves. The rest of this page, like every other page, needs **refresh**.
+
+The box under the lines sends the agents a message, and its grey text says when they would read it. You won't need it here: see [Steer a run](../how-to/campaigns/steer-a-run.md).
 
 ## 8. Watch the judge decide
 
 The first change takes a while. The planner works for a few minutes, a trial can last up to 20 minutes, and the judge then needs a few minutes to measure what it made. Expect the first verdict about 15 to 30 minutes after the run starts.
 
-When the worker submits its change, the judge takes over. Open **Overview** and look at **What happened**, newest first. You see `lane-1 submitted` with the agent's description of its change, then the judge screening it: building it and measuring it against the champion. The **champion** is the best version so far. At the start it is the project as it was: champion #1.
+When the agent submits its change, the judge takes over. Open **Overview** and look at **What happened**, newest first. You see `lane-1 submitted` with the agent's description of its change, then the judge screening it: building it and measuring it against the champion. The **champion** is the best version so far. At the start it is the project as it was: champion #1.
 
-Then open **Campaigns** and choose the run `smoke-agents-1`. Its page starts with the line `Run smoke-agents-1`, which holds **Overview**, **Attempts**, **History** and **Steering**, then the **Live** and **Pause** buttons. Choose **Attempts**. Each change the agent submitted is an **attempt**, with one word for how it ended. The word sums up the judge's verdict, as in [Your first run](first-run.md#7-see-what-the-judge-decided):
+Then open **Campaigns**, and on the card under **At work now**, choose `smoke-agents › smoke-agents-1`. The run's page opens. Its title, `smoke-agents-1`, is followed by `on local-1 · hill climb · Running`. On the right of the header are the buttons **Live**, **Message**, **Pause** and **⋯**. Below the header are the run's tabs: **Overview**, **Experiments**, **Attempts**, **History** and **Planner**. (**Experiments** will hold the run's queue of experiments, which is not built yet: [goal 064](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/064-experiment-queue.goal).)
+
+Choose **Attempts**. Each change the agent submitted is an **attempt**, with one word for how it ended. The word sums up the judge's verdict, as in [Your first run](first-run.md#7-see-what-the-judge-decided):
 
 | You see | It means |
 | --- | --- |
@@ -176,12 +186,12 @@ Then open **Campaigns** and choose the run `smoke-agents-1`. Its page starts wit
 | **Declined** | You rejected it |
 | **Champion #2** | It was confirmed faster on fresh runs and became the new best version |
 
-[Outcome words on the dashboard](../reference/verdicts.md#outcome-words-on-the-dashboard) lists every word. Open an attempt to read the judge's reasons. Not every idea works, and that is normal: the agent's next trial reads the judge's reasons for its last attempts and tries again. When a change is confirmed faster and nothing holds it, it becomes **champion #2**, every later trial starts from it, and the run's **Champions** chart shows the gain.
+[Outcome words on the dashboard](../reference/verdicts.md#outcome-words-on-the-dashboard) lists every word. Open an attempt to read the judge's reasons. Not every idea works, and that is normal: the agent's next trial reads the judge's reasons for its last attempts and tries again. When a change is confirmed faster and nothing holds it, it becomes **champion #2**, every later trial starts from it, and the **Champions** chart on the run's **Overview** tab shows the gain.
 
 :::tip[Nothing yet after half an hour?]
-- On **Live**, choose **Worker · lane-1**. If it is **working** and new lines keep coming, the agent is still on its idea: wait.
+- On **Live**, choose **lane-1**. If it has its green dot and new lines keep coming, the agent is still on its idea: wait.
 - In **What happened**, a line that says `lane-1's trial` … `ended without a submission` gives the reason. A free model is sometimes busy: `Rate limit exceeded. Please try again later.` The next trial tries again. If every trial ends this way, give the rig another model whose name ends in `-free`, as in step 2, or pause the run (step 9) and resume it later.
-- If **What happened** says that the planner used `its fallback plan`, the planner's call to the model failed, often because a free model was busy. The run goes on with a simple plan, and the next epoch asks the planner again.
+- If **What happened** says that the planner planned a round with `its fallback plan`, the planner's call to the model failed, often because a free model was busy. The run goes on with a simple plan, and the next round asks the planner again.
 :::
 
 ### If a change waits for you
@@ -197,7 +207,9 @@ The item says `You selected Reject it`. After a **refresh**, **What happened** s
 
 ## 9. Pause the campaign
 
-A hill climb never ends by itself, and Thermite sets no time limit unless you ask for one: see [Why Thermite runs until the job is done](../explanation/runs-until-done.md). When you have seen enough, open the run's page (**Campaigns**, then the run `smoke-agents-1`). In the line `Run smoke-agents-1` at the top, press **Pause**, just right of the **Live** button. Within a minute, after a **refresh**, the run shows **Paused**, the button says **Resume**, and the page says `Nothing new starts until it is resumed.`
+A hill climb never ends by itself, and Thermite sets no time limit unless you ask for one: see [Why Thermite runs until the job is done](../explanation/runs-until-done.md). When you have seen enough, open the run's page: **Campaigns**, then `smoke-agents › smoke-agents-1` on the card under **At work now**. In the page's header, press **Pause**, just right of **Message**.
+
+A line at the top of the page says that control sent the command to `local-1`. Within a minute, after a **refresh**, the run shows **Paused** beside its name, and the button says **Resume**. On the **Overview** tab, the **Now** block says `paused from the dashboard` and `Nothing new starts until it is resumed.`
 
 The rig keeps its model. [Your own project](your-own-project.md) uses it.
 

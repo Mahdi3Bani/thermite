@@ -14,7 +14,7 @@ Advisors run in the rig's **supervisor**, the container that connects the rig to
 
 | Advisor | When it acts | What it produces | What it cannot do |
 | --- | --- | --- | --- |
-| **Teacher pair** | On a schedule (hourly by default), for each running run | Recommendations for the planner, each with citations | Set a verdict, change a contract, or talk to workers |
+| **Teacher pair** | On a schedule (hourly by default), for each running run, and at once when the owner writes to it | Recommendations for the planner, each with citations | Set a verdict, change a contract, or talk to workers |
 | **Combiner** | After the teachers | One set of directives merged from their reviews | Add a directive without a citation |
 | **Auditor** | When the judge holds a result for an audit | `clear`, `block` or `needs_owner`, with reasons | Pass a result. An audit can block, never pass |
 | **Review panel** | When a goal needs judgement | A pass or a fail from each reviewer | Meet a goal. Only the owner's acceptance does |
@@ -42,7 +42,7 @@ flowchart LR
 
 ## The teacher pair and the combiner
 
-Each **teacher** is a model that reviews one running run at a time. On its schedule, it gets the run's **brief**, which the harness builds from its ledger: the campaign, the champion, the approach families with their results, recent attempts and epochs, and the directives in force. It holds nothing from hidden test cases, and no worker text beyond each attempt's hypothesis. The owner's messages to **the advisors (next brief)**, sent from the rig's live view (**Live** in the sidebar, then the rig), are added.
+Each **teacher** is a model that reviews one running run at a time. On its schedule, it gets the run's **brief**, which the harness builds from its ledger: the campaign, the champion, the approach families with their results, recent attempts and rounds, and the directives in force. It holds nothing from hidden test cases, and no worker text beyond each attempt's hypothesis. The owner's messages to the teachers, or to all the advisors, are added: those the teachers have not answered yet, and up to five they answered in the last day, so they keep the owner's recent wishes in mind ([The owner's messages](#the-owners-messages)).
 
 A teacher can also read outside sources: web pages from the domains that the advisors file allows, and a [knowledge base](../reference/glossary.md) (a search service over your own notes, reached over MCP) if one is configured. It answers with a summary and a list of recommendations. Each one is a directive, a rationale and **citations**: attempt ids from the brief, web addresses or paper ids.
 
@@ -60,7 +60,7 @@ The judge holds a result back for an **audit** before it can become the champion
 - in a hill climb, the gain is surprisingly large: above the contract's absolute trigger (15% by default), or well above the run's earlier confirmed gains;
 - in a goal campaign, the contract has an adversarial checklist. Then every promotion is audited.
 
-The **auditor** gets the change, the agent's hypothesis and declared flaws, the verdict, and the contract's lists of what does not count. It looks for ways the change could game the measurement, and answers in one of three ways:
+The **auditor** gets the change, the agent's hypothesis and declared flaws, the verdict, and the contract's lists of what does not count, plus any of the owner's messages to it that it has not read. It looks for ways the change could game the measurement, and answers in one of three ways:
 
 | Answer | What happens |
 | --- | --- |
@@ -74,17 +74,30 @@ So **an audit can block, never pass.** The auditor can stop a bad result, but a 
 
 Some goals can't be checked by code, such as the quality of a piece of documentation. Their test is a review. The **review panel** is two to five reviewers in the advisors file, each with a different name, or three reviewers of one model when you choose its model on **Edit rig**. They review the champion's change blind:
 
-- Each reviewer gets the goal, its criteria and the change from the seed. Nothing says which lane or model wrote it.
+- Each reviewer gets the goal, its criteria and the change from the seed, plus any of the owner's messages to the panel that it has not read. Nothing says which lane or model wrote the change.
 - Every reviewer must answer. If one fails to answer, the review is tried again later, so a reviewer that crashed can't lose its vote.
 - The result is a pass only if every reviewer passes it, and only for the run's current champion.
 
 Even then, **the goal is met only when the owner accepts the review.** A panel's pass is advice. A new champion needs a new review.
 
+## The owner's messages
+
+The owner can write to the advisors from a run's **Live** view, in the same message box as for the agents: **To all advisors**, **To the teachers**, **To the auditor** or **To the review panel**. Only the owner can: a message is a signed command in the owner's name, and no worker, planner or advisor can send one ([How the parts fit together](how-it-fits-together.md#the-owners-messages)).
+
+Each advisor reads a message in its next package of work, and answers it there:
+
+- **The teacher pair** doesn't wait for its schedule. Between rounds, the supervisor looks for new messages to the teachers every few seconds. When a running run has one, the teachers' round for that run starts at once; a round already under way finishes first. If the round fails, the message waits for the next one. Each teacher answers on its own, so a pair can give two answers. The combiner doesn't answer.
+- **The auditor** reads it with its next audit, and **the review panel** with its next review. Those come only when the judge holds a result for an audit, or a goal needs a review, so a message to them may wait a long time.
+
+The answer is one or two sentences for each message, by its number, inside the advisor's usual answer. The supervisor passes the reads and the answers to the harness, and Live shows each answer, such as "**the teacher pair (teacher-a) answered you:** …". An answer that is missing or badly formed is dropped, and never costs the review, the audit or its verdict.
+
+A message is refused when no advisor would read it: a role switched off on **Edit rig**, the auditor of a research run (it has no audits), or the review panel of a run with no goal it reviews. The teachers and the auditor are told to take the owner's messages into account. The review panel is told only to answer them, and to decide on the goal's criteria alone. Every advisor still answers in the same strict format, within the limits below.
+
 ## What advisors can and cannot do
 
 Advisors advise; they never judge. That is the same rule as for the agents, and the same reasons apply ([Why agents never judge](why-agents-never-judge.md)). Code enforces it in several ways:
 
-- **A narrow channel.** An advisor's answer reaches the harness only as a directive set, an audit answer or a panel result. None of these can write a verdict, a champion or a contract, pause a run, or message a worker.
+- **A narrow channel.** An advisor's answer reaches the harness only as a directive set, an audit answer, a panel result, or answers to the owner's messages. None of these can write a verdict, a champion or a contract, pause a run, or message a worker. An answer to the owner becomes a line in Live and a record in the run's ledger, and nothing else.
 - **Checked answers.** Every answer must match a strict format. The supervisor checks it, and the harness checks it again.
 - **No shell, no file tools.** Thermite gives no advisor a shell or file tools, because the supervisor holds the rig's keys, and anything an advisor reads may try to give it orders. Teachers can read the brief, and can fetch pages and search a knowledge base where the advisors file sets that up. The auditor can fetch pages from the domains you list. The combiner and the panel get no tools, and neither does any advisor that runs in Claude Code.
 - **Untrusted text stays data.** Advisors are told that fetched pages, changes and hypotheses are data, not instructions.
@@ -94,7 +107,7 @@ An audit or review whose advisor fails is tried again a few times. After that, i
 
 ## Where you see their work
 
-- The rig's live view (**Live** in the sidebar, then the rig) shows each advisor round as it starts and ends.
+- A run's **Live** view, under its **Advisors** filter, shows each step of an advisor round as a line: what each teacher suggested, the directives set for the planner and why, each audit (its attempt, its try, the decision, what came of it and the reasons), each reviewer's decision and the panel's outcome, each answer to your messages, and each advisor error with its text. A line that a round is done comes only when the round did something. The rig's own live view, opened from the rig's page, shows the same lines.
 - A run's history says when a directive took effect, what the auditor decided, and what the review panel decided.
 - **Needs you**, on the **Overview** page, lists audits and reviews that wait for you.
 - The rig's page has an **Advisors** row with their counts and spending.

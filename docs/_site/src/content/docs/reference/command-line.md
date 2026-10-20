@@ -156,7 +156,7 @@ The imports it adds to the payload:
 | `--kit` | `kit_bundle` for the contract's `project.kit` repository and commit | `repos/kit-<repo>-<commit>.bundle` | `{"git": "<GIT_URL>"}` |
 | `--model` | `model` with the contract's SHA-256 for that model | `models/<sha256>` | `{"url": "<URL>"}` |
 
-Sent, it prints control's answer on one line, such as `{"id":"<command id>","status":"pending"}`. [Signed commands](signed-commands.md) describes the `assign_campaign` payload and what the harness checks.
+Sent, it prints control's answer on one line, such as `{"id":"<command id>","status":"pending"}`. [Signed commands](signed-commands.md) describes the `assign_campaign` payload and what the harness checks. The campaign's page on the dashboard can start further runs of it: **Start a run** signs the newest assignment again as a new run, with the same contract, seed and imports. A run on another rig works only if that rig already has what the imports leave out: the seed commit when `--seed` was not given, the kit's commit when `--kit` was not given, and each model the contract lists that no `--model` gave.
 
 | Message | Cause |
 | --- | --- |

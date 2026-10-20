@@ -54,7 +54,7 @@ On **Campaigns › New campaign**:
 
 ## 5. Check that the rig fetched it
 
-The run shows on the campaign's page within a minute or so. Press **refresh** in the status bar, the line along the bottom of the page. If the run doesn't show, open **Commands** in the sidebar: the **assign campaign** row is **failed**, with the reason after `staging:`.
+The run shows on the campaign's page, under **At work now**, within a minute or so. Press **refresh** in the status bar, the line along the bottom of the page. If the run doesn't show, open **Commands** in the sidebar: the **assign campaign** row is **failed**, with the reason after `staging:`.
 
 | Reason | What to do |
 | --- | --- |
@@ -62,7 +62,7 @@ The run shows on the campaign's page within a minute or so. Press **refresh** in
 | `… has no commit …` | The commit is not in that repository, or the access can't read it: use **Try it** on the repository |
 | git's own error, such as `Permission denied (publickey)` | The access can't read the repository: its key is not a deploy key of that repository, or the token can't read it. **Try it** shows the same error |
 
-When it is fixed, start the run again with the **Start a run** card on the campaign's page.
+When it is fixed, start the run again: press **Start a run** at the top of the campaign's page, choose the rig, and press **Start the run**.
 
 ## From the command line
 

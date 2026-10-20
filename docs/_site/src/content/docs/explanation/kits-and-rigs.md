@@ -48,7 +48,7 @@ When a run starts, control sends the rig a signed assignment that names the proj
 - the kit measures on the rig's kind of hardware;
 - every test case, metric and verifier that the contract names is in the kit. The kit and the contract call a test case a **cell**; the dashboard calls it a **case**.
 
-A run that fails these checks never starts, and the refusal says why. On the dashboard, the card that starts another run greys out rigs whose hardware differs from the kit's. From then on, the judge uses the kit on the rig's own device, and the agents use the rig's model.
+A run that fails these checks never starts, and the refusal says why. On the dashboard, a campaign's **Start a run** greys out rigs whose hardware differs from the kit's. From then on, the judge uses the kit on the rig's own device, and the agents use the rig's model.
 
 ## Where each choice is made
 
