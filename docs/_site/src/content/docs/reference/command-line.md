@@ -6,7 +6,7 @@ sidebar:
   order: 5
 ---
 
-`thermite` is Thermite's command line. It checks contracts, makes tokens, starts runs and sends [signed commands](signed-commands.md) through control, enrolls rigs, and talks to a rig's harness. The harness image also holds `thermite-trial`, the command a worker agent uses from its own shell.
+`thermite` is Thermite's command line. It checks the machine it runs on, checks contracts, makes tokens, starts runs and sends [signed commands](signed-commands.md) through control, enrolls rigs, and talks to a rig's harness. The harness image also holds `thermite-trial`, the command a worker agent uses from its own shell.
 
 ```sh
 npx thermite contract validate contract.json
@@ -20,8 +20,8 @@ The first prints `ok`, the contract's mode, name, version and SHA-256. The secon
 
 | Where | How to run it | Used there for |
 | --- | --- | --- |
-| Your computer, in a clone of the repository | `npx thermite <command>`, after `npm ci` and `npm run build`. It runs `dist/cli/thermite.js` and needs Node.js 22.19 or later. With a release's compose stack, link its `.dev/` folder into the clone, as [the command line](../how-to/install/one-machine.md#the-command-line) shows | Contracts, tokens, starting runs, commands, enrolling rigs |
-| Control's image | `thermite` (`/usr/local/bin/thermite`, which runs `node /opt/thermite/dist/cli/thermite.js`) | The same commands, from inside control's container. A release's `init` service runs `local init` from this image |
+| Your computer, in a clone of the repository | `npx thermite <command>`, after `npm ci` and `npm run build`. It runs `dist/cli/thermite.js` and needs Node.js 22.19 or later. With a release's compose stack, link its `.dev/` folder into the clone, as [the command line](../how-to/install/one-machine.md#the-command-line) shows | Checking the machine, contracts, tokens, starting runs, commands, enrolling rigs |
+| Control's image | `thermite` (`/usr/local/bin/thermite`, which runs `node /opt/thermite/dist/cli/thermite.js`) | The same commands, from inside control's container, except `doctor`, which checks the machine it runs on. A release's `init` service runs `local init` from this image |
 | The supervisor's image | `thermite`, the same wrapper | The same commands |
 | The harness image | `thermite`, the same wrapper, and `thermite-trial` | `submit` and `status` against the harness at `http://127.0.0.1:8700`; `selftest isolation`, which must run there, as root |
 
@@ -34,6 +34,12 @@ Under the local compose stack the harness publishes no port, so `submit`, `statu
 ```text
 usage: thermite <command> [options]
 
+  doctor [--control URL] [--model-url URL] [--port N] [--json]
+                                      check this machine: the container engine and its compose
+                                      tool, control's port, disk, the clock, the GPU driver and
+                                      container toolkit where there is a GPU, and whether control
+                                      and the model server answer. It says how to fix each
+                                      problem, and exits 1 when a check fails
   contract validate <file>            validate a contract and print its sha256
   keys generate <dir>                 write a new Ed25519 control signing key pair
   token new --out F                   make a control token: write it to F (mode 0600; keep it,
@@ -85,7 +91,7 @@ usage: thermite <command> [options]
 
 ## Rules for every command
 
-- **Options.** Each option takes its value as the next word or after `=`. In `token new`, `assign`, `assign-payload`, `rig`, `command`, `submit` and `status`, an option the command does not know, or a word it does not expect, ends the command with Node's own message and exit code 2.
+- **Options.** Each option takes its value as the next word or after `=`. In `doctor`, `token new`, `assign`, `assign-payload`, `rig`, `command`, `submit` and `status`, an option the command does not know, or a word it does not expect, ends the command with Node's own message and exit code 2.
 - **Older option names.** `--instance` is read as `--run`, and `--unit` as `--rig`. These are the names from before runs and rigs were renamed.
 - **Control's token.** The commands that talk to control (`assign`, `command`, `rig add`, `rig token`, `rig retire`, `rig list`) send the contents of `--token-file`, trimmed, as `Authorization: Bearer <token>`. Only the owner's token works on these routes; any other token gets `401 {"error":"unauthorized"}`. See [Tokens and roles](tokens.md).
 - **Control's address.** `--control` is control's base address, such as `https://control.example.com`. A trailing `/` is removed.
@@ -96,10 +102,54 @@ usage: thermite <command> [options]
 | Code | When |
 | --- | --- |
 | `0` | The command did its work. Also `thermite`, `help` and `--help` |
-| `1` | `contract validate` found the contract invalid; `selftest isolation` found a probe that was not refused |
+| `1` | `doctor` found a check that failed; `contract validate` found the contract invalid; `selftest isolation` found a probe that was not refused |
 | `2` | Missing or wrong options (the usage text goes to standard error); an unknown command (the usage text goes to standard output); a refused request; any other error, with its message on standard error |
 
 ## Commands
+
+### `doctor`
+
+`thermite doctor` checks the machine it runs on, before control or a rig starts there: the container engine and its compose tool, control's port, free disk, the clock, the GPU driver and NVIDIA's container toolkit where there is a GPU, and whether control and the model server answer. Each check says what it found, and a check that failed or warns says how to fix it. It changes nothing on the machine. Run it on the machine itself, not inside a container: it checks that machine's engine and disks. [Troubleshoot](../how-to/operate/troubleshoot.md#check-the-machine) says when to run it.
+
+```sh
+npx thermite doctor --control https://control.example.com --model-url https://opencode.ai/zen/v1
+```
+
+| Option | Required | Default | Meaning |
+| --- | --- | --- | --- |
+| `--control URL` | No | | Control's address. The doctor checks that this machine reaches control, and compares this machine's clock with control's. On a rig's machine, give control's address for rigs. A trailing `/` is removed |
+| `--model-url URL` | No | | The model server's address: the provider's base URL, as on **Settings › Providers**. `host.docker.internal` and `host.containers.internal`, the containers' names for this machine, are checked at `127.0.0.1` |
+| `--port N` | No | `THERMITE_CONTROL_PORT`, else `8800` | Control's port on `127.0.0.1`, as the compose file publishes it: a whole number from 1 to 65535. Otherwise: `--port is a port number from 1 to 65535`, exit 2 |
+| `--json` | No | | Print `{"ok": true or false, "checks": [...]}` instead of text. Each check has `check`, `title`, `status`, `said` and, for a failure or a warning, `fix` |
+
+The checks, in the order it runs them:
+
+| Check (`check`) | What it looks at | Fails when | Warns when | Skipped when |
+| --- | --- | --- | --- | --- |
+| Container engine (`engine`) | `docker --version` and `docker info`; `podman --version` and `podman info`. A `docker` command that is Podman's stand-in counts as Podman | Neither is installed, or none answers. The fix depends on the engine and the system, such as `podman machine start` on a Mac | | |
+| Compose tool (`compose`) | For each engine that answers: `docker compose version`, else `docker-compose version`; `podman compose version`, else `podman-compose version` | No compose tool works | | No engine answers |
+| Control's port (`port`) | Whether a program listens on `127.0.0.1` at the port. If one does, whether it is control: `GET /v1/health` | Another program has the port | | |
+| Disk (`disk`) | Free space for the engine's images: Podman's own numbers (`podman info`), or on Linux the file system of Docker's root folder. Free space in the current folder | Under 5 GB for the images, or under 1 GB in the folder | Under 15 GB for the images, or under 5 GB in the folder | Neither can be read. Docker Desktop's own disk can't be read: the check says where to look |
+| Clock (`clock`) | With `--control`: control's `Date` header. Without it, on Linux: `timedatectl`, whether the system says its clock is synchronized | More than 300 s from control's clock. Control refuses a rig's reports from more than 5 minutes ahead | More than 30 s from control's clock, or not synchronized | Without `--control` on macOS, or on Linux without `timedatectl`; or when control does not answer |
+| GPU driver (`gpu-driver`) | On Linux, with an NVIDIA GPU (`/dev/nvidia0`, `/proc/driver/nvidia/gpus`, or an NVIDIA display controller in `lspci`): `nvidia-smi` | `nvidia-smi` is missing or fails | | No NVIDIA GPU, or macOS |
+| GPU container toolkit (`gpu-toolkit`) | `nvidia-ctk --version`, and a CDI spec at `/etc/cdi/nvidia.yaml` or `/var/run/cdi/nvidia.yaml` | Either is missing | | No NVIDIA GPU, or macOS |
+| Control (`control`) | `GET /v1/health` at `--control` | No answer, or an answer that is not control's | | No `--control` |
+| Model server (`model`) | `GET` at `--model-url`. Any HTTP answer counts, even `401` or `404`: the rig's [Model route check](rig-checks.md) tests the model itself | No answer | | No `--model-url` |
+
+A request waits at most 10 seconds. A failed request says why: nothing listens at the address, the name does not resolve, no answer in time, or a TLS certificate this machine does not trust.
+
+The text report has one line for each check. The line starts with `ok`, `WARN`, `FAIL` or `skip`, then the check's name and what it found. A failure or a warning has a second line, `Fix:` and what to do:
+
+```text
+ok    Container engine: Podman 5.2.1 answers.
+ok    Compose tool: podman compose works.
+FAIL  Control's port: Port 8800 is in use by another program. Control needs this port for its dashboard and API.
+      Fix: Stop that program. To find it, run lsof -nP -iTCP:8800 -sTCP:LISTEN. Or use another port: put THERMITE_CONTROL_PORT=8801 in a .env file next to compose.yaml. Then run thermite doctor --port 8801.
+ok    Disk: 47.1 GB is free for Podman's images in its virtual machine. 306.2 GB is free in this folder.
+skip  Clock: Give --control to compare this clock with control's clock.
+```
+
+The last line counts them: `No check failed.` and the number of warnings, or the number of failed checks and warnings, then `Fix the failures, then run thermite doctor again.` The command exits 0 when no check failed, whatever the warnings and skipped checks, and 1 when one failed.
 
 ### `contract validate`
 

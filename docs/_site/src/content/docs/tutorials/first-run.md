@@ -64,7 +64,7 @@ You see three lines, one each for `control`, `harness` and `supervisor`, and eac
 - **harness** and **supervisor** together make a **rig**: the place where research happens. The harness holds the judge and the agents. The supervisor is the rig's link to control. This rig is called `local-1`.
 
 :::tip[If a line is missing or its status isn't `Up`]
-Read that container's log, for example `docker compose logs harness` (or `podman compose logs harness`). If `up` stopped with `address already in use`, another program has port 8800: see [The port is already in use](../how-to/operate/troubleshoot.md#the-port-is-already-in-use). [Troubleshoot](../how-to/operate/troubleshoot.md) has the other common problems.
+Read that container's log, for example `docker compose logs harness` (or `podman compose logs harness`). If `up` stopped with `address already in use`, another program has port 8800: see [The port is already in use](../how-to/operate/troubleshoot.md#the-port-is-already-in-use). [Troubleshoot](../how-to/operate/troubleshoot.md) has the other common problems. It starts with `thermite doctor`, which checks Docker or Podman, the port, disk and the clock, and says how to fix each problem it finds.
 :::
 
 ## 4. Sign in

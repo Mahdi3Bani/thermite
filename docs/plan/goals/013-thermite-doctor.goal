@@ -1,17 +1,17 @@
 ---
 id: "013"
 title: "`thermite doctor`"
-status: READY
+status: VERIFIED
 version: "0.1.0"
 part: "Install from images"
 depends_on: []
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # 013 · `thermite doctor`
 
-**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Install from images
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Install from images
 
 ## What
 
@@ -23,12 +23,13 @@ Most first-run failures are in the machine, not in Thermite.
 
 ## Done when
 
-- [ ] `thermite doctor` runs on Linux and macOS, and each check has a test.
-- [ ] The troubleshooting page uses it.
+- [x] `thermite doctor` runs on Linux and macOS, and each check has a test.
+- [x] The troubleshooting page uses it.
 
 ## Decisions
 
-None yet.
+- 2026-10-20, builder: The doctor fails only on what stops Thermite: no engine that answers, no compose tool, control's port taken by another program, under 5 GB for the images or 1 GB in the folder, a clock more than 5 minutes from control's (control refuses reports dated further ahead), a GPU without a working driver or container toolkit, and control or the model server not answering. Less room and a smaller clock drift are warnings. It exits 1 on a failure, never on a warning.
+- 2026-10-20, builder: Control and the model server are checked only when `--control` and `--model-url` name them; the doctor contacts no address of its own choosing.
 
 ## Open questions
 
@@ -37,6 +38,7 @@ None.
 ## Progress
 
 - 2026-10-19: Goal written from the v0.1.0 release plan.
+- 2026-10-20: Built. `thermite doctor` (`src/cli/doctor.ts`) checks the container engine and its compose tool, control's port, disk, the clock, the GPU driver and NVIDIA's container toolkit where there is a GPU, and whether control and the model server answer. Each finding says what is wrong and how to fix it, in plain sentences; `--json` gives the same as data. `src/cli/doctor.test.ts` covers every check with stand-ins for the probes, and the command's usage and option check. Run on macOS with Podman (all checks), and on Linux in a Debian container with Node 22 (no engine there, so the engine checks failed as they should). The engine and GPU checks on a real Linux machine are covered by the stand-ins only. Pages: `reference/command-line` (the command, its options and checks), `how-to/operate/troubleshoot` (Check the machine, and the entries it helps with), `project/getting-help` and `reference/settings` (`THERMITE_CONTROL_PORT`).
 
 ---
 
