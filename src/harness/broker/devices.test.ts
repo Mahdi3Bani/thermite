@@ -183,7 +183,8 @@ describe("a dedicated development card", () => {
       { argv: ["/usr/bin/taskset", "-c", "10-19", "bench"], uid: 10030, gid: 10500 },
     );
     assert.throws(
-      () => launch({ argv: ["bench"], cpus: "1" }, undefined, undefined, undefined),
+      // An empty path stands for a tool the image lacks (undefined would find the host's own).
+      () => launch({ argv: ["bench"], cpus: "1" }, undefined, undefined, ""),
       /taskset/,
     );
   });
@@ -209,7 +210,7 @@ describe("a dedicated development card", () => {
         "-L",
       ],
     });
-    assert.throws(() => launch({ ...base, groups: [10502] }, undefined), /setpriv/);
+    assert.throws(() => launch({ ...base, groups: [10502] }, ""), /setpriv/);
   });
 
   test("the controller reads the broker's layout, or why there is none", () => {
