@@ -43,7 +43,7 @@ const src = (by: string) => {
 export function triedResult(
   r: RunView,
   x: ExperimentView,
-): { cls: "win" | "wait" | "loss" | "flat" | "done" | "none"; text: string } {
+): { cls: "win" | "wait" | "loss" | "broken" | "flat" | "done" | "none"; text: string } {
   if (x.state === "dropped")
     return {
       cls: "none",
@@ -66,8 +66,19 @@ export function triedResult(
     };
   const o = outcome(r, a);
   const waits = r.pending_promotions.includes(a.id);
+  // The filters by the outcome's own word: a win; one waiting for you; not better than the
+  // champion ("Lost"); broken or blocked; anything else (unclear, declined, a duplicate, judging).
   return {
-    cls: waits ? "wait" : o.tone === "ok" ? "win" : o.tone === "bad" ? "loss" : "flat",
+    cls:
+      waits || o.word === "Needs you"
+        ? "wait"
+        : o.tone === "ok"
+          ? "win"
+          : o.word === "Lost"
+            ? "loss"
+            : o.tone === "bad"
+              ? "broken"
+              : "flat",
     text: `${a.id}: ${o.word}${waits ? ", waits for you" : ""}`,
   };
 }
@@ -98,13 +109,17 @@ export function experimentsTab(o: {
     ...extra,
   });
   const item = (x: ExperimentView, i: number) =>
-    `<div class="qi" draggable="true" data-id="${esc(x.id)}" data-rig="${esc(u.id)}" data-run="${esc(r.id)}"><span class="qh" title="Drag to reorder">⋮⋮</span><span class="qn">${i + 1}</span><div class="qmain"><div class="qt">${esc(x.title)}</div>${x.why ? `<div class="qwhy">${esc(x.why)}</div>` : ""}<div class="qmeta">${src(x.by)}${x.family ? `<span class="qdir">${esc(x.family)}</span>` : ""}${x.from_run ? `<span class="muted xs">from ${esc(x.from_run)}</span>` : ""}</div></div><div class="qacts">${i > 0 ? o.cmd({ rig: u.id, kind: "queue_move", fields: fields(x, { position: "top" }), label: "↑ Top", cls: "sm ghost", back: o.back }) : ""}<details class="menu"><summary class="btn sm ghost">Drop</summary><div class="menu-pop">${o.cmd({ rig: u.id, kind: "queue_drop", fields: fields(x), label: "Drop it", cls: "sm danger", back: o.back, extra: `<input name="why" required placeholder="why" aria-label="Why" style="width:100%;margin-bottom:6px">` })}</div></details></div></div>`;
+    `<div class="qi" draggable="true" data-id="${esc(x.id)}" data-rig="${esc(u.id)}" data-run="${esc(r.id)}"><span class="qh" title="Drag to reorder">⋮⋮</span><span class="qn">${i + 1}</span><div class="qmain"><div class="qt">${esc(x.title)}</div>${x.why ? `<div class="qwhy">${esc(x.why)}</div>` : ""}<div class="qmeta">${src(x.by)}${x.family ? `<span class="qdir">${esc(x.family)}</span>` : ""}${x.from_run ? `<span class="muted xs">from ${esc(x.from_run)}</span>` : ""}</div></div><div class="qacts">${i > 0 ? o.cmd({ rig: u.id, kind: "queue_move", fields: fields(x, { position: "top" }), label: "↑ Top", cls: "sm ghost", back: o.back }) : ""}<details class="menu"><summary class="btn sm ghost">Edit</summary><div class="menu-pop qedit">${o.cmd({ rig: u.id, kind: "queue_edit", fields: fields(x), label: "Save", cls: "sm", back: o.back, extra: editFields(x) })}</div></details><details class="menu"><summary class="btn sm ghost">Drop</summary><div class="menu-pop">${o.cmd({ rig: u.id, kind: "queue_drop", fields: fields(x), label: "Drop it", cls: "sm danger", back: o.back, extra: `<input name="why" required placeholder="why" aria-label="Why" style="width:100%;margin-bottom:6px">` })}</div></details></div></div>`;
+  // An experiment's words, to change before a lane takes it.
+  const editFields = (x: ExperimentView) =>
+    `<label class="sfd">${infoLabel("What to try", "The experiment's title: what a lane works on.")}<input name="title" required maxlength="200" value="${esc(x.title)}"></label><label class="sfd">${infoLabel("Details", "More on how to try it, for the lane that takes it. Empty: none.")}<textarea name="details" rows="3" maxlength="4000">${esc(x.details ?? "")}</textarea></label><label class="sfd">${infoLabel("Direction", "The approach it belongs to. Rules apply by direction.")}<input name="family" maxlength="80" value="${esc(x.family)}"></label><label class="sfd">${infoLabel("Why", "Why it is worth trying. Empty: none.")}<input name="why" maxlength="2000" value="${esc(x.why ?? "")}"></label>`;
   const add = `<form class="qadd" method="post" action="/ui/commands"><input type="hidden" name="csrf" value="${esc(o.csrf)}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(r.id)}"><input type="hidden" name="kind" value="queue_add"><input type="hidden" name="back" value="${esc(o.back)}">
 <label class="sfd">${infoLabel("Add an experiment", "Something for a lane to try. It joins the queue where you put it; the planner gives it to a free lane when it reaches the top, and keeps two lanes off the same thing.")}<input name="title" required maxlength="200" placeholder="for example: unroll the dequantize loop by 4"></label>
 <label class="sfd">${infoLabel("Direction", "The approach it belongs to, in your words or one this run has used. The planner keeps similar work on the same lane, and rules apply by direction.")}<input name="family" maxlength="80" list="qfams" placeholder="optional"><datalist id="qfams">${o.families.map((f) => `<option value="${esc(f)}">`).join("")}</datalist></label>
 <label class="sfd">${infoLabel("Where", "Its place in the queue. You can drag it later.")}<select name="position"><option value="top">at the top</option><option value="end">at the end</option></select></label>
 <button class="primary">Add</button>
-<label class="sfd qwhy-f">${infoLabel("Why", "Shown with the experiment to the planner and to the lane that gets it.")}<input name="why" maxlength="2000" placeholder="optional"></label></form>`;
+<label class="sfd qwhy-f">${infoLabel("Why", "Shown with the experiment to the planner and to the lane that gets it.")}<input name="why" maxlength="2000" placeholder="optional"></label>
+<label class="sfd qwhy-f">${infoLabel("Details", "More on how to try it, for the lane that takes it.")}<textarea name="details" rows="2" maxlength="4000" placeholder="optional"></textarea></label></form>`;
   const working = Object.entries(r.at_work)
     .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
     .map(([lane, w]) => {
@@ -118,7 +133,7 @@ export function experimentsTab(o: {
         `<div class="qidea"><div>${esc(x.title)}</div>${x.why ? `<div class="muted xs">${esc(clip(x.why, 200))}</div>` : ""}<div class="muted xs">${src(x.by)} · ${esc(ago(x.at, o.now))} ago</div><div class="qb">${o.cmd({ rig: u.id, kind: "queue_accept", fields: fields(x), label: "Queue it", cls: "sm", back: o.back })}${o.cmd({ rig: u.id, kind: "queue_drop", fields: fields(x, { why: "the owner dropped this idea" }), label: "Drop", cls: "sm ghost", back: o.back })}</div></div>`,
     )
     .join("");
-  const counts = { win: 0, wait: 0, loss: 0, flat: 0, done: 0, none: 0 };
+  const counts = { win: 0, wait: 0, loss: 0, broken: 0, flat: 0, done: 0, none: 0 };
   const triedRows = tried
     .map((x) => {
       const res = triedResult(r, x);
@@ -134,12 +149,12 @@ ${add}
 <div class="qlist" id="qlist">${up.map(item).join("") || `<div class="card"><div class="empty">Nothing queued. The planner adds experiments as it plans; you can add one above.</div></div>`}</div>
 </div><div class="qside">
 <div class="card qcard"><h3>In progress</h3>${working || `<div class="muted small">No lane is at work.</div>`}</div>
-<div class="card qcard"><h3>Ideas from the lanes <span class="muted small">wait for the planner</span></h3>${ideaRows || `<div class="muted small">None waiting. Lanes propose ideas while they work.</div>`}${ideaRows ? `<div class="muted xs">The planner queues or drops these at its next hand-out. You can decide first.</div>` : ""}</div>
+<div class="card qcard"><h3>Ideas from the lanes <span class="muted small">wait for the planner or you</span></h3>${ideaRows || `<div class="muted small">None waiting. Lanes propose ideas while they work.</div>`}${ideaRows ? `<div class="muted xs">The planner's model queues or drops these at its next hand-out, and you can decide first. Without its model (none set, its answer refused, the planner off, or a research run) they wait for you.</div>` : ""}</div>
 </div></div>
 <div class="block" style="margin-top:26px" id="tried"><div class="head"><h2>Tried</h2><span class="n">${tried.length}</span><span class="right">every experiment that ended, with its result, newest first</span></div>
 ${
   tried.length
-    ? `<div class="ktools" id="qf">${chip("all", "All", tried.length)}${chip("win wait", "Wins", counts.win + counts.wait)}${chip("loss", "Slower or broke a goal", counts.loss)}${chip("flat", "No gain", counts.flat)}${counts.done ? chip("done", "Research finished", counts.done) : ""}${chip("none", "No attempt or dropped", counts.none)}</div>
+    ? `<div class="ktools" id="qf">${chip("all", "All", tried.length)}${chip("win wait", "Wins", counts.win + counts.wait)}${chip("loss", "Not better", counts.loss)}${chip("broken", "Broken or blocked", counts.broken)}${chip("flat", "Other results", counts.flat)}${counts.done ? chip("done", "Research finished", counts.done) : ""}${chip("none", "No attempt or dropped", counts.none)}</div>
 <div class="card flat"><table class="ktable"><thead><tr><th>Experiment</th><th>Direction</th><th>Added by</th><th>Where</th><th>Result</th><th>When</th></tr></thead><tbody id="qtried">${triedRows}</tbody></table></div>`
     : `<div class="card"><div class="empty">Nothing tried yet.</div></div>`
 }</div>`;

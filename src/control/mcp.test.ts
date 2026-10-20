@@ -111,7 +111,7 @@ describe("control over MCP", () => {
     const known = env.service.queue.all("js-1")[0];
     assert.ok(known);
     const from = (id: string) => ({
-      title: "t",
+      title: "words of the caller's own",
       by: "planner",
       state: "queued",
       from: { run: "js-1", id },
@@ -133,11 +133,18 @@ describe("control over MCP", () => {
     const signed = store.db
       .prepare("select signed from command where kind = 'assign_campaign'")
       .get() as { signed: string };
+    const copied = (
+      JSON.parse(signed.signed) as {
+        envelope: { payload: { queue: { by: string; title: string }[] } };
+      }
+    ).envelope.payload.queue;
+    // The known one's author and words are control's record; the unknown one is "copied".
     assert.deepEqual(
-      (
-        JSON.parse(signed.signed) as { envelope: { payload: { queue: { by: string }[] } } }
-      ).envelope.payload.queue.map((x) => x.by),
-      ["owner", "copied"],
+      copied.map((x) => [x.by, x.title]),
+      [
+        ["owner", "unroll the loop"],
+        ["copied", "words of the caller's own"],
+      ],
     );
     const audit = store.listAudit(100).map((a) => a.action);
     assert.ok(audit.includes("mcp:issue_command"));

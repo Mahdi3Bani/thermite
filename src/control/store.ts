@@ -983,26 +983,55 @@ export class ControlStore {
   }
 
   /**
-   * Who added an experiment to a run's queue, from the rigs' signed events (any rig's current
-   * ledger): what a copied experiment's author is checked against. Undefined if not found once.
+   * An experiment as the rigs' signed events left it (one rig's current ledger): who added it,
+   * and its words after every edit. What a copied experiment is taken from. Undefined when no
+   * rig, or more than one, has it.
    */
-  experimentAuthor(run: string, id: string): string | undefined {
+  experimentRecord(
+    run: string,
+    id: string,
+  ):
+    | {
+        by: string;
+        title: string;
+        details?: string | undefined;
+        family?: string | undefined;
+        why?: string | undefined;
+      }
+    | undefined {
     const rows = this.db
       .prepare(
-        `select e.body from rig_event e join rig r on r.id = e.rig and r.ledger_id = e.ledger_id
-         where e.kind = 'experiment_added' and e.subject = ? and json_extract(e.body, '$.id') = ?`,
+        `select e.rig, e.kind, e.body from rig_event e join rig r on r.id = e.rig and r.ledger_id = e.ledger_id
+         where e.subject = ? and e.kind in ('experiment_added', 'experiment_edited')
+           and json_extract(e.body, '$.id') = ?
+         order by e.rig, e.event_id`,
       )
-      .all(run, id) as { body: string }[];
-    const by = new Set<string>();
+      .all(run, id) as { rig: string; kind: string; body: string }[];
+    if (new Set(rows.filter((r) => r.kind === "experiment_added").map((r) => r.rig)).size !== 1)
+      return undefined;
+    let x:
+      | { by: string; title: string; details?: string; family?: string; why?: string }
+      | undefined;
     for (const r of rows) {
+      let b: Record<string, unknown>;
       try {
-        const b = JSON.parse(r.body) as { by?: unknown };
-        if (typeof b.by === "string") by.add(b.by);
+        b = JSON.parse(r.body) as Record<string, unknown>;
       } catch {
-        // not an event this store can read
+        continue;
       }
+      const str = (k: string) => (typeof b[k] === "string" ? (b[k] as string) : undefined);
+      if (r.kind === "experiment_added") {
+        const by = str("by");
+        const title = str("title");
+        if (!by || !title) return undefined;
+        x = { by, title, details: str("details"), family: str("family"), why: str("why") };
+      } else if (x)
+        for (const k of ["title", "details", "family", "why"] as const) {
+          const v = str(k);
+          if (v !== undefined) x[k] = v;
+        }
     }
-    return by.size === 1 ? [...by][0] : undefined;
+    return x;
   }
 
   /** One run's newest live lines, newest last (for the Live page's first view). */

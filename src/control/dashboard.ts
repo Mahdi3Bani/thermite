@@ -980,6 +980,12 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         modelNote = `${rig.id} takes ${model} within a minute. When the rig shows it, start the run here.`;
       }
     }
+    // Control gave the rig a model it has not taken yet: saved now, started once it has.
+    const pending = store.rigModels()[rig.id];
+    if (!chosen && startValue === "start" && pending && rig.model?.model !== pending.model) {
+      startValue = "save";
+      modelNote = `${rig.id} has not taken ${pending.model} yet (it does within a minute of being given it). When the rig shows it, start the run here.`;
+    }
     if (!chosen && startValue === "start" && agentsModelMissing(rig))
       return newCampaignPage(c, {
         draft,
@@ -1252,8 +1258,11 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           agents,
           promotion: promotion === "auto" || promotion === "owner_approval" ? promotion : undefined,
           by: "owner:ui",
+          // A try (agents off) has no queue; a command carries at most 500 experiments.
           queue:
-            String(f.copy_queue ?? "") === "1" ? untried(vs, String(f.copy_from ?? "")) : undefined,
+            agents && String(f.copy_queue ?? "") === "1"
+              ? untried(vs, String(f.copy_from ?? "")).slice(0, 500)
+              : undefined,
         },
       );
     } catch (err) {
@@ -1335,7 +1344,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         `${note}${
           waiting
             ? `<div class="card" style="margin-bottom:16px"><b>Starting ${esc(waiting)}.</b> <span class="muted">The rig fetches the project and the kit and checks both; the run shows here once the rig reports it, usually within a minute.</span></div>`
-            : `<div class="card" style="margin-bottom:16px"><div class="empty">Saved, with no run yet. <a href="${campaignHref(name)}?start=1" data-open="#start">Start a run.</a></div></div>`
+            : `<div class="card" style="margin-bottom:16px"><div class="empty">${saved.length ? "Saved on control, with no run yet." : "Assigned to a rig over the API, MCP or the CLI; no run of it reports now."} <a href="${campaignHref(name)}?start=1" data-open="#start">Start a run.</a></div></div>`
         }${drawer}`,
         vs,
       );
@@ -3418,6 +3427,8 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
     images: "Its deployments applied with new images",
     images_running: "Its pods run the new images",
     report_after_images: "A report reached control from the new images",
+    pods_running: "Its pods run again",
+    report_after_start: "A report reached control after the start",
   };
   /**
    * Waits for a new rig's first report (or, with `after`, a report after that time), for at most
@@ -3428,10 +3439,13 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
     setStatus: (s: string) => void,
     minutes = 10,
     after?: number,
+    o: { step?: string; still?: () => boolean } = {},
   ) => {
-    const step = after === undefined ? "first_report" : "report_after_images";
+    const step = o.step ?? (after === undefined ? "first_report" : "report_after_images");
     const deadline = Date.now() + minutes * 60_000;
     while (Date.now() < deadline) {
+      // Stopped or removed meanwhile: the wait ends with nothing to say.
+      if (o.still && !o.still()) return;
       if (
         views().some(
           (u) => u.id === rig && (after === undefined || Date.parse(u.last_seen) > after),
@@ -3443,6 +3457,7 @@ ${x.error ? `<div class="dq-why bad">${esc(x.error)}</div>` : ""}${x.findings.le
       }
       await sleep(5000);
     }
+    if (o.still && !o.still()) return;
     store.rigSetupEvent(
       rig,
       step,
@@ -3995,11 +4010,23 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     }
   };
   /** Waits for a rig's new pods, for at most 15 minutes, then for a report from them. */
-  const awaitNewPods = async (r: ClusterRig, k: Cluster & { kubeconfig_sealed: string }) => {
+  const awaitNewPods = async (
+    r: ClusterRig,
+    k: Cluster & { kubeconfig_sealed: string },
+    why: "images" | "start" = "images",
+  ) => {
     const n = clusterNames(r.rig);
     const set = (st: string) => store.setClusterRigStatus(r.rig, st);
+    // The status this wait is for: a stop or a removal meanwhile ends it.
+    const waiting = why === "images" ? "updating" : "starting";
+    const still = () => store.clusterRig(r.rig)?.status === waiting;
+    const [pods, report] =
+      why === "images"
+        ? ["images_running", "report_after_images"]
+        : ["pods_running", "report_after_start"];
     const deadline = Date.now() + 15 * 60_000;
     for (;;) {
+      if (!still()) return;
       const out = await kube.kubectl(
         clusterTarget(k),
         ["get", "deployment", n.harness, n.supervisor, "-n", r.namespace, "-o", "json"],
@@ -4008,15 +4035,17 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       );
       if (out.code === 0 && rolledOut(out.stdout)) break;
       if (Date.now() > deadline) {
-        const why = out.code === 0 ? "" : `: ${kubeError(out)}`;
-        store.rigSetupEvent(r.rig, "images_running", false, `not running after 15 minutes${why}`);
+        if (!still()) return;
+        const err = out.code === 0 ? "" : `: ${kubeError(out)}`;
+        store.rigSetupEvent(r.rig, pods, false, `not running after 15 minutes${err}`);
         set("failed");
         return;
       }
       await sleep(5000);
     }
-    store.rigSetupEvent(r.rig, "images_running", true);
-    await awaitFirstReport(r.rig, set, 10, Date.now());
+    if (!still()) return;
+    store.rigSetupEvent(r.rig, pods, true);
+    await awaitFirstReport(r.rig, set, 10, Date.now(), { step: report, still });
   };
   /**
    * Moves a rig control set up on a cluster onto control's current images (its page, or MCP's
@@ -4043,9 +4072,15 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     const old = r.spec.images;
     const k = store.cluster(r.cluster);
     if (!k) return { error: `The cluster ${r.cluster} is no longer in Providers.` };
+    // One change at a time: an update or a start still waiting for its pods is not overlapped.
+    if (r.status === "updating" || r.status === "starting")
+      return {
+        error: `${rig} is ${r.status === "updating" ? "being updated" : "starting"}: wait until its page shows it running, or failed.`,
+      };
     const addressOnly = old.harness === images.harness && old.supervisor === images.supervisor;
     // After a failed update the images are already recorded: applying them again retries it.
-    if (addressOnly && r.status !== "failed") {
+    const retry = addressOnly && r.status === "failed";
+    if (addressOnly && !retry) {
       // Same images: only a changed address for control is worth a restart.
       const now = await kube.kubectl(
         clusterTarget(k),
@@ -4069,11 +4104,6 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       if (now.code !== 0 || was === undefined || was === opts.publicUrl.replace(/\/$/, ""))
         return { ok: `${rig} already runs control's images.` };
     }
-    // One change at a time: an update or a start still waiting for its pods is not overlapped.
-    if (r.status === "updating" || r.status === "starting")
-      return {
-        error: `${rig} is ${r.status === "updating" ? "being updated" : "starting"}: wait until its page shows it running, or failed.`,
-      };
     const stopped = r.status === "stopped";
     const out = await kube.kubectl(
       clusterTarget(k),
@@ -4094,21 +4124,28 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
           : "",
       ]
         .filter(Boolean)
-        .join("; ") || `control's address for rigs → ${opts.publicUrl}`;
+        .join("; ") ||
+      (retry
+        ? "the same images again, after a failed change"
+        : `control's address for rigs → ${opts.publicUrl}`);
     store.rigSetupEvent(rig, "images", true, stopped ? `${changed}; at its next start` : changed);
     store.audit(by, "cluster_rig_images", { rig, from: old, to: images });
     if (stopped)
       return {
-        ok: addressOnly
-          ? `${rig} gets control's new address when it starts again.`
-          : `${rig} runs the new images when it starts again.`,
+        ok: retry
+          ? `${rig} runs control's images when it starts again.`
+          : addressOnly
+            ? `${rig} gets control's new address when it starts again.`
+            : `${rig} runs the new images when it starts again.`,
       };
     store.setClusterRigStatus(rig, "updating");
     void awaitNewPods(r, k).catch(() => {});
     return {
-      ok: addressOnly
-        ? `${rig}'s pods restart with control's new address.`
-        : `${rig}'s pods restart on the new images.`,
+      ok: retry
+        ? `${rig}'s pods restart on control's images again (a retry).`
+        : addressOnly
+          ? `${rig}'s pods restart with control's new address.`
+          : `${rig}'s pods restart on the new images.`,
     };
   };
   if (opts.actions) opts.actions.updateRigImages = updateClusterRigImages;
@@ -4475,7 +4512,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     if (action === "start" || action === "restart") {
       // Running once its pods are and it has reported, as after an update.
       store.setClusterRigStatus(r.rig, "starting");
-      void awaitNewPods(r, k).catch(() => {});
+      void awaitNewPods(r, k, "start").catch(() => {});
     } else store.setClusterRigStatus(r.rig, action === "stop" ? "stopped" : "removed");
     if (action === "remove") store.retireRig(r.rig, by);
     store.audit(by, `cluster_rig_${action}`, { rig: r.rig, cluster: r.cluster });
@@ -5163,7 +5200,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       id: "planner",
       name: "Planner",
       does: "Before each round of trials, it reads what the agents found and gives each worker its next direction.",
-      off: "Workers get the fixed plan that Thermite makes without a model.",
+      off: "Lanes take queued experiments in order, by the fixed rules. Rules that name a direction still apply; free-word rules need the planner's model.",
     },
     {
       id: "auditor",
@@ -5516,9 +5553,20 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       queue_add: {
         run,
         title: String(f.title ?? "").trim(),
+        ...(String(f.details ?? "").trim() ? { details: String(f.details).trim() } : {}),
         ...(String(f.family ?? "").trim() ? { family: String(f.family).trim() } : {}),
         ...(String(f.why ?? "").trim() ? { why: String(f.why).trim() } : {}),
         position: f.position === "end" ? "end" : "top",
+      },
+      // Each field as the form has it: emptied details or why are cleared; a title and a
+      // direction stay unless given.
+      queue_edit: {
+        run,
+        id: String(f.id ?? ""),
+        ...(String(f.title ?? "").trim() ? { title: String(f.title).trim() } : {}),
+        details: String(f.details ?? "").trim(),
+        ...(String(f.family ?? "").trim() ? { family: String(f.family).trim() } : {}),
+        why: String(f.why ?? "").trim(),
       },
       queue_move: {
         run,

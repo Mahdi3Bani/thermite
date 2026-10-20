@@ -725,7 +725,10 @@ describe("worker trial", () => {
     assert.deepEqual(ideas, [
       { title: "unroll the tail", why: "the profile", family: "unroll", details: undefined },
     ]);
-    assert.match(String(replies[0]), /proposed x-0123456789ab: it waits for the planner/);
+    assert.match(
+      String(replies[0]),
+      /proposed x-0123456789ab: it waits until the planner or the campaign.s owner queues it/,
+    );
     assert.match(String(replies[1]), /an idea needs a title/);
   });
 

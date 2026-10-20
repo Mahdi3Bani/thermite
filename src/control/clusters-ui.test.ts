@@ -645,7 +645,13 @@ describe("clusters in Providers and Add a rig", () => {
     const dropped = await call("set_cluster_slots", { cluster: "lab", slots: ["thermite-slot-3"] });
     assert.ok(dropped.error);
     assert.match(String(dropped.body.error), /thermite-slot-2 still holds a rig \(cpu-2\)/);
-    // An image update over MCP, as on the rig's page: nothing to do while the images match.
+    // An image update over MCP, as on the rig's page: refused while the rig still starts, then
+    // nothing to do while the images match.
+    assert.match(
+      String((await call("update_rig_images", { rig: "cpu-2" })).body.error),
+      /cpu-2 is starting: wait until its page shows it running, or failed/,
+    );
+    store.setClusterRigStatus("cpu-2", "running"); // its first report (the fake has no rig)
     assert.deepEqual(await call("update_rig_images", { rig: "cpu-2" }), {
       error: false,
       body: { rig: "cpu-2", said: "cpu-2 already runs control's images." },

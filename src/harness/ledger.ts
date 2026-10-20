@@ -14,6 +14,14 @@ import { MIGRATIONS } from "./schema.ts";
  * also appends an event, so the supervisor can stream changes with a cursor.
  */
 
+/** A rule's kind and what it names, to tell the same rule set again. */
+function ruleKey(body: unknown): string {
+  const b = (body ?? {}) as { kind?: unknown; family?: unknown; match?: unknown };
+  return `${String(b.kind ?? "")}|${String(b.family ?? b.match ?? "")
+    .trim()
+    .toLowerCase()}`;
+}
+
 export class LedgerError extends Error {
   readonly code: "conflict" | "not_found" | "invalid" | "stale";
 
@@ -1152,6 +1160,24 @@ export class Ledger {
    */
   addDirectiveSet(run: string, author: string, bodies: unknown[], replace: boolean): number[] {
     return this.tx(() => {
+      let keep = bodies;
+      // A rule the owner removed never comes back with an advisor's or the planner's next set;
+      // only the owner can set it again.
+      if (!author.startsWith("control:")) {
+        const gone = new Set(
+          this.all<Row>("select body from directive where run = ? and status = 'dropped'", run).map(
+            (r) => ruleKey(JSON.parse(String(r.body))),
+          ),
+        );
+        const left = bodies.filter((b) => gone.has(ruleKey(b)));
+        if (left.length) {
+          keep = bodies.filter((b) => !gone.has(ruleKey(b)));
+          this.appendEvent(author, "directives_left_out", run, {
+            rules: left,
+            why: "the owner removed these rules",
+          });
+        }
+      }
       if (replace) {
         const old = this.all<Row>(
           "select id from directive where run = ? and author = ? and status = 'active'",
@@ -1168,7 +1194,7 @@ export class Ledger {
           this.appendEvent(author, "directives_superseded", run, { ids: old });
         }
       }
-      return bodies.map((b) => this.addDirective(run, author, b));
+      return keep.map((b) => this.addDirective(run, author, b));
     });
   }
 

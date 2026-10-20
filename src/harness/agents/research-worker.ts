@@ -150,7 +150,7 @@ export async function runResearchTrial(
         spec.folder
           ? `${RESEARCH_SYSTEM}\n\n${researchFolderNote(spec.folder)} Use the file tools (list_files, read_file, search_files, write_file, remove_file) for it.`
           : RESEARCH_SYSTEM
-      }${deps.idea ? "\n\nTo propose another research task for the run's queue, use the idea tool: the planner decides whether it is queued, and your trial goes on." : ""}`,
+      }${deps.idea ? "\n\nTo propose another research task for the run's queue, use the idea tool: the planner or the campaign's owner decides whether it is queued, and your trial goes on." : ""}`,
       model,
       tools,
       thinkingLevel,

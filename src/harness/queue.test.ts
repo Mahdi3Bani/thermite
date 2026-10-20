@@ -308,11 +308,13 @@ describe("the owner's queue commands", () => {
     );
   });
 
-  test("a closed run's queue does not change", async () => {
+  test("a closed run's queue and rules do not change", async () => {
     const s = await setup();
     s.env.service.ledger.setRunStatus(RUN, "closed", "done", "test");
     const r = await s.command("queue_add", { run: RUN, title: "late" });
     assert.match(String(r.result.error), /run smoke-1 is closed/);
+    const d = await s.command("drop_directive", { run: RUN, id: 1 });
+    assert.match(String(d.result.error), /run smoke-1 is closed/);
   });
 
   test("drop_directive removes a rule in force, whoever set it; a rule names a family or match words", async () => {
@@ -345,6 +347,26 @@ describe("the owner's queue commands", () => {
     assert.equal(e?.actor, "control:owner:ui");
     const gone = await s.command("drop_directive", { run: RUN, id: supervisorIds[0] });
     assert.match(String(gone.result.error), /no rule \d+ in force in run smoke-1/);
+    // The advisors' next set cannot bring back a rule the owner removed; the owner can.
+    const again = s.env.service.addDirectives(
+      RUN,
+      [
+        { kind: "try", family: "unroll", rationale: "r", citations: ["a-2"] },
+        { kind: "avoid", family: "gather", rationale: "r", citations: ["a-2"] },
+      ],
+      "supervisor",
+    );
+    assert.equal(again.length, 1, "only the new rule");
+    assert.deepEqual(s.events("directives_left_out").at(-1)?.body, {
+      rules: [{ kind: "try", family: "unroll", rationale: "r", citations: ["a-2"] }],
+      why: "the owner removed these rules",
+    });
+    const owner = await s.command("redirect", {
+      run: RUN,
+      directives: [{ kind: "try", family: "unroll", rationale: "back", citations: [] }],
+      replace: false,
+    });
+    assert.ok(owner.accepted, JSON.stringify(owner));
     // A rule's direction is a family or match words, never both, and match is for avoid, try or
     // mandate only: control's own check refuses the rest before signing.
     for (const bad of [

@@ -77,7 +77,9 @@ export async function proposeIdea(
       family: str("family", 80),
       details: str("details", 4000),
     });
-    return text(`proposed ${out.experiment}: it waits for the planner. Your trial goes on.`);
+    return text(
+      `proposed ${out.experiment}: it waits until the planner or the campaign's owner queues it or drops it. Your trial goes on.`,
+    );
   } catch (err) {
     return text(`the idea was not recorded: ${err instanceof Error ? err.message : String(err)}`);
   }
@@ -140,7 +142,7 @@ own timings are only for your guidance and never count. Keep changes inside the 
 are given. If you find a flaw in your own change, list it in known_flaws: hiding it is worse than
 a smaller result. If you cannot make a useful change, explain why in your final message without
 submitting. If you see another experiment worth trying that is not your assignment, propose it
-with the idea tool: the planner decides whether it is queued, and your trial goes on.`;
+with the idea tool: the planner or the campaign's owner decides whether it is queued, and your trial goes on.`;
 
 function text(t: string) {
   return { content: [{ type: "text" as const, text: t }], details: {} };

@@ -537,7 +537,7 @@ ${researchCommands()}
 
 Only pages fetched with "thermite-trial research fetch" are archived, and only archived sources can verify a claim: a page you read another way (your own web search, curl, a fetch from code) verifies nothing until you fetch it with that command.
 
-To propose another research task for the run's queue (the planner decides whether it is queued; your trial goes on): thermite-trial idea TITLE [--why TEXT] [--family TEXT]
+To propose another research task for the run's queue (the planner or the campaign's owner decides whether it is queued; your trial goes on): thermite-trial idea TITLE [--why TEXT] [--family TEXT]
 
 ${researchFolderNote(folder)} Your shell starts in your working area; use grep, rg and your file tools on the folder.
 

@@ -84,7 +84,7 @@ const OWNER_ONLY = new Set([
 export const AdvisorQueueRequest = z.strictObject({
   run: z.string().min(1).max(100),
   /** The advisor role that proposes them: it is recorded as who added or moved each one. */
-  role: z.enum(["teacher", "auditor", "panel"]),
+  role: z.enum(["teacher", "auditor"]),
   add: z
     .array(
       z.strictObject({
@@ -492,7 +492,7 @@ export class HarnessService {
       }
       case "drop_directive": {
         const p = CommandPayloads.drop_directive.parse(payload);
-        this.requireRun(p.run);
+        this.openRun(p.run);
         this.ledger.dropDirective(p.run, p.id, by);
         return { run: p.run, dropped: p.id };
       }

@@ -170,7 +170,7 @@ export async function trialCli(
       ...opt("family", 80),
       ...opt("details", 4000),
     })) as { experiment: string };
-    return `proposed ${out.experiment}: it waits for the planner, who queues it or drops it. Your trial goes on.`;
+    return `proposed ${out.experiment}: it waits until the planner or the campaign's owner queues it or drops it. Your trial goes on.`;
   }
   return USAGE;
 }

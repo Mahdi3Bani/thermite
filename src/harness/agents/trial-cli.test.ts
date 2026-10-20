@@ -115,7 +115,10 @@ describe("thermite-trial, Thermite's tools in an agent's own shell", () => {
       env,
       call,
     );
-    assert.match(out, /^proposed x-0123456789ab: it waits for the planner/);
+    assert.match(
+      out,
+      /^proposed x-0123456789ab: it waits until the planner or the campaign.s owner queues it/,
+    );
     assert.deepEqual(calls, [
       {
         method: "POST",

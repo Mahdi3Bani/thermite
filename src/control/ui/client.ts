@@ -196,6 +196,8 @@ export const CLIENT_JS = `
       const chosen = start.querySelector("select[name=agents_model]");
       const picked = chosen && chosen.value ? decodeURIComponent(chosen.value.split("|")[1] || "") : "";
       if (pick) pick.hidden = !agents || !!has;
+      // Experiments to copy are for agents: a try (agents off) has no queue.
+      start.querySelectorAll("[data-agents-only]").forEach((el) => { el.hidden = !agents; });
       if (line) line.textContent = has ? "The rig's agents, on " + has + "." : "This rig has no model for its agents yet: pick one below.";
       if (sum) sum.textContent = rig ? "Starts a new run on " + rig.value + (agents ? ", with agents on " + (picked || has || "a model you pick") + "." : ", as a try: the judge only.") : "Choose a rig.";
     };
@@ -222,7 +224,15 @@ export const CLIENT_JS = `
       el.addEventListener("dragend", () => { el.classList.remove("drag"); ql.querySelectorAll(".over").forEach((x) => x.classList.remove("over")); });
       el.addEventListener("dragover", (ev) => { ev.preventDefault(); el.classList.add("over"); });
       el.addEventListener("dragleave", () => el.classList.remove("over"));
-      el.addEventListener("drop", (ev) => { ev.preventDefault(); el.classList.remove("over"); if (dragged && dragged !== el) { ql.insertBefore(dragged, el); send(dragged); } });
+      // Dropped on an item's lower half, it goes after that item (so also below the last one).
+      el.addEventListener("drop", (ev) => {
+        ev.preventDefault();
+        el.classList.remove("over");
+        if (!dragged || dragged === el) return;
+        const box = el.getBoundingClientRect();
+        ql.insertBefore(dragged, ev.clientY > box.top + box.height / 2 ? el.nextSibling : el);
+        send(dragged);
+      });
     });
   }
   // The Tried table's filters.
