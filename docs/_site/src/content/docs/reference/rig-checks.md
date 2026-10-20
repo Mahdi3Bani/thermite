@@ -110,7 +110,19 @@ It prints the whole report as JSON and exits with 1 when isolation does not hold
 | `build-overwrite` | Write | A file of a stored build. Skipped before any build exists |
 | `run-kit-write`, `run-kit-create` | Write, create a file | A run's read-only copy of kit files, made the way the judge makes it |
 | `controller-environ` | Read | The environment of the harness's controller process |
+| `pid1-environ` | Read | The environment of the container's first process, which holds what the container was started with |
 | `device:<node>` | Open | Each GPU device node, for roles that must not use the device |
+
+One more probe must find nothing: `runpod-variables` looks for RunPod's variables (`RUNPOD_` and a name) in the role's own environment and in every process environment the role can read. Its result is `none`, or `FOUND` with each name and where it was found.
+
+In the [one-container rig image](harness-image.md#the-one-container-rig-image), every role must also be refused these:
+
+| Probe | Tries to | What |
+| --- | --- | --- |
+| `supervisor-home` | List | The supervisor's state folder |
+| `supervisor-token` | Read | The supervisor's copy of its token for the harness API |
+| `inbox-list` | List | The inbox, which the supervisor fills for the controller |
+| `supervisor-environ` | Read | The environment of the supervisor's process. Skipped when no supervisor runs |
 
 ### Probes that must succeed
 
@@ -122,6 +134,17 @@ It prints the whole report as JSON and exits with 1 when isolation does not hold
 
 On a rig with one shared device, the `run` user and development runs are not probed for devices. See [Sharing a device](../explanation/sharing-a-device.md).
 
+### The one-container image
+
+In the [one-container rig image](harness-image.md#the-one-container-rig-image) (`THERMITE_ONE_CONTAINER=1`), the selftest first checks the container as a whole, from its own process. The report lists these under `container`:
+
+| Check | Passes with | What it checks |
+| --- | --- | --- |
+| `supervisor-user` | `uid 10001, gid 10001, no_new_privs` | Every supervisor process runs as the `supervisor` user and group (real, effective, saved and file ids), and cannot gain privileges. It waits up to 10 seconds for a supervisor that is still starting |
+| `supervisor-gpu` | `refused` or `no GPU node`, with the fence: `(fence: landlock)` or `(fence: none)` | What the supervisor's user met opening each GPU device node, started the way the supervisor is. The broker tries it when it starts, and again when it regroups the cards, and records it in `supervisor.json` in its socket's folder |
+| `setid-files` | `none` | No setuid or setgid file on the container's own filesystem. Other mounts and the scratch folder are left out. `none (<n> folders not readable)` counts the folders the selftest's user could not list |
+| `runpod-variables` | `none (read <n> of <m> processes)` | No `RUNPOD_` variable in the environment of PID 1 or any process started under it. A shell opened in the container from outside is left out. Without `CAP_SYS_PTRACE` a process can read only the environments of its own user's processes: as root, PID 1 and the broker; as the controller, its own |
+
 ### Results
 
 Each probe's result is the error the operation met (refused, as it must be), `readable` or `reachable` (succeeded, where it must), `sees <ids>` (`visible-gpus` listed exactly the role's card), or one of these failures:
@@ -131,15 +154,27 @@ Each probe's result is the error the operation met (refused, as it must be), `re
 | `ALLOWED` | A probe that must be refused succeeded |
 | `UNREADABLE <error>`, `UNREACHABLE <error>` | A probe that must succeed was refused |
 | `WRONG GPUS <ids>` | `nvidia-smi` showed other cards than the role's own |
-| `failed: exit <code> <stderr>` | The probe script itself failed |
+| `FOUND <what>` | Something that must not be there: a RunPod variable, or a set-id file |
+| `OPENED <nodes>` | The supervisor's user opened a GPU device node |
+| `WRONG USER: <ids>`, `WRONG: <why>` | The supervisor runs as another user or group, or can gain privileges |
+| `MISSING: <what>` | No supervisor process, or no record of it from the broker |
+| `failed: <error>` | The probe script itself failed, or a probe could not run |
 
 | Summary | Meaning |
 | --- | --- |
 | `isolation holds: every probe of <n> roles came out as it must (devices: <devices>)` | Passed |
-| `isolation does NOT hold (devices: <devices>): <role> <probe>: <result>; …` | Failed. Up to 12 failures are listed |
-| `isolation does NOT hold (devices: <devices>): the device setup failed` | The dedicated GPU layout could not be set up |
+| `isolation does NOT hold (devices: <devices>): <role> <probe>: <result>; …` | Failed. Up to 12 failures are listed, those of the container first, as `container <check>: <result>` |
+| `isolation does NOT hold (devices: <devices>): the device setup failed` | The GPU's device nodes could not be set up |
 
-`<devices>` is `shared`, `dedicated: judge <nodes>, development <nodes>`, or `dedicated, NOT SET UP: <error>`. The details hold every probe's result for every role, and the probes that were skipped.
+`<devices>` is one of these:
+
+- `shared (fence: <fence>)`: one device for all, with how the broker keeps the other roles off it. `groups`: the device nodes' group; `groups+landlock`: the group and the GPU fence; `landlock`: the fence alone, where the nodes keep the owner and mode they came with, as on RunPod;
+- `shared`: one device, with no record from the broker of how;
+- `shared, NOT SET UP: <error>`: the broker could neither give the nodes to the `gpu` group nor fence them;
+- `dedicated: judge <nodes>, development <nodes>`;
+- `dedicated, NOT SET UP: <error>`.
+
+The details hold every probe's result for every role, the container's checks, and the probes that were skipped.
 
 ## Smoke check
 

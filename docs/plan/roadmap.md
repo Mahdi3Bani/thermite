@@ -69,7 +69,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 
 - [018](goals/018-runpod-spike.goal) RunPod spike · `IN_PROGRESS`
 - [019](goals/019-rig-only-entry.goal) Control reaches RunPod rigs through RunPod's proxy · `IN_PROGRESS`
-- [020](goals/020-runpod-rig-image.goal) A one-container rig image · `READY`
+- [020](goals/020-runpod-rig-image.goal) A one-container rig image · `IN_PROGRESS`
 - [021](goals/021-enrollment-codes.goal) Enrollment codes · `READY`
 - [022](goals/022-runpod-launch.goal) Launch a rig on RunPod · `READY`
 - [023](goals/023-runpod-lifecycle.goal) Stop, start and terminate RunPod rigs · `READY`
