@@ -228,6 +228,12 @@ The docs today are twelve dense pages, written for the people who built Thermite
   - `public/robots.txt` points to the sitemap.
 
   The policy was tested in headless Chrome against the built site, served with those headers. Diagrams, code copy buttons, the theme and search all work, with no policy errors. A stricter policy was refused, as it should be. `docs/writing-docs.md` says how Cloudflare builds the site. The first build follows the push of `main`.
+- 2026-10-21: The site is live at https://usethermite.com, built by Cloudflare Pages from `main` at `79a0096`.
+  - `www` and plain `http` redirect to it.
+  - The headers above are served, with `noindex` on the `pages.dev` address only.
+  - `llms.txt`, `llms-full.txt`, the sitemap and the Markdown copies load, and a missing page gives 404.
+  - In headless Chrome on the live site, diagrams, code copy and search work, and Fathom records a page view for each page.
+  - Cloudflare's own analytics script, injected by default, is refused by the policy; Fathom is the site's analytics.
 
 ---
 
