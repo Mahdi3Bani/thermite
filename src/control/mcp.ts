@@ -8,7 +8,11 @@ import { KbKind as KbKindSchema } from "../core/kb.ts";
 import { POD_CONFIG_ENV } from "../core/tunnel.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import type { ControlActions } from "./actions.ts";
-import { copyCampaignAnswer, copyCampaignFields } from "./copy-campaign.ts";
+import {
+  type CopyCampaignRequest,
+  copyCampaignAnswer,
+  copyCampaignFields,
+} from "./copy-campaign.ts";
 import type { Credential } from "./credential.ts";
 import { issueWaking, propagateChampion } from "./issue.ts";
 import { briefingSeedOf, type KbKind } from "./kb.ts";
@@ -797,14 +801,21 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
         {
           title: "Copy a campaign",
           description:
-            "A new campaign with another name, from a campaign control keeps: the same contract and kit as its newest saved version (or, for a campaign only assigned before, as that assignment), with the new name in the contract, so its contract hash is its own. The copy has its own empty folder in Thermite's knowledge base; it reads no other folder, and no folder is granted to it. It has no runs: start one with start_run. Use it to compare two models on the same campaign, each from zero: two runs of one campaign share its folder, so each starts with what the other recorded. Returns {campaign, version, contract_sha, from}. Refused in words: a name that is taken or not valid, a campaign with no saved version and no assignment, a rig check's campaign.",
+            "A new campaign with another name, from a campaign control keeps: the same contract and kit as its newest saved version (or, for a campaign only assigned before, as that assignment), with the new name in the contract, so its contract hash is its own. The copy has its own empty folder in Thermite's knowledge base; it reads no other folder, and no folder is granted to it. It has no runs: start one with start_run. Use it to compare two models on the same campaign, each from zero: two runs of one campaign share its folder, so each starts with what the other recorded. A research campaign's copy may name other MCP servers for its agents (mcp_servers), with the New campaign page's checks; a hill-climb or goal campaign's servers are in its kit, which a copy does not change. Returns {campaign, version, contract_sha, from}. Refused in words: a name that is taken or not valid, a campaign with no saved version and no assignment, a rig check's campaign, mcp_servers for a campaign with a kit, a server Settings lacks, a tool its server does not list, the planner (a research run has none).",
           inputSchema: {
             from: z.string().min(1).describe("The campaign to copy, as on its page"),
             ...copyCampaignFields,
           },
         },
-        audited("copy_campaign", (a: { from: string; name: string }) => {
-          const out = copy({ from: a.from, name: a.name }, actor);
+        audited("copy_campaign", (a: CopyCampaignRequest) => {
+          const out = copy(
+            {
+              from: a.from,
+              name: a.name,
+              ...(a.mcp_servers !== undefined ? { mcp_servers: a.mcp_servers } : {}),
+            },
+            actor,
+          );
           if (out.state === "refused") throw new Error(out.error);
           return copyCampaignAnswer(out);
         }),

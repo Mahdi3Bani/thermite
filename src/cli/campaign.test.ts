@@ -115,6 +115,35 @@ describe("thermite campaign copy (goal 069)", () => {
         unknown.stderr,
         /-> 404 .*Control has no saved version or earlier assignment of nope/,
       );
+      // --mcp-servers-json: the list goes to control, which keeps a goal campaign's in its kit.
+      const list = join(dir, "servers.json");
+      writeFileSync(list, JSON.stringify([{ name: "web-search", agents: ["workers"] }]));
+      const kit = await cli(
+        "campaign",
+        "copy",
+        "sort-speed",
+        "sort-speed-m",
+        "--mcp-servers-json",
+        list,
+        ...at,
+      );
+      assert.equal(kit.code, 2);
+      assert.match(
+        kit.stderr,
+        /-> 400 \{"error":"This campaign's MCP servers are in its kit's kit\.json: change them on the New campaign page\."\}/,
+      );
+      writeFileSync(list, "[{");
+      const notJson = await cli(
+        "campaign",
+        "copy",
+        "sort-speed",
+        "sort-speed-m",
+        "--mcp-servers-json",
+        list,
+        ...at,
+      );
+      assert.equal(notJson.code, 2);
+      assert.match(notJson.stderr, /^--mcp-servers-json: .*servers\.json is not a JSON list: /);
       // The command line's own: before anything is sent.
       const noControl = await cli("campaign", "copy", "sort-speed", "sort-speed-c");
       assert.deepEqual(

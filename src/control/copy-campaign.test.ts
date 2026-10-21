@@ -7,11 +7,14 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { generateSigningKeys } from "../core/commands.ts";
 import { parseContract } from "../core/contract.ts";
+import { usesFor } from "../core/mcp.ts";
 import { createControlApi } from "./api.ts";
 import type { CampaignDraft } from "./campaign-builder.ts";
 import { issueCommand } from "./issue.ts";
 import { KitRepos } from "./kit-repos.ts";
+import { assignedMcpServers, McpServers } from "./mcp-servers.ts";
 import { startCampaign } from "./new-campaign.ts";
+import { SecretBox } from "./secrets.ts";
 import { ControlStore } from "./store.ts";
 
 /**
@@ -455,5 +458,166 @@ describe("Copy a campaign over MCP (goal 069)", () => {
             (a.body as { tool?: string }).tool === "mcp:copy_campaign",
         ),
     );
+  });
+});
+
+describe("A research copy's MCP servers (goals 069 and 068)", () => {
+  /** Settings with two servers whose tools control has read, and a research campaign saved. */
+  async function research() {
+    const s = await stack();
+    const listed: Record<string, string[]> = {
+      "web-search": ["search", "extract"],
+      "paper-search": ["find"],
+    };
+    const servers = new McpServers(s.store, SecretBox.ephemeral(), {
+      connect: async (url) => ({
+        listTools: async () =>
+          (listed[new URL(url).hostname.split(".")[0] ?? ""] ?? []).map((name) => ({ name })),
+        callTool: async () => ({}),
+        close: async () => {},
+      }),
+    });
+    for (const name of Object.keys(listed)) {
+      servers.put({ name, url: `https://${name}.example.com/mcp`, auth: "none" }, "owner:test");
+      assert.equal(await servers.check(name), null);
+    }
+    const saved = await startCampaign(
+      {
+        store: s.store,
+        kits: new KitRepos(mkdtempSync(join(tmpdir(), "thermite-kits-"))),
+        privateKeyPem: generateSigningKeys().privateKeyPem,
+      },
+      {
+        draft: {
+          mode: "research",
+          campaign: "web-survey",
+          title: "Survey 2-bit decoding",
+          research: {
+            topic: "2-bit decoding",
+            questions: ["Which papers help?"],
+            min_duration: "1h",
+          },
+          mcp_servers: [{ name: "web-search", agents: ["workers"] }],
+        },
+        rig: "rig-a",
+        target: CPU,
+        start: false,
+        by: "owner:ui",
+      },
+    );
+    assert.ok(saved.ok);
+    return s;
+  }
+
+  test("the copy's contract names the servers given, a run of it gives them to its workers, and [] names none", async () => {
+    const s = await research();
+    const [source] = s.store.campaignVersions("web-survey");
+    assert.ok(source);
+    const uses = [
+      { name: "paper-search", agents: ["workers", "advisors"], tools: { workers: ["find"] } },
+    ];
+    const r = await s.rest("web-survey", { name: "web-survey-b", mcp_servers: uses });
+    assert.equal(r.status, 201, await r.clone().text());
+    const [copy] = s.store.campaignVersions("web-survey-b");
+    assert.ok(copy);
+    assert.deepEqual(await json(r), {
+      campaign: "web-survey-b",
+      version: 1,
+      contract_sha: copy.sha,
+      from: { campaign: "web-survey", version: 1, other_mcp_servers: true },
+    });
+    // The contract carries the new list, in place of the source's, and its hash follows it.
+    const { mcp_servers, campaign: _c, ...rest } = copy.contract as Record<string, unknown>;
+    const {
+      mcp_servers: was,
+      campaign: _s,
+      ...sourceRest
+    } = source.contract as Record<string, unknown>;
+    assert.deepEqual([mcp_servers, was], [uses, [{ name: "web-search", agents: ["workers"] }]]);
+    assert.deepEqual(rest, sourceRest);
+    const reparsed = parseContract(copy.contract);
+    assert.ok(reparsed.ok && reparsed.sha === copy.sha);
+    const audit = s.store.listAudit(50).find((a) => a.action === "campaign_copied");
+    assert.deepEqual(audit?.body, {
+      campaign: "web-survey-b",
+      from: { campaign: "web-survey", version: 1, other_mcp_servers: true },
+      sha: copy.sha,
+      mcp_servers: uses,
+    });
+    assert.match(
+      await s.page("/ui/campaigns/web-survey-b"),
+      /started empty\. Its agents use other MCP servers than its source's: paper-search \(workers: find; advisors\)\./,
+    );
+
+    // A run of the copy: its assignment names the copy's servers, and its workers get them.
+    const started = await s.startRun("web-survey-b", { rig: "rig-a" });
+    assert.equal(started.status, 201, await started.clone().text());
+    const sent = s.assigned().at(-1);
+    assert.ok(sent);
+    assert.deepEqual(sent.payload.mcp_servers, uses);
+    const given = assignedMcpServers(s.store.db, "rig-a").get(String(sent.payload.run));
+    assert.deepEqual(usesFor(given, "workers"), [{ name: "paper-search", tools: ["find"] }]);
+
+    // Over MCP, with an operator's token: [] names none.
+    const operator = await mcp(s.api, TOKENS.operator);
+    const out = JSON.parse(
+      text(
+        await operator.callTool({
+          name: "copy_campaign",
+          arguments: { from: "web-survey", name: "web-survey-c", mcp_servers: [] },
+        }),
+      ),
+    );
+    assert.deepEqual(out.from, { campaign: "web-survey", version: 1, other_mcp_servers: true });
+    const [none] = s.store.campaignVersions("web-survey-c");
+    assert.ok(none && !("mcp_servers" in (none.contract as object)));
+    assert.match(
+      await s.page("/ui/campaigns/web-survey-c"),
+      /Its agents use no MCP server\. Its source's agents use some\./,
+    );
+    // The source's own list again: no other servers, so nothing to say.
+    const same = await s.rest("web-survey", {
+      name: "web-survey-d",
+      mcp_servers: [{ name: "web-search", agents: ["workers"] }],
+    });
+    assert.deepEqual((await json<{ from: unknown }>(same)).from, {
+      campaign: "web-survey",
+      version: 1,
+    });
+  });
+
+  test("refused in words: a server Settings lacks, a tool it does not list, the planner, a campaign with a kit", async () => {
+    const s = await research();
+    const before = s.store.campaignVersions().length;
+    const refused = async (from: string, mcpServers: unknown, error: string) => {
+      const r = await s.rest(from, { name: `${from}-x`, mcp_servers: mcpServers });
+      assert.deepEqual([r.status, await json(r)], [400, { error }], JSON.stringify(mcpServers));
+    };
+    await refused(
+      "web-survey",
+      [{ name: "web-research", agents: ["workers"] }],
+      "Settings has no MCP server named web-research. Add it in Settings › MCP servers, or take it out of mcp_servers.",
+    );
+    await refused(
+      "web-survey",
+      [{ name: "web-search", agents: ["workers"], tools: { workers: ["search", "crawl"] } }],
+      "web-search has no tool named crawl. Its tools are search, extract.",
+    );
+    await refused(
+      "web-survey",
+      [{ name: "web-search", agents: ["workers", "planner"] }],
+      "A research run has no planner: its research plan is code. Give web-search to the workers or the advisors.",
+    );
+    const kit =
+      "This campaign's MCP servers are in its kit's kit.json: change them on the New campaign page.";
+    await refused("matmul-speed", [{ name: "web-search", agents: ["workers"] }], kit);
+    await refused("matmul-speed", [], kit);
+    const bad = await s.rest("web-survey", {
+      name: "web-survey-y",
+      mcp_servers: [{ name: "Web" }],
+    });
+    assert.equal(bad.status, 400);
+    assert.match((await json<{ error: string }>(bad)).error, /^bad request: mcp_servers\.0\./);
+    assert.equal(s.store.campaignVersions().length, before, "nothing was saved");
   });
 });

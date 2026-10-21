@@ -38,7 +38,7 @@ import {
   clusterRigObjects,
   rigResources,
 } from "./clusters/manifests.ts";
-import { copiedFromWords, copyCampaign } from "./copy-campaign.ts";
+import { copiedFromWords, copiedMcpWords, copyCampaign } from "./copy-campaign.ts";
 import type { Credential } from "./credential.ts";
 import { newToken } from "./credential.ts";
 import { makeDeployKey } from "./git-keys.ts";
@@ -1557,7 +1557,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     const first = store.campaignVersions(name).at(-1);
     const f = first?.copied_from;
     if (!first || !f) return "";
-    return `<div class="card" style="margin-bottom:16px"><span class="muted">Copied from</span> <a href="${campaignHref(f.campaign)}">${esc(copiedFromWords(f))}</a> <span class="muted">by ${esc(first.created_by)}, ${esc(ago(first.created_at, Date.now()))} ago. Its folder in the knowledge base started empty.</span></div>`;
+    return `<div class="card" style="margin-bottom:16px"><span class="muted">Copied from</span> <a href="${campaignHref(f.campaign)}">${esc(copiedFromWords(f))}</a> <span class="muted">by ${esc(first.created_by)}, ${esc(ago(first.created_at, Date.now()))} ago. Its folder in the knowledge base started empty.${f.other_mcp_servers ? ` ${esc(copiedMcpWords(first.contract))}` : ""}</span></div>`;
   };
   app.post("/ui/campaigns/:campaign/runs", async (c) => {
     const f = await c.req.parseBody();

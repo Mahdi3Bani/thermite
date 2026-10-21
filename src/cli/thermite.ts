@@ -108,11 +108,14 @@ const USAGE = `usage: thermite <command> [options]
                                       experiments (on --rig unless RIG/ is given); --past adds
                                       items of Thermite's knowledge base by id. It prints the new
                                       run and its command id; a stopped RunPod pod starts first
-  campaign copy FROM NAME --control URL --token-file F
+  campaign copy FROM NAME [--mcp-servers-json FILE] --control URL --token-file F
                                       copy a campaign control keeps (owner's token): a new
                                       campaign NAME with FROM's contract and kit, its own empty
                                       folder in Thermite's knowledge base and no runs. Start a
-                                      run of it with run start. It prints the copy
+                                      run of it with run start. It prints the copy.
+                                      --mcp-servers-json: for a research campaign, the MCP
+                                      servers the copy's agents use instead, as a JSON list
+                                      ([] for none)
   mcp list --control URL --token-file F [--json]
                                       the MCP servers in Settings (owner's token): each one's
                                       sign-in, state, last error, tools and the kits that name
@@ -760,14 +763,30 @@ async function main(argv: string[]): Promise<void> {
         fail(USAGE);
       const { values } = parseArgs({
         args,
-        options: { control: { type: "string" }, "token-file": { type: "string" } },
+        options: {
+          control: { type: "string" },
+          "token-file": { type: "string" },
+          "mcp-servers-json": { type: "string" },
+        },
       });
       if (!values.control || !values["token-file"])
         fail("give --control and --token-file: control copies the campaign");
+      // A research copy's MCP servers, as a JSON list in a file; control checks it.
+      let mcpServers: unknown;
+      const mcpFile = values["mcp-servers-json"];
+      if (mcpFile !== undefined) {
+        try {
+          mcpServers = JSON.parse(readFileSync(mcpFile, "utf8"));
+        } catch (err) {
+          fail(
+            `--mcp-servers-json: ${mcpFile} is not a JSON list: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
       const out = await post(
         `${values.control.replace(/\/$/, "")}/v1/campaigns/${encodeURIComponent(from)}/copy`,
         readFileSync(values["token-file"], "utf8").trim(),
-        { name },
+        { name, ...(mcpFile !== undefined ? { mcp_servers: mcpServers } : {}) },
       );
       process.stdout.write(`${JSON.stringify(out)}\n`);
       return;

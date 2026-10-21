@@ -621,7 +621,7 @@ Errors, in the words of **Start a run**:
 
 **Copy a campaign.** Owner and operator.
 
-> A new campaign with another name, from a campaign control keeps: the same contract and kit as its newest saved version (or, for a campaign only assigned before, as that assignment), with the new name in the contract, so its contract hash is its own. The copy has its own empty folder in Thermite's knowledge base; it reads no other folder, and no folder is granted to it. It has no runs: start one with start_run. Use it to compare two models on the same campaign, each from zero: two runs of one campaign share its folder, so each starts with what the other recorded. Returns {campaign, version, contract_sha, from}. Refused in words: a name that is taken or not valid, a campaign with no saved version and no assignment, a rig check's campaign.
+> A new campaign with another name, from a campaign control keeps: the same contract and kit as its newest saved version (or, for a campaign only assigned before, as that assignment), with the new name in the contract, so its contract hash is its own. The copy has its own empty folder in Thermite's knowledge base; it reads no other folder, and no folder is granted to it. It has no runs: start one with start_run. Use it to compare two models on the same campaign, each from zero: two runs of one campaign share its folder, so each starts with what the other recorded. A research campaign's copy may name other MCP servers for its agents (mcp_servers), with the New campaign page's checks; a hill-climb or goal campaign's servers are in its kit, which a copy does not change. Returns {campaign, version, contract_sha, from}. Refused in words: a name that is taken or not valid, a campaign with no saved version and no assignment, a rig check's campaign, mcp_servers for a campaign with a kit, a server Settings lacks, a tool its server does not list, the planner (a research run has none).
 
 It does what [`POST /v1/campaigns/<campaign>/copy`](rest-api.md#copy-a-campaign) does, with the same refusals. The operator may call it, as the operator may call `start_run`.
 
@@ -629,8 +629,9 @@ It does what [`POST /v1/campaigns/<campaign>/copy`](rest-api.md#copy-a-campaign)
 | --- | --- | --- | --- |
 | `from` | string | | The campaign to copy, as on its page: one saved on control, or one assigned before over the API, MCP or the command line. Not a rig check's |
 | `name` | string | | The copy's name, as on the **New campaign** page: lowercase letters, digits, dots, dashes and underscores, at most 64, starting with a letter or a digit. No campaign, folder or grant may have it yet |
+| `mcp_servers` | array | the source's | A research campaign only: the MCP servers the copy's agents use, in place of the source's. Each is `{name, agents, tools?}`, as the contract's [`mcp_servers`](kit-manifest.md) has it: a server's name in Settings, the kinds of agent that get it (`workers`, `advisors`; a research run has no planner) and, only to narrow it, the tools each kind may call, such as `{"workers": ["search"]}`. `[]` names none |
 
-It returns `{campaign, version, contract_sha, from}`: the copy's name, its version (1), its contract's SHA-256, and where it came from, `{campaign, version}` for a saved version or `{campaign, rig, run}` for an assignment. The copy's contract names the copy; the rest of it, the starting point, the imports and the kit are the source's. An assignment's run options (agents, promotion, queue and briefing) are not copied. Besides `mcp:copy_campaign`, the audit log has `campaign_copied` and `campaign_version_created`, by the caller's actor, and the copy's page says who copied it, from what and when.
+It returns `{campaign, version, contract_sha, from}`: the copy's name, its version (1), its contract's SHA-256, and where it came from, `{campaign, version}` for a saved version or `{campaign, rig, run}` for an assignment. The copy's contract names the copy; the rest of it, the starting point, the imports and the kit are the source's. With `mcp_servers`, a research copy's contract names those servers instead, so its hash changes with them too, and `from` has `"other_mcp_servers": true` when they differ from the source's. A run of the copy gives each server to the kinds of agent it names. An assignment's run options (agents, promotion, queue and briefing) are not copied. Besides `mcp:copy_campaign`, the audit log has `campaign_copied` and `campaign_version_created`, by the caller's actor, and the copy's page says who copied it, from what and when.
 
 Errors:
 
@@ -640,6 +641,11 @@ Errors:
 - `A name that starts with rig-check- is for rig checks. Choose another name.`
 - `There is a campaign named <name> already. Choose another name.`
 - `The contract of <campaign> is not valid, so control cannot copy it:` and the contract's errors
+- `This campaign's MCP servers are in its kit's kit.json: change them on the New campaign page.`: `mcp_servers` for a hill-climb or goal campaign
+- `Settings has no MCP server named <server>. Add it in Settings › MCP servers, or take it out of mcp_servers.`
+- `<server> has no tool named <tool>. Its tools are <tools>.`
+- `Control has not read the tools of <server> yet. Read them in Settings › MCP servers, or give the <kind> all its tools.`
+- `A research run has no planner: its research plan is code. Give <server> to the workers or the advisors.`
 
 ### cluster_rig
 

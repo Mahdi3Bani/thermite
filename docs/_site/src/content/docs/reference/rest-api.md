@@ -204,7 +204,7 @@ Each refusal is in the [audit log](#audit-log-actions) as `refused`, with the ro
 
 | Route | Token | What it does | Request | Answer |
 | --- | --- | --- | --- | --- |
-| `POST /v1/campaigns/<campaign>/copy` | Owner | Saves a new campaign with another name, the same contract and the same kit as `<campaign>`. Control records `owner:api` as who copied it | `{name}`: the copy's name | 201 `{campaign, version, contract_sha, from}`. 400, 404 or 409 `{"error":"<why>"}`, below |
+| `POST /v1/campaigns/<campaign>/copy` | Owner | Saves a new campaign with another name, the same contract and the same kit as `<campaign>`. Control records `owner:api` as who copied it | `{name, mcp_servers?}`: the copy's name and, for a research campaign, its MCP servers | 201 `{campaign, version, contract_sha, from}`. 400, 404 or 409 `{"error":"<why>"}`, below |
 
 ```sh
 curl -sS -X POST -H "Authorization: Bearer $(cat ~/thermite-owner-token)" \
@@ -223,6 +223,7 @@ The copy is the campaign's newest saved version or, for a campaign only assigned
 - **No runs.** Start one with [`POST /v1/campaigns/<copy>/runs`](#campaigns), MCP's `start_run`, `thermite run start` or **Start a run** on the copy's page.
 - **Where it came from.** `from` is `{campaign, version}` for a saved version, or `{campaign, rig, run}` for an assignment. The [audit log](#audit-log-actions) has `campaign_copied`, with the copy, `from` and `sha`, and `campaign_version_created`. The copy's page says `Copied from <campaign> version <n> by owner:api, <time> ago. Its folder in the knowledge base started empty.`
 - **What it leaves out.** An assignment's run options stay with that run: its run name, agents on or off, promotion, queue and briefing.
+- **Its MCP servers.** A research campaign keeps its agents' MCP servers in its contract. `mcp_servers` gives the copy others, in place of the source's: a list of `{name, agents, tools?}`, as the contract's [`mcp_servers`](kit-manifest.md) has it, with `agents` among `workers` and `advisors` (a research run has no planner). `[]` names none. Control checks it as the **New campaign** page does: each server is in Settings, and each tool named is one the server lists. The copy's `contract_sha` changes with the list. When the list differs from the source's, `from` has `"other_mcp_servers": true`, `campaign_copied` has the copy's `mcp_servers`, and the copy's page adds `Its agents use other MCP servers than its source's: <servers>.`, or `Its agents use no MCP server. Its source's agents use some.` A hill-climb or goal campaign names its servers in its kit's kit.json, which a copy does not change: control refuses `mcp_servers` for it.
 
 Control refuses, and saves nothing:
 
@@ -232,7 +233,12 @@ Control refuses, and saves nothing:
 | 400 | `<campaign> is a rig check's campaign. A rig check cannot be copied.` |
 | 400 | `A campaign's name is lowercase letters, digits, dots, dashes and underscores, at most 64. It starts with a letter or a digit.` |
 | 400 | `A name that starts with rig-check- is for rig checks. Choose another name.` |
-| 400 | `bad request: <field>: <message>`: a body without `name`, or with other fields |
+| 400 | `bad request: <field>: <message>`: a body without `name`, with other fields, or with an `mcp_servers` that is not a list of servers |
+| 400 | `This campaign's MCP servers are in its kit's kit.json: change them on the New campaign page.`: `mcp_servers` for a hill-climb or goal campaign |
+| 400 | `Settings has no MCP server named <server>. Add it in Settings › MCP servers, or take it out of mcp_servers.` |
+| 400 | `<server> has no tool named <tool>. Its tools are <tools>.` |
+| 400 | `Control has not read the tools of <server> yet. Read them in Settings › MCP servers, or give the <kind> all its tools.` |
+| 400 | `A research run has no planner: its research plan is code. Give <server> to the workers or the advisors.` |
 | 409 | `There is a campaign named <name> already. Choose another name.`: a campaign control keeps, one a rig reported, a folder in the knowledge base, or a name in a grant |
 | 409 | `The contract of <campaign> is not valid, so control cannot copy it:` and the contract's errors, for an assignment whose contract the contract check refuses |
 
@@ -614,7 +620,7 @@ Control writes one entry for each of these to its audit log. `GET /v1/audit`, th
 | Machines and clusters | `machine_added`, `machine_deleted`, `machine_host_key_trusted`, `machine_install_approved`, `machine_install_finished`, `machine_rig_created`, `machine_rig_stop`, `machine_rig_start`, `machine_rig_restart`, `machine_rig_remove`, `cluster_added`, `cluster_deleted`, `cluster_slots_set`, `cluster_rig_created`, `cluster_rig_stop`, `cluster_rig_start`, `cluster_rig_restart`, `cluster_rig_remove`, `cluster_rig_images` (a cluster rig moved onto control's images, with the old and the new), `machine_rig_images` (a machine rig moved onto control's images, with the old and the new), `rig_update` (the owner pressed **Update to** control's version on a rig's page, with the version), `rig_check_place` (control checked where a rig it set up runs, and whether it found it running: by the owner with **Check again** on the rig's page, or by `control` when the rig turned stale or offline) |
 | Test pods | `runpod_test_started`, `runpod_test_ended`, `runpod_test_done` |
 | Pull mode and rigs on RunPod | `tunnel_rig_added` (a rig minted for a pod), `tunnel_rig_pod` (its pod named), `tunnel_rig_enrolled`, `tunnel_refusals` (the requests a pod refused since its last exchange), `tunnel_rig_dropped` (a minted rig whose launch failed), `runpod_rig_launched` (by the owner: the cloud, pod, GPU and count, cloud type, data center, price, image and limits), `runpod_rig_limits` (the limits now), `runpod_rig_stop`, `runpod_rig_start`, `runpod_rig_restart` and `runpod_rig_terminate` (by the owner, as asked), `runpod_rig_stopped` (the pod stopped, why, `spend_limit`, `idle_stop` or `owner`, and the spend: by `control` at a limit, by the owner otherwise), `runpod_rig_started` (by `control`: the pod runs again, its GPUs and the runs resumed), `runpod_rig_start_refused` (by `control`: why, such as no GPU free), `runpod_rig_terminated` (by the owner: the pod removed, and the spend), `runpod_rig_terminate_refused` (by `control`: why a result could not leave) |
-| Campaigns | `campaign_version_created`, `campaign_copied` (a campaign copied: the copy, `from`, which is the source campaign with its version or its assignment's rig and run, and the copy's contract `sha`) |
+| Campaigns | `campaign_version_created`, `campaign_copied` (a campaign copied: the copy, `from`, which is the source campaign with its version or its assignment's rig and run, and the copy's contract `sha`; for a research copy that names other MCP servers, also the copy's `mcp_servers`) |
 | Knowledge base | `kb_grant`, `kb_revoke` (a campaign's agents may, or may no longer, read another campaign's folder), `kb_failed` (adding a report's events to the knowledge base failed) |
 | MCP servers | `mcp_server_added` and `mcp_server_changed` (which name a secret only as `set (<hint>)`, `replaced (<hint>)`, `kept` or `none`), `mcp_server_deleted`, `mcp_server_sign_in_started`, `mcp_server_signed_in`, `mcp_servers_handed` (by `rig:<rig>`: the servers a rig's supervisor was handed, and those it could not be, by name, when they changed), `mcp_moved_note_read` (**Got it** on the note about the outside knowledge base), `outside_kb_migrated` (by `control`, once at the update to 0.1.0: an outside knowledge base became an MCP server, with its old and new names, whether its token was kept, and the campaigns whose copies stopped and whose grants went). An MCP call that takes a secret logs it in `mcp:<tool>` as `given (<hint>)` |
 

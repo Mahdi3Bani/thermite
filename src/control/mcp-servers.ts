@@ -194,6 +194,50 @@ export function mcpRefusal(db: DatabaseSync, uses: readonly McpUse[] | undefined
 }
 
 /**
+ * The kinds of agent a research run has: its workers and its advisors (the teacher pair). It has
+ * no planner: the research plan is code.
+ */
+export const RESEARCH_AGENT_KINDS: readonly AgentKind[] = ["workers", "advisors"];
+
+/**
+ * Why a research campaign's contract can't name these servers, in words, or "": a server Settings
+ * lacks, a tool its server does not list (or a server whose tools control has not read yet), or a
+ * kind of agent a research run doesn't have. Copy a campaign (goal 069) checks a new list with it.
+ */
+export function researchMcpRefusal(db: DatabaseSync, uses: readonly McpUse[]): string {
+  ensureMcpTables(db);
+  const servers = new Map(
+    (db.prepare("select name, tools from mcp_server").all() as Row[]).map((r) => {
+      let tools: string[] | null = null;
+      try {
+        tools = r.tools ? (JSON.parse(str(r.tools)) as McpTool[]).map((t) => t.name) : null;
+      } catch {
+        tools = null;
+      }
+      return [str(r.name), tools] as const;
+    }),
+  );
+  for (const u of uses) {
+    if (!servers.has(u.name))
+      return `Settings has no MCP server named ${u.name}. Add it in Settings › MCP servers, or take it out of mcp_servers.`;
+    const kind = u.agents.find((k) => !RESEARCH_AGENT_KINDS.includes(k));
+    if (kind)
+      return `A research run has no ${kind}: its research plan is code. Give ${u.name} to the workers or the advisors.`;
+    const listed = servers.get(u.name);
+    for (const k of AGENT_KINDS) {
+      const named = u.tools?.[k];
+      if (!named) continue;
+      if (!listed)
+        return `Control has not read the tools of ${u.name} yet. Read them in Settings › MCP servers, or give the ${k} all its tools.`;
+      const unknown = named.filter((t) => !listed.includes(t));
+      if (unknown.length)
+        return `${u.name} has no tool named ${unknown.join(", ")}. Its tools are ${listed.slice(0, 30).join(", ") || "none"}${listed.length > 30 ? ", and more" : ""}.`;
+    }
+  }
+  return "";
+}
+
+/**
  * The servers a campaign names, from its newest version saved on control (its kit's list, or a
  * research contract's), else its newest assignment. Undefined: control does not know the campaign.
  */
