@@ -5,7 +5,10 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { laneLimits } from "../../core/contract.ts";
 import type { Runner, RunOutcome, RunRequest } from "../broker/runner.ts";
+import { claudeEnv } from "./claude-code.ts";
+import { codexEnv } from "./codex.ts";
 import {
+  agentPath,
   breachError,
   CHECK_ROLE,
   limitsNote,
@@ -16,6 +19,7 @@ import {
   opencodeOnce,
   PLANNER_ROLE,
   readOpencodeEvents,
+  runEnv,
   runOpencodeResearchTrial,
   runOpencodeTrial,
 } from "./opencode.ts";
@@ -244,8 +248,31 @@ describe("the OpenCode harness", () => {
     assert.ok(run.argv.includes("--auto") && run.argv.includes("thermite/m-1"));
     assert.equal(run.env?.THERMITE_TRIAL_AUTH, "trial.tok");
     assert.equal(run.env?.HOME, join(area, "opencode-home"));
+    assert.equal(
+      run.env?.PATH,
+      agentPath(),
+      "the agents' own PATH, CUDA's tools in it where present",
+    );
     assert.ok(!JSON.stringify(runs).includes('"apiKey"'));
     assert.ok(live.includes("tool") && live.includes("text"));
+  });
+
+  test("an agent's own shell finds CUDA's tools by name where the image has them, under every harness", () => {
+    const system = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+    assert.equal(
+      agentPath((p) => p === "/usr/local/cuda/bin"),
+      `/usr/local/cuda/bin:${system}`,
+    );
+    assert.equal(
+      agentPath(() => false),
+      system,
+    );
+    // OpenCode, Claude Code and Codex give their agents that PATH, whatever the harness's own is.
+    const here = agentPath();
+    assert.equal(runEnv("/h", "http://api", "a", { PATH: "/elsewhere" }).PATH, here);
+    const at = { home: "/h", apiUrl: "http://api", auth: "a", tmp: "/t" };
+    assert.equal(claudeEnv({ ...at, token: "t", maxCommandMs: 1000 }).PATH, here);
+    assert.equal(codexEnv({ ...at, proxyAuth: "a", extra: { PATH: "/elsewhere" } }).PATH, here);
   });
 
   test("after a submission the run is stopped soon: the agent's closing reply is not waited for", async () => {

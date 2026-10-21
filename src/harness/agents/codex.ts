@@ -10,6 +10,7 @@ import { CHATGPT_LIMIT_CODE, type ModelConfig } from "./model.ts";
 import type { RigCheckReport } from "./model-check.ts";
 import {
   AFTER_SUBMIT_MS,
+  agentPath,
   breachError,
   CarriedMessages,
   CHECK_ROLE,
@@ -340,7 +341,7 @@ export function codexEnv(o: {
     ...(o.mcpAuth ? { THERMITE_MCP_AUTH: o.mcpAuth } : {}),
     HOME: o.home,
     CODEX_HOME: join(o.home, ".codex"),
-    PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    PATH: agentPath(),
     TMPDIR: o.tmp,
     THERMITE_HARNESS_URL: o.apiUrl,
     THERMITE_TRIAL_AUTH: o.auth,

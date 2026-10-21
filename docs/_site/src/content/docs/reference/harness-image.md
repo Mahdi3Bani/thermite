@@ -88,6 +88,8 @@ On the default base, the apt packages are Debian 12 ("bookworm") packages. The b
 
 GPU rigs need the same image built on a CUDA 12.x development image, with `--build-arg BASE_IMAGE=<image>`. The image's comment says why 12.x: CUDA 13 dropped older GPU architectures. A development image is needed because the CUDA smoke kit builds with `nvcc`. The release workflow builds the published CUDA harness on `docker.io/nvidia/cuda:12.6.3-devel-ubuntu22.04`, pinned by its digest, so its apt packages are Ubuntu 22.04's. RunPod test pods ask for hosts with CUDA 12.6 or later.
 
+An agent's own commands under OpenCode, Claude Code or Codex get a fixed `PATH`, not the image's: `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`, with `/usr/local/cuda/bin` first where the image has it, so `nvcc` is found by name on a CUDA image. Pi's commands, and the judge's builds and timed runs, get the image's own `PATH`.
+
 The CPU image has no `nvcc`, so it cannot build GPU kits. Control finds the CUDA image through `THERMITE_RIG_HARNESS_CUDA_IMAGE` (rigs it sets up, and the image it moves a cluster rig with GPUs onto) and `THERMITE_RUNPOD_TEST_IMAGE` (test pods). Compose runs CPU rigs only.
 
 ### Users and groups
