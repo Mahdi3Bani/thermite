@@ -49,10 +49,14 @@ The owner, 2026-10-20: rules use direction names only. A rule in free words reac
   - **Old rules in words** stay in force, marked (as built). **Name a direction** on one fills in a message to the planner, from the rule's words and why; the owner removes the old rule once the planner's rule shows.
   - **No lane-count rule** in the rules list: the revised mockup has none.
 
+- 2026-10-21, owner: Old rules in free words are converted to named directions. This replaces "kept and marked" above.
+- 2026-10-21, owner: A rule that the planner makes from the owner's message keeps the planner as its author. It does not get an owner rule's precedence.
+- 2026-10-21, owner: The command line's `--direction` becomes `--note`, because a direction is now a named line of experiments.
+
 ## Open questions
 
 - Answered 2026-10-20 (see Decisions): a rule can name a direction the run has not used yet; the planner designs and creates it.
-- Open: old rules in free words, kept and marked (built), or removed at the update.
+- Answered 2026-10-21 (see Decisions): old rules in free words are converted to named directions.
 
 ## Progress
 

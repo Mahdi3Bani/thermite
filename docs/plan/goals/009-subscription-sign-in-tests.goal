@@ -32,10 +32,11 @@ Subscriptions are built, but they are tested only against stand-ins.
 - 2026-10-18, owner: A subscription serves only its owner's own Thermite. A Thermite that several people use takes API keys.
 - 2026-10-21, the lead session, from the build's evidence (see Progress): Claude Code's own sandbox stays off in a rig, and the rig's isolation holds its commands, as for OpenCode and Codex. The sandbox cannot start inside a rig, and its scrub refuses a headless agent's edits and commands. The token reaches Claude Code on a file descriptor, never in an environment or a file. Advisors keep the scrub until the open question below is decided. Shown to the owner with the build.
 - 2026-10-20, owner: The tests run before the tag, as recommended.
+- 2026-10-21, owner: Advisors also run Claude Code without the scrub, now, for v0.1.0. `bubblewrap` leaves the images.
 
 ## Open questions
 
-- Advisors still run Claude Code with `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`, which needs `bubblewrap` in the images although an advisor runs no commands. Without the scrub there, `bubblewrap` could leave the images too.
+- Answered 2026-10-21 (see Decisions): advisors run Claude Code without the scrub, and `bubblewrap` leaves the images.
 
 ## Progress
 

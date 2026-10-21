@@ -51,6 +51,8 @@ The owner merges into `main` and makes the tag (2026-10-20: "I will handle mergi
 - 2026-10-19, owner: The code moves to `main` only as the last step before the release.
 - 2026-10-20, owner: The code reaches `main` through a pull request merged as a fast-forward, as recommended.
 - 2026-10-20, owner: The clean-machine test on macOS with Docker Desktop is deferred. Linux with Docker runs on a fresh virtual machine; macOS with Podman runs as planned.
+- 2026-10-21, owner: The test on macOS with Docker Desktop must pass before the tag. This replaces the deferral above.
+- 2026-10-21, owner: The judge's smoke check passes, with a note that the machine's timing is noisy, when the no-op change is its only inconclusive result.
 - 2026-10-20, owner: The owner merges the code into `main` and makes the tag. The project is not ready for a version tag yet.
 - 2026-10-20, owner: The code moved to `main` early, at the development branch's state that day, so the docs site can build from `main` (goal 060). Work stays on the development branch, and `main` follows it. The release is still this goal's pull request and tag.
 
