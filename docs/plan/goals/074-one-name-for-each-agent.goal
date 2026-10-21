@@ -1,0 +1,50 @@
+---
+id: "074"
+title: "One name for each agent"
+status: IN_PROGRESS
+version: "0.1.0"
+depends_on: ["073"]
+created: 2026-10-21
+updated: 2026-10-21
+---
+
+# 074 · One name for each agent
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns · **Depends on:** [073](073-harness-for-each-agent.goal)
+
+## What
+
+Every kind of agent has one name, used the same way on every screen, page, API field, MCP tool, command-line option and event, under two named groups:
+
+- **The work** (in the rig's harness): **Workers** change the code, one trial each. The **Planner** picks what each worker tries next.
+- **The advisors** (in the supervisor; they never judge): **Teachers**, one or two models, read recent trials and suggest next steps; with two, a **merged by** model joins their suggestions into one. The **Auditor** checks a win before it is kept. The **Review panel** scores goals that code can't measure.
+- In model lists, an agent with no model of its own shows **rig default** (today: "the rig's advisors file").
+
+The combiner is no longer its own row or name: it is the teachers' "merged by" model. "Teacher pair", "the teachers", "the panel", "panel" and "the supervisor's advisors" go. The API takes the new names; the old ones (`combiner`, `panel`) are still taken in v0.1.0 and say so in words.
+
+## Why
+
+The owner, 2026-10-21, on the Edit rig mockup: "you have a fractured terminology and inconsistency. Some places say adviors, some places say teacher pairs, som places say reviewer panel etc... We need better consistency and differentiation on this and not to confused people (Heck I built this and I'm confused)." Also: "note teachers can be 1 or two, not always 2 models". Offered three namings, the owner chose "Fold the combiner in".
+
+## Done when
+
+- [ ] Screens (Edit rig, the campaign and run pages, History, Live, Settings), pages, API and MCP fields, command-line options and events use only the names above; a check in the docs build refuses the old names in pages.
+- [ ] The teachers take one or two models; with two, a "merged by" model; `set_rig_model` takes `teachers` with up to two models and `merged_by`, and `review_panel`; `combiner` and `panel` still work in v0.1.0 and say what they are now.
+- [ ] Edit rig groups its rows as The work and The advisors, with each agent's job in one line, after a mockup the owner approved.
+- [ ] Tests and the glossary updated.
+
+## Decisions
+
+- 2026-10-21, owner: "Fold the combiner in" (over keeping today's names in one form, or renaming by job).
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-21: Goal written from the owner's decision. The Edit rig mockup is revised with these names first.
+
+---
+
+Run with `/goal Complete docs/plan/goals/074-one-name-for-each-agent.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
