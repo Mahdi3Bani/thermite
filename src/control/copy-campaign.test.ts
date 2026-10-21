@@ -276,7 +276,8 @@ describe("Copy a campaign over REST (goal 069)", () => {
       html,
       /Copied from<\/span> <a href="[^"]*matmul-speed">matmul-speed version 2<\/a>/,
     );
-    assert.match(html, /by owner:api, .* ago\. Its folder in the knowledge base started empty\./);
+    // The dashboard is the owner's: their own copy, over any surface, is "you".
+    assert.match(html, /by you, just now\. Its folder in the knowledge base started empty\./);
     assert.match(html, /Saved on control, with no run yet\./);
 
     // Start a run of the copy: its own contract, the source's project and kit imports.

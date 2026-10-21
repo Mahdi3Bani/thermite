@@ -515,7 +515,7 @@ Before it sends anything, it ends with exit code 2 and one of these: `--rig name
 
 ### `campaign copy`
 
-`thermite campaign copy` copies a campaign control keeps under a new name (`POST /v1/campaigns/<campaign>/copy`). The copy has the campaign's contract and kit, as its newest saved version has them or as it was assigned before. It has its own folder in Thermite's knowledge base, which starts empty, and no runs.
+`thermite campaign copy` copies a campaign control keeps under a new name, as **Copy** on the campaign's page does (`POST /v1/campaigns/<campaign>/copy`). The copy has the campaign's contract and kit, as its newest saved version has them or as it was assigned before. It has its own folder in Thermite's knowledge base, which starts empty, and no runs.
 
 ```sh
 npx thermite campaign copy sort-speed sort-speed-b \

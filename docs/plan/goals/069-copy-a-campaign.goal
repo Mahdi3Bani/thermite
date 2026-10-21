@@ -1,7 +1,7 @@
 ---
 id: "069"
 title: "Copy a campaign"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 part: "Running campaigns"
 depends_on: ["065"]
@@ -11,7 +11,7 @@ updated: 2026-10-21
 
 # 069 · Copy a campaign
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
 
 ## What
 
@@ -21,7 +21,7 @@ A copy of a campaign: a new campaign with another name, the same contract and th
 - **Its folder.** It has its own folder in Thermite's knowledge base, which starts empty. It reads no other folder, and no folder is granted to it.
 - **No runs.** It starts with Start a run, as any campaign does: REST `POST /v1/campaigns/<name>/runs`, MCP `start_run`, `thermite run start` or the campaign's page.
 - **Its history.** Control records who copied it and from which campaign (and which version) in its audit log, and the copy's page shows it.
-- **Where.** REST `POST /v1/campaigns/<name>/copy`, MCP `copy_campaign` and `thermite campaign copy <from> <new-name>`. Later, a **Copy** button on the campaign's page.
+- **Where.** **Copy** on the campaign's page, REST `POST /v1/campaigns/<name>/copy`, MCP `copy_campaign` and `thermite campaign copy <from> <new-name>`.
 
 ## Why
 
@@ -35,7 +35,7 @@ The owner wants to compare two models on the same research campaign, both from z
 - [x] Only the owner's token (REST, the command line, MCP) and the operator's (MCP) may copy. A reader's or an agent's token may not.
 - [x] Tests for each surface.
 - [x] The REST API, MCP tools and command-line references, the glossary, the knowledge base reference and a how-to section on comparing two models from zero describe it.
-- [ ] A **Copy** button on the campaign's page, after the owner approves a mockup.
+- [x] A **Copy** button on the campaign's page, after the owner approves a mockup.
 
 ## Decisions
 
@@ -46,16 +46,23 @@ The owner wants to compare two models on the same research campaign, both from z
   - **Taken names.** A name is taken when control knows a campaign by it: a saved version, an assignment, a rig's report, a folder in the knowledge base, or a grant. So the copy's folder is always empty and has no grants. A new name may not start with `rig-check-`, which rig checks use.
   - **Tokens.** As for Start a run: REST and the command line take the owner's token, and MCP takes the owner's and an operator's.
   - **The page.** The copy's page shows one line: `Copied from <campaign> version <n> by <who>, <time> ago. Its folder in the knowledge base started empty.` That is the only screen change in this goal.
+- 2026-10-21, owner: approved the mockup of **Copy** on the campaign's page ("Looks good to me"), with its open choices as the mockup showed them:
+  - **Copy** is a button beside **Start a run**, not in a menu.
+  - The name field starts with a free name: the source's name and `-b`, or the next free letter.
+  - After **Copy**, the copy's page opens, with **Start a run** of it.
+  - A research copy's MCP servers are listed open in the panel, ticked as the source has them.
+  - The copy's line names the owner as "you" (the dashboard is the owner's), and the operator's token as "the operator".
 
 ## Open questions
 
-- The **Copy** button: where it goes on the campaign's page, and its form. It needs a mockup first.
+None.
 
 ## Progress
 
 - 2026-10-21: Goal written from the owner's decision.
 - 2026-10-21: Built over REST, MCP and the command line. `src/control/copy-campaign.ts` copies (through `ControlActions.copyCampaign`, filled in by the dashboard); the store keeps where a copy came from (`campaign_version.copied_from`) and, for a copy of an assignment, that assignment's imports (`sources.assignment`), which Start a run then uses. Tests: `src/control/copy-campaign.test.ts` (a saved campaign and an assignment-only one, the contract's name and hash, the empty folder and no grants, every refusal, the tokens, Start a run on each copy, and the copy's run syncing only its own folder) and `src/cli/campaign.test.ts`. Pages: the REST API, MCP tools, command-line and tokens references, the glossary, the knowledge base reference, and **Compare two models from zero** in Start a campaign from the dashboard. Left: the **Copy** button on the campaign's page, after a mockup.
 - 2026-10-21: A research copy may name other MCP servers (owner: relaunch two research campaigns with the agents using a server added in Settings). REST, MCP and `thermite campaign copy --mcp-servers-json FILE` take `mcp_servers` (goal 068's list); the copy's contract names it in place of the source's (`[]`: none), so its hash changes. Checked as on the New campaign page: the server is in Settings and lists each tool named; the kinds of agent are the workers and the advisors (a research run has no planner). A hill-climb or goal campaign is refused in words: its servers are in its kit's kit.json, which a copy does not change. `from.other_mcp_servers`, `campaign_copied`'s `mcp_servers` and a sentence on the copy's page say when the list differs. Tests: `src/control/copy-campaign.test.ts`, `src/cli/campaign.test.ts`. Pages: the MCP tools, REST API and command-line references. Not done: the line on giving copies a server in **Compare two models from zero**, and `--mcp-server NAME` on the command line (only the JSON file).
+- 2026-10-21: **Copy** on the campaign's page, as the owner approved its mockup. Beside **Start a run**, it opens a panel (`src/control/ui/copy-campaign.ts`, its script `copy-campaign-client.ts` at `/ui/assets/copy.js`): the copy's name, offered free and checked as you type in control's words, with a fixed name for one that is not valid; for a research campaign, the New campaign page's rows of Settings' MCP servers for the workers and the advisors, ticked as the source has them, with Advanced's tools per kind, a summary, and **Use the servers of … again**; a hill-climb or goal campaign's kit servers, read only; and the same request over REST, MCP and the command line. The form posts without the script (`POST /ui/campaigns/<campaign>/copy`, which sends `mcp_servers` only when they differ from the source's); **Copy** opens the copy's page (`Copied <campaign> version <n> as <copy>.`, then `Copied from … by you, just now.` and **Start a run of** the copy), and a refusal opens the panel again with **Not copied.** and control's words. Every form label has an info icon. Tests: `src/control/copy-ui.test.ts` (the form driven as a browser drives it: a hill-climb copy and its page and run, a research copy with a narrowed and an added server, the source's list kept as it is, refusals for a taken name, a name only a grant has, a name that is not valid, a rig check's name, a server with no agent and a kind with no tool, and no Copy for a rig check) and `src/control/ui/copy-campaign-client.test.ts` (the script's checks against control's own answers). Checked in headless Chrome at desktop and phone widths, light and dark. Pages: **Compare two models from zero** (now from the dashboard, with the research copy's servers and the refusals), the campaign's page in How Thermite fits together, the glossary, the REST API and command-line references, the roadmap and the changelog. Left: `--mcp-server NAME` on the command line (only the JSON file).
 
 ---
 
