@@ -45,6 +45,10 @@ export default defineConfig({
       favicon: "/favicon.svg",
       components: { SiteTitle: "./src/components/SiteTitle.astro" },
       head: [
+        // Beside the SVG favicon: an ICO for browsers that take no SVG (Safari among them), and
+        // the icon iOS shows for a saved page.
+        { tag: "link", attrs: { rel: "icon", href: "/favicon.ico", sizes: "32x32" } },
+        { tag: "link", attrs: { rel: "apple-touch-icon", href: "/apple-touch-icon.png" } },
         {
           tag: "script",
           attrs: {

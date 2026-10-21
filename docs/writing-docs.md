@@ -29,6 +29,7 @@ The site's dependencies are pinned to exact versions and kept apart from Thermit
 The site is at [usethermite.com](https://usethermite.com), on Cloudflare Pages. Cloudflare builds it from `main` on every push: in `docs/_site/`, with `npm run build -- --outDir dist` on Node.js 22, and it serves `dist/`. Other branches and pull requests get no preview.
 
 - `docs/_site/public/_headers` sets the response headers, among them the Content Security Policy. A page that loads a script, style, image or font from another host needs that host added there, or the browser blocks it.
+- The site's icon is the flame in `docs/_site/public/favicon.svg`. Beside it are `favicon.ico` (16, 32 and 48 pixels, for browsers that take no SVG, such as Safari) and `apple-touch-icon.png` (180 pixels, on a dark square, for a page saved on iOS). They are made from the SVG; after a change to the flame, make them again from it, and keep the three alike.
 - The pages count visits to usethermite.com with [Fathom Analytics](https://usefathom.com), which sets no cookies. Its script and site code are in `astro.config.mjs`.
 - The header shows the version of Thermite the pages describe, beside the title, linked to the roadmap page. The build reads it from the root `package.json`, so a new version needs no change to the site (`src/components/SiteTitle.astro`).
 
