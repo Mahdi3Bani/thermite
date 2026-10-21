@@ -8,7 +8,14 @@ import type { TrialProgress } from "./live-session.ts";
 import { modelConfigFromEnv } from "./model.ts";
 import { runResearchTrial } from "./research-worker.ts";
 import type { AnyTrial } from "./spawn.ts";
-import { type CompactionLink, type McpForAgent, runTrial, type TrialSpec } from "./worker.ts";
+import { UsageSender } from "./usage-meter.ts";
+import {
+  type CompactionLink,
+  type McpForAgent,
+  runTrial,
+  type TrialResult,
+  type TrialSpec,
+} from "./worker.ts";
 
 /**
  * A worker trial in its own process (one per trial), run as its lane's agent user. It reaches
@@ -69,6 +76,9 @@ async function main(): Promise<void> {
     read: (ids: number[]) => call("POST", "/v1/trial/messages/read", { ids }),
     progress: (p: TrialProgress) => call("POST", "/v1/trial/live", { entries: [], progress: p }),
   };
+  // Each model call's usage, handed to the harness as it is made (goal 075); the trial's token
+  // decides the run, the trial and the route.
+  const usage = new UsageSender((calls) => call("POST", "/v1/trial/usage", { calls }));
   // The MCP tools the run's kit gives its workers (goal 068), as the harness's gateway lists them
   // for this trial. A list that can't be read gives none: the trial goes on with its own tools.
   let mcp: McpForAgent | undefined;
@@ -125,8 +135,9 @@ async function main(): Promise<void> {
       link,
       idea: (req) => call("POST", "/v1/trial/idea", req),
       note: (req) => call("POST", "/v1/trial/note", req),
+      modelUsage: usage.add,
     });
-    process.stdout.write(`\n${JSON.stringify(result)}\n`);
+    process.stdout.write(`\n${JSON.stringify(await withUsage(result, usage))}\n`);
     return;
   }
   const spec: TrialSpec = trial.spec;
@@ -159,8 +170,15 @@ async function main(): Promise<void> {
     link,
     mcp,
     compaction,
+    modelUsage: usage.add,
   });
-  process.stdout.write(`\n${JSON.stringify(result)}\n`);
+  process.stdout.write(`\n${JSON.stringify(await withUsage(result, usage))}\n`);
+}
+
+/** The trial's result, once its usage is handed over, with the records the harness did not take. */
+async function withUsage(result: TrialResult, usage: UsageSender): Promise<TrialResult> {
+  const left = await usage.finish();
+  return left ? { ...result, usageUnrecorded: left } : result;
 }
 
 main().catch((err) => {

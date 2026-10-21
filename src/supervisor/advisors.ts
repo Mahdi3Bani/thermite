@@ -17,12 +17,14 @@ import {
 } from "../core/compaction.ts";
 import { LenientNotes, NOTES_GUIDE, type NoteInput } from "../core/journal.ts";
 import type { McpToolInfo } from "../core/mcp.ts";
+import type { AdvisorAgent, CallUsage, UsageRoute } from "../core/usage.ts";
 import {
   CLAUDE_BASE_ENV,
   CLAUDE_TOKEN_FD,
   claudeBin,
   claudeCompactionEnv,
   claudeExe,
+  claudeResultUsage,
 } from "../harness/agents/claude-code.ts";
 import { codexBin, codexExe } from "../harness/agents/codex.ts";
 import { Compactor, summarizer } from "../harness/agents/compaction.ts";
@@ -30,6 +32,7 @@ import { mcpAgentTools, mcpLine } from "../harness/agents/mcp-tools.ts";
 import { buildModel, type ModelConfig } from "../harness/agents/model.ts";
 import { JOURNAL_FIELD } from "../harness/agents/notes-tool.ts";
 import { opencodeBin, opencodeExe } from "../harness/agents/opencode.ts";
+import { PiMeter } from "../harness/agents/usage-meter.ts";
 import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL, SEARCH_MAX } from "../harness/knowledge.ts";
 import { Fetcher, FetchRefused } from "../harness/research/fetcher.ts";
 import {
@@ -63,6 +66,12 @@ import { type AdvisorServers, type PastSearch, serveAdvisorTools } from "./past-
  * prompt-injected.
  */
 
+/**
+ * The model provider's name, as control's Providers names it, for the advisors' model usage (goal
+ * 075): a model control gives a role carries it. Optional in a file.
+ */
+const ProviderName = z.string().min(1).max(100).optional();
+
 const Runtime = z.discriminatedUnion("runtime", [
   z.strictObject({
     name: z.string().min(1).max(60),
@@ -92,6 +101,7 @@ const Runtime = z.discriminatedUnion("runtime", [
     /** Prices per million tokens, for the cost reported to control. */
     usd_per_mtok_in: z.number().nonnegative().default(0),
     usd_per_mtok_out: z.number().nonnegative().default(0),
+    provider: ProviderName,
   }),
   z.strictObject({
     name: z.string().min(1).max(60),
@@ -120,6 +130,7 @@ const Runtime = z.discriminatedUnion("runtime", [
     context_window: z.number().int().positive().optional(),
     compact_at: z.number().int().min(COMPACT_AT_MIN).max(COMPACT_AT_MAX).optional(),
     timeout_s: z.number().int().positive().max(7200).default(1800),
+    provider: ProviderName,
   }),
   z.strictObject({
     name: z.string().min(1).max(60),
@@ -142,6 +153,7 @@ const Runtime = z.discriminatedUnion("runtime", [
      */
     compact_at: z.number().int().min(COMPACT_AT_MIN).max(COMPACT_AT_MAX).optional(),
     timeout_s: z.number().int().positive().max(7200).default(1800),
+    provider: ProviderName,
   }),
   z.strictObject({
     name: z.string().min(1).max(60),
@@ -165,9 +177,28 @@ const Runtime = z.discriminatedUnion("runtime", [
      */
     compact_at: z.number().int().min(COMPACT_AT_MIN).max(COMPACT_AT_MAX).optional(),
     timeout_s: z.number().int().positive().max(7200).default(1800),
+    provider: ProviderName,
   }),
 ]);
 export type AdvisorRuntime = z.infer<typeof Runtime>;
+
+/**
+ * Where an advisor's calls go, for its model usage (goal 075); none for a command-line agent,
+ * which says nothing of them.
+ */
+export function advisorRoute(rt: AdvisorRuntime): UsageRoute | undefined {
+  if (rt.runtime === "cli") return undefined;
+  return {
+    harness: rt.runtime === "openai" ? "pi" : rt.runtime,
+    provider: rt.provider ?? null,
+    model: rt.model,
+  };
+}
+
+/** An advisor call's model usage (goal 075): where it ran, and each record. */
+export interface AdvisorUsage extends UsageRoute {
+  calls: CallUsage[];
+}
 
 /**
  * The advisors file, with goal 074's names: one or two teachers, the model that merges the advice
@@ -234,6 +265,8 @@ export interface AdvisorResult<T> {
   usd: number;
   /** The call's compactions (goal 070), as the supervisor records them with the round. */
   compactions?: AdvisorCompaction[] | undefined;
+  /** The call's model usage (goal 075); none for a command-line agent or a call that never ran. */
+  usage?: AdvisorUsage | undefined;
 }
 
 /** One compaction of an advisor's call in Pi (goal 070). */
@@ -442,6 +475,14 @@ export async function runAdvisor<S extends z.ZodType>(input: {
             }),
           },
           token: rt.token,
+          // Its model usage, from its JSON result, which does not say how many calls it made.
+          usage: {
+            route: advisorRoute(rt) as UsageRoute,
+            calls: (out) => {
+              const u = claudeResultUsage(lastJsonObject(out), null);
+              return u ? [u] : [];
+            },
+          },
         },
         t?.mcp?.servers.length ? `${input.system}\n\n${mcpLine(t.mcp.servers)}` : input.system,
         input.prompt,
@@ -555,6 +596,10 @@ export async function runAdvisor<S extends z.ZodType>(input: {
     reasoning: rt.reasoning,
   };
   const { models, model, thinkingLevel } = buildModel(cfg);
+  // Each model call's usage, the compaction summaries' included (goal 075).
+  const usage: AdvisorUsage = { ...(advisorRoute(rt) as UsageRoute), calls: [] };
+  result.usage = usage;
+  const meter = new PiMeter((u) => usage.calls.push(u));
   const agent = new Agent({
     // The effort chosen for this advisor; without it the agent would never think.
     initialState: {
@@ -565,9 +610,10 @@ export async function runAdvisor<S extends z.ZodType>(input: {
       thinkingLevel,
       tools,
     },
-    streamFn: models.streamSimple.bind(models),
+    streamFn: meter.streamFn(models),
     toolExecution: "sequential",
   });
+  meter.watch(agent);
   // Near the window the call's conversation is compacted and the advisor goes on (goal 070), as
   // the planner's is: its tools' results (past research, MCP servers) can fill the window. It has
   // no file tool, so its summary names where the supervisor keeps the conversation.
@@ -585,7 +631,7 @@ export async function runAdvisor<S extends z.ZodType>(input: {
           m.role === "assistant" ||
           m.role === "toolResult",
       ) as Message[],
-    summarize: summarizer(cfg),
+    summarize: summarizer(cfg, meter),
     keep: async (n, markdown) => {
       if (!input.keeper) throw new Error("this advisor's call has no place to keep it");
       return {
@@ -720,6 +766,8 @@ async function runCliHarness<S extends z.ZodType>(
           return { CODEX_HOME: dir };
         },
         read: opencode ? readOpencodeAnswer : readCodexAnswer,
+        // Its model usage, as its JSON events report it.
+        usage: { route: advisorRoute(rt) as UsageRoute },
       },
       servers.length ? `${input.system}\n\n${mcpLine(servers.map((s) => s.name))}` : input.system,
       input.prompt,
@@ -747,6 +795,11 @@ function runCli<S extends z.ZodType>(
     prepare?: ((home: string) => Record<string, string>) | undefined;
     /** Reads the answer and the tokens from what it printed (default: its last JSON object). */
     read?: ((out: string) => CliAnswer) | undefined;
+    /**
+     * Its model usage (goal 075): where it ran, and its records from what it printed (`read`'s,
+     * else `calls`').
+     */
+    usage?: { route: UsageRoute; calls?: ((out: string) => CallUsage[]) | undefined } | undefined;
   },
   system: string,
   prompt: string,
@@ -833,17 +886,22 @@ function runCli<S extends z.ZodType>(
       const parsed = schema.safeParse(found);
       const tokensIn = said?.tokensIn ?? 0;
       const tokensOut = said?.tokensOut ?? 0;
+      // Its model usage, from what it printed, answer or not.
+      const usage: AdvisorUsage | undefined = rt.usage
+        ? { ...rt.usage.route, calls: said?.calls ?? rt.usage.calls?.(out) ?? [] }
+        : undefined;
       // Why there is no answer: the CLI's last message, else its last error, else its output.
       const why = said?.text || said?.error || err || out;
       resolve(
         parsed.success
-          ? { output: parsed.data, tokensIn, tokensOut, usd: 0 }
+          ? { output: parsed.data, tokensIn, tokensOut, usd: 0, usage }
           : {
               output: undefined,
               error: `no valid answer: ${why.slice(-300)}`,
               tokensIn,
               tokensOut,
               usd: 0,
+              usage,
             },
       );
     };
@@ -1148,6 +1206,8 @@ export interface TeacherRun {
   usd: number;
   /** The teachers' and the merged by model's compactions in this round (goal 070). */
   compactions?: AdvisorCompaction[] | undefined;
+  /** Each call's model usage in this round, by whose it was (goal 075). */
+  usage: ({ agent: AdvisorAgent } & AdvisorUsage)[];
 }
 
 /**
@@ -1175,12 +1235,14 @@ export async function teacherRound(input: {
     dropped: [],
     tokens: { in: 0, out: 0 },
     usd: 0,
+    usage: [],
   };
-  const count = (r: AdvisorResult<unknown>) => {
+  const count = (r: AdvisorResult<unknown>, agent: AdvisorAgent) => {
     run.tokens.in += r.tokensIn;
     run.tokens.out += r.tokensOut;
     run.usd += r.usd;
     if (r.compactions?.length) run.compactions = [...(run.compactions ?? []), ...r.compactions];
+    if (r.usage?.calls.length) run.usage.push({ agent, ...r.usage });
   };
   const head = `Brief of run ${input.run}:`;
   const results = await Promise.all(
@@ -1197,7 +1259,7 @@ export async function teacherRound(input: {
     ),
   );
   results.forEach((r, i) => {
-    count(r);
+    count(r, "teachers");
     const teacher = input.config.teachers[i]?.name ?? `teacher-${i}`;
     run.reviews.push({
       teacher,
@@ -1246,7 +1308,7 @@ export async function teacherRound(input: {
       answerSchema: DirectiveAnswer,
       keeper: input.keeper,
     });
-    count(r);
+    count(r, "combiner");
     if (!r.output) {
       run.error = `the teachers' merged by model gave no directive set: ${r.error ?? ""}`;
       return run;

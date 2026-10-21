@@ -4,6 +4,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import type { CallUsage } from "../../core/usage.ts";
 import type { Runner, RunOutcome, RunRequest } from "../broker/runner.ts";
 import {
   CLAUDE_SYSTEM,
@@ -11,6 +12,7 @@ import {
   claudeExitWords,
   claudeModelCheck,
   claudeShell,
+  closeClaudeRun,
   NO_CLAUDE_CODE,
   newClaudeTally,
   readClaudeEvents,
@@ -132,6 +134,72 @@ describe("Claude Code", () => {
     assert.match(full.errors.at(-1) ?? "", /session limit/);
   });
 
+  test("its model usage: one record for each run, from its result, with the calls its stream showed", () => {
+    const t = newClaudeTally();
+    // The result's times, as Claude Code 2.1.305 gives them: from the run's start.
+    const timed = events().map((line) => {
+      const e = JSON.parse(line) as Record<string, unknown>;
+      return JSON.stringify(
+        e.type === "result"
+          ? {
+              ...e,
+              duration_ms: 9000,
+              duration_api_ms: 7000,
+              ttft_ms: 1500,
+              time_to_request_ms: 300,
+            }
+          : e,
+      );
+    });
+    readClaudeEvents(timed, t);
+    assert.equal(t.calls.length, 1);
+    const [u] = t.calls;
+    assert.equal(u?.calls, 2, "two messages: two model calls");
+    assert.equal(u?.tokens_in, 2006);
+    assert.equal(u?.cached_in, 1000);
+    assert.equal(u?.uncached_in, 1006);
+    assert.equal(u?.tokens_out, 35);
+    assert.equal(u?.reasoning, null, "Claude Code names no reasoning tokens");
+    assert.equal(u?.call_ms, 7000);
+    assert.equal(u?.first_token_ms, 1200);
+    // Without the result's times, no time is reported.
+    const plain = newClaudeTally();
+    readClaudeEvents(events(), plain);
+    assert.equal(plain.calls[0]?.call_ms, null);
+    assert.equal(plain.calls[0]?.first_token_ms, null);
+    // A result whose usage names no cache read: not reported, never 0.
+    const bare = newClaudeTally();
+    readClaudeEvents(
+      [
+        JSON.stringify({
+          type: "result",
+          subtype: "success",
+          usage: { input_tokens: 9, output_tokens: 3 },
+        }),
+      ],
+      bare,
+    );
+    assert.equal(bare.calls[0]?.cached_in, null);
+    assert.equal(bare.calls[0]?.calls, null, "no messages seen: the calls are not reported");
+  });
+
+  test("a run cut off before its result keeps the usage its stream showed, without times", () => {
+    const t = newClaudeTally();
+    readClaudeEvents(events().slice(0, 6), t);
+    assert.equal(t.calls.length, 0);
+    closeClaudeRun(t);
+    assert.equal(t.calls.length, 1);
+    const [u] = t.calls;
+    assert.equal(u?.calls, 2);
+    assert.equal(u?.tokens_in, 2006);
+    // One message named no cache read: the run's cached input is not reported.
+    assert.equal(u?.cached_in, null);
+    assert.equal(u?.tokens_out, 35);
+    assert.equal(u?.call_ms, null);
+    closeClaudeRun(t);
+    assert.equal(t.calls.length, 1, "a run is counted once");
+  });
+
   test("it runs with no settings, no MCP servers and its permissions bypassed; the trial brief fits it", () => {
     const a = claudeArgs(model, { tools: "" });
     for (const f of ["--strict-mcp-config", "--setting-sources", "--permission-mode", "--verbose"])
@@ -191,6 +259,7 @@ describe("Claude Code", () => {
     const a = area();
     const f = fakeRunner(events(), { submit: true });
     const seen: unknown[] = [];
+    const calls: CallUsage[] = [];
     const r = await runClaudeTrial(spec(a, join(a, "repo")), {
       runner: f.runner,
       model,
@@ -198,11 +267,17 @@ describe("Claude Code", () => {
       live: () => undefined,
       progress: () => undefined,
       usage: (u) => seen.push(u),
+      modelUsage: (u) => calls.push(u),
       submitted: () => (f.submitted() ? { attempt: "a-1", lifecycle: "queued" } : undefined),
       pollMs: 5,
     });
     assert.equal(r.stopped, "submitted");
     assert.equal(r.turns, 2);
+    // The run's usage, from its result, reaches the harness once.
+    assert.deepEqual(
+      calls.map((u) => [u.calls, u.tokens_in, u.cached_in, u.tokens_out]),
+      [[2, 2006, 1000, 35]],
+    );
     assert.ok(f.runs.every((x) => x.role === "lane-1"));
     const run = f.runs.find((x) => x.argv.includes("-p")) as RunRequest;
     assert.equal(run.cwd, join(a, "repo"));

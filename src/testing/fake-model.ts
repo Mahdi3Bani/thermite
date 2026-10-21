@@ -1,4 +1,4 @@
-import { createServer, type Server } from "node:http";
+import { createServer, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
 /**
@@ -17,8 +17,14 @@ export interface ScriptedTurn {
   fail?: number;
   /** The failure's message (default "scripted failure <status>"). */
   failMessage?: string;
-  /** Token usage reported for the reply (default 100 in, 20 out). */
-  usage?: { prompt: number; completion: number };
+  /**
+   * Token usage reported for the reply (default 100 in, 20 out). `cached` and `reasoning`, when
+   * given, are reported as OpenAI does (prompt_tokens_details, completion_tokens_details); else
+   * left out, as many servers do.
+   */
+  usage?: { prompt: number; completion: number; cached?: number; reasoning?: number };
+  /** Waits this long before the reply's first token (ms). */
+  delayMs?: number;
 }
 
 export type Script = (req: {
@@ -64,34 +70,9 @@ export async function startFakeModel(script: Script): Promise<FakeModel> {
         return;
       }
       const id = `chatcmpl-${++n}`;
-      const chunk = (delta: unknown, finish: string | null) =>
-        `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created: 0, model: parsed.model, choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
       res.writeHead(200, { "content-type": "text/event-stream" });
-      if (turn.thinking)
-        res.write(chunk({ role: "assistant", reasoning_content: turn.thinking }, null));
-      res.write(chunk({ role: "assistant", content: turn.text ?? "" }, null));
-      (turn.toolCalls ?? []).forEach((t, i) => {
-        res.write(
-          chunk(
-            {
-              tool_calls: [
-                {
-                  index: i,
-                  id: `call_${n}_${i}`,
-                  type: "function",
-                  function: { name: t.name, arguments: JSON.stringify(t.args) },
-                },
-              ],
-            },
-            null,
-          ),
-        );
-      });
-      res.write(chunk({}, turn.cutOff ? "length" : turn.toolCalls?.length ? "tool_calls" : "stop"));
-      res.write(
-        `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created: 0, model: parsed.model, choices: [], usage: { prompt_tokens: turn.usage?.prompt ?? 100, completion_tokens: turn.usage?.completion ?? 20, total_tokens: (turn.usage?.prompt ?? 100) + (turn.usage?.completion ?? 20) } })}\n\n`,
-      );
-      res.end("data: [DONE]\n\n");
+      if (turn.delayMs) setTimeout(() => answer(res, turn, id, parsed.model), turn.delayMs);
+      else answer(res, turn, id, parsed.model);
     });
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -107,4 +88,48 @@ export async function startFakeModel(script: Script): Promise<FakeModel> {
         server.close(() => r());
       }),
   };
+}
+
+/** Streams one scripted reply, its usage last. */
+function answer(res: ServerResponse, turn: ScriptedTurn, id: string, model: string): void {
+  const chunk = (delta: unknown, finish: string | null) =>
+    `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created: 0, model, choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
+  if (turn.thinking)
+    res.write(chunk({ role: "assistant", reasoning_content: turn.thinking }, null));
+  res.write(chunk({ role: "assistant", content: turn.text ?? "" }, null));
+  (turn.toolCalls ?? []).forEach((t, i) => {
+    res.write(
+      chunk(
+        {
+          tool_calls: [
+            {
+              index: i,
+              id: `call_${id}_${i}`,
+              type: "function",
+              function: { name: t.name, arguments: JSON.stringify(t.args) },
+            },
+          ],
+        },
+        null,
+      ),
+    );
+  });
+  res.write(chunk({}, turn.cutOff ? "length" : turn.toolCalls?.length ? "tool_calls" : "stop"));
+  const prompt = turn.usage?.prompt ?? 100;
+  const completion = turn.usage?.completion ?? 20;
+  const usage = {
+    prompt_tokens: prompt,
+    completion_tokens: completion,
+    total_tokens: prompt + completion,
+    ...(turn.usage?.cached !== undefined
+      ? { prompt_tokens_details: { cached_tokens: turn.usage.cached } }
+      : {}),
+    ...(turn.usage?.reasoning !== undefined
+      ? { completion_tokens_details: { reasoning_tokens: turn.usage.reasoning } }
+      : {}),
+  };
+  res.write(
+    `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created: 0, model, choices: [], usage })}\n\n`,
+  );
+  res.end("data: [DONE]\n\n");
 }

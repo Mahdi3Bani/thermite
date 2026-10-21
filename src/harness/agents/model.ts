@@ -39,6 +39,11 @@ export interface ModelConfig {
    * Codex CLI (OpenAI's Responses API only: a ChatGPT sign-in or an OpenAI-compatible route).
    */
   harness?: "pi" | "opencode" | "claude-code" | "codex" | undefined;
+  /**
+   * The provider's name in control's Providers, for the agents' model usage (goal 075). None: the
+   * rig's own settings, which name no provider.
+   */
+  provider?: string | undefined;
   baseUrl: string;
   model: string;
   apiKey: string;

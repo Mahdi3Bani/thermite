@@ -226,6 +226,12 @@ describe("advisors in OpenCode and the Codex CLI", () => {
     assert.equal(f.prompt_has_shape, true);
     assert.equal(f.prompt_has_package, true);
     assert.deepEqual([r.tokensIn, r.tokensOut], [1200, 40]);
+    // Its model usage, from its turn: no count of calls, no cache or reasoning figure named.
+    assert.equal(r.usage?.harness, "codex");
+    assert.deepEqual(
+      r.usage?.calls.map((u) => [u.calls, u.tokens_in, u.cached_in, u.tokens_out, u.reasoning]),
+      [[null, 1200, null, 40, null]],
+    );
   });
 
   test("OpenCode: every action denied but the advisor's MCP tools, the model through the call's proxy", async (t) => {
@@ -290,6 +296,12 @@ describe("advisors in OpenCode and the Codex CLI", () => {
     assert.match(f.mcp_with_token, /found for tiling/);
     assert.equal(f.prompt_has_shape, true);
     assert.deepEqual([r.tokensIn, r.tokensOut], [900, 35]);
+    // Its model usage, from its step: the output with its reasoning; no cache figure named.
+    assert.equal(r.usage?.harness, "opencode");
+    assert.deepEqual(
+      r.usage?.calls.map((u) => [u.calls, u.tokens_in, u.cached_in, u.tokens_out, u.reasoning]),
+      [[1, 900, null, 35, 5]],
+    );
   });
 
   test("OpenCode's own models: no proxy and no key, OpenCode's own provider", async () => {

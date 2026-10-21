@@ -48,6 +48,7 @@ Each release of Thermite, newest first. Versions 0.x make no upgrade promise: re
 
 ### Operate
 
+- Model usage. Code records each model call of the workers, the planner and the advisors, never an agent, as a `model_call` event of its run: its tokens in (cached and not cached), its tokens out with the reasoning, and its times, as far as Pi, OpenCode v2, Codex and Claude Code report them. A figure a program does not report is null, never 0.
 - Control's log pages through every entry, in the dashboard, over REST and in the `control_log` MCP tool.
 - The judge's smoke check passes on a machine with noisy timing when the only wrong result is the no-op's `inconclusive` in place of `neutral`. It then says so in a note: the timing on this machine is noisy, and results there need more repeats. Any other wrong result still fails it.
 - The documentation site has tutorials, how-to guides, reference and explanation. Agents read it through `llms.txt`. It includes the known limits and the security model.

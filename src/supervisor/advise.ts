@@ -7,6 +7,7 @@ import type { AgentsContext } from "../core/compaction.ts";
 import type { NoteInput } from "../core/journal.ts";
 import type { LiveKind } from "../core/live.ts";
 import type { McpUse } from "../core/mcp.ts";
+import { type AdvisorAgent, AGENT_WORDS } from "../core/usage.ts";
 import type { McpCaller, McpGateway } from "../harness/mcp-gateway.ts";
 import {
   type AdvisorCompaction,
@@ -14,6 +15,7 @@ import {
   type AdvisorMcp,
   type AdvisorsConfig,
   type AdvisorTools,
+  type AdvisorUsage,
   advisorFetcher,
   auditOne,
   reviewOne,
@@ -356,6 +358,34 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
     say(run, "status", `${clip(s.last_error, 400)}`);
   };
   /**
+   * An advisor's model usage in a run (goal 075), handed to the harness with its round: the
+   * harness records each call in the run's history. A failure is the advisor's error line, and
+   * those calls are not recorded; the advisor's work stands.
+   */
+  const usageOut = async (
+    run: string | undefined,
+    round: string,
+    agent: AdvisorAgent,
+    u: AdvisorUsage | undefined,
+  ) => {
+    if (!run || !u?.calls.length) return;
+    const { calls, ...route } = u;
+    for (let i = 0; i < calls.length; i += 500) {
+      try {
+        await api("POST", "/v1/model-calls", {
+          run,
+          round,
+          agent,
+          ...route,
+          calls: calls.slice(i, i + 500),
+        });
+      } catch (err) {
+        fail(`the model usage of the ${AGENT_WORDS[agent].toLowerCase()} for ${run}`, err, run);
+        return;
+      }
+    }
+  };
+  /**
    * Tells the harness which of the owner's messages an advisor role was given and what it
    * answered (only answers to messages it was given). A failure here never stops the advisor's
    * own work: the messages then stay waiting and are given again.
@@ -501,6 +531,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         };
         closed(brief);
         const given = (brief.owner_messages ?? []).filter((m) => !m.read).map((m) => m.id);
+        const round = `teachers ${new Date().toISOString()}`;
         const run = await teacherRound({
           // With the campaign's own context settings, when it sets any (goal 070).
           config: await configFor(inst.id),
@@ -525,6 +556,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         });
         s.teacher_runs++;
         count({ tokensIn: run.tokens.in, tokensOut: run.tokens.out, usd: run.usd });
+        for (const u of run.usage) await usageOut(inst.id, round, u.agent, u);
         for (const r of run.reviews) {
           const recs = r.review?.recommendations ?? [];
           say(
@@ -608,6 +640,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
           },
         });
         count(r);
+        await usageOut(pkg.run, `audit ${pkg.attempt}`, "auditor", r.usage);
         if (!r.output) {
           fail(`audit of ${pkg.attempt}`, r.error, pkg.run);
           continue;
@@ -697,6 +730,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
             keeper: keeperFor(pkg.run),
           });
           count(r);
+          await usageOut(pkg.run, `review ${pkg.id}`, "panel", r.usage);
           compactions.push(...(r.compactions ?? []));
           if (!r.output) continue;
           results.push({ reviewer: runtime.name, pass: r.output.pass, reasons: r.output.reasons });

@@ -31,6 +31,7 @@ import {
   PLANNER_ROLE,
   runOpencodeResearchTrial,
   runOpencodeTrial,
+  takeUsage,
 } from "./agents/opencode.ts";
 import { Scheduler } from "./agents/scheduler.ts";
 import { spawnTrial } from "./agents/spawn.ts";
@@ -66,6 +67,7 @@ import { checksDir, smokeCheck } from "./smoke-check.ts";
 import { CpuDriver } from "./targets/cpu.ts";
 import { CudaDriver, smiAs, smiAsRun } from "./targets/cuda.ts";
 import type { TargetDriver } from "./targets/driver.ts";
+import { routeOf } from "./usage.ts";
 
 /** The harness controller: owns the ledger, serves the API and drives the executor. */
 async function main(): Promise<void> {
@@ -512,6 +514,23 @@ async function main(): Promise<void> {
       markdown: string;
     }) =>
       service.compactions?.fromHarness(compactionOf(trialOf(spec)), harness, c);
+  // Each model call's usage (goal 075): the harness records what OpenCode, Codex and Claude Code
+  // report of a trial's calls; a Pi worker's own code hands its records over, with the trial's
+  // token, while the trial runs.
+  const workerUsage = (spec: { trialId: string; run: string }, m: ModelConfig) =>
+    service.usage.recorder(spec.run, { trial: spec.trialId, agent: "workers" }, routeOf(m));
+  const inPi = async <T>(
+    spec: { trialId: string; run: string },
+    m: ModelConfig | undefined,
+    run: () => Promise<T>,
+  ): Promise<T> => {
+    if (m) service.usage.open({ id: spec.trialId, run: spec.run }, routeOf(m, "pi"));
+    try {
+      return await run();
+    } finally {
+      service.usage.close(spec.trialId);
+    }
+  };
   // Agents wait while no route is set; one set later starts them without a restart.
   const scheduler = new Scheduler({
     service,
@@ -540,6 +559,7 @@ async function main(): Promise<void> {
           // A full ChatGPT plan, as the model proxy saw OpenAI say it.
           usageLimitSince: (since) => service.usageLimitSince(since),
           compacted: compactedIn(spec, "codex"),
+          modelUsage: workerUsage(spec, m),
           env: laneCacheEnv(paths.scratchDir, spec.lane),
           signal,
         });
@@ -557,11 +577,14 @@ async function main(): Promise<void> {
             service.subscriptionUsage = { ...u, at: new Date().toISOString() };
           },
           compacted: compactedIn(spec, "claude-code"),
+          modelUsage: workerUsage(spec, m),
           env: laneCacheEnv(paths.scratchDir, spec.lane),
           signal,
         });
       if (m?.harness !== "opencode")
-        return spawnTrial({ kind: "code", spec }, runner, paths.scratchDir, port, signal, m);
+        return inPi(spec, m, () =>
+          spawnTrial({ kind: "code", spec }, runner, paths.scratchDir, port, signal, m),
+        );
       return runOpencodeTrial(spec, {
         runner,
         model: m,
@@ -570,6 +593,7 @@ async function main(): Promise<void> {
         progress: (progress) => service.trialReport(trialOf(spec), { progress }),
         submitted: () => service.trialSubmission(spec.trialId),
         messages: service.trialInbox({ id: spec.trialId, run: spec.run, lane: spec.lane }),
+        modelUsage: workerUsage(spec, m),
         env: laneCacheEnv(paths.scratchDir, spec.lane),
         signal,
       });
@@ -585,6 +609,7 @@ async function main(): Promise<void> {
         // The MCP servers the run's kit gives the planner, at the gateway (goal 068).
         mcp: o?.mcp,
       });
+      takeUsage(t, o?.usage);
       if (!t.lastText) throw new Error(t.errors.at(-1) ?? "OpenCode gave no answer");
       return t.lastText;
     },
@@ -601,6 +626,7 @@ async function main(): Promise<void> {
         role: PLANNER_ROLE,
         mcp: o?.mcp,
       });
+      takeUsage(t, o?.usage);
       if (t.usage) service.subscriptionUsage = { ...t.usage, at: new Date().toISOString() };
       const answer = t.result ?? t.lastText;
       if (!answer) throw new Error(t.errors.at(-1) ?? "Claude Code gave no answer");
@@ -617,6 +643,7 @@ async function main(): Promise<void> {
         // The MCP servers the run's kit gives the planner, at the gateway (goal 068).
         mcp: o?.mcp,
       });
+      takeUsage(t, o?.usage);
       if (!t.lastText) throw new Error(t.errors.at(-1) ?? "Codex gave no answer");
       return t.lastText;
     },
@@ -657,13 +684,15 @@ async function main(): Promise<void> {
         });
       if (pi) {
         try {
-          return await spawnTrial(
-            { kind: "research", spec: { ...spec, folder } },
-            runner,
-            paths.scratchDir,
-            port,
-            signal,
-            m,
+          return await inPi(spec, m, () =>
+            spawnTrial(
+              { kind: "research", spec: { ...spec, folder } },
+              runner,
+              paths.scratchDir,
+              port,
+              signal,
+              m,
+            ),
           );
         } finally {
           await save();
@@ -680,6 +709,7 @@ async function main(): Promise<void> {
           live: (entries) => service.trialReport(trialOf(spec), { entries }),
           progress: (progress) => service.trialReport(trialOf(spec), { progress }),
           messages: service.trialInbox({ id: spec.trialId, run: spec.run, lane: spec.lane }),
+          modelUsage: m ? workerUsage(spec, m) : undefined,
           env: laneCacheEnv(paths.scratchDir, spec.lane),
           signal,
         });

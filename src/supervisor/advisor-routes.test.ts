@@ -26,6 +26,8 @@ describe("advisors from control", () => {
       ),
       {
         name: "auditor",
+        // The provider's name, for the advisors' model usage.
+        provider: "p",
         runtime: "claude-code",
         model: "claude-opus-5-5",
         token: "tok",
@@ -57,6 +59,7 @@ describe("advisors from control", () => {
       ),
       {
         name: "auditor",
+        provider: "p",
         runtime: "opencode",
         api: "opencode",
         model: "big-pickle",
@@ -69,6 +72,7 @@ describe("advisors from control", () => {
       runtimeOf(route({ harness: "opencode", context_window: 200_000 }), "teacher-1"),
       {
         name: "teacher-1",
+        provider: "p",
         runtime: "opencode",
         api: "anthropic",
         base_url: "https://api.anthropic.com",
@@ -93,6 +97,7 @@ describe("advisors from control", () => {
       ),
       {
         name: "reviewer-1",
+        provider: "p",
         runtime: "codex",
         api: "chatgpt",
         base_url: "https://chatgpt.example.com/backend-api/codex",

@@ -140,6 +140,50 @@ describe("the Codex CLI", () => {
     assert.equal(f.notes.at(-1), "not json at all");
   });
 
+  test("its model usage: one record for each turn, what the thread's totals grew by; no count of calls, no times", () => {
+    const t = newCodexTally();
+    readCodexEvents(events(), t);
+    const turn = (input: number, cached: number, output: number, reasoning: number) =>
+      JSON.stringify({
+        type: "turn.completed",
+        usage: {
+          input_tokens: input,
+          cached_input_tokens: cached,
+          output_tokens: output,
+          reasoning_output_tokens: reasoning,
+        },
+      });
+    // The thread resumed: its totals grew.
+    readCodexEvents([JSON.stringify({ type: "turn.started" }), turn(3000, 1500, 150, 60)], t);
+    assert.deepEqual(
+      t.calls.map((u) => [
+        u.calls,
+        u.tokens_in,
+        u.cached_in,
+        u.uncached_in,
+        u.tokens_out,
+        u.reasoning,
+      ]),
+      [
+        [null, 2400, 1200, 1200, 90, 40],
+        [null, 600, 300, 300, 60, 20],
+      ],
+    );
+    assert.ok(t.calls.every((u) => u.call_ms === null && u.first_token_ms === null));
+    // A new thread's totals, lower than before, are its own.
+    readCodexEvents([turn(500, 0, 10, 0)], t);
+    assert.equal(t.calls.at(-1)?.tokens_in, 500);
+    // A usage without cache or reasoning figures: those are not reported.
+    const bare = newCodexTally();
+    readCodexEvents(
+      [JSON.stringify({ type: "turn.completed", usage: { input_tokens: 70, output_tokens: 7 } })],
+      bare,
+    );
+    assert.equal(bare.calls[0]?.cached_in, null);
+    assert.equal(bare.calls[0]?.reasoning, null);
+    assert.equal(bare.calls[0]?.tokens_in, 70);
+  });
+
   test("it reaches the model only through the harness's proxy, with approvals and its sandbox off", () => {
     const a = codexArgs(model);
     for (const f of [

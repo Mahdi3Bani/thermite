@@ -4,6 +4,7 @@ import type { McpCallResult } from "../../common/mcp-client.ts";
 import { type LaneLimitValues, laneLimits, SHARED_DEV_RUN_S } from "../../core/contract.ts";
 import { notesInstruction } from "../../core/journal.ts";
 import type { McpToolInfo } from "../../core/mcp.ts";
+import type { CallUsage } from "../../core/usage.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { type CompactionReport, Compactor, summarizer } from "./compaction.ts";
 import { linkSession, type SessionLink } from "./live-session.ts";
@@ -12,6 +13,7 @@ import { buildModel, type ModelConfig } from "./model.ts";
 import { NOTE_TOOL, type NoteRequest, writeNote } from "./notes-tool.ts";
 import { researchAgentTools } from "./research-agent-tools.ts";
 import { CODE_RESEARCH_TOOLS, codeResearchNote } from "./research-tools.ts";
+import { PiMeter } from "./usage-meter.ts";
 
 /**
  * One worker trial: a fresh agent session (Pi) with Thermite's tools, in the lane's own
@@ -133,6 +135,8 @@ export interface TrialDeps {
   mcp?: McpForAgent | undefined;
   /** Where a compaction keeps the conversation, and where it is said (goal 070). */
   compaction?: CompactionLink | undefined;
+  /** Each model call's usage, as the trial's code measures it (goal 075). */
+  modelUsage?: ((u: CallUsage) => void) | undefined;
 }
 
 /**
@@ -169,6 +173,8 @@ export interface TrialResult {
   tokensOut: number;
   /** How many times the trial's conversation was compacted (goal 070). */
   compactions?: number | undefined;
+  /** Model calls whose usage the worker could not hand to the harness (goal 075). */
+  usageUnrecorded?: number | undefined;
   error?: string | undefined;
   /** The model's provider refused for now (a subscription's full usage window): not before this (ISO). */
   retryAfter?: string | undefined;
@@ -460,6 +466,8 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
   ];
 
   const { models, model, thinkingLevel } = buildModel(deps.model);
+  // Each model call's usage, the compaction summaries' included (goal 075).
+  const meter = deps.modelUsage ? new PiMeter(deps.modelUsage) : undefined;
   const agent = new Agent({
     initialState: {
       systemPrompt: `${SYSTEM}\n\n${NOTES_AND_SOURCES}${deps.mcp?.tools.length ? `\n\n${mcpLine([...new Set(deps.mcp.tools.map((t) => t.server))])}` : ""}`,
@@ -467,20 +475,21 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
       tools,
       thinkingLevel,
     },
-    streamFn: models.streamSimple.bind(models),
+    streamFn: meter ? meter.streamFn(models) : models.streamSimple.bind(models),
     convertToLlm: withoutPastThinking,
     // One tool call at a time: lane processes are killed by user when a tool finishes, so
     // parallel calls would kill each other, and a submission must end the trial before anything
     // else runs.
     toolExecution: "sequential",
   });
+  meter?.watch(agent);
   // Near the model's window the conversation is compacted and the trial goes on (goal 070): a
   // conversation that grows never ends a trial nor asks for an early submission.
   const compactor = new Compactor({
     window: deps.model.contextWindow,
     at: deps.model.compactAt,
     convert: withoutPastThinking,
-    summarize: summarizer(deps.model),
+    summarize: summarizer(deps.model, meter),
     keep: async (n, markdown) => {
       if (!deps.compaction) throw new Error("this trial has no place to keep it");
       const { path } = await deps.compaction.keep(n, markdown);

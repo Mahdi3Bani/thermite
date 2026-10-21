@@ -115,6 +115,7 @@ export class ModelSource {
         r.harness === "opencode" || r.harness === "claude-code" || r.harness === "codex"
           ? r.harness
           : undefined,
+      provider: r.name,
       baseUrl: r.base_url.replace(/\/$/, ""),
       model: r.model,
       apiKey: r.api_key,

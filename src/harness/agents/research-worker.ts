@@ -2,6 +2,7 @@ import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type TSchema, Type } from "@earendil-works/pi-ai";
 import type { LaneLimitValues } from "../../core/contract.ts";
 import { notesInstruction } from "../../core/journal.ts";
+import type { CallUsage } from "../../core/usage.ts";
 import { Compactor, summarizer } from "./compaction.ts";
 import { linkSession, type SessionLink } from "./live-session.ts";
 import { mcpAgentTools, mcpLine } from "./mcp-tools.ts";
@@ -16,6 +17,7 @@ import {
   researchFolderNote,
   researchOutput,
 } from "./research-tools.ts";
+import { PiMeter } from "./usage-meter.ts";
 import type { CompactionLink, IdeaInput, McpForAgent, TrialResult } from "./worker.ts";
 import { IDEA_TOOL, keepGoing, proposeIdea, withoutPastThinking } from "./worker.ts";
 
@@ -58,6 +60,8 @@ export interface ResearchDeps {
   mcp?: McpForAgent | undefined;
   /** Where a compaction keeps the conversation, and where it is said (goal 070). */
   compaction?: CompactionLink | undefined;
+  /** Each model call's usage, as the trial's code measures it (goal 075). */
+  modelUsage?: ((u: CallUsage) => void) | undefined;
 }
 
 /** A research worker's field notes, told apart from its research notes. */
@@ -135,6 +139,8 @@ export async function runResearchTrial(
   ];
 
   const { models, model, thinkingLevel } = buildModel(deps.model);
+  // Each model call's usage, the compaction summaries' included (goal 075).
+  const meter = deps.modelUsage ? new PiMeter(deps.modelUsage) : undefined;
   const agent = new Agent({
     initialState: {
       systemPrompt: `${
@@ -146,17 +152,18 @@ export async function runResearchTrial(
       tools,
       thinkingLevel,
     },
-    streamFn: models.streamSimple.bind(models),
+    streamFn: meter ? meter.streamFn(models) : models.streamSimple.bind(models),
     convertToLlm: withoutPastThinking,
     // One tool call at a time: each is a request to the harness, in the order the model chose.
     toolExecution: "sequential",
   });
+  meter?.watch(agent);
   // Near the model's window the conversation is compacted and the trial goes on (goal 070).
   const compactor = new Compactor({
     window: deps.model.contextWindow,
     at: deps.model.compactAt,
     convert: withoutPastThinking,
-    summarize: summarizer(deps.model),
+    summarize: summarizer(deps.model, meter),
     keep: async (n, markdown) => {
       if (!deps.compaction) throw new Error("this trial has no place to keep it");
       const { rel } = await deps.compaction.keep(n, markdown);

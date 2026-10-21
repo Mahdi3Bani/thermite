@@ -8,6 +8,7 @@ import { getSystemMessageText, type Message } from "@earendil-works/pi-ai";
 import { estimateContextTokens, estimateMessageTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { COMPACT_AT_DEFAULT } from "../../core/compaction.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
+import type { PiMeter } from "./usage-meter.ts";
 
 /**
  * Compaction in Pi (goal 070): when a conversation's input reaches the compaction point (a share
@@ -504,8 +505,11 @@ export function summaryTranscript(messages: AgentMessage[], budget: number): str
   ].join("\n\n");
 }
 
-/** The same model's summary call, with the fixed compaction prompt. */
-export function summarizer(cfg: ModelConfig) {
+/**
+ * The same model's summary call, with the fixed compaction prompt. `meter`: the agent's own, which
+ * records the call's usage with the agent's other calls (goal 075).
+ */
+export function summarizer(cfg: ModelConfig, meter?: PiMeter | undefined) {
   const { models, model, thinkingLevel } = buildModel(cfg);
   return async (transcript: string, signal?: AbortSignal): Promise<string> => {
     const reply = await models.completeSimple(
@@ -524,8 +528,10 @@ export function summarizer(cfg: ModelConfig) {
         maxTokens: cfg.maxTokens || 8192,
         ...(signal ? { signal } : {}),
         ...(thinkingLevel !== "off" ? { reasoning: thinkingLevel } : {}),
+        ...(meter ? { fetch: meter.fetch } : {}),
       },
     );
+    meter?.reply(reply);
     if (reply.stopReason === "error" || reply.stopReason === "aborted")
       throw new Error(reply.errorMessage ?? `the call ended: ${reply.stopReason}`);
     return textOf(reply.content);

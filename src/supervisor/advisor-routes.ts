@@ -52,13 +52,15 @@ const pointOf = (route: AdvisorRoute) =>
 /**
  * One role's runtime from its route, or undefined when advisors can't run it. The route's window
  * and compaction point go with it (goal 070): Pi compacts the call's conversation with them, and
- * Claude Code, OpenCode and Codex get them in their own settings.
+ * Claude Code, OpenCode and Codex get them in their own settings. So does its provider's name,
+ * which the role's model usage is recorded with (goal 075).
  */
 export function runtimeOf(route: AdvisorRoute, name: string): AdvisorRuntime | undefined {
   const compactAt = pointOf(route);
   if (route.type === "claude")
     return {
       name,
+      provider: route.name,
       runtime: "claude-code",
       model: route.model,
       token: route.api_key,
@@ -75,6 +77,7 @@ export function runtimeOf(route: AdvisorRoute, name: string): AdvisorRuntime | u
     if (route.type === "opencode")
       return {
         name,
+        provider: route.name,
         runtime: "opencode",
         api: "opencode",
         model: route.model,
@@ -86,6 +89,7 @@ export function runtimeOf(route: AdvisorRoute, name: string): AdvisorRuntime | u
       return undefined;
     return {
       name,
+      provider: route.name,
       runtime: "opencode",
       api: route.type,
       base_url: route.base_url,
@@ -101,6 +105,7 @@ export function runtimeOf(route: AdvisorRoute, name: string): AdvisorRuntime | u
     if (route.type !== "openai" && route.type !== "chatgpt") return undefined;
     return {
       name,
+      provider: route.name,
       runtime: "codex",
       api: route.type,
       base_url: route.base_url,
@@ -116,6 +121,7 @@ export function runtimeOf(route: AdvisorRoute, name: string): AdvisorRuntime | u
     return undefined;
   return {
     name,
+    provider: route.name,
     runtime: "openai",
     api: route.type,
     base_url: route.base_url,

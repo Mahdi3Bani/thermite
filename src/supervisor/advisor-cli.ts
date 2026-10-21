@@ -1,3 +1,4 @@
+import type { CallUsage } from "../core/usage.ts";
 import {
   codexConfig,
   newCodexTally,
@@ -197,12 +198,16 @@ export function codexAdvisorArgs(m: ModelConfig): string[] {
   ];
 }
 
-/** What a CLI's JSON events said: its last message (the answer), its tokens and its last error. */
+/**
+ * What a CLI's JSON events said: its last message (the answer), its tokens, its last error, and
+ * its model usage as its events report it (goal 075).
+ */
 export interface CliAnswer {
   text: string;
   tokensIn: number;
   tokensOut: number;
   error?: string | undefined;
+  calls: CallUsage[];
 }
 
 /** OpenCode's answer from its `--format json` events. */
@@ -214,6 +219,7 @@ export function readOpencodeAnswer(out: string): CliAnswer {
     tokensIn: t.tokensIn,
     tokensOut: t.tokensOut,
     error: t.errors.at(-1) ?? t.notes.at(-1),
+    calls: t.calls,
   };
 }
 
@@ -226,5 +232,6 @@ export function readCodexAnswer(out: string): CliAnswer {
     tokensIn: t.tokensIn,
     tokensOut: t.tokensOut,
     error: t.errors.at(-1) ?? t.notes.at(-1),
+    calls: t.calls,
   };
 }

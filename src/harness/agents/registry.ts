@@ -378,6 +378,8 @@ export class Registry {
       tokensOut: number;
       /** How many times its conversation was compacted (goal 070): in the event only. */
       compactions?: number | undefined;
+      /** Model calls whose usage its worker could not hand over (goal 075): in the event only. */
+      usageUnrecorded?: number | undefined;
       error?: string | undefined;
     },
     by: string,
@@ -411,6 +413,7 @@ export class Registry {
         tokens_in: r.tokensIn,
         tokens_out: r.tokensOut,
         ...(r.compactions ? { compactions: r.compactions } : {}),
+        ...(r.usageUnrecorded ? { usage_unrecorded: r.usageUnrecorded } : {}),
         // Why a trial failed reaches control too (the ledger keeps the longer text).
         error: r.error?.slice(0, 300) ?? null,
       });

@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { type LaneLimitValues, laneLimits } from "../../core/contract.ts";
 import { type LiveKind, summarizeArgs } from "../../core/live.ts";
+import { type CallUsage, callUsage } from "../../core/usage.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import {
   CliCompactions,
@@ -26,6 +27,7 @@ import {
   ownerLines,
   readNew,
   SYSTEM,
+  takeUsage,
 } from "./opencode.ts";
 import type { SubmitOutcome, TrialResult, TrialSpec } from "./worker.ts";
 
@@ -96,6 +98,11 @@ export interface CodexTally {
   started: Set<string>;
   /** Compactions it reported since they were last taken (goal 070). */
   compactions: FoundCompaction[];
+  /** Each turn's model usage, since they were last taken (goal 075). */
+  calls: CallUsage[];
+  /** The thread's totals at its last completed turn, and when the turn under way started. */
+  totals?: CodexUsage | undefined;
+  turnAt?: number | undefined;
 }
 
 export const newCodexTally = (): CodexTally => ({
@@ -109,7 +116,47 @@ export const newCodexTally = (): CodexTally => ({
   notes: [],
   started: new Set(),
   compactions: [],
+  calls: [],
 });
+
+/** The usage a `turn.completed` gives (codex exec's Usage): the thread's totals so far. */
+interface CodexUsage {
+  /** Every input token, the cached ones included. */
+  input_tokens?: number;
+  cached_input_tokens?: number;
+  cache_write_input_tokens?: number;
+  /** Every output token, the reasoning ones included. */
+  output_tokens?: number;
+  reasoning_output_tokens?: number;
+}
+
+/**
+ * A turn's usage (goal 075): what the thread's totals grew by since its last turn (Codex keeps the
+ * totals when a thread is resumed), or the totals themselves for a new thread, whose totals start
+ * again. A turn makes one or more model calls and Codex says neither how many nor how long they
+ * took: those are not reported.
+ */
+function turnUsage(now: CodexUsage, was: CodexUsage | undefined, at: number): CallUsage {
+  const keys = [
+    "input_tokens",
+    "cached_input_tokens",
+    "output_tokens",
+    "reasoning_output_tokens",
+  ] as const;
+  const grew = was !== undefined && keys.every((k) => (now[k] ?? 0) >= (was[k] ?? 0));
+  const less = (k: (typeof keys)[number]) =>
+    now[k] === undefined ? null : now[k] - (grew ? (was?.[k] ?? 0) : 0);
+  return callUsage({
+    at,
+    calls: null,
+    tokensIn: less("input_tokens") ?? 0,
+    cachedIn: less("cached_input_tokens"),
+    tokensOut: less("output_tokens") ?? 0,
+    reasoning: less("reasoning_output_tokens"),
+    firstTokenMs: null,
+    callMs: null,
+  });
+}
 
 type Item = {
   id?: string;
@@ -132,7 +179,7 @@ type Event = {
   type?: string;
   thread_id?: string;
   item?: Item;
-  usage?: { input_tokens?: number; output_tokens?: number };
+  usage?: CodexUsage;
   error?: { message?: string };
   message?: string;
 };
@@ -213,6 +260,9 @@ export function readCodexEvents(
       case "thread.started":
         if (e.thread_id) t.session = e.thread_id;
         break;
+      case "turn.started":
+        t.turnAt = Date.now();
+        break;
       case "item.started": {
         const i = e.item ?? {};
         const tool = toolOf(i);
@@ -263,10 +313,15 @@ export function readCodexEvents(
         break;
       }
       // The thread's tokens so far: Codex keeps the total when a thread is resumed.
-      case "turn.completed":
+      case "turn.completed": {
         t.tokensIn = Math.max(t.tokensIn, e.usage?.input_tokens ?? 0);
         t.tokensOut = Math.max(t.tokensOut, e.usage?.output_tokens ?? 0);
+        const now = e.usage ?? {};
+        t.calls.push(turnUsage(now, t.totals, t.turnAt ?? Date.now()));
+        t.totals = now;
+        t.turnAt = undefined;
         break;
+      }
       case "turn.failed":
       case "error": {
         const message = String(e.error?.message ?? e.message ?? "error").slice(0, 500);
@@ -431,6 +486,8 @@ export interface CodexTrialDeps {
   afterSubmitMs?: number | undefined;
   /** A compaction Codex reported (goal 070), for the harness to keep and record. */
   compacted?: OnCompacted | undefined;
+  /** Each turn's model usage, as Codex's output reports it (goal 075). */
+  modelUsage?: ((u: CallUsage) => void) | undefined;
 }
 
 /**
@@ -508,6 +565,7 @@ export async function runCodexTrial(spec: TrialSpec, deps: CodexTrialDeps): Prom
     const live = readCodexEvents(r.lines, tally);
     if (live.length) deps.live(live);
     compactions.take(live, tally.compactions.splice(0));
+    takeUsage(tally, deps.modelUsage);
     carried.check(tally);
     if (r.lines.length)
       deps.progress({
