@@ -63,7 +63,7 @@ What happens to the list depends on the kit:
 | The kit | Where the list goes |
 | --- | --- |
 | **Describe it here** | Control writes it into the kit's `kit.json`, as `mcp_servers` |
-| **Upload a kit** | The list starts as the uploaded `kit.json` names it. Control keeps the kit, so a change here is written into its `kit.json` |
+| **Upload a kit** | The list starts as the uploaded `kit.json` names it. Control keeps the kit, so a change here is written into its `kit.json`. A server the kit names that **Settings** lacks stays in the list, and the page says so: add it in **Settings**, or upload the kit without it. A tool limit in the kit stays for a server whose tools **Settings** has not read |
 | **A kit in a repository** | Read only. Control reads `kit.json` at the commit you give and lists its servers, each `✓ found` or `✕ missing`. To change them, change `kit.json` in the kit's repository |
 | A research campaign | Control writes it into the campaign's contract, as `mcp_servers` (a research campaign has no kit) |
 

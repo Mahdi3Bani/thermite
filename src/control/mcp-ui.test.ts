@@ -13,7 +13,7 @@ import { KitRepos } from "./kit-repos.ts";
 import { McpServers } from "./mcp-servers.ts";
 import { SecretBox } from "./secrets.ts";
 import { ControlStore } from "./store.ts";
-import { NEW_CAMPAIGN_JS } from "./ui/new-campaign-client.ts";
+import { KIT_MCP_CORE_JS, NEW_CAMPAIGN_JS } from "./ui/new-campaign-client.ts";
 import { PROVIDERS_JS } from "./ui/providers-client.ts";
 
 /** A made-up key: the pages may show its last four characters, never more. */
@@ -325,6 +325,52 @@ describe("New campaign › MCP servers for the agents", () => {
     );
     assert.equal(broken.status, 400);
     assert.match(((await broken.json()) as { error: string }).error, /no kit\.json/);
+  });
+
+  test("an uploaded kit keeps the servers and tool limits the page can't show", () => {
+    type Use = { name: string; agents: string[]; tools?: Record<string, string[]> };
+    /** The page-free part, exactly as the browser runs it. */
+    const keep = new Function(`${KIT_MCP_CORE_JS}; return keepKitMcp;`)() as (
+      ticked: Use[],
+      own: Use[],
+      known: string[],
+      listed: string[],
+    ) => Use[];
+    const own: Use[] = [
+      { name: "gbrain", agents: ["workers", "planner"], tools: { planner: ["search"] } },
+      { name: "paper-search", agents: ["advisors"] },
+      { name: "github", agents: ["workers"], tools: { workers: ["get_issue"] } },
+    ];
+    // Settings has gbrain, whose tools it never read, and github, whose tools it read; not
+    // paper-search. The page ticks what Settings has, as the kit names them.
+    const ticked: Use[] = [
+      { name: "gbrain", agents: ["workers", "planner"] },
+      { name: "github", agents: ["workers"], tools: { workers: ["get_issue", "list_issues"] } },
+    ];
+    assert.deepEqual(keep(ticked, own, ["gbrain", "github"], ["github"]), [
+      // No tool to tick on the page: the kit's limit stays.
+      { name: "gbrain", agents: ["workers", "planner"], tools: { planner: ["search"] } },
+      // Its tools are on the page: what the owner ticked there goes.
+      { name: "github", agents: ["workers"], tools: { workers: ["get_issue", "list_issues"] } },
+      // Not in Settings: kept, and the page says so.
+      { name: "paper-search", agents: ["advisors"] },
+    ]);
+    // A server the owner unticked goes; an agent the owner unticked takes its limit with it.
+    assert.deepEqual(
+      keep([{ name: "gbrain", agents: ["workers"] }], own, ["gbrain", "github"], ["github"]),
+      [
+        { name: "gbrain", agents: ["workers"] },
+        { name: "paper-search", agents: ["advisors"] },
+      ],
+    );
+    // The page's script runs it for an uploaded kit, and says what a missing server needs.
+    assert.ok(NEW_CAMPAIGN_JS.includes(KIT_MCP_CORE_JS));
+    assert.match(NEW_CAMPAIGN_JS, /return keepKitMcp\(list, kitOwn,/);
+    assert.match(
+      NEW_CAMPAIGN_JS,
+      /The uploaded kit names it: add it in Settings, or upload the kit without it\./,
+    );
+    assert.doesNotThrow(() => new Function(NEW_CAMPAIGN_JS));
   });
 });
 

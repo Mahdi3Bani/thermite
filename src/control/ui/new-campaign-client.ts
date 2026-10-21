@@ -5,9 +5,32 @@
  * control to check and build. It reads what the owner typed and builds text with DOM text
  * nodes or escaped strings only.
  */
+
+/**
+ * The page-free part for an uploaded kit's MCP servers (goal 068), as the browser runs it: the
+ * list the page sends keeps the kit's own entries that the page can't show. A server Settings
+ * lacks stays in it (the page says so, and control refuses the start until Settings has it), and
+ * a tool narrowing stays for a server whose tools Settings has not read, since the page then shows
+ * no tools to change it. `ticked`: the servers ticked on the page, as picked() reads them; `own`:
+ * the kit's list; `known`: the servers Settings has; `listed`: those whose tools it has read.
+ */
+export const KIT_MCP_CORE_JS = `
+function keepKitMcp(ticked, own, known, listed) {
+  const out = ticked.map((x) => {
+    const k = own.find((o) => o.name === x.name);
+    if (!k || !k.tools || listed.includes(x.name)) return x;
+    const tools = {};
+    for (const a of x.agents) if (k.tools[a]) tools[a] = k.tools[a];
+    return Object.keys(tools).length ? Object.assign({}, x, { tools }) : x;
+  });
+  for (const k of own) if (!known.includes(k.name)) out.push(k);
+  return out;
+}`;
+
 export const NEW_CAMPAIGN_JS = `
 (() => {
   "use strict";
+  ${KIT_MCP_CORE_JS}
   const form = document.getElementById("nc");
   if (!form) return;
   const $ = (s, r = document) => r.querySelector(s);
@@ -158,7 +181,17 @@ export const NEW_CAMPAIGN_JS = `
     }
     return { name: o.dataset.srv, agents, ...(Object.keys(tools).length ? { tools } : {}) };
   });
-  const mcpList = () => (repoKitOn() ? repoKit.list : picked(mcpBlock()));
+  // An uploaded kit: the servers its kit.json names (or the list sent last time), which the page
+  // keeps where it can't show them (keepKitMcp).
+  let kitOwn = null;
+  const uploadKitOn = () => !research() && choice.kit === "upload";
+  const blockList = (blk) => {
+    const list = picked(blk);
+    if (!blk || blk.dataset.mcpBlock !== "k" || !uploadKitOn() || !kitOwn) return list;
+    const rows = $$(".sopt[data-srv]", blk);
+    return keepKitMcp(list, kitOwn, rows.map((o) => o.dataset.srv), rows.filter((o) => $$("tr[data-tool]", o).length).map((o) => o.dataset.srv));
+  };
+  const mcpList = () => (repoKitOn() ? repoKit.list : blockList(mcpBlock()));
   /** Ticks a block's servers, agents and tools as a list says (a draft sent back, an uploaded kit). */
   const restoreMcp = (blk, list) => {
     if (!blk || !Array.isArray(list)) return;
@@ -184,7 +217,7 @@ export const NEW_CAMPAIGN_JS = `
         $(".mcp-who", o).classList.toggle("off", !on);
         for (const x of $$("input[data-tool-who]", o)) x.disabled = !on || !$('[data-who="' + x.dataset.toolWho + '"]', o).checked;
       }
-      const list = repo ? repoKit.list : picked(blk);
+      const list = repo ? repoKit.list : blockList(blk);
       const known = (n) => !!rowOf(blk, n);
       const toolsOf = (n) => Number((rowOf(blk, n) || { dataset: {} }).dataset.tools || 0);
       const bad = (n) => (rowOf(blk, n) || { dataset: {} }).dataset.bad === "1";
@@ -202,10 +235,10 @@ export const NEW_CAMPAIGN_JS = `
         const t = WHO.map(part).join("; ");
         sum.append(t.charAt(0).toUpperCase() + t.slice(1) + ". ");
         for (const x of list) {
-          if (!known(x.name)) sum.append(line("bad", x.name + " is not in Settings: this campaign can't start until it is."));
+          if (!known(x.name)) sum.append(line("bad", x.name + " is not in Settings: this campaign can't start until it is." + (blk.dataset.mcpBlock === "k" && uploadKitOn() ? " The uploaded kit names it: add it in Settings, or upload the kit without it." : "")));
           else if (bad(x.name)) sum.append(line("warn", x.name + " doesn't work now: fix it in Settings, or the agents go on without it."));
           if (!x.agents.length) sum.append(line("bad", "Choose the agents that get " + x.name + ", or untick it."));
-          for (const k of x.agents) if (x.tools && x.tools[k] && !x.tools[k].length) sum.append(line("bad", "The " + k + " get no tool of " + x.name + ": give them one, or untick " + k + "."));
+          for (const k of x.agents) if (x.tools && x.tools[k] && !x.tools[k].length) sum.append(line("bad", "The " + k + (k === "planner" ? " gets" : " get") + " no tool of " + x.name + ": give " + (k === "planner" ? "it" : "them") + " one, or untick " + k + "."));
         }
       }
       $("[data-mcp-json]", blk).textContent = JSON.stringify({ mcp_servers: list || [] }, null, 2);
@@ -258,8 +291,12 @@ export const NEW_CAMPAIGN_JS = `
   const option = (value, text) => { const o = document.createElement("option"); o.value = value; o.textContent = text; return o; };
   const showKit = (j, pick) => {
     upKit = j;
-    // Its MCP servers, as its kit.json names them, ticked here: control keeps the kit, so they can change.
-    if (!pick) restoreMcp(blockOf("k"), j.mcp_servers || []);
+    // Its MCP servers, as its kit.json names them, ticked here: control keeps the kit, so they can
+    // change. What the page can't show stays as the kit has it (keepKitMcp).
+    if (!pick) {
+      kitOwn = j.mcp_servers || [];
+      restoreMcp(blockOf("k"), kitOwn);
+    }
     form.elements.kit_upload.value = j.id;
     $("#up-kit").hidden = false;
     const n = j.cells.length;
@@ -404,6 +441,8 @@ export const NEW_CAMPAIGN_JS = `
         .then(({ ok, j }) => {
           if (!ok) { $("#kit-archive-out").textContent = j.error || "Upload the kit again."; return; }
           $("#kit-archive-out").textContent = "Uploaded before and kept on control. Choose another archive to replace it.";
+          // The servers as they were sent, those the page can't show among them.
+          kitOwn = Array.isArray(back.mcp_servers) ? back.mcp_servers : j.mcp_servers || [];
           showKit(j, back.kit);
           if (back.score) { set("up_metric", back.score.name); set("up_direction", back.score.direction); set("up_min_effect", back.score.min_effect * 100); }
           update();
