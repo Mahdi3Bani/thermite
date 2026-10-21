@@ -547,6 +547,14 @@ pre.json { background: var(--muted); border: 1px solid var(--border); border-rad
 .kname { display: flex; gap: 10px; align-items: center; color: inherit; }
 .kname:hover { text-decoration: none; } .kname:hover b { text-decoration: underline; }
 .kabout { display: block; font-size: 12px; color: var(--muted-foreground); margin-top: 1px; }
+/* the Rigs list: one row for each rig */
+.rtable td { vertical-align: top; padding-top: 10px; padding-bottom: 10px; }
+.rtable .rsub { display: block; font-size: 12px; color: var(--muted-foreground); margin-top: 1px; white-space: normal; }
+.rtable .nowrap, .rtable td.nowrap .rsub { white-space: nowrap; }
+.rtable a.kname b { font-size: 13.5px; }
+.rtable .vchip { text-decoration: none; cursor: pointer; }
+.rtable .vchip:hover { text-decoration: underline; }
+.rtable tr.click { cursor: pointer; }
 .kdots { display: inline-flex; gap: 10px; font-size: 12.5px; white-space: nowrap; }
 .kdot { display: inline-flex; align-items: center; gap: 5px; }
 .kdot::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--input); }

@@ -253,7 +253,7 @@ What a launch takes:
 | `enroll_within_minutes` | number above 0 | none: the code does not expire | The one-time enrollment code expires this long after the launch |
 | `settings` | object | `{"THERMITE_TARGET":"cuda-gpu","THERMITE_GPUS":"0,…"}`, one index for each GPU | The rig's [settings](settings.md) at enrollment, over the defaults. Only `THERMITE_TARGET`, `THERMITE_TARGET_CLASS`, `THERMITE_GPUS`, `THERMITE_GPU_INDEX`, `THERMITE_DEV_GPU_INDEX`, `THERMITE_JUDGE_GPUS`, `THERMITE_MAX_TRIALS`, `THERMITE_TRIAL_MINUTES` and `THERMITE_PROMOTION`, with values of letters, digits and `. _ , : -` |
 | `spend_limit_usd` | number above 0 | none | Control stops the pod once it has cost this much |
-| `idle_stop_minutes` | 5 or more, or `null` | none | Control stops the pod once no run has been [at work](#when-a-rig-is-idle) on the rig for this long, counted from its enrollment, its last start, or the setting of the stop, whichever is latest. `null`: no idle stop. Left out: control's default, which is none |
+| `idle_stop_minutes` | 5 or more, or `null` | none | Control stops the pod once no run has been [at work](#when-a-rig-is-idle) on the rig for this long, counted from its enrollment, its last start, or the setting of the stop, whichever is latest. `null`: no idle stop. Left out: control's default, which is none. The dashboard's launch form fills in 30 minutes, which the owner can change or clear |
 
 The pod's environment holds only pull mode's [launch values](settings.md#pull-mode): public material and the one-time code. Control's RunPod key, its tokens and every other secret stay on control. A launch that fails starts nothing, or removes the pod it started, and leaves no rig: its code can never enroll.
 

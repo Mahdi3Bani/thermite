@@ -38,11 +38,15 @@ export const DEFAULT_VOLUME_GB = 100;
 /** The shortest idle stop: a rig needs a few minutes between enrollment and its first run. */
 export const MIN_IDLE_STOP_MINUTES = 5;
 /**
- * The idle stop a launch gets when it names none, in minutes; null: none. The owner still
- * confirms this default: on at 30 minutes, or none (2026-10-20). Until then there is none, so no
- * cap comes by default; the answer changes this one line.
+ * The idle stop a launch over REST, MCP or the command line gets when it names none, in minutes;
+ * null: none. No cap comes by default: the pod never stops by itself unless the owner says so.
  */
 export const DEFAULT_IDLE_STOP_MINUTES: number | null = null;
+/**
+ * The idle stop the dashboard's launch form fills in when it opens, in minutes (the owner,
+ * 2026-10-20). The owner changes or clears it there; a cleared field launches with none.
+ */
+export const FORM_IDLE_STOP_MINUTES = 30;
 
 /** What the owner asks for. Only the GPU type has no default. */
 export interface LaunchRequest {

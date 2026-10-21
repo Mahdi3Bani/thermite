@@ -106,7 +106,7 @@ A [full reset](../how-to/operate/rig-lifecycle.md#fully-reset-a-rig) waits at `v
 
 ## Errors
 
-The supervisor's `last_error`, on the rig's **Results** row and on **Rigs** as `Its last export failed: …`:
+The supervisor's `last_error`, in red on the rig's **Results** row:
 
 | Error | Meaning |
 | --- | --- |

@@ -753,25 +753,38 @@ export function goalState(g: RunView["goals"][number]): {
   return { tone: "warn", mark: "·", word: g.status.replace(/_/g, " ") };
 }
 
+/**
+ * A run's progress as one figure, in words: "4/8 goals", "+9.1%" or "84 verified claims"; null
+ * for a goal run whose goals are not checked yet.
+ */
+export function runFigure(r: RunView): string | null {
+  if (r.mode === "goal") {
+    if (!r.goals.length) return null;
+    return `${r.goals.filter((g) => g.status === "met").length}/${r.goals.length} goals`;
+  }
+  if (r.mode === "hill_climb") {
+    const champ = r.champion.filter((c) => !c.reopened).at(-1);
+    return signed((champ?.cumulative ?? 1) - 1);
+  }
+  const verified = Number((r.research as Record<string, unknown> | null)?.verified ?? 0);
+  return `${Number.isFinite(verified) ? verified : 0} verified claims`;
+}
+
 /** A run's progress in one glance: its goals as a bar, its gain, or its verified claims. */
 export function runProgress(r: RunView): string {
+  const fig = runFigure(r);
   if (r.mode === "goal") {
-    if (!r.goals.length) return `<span class="muted small">goals not checked yet</span>`;
-    const met = r.goals.filter((g) => g.status === "met").length;
+    if (fig === null) return `<span class="muted small">goals not checked yet</span>`;
     const segs = r.goals
       .map((g) => {
         const st = goalState(g);
         return `<span class="seg ${st.tone}" title="${esc(g.goal)}: ${esc(st.word)}"></span>`;
       })
       .join("");
-    return `<span class="goalbar">${segs}</span><b class="fig">${met}/${r.goals.length} goals</b>`;
+    return `<span class="goalbar">${segs}</span><b class="fig">${esc(fig)}</b>`;
   }
-  if (r.mode === "hill_climb") {
-    const champ = r.champion.filter((c) => !c.reopened).at(-1);
-    return `${sparkline(r, 90, 22)}<b class="fig">${esc(signed((champ?.cumulative ?? 1) - 1))}</b>`;
-  }
-  const verified = Number((r.research as Record<string, unknown> | null)?.verified ?? 0);
-  return `<b class="fig">${Number.isFinite(verified) ? verified : 0} verified claims</b>`;
+  if (r.mode === "hill_climb") return `${sparkline(r, 90, 22)}<b class="fig">${esc(fig)}</b>`;
+  return `<b class="fig">${esc(fig)}</b>`;
 }
 
 /**

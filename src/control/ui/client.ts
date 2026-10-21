@@ -355,6 +355,13 @@ export const CLIENT_JS = `
     document.querySelectorAll("#hist .tl-row").forEach((r) => (r.hidden = !(k === "all" || r.dataset.k === k)));
   }));
 
+  // ------------------------------------------------ the Rigs list: a row opens its rig; its links go where they say
+  document.addEventListener("click", (ev) => {
+    const row = ev.target.closest && ev.target.closest("tr[data-href]");
+    if (!row || ev.target.closest("a, button, input, select, .ii")) return;
+    location.href = row.dataset.href;
+  });
+
   // ------------------------------------------------ the composer: Cmd/Ctrl+Enter sends
   const ta = $(".composer textarea");
   if (ta) ta.addEventListener("keydown", (ev) => {

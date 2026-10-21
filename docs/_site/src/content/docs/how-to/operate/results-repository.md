@@ -100,7 +100,7 @@ Open the rig's page (**Rigs** in the sidebar, then the rig) and press **Export n
   <commit>	refs/heads/thermite/local-1/ledger
   ```
 
-If a push fails, the **Results** row shows `push failed:` and git's message in red, and **Rigs** says `Its last export failed: …`. The supervisor tries again every minute until a push works, so fix the cause (the deploy key's write access, the host key) and wait. The supervisor logs an `exported` line whenever it commits exports or its error changes, with the error if there is one:
+If a push fails, the **Results** row on the rig's page shows `push failed:` and git's message in red. The supervisor tries again every minute until a push works, so fix the cause (the deploy key's write access, the host key) and wait. The supervisor logs an `exported` line whenever it commits exports or its error changes, with the error if there is one:
 
 ```sh
 docker compose logs supervisor | grep exported

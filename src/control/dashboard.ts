@@ -109,9 +109,10 @@ import { exportLeft, resultsLeft } from "./results-left.ts";
 import { RigUpdates, UPDATE_STEP_WORDS } from "./rig-update.ts";
 import { type RunpodFacts, readRunpod, runpodLine } from "./runpod.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
+import type { RunpodRigView } from "./runpod-rig-view.ts";
 import {
-  DEFAULT_IDLE_STOP_MINUTES,
   DEFAULT_VOLUME_GB,
+  FORM_IDLE_STOP_MINUTES,
   type LaunchRequest,
   type LimitsChange,
   MIN_IDLE_STOP_MINUTES,
@@ -215,6 +216,13 @@ import {
   stateSummary,
   versionFact,
 } from "./ui/rig-states.ts";
+import {
+  type RigsListRow,
+  type RigWhere,
+  rigFilter,
+  rigsListBody,
+  rigsSummary,
+} from "./ui/rigs-list.ts";
 import { type LaunchForm, launchBody } from "./ui/runpod-launch.ts";
 import { RUNPOD_LAUNCH_JS } from "./ui/runpod-launch-client.ts";
 import { HISTORY_FILTERS, podBlock, podRows, podRuns, readySteps } from "./ui/runpod-rig.ts";
@@ -1962,77 +1970,65 @@ ${
     );
   });
 
+  /** Where a rig runs, for its row on the Rigs list: the kind of place and its name. */
+  const whereOf = (rig: string, pod: RunpodRigView | undefined): RigWhere => {
+    const gone = (status: string) => (status === "removed" ? ", removed" : "");
+    const m = store.machineRig(rig);
+    if (m) return { kind: "Machine", name: `${m.machine}${gone(m.status)}` };
+    const k = store.clusterRig(rig);
+    if (k) return { kind: "Cluster", name: `${k.cluster}${gone(k.status)}` };
+    if (pod) return { kind: "RunPod", name: pod.datacenter ?? "" };
+    const j = store.joinedRig(rig);
+    if (j) return { kind: "Joined", name: j.form === "namespace" ? "a namespace" : "a machine" };
+    return { kind: "Set up by you", name: "" };
+  };
   app.get("/ui/rigs", (c) => {
     const now = Date.now();
     const vs = views();
-    // Each rig: whether it reports, what it runs on, its judge, its checks, then its runs.
-    const checks: [string, string][] = [
-      ["model", "model route"],
-      ["isolation", "isolation"],
-      ["smoke", "judge smoke"],
+    const gone = store.retiredRigs();
+    const listed = new Set([...vs.map((u) => u.id), ...gone.map((r) => r.rig)]);
+    const rows: RigsListRow[] = [
+      ...vs.map((u) => ({
+        id: u.id,
+        u,
+        where: whereOf(u.id, u.runpod),
+        pod: u.runpod,
+        keyPending: Boolean(store.rigKey(u.id).pending),
+      })),
+      // A pod costs from its launch: it is listed before its first report too.
+      ...(opts.runpodRigs?.list() ?? [])
+        .filter((p) => p.active && !listed.has(p.rig))
+        .map((p) => ({ id: p.rig, where: whereOf(p.rig, p), pod: p, keyPending: false })),
     ];
-    const cards = vs
-      .map((u) => {
-        const key = store.rigKey(u.id);
-        const status = key.pending
-          ? `<span class="chip warn">Key to accept</span>`
-          : u.stale
-            ? `<span class="chip bad">Not reporting</span>`
-            : `<span class="chip ok">Live</span>`;
-        const queued = u.judge.queued.length;
-        const sup = u.supervisor as Record<string, unknown> | null;
-        const ex =
-          sup?.export && typeof sup.export === "object"
-            ? (sup.export as Record<string, unknown>)
-            : null;
-        const said = [
-          u.stale
-            ? `<b class="bad">${neverReported(u) ? "No report yet." : `No report for ${esc(span(u.last_seen, now))}.`}</b>`
-            : `Reported ${esc(ago(u.last_seen, now))} ago.`,
-          u.judge.now
-            ? `The judge is ${jobHtml(u, u.judge.now)}${queued ? `, with ${queued} more queued` : ""}.`
-            : `The judge is idle${queued ? `, with ${queued} queued` : ""}.`,
-          ex?.last_error
-            ? `<span class="bad">Its last export failed: ${esc(clip(String(ex.last_error), 120))}</span>`
-            : "",
-        ]
-          .filter(Boolean)
-          .join(" ");
-        const marks = checks
-          .map(([k, name]) => {
-            const r = u.checks[k];
-            const [tone, mark, word] = !r
-              ? ["", "·", "not run yet"]
-              : r.finished_at === null
-                ? ["info", "…", "running"]
-                : r.ok
-                  ? ["ok", "✓", `passed ${ago(r.finished_at, now)} ago`]
-                  : ["bad", "✕", `failed ${ago(r.finished_at, now)} ago`];
-            return `<span class="chip ${tone}" title="${esc(word)}">${mark} ${esc(name)}</span>`;
-          })
-          .join("");
-        return `<div class="card flat camp"><div class="camp-top"><span class="iconbox">${icon.cpu}</span><div class="grow"><div><a class="camp-name" href="/ui/rigs/${encodeURIComponent(u.id)}">${esc(u.id)}</a> ${status} <span class="muted small">${hardwareLine(u.hardware)}</span></div><div class="small camp-said">${said}</div><div class="chips">${marks}</div></div></div>${u.runs.map((i) => runRow(u, i, now, "campaign")).join("") || `<div class="empty">No campaign assigned.</div>`}</div>`;
-      })
-      .join("");
+    const launch =
+      opts.runpodRigs && store.gpuClouds().length
+        ? `<a class="btn" href="/ui/rigs/add/runpod">Launch on RunPod</a>`
+        : "";
     return page(
       c,
       {
         title: "Rigs",
-        summary: `${vs.length} rig${vs.length === 1 ? "" : "s"} · ${vs.filter((u) => u.stale).length} not reporting · ${vs.reduce((n, u) => n + u.runs.filter((i) => i.status === "running").length, 0)} runs at work`,
-        actions: `<a class="btn primary" href="/ui/rigs/add">Add a rig</a>`,
+        summary: rigsSummary(rows),
+        actions: `${launch}<a class="btn primary" href="/ui/rigs/add">Add a rig</a>`,
         active: "rigs",
       },
-      `${cards || `<div class="card"><div class="empty">No rig has reported yet.</div></div>`}${(() => {
-        const gone = store.retiredRigs();
-        return gone.length
+      `${rigsListBody({
+        rows,
+        filter: rigFilter(c.req.query("f")),
+        control,
+        staleAfterMs: opts.staleAfterMs,
+        offlineAfterMs,
+        now,
+      })}${
+        gone.length
           ? `<div class="block" style="margin-top:20px"><div class="head"><h2>Retired</h2><span class="n">${gone.length}</span><span class="right">out of the lists; their records stay</span></div><div class="card flat">${gone
               .map(
                 (r) =>
                   `<div class="row" style="padding:6px 0"><a href="/ui/rigs/${encodeURIComponent(r.rig)}">${esc(r.rig)}</a><span class="muted small">retired ${esc(ago(r.at, now))} ago by ${esc(r.by)}</span></div>`,
               )
               .join("")}</div></div>`
-          : "";
-      })()}`,
+          : ""
+      }`,
       vs,
     );
   });
@@ -5617,7 +5613,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         clouds,
         cloud,
         image: opts.runpodRigs.defaultImage(),
-        idleDefault: DEFAULT_IDLE_STOP_MINUTES,
+        idleFill: Math.max(FORM_IDLE_STOP_MINUTES, MIN_IDLE_STOP_MINUTES),
         minIdle: MIN_IDLE_STOP_MINUTES,
         volumeGb: DEFAULT_VOLUME_GB,
         csrf: csrf(c),
