@@ -1,17 +1,17 @@
 ---
 id: "009"
 title: "Real subscription sign-in tests"
-status: READY
+status: IN_PROGRESS
 version: "0.1.0"
 part: "Tester basics"
 depends_on: []
 created: 2026-10-19
-updated: 2026-10-20
+updated: 2026-10-21
 ---
 
 # 009 · Real subscription sign-in tests
 
-**Status:** `READY` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
 
 ## What
 
@@ -34,7 +34,7 @@ Subscriptions are built, but they are tested only against stand-ins.
 
 ## Open questions
 
-None.
+- Advisors still run Claude Code with `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`, which needs `bubblewrap` in the images although an advisor runs no commands. Without the scrub there, `bubblewrap` could leave the images too.
 
 ## Progress
 
@@ -42,6 +42,12 @@ None.
 - 2026-10-20: The owner signed in on the maintainers' control: a Claude subscription and Sign in with ChatGPT. Both list their models in Providers.
   - **ChatGPT:** a rig given `gpt-5.6-luna` under Pi passed the model check, with a correct tool call in 2.9 s.
   - **Claude:** the model check failed only because that rig's harness image has no Claude Code (it is built without the option). The shell's note (`claude: No such file or directory`) now reads as the reason and the fix (`claudeExitWords`). Left: the Claude check on an image built with Claude Code, a trial on each, and a usage limit.
+- 2026-10-21: On a rig with an image built with Claude Code 2.1.305, Claude Code signed in and answered, but every Bash command failed: "Failed to create bridge sockets after 5 attempts". Reproduced with the real Claude Code 2.1.305 in the harness image, run as a rig runs it, against a stand-in for Anthropic's API, with no subscription and no network.
+  - **Cause.** `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` makes Claude Code's own sandbox mandatory. The sandbox puts its network bridge's socket in `TMPDIR` (`claude-http-` and 16 hex digits, `.sock`), and a socket's path holds at most 108 bytes: a `TMPDIR` of 74 bytes works, one of 75 fails. The model check's and the planner's `TMPDIR` has 75 bytes, a trial's 78 or 79, so `socat` could not listen and the sandbox never started. `CLAUDE_CODE_TMPDIR` does not move the socket.
+  - **Behind it.** With a short `TMPDIR` the sandbox still cannot start in a rig. The GPU fence (Landlock) refuses bubblewrap's mounts (`bwrap: Failed to make / slave: Operation not permitted`), and so do a container's own confinement (SELinux, in the local test) and its masked `/proc`; with the scrub, Claude Code refuses its weaker nested mode. The scrub also forces Claude Code's default permission mode: a headless run is refused file edits, reads outside its folder and most commands. Claude Code brings its own ripgrep, so no ripgrep goes in the images.
+  - **Fix.** The harness runs Claude Code without the scrub. Its own sandbox stays off, and the rig's isolation (the role's user, the GPU fence, the limits) holds its commands, as for OpenCode and Codex. The token reaches Claude Code on file descriptor 3 (`CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR`), so it is in no environment and no file, and the agent's commands still get no credentials. An advisor's call gets its own folder as `TMPDIR`: in the one-container rig image `/tmp` is closed to the supervisor's user, and Claude Code stopped with `EACCES: permission denied, mkdir '/tmp/claude-10001'`. `socat` leaves the images; `bubblewrap` stays for the advisors.
+  - **Test.** `scripts/claude-real-acceptance.mjs`, about 3 minutes with the image's layers cached: the model check, a planner call, a trial and an advisor's call with the real Claude Code, under the broker and the GPU fence. It passes with the fix and fails 7 of its checks on an image without it. Unit tests check the shell that gives Claude Code the token on descriptor 3 and the advisor's folder; the stand-in compose test (`scripts/claude-acceptance.mjs`) checks the descriptor too.
+  - Left: the steps that need a real subscription (both boxes).
 
 ---
 
