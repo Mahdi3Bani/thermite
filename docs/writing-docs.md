@@ -20,6 +20,7 @@ The site's dependencies are pinned to exact versions and kept apart from Thermit
 - a `thermite` command or option that the command line does not have;
 - a setting that the code does not read, or a setting the code reads that [the settings reference](_site/src/content/docs/reference/settings.md) leaves out;
 - a contract, `kit.json` or `advisors.json` example that the real schema refuses;
+- an agent named by an old name outside code: "teacher pair", "combiner", "panelist", "the supervisor's advisors", or "panel" alone for the review panel. Each agent has one name: the workers and the planner (the work), the teachers, their merged by model, the auditor and the review panel (the advisors). Code spans may show the old API names that are still taken. Until Edit rig's agents table is renamed, its row labels **Teacher pair** and **Combiner** are allowed in bold;
 - a placeholder in angle brackets, such as `<campaign>`, outside a code span: the site reads it as an HTML tag and hides it, so write it in backticks;
 - a page missing from `llms.txt` or `llms-full.txt`, or without its Markdown copy;
 - a page that is still a stub.

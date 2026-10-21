@@ -6,6 +6,8 @@
 //   - every setting a page names exists in the code, and every setting the code reads is in the
 //     settings reference;
 //   - every contract, kit.json and advisors.json example parses with the real schema;
+//   - no page names an agent by an old name (goal 074): "teacher pair", "combiner", "panelist",
+//     "the supervisor's advisors", or "panel" alone for the review panel, outside code;
 //   - after `npm run docs:build`: llms.txt lists every page, llms-full.txt holds every page, and
 //     every page has its Markdown copy.
 // Usage: node --experimental-strip-types scripts/docs-check.mjs [--allow-stubs] [--no-build]
@@ -104,6 +106,51 @@ for (const page of pages) {
       page.file,
       `${tag} outside code is read as an HTML tag and hidden; put it in backticks`,
     );
+}
+
+// --- The agents' names ------------------------------------------------------------------------
+
+// Goal 074: one name for each agent. The work: Workers, Planner. The advisors: Teachers (one or
+// two, with a merged by model for two), Auditor, Review panel. The old names stay out of the
+// pages' prose; in code (`combiner`, `panel`) they may name what the API still takes.
+// **Teacher pair** and **Combiner** are the labels of two rows of Edit rig's agents table, kept
+// until the owner approves its new names: those two labels, in bold, are allowed until then.
+const OLD_NAME_LABELS = ["**Teacher pair**", "**Combiner**"];
+const OLD_NAMES = [
+  [/\bteacher pairs?\b/gi, 'the teachers ("teacher pair" is an old name)'],
+  [/\bcombiners?\b/gi, `the teachers' merged by model ("combiner" is an old name)`],
+  [/\bpanelists?\b/gi, 'a reviewer of the review panel ("panelist" is an old name)'],
+  [/\bsupervisor's advisors\b/gi, `the advisors ("the supervisor's advisors" is an old name)`],
+];
+// "Panel" alone is also the Start a run and Copy panels: it is the review panel's old name only in
+// a sentence about the advisors that names no panel of the dashboard.
+const ADVISOR_WORDS =
+  /\b(review|reviews|reviewers?|auditor|teachers?|advisors?|pass|passes|passed|verdicts?)\b/i;
+const DRAWER_WORDS = /Start a run|\bCopy\b|\bcopy\b|start_run|drawer|\bopens?\b|\bopened\b/;
+function oldNames(body) {
+  let prose = body
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/``[^`]*``|`[^`\n]*`/g, "``")
+    .replace(/\]\([^)\s]*\)/g, "]()");
+  for (const label of OLD_NAME_LABELS) prose = prose.replaceAll(label, "**·**");
+  const found = [];
+  const near = (i) => prose.slice(Math.max(0, i - 40), i + 60).replace(/\s+/g, " ");
+  for (const [pattern, use] of OLD_NAMES)
+    for (const m of prose.matchAll(pattern))
+      found.push(`"${m[0]}" outside code: write ${use} (in: …${near(m.index)}…)`);
+  for (const sentence of prose.split(/(?<=[.!?:;|])\s+|\n/)) {
+    const lone = /(?<!\breview )\bpanel(?:s|'s)?\b/i.exec(sentence);
+    if (lone && ADVISOR_WORDS.test(sentence) && !DRAWER_WORDS.test(sentence))
+      found.push(
+        `"${lone[0]}" names the review panel by an old name: write "the review panel" (in: ${sentence.trim().slice(0, 100)})`,
+      );
+  }
+  return found;
+}
+for (const page of pages) {
+  if (!page.body) continue;
+  for (const found of oldNames(`${page.title ?? ""}\n${page.description ?? ""}\n${page.body}`))
+    problem(page.file, found);
 }
 
 // --- Links and anchors ------------------------------------------------------------------------

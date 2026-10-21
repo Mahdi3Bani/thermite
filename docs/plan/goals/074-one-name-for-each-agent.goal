@@ -29,13 +29,20 @@ The owner, 2026-10-21, on the Edit rig mockup: "you have a fractured terminology
 ## Done when
 
 - [ ] Screens (Edit rig, the campaign and run pages, History, Live, Settings), pages, API and MCP fields, command-line options and events use only the names above; a check in the docs build refuses the old names in pages.
-- [ ] The teachers take one or two models; with two, a "merged by" model; `set_rig_model` takes `teachers` with up to two models and `merged_by`, and `review_panel`; `combiner` and `panel` still work in v0.1.0 and say what they are now.
+- [x] The teachers take one or two models; with two, a "merged by" model; `set_rig_model` takes `teachers` with up to two models and `merged_by`, and `review_panel`; `combiner` and `panel` still work in v0.1.0 and say what they are now.
 - [ ] Edit rig groups its rows as The work and The advisors, with each agent's job in one line, after a mockup the owner approved.
-- [ ] Tests and the glossary updated.
+- [x] Tests and the glossary updated.
 
 ## Decisions
 
 - 2026-10-21, owner: "Fold the combiner in" (over keeping today's names in one form, or renaming by job).
+- 2026-10-21, builder, within the build brief:
+  - **The API's shape.** `set_rig_model` and `POST /v1/rigs/<rig>/model` take `agent: teachers` with `provider` and `model` for the first teacher, and two optional objects with the same fields as one agent's model: `second_model` (a second teacher; `null`, one teacher only) and `merged_by` (the model that merges two teachers' advice; `null`, the rig default). One call can set any of the three, and every model in it is checked before any is saved. `clear` clears all three. `rig_models` shows `teachers: {models, merged_by}`. A second teacher needs a first.
+  - **Without a merged by model,** two teachers' first review that came back is the set, as the code did before: there was no default merge. One teacher works with no merge, even with a merged by model.
+  - **The old names** (`combiner`, `panel`) are still taken by `set_rig_model`, its REST twin, `message_agent` (`panel`) and the advisors file. The answer of `set_rig_model` starts with what the name is now. Control sends the rig `panel`, the name every rig takes; the supervisor still reports its roles to control under the old keys, which every control reads.
+  - **Kept as they are, where no reader sees them or a rename adds risk:** the role keys of the supervisor's report, the harness's `role` for the supervisor (`teachers`, `auditor`, `panel`), the ledger's event kinds, and the writer of a field note (`teachers:<name>`, `panel:<name>`).
+  - **Control's records.** Control's table of agents' models takes `second_teacher`, `merged_by` and `review_panel`; a store from before is made again with them, and a rig's teachers' model becomes two teachers on that model, as it ran.
+  - **Edit rig until its mockup.** The agents table keeps its rows and words; the row **Teacher pair** gives both teachers its model, as its words say, and the row **Combiner** sets the merged by model. Section 1's switch is **Teachers**.
 
 ## Open questions
 
@@ -44,6 +51,8 @@ None.
 ## Progress
 
 - 2026-10-21: Goal written from the owner's decision. The Edit rig mockup is revised with these names first.
+- 2026-10-21: Built everywhere but Edit rig's agents table, which waits for the owner's approval of its mockup. The API and MCP (`set_rig_model`, `rig_models`, the advisor routes, `message_agent`), control's records, the supervisor (one or two teachers, each on its own model; the merged by model; the advisors file's new field names), the screens (Live, History, the campaign and run pages, Needs you, Edit rig's switches, the new campaign's MCP servers), events and errors use the new names; Live shows an older rig's "the teacher pair" as the teachers. `npm run docs:check` refuses "teacher pair", "combiner", "panelist", "the supervisor's advisors" and "panel" alone for the review panel in the pages' prose (`scripts/docs-check.mjs`); it allows the bold labels **Teacher pair** and **Combiner** of Edit rig's rows until they are renamed. Tests: `src/control/rig-model.test.ts` (the teachers' models, the old names' answers, the store from before), `src/supervisor/advisors.test.ts` (the merge rule), `src/supervisor/advisor-routes.test.ts` (the routes, old and new, and the advisors file's names), `src/control/mcp.test.ts`, `src/control/dashboard.test.ts`, `src/control/live.test.ts`, `src/control/campaign-context.test.ts`, `src/control/context-cap.test.ts` and the tests that read the new words. `scripts/steering-acceptance.mjs` gives its rig a merged by model and finds the new merge prompt. Pages and the glossary follow the new names.
+  - **Left:** Edit rig's agents table (rows grouped as the work and the advisors, each job in one line, and the teachers' second and merged by models), after the owner approves its mockup; then the docs check's two allowed labels go. The steering, control, Claude Code and Codex acceptances run at roll time.
 
 ---
 
