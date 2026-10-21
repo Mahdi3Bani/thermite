@@ -100,7 +100,7 @@ export type ImportSpec = z.infer<typeof ImportSpec>;
  * direction; LANE_COUNT sets the lanes (up to the contract's count); NOTE is free text for the
  * planner only. The planner sees rationales and notes; workers never do. A rule in words that
  * names no direction (`match`) is no longer made: one already in a ledger stays in force as
- * legacy (isLegacyRule).
+ * legacy (isLegacyRule) until the planner's next round converts it to a named direction.
  */
 /** The kinds of directive. None of them is ever a direction's name (a lane "on try"). */
 export const DIRECTIVE_KINDS = [
@@ -145,11 +145,13 @@ export type StructuredDirective = z.infer<typeof StructuredDirective>;
 
 /**
  * A rule as a ledger holds it: a directive, the owner's message a planner's rule came from, and,
- * for an old rule in words (legacy), its words.
+ * for an old rule in words (legacy), its words. A rule the planner converted from an old rule in
+ * words names that rule and its words (`converted_from`).
  */
 export type StoredRule = StructuredDirective & {
   from_message?: number | undefined;
   match?: string | undefined;
+  converted_from?: { rule: number; words: string } | undefined;
 };
 
 /** An experiment in a run's queue (goal 064): `x-` and 12 hex characters. */

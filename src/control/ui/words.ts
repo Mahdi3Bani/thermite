@@ -314,7 +314,14 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
       );
     }
     case "directive": {
-      const d = (b.body ?? {}) as { kind?: string; family?: string; match?: string };
+      const d = (b.body ?? {}) as {
+        kind?: string;
+        family?: string;
+        match?: string;
+        converted_from?: unknown;
+      };
+      // A rule converted from an old rule in words: its directive_converted event tells it.
+      if (d.converted_from) return null;
       // A direction as :name: (goal 066); an old rule's words in quotes.
       const what = d.family ? asToken(d.family) : d.match ? `“${d.match}”` : undefined;
       return s(
@@ -353,6 +360,13 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
     }
     case "directive_dropped":
       return s(`${who(e.actor)} removed rule ${String(b.id)}.`, "", { run: String(e.subject) });
+    // The planner converted an old rule in words to a rule on a named direction (goal 066).
+    case "directive_converted":
+      return s(
+        `${who(e.actor)} converted rule ${String(b.id)}, an old rule in words (“${clip(String(b.words ?? ""), 160)}”), to rule ${String(b.to)}: ${String(b.kind ?? "")} ${asToken(String(b.family ?? ""))}.`,
+        "",
+        { run: String(e.subject) },
+      );
     case "workers_reset":
       return s(
         `${who(e.actor)} restarted the lanes: their trials ended, and every lane starts again from the champion.`,

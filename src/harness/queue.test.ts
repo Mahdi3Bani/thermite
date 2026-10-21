@@ -416,7 +416,7 @@ describe("the owner's queue commands", () => {
     assert.match(String(both.result.error), /both avoids and asks for vector-loads/);
   });
 
-  test("an old rule in words stays in force, marked legacy, until the owner removes it", async () => {
+  test("an old rule in words stays in force, marked legacy, until it is converted or the owner removes it", async () => {
     const s = await setup();
     // As an older harness wrote it: a new one can't be made.
     const [old] = s.env.service.ledger.addDirectiveSet(
@@ -454,6 +454,86 @@ describe("the owner's queue commands", () => {
     const gone = await s.command("drop_directive", { run: RUN, id: old });
     assert.ok(gone.accepted, JSON.stringify(gone));
     assert.ok(!s.env.service.ledger.activeDirectives(RUN).some((d) => d.id === old));
+  });
+
+  test("converting an old rule in words: a new rule with its author, kind, why and source; the old one ends as converted", async () => {
+    const s = await setup();
+    const ledger = s.env.service.ledger;
+    const [named, old] = ledger.addDirectiveSet(
+      RUN,
+      "control:owner:ui",
+      [
+        { kind: "try", family: "tiling", rationale: "won", citations: [] },
+        {
+          kind: "mandate",
+          match: "anything with vector loads",
+          rationale: "the guide says so",
+          citations: ["guide p. 4"],
+          from_message: 3,
+        },
+      ],
+      false,
+    ) as [number, number];
+    const to = ledger.convertRule(RUN, old, "vector-loads", "planner");
+    // The new rule: the old one's author, kind, why, citations and source, on a direction, with
+    // the words it was converted from. Code keeps it: it is no longer legacy.
+    const active = ledger.activeDirectives(RUN);
+    assert.deepEqual(
+      active.map((d) => d.id),
+      [named, to],
+    );
+    assert.deepEqual(active[1], {
+      id: to,
+      author: "control:owner:ui",
+      body: {
+        kind: "mandate",
+        family: "vector-loads",
+        rationale: "the guide says so",
+        citations: ["guide p. 4"],
+        from_message: 3,
+        converted_from: { rule: old, words: "anything with vector loads" },
+      },
+    });
+    // The old rule stays in the record, as converted, never dropped.
+    const row = ledger.db
+      .prepare("select status, superseded_at from directive where id = ?")
+      .get(old) as { status: string; superseded_at: string | null };
+    assert.equal(row.status, "converted");
+    assert.ok(row.superseded_at);
+    const conv = s.events("directive_converted");
+    assert.equal(conv.length, 1);
+    assert.equal(conv[0]?.actor, "planner");
+    assert.deepEqual(conv[0]?.body, {
+      id: old,
+      to,
+      kind: "mandate",
+      family: "vector-loads",
+      words: "anything with vector loads",
+    });
+    assert.equal(s.events("directive").at(-1)?.actor, "control:owner:ui");
+    // Control's view: the new rule in place of the old one, under its direction.
+    const r = controlQueue(s.events());
+    assert.deepEqual(
+      r.rules.map((x) => [x.id, x.legacy, x.author]),
+      [
+        [named, false, "control:owner:ui"],
+        [to, false, "control:owner:ui"],
+      ],
+    );
+    assert.deepEqual(r.rules[1]?.body.converted_from, {
+      rule: old,
+      words: "anything with vector loads",
+    });
+    assert.deepEqual(r.directions.find((d) => d.name === "vector-loads")?.rules, [
+      { id: to, kind: "mandate" },
+    ]);
+    // Converted once: the old rule is no longer in force, and a rule on a direction is not one.
+    assert.throws(() => ledger.convertRule(RUN, old, "loads", "planner"), /no rule \d+ in force/);
+    assert.throws(
+      () => ledger.convertRule(RUN, named, "loads", "planner"),
+      /names a direction already/,
+    );
+    assert.equal(s.events("directive_converted").length, 1);
   });
 
   test("a research run's directions are its task kinds: it has no planner to design a new one", async () => {

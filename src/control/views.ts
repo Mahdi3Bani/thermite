@@ -204,7 +204,9 @@ export interface RunView {
   has_agents: boolean;
   /**
    * The rules for the plan in force (directives): who set each, when, and the rule. `legacy`: an
-   * old rule in words, from before rules named directions (goal 066); code does not keep it.
+   * old rule in words, from before rules named directions (goal 066); code does not keep it, and
+   * the planner's next round converts it. A converted rule's body names the old rule and its
+   * words (`converted_from`).
    */
   rules: {
     id: number;
@@ -929,9 +931,15 @@ export function rigView(
           body,
           legacy: isLegacyRule(body),
         });
-        // A rule the planner made from one of the owner's messages: part of its answer.
+        // A rule the planner made from one of the owner's messages: part of its answer. One
+        // converted from the planner's old rule in words takes that rule's place in the answer.
         const from = v.messages.find((m) => m.id === body.from_message);
-        if (from)
+        const was = (body.converted_from as { rule?: unknown } | undefined)?.rule;
+        const old = from?.rules.find((x) => x.id === Number(was));
+        if (old) {
+          old.id = Number(b.id);
+          old.family = typeof body.family === "string" ? body.family : null;
+        } else if (from)
           from.rules.push({
             id: Number(b.id),
             kind: String(body.kind ?? ""),
@@ -975,7 +983,9 @@ export function rigView(
         break;
       }
       case "directives_superseded":
-      case "directive_dropped": {
+      case "directive_dropped":
+      // An old rule in words the planner converted (goal 066): its new rule took its place.
+      case "directive_converted": {
         const v = inst(String(e.subject));
         const ids = new Set(
           (Array.isArray(b.ids) ? b.ids : [b.id]).map((x) => Number(x)).filter(Number.isFinite),

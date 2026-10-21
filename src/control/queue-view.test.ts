@@ -201,20 +201,17 @@ test("the queue view keeps the order the events give it, and where each experime
     figures: "",
     propagate: "",
   });
-  // An old rule in words shows as such, with Remove, and Name a direction, which fills in a
-  // message to the planner; a rule names its direction as :name:, which code keeps.
+  // An old rule in words shows as such, with Remove: it converts at the planner's next round,
+  // on its own. A rule names its direction as :name:, which code keeps.
   assert.match(
     plan,
     /<div class="qrule legacy"><span class="qkind words">words<\/span><div><b>Try “anything with vector loads”<\/b>/,
   );
   assert.match(
     plan,
-    /An old rule in words, from before rules named directions\. Code can't keep it\. Only the planner's model reads it, and a round planned without the model ignores it\. Tell the planner to name a direction for it, then remove this one\./,
+    /An old rule in words, from before rules named directions\. It converts at the planner's next round: round 10\. The planner names its direction, and code keeps the new rule\. Until then, only the planner's model reads it\.<\/div><\/div><form data-kind="drop_directive">Remove<\/form><\/div>/,
   );
-  assert.match(
-    plan,
-    /<a class="btn sm" href="\/b&amp;fix=8#tell" data-fill="try anything with vector loads: the guide says so">Name a direction<\/a><form data-kind="drop_directive">Remove<\/form>/,
-  );
+  assert.doesNotMatch(plan, /Name a direction|data-fill|fix=/);
   assert.match(
     plan,
     /<b>Always <span class="dtok"><i>:<\/i>split-k<i>:<\/i><\/span><\/b>[\s\S]*?Code keeps it at every hand-out\. One lane works on it at every hand-out\.<\/div>/,
@@ -400,4 +397,179 @@ test("a message to the planner waits for its round, then shows its answer: the r
   // What the planner did lists the reads too.
   assert.match(plan, /Read your message “stop :vector loads:” in round 3: made 1 rule from it/);
   assert.match(plan, /It reads your message when it next gives out work: round 4\./);
+});
+
+test("an old rule in words says what its conversion waits for: the planner's round, the planner, a model", () => {
+  const { u, r } = rigWith([
+    [
+      "control:owner:ui",
+      "directive",
+      { id: 4, body: { kind: "avoid", match: "anything slow", rationale: "old" } },
+    ],
+  ]);
+  const note = (o: { u?: typeof u; r?: typeof r; noModel?: boolean }) =>
+    /<div class="xs warn"[^>]*>(?:<svg[\s\S]*?<\/svg>)? ([^<]*)<\/div>/.exec(
+      plannerTab({
+        u: o.u ?? u,
+        r: o.r ?? r,
+        now: Date.parse("2026-10-20T02:00:00Z"),
+        csrf: "x",
+        back: "/b",
+        cmd: (f: { kind: string; label: string }) =>
+          `<form data-kind="${f.kind}">${f.label}</form>`,
+        model: "m",
+        figures: "",
+        propagate: "",
+        noModel: o.noModel,
+      }),
+    )?.[1];
+  assert.equal(
+    note({}),
+    "An old rule in words, from before rules named directions. It converts at the planner's next round: round 1. The planner names its direction, and code keeps the new rule. Until then, only the planner's model reads it.",
+  );
+  assert.equal(
+    note({ noModel: true }),
+    "An old rule in words, from before rules named directions. Code can't keep it. It converts at the planner's next round with a model, and this rig has no model for the planner now. Give the planner a model in Edit rig, or remove it.",
+  );
+  assert.equal(
+    note({ u: { ...u, settings: { ...u.settings, planner: false } as typeof u.settings } }),
+    "An old rule in words, from before rules named directions. Code can't keep it. It converts at the planner's next round, and the planner is off on this rig. Switch the planner on in Edit rig, or remove it.",
+  );
+  assert.equal(
+    note({ r: { ...r, mode: "research" } }),
+    "An old rule in words, from before rules named directions. Code can't keep it, and a research run has no planner to convert it to a direction. Remove it. To steer the run, send a rule for a task kind.",
+  );
+});
+
+test("an old rule in words the planner converted shows as a normal rule, with the words it replaced", () => {
+  const { u, r } = rigWith([
+    [
+      "planner",
+      "experiment_added",
+      { id: "x-1", title: "wider loads", family: "vector-loads", by: "planner" },
+    ],
+    ["control:owner:ui", "agent_message", { id: 1, to: "planner", text: "loads first" }],
+    // Before rules named directions: the owner's rule in words, and the planner's from a message.
+    [
+      "control:owner:ui",
+      "directive",
+      {
+        id: 4,
+        body: { kind: "avoid", match: "anything that uses shared memory", rationale: "slow" },
+      },
+    ],
+    [
+      "planner",
+      "directive",
+      {
+        id: 5,
+        body: { kind: "try", match: "vector loads", rationale: "you asked", from_message: 1 },
+      },
+    ],
+    ["planner", "agent_message_read", { message: 1, by: "planner", round: 1 }],
+    // Round 2 converts both: one to a direction it designs for it, one to a direction it has.
+    [
+      "planner:planner",
+      "family_added",
+      {
+        family: "shared-memory",
+        description: "kernels that stage data in shared memory",
+        for_rules: [4],
+      },
+    ],
+    [
+      "control:owner:ui",
+      "directive",
+      {
+        id: 10,
+        body: {
+          kind: "avoid",
+          family: "shared-memory",
+          rationale: "slow",
+          converted_from: { rule: 4, words: "anything that uses shared memory" },
+        },
+      },
+    ],
+    [
+      "planner",
+      "directive_converted",
+      {
+        id: 4,
+        to: 10,
+        kind: "avoid",
+        family: "shared-memory",
+        words: "anything that uses shared memory",
+      },
+    ],
+    [
+      "planner",
+      "directive",
+      {
+        id: 11,
+        body: {
+          kind: "try",
+          family: "vector-loads",
+          rationale: "you asked",
+          from_message: 1,
+          converted_from: { rule: 5, words: "vector loads" },
+        },
+      },
+    ],
+    [
+      "planner",
+      "directive_converted",
+      { id: 5, to: 11, kind: "try", family: "vector-loads", words: "vector loads" },
+    ],
+    ["planner", "planner_handout", { round: 2, assignments: [], notes: "the planner's plan" }],
+  ]);
+  // The new rules in place of the old ones, by their authors; no rule in words is left.
+  assert.deepEqual(
+    r.rules.map((x) => [x.id, x.author, x.legacy, x.body.family]),
+    [
+      [10, "control:owner:ui", false, "shared-memory"],
+      [11, "planner", false, "vector-loads"],
+    ],
+  );
+  assert.equal(r.directives, 2);
+  // The planner's answer to the message names the rule in force now, once.
+  assert.deepEqual(
+    r.messages[0]?.rules.map((x) => [x.id, x.kind, x.family]),
+    [[11, "try", "vector-loads"]],
+  );
+  const plan = plannerTab({
+    u,
+    r,
+    now: Date.parse("2026-10-20T02:00:00Z"),
+    csrf: "x",
+    back: "/b",
+    cmd: (f: { kind: string; label: string }) => `<form data-kind="${f.kind}">${f.label}</form>`,
+    model: "m",
+    figures: "",
+    propagate: "",
+  });
+  assert.doesNotMatch(plan, /class="qrule legacy"/);
+  assert.match(
+    plan,
+    /<div class="qrule"><span class="qkind avoid">avoid<\/span><div><b>Avoid <span class="dtok"><i>:<\/i>shared-memory<i>:<\/i><\/span><\/b> <span class="muted small">· set by<\/span> <span class="qsrc you">you<\/span>[\s\S]*?<div class="muted small">slow<\/div><div class="muted xs">converted from: “anything that uses shared memory”<\/div><div class="xs ok"[^>]*>[\s\S]*?Code keeps it at every hand-out\. No lane gets it\.<\/div>/,
+  );
+  assert.match(
+    plan,
+    /<b>Try <span class="dtok"><i>:<\/i>vector-loads<i>:<\/i><\/span><\/b> <span class="muted small">· set by<\/span> <span class="qsrc planner">planner<\/span>[\s\S]*?\(from your message: “loads first”\)<\/span><\/div><div class="muted xs">converted from: “vector loads”<\/div>/,
+  );
+  // What the planner did: each conversion once, and the direction it designed for the old rule.
+  const did = [
+    ...plan.matchAll(
+      /<div class="qhand"><span class="tm">[^<]*<\/span><div>([\s\S]*?)<\/div><\/div>/g,
+    ),
+  ]
+    .map((m) => (m[1] ?? "").replace(/<[^>]+>/g, ""))
+    .filter((s) => !s.startsWith("Round"));
+  assert.deepEqual(did, [
+    "Converted the old rule in words “vector loads” (rule 5) to Try :vector-loads: (rule 11)",
+    "Converted the old rule in words “anything that uses shared memory” (rule 4) to Avoid :shared-memory: (rule 10)",
+    "Designed the direction :shared-memory: for rule 4 · kernels that stage data in shared memory",
+    "Read your message “loads first” in round 1: made 1 rule from it",
+    "Set the rule try “vector loads” · you asked (from your message: “loads first”)",
+    "Added “wider loads” to the queue",
+  ]);
 });

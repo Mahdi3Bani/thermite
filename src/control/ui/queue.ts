@@ -266,8 +266,8 @@ export function plannerTab(o: {
   propagate: string;
   /** Why the owner's last message to the planner was not sent or not taken, if so. */
   refused?: string | undefined;
-  /** An old rule in words whose Name a direction was pressed: its message fills the box. */
-  fix?: number | undefined;
+  /** True when the rig is known to have no model for the planner now. */
+  noModel?: boolean | undefined;
 }): string {
   const { u, r } = o;
   const research = r.mode === "research";
@@ -276,14 +276,15 @@ export function plannerTab(o: {
   const dirs = byUse(r.directions);
   const dirOf = (name: string) => r.directions.find((d) => d.name === name);
   const nextRound = Math.max(r.agents.epochs, ...r.handouts.map((h) => h.round ?? 0)) + 1;
-  // An old rule in words, as a message to the planner that names a direction for it.
-  const fixText = (x: RunView["rules"][number]) => {
-    const kind = String(x.body.kind ?? "");
-    const verb =
-      kind === "mandate" ? "always keep one lane on" : kind === "priority" ? "put first" : kind;
-    const why = String(x.body.rationale ?? "").trim();
-    return `${verb} ${String(x.body.match ?? "").trim()}${why ? `: ${why}` : ""}`;
-  };
+  // An old rule in words converts at the planner's next round with its model (goal 066): what
+  // it waits for, in words.
+  const converts = research
+    ? "Code can't keep it, and a research run has no planner to convert it to a direction. Remove it. To steer the run, send a rule for a task kind."
+    : !tell
+      ? "Code can't keep it. It converts at the planner's next round, and the planner is off on this rig. Switch the planner on in Edit rig, or remove it."
+      : o.noModel
+        ? "Code can't keep it. It converts at the planner's next round with a model, and this rig has no model for the planner now. Give the planner a model in Edit rig, or remove it."
+        : `It converts at the planner's next round: round ${nextRound}. The planner names its direction, and code keeps the new rule. Until then, only the planner's model reads it.`;
   const ruleRow = (x: RunView["rules"][number]) => {
     const kind = String(x.body.kind ?? "");
     const k = kindOf(kind);
@@ -301,9 +302,11 @@ export function plannerTab(o: {
       typeof x.body.from_message === "number"
         ? r.messages.find((m) => m.id === x.body.from_message)
         : undefined;
+    // A rule the planner converted from an old rule in words: the words it replaced.
+    const was = (x.body.converted_from ?? undefined) as { words?: unknown } | undefined;
     const effect = family && !d?.to_design ? ruleEffect(kind, d) : "";
     const note = x.legacy
-      ? `<div class="xs warn" style="margin-top:3px">${icon.warn} An old rule in words, from before rules named directions. Code can't keep it. Only the planner's model reads it, and a round planned without the model ignores it. ${tell ? "Tell the planner to name a direction for it, then remove this one." : "Remove it."}</div>`
+      ? `<div class="xs warn" style="margin-top:3px">${icon.warn} An old rule in words, from before rules named directions. ${esc(converts)}</div>`
       : d?.to_design
         ? `<div class="xs" style="margin-top:3px">A new direction. The planner designs it at its next round, then adds it to the run's directions.</div>`
         : effect
@@ -317,11 +320,7 @@ export function plannerTab(o: {
       cls: "sm ghost",
       back: o.back,
     });
-    const buttons =
-      x.legacy && tell
-        ? `<div class="qb"><a class="btn sm" href="${esc(`${o.back}&fix=${x.id}#tell`)}" data-fill="${esc(fixText(x))}">Name a direction</a>${remove}</div>`
-        : remove;
-    return `<div class="qrule${x.legacy ? " legacy" : ""}"><span class="qkind ${esc(x.legacy ? "words" : k.chip)}">${esc(x.legacy ? "words" : k.chip)}</span><div><b>${said}</b> <span class="muted small">· set by</span> ${src(x.author)} <span class="muted xs">${esc(ago(x.at, o.now))} ago</span><div class="muted small">${esc(String(x.body.rationale ?? ""))}${fromMsg ? ` <span class="muted">(from your message: “${esc(clip(fromMsg.text, 120))}”)</span>` : ""}</div>${note}</div>${buttons}</div>`;
+    return `<div class="qrule${x.legacy ? " legacy" : ""}"><span class="qkind ${esc(x.legacy ? "words" : k.chip)}">${esc(x.legacy ? "words" : k.chip)}</span><div><b>${said}</b> <span class="muted small">· set by</span> ${src(x.author)} <span class="muted xs">${esc(ago(x.at, o.now))} ago</span><div class="muted small">${esc(String(x.body.rationale ?? ""))}${fromMsg ? ` <span class="muted">(from your message: “${esc(clip(fromMsg.text, 120))}”)</span>` : ""}</div>${was ? `<div class="muted xs">converted from: “${esc(String(was.words ?? ""))}”</div>` : ""}${note}</div>${remove}</div>`;
   };
   const entry = (at: string, html: string) =>
     `<div class="qhand"><span class="tm">${esc(at.slice(11, 16))}</span><div>${html}</div></div>`;
@@ -344,6 +343,8 @@ export function plannerTab(o: {
       const why = (w: unknown) =>
         typeof w === "string" && w ? ` <span class="muted">· ${esc(clip(w, 300))}</span>` : "";
       const d = (b.body ?? {}) as Record<string, unknown>;
+      // An old rule in words the planner converted (goal 066): one line, from directive_converted.
+      if (e.kind === "directive" && d.converted_from) return { at: e.at, html: "" };
       const said =
         e.kind === "experiment_added" && b.state !== "proposed"
           ? `Added ${t} to the queue${why(b.why)}`
@@ -354,7 +355,7 @@ export function plannerTab(o: {
               : e.kind === "experiment_dropped"
                 ? `Dropped ${t}${why(b.why)}`
                 : e.kind === "directive"
-                  ? `Set the rule ${esc(String(d.kind ?? ""))} ${typeof d.family === "string" ? tok(d.family) : esc(String(d.match ?? d.value ?? ""))}${why(d.rationale)}${
+                  ? `Set the rule ${esc(String(d.kind ?? ""))} ${typeof d.family === "string" ? tok(d.family) : typeof d.match === "string" ? esc(`“${d.match}”`) : esc(String(d.value ?? ""))}${why(d.rationale)}${
                       typeof d.from_message === "number"
                         ? ` <span class="muted">(from your message: “${esc(clip(r.messages.find((m) => m.id === d.from_message)?.text ?? `#${d.from_message}`, 120))}”)</span>`
                         : ""
@@ -362,7 +363,9 @@ export function plannerTab(o: {
                   : // A direction the planner designed for rules that named it (goal 066).
                     e.kind === "family_added" && Array.isArray(b.for_rules) && b.for_rules.length
                     ? `Designed the direction ${tok(String(b.family ?? ""))} for rule ${esc(b.for_rules.join(", "))}${why(b.description)}`
-                    : "";
+                    : e.kind === "directive_converted"
+                      ? `Converted the old rule in words “${esc(clip(String(b.words ?? ""), 160))}” (rule ${esc(String(b.id))}) to ${esc(kindOf(String(b.kind ?? "")).verb)} ${tok(String(b.family ?? ""))} (rule ${esc(String(b.to))})`
+                      : "";
       return { at: e.at, html: said };
     })
     .filter((c) => c.html);
@@ -437,7 +440,6 @@ export function plannerTab(o: {
       : named.length === 1
         ? [`put :${named[0]}: first`, `drop ${words(named[0] ?? "")} for now`]
         : ["never change the timing code", "put the cheapest experiments first"];
-  const fixing = o.fix !== undefined ? r.rules.find((x) => x.id === o.fix && x.legacy) : undefined;
   const pickData = dirs.map((d) => ({
     name: d.name,
     tried: d.tried,
@@ -453,7 +455,7 @@ export function plannerTab(o: {
       ? // The rig's own settings (Edit rig): with the planner off, nothing would read a message.
         `<div class="card qcard" id="tell" style="margin-top:14px"><h3>Tell the planner</h3><div class="small">The planner is off on this rig, so it reads no messages. The lanes take the queue in order and keep to the rules. <a href="/ui/rigs/${encodeURIComponent(u.id)}/edit">Switch it on in Edit rig</a> to tell it something.</div></div>`
       : `<div class="card qcard" id="tell" style="margin-top:14px"><h3>Tell the planner</h3>${o.refused ? `<div class="lnotice">${icon.warn}<span><b>Not sent.</b> ${esc(o.refused)}</span></div>` : ""}<form method="post" action="/ui/live/message" class="qtell"><input type="hidden" name="csrf" value="${esc(o.csrf)}"><input type="hidden" name="rig" value="${esc(u.id)}"><input type="hidden" name="run" value="${esc(r.id)}"><input type="hidden" name="to" value="planner"><input type="hidden" name="back" value="${esc(o.back)}">
-<label class="sfd">${infoLabel("Your message", "Say what you want, in plain words. To name a direction exactly, type : and pick it, or write :name:. Names may have spaces. The planner reads your message when it next gives out work. From it, it can add or drop experiments, reorder the queue and make rules. Each rule names a direction, so code keeps it. If no direction fits, the planner designs a new one and says what it means.")}<textarea name="text" rows="3" required data-words data-dpick data-dirs="${esc(JSON.stringify(pickData))}" maxlength="4000" spellcheck="false" placeholder="${esc(`for example: ${named.length >= 2 ? `stop :${named[1]}: and put :${named[0]}: first` : "stop :loop tiling: and put vector loads first"}`)}" style="width:100%">${esc(fixing ? fixText(fixing) : "")}</textarea></label>
+<label class="sfd">${infoLabel("Your message", "Say what you want, in plain words. To name a direction exactly, type : and pick it, or write :name:. Names may have spaces. The planner reads your message when it next gives out work. From it, it can add or drop experiments, reorder the queue and make rules. Each rule names a direction, so code keeps it. If no direction fits, the planner designs a new one and says what it means.")}<textarea name="text" rows="3" required data-words data-dpick data-dirs="${esc(JSON.stringify(pickData))}" maxlength="4000" spellcheck="false" placeholder="${esc(`for example: ${named.length >= 2 ? `stop :${named[1]}: and put :${named[0]}: first` : "stop :loop tiling: and put vector loads first"}`)}" style="width:100%"></textarea></label>
 <div class="ktools qex"><span class="muted small">Examples:</span>${examples.map((x) => `<button type="button" class="fchip" data-example="${esc(x)}">${esc(x)}</button>`).join("")}</div>
 <div class="nc-does" id="qmsg-prev">Write what you want in plain words, or type <code>:</code> to name a direction. The planner reads it when it next gives out work. It can add or drop experiments, reorder the queue and make rules. Each rule names a direction, so code keeps it.</div>
 <div class="act"><button class="primary">Send to the planner</button><span class="muted small">It reads your message when it next gives out work: round ${nextRound}.</span></div></form>

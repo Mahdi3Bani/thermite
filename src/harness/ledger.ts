@@ -4,6 +4,7 @@ import { dirname } from "node:path";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { canonicalJson, sha256Hex } from "../core/canonical.ts";
 import type { Contract } from "../core/contract.ts";
+import { convertedRule, isLegacyRule } from "../core/directions.ts";
 import { currentBody, currentEvent, eventKinds } from "../core/names.ts";
 import { clipReason, REASONS_CHARS } from "./judge/reasons.ts";
 import { MIGRATIONS } from "./schema.ts";
@@ -1260,6 +1261,41 @@ export class Ledger {
       if (r.changes === 0)
         throw new LedgerError("not_found", `no rule ${id} in force in run ${run}`);
       this.appendEvent(actor, "directive_dropped", run, { id });
+    });
+  }
+
+  /**
+   * The planner's round converts an old rule in words to a rule on a named direction (goal 066):
+   * a new rule with the old one's author, kind, why, citations and source, that names the rule and
+   * the words it was converted from (its `directive` event is its author's, as the old one's was).
+   * The old rule ends as converted (`directive_converted`, by `actor`): never dropped silently.
+   * One transaction. Returns the new rule's id.
+   */
+  convertRule(run: string, id: number, family: string, actor: string): number {
+    return this.tx(() => {
+      const old = this.get<Row>(
+        "select author, body from directive where id = ? and run = ? and status = 'active'",
+        id,
+        run,
+      );
+      if (!old) throw new LedgerError("not_found", `no rule ${id} in force in run ${run}`);
+      const body = JSON.parse(String(old.body)) as Record<string, unknown>;
+      if (!isLegacyRule(body))
+        throw new LedgerError("invalid", `rule ${id} names a direction already`);
+      const to = this.addDirective(run, String(old.author), convertedRule(id, body, family));
+      this.run(
+        "update directive set status = 'converted', superseded_at = ? where id = ?",
+        this.now(),
+        id,
+      );
+      this.appendEvent(actor, "directive_converted", run, {
+        id,
+        to,
+        kind: body.kind,
+        family,
+        words: body.match,
+      });
+      return to;
     });
   }
 

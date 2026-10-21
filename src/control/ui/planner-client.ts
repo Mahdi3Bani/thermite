@@ -5,8 +5,8 @@ import { DIRECTION_TOKEN_SOURCE } from "../../core/directions.ts";
  * script runs under the dashboard's CSP). In Tell the planner, typing `:` opens a picker of the
  * run's directions, as emoji pickers do: letters filter it, Up and Down move, Enter or Tab picks,
  * Esc closes. A name the run doesn't have is offered last as new: the planner designs it. Below
- * the box, a line says which directions the message names. The examples and Name a direction
- * fill the box. Without this script the box is a plain text area that posts the same message.
+ * the box, a line says which directions the message names. The examples fill the box. Without
+ * this script the box is a plain text area that posts the same message.
  * Rig data (the directions' names and figures) becomes DOM text nodes only, never markup.
  */
 
@@ -213,7 +213,7 @@ export const PLANNER_JS = `
   box.addEventListener("input", said);
   said();
 
-  // ------------------------------------------------ examples, and Name a direction on an old rule
+  // ------------------------------------------------ examples
   const fill = (text) => {
     box.value = text;
     box.scrollIntoView({ block: "center" });
@@ -222,10 +222,10 @@ export const PLANNER_JS = `
     said();
   };
   document.addEventListener("click", (e) => {
-    const x = e.target.closest("[data-example], [data-fill]");
+    const x = e.target.closest("[data-example]");
     if (!x) return;
     e.preventDefault();
-    fill(x.dataset.example || x.dataset.fill || "");
+    fill(x.dataset.example || "");
   });
 })();
 `;

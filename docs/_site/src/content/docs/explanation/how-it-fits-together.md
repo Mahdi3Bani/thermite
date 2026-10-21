@@ -202,10 +202,11 @@ The planner's own changes, its hand-outs and each trial's result are written ins
 | `experiment_assigned` | Given to a lane's trial |
 | `experiment_finished` | Its trial ended, with the attempt or the reason there is none |
 | `planner_handout` | One hand-out: which experiment went to which lane, and why |
-| `directive` | A rule for the plan: its kind, its direction, why and who set it. One the planner made from an owner's message names that message (`from_message`) |
+| `directive` | A rule for the plan: its kind, its direction, why and who set it. One the planner made from an owner's message names that message (`from_message`). One converted from an old rule in words names that rule and its words (`converted_from`) and keeps its author |
 | `directives_superseded` | Rules replaced by their author's next set |
 | `family_added` | A new direction: its name, what it means, who added it, and the rules it was designed for (`for_rules`) when a rule named it before the run had it |
 | `directive_dropped` | A rule taken out of force |
+| `directive_converted` | An old rule in words that the planner converted at its round: the old rule, the new rule in its place (`to`), its kind, its direction and the old words |
 | `directives_left_out` | Rules a new set named that the rig left out, with why: rules the owner had removed, named by the advisors, the planner or an agent's token; and, in a research run, an advisor's rule for a direction that is not a task kind |
 
 Control builds a run's **Experiments** and **Planner** tabs, and the MCP tool `run_queue`, from these events and the messages' events above. The run's **History** tab tells each change in words, such as "You dropped "…": why.", "The planner moved "…" to place 1." or "The planner's experiment "…" went back in the queue: its trial was interrupted." [Choose what a run tries next](../how-to/campaigns/choose-what-runs-next.md) shows how to change the queue.

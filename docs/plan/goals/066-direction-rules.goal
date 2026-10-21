@@ -6,7 +6,7 @@ version: "0.1.0"
 part: "Running campaigns"
 depends_on: ["064"]
 created: 2026-10-20
-updated: 2026-10-20
+updated: 2026-10-21
 ---
 
 # 066 · Rules name directions, picked with `:direction:`
@@ -33,6 +33,7 @@ The owner, 2026-10-20: rules use direction names only. A rule in free words reac
 - [x] The Planner tab's rule box takes `:direction:`, with a picker of the run's directions on `:`, as in the approved mockup.
 - [x] A rule naming an unknown direction is refused in plain words, or makes the direction (decided with the mockup).
 - [x] Rules already in force with `match` words keep working or are shown as such until removed (decided with the mockup).
+- [x] Old rules in free words are converted to named directions at the planner's next round, keep their kind, author and why, and are never dropped without a rule in their place (owner, 2026-10-21).
 - [x] Tests cover the syntax, the picker's list, and the refusals.
 - [x] The docs pages that describe rules follow.
 
@@ -81,6 +82,13 @@ The owner, 2026-10-20: rules use direction names only. A rule in free words reac
   - **Pages:** Choose what a run tries next (Make a rule: tell the planner, Directions, Old rules in words, Remove a rule, What the planner did), Steer a run, the planner's explanation, the glossary, signed commands, MCP tools and the records table in How it fits together.
   - **Acceptance script changed:** `scripts/control-acceptance.mjs` steers from the dashboard with a message to the planner (Tell the planner) instead of the dashboard's `redirect`, and waits for its `agent_message` event.
   - **Not part of v0.1.0:** goal 064's **Lanes** rule in Add a rule and the contract's lane count shown as a rule. The revised mockup left them out. A `lane_count` rule still goes with `redirect` from the command line, and shows in the rules list when set.
+- 2026-10-21: Old rules in free words are converted to named directions, as the owner decided:
+  - **The planner's round:** its input lists the old rules in words in force (`to_convert`, at most 5 a round, the oldest first). Its answer gives each one the direction its words mean (`convert`): one the run has, or one it designs in `new_families`, which has room for one more per conversion. An answer that leaves one unconverted, converts one twice or one not given, or names a direction neither the run's nor designed, is refused, as for an undesigned direction.
+  - **The conversion** (`Ledger.convertRule`): new records only, no migration and no signed command. A new rule with the old one's author, kind, why, citations and source (`from_message`), on the named direction, with `converted_from` (the old rule and its words); its `directive` event is its author's, so it keeps an owner rule's place. The old rule ends as `converted`, with a `directive_converted` event by the planner. A conversion the owner made moot (the old rule removed while the planner planned) is skipped and said.
+  - **Without the model** (the planner off, no model, both answers refused): the rule stays in force, marked, until a round can convert it. **A research run** has no planner: a rule in words could reach one between the experiment queue and named directions (`redirect` took `match` for every run then). It stays as it is, does nothing, and its note says to remove it.
+  - **Screens:** the Planner tab shows a converted rule as a normal rule with `converted from: “<old words>”`; **Name a direction** and its `&fix=` are gone; an old rule waiting says `It converts at the planner's next round: round N.`, or why it can't (no model, the planner off, a research run). **What the planner did** and **History** tell each conversion; a direction designed for one names the old rule.
+  - **Tests:** the core's conversion (`src/core/directions.test.ts`); the ledger and control's view (`src/harness/queue.test.ts`, `src/control/queue-view.test.ts`); the planner's checks (`planner.test.ts`); the planner's round with a scripted model, without a model, with refused answers and in a research run, and a ledger check that fails when a rule in words leaves force with no rule in its place (`scheduler-queue.test.ts`); History (`campaigns.test.ts`); the whole tab through a real harness (`steering-ui.test.ts`).
+  - **Pages:** Choose what a run tries next (Old rules in words), Steer a run, the planner's explanation, the records table in How it fits together, signed commands, MCP tools, the REST API, the glossary, limits, compatibility, troubleshooting and the CHANGELOG.
 
 ---
 

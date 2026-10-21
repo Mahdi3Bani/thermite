@@ -456,8 +456,8 @@ export class Scheduler {
    * owner set one, does not apply.
    */
   private directives(run: string): { id: number; body: StoredRule }[] {
-    // An old rule in words (legacy, goal 066) stays in force for the planner's model; it has no
-    // family, so the code below and the fixed rules never keep it.
+    // An old rule in words (legacy, goal 066) stays in force for the planner's model until its
+    // round converts it; it has no family, so the code below and the fixed rules never keep it.
     const all = this.ledger.activeDirectives(run).map((d) => ({
       id: d.id,
       owner: d.author.startsWith("control:"),
@@ -765,16 +765,14 @@ export class Scheduler {
         undefined,
         n,
       );
-    // New directions, with the rules that named them before the run had them (goal 066).
+    // New directions, with the rules that named them before the run had them, and the old rules
+    // in words converted to them (goal 066).
     const waiting = toDesign(input);
     for (const f of p.newFamilies)
-      this.registry.addFamily(
-        run,
-        f.id,
-        f.description,
-        `planner:${p.source}`,
-        waiting.find((d) => d.name === f.id)?.rules.map((r) => r.id),
-      );
+      this.registry.addFamily(run, f.id, f.description, `planner:${p.source}`, [
+        ...(waiting.find((d) => d.name === f.id)?.rules.map((r) => r.id) ?? []),
+        ...(p.queue?.convert.filter((c) => c.family === f.id).map((c) => c.rule) ?? []),
+      ]);
     // The hand-out: the model's answer applied to the queue, or the fixed rules. Every lane gets
     // an experiment for its next trial; none goes to two lanes.
     const given = new Set<string>();
@@ -790,8 +788,10 @@ export class Scheduler {
         given.add(h.experiment);
       }
     }
-    // Rules the model just added (from the owner's messages) apply from this hand-out on.
-    const directives = p.queue?.rules.length ? this.directives(run) : input.directives;
+    // Rules the model just added (from the owner's messages) or converted (from old rules in
+    // words) apply from this hand-out on.
+    const directives =
+      p.queue?.rules.length || p.queue?.convert.length ? this.directives(run) : input.directives;
     if (lanes.some((l) => !handout.some((h) => h.lane === l)))
       this.coordinator.ensureMandates(run, directives);
     for (const lane of lanes) {
@@ -842,6 +842,11 @@ export class Scheduler {
         ...(p.newFamilies.length
           ? [
               `new directions: ${p.newFamilies.map((f) => `${asToken(f.id)} (${f.description})`).join("; ")}`,
+            ]
+          : []),
+        ...(p.queue?.convert.length
+          ? [
+              `old rules in words converted: ${p.queue.convert.map((c) => `rule ${c.rule} to ${asToken(c.family)}`).join("; ")}`,
             ]
           : []),
         ...(p.rawViolations.length ? [`refused: ${p.rawViolations.slice(0, 3).join("; ")}`] : []),

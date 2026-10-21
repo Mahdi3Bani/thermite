@@ -93,6 +93,7 @@ The **planner** coordinates the lanes. It is one model call at the start of each
 - each lane's last direction and experiment;
 - the rules in force, each naming a direction, and any old rule in the owner's own words, marked legacy;
 - the run's directions, and the ones that rules name but the run doesn't have yet, which it must design;
+- the old rules in words that it must convert this round, at most 5, each with its kind, its words and why;
 - the owner's messages to the planner and to everyone working that it has not read yet, each with its number and the directions it names as `:name:`;
 - in a goal campaign, the judge's latest report on which goals the champion meets;
 - the run's newest 20 **field notes**, by the lanes, the advisors and the planner itself ([Field notes and past research](#field-notes-and-past-research));
@@ -108,7 +109,8 @@ The planner answers with:
 - **an experiment for each lane:** one from up next, a lane's idea, one it adds in the same answer, or a new one described in place; a starting point, either the champion or the lane's own best result; and why;
 - **changes to the queue,** each with why: experiments to add, queued ones to move or drop, and ideas to queue or drop;
 - **rules that an owner's message asks for,** such as "stop :loop tiling:" or "never touch the timer code". Each names a direction and records the message it came from. A `:name:` in the message names the direction exactly; for plain words, the planner picks the run's direction that fits, or designs a new one;
-- **new directions** (approach families), each with its name and what it means, in the planner's own words. It designs each direction that a rule names but the run doesn't have yet, and any new one a rule of its own names. It may make up others as it goes;
+- **the conversion of each old rule in words:** the direction its words mean, one of the run's or a new one it designs;
+- **new directions** (approach families), each with its name and what it means, in the planner's own words. It designs each direction that a rule names but the run doesn't have yet, and any new one that a rule or a conversion of its own names. It may make up others as it goes;
 - its own **field notes**, such as a key decision of the round and why. They are kept even when the plan itself is refused, and recorded as the planner's.
 
 ### What code checks
@@ -126,13 +128,16 @@ Code checks the answer before anything changes. It refuses an answer that:
 - names a new approach family, or the direction of an experiment it adds or describes in place, after a kind of rule (`avoid`, `try`, `mandate`, `priority`, `lane_count` or `note`), so that no lane shows as "on try";
 - adds a rule for a message that wasn't in its input, or a rule that names no direction;
 - adds a rule for a direction that is neither the run's nor designed in the same answer;
-- leaves undesigned a direction that a rule in force names but the run doesn't have yet.
+- leaves undesigned a direction that a rule in force names but the run doesn't have yet;
+- leaves an old rule in words unconverted, converts one twice or one that is not in its input, or converts one to a direction that is neither the run's nor designed in the same answer.
 
 A refused answer goes back to the model once, with the errors. If the second answer fails too, or the model can't be reached, the lanes take work by the fixed rules below. Planner trouble never pauses research.
 
-Every rule names a direction, so code keeps every rule, with or without the model: the checks above, and the fixed rules below. A direction is written in plain words or as `:name:`; its name is its words in lowercase, joined by dashes, so `:Shared memory tiling:` names `shared-memory-tiling`. An experiment belongs to the direction its words make. An old rule in plain words, such as "anything that uses shared memory", from before rules named directions, stays in force, marked legacy: only the model reads it, and code doesn't keep it.
+Every rule names a direction, so code keeps every rule, with or without the model: the checks above, and the fixed rules below. A direction is written in plain words or as `:name:`; its name is its words in lowercase, joined by dashes, so `:Shared memory tiling:` names `shared-memory-tiling`. An experiment belongs to the direction its words make.
 
-A good answer is then applied in order: ideas queued and experiments dropped, new ones added, moves, the new rules, and last the hand-out. If the queue changed since the planner read it, for example because the owner moved or dropped that experiment in the meantime, the change is skipped, and the hand-out says so. A lane whose experiment can no longer be given out takes one by the fixed rules. Each **hand-out**, what went to which lane and why, is recorded. The run's **Planner** tab lists the hand-outs, and the planner's own changes to the queue and the rules with their reasons, under **What the planner did**, and its **History** tab gives each one a line, such as "The planner gave out round 4: lane-1 on "…"."
+An old rule in plain words, such as "anything that uses shared memory", from before rules named directions, can't be kept by code. So the planner converts it at its next round with its model: it names the direction the words mean, and code replaces the old rule with a rule of the same kind on that direction. The new rule keeps the old one's author, why, sources and the message it came from, and records the words it replaced, so code keeps it from then on and it keeps its place when rules overlap. The old rule leaves force as converted and stays in the record; it is never dropped without a rule in its place. Until it is converted, it stays in force, marked legacy: only the model reads it. A round without the model, with the planner off or with no model, leaves it for a later round. A research run has no planner, so an old rule in words there stays as it is, doing nothing, until the owner removes it.
+
+A good answer is then applied in order: ideas queued and experiments dropped, new ones added, moves, the new rules, the converted old rules, and last the hand-out. If the queue or the rules changed since the planner read them, for example because the owner moved or dropped that experiment, or removed an old rule, in the meantime, the change is skipped, and the hand-out says so. A lane whose experiment can no longer be given out takes one by the fixed rules. Each **hand-out**, what went to which lane and why, is recorded. The run's **Planner** tab lists the hand-outs, and the planner's own changes to the queue and the rules with their reasons, under **What the planner did**, and its **History** tab gives each one a line, such as "The planner gave out round 4: lane-1 on "…"."
 
 ### When there is no planner answer
 
@@ -149,7 +154,7 @@ The same rules give out work within a round. A lane's first trial takes the expe
 
 The planner uses the workers' model unless it has a model of its own on **Edit rig**. When the **Planner** switch there is off, the lanes take the queue by the fixed rules every round, and a message to the planner is refused, because nothing would read it. The run's **Planner** tab then says so, with a link to **Edit rig**, in place of its message box.
 
-The run's **Live** view, under its **Planner** filter, shows each plan, as "round 4: planned by the model" or "round 4: taken from the queue by the fixed rules", with why the fixed rules gave out the work, such as "(the model gave no usable plan)". The run's **History** tab records each round as "The planner planned round 4". When the fixed rules gave out the round's work, the line says why, such as "(by the fixed rules: the planner is off on this rig (Edit rig))" or "(by the fixed rules: the model gave no usable plan, because try 1: …; try 2: …)", with why each of its answers was refused. History also has a line for each change to the queue, such as "The teacher pair added "…" to the queue.", for each rule set or removed, and for each new direction, such as "The run has a new direction, :split-k: (…)."
+The run's **Live** view, under its **Planner** filter, shows each plan, as "round 4: planned by the model" or "round 4: taken from the queue by the fixed rules", with why the fixed rules gave out the work, such as "(the model gave no usable plan)". The run's **History** tab records each round as "The planner planned round 4". When the fixed rules gave out the round's work, the line says why, such as "(by the fixed rules: the planner is off on this rig (Edit rig))" or "(by the fixed rules: the model gave no usable plan, because try 1: …; try 2: …)", with why each of its answers was refused. History also has a line for each change to the queue, such as "The teacher pair added "…" to the queue.", for each rule set, converted or removed, and for each new direction, such as "The run has a new direction, :split-k: (…)."
 
 ### Directives
 
