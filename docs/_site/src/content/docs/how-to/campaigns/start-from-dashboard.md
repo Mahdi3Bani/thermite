@@ -255,3 +255,35 @@ It prints the new run and its command:
 - **A model given first.** With `--provider` and `--model` (or `agents_model`), control gives the rig the model and starts nothing yet, as the panel does. The answer is `{"started":false,"said":"rig-1 takes my-model within a minute; …"}`, and the command line exits with 1. Run it again without the model once the rig has taken it.
 - **Notes.** The answer's `notes` say what else to know, such as `sort-speed-1 is at work on rig-1, and pauses when this run starts (a rig runs one run at a time).` The command line writes them on standard error.
 - **Refusals** come back in the panel's words, such as `409` and `{"error":"rig-1 has no model for its agents, so they could not work: …"}` over REST. The command line writes the route, the status and that answer on standard error, and exits with 2.
+
+## Compare two models from zero
+
+To compare two models on the same campaign, give each model a campaign of its own: a copy. Two runs of one campaign share its folder in [Thermite's knowledge base](../../reference/knowledge-base.md). Each new run starts with what the campaign's earlier runs recorded, and while both work, each reads the other's records every few minutes. So the second model would not start from zero. A copy has the same contract and kit under another name, its own empty folder, no [grants](../../reference/knowledge-base.md#grants) and no runs.
+
+You need a campaign that control keeps, a rig for each model (or one rig, with the runs one after the other), and the owner's token file. The dashboard has no copy button yet: copy over the command line, the REST API or MCP.
+
+1. Copy the campaign once for each model. If the campaign has no runs yet, you can run it as it is for the first model, and copy it for the second.
+
+   ```sh
+   npx thermite campaign copy sort-speed sort-speed-model-a \
+     --control http://127.0.0.1:8800 --token-file .dev/secrets/control-admin-token
+   npx thermite campaign copy sort-speed sort-speed-model-b \
+     --control http://127.0.0.1:8800 --token-file .dev/secrets/control-admin-token
+   ```
+
+   Each prints the copy, such as `{"campaign":"sort-speed-model-a","version":1,"contract_sha":"<sha256>","from":{"campaign":"sort-speed","version":2}}`. Over REST it is `POST /v1/campaigns/sort-speed/copy` with `{"name": "sort-speed-model-a"}`. Over MCP it is [`copy_campaign`](../../reference/mcp-tools.md#copy_campaign) with `{"from": "sort-speed", "name": "sort-speed-model-a"}`, which an operator's token may call too.
+2. Give each rig its model, on its **Edit rig** page, or with `--provider` and `--model` in the next step: see [When the rig doesn't have the model yet](#when-the-rig-doesnt-have-the-model-yet).
+3. Start a run of each copy, each on its own rig:
+
+   ```sh
+   npx thermite run start sort-speed-model-a --rig rig-1 \
+     --control http://127.0.0.1:8800 --token-file .dev/secrets/control-admin-token
+   npx thermite run start sort-speed-model-b --rig rig-2 \
+     --control http://127.0.0.1:8800 --token-file .dev/secrets/control-admin-token
+   ```
+
+   **Start a run** on each copy's page does the same.
+
+Don't let one copy read the other's folder: leave **Can read from** empty on each copy's page.
+
+To tell it worked, open each copy's page under **Campaigns**. It says where the copy came from, such as `Copied from sort-speed version 2 by owner:api, 5m ago. Its folder in the knowledge base started empty.` Its **Knowledge** section counts only its own run's records, and **Can read from** says `None: its agents read only this campaign's folder.` Then compare the two runs' results on their pages.

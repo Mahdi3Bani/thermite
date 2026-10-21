@@ -108,6 +108,11 @@ const USAGE = `usage: thermite <command> [options]
                                       experiments (on --rig unless RIG/ is given); --past adds
                                       items of Thermite's knowledge base by id. It prints the new
                                       run and its command id; a stopped RunPod pod starts first
+  campaign copy FROM NAME --control URL --token-file F
+                                      copy a campaign control keeps (owner's token): a new
+                                      campaign NAME with FROM's contract and kit, its own empty
+                                      folder in Thermite's knowledge base and no runs. Start a
+                                      run of it with run start. It prints the copy
   mcp list --control URL --token-file F [--json]
                                       the MCP servers in Settings (owner's token): each one's
                                       sign-in, state, last error, tools and the kits that name
@@ -746,6 +751,25 @@ async function main(argv: string[]): Promise<void> {
       process.stderr.write(runStartSaid(out));
       // Not started yet (the rig was given a model first): a script must not take it as started.
       if (out.started === false) process.exitCode = 1;
+      return;
+    }
+    case "campaign": {
+      // Copy a campaign control keeps (goal 069), through POST /v1/campaigns/<from>/copy.
+      const [sub, from, name, ...args] = rest;
+      if (sub !== "copy" || !from || !name || from.startsWith("-") || name.startsWith("-"))
+        fail(USAGE);
+      const { values } = parseArgs({
+        args,
+        options: { control: { type: "string" }, "token-file": { type: "string" } },
+      });
+      if (!values.control || !values["token-file"])
+        fail("give --control and --token-file: control copies the campaign");
+      const out = await post(
+        `${values.control.replace(/\/$/, "")}/v1/campaigns/${encodeURIComponent(from)}/copy`,
+        readFileSync(values["token-file"], "utf8").trim(),
+        { name },
+      );
+      process.stdout.write(`${JSON.stringify(out)}\n`);
       return;
     }
     case "mcp": {

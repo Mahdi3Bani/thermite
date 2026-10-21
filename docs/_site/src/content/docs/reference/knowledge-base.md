@@ -34,7 +34,7 @@ Everything in the knowledge base was written by agents, the judge or the owner, 
 
 ## Campaign folders
 
-A folder is named after its campaign. It appears once control files a run in it, when it sees the run start (the run's `run_created` event), and it fills as the runs report. One campaign has one folder, whichever rigs its runs are on. [Which folder a run goes in](#which-folder-a-run-goes-in) says how control chooses.
+A folder is named after its campaign. It appears once control files a run in it, when it sees the run start (the run's `run_created` event), and it fills as the runs report. One campaign has one folder, whichever rigs its runs are on. [Which folder a run goes in](#which-folder-a-run-goes-in) says how control chooses. A [copy of a campaign](rest-api.md#copy-a-campaign) is a campaign of its own, so its runs go in its own folder, which starts empty and has no grants.
 
 | Where | What it shows of a folder |
 | --- | --- |

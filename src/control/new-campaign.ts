@@ -227,6 +227,28 @@ export async function startRun(deps: Deps, input: RunInput): Promise<RunStarted>
     };
   const name = input.agents ? input.campaign : `${input.campaign.slice(0, 54)}-try`;
   const run = deps.store.nextRunName(input.rig, name);
+  const kept = v.sources.assignment;
+  if (kept) {
+    // A copy of a campaign control knew only by an assignment (goal 069): that assignment's
+    // starting point and imports, with the copy's own contract, as againLikeBefore does.
+    const issued = await issueWaking(deps.store, deps.privateKeyPem, deps.runpodRigs, {
+      rig: input.rig,
+      kind: "assign_campaign",
+      payload: {
+        ...kept,
+        run,
+        contract: v.contract,
+        contract_sha: v.sha,
+        ...(input.agents ? {} : { agents: false }),
+        ...(input.promotion ? { promotion: input.promotion } : {}),
+        ...(input.queue?.length && input.agents ? { queue: input.queue } : {}),
+        ...(input.briefing?.length && input.agents ? { briefing: input.briefing } : {}),
+      },
+      issuedBy: input.by,
+      owner: input.owner ?? true,
+    });
+    return { ok: true, campaign: input.campaign, run, command: issued.id, woke: issued.woke };
+  }
   const imports: unknown[] = [];
   let seed: { repo: string; commit: string } | undefined;
   const p = v.sources.project;

@@ -8,6 +8,7 @@ import { KbKind as KbKindSchema } from "../core/kb.ts";
 import { POD_CONFIG_ENV } from "../core/tunnel.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import type { ControlActions } from "./actions.ts";
+import { copyCampaignAnswer, copyCampaignFields } from "./copy-campaign.ts";
 import type { Credential } from "./credential.ts";
 import { issueWaking, propagateChampion } from "./issue.ts";
 import { briefingSeedOf, type KbKind } from "./kb.ts";
@@ -778,6 +779,27 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
           const out = await start(startRunRequest(campaign, body), actor, role === "owner");
           if (out.state === "refused") throw new Error(out.error);
           return startRunAnswer(out);
+        }),
+      );
+    }
+    // Copy a campaign (goal 069): the owner's token and an operator's, as for start_run.
+    if (canCommand && actions?.copyCampaign) {
+      const copy = actions.copyCampaign;
+      server.registerTool(
+        "copy_campaign",
+        {
+          title: "Copy a campaign",
+          description:
+            "A new campaign with another name, from a campaign control keeps: the same contract and kit as its newest saved version (or, for a campaign only assigned before, as that assignment), with the new name in the contract, so its contract hash is its own. The copy has its own empty folder in Thermite's knowledge base; it reads no other folder, and no folder is granted to it. It has no runs: start one with start_run. Use it to compare two models on the same campaign, each from zero: two runs of one campaign share its folder, so each starts with what the other recorded. Returns {campaign, version, contract_sha, from}. Refused in words: a name that is taken or not valid, a campaign with no saved version and no assignment, a rig check's campaign.",
+          inputSchema: {
+            from: z.string().min(1).describe("The campaign to copy, as on its page"),
+            ...copyCampaignFields,
+          },
+        },
+        audited("copy_campaign", (a: { from: string; name: string }) => {
+          const out = copy({ from: a.from, name: a.name }, actor);
+          if (out.state === "refused") throw new Error(out.error);
+          return copyCampaignAnswer(out);
         }),
       );
     }

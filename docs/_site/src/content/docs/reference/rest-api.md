@@ -48,11 +48,11 @@ Request bodies are JSON, except a champion's patch and a piece of an export's fi
 | Status | Body | When |
 | --- | --- | --- |
 | 401 | `{"error":"unauthorized"}` | No token, a wrong token, or a token that may not call the route |
-| 400 | `{"error":"invalid request"}` | The body does not match the route's schema. The schema's own message is not sent back. Control writes it to its output and to its audit log, as action `failed`. `POST /v1/campaigns/<campaign>/runs` answers `bad request: <field>: <message>` instead, as [Campaigns](#campaigns) says |
+| 400 | `{"error":"invalid request"}` | The body does not match the route's schema. The schema's own message is not sent back. Control writes it to its output and to its audit log, as action `failed`. `POST /v1/campaigns/<campaign>/runs` and `POST /v1/campaigns/<campaign>/copy` answer `bad request: <field>: <message>` instead, as [Campaigns](#campaigns) says |
 | 403 | `{"error":"this rig is retired in control"}` | A rig-facing route, called for a retired rig |
 | 409 | `{"error":"Control cannot work with this rig: …"}` | A rig-facing route, called for a rig whose protocol control cannot work with. See [Rig versions](#rig-versions) |
 | 403, 404, 409, 422 | `{"error":"<why>"}` | Route by route, as the tables below say |
-| 500 | `{"error":"<why>"}` | A refusal while control does the work, such as a refused propagation or a reset in the wrong state. It does not always mean a fault in control. A command that control refuses (`POST /v1/commands`) answers 400 with the reason, 404 for an unknown rig, or 409 when it would start a stopped RunPod pod that control could not start. A run that control does not start (`POST /v1/campaigns/<campaign>/runs`) answers 400, 404 or 409 with the reason, as [Campaigns](#campaigns) lists |
+| 500 | `{"error":"<why>"}` | A refusal while control does the work, such as a refused propagation or a reset in the wrong state. It does not always mean a fault in control. A command that control refuses (`POST /v1/commands`) answers 400 with the reason, 404 for an unknown rig, or 409 when it would start a stopped RunPod pod that control could not start. A run that control does not start (`POST /v1/campaigns/<campaign>/runs`), or a campaign it does not copy (`POST /v1/campaigns/<campaign>/copy`), answers 400, 404 or 409 with the reason, as [Campaigns](#campaigns) lists |
 
 Every request that ends in an error inside control, or with a 5xx status, is written to control's output as a JSON line with `"msg":"request failed"`, and to the [audit log](#audit-log-actions) as action `failed` by actor `control`.
 
@@ -156,6 +156,44 @@ Control refuses, in the words of **Start a run**, and signs nothing:
 | 409 | `Control sends no commands to <rig>.` and the reason, for a rig control [refuses](#rig-versions) |
 
 Each refusal is in the [audit log](#audit-log-actions) as `refused`, with the route's path and why. MCP's [`start_run`](mcp-tools.md#start_run) and [`thermite run start`](command-line.md#run-start) do the same; [Start a run from a script or an agent](../how-to/campaigns/start-from-dashboard.md#start-a-run-from-a-script-or-an-agent) shows them side by side.
+
+#### Copy a campaign
+
+| Route | Token | What it does | Request | Answer |
+| --- | --- | --- | --- | --- |
+| `POST /v1/campaigns/<campaign>/copy` | Owner | Saves a new campaign with another name, the same contract and the same kit as `<campaign>`. Control records `owner:api` as who copied it | `{name}`: the copy's name | 201 `{campaign, version, contract_sha, from}`. 400, 404 or 409 `{"error":"<why>"}`, below |
+
+```sh
+curl -sS -X POST -H "Authorization: Bearer $(cat ~/thermite-owner-token)" \
+  -H "content-type: application/json" -d '{"name":"sort-speed-b"}' \
+  "https://control.example.com/v1/campaigns/sort-speed/copy"
+```
+
+```json
+{"campaign":"sort-speed-b","version":1,"contract_sha":"<sha256>","from":{"campaign":"sort-speed","version":2}}
+```
+
+The copy is the campaign's newest saved version or, for a campaign only assigned before, its newest `assign_campaign`: the same contract, starting point, imports and kit. Control saves it as the copy's version 1, approved by the owner:
+
+- **Its name.** The contract's `campaign` is the copy's name, and its `version` is 1. So `contract_sha`, the contract's SHA-256, is the copy's own.
+- **Its folder.** The copy has its own folder in [Thermite's knowledge base](knowledge-base.md), which starts empty. It reads no other folder, and no other campaign reads it, until someone [grants](knowledge-base.md#grants) it.
+- **No runs.** Start one with [`POST /v1/campaigns/<copy>/runs`](#campaigns), MCP's `start_run`, `thermite run start` or **Start a run** on the copy's page.
+- **Where it came from.** `from` is `{campaign, version}` for a saved version, or `{campaign, rig, run}` for an assignment. The [audit log](#audit-log-actions) has `campaign_copied`, with the copy, `from` and `sha`, and `campaign_version_created`. The copy's page says `Copied from <campaign> version <n> by owner:api, <time> ago. Its folder in the knowledge base started empty.`
+- **What it leaves out.** An assignment's run options stay with that run: its run name, agents on or off, promotion, queue and briefing.
+
+Control refuses, and saves nothing:
+
+| Status | Error |
+| --- | --- |
+| 404 | `Control has no saved version or earlier assignment of <campaign>. There is nothing to copy.` |
+| 400 | `<campaign> is a rig check's campaign. A rig check cannot be copied.` |
+| 400 | `A campaign's name is lowercase letters, digits, dots, dashes and underscores, at most 64. It starts with a letter or a digit.` |
+| 400 | `A name that starts with rig-check- is for rig checks. Choose another name.` |
+| 400 | `bad request: <field>: <message>`: a body without `name`, or with other fields |
+| 409 | `There is a campaign named <name> already. Choose another name.`: a campaign control keeps, one a rig reported, a folder in the knowledge base, or a name in a grant |
+| 409 | `The contract of <campaign> is not valid, so control cannot copy it:` and the contract's errors, for an assignment whose contract the contract check refuses |
+
+Each refusal is in the audit log as `refused`, with the route's path and why. MCP's [`copy_campaign`](mcp-tools.md#copy_campaign) and [`thermite campaign copy`](command-line.md#campaign-copy) do the same. [Compare two models from zero](../how-to/campaigns/start-from-dashboard.md#compare-two-models-from-zero) says when to copy.
 
 ### Rig keys, enrollment and retirement
 
@@ -523,7 +561,7 @@ Control writes one entry for each of these to its audit log. `GET /v1/audit`, th
 
 | Group | Actions |
 | --- | --- |
-| Requests | `failed` (a request that ended in an error), `refused` (a dashboard action control turned down, with the page's path and why, including a message to the agents that control refused before signing it, which the page shows as **Not sent.**; an MCP call it turned down, with `tool: "mcp:<tool>"` and why, a refused message included; a `POST /v1/commands` it refused, with `path`, `kind` and why; or a `POST /v1/campaigns/<campaign>/runs` it refused, with `path` and why), `mcp:<tool>` (every MCP tool call, with its inputs) |
+| Requests | `failed` (a request that ended in an error), `refused` (a dashboard action control turned down, with the page's path and why, including a message to the agents that control refused before signing it, which the page shows as **Not sent.**; an MCP call it turned down, with `tool: "mcp:<tool>"` and why, a refused message included; a `POST /v1/commands` it refused, with `path`, `kind` and why; or a `POST /v1/campaigns/<campaign>/runs` or `POST /v1/campaigns/<campaign>/copy` it refused, with `path` and why), `mcp:<tool>` (every MCP tool call, with its inputs) |
 | Sign-in | `login`, `login_throttled` |
 | Commands | `command_issued`, `command_acked`, `command_expired`, `command_cancelled` |
 | Rigs and keys | `rig_enrolled`, `rig_token_rotated`, `rig_retired`, `rig_brought_back`, `rig_key_pinned`, `rig_key_changed`, `rig_key_accepted`, `report_rejected`, `report_refused`, `rig_refused` and `rig_refusal_ended` (by `rig:<rig>`: control started or stopped refusing the rig for its protocol, with the reason and the builds; see [Rig versions](#rig-versions)), `git_access_handed` |
@@ -533,7 +571,7 @@ Control writes one entry for each of these to its audit log. `GET /v1/audit`, th
 | Machines and clusters | `machine_added`, `machine_deleted`, `machine_host_key_trusted`, `machine_install_approved`, `machine_install_finished`, `machine_rig_created`, `machine_rig_stop`, `machine_rig_start`, `machine_rig_restart`, `machine_rig_remove`, `cluster_added`, `cluster_deleted`, `cluster_slots_set`, `cluster_rig_created`, `cluster_rig_stop`, `cluster_rig_start`, `cluster_rig_restart`, `cluster_rig_remove`, `cluster_rig_images` (a cluster rig moved onto control's images, with the old and the new), `machine_rig_images` (a machine rig moved onto control's images, with the old and the new), `rig_update` (the owner pressed **Update to** control's version on a rig's page, with the version), `rig_check_place` (control checked where a rig it set up runs, and whether it found it running: by the owner with **Check again** on the rig's page, or by `control` when the rig turned stale or offline) |
 | Test pods | `runpod_test_started`, `runpod_test_ended`, `runpod_test_done` |
 | Pull mode and rigs on RunPod | `tunnel_rig_added` (a rig minted for a pod), `tunnel_rig_pod` (its pod named), `tunnel_rig_enrolled`, `tunnel_refusals` (the requests a pod refused since its last exchange), `tunnel_rig_dropped` (a minted rig whose launch failed), `runpod_rig_launched` (by the owner: the cloud, pod, GPU and count, cloud type, data center, price, image and limits), `runpod_rig_limits` (the limits now), `runpod_rig_stop`, `runpod_rig_start`, `runpod_rig_restart` and `runpod_rig_terminate` (by the owner, as asked), `runpod_rig_stopped` (the pod stopped, why, `spend_limit`, `idle_stop` or `owner`, and the spend: by `control` at a limit, by the owner otherwise), `runpod_rig_started` (by `control`: the pod runs again, its GPUs and the runs resumed), `runpod_rig_start_refused` (by `control`: why, such as no GPU free), `runpod_rig_terminated` (by the owner: the pod removed, and the spend), `runpod_rig_terminate_refused` (by `control`: why a result could not leave) |
-| Campaigns | `campaign_version_created` |
+| Campaigns | `campaign_version_created`, `campaign_copied` (a campaign copied: the copy, `from`, which is the source campaign with its version or its assignment's rig and run, and the copy's contract `sha`) |
 | Knowledge base | `kb_grant`, `kb_revoke` (a campaign's agents may, or may no longer, read another campaign's folder), `kb_failed` (adding a report's events to the knowledge base failed) |
 | MCP servers | `mcp_server_added` and `mcp_server_changed` (which name a secret only as `set (<hint>)`, `replaced (<hint>)`, `kept` or `none`), `mcp_server_deleted`, `mcp_server_sign_in_started`, `mcp_server_signed_in`, `mcp_servers_handed` (by `rig:<rig>`: the servers a rig's supervisor was handed, and those it could not be, by name, when they changed), `mcp_moved_note_read` (**Got it** on the note about the outside knowledge base), `outside_kb_migrated` (by `control`, once at the update to 0.1.0: an outside knowledge base became an MCP server, with its old and new names, whether its token was kept, and the campaigns whose copies stopped and whose grants went). An MCP call that takes a secret logs it in `mcp:<tool>` as `given (<hint>)` |
 
