@@ -449,7 +449,10 @@ describe("the new-campaign page", () => {
     ]);
     const form = await (await s.get("/ui/campaigns/new")).text();
     assert.match(form, /no model for its agents yet/);
-    assert.match(form, /<option value="zen\|glm-5\.3-flash-free">glm-5\.3-flash-free<\/option>/);
+    assert.match(
+      form,
+      /<option value="zen\|glm-5\.3-flash-free" data-window="0">glm-5\.3-flash-free<\/option>/,
+    );
     assert.match(
       form,
       /<select name="agents_harness">[\s\S]*?<option value="codex">Codex<\/option>/,

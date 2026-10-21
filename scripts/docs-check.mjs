@@ -113,9 +113,6 @@ for (const page of pages) {
 // Goal 074: one name for each agent. The work: Workers, Planner. The advisors: Teachers (one or
 // two, with a merged by model for two), Auditor, Review panel. The old names stay out of the
 // pages' prose; in code (`combiner`, `panel`) they may name what the API still takes.
-// **Teacher pair** and **Combiner** are the labels of two rows of Edit rig's agents table, kept
-// until the owner approves its new names: those two labels, in bold, are allowed until then.
-const OLD_NAME_LABELS = ["**Teacher pair**", "**Combiner**"];
 const OLD_NAMES = [
   [/\bteacher pairs?\b/gi, 'the teachers ("teacher pair" is an old name)'],
   [/\bcombiners?\b/gi, `the teachers' merged by model ("combiner" is an old name)`],
@@ -128,11 +125,10 @@ const ADVISOR_WORDS =
   /\b(review|reviews|reviewers?|auditor|teachers?|advisors?|pass|passes|passed|verdicts?)\b/i;
 const DRAWER_WORDS = /Start a run|\bCopy\b|\bcopy\b|start_run|drawer|\bopens?\b|\bopened\b/;
 function oldNames(body) {
-  let prose = body
+  const prose = body
     .replace(/```[\s\S]*?```/g, "")
     .replace(/``[^`]*``|`[^`\n]*`/g, "``")
     .replace(/\]\([^)\s]*\)/g, "]()");
-  for (const label of OLD_NAME_LABELS) prose = prose.replaceAll(label, "**·**");
   const found = [];
   const near = (i) => prose.slice(Math.max(0, i - 40), i + 60).replace(/\s+/g, " ");
   for (const [pattern, use] of OLD_NAMES)

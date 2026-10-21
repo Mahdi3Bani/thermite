@@ -269,7 +269,7 @@ Each refusal is in the audit log as `refused`, with the route's path and why. MC
 
 #### A campaign's context settings
 
-`POST /v1/campaigns/<campaign>/context` sets the context window and the compaction point that every agent of the campaign's runs works with: the workers, the planner and the advisors. The rig sets the defaults, with each agent's model ([above](#the-agents-model)); a campaign may set its own.
+`POST /v1/campaigns/<campaign>/context` sets the context window and the compaction point that every agent of the campaign's runs works with: the workers, the planner and the advisors, as **Agents' context** on the campaign's page does. The rig sets the defaults, with each agent's model ([above](#the-agents-model)); a campaign may set its own.
 
 ```sh
 curl -sS -X POST -H "Authorization: Bearer $(cat ~/thermite-owner-token)" \

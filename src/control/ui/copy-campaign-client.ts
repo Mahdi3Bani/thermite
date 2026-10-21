@@ -1,4 +1,5 @@
 import { ID_PATTERN } from "../../core/contract.ts";
+import { CC_CORE_JS } from "./campaign-context-client.ts";
 
 /**
  * The Copy panel's script (goal 069), served from control (/ui/assets/copy.js; no inline script
@@ -64,6 +65,7 @@ export const COPY_JS = `
 (() => {
   "use strict";
   ${COPY_CORE_JS}
+  ${CC_CORE_JS}
   const form = document.querySelector("form[data-copy]");
   if (!form) return;
   const $ = (s, r = form) => r.querySelector(s);
@@ -74,6 +76,7 @@ export const COPY_JS = `
   const KINDS = ["workers", "advisors"];
   const nameIn = $("[data-c-name]"), say = $("[data-c-name-say]"), go = $("[data-c-go]"), sum = $("[data-c-sum]");
   const pick = $("[data-c-mcp]"), mcpSum = $("[data-c-mcp-sum]"), reset = $("[data-c-mcp-reset]");
+  const cc = $('[data-cc="copy"]'), ccSay = cc ? $("[data-cc-say]", cc) : null;
   const rows = () => (pick ? $$(".sopt[data-srv]", pick) : []);
   const total = {};
   for (const o of rows()) total[o.dataset.srv] = Number(o.dataset.tools || 0);
@@ -150,15 +153,29 @@ export const COPY_JS = `
       mcpSum.replaceChildren(...lines);
       if (reset) reset.hidden = !changed;
     }
+    // The copy's Agents' context (goal 070): as the source's, or its own.
+    let ctxErrs = [], ctxOwn = null;
+    if (cc) {
+      const s = ccRead($("[data-cc-cw]", cc).value, $("[data-cc-ca]", cc).value);
+      $("[data-cc-cw]", cc).classList.toggle("bad", s.cwBad);
+      $("[data-cc-ca]", cc).classList.toggle("bad", s.atBad);
+      ctxErrs = s.errs;
+      const src = d.context || { cw: null, at: null };
+      const same = !s.errs.length && s.cw === src.cw && s.at === src.at;
+      if (!s.errs.length && !same) ctxOwn = { cw: s.cw, at: s.at };
+      ccSay.className = "cc-say" + (s.errs.length ? " bad" : same ? " ok" : " warn");
+      ccSay.textContent = s.errs.length ? s.errs.join(" ") : same ? "✓ As " + d.from + "." : "Not as " + d.from + ": " + ccShort(s) + ".";
+    }
     // The same request over REST, MCP and the command line.
     const name = nameIn.value.trim() || "NAME";
     const body = changed ? { name, mcp_servers: uses } : { name };
+    if (ctxOwn) body.agents_context = ctxOwn.cw || ctxOwn.at ? Object.assign({}, ctxOwn.cw ? { context_window: ctxOwn.cw } : {}, ctxOwn.at ? { compact_at: ctxOwn.at } : {}) : null;
     $("[data-c-json]").textContent = "POST /v1/campaigns/" + d.from + "/copy\\n" + JSON.stringify(body, null, 2);
-    $("[data-c-cli]").textContent = "Command line: thermite campaign copy " + d.from + " " + name + (changed ? " --mcp-servers-json servers.json" : "") + ". MCP: copy_campaign, with from: " + d.from + ".";
-    const ok = n.ok && !problems.length;
+    $("[data-c-cli]").textContent = "Command line: thermite campaign copy " + d.from + " " + name + (changed ? " --mcp-servers-json servers.json" : "") + (ctxOwn && ctxOwn.cw ? " --context-window " + ctxOwn.cw : "") + (ctxOwn && ctxOwn.at ? " --compact-at " + ctxOwn.at : "") + ". MCP: copy_campaign, with from: " + d.from + "." + (ctxOwn && !ctxOwn.cw && !ctxOwn.at ? " The command line can't remove the context: use REST or MCP." : "");
+    const ok = n.ok && !problems.length && !ctxErrs.length;
     go.disabled = !ok;
     go.textContent = "Copy";
-    sum.textContent = ok ? "Copies " + d.what + ": the same contract" + (d.research ? "" : " and kit") + ", with the new name. No runs yet." : !n.ok ? "Choose a free name." : "Fix the MCP servers first.";
+    sum.textContent = ok ? "Copies " + d.what + ": the same contract" + (d.research ? "" : " and kit") + ", with the new name. No runs yet." : !n.ok ? "Choose a free name." : problems.length ? "Fix the MCP servers first." : "Fix the agents' context first.";
   };
   form.addEventListener("input", draw);
   form.addEventListener("change", (e) => {

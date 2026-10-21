@@ -11,12 +11,27 @@ import {
   type CommandKind,
   CommandPayloads,
 } from "../core/commands.ts";
-import { compactAtRefusal, compactAtWords } from "../core/compaction.ts";
+import {
+  type AgentsContext,
+  COMPACT_AT_DEFAULT,
+  COMPACT_AT_MAX,
+  COMPACT_AT_MIN,
+  compactAtRefusal,
+  compactAtWords,
+} from "../core/compaction.ts";
 import { FolderSchema, MAX_LANES } from "../core/contract.ts";
 import { type McpUse, McpUses, sameUses } from "../core/mcp.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import type { ClusterRigRequest, ControlActions } from "./actions.ts";
-import { campaignContract, contextApplies, contextAppliesWords } from "./campaign-context.ts";
+import {
+  campaignContract,
+  contextApplies,
+  contextAppliesWords,
+  contractContext,
+  ownModels,
+  rigContext,
+  setCampaignContext,
+} from "./campaign-context.ts";
 import { CHATGPT_API, CHATGPT_REDIRECT, ChatGPTLogins } from "./chatgpt.ts";
 import {
   type ClusterFacts,
@@ -124,6 +139,7 @@ import {
   harnessRefusal,
   neededHarness,
   OLD_AGENT_NAMES,
+  opencodeOnly,
   ROLE_WORDS,
   rigModelChanges,
   rigModelShapeRefusal,
@@ -144,6 +160,7 @@ import { cheapestGpu, DEFAULT_DISK_GB, type RunpodTests, type TestView } from ".
 import { keyHint, type SecretBox } from "./secrets.ts";
 import type { StartRunOutcome, StartRunRequest } from "./start-run.ts";
 import {
+  AGENT_ROLES,
   type AgentRole,
   type Cluster,
   type ClusterRig,
@@ -153,6 +170,7 @@ import {
   EFFORTS,
   type Effort,
   fingerprint,
+  HARNESS_IDS,
   type Harness,
   harnessOf,
   type JoinedRig,
@@ -163,6 +181,8 @@ import {
   type TunnelRig,
 } from "./store.ts";
 import { ADD_RIG_JS } from "./ui/add-rig-client.ts";
+import { type ContextRig, contextBlock, startLine, startNote } from "./ui/campaign-context.ts";
+import { CAMPAIGN_CONTEXT_JS } from "./ui/campaign-context-client.ts";
 import {
   campaignFilter,
   campaignsListBody,
@@ -202,6 +222,13 @@ import {
 } from "./ui/components.ts";
 import { copyDrawer, postedUses, suggestCopyName } from "./ui/copy-campaign.ts";
 import { COPY_JS } from "./ui/copy-campaign-client.ts";
+import {
+  type AgentLineId,
+  type AgentLineNow,
+  type AgentModelGroup,
+  type AgentModelOption,
+  agentsTable,
+} from "./ui/edit-rig.ts";
 import { EDIT_RIG_JS } from "./ui/edit-rig-client.ts";
 import { APPLE_TOUCH_ICON, FAVICON_ICO, FAVICON_SVG, ICON_LINKS } from "./ui/icons.ts";
 import {
@@ -291,6 +318,8 @@ interface CopyTry {
   name: string;
   picked?: McpUse[] | undefined;
   error: string;
+  /** The copy's Agents' context as typed (goal 070). */
+  context?: { cw: string; ca: string } | undefined;
 }
 
 export interface DashboardOptions {
@@ -1047,8 +1076,11 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
             options: p.models.map((m) => ({
               value: `${encodeURIComponent(p.name)}|${encodeURIComponent(m.id)}`,
               label: `${modelPrefix(p.type)}${m.id}`,
+              window: m.context_window ?? 0,
             })),
           })),
+        // The Agents' context checks a window against each rig's agents' models (goal 070).
+        agentModels: Object.fromEntries(views().map((u) => [u.id, ownModels(store, u.id)])),
         ...extra,
       }),
     );
@@ -1414,6 +1446,28 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       limit: 40,
     });
   };
+  /**
+   * Start a run's rigs with what the campaign's Agents' context gives their workers (goal 070):
+   * each one's note, its line when chosen, and whether control refuses the run there.
+   */
+  const startContext = (campaign: string, rigs: StartRig[]): StartRig[] => {
+    if (isRigCheck(campaign)) return rigs;
+    const contract = campaignContract(store, campaign) as { mode?: unknown } | undefined;
+    const ctx = contractContext(contract);
+    return rigs.map((r) => {
+      if (r.off) return r;
+      const now = rigContext(ownModels(store, r.id, contract?.mode), ctx);
+      const note = startNote(now);
+      return {
+        ...r,
+        context: {
+          note: note.text,
+          refused: note.bad,
+          line: startLine(campaign, r.id, now, Boolean(ctx)),
+        },
+      };
+    });
+  };
   const startPanel = (c: Ctx, campaign: string, vs: RigView[], open: boolean) => {
     const from = startFrom(campaign);
     if (!from) return "";
@@ -1430,7 +1484,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       campaign,
       csrf: csrf(c),
       open,
-      rigs: startRigs(campaign, vs),
+      rigs: startContext(campaign, startRigs(campaign, vs)),
       models: store
         .providers()
         .filter((p) => p.models.length)
@@ -1682,6 +1736,8 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       source: src.servers,
       picked: tried?.picked,
       error: tried?.error,
+      context: contractContext(campaignContract(store, name)),
+      typed: tried?.context,
     });
   };
   /** A campaign's buttons at the top of its page: Copy, then Start a run, as control can. */
@@ -1711,16 +1767,34 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       problems = p.problems;
       if (!sameUses(p.uses, src.servers)) mcp = p.uses;
     }
+    // The copy's Agents' context (goal 070): sent only when it is not the source's.
+    const typed = { cw: one("context_window"), ca: one("compact_at") };
+    let agentsContext: CopyCampaignRequest["agents_context"];
+    if ("context_window" in f || "compact_at" in f) {
+      const cw = postedNumber(typed.cw, false);
+      const at = postedNumber(typed.ca, true);
+      if (Number.isNaN(cw)) problems.push("Write the number of tokens in digits, such as 131072.");
+      else if (Number.isNaN(at))
+        problems.push(compactAtRefusal(0) ?? "The compaction point is not valid.");
+      else {
+        const source = contractContext(campaignContract(store, from));
+        if (cw !== source?.context_window || at !== source?.compact_at)
+          agentsContext =
+            cw || at
+              ? { ...(cw ? { context_window: cw } : {}), ...(at ? { compact_at: at } : {}) }
+              : null;
+      }
+    }
     const out: CopyCampaignOutcome = problems.length
       ? { state: "refused", error: problems.join(" "), status: 400 }
-      : copyACampaign({ from, name, mcp_servers: mcp }, "owner:ui");
+      : copyACampaign({ from, name, mcp_servers: mcp, agents_context: agentsContext }, "owner:ui");
     if (out.state === "copied")
       return c.redirect(
-        `${campaignHref(out.campaign)}?ok=${encodeURIComponent(`Copied ${copiedFromWords(out.from)} as ${out.campaign}.`)}`,
+        `${campaignHref(out.campaign)}?ok=${encodeURIComponent(`Copied ${copiedFromWords(out.from)} as ${out.campaign}.${agentsContext !== undefined ? ` Agents' context: ${contextShort(out.context)}.` : ""}`)}`,
         303,
       );
     if (!src) return c.text(out.error, out.status);
-    return campaignPage(c, { name, picked, error: out.error });
+    return campaignPage(c, { name, picked, error: out.error, context: typed });
   });
   app.post("/ui/campaigns/:campaign/runs", async (c) => {
     const f = await c.req.parseBody();
@@ -1841,6 +1915,96 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     });
   };
 
+  // ---------------------------------------------------------------- a campaign's agents' context
+  // Goal 070: a campaign's own context window and compaction point for all its runs' agents, kept
+  // in its contract (campaign-context.ts). Its page shows the two fields and what applies on each
+  // rig that can run it; Save makes a new version, as set_campaign_context does.
+  /** The rigs that can run a campaign, each with its agents' own models and what applies there. */
+  const contextRigs = (
+    name: string,
+    vs: RigView[],
+    ctx: AgentsContext | undefined,
+    mode: unknown,
+  ): ContextRig[] =>
+    startRigs(name, vs)
+      .filter((r) => !r.off)
+      .map((r) => {
+        const own = ownModels(store, r.id, mode);
+        return { id: r.id, own, now: rigContext(own, ctx) };
+      });
+  /** The campaign's Agents' context block; none for a rig check, or a campaign with no contract. */
+  const contextSection = (c: Ctx, name: string, vs: RigView[], said: boolean) => {
+    if (isRigCheck(name)) return "";
+    const contract = campaignContract(store, name) as { mode?: unknown } | undefined;
+    if (!contract) return "";
+    const ctx = contractContext(contract);
+    const error = said ? c.req.query("error") : undefined;
+    return contextBlock({
+      campaign: name,
+      csrf: csrf(c),
+      context: ctx,
+      // After a refusal, the fields show what was typed: control checks it again on Save.
+      typed: error ? { cw: c.req.query("cw") ?? "", at: c.req.query("ca") ?? "" } : undefined,
+      rigs: contextRigs(name, vs, ctx, contract.mode),
+      error,
+      ok: said ? c.req.query("ok") : undefined,
+    });
+  };
+  app.get("/ui/assets/campaign-context.js", (c) =>
+    c.body(CAMPAIGN_CONTEXT_JS, 200, {
+      "content-type": "text/javascript; charset=utf-8",
+      "cache-control": "no-cache",
+    }),
+  );
+  /** A campaign's numbers in a few words: "131,072 tokens at 70%". */
+  const contextShort = (ctx: AgentsContext | undefined) => {
+    const w = ctx?.context_window;
+    const at = ctx?.compact_at;
+    return w && at
+      ? `${w.toLocaleString("en-US")} tokens at ${at}%`
+      : w
+        ? `${w.toLocaleString("en-US")} tokens`
+        : at
+          ? `compact at ${at}%`
+          : "the rig's, for each agent";
+  };
+  /** A field of the Agents' context as posted: undefined when empty, NaN when not digits. */
+  const postedNumber = (v: unknown, pct: boolean) => {
+    let t = String(v ?? "")
+      .trim()
+      .replace(/[,_\s]/g, "");
+    if (pct) t = t.replace(/%$/, "");
+    return !t ? undefined : /^\d+$/.test(t) ? Number(t) : Number.NaN;
+  };
+  app.post("/ui/campaigns/:campaign/context", async (c) => {
+    const campaign = c.req.param("campaign");
+    const f = await c.req.parseBody();
+    const raw = { cw: String(f.context_window ?? ""), ca: String(f.compact_at ?? "") };
+    const back = (k: "ok" | "error", m: string) =>
+      c.redirect(
+        `${campaignHref(campaign)}?on=context&${k}=${encodeURIComponent(m)}${k === "error" ? `&cw=${encodeURIComponent(raw.cw)}&ca=${encodeURIComponent(raw.ca)}` : ""}#agents-context`,
+        303,
+      );
+    const contextWindow = postedNumber(raw.cw, false);
+    const compactAt = postedNumber(raw.ca, true);
+    if (Number.isNaN(contextWindow))
+      return back("error", "Write the number of tokens in digits, such as 131072.");
+    if (Number.isNaN(compactAt))
+      return back("error", compactAtRefusal(0) ?? "The compaction point is not valid.");
+    const out = setCampaignContext(store, { campaign, contextWindow, compactAt }, "owner:ui");
+    if (out.state === "refused")
+      return out.status === 404 ? c.text(out.error, 404) : back("error", out.error);
+    if (out.state === "unchanged")
+      return back("ok", `Nothing changed: version ${out.version} has these numbers already.`);
+    const atWork = (campaignViews(views()).find((k) => k.name === campaign)?.runs ?? [])
+      .filter((x) => x.run.status === "running")
+      .map((x) => x.run.id);
+    return back(
+      "ok",
+      `Saved as version ${out.version}: ${contextShort(out.context)}. New runs of ${campaign} take it.${atWork.length ? ` ${listText(atWork)} ${atWork.length === 1 ? "keeps what it" : "keep what they"} started with.` : ""}`,
+    );
+  });
+
   /**
    * A campaign's page: what it is for, its runs, its Knowledge section, and the Start a run and
    * Copy panels; or one run's page. `tried`: a Copy that control refused, to show in the panel.
@@ -1853,8 +2017,11 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     const k = campaignViews(vs).find((x) => x.name === name);
     // A refused grant shows in the Knowledge section, not as a run that did not start.
     const kbFailed = c.req.query("on") === "kb" ? c.req.query("error") : undefined;
-    const failed = kbFailed ? undefined : c.req.query("error");
-    const okNote = c.req.query("ok");
+    // So does what the Agents' context's Save did, in its own block.
+    const onContext = c.req.query("on") === "context";
+    const failed = kbFailed || onContext ? undefined : c.req.query("error");
+    const okNote = onContext ? undefined : c.req.query("ok");
+    const context = () => contextSection(c, name, vs, onContext);
     const note = failed
       ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not started.</b> ${esc(failed)}</div>`
       : okNote
@@ -1894,7 +2061,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           waiting
             ? startingCard(waiting)
             : `<div class="card" style="margin-bottom:16px"><div class="empty">${saved.length ? "Saved on control, with no run yet." : "Assigned to a rig over the API, MCP or the CLI; no run of it reports now."}${canStart ? ` <a class="btn sm primary" href="${campaignHref(name)}?start=1" data-open="#start" style="margin-left:6px">${icon.play}Start a run of ${esc(name)}</a>` : ""}</div></div>`
-        }${knowledgeSection(c, name, vs, kbFailed)}${drawer}`,
+        }${context()}${knowledgeSection(c, name, vs, kbFailed)}${drawer}`,
         vs,
       );
     }
@@ -2030,7 +2197,7 @@ ${
         now,
       )}</div>`
     : ""
-}${knowledgeSection(c, name, vs, kbFailed)}${drawer}`,
+}${context()}${knowledgeSection(c, name, vs, kbFailed)}${drawer}`,
       vs,
     );
   };
@@ -6550,8 +6717,9 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
   });
   /**
    * Gives a rig a provider's model under a harness, as Providers and Edit rig both do. `cap`: a cap
-   * on the model's context window in tokens (goal 070), or null for none. Left out (the dashboard's
-   * forms, which have no field for it), a cap the rig has stays while it keeps the same model.
+   * on the model's context window in tokens (goal 070), or null for none. Left out (Providers' form,
+   * which has no field for it, or a form without Edit rig's Context fields), a cap the rig has
+   * stays while it keeps the same model.
    */
   const giveRigModel = (
     rig: string,
@@ -6647,10 +6815,10 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
    * Checks a model for one of a rig's other agents (or one of the teachers' models), as its row on
    * Edit rig does, or (an empty choice) its default again: the workers' model for the planner,
    * the rig default for an advisor. Nothing changes here: applyAgentModel saves what this
-   * allows. `harness` (goal 073): where it runs; left out (Edit rig, which has no harness on these
-   * rows yet), the one it has while it keeps the same model, else what the model needs. `cap` and
-   * `at`: the agent's own cap on its model's window and its compaction point (goal 070), or null
-   * for none; left out (Edit rig's form, which has no field for them), the agent keeps its own
+   * allows. `harness` (goal 073): where it runs; left out (a line's Runs in on its empty choice, or
+   * a form without it), the one it has while it keeps the same model, else what the model needs.
+   * `cap` and `at`: the agent's own cap on its model's window and its compaction point (goal 070),
+   * or null for none; left out (a form without the line's Context fields), the agent keeps its own
    * while it keeps the same model, as giveRigModel does for the workers.
    */
   type AgentModelPlan =
@@ -6753,19 +6921,9 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       words: `${capped ? ` ${whose} context window: ${capped}.` : ""}${compactAt ? ` ${whose} conversations are compacted at ${compactAtWords(compactAt)}.` : ""}`,
     };
   };
-  /**
-   * The rows of Edit rig's section "2 · The agents" after the workers', by the role each one
-   * sets: the row Teacher pair sets the teachers (and their second model with it), the row
-   * Combiner their merged by model (goal 074; the rows keep their names until the owner approves
-   * Edit rig's new ones).
-   */
-  const EDIT_RIG_ROLES = [
-    "planner",
-    "teachers",
-    "merged_by",
-    "auditor",
-    "review_panel",
-  ] as const satisfies readonly AgentRole[];
+  /** A model as a form's choice names it: "provider|model", each part URI-encoded. */
+  const modelValue = (provider: string, model: string) =>
+    `${encodeURIComponent(provider)}|${encodeURIComponent(model)}`;
 
   // ---------------------------------------------------------------- Edit rig
   // What runs on a rig and how, from its page: parts on or off, workers at once, limits, the
@@ -6780,33 +6938,33 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     },
     {
       id: "workers",
-      name: "Workers (agents)",
-      does: "Each worker is an agent that tries one idea in its own copy of the code, then submits a change to the judge.",
+      name: "Workers",
+      does: "They change the code, one trial each, and submit each change to the judge.",
       off: "No new trial starts. A trial that runs at this time continues to its end.",
     },
     {
       id: "planner",
       name: "Planner",
-      does: "Before each round of trials, it reads what the agents found and gives each worker its next direction.",
-      off: "Lanes take queued experiments in order, by the fixed rules. Rules that name a direction (one word with hyphens) still apply; free-word rules need the planner's model.",
-    },
-    {
-      id: "auditor",
-      name: "Auditor",
-      does: "It reads a change before it becomes the champion, when the campaign asks for an audit. Used only if the rig has one configured.",
-      off: "Audits wait for you in Needs you.",
+      does: "It picks what each worker tries next.",
+      off: "Lanes take queued experiments in order, by the fixed rules. Rules that name a direction still apply; free-word rules need the planner's model.",
     },
     {
       id: "teachers",
       name: "Teachers",
-      does: "One or two strong models review the work of the agents and give advice to the planner. Used only if the rig has them configured.",
-      off: "The planner works without their advice.",
+      does: "One or two models read recent trials and suggest next steps. Used only if the rig has them.",
+      off: "The planner works without their suggestions.",
+    },
+    {
+      id: "auditor",
+      name: "Auditor",
+      does: "It checks a win before it is kept, when the campaign asks for an audit. Used only if the rig has one.",
+      off: "Audits wait for you in Needs you.",
     },
     {
       id: "review",
       name: "Review panel",
-      does: "It decides goals that code cannot check. Used only if the rig has one configured.",
-      off: "Those goals stay open: a goal that needs judgement is met only when the review panel passes it and you accept it.",
+      does: "It scores goals that code can't measure. Used only if the rig has one.",
+      off: "Those goals stay open: a goal that needs judgement is met only when the Review panel passes it and you accept it.",
     },
     {
       id: "exports",
@@ -6839,109 +6997,67 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     const sw = (p: (typeof PARTS)[number]) => `<div class="pt">
 <label class="sw"><input type="checkbox" name="${p.id}" value="1" data-part data-name="${esc(p.name)}"${s?.[p.id] ? " checked" : ""}${s ? "" : " disabled"}><span class="knob"></span></label>
 <div><div><b>${esc(p.name)}</b> <span class="pt-state ${s?.[p.id] ? "on" : "off"}">${s ? (s[p.id] ? "on" : "off") : "?"}</span></div><div class="muted small">${esc(p.does)}</div><div class="small pt-off"><b>When it is off:</b> ${esc(p.off)}</div>${p.id === "workers" ? `<label class="fd" style="max-width:220px;margin-top:8px">${infoLabel("Workers at a time", `How many agents work at the same time: 1 to ${MAX_LANES}. Each one uses its own CPUs, memory and disk, and the same model.`)}<input name="lanes" type="number" min="1" max="${MAX_LANES}" value="${s?.lanes ?? 1}"${s ? "" : " disabled"}></label>` : ""}</div></div>`;
-    /** Where a provider's models run: a subscription in Claude Code, OpenCode's own only in OpenCode. */
-    const kindOf = (p: ModelProvider) =>
+    /** Where a provider's model runs: a subscription in Claude Code, OpenCode's own only in OpenCode. */
+    const kindOf = (p: ModelProvider, model: string): AgentModelOption["kind"] =>
       p.type === "claude"
         ? "claude"
         : p.type === "chatgpt"
           ? "chatgpt"
-          : isOpencodeOwn(p) && (p.type === "opencode" || !p.key_sealed)
+          : opencodeOnly(p, model)
             ? "opencode"
             : "key";
-    /** Where one agent runs with a model of that kind (the client script says the same). */
-    const runsText = (role: AgentRole, kind: string) =>
-      kind === "claude"
-        ? "Claude Code, past research and the kit's MCP tools only"
-        : role === "planner"
-          ? kind === "opencode"
-            ? "OpenCode"
-            : "Pi"
-          : kind === "opencode"
-            ? "OpenCode v2 in the supervisor, past research and the kit's MCP tools only"
-            : "the supervisor, read-only tools";
-    /** Where an agent with its own model runs, from the harness control keeps for it (goal 073). */
-    const harnessText = (role: AgentRole, h: Harness) =>
-      h === "claude-code"
-        ? runsText(role, "claude")
-        : role === "planner"
-          ? HARNESSES[h]
-          : h === "pi"
-            ? runsText(role, "key")
-            : `${HARNESSES[h]} in the supervisor, past research and the kit's MCP tools only`;
-    /** A model list for one agent: the providers' models, each marked with where it runs. */
-    const optionsFor = (empty: string, picked: { provider: string; model: string } | undefined) =>
-      `<option value="" data-kind="">${esc(empty)}</option>${providers
-        .map(
-          (p) =>
-            `<optgroup label="${esc(p.name)}${p.type === "claude" ? " (Claude subscription: runs in Claude Code)" : p.type === "chatgpt" ? " (ChatGPT subscription)" : ""}">${p.models
-              .map(
-                (m) =>
-                  `<option value="${esc(`${encodeURIComponent(p.name)}|${encodeURIComponent(m.id)}`)}" data-kind="${kindOf(p)}"${picked?.provider === p.name && picked.model === m.id ? " selected" : ""}>${modelPrefix(p.type)}${esc(m.id)}</option>`,
-              )
-              .join("")}</optgroup>`,
-        )
-        .join("")}`;
+    const groups: AgentModelGroup[] = providers.map((p) => ({
+      label: `${p.name}${p.type === "claude" ? " (Claude subscription: runs in Claude Code)" : p.type === "chatgpt" ? " (ChatGPT subscription)" : isOpencodeOwn(p) && (p.type === "opencode" || !p.key_sealed) ? " (OpenCode's own free models: OpenCode only)" : ""}`,
+      options: p.models.map((m) => ({
+        value: modelValue(p.name, m.id),
+        label: `${modelPrefix(p.type)}${m.id}`,
+        provider: p.name,
+        model: m.id,
+        kind: kindOf(p, m.id),
+        codex: codexTakes(p.type),
+        window: m.context_window ?? 0,
+      })),
+    }));
     const roles = store.roleModels(u.id);
-    const effortSelect = (name: string, picked: string | null | undefined) =>
-      `<select name="${name}" data-effort aria-label="effort">${[
-        ["", "default"],
-        ...EFFORTS.map((e) => [e, e]),
-      ]
-        .map(
-          ([v, t]) =>
-            `<option value="${v}"${(picked ?? "") === v ? " selected" : ""}>${t}</option>`,
-        )
-        .join("")}</select>`;
-    const providerKind = (name: string | undefined) => {
-      const p = name ? store.provider(name) : undefined;
-      return p ? kindOf(p) : "";
+    const none: AgentLineNow = { picked: "", effort: null, harness: null, cap: null, at: null };
+    const roleNow = (role: AgentRole): AgentLineNow => {
+      const r = roles[role];
+      if (!r) return none;
+      const p = store.provider(r.provider);
+      return {
+        picked: modelValue(r.provider, r.model),
+        effort: r.effort,
+        harness: r.harness ?? (p ? neededHarness(p, r.model) : "pi"),
+        cap: r.contextCap ?? null,
+        at: r.compactAt ?? null,
+      };
     };
-    /** The first text of a role's "Runs in" cell; the client script keeps it current. */
-    const runsIn = (role: AgentRole) => {
-      const own = roles[role];
-      if (own) {
-        const p = store.provider(own.provider);
-        return harnessText(role, own.harness ?? (p ? neededHarness(p, own.model) : "pi"));
-      }
-      if (role !== "planner") return "the advisors file, if the rig has one";
-      const w = providerKind(want?.provider);
-      // Workers in Codex: the planner that follows them plans in Codex too.
-      if (w && want?.harness === "codex") return "as the workers: Codex";
-      return w ? `as the workers: ${runsText(role, w)}` : "as the workers";
-    };
-    const ROLE_ROWS: { id: AgentRole; name: string; tip: string }[] = [
-      {
-        id: "planner",
-        name: "Planner",
-        tip: "Gives each worker its direction at the start of each round. A few calls per round.",
-      },
-      {
-        id: "teachers",
-        name: "Teacher pair",
-        tip: "Two advisors that read the recent work every hour and suggest directions, each with a source. Both use this model.",
-      },
-      {
-        id: "merged_by",
-        name: "Combiner",
-        tip: "Joins the two teachers' advice into one set of directions.",
-      },
-      {
-        id: "auditor",
-        name: "Auditor",
-        tip: "Looks for a hidden flaw in a change before it can become the champion.",
-      },
-      {
-        id: "review_panel",
-        name: "Review panel",
-        tip: "Three reviewers that grade goals that need judgement. The judge's numbers never come from them. All three use this model.",
-      },
-    ];
-    const agentRows = `<div class="hd">Agent</div><div class="hd">Model</div><div class="hd">${infoLabel("Effort", "How long the model thinks before it answers. More effort: better answers, slower, and more of a subscription's window. Providers other than a Claude subscription take up to high.")}</div><div class="hd">${infoLabel("Runs in", "The program that runs the agent. A Claude subscription works only in Claude Code, Anthropic's own program. Codex, OpenAI's own program, works with a ChatGPT subscription or an OpenAI-compatible key; the planner that follows the workers runs in it too. Agents in Claude Code get no tools but a read-only search of the run's past research. Advisors with an API key run in the supervisor with read-only tools: the campaign brief and the search of past research, plus a guarded web fetch and the knowledge base only where the rig's advisors file sets them up. OpenCode's own models run only in OpenCode v2. An advisor in OpenCode v2 or Codex runs in the supervisor with the search of past research and the kit's MCP tools only. Over MCP or REST, you can give each agent its harness.")}</div>
-<div>${infoLabel("Workers", "The agents that change the code, one per lane. They run for many turns, so they use the most of a subscription.")}</div><select name="choice" data-role="workers" data-label="the workers' model">${optionsFor("its own settings", want)}</select>${effortSelect("effort", want?.effort)}<div class="runs-in"><select name="harness" data-harness aria-label="harness"><option value="pi"${!want?.harness || want.harness === "pi" ? " selected" : ""}>Pi</option><option value="opencode"${want?.harness === "opencode" ? " selected" : ""}>OpenCode v2</option><option value="claude-code"${want?.harness === "claude-code" ? " selected" : ""}>Claude Code</option><option value="codex"${want?.harness === "codex" ? " selected" : ""}>Codex</option></select></div>
-${ROLE_ROWS.map(
-  (r) =>
-    `<div>${infoLabel(r.name, r.tip)}</div><select name="role_${r.id}" data-role="${r.id}" data-label="the ${r.name.toLowerCase()}'s model">${optionsFor(r.id === "planner" ? "same as the workers" : "the rig's advisors file", roles[r.id])}</select>${effortSelect(`effort_${r.id}`, roles[r.id]?.effort)}<div class="runs-in" data-runs="${r.id}"${roles[r.id] ? ` data-saved="${esc(runsIn(r.id))}"` : ""}>${runsIn(r.id)}</div>`,
-).join("")}`;
+    const now = Object.fromEntries(AGENT_ROLES.map((r) => [r, roleNow(r)])) as Record<
+      AgentLineId,
+      AgentLineNow
+    >;
+    now.workers = want
+      ? {
+          picked: modelValue(want.provider, want.model),
+          effort: want.effort ?? null,
+          harness: want.harness,
+          cap: want.contextCap ?? null,
+          at: want.compactAt ?? null,
+        }
+      : { ...none, harness: u.model?.harness ?? "pi" };
+    // The second teacher's lines: shown with a second teacher, or after "+ second teacher"; after
+    // ×, shown emptied, so that Save removes them (goal 074).
+    const second = c.req.query("teachers");
+    const hasSecond = Boolean(roles.teachers && roles.second_teacher);
+    if (second === "1")
+      for (const r of ["second_teacher", "merged_by"] as const)
+        if (now[r].picked) now[r] = { ...none, was: now[r].picked };
+    const agents = agentsTable({
+      groups,
+      now,
+      two: second === "2" || (second !== "1" && hasSecond),
+      href: `/ui/rigs/${rName}/edit`,
+    });
     const placed = store.machineRig(u.id) ?? store.clusterRig(u.id);
     const where = placed
       ? "machine" in placed
@@ -6963,8 +7079,8 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
 <form id="edit-rig" method="post" action="/ui/rigs/${rName}/edit"><input type="hidden" name="csrf" value="${t}">
 <div class="sec"><h2>1 · Parts of the rig</h2><div class="card flat">${PARTS.map(sw).join("")}
 <div class="pt locked"><label class="sw"><input type="checkbox" checked disabled><span class="knob"></span></label><div><div><b>Supervisor</b> <span class="pt-state on">on</span></div><div class="muted small">It relays reports to control, fetches projects and kits, and does all git work for the rig.</div><div class="small pt-off"><b>Always on.</b> It connects the rig to control. Without it, control cannot see or steer the rig.</div></div></div></div></div>
-<div class="sec"><h2>2 · The agents</h2><p class="lead">The workers change the code. The planner gives each worker a direction, with the workers' model unless it has its own. The supervisor's advisors review the work: the teacher pair, the combiner, the auditor and the review panel. An advisor with no model here uses the rig's advisors file, and does not run without one. Models from a subscription show as claude-code:…. Control gives the rig a subscription's login only while one of its agents uses it.</p>
-<div class="card"><div class="roles">${agentRows}</div><div class="flag" id="share" hidden></div></div>
+<div class="sec" id="agents"><h2>2 · The agents</h2><p class="lead">Each agent runs in the harness you choose, with its own context. With no model here, an agent uses the rig default.</p>
+<div class="card">${agents}</div>
 <div class="g3" style="margin-top:14px">
 <label class="fd">${infoLabel("One trial lasts (minutes)", "How long a worker can work on one idea before it must submit, when the campaign sets no limit.")}<input name="trial_minutes" type="number" min="1" value="${s?.trial_minutes ?? ""}"${s ? "" : " disabled"}></label>
 <label class="fd">${infoLabel("Turns per trial", "How many model turns a worker can take in one trial. Empty: no limit.")}<input name="max_turns" type="number" min="1" value="${s?.max_turns ?? ""}" placeholder="no limit"${s ? "" : " disabled"}></label>
@@ -6992,64 +7108,137 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
     if (!u) return back("error", "No such rig.");
     const f = await c.req.parseBody();
     const said: string[] = [];
-    // The workers' model: as in Providers.
-    const choice = String(f.choice ?? "");
-    const harness = harnessOf(f.harness);
     const effortOf = (k: string): Effort | undefined =>
       EFFORTS.find((e) => e === String(f[k] ?? ""));
-    const want = store.rigModels()[rig];
-    const was = want
-      ? `${encodeURIComponent(want.provider)}|${encodeURIComponent(want.model)}`
-      : "";
-    const effort = effortOf("effort");
-    if (
-      choice !== was ||
-      (choice && (harness !== want?.harness || (effort ?? null) !== (want?.effort ?? null)))
-    ) {
-      if (!choice) {
-        clearRigModel(rig);
-        said.push("its own model settings");
-      } else {
-        const given = giveRigModel(rig, choice, harness, effort);
-        if ("error" in given) return back("error", given.error);
-        said.push("a new model");
+    // Every line is checked before anything is saved, and the settings before any model: a
+    // refusal changes nothing.
+    // A line's window or point as typed (goal 070): undefined without its field (a form without
+    // it keeps what control has), null when empty, else the number; "" when it is not one.
+    const typed = (k: string, pct: boolean): number | null | undefined | "" => {
+      if (!(k in f)) return undefined;
+      let t = String(f[k] ?? "")
+        .trim()
+        .replace(/[,_\s]/g, "");
+      if (pct) t = t.replace(/%$/, "");
+      if (!t) return null;
+      return /^\d+$/.test(t) ? Number(t) : "";
+    };
+    /** The window its provider lists for a choice's model, in tokens (0: none). */
+    const listedOf = (choice: string) => {
+      const [pRaw, mRaw] = choice.split("|");
+      try {
+        const model = decodeURIComponent(mRaw ?? "");
+        return (
+          store.provider(decodeURIComponent(pRaw ?? ""))?.models.find((m) => m.id === model)
+            ?.context_window ?? 0
+        );
+      } catch {
+        return 0;
       }
-    }
-    // The other agents' models: each role follows the workers unless it has its own. Only the
-    // rows the form has: a row it lacks keeps its model. The row Teacher pair gives both teachers
-    // its model, as its words say, until Edit rig's agents are named anew (goal 074).
+    };
+    /**
+     * A line's cap and point as the form gives them: the provider's own window is no cap, and 80%
+     * no point of its own (the default), as the line's Context cell says; or why not, in words.
+     */
+    const contextOf = (
+      id: AgentLineId,
+      choice: string,
+    ): { cap: number | null | undefined; at: number | null | undefined } | { error: string } => {
+      const cap = typed(id === "workers" ? "context_workers" : `context_${id}`, false);
+      const at = typed(id === "workers" ? "compact_workers" : `compact_${id}`, true);
+      if (cap === "") return { error: "write the number of tokens in digits, such as 131072." };
+      if (at === "")
+        return {
+          error: `the compaction point is a whole percent of the context window, from ${COMPACT_AT_MIN} to ${COMPACT_AT_MAX}.`,
+        };
+      return {
+        cap: typeof cap === "number" && cap === listedOf(choice) ? null : cap,
+        at: at === COMPACT_AT_DEFAULT ? null : at,
+      };
+    };
+    /** Each line's name, as the page shows it, for its refusals. */
+    const twoTeachers = String(f.role_second_teacher ?? "") !== "";
+    const LINE: Record<AgentLineId, string> = {
+      workers: "Workers",
+      planner: "Planner",
+      teachers: twoTeachers ? "Teacher 1" : "Teachers",
+      second_teacher: "Teacher 2",
+      merged_by: "Merged by",
+      auditor: "Auditor",
+      review_panel: "Review panel",
+    };
+    const refuse = (id: AgentLineId, why: string) => back("error", `${LINE[id]}: ${why}`);
+
+    // The other agents' lines (goals 070, 073 and 074): each one's model, effort, harness, window
+    // and point. Only the lines the form has: a line it lacks keeps its model. The first teacher
+    // on the rig default takes the second teacher and the merged by model with it, as
+    // set_rig_model's clear does; a second teacher needs a first.
     const roles = store.roleModels(rig);
-    for (const role of EDIT_RIG_ROLES) {
+    const noTeachers = "role_teachers" in f && !String(f.role_teachers ?? "");
+    if (noTeachers && twoTeachers)
+      return refuse(
+        "second_teacher",
+        "a second teacher needs a first. Choose the first teacher's model, or remove the second teacher.",
+      );
+    const plans: AgentModelPlan[] = [];
+    for (const role of AGENT_ROLES) {
+      if (noTeachers && (role === "second_teacher" || role === "merged_by")) {
+        if (roles[role]) plans.push({ role, clear: true });
+        continue;
+      }
       if (!(`role_${role}` in f)) continue;
       const raw = String(f[`role_${role}`] ?? "");
-      const roleEffort = effortOf(`effort_${role}`);
       const cur = roles[role];
-      const curValue = cur
-        ? `${encodeURIComponent(cur.provider)}|${encodeURIComponent(cur.model)}`
-        : "";
-      if (raw === curValue && (roleEffort ?? null) === (cur?.effort ?? null)) continue;
-      const plan = checkAgentModel(rig, role, raw, roleEffort);
-      if ("error" in plan) return back("error", plan.error);
-      const second =
-        role !== "teachers"
-          ? undefined
-          : plan.clear
-            ? checkAgentModel(rig, "second_teacher", "", undefined)
-            : checkAgentModel(
-                rig,
-                "second_teacher",
-                raw,
-                roleEffort,
-                plan.harness,
-                plan.contextCap ?? null,
-                plan.compactAt ?? null,
-              );
-      if (second && "error" in second) return back("error", second.error);
-      said.push(applyAgentModel(rig, plan).ok);
-      if (second) applyAgentModel(rig, second);
+      if (!raw && !cur) continue;
+      const roleEffort = effortOf(`effort_${role}`);
+      const picked = HARNESS_IDS.find((h) => h === String(f[`harness_${role}`] ?? ""));
+      const ctx = contextOf(role, raw);
+      if ("error" in ctx) return refuse(role, ctx.error);
+      if (cur && raw === modelValue(cur.provider, cur.model)) {
+        const p = store.provider(cur.provider);
+        const curHarness = cur.harness ?? (p ? neededHarness(p, cur.model) : "pi");
+        if (
+          (roleEffort ?? null) === cur.effort &&
+          (picked === undefined || picked === curHarness) &&
+          (ctx.cap === undefined || ctx.cap === (cur.contextCap ?? null)) &&
+          (ctx.at === undefined || ctx.at === (cur.compactAt ?? null))
+        )
+          continue;
+      }
+      const plan = checkAgentModel(rig, role, raw, roleEffort, picked, ctx.cap, ctx.at);
+      if ("error" in plan) return refuse(role, plan.error);
+      plans.push(plan);
     }
-    // The harness's settings: only what changed, as one signed command.
+
+    // The workers' line: as in Providers, with its own window and point.
+    const choice = String(f.choice ?? "");
+    const want = store.rigModels()[rig];
+    // A form without the harness (the line had no model) keeps the one control has.
+    const harness = "harness" in f ? harnessOf(f.harness) : (want?.harness ?? "pi");
+    const effort = effortOf("effort");
+    const wCtx = contextOf("workers", choice);
+    if ("error" in wCtx) return refuse("workers", wCtx.error);
+    const workersChange =
+      choice !== (want ? modelValue(want.provider, want.model) : "") ||
+      (choice !== "" &&
+        (harness !== want?.harness ||
+          (effort ?? null) !== (want?.effort ?? null) ||
+          (wCtx.cap !== undefined && wCtx.cap !== (want?.contextCap ?? null)) ||
+          (wCtx.at !== undefined && wCtx.at !== (want?.compactAt ?? null))));
+    // Checked now, given below with the rest: the window and the point as giveRigModel checks them.
+    if (workersChange && choice) {
+      const [, mRaw] = choice.split("|");
+      const why =
+        (typeof wCtx.cap === "number"
+          ? contextCapRefusal(decodeURIComponent(mRaw ?? ""), listedOf(choice), wCtx.cap)
+          : undefined) ?? (typeof wCtx.at === "number" ? compactAtRefusal(wCtx.at) : undefined);
+      if (why) return refuse("workers", why);
+    }
+
+    // The harness's settings: only what changed, checked here and sent below as one signed
+    // command.
     const s = u.settings;
+    let settings: Record<string, unknown> | undefined;
     if (s) {
       const change: Record<string, unknown> = {};
       for (const p of PARTS) {
@@ -7085,16 +7274,36 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
             "error",
             `Not saved: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`,
           );
-        issueCommand(store, opts.privateKeyPem, {
-          rig,
-          kind: "rig_settings",
-          payload: parsed.data,
-          issuedBy: "owner:ui",
-        });
-        said.push(
-          `${Object.keys(change).length} setting${Object.keys(change).length === 1 ? "" : "s"}`,
-        );
+        settings = parsed.data;
       }
+    }
+
+    // Everything is checked: save the models, then send the settings.
+    if (workersChange) {
+      if (!choice) {
+        clearRigModel(rig);
+        said.push("its own model settings");
+      } else {
+        const given = giveRigModel(rig, choice, harness, effort, "owner:ui", wCtx.cap, wCtx.at);
+        if ("error" in given) return refuse("workers", given.error);
+        said.push("a new model");
+      }
+    }
+    const teachersCleared = plans.some((p) => p.role === "teachers" && p.clear);
+    for (const plan of plans) {
+      const ok = applyAgentModel(rig, plan).ok;
+      // The teachers back to the rig default: said once, for their three models.
+      if (!(teachersCleared && plan.clear && plan.role !== "teachers")) said.push(ok);
+    }
+    if (settings) {
+      issueCommand(store, opts.privateKeyPem, {
+        rig,
+        kind: "rig_settings",
+        payload: settings,
+        issuedBy: "owner:ui",
+      });
+      const n = Object.keys(settings).length;
+      said.push(`${n} setting${n === 1 ? "" : "s"}`);
     }
     return back(
       "ok",

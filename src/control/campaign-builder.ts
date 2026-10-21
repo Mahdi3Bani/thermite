@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { agentsContextRefusal } from "../core/compaction.ts";
 import {
   CommitSchema,
   DurationSchema,
@@ -180,6 +181,14 @@ export const CampaignDraft = z.strictObject({
     .default({}),
   wall_hours: z.number().positive().optional(),
   /**
+   * The campaign's own context window and compaction point for all its runs' agents (goal 070),
+   * in its contract. Left out: each agent keeps the rig's. Values out of range are refused in
+   * words (agentsContextRefusal).
+   */
+  agents_context: z
+    .strictObject({ context_window: z.number().optional(), compact_at: z.number().optional() })
+    .optional(),
+  /**
    * The MCP servers the campaign's agents use (goal 068), by their names in Settings, with the
    * agents that get each and, only when narrowed, their tools. A kit described here or uploaded
    * gets them in its kit.json; a kit in a repository has its own (give what its kit.json names:
@@ -291,6 +300,13 @@ export function buildCampaign(
     };
   const d = parsed.data;
   const errors: string[] = [];
+  const context = d.agents_context;
+  const contextRefused = context ? agentsContextRefusal(context) : undefined;
+  if (contextRefused) return { ok: false, errors: [`The agents' context: ${contextRefused}`] };
+  const own = {
+    ...(context?.context_window !== undefined ? { context_window: context.context_window } : {}),
+    ...(context?.compact_at !== undefined ? { compact_at: context.compact_at } : {}),
+  };
   const contract: Record<string, unknown> = {
     schema_version: 1,
     campaign: d.campaign,
@@ -303,6 +319,7 @@ export function buildCampaign(
     },
     ...(d.notes ? { notes: d.notes } : {}),
     ...(d.wall_hours ? { budget: { wall_hours: d.wall_hours } } : {}),
+    ...(Object.keys(own).length ? { agents_context: own } : {}),
   };
 
   if (d.mode === "research") {

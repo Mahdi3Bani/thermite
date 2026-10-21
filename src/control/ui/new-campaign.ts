@@ -1,8 +1,14 @@
+import type { AgentsContext } from "../../core/compaction.ts";
+import type { OwnModel } from "../campaign-context.ts";
 import type { McpServer } from "../mcp-servers.ts";
 import type { GitAccess } from "../store.ts";
 import { podStopped, type RigView } from "../views.ts";
-import { esc } from "./components.ts";
+import { contextFields, fieldValues } from "./campaign-context.ts";
+import { esc, infoLabel } from "./components.ts";
 import { kitMcpSection } from "./new-campaign-mcp.ts";
+
+// infoLabel lives in components.ts (the Agents' context imports it too); pages import it from here.
+export { infoLabel };
 
 /**
  * The new-campaign page: a campaign from nothing
@@ -17,18 +23,24 @@ export interface NewCampaignPage {
   rigs: RigView[];
   /** Git access kept in Settings, for private repositories. */
   access?: GitAccess[] | undefined;
-  /** The providers' models the agents may use, by provider (value: "provider|model", encoded). */
-  models?: { group: string; options: { value: string; label: string }[] }[] | undefined;
+  /**
+   * The providers' models the agents may use, by provider (value: "provider|model", encoded),
+   * each with the window its provider lists (0 or none: unknown).
+   */
+  models?:
+    | { group: string; options: { value: string; label: string; window?: number | undefined }[] }[]
+    | undefined;
+  /**
+   * Each rig's agents with a model from control (goal 070): what the Agents' context checks as
+   * you type, for the rig the first run goes to.
+   */
+  agentModels?: Record<string, OwnModel[]> | undefined;
   /** The MCP servers in Settings, for the kit's MCP servers block (goal 068). */
   mcp?: McpServer[] | undefined;
   /** A draft sent back with mistakes, to fill the form again. */
   draft?: Record<string, unknown> | undefined;
   errors?: string[] | undefined;
 }
-
-/** A label with its info icon: hovering or focusing the icon shows what the field means. */
-export const infoLabel = (text: string, tip: string) =>
-  `<span class="lb">${esc(text)}<i class="ii" tabindex="0" data-tip="${esc(tip)}">i</i></span>`;
 
 const field = (text: string, tip: string, control: string) =>
   `<label class="fd">${infoLabel(text, tip)}${control}</label>`;
@@ -209,13 +221,14 @@ ${field(
   `<select name="agents_model"><option value="">the rig's model</option>${(p.models ?? [])
     .map(
       (g) =>
-        `<optgroup label="${esc(g.group)}">${g.options.map((o) => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join("")}</optgroup>`,
+        `<optgroup label="${esc(g.group)}">${g.options.map((o) => `<option value="${esc(o.value)}" data-window="${o.window ?? 0}">${esc(o.label)}</option>`).join("")}</optgroup>`,
     )
     .join("")}</select>`,
 )}
 ${field("The agents run in", "The program that runs the agents. Empty: the rig's own when control gave it this model already. Else the one the model needs (OpenCode for OpenCode's free models, Claude Code for a Claude subscription, else Pi). Codex, OpenAI's own program, works with a ChatGPT subscription or an OpenAI-compatible key.", `<select name="agents_harness"><option value="">what the model needs</option><option value="opencode">OpenCode v2</option><option value="pi">Pi</option><option value="codex">Codex</option></select>`)}
 ${field("When a change is confirmed better", "What happens when the judge confirms a change beats the current best: keep it at once as the new best, or wait for you. The rig's default is set where the rig is deployed.", `<select name="promotion"><option value="">the rig's default</option><option value="auto">always keep it</option><option value="owner_approval">ask me every time</option></select>`)}
 </div>
+<div class="sec cc-sec" data-cc-rigs="${esc(JSON.stringify(p.agentModels ?? {}))}"><h2>Agents' context</h2>${contextFields("new", fieldValues((d as { agents_context?: AgentsContext }).agents_context))}</div>
 <details class="adv"><summary>Advanced</summary><div class="g3">
 ${field("One try lasts (minutes)", "How long an agent works on one idea before it must submit; then it starts fresh on its next idea. Empty: the rig's default.", `<input name="trial_minutes" placeholder="the rig's default">`)}
 ${field("Memory per agent (MiB)", "Memory for everything one agent runs at once. A command that goes over is stopped. Empty: 2048.", `<input name="run_rss_mib" placeholder="2048">`)}

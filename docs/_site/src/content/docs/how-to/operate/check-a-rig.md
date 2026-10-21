@@ -21,7 +21,7 @@ A result reaches the dashboard with the rig's next report, which comes every min
 ## Before you start
 
 - The rig reports to control: on **Rigs**, in the dashboard's sidebar on the left, it has the green chip **Live**.
-- For **Isolation** and **Judge smoke**, the rig must be idle: no [trial](../../reference/glossary.md) open, and no judge job queued or running. Otherwise both refuse with `not now:`. To get there, open the rig's page, press **Edit rig**, switch **Workers (agents)** off and press **Save changes**. Running trials end on their own, and the judge works through its queue; the rig's page then says "The judge is idle." Turn the workers on again after the check. **Judge smoke** pauses the rig's running runs while it works, and resumes them afterwards.
+- For **Isolation** and **Judge smoke**, the rig must be idle: no [trial](../../reference/glossary.md) open, and no judge job queued or running. Otherwise both refuse with `not now:`. To get there, open the rig's page, press **Edit rig**, switch **Workers** off and press **Save changes**. Running trials end on their own, and the judge works through its queue; the rig's page then says "The judge is idle." Turn the workers on again after the check. **Judge smoke** pauses the rig's running runs while it works, and resumes them afterwards.
 
   A paused run's queued judge jobs wait until it resumes, and they keep the rig busy ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)). Resume such a run while the workers are off, so that the judge can finish its jobs.
 - For **Model route**, the rig needs a model. See [Connect a model provider](../models/connect-a-provider.md).

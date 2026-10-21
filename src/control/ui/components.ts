@@ -18,6 +18,10 @@ export function esc(v: unknown): string {
     .replace(/"/g, "&quot;");
 }
 
+/** A label with its info icon: hovering or focusing the icon shows what the field means. */
+export const infoLabel = (text: string, tip: string) =>
+  `<span class="lb">${esc(text)}<i class="ii" tabindex="0" data-tip="${esc(tip)}">i</i></span>`;
+
 export const pct = (x: number | null | undefined, digits = 2) =>
   x === null || x === undefined || !Number.isFinite(x)
     ? ""

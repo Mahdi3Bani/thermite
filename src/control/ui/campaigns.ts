@@ -128,6 +128,11 @@ export interface StartRig {
   stopped?: boolean | undefined;
   /** The agents' model the rig has, if any. */
   model?: string | undefined;
+  /**
+   * What the campaign's Agents' context gives the rig's workers (goal 070): a note on its option,
+   * the panel's line when it is chosen (HTML), and whether the run is refused there.
+   */
+  context?: { note: string; line: string; refused: boolean } | undefined;
 }
 
 /** The Start a run panel: where it runs, agents on or off (with a model if the rig has none). */
@@ -152,7 +157,7 @@ export function startDrawer(o: {
   const rigOpts = o.rigs
     .map(
       (r) =>
-        `<label class="sopt${r.off ? " dis" : ""}"><input type="radio" name="rig" value="${esc(r.id)}" data-model="${esc(r.model ?? "")}"${r.id === first?.id ? " checked" : ""}${r.off ? " disabled" : ""}><span><b>${esc(r.id)}</b> <span class="muted small">${esc(r.hardware)}</span><span class="sd">${r.off ? esc(r.off) : r.busy ? `Busy: ${esc(r.busy)} is at work there, and pauses when this run starts (a rig runs one run at a time).` : r.stopped ? "Its pod is stopped: this run starts it first." : r.stale ? "Not reporting now." : "Free: no run at work."}${r.off ? "" : r.model ? ` Agents' model: ${esc(r.model)}.` : ` <span class="warn">No model for its agents yet.</span>`}</span></span><span class="sr">${r.off ? "" : r.busy ? `<span class="warn">busy</span>` : r.stopped ? `<span class="muted">stopped</span>` : `<span class="ok">free</span>`}</span></label>`,
+        `<label class="sopt${r.off ? " dis" : ""}"><input type="radio" name="rig" value="${esc(r.id)}" data-model="${esc(r.model ?? "")}"${r.context?.refused ? " data-cc-refused" : ""}${r.id === first?.id ? " checked" : ""}${r.off ? " disabled" : ""}><span><b>${esc(r.id)}</b> <span class="muted small">${esc(r.hardware)}</span><span class="sd">${r.off ? esc(r.off) : r.busy ? `Busy: ${esc(r.busy)} is at work there, and pauses when this run starts (a rig runs one run at a time).` : r.stopped ? "Its pod is stopped: this run starts it first." : r.stale ? "Not reporting now." : "Free: no run at work."}${r.off ? "" : r.model ? ` Agents' model: ${esc(r.model)}.` : ` <span class="warn">No model for its agents yet.</span>`}${!r.off && r.context ? ` <span class="cc-rignote${r.context.refused ? " bad" : ""}">${esc(r.context.note)}</span>` : ""}</span></span><span class="sr">${r.off ? "" : r.busy ? `<span class="warn">busy</span>` : r.stopped ? `<span class="muted">stopped</span>` : `<span class="ok">free</span>`}</span></label>`,
     )
     .join("");
   const models = o.models
@@ -170,6 +175,17 @@ export function startDrawer(o: {
 <label class="sopt"><input type="radio" name="agents" value="on" checked><span><b>On</b><span class="sd" data-model-line>The rig's agents and model.</span></span><span></span></label>
 <label class="sopt"><input type="radio" name="agents" value="off"><span><b>Off: a try</b><span class="sd">The judge measures the starting code on every case once. No changes.</span></span><span></span></label></div>
 <label class="sfd smodel" data-model-pick>${infoLabel("The agents' model", "For a rig with no model for its agents: the model to give it, as on its Edit rig page. Control gives it to the rig, which takes it within a minute; then start the run again here.")}<select name="agents_model"><option value="">the rig's model</option>${models}</select></label></div>
+${
+  o.rigs.some((r) => !r.off && r.context)
+    ? `<div class="sfd" data-agents-only data-cc-start>${infoLabel("Agents' context", "What the workers get on the rig you chose: their context window, and where their conversation is compacted. Bold: this campaign's; plain: the rig's. The planner and the advisors get the same, or less when the rig gives them less. Control refuses the run when a model of the rig's agents takes less than this campaign's window.")}${o.rigs
+        .filter((r) => !r.off && r.context)
+        .map(
+          (r) =>
+            `<div class="small cc-line" data-cc-line="${esc(r.id)}"${r.id === first?.id ? "" : " hidden"}>${r.context?.line ?? ""}</div>`,
+        )
+        .join("")}</div>`
+    : ""
+}
 ${
   o.copyFrom?.length
     ? `<div class="sfd" data-agents-only>${infoLabel("Experiments to start with", "Each run has its own queue. Copy the experiments another run of this campaign had not tried yet, so the new run starts from them; who added each one and why come along. Leave it off for an empty queue the planner fills.")}<label class="sopt"><input type="checkbox" name="copy_queue" value="1" checked><span><b>Copy the untried experiments of</b> <select name="copy_from" aria-label="From which run" style="width:auto;height:28px;display:inline-block;margin-left:4px">${o.copyFrom.map((x) => `<option value="${esc(x.key)}">${esc(x.label)}</option>`).join("")}</select><span class="sd">They join the new run's queue in the same order, up to 500. The tried ones stay with their run.</span></span><span></span></label></div>`

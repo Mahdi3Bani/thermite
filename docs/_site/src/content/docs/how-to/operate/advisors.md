@@ -40,15 +40,17 @@ You need a provider on control. See [Connect a model provider](../models/connect
 
 1. Open **Rigs** in the sidebar, choose the rig, then press **Edit rig**.
 2. In **1 · Parts of the rig**, check that the switches **Teachers**, **Auditor** and **Review panel** are **on**. They are on by default, but a part with no model does nothing. **Teachers** also covers their merged by model.
-3. In **2 · The agents**, choose a **Model** and an **Effort** for **Teacher pair**, **Combiner**, **Auditor** and **Review panel**. The row **Teacher pair** gives the teachers' model: two teachers, both on it. The row **Combiner** gives the teachers' merged by model. **Runs in** then shows where each will run. This page gives each advisor the program its model needs:
-   - `the supervisor, read-only tools`: a model with an API key, or a ChatGPT subscription, run in Pi;
-   - `Claude Code, past research and the kit's MCP tools only`: a Claude subscription. Claude Code gets none of its own tools: only a read-only search of the run's past research, and the MCP servers the run's kit gives the advisors, which the supervisor serves on localhost for the call. The supervisor's image must be built with `CLAUDE_CODE_VERSION` for this (see [Use a Claude subscription](../models/claude-subscription.md));
-   - `OpenCode v2 in the supervisor, past research and the kit's MCP tools only`: OpenCode's own models, which run only in OpenCode. OpenCode gets the same tools as Claude Code, and none of its own.
-4. Press **Save changes**.
+3. In **2 · The agents**, under **The advisors**, choose a **Model** and an **Effort** for **Teachers**, **Auditor** and **Review panel**. For a second teacher, press **+ second teacher** under the first: a line for the second teacher and a **merged by** line show, the model that joins the two teachers' suggestions. See [Two teachers](../models/model-per-agent.md#two-teachers).
+4. Check each line's **Runs in**, the program the advisor runs in, in the supervisor. When you choose a model, the page sets the program it needs, and you can choose another:
+   - **Pi**: a model with an API key, or a ChatGPT subscription. Pi gives the advisor read-only tools.
+   - **Claude Code**: a Claude subscription, which runs only there. Claude Code gets none of its own tools: only a read-only search of the run's past research, and the MCP servers the run's kit gives the advisors, which the supervisor serves on localhost for the call. The supervisor's image must be built with `CLAUDE_CODE_VERSION` for this (see [Use a Claude subscription](../models/claude-subscription.md)).
+   - **OpenCode v2**: OpenCode's own models, which run only there, or another model. OpenCode gets the same tools as Claude Code, and none of its own.
+   - **Codex**: the Codex CLI, for a ChatGPT subscription or an OpenAI-compatible provider. It gets the same tools as Claude Code, and none of its own.
 
-To run an advisor in another program, give it its model over MCP or the REST API with `harness`: `opencode` (OpenCode v2) or `codex` (the Codex CLI, for a ChatGPT subscription or an OpenAI-compatible provider) runs it in the supervisor with the same tools as Claude Code, and none of its own ([Give each agent its own model](../models/model-per-agent.md#over-mcp-or-rest)). **Runs in** then says, for example, `Codex in the supervisor, past research and the kit's MCP tools only`, and keeps saying so while you leave that row's model as it is. The published supervisor image carries OpenCode and the Codex CLI.
+   The published supervisor image carries OpenCode and the Codex CLI. A program that can't run the model is refused under the line, such as "A Claude subscription runs only in Claude Code: choose Claude Code for the auditor, or another model."
+5. Press **Save changes**.
 
-The page says, for example, "Control sent a model for the teachers to rig-1. The rig takes the change in less than one minute." Both teachers use the model you chose; to give the teachers two different models, or only one teacher, use MCP or the REST API ([Give each agent its own model](../models/model-per-agent.md#over-mcp-or-rest)). A review panel from **Edit rig** is always three reviewers with the same model; in the file, it is two or more. To go back to the rig default (the file) for a role, choose `the rig's advisors file`.
+The page says, for example, "Control sent a model for the teachers to rig-1. The rig takes the change in less than one minute." A review panel from **Edit rig** is always three reviewers with the same model; in the file, it is two or more. To go back to the rig default (the file) for a role, choose **rig default** in its **Model** list. Each advisor's **Context** cell sets its context window and compaction point: see [Set an agent's context window and compaction](../models/model-per-agent.md#set-an-agents-context-window-and-compaction).
 
 ## In the advisors file
 

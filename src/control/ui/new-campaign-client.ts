@@ -6,6 +6,8 @@
  * nodes or escaped strings only.
  */
 
+import { CC_CORE_JS } from "./campaign-context-client.ts";
+
 /**
  * The page-free part for an uploaded kit's MCP servers (goal 068), as the browser runs it: the
  * list the page sends keeps the kit's own entries that the page can't show. A server Settings
@@ -31,6 +33,7 @@ export const NEW_CAMPAIGN_JS = `
 (() => {
   "use strict";
   ${KIT_MCP_CORE_JS}
+  ${CC_CORE_JS}
   const form = document.getElementById("nc");
   if (!form) return;
   const $ = (s, r = document) => r.querySelector(s);
@@ -341,6 +344,10 @@ export const NEW_CAMPAIGN_JS = `
     if (val("notes")) d.notes = val("notes");
     for (const k of ["trial_minutes", "run_rss_mib", "workspace_mib"]) { const n = num(k); if (n !== undefined) d.limits[k] = n; }
     if (num("wall_hours")) d.wall_hours = num("wall_hours");
+    // The campaign's own Agents' context (goal 070): numbers out of range go as typed, so that
+    // control refuses them in its words; the submit stops on what is not a number.
+    const cw = ccNum(val("context_window")), ca = ccNum(val("compact_at"), true);
+    if (cw.n || ca.n) d.agents_context = Object.assign({}, cw.n ? { context_window: cw.n } : {}, ca.n ? { compact_at: ca.n } : {});
     if (mode === "research") {
       d.research = { topic: val("topic"), questions: lines("questions"), seeds: lines("seeds"), min_duration: val("min_duration") };
       d.mcp_servers = picked(blockOf("r"));
@@ -392,9 +399,46 @@ export const NEW_CAMPAIGN_JS = `
     return d;
   };
 
+  // ------------------------------------------------ the Agents' context (goal 070)
+  // What the first run's workers get on the chosen rig, with the model chosen here or the rig's,
+  // and the model that would refuse the run there.
+  const ccSec = $("[data-cc-rigs]", form);
+  let ccRigs = {};
+  try { ccRigs = JSON.parse((ccSec && ccSec.dataset.ccRigs) || "{}"); } catch {}
+  const ccUpdate = () => {
+    if (!ccSec) return { errs: [] };
+    const cc = $('[data-cc="new"]', ccSec), sayEl = $("[data-cc-say]", cc);
+    const s = ccRead(val("context_window"), val("compact_at"));
+    form.elements.context_window.classList.toggle("bad", s.cwBad);
+    form.elements.compact_at.classList.toggle("bad", s.atBad);
+    sayEl.className = "cc-say" + (s.errs.length ? " bad" : "");
+    sayEl.replaceChildren();
+    if (s.errs.length) { sayEl.textContent = s.errs.join(" "); return s; }
+    const rig = choice.rig || "";
+    if (!rig) return s;
+    const research = (choice.mode || "hill_climb") === "research";
+    let own = (ccRigs[rig] || []).filter((a) => !research || ["workers", "teachers", "second_teacher", "merged_by"].includes(a.agent));
+    const mSel = form.elements.agents_model;
+    if (mSel && mSel.value) {
+      const opt = mSel.selectedOptions[0], model = decodeURIComponent(mSel.value.split("|")[1] || "");
+      const had = own.find((a) => a.agent === "workers");
+      const same = !!had && had.model === model;
+      own = [{ agent: "workers", model, listed: Number(opt.dataset.window || 0), cap: same ? had.cap : null, at: same ? had.at : null }, ...own.filter((a) => a.agent !== "workers")];
+    }
+    const r = ccApply(own, s);
+    if (r.refused) {
+      sayEl.className = "cc-say bad";
+      sayEl.textContent = r.refused.model + " takes at most " + ccFmt(r.refused.listed) + " tokens: a run on " + rig + " can't start with this window.";
+      return s;
+    }
+    sayEl.append("On " + rig + ", the first run's workers get ", r.window === null ? "the rig's window" : ccCell(r.window, r.windowFrom === "campaign", ""), r.window === null ? "" : " tokens", " and compact at ", ccCell(r.at, r.atFrom === "campaign", "%"), ".");
+    return s;
+  };
+
   // ------------------------------------------------ what the page says back
   const update = () => {
     mcpUpdate();
+    const cc = ccUpdate();
     const mode = choice.mode || "hill_climb";
     $$("[data-modes]").forEach((el) => (el.hidden = !el.dataset.modes.split(" ").includes(mode)));
     $$("[data-kit]").forEach((el) => (el.hidden = el.dataset.kit !== (choice.kit || "here")));
@@ -410,12 +454,16 @@ export const NEW_CAMPAIGN_JS = `
     const score = choice.kit === "upload" ? (val("up_metric") || "the kit's score") + " " + (val("up_direction") === "min" ? "lower" : "higher") : (choice.score || "time") === "check" ? (val("score_field") || "its score") + " " + (val("direction") === "min" ? "lower" : "higher") : "its runs faster";
     const aim = { hill_climb: "make " + score + ", keeping only changes the judge confirms are at least " + (val(choice.kit === "upload" ? "up_min_effect" : "min_effect") || "5") + "% better", goal: "reach its goals, each checked by the judge", research: "research " + (val("topic") || "its topic") + " and report checked findings" }[mode];
     const proj = mode === "research" ? "" : " on " + repoName(val("project_url") || "the project") + (folder() ? " (the folder " + folder() + ")" : "") + (found ? " at " + found.commit.slice(0, 7) : "") + ", changing only " + (lines("editable_paths").join(", ") || "(no files yet)");
-    const s = (val("campaign") || "The campaign") + " will " + aim + proj + ". " + lanes + (Number(lanes) === 1 ? " agent works" : " agents work") + " on " + (rig || "(no rig chosen)") + ".";
+    const ctx = cc.errs.length ? "" : cc.cw ? " Its agents get at most " + ccFmt(cc.cw) + " tokens" + (cc.at ? " and compact at " + cc.at + "%." : ".") : cc.at ? " Each of its agents compacts at " + cc.at + "%." : "";
+    const s = (val("campaign") || "The campaign") + " will " + aim + proj + ". " + lanes + (Number(lanes) === 1 ? " agent works" : " agents work") + " on " + (rig || "(no rig chosen)") + "." + ctx;
     for (const el of $$("[data-summary]")) el.textContent = s;
     $("#draft-preview") && ($("#draft-preview").textContent = JSON.stringify(draft(), null, 2));
   };
 
   form.addEventListener("submit", (e) => {
+    // A context window or point that is not a number: back to step 4, where it says why.
+    const badW = ccNum(val("context_window")).bad, badP = ccNum(val("compact_at"), true).bad;
+    if (badW || badP) { e.preventDefault(); go("where"); update(); form.elements[badW ? "context_window" : "compact_at"].focus(); return; }
     form.elements.draft.value = JSON.stringify(draft());
     form.elements.rig.value = choice.rig || "";
     if (e.submitter && e.submitter.name === "start") form.elements.start_value.value = e.submitter.value;
@@ -449,6 +497,7 @@ export const NEW_CAMPAIGN_JS = `
         })
         .catch(() => {});
     }
+    if (back.agents_context) { set("context_window", back.agents_context.context_window); set("compact_at", back.agents_context.compact_at); }
     if (back.research) { set("topic", back.research.topic); set("questions", back.research.questions); set("seeds", back.research.seeds); set("min_duration", back.research.min_duration); }
     $$('.ch[data-group="mode"]').forEach((c) => { c.classList.toggle("on", c.dataset.value === back.mode); });
     choice.mode = back.mode;
