@@ -30,7 +30,7 @@ import { mountMcpServerRoutes } from "./mcp-server-routes.ts";
 import { McpServers } from "./mcp-servers.ts";
 import { metricsText } from "./metrics.ts";
 import { modelSteps } from "./model-steps.ts";
-import { claudeModelName, isOpencodeOwn, providerBase } from "./providers.ts";
+import { cappedWindow, claudeModelName, isOpencodeOwn, providerBase } from "./providers.ts";
 import { copiedFromRecords, untriedOf } from "./queue-copy.ts";
 import type { probeRepository, readKitManifest } from "./repo-probe.ts";
 import { resultsLeft } from "./results-left.ts";
@@ -140,6 +140,15 @@ const IssueBody = z.object({
     .positive()
     .max(7 * 24 * 60)
     .default(60),
+});
+
+/** POST /v1/rigs/<rig>/model: set_rig_model's fields (goal 070). Edit rig's code checks the rest. */
+const RigModelBody = z.strictObject({
+  provider: z.string().min(1).max(200),
+  model: z.string().min(1).max(200),
+  harness: z.enum(["pi", "opencode", "codex"]).optional(),
+  effort: z.enum(["low", "medium", "high", "xhigh", "max"]).optional(),
+  context_window: z.number().int().optional(),
 });
 
 /**
@@ -624,16 +633,22 @@ export function createControlApi(
   /**
    * A route as a rig receives it: the provider's endpoint and key (or a subscription's token, for
    * Claude Code only; or a ChatGPT login's access token, renewed here), the model and the harness
-   * it runs in. Undefined when the key can't be opened or the login renewed.
+   * it runs in. Undefined when the key can't be opened or the login renewed. `cap`: the owner's
+   * cap on the model's context window (goal 070), which the route carries when it is the lower.
    */
   const routeOf = async (
     p: ModelProvider,
     model: string,
     harness: Harness,
     effort: Effort | null | undefined,
+    cap?: number | undefined,
   ): Promise<Record<string, unknown> | undefined> => {
     // Other providers take a reasoning effort up to high.
     const reasoning = effort ? (effort === "xhigh" || effort === "max" ? "high" : effort) : null;
+    const contextWindow = cappedWindow(
+      p.models.find((m) => m.id === model)?.context_window ?? 0,
+      cap,
+    );
     if (p.type === "chatgpt") {
       const access = await chatgpt.access(p);
       if (typeof access !== "string") return undefined;
@@ -644,13 +659,22 @@ export function createControlApi(
         version: p.version,
         base_url: CHATGPT_API,
         model,
-        context_window: p.models.find((m) => m.id === model)?.context_window ?? 0,
+        context_window: contextWindow,
         max_tokens: 0,
         reasoning,
         key_hint: p.key_hint,
-        // A renewed token is a new revision: the rig takes it on its next round.
+        // A renewed token is a new revision: the rig takes it on its next round. So is a cap.
         revision: sha256Hex(
-          [p.name, "chatgpt", p.version, harness, model, reasoning ?? "", access].join("\n"),
+          [
+            p.name,
+            "chatgpt",
+            p.version,
+            harness,
+            model,
+            reasoning ?? "",
+            access,
+            ...(cap ? [contextWindow] : []),
+          ].join("\n"),
         ).slice(0, 16),
         api_key: access,
       };
@@ -662,7 +686,6 @@ export function createControlApi(
     } catch {
       return undefined;
     }
-    const contextWindow = p.models.find((m) => m.id === model)?.context_window ?? 0;
     const base = providerBase(p.type, p.base_url);
     // A Claude subscription: its token, for Claude Code only, under Claude Code's model name.
     if (p.type === "claude")
@@ -738,7 +761,7 @@ export function createControlApi(
     const r = store.rigModelFor(rig);
     const planner = await roleRouteOf(rig, "planner");
     if (!r) return c.json({ route: null, planner });
-    const route = await routeOf(r.provider, r.model, r.harness, r.effort);
+    const route = await routeOf(r.provider, r.model, r.harness, r.effort, r.contextCap);
     if (!route)
       return c.json(
         {
@@ -1134,6 +1157,41 @@ export function createControlApi(
       return c.json({ error: out.error }, out.status);
     }
     return c.json(copyCampaignAnswer(out), 201);
+  });
+
+  // Give a rig's agents a model (goal 070): the twin of MCP's set_rig_model, through the
+  // dashboard's own code (actions.setRigModel), with Edit rig's refusals in words. Each call sets
+  // the context window cap anew: none given, none kept.
+  app.post("/v1/rigs/:rig/model", admin, bodyLimit({ maxSize: 16 * 1024 }), async (c) => {
+    const give = actions.setRigModel;
+    if (!give) return c.json({ error: "this control gives no models" }, 404);
+    const rig = c.req.param("rig");
+    const raw: unknown = await c.req.json().catch(() => undefined);
+    const body = RigModelBody.safeParse(raw);
+    const out = body.success
+      ? await give(
+          rig,
+          body.data.provider,
+          body.data.model,
+          body.data.harness,
+          body.data.effort,
+          body.data.context_window,
+          "owner:api",
+        )
+      : { error: bodyRefusal(body.error) };
+    if ("error" in out) {
+      store.audit("owner:api", "refused", {
+        path: `/v1/rigs/${rig}/model`,
+        why: redact(out.error),
+      });
+      return c.json({ error: out.error }, out.error === `no rig ${rig}` ? 404 : 400);
+    }
+    return c.json({
+      rig,
+      model: body.data?.model,
+      context_window: out.contextWindow || null,
+      said: out.ok,
+    });
   });
 
   // A page of the audit log, newest first; older and newer are the cursors for the next pages.

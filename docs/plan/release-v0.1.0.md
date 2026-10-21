@@ -65,6 +65,7 @@ A tester sees what each run is doing, gives it work through one queue of experim
 | [068 · MCP servers for a campaign's agents, named by its kit](goals/068-mcp-servers-for-agents.goal) | `VERIFIED` | 065 |
 | [069 · Copy a campaign](goals/069-copy-a-campaign.goal) | `IN_PROGRESS` | 065 |
 | [056 · A Codex CLI harness](goals/056-codex-harness.goal) | `VERIFIED` | — |
+| [070 · Cap the context window of a rig's model](goals/070-model-context-cap.goal) | `IN_PROGRESS` | — |
 
 ### Install from images
 

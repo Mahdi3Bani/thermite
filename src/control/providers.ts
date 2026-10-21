@@ -29,6 +29,41 @@ export const CLAUDE_MODELS: { id: string; claude: string; context_window: number
 export const claudeModelName = (id: string) => CLAUDE_MODELS.find((m) => m.id === id)?.claude ?? id;
 
 /**
+ * A cap on the context window of a rig's model (goal 070): at least this many tokens, and at most
+ * what a model route carries.
+ */
+export const CONTEXT_CAP_MIN = 4096;
+export const CONTEXT_CAP_MAX = 100_000_000;
+
+/** Tokens as people read them: 131,072. */
+const tokens = (n: number) => n.toLocaleString("en-US");
+
+/**
+ * The context window a rig's route carries: the owner's cap when it is lower than the provider's
+ * window, else the provider's. With no provider window (0: unknown), the cap as given.
+ */
+export const cappedWindow = (listed: number, cap: number | undefined): number =>
+  cap && (listed <= 0 || cap < listed) ? cap : listed;
+
+/** Why a cap is refused for a model whose provider lists `listed` tokens (0: unknown), if it is. */
+export function contextCapRefusal(model: string, listed: number, cap: number): string | undefined {
+  if (!Number.isInteger(cap) || cap < CONTEXT_CAP_MIN || cap > CONTEXT_CAP_MAX)
+    return `A context window is a whole number of tokens from ${tokens(CONTEXT_CAP_MIN)} to ${tokens(CONTEXT_CAP_MAX)}.`;
+  if (listed > 0 && cap > listed) return `${model} takes at most ${tokens(listed)} tokens.`;
+  return undefined;
+}
+
+/**
+ * A capped window in words, such as "131,072 tokens (capped; the provider allows 204,800)";
+ * undefined when nothing caps the provider's window.
+ */
+export function capWords(listed: number, cap: number | undefined): string | undefined {
+  const window = cappedWindow(listed, cap);
+  if (!cap || window !== cap || cap === listed) return undefined;
+  return `${tokens(cap)} tokens (capped; ${listed > 0 ? `the provider allows ${tokens(listed)}` : "the provider lists no window"})`;
+}
+
+/**
  * Whether a provider is OpenCode's own: its type says so, or its base URL is OpenCode's. Under
  * the OpenCode harness such a provider runs through OpenCode's built-in provider, which its free
  * models require (and which ignores any other endpoint, so no proxy can add a key to it).

@@ -730,13 +730,14 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
         {
           title: "Give a rig's agents a model",
           description:
-            "As Edit rig does: the model a rig's agents use, from a model provider in Providers (see the providers tool for their models). The rig takes it within a minute and checks it. Harness default: what the model needs (Claude Code for a Claude subscription, OpenCode for OpenCode's free models, else Pi). codex runs the workers and the planner in the Codex CLI: only with a ChatGPT subscription or an OpenAI-compatible provider.",
+            "As Edit rig does: the model a rig's agents use, from a model provider in Providers (see the providers tool for their models). The rig takes it within a minute and checks it. Harness default: what the model needs (Claude Code for a Claude subscription, OpenCode for OpenCode's free models, else Pi). codex runs the workers and the planner in the Codex CLI: only with a ChatGPT subscription or an OpenAI-compatible provider. context_window caps the model's context window in tokens (from 4096), for example to compare two models at the same window; a cap above the provider's window is refused. Agents in Pi keep to it; OpenCode, Claude Code and Codex do not read it. Each call sets the cap anew: a call without context_window removes a cap the rig had. Returns context_window, the window the rig's model route carries (null: the provider lists none).",
           inputSchema: {
             rig: z.string().min(1),
             provider: z.string().min(1),
             model: z.string().min(1),
             harness: z.enum(["pi", "opencode", "codex"]).optional(),
             effort: z.enum(["low", "medium", "high", "xhigh", "max"]).optional(),
+            context_window: z.number().int().optional(),
           },
         },
         audited(
@@ -747,10 +748,24 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
             model: string;
             harness?: "pi" | "opencode" | "codex";
             effort?: "low" | "medium" | "high" | "xhigh" | "max";
+            context_window?: number;
           }) => {
-            const r = await give(a.rig, a.provider, a.model, a.harness, a.effort, actor);
+            const r = await give(
+              a.rig,
+              a.provider,
+              a.model,
+              a.harness,
+              a.effort,
+              a.context_window,
+              actor,
+            );
             if ("error" in r) throw new Error(r.error);
-            return { rig: a.rig, model: a.model, said: r.ok };
+            return {
+              rig: a.rig,
+              model: a.model,
+              context_window: r.contextWindow || null,
+              said: r.ok,
+            };
           },
         ),
       );
