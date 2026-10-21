@@ -102,6 +102,9 @@ jobs:
             suffix: ""
             cuda: false
             description: "Thermite's control service: the dashboard, the REST API and MCP."
+            licenses: MIT
+          # The harness images carry the Codex CLI (Apache-2.0, with its NOTICE) and OpenCode (MIT)
+          # beside Thermite (MIT): their licence label is the SPDX expression of all three.
           - key: harness
             repository: thermite-harness
             containerfile: containers/harness/Containerfile
@@ -109,6 +112,7 @@ jobs:
             suffix: ""
             cuda: false
             description: "Thermite's harness for CPU rigs: the judge, the broker and the agents."
+            licenses: "MIT AND Apache-2.0"
           # The CUDA harness: the same Containerfile on a CUDA base, in the same package as the
           # CPU harness, with tags that end in -cuda. The same job then builds the rig image on it.
           - key: harness-cuda
@@ -118,6 +122,7 @@ jobs:
             suffix: "-cuda"
             cuda: true
             description: "Thermite's harness for GPU rigs (CUDA 12.6): the judge, the broker and the agents."
+            licenses: "MIT AND Apache-2.0"
           - key: supervisor
             repository: thermite-supervisor
             containerfile: containers/supervisor/Containerfile
@@ -125,6 +130,7 @@ jobs:
             suffix: ""
             cuda: false
             description: "Thermite's supervisor: a rig's link to control, and its git work."
+            licenses: MIT
     steps:
       - uses: actions/checkout@v4
       # The CUDA base is several gigabytes: make room on the runner's disk first.
@@ -169,14 +175,14 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.version=${{ needs.version.outputs.version }}
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.licenses=${{ matrix.licenses }}
           annotations: |
             org.opencontainers.image.title=${{ matrix.repository }}
             org.opencontainers.image.description=${{ matrix.description }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.version=${{ needs.version.outputs.version }}
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.licenses=${{ matrix.licenses }}
       - id: build
         uses: docker/build-push-action@v6
         with:
@@ -237,14 +243,14 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.version=${{ needs.version.outputs.version }}
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.licenses=${{ matrix.licenses }}
           annotations: |
             org.opencontainers.image.title=thermite-rig
             org.opencontainers.image.description=${{ env.RIG_DESCRIPTION }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.version=${{ needs.version.outputs.version }}
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.licenses=${{ matrix.licenses }}
       - id: rig-build
         if: matrix.cuda
         uses: docker/build-push-action@v6
