@@ -38,6 +38,7 @@ import {
   clusterRigObjects,
   rigResources,
 } from "./clusters/manifests.ts";
+import { copiedFromWords, copyCampaign } from "./copy-campaign.ts";
 import type { Credential } from "./credential.ts";
 import { newToken } from "./credential.ts";
 import { makeDeployKey } from "./git-keys.ts";
@@ -1329,7 +1330,8 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
   /** Whether control can start a run of a campaign: a saved version, or an earlier assignment. */
   const startFrom = (campaign: string): string | undefined => {
     const v = store.campaignVersions(campaign)[0];
-    if (v && opts.kits)
+    // A copy of a campaign known only by an assignment takes that assignment's imports: no kit here.
+    if (v && (opts.kits || v.sources.assignment))
       return `Control signs an assignment of version ${v.version} (saved ${esc(ago(v.created_at, Date.now()))} ago) to the rig; the rig fetches the project and the kit, checks both, and starts the run.`;
     const past = store.latestAssignments().get(campaign);
     if (past)
@@ -1530,6 +1532,17 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     };
   };
   if (opts.actions) opts.actions.startRun = startARun;
+  // Copy a campaign (goal 069): REST, MCP and the command line; the page shows where it came from.
+  if (opts.actions)
+    opts.actions.copyCampaign = (req, by) =>
+      copyCampaign(store, req, by, campaignModes(store, views()));
+  /** A copy's line on its page: where it came from, who copied it and when. */
+  const copiedLine = (name: string): string => {
+    const first = store.campaignVersions(name).at(-1);
+    const f = first?.copied_from;
+    if (!first || !f) return "";
+    return `<div class="card" style="margin-bottom:16px"><span class="muted">Copied from</span> <a href="${campaignHref(f.campaign)}">${esc(copiedFromWords(f))}</a> <span class="muted">by ${esc(first.created_by)}, ${esc(ago(first.created_at, Date.now()))} ago. Its folder in the knowledge base started empty.</span></div>`;
+  };
   app.post("/ui/campaigns/:campaign/runs", async (c) => {
     const f = await c.req.parseBody();
     const campaign = c.req.param("campaign");
@@ -1695,7 +1708,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
           active: "campaigns",
           actions: startBtn,
         },
-        `${note}${
+        `${note}${copiedLine(name)}${
           waiting
             ? startingCard(waiting)
             : `<div class="card" style="margin-bottom:16px"><div class="empty">${saved.length ? "Saved on control, with no run yet." : "Assigned to a rig over the API, MCP or the CLI; no run of it reports now."} <a href="${campaignHref(name)}?start=1" data-open="#start">Start a run.</a></div></div>`
@@ -1797,7 +1810,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
         active: "campaigns",
         actions: startBtn,
       },
-      `${note}${starting}${
+      `${note}${starting}${copiedLine(k.name)}${
         about || goals
           ? `<div class="card khead"><div>${about ? `<div class="small muted">What it is for</div>` : `<div class="small muted">Goals of its best run</div>`}${about ? `<div class="kabout-big">${esc(about)}</div>` : ""}${goals}</div><div class="small muted right">on ${esc(rigs.join(", "))}${bestRun ? `<br>best: ${esc(bestRun.id)}, ${esc(h.value)} ${esc(h.sub)}` : ""}</div></div>`
           : ""

@@ -1,0 +1,61 @@
+---
+id: "069"
+title: "Copy a campaign"
+status: IN_PROGRESS
+version: "0.1.0"
+part: "Running campaigns"
+depends_on: ["065"]
+created: 2026-10-21
+updated: 2026-10-21
+---
+
+# 069 · Copy a campaign
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+A copy of a campaign: a new campaign with another name, the same contract and the same kit as the source's newest saved version or, for a campaign control knows only by an assignment, as that assignment.
+
+- **Its name.** The contract names the copy, so the copy's contract hash is its own.
+- **Its folder.** It has its own folder in Thermite's knowledge base, which starts empty. It reads no other folder, and no folder is granted to it.
+- **No runs.** It starts with Start a run, as any campaign does: REST `POST /v1/campaigns/<name>/runs`, MCP `start_run`, `thermite run start` or the campaign's page.
+- **Its history.** Control records who copied it and from which campaign (and which version) in its audit log, and the copy's page shows it.
+- **Where.** REST `POST /v1/campaigns/<name>/copy`, MCP `copy_campaign` and `thermite campaign copy <from> <new-name>`. Later, a **Copy** button on the campaign's page.
+
+## Why
+
+The owner wants to compare two models on the same research campaign, both from zero. Two runs of one campaign share its folder in the knowledge base: each starts with what earlier runs recorded, and each reads the other's records every few minutes. Thermite had no way to make a second campaign with the same settings and an empty folder, except to type the whole New campaign form again.
+
+## Done when
+
+- [x] REST `POST /v1/campaigns/<name>/copy`, MCP `copy_campaign` and `thermite campaign copy` copy a campaign, and refuse in words: no saved version and no assignment, a name that is taken or not valid, a rig check's campaign.
+- [x] The copy's contract names the copy and has its own hash; its folder is empty, with no grants; it has no runs, and Start a run starts it. Its run reads only the copy's folder.
+- [x] Who copied it, from which campaign and version, is in the audit log and on the copy's page.
+- [x] Only the owner's token (REST, the command line, MCP) and the operator's (MCP) may copy. A reader's or an agent's token may not.
+- [x] Tests for each surface.
+- [x] The REST API, MCP tools and command-line references, the glossary, the knowledge base reference and a how-to section on comparing two models from zero describe it.
+- [ ] A **Copy** button on the campaign's page, after the owner approves a mockup.
+
+## Decisions
+
+- 2026-10-21, owner: "So you are telling me, we should build a copy function in the future eh?" Then: build it now, over REST, MCP and the command line. The dashboard button comes later, because it needs a mockup.
+- 2026-10-21, builder, within the v0.1.0 build brief:
+  - **What is copied.** The newest saved version, with its sources (where its runs fetch the project and the kit). For a campaign known only by an assignment: the assignment's contract, and its starting point, imports and MCP servers, kept with the copy so that its runs take them as they are. An assignment's run options (run name, agents, promotion, queue, briefing) are not copied.
+  - **The copy's contract.** `campaign` is the new name and `version` is 1; the rest is the source's. Control checks it with the contract check, and saves it as the copy's version 1, approved by whoever copied it.
+  - **Taken names.** A name is taken when control knows a campaign by it: a saved version, an assignment, a rig's report, a folder in the knowledge base, or a grant. So the copy's folder is always empty and has no grants. A new name may not start with `rig-check-`, which rig checks use.
+  - **Tokens.** As for Start a run: REST and the command line take the owner's token, and MCP takes the owner's and an operator's.
+  - **The page.** The copy's page shows one line: `Copied from <campaign> version <n> by <who>, <time> ago. Its folder in the knowledge base started empty.` That is the only screen change in this goal.
+
+## Open questions
+
+- The **Copy** button: where it goes on the campaign's page, and its form. It needs a mockup first.
+
+## Progress
+
+- 2026-10-21: Goal written from the owner's decision.
+- 2026-10-21: Built over REST, MCP and the command line. `src/control/copy-campaign.ts` copies (through `ControlActions.copyCampaign`, filled in by the dashboard); the store keeps where a copy came from (`campaign_version.copied_from`) and, for a copy of an assignment, that assignment's imports (`sources.assignment`), which Start a run then uses. Tests: `src/control/copy-campaign.test.ts` (a saved campaign and an assignment-only one, the contract's name and hash, the empty folder and no grants, every refusal, the tokens, Start a run on each copy, and the copy's run syncing only its own folder) and `src/cli/campaign.test.ts`. Pages: the REST API, MCP tools, command-line and tokens references, the glossary, the knowledge base reference, and **Compare two models from zero** in Start a campaign from the dashboard. Left: the **Copy** button on the campaign's page, after a mockup.
+
+---
+
+Run with `/goal Complete docs/plan/goals/069-copy-a-campaign.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

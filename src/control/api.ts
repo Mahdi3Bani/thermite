@@ -11,6 +11,7 @@ import { type BuildInfo, buildFromHeaders, buildInfo, readBuild } from "../core/
 import type { ControlActions } from "./actions.ts";
 import { CHATGPT_API, ChatGPTLogins } from "./chatgpt.ts";
 import type { ClusterKubectl } from "./clusters/kubectl.ts";
+import { CopyCampaignBody, copyCampaignAnswer } from "./copy-campaign.ts";
 import { Credential, newToken } from "./credential.ts";
 import { createDashboard, type RigImages } from "./dashboard.ts";
 import { ExportFiles, mountExports } from "./exports.ts";
@@ -1112,6 +1113,27 @@ export function createControlApi(
       return c.json({ error: out.error }, out.status);
     }
     return c.json(startRunAnswer(out), out.state === "started" ? 201 : 202);
+  });
+
+  // Copy a campaign control keeps (goal 069): a new campaign with the same contract and kit
+  // under another name, with its own empty folder in the knowledge base and no runs.
+  app.post("/v1/campaigns/:campaign/copy", admin, bodyLimit({ maxSize: 16 * 1024 }), async (c) => {
+    const copy = actions.copyCampaign;
+    if (!copy) return c.json({ error: "this control copies no campaigns" }, 404);
+    const from = c.req.param("campaign");
+    const raw: unknown = await c.req.json().catch(() => undefined);
+    const body = CopyCampaignBody.safeParse(raw);
+    const out = body.success
+      ? copy({ from, name: body.data.name }, "owner:api")
+      : ({ state: "refused", error: bodyRefusal(body.error), status: 400 } as const);
+    if (out.state === "refused") {
+      store.audit("owner:api", "refused", {
+        path: `/v1/campaigns/${from}/copy`,
+        why: redact(out.error),
+      });
+      return c.json({ error: out.error }, out.status);
+    }
+    return c.json(copyCampaignAnswer(out), 201);
   });
 
   // A page of the audit log, newest first; older and newer are the cursors for the next pages.

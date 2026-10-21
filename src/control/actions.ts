@@ -1,9 +1,10 @@
+import type { CopyCampaignOutcome, CopyCampaignRequest } from "./copy-campaign.ts";
 import type { StartRunOutcome, StartRunRequest } from "./start-run.ts";
 
 /**
  * Actions the dashboard carries out that MCP offers too, so an agent can do what the owner does
  * on a page, through the same checks. createControlApi hands one object to both: the dashboard
- * fills it in, MCP calls it (and the REST API, for Start a run).
+ * fills it in, MCP calls it (and the REST API, for Start a run and for copying a campaign).
  */
 
 /** Adding a rig on a cluster control knows (Add a rig, or MCP's add_cluster_rig). */
@@ -64,4 +65,9 @@ export interface ControlActions {
    * whether the owner's token asks, which alone starts a stopped RunPod pod.
    */
   startRun?: (r: StartRunRequest, by: string, owner: boolean) => Promise<StartRunOutcome>;
+  /**
+   * Copies a campaign control keeps under a new name, with its own empty folder in the knowledge
+   * base and no runs (REST, MCP's copy_campaign and `thermite campaign copy`; goal 069).
+   */
+  copyCampaign?: (r: CopyCampaignRequest, by: string) => CopyCampaignOutcome;
 }

@@ -6,7 +6,7 @@ sidebar:
   order: 5
 ---
 
-`thermite` is Thermite's command line. It checks the machine it runs on, checks contracts, makes tokens, starts runs and sends [signed commands](signed-commands.md) through control, enrolls rigs, and talks to a rig's harness. The harness image also holds `thermite-trial`, the command a worker agent uses from its own shell.
+`thermite` is Thermite's command line. It checks the machine it runs on, checks contracts, makes tokens, starts runs, copies campaigns and sends [signed commands](signed-commands.md) through control, enrolls rigs, and talks to a rig's harness. The harness image also holds `thermite-trial`, the command a worker agent uses from its own shell.
 
 ```sh
 npx thermite contract validate contract.json
@@ -125,6 +125,11 @@ usage: thermite <command> [options]
                                       experiments (on --rig unless RIG/ is given); --past adds
                                       items of Thermite's knowledge base by id. It prints the new
                                       run and its command id; a stopped RunPod pod starts first
+  campaign copy FROM NAME --control URL --token-file F
+                                      copy a campaign control keeps (owner's token): a new
+                                      campaign NAME with FROM's contract and kit, its own empty
+                                      folder in Thermite's knowledge base and no runs. Start a
+                                      run of it with run start. It prints the copy
   mcp list --control URL --token-file F [--json]
                                       the MCP servers in Settings (owner's token): each one's
                                       sign-in, state, last error, tools and the kits that name
@@ -166,9 +171,9 @@ usage: thermite <command> [options]
 
 ## Rules for every command
 
-- **Options.** Each option takes its value as the next word or after `=`. In `doctor`, `token new`, `assign`, `assign-payload`, `rig`, `runpod`, `run start`, `command`, `submit` and `status`, an option the command does not know, or a word it does not expect, ends the command with Node's own message and exit code 2.
+- **Options.** Each option takes its value as the next word or after `=`. In `doctor`, `token new`, `assign`, `assign-payload`, `rig`, `runpod`, `run start`, `campaign copy`, `command`, `submit` and `status`, an option the command does not know, or a word it does not expect, ends the command with Node's own message and exit code 2.
 - **Older option names.** `--instance` is read as `--run`, and `--unit` as `--rig`. These are the names from before runs and rigs were renamed.
-- **Control's token.** The commands that talk to control (`assign`, `run start`, `command`, `rig add`, `rig token`, `rig retire`, `rig list`, and every `runpod` command) send the contents of `--token-file`, trimmed, as `Authorization: Bearer <token>`. Only the owner's token works on these routes; any other token gets `401 {"error":"unauthorized"}`. See [Tokens and roles](tokens.md).
+- **Control's token.** The commands that talk to control (`assign`, `run start`, `campaign copy`, `command`, `rig add`, `rig token`, `rig retire`, `rig list`, and every `runpod` command) send the contents of `--token-file`, trimmed, as `Authorization: Bearer <token>`. Only the owner's token works on these routes; any other token gets `401 {"error":"unauthorized"}`. See [Tokens and roles](tokens.md).
 - **Control's address.** `--control` is control's base address, such as `https://control.example.com`. A trailing `/` is removed.
 - **Refusals.** When control or the harness refuses a request, the command prints `<url> -> <status> <body>` on standard error and exits 2. `status` is the exception: see [below](#status). A request body that does not match the route gives `400 {"error":"invalid request"}`; a command that control refuses before signing it gives `400` with the reason (for example a payload that does not fit its kind, or a message that nothing would read), or `404` for an unknown rig; another refusal from inside control gives `500` with the reason. The [REST API reference](rest-api.md) lists the routes.
 
@@ -501,6 +506,26 @@ It prints control's answer on one line, such as `{"started":true,"campaign":"sor
 | `--token-file F` | Yes | | A file with the owner's token |
 
 Before it sends anything, it ends with exit code 2 and one of these: `--rig names the rig the run starts on`, `--agents is on or off`, `--promotion is auto or owner`, `--provider and --model go together: the agents' model is one of a provider's models`, `--queue-from names a run: RUN or RIG/RUN`, `--judge-gpus takes a whole number, not "…"` or `--past takes a whole number, not "…"`. Control's refusals come back as `<url> -> <status> <body>` with the words of **Start a run**, such as `-> 409 {"error":"rig-1 has no model for its agents, so they could not work: …"}`: [Campaigns](rest-api.md#campaigns) lists them. MCP's [`start_run`](mcp-tools.md#start_run) does the same with an operator's token too.
+
+### `campaign copy`
+
+`thermite campaign copy` copies a campaign control keeps under a new name (`POST /v1/campaigns/<campaign>/copy`). The copy has the campaign's contract and kit, as its newest saved version has them or as it was assigned before. It has its own folder in Thermite's knowledge base, which starts empty, and no runs.
+
+```sh
+npx thermite campaign copy sort-speed sort-speed-b \
+  --control https://control.example.com --token-file ~/thermite-owner-token
+```
+
+It prints control's answer on one line, such as `{"campaign":"sort-speed-b","version":1,"contract_sha":"<sha256>","from":{"campaign":"sort-speed","version":2}}`. `from` is `{campaign, rig, run}` for a campaign that was only assigned before. Then start a run of the copy with [`thermite run start`](#run-start).
+
+| Option | Required | Default | Meaning |
+| --- | --- | --- | --- |
+| `FROM` | Yes | | The campaign to copy, as on its page |
+| `NAME` | Yes | | The copy's name: lowercase letters, digits, dots, dashes and underscores, at most 64, starting with a letter or a digit. No campaign may have it yet |
+| `--control URL` | Yes | | Control's address |
+| `--token-file F` | Yes | | A file with the owner's token |
+
+Without `--control` and `--token-file`, it ends with `give --control and --token-file: control copies the campaign` and exit code 2. Control's refusals come back as `<url> -> <status> <body>`, such as `-> 409 {"error":"There is a campaign named sort-speed-b already. Choose another name."}`: [Copy a campaign](rest-api.md#copy-a-campaign) lists them. MCP's [`copy_campaign`](mcp-tools.md#copy_campaign) does the same with an operator's token too.
 
 ### `mcp`
 

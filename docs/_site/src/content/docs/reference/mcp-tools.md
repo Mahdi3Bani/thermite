@@ -51,7 +51,7 @@ Control checks a token against the owner's first, then the operator's, the agent
 | `kb_folders`, `kb_search`, `kb_grant`, `kb_revoke` | Yes | Yes | No | No |
 | `rig_setup` | Yes | Yes | No | Yes, without each step's `detail` |
 | `control_log`, `providers`, `mcp_servers`, `runpod_tests`, `runpod_rigs` | Yes | Yes | No | Yes |
-| `add_cluster_rig`, `set_rig_model`, `start_run`, `cluster_rig`, `update_rig_images`, `set_cluster_slots`, `runpod_test_start`, `runpod_test_end` | Yes | Yes | No | No |
+| `add_cluster_rig`, `set_rig_model`, `start_run`, `copy_campaign`, `cluster_rig`, `update_rig_images`, `set_cluster_slots`, `runpod_test_start`, `runpod_test_end` | Yes | Yes | No | No |
 | `retire_rig`, `bring_back_rig`, `runpod_launch`, `runpod_rig_limits`, `runpod_rig`, `mcp_server_add`, `mcp_server_change`, `mcp_server_check`, `mcp_server_sign_in`, `mcp_server_delete` | Yes | No | No | No |
 
 ### Command kinds for each role
@@ -559,6 +559,30 @@ Errors, in the words of **Start a run**:
 - `Only the owner's token changes a rig's GPU split: leave out judge_gpus.` (the operator's token)
 - for a rig on RunPod whose pod is stopped: with the operator's token, `<rig>'s pod on RunPod is stopped, and only the owner can start it: start the pod from the rig's page, or start the run with the owner's token`; with the owner's, when the pod can't start, `Not sent: control could not start <rig>'s pod on RunPod for it.` and the reason
 - `Control sends no commands to <rig>.` and the reason, for a rig control [refuses](rest-api.md#when-control-refuses-a-rig)
+
+### copy_campaign
+
+**Copy a campaign.** Owner and operator.
+
+> A new campaign with another name, from a campaign control keeps: the same contract and kit as its newest saved version (or, for a campaign only assigned before, as that assignment), with the new name in the contract, so its contract hash is its own. The copy has its own empty folder in Thermite's knowledge base; it reads no other folder, and no folder is granted to it. It has no runs: start one with start_run. Use it to compare two models on the same campaign, each from zero: two runs of one campaign share its folder, so each starts with what the other recorded. Returns {campaign, version, contract_sha, from}. Refused in words: a name that is taken or not valid, a campaign with no saved version and no assignment, a rig check's campaign.
+
+It does what [`POST /v1/campaigns/<campaign>/copy`](rest-api.md#copy-a-campaign) does, with the same refusals. The operator may call it, as the operator may call `start_run`.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `from` | string | | The campaign to copy, as on its page: one saved on control, or one assigned before over the API, MCP or the command line. Not a rig check's |
+| `name` | string | | The copy's name, as on the **New campaign** page: lowercase letters, digits, dots, dashes and underscores, at most 64, starting with a letter or a digit. No campaign, folder or grant may have it yet |
+
+It returns `{campaign, version, contract_sha, from}`: the copy's name, its version (1), its contract's SHA-256, and where it came from, `{campaign, version}` for a saved version or `{campaign, rig, run}` for an assignment. The copy's contract names the copy; the rest of it, the starting point, the imports and the kit are the source's. An assignment's run options (agents, promotion, queue and briefing) are not copied. Besides `mcp:copy_campaign`, the audit log has `campaign_copied` and `campaign_version_created`, by the caller's actor, and the copy's page says who copied it, from what and when.
+
+Errors:
+
+- `Control has no saved version or earlier assignment of <campaign>. There is nothing to copy.`
+- `<campaign> is a rig check's campaign. A rig check cannot be copied.`
+- `A campaign's name is lowercase letters, digits, dots, dashes and underscores, at most 64. It starts with a letter or a digit.`
+- `A name that starts with rig-check- is for rig checks. Choose another name.`
+- `There is a campaign named <name> already. Choose another name.`
+- `The contract of <campaign> is not valid, so control cannot copy it:` and the contract's errors
 
 ### cluster_rig
 

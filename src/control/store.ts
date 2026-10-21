@@ -376,6 +376,8 @@ create table if not exists campaign_version (
   created_at text not null,
   created_by text not null,
   approved_by text,
+  -- A copy's source (goal 069): {campaign, version} or {campaign, rig, run}; null otherwise.
+  copied_from text,
   primary key (campaign, version)
 );
 -- Exports a rig's supervisor sent to control because the rig has no results repository: each
@@ -563,6 +565,23 @@ export interface CampaignSources {
    * repository (the rig's harness checks them against the kit's kit.json).
    */
   mcp_servers?: unknown;
+  /**
+   * A copy of a campaign control knew only by an assignment (goal 069): that assignment's
+   * starting point, imports and MCP servers, without its run, contract and run options. The
+   * copy's runs take them as they are, as Start a run assigns such a campaign again.
+   */
+  assignment?: Record<string, unknown> | undefined;
+}
+
+/**
+ * Where a copied campaign came from (goal 069): the campaign, and the version copied, or the
+ * assignment copied (its rig and run) for a campaign control knew only by an assignment.
+ */
+export interface CopiedFrom {
+  campaign: string;
+  version?: number | undefined;
+  rig?: string | undefined;
+  run?: string | undefined;
 }
 
 /** A decision the owner sent to a rig, and the rig's answer once it came. */
@@ -955,6 +974,8 @@ export class ControlStore {
     );
     if (!versionCols.includes("sources"))
       this.db.exec("alter table campaign_version add column sources text not null default '{}'");
+    if (!versionCols.includes("copied_from"))
+      this.db.exec("alter table campaign_version add column copied_from text");
     const rigModelCols = (this.db.prepare("pragma table_info(rig_model)").all() as Row[]).map(
       (r) => r.name,
     );
@@ -3001,19 +3022,23 @@ export class ControlStore {
     return (r.v ?? 0) + 1;
   }
 
-  /** Stores a campaign version, approved by whoever created it, with where its runs fetch from. */
+  /**
+   * Stores a campaign version, approved by whoever created it, with where its runs fetch from
+   * and, for a copy, where it was copied from.
+   */
   putCampaign(c: {
     campaign: string;
     version: number;
     contract: unknown;
     sha: string;
     sources?: CampaignSources | undefined;
+    copiedFrom?: CopiedFrom | undefined;
     by: string;
   }): void {
     this.db
       .prepare(
-        `insert into campaign_version (campaign, version, contract, sha, sources, created_at, created_by, approved_by)
-         values (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `insert into campaign_version (campaign, version, contract, sha, sources, created_at, created_by, approved_by, copied_from)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         c.campaign,
@@ -3024,6 +3049,7 @@ export class ControlStore {
         new Date().toISOString(),
         c.by,
         c.by,
+        c.copiedFrom ? canonicalJson(c.copiedFrom) : null,
       );
     this.audit(c.by, "campaign_version_created", {
       campaign: c.campaign,
@@ -3041,6 +3067,8 @@ export class ControlStore {
     sources: CampaignSources;
     created_at: string;
     created_by: string;
+    /** For a copy: where it was copied from; null otherwise. */
+    copied_from: CopiedFrom | null;
   }[] {
     const rows = (
       campaign
@@ -3057,6 +3085,7 @@ export class ControlStore {
       sources: JSON.parse(String(r.sources ?? "{}")) as CampaignSources,
       created_at: String(r.created_at),
       created_by: String(r.created_by),
+      copied_from: r.copied_from ? (JSON.parse(String(r.copied_from)) as CopiedFrom) : null,
     }));
   }
 
