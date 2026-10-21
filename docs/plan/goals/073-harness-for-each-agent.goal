@@ -1,7 +1,7 @@
 ---
 id: "073"
 title: "A harness for each agent"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 depends_on: ["029", "056"]
 created: 2026-10-21
@@ -10,7 +10,7 @@ updated: 2026-10-21
 
 # 073 · A harness for each agent
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns · **Depends on:** [029](029-api-mcp-coverage.goal), [056](056-codex-harness.goal)
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns · **Depends on:** [029](029-api-mcp-coverage.goal), [056](056-codex-harness.goal)
 
 ## What
 
@@ -31,7 +31,7 @@ The owner, 2026-10-21, on the Edit rig mockup: "Why can't I select different har
 - [x] The planner runs in each of the four harnesses with its own model, and its plan is checked as before.
 - [x] Each advisor runs in each of the four harnesses in the supervisor, with only its tools, and its answer is checked as before.
 - [x] The supervisor's image carries OpenCode and the Codex CLI with their licences; the image labels say so.
-- [ ] Edit rig has **Runs in** on every row, after a mockup the owner approved.
+- [x] Edit rig has **Runs in** on every row, after a mockup the owner approved.
 - [x] Tests for each harness and each kind of agent; the Codex and Claude Code acceptances cover an advisor; pages updated.
 
 ## Decisions
@@ -56,6 +56,7 @@ None.
   - **Run by hand here**, not in a test: the real Codex CLI 0.162.0 as an auditor through this code, against a stand-in provider: it was offered only the past-research search, `apply_patch` and its read-only MCP resource tools; it called the search through the supervisor's server and answered; the provider saw only its own key. With the same settings, `apply_patch` was refused (`patch rejected: writing is blocked by read-only sandbox`) and wrote nothing.
   - **Left:** the **Runs in** choice on every row of Edit rig, after a mockup the owner approves; the compose acceptances (Codex with the advisor, Claude Code, agents, steering, the rig image and the smoke for the supervisor image); an advisor in the real OpenCode v2, which no test here has run.
 - 2026-10-21: The acceptances passed on the merged branch (with goal 070's per-agent context): the Codex acceptance (an auditor in Codex, over REST), the Claude Code acceptances (stand-in and real binary), agents, steering, the rig image, multi-GPU, control and the compose smoke with the new supervisor image. The tests box is ticked; Edit rig's Runs in on every row waits for the owner's look at the revised mockup.
+- 2026-10-21: Edit rig's **Runs in** built on every line, as the owner approved the revised mockup: a choice of Pi, OpenCode v2, Claude Code and Codex for the workers, the planner, each teacher, the merged by model, the auditor and the review panel. Choosing a model sets the program it needs; a program that can't run the model is refused under the line in `harnessRefusal`'s words, and on Save by control. A line with no model shows where it runs then ("as the workers (Pi)", "rig default"). See goal 070's builder decisions for the screens. Tests: `src/control/edit-rig-agents.test.ts` and `src/control/dashboard.test.ts`. Pages: Give each agent its own model, Configure advisors, Choose a model, Use a ChatGPT subscription, the advisors file and the glossary. Every box is ticked.
 
 ---
 
