@@ -33,10 +33,12 @@ The owner, 2026-10-21: "overview on a capmaign run doesn't show total tokens use
 - [ ] Control sums it per run, per campaign and for the system; REST and MCP give the sums.
 - [ ] The run's Overview, the campaign's page and the system Overview show them, after a mockup the owner approved.
 - [ ] Tests for the records, the sums and the "not reported" case; pages updated.
+- [ ] Cost: each call's cost from its model's price (the provider's list, or the owner's price in Settings › Providers), "on a plan" for subscriptions, "no price" where none is known, and a RunPod rig's pod spend, summed for a run, a campaign and the system, on the same screens and over REST and MCP.
 
 ## Decisions
 
 - 2026-10-21, owner, on the mockup (`v010-usage`): "top of run page, side bar of campaign page, stats page for top level across the system (metrics tab)." So: a run's model use at the top of its page; a campaign's in its page's sidebar; the system's on a new **Metrics** page in the main navigation. The mockup's other choices are built as shown: no cost column, the median time to the first token, and "today" in the viewer's own time zone.
+- 2026-10-21, owner: "Probably also want \"cost\" associated with stuff." So cost joins the model use (this replaces "no cost column" above): each call's cost is its tokens times its model's price (in, cached in, out), the price taken from the provider's model list when it gives one, else set by the owner in Settings › Providers; a subscription's calls show "on a plan" with their tokens; a model with no price shows "no price", never 0. A rig on RunPod adds its pod's spend, which control already tracks, to its runs' and campaigns' cost. Shown where the model use is: the run page's top, the campaign's sidebar and the Metrics page; REST and MCP give it too.
 
 ## Open questions
 
