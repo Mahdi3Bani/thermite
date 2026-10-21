@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { formatRunpodRigs } from "../cli/runpod.ts";
 import { generateSigningKeys } from "../core/commands.ts";
 import { FAKE_GPUS, FAKE_RUNPOD_KEY, fakeRunpod } from "../testing/fake-runpod.ts";
 import {
   exportName,
   exportOnControl,
   harnessApplies,
+  harnessRefusesExport,
   supervisorReports,
 } from "../testing/rig-results.ts";
 import { createControlApi } from "./api.ts";
+import type { RunpodRigView } from "./runpod-rig-view.ts";
 import { DEFAULT_IDLE_STOP_MINUTES, RunpodRigs } from "./runpod-rigs.ts";
 import { SecretBox } from "./secrets.ts";
 import { ControlStore } from "./store.ts";
@@ -403,6 +406,62 @@ describe("a RunPod rig's page", () => {
     assert.match(
       await s.post("/ui/rigs/own-1/runpod/stop"),
       /error=own-1 is not a rig control launched on RunPod\./,
+    );
+  });
+
+  test("a refused terminate stays on the page, REST and the command line until the owner's next change", async () => {
+    const s = await setup();
+    await working(s);
+    await s.post("/ui/rigs/rp-test-1/runpod/terminate", { confirm: "terminate rp-test-1" });
+    harnessApplies(s.store, "rp-test-1", exportName(1));
+    await s.advance();
+    harnessRefusesExport(s.store, "rp-test-1");
+    await s.advance();
+    const rest = async () =>
+      (await (
+        await s.api.request("/v1/rigs/rp-test-1/runpod", {
+          headers: { authorization: `Bearer ${ADMIN}` },
+        })
+      ).json()) as RunpodRigView;
+    const said = /Not terminated: the export did not complete \(failed\)\. The pod keeps running/;
+    /** The red line under The pod's facts (History keeps the step either way). */
+    const flash = async () =>
+      /<div class="flash bad" style="margin-top:12px">([^<]*)<\/div>/.exec(
+        await s.page("/ui/rigs/rp-test-1"),
+      )?.[1] ?? "";
+    // Several good reads of the pod later, every surface still says it.
+    for (let i = 0; i < 4; i++) await s.advance();
+    assert.match(await flash(), said);
+    const v = await rest();
+    assert.match(String(v.error), said);
+    assert.match(String(v.refusal), said);
+    assert.match(formatRunpodRigs([v]), /\n {2}last error: Not terminated: the export did not/);
+    // The owner's next change to the pod ends it at once.
+    assert.match(await s.post("/ui/rigs/rp-test-1/runpod/stop"), /ok=Stopping/);
+    assert.equal(await flash(), "");
+    const after = await rest();
+    assert.deepEqual([after.error, after.refusal], [null, null]);
+    assert.doesNotMatch(formatRunpodRigs([after]), /last error/);
+  });
+
+  test("a refusal ends with a newer step in the rig's history, such as a full reset", async () => {
+    const s = await setup();
+    await working(s);
+    await s.post("/ui/rigs/rp-test-1/runpod/terminate", { confirm: "terminate rp-test-1" });
+    harnessApplies(s.store, "rp-test-1", exportName(1));
+    await s.advance();
+    harnessRefusesExport(s.store, "rp-test-1");
+    await s.advance();
+    await s.advance();
+    assert.match(String(s.rigs.view("rp-test-1")?.refusal), /^Not terminated/);
+    // The step a full reset records when it starts (lifecycle.ts).
+    s.store.rigSetupEvent("rp-test-1", "reset_requested", true, "asked by owner:ui");
+    await s.advance();
+    assert.equal(s.rigs.view("rp-test-1")?.refusal, null);
+    assert.equal(s.rigs.view("rp-test-1")?.error, null);
+    assert.doesNotMatch(
+      await s.page("/ui/rigs/rp-test-1"),
+      /<div class="flash bad" style="margin-top:12px">Not terminated/,
     );
   });
 

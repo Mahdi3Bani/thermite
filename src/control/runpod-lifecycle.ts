@@ -187,6 +187,11 @@ export class RunpodLifecycle {
     return undefined;
   }
 
+  /** A new change to the pod begins: the last refusal is no longer news. */
+  private begin(s: RigState): void {
+    s.refusal = null;
+  }
+
   private newOp(kind: OpKind, by: string, why: StopWhy | null, phase: OpPhase): RigOp {
     const at = this.iso();
     return { kind, by, why, phase, at, phase_at: at, command: null, export: null, paused: [] };
@@ -214,6 +219,7 @@ export class RunpodLifecycle {
     const refused = this.busy(r, s, why !== "owner");
     if (refused) throw new Error(refused);
     if (isStopped(s.status)) throw new Error(`${r.rig}'s pod is stopped already`);
+    this.begin(s);
     const words =
       why === "owner"
         ? `asked by ${by}`
@@ -268,6 +274,7 @@ export class RunpodLifecycle {
       throw new Error(
         `${r.rig} has cost ${money(spent)}, which is at its spend limit (${money(s.spend_limit_usd)}): raise or clear the limit first`,
       );
+    this.begin(s);
     this.store.audit(by, "runpod_rig_start", { rig: r.rig, pod: r.pod, ...(note ? { note } : {}) });
     const op = this.newOp("start", by, null, "starting");
     if (note) op.note = note;
@@ -280,6 +287,7 @@ export class RunpodLifecycle {
     if (refused) throw new Error(refused);
     if (isStopped(s.status))
       throw new Error(`${r.rig}'s pod is stopped: start it instead of restarting it`);
+    this.begin(s);
     this.store.audit(by, "runpod_rig_restart", { rig: r.rig, pod: r.pod });
     await podAction(key, r.pod, "stop", this.fetchImpl);
     this.billStop(s);
@@ -296,6 +304,7 @@ export class RunpodLifecycle {
   async beginTerminate(r: StoredRunpodRig, s: RigState, key: string, by: string) {
     const refused = this.busy(r, s);
     if (refused) throw new Error(refused);
+    this.begin(s);
     this.store.audit(by, "runpod_rig_terminate", { rig: r.rig, pod: r.pod });
     if (!harnessReported(this.store, r.rig)) {
       this.history(
@@ -596,12 +605,18 @@ export class RunpodLifecycle {
     return false;
   }
 
-  /** A terminate that can't go on: the pod keeps running, with its runs paused. */
+  /**
+   * A terminate that can't go on: the pod keeps running, with its runs paused. The refusal stays
+   * on the rig until the owner's next change to the pod, or a newer step in its history.
+   */
   private refuseTerminate(r: StoredRunpodRig, s: RigState, why: string): void {
     s.op = null;
     const words = `${why}. The pod keeps running, with its runs paused: resume them, or fix what keeps the results on the pod and terminate it again`;
-    s.error = `Not terminated: ${words}`;
     this.history(r.rig, "runpod_terminate_refused", false, words);
+    s.refusal = {
+      words: `Not terminated: ${words}`,
+      steps: this.store.rigSetupEvents(r.rig).length,
+    };
     this.store.audit("control", "runpod_rig_terminate_refused", { rig: r.rig, pod: r.pod, why });
   }
 

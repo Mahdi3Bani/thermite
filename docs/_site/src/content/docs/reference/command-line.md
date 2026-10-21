@@ -449,7 +449,7 @@ It prints the rig on one line, then `Launched: RunPod bills the pod from now. Co
 rp-1a2b3c4d · pod pod1 · RUNNING · 1 × RTX A4000 (Secure) · $0.25/h · spent $1.50 · spend limit $20.00 · no idle stop · enrolled
 ```
 
-Each line has the rig, its pod, the pod's status at RunPod (`gone` once RunPod no longer has it), its GPUs and cloud, its price per hour, what it has cost so far, its limits and its enrollment. Indented lines under it say `stopped by control: spend limit` (or `idle stop`) when control stopped the pod at a limit, or `stopped by the owner`; `under way:` and the stop, start, restart or terminate under way, such as `under way: stopping: waiting for its results to leave the pod`; and `last error:` with what control's last read of the pod found, or why a terminate was refused. With no rig it prints `no rig on a GPU cloud`.
+Each line has the rig, its pod, the pod's status at RunPod (`gone` once RunPod no longer has it), its GPUs and cloud, its price per hour, what it has cost so far, its limits and its enrollment. Indented lines under it say `stopped by control: spend limit` (or `idle stop`) when control stopped the pod at a limit, or `stopped by the owner`; `under way:` and the stop, start, restart or terminate under way, such as `under way: stopping: waiting for its results to leave the pod`; and `last error:` with what control's last read of the pod found, or why a terminate was refused (that stays until the owner's next stop, start, restart or terminate of the pod, or its full reset). With no rig it prints `no rig on a GPU cloud`.
 
 ### `runpod limits`
 

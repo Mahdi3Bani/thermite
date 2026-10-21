@@ -121,7 +121,7 @@ Terminating removes the pod and its volume at RunPod. Control does it only once 
 
 In the **Terminate** box, type `terminate rp-1a2b3c4d` and press **Terminate**. The page says `Terminating: its runs are paused, and the pod is removed only once every result has left it.` Control pauses the runs, waits until no judge job and no command waits on the rig, asks for a full export, and waits until it, and everything else that waits on the pod, has reached control. Then RunPod removes the pod, and control retires the rig: it leaves the rig lists, and its records and exports stay on control. Its page then says what the pod cost in all.
 
-If a result can't leave, the terminate is refused, and the pod keeps running with its runs paused. The page shows `Not terminated: …` with the reason, such as a supervisor that has nowhere to send its exports. Fix the cause, then terminate again, or resume the runs.
+If a result can't leave, the terminate is refused, and the pod keeps running with its runs paused. The page shows `Not terminated: …` with the reason, such as a supervisor that has nowhere to send its exports, and `thermite runpod list` shows it as `last error:`. It stays there until you stop, start, restart or terminate the pod, or reset it. Fix the cause, then terminate again, or resume the runs.
 
 A stopped pod is terminated at once when its last stop sent every result out. Otherwise the terminate is refused: start the pod, so its results can leave, then terminate it.
 

@@ -434,6 +434,8 @@ export class RunpodRigs {
       s.error = redact(err instanceof Error ? err.message : String(err));
       log("control", "runpod rig step failed", { rig, error: s.error });
     }
+    // A refusal stays until a newer step in the rig's history (a full reset, say), not a read.
+    if (s.refusal && this.store.rigSetupEvents(rig).length > s.refusal.steps) s.refusal = null;
     this.store.saveRunpodRig(rig, s, active);
   }
 

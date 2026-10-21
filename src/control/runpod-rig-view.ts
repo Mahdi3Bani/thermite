@@ -42,8 +42,14 @@ export interface RigState {
   stopped_by: "spend_limit" | "idle_stop" | "owner" | null;
   /** When RunPod no longer had the pod. */
   ended_at: string | null;
-  /** The last thing that went wrong, in words. */
+  /** What went wrong at control's last read of the pod, in words; the next good read clears it. */
   error: string | null;
+  /**
+   * A change control refused (a terminate that could not go on), in words, and how many steps the
+   * rig's history had then. It stays until the owner's next stop, start, restart or terminate, or
+   * until a newer step in the rig's history (a full reset, say).
+   */
+  refusal?: { words: string; steps: number } | null | undefined;
   notes: string[];
   /** The stop, start, restart or terminate under way (runpod-lifecycle.ts); null: none. */
   op?: RigOp | null | undefined;
@@ -54,7 +60,11 @@ export interface RigState {
   last_export_left?: boolean | undefined;
 }
 
-export interface RunpodRigView extends RigState {
+export interface RunpodRigView extends Omit<RigState, "refusal"> {
+  /** What went wrong last, in words: the last read's error, else the refusal while it stays. */
+  error: string | null;
+  /** The change control refused last, in words, while it stays (RigState's refusal). */
+  refusal: string | null;
   rig: string;
   cloud: string;
   pod: string;
@@ -125,6 +135,8 @@ export function runpodRigView(
   const enrolledAt = tunnel?.enrolled_at ?? null;
   return {
     ...s,
+    error: s.error ?? s.refusal?.words ?? null,
+    refusal: s.refusal?.words ?? null,
     op: s.op ?? null,
     op_words: s.op ? opWords(s.op) : null,
     paused_runs: s.paused_runs ?? [],
