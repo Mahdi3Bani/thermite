@@ -53,7 +53,7 @@ The check sends one short request through the rig's model route, the same way it
 | Claude Code | Run `echo <word>` with its Bash tool, the only tool it is given |
 | Codex | Run `echo <word>` with the Codex CLI's shell tool, as the `model-check` user, through the harness's model proxy |
 
-The details record the model, the time in seconds, whether a tool was called, the tokens in and out, the last error and the reply's text (first 300 characters). With Pi they also record the base URL, the reply's stop reason, whether it held thinking, the context window (the owner's [cap](../how-to/models/connect-a-provider.md#cap-the-models-context-window) when it is lower than the provider's window) and the reply limit. With OpenCode they also record the base URL, and with Claude Code the subscription's usage.
+The details record the model, the time in seconds, whether a tool was called, the tokens in and out, the last error and the reply's text (first 300 characters). With Pi they also record the base URL, the reply's stop reason, whether it held thinking, the context window (the owner's [cap](../how-to/models/connect-a-provider.md#cap-the-models-context-window) when it is lower than the provider's window) and the reply limit. With OpenCode and Codex they also record the base URL, and with Claude Code the subscription's usage.
 
 ### Results
 
