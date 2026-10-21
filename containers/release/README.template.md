@@ -41,6 +41,18 @@ Keep the folder: it holds your tokens. To stop Thermite, run `docker compose dow
 - [Your first run](@@REPO_URL@@/blob/@@TAG@@/docs/_site/src/content/docs/tutorials/first-run.md): the quick start. It continues from step 4.
 - [Install Thermite on one machine](@@REPO_URL@@/blob/@@TAG@@/docs/_site/src/content/docs/how-to/install/one-machine.md): settings, updates and rigs on other machines.
 
+## What is in this release
+
+[CHANGELOG.md](@@REPO_URL@@/blob/@@TAG@@/CHANGELOG.md) lists what this release has: installs from images, rigs on your machines, clusters and RunPod, the three campaign modes, the agents' harnesses and models, MCP servers for the agents, and the dashboard, REST API and MCP that steer it all.
+
+## Known limits
+
+Read [Known limits](@@REPO_URL@@/blob/@@TAG@@/docs/_site/src/content/docs/reference/known-limits.md) before you give Thermite a model. Thermite's agents run code that a model writes, on your computer. Versions 0.x make no upgrade promise.
+
+## Report a problem
+
+Open an issue at <@@REPO_URL@@/issues>, with what you ran, what you saw and the output of `thermite doctor`. Report a security problem privately, as [SECURITY.md](@@REPO_URL@@/blob/@@TAG@@/SECURITY.md) says, never in a public issue.
+
 ## The images
 
 The compose file pins each image by its digest. The same images also have the tags below.
@@ -55,4 +67,4 @@ The compose file pins each image by its digest. The same images also have the ta
 
 The compose file runs the CPU harness. Control sets rigs up on other machines and clusters from the CPU harness, the CUDA harness (for GPU rigs) and the supervisor. It launches rigs on RunPod from the rig image: the CUDA harness and the supervisor in one container. The images do not contain Claude Code.
 
-The source code is at <@@REPO_URL@@>, under the MIT license.
+The source code is at <@@REPO_URL@@>, under the MIT license. The harness images also carry OpenCode (MIT) and the Codex CLI (Apache-2.0), each with its license.

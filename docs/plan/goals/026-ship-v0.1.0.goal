@@ -28,6 +28,18 @@ When every other v0.1.0 goal is verified:
 
 This is the first release that people outside the project can install and test.
 
+## Steps for the owner
+
+The owner merges into `main` and makes the tag (2026-10-20: "I will handle merging to main." and "We aren't ready for version tag imo."). When the owner says the project is ready:
+
+1. **Check what is left.** The release plan lists each goal's state; the goals left open say what each waits for. Run the full check (`npm run check`) and the acceptances the last changes need on the tip of `v1/build`.
+2. **Date the changelog.** In `CHANGELOG.md`, rename `[Unreleased]: v0.1.0, the first public release` to `[0.1.0] - <date>`, and commit it on `v1/build`.
+3. **Move `main`.** `main` follows `v1/build` as a fast-forward: `git fetch . v1/build:main`, then `git push origin v1/build main`. Cloudflare Pages rebuilds the docs site from `main`.
+4. **Tag.** On `main`: `git tag -a v0.1.0 -m "Thermite v0.1.0"` and `git push origin v0.1.0`. The release workflow builds and publishes the images (control, the CPU and CUDA harnesses, the supervisor and the rig image), writes the release bundle (`compose.yaml` pinned by digest, and its README as the notes) and attaches it to a draft release.
+5. **Check the packages.** Each image must pull without signing in: `docker pull` each `ghcr.io/…:0.1.0` from a machine that is signed out. A package that was never public before (control's, the supervisor's) may need its visibility set to public once, in the repository's packages.
+6. **Publish.** Read the draft release's notes (what is in the release, the known limits, how to report a problem, the images), change what needs it, and publish it.
+7. **Test from the release.** On a clean machine, follow [Your first run](../../_site/src/content/docs/tutorials/first-run.md) from the published bundle.
+
 ## Done when
 
 - [ ] `main` holds the release, and the tag and the images exist.
@@ -51,6 +63,8 @@ None.
 - 2026-10-19: Goal written from the v0.1.0 release plan.
 - 2026-10-20: Depends on every v0.1.0 goal in the release plan, goals 001, 060 and 062 to 068 included; goal 006 was dropped into 060.
 - 2026-10-20: `CHANGELOG.md` drafted under Unreleased from what is built, and linked from the README. Bring it up to date, and give it the version and date, at the tag.
+- 2026-10-21: The release notes are the bundle's README (`containers/release/README.template.md`); it now also says what is in the release (the changelog at the tag), the known limits and how to report a problem, and names the third-party programs in the harness images. The changelog has the latest work. The steps for the owner are above.
+- 2026-10-21: The quick start on a clean Linux machine (a Debian 13 VM with Docker 29) went through install, start, sign-in and the isolation check, then failed twice at the judge's smoke check: the no-op change came out `inconclusive` instead of `neutral`, as the smoke check reports when a machine's timing is too noisy (the VM shares its host). A decision for the owner: whether the smoke check passes, with a note on noisy timing, when only the no-op is inconclusive.
 
 ---
 
