@@ -21,11 +21,29 @@ Thermite's core is built: the judge, control and its dashboard, the agents, and 
 
 - the dashboard's new campaign, run and live views, with steering as one message box. It is done ([goal 063](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/063-scan-and-steer.goal));
 - one experiment queue for each run, which the planner coordinates. It is done ([goal 064](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/064-experiment-queue.goal));
-- journals and a research corpus from every campaign: the agents' field notes, research in every mode, and Thermite's own knowledge base, with a folder for each campaign that holds everything its runs produce and that later runs' workers, planner and advisors search. It is done ([goal 065](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/065-journals-and-corpus.goal)).
+- journals and a research corpus from every campaign: the agents' field notes, research in every mode, and Thermite's own knowledge base, with a folder for each campaign that holds everything its runs produce and that later runs' workers, planner and advisors search. It is done ([goal 065](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/065-journals-and-corpus.goal));
+- rules for the planner that name the run's directions, in plain words or picked as `:name:` on the run's **Planner** tab. It is done ([goal 066](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/066-direction-rules.goal); [Make a rule: tell the planner](../how-to/campaigns/choose-what-runs-next.md#make-a-rule-tell-the-planner));
+- MCP servers for a campaign's agents, named by its kit. It is done ([goal 068](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/068-mcp-servers-for-agents.goal); [Give agents MCP tools](../how-to/campaigns/give-agents-mcp-tools.md)).
 
-Also built: a release workflow and bundle, version checks between control and rigs, `thermite doctor`, a sample project, the Codex CLI as a worker harness for a ChatGPT subscription ([Run the agents in Codex](../how-to/models/chatgpt-subscription.md#run-the-agents-in-codex)), and rigs on RunPod, which the owner launches, stops, starts and terminates over REST, MCP and the command line ([Run a rig on RunPod](../how-to/install/runpod-rig.md)).
+Also built:
 
-Still to come in v0.1.0: the first published images, which the release's tag publishes; the dashboard's screens for rig versions and for RunPod rigs; and a run of the RunPod steps on a real pod. Two planned changes to running campaigns are not built yet: rules that name only directions, picked from a list ([goal 066](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/066-direction-rules.goal)); and MCP servers for a campaign's agents, named by its kit ([goal 068](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/068-mcp-servers-for-agents.goal)).
+- a release workflow and bundle, and `thermite doctor`;
+- version checks between control and rigs, with each rig's version and reporting state on the dashboard;
+- a sample project;
+- the Codex CLI as a worker harness for a ChatGPT subscription ([Run the agents in Codex](../how-to/models/chatgpt-subscription.md#run-the-agents-in-codex));
+- Start a run over REST, MCP and the command line, as well as from the campaign's page;
+- rigs on RunPod ([Run a rig on RunPod](../how-to/install/runpod-rig.md)). The owner launches them from the dashboard or over REST, MCP and the command line, and stops, starts and terminates them. A RunPod rig can stop by itself when no run is at work on it.
+
+In progress:
+
+- copying a campaign, to give a second model the same campaign from zero ([goal 069](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/069-copy-a-campaign.goal); [Compare two models from zero](../how-to/campaigns/start-from-dashboard.md#compare-two-models-from-zero)). It works over REST, MCP and the command line; a **Copy** button on the campaign's page is still to come;
+- a research folder that research-mode workers search with ordinary tools and write to. It is built, and its first real research runs are under way ([goal 062](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/062-research-folder.goal)).
+
+Still to come in v0.1.0:
+
+- the first published images, which the release's tag publishes;
+- the RunPod steps run on a real pod, from launch to terminate;
+- sign-in tests with real Claude and ChatGPT subscriptions.
 
 The [roadmap file](https://github.com/iammrduncan/thermite/blob/main/docs/plan/roadmap.md) lists every v0.1.0 goal with its status, and the [release plan](https://github.com/iammrduncan/thermite/blob/main/docs/plan/release-v0.1.0.md) gives the release's scope and the steps to ship it.
 
