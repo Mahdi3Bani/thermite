@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { canonicalSha } from "./canonical.ts";
+import { AgentsContext } from "./compaction.ts";
 import { DURATION_PATTERN, parseDuration } from "./duration.ts";
 import { McpUses } from "./mcp.ts";
 
@@ -125,6 +126,12 @@ const Common = {
   max_duration: DurationSchema.optional(),
   search_policy: SearchPolicy.optional(),
   notes: z.string().optional(),
+  /**
+   * The campaign's own context window and compaction point for all its runs' agents (goal 070):
+   * each agent's window is the lower of this and its own model's, and this point replaces the
+   * rig's. Optional and without a default, so contracts written before it keep their hash.
+   */
+  agents_context: AgentsContext.optional(),
 };
 
 const EditPolicy = {

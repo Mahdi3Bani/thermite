@@ -50,25 +50,29 @@ export interface RigModelRequest {
    */
   harness?: Harness | undefined;
   effort?: Effort | undefined;
-  /** A cap on the workers' context window in tokens (goal 070). */
+  /** A cap on the agent's context window in tokens (goal 070): every agent has its own. */
   contextWindow?: number | undefined;
-  /** The workers' compaction point, in percent of the window (goal 070). */
+  /** The agent's compaction point, in percent of the window (goal 070). */
   compactAt?: number | undefined;
 }
 
-/** One agent's model on control, and the harness it runs in; the workers' has its cap too. */
+/**
+ * One agent's model on control, the harness it runs in (goal 073), and its own cap and
+ * compaction point (goal 070).
+ */
 export interface AgentModel {
   provider: string;
   model: string;
   effort: Effort | null;
   /** The harness it runs in: the owner's choice, else what its model needs (goal 073). */
   harness: Harness;
-}
-export interface WorkersModel extends AgentModel {
+  /** A cap on the model's context window in tokens; null: the provider's window. */
   context_cap: number | null;
   /** The compaction point in percent of the window; null: the harness's default. */
   compact_at: number | null;
 }
+/** The workers' model: as every agent's. */
+export type WorkersModel = AgentModel;
 /** Each agent's model on control; null: its default (Edit rig's first choice in its row). */
 export type AgentModels = { workers: WorkersModel | null } & Record<AgentRole, AgentModel | null>;
 
@@ -77,7 +81,7 @@ export interface RigModelOutcome {
   ok: string;
   /** The window the agent's model route carries, in tokens; null: unknown, or the model cleared. */
   contextWindow: number | null;
-  /** The workers' compaction point (percent); null: the default, or the model cleared. */
+  /** The agent's compaction point (percent); null: the default, or the model cleared. */
   compactAt?: number | null | undefined;
   agents: AgentModels;
 }
@@ -122,13 +126,13 @@ export const rigModelFields = {
     .number()
     .int()
     .optional()
-    .describe("The workers only: a cap on the model's context window in tokens"),
+    .describe("Any agent: a cap on its model's context window in tokens"),
   // Any number: one that is not a whole percent in range is refused in words.
   compact_at: z
     .number()
     .optional()
     .describe(
-      `The workers only: the share of the context window, in percent (${COMPACT_AT_MIN} to ${COMPACT_AT_MAX}), at which a conversation is compacted; left out, ${COMPACT_AT_DEFAULT}`,
+      `Any agent: the share of the context window, in percent (${COMPACT_AT_MIN} to ${COMPACT_AT_MAX}), at which its conversation is compacted; left out, ${COMPACT_AT_DEFAULT}`,
     ),
 };
 
@@ -148,7 +152,6 @@ export const rigModelRequest = (b: RigModelBody): RigModelRequest => ({
 
 /** Why a request has the wrong fields for its agent, in words; undefined when its shape is right. */
 export function rigModelShapeRefusal(r: RigModelRequest): string | undefined {
-  const agent = r.agent ?? "workers";
   if (r.clear) {
     if (
       r.provider !== undefined ||
@@ -162,10 +165,8 @@ export function rigModelShapeRefusal(r: RigModelRequest): string | undefined {
     return undefined;
   }
   if (!r.provider || !r.model) return "Give a provider and a model, or clear: true.";
-  if (agent !== "workers" && r.contextWindow !== undefined)
-    return "Only the workers take a context window cap. A planner with no model of its own uses the workers' cap.";
-  if (agent !== "workers" && r.compactAt !== undefined)
-    return "Only the workers take a compaction point. A planner with no model of its own uses the workers' point.";
+  // Every agent takes its own harness (goal 073), cap and point (goal 070); a planner with no
+  // model of its own has none to set, and uses the workers'.
   if (r.compactAt !== undefined) return compactAtRefusal(r.compactAt);
   return undefined;
 }
@@ -224,6 +225,8 @@ export function agentModelsOf(store: ControlStore, rig: string): AgentModels {
       model: r.model,
       effort: r.effort,
       harness: r.harness ?? (p ? neededHarness(p, r.model) : "pi"),
+      context_cap: r.contextCap ?? null,
+      compact_at: r.compactAt ?? null,
     };
   };
   return {
@@ -251,8 +254,8 @@ export const rigModelAnswer = (rig: string, r: RigModelRequest, out: RigModelOut
   agent: r.agent ?? "workers",
   model: r.clear ? null : (r.model ?? null),
   context_window: out.contextWindow,
-  // The workers' compaction point (goal 070): null, the default.
-  ...((r.agent ?? "workers") === "workers" ? { compact_at: out.compactAt ?? null } : {}),
+  // The agent's compaction point (goal 070): null, the default.
+  compact_at: out.compactAt ?? null,
   said: out.ok,
   agents: out.agents,
 });

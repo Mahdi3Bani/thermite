@@ -175,3 +175,118 @@ describe("thermite campaign copy (goal 069)", () => {
     }
   });
 });
+
+describe("thermite campaign context, and campaign copy's context options (goal 070)", () => {
+  test("sets a campaign's own context settings through control, removes them, and gives a copy its own", async () => {
+    const keys = generateSigningKeys();
+    const store = new ControlStore(":memory:");
+    const api = createControlApi(
+      store,
+      { admin: "owner-token-abcdef", rigs: {} },
+      keys.privateKeyPem,
+    );
+    const goal = JSON.parse(
+      readFileSync(join(import.meta.dirname, "../../examples/contracts/goal-example.json"), "utf8"),
+    ) as Record<string, unknown>;
+    const contract = parseContract({ ...goal, campaign: "sort-speed" });
+    assert.ok(contract.ok);
+    store.ingest({
+      rig: "rig-a",
+      ledger_id: "ledger-rig-a",
+      cursor: 0,
+      next: 0,
+      generated_at: new Date().toISOString(),
+      events: [],
+      summary: {},
+    });
+    issueCommand(store, keys.privateKeyPem, {
+      rig: "rig-a",
+      kind: "assign_campaign",
+      payload: {
+        run: "sort-speed-1",
+        contract: contract.contract,
+        contract_sha: contract.sha,
+        imports: [],
+      },
+      issuedBy: "owner:api",
+    });
+    const server = serve({ fetch: api.fetch, hostname: "127.0.0.1", port: 0 });
+    await new Promise((r) => server.once("listening", r));
+    const control = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    try {
+      const dir = mkdtempSync(join(tmpdir(), "thermite-campaign-context-"));
+      const owner = join(dir, "owner-token");
+      writeFileSync(owner, "owner-token-abcdef\n", { mode: 0o600 });
+      const at = ["--control", control, "--token-file", owner];
+
+      const set = await cli(
+        "campaign",
+        "context",
+        "sort-speed",
+        "--context-window",
+        "131072",
+        "--compact-at",
+        "70",
+        ...at,
+      );
+      assert.equal(set.code, 0, set.stderr);
+      const out = JSON.parse(set.stdout) as Record<string, unknown>;
+      // Its first saved version, newer than the one assigned (version 1).
+      assert.equal(out.version, 2);
+      assert.deepEqual(out.agents_context, { context_window: 131_072, compact_at: 70 });
+      assert.match(
+        set.stderr,
+        /^Version 2 of sort-speed is saved\. Its runs' agents: a context window of 131,072 tokens, compaction at 70% of the window\./,
+      );
+      const [v2] = store.campaignVersions("sort-speed");
+      assert.ok(v2);
+      assert.deepEqual((v2.contract as Record<string, unknown>).agents_context, {
+        context_window: 131_072,
+        compact_at: 70,
+      });
+
+      // Without either option: removed, in a new version.
+      const none = await cli("campaign", "context", "sort-speed", ...at);
+      assert.equal(none.code, 0, none.stderr);
+      assert.equal((JSON.parse(none.stdout) as { agents_context: unknown }).agents_context, null);
+      const v3 = store.campaignVersions("sort-speed")[0];
+      assert.ok(v3);
+      assert.equal("agents_context" in (v3.contract as object), false);
+      // Refused in words before anything is sent, or by control.
+      const bad = await cli("campaign", "context", "sort-speed", "--compact-at", "99", ...at);
+      assert.equal(bad.code, 2);
+      assert.match(bad.stderr, /^--context-window and --compact-at: .*from 50 to 95/);
+      const unknown = await cli("campaign", "context", "nope", ...at);
+      assert.equal(unknown.code, 2);
+      assert.match(unknown.stderr, /-> 404 .*no saved version or earlier assignment of nope/);
+      const noControl = await cli("campaign", "context", "sort-speed");
+      assert.deepEqual(
+        [noControl.code, noControl.stderr.trim()],
+        [2, "give --control and --token-file: control keeps the campaign"],
+      );
+      assert.equal((await cli("campaign", "context", ...at)).code, 2);
+
+      // A copy with its own settings, in place of its source's.
+      const copied = await cli(
+        "campaign",
+        "copy",
+        "sort-speed",
+        "sort-speed-b",
+        "--context-window",
+        "65536",
+        ...at,
+      );
+      assert.equal(copied.code, 0, copied.stderr);
+      assert.deepEqual((JSON.parse(copied.stdout) as { agents_context: unknown }).agents_context, {
+        context_window: 65_536,
+      });
+      const copy = store.campaignVersions("sort-speed-b")[0];
+      assert.ok(copy);
+      assert.deepEqual((copy.contract as Record<string, unknown>).agents_context, {
+        context_window: 65_536,
+      });
+    } finally {
+      server.close();
+    }
+  });
+});

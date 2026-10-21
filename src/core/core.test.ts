@@ -10,6 +10,7 @@ import {
   signEnvelope,
   verifyCommand,
 } from "./commands.ts";
+import { agentsContextRefusal, agentsContextWords, contextApplied } from "./compaction.ts";
 import { parseContract } from "./contract.ts";
 import { parseDuration } from "./duration.ts";
 import { globToRegExp, matchesAny } from "./glob.ts";
@@ -125,6 +126,77 @@ describe("contracts", () => {
       a.ok && before.ok && a.sha !== before.sha,
       "the folder is part of the contract's hash",
     );
+  });
+
+  test("a campaign's own context settings (agents_context): optional, checked, and in the hash only when set", () => {
+    const before = parseContract(hillClimbFixture);
+    assert.ok(before.ok && !("agents_context" in before.contract));
+    // A contract written before it keeps its hash: no default is filled in.
+    assert.equal(before.sha, canonicalSha(before.contract));
+    const set = parseContract({
+      ...hillClimbFixture,
+      agents_context: { context_window: 131_072, compact_at: 70 },
+    });
+    assert.ok(set.ok && before.ok && set.sha !== before.sha);
+    assert.deepEqual(set.ok && set.contract.agents_context, {
+      context_window: 131_072,
+      compact_at: 70,
+    });
+    for (const bad of [
+      { context_window: 4095 },
+      { context_window: 100_000_001 },
+      { context_window: 1.5 },
+      { compact_at: 49 },
+      { compact_at: 96 },
+      { compact_at: 80.5 },
+      { window: 131_072 },
+    ]) {
+      const r = parseContract({ ...hillClimbFixture, agents_context: bad });
+      assert.ok(!r.ok, JSON.stringify(bad));
+      assert.ok(
+        r.errors.some((e) => e.startsWith("agents_context")),
+        r.errors.join("; "),
+      );
+    }
+  });
+
+  test("the window an agent works with: the lower wins, and the campaign's point replaces its own", () => {
+    assert.deepEqual(contextApplied({ contextWindow: 204_800, compactAt: 80 }, undefined), {
+      contextWindow: 204_800,
+      compactAt: 80,
+    });
+    assert.deepEqual(contextApplied({ contextWindow: 204_800 }, { context_window: 131_072 }), {
+      contextWindow: 131_072,
+      compactAt: undefined,
+    });
+    // The rig's cap (or a smaller model) below the campaign's: the rig's.
+    assert.deepEqual(
+      contextApplied(
+        { contextWindow: 65_536, compactAt: 90 },
+        { context_window: 131_072, compact_at: 70 },
+      ),
+      { contextWindow: 65_536, compactAt: 70 },
+    );
+    // A window nobody lists (0): the campaign's as given.
+    assert.deepEqual(contextApplied({ contextWindow: 0 }, { context_window: 32_768 }), {
+      contextWindow: 32_768,
+      compactAt: undefined,
+    });
+    assert.deepEqual(contextApplied({ contextWindow: 0 }, { compact_at: 60 }), {
+      contextWindow: 0,
+      compactAt: 60,
+    });
+    assert.equal(agentsContextRefusal({ context_window: 131_072, compact_at: 70 }), undefined);
+    assert.match(
+      String(agentsContextRefusal({ context_window: 100 })),
+      /from 4,096 to 100,000,000/,
+    );
+    assert.match(String(agentsContextRefusal({ compact_at: "70" })), /from 50 to 95/);
+    assert.equal(
+      agentsContextWords({ context_window: 131_072, compact_at: 70 }),
+      "a context window of 131,072 tokens, compaction at 70% of the window",
+    );
+    assert.equal(agentsContextWords(undefined), "none: each agent keeps the rig's settings");
   });
 
   test("rejects unknown modes and missing edit policy", () => {

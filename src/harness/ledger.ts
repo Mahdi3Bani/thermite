@@ -453,6 +453,11 @@ export class Ledger {
         agents: input.agents !== false,
         promotion: input.promotion ?? null,
         ...(briefing.length ? { briefing: briefing.length } : {}),
+        // The campaign's own context settings for the run's agents, when it sets any (goal 070):
+        // with each agent's route, they say what the agents work with.
+        ...(input.contract.agents_context && input.agents !== false
+          ? { agents_context: input.contract.agents_context }
+          : {}),
       });
     });
   }

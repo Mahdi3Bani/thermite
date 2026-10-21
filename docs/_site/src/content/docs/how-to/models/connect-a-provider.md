@@ -106,7 +106,8 @@ An agent does the same with [`set_rig_model`](../../reference/mcp-tools.md#set_r
 - The cap is at least 4,096 tokens, and at most the provider's window. A larger one is refused: `my-model takes at most 204,800 tokens.` When the provider lists no window, control uses the cap as given.
 - Each request sets the cap anew. Give the model again without `context_window` and the cap goes: the rig gets the provider's window.
 - **Use** on this page and **Edit rig** keep the cap while the rig keeps the same model. Another model there removes it.
-- The cap is for the workers' model, and for the planner when it follows the workers. A model you give one agent on **Edit rig** keeps its provider's window.
+- This cap is for the workers' model, and for the planner when it follows the workers. The planner with its own model and each advisor take their own cap, with `agent` in the same request: see [Set an agent's context window and compaction](model-per-agent.md#set-an-agents-context-window-and-compaction).
+- A campaign can set its own window for all its runs; each agent then works with the lower of the two. See [Set a campaign's own context window](model-per-agent.md#set-a-campaigns-own-context-window).
 
 After a minute, the rig's row under **Harness and model for each rig** says "Its agents run under Pi with my-model from my-litellm. Its context window: 131,072 tokens (capped; the provider allows 204,800)." The model check's details record the window the rig runs with: see [Rig checks](../../reference/rig-checks.md#model-route-check).
 
@@ -132,7 +133,7 @@ Control answers with the point it keeps, and says it in words: `"compact_at":70`
 - A point outside 50 to 95 is refused: `The compaction point is a whole percent of the context window, from 50 to 95.`
 - Each request sets the point anew, as it sets the cap. Give the model again without `compact_at` and the rig goes back to 80%.
 - **Use** on this page and **Edit rig** keep the point while the rig keeps the same model. Another model there removes it.
-- The point is for the workers' model, and for the planner when it follows the workers.
+- This point is for the workers' model, and for the planner when it follows the workers. The planner with its own model and each advisor take their own point, and a campaign can set its own for all its runs: see [Give each agent its own model](model-per-agent.md#set-an-agents-context-window-and-compaction).
 
 After a minute, the rig's row under **Harness and model for each rig** ends with "Its conversations are compacted at 70% of the window." Each compaction shows in the run's **History** and in the trial's **Live** view, with the summary. [Limits and pacing](../../reference/limits-and-pacing.md#compaction) lists what each harness takes: Pi, OpenCode v2, Codex and Claude Code each compact in their own way.
 

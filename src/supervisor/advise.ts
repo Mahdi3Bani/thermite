@@ -3,11 +3,14 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { log } from "../common/env.ts";
+import type { AgentsContext } from "../core/compaction.ts";
 import type { NoteInput } from "../core/journal.ts";
 import type { LiveKind } from "../core/live.ts";
 import type { McpUse } from "../core/mcp.ts";
 import type { McpCaller, McpGateway } from "../harness/mcp-gateway.ts";
 import {
+  type AdvisorCompaction,
+  type AdvisorKeeper,
   type AdvisorMcp,
   type AdvisorsConfig,
   type AdvisorTools,
@@ -15,6 +18,7 @@ import {
   auditOne,
   reviewOne,
   teacherRound,
+  withRunContext,
 } from "./advisors.ts";
 import type { PastSearch } from "./past-mcp.ts";
 
@@ -137,6 +141,39 @@ interface RunRow {
   owner_messages_waiting?: { teachers?: number[]; auditor?: number[]; panel?: number[] };
   /** The MCP servers its kit names, with the agents that get each (goal 068). */
   mcp_servers?: McpUse[];
+  /** The campaign's own context settings, which its advisors' calls take too (goal 070). */
+  agents_context?: AgentsContext | null;
+}
+
+/** A name safe for a file: other characters become dashes. */
+const fileSafe = (s: string) => s.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 80) || "advisor";
+
+/**
+ * Where an advisor's conversation is kept before each compaction (goal 070): the supervisor's
+ * home, beside its records of the advisors' rounds (advisors/), under compactions/<run>/. Never
+ * the run's research folder, which the run's agents read: an advisor's conversation may hold an
+ * outside knowledge base's results or a fetched page. Each compaction is a line in the run's
+ * live view.
+ */
+export function advisorKeeper(
+  home: string,
+  run: string | undefined,
+  say?: ((text: string) => void) | undefined,
+): AdvisorKeeper {
+  const folder = `compactions/${fileSafe(run ?? "no-run")}`;
+  return {
+    keep: (advisor, call, n, markdown) => {
+      const dir = join(home, "advisors", folder);
+      mkdirSync(dir, { recursive: true });
+      const name = `${fileSafe(call)}-${fileSafe(advisor)}-${n}.md`;
+      writeFileSync(join(dir, name), markdown);
+      return `the supervisor's records, advisors/${folder}/${name}`;
+    },
+    done: (c) =>
+      say?.(
+        `advisor ${c.advisor}: its conversation was compacted (compaction ${c.number}) at about ${c.tokens_before.toLocaleString("en-US")} tokens, down to about ${c.tokens_after.toLocaleString("en-US")}. It goes on.${c.how === "trimmed" ? " The summary failed, so the bodies of older tool results were left out." : ""}${c.kept ? ` The conversation before it is kept in ${c.kept}.` : " The conversation before it was not kept."}${c.error ? ` (${clip(c.error, 300)})` : ""}`,
+      ),
+  };
 }
 
 /** An owner's message in a brief or package. */
@@ -242,11 +279,31 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
   // (read once a round). The supervisor calls them; advisors that may fetch any page get none,
   // which the run's live view says once.
   let runRows: RunRow[] | undefined;
+  const runsNow = async () => {
+    runRows ??= ((await api("GET", "/v1/runs")) as { runs: RunRow[] }).runs;
+    return runRows;
+  };
+  // A run's advisors with the campaign's own context settings (goal 070): each runtime's window
+  // is the lower of its own and the campaign's, and the campaign's point replaces its own.
+  const configFor = async (run: string | undefined): Promise<AdvisorsConfig> => {
+    const ctx = run ? (await runsNow()).find((r) => r.id === run)?.agents_context : undefined;
+    if (!ctx) return cfg.advisors;
+    const a = cfg.advisors;
+    return {
+      ...a,
+      teachers: a.teachers.map((t) => withRunContext(t, ctx)),
+      combiner: a.combiner ? withRunContext(a.combiner, ctx) : undefined,
+      auditor: a.auditor ? withRunContext(a.auditor, ctx) : undefined,
+      panel: a.panel.map((p) => withRunContext(p, ctx)),
+    };
+  };
+  // Each call's conversation before a compaction, kept with the supervisor's records (goal 070).
+  const keeperFor = (run: string | undefined): AdvisorKeeper =>
+    advisorKeeper(cfg.home, run, (text) => say(run, "status", text));
   const mcpFor = async (run: string | undefined): Promise<AdvisorMcp | undefined> => {
     const m = cfg.mcp;
     if (!run || !m) return undefined;
-    runRows ??= ((await api("GET", "/v1/runs")) as { runs: RunRow[] }).runs;
-    m.uses.set(run, runRows.find((r) => r.id === run)?.mcp_servers ?? []);
+    m.uses.set(run, (await runsNow()).find((r) => r.id === run)?.mcp_servers ?? []);
     const servers = m.gateway.given(run, "advisors").map((g) => g.name);
     if (!servers.length) return undefined;
     if (domains.includes("*")) {
@@ -445,9 +502,11 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         closed(brief);
         const given = (brief.owner_messages ?? []).filter((m) => !m.read).map((m) => m.id);
         const run = await teacherRound({
-          config: cfg.advisors,
+          // With the campaign's own context settings, when it sets any (goal 070).
+          config: await configFor(inst.id),
           run: inst.id,
           brief,
+          keeper: keeperFor(inst.id),
           tools: {
             ...toolsFor(),
             // The run's MCP servers for its advisors (none with an open fetch: mcpFor says so).
@@ -538,8 +597,10 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
       const owner = (pkg.owner_messages ?? []).filter((m) => !told.has(m.id));
       try {
         const r = await auditOne({
-          config: cfg.advisors,
+          // With the campaign's own context settings, when it sets any (goal 070).
+          config: await configFor(pkg.run),
           pkg: { ...pkg, owner_messages: owner },
+          keeper: keeperFor(pkg.run),
           tools: {
             ...toolsFor(),
             mcp: await mcpFor(pkg.run),
@@ -589,7 +650,13 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         const noted = pkg.run
           ? await notesOut(pkg.run, "auditor", cfg.advisors.auditor.name, r.output.journal)
           : undefined;
-        record(`audit-${pkg.attempt}`, { decision: r.output, posted, queued, noted });
+        record(`audit-${pkg.attempt}`, {
+          decision: r.output,
+          posted,
+          queued,
+          noted,
+          ...(r.compactions?.length ? { compactions: r.compactions } : {}),
+        });
       } catch (err) {
         fail(`audit of ${pkg.attempt}`, err, pkg.run);
       }
@@ -618,14 +685,19 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         const answers: { message: number; text: string; advisor: string }[] = [];
         const journal: { by: string; notes: NoteInput[] }[] = [];
         const mcp = await mcpFor(pkg.run);
-        for (const runtime of cfg.advisors.panel) {
+        // With the campaign's own context settings, when it sets any (goal 070).
+        const panel = (await configFor(pkg.run)).panel;
+        const compactions: AdvisorCompaction[] = [];
+        for (const runtime of panel) {
           const r = await reviewOne({
             runtime,
             pkg: { ...pkg, owner_messages: owner },
             ...(pkg.run && pkg.past_research ? { pastSearch: pastSearchFor(pkg.run) } : {}),
             ...(mcp ? { mcp } : {}),
+            keeper: keeperFor(pkg.run),
           });
           count(r);
+          compactions.push(...(r.compactions ?? []));
           if (!r.output) continue;
           results.push({ reviewer: runtime.name, pass: r.output.pass, reasons: r.output.reasons });
           for (const a of r.output.answers) answers.push({ ...a, advisor: runtime.name });
@@ -668,7 +740,12 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         const noted: unknown[] = [];
         if (pkg.run)
           for (const j of journal) noted.push(await notesOut(pkg.run, "panel", j.by, j.notes));
-        record(`review-${pkg.id}`, { results, posted, noted });
+        record(`review-${pkg.id}`, {
+          results,
+          posted,
+          noted,
+          ...(compactions.length ? { compactions } : {}),
+        });
       } catch (err) {
         fail(`review ${pkg.id}`, err, pkg.run);
       }

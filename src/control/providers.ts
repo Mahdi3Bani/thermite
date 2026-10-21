@@ -1,3 +1,4 @@
+import { CONTEXT_WINDOW_MAX, CONTEXT_WINDOW_MIN } from "../core/compaction.ts";
 import type { ProviderModel, ProviderType } from "./store.ts";
 
 /**
@@ -37,10 +38,10 @@ export const sameModel = (reported: string | null | undefined, given: string): b
 
 /**
  * A cap on the context window of a rig's model (goal 070): at least this many tokens, and at most
- * what a model route carries.
+ * what a model route carries (a campaign's own window has the same limits).
  */
-export const CONTEXT_CAP_MIN = 4096;
-export const CONTEXT_CAP_MAX = 100_000_000;
+export const CONTEXT_CAP_MIN = CONTEXT_WINDOW_MIN;
+export const CONTEXT_CAP_MAX = CONTEXT_WINDOW_MAX;
 
 /** Tokens as people read them: 131,072. */
 const tokens = (n: number) => n.toLocaleString("en-US");

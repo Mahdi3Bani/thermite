@@ -296,6 +296,9 @@ export function createHarnessApi(
         // The MCP servers its kit names, with the agents that get each: the advisors' share is
         // the supervisor's to call (goal 068).
         mcp_servers: service.mcpUses(i.id),
+        // The campaign's own context settings, which the advisors' calls for the run take too
+        // (goal 070); null: none.
+        agents_context: service.ledger.getContract(i.campaign, i.version)?.agents_context ?? null,
       })),
     }),
   );

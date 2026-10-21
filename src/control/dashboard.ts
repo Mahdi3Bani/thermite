@@ -16,6 +16,7 @@ import { FolderSchema, MAX_LANES } from "../core/contract.ts";
 import { type McpUse, McpUses, sameUses } from "../core/mcp.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import type { ClusterRigRequest, ControlActions } from "./actions.ts";
+import { campaignContract, contextApplies, contextAppliesWords } from "./campaign-context.ts";
 import { CHATGPT_API, CHATGPT_REDIRECT, ChatGPTLogins } from "./chatgpt.ts";
 import {
   type ClusterFacts,
@@ -1581,6 +1582,11 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     }
     if (!r.ok) return refuse(r.errors.join(" "));
     if (split !== undefined) sendSplit(rig.id, split, by);
+    // The campaign's own context settings, and what each agent works with on this rig (goal 070).
+    const context = agents
+      ? contextApplies(store, rig.id, campaignContract(store, campaign))
+      : undefined;
+    if (context) notes.push(contextAppliesWords(context, rig.id));
     return {
       state: "started",
       campaign,
@@ -1590,6 +1596,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       woke: r.woke,
       pauses: busy?.id,
       notes,
+      ...(context ? { context } : {}),
     };
   };
   if (opts.actions) opts.actions.startRun = startARun;
@@ -3925,7 +3932,8 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
         };
       }
       // The harness named, else what the model needs (goal 073): MCP and REST set what they
-      // are asked.
+      // are asked. So are the agent's own cap and point, set anew by each call as the workers'
+      // are (goal 070).
       const rp = choice ? store.provider(r.provider ?? "") : undefined;
       const given = giveAgentModel(
         rig,
@@ -3934,15 +3942,14 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
         r.effort,
         by,
         r.harness ?? (rp ? neededHarness(rp, r.model ?? "") : undefined),
+        r.contextWindow ?? null,
+        r.compactAt ?? null,
       );
       if ("error" in given) return given;
-      // The agent's route carries the provider's window (a cap is the workers' alone).
-      const listed = choice
-        ? store.provider(r.provider ?? "")?.models.find((m) => m.id === r.model)?.context_window
-        : undefined;
       return {
-        ok: `Control sent ${given.ok} to ${rig}. The rig takes the change in less than one minute.`,
-        contextWindow: listed || null,
+        ok: `Control sent ${given.ok} to ${rig}. The rig takes the change in less than one minute.${given.words}`,
+        contextWindow: given.contextWindow || null,
+        compactAt: given.compactAt ?? null,
         agents: agentModelsOf(store, rig),
       };
     };
@@ -6605,7 +6612,10 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
    * empty choice) its default again: the workers' model for the planner, the rig's advisors file
    * for an advisor. `ok` is Edit rig's words for the change. `harness` (goal 073): where it runs;
    * left out (Edit rig, which has no harness on these rows yet), the one it has while it keeps
-   * the same model, else what the model needs.
+   * the same model, else what the model needs. `cap` and `at`: the agent's own cap on its
+   * model's window and its compaction point (goal 070), or null for none; left out (Edit rig's
+   * form, which has no field for them), the agent keeps its own while it keeps the same model, as
+   * giveRigModel does for the workers. `words` say the window and point in sentences.
    */
   const giveAgentModel = (
     rig: string,
@@ -6614,7 +6624,11 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     effort: Effort | undefined,
     by = "owner:ui",
     picked?: Harness | undefined,
-  ): { ok: string } | { error: string } => {
+    cap?: number | null,
+    at?: number | null,
+  ):
+    | { ok: string; contextWindow: number; compactAt: number | undefined; words: string }
+    | { error: string } => {
     if (!choice) {
       store.assignRoleModel(rig, role, null);
       store.audit(by, "agent_model_given", { rig, role, provider: null, model: null });
@@ -6623,6 +6637,9 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
           role === "planner"
             ? "the planner back to the workers' model"
             : `the ${role} back to the rig's advisors file`,
+        contextWindow: 0,
+        compactAt: undefined,
+        words: "",
       };
     }
     const [pRaw, mRaw] = choice.split("|");
@@ -6638,14 +6655,23 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     if (!p?.models.some((m) => m.id === model))
       return { error: `That provider does not list that model (${role}).` };
     const had = store.roleModels(rig)[role];
-    const harness =
-      picked ??
-      (had?.harness && had.provider === provider && had.model === model
-        ? had.harness
-        : neededHarness(p, model));
-    const refused = harnessRefusal(p, model, harness, `the ${role}`);
-    if (refused) return { error: refused };
-    store.assignRoleModel(rig, role, { provider, model, effort, harness });
+    const same = had?.provider === provider && had.model === model;
+    const harness = picked ?? (had?.harness && same ? had.harness : neededHarness(p, model));
+    const refusedHarness = harnessRefusal(p, model, harness, `the ${role}`);
+    if (refusedHarness) return { error: refusedHarness };
+    // The agent's own cap and compaction point (goal 070), checked and kept as the workers' are.
+    const listed = p.models.find((m) => m.id === model)?.context_window ?? 0;
+    const contextCap = cap === undefined ? (same ? had.contextCap : undefined) : (cap ?? undefined);
+    if (typeof cap === "number") {
+      const refused = contextCapRefusal(model, listed, cap);
+      if (refused) return { error: refused };
+    }
+    const compactAt = at === undefined ? (same ? had.compactAt : undefined) : (at ?? undefined);
+    if (typeof at === "number") {
+      const refused = compactAtRefusal(at);
+      if (refused) return { error: refused };
+    }
+    store.assignRoleModel(rig, role, { provider, model, effort, harness, contextCap, compactAt });
     store.audit(by, "agent_model_given", {
       rig,
       role,
@@ -6653,8 +6679,16 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       model,
       effort: effort ?? null,
       harness,
+      context_cap: contextCap ?? null,
+      compact_at: compactAt ?? null,
     });
-    return { ok: `a model for the ${role}` };
+    const capped = capWords(listed, contextCap);
+    return {
+      ok: `a model for the ${role}`,
+      contextWindow: cappedWindow(listed, contextCap),
+      compactAt,
+      words: `${capped ? ` Its context window: ${capped}.` : ""}${compactAt ? ` Its conversations are compacted at ${compactAtWords(compactAt)}.` : ""}`,
+    };
   };
 
   // ---------------------------------------------------------------- Edit rig
