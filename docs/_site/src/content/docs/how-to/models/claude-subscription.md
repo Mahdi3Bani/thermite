@@ -11,7 +11,7 @@ If you pay for a Claude Pro or Max plan, Thermite's agents can work on that plan
 A subscription is for your own Thermite only. A Thermite that several people use takes API keys.
 
 :::note[Tested with stand-ins]
-Subscriptions are built, but Thermite's tests so far use a stand-in for Claude Code. A test with a real subscription is planned in [goal 009](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/009-subscription-sign-in-tests.goal).
+Subscriptions are built, but Thermite's tests so far run Claude Code against a stand-in for Anthropic's service, never with a real subscription. A test with a real subscription is planned in [goal 009](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/009-subscription-sign-in-tests.goal).
 :::
 
 ## Before you start
@@ -98,7 +98,7 @@ The page shows `rig-1 takes sonnet-5.5 from "claude-max" under Claude Code withi
 
 To give the planner or an advisor the subscription, and to set an effort, use **Edit rig**: see [Give each agent its own model](model-per-agent.md).
 
-Control gives a rig the token only while one of its agents uses the subscription.
+Control gives a rig the token only while one of its agents uses the subscription. On the rig, Claude Code runs as the agent's own user with its own sandbox off: the rig's isolation holds the commands it runs, and the token reaches Claude Code on a file descriptor, never in an environment variable ([Who holds your keys](../../explanation/who-holds-your-keys.md#subscriptions)).
 
 ## Watch the usage windows
 
@@ -120,7 +120,8 @@ Many agents can share one plan, and so can several rigs. On **Edit rig**, a note
 | "That is not a token from claude setup-token: it starts with sk-ant-." | Copy the token that `claude setup-token` printed, not another key. |
 | "The token has spaces or is too long: paste only what claude setup-token printed." | Paste the token alone, on one line. |
 | The model check fails right after you chose the model | Check that the rig's harness image was built with `CLAUDE_CODE_VERSION`. The check then says: *this rig's harness image has no Claude Code: build the image with the Claude Code option (CLAUDE_CODE_VERSION), or give the rig another harness on Edit rig*. |
-| The model check fails with: *Claude Code needs bubblewrap to keep the agent's commands away from its sign-in* | The rig's harness or supervisor image predates bubblewrap in Thermite's images. Rebuild them from this version, or install `bubblewrap` in your own image. Claude Code's sandbox also needs unprivileged user namespaces where the rig runs. |
-| The model check fails because the model called no tool, and the model's answer says the sandbox needs `socat` | The rig's harness or supervisor image predates `socat` in Thermite's images. Claude Code then answers but cannot run a command. Rebuild the images from this version, or install `socat` in your own image. |
+| The model check fails with *its tool call did not print the word*, and the model's answer says the Bash sandbox failed to start: *Failed to create bridge sockets after 5 attempts* | The rig's harness image is from a Thermite version that turned on Claude Code's own sandbox, which cannot start in a rig. Rebuild the images from this version: Claude Code then runs the agent's commands inside the rig's own isolation, without its sandbox. |
+| The model check fails with: *Claude Code needs bubblewrap to keep the agent's commands away from its sign-in* | The same: the harness image is from an older Thermite. Rebuild the images from this version. |
+| An advisor on the subscription fails with *EACCES: permission denied, mkdir '/tmp/claude-10001'* | The rig runs the one-container rig image from an older Thermite, which gave Claude Code no temporary folder of its own. Rebuild the image from this version. |
 | The model check fails with "the subscription's usage window is full until" a time | Wait for the reset, or use another model meanwhile. |
 | A research campaign's trials end with "research workers run in Pi or OpenCode, and a Claude subscription runs only in Claude Code: give this rig another model for research" | Research workers run in Pi or OpenCode v2, never in Claude Code. Give the rig another model for research. |

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { appendFileSync, mkdirSync, mkdtempSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
@@ -9,7 +10,7 @@ import {
   claudeArgs,
   claudeExitWords,
   claudeModelCheck,
-  NO_BUBBLEWRAP,
+  claudeShell,
   NO_CLAUDE_CODE,
   newClaudeTally,
   readClaudeEvents,
@@ -186,7 +187,7 @@ describe("Claude Code", () => {
     return a;
   };
 
-  test("a trial runs as the lane's user with the token only in Claude Code's environment, and ends with the submission", async () => {
+  test("a trial runs as the lane's user, with the token on a file descriptor and in no environment, and ends with the submission", async () => {
     const a = area();
     const f = fakeRunner(events(), { submit: true });
     const seen: unknown[] = [];
@@ -205,8 +206,21 @@ describe("Claude Code", () => {
     assert.ok(f.runs.every((x) => x.role === "lane-1"));
     const run = f.runs.find((x) => x.argv.includes("-p")) as RunRequest;
     assert.equal(run.cwd, join(a, "repo"));
-    assert.equal(run.env?.CLAUDE_CODE_OAUTH_TOKEN, TOKEN);
-    assert.equal(run.env?.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB, "1");
+    // The token comes on stdin, which the shell moves to file descriptor 3 for Claude Code.
+    assert.equal(run.stdin, TOKEN);
+    assert.deepEqual(run.argv.slice(0, 3), [
+      "sh",
+      "-c",
+      'exec 3<&0 && exec "$@" < /dev/null >> "$THERMITE_CLAUDE_EVENTS" 2>&1',
+    ]);
+    assert.equal(run.env?.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR, "3");
+    assert.equal(run.env?.CLAUDE_CODE_OAUTH_TOKEN, undefined);
+    assert.ok(
+      !Object.values(run.env ?? {}).some((v) => v.includes("sk-ant")),
+      "the token is in no variable",
+    );
+    // Claude Code's own sandbox stays off: the scrub would make it mandatory.
+    assert.equal(run.env?.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB, undefined);
     assert.equal(run.env?.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, "1");
     assert.equal(run.env?.HOME, join(a, "claude-home"));
     assert.equal(run.env?.THERMITE_TRIAL_AUTH, "trial.tok");
@@ -358,6 +372,11 @@ describe("Claude Code", () => {
     assert.match(r.summary, /Claude Code/);
     const call = runs.find((x) => x.argv.includes("-p")) as RunRequest;
     assert.equal(call.argv[call.argv.indexOf("--tools") + 1], "Bash");
+    assert.equal(call.stdin, TOKEN, "the token on stdin, for file descriptor 3");
+    assert.deepEqual(call.argv.slice(0, 3), ["sh", "-c", 'exec 3<&0 && exec "$@" < /dev/null']);
+    assert.equal(call.env?.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR, "3");
+    assert.ok(!Object.values(call.env ?? {}).some((v) => v.includes("sk-ant")));
+    assert.equal(call.env?.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB, undefined);
     // The model check's own user: never a lane's, whose cleanup could kill it (or it theirs).
     assert.ok(runs.every((x) => x.role === "model-check"));
   });
@@ -368,14 +387,46 @@ describe("Claude Code", () => {
       NO_CLAUDE_CODE,
     );
     assert.equal(claudeExitWords(127, "sh: claude: not found"), NO_CLAUDE_CODE);
+    // Claude Code starts behind the shell that gives it the token.
+    assert.equal(claudeExitWords(127, "sh: 1: exec: claude: not found"), NO_CLAUDE_CODE);
     assert.equal(claudeExitWords(1, "something else"), "Claude Code exited 1: something else");
     // Its own error line wins over the source Bun prints after it.
     const bun = `error: bubblewrap is required for subprocess env scrubbing and isolation. Install with: sudo apt-get install -y bubblewrap\n  at hGo (/$bunfs/root/chunk.js:11:7202)\n managed settings, or set CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=0`;
-    assert.equal(claudeExitWords(1, " managed settings, or set X=0", bun), NO_BUBBLEWRAP);
+    assert.equal(
+      claudeExitWords(1, " managed settings, or set X=0", bun),
+      "Claude Code exited 1: bubblewrap is required for subprocess env scrubbing and isolation. Install with: sudo apt-get install -y bubblewrap",
+    );
     assert.equal(
       claudeExitWords(1, "  at x (y.js:1:2)", "error: Not logged in\n  at x (y.js:1:2)"),
       "Claude Code exited 1: Not logged in",
     );
+  });
+
+  test("the shell gives Claude Code the token on file descriptor 3, and /dev/null for its stdin", () => {
+    // A stand-in for Claude Code: what it reads on 0 and on 3, and whether its environment has it.
+    const probe = `const fs = require("node:fs");
+const fd3 = fs.readFileSync(3, "utf8");
+const fd0 = fs.readFileSync(0, "utf8");
+const inEnv = Object.values(process.env).some((v) => v.includes("made-up"));
+console.log(JSON.stringify({ fd3, fd0, inEnv, args: process.argv.slice(2) }));`;
+    const file = join(mkdtempSync(join(tmpdir(), "thermite-cc-fd-")), "claude.cjs");
+    writeFileSync(file, probe);
+    const argv = claudeShell([process.execPath, file, "-p", "the prompt"]);
+    const r = spawnSync(argv[0] as string, argv.slice(1), {
+      input: "made-up-token",
+      encoding: "utf8",
+      env: {
+        PATH: process.env.PATH ?? "/usr/bin:/bin",
+        CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR: "3",
+      },
+    });
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(JSON.parse(r.stdout), {
+      fd3: "made-up-token",
+      fd0: "",
+      inEnv: false,
+      args: ["-p", "the prompt"],
+    });
   });
 
   test("a Claude subscription goes only with Claude Code, in a route or in the environment", () => {

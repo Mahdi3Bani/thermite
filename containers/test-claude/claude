@@ -4,7 +4,7 @@
 // event, the result) and does what each of Thermite's calls asks: the model check's echo, the
 // planner's JSON plan, a trial's change and its submission with thermite-trial, or an advisor's
 // answer (the prompt on stdin, as the supervisor's advisors send it). It reports
-// what it was given (its user, whether the token and the safety flags were there), never the
+// what it was given (its user, whether the token came and how, and the safety flags), never the
 // token itself. It refuses to run without THERMITE_FAKE_CLAUDE=1, so it can't stand in by mistake.
 const { execSync } = require("node:child_process");
 if (process.env.THERMITE_FAKE_CLAUDE !== "1" && !require("node:fs").existsSync("/opt/fake-claude/enabled")) {
@@ -37,9 +37,23 @@ const bash = (command) => {
   out({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: `tu_${n}`, content: output, is_error: isError }] } });
   return output;
 };
+// The token: on the file descriptor the harness names, as Claude Code reads it there, or in the
+// environment (an advisor's call).
+const tokenFd = process.env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR;
+let token = process.env.CLAUDE_CODE_OAUTH_TOKEN ?? "";
+let tokenOn = token ? "env" : "none";
+if (tokenFd) {
+  try {
+    token = require("node:fs").readFileSync(Number(tokenFd), "utf8");
+    tokenOn = token ? `fd${tokenFd}` : "empty-fd";
+  } catch {
+    tokenOn = "unreadable-fd";
+  }
+}
 const facts = [
   `uid=${process.getuid()}`,
-  `token=${(process.env.CLAUDE_CODE_OAUTH_TOKEN ?? "").startsWith("sk-ant-oat01-") ? "set" : "missing"}`,
+  `token=${token.startsWith("sk-ant-oat01-") ? "set" : "missing"}`,
+  `token_on=${tokenOn}`,
   `scrub=${process.env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB ?? "unset"}`,
   `strict_mcp=${args.includes("--strict-mcp-config")}`,
   `no_settings=${val("--setting-sources") === ""}`,

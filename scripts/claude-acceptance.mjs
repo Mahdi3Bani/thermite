@@ -4,8 +4,8 @@
 // Claude subscription added in Providers, its model given to the rig (in Claude Code), then:
 //   - the rig takes the route; its model check runs one Bash call through Claude Code;
 //   - the planner plans through Claude Code, with no tools;
-//   - a worker trial runs Claude Code as the lane's user, with the token in Claude Code's
-//     environment and the safety flags, edits the code and submits with thermite-trial;
+//   - a worker trial runs Claude Code as the lane's user, with the token on file descriptor 3
+//     (in no environment) and the safety flags, edits the code and submits with thermite-trial;
 //   - the auditor, given the subscription's model on Edit rig, audits a large gain in Claude
 //     Code in the supervisor, with no tools, no settings or MCP, and its effort;
 //   - the subscription's usage windows reach the Providers page;
@@ -175,10 +175,11 @@ try {
   );
   const said = String(attempt.body.hypothesis);
   check(
-    "Claude Code ran as the lane's user with the token in its environment and no settings or MCP, and submitted with thermite-trial",
+    "Claude Code ran as the lane's user with the token on file descriptor 3, its own sandbox off and no settings or MCP, and submitted with thermite-trial",
     /uid=10101 /.test(said) &&
       /token=set /.test(said) &&
-      /scrub=1 /.test(said) &&
+      /token_on=fd3 /.test(said) &&
+      /scrub=unset /.test(said) &&
       /strict_mcp=true /.test(said) &&
       /no_settings=true /.test(said) &&
       /model=claude-opus-5-5\)/.test(said),
@@ -221,6 +222,7 @@ try {
       /tools=none /.test(why) &&
       /effort=high /.test(why) &&
       /token=set /.test(why) &&
+      /token_on=env /.test(why) &&
       /scrub=1 /.test(why) &&
       /strict_mcp=true /.test(why) &&
       /no_settings=true /.test(why) &&

@@ -39,7 +39,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [006](goals/006-docs-for-testers.goal) Docs for testers · `DROPPED`, merged into 060
 - [007](goals/007-known-limits.goal) Known limits and the security model · `VERIFIED`
 - [008](goals/008-community-files.goal) Community files and contributor docs · `IN_PROGRESS`
-- [009](goals/009-subscription-sign-in-tests.goal) Real subscription sign-in tests · `READY`
+- [009](goals/009-subscription-sign-in-tests.goal) Real subscription sign-in tests · `IN_PROGRESS`
 - [063](goals/063-scan-and-steer.goal) Campaigns, runs and live views you can scan; steering as one message box · `VERIFIED`
 
 ### Install from images

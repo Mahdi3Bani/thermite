@@ -24,13 +24,20 @@ import type { SubmitOutcome, TrialResult, TrialSpec } from "./worker.ts";
 /**
  * Trials, model checks and planner calls in Claude Code, for a Claude subscription. Anthropic
  * allows a subscription only in its own program, unmodified: the owner's token from `claude
- * setup-token` goes into Claude Code's environment (CLAUDE_CODE_OAUTH_TOKEN) and nowhere else, and
- * no other program here uses it. Claude Code runs headless (`claude -p`, its permissions
- * bypassed) as the lane's own user, in the lane's workspace, under the lane's memory, disk and
- * time limits, as OpenCode does: it has the lane's access and none of the judge's. It starts with
- * a home of its own, no setting sources and no MCP servers, so nothing of a project's or a host's
- * Claude settings runs. Its commands get no credentials (CLAUDE_CODE_SUBPROCESS_ENV_SCRUB), but
- * they run as the same user, which can read the token: the owner accepted that (decision 51).
+ * setup-token` reaches Claude Code alone, on a file descriptor (claudeShell), and no other program
+ * here uses it. Claude Code runs headless (`claude -p`, its permissions bypassed) as the lane's
+ * own user, in the lane's workspace, under the lane's memory, disk and time limits and the GPU
+ * fence, as OpenCode does: it has the lane's access and none of the judge's. It starts with a home
+ * of its own, no setting sources and no MCP servers, so nothing of a project's or a host's Claude
+ * settings runs. The token is in no environment and no file, so its commands inherit no
+ * credentials; they run as the same user, which could still reach the token: the owner accepted
+ * that (decision 51).
+ *
+ * Claude Code's own sandbox stays off. CLAUDE_CODE_SUBPROCESS_ENV_SCRUB would make it mandatory,
+ * and it cannot start in a rig: its bubblewrap mounts, which the GPU fence (Landlock) refuses, as
+ * do a container's own confinement and masked /proc; its network bridge's sockets, in TMPDIR, pass
+ * the 108-byte limit of a socket's path in the lanes' areas. The scrub also forces Claude Code's
+ * default permission mode, which refuses file edits and most commands in a headless run.
  *
  * Thermite's own tools are the `thermite-trial` command, which calls the harness API with the
  * trial's token. Claude Code reports the subscription's usage windows as it goes
@@ -44,10 +51,6 @@ export const claudeBin = () => process.env.THERMITE_CLAUDE_BIN ?? "claude";
 export const NO_CLAUDE_CODE =
   "this rig's harness image has no Claude Code: build the image with the Claude Code option (CLAUDE_CODE_VERSION), or give the rig another harness on Edit rig";
 
-/** What to say when Claude Code can't isolate the agent's commands: bubblewrap is missing. */
-export const NO_BUBBLEWRAP =
-  "Claude Code needs bubblewrap to keep the agent's commands away from its sign-in, and this rig's image has none: rebuild the image from a newer Thermite, or install bubblewrap in it";
-
 /**
  * Why Claude Code exited, in words. A missing program says so, rather than the shell's note. Its
  * own `error:` line, anywhere in its output, comes before the last line (Bun prints the source
@@ -57,8 +60,18 @@ export function claudeExitWords(code: number | string | null, note: string, outp
   if ((code === 126 || code === 127) && /claude: (No such file or directory|not found)/.test(note))
     return NO_CLAUDE_CODE;
   const own = /(?:^|\n)\s*error: ([^\n]+)/.exec(output)?.[1]?.trim();
-  if (/bubblewrap is required/.test(own ?? note)) return NO_BUBBLEWRAP;
   return `Claude Code exited ${code}: ${own ?? note}`;
+}
+
+/**
+ * Claude Code's command line behind `sh`, which moves the run's stdin, the token, to file
+ * descriptor 3 (CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR) and gives Claude Code /dev/null for its
+ * own. Claude Code reads the token from there once, so it is in no environment: not Claude Code's,
+ * nor its commands'. `after` is more of the shell line, after the redirection (where the output
+ * goes).
+ */
+export function claudeShell(argv: string[], after = ""): string[] {
+  return ["sh", "-c", `exec 3<&0 && exec "$@" < /dev/null${after}`, "sh", ...argv];
 }
 
 /** Claude Code's executable as an absolute path (found on PATH), or undefined if it is not there. */
@@ -268,12 +281,14 @@ export function readClaudeEvents(
   return live;
 }
 
-/** The environment Claude Code runs in: its home, Thermite's command, the token and no telemetry. */
+/**
+ * The environment Claude Code runs in: its home, Thermite's command and no telemetry. The token is
+ * not in it: Claude Code reads it from file descriptor 3 (claudeShell).
+ */
 export function claudeEnv(o: {
   home: string;
   apiUrl: string;
   auth: string;
-  token: string;
   tmp: string;
   maxCommandMs: number;
   extra?: Record<string, string> | undefined;
@@ -285,9 +300,8 @@ export function claudeEnv(o: {
     TMPDIR: o.tmp,
     THERMITE_HARNESS_URL: o.apiUrl,
     THERMITE_TRIAL_AUTH: o.auth,
-    CLAUDE_CODE_OAUTH_TOKEN: o.token,
-    // Its commands get no credentials; no update checks, reports or other traffic.
-    CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1",
+    CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR: "3",
+    // No update checks, reports or other traffic.
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
     DISABLE_AUTOUPDATER: "1",
     // A build or a test may run for most of the trial.
@@ -390,7 +404,6 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
       home,
       apiUrl: deps.apiUrl,
       auth: `trial.${spec.token ?? ""}`,
-      token: deps.model.apiKey,
       tmp,
       maxCommandMs: spec.wallMs,
       extra: deps.env,
@@ -459,19 +472,19 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
     const exe = claudeExe() ?? claudeBin();
     const running = deps.runner.run({
       role: spec.lane,
-      // Its output goes to a file the harness follows while it runs.
-      argv: [
-        "sh",
-        "-c",
-        'exec "$@" < /dev/null >> "$THERMITE_CLAUDE_EVENTS" 2>&1',
-        "sh",
-        exe,
-        "-p",
-        message,
-        ...claudeArgs(deps.model, { session: tally.session, mcpConfig: mcpFile }),
-      ],
+      // Its output goes to a file the harness follows while it runs; the token comes on stdin.
+      argv: claudeShell(
+        [
+          exe,
+          "-p",
+          message,
+          ...claudeArgs(deps.model, { session: tally.session, mcpConfig: mcpFile }),
+        ],
+        ' >> "$THERMITE_CLAUDE_EVENTS" 2>&1',
+      ),
       cwd: spec.workspace,
       env,
+      stdin: deps.model.apiKey,
       timeoutMs: remaining,
       rssLimitBytes: limits.runRssMib * 1024 * 1024,
       ...(claudeExe() ? { spareExe: claudeExe() } : {}),
@@ -622,7 +635,7 @@ export async function claudeOnce(
     }
     const r = await deps.runner.run({
       role,
-      argv: [
+      argv: claudeShell([
         claudeExe() ?? claudeBin(),
         "-p",
         prompt,
@@ -630,17 +643,17 @@ export async function claudeOnce(
           tools: o.tools,
           mcpConfig: mcp ? join(dir, "home", "mcp.json") : undefined,
         }),
-      ],
+      ]),
       cwd: dir,
       env: claudeEnv({
         home: join(dir, "home"),
         apiUrl: deps.apiUrl,
         auth: "",
-        token: model.apiKey,
         tmp: join(dir, "tmp"),
         maxCommandMs: o.timeoutMs,
       }),
-      stdin: "",
+      // The token, which the shell gives Claude Code on file descriptor 3.
+      stdin: model.apiKey,
       timeoutMs: o.timeoutMs,
       captureBytes: 8 * 1024 * 1024,
     });
