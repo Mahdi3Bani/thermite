@@ -1,6 +1,4 @@
 import { timingSafeEqual } from "node:crypto";
-import { request as httpRequest } from "node:http";
-import { request as httpsRequest } from "node:https";
 import { resolve } from "node:path";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Hono, type MiddlewareHandler } from "hono";
@@ -8,16 +6,15 @@ import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { laneLimits } from "../core/contract.ts";
 import { McpConnection, McpUnavailable } from "../core/mcp.ts";
-import { CHATGPT_LIMIT_CODE } from "./agents/model.ts";
 import { ControlRoute } from "./agents/model-source.ts";
 import { Registry } from "./agents/registry.ts";
 import { laneCacheEnv } from "./agents/workspace.ts";
 import { type Role, type Runner, RunRequest } from "./broker/runner.ts";
-import { chatgptRequest, chatgptRouteAllowed } from "./chatgpt.ts";
 import { compactionOf, KEPT_MAX } from "./compactions.ts";
 import { SEARCH_MAX } from "./knowledge.ts";
 import { LedgerError } from "./ledger.ts";
 import type { McpCaller } from "./mcp-gateway.ts";
+import { forwardToProvider } from "./model-forward.ts";
 import type { Research } from "./research/research.ts";
 import { Reviews } from "./reviews.ts";
 import { AdvisorQueueRequest, type HarnessService, SubmitRequest } from "./service.ts";
@@ -131,8 +128,10 @@ export function createHarnessApi(
   app.get("/v1/health", (c) => c.json({ ok: true, rig: service.rig }));
 
   // The model proxy: OpenCode and the Codex CLI reach the rig's provider through here, so the
-  // provider's key (or a ChatGPT sign-in's access token) never reaches the lane. It takes a trial's token or one the harness minted for a check or a plan
-  // (as a bearer token, or as Anthropic's x-api-key), adds the real key and streams the answer.
+  // provider's key (or a ChatGPT sign-in's access token) never reaches the lane. It takes a
+  // trial's token or one the harness minted for a check or a plan (as a bearer token, or as
+  // Anthropic's x-api-key), adds the real key and streams the answer. A minted token may name
+  // its own route: the planner's, when control gave the planner a model of its own (goal 073).
   const openTrial = (token: string) => {
     try {
       registry.openTrial(token);
@@ -146,108 +145,27 @@ export function createHarnessApi(
     const given = bearer.startsWith("Bearer ")
       ? bearer.slice(7)
       : (c.req.header("x-api-key") ?? "");
-    const ok = given.startsWith("trial.")
-      ? openTrial(given.slice("trial.".length))
-      : service.proxyTokenValid(given);
+    const trial = given.startsWith("trial.");
+    const ok = trial ? openTrial(given.slice("trial.".length)) : service.proxyTokenValid(given);
     if (!ok) return c.json({ error: "unauthorized" }, 401);
-    const m = service.models?.current();
+    const m = (trial ? undefined : service.proxyTokenModel(given)) ?? service.models?.current();
     // OpenCode's own models need no proxy; a Claude subscription is used only by Claude Code.
     if (!m || m.api === "opencode" || m.api === "claude")
       return c.json({ error: "no provider to reach" }, 404);
-    const rest = c.req.path.slice("/v1/model-proxy/".length);
-    // A ChatGPT sign-in reaches only OpenAI's Responses API and the account's model list.
-    const chatgpt = m.api === "chatgpt";
-    if (chatgpt && !chatgptRouteAllowed(c.req.method, rest))
-      return c.json(
-        { error: "a ChatGPT sign-in reaches only POST /responses and GET /models" },
-        403,
-      );
-    const target = new URL(`${m.baseUrl}/${rest}${new URL(c.req.url).search}`);
-    const headers: Record<string, string> = {};
-    for (const k of [
-      "content-type",
-      "accept",
-      "anthropic-version",
-      "anthropic-beta",
-      "user-agent",
-    ]) {
-      const v = c.req.header(k);
-      if (v) headers[k] = v;
-    }
-    if (m.api === "anthropic") headers["x-api-key"] = m.apiKey;
-    else headers.authorization = `Bearer ${m.keyNow?.() ?? m.apiKey}`;
-    const raw =
-      c.req.method === "GET" || c.req.method === "HEAD"
-        ? undefined
-        : Buffer.from(await c.req.arrayBuffer());
-    let body: Buffer | undefined = raw;
-    if (raw && chatgpt) {
-      try {
-        body = chatgptRequest(raw);
-      } catch (err) {
-        return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
-      }
-    }
-    if (body) headers["content-length"] = String(body.length);
-    // node:http, not fetch: a long model call must not meet fetch's header timeout.
-    return await new Promise<Response>((resolve) => {
-      const send = target.protocol === "https:" ? httpsRequest : httpRequest;
-      const req = send(target, { method: c.req.method, headers, agent: false }, (res) => {
-        const status = res.statusCode ?? 502;
-        const out = new Headers();
-        for (const k of ["content-type", "cache-control"]) {
-          const v = res.headers[k];
-          if (typeof v === "string") out.set(k, v);
-        }
-        // A ChatGPT plan's refusal is read whole (an error's body is small): OpenAI's code in it
-        // says when the plan's usage is full, which a program that keeps only the error's message
-        // (the Codex CLI) would lose. The answer goes on as it came.
-        if (chatgpt && status >= 400) {
-          const parts: Buffer[] = [];
-          let size = 0;
-          res.on("data", (d: Buffer) => {
-            if (size >= 1024 * 1024) return;
-            parts.push(d);
-            size += d.length;
-          });
-          res.on("end", () => {
-            const all = Buffer.concat(parts);
-            if (all.toString("utf8").includes(CHATGPT_LIMIT_CODE)) service.noteUsageLimit();
-            resolve(new Response(new Uint8Array(all), { status, headers: out }));
-          });
-          res.on("error", (e) =>
-            resolve(
-              Response.json(
-                { error: `the provider's answer broke off: ${e.message}` },
-                { status: 502 },
-              ),
-            ),
-          );
-          return;
-        }
-        const stream = new ReadableStream<Uint8Array>({
-          start(ctrl) {
-            res.on("data", (d: Buffer) => ctrl.enqueue(new Uint8Array(d)));
-            res.on("end", () => ctrl.close());
-            res.on("error", (e) => ctrl.error(e));
-          },
-          cancel() {
-            res.destroy();
-          },
-        });
-        resolve(new Response(stream, { status, headers: out }));
-      });
-      req.on("error", (e) =>
-        resolve(
-          Response.json(
-            { error: `the provider could not be reached: ${e.message}` },
-            { status: 502 },
-          ),
-        ),
-      );
-      if (body) req.write(body);
-      req.end();
-    });
+    return forwardToProvider(
+      {
+        method: c.req.method,
+        rest: c.req.path.slice("/v1/model-proxy/".length),
+        search: new URL(c.req.url).search,
+        header: (k) => c.req.header(k),
+        body:
+          c.req.method === "GET" || c.req.method === "HEAD"
+            ? undefined
+            : Buffer.from(await c.req.arrayBuffer()),
+      },
+      { api: m.api, baseUrl: m.baseUrl, key: m.keyNow?.() ?? m.apiKey },
+      () => service.noteUsageLimit(),
+    );
   });
 
   // The rig's settings (Edit rig), for the supervisor's own parts: its advisors.

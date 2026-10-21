@@ -2,7 +2,8 @@
 // Test only (scripts/codex-acceptance.mjs): a stand-in for the Codex CLI's headless mode
 // (`codex exec --json`, the prompt on stdin). It prints the JSON events Codex prints (the thread,
 // its items, the turn's tokens) and does what each of Thermite's calls asks: the model check's
-// echo, the planner's JSON plan, or a trial's change and its submission with thermite-trial. It
+// echo, the planner's JSON plan, a trial's change and its submission with thermite-trial, or the
+// auditor's answer in the supervisor (what its configuration and its call gave it, as reasons). It
 // sends one request to the provider its configuration names, as Codex would, to show the route
 // goes through the harness's proxy with the run's own credential. It reports what it was given
 // (its user, its home, the flags, the proxy's answer), never a credential itself. It refuses to
@@ -89,7 +90,28 @@ const say = (text) => out({ type: "item.completed", item: item("agent_message", 
   out({ type: "turn.started" });
   out({ type: "item.completed", item: item("reasoning", { text: "**Reading the task**" }) });
   const word = /run exactly this command: echo (thermite-[a-z0-9]+)/.exec(prompt)?.[1];
-  if (word) {
+  if (/You audit a candidate change/.test(prompt)) {
+    // The auditor, run by the supervisor (goal 073): what its configuration and its call gave
+    // it, as its reasons. Its tools are the configuration's; it runs no command of its own.
+    const off = (f) => new RegExp(`^${f} = false$`, "m").test(config);
+    const advisor = [
+      `sandbox=${setting("sandbox_mode") ?? "none"}`,
+      `approvals=${setting("approval_policy") ?? "none"}`,
+      `shell_off=${off("shell_tool") && off("unified_exec")}`,
+      `advisor_proxy=${/^http:\/\/127\.0\.0\.1:\d+\/v1\/model-proxy$/.test(baseUrl ?? "") ? "supervisor" : (baseUrl ?? "none")}`,
+      `ephemeral=${args.includes("--ephemeral")}`,
+      `bypass=${args.includes("--dangerously-bypass-approvals-and-sandbox")}`,
+      `own_folder=${/thermite-advisor-/.test(process.cwd()) && fs.realpathSync(process.env.HOME ?? "/") === process.cwd()}`,
+      `mcp=${[...config.matchAll(/^\[mcp_servers\."([^"]+)"\]$/gm)].map((m) => m[1]).join(",") || "none"}`,
+    ].join(" ");
+    say(
+      JSON.stringify({
+        decision: "clear",
+        reasons: `audited by the Codex stand-in (${advisor} ${facts})`,
+        citations: ["diff"],
+      }),
+    );
+  } else if (word) {
     say(shell(`echo ${word}`).trim());
   } else if (/The campaign, as JSON:/.test(prompt)) {
     const ctx = JSON.parse(prompt.slice(prompt.indexOf("The campaign, as JSON:") + "The campaign, as JSON:".length));

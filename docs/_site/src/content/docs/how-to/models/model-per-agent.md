@@ -32,7 +32,7 @@ The planner coordinates each run's experiment queue, the run's ordered list of t
 3. For each agent you want to change, choose a model in its **Model** list, and an **Effort** (see below).
 4. For the workers, also choose where they run, in the **Runs in** column: **Pi**, **OpenCode v2**, **Claude Code** or **Codex**. When you choose a Claude subscription's model, the page sets **Claude Code** for you. **Codex**, the Codex CLI, takes a ChatGPT subscription's model or one from an OpenAI-compatible provider: see [Run the agents in Codex](chatgpt-subscription.md#run-the-agents-in-codex).
 
-   For the other agents, **Runs in** shows where each one will run, for example "the supervisor, read-only tools" or "Claude Code, past research and the kit's MCP tools only". A planner with no model of its own follows the workers into Codex: "as the workers: Codex".
+   For the other agents, **Runs in** shows where each one will run, for example "the supervisor, read-only tools" or "Claude Code, past research and the kit's MCP tools only". This page gives each of them the program its model needs; [over MCP or REST](#over-mcp-or-rest) you can choose another. A planner with no model of its own follows the workers into Codex: "as the workers: Codex".
 
 5. Read the list under **What changes when you save**, at the foot of the page. It says each change in a sentence, such as "You change the auditor's model to my-model."
 6. Press **Save changes**.
@@ -57,15 +57,17 @@ An agent or a script can set the same models without this page:
 - **MCP**, with the owner's or an operator's token: [`set_rig_model`](../../reference/mcp-tools.md#set_rig_model), with `agent` set to `workers`, `planner`, `teachers` (the teacher pair), `combiner`, `auditor` or `panel` (the review panel). [`rig_models`](../../reference/mcp-tools.md#rig_models) reads each agent's model.
 - **REST**, with the owner's token: [`POST /v1/rigs/<rig>/model`](../../reference/rest-api.md#the-agents-model) takes the same fields, and `GET /v1/rigs/<rig>/model` reads each agent's model.
 
-Each call changes one agent, and the others keep their models. The checks and the refusals are this page's. `clear: true` sends the agent back to its default, as the first choice in its **Model** list does here: **its own settings**, **same as the workers** or **the rig's advisors file**. `harness`, `context_window` and `compact_at` are for the workers only.
+Each call changes one agent, and the others keep their models. The checks and the refusals are this page's. `clear: true` sends the agent back to its default, as the first choice in its **Model** list does here: **its own settings**, **same as the workers** or **the rig's advisors file**. `context_window` and `compact_at` are for the workers only.
 
-For example, to give the auditor a model from a ChatGPT subscription named `chatgpt-pro`, call `set_rig_model` with:
+`harness` chooses the program any agent runs in: `pi`, `opencode` (OpenCode v2), `claude-code` or `codex` (the Codex CLI). Without it, the agent gets the one its model needs, as on this page. A harness that can't run the model is refused, for example "A Claude subscription runs only in Claude Code: choose Claude Code for the auditor, or another model." [Where each agent runs](#where-each-agent-runs) says what each choice gives.
+
+For example, to give the auditor a model from a ChatGPT subscription named `chatgpt-pro`, run in the Codex CLI, call `set_rig_model` with:
 
 ```json
-{ "rig": "rig-1", "agent": "auditor", "provider": "chatgpt-pro", "model": "gpt-pro", "effort": "high" }
+{ "rig": "rig-1", "agent": "auditor", "provider": "chatgpt-pro", "model": "gpt-pro", "harness": "codex", "effort": "high" }
 ```
 
-The answer says "Control sent a model for the auditor to rig-1. The rig takes the change in less than one minute.", and its `agents` lists each agent's model after the change.
+The answer says "Control sent a model for the auditor to rig-1. The rig takes the change in less than one minute.", and its `agents` lists each agent's model after the change, with its `harness`. The auditor's **Runs in** cell on this page then says "Codex in the supervisor, past research and the kit's MCP tools only". Saving this page keeps that harness while the auditor keeps the same model, and gives the one its model needs when you choose another model.
 
 ## An agent with no model
 
@@ -81,19 +83,24 @@ A change to the rig's settings on this page, such as a switch in section **1 · 
 
 ## Where each agent runs
 
+Each agent runs in one of four programs, its **harness**. The first program in each cell is the one this page gives; the others, the planner's and the advisors' too, can be chosen over MCP or REST.
+
 | Model from | Workers | Planner, with a model of its own | Advisors |
 | --- | --- | --- | --- |
-| An API key (OpenAI-compatible, Anthropic) or a ChatGPT subscription | Pi or OpenCode v2, as you choose; Codex too for an OpenAI-compatible key or a ChatGPT subscription | Pi | The supervisor, with read-only tools |
-| OpenCode's own provider | OpenCode v2 only | OpenCode | Not allowed |
-| A Claude subscription | Claude Code | Claude Code, with no tools but read-only file tools for the run's past research | Claude Code, with no tools but a read-only search of the run's past research |
+| An API key (OpenAI-compatible, Anthropic) or a ChatGPT subscription | Pi or OpenCode v2, as you choose; Codex too for an OpenAI-compatible key or a ChatGPT subscription | Pi; or OpenCode v2, or Codex for an OpenAI-compatible key or a ChatGPT subscription | Pi in the supervisor, with read-only tools; or OpenCode v2, or Codex for an OpenAI-compatible key or a ChatGPT subscription |
+| OpenCode's own provider | OpenCode v2 only | OpenCode v2 only | OpenCode v2 only, in the supervisor |
+| A Claude subscription | Claude Code only | Claude Code only, with no tools but read-only file tools for the run's past research | Claude Code only, in the supervisor |
 
-A Claude subscription needs Claude Code in the images: in the harness image for the workers and the planner, and in the supervisor image for the advisors. See [Use a Claude subscription](claude-subscription.md).
+- **The planner** in OpenCode, Claude Code or Codex runs as the planner's own user in the harness and answers with its plan as JSON, checked as Pi's plan is. In OpenCode and Codex it reaches its own model through the harness's proxy, which adds the key.
+- **An advisor** in Claude Code, OpenCode v2 or Codex runs in the supervisor, in a folder of its own for each call, with none of the program's own tools: no shell, no file edits or reads, and no web. It gets only a read-only search of the run's past research and the kit's MCP tools for the advisors, which the supervisor serves on `127.0.0.1` for the call. OpenCode and Codex reach the model through a proxy the supervisor serves for the call, which adds the key, so the key is in none of their files. The [advisors file reference](../../reference/advisors-file.md#runtimes) gives each program's settings.
+
+A Claude subscription needs Claude Code in the images: in the harness image for the workers and the planner, and in the supervisor image for the advisors. See [Use a Claude subscription](claude-subscription.md). The published harness and supervisor images carry OpenCode v2 and the Codex CLI.
 
 Where the workers run also sets when they read a message you send them from **Live**. A worker in Pi reads it at its next step. OpenCode v2, Claude Code and Codex take no message while they work: when the program stops before the worker has submitted a change and the trial has time left, the rig starts it again with your message; otherwise the lane's next trial reads it. The planner reads its messages when it plans the next round. See [When each agent reads it](../campaigns/steer-a-run.md#when-each-agent-reads-it).
 
 The advisors' read-only tools are the campaign's brief and a search of the run's past research, plus a guarded web fetch and a knowledge base where the rig's advisors file sets them up. A knowledge base is a search service of your own, reached over MCP, that the teachers may search but not change: see the `kb` field in the [advisors file reference](../../reference/advisors-file.md#top-level).
 
-The advisors can also call the tools of the [MCP servers](../campaigns/give-agents-mcp-tools.md) that a run's kit gives them: the teacher pair, the auditor and the review panel, given a model on this page or in the advisors file. On an API key or a ChatGPT subscription each tool is one of theirs, and on a Claude subscription Claude Code reaches each server through the supervisor. On a rig whose advisors file lets advisors fetch any web page (`fetch_domains` `"*"`), no advisor gets them.
+The advisors can also call the tools of the [MCP servers](../campaigns/give-agents-mcp-tools.md) that a run's kit gives them: the teacher pair, the auditor and the review panel, given a model on this page or in the advisors file. In Pi each tool is one of theirs, and in Claude Code, OpenCode v2 or Codex the program reaches each server through the supervisor. On a rig whose advisors file lets advisors fetch any web page (`fetch_domains` `"*"`), no advisor gets them.
 
 ## Effort
 
@@ -108,7 +115,7 @@ The list offers **default**, **low**, **medium**, **high**, **xhigh** and **max*
 
 Two cases take no effort from this page:
 
-- Agents that run in **OpenCode v2**: Thermite does not pass the effort to OpenCode.
+- Agents that run in **OpenCode v2**: Thermite does not pass the effort to OpenCode. In **Codex**, the effort is Codex's reasoning effort, with **xhigh** and **max** sent as **high**.
 - Workers on **its own settings**: they use the rig's `THERMITE_MODEL_REASONING_EFFORT` setting instead.
 
 ## Share a subscription
@@ -138,5 +145,6 @@ A refused change shows on the rig's page, in a card that starts with **Not done.
 | "Claude Code runs only with a Claude subscription here: choose Pi or OpenCode v2 for this provider." (or "… Pi, OpenCode v2 or Codex …" for a ChatGPT subscription or an OpenAI-compatible provider) | Set the workers' **Runs in** to one of those. |
 | "OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig." | Set the workers' **Runs in** to **OpenCode v2**. |
 | "Codex runs only with a ChatGPT subscription or an OpenAI-compatible provider: choose Pi or OpenCode v2 for this provider." | Set the workers' **Runs in** to **Pi** or **OpenCode v2**, or give them a model from a ChatGPT subscription or an OpenAI-compatible provider. |
-| "The auditor cannot use OpenCode's own models: they run only in OpenCode. Choose another model." (or another role) | Choose a model from another provider for that advisor. |
+| "A Claude subscription runs only in Claude Code: choose Claude Code for the auditor, or another model." (over MCP or REST, for any agent) | Leave out `harness`, or give `claude-code`. |
+| "OpenCode's free models run only in OpenCode: choose OpenCode v2 for the teachers, or another model." (over MCP or REST, for any agent) | Leave out `harness`, or give `opencode`. |
 | "This rig's harness is older: it does not report its settings and cannot take them." | The rig's images are older than control. The workers' model still works. On the local stack, build the images again ([Stop, start and update](../install/one-machine.md#stop-start-and-update)). A rig that control set up on a cluster moves onto newer images from its page: see [Move a rig onto new images](../operate/rig-lifecycle.md#a-rig-on-a-cluster). A rig on a machine, or one you joined, can't move yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)): add a new rig from newer images ([Push the images to your own registry](../install/own-registry.md)). |

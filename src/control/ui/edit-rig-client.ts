@@ -17,10 +17,11 @@ export const EDIT_RIG_JS = `
   };
   // Where each agent runs, from the model chosen for it (a Claude subscription: Claude Code only).
   // The planner follows the workers' model, and their harness when it is Codex; an advisor with
-  // none uses the rig's advisors file.
+  // none uses the rig's advisors file. A row whose model is unchanged keeps the harness control
+  // has for it (data-saved), which MCP or REST may have set.
   const runsIn = () => {
     const kindOf = (sel) => (sel.selectedOptions[0] && sel.selectedOptions[0].dataset.kind) || "";
-    const text = (role, kind) => kind === "claude" ? "Claude Code, past research and the kit's MCP tools only" : role === "planner" ? (kind === "opencode" ? "OpenCode" : "Pi") : kind === "opencode" ? "not for advisors: OpenCode only" : "the supervisor, read-only tools";
+    const text = (role, kind) => kind === "claude" ? "Claude Code, past research and the kit's MCP tools only" : role === "planner" ? (kind === "opencode" ? "OpenCode" : "Pi") : kind === "opencode" ? "OpenCode v2 in the supervisor, past research and the kit's MCP tools only" : "the supervisor, read-only tools";
     const workers = form.querySelector('[data-role="workers"]');
     const harness = form.querySelector("[data-harness]");
     const wKind = workers ? kindOf(workers) : "";
@@ -36,8 +37,9 @@ export const EDIT_RIG_JS = `
       const own = kindOf(sel);
       const kind = own || (role === "planner" ? wKind : "");
       const cell = form.querySelector('[data-runs="' + role + '"]');
+      const saved = cell && cell.dataset.saved && sel.value === start.get(sel) ? cell.dataset.saved : "";
       if (cell)
-        cell.textContent = own ? text(role, own) : role !== "planner" ? "the advisors file, if the rig has one" : wKind ? "as the workers: " + asWorkers : "as the workers";
+        cell.textContent = saved || (own ? text(role, own) : role !== "planner" ? "the advisors file, if the rig has one" : wKind ? "as the workers: " + asWorkers : "as the workers");
       if (kind === "claude") claude += sessions[role] || 1;
       if (kind === "chatgpt") chatgpt += sessions[role] || 1;
     }

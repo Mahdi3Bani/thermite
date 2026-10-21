@@ -123,14 +123,16 @@ jobs:
             cuda: true
             description: "Thermite's harness for GPU rigs (CUDA 12.6): the judge, the broker and the agents."
             licenses: "MIT AND Apache-2.0"
+          # The supervisor carries OpenCode (MIT) and the Codex CLI (Apache-2.0, with its NOTICE)
+          # for the advisors, as the harness images do.
           - key: supervisor
             repository: thermite-supervisor
             containerfile: containers/supervisor/Containerfile
             platforms: linux/amd64,linux/arm64
             suffix: ""
             cuda: false
-            description: "Thermite's supervisor: a rig's link to control, and its git work."
-            licenses: MIT
+            description: "Thermite's supervisor: a rig's link to control, its advisors and its git work."
+            licenses: "MIT AND Apache-2.0"
     steps:
       - uses: actions/checkout@v4
       # The CUDA base is several gigabytes: make room on the runner's disk first.

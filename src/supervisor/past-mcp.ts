@@ -9,10 +9,12 @@ import { z } from "zod";
 import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL, SEARCH_MAX } from "../harness/knowledge.ts";
 
 /**
- * The run's past research for an advisor in Claude Code (goal 065). Claude Code runs with none
- * of its own tools (the supervisor holds git and model credentials), so the supervisor serves the
- * one read-only search over MCP: on localhost, for the length of one call, behind a token made for
- * that call. Claude Code is given that server alone (`--strict-mcp-config`) and only its tool.
+ * The run's past research for an advisor in Claude Code (goal 065), OpenCode or the Codex CLI
+ * (goal 073). Each runs with none of its own tools (the supervisor holds git and model
+ * credentials), so the supervisor serves the one read-only search over MCP: on localhost, for the
+ * length of one call, behind a token made for that call. Claude Code is given that server alone
+ * (`--strict-mcp-config`) and only its tool; OpenCode and Codex get it in their configuration for
+ * the call (advisor-cli.ts), with the token in their environment.
  * The search reads the harness's copy of the run's knowledge/ through the harness API; nothing
  * here writes.
  */
@@ -33,6 +35,13 @@ export interface PastSearchServer {
   url: string;
   /** Claude Code's flags: the server, and permission for its one tool. */
   args: string[];
+  /**
+   * Each server as another CLI's configuration names it (goal 073: OpenCode and Codex): its name
+   * and its address, no token in it. The past-research search is PAST_MCP_SERVER.
+   */
+  servers: { name: string; url: string }[];
+  /** The bearer token the servers take, made for this call alone. */
+  token: string;
   close(): Promise<void>;
 }
 
@@ -127,19 +136,19 @@ export async function serveAdvisorTools(o: {
   });
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/mcp`;
   const headers = { Authorization: `Bearer ${token}` };
+  const servers = [
+    ...(search ? [{ name: PAST_MCP_SERVER, url }] : []),
+    ...(mcp?.servers ?? []).map((s) => ({ name: s, url: `${url}/${encodeURIComponent(s)}` })),
+  ];
   const config = {
-    mcpServers: {
-      ...(search ? { [PAST_MCP_SERVER]: { type: "http", url, headers } } : {}),
-      ...Object.fromEntries(
-        (mcp?.servers ?? []).map((s) => [
-          s,
-          { type: "http", url: `${url}/${encodeURIComponent(s)}`, headers },
-        ]),
-      ),
-    },
+    mcpServers: Object.fromEntries(
+      servers.map((s) => [s.name, { type: "http", url: s.url, headers }]),
+    ),
   };
   return {
     url,
+    servers,
+    token,
     args: [
       "--mcp-config",
       JSON.stringify(config),

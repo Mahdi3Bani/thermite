@@ -77,6 +77,24 @@ export interface PlannerCallOptions {
   mcp?: { auth: string; servers: string[] } | undefined;
 }
 
+/**
+ * The harness a planner call runs in. With a model of its own (`own`), the harness its route names
+ * (goal 073): Pi, OpenCode, Claude Code or Codex. Following the workers' route: OpenCode for
+ * OpenCode's own models, Codex when the workers run in Codex, else Pi. A Claude subscription runs
+ * only in Claude Code, and OpenCode's own models only in OpenCode, whatever the route says.
+ */
+export function plannerHarness(
+  m: ModelConfig | undefined,
+  own: boolean,
+): "pi" | "opencode" | "claude-code" | "codex" {
+  if (!m) return "pi";
+  if (m.api === "claude") return "claude-code";
+  if (m.api === "opencode") return "opencode";
+  if (m.harness === "codex") return "codex";
+  if (own && m.harness === "opencode") return "opencode";
+  return "pi";
+}
+
 export interface SchedulerOptions {
   service: HarnessService;
   runner: Runner;
@@ -672,8 +690,11 @@ export class Scheduler {
     let p: Awaited<ReturnType<typeof plan>>;
     try {
       // The planner's own model when control gave it one; else the workers'.
-      const m = this.o.plannerModel?.() ?? this.modelNow();
-      // OpenCode's own models are reached only through OpenCode; every other provider, through Pi.
+      const own = this.o.plannerModel?.();
+      const m = own ?? this.modelNow();
+      // With a model of its own, the planner runs in the harness its route names (goal 073).
+      // Following the workers: OpenCode's own models are reached only through OpenCode, a route
+      // whose workers run in Codex plans in Codex too, and every other provider plans in Pi.
       // A Claude subscription, only through Claude Code: without it the planner refuses the route.
       // The MCP servers the run's kit gives the planner (goal 068), through the gateway: Pi's
       // tools call it in this process; another harness gets a credential made for the call.
@@ -688,9 +709,9 @@ export class Scheduler {
                 : {}),
             }
           : undefined;
-      // A route whose agents run in the Codex CLI plans in Codex too.
+      const via = plannerHarness(m, own !== undefined);
       const ask: Ask | undefined =
-        m?.api === "opencode" && this.o.askOpencode
+        via === "opencode" && m && this.o.askOpencode
           ? (prompt, sig, o) =>
               (this.o.askOpencode as NonNullable<SchedulerOptions["askOpencode"]>)(
                 m,
@@ -698,7 +719,7 @@ export class Scheduler {
                 sig,
                 withMcp(o),
               )
-          : m?.api === "claude" && this.o.askClaude
+          : via === "claude-code" && m && this.o.askClaude
             ? (prompt, sig, o) =>
                 (this.o.askClaude as NonNullable<SchedulerOptions["askClaude"]>)(
                   m,
@@ -706,7 +727,7 @@ export class Scheduler {
                   sig,
                   withMcp(o),
                 )
-            : m?.harness === "codex" && this.o.askCodex
+            : via === "codex" && m && this.o.askCodex
               ? (prompt, sig, o) =>
                   (this.o.askCodex as NonNullable<SchedulerOptions["askCodex"]>)(
                     m,

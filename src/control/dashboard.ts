@@ -117,7 +117,13 @@ import {
 import { untriedOf } from "./queue-copy.ts";
 import { probeRepository, readKitManifest } from "./repo-probe.ts";
 import { exportLeft, resultsLeft } from "./results-left.ts";
-import { agentModelsOf, rigModelShapeRefusal } from "./rig-model.ts";
+import {
+  agentModelsOf,
+  HARNESS_NAMES,
+  harnessRefusal,
+  neededHarness,
+  rigModelShapeRefusal,
+} from "./rig-model.ts";
 import { RigUpdates, UPDATE_STEP_WORDS } from "./rig-update.ts";
 import { type RunpodFacts, readRunpod, runpodLine } from "./runpod.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
@@ -1309,15 +1315,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     if (picked === "opencode" || picked === "pi" || picked === "codex") return picked;
     const [pRaw, mRaw] = choice.split("|");
     const p = store.provider(decodeURIComponent(pRaw ?? ""));
-    const model = decodeURIComponent(mRaw ?? "");
-    if (p?.type === "claude") return "claude-code";
-    if (
-      p &&
-      isOpencodeOwn(p) &&
-      (p.type === "opencode" || !p.key_sealed || model.endsWith("-free"))
-    )
-      return "opencode";
-    return "pi";
+    return p ? neededHarness(p, decodeURIComponent(mRaw ?? "")) : "pi";
   };
   /**
    * The harness to give a rig with a model, when the owner names none (New campaign and Start a
@@ -3293,12 +3291,7 @@ ${notice}${box}</section></div>`,
     type === "claude" ? "claude-code:" : type === "chatgpt" ? "chatgpt:" : "";
   /** The types reached with an API key (a subscription is added differently). */
   const KEY_TYPES: ProviderType[] = ["openai", "anthropic", "opencode"];
-  const HARNESSES: Record<Harness, string> = {
-    pi: "Pi",
-    opencode: "OpenCode v2",
-    "claude-code": "Claude Code",
-    codex: "Codex",
-  };
+  const HARNESSES = HARNESS_NAMES;
   const TYPE_TIP =
     "What kind of provider it is. OpenAI-compatible covers most model servers (vLLM, LiteLLM, OpenRouter, Ollama). Anthropic is Anthropic's own API. OpenCode is OpenCode's own service, whose free models need the OpenCode harness.";
   const BASE_TIP =
@@ -3905,12 +3898,19 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
             agents: agentModelsOf(store, rig),
           };
         }
+        // A harness named is refused in words when it cannot run the model (goal 073); none,
+        // what the model needs.
+        const wp = store.provider(r.provider ?? "");
+        if (wp && r.harness) {
+          const refused = harnessRefusal(wp, r.model ?? "", r.harness, "the workers");
+          if (refused) return { error: refused };
+        }
         // MCP and REST set what they are asked: no context_window removes a cap, and no
         // compact_at a compaction point (the default applies).
         const given = giveRigModel(
           rig,
           choice,
-          harnessFor(choice, r.harness ?? ""),
+          r.harness ?? harnessFor(choice, ""),
           r.effort,
           by,
           r.contextWindow ?? null,
@@ -3924,7 +3924,17 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
           agents: agentModelsOf(store, rig),
         };
       }
-      const given = giveAgentModel(rig, agent, choice, r.effort, by);
+      // The harness named, else what the model needs (goal 073): MCP and REST set what they
+      // are asked.
+      const rp = choice ? store.provider(r.provider ?? "") : undefined;
+      const given = giveAgentModel(
+        rig,
+        agent,
+        choice,
+        r.effort,
+        by,
+        r.harness ?? (rp ? neededHarness(rp, r.model ?? "") : undefined),
+      );
       if ("error" in given) return given;
       // The agent's route carries the provider's window (a cap is the workers' alone).
       const listed = choice
@@ -6593,7 +6603,9 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
   /**
    * Gives one of a rig's other agents a provider's model, as its row on Edit rig does, or (an
    * empty choice) its default again: the workers' model for the planner, the rig's advisors file
-   * for an advisor. `ok` is Edit rig's words for the change.
+   * for an advisor. `ok` is Edit rig's words for the change. `harness` (goal 073): where it runs;
+   * left out (Edit rig, which has no harness on these rows yet), the one it has while it keeps
+   * the same model, else what the model needs.
    */
   const giveAgentModel = (
     rig: string,
@@ -6601,6 +6613,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     choice: string,
     effort: Effort | undefined,
     by = "owner:ui",
+    picked?: Harness | undefined,
   ): { ok: string } | { error: string } => {
     if (!choice) {
       store.assignRoleModel(rig, role, null);
@@ -6624,13 +6637,23 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     const p = store.provider(provider);
     if (!p?.models.some((m) => m.id === model))
       return { error: `That provider does not list that model (${role}).` };
-    // Advisors make single calls here; OpenCode's own models need OpenCode, which they don't run.
-    if (role !== "planner" && isOpencodeOwn(p) && (p.type === "opencode" || !p.key_sealed))
-      return {
-        error: `The ${role} cannot use OpenCode's own models: they run only in OpenCode. Choose another model.`,
-      };
-    store.assignRoleModel(rig, role, { provider, model, effort });
-    store.audit(by, "agent_model_given", { rig, role, provider, model, effort: effort ?? null });
+    const had = store.roleModels(rig)[role];
+    const harness =
+      picked ??
+      (had?.harness && had.provider === provider && had.model === model
+        ? had.harness
+        : neededHarness(p, model));
+    const refused = harnessRefusal(p, model, harness, `the ${role}`);
+    if (refused) return { error: refused };
+    store.assignRoleModel(rig, role, { provider, model, effort, harness });
+    store.audit(by, "agent_model_given", {
+      rig,
+      role,
+      provider,
+      model,
+      effort: effort ?? null,
+      harness,
+    });
     return { ok: `a model for the ${role}` };
   };
 
@@ -6724,8 +6747,17 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
             ? "OpenCode"
             : "Pi"
           : kind === "opencode"
-            ? "not for advisors: OpenCode only"
+            ? "OpenCode v2 in the supervisor, past research and the kit's MCP tools only"
             : "the supervisor, read-only tools";
+    /** Where an agent with its own model runs, from the harness control keeps for it (goal 073). */
+    const harnessText = (role: AgentRole, h: Harness) =>
+      h === "claude-code"
+        ? runsText(role, "claude")
+        : role === "planner"
+          ? HARNESSES[h]
+          : h === "pi"
+            ? runsText(role, "key")
+            : `${HARNESSES[h]} in the supervisor, past research and the kit's MCP tools only`;
     /** A model list for one agent: the providers' models, each marked with where it runs. */
     const optionsFor = (empty: string, picked: { provider: string; model: string } | undefined) =>
       `<option value="" data-kind="">${esc(empty)}</option>${providers
@@ -6757,7 +6789,10 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     /** The first text of a role's "Runs in" cell; the client script keeps it current. */
     const runsIn = (role: AgentRole) => {
       const own = roles[role];
-      if (own) return runsText(role, providerKind(own.provider));
+      if (own) {
+        const p = store.provider(own.provider);
+        return harnessText(role, own.harness ?? (p ? neededHarness(p, own.model) : "pi"));
+      }
       if (role !== "planner") return "the advisors file, if the rig has one";
       const w = providerKind(want?.provider);
       // Workers in Codex: the planner that follows them plans in Codex too.
@@ -6791,11 +6826,11 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         tip: "Three reviewers that grade goals that need judgement. The judge's numbers never come from them. All three use this model.",
       },
     ];
-    const agentRows = `<div class="hd">Agent</div><div class="hd">Model</div><div class="hd">${infoLabel("Effort", "How long the model thinks before it answers. More effort: better answers, slower, and more of a subscription's window. Providers other than a Claude subscription take up to high.")}</div><div class="hd">${infoLabel("Runs in", "The program that runs the agent. A Claude subscription works only in Claude Code, Anthropic's own program. Codex, OpenAI's own program, works with a ChatGPT subscription or an OpenAI-compatible key; the planner that follows the workers runs in it too. Agents in Claude Code get no tools but a read-only search of the run's past research. Advisors with an API key run in the supervisor with read-only tools: the campaign brief and the search of past research, plus a guarded web fetch and the knowledge base only where the rig's advisors file sets them up.")}</div>
+    const agentRows = `<div class="hd">Agent</div><div class="hd">Model</div><div class="hd">${infoLabel("Effort", "How long the model thinks before it answers. More effort: better answers, slower, and more of a subscription's window. Providers other than a Claude subscription take up to high.")}</div><div class="hd">${infoLabel("Runs in", "The program that runs the agent. A Claude subscription works only in Claude Code, Anthropic's own program. Codex, OpenAI's own program, works with a ChatGPT subscription or an OpenAI-compatible key; the planner that follows the workers runs in it too. Agents in Claude Code get no tools but a read-only search of the run's past research. Advisors with an API key run in the supervisor with read-only tools: the campaign brief and the search of past research, plus a guarded web fetch and the knowledge base only where the rig's advisors file sets them up. OpenCode's own models run only in OpenCode v2. An advisor in OpenCode v2 or Codex runs in the supervisor with the search of past research and the kit's MCP tools only. Over MCP or REST, you can give each agent its harness.")}</div>
 <div>${infoLabel("Workers", "The agents that change the code, one per lane. They run for many turns, so they use the most of a subscription.")}</div><select name="choice" data-role="workers" data-label="the workers' model">${optionsFor("its own settings", want)}</select>${effortSelect("effort", want?.effort)}<div class="runs-in"><select name="harness" data-harness aria-label="harness"><option value="pi"${!want?.harness || want.harness === "pi" ? " selected" : ""}>Pi</option><option value="opencode"${want?.harness === "opencode" ? " selected" : ""}>OpenCode v2</option><option value="claude-code"${want?.harness === "claude-code" ? " selected" : ""}>Claude Code</option><option value="codex"${want?.harness === "codex" ? " selected" : ""}>Codex</option></select></div>
 ${ROLE_ROWS.map(
   (r) =>
-    `<div>${infoLabel(r.name, r.tip)}</div><select name="role_${r.id}" data-role="${r.id}" data-label="the ${r.name.toLowerCase()}'s model">${optionsFor(r.id === "planner" ? "same as the workers" : "the rig's advisors file", roles[r.id])}</select>${effortSelect(`effort_${r.id}`, roles[r.id]?.effort)}<div class="runs-in" data-runs="${r.id}">${runsIn(r.id)}</div>`,
+    `<div>${infoLabel(r.name, r.tip)}</div><select name="role_${r.id}" data-role="${r.id}" data-label="the ${r.name.toLowerCase()}'s model">${optionsFor(r.id === "planner" ? "same as the workers" : "the rig's advisors file", roles[r.id])}</select>${effortSelect(`effort_${r.id}`, roles[r.id]?.effort)}<div class="runs-in" data-runs="${r.id}"${roles[r.id] ? ` data-saved="${esc(runsIn(r.id))}"` : ""}>${runsIn(r.id)}</div>`,
 ).join("")}`;
     const placed = store.machineRig(u.id) ?? store.clusterRig(u.id);
     const where = placed

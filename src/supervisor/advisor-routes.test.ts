@@ -48,6 +48,73 @@ describe("advisors from control", () => {
     assert.equal(signedIn?.runtime === "openai" && signedIn.api_key, "access");
   });
 
+  test("each role runs in the harness its route names: OpenCode (its own models too) or Codex", () => {
+    // OpenCode's own models: no key, no base address.
+    assert.deepEqual(
+      runtimeOf(
+        route({ type: "opencode", harness: "opencode", model: "big-pickle", api_key: "" }),
+        "auditor",
+      ),
+      {
+        name: "auditor",
+        runtime: "opencode",
+        api: "opencode",
+        model: "big-pickle",
+        context_window: 0,
+        timeout_s: 1800,
+      },
+    );
+    // A provider's model in OpenCode: its key stays in memory, for the call's proxy.
+    assert.deepEqual(
+      runtimeOf(route({ harness: "opencode", context_window: 200_000 }), "teacher-1"),
+      {
+        name: "teacher-1",
+        runtime: "opencode",
+        api: "anthropic",
+        base_url: "https://api.anthropic.com",
+        model: "claude-test",
+        api_key: "key-in-memory",
+        context_window: 200_000,
+        timeout_s: 1800,
+      },
+    );
+    // A ChatGPT sign-in in Codex, with its effort.
+    assert.deepEqual(
+      runtimeOf(
+        route({
+          type: "chatgpt",
+          harness: "codex",
+          base_url: "https://chatgpt.example.com/backend-api/codex",
+          model: "gpt-sol",
+          api_key: "access",
+          reasoning: "high",
+        }),
+        "reviewer-1",
+      ),
+      {
+        name: "reviewer-1",
+        runtime: "codex",
+        api: "chatgpt",
+        base_url: "https://chatgpt.example.com/backend-api/codex",
+        model: "gpt-sol",
+        api_key: "access",
+        reasoning: "high",
+        context_window: 0,
+        timeout_s: 1800,
+      },
+    );
+    // Codex speaks only the Responses API: an Anthropic route in Codex is not run.
+    assert.equal(runtimeOf(route({ harness: "codex" }), "x"), undefined);
+    // Pi, named or not, runs here.
+    assert.equal(runtimeOf(route({ harness: "pi" }), "x")?.runtime, "openai");
+    // Each parses as the advisors file's runtimes do.
+    for (const r of [
+      runtimeOf(route({ harness: "opencode" }), "a"),
+      runtimeOf(route({ type: "openai", harness: "codex" }), "b"),
+    ])
+      assert.deepEqual(AdvisorsConfig.parse({ auditor: r }).auditor, r);
+  });
+
   test("control's roles replace the file's; roles control leaves keep the file's", async () => {
     const file = AdvisorsConfig.parse({
       teachers: [{ name: "t", runtime: "cli", argv: ["x"], restricted: true }],

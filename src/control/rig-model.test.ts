@@ -4,7 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { generateSigningKeys } from "../core/commands.ts";
 import { createControlApi } from "./api.ts";
-import { rigModelShapeRefusal } from "./rig-model.ts";
+import { agentModelsOf, rigModelShapeRefusal } from "./rig-model.ts";
 import { SecretBox } from "./secrets.ts";
 import { ControlStore } from "./store.ts";
 
@@ -24,7 +24,8 @@ const TOKENS = {
 
 /**
  * Control with rig-a reporting. Providers: "lab" (an OpenAI-compatible key) with wide-model and
- * strong-model, "sub" (a signed-in ChatGPT subscription) with gpt-sol, and OpenCode's own "zen".
+ * strong-model, "sub" (a signed-in ChatGPT subscription) with gpt-sol, OpenCode's own "zen", and
+ * "claude-sub" (a Claude subscription) with opus-5.5.
  */
 async function stack() {
   const secrets = SecretBox.ephemeral();
@@ -70,6 +71,13 @@ async function stack() {
   store.setProviderModels("sub", [{ id: "gpt-sol", context_window: 272_000 }]);
   store.putProvider({ name: "zen", type: "opencode", base_url: "https://opencode.ai/zen/v1" });
   store.setProviderModels("zen", [{ id: "big-pickle" }]);
+  store.putProvider({
+    name: "claude-sub",
+    type: "claude",
+    base_url: "",
+    key: { sealed: secrets.seal("claude-subscription-for-tests"), hint: "…ests" },
+  });
+  store.setProviderModels("claude-sub", [{ id: "opus-5.5", context_window: 200_000 }]);
   const as =
     (token: string) =>
     (method: "GET" | "POST", body?: Record<string, unknown>, rig = "rig-a") =>
@@ -126,11 +134,14 @@ describe("each agent's model over REST and MCP", () => {
       rigModelShapeRefusal({ clear: true, effort: "high" }),
       "Give clear alone, or a provider and a model.",
     );
-    assert.match(
-      String(
-        rigModelShapeRefusal({ agent: "planner", provider: "lab", model: "m", harness: "pi" }),
-      ),
-      /^Only the workers take a harness\./,
+    // Every agent takes a harness (goal 073).
+    assert.equal(
+      rigModelShapeRefusal({ agent: "planner", provider: "lab", model: "m", harness: "opencode" }),
+      undefined,
+    );
+    assert.equal(
+      rigModelShapeRefusal({ clear: true, agent: "auditor", harness: "codex" }),
+      "Give clear alone, or a provider and a model.",
     );
     assert.match(
       String(
@@ -184,11 +195,11 @@ describe("each agent's model over REST and MCP", () => {
           context_cap: null,
           compact_at: null,
         },
-        planner: { provider: "lab", model: "strong-model", effort: "high" },
-        teachers: { provider: "sub", model: "gpt-sol", effort: "high" },
-        combiner: { provider: "lab", model: "strong-model", effort: "high" },
-        auditor: { provider: "sub", model: "gpt-sol", effort: "high" },
-        panel: { provider: "lab", model: "wide-model", effort: "high" },
+        planner: { provider: "lab", model: "strong-model", effort: "high", harness: "pi" },
+        teachers: { provider: "sub", model: "gpt-sol", effort: "high", harness: "pi" },
+        combiner: { provider: "lab", model: "strong-model", effort: "high", harness: "pi" },
+        auditor: { provider: "sub", model: "gpt-sol", effort: "high", harness: "pi" },
+        panel: { provider: "lab", model: "wide-model", effort: "high", harness: "pi" },
       },
     });
 
@@ -273,16 +284,16 @@ describe("each agent's model over REST and MCP", () => {
       "That provider does not list that model (auditor).",
     );
     await refused(
-      { agent: "auditor", provider: "zen", model: "big-pickle" },
-      "The auditor cannot use OpenCode's own models: they run only in OpenCode. Choose another model.",
+      { agent: "auditor", provider: "zen", model: "big-pickle", harness: "pi" },
+      "OpenCode's free models run only in OpenCode: choose OpenCode v2 for the auditor, or another model.",
     );
     await refused(
       { agent: "auditor", provider: "lab", model: "strong-model", context_window: 8192 },
       /^Only the workers take a context window cap\./,
     );
     await refused(
-      { agent: "planner", provider: "lab", model: "strong-model", harness: "codex" },
-      /^Only the workers take a harness\./,
+      { agent: "planner", provider: "lab", model: "strong-model", harness: "claude-code" },
+      "Claude Code runs only with a Claude subscription here: choose Pi, OpenCode v2 or Codex for this provider.",
     );
     await refused(
       { agent: "auditor", clear: true, model: "wide-model" },
@@ -290,7 +301,7 @@ describe("each agent's model over REST and MCP", () => {
     );
     await refused({ agent: "auditor" }, "Give a provider and a model, or clear: true.");
     assert.equal(s.store.roleModels("rig-a").auditor?.model, "wide-model");
-    // OpenCode's own models suit a planner, which runs in OpenCode then.
+    // OpenCode's own models suit any agent, which runs in OpenCode then.
     assert.equal(
       (await s.give({ agent: "planner", provider: "zen", model: "big-pickle" })).status,
       200,
@@ -310,6 +321,96 @@ describe("each agent's model over REST and MCP", () => {
       assert.ok(get.status === 401 || get.status === 403, "REST takes the owner's token");
     }
     assert.equal(s.store.roleModels("rig-a").auditor?.model, "wide-model");
+  });
+
+  test("each agent runs in the harness it is given, refused in words where its model can't run", async () => {
+    const s = await stack();
+    await s.give({ provider: "lab", model: "wide-model" });
+    const given = [
+      // [agent, provider, model, harness asked, harness kept]
+      ["planner", "lab", "strong-model", "opencode", "opencode"],
+      ["teachers", "sub", "gpt-sol", "codex", "codex"],
+      ["combiner", "lab", "strong-model", "codex", "codex"],
+      ["auditor", "zen", "big-pickle", undefined, "opencode"],
+      ["panel", "claude-sub", "opus-5.5", undefined, "claude-code"],
+    ] as const;
+    for (const [agent, provider, model, harness, kept] of given) {
+      const r = await s.give({ agent, provider, model, ...(harness ? { harness } : {}) });
+      assert.equal(r.status, 200, `${agent}: ${JSON.stringify(r.body)}`);
+      const agents = r.body.agents as Record<string, { harness: string } | null>;
+      assert.equal(agents[agent]?.harness, kept, agent);
+    }
+    const audit = s.store.listAudit(10, { action: "agent_model_given" });
+    assert.equal((audit[0]?.body as { harness?: string } | undefined)?.harness, "claude-code");
+    // The rig's routes carry each agent's harness: the planner's in its model route, the
+    // advisors' in their advisor routes. OpenCode's own models go with no key.
+    const mr = await s.asRig("/v1/rigs/rig-a/model-route");
+    assert.equal(mr.planner?.harness, "opencode");
+    assert.equal(mr.planner?.type, "openai");
+    const adv = await s.asRig("/v1/rigs/rig-a/advisor-routes");
+    assert.deepEqual(
+      [adv.teachers?.harness, adv.teachers?.type],
+      ["codex", "chatgpt"],
+      "a ChatGPT sign-in in Codex",
+    );
+    assert.deepEqual([adv.combiner?.harness, adv.combiner?.type], ["codex", "openai"]);
+    assert.deepEqual(
+      [adv.auditor?.harness, adv.auditor?.type, adv.auditor?.api_key],
+      ["opencode", "opencode", ""],
+    );
+    assert.deepEqual([adv.panel?.harness, adv.panel?.type], ["claude-code", "claude"]);
+
+    // Refused in words, for every kind of agent, and nothing changes.
+    const refusals = [
+      [
+        { agent: "auditor", provider: "claude-sub", model: "opus-5.5", harness: "pi" },
+        "A Claude subscription runs only in Claude Code: choose Claude Code for the auditor, or another model.",
+      ],
+      [
+        { agent: "planner", provider: "zen", model: "big-pickle", harness: "codex" },
+        "Codex runs only with a ChatGPT subscription or an OpenAI-compatible provider: choose Pi or OpenCode v2 for this provider.",
+      ],
+      [
+        { agent: "teachers", provider: "zen", model: "big-pickle", harness: "pi" },
+        "OpenCode's free models run only in OpenCode: choose OpenCode v2 for the teachers, or another model.",
+      ],
+      [
+        { agent: "combiner", provider: "sub", model: "gpt-sol", harness: "claude-code" },
+        "Claude Code runs only with a Claude subscription here: choose Pi, OpenCode v2 or Codex for this provider.",
+      ],
+      [
+        { provider: "claude-sub", model: "opus-5.5", harness: "codex" },
+        "A Claude subscription runs only in Claude Code: choose Claude Code for the workers, or another model.",
+      ],
+      [
+        { provider: "zen", model: "big-pickle", harness: "pi" },
+        "OpenCode's free models run only in OpenCode: choose OpenCode v2 for the workers, or another model.",
+      ],
+    ] as const;
+    for (const [body, error] of refusals) {
+      const r = await s.give(body);
+      assert.equal(r.status, 400, JSON.stringify(body));
+      assert.equal(r.body.error, error);
+    }
+    const after = agentModelsOf(s.store, "rig-a");
+    assert.deepEqual(
+      [
+        after.workers?.harness,
+        after.planner?.harness,
+        after.teachers?.harness,
+        after.combiner?.harness,
+        after.auditor?.harness,
+      ],
+      ["pi", "opencode", "codex", "codex", "opencode"],
+    );
+    // Without a harness, the same model again goes back to what it needs: MCP and REST set what
+    // they are asked.
+    const back = await s.give({ agent: "combiner", provider: "lab", model: "strong-model" });
+    assert.equal((back.body.agents as Record<string, { harness: string }>).combiner?.harness, "pi");
+    // A Claude subscription named with claude-code for the workers runs there.
+    const w = await s.give({ provider: "claude-sub", model: "opus-5.5", harness: "claude-code" });
+    assert.equal(w.status, 200, JSON.stringify(w.body));
+    assert.equal(s.store.rigModels()["rig-a"]?.harness, "claude-code");
   });
 
   test("MCP: an operator sets and clears an advisor's model; a reader reads them only", async () => {

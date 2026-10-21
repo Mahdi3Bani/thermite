@@ -53,9 +53,11 @@ Not every model works in every worker harness. Thermite refuses these pairings w
 | Claude Code with any provider other than a Claude subscription | "Claude Code runs only with a Claude subscription here: choose Pi or OpenCode v2 for this provider.", or "… choose Pi, OpenCode v2 or Codex for this provider." for a ChatGPT subscription or an OpenAI-compatible provider |
 | OpenCode's own models in Pi | "OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig." |
 | Codex with an Anthropic or OpenCode provider | "Codex runs only with a ChatGPT subscription or an OpenAI-compatible provider: choose Pi or OpenCode v2 for this provider." |
-| OpenCode's own models for an advisor | "The *role* cannot use OpenCode's own models: they run only in OpenCode. Choose another model." |
+| A model given over MCP or REST with a harness that can't run it, for any agent | "A Claude subscription runs only in Claude Code: choose Claude Code for the *agent*, or another model.", or "OpenCode's free models run only in OpenCode: choose OpenCode v2 for the *agent*, or another model." |
 
 A Claude subscription always runs in Claude Code: when you choose one of its models, Thermite picks Claude Code for you. A ChatGPT subscription runs in Pi unless you choose OpenCode v2 or Codex.
+
+The planner and the advisors with a model of their own run in the program their model needs. Over MCP or the REST API, each can take another of the four, as the workers can: see [Where each agent runs](model-per-agent.md#where-each-agent-runs).
 
 :::note[Research campaigns]
 Research workers run in Pi or OpenCode v2, never in Claude Code, so a research campaign can't use a Claude subscription. On a rig whose workers run in Codex, research workers run in Pi with the same model. OpenCode's own free models serve a research campaign when the agents run in OpenCode v2. [Write a contract](../campaigns/write-a-contract.md#4-write-a-research-campaign) says what happens otherwise.

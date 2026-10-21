@@ -463,8 +463,32 @@ describe("control dashboard", () => {
       provider: "claude-max",
       model: "opus-5.5",
       effort: "xhigh",
+      harness: "claude-code",
     });
     assert.equal(s.store.rigModels()["rig-a"]?.effort, "medium");
+    // A harness set over MCP or REST (goal 073) stays when Edit rig changes only the row's
+    // effort, and the row's Runs in says where the agent runs.
+    s.store.assignRoleModel("rig-a", "teachers", {
+      provider: "keyed",
+      model: "claude-test",
+      harness: "opencode",
+    });
+    await s.post("/ui/rigs/rig-a/edit", { ...form, effort_teachers: "high" });
+    assert.deepEqual(s.store.roleModels("rig-a").teachers, {
+      provider: "keyed",
+      model: "claude-test",
+      effort: "high",
+      harness: "opencode",
+    });
+    page = await (await s.get("/ui/rigs/rig-a/edit")).text();
+    assert.match(
+      page,
+      /data-runs="teachers" data-saved="OpenCode v2 in the supervisor, past research and the kit's MCP tools only">OpenCode v2 in the supervisor/,
+    );
+    // The auditor on a Claude subscription: Claude Code, and no saved text to keep for a row
+    // with no model of its own.
+    assert.match(page, /data-runs="auditor" data-saved="Claude Code, past research/);
+    assert.match(page, /data-runs="combiner">the advisors file, if the rig has one</);
     // The Codex CLI speaks only OpenAI's Responses API: not with Anthropic's.
     const noCodex = await s.post("/ui/rigs/rig-a/edit", { ...form, harness: "codex" });
     assert.match(

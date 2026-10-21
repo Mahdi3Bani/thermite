@@ -8,8 +8,13 @@
 //   - the planner plans through Codex, as the planner's own user, with a credential minted for it;
 //   - a worker trial runs Codex as the lane's user, with its own home and configuration, its
 //     approvals and sandbox off, edits the code and submits with thermite-trial;
-//   - every model call goes through the harness's proxy, which adds the provider's key: the
-//     provider sees the key and never a trial's or a check's credential;
+//   - the auditor, given the same model in Codex over REST (goal 073), audits a large gain in
+//     the Codex CLI in the supervisor: in its own folder, with the read-only sandbox, no
+//     approvals asked, no shell, through the supervisor's proxy for the call with a credential
+//     made for it;
+//   - every model call goes through the harness's proxy or the supervisor's, which adds the
+//     provider's key: the provider sees the key and never a trial's, a check's or a call's
+//     credential;
 //   - the key shows in no page, event or record.
 // A ChatGPT sign-in takes the same route and the same proxy (the unit tests cover its route and
 // its full plan); control's sign-in with OpenAI is not stood in for here.
@@ -17,7 +22,18 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { hostName as containersHost } from "./lib/scripted-model.mjs";
-import { api, assign, control, dc, events, prepare, secret, until } from "./lib/smoke-env.mjs";
+import {
+  api,
+  assign,
+  candidatePatch,
+  control,
+  dc,
+  events,
+  prepare,
+  secret,
+  submit,
+  until,
+} from "./lib/smoke-env.mjs";
 
 const KEY = "provider-key-codex-acceptance"; // public-check: allow (a made-up key for the stand-in)
 const files = ["-f", "compose.yaml", "-f", "containers/test-codex/compose.yaml"];
@@ -69,6 +85,8 @@ const base = `http://${containersHost()}:${provider.address().port}/v1`;
 const env = prepare();
 const contract = JSON.parse(readFileSync(env.contractFile, "utf8"));
 contract.lanes = { count: 1, trials_per_epoch: 1 };
+// Audits for any win above 1% (the smoke kit's good kernel wins far more).
+contract.acceptance.audit = { ratio_to_median: 3, absolute: 0.01 };
 writeFileSync(env.contractFile, JSON.stringify(contract));
 dc(composeEnv, ...files, "up", "-d", "--build");
 try {
@@ -116,6 +134,21 @@ try {
     return m?.source === "control" && m.harness === "codex" ? m : undefined;
   });
   check("the rig took the route in Codex", model.model === "scripted", model);
+  // The auditor on the same model in Codex, over REST (goal 073): it runs in the supervisor.
+  const auditor = await api("/v1/rigs/local-1/model", {
+    method: "POST",
+    body: JSON.stringify({
+      agent: "auditor",
+      provider: "openai-test",
+      model: "scripted",
+      harness: "codex",
+    }),
+  });
+  check(
+    "the auditor is given the provider's model in Codex over REST",
+    auditor.status === 200 && auditor.body.agents?.auditor?.harness === "codex",
+    auditor.body,
+  );
   const modelCheck = await until(
     "the model check through Codex",
     async () =>
@@ -185,11 +218,44 @@ try {
     Number(trial.body.turns) >= 1,
     trial.body,
   );
+  const good = submit(
+    composeEnv,
+    "smoke-1",
+    candidatePatch(env, "kits/smoke-cpu/candidates/good"),
+    "good kernel",
+  );
+  const audited = await until(
+    "the good kernel's audit, in Codex in the supervisor",
+    async () =>
+      (await api("/v1/rigs/local-1/view")).body.runs
+        ?.find((r) => r.id === "smoke-1")
+        ?.audits?.find((a) => a.attempt === good.attempt && a.decision),
+    1_200_000,
+    3000,
+  );
+  const why = String(audited.reasons ?? "");
+  check(
+    "the auditor ran in Codex in the supervisor, in its own folder, with the read-only sandbox, no approvals asked and no shell, through the supervisor's proxy with a credential made for the call",
+    audited.decision === "clear" &&
+      /Codex stand-in/.test(why) &&
+      /sandbox=read-only /.test(why) &&
+      /approvals=never /.test(why) &&
+      /shell_off=true /.test(why) &&
+      /advisor_proxy=supervisor /.test(why) &&
+      /ephemeral=true /.test(why) &&
+      /bypass=false /.test(why) &&
+      /own_folder=true /.test(why) &&
+      /uid=10001 /.test(why) &&
+      /auth=proxy /.test(why) &&
+      /proxied=200 /.test(why) &&
+      /model=scripted\)/.test(why),
+    audited,
+  );
   check(
     "every Responses call reached the provider with its own key, added by the proxy, never a run's credential",
     seen.keys.size === 1 &&
       seen.keys.has(`Bearer ${KEY}`) &&
-      seen.paths.filter((p) => p === "POST /v1/responses").length >= 3,
+      seen.paths.filter((p) => p === "POST /v1/responses").length >= 4,
     { keys: [...seen.keys].map((k) => k.slice(0, 16)), paths: [...new Set(seen.paths)] },
   );
   const everything = JSON.stringify([

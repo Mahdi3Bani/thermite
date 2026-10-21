@@ -3,12 +3,11 @@ import { type AdvisorRuntime, AdvisorsConfig } from "./advisors.ts";
 
 /**
  * The advisors' models that control gives a rig (the owner's choice for each role on the rig's
- * Edit page), as runtimes the supervisor runs. A role control gives a model replaces the
- * supervisor's own configuration for that role; a role it gives none keeps it. A Claude
- * subscription's role runs in Claude Code; an API-key route or a ChatGPT sign-in runs here with
- * read-only tools (a sign-in's access token lasts an hour; control's routes are read each round).
- * OpenCode's own models need OpenCode, which advisors do not run, so such a route is skipped.
-
+ * Edit page, or over MCP and REST), as runtimes the supervisor runs. A role control gives a model
+ * replaces the supervisor's own configuration for that role; a role it gives none keeps it. Each
+ * runs in the harness its route names (goal 073): Pi here with read-only tools, Claude Code (a
+ * Claude subscription, and only it), OpenCode v2 (OpenCode's own models too) or the Codex CLI.
+ * A ChatGPT sign-in's access token lasts an hour; control's routes are read each round.
  */
 
 /** A route as control hands it (see the harness's ControlRoute); its key stays in memory. */
@@ -20,6 +19,8 @@ export interface AdvisorRoute {
   context_window: number;
   reasoning: string | null;
   effort?: string | null | undefined;
+  /** The harness the role runs in (older controls: none, Pi or what the model needs). */
+  harness?: string | undefined;
   api_key: string;
 }
 
@@ -43,9 +44,50 @@ export function runtimeOf(route: AdvisorRoute, name: string): AdvisorRuntime | u
       effort: EFFORTS.find((e) => e === route.effort),
       timeout_s: 1800,
     };
+  const reasoning = route.reasoning;
+  const effort =
+    reasoning === "low" || reasoning === "medium" || reasoning === "high" ? reasoning : undefined;
+  // OpenCode v2: the provider's API through a proxy for the call; OpenCode's own models with no key.
+  if (route.harness === "opencode") {
+    if (route.type === "opencode")
+      return {
+        name,
+        runtime: "opencode",
+        api: "opencode",
+        model: route.model,
+        context_window: route.context_window,
+        timeout_s: 1800,
+      };
+    if (route.type !== "openai" && route.type !== "anthropic" && route.type !== "chatgpt")
+      return undefined;
+    return {
+      name,
+      runtime: "opencode",
+      api: route.type,
+      base_url: route.base_url,
+      model: route.model,
+      api_key: route.api_key,
+      context_window: route.context_window,
+      timeout_s: 1800,
+    };
+  }
+  // The Codex CLI: OpenAI's Responses API only.
+  if (route.harness === "codex") {
+    if (route.type !== "openai" && route.type !== "chatgpt") return undefined;
+    return {
+      name,
+      runtime: "codex",
+      api: route.type,
+      base_url: route.base_url,
+      model: route.model,
+      api_key: route.api_key,
+      reasoning: effort,
+      context_window: route.context_window,
+      timeout_s: 1800,
+    };
+  }
   if (route.type !== "openai" && route.type !== "anthropic" && route.type !== "chatgpt")
     return undefined;
-  const reasoning = route.reasoning;
   return {
     name,
     runtime: "openai",
@@ -53,8 +95,7 @@ export function runtimeOf(route: AdvisorRoute, name: string): AdvisorRuntime | u
     base_url: route.base_url,
     model: route.model,
     api_key: route.api_key,
-    reasoning:
-      reasoning === "low" || reasoning === "medium" || reasoning === "high" ? reasoning : undefined,
+    reasoning: effort,
     context_window: route.context_window || 200_000,
     max_tokens: 8192,
     max_turns: 24,

@@ -41,11 +41,13 @@ You need a provider on control. See [Connect a model provider](../models/connect
 
 1. Open **Rigs** in the sidebar, choose the rig, then press **Edit rig**.
 2. In **1 · Parts of the rig**, check that the switches **Teacher pair**, **Auditor** and **Review panel** are **on**. They are on by default, but a part with no model does nothing. **Teacher pair** also covers the combiner.
-3. In **2 · The agents**, choose a **Model** and an **Effort** for **Teacher pair**, **Combiner**, **Auditor** and **Review panel**. **Runs in** then shows where each will run; for advisors, you don't choose it:
-   - `the supervisor, read-only tools`: a model with an API key, or a ChatGPT subscription;
+3. In **2 · The agents**, choose a **Model** and an **Effort** for **Teacher pair**, **Combiner**, **Auditor** and **Review panel**. **Runs in** then shows where each will run. This page gives each advisor the program its model needs:
+   - `the supervisor, read-only tools`: a model with an API key, or a ChatGPT subscription, run in Pi;
    - `Claude Code, past research and the kit's MCP tools only`: a Claude subscription. Claude Code gets none of its own tools: only a read-only search of the run's past research, and the MCP servers the run's kit gives the advisors, which the supervisor serves on localhost for the call. The supervisor's image must be built with `CLAUDE_CODE_VERSION` for this (see [Use a Claude subscription](../models/claude-subscription.md));
-   - `not for advisors: OpenCode only`: OpenCode's own models, which advisors can't use. **Save changes** then refuses, for example with "The teachers cannot use OpenCode's own models: they run only in OpenCode. Choose another model."
+   - `OpenCode v2 in the supervisor, past research and the kit's MCP tools only`: OpenCode's own models, which run only in OpenCode. OpenCode gets the same tools as Claude Code, and none of its own.
 4. Press **Save changes**.
+
+To run an advisor in another program, give it its model over MCP or the REST API with `harness`: `opencode` (OpenCode v2) or `codex` (the Codex CLI, for a ChatGPT subscription or an OpenAI-compatible provider) runs it in the supervisor with the same tools as Claude Code, and none of its own ([Give each agent its own model](../models/model-per-agent.md#over-mcp-or-rest)). **Runs in** then says, for example, `Codex in the supervisor, past research and the kit's MCP tools only`, and keeps saying so while you leave that row's model as it is. The published supervisor image carries OpenCode and the Codex CLI.
 
 The page says, for example, "Control sent a model for the teachers to rig-1. The rig takes the change in less than one minute." Both teachers use the model you chose. A review panel from **Edit rig** is always three reviewers with the same model; in the file, it is two or more. To go back to the file for a role, choose `the rig's advisors file`.
 
@@ -107,10 +109,11 @@ A file with a mistake stops the supervisor: its log has a `fatal` line with the 
 
 ### Other runtimes and options
 
-The example uses the `openai` runtime: a model API that the supervisor calls itself, with read-only tools. Add `"api": "anthropic"` for Anthropic's API. Two other runtimes exist:
+The example uses the `openai` runtime: a model API that the supervisor calls itself, with read-only tools. Add `"api": "anthropic"` for Anthropic's API. Four other runtimes exist:
 
 - `cli`: a command-line agent that you install in the supervisor's image. It runs as the supervisor's user, so its `argv` must turn off the agent's own shell and file tools, and the file must say `"restricted": true`: your statement that the `argv` does so.
 - `claude-code`: Claude Code with a Claude subscription. A subscription is easier to give on **Edit rig**, where control keeps its token.
+- `opencode` and `codex`: OpenCode v2 and the Codex CLI, which the supervisor image carries. Thermite sets each up with none of its own tools, only the search of the run's past research and the kit's MCP tools, and reaches the model through a proxy for each call, which adds the key.
 
 `fetch_domains` lists the sites that the teachers and the auditor may read, for papers and upstream code; leave it out for no web fetch. The optional `kb` field connects a knowledge base of your own: a search service over your notes or documents, reached over MCP, which the teachers may search but not change. With `"*"` (any public site) in `fetch_domains`, the teachers get no knowledge-base search at all, and their brief leaves out the background and the past-research line described in [What they read](#what-they-read-and-their-field-notes), both in their prompt and from their `brief` tool. The [advisors file reference](../../reference/advisors-file.md#runtimes) has every runtime's fields, and what each role may read and fetch.
 

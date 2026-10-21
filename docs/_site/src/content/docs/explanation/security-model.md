@@ -75,7 +75,7 @@ An MCP server gives agents tools from outside Thermite ([Give agents MCP tools](
 | The supervisor | Yes, over the internet: the calls of the run's teacher pair, auditor and review panel, when the run's kit gives the server to the advisors | In memory: the headers control gave it, an access token rather than the refresh token or the client secret |
 | The harness | Yes, over the internet: the calls of the workers and the planner, when the run's kit gives them the server | In memory, the same headers. Nothing is written to its disk |
 | A lane, the planner's own process in OpenCode, Claude Code or Codex | No: it calls the harness's gateway with its trial's token, or one made for the planner's call, and the gateway calls the server | No. Its configuration names the gateway, with its own token in the file (OpenCode, Claude Code) or in its environment (Codex) |
-| An advisor in Claude Code | No: it calls a server the supervisor serves on `127.0.0.1` for that call | No |
+| An advisor in Claude Code, OpenCode v2 or Codex | No: it calls a server the supervisor serves on `127.0.0.1` for that call | No. Its token for that server, made for the call, is on Claude Code's command line (`--mcp-config`), and in OpenCode's and Codex's environment |
 | The judge | No | No |
 
 Control hands a rig a server only when a run it assigned that rig names it. The gateway gives each kind of agent only the servers and tools its run's kit gives it, and a call to another is refused. What a server answers reaches the agent as data, never as a verdict; a write tool the kit gives an agent can change things on that server.

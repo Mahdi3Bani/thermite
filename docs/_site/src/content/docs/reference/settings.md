@@ -173,9 +173,9 @@ A model chosen for the rig on control (**Settings › Providers**, or **Edit rig
 | `THERMITE_MODEL_REASONING_EFFORT` | `none`, `off`, `low`, `medium` or `high` | not set: nothing is sent | no | Sent as `reasoning_effort`. `off` is sent as `none`. Anything else stops the harness with `THERMITE_MODEL_REASONING_EFFORT must be none, low, medium or high, not <value>` |
 | `THERMITE_MODEL_API` | `openai`, `anthropic`, `opencode`, `claude` or `chatgpt` | `openai` | no | The provider's API. `openai`: OpenAI-compatible chat completions. `anthropic`: Anthropic's Messages API. `opencode`: OpenCode's own models, which only the OpenCode worker harness reaches. `claude`: a Claude subscription. `chatgpt`: a ChatGPT sign-in. Its access token lasts an hour, and control renews it only for a model set on control. Anything else: `THERMITE_MODEL_API must be openai, anthropic, opencode, claude or chatgpt, not <value>` |
 | `THERMITE_AGENT_HARNESS` | `pi`, `opencode`, `claude-code` or `codex` | `pi` | no | The [worker harness](glossary.md), the program the agents work in: Pi (built into the harness), OpenCode, Claude Code or the Codex CLI. Anything else: `THERMITE_AGENT_HARNESS must be pi, opencode, claude-code or codex, not <value>` |
-| `THERMITE_OPENCODE_BIN` | name or path | `opencode` on the `PATH` | no | The OpenCode program |
+| `THERMITE_OPENCODE_BIN` | name or path | `opencode` on the `PATH` | no | The OpenCode program. The supervisor reads it too, for advisors in OpenCode |
 | `THERMITE_CLAUDE_BIN` | name or path | `claude` on the `PATH` | no | The Claude Code program. The supervisor reads it too |
-| `THERMITE_CODEX_BIN` | name or path | `codex` on the `PATH` | no | The Codex CLI program |
+| `THERMITE_CODEX_BIN` | name or path | `codex` on the `PATH` | no | The Codex CLI program. The supervisor reads it too, for advisors in Codex |
 
 A Claude subscription and Claude Code go only together. Any other pairing stops the harness with `a Claude subscription (THERMITE_MODEL_API=claude) runs only with THERMITE_AGENT_HARNESS=claude-code, and that harness only with it`.
 
@@ -342,9 +342,9 @@ The images take these build arguments. [Harness image](harness-image.md) says wh
 | --- | --- | --- | --- |
 | `NODE_IMAGE` | control, harness, supervisor | Node.js 22 on Debian bookworm (slim), pinned by digest | The Node.js image each image is built from |
 | `BASE_IMAGE` | harness | `NODE_IMAGE` | The harness's base. For GPU rigs, a CUDA 12.x development image |
-| `OPENCODE_VERSION` | harness | `2.0.32` | The OpenCode version installed |
+| `OPENCODE_VERSION` | harness, supervisor | `2.0.32` | The OpenCode version installed: for the workers and the planner, and for advisors in OpenCode |
 | `CLAUDE_CODE_VERSION` | harness, supervisor | empty: Claude Code is not installed | The Claude Code version to download at build time, for agents or advisors on a Claude subscription |
-| `CODEX_VERSION` | harness | `0.162.1` | The Codex CLI version installed. Empty: the image has no Codex CLI |
+| `CODEX_VERSION` | harness, supervisor | `0.162.1` | The Codex CLI version installed: for the workers and the planner, and for advisors in Codex. Empty: the image has no Codex CLI |
 | `KUBECTL_VERSION` | control | `v1.37.1` | The kubectl version installed, checked against a pinned checksum |
 | `THERMITE_IMAGE_ID` | harness | empty | The image's identity, kept as the environment variable of the same name ([above](#places-exports-and-the-broker)). The release workflow sets it to the image's tag and short commit, such as `0.1.0-cuda+1a2b3c4d5e6f` |
 | `THERMITE_COMMIT` | control, harness, supervisor | empty | The source commit the image is built from: 7 to 64 hexadecimal characters, such as the output of `git rev-parse HEAD`. The image sets the environment variable of the same name, and the service reports it with Thermite's version from `package.json` ([Rig versions](rest-api.md#rig-versions)). Empty, or anything else: the service reports no commit |
