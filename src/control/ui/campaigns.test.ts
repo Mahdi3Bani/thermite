@@ -164,6 +164,52 @@ test("a research run's rounds read as set by the research plan, not as a refused
   assert.match(said({ planner_tries: 0 }), /round 3 \(by the fixed rules: no model\)/);
 });
 
+test("History tells a run's MCP servers, and a server that fails and comes back, in words", async () => {
+  const { sentence } = await import("./words.ts");
+  const u = { judge: { jobs: [] }, runs: [] } as never;
+  const say = (kind: string, body: Record<string, unknown>) => {
+    const x = sentence(u, {
+      kind,
+      subject: "r-1",
+      actor: "harness",
+      at: "2026-10-21T00:00:00Z",
+      body,
+    } as never);
+    return [x?.text, x?.tone, x?.run];
+  };
+  assert.deepEqual(
+    say("mcp_servers", {
+      servers: [
+        { name: "gbrain", agents: ["workers", "planner"], tools: { planner: ["search"] } },
+        { name: "papers", agents: ["advisors"] },
+      ],
+    }),
+    [
+      "The run's agents can use MCP servers: gbrain for the workers and the planner; papers for the advisors.",
+      "",
+      "r-1",
+    ],
+  );
+  assert.deepEqual(say("mcp_servers", { servers: [{ name: "gbrain", agents: ["workers"] }] }), [
+    "The run's agents can use an MCP server: gbrain for the workers.",
+    "",
+    "r-1",
+  ]);
+  assert.deepEqual(
+    say("mcp_server_failed", { server: "gbrain", agents: "planner", error: "HTTP 503" }),
+    [
+      "The MCP server gbrain failed for the planner: HTTP 503. The run goes on without it.",
+      "warn",
+      "r-1",
+    ],
+  );
+  assert.deepEqual(say("mcp_server_back", { server: "gbrain", agents: "planner" }), [
+    "The MCP server gbrain works again for the planner.",
+    "ok",
+    "r-1",
+  ]);
+});
+
 test("History tells the queue's changes, the hand-outs and the rules in words", async () => {
   const { sentence } = await import("./words.ts");
   const u = {

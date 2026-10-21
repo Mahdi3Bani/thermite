@@ -11,6 +11,7 @@ import { claudeMcpConfig } from "./agents/mcp-tools.ts";
 import { opencodeConfig } from "./agents/opencode.ts";
 import { Registry } from "./agents/registry.ts";
 import { createHarnessApi } from "./api.ts";
+import { McpGateway } from "./mcp-gateway.ts";
 
 /** A made-up key: it must reach the fake server's headers only, never an agent. */
 const KEY = "Bearer gatewaykeyforthetestsonly";
@@ -287,5 +288,45 @@ describe("the harness's MCP gateway", () => {
       agents: "advisors",
       error: "HTTP 503",
     });
+    // Live says each failure once: the workers' here, the advisors' in the supervisor's own Live.
+    const said = env.service.live.since(0).entries.map((e) => e.text);
+    assert.equal(
+      said.filter((x) => /^the MCP server gbrain failed: .*The workers go on without it\.$/.test(x))
+        .length,
+      1,
+    );
+    assert.deepEqual(
+      said.filter((x) => /HTTP 503/.test(x)),
+      [],
+    );
+  });
+
+  test("a failure in words: once, with the verb for its kind of agent", async () => {
+    const said: string[] = [];
+    const recorded: string[] = [];
+    const gw = new McpGateway({
+      uses: () => [{ name: "gbrain", agents: ["planner"] }],
+      record: (_run, kind) => recorded.push(kind),
+      say: (_source, _run, text) => said.push(text),
+    });
+    const planner = { run: RUN, kind: "planner" as const, source: "planner" };
+    // The planner's server, which control has not handed the rig: in Live once.
+    assert.equal(
+      await gw.serverTools(planner, "gbrain"),
+      "control has not given it to this rig yet",
+    );
+    await gw.serverTools(planner, "gbrain");
+    assert.deepEqual(said, [
+      "the MCP server gbrain failed: control has not given it to this rig yet. The planner goes on without it.",
+    ]);
+    assert.equal(
+      await gw.serverTools(planner, "papers"),
+      "the planner of this run does not get papers",
+    );
+    // The supervisor's report of an advisor's failure: in the history, not again in Live.
+    gw.report({ run: RUN, kind: "advisors", source: "supervisor" }, "papers", false, "HTTP 500");
+    gw.report({ run: RUN, kind: "advisors", source: "supervisor" }, "papers", true);
+    assert.equal(said.length, 1);
+    assert.deepEqual(recorded, ["mcp_server_failed", "mcp_server_failed", "mcp_server_back"]);
   });
 });
