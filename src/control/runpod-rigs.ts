@@ -334,6 +334,8 @@ export class RunpodRigs {
       if (change.idle_stop_minutes !== null && s.idle_stop_minutes === null)
         s.idle_from = this.iso();
       s.idle_stop_minutes = change.idle_stop_minutes;
+      if (s.idle_stop_minutes !== null && this.store.tunnelRig(rig)?.enrolled_at)
+        this.noteWork(rig, s, this.now());
     }
     this.store.saveRunpodRig(rig, s, r.active);
     this.store.audit(by, "runpod_rig_limits", {
@@ -363,11 +365,11 @@ export class RunpodRigs {
    * While nothing is under way, a running run's newest event (capped at now) is its last work, so
    * the planner's gap between trials is not idle. A paused or finished run is never at work, and a
    * running run with nothing under way and no new event (blocked: waiting for the owner, say)
-   * becomes idle from its last event.
+   * becomes idle from its last event. `now`: something is under way for a run at this moment.
    */
-  private lastWork(rig: string, nowMs: number): number | null {
+  private lastWork(rig: string, nowMs: number): { last: number | null; now: boolean } {
     const v = rigView(this.store, rig, { staleAfterMs: this.staleAfterMs, now: nowMs });
-    if (!v) return null;
+    if (!v) return { last: null, now: false };
     const running = v.runs.filter((x) => x.status === "running");
     const ids = new Set(running.map((x) => x.id));
     if (
@@ -375,13 +377,24 @@ export class RunpodRigs {
       running.some((x) => Object.keys(x.at_work).length > 0) ||
       v.judge.queued.some((j) => j.run !== null && ids.has(j.run))
     )
-      return nowMs;
+      return { last: nowMs, now: true };
     let last: number | null = null;
     for (const x of running) {
       const at = Date.parse(x.timeline.at(-1)?.at ?? "");
       if (Number.isFinite(at)) last = Math.max(last ?? 0, Math.min(at, nowMs));
     }
-    return last;
+    return { last, now: false };
+  }
+
+  /**
+   * Notes on the rig's state whether a run is at work now, and when one last was: the idle stop
+   * and the rig's page count idle time from these (idleSince).
+   */
+  private noteWork(rig: string, s: RigState, nowMs: number): void {
+    const { last, now } = this.lastWork(rig, nowMs);
+    s.at_work = now;
+    if (last !== null && !(s.busy_at && Date.parse(s.busy_at) >= last))
+      s.busy_at = new Date(last).toISOString();
   }
 
   private async step(rig: string): Promise<void> {
@@ -442,15 +455,12 @@ export class RunpodRigs {
   /** The owner's limits, if set: a pod that reached one is stopped, its results sent out first. */
   private async limit(r: StoredRunpodRig, key: string, s: RigState, nowMs: number): Promise<void> {
     const enrolledAt = this.store.tunnelRig(r.rig)?.enrolled_at ?? null;
-    if (s.idle_stop_minutes !== null && enrolledAt) {
-      const last = this.lastWork(r.rig, nowMs);
-      if (last !== null && !(s.busy_at && Date.parse(s.busy_at) >= last))
-        s.busy_at = new Date(last).toISOString();
-    }
+    if (s.idle_stop_minutes !== null && enrolledAt) this.noteWork(r.rig, s, nowMs);
     const spent = spentBy(s, nowMs);
     let why: "spend_limit" | "idle_stop" | undefined;
     if (s.spend_limit_usd !== null && spent >= s.spend_limit_usd) why = "spend_limit";
     else {
+      // The rule the rig's page shows: no idle time while a run is at work.
       const since = idleSince(s, enrolledAt);
       if (
         s.idle_stop_minutes !== null &&

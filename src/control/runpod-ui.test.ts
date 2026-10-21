@@ -104,8 +104,11 @@ const LAUNCH = {
 };
 
 /** A launched rig that enrolled, reported a running run, and whose supervisor reported. */
-async function working(s: Awaited<ReturnType<typeof setup>>) {
-  assert.match(await s.post("/ui/rigs/add/runpod", LAUNCH), /^\/ui\/rigs\/rp-test-1\?ok=Launched/);
+async function working(s: Awaited<ReturnType<typeof setup>>, form: Partial<typeof LAUNCH> = {}) {
+  assert.match(
+    await s.post("/ui/rigs/add/runpod", { ...LAUNCH, ...form }),
+    /^\/ui\/rigs\/rp-test-1\?ok=Launched/,
+  );
   await s.advance();
   assert.ok(s.store.pinTunnelRig("rp-test-1", "sign", "box"));
   s.store.ingest({
@@ -463,6 +466,62 @@ describe("a RunPod rig's page", () => {
       await s.page("/ui/rigs/rp-test-1"),
       /<div class="flash bad" style="margin-top:12px">Not terminated/,
     );
+  });
+
+  test("the idle stop's line says a run is at work while one is, and counts only time with none", async () => {
+    const s = await setup();
+    await working(s, { idle_stop_minutes: "30" });
+    /** The harness's next signed events, after working()'s first. */
+    let cursor = 1;
+    const report = (...events: [kind: string, body: object][]) => {
+      s.store.ingest({
+        rig: "rp-test-1",
+        ledger_id: "l1",
+        cursor,
+        next: cursor + events.length,
+        summary: {},
+        events: events.map(([kind, body], i) => ({
+          id: cursor + i + 1,
+          at: new Date().toISOString(),
+          actor: "t",
+          kind,
+          subject: "run-1",
+          body,
+        })),
+      });
+      cursor += events.length;
+    };
+    /** The line under Idle stop, without its "Change it" link. */
+    const idleLine = async () =>
+      /data-idle>30 min<\/div><div class="s">([^<]*?)(?: · )?</.exec(
+        await s.page("/ui/rigs/rp-test-1"),
+      )?.[1];
+    const rest = async () =>
+      (await (
+        await s.api.request("/v1/rigs/rp-test-1/runpod", {
+          headers: { authorization: `Bearer ${ADMIN}` },
+        })
+      ).json()) as RunpodRigView;
+    // A lane's trial in progress: at work, however long it takes. No idle time counts.
+    report(["trial_started", { lane: "lane-1", trial: "t-1" }]);
+    await s.advance();
+    assert.equal(await idleLine(), "a run is at work");
+    assert.equal((await rest()).idle_since, null);
+    for (let i = 0; i < 80; i++) await s.advance();
+    assert.equal(await idleLine(), "a run is at work", "40 minutes into the trial");
+    assert.deepEqual(s.cloud.stops(), [], "never stopped with a run at work");
+    assert.equal(s.rigs.view("rp-test-1")?.op, null);
+    // The run finishes: the idle time counts from then, as the idle stop counts it.
+    report(
+      ["trial_finished", { lane: "lane-1", trial: "t-1", stopped: "done" }],
+      ["run_status", { status: "closed", reason: "done" }],
+    );
+    await s.advance();
+    await s.advance();
+    assert.match(String(await idleLine()), /^no run at work for \d+ s of 30 min$/);
+    assert.ok((await rest()).idle_since);
+    for (let i = 0; i < 60; i++) await s.advance();
+    assert.equal(s.rigs.view("rp-test-1")?.op?.why, "idle_stop");
   });
 
   test("restart from the page goes to RunPod", async () => {

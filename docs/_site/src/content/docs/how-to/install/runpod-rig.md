@@ -85,7 +85,7 @@ When its pod is stopped, starting or resuming a run on it starts the pod first: 
 
 ## 5. Watch its cost and change its limits
 
-**The pod** shows four facts: **Cost now** (its price per hour while it runs, `storage only` while it is stopped), **Spent so far** (what it cost while it ran, since launch, with a bar when a spend limit is set), **Spend limit** and **Idle stop**. Under **Idle stop** it says how long no run has been at work. **Rigs** shows the cost now and the spend so far under **Per hour**, and a pod its idle stop stopped as **Stopped**, with `its idle stop stopped it` and `a new run wakes it` ([The Rigs list](../../reference/rigs-list.md#a-stopped-pod)).
+**The pod** shows four facts: **Cost now** (its price per hour while it runs, `storage only` while it is stopped), **Spent so far** (what it cost while it ran, since launch, with a bar when a spend limit is set), **Spend limit** and **Idle stop**. Under **Idle stop** it says `a run is at work` while one is, and otherwise how long no run has been at work, such as `no run at work for 4 min of 30 min`, from control's check every 30 seconds. **Rigs** shows the cost now and the spend so far under **Per hour**, and a pod its idle stop stopped as **Stopped**, with `its idle stop stopped it` and `a new run wakes it` ([The Rigs list](../../reference/rigs-list.md#a-stopped-pod)).
 
 To change them, open **Change the spend limit or the idle stop**, fill in or clear the fields, and press **Save**. The page says, for example, `Saved. No spend limit. It stops after 30 minutes with no run at work.` An empty field clears that limit. From the command line:
 

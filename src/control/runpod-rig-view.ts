@@ -37,6 +37,8 @@ export interface RigState {
   idle_from: string | null;
   /** The last time a run was at work on the rig, as control saw it (runpod-rigs.ts's lastWork). */
   busy_at: string | null;
+  /** A run was at work on the rig at control's last check: no idle time counts now. */
+  at_work?: boolean | undefined;
   /** When control stopped the pod, and why: a limit the owner set, or the owner's stop. */
   stopped_at: string | null;
   stopped_by: "spend_limit" | "idle_stop" | "owner" | null;
@@ -77,7 +79,7 @@ export interface RunpodRigView extends Omit<RigState, "refusal"> {
   enrolled_at: string | null;
   /**
    * Since when the rig counts as idle for the idle stop (idleSince); null without an idle stop,
-   * before enrollment, or while the pod is not running.
+   * before enrollment, while the pod is not running, or while a run is at work on it.
    */
   idle_since: string | null;
   /** The change under way in words (opWords); null: none. */
@@ -115,10 +117,11 @@ export function spentBy(s: RigState, now: number): number {
 /**
  * Since when the rig is idle for its idle stop: the latest of when the stop was set, when the
  * pod enrolled, when it last started running and when a run was last at work. Null without an idle
- * stop, before enrollment, or while the pod is not running.
+ * stop, before enrollment, while the pod is not running, or while a run is at work on it (as
+ * control last saw): the idle stop and the rig's page use this one rule.
  */
 export function idleSince(s: RigState, enrolledAt: string | null): string | null {
-  if (s.idle_stop_minutes === null || !enrolledAt || !s.running_since) return null;
+  if (s.idle_stop_minutes === null || !enrolledAt || !s.running_since || s.at_work) return null;
   const times = [s.idle_from, enrolledAt, s.running_since, s.busy_at].filter((t): t is string =>
     Boolean(t),
   );

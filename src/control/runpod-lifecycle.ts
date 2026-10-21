@@ -620,12 +620,13 @@ export class RunpodLifecycle {
     this.store.audit("control", "runpod_rig_terminate_refused", { rig: r.rig, pod: r.pod, why });
   }
 
-  /** The pod stops costing now: what it cost so far is kept. */
+  /** The pod stops costing now: what it cost so far is kept. No run works on a stopped pod. */
   private billStop(s: RigState): number {
     const spent = spentBy(s, this.now());
     s.spent_usd = spent;
     s.billed_since = null;
     s.running_since = null;
+    s.at_work = false;
     return spent;
   }
 }
