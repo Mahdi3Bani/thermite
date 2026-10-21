@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Writable } from "node:stream";
 import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type TSchema, Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
@@ -9,7 +10,12 @@ import type { McpCallResult } from "../common/mcp-client.ts";
 import { ExperimentId, QueuePosition, StructuredDirective } from "../core/commands.ts";
 import { LenientNotes, NOTES_GUIDE, type NoteInput } from "../core/journal.ts";
 import type { McpToolInfo } from "../core/mcp.ts";
-import { claudeBin, claudeExe } from "../harness/agents/claude-code.ts";
+import {
+  CLAUDE_BASE_ENV,
+  CLAUDE_TOKEN_FD,
+  claudeBin,
+  claudeExe,
+} from "../harness/agents/claude-code.ts";
 import { mcpAgentTools, mcpLine } from "../harness/agents/mcp-tools.ts";
 import { buildModel } from "../harness/agents/model.ts";
 import { JOURNAL_FIELD } from "../harness/agents/notes-tool.ts";
@@ -240,13 +246,11 @@ export async function runAdvisor<S extends z.ZodType>(input: {
             ...(past?.args ?? []),
           ],
           timeout_s: rt.timeout_s,
-          // The token only in Claude Code's environment; no update checks or other traffic.
-          env: {
-            CLAUDE_CODE_OAUTH_TOKEN: rt.token,
-            CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1",
-            CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-            DISABLE_AUTOUPDATER: "1",
-          },
+          // The token on file descriptor 3, as for the agents in the harness: in no environment
+          // and no file. Claude Code's own sandbox stays off; with none of its tools, Claude Code
+          // runs no commands here.
+          env: { ...CLAUDE_BASE_ENV },
+          token: rt.token,
         },
         t?.mcp?.servers.length ? `${input.system}\n\n${mcpLine(t.mcp.servers)}` : input.system,
         input.prompt,
@@ -399,7 +403,17 @@ export async function runAdvisor<S extends z.ZodType>(input: {
 }
 
 function runCli<S extends z.ZodType>(
-  rt: { argv: string[]; timeout_s: number; env?: Record<string, string> | undefined },
+  rt: {
+    argv: string[];
+    timeout_s: number;
+    env?: Record<string, string> | undefined;
+    /**
+     * Claude Code's sign-in token: written to the command's file descriptor CLAUDE_TOKEN_FD, then
+     * closed, never in its environment or on its command line. The prompt keeps stdin: an audit's
+     * or a review's package can pass the size of one command-line argument.
+     */
+    token?: string | undefined;
+  },
   system: string,
   prompt: string,
   schema: S,
@@ -409,13 +423,21 @@ function runCli<S extends z.ZodType>(
   // as a whole). Without TMPDIR, Claude Code would make its folder in /tmp, which the one-container
   // rig image closes to the supervisor's user.
   const home = mkdtempSync(join(tmpdir(), "thermite-advisor-"));
+  const stdio: "pipe"[] = ["pipe", "pipe", "pipe"];
+  if (rt.token !== undefined) stdio[CLAUDE_TOKEN_FD] = "pipe";
   return new Promise((resolve) => {
     const child = spawn(rt.argv[0] as string, rt.argv.slice(1), {
-      stdio: ["pipe", "pipe", "pipe"],
+      stdio,
       cwd: home,
       detached: true,
       env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: home, TMPDIR: home, ...rt.env },
     });
+    if (rt.token !== undefined) {
+      const tokenPipe = child.stdio[CLAUDE_TOKEN_FD] as Writable | null | undefined;
+      // A command that exits without reading it fails on its own words, which the answer shows.
+      tokenPipe?.on("error", () => undefined);
+      tokenPipe?.end(rt.token);
+    }
     const killGroup = () => {
       try {
         if (child.pid) process.kill(-child.pid, "SIGKILL");

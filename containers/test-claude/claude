@@ -37,15 +37,16 @@ const bash = (command) => {
   out({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: `tu_${n}`, content: output, is_error: isError }] } });
   return output;
 };
-// The token: on the file descriptor the harness names, as Claude Code reads it there, or in the
-// environment (an advisor's call).
+// The token: on the file descriptor the harness or the supervisor names, as Claude Code reads it
+// there. A token in the environment as well shows as env+fd3, and alone as env.
 const tokenFd = process.env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR;
+const inEnv = Boolean(process.env.CLAUDE_CODE_OAUTH_TOKEN);
 let token = process.env.CLAUDE_CODE_OAUTH_TOKEN ?? "";
 let tokenOn = token ? "env" : "none";
 if (tokenFd) {
   try {
     token = require("node:fs").readFileSync(Number(tokenFd), "utf8");
-    tokenOn = token ? `fd${tokenFd}` : "empty-fd";
+    tokenOn = token ? `${inEnv ? "env+" : ""}fd${tokenFd}` : "empty-fd";
   } catch {
     tokenOn = "unreadable-fd";
   }

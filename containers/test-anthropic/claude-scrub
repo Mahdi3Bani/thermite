@@ -1,7 +1,0 @@
-#!/bin/sh
-# Test only (scripts/claude-real-acceptance.mjs): as ./claude, with CLAUDE_CODE_SUBPROCESS_ENV_SCRUB
-# set, which makes Claude Code's own sandbox mandatory. The test shows what that sandbox does in a
-# rig: it reports the words of the Bash call, and does not count them as a check.
-export ANTHROPIC_BASE_URL=http://127.0.0.1:8739
-export CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1
-exec /usr/local/bin/claude "$@"

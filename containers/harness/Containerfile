@@ -71,15 +71,11 @@ COPY --from=node /usr/local/bin/node /usr/local/bin/node
 # git for the mirror; a C/C++ toolchain, CMake, Ninja and ccache for kit and lane builds of real
 # projects (an inference engine, for example); Python 3 with numpy for kit run and check scripts.
 # The broker needs prlimit (process limits), setpriv (a dedicated development card's groups) and
-# taskset (timed runs on the judge card's local CPUs).
-# bubblewrap: an advisor on a Claude subscription runs Claude Code with
-# CLAUDE_CODE_SUBPROCESS_ENV_SCRUB, and Claude Code then will not start without it, although an
-# advisor runs no commands; the one-container rig image runs its supervisor on this image. It uses
-# unprivileged user namespaces, not a setuid bit. (The harness runs Claude Code with its own
-# sandbox off: src/harness/agents/claude-code.ts says why.)
+# taskset (timed runs on the judge card's local CPUs). No bubblewrap: the agents and the advisors
+# run Claude Code with its own sandbox off (src/harness/agents/claude-code.ts says why).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git tini ca-certificates gcc g++ libc6-dev make \
-      cmake ninja-build ccache python3 python3-numpy bubblewrap \
+      cmake ninja-build ccache python3 python3-numpy \
  && (command -v setpriv >/dev/null || apt-get install -y --no-install-recommends setpriv) \
  && command -v setpriv && command -v prlimit && command -v taskset \
  && rm -rf /var/lib/apt/lists/*

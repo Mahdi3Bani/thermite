@@ -34,11 +34,13 @@ import type { SubmitOutcome, TrialResult, TrialSpec } from "./worker.ts";
  * credentials; they run as the same user, which could still reach the token: the owner accepted
  * that (decision 51).
  *
- * Claude Code's own sandbox stays off. CLAUDE_CODE_SUBPROCESS_ENV_SCRUB would make it mandatory,
- * and it cannot start in a rig: its bubblewrap mounts, which the GPU fence (Landlock) refuses, as
- * do a container's own confinement and masked /proc; its network bridge's sockets, in TMPDIR, pass
- * the 108-byte limit of a socket's path in the lanes' areas. The scrub also forces Claude Code's
- * default permission mode, which refuses file edits and most commands in a headless run.
+ * Claude Code's own sandbox stays off, here and in the supervisor's advisors (whose Claude Code has
+ * none of its own tools), so the images carry no bubblewrap. CLAUDE_CODE_SUBPROCESS_ENV_SCRUB
+ * would make the sandbox mandatory, and it cannot start in a rig: its bubblewrap mounts, which the
+ * GPU fence (Landlock) refuses, as do a container's own confinement and masked /proc; its network
+ * bridge's sockets, in TMPDIR, pass the 108-byte limit of a socket's path in the lanes' areas. The
+ * scrub also forces Claude Code's default permission mode, which refuses file edits and most
+ * commands in a headless run.
  *
  * Thermite's own tools are the `thermite-trial` command, which calls the harness API with the
  * trial's token. Claude Code reports the subscription's usage windows as it goes
@@ -64,15 +66,31 @@ export function claudeExitWords(code: number | string | null, note: string, outp
   return `Claude Code exited ${code}: ${own ?? note}`;
 }
 
+/** The file descriptor Claude Code reads the sign-in token from, once, when it starts. */
+export const CLAUDE_TOKEN_FD = 3;
+
+/**
+ * What every Claude Code run here has in its environment, the agents' and the supervisor's
+ * advisors': where the token is (CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR), never the token, and no
+ * update checks, reports or other traffic. Never CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: it would turn on
+ * Claude Code's own sandbox, which cannot start in a rig (this file's opening comment says why).
+ */
+export const CLAUDE_BASE_ENV: Readonly<Record<string, string>> = {
+  CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR: String(CLAUDE_TOKEN_FD),
+  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+  DISABLE_AUTOUPDATER: "1",
+};
+
 /**
  * Claude Code's command line behind `sh`, which moves the run's stdin, the token, to file
  * descriptor 3 (CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR) and gives Claude Code /dev/null for its
  * own. Claude Code reads the token from there once, so it is in no environment: not Claude Code's,
  * nor its commands'. `after` is more of the shell line, after the redirection (where the output
- * goes).
+ * goes). The broker gives a run only its stdin; the supervisor, which starts an advisor's Claude
+ * Code itself, opens descriptor 3 directly and keeps stdin for the prompt.
  */
 export function claudeShell(argv: string[], after = ""): string[] {
-  return ["sh", "-c", `exec 3<&0 && exec "$@" < /dev/null${after}`, "sh", ...argv];
+  return ["sh", "-c", `exec ${CLAUDE_TOKEN_FD}<&0 && exec "$@" < /dev/null${after}`, "sh", ...argv];
 }
 
 /** Claude Code's executable as an absolute path (found on PATH), or undefined if it is not there. */
@@ -301,10 +319,7 @@ export function claudeEnv(o: {
     TMPDIR: o.tmp,
     THERMITE_HARNESS_URL: o.apiUrl,
     THERMITE_TRIAL_AUTH: o.auth,
-    CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR: "3",
-    // No update checks, reports or other traffic.
-    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-    DISABLE_AUTOUPDATER: "1",
+    ...CLAUDE_BASE_ENV,
     // A build or a test may run for most of the trial.
     BASH_MAX_TIMEOUT_MS: String(Math.max(120_000, o.maxCommandMs)),
   };

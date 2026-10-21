@@ -1,12 +1,20 @@
 // Test only (scripts/claude-real-acceptance.mjs): Thermite's own calls of Claude Code, run in the
 // harness container with the image's real Claude Code and the stand-in for Anthropic's API
-// (anthropic.mjs). It prints one JSON line: { checks: [{ name, ok, detail }], notes: [] }.
+// (anthropic.mjs). It prints one JSON line: { checks: [{ name, ok, detail }] }.
 //   node check.mjs harness   as the controller's user: the model check, a planner call and a
 //                            trial, through the broker (each as its role's user)
-//   node check.mjs advisor   as the supervisor's user, with its own TMPDIR: an advisor's call
+//   node check.mjs advisor   as the supervisor's user, with its own TMPDIR: an advisor's call,
+//                            and what /proc shows of its processes' environments
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:http";
 import { join } from "node:path";
 import { startAnthropicStandIn } from "./anthropic.mjs";
@@ -14,7 +22,6 @@ import { startAnthropicStandIn } from "./anthropic.mjs";
 /** A made-up sign-in token: letters only, never a real one. */
 const TOKEN = "madeupsignintokenforthestandin";
 const checks = [];
-const notes = [];
 const check = (name, ok, detail) => checks.push({ name, ok: Boolean(ok), detail });
 const here = "/opt/test-anthropic";
 process.env.THERMITE_CLAUDE_BIN = `${here}/claude`;
@@ -157,24 +164,54 @@ async function harness() {
     said || live.slice(-4),
   );
   await runner.remove(area);
-
-  // What Claude Code's own sandbox does here, which CLAUDE_CODE_SUBPROCESS_ENV_SCRUB makes
-  // mandatory: the same call as the model check's, with the scrub. A note, not a check.
-  process.env.THERMITE_CLAUDE_BIN = `${here}/claude-scrub`;
-  const sc = await claudeOnce(
-    model,
-    "Use your Bash tool to run exactly this command: echo scrub-check\n",
-    deps,
-    { tools: "Bash", timeoutMs: 120_000, role: "model-check" },
-  );
-  notes.push(
-    `with CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1, the same Bash call gave: ${(sc.tools[0]?.output ?? sc.errors.at(-1) ?? "nothing").slice(0, 300)}`,
-  );
   runner.close();
+}
+
+/**
+ * The processes of an advisor's call (their environment names its folder, thermite-advisor-…), as
+ * /proc shows them to the supervisor's user while the call runs: whether the token or the scrub
+ * is in each one's environment, and whether it names the token's file descriptor. Never the token.
+ */
+function watchAdvisor() {
+  const seen = new Map();
+  const look = () => {
+    for (const pid of readdirSync("/proc").filter((p) => /^\d+$/.test(p))) {
+      let env;
+      try {
+        env = readFileSync(`/proc/${pid}/environ`, "latin1");
+      } catch {
+        continue; // gone, or another user's
+      }
+      if (!env.includes("/thermite-advisor-")) continue;
+      let exe = "";
+      try {
+        exe = readlinkSync(`/proc/${pid}/exe`);
+      } catch {
+        // gone
+      }
+      const vars = env.split("\0");
+      const was = seen.get(pid);
+      const scrub = vars.some((v) => v.startsWith("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB="));
+      seen.set(pid, {
+        exe: exe || was?.exe || "",
+        token: env.includes(TOKEN) || Boolean(was?.token),
+        scrub: scrub || Boolean(was?.scrub),
+        fd: vars.includes("CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR=3") || Boolean(was?.fd),
+      });
+    }
+  };
+  const timer = setInterval(look, 20);
+  return {
+    stop: () => {
+      clearInterval(timer);
+      return [...seen.values()];
+    },
+  };
 }
 
 async function advisor() {
   const { runAdvisor } = await import("/opt/thermite/dist/supervisor/advisors.js");
+  const watch = watchAdvisor();
   const r = await runAdvisor({
     runtime: { name: "check", runtime: "claude-code", model: model.model, token: TOKEN, timeout_s: 120 },
     system: "You audit a candidate change.",
@@ -187,10 +224,17 @@ async function advisor() {
     },
     answerSchema: { type: "object", properties: { decision: { type: "string" } } },
   });
+  const procs = watch.stop();
   check(
     "an advisor's call in Claude Code answered, as the supervisor's user with /tmp closed to it",
     r.output?.decision === "clear",
     r.error ?? r.output,
+  );
+  const claude = procs.filter((p) => p.exe === "/usr/local/bin/claude");
+  check(
+    "the advisor's Claude Code ran without the scrub, its sign-in on file descriptor 3, and no process of the call had the token in its environment",
+    claude.length > 0 && claude.every((p) => p.fd) && procs.every((p) => !p.token && !p.scrub),
+    procs,
   );
 }
 
@@ -207,4 +251,4 @@ check(
   api.seen,
 );
 await api.close();
-console.log(JSON.stringify({ checks, notes }));
+console.log(JSON.stringify({ checks }));

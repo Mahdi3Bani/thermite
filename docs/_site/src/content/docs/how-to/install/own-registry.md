@@ -54,7 +54,7 @@ The release workflow builds the published CUDA harness on `docker.io/nvidia/cuda
 
 - **CUDA 12.** The Containerfile notes that CUDA 13 dropped older GPU architectures. RunPod test pods ask for hosts that run CUDA 12.6 or later.
 - **A development image**, with `nvcc`: the GPU smoke check compiles CUDA code on the rig.
-- **Debian or Ubuntu based**, because the build installs its packages with `apt-get` from the base's own package lists: git, tini (the image's entry point), a C and C++ toolchain, CMake, Ninja, ccache, Python 3 with numpy, and bubblewrap and socat for Claude Code's sandbox. Node.js, OpenCode and the Codex CLI are copied in, so the base needn't have them.
+- **Debian or Ubuntu based**, because the build installs its packages with `apt-get` from the base's own package lists: git, tini (the image's entry point), a C and C++ toolchain, CMake, Ninja, ccache, and Python 3 with numpy. Node.js, OpenCode and the Codex CLI are copied in, so the base needn't have them.
 
 ### Build arguments
 

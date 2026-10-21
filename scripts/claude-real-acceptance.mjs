@@ -8,10 +8,11 @@
 //   - a planner call: Claude Code's Grep reads past research outside its folder;
 //   - a trial as lane-1: its Write tool edits the workspace, its command finds the token in no
 //     environment, and it submits with thermite-trial;
-//   - an advisor's call as the supervisor's user, with /tmp closed to it (the one-container rig);
-//   - every call to the stand-in was signed in with the token.
-// It also notes what the same Bash call gives with CLAUDE_CODE_SUBPROCESS_ENV_SCRUB set, which
-// makes Claude Code's own sandbox mandatory.
+//   - an advisor's call as the supervisor's user, with /tmp closed to it (the one-container rig):
+//     without CLAUDE_CODE_SUBPROCESS_ENV_SCRUB, with the token on file descriptor 3 and in no
+//     process's environment;
+//   - every call to the stand-in was signed in with the token;
+//   - the image has no bubblewrap: no call of Claude Code needs it.
 //
 // Usage: COMPOSE="podman compose" node scripts/claude-real-acceptance.mjs
 //   CLAUDE_CODE_VERSION  the version the image is built with (default 2.1.305)
@@ -51,7 +52,7 @@ const logLine = (msg) =>
       }
     })
     .find((l) => l?.msg === msg);
-/** One run of check.mjs in the container; its checks and notes. */
+/** One run of check.mjs in the container; its checks. */
 const inside = (user, mode, env = []) => {
   const r = spawnSync(
     engine,
@@ -66,7 +67,6 @@ const inside = (user, mode, env = []) => {
       checks: [
         { name: `check.mjs ${mode} ran`, ok: false, detail: `${r.stdout}${r.stderr}`.slice(-1500) },
       ],
-      notes: [],
     };
   }
 };
@@ -157,6 +157,18 @@ try {
     ok: tmp === "root:thermite 1770",
     detail: tmp,
   });
+  // Claude Code's own sandbox stays off everywhere, so the image carries no bubblewrap, and the
+  // calls below pass without it.
+  const bwrap = spawnSync(
+    engine,
+    ["exec", name, "sh", "-c", "if command -v bwrap; then exit 3; else echo none; fi"],
+    { encoding: "utf8" },
+  );
+  report({
+    name: "the image has no bubblewrap",
+    ok: bwrap.status === 0 && bwrap.stdout.trim() === "none",
+    detail: `${bwrap.stdout}${bwrap.stderr}`.trim() || `exit ${bwrap.status}`,
+  });
 
   const results = [inside("10010:10010", "harness")];
   // The supervisor's user, with a temporary folder of its own, as in the one-container rig image.
@@ -174,10 +186,7 @@ try {
     "/var/lib/claude-real-sup",
   ]);
   results.push(inside("10001:10001", "advisor", ["-e", "TMPDIR=/var/lib/claude-real-sup"]));
-  for (const r of results) {
-    for (const c of r.checks) report(c);
-    for (const n of r.notes) console.log(`NOTE ${n}`);
-  }
+  for (const r of results) for (const c of r.checks) report(c);
 } catch (err) {
   report({
     name: "the test ran",
