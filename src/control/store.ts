@@ -962,6 +962,8 @@ export class ControlStore {
       this.db.exec("alter table rig_model add column harness text not null default 'pi'");
     if (!rigModelCols.includes("effort"))
       this.db.exec("alter table rig_model add column effort text");
+    if (!rigModelCols.includes("context_cap"))
+      this.db.exec("alter table rig_model add column context_cap integer");
     const machineRigCols = (this.db.prepare("pragma table_info(machine_rig)").all() as Row[]).map(
       (r) => r.name,
     );
@@ -1868,7 +1870,8 @@ export class ControlStore {
 
   /**
    * Gives a rig's agents a harness and a provider's model, or (null) returns them to the rig's own
-   * settings.
+   * settings. `contextCap`: a cap on the model's context window in tokens (goal 070); none when
+   * left out, so a model given again without one loses it.
    */
   assignRigModel(
     rig: string,
@@ -1877,6 +1880,7 @@ export class ControlStore {
       model: string;
       harness?: Harness | undefined;
       effort?: Effort | undefined;
+      contextCap?: number | undefined;
     } | null,
   ): void {
     if (choice === null) {
@@ -1886,9 +1890,10 @@ export class ControlStore {
     if (!this.provider(choice.provider)) throw new Error(`no model provider ${choice.provider}`);
     this.db
       .prepare(
-        `insert into rig_model (rig, provider, model, harness, effort, assigned_at) values (?, ?, ?, ?, ?, ?)
+        `insert into rig_model (rig, provider, model, harness, effort, context_cap, assigned_at) values (?, ?, ?, ?, ?, ?, ?)
          on conflict (rig) do update set provider = excluded.provider, model = excluded.model,
-           harness = excluded.harness, effort = excluded.effort, assigned_at = excluded.assigned_at`,
+           harness = excluded.harness, effort = excluded.effort, context_cap = excluded.context_cap,
+           assigned_at = excluded.assigned_at`,
       )
       .run(
         rig,
@@ -1896,6 +1901,7 @@ export class ControlStore {
         choice.model,
         choice.harness ?? "pi",
         choice.effort ?? null,
+        choice.contextCap ?? null,
         new Date().toISOString(),
       );
   }
@@ -1948,13 +1954,19 @@ export class ControlStore {
     );
   }
 
-  /** Each rig's provider, model, harness and effort. */
+  /** Each rig's provider, model, harness, effort and context window cap (goal 070). */
   rigModels(): Record<
     string,
-    { provider: string; model: string; harness: Harness; effort?: Effort | undefined }
+    {
+      provider: string;
+      model: string;
+      harness: Harness;
+      effort?: Effort | undefined;
+      contextCap?: number | undefined;
+    }
   > {
     const rows = this.db
-      .prepare("select rig, provider, model, harness, effort from rig_model")
+      .prepare("select rig, provider, model, harness, effort, context_cap from rig_model")
       .all() as Row[];
     return Object.fromEntries(
       rows.map((r) => [
@@ -1966,20 +1978,31 @@ export class ControlStore {
           ...(EFFORTS.includes(String(r.effort) as Effort)
             ? { effort: String(r.effort) as Effort }
             : {}),
+          ...(Number(r.context_cap) > 0 ? { contextCap: Number(r.context_cap) } : {}),
         },
       ]),
     );
   }
 
-  rigModelFor(
-    rig: string,
-  ):
-    | { provider: ModelProvider; model: string; harness: Harness; effort?: Effort | undefined }
+  rigModelFor(rig: string):
+    | {
+        provider: ModelProvider;
+        model: string;
+        harness: Harness;
+        effort?: Effort | undefined;
+        contextCap?: number | undefined;
+      }
     | undefined {
     const c = this.rigModels()[rig];
     const provider = c ? this.provider(c.provider) : undefined;
     return c && provider
-      ? { provider, model: c.model, harness: c.harness, effort: c.effort }
+      ? {
+          provider,
+          model: c.model,
+          harness: c.harness,
+          effort: c.effort,
+          contextCap: c.contextCap,
+        }
       : undefined;
   }
 

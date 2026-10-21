@@ -98,6 +98,9 @@ import { type QueueSeed, startCampaign, startRun } from "./new-campaign.ts";
 import {
   ANTHROPIC_BASE,
   CLAUDE_MODELS,
+  cappedWindow,
+  capWords,
+  contextCapRefusal,
   isOpencodeOwn,
   listModels,
   providerBase,
@@ -3351,10 +3354,19 @@ ${
       .map((u) => {
         const m = u.model;
         const want = given[u.id];
+        // A cap on the model's context window (goal 070), once the rig runs that model.
+        const capped =
+          want?.contextCap && m?.name === want.provider && m.model === want.model
+            ? capWords(
+                store.provider(want.provider)?.models.find((x) => x.id === want.model)
+                  ?.context_window ?? 0,
+                want.contextCap,
+              )
+            : undefined;
         const uses = !m
           ? "Its harness does not report its model (it needs a newer image)."
           : m.source === "control"
-            ? `Its agents run under ${HARNESSES[m.harness]} with ${m.model} from ${m.name}.`
+            ? `Its agents run under ${HARNESSES[m.harness]} with ${m.model} from ${m.name}.${capped ? ` Its context window: ${capped}.` : ""}`
             : m.source === "environment"
               ? `Its agents use the rig's own settings (${m.model}, under ${HARNESSES[m.harness]}).`
               : "Its agents have no model: they wait.";
@@ -3688,11 +3700,18 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
   };
   if (opts.actions) opts.actions.setClusterSlots = setClusterSlots;
   if (opts.actions)
-    opts.actions.setRigModel = async (rig, provider, model, harness, effort, by) => {
+    opts.actions.setRigModel = async (rig, provider, model, harness, effort, contextWindow, by) => {
       if (!views().some((u) => u.id === rig)) return { error: `no rig ${rig}` };
       const choice = `${encodeURIComponent(provider)}|${encodeURIComponent(model)}`;
-      const r = giveRigModel(rig, choice, harnessFor(choice, harness ?? ""), effort, by);
-      return "error" in r ? r : { ok: r.ok };
+      // MCP and REST set what they are asked: no context_window removes a cap.
+      return giveRigModel(
+        rig,
+        choice,
+        harnessFor(choice, harness ?? ""),
+        effort,
+        by,
+        contextWindow ?? null,
+      );
     };
   app.post("/ui/settings/clusters/:name/slots", async (c) => {
     const name = c.req.param("name");
@@ -6251,14 +6270,19 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       303,
     );
   });
-  /** Gives a rig a provider's model under a harness, as Providers and Edit rig both do. */
+  /**
+   * Gives a rig a provider's model under a harness, as Providers and Edit rig both do. `cap`: a cap
+   * on the model's context window in tokens (goal 070), or null for none. Left out (the dashboard's
+   * forms, which have no field for it), a cap the rig has stays while it keeps the same model.
+   */
   const giveRigModel = (
     rig: string,
     choice: string,
     picked: Harness,
     effort?: Effort | undefined,
     by = "owner:ui",
-  ): { ok: string } | { error: string } => {
+    cap?: number | null,
+  ): { ok: string; contextWindow: number } | { error: string } => {
     let harness = picked;
     const [pRaw, mRaw] = choice.split("|");
     let provider = "";
@@ -6295,16 +6319,31 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         error:
           "OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig.",
       };
-    store.assignRigModel(rig, { provider, model, harness, effort });
+    const listed = p.models.find((m) => m.id === model)?.context_window ?? 0;
+    const had = store.rigModels()[rig];
+    const contextCap =
+      cap === undefined
+        ? had?.provider === provider && had.model === model
+          ? had.contextCap
+          : undefined
+        : (cap ?? undefined);
+    if (typeof cap === "number") {
+      const refused = contextCapRefusal(model, listed, cap);
+      if (refused) return { error: refused };
+    }
+    store.assignRigModel(rig, { provider, model, harness, effort, contextCap });
     store.audit(by, "rig_model_given", {
       rig,
       provider,
       model,
       harness,
       effort: effort ?? null,
+      context_cap: contextCap ?? null,
     });
+    const capped = capWords(listed, contextCap);
     return {
-      ok: `${rig} takes ${model} from "${provider}" under ${HARNESSES[harness]} within a minute, and checks it.`,
+      ok: `${rig} takes ${model} from "${provider}" under ${HARNESSES[harness]} within a minute, and checks it.${capped ? ` Its context window: ${capped}.` : ""}`,
+      contextWindow: cappedWindow(listed, contextCap),
     };
   };
 

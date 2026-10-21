@@ -31,15 +31,20 @@ export interface ControlActions {
     r: ClusterRigRequest,
     by: string,
   ) => Promise<{ rig: string } | { error: string }>;
-  /** Gives a rig's agents a model from a provider, as Edit rig does; harness default: the model's. */
+  /**
+   * Gives a rig's agents a model from a provider, as Edit rig does; harness default: the model's.
+   * `contextWindow`: a cap on the model's context window in tokens (goal 070); none when left out.
+   * The answer has the window the rig's route carries (0: the provider lists none).
+   */
   setRigModel?: (
     rig: string,
     provider: string,
     model: string,
     harness: "pi" | "opencode" | "codex" | undefined,
     effort: "low" | "medium" | "high" | "xhigh" | "max" | undefined,
+    contextWindow: number | undefined,
     by: string,
-  ) => Promise<{ ok: string } | { error: string }>;
+  ) => Promise<{ ok: string; contextWindow: number } | { error: string }>;
   /**
    * Moves a rig control set up on a cluster onto control's current images, keeping its volume and
    * tokens (the rig's page, or MCP's update_rig_images).

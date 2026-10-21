@@ -84,6 +84,36 @@ This gives the model to the rig's workers and, unless it has its own, to its pla
 
 Control keeps your choice. Every 30 seconds by default, the rig's supervisor asks control for the rig's model and hands any change to the rig's harness container, with the key. Only rigs that use one of a provider's models ever receive its key. The harness checks a new model at once, and each new trial and plan uses it. A trial that is already running keeps the model it started with.
 
+## Cap the model's context window
+
+The [context window](../../reference/glossary.md) is how much the model reads in one request, in tokens. Control takes it from the provider's model list: open the provider's row to see it after each model, such as `· 205k`. To run a model at a smaller window, for example to compare two models at the same window, give the rig the model again with a cap. The dashboard has no field for it yet: use the REST API or MCP.
+
+```sh
+curl -fsS -X POST -H "Authorization: Bearer $(cat .dev/secrets/control-admin-token)" \
+  -H 'content-type: application/json' \
+  -d '{"provider": "my-litellm", "model": "my-model", "context_window": 131072}' \
+  http://127.0.0.1:8800/v1/rigs/rig-1/model
+```
+
+Control answers with the window the rig gets, and says so in words:
+
+```json
+{"rig":"rig-1","model":"my-model","context_window":131072,"said":"rig-1 takes my-model from \"my-litellm\" under Pi within a minute, and checks it. Its context window: 131,072 tokens (capped; the provider allows 204,800)."}
+```
+
+An agent does the same with [`set_rig_model`](../../reference/mcp-tools.md#set_rig_model) and `context_window: 131072`. The token for each is in [Tokens](../../reference/tokens.md).
+
+- The cap is at least 4,096 tokens, and at most the provider's window. A larger one is refused: `my-model takes at most 204,800 tokens.` When the provider lists no window, control uses the cap as given.
+- Each request sets the cap anew. Give the model again without `context_window` and the cap goes: the rig gets the provider's window.
+- **Use** on this page and **Edit rig** keep the cap while the rig keeps the same model. Another model there removes it.
+- The cap is for the workers' model, and for the planner when it follows the workers. A model you give one agent on **Edit rig** keeps its provider's window.
+
+After a minute, the rig's row under **Harness and model for each rig** says "Its agents run under Pi with my-model from my-litellm. Its context window: 131,072 tokens (capped; the provider allows 204,800)." The model check's details record the window the rig runs with: see [Rig checks](../../reference/rig-checks.md#model-route-check).
+
+:::note
+Agents in Pi keep to the window. A worker is told to submit at 80% of it, each reply is limited to the room left, and the trial ends when the window is full. OpenCode v2, Claude Code and Codex do not read the window that control sends: they use their own. To compare models at one window, run both rigs in Pi.
+:::
+
 ## Add a model the list leaves out
 
 Some providers serve models that their list does not show. Open the provider's row and type the model's id in **A model it does not list**. Its ⓘ says: "Some providers serve models their list leaves out. Add one by its id at the provider; it shows as yours." Press **Add it**. The model shows in the row with "· yours".

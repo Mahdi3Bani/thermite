@@ -1,0 +1,63 @@
+---
+id: "070"
+title: "Cap the context window of a rig's model"
+status: IN_PROGRESS
+version: "0.1.0"
+part: "Running campaigns"
+depends_on: []
+created: 2026-10-21
+updated: 2026-10-21
+---
+
+# 070 · Cap the context window of a rig's model
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+The owner can set a cap on the context window of the model control gives a rig's agents. The rig's model route then carries the cap instead of the provider's window, when the cap is lower.
+
+- **Where:** MCP's `set_rig_model` and its REST twin take an optional `context_window`, in tokens. Edit rig gets a field for it later, after a mockup.
+- **The window:** the cap when it is lower than the window the provider lists, else the provider's window. With no provider window (0: unknown), the cap as given.
+- **Refusals:** a cap above the provider's window, in words ("`<model>` takes at most `<n>` tokens"), and one below a floor of 4,096 tokens.
+- **What shows it:** the answer of `set_rig_model` and its REST twin, the rig's row in Settings › Providers, and the rig's model check, which records the route's window.
+
+## Why
+
+The owner compares two models on the same research campaign: one rig on a model whose provider reports a 204,800-token context, the other on a model with 131,072. The owner chose to run both at 131,072, so they are equal. Thermite took a model's context window only from the provider's model list, and there was no way to set a lower one.
+
+## Done when
+
+- [x] `set_rig_model` and `POST /v1/rigs/<rig>/model` take an optional `context_window`, from 4,096 tokens to the provider's window, and refuse a cap above it in plain words.
+- [x] Control keeps the cap with the rig's model, and the rig's model route carries the lower of the cap and the provider's window (the cap as given when the provider lists none).
+- [x] Setting the model again over MCP or REST without `context_window` removes the cap, and the tool's description says so.
+- [x] The rig's model check reports the window it ran with: the route's, so the capped one.
+- [x] Where control shows the rig's model with its window, it shows the cap: the rig's row in Settings › Providers, and the answer of `set_rig_model` and its REST twin, such as "131,072 tokens (capped; the provider allows 204,800)".
+- [x] Tests: a cap below the provider's window goes into the route; a cap above it is refused; no cap means the provider's window; setting the model again without a cap removes it; MCP and REST.
+- [x] Pages: the MCP tools and REST API references, Connect a model provider, Give each agent its own model, Rig checks and the glossary.
+- [ ] Edit rig has a field for the cap, after a mockup the owner approved.
+
+## Decisions
+
+- 2026-10-21, owner: "Build the cap in Thermite now", over REST and MCP. The Edit rig field comes later: it needs a mockup.
+- 2026-10-21, builder, within the build brief:
+  - **The REST twin** is a new route, `POST /v1/rigs/<rig>/model`, with `set_rig_model`'s fields. It takes the owner's token, as every REST route does, and goes through the dashboard's own code (`ControlActions.setRigModel`), so it refuses in Edit rig's words.
+  - **Limits:** from 4,096 to 100,000,000 tokens, the most a model route carries.
+  - **The dashboard's forms** (Use in Providers, Edit rig) have no field for the cap. They keep a cap while the rig keeps the same provider and model, and drop it with another model, for which it was not set. MCP and REST set what they are asked: no `context_window`, no cap.
+  - **Which agents:** the cap is on the workers' model, so also the planner when it follows the workers. A model given to one agent on Edit rig keeps its provider's window.
+  - **The route's revision** changes with the cap, so the rig takes it within a minute. A ChatGPT route's revision includes the window only when a cap is set, so routes with no cap keep their revisions.
+  - **No command-line option:** no `thermite` command sets a rig's model. `thermite run start --provider --model` gives one only to a rig with none, so there is no cap to keep or set there.
+  - **No harness change:** the harness already takes the route's `context_window`. In Pi, the workers and the planner limit each reply to the room left in it, a worker is told to submit at 80% of it, and a trial ends when it is full. OpenCode v2, Claude Code and Codex do not read the route's window, neither the provider's nor a cap.
+
+## Open questions
+
+- Should OpenCode v2 and Codex get the window too? Neither reads it today. The Codex CLI has a setting for a model's context window; OpenCode's configuration was not checked.
+- The Edit rig field and its mockup.
+
+## Progress
+
+- 2026-10-21: Goal written from the owner's decision. Built over REST and MCP: `rig_model.context_cap` in control's store; the route's window in `routeOf` (`src/control/api.ts`), with `cappedWindow`, `contextCapRefusal` and `capWords` in `src/control/providers.ts`; the shared checks in `giveRigModel` (`src/control/dashboard.ts`); `context_window` on `set_rig_model` and on the new `POST /v1/rigs/<rig>/model`; the cap in the rig's row in Settings › Providers and in the audit log's `rig_model_given`. Tests: `src/control/context-cap.test.ts`. Pages: the MCP tools and REST API references, Connect a model provider (Cap the model's context window), Give each agent its own model, Script Thermite with the REST API, Rig checks and the glossary. Left: the Edit rig field, which needs a mockup.
+
+---
+
+Run with `/goal Complete docs/plan/goals/070-model-context-cap.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

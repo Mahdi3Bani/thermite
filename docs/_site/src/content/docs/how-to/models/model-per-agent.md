@@ -41,6 +41,8 @@ You return to the rig's page, which says, for example, "Control sent a new model
 
 The workers and the planner take a new model within a minute. The advisors read their models from control each time they run, so an advisor uses its new model from its next round.
 
+This page has no field for a cap on the workers' context window yet. A cap set over the REST API or MCP stays while the workers keep the same model, and goes when you choose another one here. See [Cap the model's context window](connect-a-provider.md#cap-the-models-context-window).
+
 When the workers' or the planner's model changes, the rig runs its model check at once. The check tests only the workers' model. For the other agents, watch a run on the rig in **Live** (in the sidebar), the dashboard's view of one run's agents at work. Choose a filter above the stream:
 
 - **Planner**: the planner's lines. Each round starts with a line that says whether the model planned it, such as "round 4: planned by the model", or the lanes took their experiments without it, such as "round 4: taken from the queue by the fixed rules (no model)". The words in brackets say why: "(no model)", "(the planner is off on this rig (Edit rig))" or "(the model gave no usable plan)". When code refused a plan from the model, or the model didn't answer, a "refused:" line says why. A research run plans its rounds with a fixed method and no planner model, so it has no such filter.

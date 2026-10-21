@@ -1,0 +1,254 @@
+import assert from "node:assert/strict";
+import { describe, test } from "node:test";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { generateSigningKeys } from "../core/commands.ts";
+import { createControlApi } from "./api.ts";
+import { cappedWindow, capWords, contextCapRefusal } from "./providers.ts";
+import { SecretBox } from "./secrets.ts";
+import { ControlStore } from "./store.ts";
+
+/**
+ * A cap on the context window of a rig's model (goal 070): REST's POST /v1/rigs/<rig>/model and
+ * MCP's set_rig_model take it, control keeps it with the rig's model, and the rig's model route
+ * carries the lower of the cap and the provider's window.
+ */
+
+const TOKENS = {
+  admin: "admin-token-abcdef",
+  operator: "operator-token-abcdef",
+  rigs: { "rig-a": "rig-token-abcdef" },
+};
+
+/**
+ * Control with rig-a reporting that it runs wide-model from "lab". The provider lists wide-model
+ * at 204,800 tokens, narrow-model at 131,072, and open-model with no window. The owner is signed
+ * in on the dashboard.
+ */
+async function stack() {
+  const secrets = SecretBox.ephemeral();
+  const store = new ControlStore(":memory:");
+  const api = createControlApi(store, TOKENS, generateSigningKeys().privateKeyPem, {
+    staleAfterMs: 600_000,
+    secrets,
+  });
+  store.ingest({
+    rig: "rig-a",
+    ledger_id: "ledger-rig-a",
+    cursor: 0,
+    next: 0,
+    generated_at: new Date().toISOString(),
+    events: [],
+    summary: {
+      model: { source: "control", name: "lab", version: 1, model: "wide-model", harness: "pi" },
+    },
+  });
+  store.putProvider({
+    name: "lab",
+    type: "openai",
+    base_url: "https://models.example.com/v1",
+    key: { sealed: secrets.seal("lab-key-for-tests"), hint: "…ests" },
+  });
+  store.setProviderModels("lab", [
+    { id: "wide-model", context_window: 204_800 },
+    { id: "narrow-model", context_window: 131_072 },
+    { id: "open-model" },
+  ]);
+  const json = { "content-type": "application/json" };
+  const give = (body: Record<string, unknown>) =>
+    api.request("/v1/rigs/rig-a/model", {
+      method: "POST",
+      headers: { authorization: `Bearer ${TOKENS.admin}`, ...json },
+      body: JSON.stringify(body),
+    });
+  const route = async () =>
+    (
+      (await (
+        await api.request("/v1/rigs/rig-a/model-route", {
+          headers: { authorization: "Bearer rig-token-abcdef" },
+        })
+      ).json()) as { route: { context_window: number; revision: string } }
+    ).route;
+  const login = await api.request("/ui/login", {
+    method: "POST",
+    body: new URLSearchParams({ token: TOKENS.admin }),
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+  });
+  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
+  const page = async (path: string) => (await api.request(path, { headers: { cookie } })).text();
+  const post = (path: string, form: Record<string, string>) =>
+    api.request(path, {
+      method: "POST",
+      body: new URLSearchParams(form),
+      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+    });
+  return { store, api, give, route, page, post };
+}
+
+async function connect(api: ReturnType<typeof createControlApi>, token: string) {
+  const client = new Client({ name: "test-agent", version: "1.0.0" });
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const url = new URL(String(input));
+    const headers = new Headers(init?.headers);
+    headers.set("authorization", `Bearer ${token}`);
+    return api.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
+  };
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL("http://control/mcp"), { fetch: fetchImpl }),
+  );
+  return client;
+}
+
+const text = (r: unknown) =>
+  JSON.parse((r as { content: { text: string }[] }).content[0]?.text ?? "{}") as Record<
+    string,
+    unknown
+  >;
+
+describe("a cap on a rig's model context window", () => {
+  test("the window a route carries, and the words for it", () => {
+    assert.equal(cappedWindow(204_800, 131_072), 131_072);
+    assert.equal(cappedWindow(204_800, undefined), 204_800);
+    assert.equal(cappedWindow(204_800, 204_800), 204_800);
+    // A provider's list can shrink after the cap was set: the lower one wins.
+    assert.equal(cappedWindow(100_000, 131_072), 100_000);
+    assert.equal(cappedWindow(0, 65_536), 65_536, "no provider window: the cap as given");
+    assert.equal(cappedWindow(0, undefined), 0);
+    assert.equal(contextCapRefusal("m", 204_800, 131_072), undefined);
+    assert.equal(contextCapRefusal("m", 204_800, 204_801), "m takes at most 204,800 tokens.");
+    assert.equal(contextCapRefusal("m", 0, 1_000_000), undefined);
+    for (const bad of [4095, 0, -1, 1.5, 100_000_001])
+      assert.match(String(contextCapRefusal("m", 0, bad)), /from 4,096 to 100,000,000/);
+    assert.equal(
+      capWords(204_800, 131_072),
+      "131,072 tokens (capped; the provider allows 204,800)",
+    );
+    assert.equal(capWords(0, 65_536), "65,536 tokens (capped; the provider lists no window)");
+    assert.equal(
+      capWords(204_800, 204_800),
+      undefined,
+      "a cap at the provider's window caps nothing",
+    );
+    assert.equal(capWords(204_800, undefined), undefined);
+  });
+
+  test("REST: a cap below the provider's window goes into the route; above it is refused; none means the provider's", async () => {
+    const s = await stack();
+    const capped = await s.give({ provider: "lab", model: "wide-model", context_window: 131_072 });
+    assert.equal(capped.status, 200);
+    const body = (await capped.json()) as Record<string, unknown>;
+    assert.equal(body.context_window, 131_072);
+    assert.match(
+      String(body.said),
+      /rig-a takes wide-model from "lab" under Pi within a minute, and checks it\. Its context window: 131,072 tokens \(capped; the provider allows 204,800\)\./,
+    );
+    assert.equal(s.store.rigModels()["rig-a"]?.contextCap, 131_072);
+    const first = await s.route();
+    assert.equal(first.context_window, 131_072);
+
+    const over = await s.give({ provider: "lab", model: "wide-model", context_window: 300_000 });
+    assert.equal(over.status, 400);
+    assert.deepEqual(await over.json(), { error: "wide-model takes at most 204,800 tokens." });
+    const low = await s.give({ provider: "lab", model: "wide-model", context_window: 1024 });
+    assert.equal(low.status, 400);
+    assert.match(JSON.stringify(await low.json()), /from 4,096 to 100,000,000/);
+    assert.equal(s.store.rigModels()["rig-a"]?.contextCap, 131_072, "a refusal changes nothing");
+
+    // Given again without a cap: the cap goes, and the route carries the provider's window anew.
+    const plain = await s.give({ provider: "lab", model: "wide-model" });
+    assert.equal(((await plain.json()) as { context_window: number }).context_window, 204_800);
+    assert.equal(s.store.rigModels()["rig-a"]?.contextCap, undefined);
+    const uncapped = await s.route();
+    assert.equal(uncapped.context_window, 204_800);
+    assert.notEqual(uncapped.revision, first.revision, "the rig takes the new window");
+
+    // A provider that lists no window: the cap as given.
+    await s.give({ provider: "lab", model: "open-model", context_window: 65_536 });
+    assert.equal((await s.route()).context_window, 65_536);
+
+    assert.equal((await s.give({ provider: "lab", model: "no-such" })).status, 400);
+    const strange = await s.give({ provider: "lab", model: "wide-model", context_window: "big" });
+    assert.equal(strange.status, 400);
+    assert.match(JSON.stringify(await strange.json()), /bad request: context_window/);
+    const noRig = await s.api.request("/v1/rigs/rig-z/model", {
+      method: "POST",
+      headers: { authorization: `Bearer ${TOKENS.admin}`, "content-type": "application/json" },
+      body: JSON.stringify({ provider: "lab", model: "wide-model" }),
+    });
+    assert.equal(noRig.status, 404);
+    const operator = await s.api.request("/v1/rigs/rig-a/model", {
+      method: "POST",
+      headers: { authorization: `Bearer ${TOKENS.operator}`, "content-type": "application/json" },
+      body: JSON.stringify({ provider: "lab", model: "wide-model" }),
+    });
+    assert.ok(operator.status === 401 || operator.status === 403, "REST takes the owner's token");
+    const given = s.store
+      .listAudit(50, { action: "rig_model_given" })
+      .map((e) => (e.body as { context_cap: number | null }).context_cap);
+    assert.deepEqual(given.reverse(), [131_072, null, 65_536]);
+  });
+
+  test("MCP: set_rig_model takes context_window, refuses one above the provider's, and drops the cap when left out", async () => {
+    const s = await stack();
+    const mcp = await connect(s.api, TOKENS.operator);
+    const r = text(
+      await mcp.callTool({
+        name: "set_rig_model",
+        arguments: { rig: "rig-a", provider: "lab", model: "wide-model", context_window: 131_072 },
+      }),
+    );
+    assert.equal(r.context_window, 131_072);
+    assert.match(String(r.said), /131,072 tokens \(capped; the provider allows 204,800\)/);
+    assert.equal((await s.route()).context_window, 131_072);
+    const over = await mcp.callTool({
+      name: "set_rig_model",
+      arguments: { rig: "rig-a", provider: "lab", model: "narrow-model", context_window: 204_800 },
+    });
+    assert.equal(over.isError, true);
+    assert.match(JSON.stringify(over), /narrow-model takes at most 131,072 tokens\./);
+    assert.equal(
+      s.store.rigModels()["rig-a"]?.model,
+      "wide-model",
+      "the refused call changed nothing",
+    );
+    const plain = text(
+      await mcp.callTool({
+        name: "set_rig_model",
+        arguments: { rig: "rig-a", provider: "lab", model: "wide-model" },
+      }),
+    );
+    assert.equal(plain.context_window, 204_800);
+    assert.equal(s.store.rigModels()["rig-a"]?.contextCap, undefined);
+    await mcp.close();
+  });
+
+  test("the dashboard shows the cap, and its forms keep it while the rig keeps the same model", async () => {
+    const s = await stack();
+    await s.give({ provider: "lab", model: "wide-model", context_window: 131_072 });
+    const settings = await s.page("/ui/settings");
+    assert.match(
+      settings,
+      /Its agents run under Pi with wide-model from lab\. Its context window: 131,072 tokens \(capped; the provider allows 204,800\)\./,
+    );
+    const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(settings)?.[1] ?? "";
+    // Providers' Use with the same model (Edit rig's form has no field for the cap either).
+    await s.post("/ui/settings/rigs", {
+      csrf,
+      rig: "rig-a",
+      harness: "opencode",
+      choice: "lab|wide-model",
+    });
+    assert.equal(s.store.rigModels()["rig-a"]?.harness, "opencode");
+    assert.equal(s.store.rigModels()["rig-a"]?.contextCap, 131_072, "kept with the same model");
+    // Another model: the cap was for the one before.
+    await s.post("/ui/settings/rigs", {
+      csrf,
+      rig: "rig-a",
+      harness: "pi",
+      choice: "lab|narrow-model",
+    });
+    assert.equal(s.store.rigModels()["rig-a"]?.contextCap, undefined);
+    assert.equal((await s.route()).context_window, 131_072);
+    assert.doesNotMatch(await s.page("/ui/settings"), /capped/);
+  });
+});

@@ -64,6 +64,7 @@ A tester sees what each run is doing, gives it work through one queue of experim
 | [067 · `thermite assign` can copy a past run's untried experiments](goals/067-assign-queue-from.goal) | `VERIFIED` | 064 |
 | [068 · MCP servers for a campaign's agents, named by its kit](goals/068-mcp-servers-for-agents.goal) | `VERIFIED` | 065 |
 | [056 · A Codex CLI harness](goals/056-codex-harness.goal) | `VERIFIED` | — |
+| [070 · Cap the context window of a rig's model](goals/070-model-context-cap.goal) | `IN_PROGRESS` | — |
 
 ### Install from images
 

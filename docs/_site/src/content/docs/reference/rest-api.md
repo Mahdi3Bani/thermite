@@ -88,6 +88,32 @@ All of these take the owner's token, except where the table says otherwise. `<ri
 
 A live line's `kind` is `text`, `thinking`, `tool`, `result`, `message`, `status` or `log`. Control keeps the newest 20,000 live lines of each rig. [Take the result](../how-to/campaigns/take-the-result.md) uses the patch route.
 
+### The agents' model
+
+| Route | Token | What it does | Request | Answer |
+| --- | --- | --- | --- | --- |
+| `POST /v1/rigs/<rig>/model` | Owner | Gives the rig's agents a model from a provider in **Providers**, as **Edit rig** does, through the dashboard's own code. The rig takes it within a minute and checks it | `{provider, model, harness?, effort?, context_window?}`, below | `{rig, model, context_window, said}`. 400 or 404 `{"error":"<why>"}`, below |
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `provider` | string | | The model provider's name in **Providers** |
+| `model` | string | | A model id from the provider's list |
+| `harness` | `pi`, `opencode` or `codex` | what the model needs: Claude Code for a Claude subscription, OpenCode v2 for OpenCode's free models, else Pi | The [worker harness](glossary.md) |
+| `effort` | `low`, `medium`, `high`, `xhigh` or `max` | none | How long the model thinks, as **Effort** on **Edit rig** |
+| `context_window` | whole number, 4,096 to 100,000,000 | none: the provider's window | A cap on the model's [context window](glossary.md), in tokens. The rig's model route carries the cap when it is lower than the window the provider lists, else the provider's window. With a provider that lists no window, the cap as given. Each request sets the cap anew: a request without it removes a cap the rig had |
+
+In the answer, `context_window` is the window the rig's model route carries, or `null` when the provider lists none. `said` is the dashboard's words, such as `rig-1 takes my-model from "my-litellm" under Pi within a minute, and checks it. Its context window: 131,072 tokens (capped; the provider allows 204,800).` The second sentence is there only when a cap is lower than the provider's window, or the provider lists none.
+
+| Status | Error |
+| --- | --- |
+| 404 | `no rig <rig>` |
+| 400 | `bad request: <field>: <message>`: a body that does not have these fields, or has others |
+| 400 | `<model> takes at most <n> tokens.`: a cap above the provider's window |
+| 400 | `A context window is a whole number of tokens from 4,096 to 100,000,000.` |
+| 400 | `That provider does not list that model.`, and the other refusals of [`set_rig_model`](mcp-tools.md#set_rig_model) |
+
+Each refusal is in the [audit log](#audit-log-actions) as `refused`, with the route's path and why. A model given is `rig_model_given`, by `owner:api`, with `context_cap` (the cap, or `null`). MCP's [`set_rig_model`](mcp-tools.md#set_rig_model) does the same. [Cap the model's context window](../how-to/models/connect-a-provider.md#cap-the-models-context-window) says when to use the cap.
+
 ### Signed commands
 
 [Signed commands](signed-commands.md) lists every kind and its payload.
@@ -385,7 +411,7 @@ Each rig's supervisor calls these with the rig's own token, for its own rig only
 | `POST /v1/rigs/<rig>/live` | Live-log lines: the harness's batch, signed with the rig's accepted key, and the supervisor's own lines, which are not signed | `{batch, supervisor}`; up to 4 MiB | `{"added":<n>}`. 403 `rig mismatch` or `bad live signature`. 409 `the rig's report key is not accepted yet` or `live lines must be signed with the rig's pinned key` |
 | `GET /v1/rigs/<rig>/git/kits/<repo>.git/…` | A kit kept on control, served as plain HTTP Git for the supervisor to fetch | Git's file paths | The file. 404 `not found` |
 | `GET /v1/rigs/<rig>/git-access/<name>` | The secret of a Git access from **Providers**, only for a rig whose assigned campaign uses it. Written to the audit log as `git_access_handed` | None | `{"kind":"ssh","private_key":…}` or `{"kind":"token","token":…,"username":…}`. 404 `no such Git access for this rig`. 500 `the Git access could not be unsealed (control's secrets key?)` |
-| `GET /v1/rigs/<rig>/model-route` | The model route of the rig's agents, with its key, and the planner's | None | `{route, planner}`, each `null` or a route. A route's `harness` is the [worker harness](glossary.md) its agents run in: `pi`, `opencode`, `claude-code` (a Claude subscription's route, and only that) or `codex` (a ChatGPT subscription's or an OpenAI-compatible provider's route, when the owner chose Codex). 409 `the ChatGPT login could not be renewed: sign in again on the Providers page` or `the provider's key cannot be opened: enter it again` |
+| `GET /v1/rigs/<rig>/model-route` | The model route of the rig's agents, with its key, and the planner's | None | `{route, planner}`, each `null` or a route. A route's `harness` is the [worker harness](glossary.md) its agents run in: `pi`, `opencode`, `claude-code` (a Claude subscription's route, and only that) or `codex` (a ChatGPT subscription's or an OpenAI-compatible provider's route, when the owner chose Codex). Its `context_window` is the window the provider lists for the model, or the owner's [cap](#the-agents-model) when that is lower (`0`: unknown). 409 `the ChatGPT login could not be renewed: sign in again on the Providers page` or `the provider's key cannot be opened: enter it again` |
 | `GET /v1/rigs/<rig>/advisor-routes` | The advisors' model routes, by role, where the owner gave them models | None | `{teachers, combiner, auditor, panel}`. Each role is `null` or a route |
 | `GET /v1/rigs/<rig>/mcp-servers` | The [MCP servers](#mcp-servers) the kits of the runs control assigned this rig name, each with its sign-in as headers (an OAuth or client sign-in renewed first when less than five minutes are left), and the kinds of agent any of those runs gives it to. A server no run of the rig names is never in it. When the servers a rig gets change, control writes `mcp_servers_handed` to its audit log, with their names only. It compares with the newest such entry for the rig, so a restart of control writes no entry of its own | None | `{servers, unavailable}`: `servers` is `[{name, url, headers, revision, agents}]`; `unavailable` is `[{name, why}]` for a server a run names that control can't give, with `Settings has no MCP server of that name now` or `control can't sign in to it: <why>` |
 | `GET /v1/rigs/<rig>/kb` | The [past research](knowledge-base.md#a-runs-knowledge-folder) for one of the rig's runs (the supervisor asks for each running run): the items of the folders its campaign may read, changed after `after`, oldest change first, without the run's own items. Only for a run control assigned to this rig, of the campaign it assigned | `?run=<run>&after=<seq>`, `after` a whole number from 0 (default 0) | `{campaign, folders, items, next, more}`: at most 500 items; `next` is the cursor for the next call, and `more` is true while more wait. 400 `run is required` or `after is a whole number from 0`. 404 `control did not assign run <run> to this rig` or `this rig has no run <run>`. 409 `run <run> is not of the campaign control assigned` |
@@ -539,4 +565,4 @@ Control writes one entry for each of these to its audit log. `GET /v1/audit`, th
 
 ## Not in the API yet
 
-The dashboard does some things no route does yet: **New campaign**, **Settings › Providers** (its MCP servers aside, which have [routes](#mcp-servers)), **Edit rig**, join commands, **Add a rig**, the **Knowledge** page and a campaign's **Knowledge** section, and the buttons on the page of a rig control set up on a machine or a cluster: stop, start, restart and remove it, update it to control's version, check where it runs, and, on a cluster, update its images. A rig's setup steps, stopping, starting and restarting a cluster rig, and updating its images are also on [MCP](mcp-tools.md) (`rig_setup`, `cluster_rig`, `update_rig_images`), and so are the knowledge base's folders, search and grants (`kb_folders`, `kb_search`, `kb_grant`, `kb_revoke`). There is no OpenAPI file. Both are planned in [goal 029](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/029-api-mcp-coverage.goal).
+The dashboard does some things no route does yet: **New campaign**, **Settings › Providers** (its MCP servers aside, which have [routes](#mcp-servers)), **Edit rig** (except the workers' model, which [has a route](#the-agents-model)), join commands, **Add a rig**, the **Knowledge** page and a campaign's **Knowledge** section, and the buttons on the page of a rig control set up on a machine or a cluster: stop, start, restart and remove it, update it to control's version, check where it runs, and, on a cluster, update its images. A rig's setup steps, stopping, starting and restarting a cluster rig, and updating its images are also on [MCP](mcp-tools.md) (`rig_setup`, `cluster_rig`, `update_rig_images`), and so are the knowledge base's folders, search and grants (`kb_folders`, `kb_search`, `kb_grant`, `kb_revoke`). There is no OpenAPI file. Both are planned in [goal 029](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/029-api-mcp-coverage.goal).
