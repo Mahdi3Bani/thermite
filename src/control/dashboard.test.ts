@@ -865,6 +865,24 @@ describe("control dashboard", () => {
     assert.match(page.headers.get("content-security-policy") ?? "", /default-src 'none'/);
   });
 
+  test("the icons come with no sign-in, and every page, the sign-in page too, links them", async () => {
+    const s = await stack();
+    for (const [path, type] of [
+      ["/favicon.svg", "image/svg+xml"],
+      ["/favicon.ico", "image/x-icon"],
+      ["/apple-touch-icon.png", "image/png"],
+    ] as const) {
+      const r = await s.control.request(path);
+      assert.equal(r.status, 200, path);
+      assert.equal(r.headers.get("content-type"), type, path);
+      assert.ok((await r.arrayBuffer()).byteLength > 100, path);
+    }
+    const login = await (await s.control.request("/ui/login")).text();
+    const page = await (await s.get("/ui")).text();
+    for (const html of [login, page])
+      assert.match(html, /<link rel="icon" href="\/favicon\.ico" sizes="32x32">/);
+  });
+
   test("sign-in is required, and a wrong token gets nowhere", async () => {
     const s = await stack();
     assert.equal(s.login.status, 303);

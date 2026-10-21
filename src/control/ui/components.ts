@@ -6,6 +6,7 @@ import {
   type RigView,
   type RunView,
 } from "../views.ts";
+import { ICON_LINKS } from "./icons.ts";
 import { STYLE } from "./style.ts";
 
 /** Everything the dashboard writes into HTML goes through esc (rig data is never markup). */
@@ -353,7 +354,7 @@ export function shell(s: Shell, body: string): string {
     })
     .join("");
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(s.title)} · Thermite</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(s.title)} · Thermite</title>${ICON_LINKS}
 <style>${STYLE}</style><script src="/ui/assets/app.js" defer></script></head>
 <body><div class="app">
 <aside class="sidebar">

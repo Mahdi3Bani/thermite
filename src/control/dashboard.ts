@@ -183,6 +183,7 @@ import {
   stackBar,
 } from "./ui/components.ts";
 import { EDIT_RIG_JS } from "./ui/edit-rig-client.ts";
+import { APPLE_TOUCH_ICON, FAVICON_ICO, FAVICON_SVG, ICON_LINKS } from "./ui/icons.ts";
 import {
   campaignKnowledge,
   journalTab,
@@ -388,10 +389,21 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
     return sid;
   };
 
+  // The dashboard's icons, at the root with no sign-in, so the sign-in page has them too.
+  const iconRoute = (body: string | Buffer, type: string) => (c: Ctx) =>
+    c.body(typeof body === "string" ? body : new Uint8Array(body), 200, {
+      "content-type": type,
+      "cache-control": "public, max-age=86400",
+      "x-content-type-options": "nosniff",
+    });
+  app.get("/favicon.svg", iconRoute(FAVICON_SVG, "image/svg+xml"));
+  app.get("/favicon.ico", iconRoute(FAVICON_ICO, "image/x-icon"));
+  app.get("/apple-touch-icon.png", iconRoute(APPLE_TOUCH_ICON, "image/png"));
+
   app.get("/ui/login", (c) =>
     c.html(
       `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign in · Thermite</title><style>${STYLE}
+<title>Sign in · Thermite</title>${ICON_LINKS}<style>${STYLE}
 .login { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
 .login .card { width: 100%; max-width: 380px; padding: 24px; display: flex; flex-direction: column; gap: 14px; }
 .login .brand { padding: 0; } .login input { width: 100%; height: 36px; } .login button { height: 36px; justify-content: center; }
