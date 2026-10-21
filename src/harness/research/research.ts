@@ -485,8 +485,35 @@ export class Research {
     ])) {
       if (!known.has(num)) problems.push(`the number ${num} is not in the claims it cites`);
     }
-    const id = `f-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
     const supported = problems.length === 0;
+    // The same statement again: a supported one is kept once, and a draft refused for the same
+    // reasons is answered again, not recorded again, so a worker that resends it in a loop learns
+    // what to change and fills no records.
+    const key = claimKey(f.text);
+    const reasons = canonicalJson(problems);
+    const before = this.all(
+      "select id, text, supported, problems from finding where run = ? order by created_at",
+      run,
+    ).find(
+      (r) =>
+        claimKey(String(r.text)) === key &&
+        (Number(r.supported) === 1 || (!supported && String(r.problems) === reasons)),
+    );
+    if (before)
+      return Number(before.supported) === 1
+        ? {
+            finding: String(before.id),
+            supported: true,
+            problems: [],
+            note: "this finding is already recorded, supported: record a finding only for a new conclusion",
+          }
+        : {
+            finding: String(before.id),
+            supported: false,
+            problems,
+            note: "this same finding was refused before for the same reasons: cite only verified claims, use only numbers those claims contain, or record what you learned as a note (add_note) instead",
+          };
+    const id = `f-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
     this.ledger.tx(() => {
       this.ledger.db
         .prepare(

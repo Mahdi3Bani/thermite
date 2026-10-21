@@ -302,6 +302,44 @@ describe("research integrity", () => {
       quotes: [{ source: a.source, quote: "workers keep all of their state in memory" }],
     });
     assert.equal(claims(), before + 1);
+    // Findings: a supported one is kept once; a draft refused for the same reasons is answered
+    // again, not recorded again; a draft with other problems is a new attempt.
+    const findings = () =>
+      Number(env.service.ledger.db.prepare("select count(*) as n from finding").get()?.n);
+    const kept = research.addFinding("r-1", "lane-1", {
+      text: "Stateless workers lose nothing when they crash.",
+      summary: "The page says workers keep no state.",
+      why_it_matters: "A crash costs no work.",
+      supporting: [first.claim],
+    });
+    assert.equal(kept.supported, true, JSON.stringify(kept));
+    const keptAgain = research.addFinding("r-1", "lane-2", {
+      text: "stateless workers lose nothing when they crash",
+      summary: "Another summary of the same conclusion.",
+      why_it_matters: "Same.",
+      supporting: [first.claim],
+    }) as typeof kept & { note?: string };
+    assert.equal(keptAgain.finding, kept.finding);
+    assert.match(keptAgain.note ?? "", /already recorded/);
+    const draft = {
+      text: "Workers keep their state in 3 places.",
+      summary: "One summary.",
+      why_it_matters: "It matters.",
+      supporting: [refused.claim],
+    };
+    const d1 = research.addFinding("r-1", "lane-1", draft);
+    assert.equal(d1.supported, false);
+    const count = findings();
+    const d2 = research.addFinding("r-1", "lane-1", {
+      ...draft,
+      summary: "A reworded summary.",
+    }) as typeof d1 & { note?: string };
+    assert.equal(d2.finding, d1.finding);
+    assert.deepEqual(d2.problems, d1.problems);
+    assert.match(d2.note ?? "", /refused before/);
+    assert.equal(findings(), count, "no second draft");
+    research.addFinding("r-1", "lane-1", { ...draft, supporting: [refused.claim, "c-none"] });
+    assert.equal(findings(), count + 1);
     await w.close();
   });
 
