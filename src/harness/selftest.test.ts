@@ -1,12 +1,21 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
-import { chmodSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { keySha256 } from "../core/tunnel.ts";
 import { SUPERVISOR_RECORD } from "./broker/one-container.ts";
+import type { Role } from "./broker/runner.ts";
 import {
   callsBusy,
   containerChecks,
@@ -20,6 +29,8 @@ import {
   PROBE,
   type Probe,
   platformInit,
+  readsResearch,
+  researchProbeFolder,
   runpodCheck,
   setIdCheck,
   supervisorGpuCheck,
@@ -134,6 +145,64 @@ describe("the isolation selftest's results", () => {
       isolationSummary({ ...report, ok: true, container: {} }),
       "isolation holds: every probe of 1 roles came out as it must (devices: shared (fence: landlock))",
     );
+  });
+});
+
+describe("the research folder the selftest probes", () => {
+  test("is written as the harness writes a run's: every role reads it, only its owner changes it", () => {
+    // Whoever runs the selftest (root's shell, say, with a stricter umask), the folder is written
+    // under the controller's umask.
+    const umask = process.umask(0o077);
+    try {
+      const base = mkdtempSync(join(tmpdir(), "research-probe-"));
+      chmodSync(base, 0o755);
+      const dir = join(base, "selftest-research");
+      // What a role's create probe left there last time goes first.
+      mkdirSync(join(dir, "claims"), { recursive: true });
+      writeFileSync(join(dir, "claims", "probe-10101"), "x");
+      const { claim, claims } = researchProbeFolder(dir);
+      assert.equal(claims, join(dir, "claims"));
+      assert.deepEqual(readdirSync(claims), ["c-selftest.md"]);
+      assert.deepEqual(readdirSync(dir).sort(), ["INDEX.md", "claims"]);
+      for (const p of [dir, claims, claim, join(dir, "INDEX.md")]) {
+        const mode = statSync(p).mode;
+        assert.equal(mode & 0o022, 0, `${p}: no one but its owner may write it`);
+        assert.equal(mode & 0o004, 0o004, `${p}: every role may read it`);
+      }
+      assert.deepEqual(probe([{ name: "research-read", op: "readable", path: claim }]), {
+        "research-read": "readable",
+      });
+      // As another user (root can start one): it reads the folder, and changes nothing in it.
+      if (asRoot) {
+        const r = spawnSync(
+          process.execPath,
+          [
+            "-e",
+            PROBE,
+            JSON.stringify([
+              { name: "research-read", op: "readable", path: claim },
+              { name: "research-write", op: "write", path: claim },
+              { name: "research-create", op: "create", path: claims },
+            ]),
+          ],
+          { encoding: "utf8", uid: 65534, gid: 65534 },
+        );
+        assert.deepEqual(JSON.parse(r.stdout), {
+          "research-read": "readable",
+          "research-write": "EACCES",
+          "research-create": "EACCES",
+        });
+      }
+    } finally {
+      process.umask(umask);
+    }
+  });
+
+  test("the workers' users and the planner's must read it; the other roles are not asked to", () => {
+    for (const role of ["lane-1", "lane-12", "agent-3", "planner"])
+      assert.equal(readsResearch(role as Role), true, role);
+    for (const role of ["builder", "run", "run-1", "model-check", "lane-1-dev"])
+      assert.equal(readsResearch(role as Role), false, role);
   });
 });
 
