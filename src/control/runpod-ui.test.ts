@@ -198,6 +198,27 @@ describe("Launch on RunPod", () => {
     );
   });
 
+  test("Read again posts where its form points, reads the account again, and opens the form", async () => {
+    const s = await setup();
+    const page = await s.page("/ui/rigs/add/runpod");
+    // The page's own form, as the browser sends it: its action and its hidden fields.
+    const form =
+      /<form method="post" action="([^"]+)" class="inline">((?:(?!<\/form>).)*)<button class="sm">Read again<\/button><\/form>/s.exec(
+        page,
+      );
+    assert.ok(form, "the page has a Read again form");
+    const fields = Object.fromEntries(
+      [...(form[2] ?? "").matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g)].map(
+        (m) => [m[1], m[2]],
+      ),
+    );
+    const before = s.cloud.calls.length;
+    const to = await s.post(form[1] ?? "", fields);
+    assert.equal(to, "/ui/rigs/add/runpod?cloud=runpod");
+    assert.ok(s.cloud.calls.length > before, "control read RunPod again");
+    assert.match(await s.page(to), /<title>Launch on RunPod/);
+  });
+
   test("a launch from the form: the pod RunPod starts, the rig's settings, its limits; the rig's page follows it", async () => {
     const s = await setup();
     const to = await s.post("/ui/rigs/add/runpod", LAUNCH);
