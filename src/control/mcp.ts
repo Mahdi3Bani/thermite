@@ -13,6 +13,7 @@ import {
 } from "../core/compaction.ts";
 import { KbKind as KbKindSchema } from "../core/kb.ts";
 import { POD_CONFIG_ENV } from "../core/tunnel.ts";
+import { USAGE_PERIODS } from "../core/usage.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import type { ControlActions } from "./actions.ts";
 import {
@@ -51,6 +52,7 @@ import type { RunpodTests } from "./runpod-tests.ts";
 import { keyHint } from "./secrets.ts";
 import { type StartRunBody, startRunAnswer, startRunFields, startRunRequest } from "./start-run.ts";
 import type { ControlStore } from "./store.ts";
+import { modelUsage } from "./usage.ts";
 import { campaignModes, leaderboard, rigView } from "./views.ts";
 
 /**
@@ -322,6 +324,24 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
       inputSchema: {},
     },
     audited("leaderboard", () => leaderboard(store, { staleAfterMs: opts.staleAfterMs })),
+  );
+
+  server.registerTool(
+    "model_usage",
+    {
+      title: "Model usage",
+      description:
+        "The agents' model usage, summed: for one run (run, and rig when the run's id is on more than one rig), for a campaign (all its runs on every rig), or, with neither, for the whole system; over a period: today (since midnight UTC), 7d (the last 7 days) or all (the default). Gives the total, by_agent (workers, planner, teachers, combiner, auditor, panel), by_model (each harness, provider and model), and by_run for a campaign or by_campaign for the system, each with its share of the tokens. Each sum has records, calls (and calls_not_reported: records that do not say how many calls they cover, a Codex turn), tokens_in, cached_in and uncached_in, cached_share, tokens_out, reasoning, out_per_s (output tokens a second over each record's time in calls: median, p10, p90), call_ms (time in calls) and first_token_ms (the median time to the first token). A figure no record reports is null, never 0; not_reported counts the records without each one.",
+      inputSchema: {
+        run: z.string().min(1).max(100).optional(),
+        rig: z.string().min(1).max(100).optional(),
+        campaign: z.string().min(1).max(200).optional(),
+        period: z.enum(USAGE_PERIODS).default("all"),
+      },
+    },
+    audited("model_usage", (a: { run?: string; rig?: string; campaign?: string; period: string }) =>
+      modelUsage(store, a),
+    ),
   );
 
   server.registerTool(

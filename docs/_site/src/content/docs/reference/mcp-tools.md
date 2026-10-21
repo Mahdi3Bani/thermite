@@ -45,7 +45,7 @@ Control checks a token against the owner's first, then the operator's, the agent
 
 | Tool | Owner | Operator | Agent | Reader |
 | --- | --- | --- | --- | --- |
-| `list_rigs`, `get_run`, `run_queue`, `recent_events`, `leaderboard`, `rig_reports`, `list_commands`, `command_status` | Yes | Yes | Yes | Yes |
+| `list_rigs`, `get_run`, `run_queue`, `recent_events`, `leaderboard`, `model_usage`, `rig_reports`, `list_commands`, `command_status` | Yes | Yes | Yes | Yes |
 | `issue_command` | Yes, the owner's kinds | Yes, the operator's kinds | Yes, the agent's kinds | No |
 | `propagate_champion` | Yes | Yes | Yes | No |
 | `kb_folders`, `kb_search`, `kb_grant`, `kb_revoke` | Yes | Yes | No | No |
@@ -171,7 +171,7 @@ Of the kinds the description names, the agent's token can issue only `redirect`.
 | `rig` | string | | The rig |
 | `limit` | whole number, 1 to 500 | 50 | How many events |
 
-Returns events `{seq, ledger_id, id, at, actor, kind, subject, body}`, newest first. It returns at most 50, whatever `limit` says. Error: `no rig <rig>`.
+Returns events `{seq, ledger_id, id, at, actor, kind, subject, body}`, newest first. It returns at most 50, whatever `limit` says. The agents' model calls (`model_call`) are left out: [`model_usage`](#model_usage) sums them. Error: `no rig <rig>`.
 
 ### leaderboard
 
@@ -180,6 +180,21 @@ Returns events `{seq, ledger_id, id, at, actor, kind, subject, body}`, newest fi
 > Per campaign: each run's champion and its gain over its own baseline (measured on its own rig), and which other rigs' judges cross-verified it.
 
 No inputs. Returns `{"<campaign>":[{rig, run, mode, status, champion_seq, gain, verified_by}]}`.
+
+### model_usage
+
+**Model usage.** All roles.
+
+> The agents' model usage, summed: for one run (run, and rig when the run's id is on more than one rig), for a campaign (all its runs on every rig), or, with neither, for the whole system; over a period: today (since midnight UTC), 7d (the last 7 days) or all (the default). Gives the total, by_agent (workers, planner, teachers, combiner, auditor, panel), by_model (each harness, provider and model), and by_run for a campaign or by_campaign for the system, each with its share of the tokens. Each sum has records, calls (and calls_not_reported: records that do not say how many calls they cover, a Codex turn), tokens_in, cached_in and uncached_in, cached_share, tokens_out, reasoning, out_per_s (output tokens a second over each record's time in calls: median, p10, p90), call_ms (time in calls) and first_token_ms (the median time to the first token). A figure no record reports is null, never 0; not_reported counts the records without each one.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `run` | string, optional | | One run's usage |
+| `rig` | string, optional | every rig | With `run`: that run on this rig only |
+| `campaign` | string, optional | | One campaign's usage: all its runs on every rig |
+| `period` | `today`, `7d` or `all` | `all` | Since midnight UTC, the last 7 days, or all |
+
+With neither `run` nor `campaign`, the whole system's usage. It returns the same report as [`GET /v1/usage`](rest-api.md#model-usage), which describes each field. Errors: `Give a run or a campaign, not both.` and `A rig goes with a run: give the run too.` [The model usage records](../explanation/how-it-fits-together.md#the-model-usage-records) says what each program reports.
 
 ### rig_reports
 

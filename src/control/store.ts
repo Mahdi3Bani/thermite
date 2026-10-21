@@ -6,6 +6,7 @@ import type { SignedCommand } from "../core/commands.ts";
 import type { LiveEntry } from "../core/live.ts";
 import { currentEvent } from "../core/names.ts";
 import { PodConfig } from "../core/tunnel.ts";
+import { MODEL_CALL_EVENT, ModelCallBody, type UsageRow, type UsageScope } from "../core/usage.ts";
 import type { ReportedBuild } from "../core/version.ts";
 import { Credential } from "./credential.ts";
 import type { JoinedSpec, JoinForm } from "./join.ts";
@@ -398,6 +399,34 @@ create table if not exists rig_export (
   complete_at text,
   primary key (rig, name)
 );
+-- The agents' model usage (goal 075): each model_call event a rig reported, as its columns, kept
+-- with the event's key (a ledger a rig left keeps its records), and its run's campaign from the
+-- rig's run_created event. What the usage sums read. A figure the harness did not report is null.
+create table if not exists model_call (
+  rig text not null,
+  ledger_id text not null,
+  event_id integer not null,
+  run text not null,
+  campaign text,
+  trial text,
+  round text,
+  agent text not null,
+  harness text not null,
+  provider text,
+  model text not null,
+  calls integer,
+  at text not null,
+  tokens_in integer not null,
+  cached_in integer,
+  tokens_out integer not null,
+  reasoning integer,
+  first_token_ms integer,
+  call_ms integer,
+  primary key (rig, ledger_id, event_id)
+);
+create index if not exists model_call_run on model_call (run, at);
+create index if not exists model_call_campaign on model_call (campaign, at);
+create index if not exists model_call_at on model_call (at);
 create index if not exists rig_live_rig on rig_live (rig, id);
 create index if not exists rig_live_source on rig_live (rig, source, id);
 `;
@@ -1684,6 +1713,15 @@ export class ControlStore {
       const confirm = this.db.prepare(
         "update command set status = ?, outcome = ?, acked_at = coalesce(acked_at, ?) where id = ? and rig = ?",
       );
+      const usage = this.db.prepare(
+        `insert or ignore into model_call (rig, ledger_id, event_id, run, campaign, trial, round,
+           agent, harness, provider, model, calls, at, tokens_in, cached_in, tokens_out, reasoning,
+           first_token_ms, call_ms)
+         values (?, ?, ?, ?, (select json_extract(body, '$.campaign') from rig_event
+             where rig = ? and kind in ('run_created', 'instance_created') and subject = ?
+             order by seq desc limit 1),
+           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      );
       for (const e of report.events) {
         if (e.kind === "command" && e.subject) {
           const b = (e.body ?? {}) as { accepted?: boolean };
@@ -1693,6 +1731,35 @@ export class ControlStore {
             now,
             e.subject,
             report.rig,
+          );
+        }
+        // A model call's usage (goal 075), as columns the sums read. A body that does not read as
+        // one stays an event only.
+        const call =
+          e.kind === MODEL_CALL_EVENT && e.subject ? ModelCallBody.safeParse(e.body) : null;
+        if (call?.success) {
+          const u = call.data;
+          usage.run(
+            report.rig,
+            report.ledger_id,
+            e.id,
+            String(e.subject),
+            report.rig,
+            String(e.subject),
+            u.trial,
+            u.round,
+            u.agent,
+            u.harness,
+            u.provider,
+            u.model,
+            u.calls,
+            u.at,
+            u.tokens_in,
+            u.cached_in,
+            u.tokens_out,
+            u.reasoning,
+            u.first_token_ms,
+            u.call_ms,
           );
         }
         added += Number(
@@ -2149,8 +2216,61 @@ export class ControlStore {
   }
 
   /**
+   * The model usage records the sums read (goal 075): one run's (on one rig, or on any), one
+   * campaign's runs' on every rig, or every record, since a time (ISO; null: all). A rig's records
+   * stay after it leaves a ledger, or is retired: the calls were made.
+   */
+  usageRows(scope: UsageScope, since: string | null): UsageRow[] {
+    const where: string[] = [];
+    const args: SQLInputValue[] = [];
+    if (since) {
+      where.push("at >= ?");
+      args.push(since);
+    }
+    if (scope.kind === "run") {
+      where.push("run = ?");
+      args.push(scope.run);
+      if (scope.rig) {
+        where.push("rig = ?");
+        args.push(scope.rig);
+      }
+    }
+    if (scope.kind === "campaign") {
+      where.push("campaign = ?");
+      args.push(scope.campaign);
+    }
+    const rows = this.db
+      .prepare(
+        `select rig, run, campaign, agent, harness, provider, model, calls, at, tokens_in, cached_in,
+           tokens_out, reasoning, first_token_ms, call_ms from model_call
+         ${where.length ? `where ${where.join(" and ")}` : ""} order by at`,
+      )
+      .all(...args) as Row[];
+    const num = (x: SQLInputValue | undefined) =>
+      x === null || x === undefined ? null : Number(x);
+    return rows.map((r) => ({
+      rig: String(r.rig),
+      run: String(r.run),
+      campaign: r.campaign === null ? null : String(r.campaign),
+      agent: String(r.agent),
+      harness: String(r.harness),
+      provider: r.provider === null ? null : String(r.provider),
+      model: String(r.model),
+      calls: num(r.calls),
+      at: String(r.at),
+      tokens_in: Number(r.tokens_in),
+      cached_in: num(r.cached_in),
+      tokens_out: Number(r.tokens_out),
+      reasoning: num(r.reasoning),
+      first_token_ms: num(r.first_token_ms),
+      call_ms: num(r.call_ms),
+    }));
+  }
+
+  /**
    * A rig's events after a seq. `lean`: without the text a source's and a document's events
-   * carry (the knowledge base keeps it), for readers that build pages from every event.
+   * carry (the knowledge base keeps it), and without the model calls (one for each call: the
+   * usage sums read them, from model_call), for readers that build pages from every event.
    */
   events(
     rig: string,
@@ -2163,11 +2283,12 @@ export class ControlStore {
     const body = o.lean
       ? "case when kind in ('source_fetched', 'research_doc', 'context_compacted') then json_remove(body, '$.text') else body end"
       : "body";
+    const calls = o.lean ? ` and kind != '${MODEL_CALL_EVENT}'` : "";
     return (
       this.db
         .prepare(
           `select seq, ledger_id, event_id, at, actor, kind, subject, ${body} as body from rig_event
-             where rig = ?${byLedger} and seq > ? order by seq limit ?`,
+             where rig = ?${byLedger}${calls} and seq > ? order by seq limit ?`,
         )
         .all(...(ledgerId ? [rig, ledgerId, after, limit] : [rig, after, limit])) as Row[]
     ).map((r) =>

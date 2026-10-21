@@ -59,6 +59,7 @@ import {
   RIG_ID,
 } from "./store.ts";
 import { ControlTunnels } from "./tunnel.ts";
+import { modelUsage, usageQueryRefusal } from "./usage.ts";
 import { checkRig, recheckRefusals, rigVersions } from "./versions.ts";
 import { leaderboard, reportingState, rigView } from "./views.ts";
 
@@ -1081,6 +1082,14 @@ export function createControlApi(
       "content-type": "text/plain; version=0.0.4",
     }),
   );
+
+  // The agents' model usage (goal 075): a run's, a campaign's or the whole system's, for a period.
+  app.get("/v1/usage", reader, (c) => {
+    const q = Object.fromEntries(Object.entries(c.req.query()).filter(([, v]) => v !== ""));
+    const refused = usageQueryRefusal(q);
+    if (refused) return c.json({ error: refused }, 400);
+    return c.json(modelUsage(store, q));
+  });
 
   app.get("/v1/rigs/:rig/live", reader, (c) => {
     const after = Math.max(0, Math.trunc(Number(c.req.query("after") ?? "0")) || 0);

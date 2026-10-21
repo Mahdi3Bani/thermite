@@ -246,7 +246,9 @@ A command-line advisor (`cli`) says nothing about its calls, so it has no record
 | `first_token_ms` | Milliseconds from the request to the first token |
 | `call_ms` | Milliseconds in calls: from the request to the last token, added up over the calls the record covers |
 
-A figure that the program does not report is `null`, never 0. A Pi worker that could not hand some records to the harness says how many in its trial's `trial_finished` event (`usage_unrecorded`). Records the supervisor could not hand over are an error line in the run's **Live** view.
+A figure that the program does not report is `null`, never 0, and every sum says how many records lacked it. A Pi worker that could not hand some records to the harness says how many in its trial's `trial_finished` event (`usage_unrecorded`). Records the supervisor could not hand over are an error line in the run's **Live** view.
+
+Control keeps each record as a row, also after the rig leaves its ledger in a full reset: the calls were made. It sums them for a run, for a campaign (all its runs on every rig) and for the whole system, today, over the last 7 days or for all time: calls, tokens, the cached share, output tokens a second (the median, the 10th and the 90th percentile over the records with a time) and the time in calls. The REST route [`GET /v1/usage`](../reference/rest-api.md#model-usage) and the MCP tool [`model_usage`](../reference/mcp-tools.md#model_usage) give these sums. The dashboard's screens for them are planned in [goal 075](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/075-model-usage.goal). The views that control builds from every event, such as a run's **History** tab and a rig's newest events, leave the records out.
 
 ## The knowledge base
 
