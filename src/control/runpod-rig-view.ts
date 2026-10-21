@@ -37,13 +37,21 @@ export interface RigState {
   idle_from: string | null;
   /** The last time a run was at work on the rig, as control saw it (runpod-rigs.ts's lastWork). */
   busy_at: string | null;
+  /** A run was at work on the rig at control's last check: no idle time counts now. */
+  at_work?: boolean | undefined;
   /** When control stopped the pod, and why: a limit the owner set, or the owner's stop. */
   stopped_at: string | null;
   stopped_by: "spend_limit" | "idle_stop" | "owner" | null;
   /** When RunPod no longer had the pod. */
   ended_at: string | null;
-  /** The last thing that went wrong, in words. */
+  /** What went wrong at control's last read of the pod, in words; the next good read clears it. */
   error: string | null;
+  /**
+   * A change control refused (a terminate that could not go on), in words, and how many steps the
+   * rig's history had then. It stays until the owner's next stop, start, restart or terminate, or
+   * until a newer step in the rig's history (a full reset, say).
+   */
+  refusal?: { words: string; steps: number } | null | undefined;
   notes: string[];
   /** The stop, start, restart or terminate under way (runpod-lifecycle.ts); null: none. */
   op?: RigOp | null | undefined;
@@ -54,7 +62,11 @@ export interface RigState {
   last_export_left?: boolean | undefined;
 }
 
-export interface RunpodRigView extends RigState {
+export interface RunpodRigView extends Omit<RigState, "refusal"> {
+  /** What went wrong last, in words: the last read's error, else the refusal while it stays. */
+  error: string | null;
+  /** The change control refused last, in words, while it stays (RigState's refusal). */
+  refusal: string | null;
   rig: string;
   cloud: string;
   pod: string;
@@ -67,7 +79,7 @@ export interface RunpodRigView extends RigState {
   enrolled_at: string | null;
   /**
    * Since when the rig counts as idle for the idle stop (idleSince); null without an idle stop,
-   * before enrollment, or while the pod is not running.
+   * before enrollment, while the pod is not running, or while a run is at work on it.
    */
   idle_since: string | null;
   /** The change under way in words (opWords); null: none. */
@@ -105,10 +117,11 @@ export function spentBy(s: RigState, now: number): number {
 /**
  * Since when the rig is idle for its idle stop: the latest of when the stop was set, when the
  * pod enrolled, when it last started running and when a run was last at work. Null without an idle
- * stop, before enrollment, or while the pod is not running.
+ * stop, before enrollment, while the pod is not running, or while a run is at work on it (as
+ * control last saw): the idle stop and the rig's page use this one rule.
  */
 export function idleSince(s: RigState, enrolledAt: string | null): string | null {
-  if (s.idle_stop_minutes === null || !enrolledAt || !s.running_since) return null;
+  if (s.idle_stop_minutes === null || !enrolledAt || !s.running_since || s.at_work) return null;
   const times = [s.idle_from, enrolledAt, s.running_since, s.busy_at].filter((t): t is string =>
     Boolean(t),
   );
@@ -125,6 +138,8 @@ export function runpodRigView(
   const enrolledAt = tunnel?.enrolled_at ?? null;
   return {
     ...s,
+    error: s.error ?? s.refusal?.words ?? null,
+    refusal: s.refusal?.words ?? null,
     op: s.op ?? null,
     op_words: s.op ? opWords(s.op) : null,
     paused_runs: s.paused_runs ?? [],

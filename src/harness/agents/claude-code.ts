@@ -10,6 +10,7 @@ import type { ModelConfig } from "./model.ts";
 import type { RigCheckReport } from "./model-check.ts";
 import {
   AFTER_SUBMIT_MS,
+  agentPath,
   breachError,
   CarriedMessages,
   CHECK_ROLE,
@@ -296,7 +297,7 @@ export function claudeEnv(o: {
   return {
     ...o.extra,
     HOME: o.home,
-    PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    PATH: agentPath(),
     TMPDIR: o.tmp,
     THERMITE_HARNESS_URL: o.apiUrl,
     THERMITE_TRIAL_AUTH: o.auth,

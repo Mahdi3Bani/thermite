@@ -10,8 +10,10 @@ import {
   CODEX_SYSTEM,
   codexArgs,
   codexConfig,
+  codexExitWords,
   codexLimitsNote,
   codexModelCheck,
+  NO_CODEX,
   newCodexTally,
   readCodexEvents,
   runCodexTrial,
@@ -325,6 +327,54 @@ describe("the Codex CLI", () => {
     assert.equal(e.stopped, "error");
     assert.equal(e.error, "stream disconnected");
     assert.equal(broken.codexRuns().length, 1, "not resumed: nothing was done");
+  });
+
+  test("an image without the Codex CLI says so in words: in a trial and in the model check", async () => {
+    /** A rig whose image has no Codex CLI: the shell, or the fence, can't find it. */
+    const missing = (note: { file?: string; stderr?: string }) =>
+      ({
+        run: async (req: RunRequest): Promise<RunOutcome> => {
+          if (!req.argv.includes("exec"))
+            return {
+              exitCode: 0,
+              signal: null,
+              killedFor: null,
+              stdout: "",
+              stderr: "",
+            } as RunOutcome;
+          if (note.file) appendFileSync(String(req.env?.THERMITE_CODEX_EVENTS), note.file);
+          return {
+            exitCode: note.file ? 127 : 126,
+            signal: null,
+            killedFor: null,
+            stdout: "",
+            stderr: note.stderr ?? "",
+          } as RunOutcome;
+        },
+        killRole: async () => 0,
+        handOver: async () => undefined,
+        remove: async () => undefined,
+      }) as unknown as Runner;
+    const a = area();
+    const trial = await runCodexTrial(spec(a, join(a, "repo")), {
+      ...deps(fakeRunner([])),
+      runner: missing({ file: "sh: 1: exec: codex: not found\n" }),
+    });
+    assert.equal(trial.stopped, "error");
+    assert.equal(trial.error, NO_CODEX);
+    assert.match(NO_CODEX, /^this rig's harness image has no Codex CLI: /);
+    const check = await codexModelCheck(model, {
+      runner: missing({
+        stderr: "thermite-devfence: /opt/codex/bin/codex: No such file or directory\n",
+      }),
+      apiUrl: "http://127.0.0.1:8700",
+      scratchDir: mkdtempSync(join(tmpdir(), "thermite-codex-check-")),
+      mintProxyToken: () => "proxy.minted-1",
+    });
+    assert.equal(check.ok, false);
+    assert.ok(JSON.stringify(check).includes(NO_CODEX), check.summary);
+    // Any other exit keeps Codex's own words.
+    assert.equal(codexExitWords(1, "stream disconnected"), "Codex exited 1: stream disconnected");
   });
 
   test("the model check: one shell call through Codex, as the model check's own user, with a minted credential", async () => {

@@ -175,6 +175,7 @@ import {
   num,
   pct,
   type RunTab,
+  reportingTag,
   runHref,
   runKey,
   runState,
@@ -240,6 +241,7 @@ import {
   campaignViews,
   leaderboard,
   OFFLINE_AFTER_MS,
+  podStopped,
   type RigSettingsView,
   type RigView,
   type RunView,
@@ -895,16 +897,19 @@ ${body}
         ),
     );
     const running = live.length;
-    const reporting = vs.filter((u) => !u.stale).length;
+    // A stopped RunPod pod can't report, and that is expected: it is counted apart.
+    const stopped = vs.filter(podStopped).length;
+    const expected = vs.length - stopped;
+    const reporting = vs.filter((u) => !u.stale && !podStopped(u)).length;
     const judging = vs.filter((u) => u.judge.now).length;
     const tile = (n: string, label: string, tone: string, href = "") =>
       `<${href ? `a href="${href}"` : "div"} class="tally ${tone}"><b>${n}</b><span>${esc(label)}</span></${href ? "a" : "div"}>`;
-    const tallies = `<div class="tallies">${tile(String(urgent.length), urgent.length === 1 ? "needs you" : "need you", urgent.length ? "warn" : "", urgent.length ? "#needs" : "")}${tile(String(running), running === 1 ? "run at work" : "runs at work", running ? "ok" : "")}${tile(String(judging), judging === 1 ? "judge measuring" : "judges measuring", "")}${tile(`${reporting}/${vs.length}`, "rigs reporting", reporting < vs.length ? "bad" : "")}</div>`;
+    const tallies = `<div class="tallies">${tile(String(urgent.length), urgent.length === 1 ? "needs you" : "need you", urgent.length ? "warn" : "", urgent.length ? "#needs" : "")}${tile(String(running), running === 1 ? "run at work" : "runs at work", running ? "ok" : "")}${tile(String(judging), judging === 1 ? "judge measuring" : "judges measuring", "")}${tile(`${reporting}/${expected}`, `rigs reporting${stopped ? `, ${stopped} stopped` : ""}`, reporting < expected ? "bad" : "")}</div>`;
     return page(
       c,
       {
         title: "Overview",
-        summary: `${urgent.length ? `<span class="warn">${urgent.length} need${urgent.length === 1 ? "s" : ""} you</span>` : "nothing needs you"} · ${running} run${running === 1 ? "" : "s"} at work · ${reporting} of ${vs.length} rigs reporting`,
+        summary: `${urgent.length ? `<span class="warn">${urgent.length} need${urgent.length === 1 ? "s" : ""} you</span>` : "nothing needs you"} · ${running} run${running === 1 ? "" : "s"} at work · ${reporting} of ${expected} rigs reporting${stopped ? ` · ${stopped} stopped` : ""}`,
         active: "overview",
       },
       `${tallies}
@@ -1171,7 +1176,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       const given = giveRigModel(
         rig.id,
         chosen,
-        harnessFor(chosen, String(f.agents_harness ?? "")),
+        harnessKept(rig.id, chosen, String(f.agents_harness ?? "")),
       );
       if ("error" in given) return newCampaignPage(c, { draft, errors: [given.error] });
       const [, mRaw] = chosen.split("|");
@@ -1244,7 +1249,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       const [pRaw, mRaw] = chosen.split("|");
       provider = store.provider(decodeURIComponent(pRaw ?? ""));
       model = decodeURIComponent(mRaw ?? "");
-      harness = harnessFor(chosen, picked);
+      harness = harnessKept(u.id, chosen, picked);
     } else {
       const given = store.rigModels()[u.id];
       if (given) {
@@ -1287,6 +1292,21 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     )
       return "opencode";
     return "pi";
+  };
+  /**
+   * The harness to give a rig with a model, when the owner names none (New campaign and Start a
+   * run): the rig's own when control gave it this model already, so a rig on Codex or OpenCode
+   * stays there; else what the model needs (harnessFor).
+   */
+  const harnessKept = (rig: string, choice: string, picked: string): Harness => {
+    if (picked) return harnessFor(choice, picked);
+    const [pRaw, mRaw] = choice.split("|");
+    const had = store.rigModels()[rig];
+    return had &&
+      had.provider === decodeURIComponent(pRaw ?? "") &&
+      had.model === decodeURIComponent(mRaw ?? "")
+      ? had.harness
+      : harnessFor(choice, "");
   };
   /**
    * The GPU split a campaign's deployment asks for on its rig (a rig is a set of GPUs; what is
@@ -1337,6 +1357,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
             : undefined,
         busy: busy ? busy.id : undefined,
         stale: u.stale,
+        stopped: podStopped(u),
         model:
           given[u.id]?.model ??
           (u.model?.source !== "none" ? (u.model?.model ?? undefined) : undefined),
@@ -1448,7 +1469,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     if (researchModel) return refuse(researchNeedsOpencode(rig.id, researchModel));
     if (agents && req.model) {
       // The rig gets the model first; it arrives within a minute, and the run starts after that.
-      const given = giveRigModel(rig.id, chosen, harnessFor(chosen, ""), undefined, by);
+      const given = giveRigModel(rig.id, chosen, harnessKept(rig.id, chosen, ""), undefined, by);
       if ("error" in given) return refuse(given.error, 400);
       const model = req.model.model;
       if (rig.model?.model !== model)
@@ -1773,7 +1794,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
             { href: "/ui/campaigns", text: "Campaigns" },
             { href: campaignHref(name), text: name },
           ],
-          summary: `on <a href="/ui/rigs/${encodeURIComponent(sel.rig.id)}">${esc(sel.rig.id)}</a>${sel.rig.stale ? ` <span class="bad">(not reporting)</span>` : ""} · ${esc(modeName(sel.run.mode))} · <span class="label ${st.cls}">${st.icon}${esc(st.text)}</span>`,
+          summary: `on <a href="/ui/rigs/${encodeURIComponent(sel.rig.id)}">${esc(sel.rig.id)}</a>${reportingTag(sel.rig)} · ${esc(modeName(sel.run.mode))} · <span class="label ${st.cls}">${st.icon}${esc(st.text)}</span>`,
           active: "campaigns",
           actions: `<a class="btn" href="${runLiveHref(sel.rig.id, sel.run.id)}">${icon.terminal}Live</a>${agents ? `<a class="btn" href="${runLiveHref(sel.rig.id, sel.run.id, "&compose=1")}">Message</a>` : ""}${quick}${more}`,
         },
@@ -2528,7 +2549,7 @@ ${rp ? "" : events}
       `<a class="lr${sel && x.u.id === sel.u.id && x.r.id === sel.r.id ? " on" : ""}${cls}" href="${runLiveHref(x.u.id, x.r.id)}"><span class="t">${x.r.status === "running" ? `<span class="dot ok pulse"></span>` : ""}${esc(x.r.id)}</span><span class="s">${sub}</span></a>`;
     const nav = `<nav class="lruns" aria-label="Runs">
 <div class="hd">At work</div>${atWork.map((x) => runLink(x, `${esc(x.u.id)} · ${esc(modeName(x.r.mode))} · ${Object.keys(x.r.at_work).length} working${waitingOn(x.r) ? ` · <span class="warn">${waitingOn(x.r)} wait for you</span>` : ""}`)).join("") || `<div class="lempty">No run is at work.</div>`}
-${idle.length ? `<div class="hd">Idle rigs</div>${idle.map((u) => `<a class="lr idle" href="/ui/rigs/${encodeURIComponent(u.id)}"><span class="t">${esc(u.id)}</span><span class="s">no run at work${u.stale ? " · not reporting" : ""}</span></a>`).join("")}` : ""}
+${idle.length ? `<div class="hd">Idle rigs</div>${idle.map((u) => `<a class="lr idle" href="/ui/rigs/${encodeURIComponent(u.id)}"><span class="t">${esc(u.id)}</span><span class="s">no run at work${podStopped(u) ? " · its pod is stopped" : u.stale ? " · not reporting" : ""}</span></a>`).join("")}` : ""}
 ${ended.length ? `<details class="lended"${sel && sel.r.status !== "running" ? " open" : ""}><summary class="hd">Ended in the last day (${ended.length})</summary>${ended.map((x) => runLink(x, `${esc(x.u.id)} · ${x.r.status === "closed" ? "finished" : esc(x.r.status)}`, " idle")).join("")}</details>` : ""}
 </nav>`;
     if (!sel)
@@ -3846,7 +3867,7 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
     return `<form method="post" action="/ui/settings/clouds/${gName}/test" class="form-grid" data-test-pod autocomplete="off" style="margin-top:10px"><input type="hidden" name="csrf" value="${t}">
 <label>${infoLabel("GPU", "The GPU type of the test pod. The cheapest in stock is enough: the test checks the platform, not speed.")}<select name="gpu"><option value="" data-secure="${cheapest?.price_secure ?? ""}" data-community="">${cheapest ? `The cheapest in stock: ${esc(cheapest.name)}` : "The cheapest in stock"}</option>${options}</select></label>
 <label>${infoLabel("Cloud", "Secure cloud runs in RunPod's own data centers. Community cloud runs on hosts other people rent out: cheaper, less predictable. Rigs whose judge times code belong on Secure.")}<select name="cloud_type"><option value="SECURE">Secure</option><option value="COMMUNITY">Community</option></select></label>
-<label style="grid-column:1/-1">${infoLabel("Image", "What the pod runs: Thermite's CUDA harness image, at a registry RunPod can pull from. Control's THERMITE_RUNPOD_TEST_IMAGE setting fills it in.")}<input name="image" required maxlength="300" value="${esc(opts.runpodTests?.defaultImage() ?? "")}" placeholder="for example ghcr.io/you/thermite-harness:1a2b3c4d5e6f-cuda"></label>
+<label style="grid-column:1/-1">${infoLabel("Image", "What the pod runs: Thermite's CUDA harness image, or the one-container rig image that a rig on RunPod starts from. Its isolation self-test then also checks the supervisor's places. The image must be at a registry RunPod can pull from. Control's THERMITE_RUNPOD_TEST_IMAGE setting fills it in.")}<input name="image" required maxlength="300" value="${esc(opts.runpodTests?.defaultImage() ?? "")}" placeholder="for example ghcr.io/you/thermite-harness:1a2b3c4d5e6f-cuda"></label>
 <label>${infoLabel("Disk (GB)", "The pod's container disk, gone with the pod. The harness image needs about 15 GB.")}<input name="disk_gb" type="number" min="10" max="2000" value="${DEFAULT_DISK_GB}"></label>
 <label>${infoLabel("End it after (minutes)", "Optional. Control removes the pod after this many minutes, whatever the test is doing. Empty: the pod runs until the test ends, or until you end it here.")}<input name="stop_after_minutes" type="number" min="5" placeholder="no limit"></label>
 <label style="grid-column:1/-1">${infoLabel("Stop and start it again", "After the first report, control stops the pod and starts it again, to see that it gets its GPU back. RunPod can start a stopped pod without a GPU when someone took it meanwhile.")}<span class="row small" style="gap:8px"><input type="checkbox" name="restart" value="1" checked style="height:auto;width:auto"> Stop the pod after its report, start it again, and read its report once more</span></label>
@@ -6361,8 +6382,8 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     if (p.type === "claude") harness = "claude-code";
     else if (harness === "claude-code")
       return {
-        error:
-          "Claude Code runs only with a Claude subscription here: choose Pi or OpenCode v2 for this provider.",
+        // Codex too, where the provider is one Codex takes.
+        error: `Claude Code runs only with a Claude subscription here: choose ${codexTakes(p.type) ? "Pi, OpenCode v2 or Codex" : "Pi or OpenCode v2"} for this provider.`,
       };
     // The Codex CLI speaks only OpenAI's Responses API.
     if (harness === "codex" && !codexTakes(p.type))

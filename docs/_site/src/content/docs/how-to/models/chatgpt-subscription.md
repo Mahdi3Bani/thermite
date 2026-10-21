@@ -96,5 +96,5 @@ If a rig or an agent still uses the subscription, the row says "In use: give its
 | "ChatGPT did not allow the sign-in" and a reason | You declined, or ChatGPT refused. Sign in again and allow Thermite. |
 | "The address has no sign-in code in it." | Copy the whole address, including everything after `?`. |
 | "The sign-in failed:" and a reason | Control could not exchange the code for the login. Start again from **Sign in with ChatGPT ↗**. |
-| "Claude Code runs only with a Claude subscription here: choose Pi or OpenCode v2 for this provider." | Choose **Pi**, **OpenCode v2** or **Codex** for that rig. |
-| The model check fails right after you chose **Codex** | Check that the rig's harness image has the Codex CLI. The published images do; an image built with an empty `CODEX_VERSION` does not. |
+| "Claude Code runs only with a Claude subscription here: choose Pi, OpenCode v2 or Codex for this provider." | Choose **Pi**, **OpenCode v2** or **Codex** for that rig. |
+| The model check fails right after you chose **Codex** | Check that the rig's harness image has the Codex CLI. The published images do; an image built with an empty `CODEX_VERSION` does not. Without it, the check and the agents' trials say: *this rig's harness image has no Codex CLI: build the image with the Codex option (CODEX_VERSION, which the published images set), or give the rig another harness on Edit rig*. |

@@ -17,17 +17,21 @@ import {
 } from "../core/tunnel.ts";
 import { createHarnessApi } from "../harness/api.ts";
 import { readEnrollment } from "../harness/broker/one-container.ts";
+import { syncMcpServers } from "../supervisor/mcp-sync.ts";
 import { relayCommandsOnce, relayOnce } from "../supervisor/relay.ts";
 import { PodTunnel, pullModeOptions, startPullMode } from "../supervisor/tunnel-pod.ts";
+import { assigned } from "../testing/assignments.ts";
 import { makeHarnessEnv } from "../testing/harness-env.ts";
 import { createControlApi } from "./api.ts";
 import { issueCommand } from "./issue.ts";
+import { McpServers } from "./mcp-servers.ts";
 import { SecretBox } from "./secrets.ts";
 import { ControlStore, RIG_ID } from "./store.ts";
 import { ControlTunnels, tunnelRouteAllowed } from "./tunnel.ts";
 
 const MARKER = "a-made-up-secret-marker-0001";
 const MODEL_KEY = "a-made-up-model-key-0001";
+const MCP_KEY = "a-made-up-mcp-key-0001";
 const CONFIG = { THERMITE_TARGET: "cpu", THERMITE_MAX_TRIALS: "2" };
 
 /**
@@ -262,6 +266,7 @@ describe("pull mode: control connects to a rig through a proxy", () => {
       ["GET", "/v1/rigs/rp-1/commands/pending"],
       ["POST", "/v1/rigs/rp-1/commands/c-1/ack"],
       ["GET", "/v1/rigs/rp-1/model-route"],
+      ["GET", "/v1/rigs/rp-1/mcp-servers"],
       ["GET", "/v1/rigs/rp-1/kb?run=r-1&after=0"],
       ["POST", "/v1/rigs/rp-1/champions/r-1/3/patch"],
       ["GET", "/v1/rigs/rp-1/git-access/deploy"],
@@ -280,6 +285,8 @@ describe("pull mode: control connects to a rig through a proxy", () => {
       ["GET", "/v1/rigs/rp-1/git/kits/../../secrets"],
       ["DELETE", "/v1/rigs/rp-1/ingest"],
       ["POST", "/v1/rigs/rp-1/model-route"],
+      ["POST", "/v1/rigs/rp-1/mcp-servers"],
+      ["GET", "/v1/rigs/rp-2/mcp-servers"],
     ])
       assert.ok(!tunnelRouteAllowed("rp-1", m as string, p as string), `${m} ${p}`);
   });
@@ -582,11 +589,35 @@ describe("pull mode: control connects to a rig through a proxy", () => {
       const route = await s.pump(s.call(`/v1/rigs/${s.rig}/model-route`));
       assert.equal(route.status, 200);
       assert.ok(JSON.stringify(await route.json()).includes(MODEL_KEY));
+      // The MCP servers its run's kit names, with their sign-in: the supervisor gets them through
+      // the tunnel and hands the harness its share (a 404 here would read as an older control).
+      new McpServers(s.store, s.secrets).put(
+        { name: "gbrain", url: "https://brain.example.com/mcp", auth: "key", secret: MCP_KEY },
+        "owner:test",
+      );
+      assigned(s.store, s.rig, "run-1", "camp", {
+        mcp_servers: [{ name: "gbrain", agents: ["workers"] }],
+      });
+      const mcp = await s.pump(syncMcpServers(cfg));
+      assert.equal(mcp.handed, "set");
+      assert.deepEqual(
+        mcp.servers.map((c) => [c.name, c.headers.Authorization]),
+        [["gbrain", MCP_KEY]],
+      );
+      const held = await harness.request("/v1/mcp-servers", {
+        headers: { authorization: "Bearer sup" },
+      });
+      assert.deepEqual(
+        ((await held.json()) as { servers: { name: string }[] }).servers.map((x) => x.name),
+        ["gbrain"],
+        "the harness holds the workers' server",
+      );
       // What crossed the proxy: no marker, no key, no code, no token, no plain JSON.
       const all = Buffer.concat(s.wire).toString("latin1");
       for (const secret of [
         MARKER,
         MODEL_KEY,
+        MCP_KEY,
         s.minted.env.THERMITE_TUNNEL_ENROLL_CODE,
         s.opts.localToken,
         '"commands"',

@@ -34,6 +34,9 @@ export interface McpCaller {
 /** How long a server's tool list is kept before it is read again. */
 const LIST_MS = 5 * 60_000;
 
+/** A verb for a kind of agent: the planner is one ("goes"), the workers and advisors many ("go"). */
+const verb = (kind: AgentKind, one: string, many: string) => (kind === "planner" ? one : many);
+
 export interface McpGatewayDeps {
   /** The run's servers: what its kit names, from the run's signed assignment. */
   uses(run: string): McpUse[];
@@ -84,35 +87,40 @@ export class McpGateway {
 
   private key = (c: McpCaller, server: string) => `${c.run}\0${server}\0${c.kind}`;
 
-  /** A failure, recorded once until the server works again; the agents go on without it. */
-  private failed(c: McpCaller, server: string, why: string): void {
+  /**
+   * A failure, recorded once until the server works again; the agents go on without it. `say`:
+   * a line in Live too (the supervisor says its own).
+   */
+  private failed(c: McpCaller, server: string, why: string, say = true): void {
     const k = this.key(c, server);
     if (this.failing.get(k) === why) return;
     const first = !this.failing.has(k);
     this.failing.set(k, why);
     if (!first) return;
     this.deps.record(c.run, "mcp_server_failed", { server, agents: c.kind, error: why });
-    this.deps.say?.(
-      c.source,
-      c.run,
-      `the MCP server ${server} failed: ${why}. The ${c.kind} go on without it.`,
-    );
+    if (say)
+      this.deps.say?.(
+        c.source,
+        c.run,
+        `the MCP server ${server} failed: ${why}. The ${c.kind} ${verb(c.kind, "goes", "go")} on without it.`,
+      );
   }
 
-  private worked(c: McpCaller, server: string): void {
+  private worked(c: McpCaller, server: string, say = true): void {
     const k = this.key(c, server);
     if (!this.failing.delete(k)) return;
     this.deps.record(c.run, "mcp_server_back", { server, agents: c.kind });
-    this.deps.say?.(c.source, c.run, `the MCP server ${server} works again.`);
+    if (say) this.deps.say?.(c.source, c.run, `the MCP server ${server} works again.`);
   }
 
   /**
    * A failure or a return the supervisor saw for the advisors, whose calls it makes: recorded in
-   * the run's history as the gateway records its own.
+   * the run's history as the gateway records its own. The supervisor's own gateway has said it
+   * in Live already, so it is not said twice.
    */
   report(c: McpCaller, server: string, ok: boolean, why = "it failed"): void {
-    if (ok) this.worked(c, server);
-    else this.failed(c, server, why);
+    if (ok) this.worked(c, server, false);
+    else this.failed(c, server, why, false);
   }
 
   /** Why a server can't be called now: not handed to the rig, or none of that name. */
@@ -156,7 +164,7 @@ export class McpGateway {
   /** One server's tools that this caller may use (none when it fails). */
   async serverTools(c: McpCaller, server: string): Promise<McpListedTool[] | string> {
     const g = this.given(c.run, c.kind).find((x) => x.name === server);
-    if (!g) return `the ${c.kind} of this run do not get ${server}`;
+    if (!g) return `the ${c.kind} of this run ${verb(c.kind, "does", "do")} not get ${server}`;
     const tools = await this.listed(c, server);
     if (typeof tools === "string") return tools;
     return g.tools ? tools.filter((t) => g.tools?.includes(t.name)) : tools;
@@ -204,7 +212,10 @@ export class McpGateway {
       isError: true,
     });
     const g = this.given(c.run, c.kind).find((x) => x.name === server);
-    if (!g) return err(`The ${c.kind} of this run do not get the MCP server ${server}.`);
+    if (!g)
+      return err(
+        `The ${c.kind} of this run ${verb(c.kind, "does", "do")} not get the MCP server ${server}.`,
+      );
     if (g.tools && !g.tools.includes(tool))
       return err(`The campaign's kit does not give the ${c.kind} the tool ${tool} of ${server}.`);
     const conn = this.reachable(server);

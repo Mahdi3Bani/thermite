@@ -139,7 +139,7 @@ Errors show in a card that starts with **Not done.**
 | "…could not list its models: HTTP 404 (is the base URL right?)" | Check the address. An OpenAI-compatible one ends in `/v1`. |
 | "…could not list its models: no answer in 15 s" or "could not reach it to list its models" | Control cannot reach the address. For a server on your computer, use `host.docker.internal`, not `localhost`. |
 | "OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig." | Choose **OpenCode v2** for that rig. |
-| "Claude Code runs only with a Claude subscription here: choose Pi or OpenCode v2 for this provider." | Choose **Pi** or **OpenCode v2**. |
+| "Claude Code runs only with a Claude subscription here: choose Pi or OpenCode v2 for this provider." | Choose **Pi** or **OpenCode v2**. For a ChatGPT subscription or an OpenAI-compatible provider it says "… choose Pi, OpenCode v2 or Codex for this provider.": **Codex** works there too. |
 | "Codex runs only with a ChatGPT subscription or an OpenAI-compatible provider: choose Pi or OpenCode v2 for this provider." | Choose **Pi** or **OpenCode v2** for an Anthropic or OpenCode provider. |
 
 The provider is saved even when its list fails. Fix the cause, then press **Refresh models**.

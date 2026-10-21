@@ -59,7 +59,8 @@ function opSteps(v: RunpodRigView): string {
       { text: "Ask RunPod to stop the pod." },
       { text: "Wait for the pod to stop.", phase: "stopping" },
       { text: "Ask RunPod to start it again, and wait for it to run.", phase: "starting" },
-      { text: "Resume the runs." },
+      // A restart pauses no run (runpod-lifecycle.ts): the harness starts again with them.
+      { text: "The harness starts again: a trial that was in progress is planned again." },
     ],
   };
   const plan = plans[op.kind] ?? [];
@@ -217,7 +218,7 @@ export function podBlock(o: {
 <div class="lc">
 ${box({ rig: v.rig, t, title: "Stop", says: "Pauses the runs at a safe point, sends waiting results out of the pod, then stops it. GPU billing ends; the volume stays.", button: "Stop the pod", action: `${rigUrl(v.rig)}/runpod/stop`, on: runs && free, off: stopped ? "The pod is stopped." : busyWhy })}
 ${box({ rig: v.rig, t, title: "Start", says: "Starts the pod again and resumes the runs the stop paused. RunPod gives it a GPU on the same machine when one is free.", button: "Start the pod", action: `${rigUrl(v.rig)}/runpod/start`, on: stopped && free, off: runs ? "The pod runs." : busyWhy, cls: "primary" })}
-${box({ rig: v.rig, t, title: "Restart", says: "Stops the pod and starts it again, with no export: its volume keeps everything. The runs pause and resume. RunPod may have no GPU free for it: then it stays stopped.", button: "Restart the pod", action: `${rigUrl(v.rig)}/runpod/restart`, on: runs && free, off: stopped ? "The pod is stopped: start it instead." : busyWhy })}
+${box({ rig: v.rig, t, title: "Restart", says: "Stops the pod and starts it again, with no export: its volume keeps everything. Its runs are not paused: a trial in progress stops, and the harness plans it again. RunPod may have no GPU free for it: then it stays stopped.", button: "Restart the pod", action: `${rigUrl(v.rig)}/runpod/restart`, on: runs && free, off: stopped ? "The pod is stopped: start it instead." : busyWhy })}
 ${box({ rig: v.rig, t, title: "Full reset", says: "Pauses the runs, sends every result out of the pod and checks it, then wipes the rig's state once you confirm. The pod and its GPU stay.", button: "Start the full reset", action: `${rigUrl(v.rig)}/reset`, on: runs && free, off: stopped ? "The pod is stopped: start it first, so its results can leave it." : busyWhy, cls: "danger", confirm: `reset ${v.rig}` })}
 ${box({ rig: v.rig, t, title: "Terminate", says: "Sends every result out of the pod and waits until each one has arrived. Then RunPod deletes the pod and its volume, and the rig is retired. Billing ends.", button: "Terminate", action: `${rigUrl(v.rig)}/runpod/terminate`, on: free, off: busyWhy, cls: "danger", confirm: `terminate ${v.rig}` })}
 </div>`;

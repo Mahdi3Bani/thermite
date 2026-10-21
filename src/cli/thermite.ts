@@ -128,10 +128,10 @@ const USAGE = `usage: thermite <command> [options]
                                       seals each secret and reads the server's tools. oauth:
                                       prints the sign-in page's address: open it and allow
                                       Thermite
-  mcp change NAME [--url URL] [--header H] [--secret-file F] [--client-id ID]
-          [--client-secret-file F] [--scope S] --control URL --token-file F
+  mcp change NAME [--url URL] [--auth oauth|key|client|none] [--header H] [--secret-file F]
+          [--client-id ID] [--client-secret-file F] [--scope S] --control URL --token-file F
                                       change a server; a secret left out is kept, except for
-                                      another address, which needs it again
+                                      another address or another --auth, which needs it again
   mcp check NAME --control URL --token-file F
                                       read the server's tools again (it calls none)
   mcp sign-in NAME --control URL --token-file F

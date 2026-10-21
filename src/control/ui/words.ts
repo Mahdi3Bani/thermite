@@ -482,6 +482,31 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
         `A command${b.kind ? ` ("${commandText(String(b.kind))}")` : ""} was refused: ${String(b.reason ?? "")}.`,
         "bad",
       );
+    // The MCP servers a run's kit names (goal 068): which agents get each, and when one fails.
+    case "mcp_servers": {
+      const servers = Array.isArray(b.servers)
+        ? (b.servers as { name?: string; agents?: string[] }[])
+        : [];
+      return s(
+        `The run's agents can use ${servers.length === 1 ? "an MCP server" : "MCP servers"}: ${servers.map((x) => `${String(x.name)} for ${listText((x.agents ?? []).map((a) => `the ${a}`))}`).join("; ")}.`,
+        "",
+        { run: String(e.subject) },
+      );
+    }
+    case "mcp_server_failed":
+      return s(
+        `The MCP server ${String(b.server)} failed for the ${String(b.agents)}${b.error ? `: ${clip(String(b.error), 200)}` : ""}. The run goes on without it.`,
+        "warn",
+        { run: String(e.subject) },
+      );
+    case "mcp_server_back":
+      return s(
+        `The MCP server ${String(b.server)} works again for the ${String(b.agents)}.`,
+        "ok",
+        {
+          run: String(e.subject),
+        },
+      );
     default:
       return null;
   }

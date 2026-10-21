@@ -145,10 +145,10 @@ usage: thermite <command> [options]
                                       seals each secret and reads the server's tools. oauth:
                                       prints the sign-in page's address: open it and allow
                                       Thermite
-  mcp change NAME [--url URL] [--header H] [--secret-file F] [--client-id ID]
-          [--client-secret-file F] [--scope S] --control URL --token-file F
+  mcp change NAME [--url URL] [--auth oauth|key|client|none] [--header H] [--secret-file F]
+          [--client-id ID] [--client-secret-file F] [--scope S] --control URL --token-file F
                                       change a server; a secret left out is kept, except for
-                                      another address, which needs it again
+                                      another address or another --auth, which needs it again
   mcp check NAME --control URL --token-file F
                                       read the server's tools again (it calls none)
   mcp sign-in NAME --control URL --token-file F
@@ -449,7 +449,7 @@ It prints the rig on one line, then `Launched: RunPod bills the pod from now. Co
 rp-1a2b3c4d · pod pod1 · RUNNING · 1 × RTX A4000 (Secure) · $0.25/h · spent $1.50 · spend limit $20.00 · no idle stop · enrolled
 ```
 
-Each line has the rig, its pod, the pod's status at RunPod (`gone` once RunPod no longer has it), its GPUs and cloud, its price per hour, what it has cost so far, its limits and its enrollment. Indented lines under it say `stopped by control: spend limit` (or `idle stop`) when control stopped the pod at a limit, or `stopped by the owner`; `under way:` and the stop, start, restart or terminate under way, such as `under way: stopping: waiting for its results to leave the pod`; and `last error:` with what control's last read of the pod found, or why a terminate was refused. With no rig it prints `no rig on a GPU cloud`.
+Each line has the rig, its pod, the pod's status at RunPod (`gone` once RunPod no longer has it), its GPUs and cloud, its price per hour, what it has cost so far, its limits and its enrollment. Indented lines under it say `stopped by control: spend limit` (or `idle stop`) when control stopped the pod at a limit, or `stopped by the owner`; `under way:` and the stop, start, restart or terminate under way, such as `under way: stopping: waiting for its results to leave the pod`; and `last error:` with what control's last read of the pod found, or why a terminate was refused (that stays until the owner's next stop, start, restart or terminate of the pod, or its full reset). With no rig it prints `no rig on a GPU cloud`.
 
 ### `runpod limits`
 
@@ -500,7 +500,7 @@ It prints control's answer on one line, such as `{"started":true,"campaign":"sor
 | `CAMPAIGN` | Yes | | The campaign, as on its page |
 | `--rig R` | Yes | | The rig the run starts on |
 | `--agents on\|off` | No | `on` | `off`: a try, with no agents. The judge measures the starting code on every case once |
-| `--provider P` and `--model M` | No | | For a rig with no model for its agents: give it model `M` of provider `P` in **Providers** first, with the harness the model needs. When the rig does not run `M` yet, the run does not start: the answer is `{"started":false,"said":"rig-1 takes M within a minute; …"}`, `said` goes to standard error, and the command exits 1. Run it again without them once the rig runs the model. When the rig runs `M` already, the run starts |
+| `--provider P` and `--model M` | No | | For a rig with no model for its agents: give it model `M` of provider `P` in **Providers** first, with the harness the model needs (the rig's own when control gave it this model already). When the rig does not run `M` yet, the run does not start: the answer is `{"started":false,"said":"rig-1 takes M within a minute; …"}`, `said` goes to standard error, and the command exits 1. Run it again without them once the rig runs the model. When the rig runs `M` already, the run starts |
 | `--promotion auto\|owner` | No | the rig's default | When a change is confirmed better: keep it at once, or wait for the owner |
 | `--judge-gpus N` | No | the rig's current split | For a rig with several GPUs: how many the judge measures on. The rig's harness restarts to apply a new split |
 | `--queue-from [RIG/]RUN` | No | | Another run of this campaign, on `--rig` unless `RIG/` is given: its untried experiments start the new run's queue |
@@ -564,7 +564,7 @@ The options of `add` and `change`:
 | Option | Meaning |
 | --- | --- |
 | `--url URL` | The server's MCP address: `https://`, or `http://` for `localhost`, `127.0.0.1` and `[::1]` only |
-| `--auth oauth\|key\|client\|none` | How it signs Thermite in. Required for `add` |
+| `--auth oauth\|key\|client\|none` | How it signs Thermite in. Required for `add`. With `change`, another sign-in needs its secret again |
 | `--header H` | `key`: the header the key goes in. Default `Authorization` |
 | `--secret-file F` | `key`: a file with the header's whole value, such as `Bearer` and the token |
 | `--client-id ID` | `client`, or `oauth` for a server that does not register clients by itself |

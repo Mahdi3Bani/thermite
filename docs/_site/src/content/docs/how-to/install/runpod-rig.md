@@ -85,7 +85,7 @@ When its pod is stopped, starting or resuming a run on it starts the pod first: 
 
 ## 5. Watch its cost and change its limits
 
-**The pod** shows four facts: **Cost now** (its price per hour while it runs, `storage only` while it is stopped), **Spent so far** (what it cost while it ran, since launch, with a bar when a spend limit is set), **Spend limit** and **Idle stop**. Under **Idle stop** it says how long no run has been at work. **Rigs** shows the cost now and the spend so far under **Per hour**, and a pod its idle stop stopped as **Stopped**, with `its idle stop stopped it` and `a new run wakes it` ([The Rigs list](../../reference/rigs-list.md#a-stopped-pod)).
+**The pod** shows four facts: **Cost now** (its price per hour while it runs, `storage only` while it is stopped), **Spent so far** (what it cost while it ran, since launch, with a bar when a spend limit is set), **Spend limit** and **Idle stop**. Under **Idle stop** it says `a run is at work` while one is, and otherwise how long no run has been at work, such as `no run at work for 4 min of 30 min`, from control's check every 30 seconds. **Rigs** shows the cost now and the spend so far under **Per hour**, and a pod its idle stop stopped as **Stopped**, with `its idle stop stopped it` and `a new run wakes it` ([The Rigs list](../../reference/rigs-list.md#a-stopped-pod)).
 
 To change them, open **Change the spend limit or the idle stop**, fill in or clear the fields, and press **Save**. The page says, for example, `Saved. No spend limit. It stops after 30 minutes with no run at work.` An empty field clears that limit. From the command line:
 
@@ -107,7 +107,7 @@ Under **Start, stop and end it**, press **Stop the pod**. The page says `Stoppin
 
 Press **Start the pod** to start it again. RunPod gives a stopped pod's GPU to whoever asks next. When it has no GPU free for the pod, the start is refused and says so: `RunPod has no free GPU for pod … now, so the pod stays stopped (…). Its volume stays. Try again later, or terminate it and launch a new rig.` Once the pod runs, control resumes the runs the stop paused. The rig reports again with the same keys and enrollment: it does not enroll again.
 
-**Restart the pod** stops the pod and starts it again, with no export: the volume keeps everything. It can meet the same lack of a free GPU.
+**Restart the pod** stops the pod and starts it again, with no export: the volume keeps everything. It does not pause the runs. A trial in progress stops, and when the harness starts again, it closes that trial as interrupted and plans it again. A restart can meet the same lack of a free GPU.
 
 From the command line: `thermite runpod stop rp-1a2b3c4d $c`, `thermite runpod start …` and `thermite runpod restart …`.
 
@@ -121,7 +121,7 @@ Terminating removes the pod and its volume at RunPod. Control does it only once 
 
 In the **Terminate** box, type `terminate rp-1a2b3c4d` and press **Terminate**. The page says `Terminating: its runs are paused, and the pod is removed only once every result has left it.` Control pauses the runs, waits until no judge job and no command waits on the rig, asks for a full export, and waits until it, and everything else that waits on the pod, has reached control. Then RunPod removes the pod, and control retires the rig: it leaves the rig lists, and its records and exports stay on control. Its page then says what the pod cost in all.
 
-If a result can't leave, the terminate is refused, and the pod keeps running with its runs paused. The page shows `Not terminated: …` with the reason, such as a supervisor that has nowhere to send its exports. Fix the cause, then terminate again, or resume the runs.
+If a result can't leave, the terminate is refused, and the pod keeps running with its runs paused. The page shows `Not terminated: …` with the reason, such as a supervisor that has nowhere to send its exports, and `thermite runpod list` shows it as `last error:`. It stays there until you stop, start, restart or terminate the pod, or reset it. Fix the cause, then terminate again, or resume the runs.
 
 A stopped pod is terminated at once when its last stop sent every result out. Otherwise the terminate is refused: start the pod, so its results can leave, then terminate it.
 

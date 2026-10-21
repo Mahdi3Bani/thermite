@@ -1,14 +1,23 @@
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, test } from "node:test";
+import { formatRunpodRigs } from "../cli/runpod.ts";
 import { generateSigningKeys } from "../core/commands.ts";
+import { assigned } from "../testing/assignments.ts";
 import { FAKE_GPUS, FAKE_RUNPOD_KEY, fakeRunpod } from "../testing/fake-runpod.ts";
 import {
   exportName,
   exportOnControl,
   harnessApplies,
+  harnessRefusesExport,
+  pendingOf,
   supervisorReports,
 } from "../testing/rig-results.ts";
 import { createControlApi } from "./api.ts";
+import { KitRepos } from "./kit-repos.ts";
+import type { RunpodRigView } from "./runpod-rig-view.ts";
 import { DEFAULT_IDLE_STOP_MINUTES, RunpodRigs } from "./runpod-rigs.ts";
 import { SecretBox } from "./secrets.ts";
 import { ControlStore } from "./store.ts";
@@ -58,6 +67,8 @@ async function setup(o: Parameters<typeof fakeRunpod>[0] = {}) {
     tunnels,
     runpodRigs: rigs,
     cloudFetch: cloud.fetch,
+    // Kits kept on control: the New campaign page needs them.
+    kits: new KitRepos(mkdtempSync(join(tmpdir(), "thermite-kits-"))),
   });
   const login = await api.request("/ui/login", {
     method: "POST",
@@ -101,8 +112,11 @@ const LAUNCH = {
 };
 
 /** A launched rig that enrolled, reported a running run, and whose supervisor reported. */
-async function working(s: Awaited<ReturnType<typeof setup>>) {
-  assert.match(await s.post("/ui/rigs/add/runpod", LAUNCH), /^\/ui\/rigs\/rp-test-1\?ok=Launched/);
+async function working(s: Awaited<ReturnType<typeof setup>>, form: Partial<typeof LAUNCH> = {}) {
+  assert.match(
+    await s.post("/ui/rigs/add/runpod", { ...LAUNCH, ...form }),
+    /^\/ui\/rigs\/rp-test-1\?ok=Launched/,
+  );
   await s.advance();
   assert.ok(s.store.pinTunnelRig("rp-test-1", "sign", "box"));
   s.store.ingest({
@@ -196,6 +210,27 @@ describe("Launch on RunPod", () => {
       await s.page("/ui/settings"),
       /<a class="btn sm" href="\/ui\/rigs\/add\/runpod\?cloud=runpod">Launch a rig<\/a>/,
     );
+  });
+
+  test("Read again posts where its form points, reads the account again, and opens the form", async () => {
+    const s = await setup();
+    const page = await s.page("/ui/rigs/add/runpod");
+    // The page's own form, as the browser sends it: its action and its hidden fields.
+    const form =
+      /<form method="post" action="([^"]+)" class="inline">((?:(?!<\/form>).)*)<button class="sm">Read again<\/button><\/form>/s.exec(
+        page,
+      );
+    assert.ok(form, "the page has a Read again form");
+    const fields = Object.fromEntries(
+      [...(form[2] ?? "").matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g)].map(
+        (m) => [m[1], m[2]],
+      ),
+    );
+    const before = s.cloud.calls.length;
+    const to = await s.post(form[1] ?? "", fields);
+    assert.equal(to, "/ui/rigs/add/runpod?cloud=runpod");
+    assert.ok(s.cloud.calls.length > before, "control read RunPod again");
+    assert.match(await s.page(to), /<title>Launch on RunPod/);
   });
 
   test("a launch from the form: the pod RunPod starts, the rig's settings, its limits; the rig's page follows it", async () => {
@@ -385,14 +420,287 @@ describe("a RunPod rig's page", () => {
     );
   });
 
-  test("restart from the page goes to RunPod", async () => {
+  test("a refused terminate stays on the page, REST and the command line until the owner's next change", async () => {
     const s = await setup();
     await working(s);
+    await s.post("/ui/rigs/rp-test-1/runpod/terminate", { confirm: "terminate rp-test-1" });
+    harnessApplies(s.store, "rp-test-1", exportName(1));
+    await s.advance();
+    harnessRefusesExport(s.store, "rp-test-1");
+    await s.advance();
+    const rest = async () =>
+      (await (
+        await s.api.request("/v1/rigs/rp-test-1/runpod", {
+          headers: { authorization: `Bearer ${ADMIN}` },
+        })
+      ).json()) as RunpodRigView;
+    const said = /Not terminated: the export did not complete \(failed\)\. The pod keeps running/;
+    /** The red line under The pod's facts (History keeps the step either way). */
+    const flash = async () =>
+      /<div class="flash bad" style="margin-top:12px">([^<]*)<\/div>/.exec(
+        await s.page("/ui/rigs/rp-test-1"),
+      )?.[1] ?? "";
+    // Several good reads of the pod later, every surface still says it.
+    for (let i = 0; i < 4; i++) await s.advance();
+    assert.match(await flash(), said);
+    const v = await rest();
+    assert.match(String(v.error), said);
+    assert.match(String(v.refusal), said);
+    assert.match(formatRunpodRigs([v]), /\n {2}last error: Not terminated: the export did not/);
+    // The owner's next change to the pod ends it at once.
+    assert.match(await s.post("/ui/rigs/rp-test-1/runpod/stop"), /ok=Stopping/);
+    assert.equal(await flash(), "");
+    const after = await rest();
+    assert.deepEqual([after.error, after.refusal], [null, null]);
+    assert.doesNotMatch(formatRunpodRigs([after]), /last error/);
+  });
+
+  test("a refusal ends with a newer step in the rig's history, such as a full reset", async () => {
+    const s = await setup();
+    await working(s);
+    await s.post("/ui/rigs/rp-test-1/runpod/terminate", { confirm: "terminate rp-test-1" });
+    harnessApplies(s.store, "rp-test-1", exportName(1));
+    await s.advance();
+    harnessRefusesExport(s.store, "rp-test-1");
+    await s.advance();
+    await s.advance();
+    assert.match(String(s.rigs.view("rp-test-1")?.refusal), /^Not terminated/);
+    // The step a full reset records when it starts (lifecycle.ts).
+    s.store.rigSetupEvent("rp-test-1", "reset_requested", true, "asked by owner:ui");
+    await s.advance();
+    assert.equal(s.rigs.view("rp-test-1")?.refusal, null);
+    assert.equal(s.rigs.view("rp-test-1")?.error, null);
+    assert.doesNotMatch(
+      await s.page("/ui/rigs/rp-test-1"),
+      /<div class="flash bad" style="margin-top:12px">Not terminated/,
+    );
+  });
+
+  test("the idle stop's line says a run is at work while one is, and counts only time with none", async () => {
+    const s = await setup();
+    await working(s, { idle_stop_minutes: "30" });
+    /** The harness's next signed events, after working()'s first. */
+    let cursor = 1;
+    const report = (...events: [kind: string, body: object][]) => {
+      s.store.ingest({
+        rig: "rp-test-1",
+        ledger_id: "l1",
+        cursor,
+        next: cursor + events.length,
+        summary: {},
+        events: events.map(([kind, body], i) => ({
+          id: cursor + i + 1,
+          at: new Date().toISOString(),
+          actor: "t",
+          kind,
+          subject: "run-1",
+          body,
+        })),
+      });
+      cursor += events.length;
+    };
+    /** The line under Idle stop, without its "Change it" link. */
+    const idleLine = async () =>
+      /data-idle>30 min<\/div><div class="s">([^<]*?)(?: · )?</.exec(
+        await s.page("/ui/rigs/rp-test-1"),
+      )?.[1];
+    const rest = async () =>
+      (await (
+        await s.api.request("/v1/rigs/rp-test-1/runpod", {
+          headers: { authorization: `Bearer ${ADMIN}` },
+        })
+      ).json()) as RunpodRigView;
+    // A lane's trial in progress: at work, however long it takes. No idle time counts.
+    report(["trial_started", { lane: "lane-1", trial: "t-1" }]);
+    await s.advance();
+    assert.equal(await idleLine(), "a run is at work");
+    assert.equal((await rest()).idle_since, null);
+    for (let i = 0; i < 80; i++) await s.advance();
+    assert.equal(await idleLine(), "a run is at work", "40 minutes into the trial");
+    assert.deepEqual(s.cloud.stops(), [], "never stopped with a run at work");
+    assert.equal(s.rigs.view("rp-test-1")?.op, null);
+    // The run finishes: the idle time counts from then, as the idle stop counts it.
+    report(
+      ["trial_finished", { lane: "lane-1", trial: "t-1", stopped: "done" }],
+      ["run_status", { status: "closed", reason: "done" }],
+    );
+    await s.advance();
+    await s.advance();
+    assert.match(String(await idleLine()), /^no run at work for \d+ s of 30 min$/);
+    assert.ok((await rest()).idle_since);
+    for (let i = 0; i < 60; i++) await s.advance();
+    assert.equal(s.rigs.view("rp-test-1")?.op?.why, "idle_stop");
+  });
+
+  test("restart from the page goes to RunPod, and its words say what it does to the runs", async () => {
+    const s = await setup();
+    await working(s);
+    // The box says what a restart does: it pauses no run, and a trial in progress stops.
+    const box =
+      /<form class="lcb" method="post" action="\/ui\/rigs\/rp-test-1\/runpod\/restart">.*?<\/form>/s.exec(
+        await s.page("/ui/rigs/rp-test-1"),
+      )?.[0];
+    assert.match(
+      String(box),
+      /Its runs are not paused: a trial in progress stops, and the harness plans it again\./,
+    );
+    assert.doesNotMatch(String(box), /pause and resume/);
     assert.match(
       await s.post("/ui/rigs/rp-test-1/runpod/restart"),
       /ok=Restarting: the pod stops, then starts again\./,
     );
     assert.deepEqual(s.cloud.stops(), [{ action: "stop" }]);
     assert.equal(s.rigs.view("rp-test-1")?.op?.kind, "restart");
+    assert.deepEqual(
+      pendingOf(s.store, "rp-test-1").map((c) => c.kind),
+      [],
+      "a restart sends no pause_run and no export",
+    );
+    // Its steps under way say the same.
+    const card = /<div class="card" style="margin-top:12px" id="op">.*?<\/div><\/div>/s.exec(
+      await s.page("/ui/rigs/rp-test-1"),
+    )?.[0];
+    assert.match(
+      String(card),
+      /The harness starts again: a trial that was in progress is planned again\./,
+    );
+    assert.doesNotMatch(String(card), /Resume the runs/);
+  });
+});
+
+describe("a stopped RunPod pod elsewhere on the dashboard", () => {
+  /** A rig whose pod the owner stopped an hour ago, with a run of `camp` that control assigned. */
+  async function stopped() {
+    const s = await setup();
+    await working(s);
+    assigned(s.store, "rp-test-1", "run-1", "camp");
+    await s.post("/ui/rigs/rp-test-1/runpod/stop");
+    harnessApplies(s.store, "rp-test-1", exportName(1));
+    // The harness reports the run the stop paused.
+    s.store.ingest({
+      rig: "rp-test-1",
+      ledger_id: "l1",
+      cursor: 1,
+      next: 2,
+      summary: {},
+      events: [
+        {
+          id: 2,
+          at: new Date().toISOString(),
+          actor: "t",
+          kind: "run_status",
+          subject: "run-1",
+          body: { status: "paused", reason: "the owner stops the rig's pod" },
+        },
+      ],
+    });
+    exportOnControl(s.store, "rp-test-1", exportName(1));
+    supervisorReports(s.store, "rp-test-1");
+    await s.advance();
+    await s.advance();
+    assert.deepEqual(s.cloud.stops(), [{ action: "stop" }]);
+    s.store.db
+      .prepare("update rig set last_seen = ? where id = ?")
+      .run(new Date(Date.now() - 3_600_000).toISOString(), "rp-test-1");
+    return s;
+  }
+
+  test("Overview, Live, a run's page and its brief call it stopped, not not reporting", async () => {
+    const s = await stopped();
+    const overview = await s.page("/ui");
+    assert.match(
+      overview,
+      /<div class="tally "><b>0\/0<\/b><span>rigs reporting, 1 stopped<\/span><\/div>/,
+    );
+    assert.match(overview, /0 of 0 rigs reporting · 1 stopped/);
+    assert.match(
+      await s.page("/ui/live"),
+      /<span class="t">rp-test-1<\/span><span class="s">no run at work · its pod is stopped<\/span>/,
+    );
+    const run = await s.page(`/ui/campaigns/camp?run=${encodeURIComponent("rp-test-1/run-1")}`);
+    assert.match(run, /rp-test-1<\/a> <span class="muted">\(its pod is stopped\)<\/span>/);
+    assert.doesNotMatch(run, /\(not reporting\)/);
+  });
+
+  test("New campaign and Start a run offer it, and say a run starts it", async () => {
+    const s = await stopped();
+    const nc = await s.page("/ui/campaigns/new");
+    const choice =
+      /<div class="ch[^"]*" data-group="rig" data-value="rp-test-1"[^>]*>.*?<\/div>/s.exec(nc)?.[0];
+    assert.ok(choice, "the rig is offered");
+    assert.doesNotMatch(choice, /class="ch[^"]* dis"/, "and may be chosen");
+    assert.match(choice, /its pod is stopped: the first run starts it/);
+    assert.doesNotMatch(choice, /not reporting now/);
+    const camp = await s.page("/ui/campaigns/camp");
+    const opt =
+      /<label class="sopt[^"]*"><input type="radio" name="rig" value="rp-test-1"[^>]*>.*?<\/label>/s.exec(
+        camp,
+      )?.[0];
+    assert.ok(opt, "Start a run offers it");
+    assert.doesNotMatch(opt, / disabled/);
+    assert.match(opt, /Its pod is stopped: this run starts it first\./);
+    assert.doesNotMatch(opt, /Not reporting now\./);
+  });
+
+  test("a new campaign started on it starts the pod first, and the page says so", async () => {
+    const s = await stopped();
+    // The rig's last report named its hardware, as a CPU rig's does.
+    s.store.ingest({
+      rig: "rp-test-1",
+      ledger_id: "l1",
+      cursor: 2,
+      next: 2,
+      summary: {
+        hardware: {
+          collected_at: new Date().toISOString(),
+          target: { type: "cpu", class: "generic-cpu", id: "cpu-a" },
+          device_mode: "none",
+          devices: [],
+          cpu: { model: "Example CPU", host: 8, usable: 8, quota: null },
+          memory: { host_mib: 16_000, limit_mib: null },
+          disks: [],
+          os: { kernel: "6.8", arch: "x64", node: "v22", image: null },
+          toolchain: { cc: "cc 12", nvcc: null },
+          errors: [],
+        },
+      },
+      events: [],
+    });
+    const draft = {
+      mode: "hill_climb",
+      campaign: "matmul-speed",
+      title: "Make the matrix multiply faster",
+      project: {
+        url: "https://git.example.com/team/fastmat.git",
+        ref: "main",
+        commit: "9a41c07e0d1f2a3b4c5d6e7f8091a2b3c4d5e6f7",
+        repo: "fastmat",
+        editable_paths: ["src/kernels/**"],
+      },
+      kit: {
+        source: "here",
+        build: "make bench",
+        outputs: ["bench"],
+        cases: [{ name: "small", params: { n: 64 }, work: 524288 }],
+        run: "{build}/bench --n {n} --out {out}/result.txt",
+        check: "test -s {out}/result.txt",
+      },
+      score: { name: "throughput", unit: "FLOP/s", direction: "max", min_effect: 0.05 },
+      lanes: 2,
+    };
+    const to = await s.post("/ui/campaigns/new", {
+      draft: JSON.stringify(draft),
+      rig: "rp-test-1",
+      promotion: "",
+      start_value: "start",
+    });
+    assert.match(
+      to,
+      /^\/ui\/campaigns\/matmul-speed\?run=rp-test-1\/matmul-speed-1&ok=rp-test-1's pod was stopped: control started it\. The run starts once the pod runs\.$/,
+    );
+    assert.deepEqual(
+      s.cloud.actions().filter((a) => a.action === "start"),
+      [{ action: "start" }],
+    );
   });
 });

@@ -50,7 +50,7 @@ Not every model works in every worker harness. Thermite refuses these pairings w
 
 | You choose | The dashboard says |
 | --- | --- |
-| Claude Code with any provider other than a Claude subscription | "Claude Code runs only with a Claude subscription here: choose Pi or OpenCode v2 for this provider." |
+| Claude Code with any provider other than a Claude subscription | "Claude Code runs only with a Claude subscription here: choose Pi or OpenCode v2 for this provider.", or "… choose Pi, OpenCode v2 or Codex for this provider." for a ChatGPT subscription or an OpenAI-compatible provider |
 | OpenCode's own models in Pi | "OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig." |
 | Codex with an Anthropic or OpenCode provider | "Codex runs only with a ChatGPT subscription or an OpenAI-compatible provider: choose Pi or OpenCode v2 for this provider." |
 | OpenCode's own models for an advisor | "The *role* cannot use OpenCode's own models: they run only in OpenCode. Choose another model." |

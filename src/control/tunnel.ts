@@ -59,7 +59,9 @@ export function tunnelRouteAllowed(rig: string, method: string, path: string): b
   const post = method === "POST";
   return (
     (post && ["ingest", "supervisor", "live", "reports"].includes(rest)) ||
-    (get && ["commands/pending", "model-route", "advisor-routes", "kb"].includes(rest)) ||
+    // mcp-servers: the MCP servers its runs' kits name, with their sign-in (goal 068).
+    (get &&
+      ["commands/pending", "model-route", "advisor-routes", "kb", "mcp-servers"].includes(rest)) ||
     (post && /^commands\/[A-Za-z0-9._-]+\/ack$/.test(rest)) ||
     // Results out (goal 024): champion patches and exports, for a rig with no results repository.
     (post && /^champions\/[A-Za-z0-9._-]+\/[0-9]+\/patch$/.test(rest)) ||
