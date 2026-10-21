@@ -1,4 +1,5 @@
-# Thermite supervisor image: reporting and command relay, git operations, teacher runtimes.
+# Thermite supervisor image: reporting and command relay, git operations, the advisors' runtimes
+# (Pi in its own code, OpenCode v2, the Codex CLI and, when built with it, Claude Code).
 ARG NODE_IMAGE=docker.io/library/node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392
 
 FROM ${NODE_IMAGE} AS build
@@ -7,6 +8,41 @@ COPY package.json package-lock.json tsconfig.json tsconfig.build.json ./
 RUN npm ci --no-fund --no-audit
 COPY src ./src
 RUN npm run build && npm prune --omit=dev --no-fund --no-audit
+
+# OpenCode v2, a harness an advisor may run in (goal 073): the same pinned release as the harness
+# image's, with its MIT LICENSE (containers/harness/opencode/; update both with the version).
+FROM ${NODE_IMAGE} AS opencode
+ARG OPENCODE_VERSION=2.0.32
+ARG TARGETARCH
+COPY containers/harness/opencode/LICENSE /usr/local/share/doc/opencode/LICENSE
+RUN cd /tmp \
+ && npm pack --silent "@opencode/cli-linux-$([ "$TARGETARCH" = arm64 ] && echo arm64 || echo x64)@${OPENCODE_VERSION}" \
+ && tar -xzf opencode-cli-linux-*.tgz package/bin/opencode \
+ && install -m 0755 package/bin/opencode /usr/local/bin/opencode \
+ && rm -rf /tmp/*
+
+# The Codex CLI (Apache-2.0), a harness an advisor may run in (goal 073): the same pinned release
+# as the harness image's, kept whole in /opt/codex (its binary finds its helpers beside it), with
+# the release's LICENSE and NOTICE in /usr/local/share/doc/codex (containers/harness/codex/). An
+# empty CODEX_VERSION builds an image without it.
+FROM ${NODE_IMAGE} AS codex
+ARG CODEX_VERSION=0.162.1
+ARG TARGETARCH
+COPY containers/harness/codex/ /tmp/codex-legal/
+RUN mkdir -p /out/opt /out/doc \
+ && if [ -n "$CODEX_VERSION" ]; then \
+      triple="$([ "$TARGETARCH" = arm64 ] && echo aarch64 || echo x86_64)-unknown-linux-musl" \
+      && cd /tmp \
+      && npm pack --silent "@openai/codex@${CODEX_VERSION}-linux-$([ "$TARGETARCH" = arm64 ] && echo arm64 || echo x64)" \
+      && tar -xzf openai-codex-*.tgz \
+      && test -x "package/vendor/${triple}/bin/codex" \
+      && cp -a "package/vendor/${triple}" /out/opt/codex \
+      && mkdir -p /out/doc/codex \
+      && install -m 0644 /tmp/codex-legal/LICENSE /tmp/codex-legal/NOTICE /out/opt/codex/ \
+      && install -m 0644 /tmp/codex-legal/LICENSE /tmp/codex-legal/NOTICE /out/doc/codex/ \
+      && /out/opt/codex/bin/codex --version \
+      && rm -rf /tmp/*; \
+    fi
 
 # Claude Code, for advisors on a Claude subscription (only Anthropic's own program may use one):
 # downloaded when the image is built, and only when CLAUDE_CODE_VERSION names a version (off by
@@ -40,6 +76,13 @@ COPY --from=build /src/dist ./dist
 COPY containers/thermite /usr/local/bin/thermite
 # Claude Code, when the build asked for it (CLAUDE_CODE_VERSION); otherwise this copies nothing.
 COPY --from=claude /out/ /usr/local/bin/
+# OpenCode v2 and the Codex CLI for advisors (goal 073), with their licences. Codex is on the PATH
+# as a link; an image built with an empty CODEX_VERSION has neither its files nor the link.
+COPY --from=opencode /usr/local/bin/opencode /usr/local/bin/opencode
+COPY --from=opencode /usr/local/share/doc/opencode/ /usr/local/share/doc/opencode/
+COPY --from=codex /out/opt/ /opt/
+COPY --from=codex /out/doc/ /usr/local/share/doc/
+RUN if [ -x /opt/codex/bin/codex ]; then ln -s /opt/codex/bin/codex /usr/local/bin/codex; fi
 # The runtime user needs a passwd entry: ssh (git over SSH) refuses a uid without one, and finds
 # ~/.ssh from the entry's home, not from $HOME.
 RUN groupadd -g 10001 supervisor \

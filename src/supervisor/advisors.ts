@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Writable } from "node:stream";
@@ -16,11 +16,23 @@ import {
   claudeBin,
   claudeExe,
 } from "../harness/agents/claude-code.ts";
+import { codexBin, codexExe } from "../harness/agents/codex.ts";
 import { mcpAgentTools, mcpLine } from "../harness/agents/mcp-tools.ts";
-import { buildModel } from "../harness/agents/model.ts";
+import { buildModel, type ModelConfig } from "../harness/agents/model.ts";
 import { JOURNAL_FIELD } from "../harness/agents/notes-tool.ts";
+import { opencodeBin, opencodeExe } from "../harness/agents/opencode.ts";
 import { PAST_SEARCH_DESCRIPTION, PAST_SEARCH_TOOL, SEARCH_MAX } from "../harness/knowledge.ts";
 import { Fetcher, FetchRefused } from "../harness/research/fetcher.ts";
+import {
+  type CliAnswer,
+  codexAdvisorArgs,
+  codexAdvisorConfig,
+  opencodeAdvisorArgs,
+  opencodeAdvisorConfig,
+  readCodexAnswer,
+  readOpencodeAnswer,
+} from "./advisor-cli.ts";
+import { serveAdvisorModel } from "./advisor-proxy.ts";
 import { type AdvisorServers, type PastSearch, serveAdvisorTools } from "./past-mcp.ts";
 
 /**
@@ -29,14 +41,16 @@ import { type AdvisorServers, type PastSearch, serveAdvisorTools } from "./past-
  * checked again by the harness: directives (with citations) steer the planner, an audit can
  * block a promotion but never pass one, and a panel pass still needs the owner.
  *
- * Runtimes (the operator's choice, per role, or the model control gives the role): an
- * OpenAI-compatible or Anthropic model route run here with read-only tools (the campaign brief, a
- * guarded web fetch, the run's past research, an optional knowledge-base search); Claude Code for
- * a Claude subscription (only Claude Code may use one), with none of its own tools and only the
- * past-research search, served to it over MCP on localhost (past-mcp.ts); or a command-line agent
- * given the prompt on stdin and expected to print one JSON object. None gets a shell or file tools
- * from Thermite: the supervisor holds git and model credentials, and anything an advisor reads
- * may be prompt-injected.
+ * Runtimes (the operator's choice, per role, or the model and harness control gives the role): an
+ * OpenAI-compatible or Anthropic model route run here in Pi with read-only tools (the campaign
+ * brief, a guarded web fetch, the run's past research, an optional knowledge-base search); Claude
+ * Code for a Claude subscription (only Claude Code may use one), with none of its own tools and
+ * only the past-research search and the kit's MCP tools, served to it over MCP on localhost
+ * (past-mcp.ts); OpenCode v2 or the Codex CLI (goal 073), set up the same way, each through a
+ * key-adding proxy for the call (advisor-cli.ts, advisor-proxy.ts); or a command-line agent given
+ * the prompt on stdin and expected to print one JSON object. None gets a shell or file tools from
+ * Thermite: the supervisor holds git and model credentials, and anything an advisor reads may be
+ * prompt-injected.
  */
 
 const Runtime = z.discriminatedUnion("runtime", [
@@ -84,6 +98,41 @@ const Runtime = z.discriminatedUnion("runtime", [
     model: z.string().min(1),
     token: z.string().min(1),
     effort: z.enum(["low", "medium", "high", "xhigh", "max"]).optional(),
+    timeout_s: z.number().int().positive().max(7200).default(1800),
+  }),
+  z.strictObject({
+    name: z.string().min(1).max(60),
+    /**
+     * OpenCode v2 (goal 073): none of its own tools, only the advisor's MCP tools; the provider
+     * through a proxy for the call, which adds the key. OpenCode's own models need no key and no
+     * base address.
+     */
+    runtime: z.literal("opencode"),
+    api: z.enum(["openai", "anthropic", "chatgpt", "opencode"]).optional(),
+    base_url: z.url().optional(),
+    model: z.string().min(1),
+    api_key_file: z.string().min(1).optional(),
+    api_key: z.string().min(1).optional(),
+    /** The model's window in tokens, for OpenCode's own compaction; 0: unknown. */
+    context_window: z.number().int().nonnegative().default(0),
+    timeout_s: z.number().int().positive().max(7200).default(1800),
+  }),
+  z.strictObject({
+    name: z.string().min(1).max(60),
+    /**
+     * The Codex CLI (goal 073): its read-only sandbox, none of its own tools, only the advisor's
+     * MCP tools; OpenAI's Responses API only (a ChatGPT sign-in or an OpenAI-compatible
+     * provider), through a proxy for the call, which adds the key.
+     */
+    runtime: z.literal("codex"),
+    api: z.enum(["openai", "chatgpt"]).optional(),
+    base_url: z.url(),
+    model: z.string().min(1),
+    api_key_file: z.string().min(1).optional(),
+    api_key: z.string().min(1).optional(),
+    reasoning: z.enum(["low", "medium", "high"]).optional(),
+    /** The model's window in tokens, for Codex's own compaction; 0: unknown. */
+    context_window: z.number().int().nonnegative().default(0),
     timeout_s: z.number().int().positive().max(7200).default(1800),
   }),
 ]);
@@ -261,6 +310,7 @@ export async function runAdvisor<S extends z.ZodType>(input: {
       await past?.close();
     }
   }
+  if (rt.runtime === "opencode" || rt.runtime === "codex") return runCliHarness(rt, input);
   const result: AdvisorResult<z.infer<S>> = {
     output: undefined,
     tokensIn: 0,
@@ -402,6 +452,91 @@ export async function runAdvisor<S extends z.ZodType>(input: {
   return result;
 }
 
+/**
+ * An advisor in OpenCode or the Codex CLI (goal 073): the past research and the kit's MCP servers
+ * on localhost for this call, a key-adding proxy for the call (none for OpenCode's own models),
+ * the CLI's configuration written in the call's own folder, and the prompt on stdin. Its answer is
+ * the last message in its JSON events, checked as every advisor's is.
+ */
+async function runCliHarness<S extends z.ZodType>(
+  rt: Extract<AdvisorRuntime, { runtime: "opencode" | "codex" }>,
+  input: {
+    system: string;
+    prompt: string;
+    schema: S;
+    answerSchema: TSchema;
+    tools?: AdvisorTools | undefined;
+  },
+): Promise<AdvisorResult<z.infer<S>>> {
+  const fail = (error: string) => ({ output: undefined, error, tokensIn: 0, tokensOut: 0, usd: 0 });
+  const native = rt.runtime === "opencode" && rt.api === "opencode";
+  if (!native && !rt.base_url) return fail(`advisor ${rt.name} has no base_url`);
+  const key = native
+    ? ""
+    : (rt.api_key ?? (rt.api_key_file ? readFileSync(rt.api_key_file, "utf8").trim() : ""));
+  if (!native && !key) return fail(`advisor ${rt.name} has no key`);
+  const model: ModelConfig = {
+    api: rt.api === "openai" ? undefined : rt.api,
+    baseUrl: (rt.base_url ?? "").replace(/\/$/, ""),
+    model: rt.model,
+    // The key stays in the supervisor: the proxy adds it.
+    apiKey: "",
+    contextWindow: rt.context_window,
+    maxTokens: 0,
+    reasoning: rt.runtime === "codex" ? rt.reasoning : undefined,
+  };
+  const t = input.tools;
+  let tools: Awaited<ReturnType<typeof serveAdvisorTools>> | undefined;
+  let proxy: Awaited<ReturnType<typeof serveAdvisorModel>> | undefined;
+  try {
+    if (t?.pastSearch || t?.mcp?.servers.length)
+      tools = await serveAdvisorTools({ pastSearch: t.pastSearch, mcp: t.mcp });
+    if (!native) proxy = await serveAdvisorModel({ api: model.api, baseUrl: model.baseUrl, key });
+    const servers = tools?.servers ?? [];
+    const secrets = {
+      ...(proxy ? { THERMITE_PROXY_AUTH: proxy.token } : {}),
+      ...(tools ? { THERMITE_MCP_AUTH: tools.token } : {}),
+    };
+    const root = proxy?.root ?? "";
+    const opencode = rt.runtime === "opencode";
+    const exe = opencode ? (opencodeExe() ?? opencodeBin()) : (codexExe() ?? codexBin());
+    return await runCli(
+      {
+        argv: [exe, ...(opencode ? opencodeAdvisorArgs(model) : codexAdvisorArgs(model))],
+        timeout_s: rt.timeout_s,
+        env: secrets,
+        // Its configuration in its own folder, written by the supervisor; no credential in it.
+        prepare: (home): Record<string, string> => {
+          if (opencode) {
+            const dir = join(home, ".config", "opencode");
+            mkdirSync(dir, { recursive: true, mode: 0o700 });
+            writeFileSync(
+              join(dir, "opencode.jsonc"),
+              JSON.stringify(opencodeAdvisorConfig(model, root, servers)),
+              { mode: 0o600 },
+            );
+            return {};
+          }
+          const dir = join(home, ".codex");
+          mkdirSync(dir, { recursive: true, mode: 0o700 });
+          writeFileSync(join(dir, "config.toml"), codexAdvisorConfig(model, root, servers), {
+            mode: 0o600,
+          });
+          return { CODEX_HOME: dir };
+        },
+        read: opencode ? readOpencodeAnswer : readCodexAnswer,
+      },
+      servers.length ? `${input.system}\n\n${mcpLine(servers.map((s) => s.name))}` : input.system,
+      input.prompt,
+      input.schema,
+      input.answerSchema,
+    );
+  } finally {
+    await proxy?.close();
+    await tools?.close();
+  }
+}
+
 function runCli<S extends z.ZodType>(
   rt: {
     argv: string[];
@@ -413,6 +548,10 @@ function runCli<S extends z.ZodType>(
      * or a review's package can pass the size of one command-line argument.
      */
     token?: string | undefined;
+    /** Writes the command's own files in its folder before it starts; returns more environment. */
+    prepare?: ((home: string) => Record<string, string>) | undefined;
+    /** Reads the answer and the tokens from what it printed (default: its last JSON object). */
+    read?: ((out: string) => CliAnswer) | undefined;
   },
   system: string,
   prompt: string,
@@ -423,6 +562,19 @@ function runCli<S extends z.ZodType>(
   // as a whole). Without TMPDIR, Claude Code would make its folder in /tmp, which the one-container
   // rig image closes to the supervisor's user.
   const home = mkdtempSync(join(tmpdir(), "thermite-advisor-"));
+  let more: Record<string, string> = {};
+  try {
+    more = rt.prepare?.(home) ?? {};
+  } catch (err) {
+    rmSync(home, { recursive: true, force: true });
+    return Promise.resolve({
+      output: undefined,
+      error: `could not set ${rt.argv[0]} up: ${err instanceof Error ? err.message : String(err)}`,
+      tokensIn: 0,
+      tokensOut: 0,
+      usd: 0,
+    });
+  }
   const stdio: "pipe"[] = ["pipe", "pipe", "pipe"];
   if (rt.token !== undefined) stdio[CLAUDE_TOKEN_FD] = "pipe";
   return new Promise((resolve) => {
@@ -430,7 +582,13 @@ function runCli<S extends z.ZodType>(
       stdio,
       cwd: home,
       detached: true,
-      env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: home, TMPDIR: home, ...rt.env },
+      env: {
+        PATH: process.env.PATH ?? "/usr/bin:/bin",
+        HOME: home,
+        TMPDIR: home,
+        ...more,
+        ...rt.env,
+      },
     });
     if (rt.token !== undefined) {
       const tokenPipe = child.stdio[CLAUDE_TOKEN_FD] as Writable | null | undefined;
@@ -468,7 +626,9 @@ function runCli<S extends z.ZodType>(
         resolve({ output: undefined, error, tokensIn: 0, tokensOut: 0, usd: 0 });
         return;
       }
-      let found = lastJsonObject(out);
+      // A CLI with JSON events (OpenCode, Codex): its last message is the answer.
+      const said = rt.read?.(out);
+      let found = lastJsonObject(said ? said.text : out);
       // Agents that wrap their answer (for example `{"result": "..."}`): look inside once.
       if (found && typeof found === "object" && "result" in found) {
         const inner = (found as { result: unknown }).result;
@@ -476,14 +636,18 @@ function runCli<S extends z.ZodType>(
         if (schema.safeParse(nested).success) found = nested;
       }
       const parsed = schema.safeParse(found);
+      const tokensIn = said?.tokensIn ?? 0;
+      const tokensOut = said?.tokensOut ?? 0;
+      // Why there is no answer: the CLI's last message, else its last error, else its output.
+      const why = said?.text || said?.error || err || out;
       resolve(
         parsed.success
-          ? { output: parsed.data, tokensIn: 0, tokensOut: 0, usd: 0 }
+          ? { output: parsed.data, tokensIn, tokensOut, usd: 0 }
           : {
               output: undefined,
-              error: `no valid answer: ${err.slice(-300) || out.slice(-300)}`,
-              tokensIn: 0,
-              tokensOut: 0,
+              error: `no valid answer: ${why.slice(-300)}`,
+              tokensIn,
+              tokensOut,
               usd: 0,
             },
       );

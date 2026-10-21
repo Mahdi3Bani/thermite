@@ -34,7 +34,7 @@ import { cappedWindow, claudeModelName, isOpencodeOwn, providerBase } from "./pr
 import { copiedFromRecords, untriedOf } from "./queue-copy.ts";
 import type { probeRepository, readKitManifest } from "./repo-probe.ts";
 import { resultsLeft } from "./results-left.ts";
-import { RigModelBody, rigModelAnswer, rigModelRequest } from "./rig-model.ts";
+import { neededHarness, RigModelBody, rigModelAnswer, rigModelRequest } from "./rig-model.ts";
 import type { RigUpdates } from "./rig-update.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
 import { type LaunchRequest, type LimitsChange, RunpodRigs } from "./runpod-rigs.ts";
@@ -757,10 +757,9 @@ export function createControlApi(
     const a = store.roleModels(rig)[role];
     const p = a ? store.provider(a.provider) : undefined;
     if (!a || !p) return null;
-    // A subscription runs in Claude Code; OpenCode's own service only through OpenCode (the
-    // planner can; the dashboard gives it no advisor); every other provider through Pi.
-    const opencodeOnly = isOpencodeOwn(p) && (p.type === "opencode" || !p.key_sealed);
-    const harness = p.type === "claude" ? "claude-code" : opencodeOnly ? "opencode" : "pi";
+    // The harness the owner chose for the agent (goal 073), else what its model needs: Claude
+    // Code for a subscription, OpenCode for OpenCode's own models, else Pi.
+    const harness = a.harness ?? neededHarness(p, a.model);
     return (await routeOf(p, a.model, harness, a.effort)) ?? null;
   };
 

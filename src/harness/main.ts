@@ -22,7 +22,7 @@ import { generateSigningKeys } from "../core/commands.ts";
 import { claudeModelCheck, claudeOnce, runClaudeTrial } from "./agents/claude-code.ts";
 import { codexModelCheck, codexOnce, runCodexTrial } from "./agents/codex.ts";
 import { DevRuns } from "./agents/devrun.ts";
-import { modelConfigFromEnv } from "./agents/model.ts";
+import { type ModelConfig, modelConfigFromEnv } from "./agents/model.ts";
 import { checkModel } from "./agents/model-check.ts";
 import { ModelSource } from "./agents/model-source.ts";
 import {
@@ -460,7 +460,7 @@ async function main(): Promise<void> {
     runner,
     apiUrl,
     scratchDir: paths.scratchDir,
-    mintProxyToken: () => service.mintProxyToken(),
+    mintProxyToken: (m?: ModelConfig) => service.mintProxyToken(m),
   };
   service.rigChecks.model = {
     run: async () => {

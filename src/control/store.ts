@@ -989,6 +989,12 @@ export class ControlStore {
       this.db.exec("alter table rig_model add column context_cap integer");
     if (!rigModelCols.includes("compact_at"))
       this.db.exec("alter table rig_model add column compact_at integer");
+    // Each agent's own harness (goal 073); null: what its model needs.
+    const roleModelCols = (this.db.prepare("pragma table_info(rig_role_model)").all() as Row[]).map(
+      (r) => r.name,
+    );
+    if (!roleModelCols.includes("harness"))
+      this.db.exec("alter table rig_role_model add column harness text");
     const machineRigCols = (this.db.prepare("pragma table_info(machine_rig)").all() as Row[]).map(
       (r) => r.name,
     );
@@ -1934,11 +1940,19 @@ export class ControlStore {
       );
   }
 
-  /** Gives one of a rig's other agents a model, or (null) has it follow the workers again. */
+  /**
+   * Gives one of a rig's other agents a model, or (null) has it follow the workers again.
+   * `harness`: the harness it runs in (goal 073); left out, what its model needs.
+   */
   assignRoleModel(
     rig: string,
     role: AgentRole,
-    choice: { provider: string; model: string; effort?: Effort | undefined } | null,
+    choice: {
+      provider: string;
+      model: string;
+      effort?: Effort | undefined;
+      harness?: Harness | undefined;
+    } | null,
   ): void {
     if (choice === null) {
       this.db.prepare("delete from rig_role_model where rig = ? and role = ?").run(rig, role);
@@ -1947,9 +1961,9 @@ export class ControlStore {
     if (!this.provider(choice.provider)) throw new Error(`no model provider ${choice.provider}`);
     this.db
       .prepare(
-        `insert into rig_role_model (rig, role, provider, model, effort, assigned_at) values (?, ?, ?, ?, ?, ?)
+        `insert into rig_role_model (rig, role, provider, model, effort, harness, assigned_at) values (?, ?, ?, ?, ?, ?, ?)
          on conflict (rig, role) do update set provider = excluded.provider, model = excluded.model,
-           effort = excluded.effort, assigned_at = excluded.assigned_at`,
+           effort = excluded.effort, harness = excluded.harness, assigned_at = excluded.assigned_at`,
       )
       .run(
         rig,
@@ -1957,16 +1971,25 @@ export class ControlStore {
         choice.provider,
         choice.model,
         choice.effort ?? null,
+        choice.harness ?? null,
         new Date().toISOString(),
       );
   }
 
-  /** A rig's other agents' models, by role (roles with none are absent). */
+  /**
+   * A rig's other agents' models, by role (roles with none are absent). `harness`: the one the
+   * owner chose (goal 073); null, what the model needs.
+   */
   roleModels(
     rig: string,
-  ): Partial<Record<AgentRole, { provider: string; model: string; effort: Effort | null }>> {
+  ): Partial<
+    Record<
+      AgentRole,
+      { provider: string; model: string; effort: Effort | null; harness: Harness | null }
+    >
+  > {
     const rows = this.db
-      .prepare("select role, provider, model, effort from rig_role_model where rig = ?")
+      .prepare("select role, provider, model, effort, harness from rig_role_model where rig = ?")
       .all(rig) as Row[];
     return Object.fromEntries(
       rows.map((r) => [
@@ -1977,6 +2000,7 @@ export class ControlStore {
           effort: EFFORTS.includes(String(r.effort) as Effort)
             ? (String(r.effort) as Effort)
             : null,
+          harness: HARNESS_IDS.find((h) => h === r.harness) ?? null,
         },
       ]),
     );

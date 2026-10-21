@@ -35,7 +35,9 @@ import type { SubmitOutcome, TrialResult, TrialSpec } from "./worker.ts";
  * checks the trial's token and adds the key. OpenCode's own models (its free ones) need no key.
  */
 
-export const OPENCODE_BIN = process.env.THERMITE_OPENCODE_BIN ?? "opencode";
+/** OpenCode's binary: THERMITE_OPENCODE_BIN, else `opencode` on the PATH (read when used). */
+export const opencodeBin = () => process.env.THERMITE_OPENCODE_BIN ?? "opencode";
+export const OPENCODE_BIN = opencodeBin();
 export const TRIAL_CLI = "thermite-trial";
 
 /** The model as OpenCode names it: its own models, or the rig's provider as "thermite". */
@@ -244,9 +246,10 @@ export function limitsNote(limits: LaneLimitValues): string {
 
 /** OpenCode's executable as an absolute path (found on PATH), or undefined if it is not there. */
 export function opencodeExe(): string | undefined {
-  if (OPENCODE_BIN.startsWith("/")) return OPENCODE_BIN;
+  const bin = opencodeBin();
+  if (bin.startsWith("/")) return bin;
   for (const dir of (process.env.PATH ?? "").split(":")) {
-    const p = join(dir, OPENCODE_BIN);
+    const p = join(dir, bin);
     if (dir && existsSync(p)) return p;
   }
   return undefined;
@@ -862,7 +865,8 @@ export interface OpencodeOnceDeps {
   runner: Runner;
   apiUrl: string;
   scratchDir: string;
-  mintProxyToken(): string;
+  /** A credential for the harness's model proxy; `model`: the route it reaches (else the workers'). */
+  mintProxyToken(model?: ModelConfig): string;
 }
 
 /** One prompt through OpenCode as `role`, in a fresh directory of its own, removed afterwards. */
@@ -891,7 +895,7 @@ export async function opencodeOnce(
       runner: deps.runner,
       model,
       apiUrl: deps.apiUrl,
-      proxyAuth: deps.mintProxyToken(),
+      proxyAuth: deps.mintProxyToken(model),
       role: o.role,
       dir,
       timeoutMs: o.timeoutMs,

@@ -24,7 +24,7 @@ import type { Hardware } from "../core/hardware.ts";
 import { type LiveKind, LiveLog, liveBody } from "../core/live.ts";
 import { canonicalUses, type McpUse, McpUses, sameUses, usesWords } from "../core/mcp.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
-import { CHATGPT_LIMIT_WAIT_MS } from "./agents/model.ts";
+import { CHATGPT_LIMIT_WAIT_MS, type ModelConfig } from "./agents/model.ts";
 import type { RigCheckReport } from "./agents/model-check.ts";
 import type { ControlRoute, ModelInfo, ModelSource } from "./agents/model-source.ts";
 import { Registry } from "./agents/registry.ts";
@@ -997,21 +997,33 @@ export class HarnessService {
   /** Where the agents' model route comes from (control's route, else the rig's settings). */
   models: ModelSource | undefined;
 
-  /** Credentials the model proxy takes besides trials' tokens: one per check or planner call. */
-  private proxyTokens = new Map<string, number>();
+  /**
+   * Credentials the model proxy takes besides trials' tokens: one per check or planner call, with
+   * the route it reaches when that is not the workers' (a planner's own model, goal 073).
+   */
+  private proxyTokens = new Map<string, { until: number; model?: ModelConfig | undefined }>();
 
-  /** A credential for the model proxy that lasts `ms` (an OpenCode model check or plan). */
-  mintProxyToken(ms = 15 * 60_000): string {
+  /**
+   * A credential for the model proxy that lasts `ms` (a model check or a plan in OpenCode or
+   * Codex). `model`: the route its calls reach; none, the workers' route at the time of each call.
+   */
+  mintProxyToken(model?: ModelConfig | undefined, ms = 15 * 60_000): string {
     const now = Date.now();
-    for (const [t, until] of this.proxyTokens) if (until < now) this.proxyTokens.delete(t);
+    for (const [t, v] of this.proxyTokens) if (v.until < now) this.proxyTokens.delete(t);
     const token = `proxy.${randomBytes(24).toString("hex")}`;
-    this.proxyTokens.set(token, now + ms);
+    this.proxyTokens.set(token, { until: now + ms, ...(model ? { model } : {}) });
     return token;
   }
 
   proxyTokenValid(token: string): boolean {
-    const until = this.proxyTokens.get(token);
-    return until !== undefined && until >= Date.now();
+    const v = this.proxyTokens.get(token);
+    return v !== undefined && v.until >= Date.now();
+  }
+
+  /** The route a minted credential reaches, when it was minted for one; else undefined. */
+  proxyTokenModel(token: string): ModelConfig | undefined {
+    const v = this.proxyTokens.get(token);
+    return v && v.until >= Date.now() ? v.model : undefined;
   }
 
   /** Credentials the MCP gateway takes besides trials' tokens: the planner's, one per plan. */

@@ -696,7 +696,7 @@ export async function codexOnce(
         home: join(dir, "home"),
         apiUrl: deps.apiUrl,
         auth: "",
-        proxyAuth: deps.mintProxyToken(),
+        proxyAuth: deps.mintProxyToken(model),
         mcpAuth: o.mcp?.servers.length ? o.mcp.auth : undefined,
         tmp: join(dir, "tmp"),
       }),

@@ -35,7 +35,7 @@ For each release, the release workflow (`.github/workflows/release.yml`) builds 
 | Supervisor | `ghcr.io/iammrduncan/thermite-supervisor` | The version and the commit | amd64, arm64 |
 | One-container rig, CUDA | `ghcr.io/iammrduncan/thermite-rig` | The version and the commit, each with `-cuda` added: `0.1.0-cuda` | amd64 |
 
-The workflow builds the one-container rig image on the CUDA harness it built in the same run, named by that image's digest. The workflow sets no `CLAUDE_CODE_VERSION`, so no published image carries Claude Code. The harness images carry OpenCode and the Codex CLI, both open source, at their default versions. A release's `compose.yaml` names each image by its digest, not by a tag, and gives control the rig image as `THERMITE_RUNPOD_RIG_IMAGE`, the image a [rig launched on RunPod](rest-api.md#rigs-on-a-gpu-cloud) runs. Each image also has these labels (and, for an image of two architectures, the same annotations on its index):
+The workflow builds the one-container rig image on the CUDA harness it built in the same run, named by that image's digest. The workflow sets no `CLAUDE_CODE_VERSION`, so no published image carries Claude Code. The harness images and the supervisor image carry OpenCode and the Codex CLI, both open source, at their default versions. A release's `compose.yaml` names each image by its digest, not by a tag, and gives control the rig image as `THERMITE_RUNPOD_RIG_IMAGE`, the image a [rig launched on RunPod](rest-api.md#rigs-on-a-gpu-cloud) runs. Each image also has these labels (and, for an image of two architectures, the same annotations on its index):
 
 | Label | Value |
 | --- | --- |
@@ -43,7 +43,7 @@ The workflow builds the one-container rig image on the CUDA harness it built in 
 | `org.opencontainers.image.version` | The release's version, such as `0.1.0` |
 | `org.opencontainers.image.revision` | The full commit the image was built from |
 | `org.opencontainers.image.title`, `org.opencontainers.image.description` | The image's name and what it is |
-| `org.opencontainers.image.licenses` | `MIT AND Apache-2.0` for the harness images and the rig image: they carry the Codex CLI, under the Apache License 2.0 with its `NOTICE`, and OpenCode, under MIT, beside Thermite. `MIT` for control and the supervisor. Control's image also carries kubectl, under the Apache License 2.0, with its license file; its label stays `MIT` |
+| `org.opencontainers.image.licenses` | `MIT AND Apache-2.0` for the harness images, the rig image and the supervisor image: they carry the Codex CLI, under the Apache License 2.0 with its `NOTICE`, and OpenCode, under MIT, beside Thermite. `MIT` for control. Control's image also carries kubectl, under the Apache License 2.0, with its license file; its label stays `MIT` |
 
 The workflow builds control, the harness images and the supervisor with `THERMITE_COMMIT` set to the full commit, so each service reports that commit with the version in its `package.json` ([Rig versions](rest-api.md#rig-versions)). It builds the harness images with `THERMITE_IMAGE_ID` too, set to the image's tag and short commit, such as `0.1.0-cuda+1a2b3c4d5e6f`: the harness reports it as its image in the rig's hardware report, which the rig's page shows, and puts it in every build's key ([Build cache](kit-manifest.md#build-cache)). In an image built from a checkout without these arguments, both are empty, which counts as not set. The rig image's build passes neither: it keeps the CUDA harness's values, such as `0.1.0-cuda+1a2b3c4d5e6f`, so a rig on RunPod reports the CUDA harness it is built on.
 
@@ -53,9 +53,9 @@ The workflow builds control, the harness images and the supervisor with `THERMIT
 | --- | --- | --- | --- |
 | `NODE_IMAGE` | All three | `docker.io/library/node:22-bookworm-slim`, pinned by its sha256 digest | The Node.js image every stage starts from |
 | `BASE_IMAGE` | Harness | `NODE_IMAGE` | The harness's final base. GPU rigs set a CUDA 12.x development image: see [The CUDA harness](#the-cuda-harness) |
-| `OPENCODE_VERSION` | Harness | `2.0.32` | The OpenCode release installed |
+| `OPENCODE_VERSION` | Harness, supervisor | `2.0.32` | The OpenCode release installed |
 | `CLAUDE_CODE_VERSION` | Harness, supervisor | empty | A Claude Code release to install. Empty: Claude Code is not installed |
-| `CODEX_VERSION` | Harness | `0.162.1` | The Codex CLI release installed. Empty: the Codex CLI is not installed |
+| `CODEX_VERSION` | Harness, supervisor | `0.162.1` | The Codex CLI release installed. Empty: the Codex CLI is not installed |
 | `KUBECTL_VERSION` | Control | `v1.37.1` | The kubectl release installed. Its sha256 is pinned for amd64 and arm64 only |
 | `THERMITE_COMMIT` | All three | empty | The source commit the image is built from. The image sets the environment variable of the same name, and the service reports it with Thermite's version: see [Rig versions](rest-api.md#rig-versions) |
 | `HARNESS_IMAGE` | One-container rig | none: required | The harness image the rig image is built on. The release workflow names the CUDA harness it built, by its digest. See [The one-container rig image](#the-one-container-rig-image) |
@@ -151,6 +151,8 @@ At start the broker also closes `/tmp`, `/var/tmp` and `/dev/shm` to the roles (
 | Packages | `git`, `openssh-client`, `tini`, `ca-certificates`, `python3` |
 | Thermite | `/opt/thermite`, and the `thermite` command at `/usr/local/bin/thermite` |
 | Claude Code | `/usr/local/bin/claude`, only when built with `CLAUDE_CODE_VERSION`. Advisors on a Claude subscription need it |
+| OpenCode | `/usr/local/bin/opencode`, at `OPENCODE_VERSION` (2.0.32 by default), as in the harness image, for [advisors in OpenCode](advisors-file.md#opencode-opencode-v2-in-the-supervisor). Always installed. Its MIT `LICENSE` is in `/usr/local/share/doc/opencode` |
+| Codex CLI | `/opt/codex`, with `/usr/local/bin/codex` linked to `/opt/codex/bin/codex`, at `CODEX_VERSION` (0.162.1 by default), as in the harness image, for [advisors in Codex](advisors-file.md#codex-the-codex-cli-in-the-supervisor). Installed unless that argument is empty. Its `LICENSE` (the Apache License 2.0) and `NOTICE` are in `/usr/local/share/doc/codex` |
 | User | `supervisor`, uid and gid 10001, home `/var/lib/thermite-supervisor/home`, where `ssh` keeps `~/.ssh` |
 | Paths it owns | `/var/lib/thermite-supervisor` (its state), `/results`. `/outbox` is 10010:10001, 2750 |
 | Entry point | `tini`, then `node /opt/thermite/dist/supervisor/main.js` |

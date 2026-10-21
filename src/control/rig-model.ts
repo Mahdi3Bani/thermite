@@ -5,7 +5,16 @@ import {
   COMPACT_AT_MIN,
   compactAtRefusal,
 } from "../core/compaction.ts";
-import type { AgentRole, ControlStore, Effort, Harness } from "./store.ts";
+import { isOpencodeOwn } from "./providers.ts";
+import {
+  type AgentRole,
+  type ControlStore,
+  codexTakes,
+  type Effort,
+  HARNESS_IDS,
+  type Harness,
+  type ModelProvider,
+} from "./store.ts";
 
 /**
  * Each agent's model on a rig, from outside the dashboard (goals 029 and 070): REST's
@@ -35,8 +44,11 @@ export interface RigModelRequest {
   model?: string | undefined;
   /** True: the agent's default again, as Edit rig's first choice in its row. */
   clear?: boolean | undefined;
-  /** The workers' harness (the other agents run where their model needs). */
-  harness?: "pi" | "opencode" | "codex" | undefined;
+  /**
+   * The agent's harness (goal 073); left out, what its model needs (the workers': harnessFor on
+   * the dashboard, which keeps a rig's Codex or OpenCode where it can).
+   */
+  harness?: Harness | undefined;
   effort?: Effort | undefined;
   /** A cap on the workers' context window in tokens (goal 070). */
   contextWindow?: number | undefined;
@@ -44,14 +56,15 @@ export interface RigModelRequest {
   compactAt?: number | undefined;
 }
 
-/** One agent's model on control; the workers' has its harness and cap too. */
+/** One agent's model on control, and the harness it runs in; the workers' has its cap too. */
 export interface AgentModel {
   provider: string;
   model: string;
   effort: Effort | null;
+  /** The harness it runs in: the owner's choice, else what its model needs (goal 073). */
+  harness: Harness;
 }
 export interface WorkersModel extends AgentModel {
-  harness: Harness;
   context_cap: number | null;
   /** The compaction point in percent of the window; null: the harness's default. */
   compact_at: number | null;
@@ -95,7 +108,12 @@ export const rigModelFields = {
     .describe(
       "true: the agent goes back to its default, with no provider or model: the workers to the rig's own settings, the planner to the workers' model, an advisor to the rig's advisors file",
     ),
-  harness: z.enum(["pi", "opencode", "codex"]).optional().describe("The workers' harness only"),
+  harness: z
+    .enum(HARNESS_IDS as [Harness, ...Harness[]])
+    .optional()
+    .describe(
+      "Where the agent runs: pi, opencode (OpenCode v2), claude-code or codex; left out, what its model needs",
+    ),
   effort: z
     .enum(["low", "medium", "high", "xhigh", "max"])
     .optional()
@@ -144,13 +162,52 @@ export function rigModelShapeRefusal(r: RigModelRequest): string | undefined {
     return undefined;
   }
   if (!r.provider || !r.model) return "Give a provider and a model, or clear: true.";
-  if (agent !== "workers" && r.harness !== undefined)
-    return "Only the workers take a harness. The other agents run where their model needs, as Runs in on Edit rig says.";
   if (agent !== "workers" && r.contextWindow !== undefined)
     return "Only the workers take a context window cap. A planner with no model of its own uses the workers' cap.";
   if (agent !== "workers" && r.compactAt !== undefined)
     return "Only the workers take a compaction point. A planner with no model of its own uses the workers' point.";
   if (r.compactAt !== undefined) return compactAtRefusal(r.compactAt);
+  return undefined;
+}
+
+/** Whether a provider's model runs only in OpenCode: OpenCode's own (free) models. */
+export const opencodeOnly = (p: ModelProvider, model: string): boolean =>
+  isOpencodeOwn(p) && (p.type === "opencode" || !p.key_sealed || model.endsWith("-free"));
+
+/**
+ * The harness a model needs when the owner chooses none: Claude Code for a Claude subscription,
+ * OpenCode for OpenCode's own models, else Pi (a ChatGPT sign-in too).
+ */
+export const neededHarness = (p: ModelProvider, model: string): Harness =>
+  p.type === "claude" ? "claude-code" : opencodeOnly(p, model) ? "opencode" : "pi";
+
+/** A harness's name as the dashboard shows it. */
+export const HARNESS_NAMES: Record<Harness, string> = {
+  pi: "Pi",
+  opencode: "OpenCode v2",
+  "claude-code": "Claude Code",
+  codex: "Codex",
+};
+
+/**
+ * Why a harness cannot run a provider's model, in words, for `who` ("the planner"); undefined
+ * when it can (goal 073). A Claude subscription runs only in Claude Code, and Claude Code only on
+ * one; Codex only on OpenAI's Responses API; OpenCode's own models only in OpenCode.
+ */
+export function harnessRefusal(
+  p: ModelProvider,
+  model: string,
+  harness: Harness,
+  who: string,
+): string | undefined {
+  if (p.type === "claude" && harness !== "claude-code")
+    return `A Claude subscription runs only in Claude Code: choose Claude Code for ${who}, or another model.`;
+  if (harness === "claude-code" && p.type !== "claude")
+    return `Claude Code runs only with a Claude subscription here: choose ${codexTakes(p.type) ? "Pi, OpenCode v2 or Codex" : "Pi or OpenCode v2"} for this provider.`;
+  if (harness === "codex" && !codexTakes(p.type))
+    return "Codex runs only with a ChatGPT subscription or an OpenAI-compatible provider: choose Pi or OpenCode v2 for this provider.";
+  if (harness !== "opencode" && opencodeOnly(p, model))
+    return `OpenCode's free models run only in OpenCode: choose OpenCode v2 for ${who}, or another model.`;
   return undefined;
 }
 
@@ -160,7 +217,14 @@ export function agentModelsOf(store: ControlStore, rig: string): AgentModels {
   const roles = store.roleModels(rig);
   const of = (role: AgentRole): AgentModel | null => {
     const r = roles[role];
-    return r ? { provider: r.provider, model: r.model, effort: r.effort } : null;
+    if (!r) return null;
+    const p = store.provider(r.provider);
+    return {
+      provider: r.provider,
+      model: r.model,
+      effort: r.effort,
+      harness: r.harness ?? (p ? neededHarness(p, r.model) : "pi"),
+    };
   };
   return {
     workers: w
