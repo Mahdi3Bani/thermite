@@ -92,27 +92,44 @@ A live line's `kind` is `text`, `thinking`, `tool`, `result`, `message`, `status
 
 | Route | Token | What it does | Request | Answer |
 | --- | --- | --- | --- | --- |
-| `POST /v1/rigs/<rig>/model` | Owner | Gives the rig's agents a model from a provider in **Providers**, as **Edit rig** does, through the dashboard's own code. The rig takes it within a minute and checks it | `{provider, model, harness?, effort?, context_window?}`, below | `{rig, model, context_window, said}`. 400 or 404 `{"error":"<why>"}`, below |
+| `GET /v1/rigs/<rig>/model` | Owner | Each of the rig's agents' models on control, as section **2 · The agents** on **Edit rig** shows them | None | `{rig, agents}`, as MCP's [`rig_models`](mcp-tools.md#rig_models) returns it. 404 `{"error":"no rig <rig>"}` |
+| `POST /v1/rigs/<rig>/model` | Owner | Gives one of the rig's agents a model from a provider in **Providers**, or sends it back to its default, as its row on **Edit rig** does, through the dashboard's own code. The other agents keep their models | `{agent?, provider?, model?, clear?, harness?, effort?, context_window?}`, below | `{rig, agent, model, context_window, said, agents}`. 400 or 404 `{"error":"<why>"}`, below |
 
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `provider` | string | | The model provider's name in **Providers** |
-| `model` | string | | A model id from the provider's list |
-| `harness` | `pi`, `opencode` or `codex` | what the model needs: Claude Code for a Claude subscription, OpenCode v2 for OpenCode's free models, else Pi | The [worker harness](glossary.md) |
+| `agent` | `workers`, `planner`, `teachers`, `combiner`, `auditor` or `panel` | `workers` | Whose model: a row of section **2 · The agents** on **Edit rig**. `teachers` is the teacher pair, and `panel` the review panel |
+| `provider` | string | | The model provider's name in **Providers**. Needed unless `clear` is true |
+| `model` | string | | A model id from the provider's list. Needed unless `clear` is true |
+| `clear` | boolean | false | `true`: the agent goes back to its default: the workers to the rig's own settings, the planner to the workers' model, an advisor to the rig's advisors file. Send it with `agent` alone |
+| `harness` | `pi`, `opencode` or `codex` | what the model needs: Claude Code for a Claude subscription, OpenCode v2 for OpenCode's free models, else Pi | The workers only. The [worker harness](glossary.md) |
 | `effort` | `low`, `medium`, `high`, `xhigh` or `max` | none | How long the model thinks, as **Effort** on **Edit rig** |
-| `context_window` | whole number, 4,096 to 100,000,000 | none: the provider's window | A cap on the model's [context window](glossary.md), in tokens. The rig's model route carries the cap when it is lower than the window the provider lists, else the provider's window. With a provider that lists no window, the cap as given. Each request sets the cap anew: a request without it removes a cap the rig had |
+| `context_window` | whole number, 4,096 to 100,000,000 | none: the provider's window | The workers only. A cap on the model's [context window](glossary.md), in tokens. The rig's model route carries the cap when it is lower than the window the provider lists, else the provider's window. With a provider that lists no window, the cap as given. Each request for the workers sets the cap anew: a request without it removes a cap the rig had |
 
-In the answer, `context_window` is the window the rig's model route carries, or `null` when the provider lists none. `said` is the dashboard's words, such as `rig-1 takes my-model from "my-litellm" under Pi within a minute, and checks it. Its context window: 131,072 tokens (capped; the provider allows 204,800).` The second sentence is there only when a cap is lower than the provider's window, or the provider lists none.
+In the answer, `model` is the model given, or `null` after `clear`. `context_window` is the window the agent's model route carries: for the workers, as above; for another agent, the provider's window. It is `null` when the provider lists none, or after `clear`. `agents` is each agent's model after the change. `said` is the dashboard's words, such as `rig-1 takes my-model from "my-litellm" under Pi within a minute, and checks it. Its context window: 131,072 tokens (capped; the provider allows 204,800).` for the workers (the second sentence only when a cap is lower than the provider's window, or the provider lists none), or `Control sent a model for the auditor to rig-1. The rig takes the change in less than one minute.` for another agent. MCP's [`set_rig_model`](mcp-tools.md#set_rig_model) lists each answer and the agents an advisor's model can come from.
+
+For example, to give a rig's auditor a ChatGPT subscription's model and send its planner back to the workers' model:
+
+```sh
+curl -sS -X POST -H "Authorization: Bearer $(cat ~/thermite-owner-token)" \
+  -H "content-type: application/json" \
+  -d '{"agent":"auditor","provider":"chatgpt-pro","model":"gpt-pro","effort":"high"}' \
+  "https://control.example.com/v1/rigs/rig-1/model"
+curl -sS -X POST -H "Authorization: Bearer $(cat ~/thermite-owner-token)" \
+  -H "content-type: application/json" -d '{"agent":"planner","clear":true}' \
+  "https://control.example.com/v1/rigs/rig-1/model"
+```
 
 | Status | Error |
 | --- | --- |
 | 404 | `no rig <rig>` |
-| 400 | `bad request: <field>: <message>`: a body that does not have these fields, or has others |
+| 400 | `bad request: <field>: <message>`: a body that does not have these fields, or has others, or an unknown `agent` |
+| 400 | `Give a provider and a model, or clear: true.` and `Give clear alone, or a provider and a model.` |
+| 400 | `Only the workers take a harness. …` and `Only the workers take a context window cap. …`: `harness` or `context_window` with another agent |
 | 400 | `<model> takes at most <n> tokens.`: a cap above the provider's window |
 | 400 | `A context window is a whole number of tokens from 4,096 to 100,000,000.` |
-| 400 | `That provider does not list that model.`, and the other refusals of [`set_rig_model`](mcp-tools.md#set_rig_model) |
+| 400 | `That provider does not list that model.` (or with the agent in brackets), and the other refusals of [`set_rig_model`](mcp-tools.md#set_rig_model) |
 
-Each refusal is in the [audit log](#audit-log-actions) as `refused`, with the route's path and why. A model given is `rig_model_given`, by `owner:api`, with `context_cap` (the cap, or `null`). MCP's [`set_rig_model`](mcp-tools.md#set_rig_model) does the same. [Cap the model's context window](../how-to/models/connect-a-provider.md#cap-the-models-context-window) says when to use the cap.
+Each refusal is in the [audit log](#audit-log-actions) as `refused`, with the route's path and why. A model given to the workers, or cleared, is `rig_model_given`, by `owner:api`, with `context_cap` (the cap, or `null`). One given to another agent, or cleared, is `agent_model_given`, by `owner:api`, with `role`. MCP's [`set_rig_model`](mcp-tools.md#set_rig_model) does the same. [Cap the model's context window](../how-to/models/connect-a-provider.md#cap-the-models-context-window) says when to use the cap.
 
 ### Signed commands
 
@@ -603,4 +620,4 @@ Control writes one entry for each of these to its audit log. `GET /v1/audit`, th
 
 ## Not in the API yet
 
-The dashboard does some things no route does yet: **New campaign**, **Settings › Providers** (its MCP servers aside, which have [routes](#mcp-servers)), **Edit rig** (except the workers' model, which [has a route](#the-agents-model)), join commands, **Add a rig**, the **Knowledge** page and a campaign's **Knowledge** section, and the buttons on the page of a rig control set up on a machine or a cluster: stop, start, restart and remove it, update it to control's version, check where it runs, and, on a cluster, update its images. A rig's setup steps, stopping, starting and restarting a cluster rig, and updating its images are also on [MCP](mcp-tools.md) (`rig_setup`, `cluster_rig`, `update_rig_images`), and so are the knowledge base's folders, search and grants (`kb_folders`, `kb_search`, `kb_grant`, `kb_revoke`). There is no OpenAPI file. Both are planned in [goal 029](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/029-api-mcp-coverage.goal).
+The dashboard does some things no route does yet: **New campaign**, **Settings › Providers** (its MCP servers aside, which have [routes](#mcp-servers)), **Edit rig** (except the agents' models, which [have a route](#the-agents-model)), join commands, **Add a rig**, the **Knowledge** page and a campaign's **Knowledge** section, and the buttons on the page of a rig control set up on a machine or a cluster: stop, start, restart and remove it, update it to control's version, check where it runs, and, on a cluster, update its images. A rig's setup steps, stopping, starting and restarting a cluster rig, and updating its images are also on [MCP](mcp-tools.md) (`rig_setup`, `cluster_rig`, `update_rig_images`), and so are the knowledge base's folders, search and grants (`kb_folders`, `kb_search`, `kb_grant`, `kb_revoke`). There is no OpenAPI file. Both are planned in [goal 029](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/029-api-mcp-coverage.goal).

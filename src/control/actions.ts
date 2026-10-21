@@ -1,4 +1,5 @@
 import type { CopyCampaignOutcome, CopyCampaignRequest } from "./copy-campaign.ts";
+import type { AgentModels, RigModelOutcome, RigModelRequest } from "./rig-model.ts";
 import type { StartRunOutcome, StartRunRequest } from "./start-run.ts";
 
 /**
@@ -33,19 +34,17 @@ export interface ControlActions {
     by: string,
   ) => Promise<{ rig: string } | { error: string }>;
   /**
-   * Gives a rig's agents a model from a provider, as Edit rig does; harness default: the model's.
-   * `contextWindow`: a cap on the model's context window in tokens (goal 070); none when left out.
-   * The answer has the window the rig's route carries (0: the provider lists none).
+   * Gives one of a rig's agents a model from a provider, or (clear) its default again, as that
+   * agent's row on Edit rig does (goal 029); the workers' harness default: the model's. A cap on
+   * the workers' context window (goal 070) is set anew by each call for them: none when left out.
    */
   setRigModel?: (
     rig: string,
-    provider: string,
-    model: string,
-    harness: "pi" | "opencode" | "codex" | undefined,
-    effort: "low" | "medium" | "high" | "xhigh" | "max" | undefined,
-    contextWindow: number | undefined,
+    r: RigModelRequest,
     by: string,
-  ) => Promise<{ ok: string; contextWindow: number } | { error: string }>;
+  ) => Promise<RigModelOutcome | { error: string }>;
+  /** Each of a rig's agents' models on control (MCP's rig_models, REST's GET of the same route). */
+  rigModels?: (rig: string) => AgentModels | { error: string };
   /**
    * Moves a rig control set up on a cluster onto control's current images, keeping its volume and
    * tokens (the rig's page, or MCP's update_rig_images).

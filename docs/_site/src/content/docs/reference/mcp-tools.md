@@ -50,7 +50,7 @@ Control checks a token against the owner's first, then the operator's, the agent
 | `propagate_champion` | Yes | Yes | Yes | No |
 | `kb_folders`, `kb_search`, `kb_grant`, `kb_revoke` | Yes | Yes | No | No |
 | `rig_setup` | Yes | Yes | No | Yes, without each step's `detail` |
-| `control_log`, `providers`, `mcp_servers`, `runpod_tests`, `runpod_rigs` | Yes | Yes | No | Yes |
+| `control_log`, `providers`, `rig_models`, `mcp_servers`, `runpod_tests`, `runpod_rigs` | Yes | Yes | No | Yes |
 | `add_cluster_rig`, `set_rig_model`, `start_run`, `copy_campaign`, `cluster_rig`, `update_rig_images`, `set_cluster_slots`, `runpod_test_start`, `runpod_test_end` | Yes | Yes | No | No |
 | `retire_rig`, `bring_back_rig`, `runpod_launch`, `runpod_rig_limits`, `runpod_rig`, `mcp_server_add`, `mcp_server_change`, `mcp_server_check`, `mcp_server_sign_in`, `mcp_server_delete` | Yes | No | No | No |
 
@@ -501,22 +501,78 @@ It refuses with the same words as **Add a rig**:
 - `The slot <namespace> allows <n> CPUs.`, `… allows <n> GiB of memory.` or `… allows <n> GB of storage.`
 - `Control has no CUDA harness image configured (THERMITE_RIG_HARNESS_CUDA_IMAGE).`
 
-### set_rig_model
+### rig_models
 
-**Give a rig's agents a model.** Owner and operator.
+**Each agent's model on a rig.** Owner, operator and reader.
 
-> As Edit rig does: the model a rig's agents use, from a model provider in Providers (see the providers tool for their models). The rig takes it within a minute and checks it. Harness default: what the model needs (Claude Code for a Claude subscription, OpenCode for OpenCode's free models, else Pi). codex runs the workers and the planner in the Codex CLI: only with a ChatGPT subscription or an OpenAI-compatible provider. context_window caps the model's context window in tokens (from 4096), for example to compare two models at the same window; a cap above the provider's window is refused. Agents in Pi keep to it; OpenCode, Claude Code and Codex do not read it. Each call sets the cap anew: a call without context_window removes a cap the rig had. Returns context_window, the window the rig's model route carries (null: the provider lists none).
+> Each agent's model on a rig, as Edit rig's section The agents shows it: workers, planner, teachers (the teacher pair), combiner, auditor and panel (the review panel). Each is {provider, model, effort}, the workers' with harness and context_cap too, or null for its default: the workers use the rig's own settings, the planner the workers' model, an advisor the rig's advisors file. It is what control gives the rig; set it with set_rig_model.
 
 | Input | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `rig` | string | | The rig |
-| `provider` | string | | The model provider's name in **Providers** |
-| `model` | string | | A model id, as [`providers`](#providers) lists it under `models` |
-| `harness` | `pi`, `opencode` or `codex`, optional | what the model needs: Claude Code for a Claude subscription, OpenCode v2 for OpenCode's free models, else Pi (a ChatGPT subscription too) | The [worker harness](glossary.md). `codex`: the Codex CLI, for a ChatGPT subscription or an OpenAI-compatible provider; the planner then runs in it too, unless it has a model of its own |
-| `effort` | `low`, `medium`, `high`, `xhigh` or `max`, optional | none | How long the model thinks, as **Effort** on **Edit rig** |
-| `context_window` | whole number, optional | none: the provider's window | A cap on the model's [context window](glossary.md), in tokens, from 4,096 to the window the provider lists (to 100,000,000 when it lists none). Each call sets it anew: a call without it removes a cap the rig had |
 
-It sets the workers' model for every run on the rig, as **Edit rig** does. Returns `{rig, model, context_window, said}`. `context_window` is the window the rig's model route carries: the cap when it is lower than the provider's window, else the provider's window, or `null` when the provider lists none. `said` is the dashboard's words: `<rig> takes <model> from "<provider>" under <harness> within a minute, and checks it.`, followed by `Its context window: 131,072 tokens (capped; the provider allows 204,800).` (with the rig's numbers) when a cap is lower than the provider's window. Besides `mcp:set_rig_model`, the audit log records `rig_model_given` with the caller's actor and `context_cap`. Errors: `no rig <rig>`, `<model> takes at most <n> tokens.` (a cap above the provider's window), `A context window is a whole number of tokens from 4,096 to 100,000,000.`, `That provider does not list that model.`, `OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig.` (with `harness: "pi"` or `"codex"`), and `Codex runs only with a ChatGPT subscription or an OpenAI-compatible provider: choose Pi or OpenCode v2 for this provider.` (with `harness: "codex"` and an Anthropic or OpenCode provider). A Claude subscription's model runs in Claude Code whatever `harness` says. Its REST twin is [`POST /v1/rigs/<rig>/model`](rest-api.md#the-agents-model), and [Cap the model's context window](../how-to/models/connect-a-provider.md#cap-the-models-context-window) says how the cap works.
+Returns `{rig, agents}`. `agents` has one key for each row of section **2 · The agents** on **Edit rig**: `workers`, `planner`, `teachers` (the teacher pair), `combiner`, `auditor` and `panel` (the review panel). Each is `{provider, model, effort}`, or `null` when the agent has no model of its own on control. The workers' also has `harness` and `context_cap` (the [cap](#set_rig_model) on their context window, or `null`). `effort` is `null` for the model's own default. `null` means the agent's default:
+
+| Agent | Its default |
+| --- | --- |
+| `workers` | The rig's own settings |
+| `planner` | The workers' model |
+| `teachers`, `combiner`, `auditor`, `panel` | The rig's advisors file. Without one, the advisor does not run |
+
+These are the models control gives the rig. [Give each agent its own model](../how-to/models/model-per-agent.md) says when the rig takes each one. Errors: `no rig <rig>`. Its REST twin is [`GET /v1/rigs/<rig>/model`](rest-api.md#the-agents-model).
+
+### set_rig_model
+
+**Give a rig's agents a model.** Owner and operator.
+
+> As a row of Edit rig's section The agents does: the model one of a rig's agents uses, from a model provider in Providers (see the providers tool for their models). agent: workers (default), planner, teachers (the teacher pair), combiner, auditor or panel (the review panel); the other agents keep their models. clear: true, with no provider or model, sends the agent back to its default: the workers to the rig's own settings, the planner to the workers' model, an advisor to the rig's advisors file. The workers and the planner take a new model within a minute, and the rig checks the workers' model; an advisor uses its new model from its next round. An advisor takes a model from an API key or a ChatGPT subscription (it runs in the supervisor, with read-only tools) or from a Claude subscription (it runs in Claude Code), never OpenCode's own models. harness and context_window are for the workers only. Harness default: what the model needs (Claude Code for a Claude subscription, OpenCode for OpenCode's free models, else Pi). codex runs the workers, and a planner with no model of its own, in the Codex CLI: only with a ChatGPT subscription or an OpenAI-compatible provider. context_window caps the workers' context window in tokens (from 4096), for example to compare two models at the same window; a cap above the provider's window is refused. Agents in Pi keep to it; OpenCode, Claude Code and Codex do not read it. Each call for the workers sets the cap anew: a call without context_window removes a cap the rig had. Returns context_window, the window the agent's model route carries (null: the provider lists none, or the model was cleared), and agents, each agent's model after the change, as rig_models reads them.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `rig` | string | | The rig |
+| `agent` | `workers`, `planner`, `teachers`, `combiner`, `auditor` or `panel`, optional | `workers` | Whose model: a row of section **2 · The agents** on **Edit rig**. `teachers` is the teacher pair (both use the model), and `panel` the review panel (all three reviewers use it) |
+| `provider` | string, optional | | The model provider's name in **Providers**. Needed unless `clear` is true |
+| `model` | string, optional | | A model id, as [`providers`](#providers) lists it under `models`. Needed unless `clear` is true |
+| `clear` | boolean, optional | false | `true`: the agent goes back to its default, as the first choice in its row on **Edit rig**. Give it with `agent` alone |
+| `harness` | `pi`, `opencode` or `codex`, optional | what the model needs: Claude Code for a Claude subscription, OpenCode v2 for OpenCode's free models, else Pi (a ChatGPT subscription too) | The workers only. The [worker harness](glossary.md). `codex`: the Codex CLI, for a ChatGPT subscription or an OpenAI-compatible provider; the planner then runs in it too, unless it has a model of its own |
+| `effort` | `low`, `medium`, `high`, `xhigh` or `max`, optional | none | How long the model thinks, as **Effort** on **Edit rig** |
+| `context_window` | whole number, optional | none: the provider's window | The workers only. A cap on the model's [context window](glossary.md), in tokens, from 4,096 to the window the provider lists (to 100,000,000 when it lists none). Each call for the workers sets it anew: a call without it removes a cap the rig had. A planner with no model of its own uses the workers' route, so the cap too |
+
+It sets one agent's model for every run on the rig, as that agent's row on **Edit rig** does, and the other agents keep theirs. Where each agent then runs is in [Where each agent runs](../how-to/models/model-per-agent.md#where-each-agent-runs). An advisor can use a ChatGPT subscription's model: it runs in the supervisor with read-only tools, on the subscription's access token, which control renews.
+
+Returns `{rig, agent, model, context_window, said, agents}`:
+
+- `model` is the model given, or `null` after `clear`.
+- `context_window` is the window the agent's model route carries. For the workers it is the cap when that is lower than the provider's window, else the provider's window. For the other agents it is the provider's window. It is `null` when the provider lists none, or after `clear`.
+- `agents` is each agent's model after the change, as [`rig_models`](#rig_models) returns it.
+- `said` is the dashboard's words:
+
+| Call | `said` |
+| --- | --- |
+| A model for the workers | `<rig> takes <model> from "<provider>" under <harness> within a minute, and checks it.`, followed by `Its context window: 131,072 tokens (capped; the provider allows 204,800).` (with the rig's numbers) when a cap is lower than the provider's window |
+| `clear` for the workers | `<rig> goes back to its own settings within a minute.` |
+| A model for another agent | `Control sent a model for the <agent> to <rig>. The rig takes the change in less than one minute.` |
+| `clear` for the planner | `Control sent the planner back to the workers' model to <rig>. The rig takes the change in less than one minute.` |
+| `clear` for an advisor | `Control sent the <agent> back to the rig's advisors file to <rig>. The rig takes the change in less than one minute.` |
+
+The workers and the planner take a new model within a minute. An advisor reads its model from control each time it runs, so it uses a new one from its next round.
+
+Besides `mcp:set_rig_model`, the audit log records the change with the caller's actor: `rig_model_given` for the workers, with `context_cap`, and `agent_model_given` for another agent, with `role`, `provider`, `model` and `effort` (`provider` and `model` are `null` after `clear`).
+
+Errors:
+
+- `no rig <rig>`
+- `Give a provider and a model, or clear: true.`
+- `Give clear alone, or a provider and a model.`
+- `Only the workers take a harness. The other agents run where their model needs, as Runs in on Edit rig says.`
+- `Only the workers take a context window cap. A planner with no model of its own uses the workers' cap.`
+- `That provider does not list that model.` (the workers), or `That provider does not list that model (<agent>).` (another agent)
+- `The <agent> cannot use OpenCode's own models: they run only in OpenCode. Choose another model.` (an advisor)
+- `<model> takes at most <n> tokens.` (a cap above the provider's window) and `A context window is a whole number of tokens from 4,096 to 100,000,000.`
+- `OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig.` (the workers, with `harness: "pi"` or `"codex"`)
+- `Codex runs only with a ChatGPT subscription or an OpenAI-compatible provider: choose Pi or OpenCode v2 for this provider.` (the workers, with `harness: "codex"` and an Anthropic or OpenCode provider)
+
+A Claude subscription's model runs in Claude Code whatever `harness` says. Its REST twin is [`POST /v1/rigs/<rig>/model`](rest-api.md#the-agents-model), and [Cap the model's context window](../how-to/models/connect-a-provider.md#cap-the-models-context-window) says how the cap works.
 
 ### start_run
 
@@ -794,4 +850,4 @@ Control writes every tool call to its audit log before the tool runs, reads incl
 
 ## Not in MCP yet
 
-Some things the owner does on the dashboard or over REST have no tool yet: cancelling a command, accepting a review or a "not possible" ending, changing a rig's settings other than its agents' model (`set_rig_model`) and its GPU split (the owner's `start_run`), restarting a rig's containers and resetting a rig (`runpod_rig` does both for a rig on RunPod), removing a rig control set up, stopping, starting and restarting one it set up on a machine (`cluster_rig` covers a cluster rig), accepting a rig's key and enrolling a rig. They are planned in [goal 029](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/029-api-mcp-coverage.goal). MCP takes bearer tokens only; signing in with OAuth is [goal 030](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/030-oauth-sign-in.goal). `control_log` returns the newest 500 entries at most; paging is [goal 015](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/015-log-paging.goal).
+Some things the owner does on the dashboard or over REST have no tool yet: cancelling a command, accepting a review or a "not possible" ending, changing a rig's settings other than its agents' models (`set_rig_model`) and its GPU split (the owner's `start_run`), restarting a rig's containers and resetting a rig (`runpod_rig` does both for a rig on RunPod), removing a rig control set up, stopping, starting and restarting one it set up on a machine (`cluster_rig` covers a cluster rig), accepting a rig's key and enrolling a rig. They are planned in [goal 029](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/029-api-mcp-coverage.goal). MCP takes bearer tokens only; signing in with OAuth is [goal 030](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/030-oauth-sign-in.goal). `control_log` returns the newest 500 entries at most; paging is [goal 015](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/015-log-paging.goal).
