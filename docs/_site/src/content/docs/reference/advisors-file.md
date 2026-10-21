@@ -343,18 +343,18 @@ The supervisor sends every answer to the harness, which checks it again. Nothing
 
 ## Models from Edit rig
 
-On a rig's **Edit rig** page, section **2 · The agents**, the owner can choose a model and an effort for the advisors, in the rows **Teacher pair**, **Combiner**, **Auditor** and **Review panel**. The row **Teacher pair** gives both teachers its model, and the row **Combiner** gives the teachers' merged by model. Over MCP or the REST API ([`set_rig_model`](mcp-tools.md#set_rig_model)), the teachers can also take one model, or two different ones. Each model control gives replaces the file's runtimes for its role only: control's teachers replace all the file's teachers. A role with none keeps the rig default, the file's. On **Edit rig**, the empty choice **the rig's advisors file** leaves the role to the file. See [Give each agent its own model](../how-to/models/model-per-agent.md).
+On a rig's **Edit rig** page, section **2 · The agents**, the owner can choose a model, an effort, a harness (**Runs in**) and a context window for each advisor, in the group **The advisors**: **Teachers** (one model, or two with **+ second teacher**, and then a **merged by** model), **Auditor** and **Review panel**. MCP and the REST API ([`set_rig_model`](mcp-tools.md#set_rig_model)) do the same. Each model control gives replaces the file's runtimes for its role only: control's teachers replace all the file's teachers. A role with none keeps the rig default, the file's. On **Edit rig**, the empty choice **rig default** leaves the role to the file. See [Give each agent its own model](../how-to/models/model-per-agent.md).
 
 | What control gives | Becomes |
 | --- | --- |
-| The teachers' models: one, or two (the row **Teacher pair** gives both teachers one model) | One runtime for each model: `teacher-1`, and `teacher-2` for the second |
-| The teachers' merged by model (the row **Combiner**) | One runtime, `merged-by`. It merges only the reviews of two teachers, the file's or control's |
+| The teachers' models: one, or two (**+ second teacher** on **Edit rig**) | One runtime for each model: `teacher-1`, and `teacher-2` for the second |
+| The teachers' merged by model (the **merged by** line on **Edit rig**) | One runtime, `merged-by`. It merges only the reviews of two teachers, the file's or control's |
 | The auditor | One runtime, `auditor` |
 | The review panel | Three runtimes, `reviewer-1`, `reviewer-2` and `reviewer-3`, with the same model |
 
-Each role runs in the harness that control keeps for it. **Edit rig** gives the one the model needs: Claude Code for a Claude subscription, OpenCode v2 for OpenCode's own models, and Pi for the others. Over MCP or the REST API, a role can be given another, among those its model can run in ([`set_rig_model`](mcp-tools.md#set_rig_model)).
+Each role runs in the harness that control keeps for it, chosen under **Runs in** on **Edit rig**, or over MCP or the REST API ([`set_rig_model`](mcp-tools.md#set_rig_model)), among those its model can run in. When a model is chosen, **Edit rig** sets the one it needs: Claude Code for a Claude subscription, OpenCode v2 for OpenCode's own models, and Pi for the others.
 
-The role's context window is the provider's, or the owner's cap on the role's model when that is lower; its `compact_at` is the one the owner set with the model, if any ([`set_rig_model`](mcp-tools.md#set_rig_model)).
+The role's context window is the provider's, or the owner's cap on the role's model when that is lower; its `compact_at` is the one the owner set with the model, if any: on **Edit rig**, in the line's **Context** cell, or with [`set_rig_model`](mcp-tools.md#set_rig_model).
 
 | Harness of the role | Runtime | Its fields |
 | --- | --- | --- |
@@ -363,7 +363,7 @@ The role's context window is the provider's, or the owner's cap on the role's mo
 | OpenCode v2 | `opencode`, with `api` set to the provider's type, or `opencode` for OpenCode's own models | The provider's address and key (none for OpenCode's own models); the role's context window, or 0; the role's `compact_at`; `timeout_s` 1800 |
 | Codex (a ChatGPT subscription or an OpenAI-compatible provider) | `codex`, with `api` set to the provider's type | The provider's address and key; the effort as `reasoning`, with `xhigh` and `max` sent as `high`; the role's context window, or 0; the role's `compact_at`; `timeout_s` 1800 |
 
-The **Runs in** column says where each role runs: `Claude Code, past research and the kit's MCP tools only`; `the supervisor, read-only tools` (Pi); `OpenCode v2 in the supervisor, past research and the kit's MCP tools only`; `Codex in the supervisor, past research and the kit's MCP tools only`; or `the advisors file, if the rig has one`.
+On **Edit rig**, **Runs in** shows each role's harness: **Pi**, **OpenCode v2**, **Claude Code** or **Codex**, all in the supervisor, or **rig default** for a role with no model from control. In Pi the role gets read-only tools; in Claude Code, OpenCode v2 or Codex only a read-only search of the run's past research and the kit's MCP tools for the advisors.
 
 - The supervisor asks control for these models (`GET /v1/rigs/<rig>/advisor-routes`) before every round, so a change takes effect without a restart.
 - When control cannot be reached, the models it gave last stay in use.

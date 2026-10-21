@@ -372,3 +372,78 @@ export function campaignContextRefusal(
   }
   return "";
 }
+
+/**
+ * One agent's own model on a rig, as the screens need it (goal 070): its model, the window its
+ * provider lists (0: none), and the rig's cap and point on it. Only agents control gives a model.
+ */
+export interface OwnModel {
+  agent: AgentPlace;
+  model: string;
+  listed: number;
+  cap: number | null;
+  at: number | null;
+}
+
+/** Every agent but the workers, in the order the screens list them. */
+const AGENT_ROLE_PLACES: AgentPlace[] = [
+  "planner",
+  "teachers",
+  "second_teacher",
+  "merged_by",
+  "auditor",
+  "review_panel",
+];
+
+/**
+ * The agents of a rig with a model from control: those of a campaign's mode, or (no mode) every
+ * agent; a second teacher only with a first.
+ */
+export function ownModels(store: ControlStore, rig: string, mode?: unknown): OwnModel[] {
+  const agents: AgentPlace[] =
+    mode === undefined ? ["workers", ...AGENT_ROLE_PLACES] : agentsOfMode(mode);
+  const out: OwnModel[] = [];
+  for (const agent of agents) {
+    const own = ownModel(store, rig, agent);
+    if (!own) continue;
+    if (agent === "second_teacher" && !ownModel(store, rig, "teachers")) continue;
+    out.push({
+      agent,
+      model: own.model,
+      listed: own.listed,
+      cap: own.cap ?? null,
+      at: own.at ?? null,
+    });
+  }
+  return out;
+}
+
+/**
+ * What a campaign's settings give a rig's workers, and whether a run can start there, as the
+ * screens show it (New campaign, Copy, the campaign's page and Start a run): the workers' window
+ * and where it comes from (the campaign's, the rig's, or none control knows), their point, and the
+ * model that refuses the run (campaignContextRefusal: a campaign window above what a provider
+ * lists for one of the agents' models). The page's script does the same as you type
+ * (campaign-context-client.ts).
+ */
+export interface RigContext {
+  window: number | null;
+  windowFrom: "campaign" | "rig" | "none";
+  at: number | null;
+  atFrom: "campaign" | "rig" | "none";
+  refused: { model: string; listed: number } | null;
+}
+export function rigContext(own: readonly OwnModel[], c: AgentsContext | undefined): RigContext {
+  const w = own.find((a) => a.agent === "workers");
+  const rigWindow = w ? cappedWindow(w.listed, w.cap ?? undefined) : 0;
+  const cw = c?.context_window;
+  const fromCampaign = Boolean(cw && (rigWindow <= 0 || cw <= rigWindow));
+  const refusedBy = cw ? own.find((a) => a.listed > 0 && cw > a.listed) : undefined;
+  return {
+    window: fromCampaign ? (cw ?? null) : rigWindow || null,
+    windowFrom: fromCampaign ? "campaign" : rigWindow ? "rig" : "none",
+    at: c?.compact_at ?? (w ? (w.at ?? COMPACT_AT_DEFAULT) : null),
+    atFrom: c?.compact_at ? "campaign" : w ? "rig" : "none",
+    refused: refusedBy ? { model: refusedBy.model, listed: refusedBy.listed } : null,
+  };
+}

@@ -50,13 +50,13 @@ After a minute, press **refresh** in the status bar, the line along the bottom o
 
 A ChatGPT subscription runs in Pi unless you choose another harness. To run the workers in the Codex CLI instead:
 
-1. On **Providers**, in the rig's row of **Harness and model for each rig**, choose **Codex** and the subscription's model, and press **Use**. On the rig's **Edit rig** page, it is **Codex** in the workers' **Runs in** column. An agent can do the same over MCP with [`set_rig_model`](../../reference/mcp-tools.md#set_rig_model) and `harness: "codex"`.
+1. On **Providers**, in the rig's row of **Harness and model for each rig**, choose **Codex** and the subscription's model, and press **Use**. On the rig's **Edit rig** page, it is **Codex** in the workers' **Runs in**. An agent can do the same over MCP with [`set_rig_model`](../../reference/mcp-tools.md#set_rig_model) and `harness: "codex"`.
 2. After a minute, the model check runs in Codex. When it passes, its result says `<model> answered with a correct tool call in <seconds> s (Codex)`.
 
 Then:
 
 - Each worker's trial runs in Codex, as the lane's own user, and submits with [`thermite-trial`](../../reference/command-line.md#thermite-trial).
-- The planner runs in Codex too, unless you give it a model of its own on **Edit rig**. Its **Runs in** cell says "as the workers: Codex".
+- The planner runs in Codex too, unless you give it a model of its own on **Edit rig**. Its **Runs in** says "as the workers (Codex)".
 - Research workers keep running in Pi, with the same model.
 - Codex never gets the subscription's token. It reaches OpenAI through the harness's proxy, with its trial's own token, and the proxy adds the token on the way out.
 

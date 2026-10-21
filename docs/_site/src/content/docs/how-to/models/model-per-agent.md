@@ -1,12 +1,12 @@
 ---
 title: "Give each agent its own model"
-description: "Choose a different model and effort for the workers, the planner and each advisor."
+description: "Choose a model, an effort, a harness and a context window for the workers, the planner and each advisor."
 type: how-to
 sidebar:
   order: 5
 ---
 
-A rig runs several kinds of agent, and they need different things. The workers make many calls, so a cheap or local model may suit them. The planner and the advisors make a few calls each, where a stronger model can pay off. On a rig's **Edit rig** page you give each of them its own model, and an effort: how long the model thinks before it answers.
+A rig runs several kinds of agent, and they need different things. The workers make many calls, so a cheap or local model may suit them. The planner and the advisors make a few calls each, where a stronger model can pay off. On a rig's **Edit rig** page you give each of them its own model, an effort (how long the model thinks before it answers), the program it runs in, and its context window.
 
 The planner coordinates each run's experiment queue, the run's ordered list of things to try. At the start of each round it gives each [lane](../../reference/glossary.md) (one line of search in the run) an experiment from the queue, and it may add, move or drop experiments. See [Choose what a run tries next](../campaigns/choose-what-runs-next.md).
 
@@ -18,30 +18,29 @@ The planner coordinates each run's experiment queue, the run's ordered list of t
 ## Set the models
 
 1. Open **Rigs**, choose the rig, and press **Edit rig**.
-2. Go to section **2 · The agents**. It is a table with the columns **Agent**, **Model**, **Effort** and **Runs in**, and one row for each agent:
+2. Go to section **2 · The agents**. It is a table with the columns **Agent**, **Model**, **Effort**, **Runs in** and **Context**. Its lines are in two groups: **The work** ("in the rig's harness") and **The advisors** ("in the supervisor; they never judge"). Each agent's job is on one line under its name:
 
-   | Agent | Its ⓘ says | With no model chosen |
-   | --- | --- | --- |
-   | **Workers** | "The agents that change the code, one per lane. They run for many turns, so they use the most of a subscription." | **its own settings**: the rig's `THERMITE_MODEL_*` settings. Without those, the agents have no model and wait |
-   | **Planner** | "Gives each worker its direction at the start of each round. A few calls per round." | **same as the workers** |
-   | **Teacher pair** | "Two advisors that read the recent work every hour and suggest directions, each with a source. Both use this model." This row sets the teachers: two teachers, both on its model. [Over MCP or REST](#over-mcp-or-rest), the teachers can have one model, or two different ones. | **the rig's advisors file**: the rig default |
-   | **Combiner** | "Joins the two teachers' advice into one set of directions." This row sets the teachers' merged by model. | **the rig's advisors file**: the rig default |
-   | **Auditor** | "Looks for a hidden flaw in a change before it can become the champion." | **the rig's advisors file**: the rig default |
-   | **Review panel** | "Three reviewers that grade goals that need judgement. The judge's numbers never come from them. All three use this model." Set here, the review panel is three reviewers on one model; the advisors file can set two to five. | **the rig's advisors file**: the rig default |
+   | Group | Agent | Its job | With no model chosen |
+   | --- | --- | --- | --- |
+   | The work | **Workers** | "Change the code, one trial each." | **rig default**: the rig's `THERMITE_MODEL_*` settings. Without those, the agents have no model and wait |
+   | The work | **Planner** | "Picks what each worker tries next." | **same as the workers**: their model, harness and context |
+   | The advisors | **Teachers** | "Read recent trials and suggest next steps." One model, or two: see [Two teachers](#two-teachers) | **rig default**: the teachers of the rig's advisors file |
+   | The advisors | **Auditor** | "Checks a win before it is kept." | **rig default** |
+   | The advisors | **Review panel** | "Scores goals that code can't measure." Three reviewers, all on this model; the advisors file can set two to five | **rig default** |
 
-3. For each agent you want to change, choose a model in its **Model** list, and an **Effort** (see below).
-4. For the workers, also choose where they run, in the **Runs in** column: **Pi**, **OpenCode v2**, **Claude Code** or **Codex**. When you choose a Claude subscription's model, the page sets **Claude Code** for you. **Codex**, the Codex CLI, takes a ChatGPT subscription's model or one from an OpenAI-compatible provider: see [Run the agents in Codex](chatgpt-subscription.md#run-the-agents-in-codex).
+   Every column title, group and agent has an info icon (ⓘ) that says more.
 
-   For the other agents, **Runs in** shows where each one will run, for example "the supervisor, read-only tools" or "Claude Code, past research and the kit's MCP tools only". This page gives each of them the program its model needs; [over MCP or REST](#over-mcp-or-rest) you can choose another. A planner with no model of its own follows the workers into Codex: "as the workers: Codex".
+3. For each agent you want to change, choose a model in its **Model** list, and an **Effort** (see [Effort](#effort)).
+4. Check **Runs in**: **Pi**, **OpenCode v2**, **Claude Code** or **Codex**. When you choose a model, the page sets the program it needs: **Claude Code** for a Claude subscription's model, **OpenCode v2** for OpenCode's own free models, else the line's own program when it can run the model, or **Pi**. Change it if you want another. **Codex**, the Codex CLI, takes a ChatGPT subscription's model or one from an OpenAI-compatible provider: see [Run the agents in Codex](chatgpt-subscription.md#run-the-agents-in-codex). A line with no model shows where it runs then, greyed out: "as the workers (Pi)" for the planner, **rig default** for an advisor. [Where each agent runs](#where-each-agent-runs) says what each choice gives.
 
-5. Read the list under **What changes when you save**, at the foot of the page. It says each change in a sentence, such as "You change the auditor's model to my-model."
-6. Press **Save changes**.
+   A program that can't run the model is refused in a red line under the agent's line, such as "A Claude subscription runs only in Claude Code: choose Claude Code for the auditor, or another model."
+5. To change an agent's context window or the point where its conversation is compacted, see [Set an agent's context window and compaction](#set-an-agents-context-window-and-compaction).
+6. Read the list under **What changes when you save**, at the foot of the page. It says each change in a short sentence, such as "You change the auditor's model to my-model." and "You change where the auditor runs to Claude Code." While a line is refused, the list says why instead, such as "Not saved yet (the auditor): A Claude subscription runs only in Claude Code: …", and **Save changes** is off.
+7. Press **Save changes**.
 
 You return to the rig's page, which says, for example, "Control sent a new model and a model for the auditor to rig-1. The rig takes the change in less than one minute."
 
 The workers and the planner take a new model within a minute. The advisors read their models from control each time they run, so an advisor uses its new model from its next round.
-
-This page has no field yet for an agent's context window cap, or for the share of the window at which its conversations are compacted. Set them [over MCP or REST](#over-mcp-or-rest), for any agent. A cap or a compaction point set there stays while the agent keeps the same model, and goes when you choose another one here. See [Cap the model's context window](connect-a-provider.md#cap-the-models-context-window) and [Set when a conversation is compacted](connect-a-provider.md#set-when-a-conversation-is-compacted).
 
 When the workers' or the planner's model changes, the rig runs its model check at once. The check tests only the workers' model. For the other agents, watch a run on the rig in **Live** (in the sidebar), the dashboard's view of one run's agents at work. Choose a filter above the stream:
 
@@ -50,6 +49,57 @@ When the workers' or the planner's model changes, the rig runs its model check a
 
 A run's **Planner** tab also shows the planner's model, in the card **The planner**: for example "my-model, its own model (from my-litellm)", or "my-model, the agents' model (Edit rig can give the planner its own)". Under **What the planner did**, it shows each hand-out: which experiment went to which lane, and why. See [Check the planner's model](../campaigns/choose-what-runs-next.md#check-the-planners-model).
 
+## Two teachers
+
+The teachers take one model or two. Two teachers on different models, such as one on a Claude subscription and one on a ChatGPT subscription, give the planner two views.
+
+1. Give the **Teachers** line a model. **+ second teacher** shows under it.
+2. Press **+ second teacher**. Two lines show under the first teacher: the second teacher, and **merged by**, the model that joins the two teachers' suggestions into one set for the planner.
+3. Choose the second teacher's model, and a **merged by** model, or leave it on **rig default**. Each line has its own **Effort**, **Runs in** and **Context**. The sentences now say "teacher 1" and "teacher 2".
+4. Press **Save changes**.
+
+**What changes when you save** says, for example, "You add a second teacher: chatgpt:gpt-pro in Codex. The merged-by model joins the two teachers' suggestions: claude-code:sonnet-5.5 in Claude Code."
+
+- **×** beside the second teacher's model removes the second teacher and its merged by model: "You remove the second teacher and its merged-by model." One teacher works alone: its review gives the set, and no merged by model runs.
+- **Two teachers without a merged by model** (it is on **rig default**, and the advisors file has none): the first review that comes back gives the set.
+- The first teacher on **rig default** takes the second teacher and the merged by model with it.
+- A second teacher with no model is refused: "Not saved yet (teacher 2): Choose its model, or remove it."
+
+Without the page's script, **+ second teacher** and **×** open the page again with the two lines shown, or emptied: **Save changes** then saves them.
+
+## Set an agent's context window and compaction
+
+Each line's **Context** cell shows its agent's context window and its compaction point in short, such as `204,800 · 80%`: the most its model reads in one request, in tokens, and the share of that window at which its conversation is compacted. A number set on this rig is bold. A line with no model says **rig default**, and the planner with no model of its own "as the workers: 204,800 · 80%".
+
+1. Press the agent's **Context** cell. Two fields open under it:
+
+   | Field | What it does |
+   | --- | --- |
+   | **Context window** | A cap on the model's window, in tokens: from 4,096 up to the window the provider lists. Empty: the provider's window, shown in the field. Use it to compare two models at the same window |
+   | **Compact at** | When the conversation is compacted: a percent of the window, from 50 to 95. Empty: 80, which leaves a fifth of the window for the summary and the next reply |
+
+2. Type the numbers. One line under the fields says where the conversation compacts, such as "It compacts at 104,857 tokens.", or what is wrong:
+
+   | The line says | Why |
+   | --- | --- |
+   | `glm-5.1 takes at most 204,800 tokens.` | A window above what the provider lists for the model |
+   | `A context window is a whole number of tokens from 4,096 to 100,000,000.` | A window out of range |
+   | `Write the number of tokens in digits, such as 131072.` | Not a number. Commas and spaces are fine: `131,072` |
+   | `The compaction point is a whole percent of the context window, from 50 to 95.` | A point out of range |
+   | `That is the provider's window: no cap.` | Not an error: the provider's own window is no cap |
+   | `OpenCode v2 compacts only with a window.` | A warning: OpenCode compacts only for a model whose window it knows |
+   | `Codex compacts at 90% at the latest: 184,320 tokens.` | A warning: Codex compacts at 90% of the window at the latest |
+   | `Claude Code counts this window as 100,000 tokens.` | A warning: Claude Code takes a window of 100,000 to 1,000,000 tokens |
+
+   The info icons of the two fields say what the line's program does at the point, such as "In Pi, at 104,857 tokens, Thermite keeps the whole conversation in the run's research folder, as `compactions/<trial>-<n>.md`. Then the same model writes a summary, and the worker continues with it and its most recent turns." A trial never ends, and no worker is told to submit, because its conversation grew.
+3. Press **Save changes**. **What changes when you save** says, for example, "You cap the workers' context window at 131,072 tokens; the provider allows 204,800. The workers compact at 104,857 tokens (80%). The planner follows the workers."
+
+Another model on a line keeps the two numbers, and checks them against the new model. Empty fields remove the agent's own cap and point.
+
+The planner with no model of its own uses the workers' cap and point. An advisor in Pi compacts its call's conversation, and the supervisor keeps the conversation with its own records. Every advisor's package, such as an audit's diff, is cut to fit its window, and the advisor is told so. An advisor in Claude Code, OpenCode v2 or Codex gets the window and the point in that program's own settings, as the workers do. [Compaction](../../reference/limits-and-pacing.md#compaction) says how each agent compacts and where its conversation is kept.
+
+These are the rig's numbers. A campaign can set a smaller window and its own point for all its runs: see [Set a campaign's own context window](#set-a-campaigns-own-context-window).
+
 ## Over MCP or REST
 
 An agent or a script can set the same models without this page:
@@ -57,11 +107,11 @@ An agent or a script can set the same models without this page:
 - **MCP**, with the owner's or an operator's token: [`set_rig_model`](../../reference/mcp-tools.md#set_rig_model), with `agent` set to `workers`, `planner`, `teachers`, `auditor` or `review_panel`. [`rig_models`](../../reference/mcp-tools.md#rig_models) reads each agent's model.
 - **REST**, with the owner's token: [`POST /v1/rigs/<rig>/model`](../../reference/rest-api.md#the-agents-model) takes the same fields, and `GET /v1/rigs/<rig>/model` reads each agent's model.
 
-Each call changes one agent, and the others keep their models. The checks and the refusals are this page's. `clear: true` sends the agent back to its default, as the first choice in its **Model** list does here: **its own settings**, **same as the workers** or, for an advisor, the rig default (**the rig's advisors file**). Every agent takes `harness`, `context_window` and `compact_at`: see below and [Set an agent's context window and compaction](#set-an-agents-context-window-and-compaction).
+Each call changes one agent, and the others keep their models. The checks and the refusals are this page's. `clear: true` sends the agent back to its default, as the first choice in its **Model** list does here: **rig default** for the workers and the advisors, **same as the workers** for the planner. Every agent takes `harness`, `context_window` and `compact_at`.
 
 The old names `combiner` and `panel` are still taken in 0.1.0: `combiner` sets the teachers' merged by model, and `panel` the review panel. The answer then starts with what the name is now, such as "The name panel is now review_panel."
 
-`harness` chooses the program any agent runs in: `pi`, `opencode` (OpenCode v2), `claude-code` or `codex` (the Codex CLI). Without it, the agent gets the one its model needs, as on this page. A harness that can't run the model is refused, for example "A Claude subscription runs only in Claude Code: choose Claude Code for the auditor, or another model." [Where each agent runs](#where-each-agent-runs) says what each choice gives.
+`harness` chooses the program any agent runs in: `pi`, `opencode` (OpenCode v2), `claude-code` or `codex` (the Codex CLI). Without it, the agent gets the one its model needs. A harness that can't run the model is refused, for example "A Claude subscription runs only in Claude Code: choose Claude Code for the auditor, or another model."
 
 For example, to give the auditor a model from a ChatGPT subscription named `chatgpt-pro`, run in the Codex CLI, call `set_rig_model` with:
 
@@ -69,11 +119,9 @@ For example, to give the auditor a model from a ChatGPT subscription named `chat
 { "rig": "rig-1", "agent": "auditor", "provider": "chatgpt-pro", "model": "gpt-pro", "harness": "codex", "effort": "high" }
 ```
 
-The answer says "Control sent a model for the auditor to rig-1. The rig takes the change in less than one minute.", and its `agents` lists each agent's model after the change, with its `harness`. The auditor's **Runs in** cell on this page then says "Codex in the supervisor, past research and the kit's MCP tools only". Saving this page keeps that harness while the auditor keeps the same model, and gives the one its model needs when you choose another model.
+The answer says "Control sent a model for the auditor to rig-1. The rig takes the change in less than one minute.", and its `agents` lists each agent's model after the change, with its `harness`. The auditor's **Runs in** on this page then shows **Codex**.
 
-### One teacher, or two on different models
-
-The teachers take one model or two. `provider` and `model` give the first teacher's model. `second_model` gives a second teacher, and `merged_by` the model that merges the advice of two teachers into one set. Each of those two is an object with `provider` and `model`, and may have its own `harness`, `effort`, `context_window` and `compact_at`. For example, to give the teachers a Claude subscription's model and a ChatGPT subscription's, merged by a third model:
+The teachers take one model or two over MCP and REST too. `provider` and `model` give the first teacher's model. `second_model` gives a second teacher, and `merged_by` the model that merges the advice of two teachers into one set. Each of those two is an object with `provider` and `model`, and may have its own `harness`, `effort`, `context_window` and `compact_at`. For example, to give the teachers a Claude subscription's model and a ChatGPT subscription's, merged by a third model:
 
 ```json
 { "rig": "rig-1", "agent": "teachers", "provider": "claude-max", "model": "opus-5.5",
@@ -83,33 +131,26 @@ The teachers take one model or two. `provider` and `model` give the first teache
 
 The answer says "Control sent a model for the teachers, a model for a second teacher and a merged by model for the teachers to rig-1. The rig takes the change in less than one minute." Control checks every model in the call before it saves any: if one is refused, nothing changes.
 
-- **One teacher**: give `"second_model": null`. The answer says "Control sent the teachers back to one teacher to rig-1. …" One teacher works alone: its review gives the set, and no merged by model runs.
-- **Two teachers without a merged by model**: the first review that comes back gives the set. `"merged_by": null` sends the merged by model back to the rig default.
+- **One teacher**: give `"second_model": null`. The answer says "Control sent the teachers back to one teacher to rig-1. …"
+- **Two teachers without a merged by model**: `"merged_by": null` sends the merged by model back to the rig default.
 - **A call without `provider` and `model`** may give `second_model` or `merged_by` alone; the first teacher keeps its model. A second teacher needs a first one, in the call or from before: else `The teachers have no model of their own yet: give a provider and a model for the first teacher too.`
 - **`clear: true`** sends all three back to the rig default: "the teachers back to the rig default".
 
 `rig_models` shows the teachers as `{"models": [...], "merged_by": ...}`: one model or two in `models` (none: the rig default), and the merged by model or `null`.
 
-## Set an agent's context window and compaction
-
-Every agent takes its own cap on its model's context window, `context_window` (from 4,096 tokens), and its own compaction point, `compact_at` (50 to 95 percent of the window; 80 when left out). Give them with the agent's model, in the same call. For example, to cap the planner's window and compact its conversations at 70%:
+A cap and a point go with the agent's model in the same call. For example, to cap the planner's window and compact its conversations at 70%:
 
 ```json
 { "rig": "rig-1", "agent": "planner", "provider": "my-litellm", "model": "my-model", "context_window": 131072, "compact_at": 70 }
 ```
 
-The answer adds "Its context window: 131,072 tokens (capped; the provider allows 204,800). Its conversations are compacted at 70% of the window." `rig_models` shows each agent's `context_cap` and `compact_at`.
-
-- **The planner** with its own model compacts its call's conversation as the workers do. A planner with no model of its own uses the workers' cap and point.
-- **An advisor in Pi** (in the supervisor) compacts its call's conversation, and the supervisor keeps the conversation with its own records. Every advisor's package, such as an audit's diff, is cut to fit its window, and the advisor is told so.
-- **An advisor in Claude Code, OpenCode v2 or Codex** gets the window and the point in that program's own settings, as the workers do.
-- **Each call sets them anew** for that agent: a call without them removes the cap and goes back to 80%. A cap above what the provider lists is refused: `my-model takes at most 204,800 tokens.`
-
-[Compaction](../../reference/limits-and-pacing.md#compaction) says how each agent compacts and where its conversation is kept.
+The answer adds "Its context window: 131,072 tokens (capped; the provider allows 204,800). Its conversations are compacted at 70% of the window." `rig_models` shows each agent's `context_cap` and `compact_at`. Each call sets them anew for that agent: a call without them removes the cap and goes back to 80%. A cap above what the provider lists is refused: `my-model takes at most 204,800 tokens.`
 
 ## Set a campaign's own context window
 
 The rig sets each agent's window and point. A campaign can set its own for all its runs, for example to run two rigs on different models at the same window. Each agent's window is then the lower of the campaign's and its own, and the campaign's point replaces the rig's.
+
+On the dashboard, a campaign has **Agents' context** in four places: on its page, in **New campaign**'s step **4 · Where it runs**, in the **Copy** panel, and in **Start a run**'s summary. See [Set a campaign's agents' context](../campaigns/start-from-dashboard.md#set-the-agents-context). An agent or a script uses the twins:
 
 - **MCP**: [`set_campaign_context`](../../reference/mcp-tools.md#set_campaign_context) with `{ "campaign": "sort-speed", "context_window": 131072, "compact_at": 70 }`.
 - **REST**: [`POST /v1/campaigns/<campaign>/context`](../../reference/rest-api.md#a-campaigns-context-settings) with `{"context_window": 131072, "compact_at": 70}`.
@@ -117,15 +158,15 @@ The rig sets each agent's window and point. A campaign can set its own for all i
 
 Control saves a new version of the campaign, and runs started from then take it: `Version 3 of sort-speed is saved. Its runs' agents: a context window of 131,072 tokens, compaction at 70% of the window. Runs started from now take it.` A copy can take its own with `copy_campaign`'s `agents_context`, or `thermite campaign copy` with `--context-window` and `--compact-at`.
 
-When you then start a run, the answer of **Start a run** (over REST, MCP or `thermite run start`) says what applies to each agent on that rig, such as "Workers: 131,072 tokens (wide-model), compacted at 70% of the window. Planner: 65,536 tokens (wide-model), compacted at 70% of the window." A window above what a provider lists for one of the rig's agents' models is refused before the run starts: "This campaign sets a context window of 150,000 tokens. narrow-model, the model of the teachers on rig-1, takes at most 131,072 tokens. …" The campaign's page, **New campaign** and **Copy** have no field for it yet.
+When you then start a run, the answer of **Start a run** (over REST, MCP or `thermite run start`) says what applies to each agent on that rig, such as "Workers: 131,072 tokens (wide-model), compacted at 70% of the window. Planner: 65,536 tokens (wide-model), compacted at 70% of the window." A window above what a provider lists for one of the rig's agents' models is refused before the run starts: "This campaign sets a context window of 150,000 tokens. narrow-model, the model of the teachers on rig-1, takes at most 131,072 tokens. …"
 
 ## An agent with no model
 
 - **Workers** with no model use the rig's own settings. See [Use the rig's own settings instead](connect-a-provider.md#use-the-rigs-own-settings-instead).
-- **The planner** with no model of its own uses the workers' model. Its **Runs in** cell says where it then runs. When neither has a model, when the **Planner** switch in section **1 · Parts of the rig** is off, or when the model gives no valid plan in two tries, the lanes take queued experiments in order, by fixed rules. That order skips the directions an **Avoid** rule names and puts **Always** and **Try** directions first. It applies only rules that name a direction the run has used; rules in other words are applied only by the planner's model. The switch's own text says the same: "When it is off: Lanes take queued experiments in order, by the fixed rules. Rules that name a direction (one word with hyphens) still apply; free-word rules need the planner's model."
+- **The planner** with no model of its own uses the workers' model, harness and context. When neither has a model, when the **Planner** switch in section **1 · Parts of the rig** is off, or when the model gives no valid plan in two tries, the lanes take queued experiments in order, by fixed rules. That order skips the directions an **Avoid** rule names and puts **Always** and **Try** directions first. It applies only rules that name a direction the run has used; rules in other words are applied only by the planner's model. The switch's own text says the same: "When it is off: Lanes take queued experiments in order, by the fixed rules. Rules that name a direction still apply; free-word rules need the planner's model."
 - **An advisor** with no model uses the rig default: the role from the rig's advisors file. If the file has none, or the rig has no file, that advisor does not run. See [Configure advisors](../operate/advisors.md).
 
-An advisor also runs only while its switch is on in section **1 · Parts of the rig**: **Auditor**, **Teachers** or **Review panel**. The teachers' merged by model follows the **Teachers** switch. The switches are on by default, but a switch that is on runs nothing until its advisor also has a model, here or in the advisors file. Why each advisor exists is in [Supervision](../../explanation/supervision.md).
+An advisor also runs only while its switch is on in section **1 · Parts of the rig**: **Teachers**, **Auditor** or **Review panel**. The teachers' merged by model follows the **Teachers** switch. The switches are on by default, but a switch that is on runs nothing until its advisor also has a model, here or in the advisors file. Why each advisor exists is in [Supervision](../../explanation/supervision.md).
 
 The switches also decide who can get your messages. In **Live**'s message box, the **To** list greys out the planner and each advisor whose switch is off, and says why, such as "The planner is off on this rig (Edit rig), so nothing would read it." Once the rig's supervisor has reported, the list also greys out an advisor it hasn't set up, such as one whose switch is on but which has no model: "This rig's supervisor has no auditor set up, so nothing would read it." Control refuses a message to any of them with those words, from **Live**, MCP, the REST API or the command line. With the planner off, a run's **Planner** tab shows no **Tell the planner** form, only a note and a link back here. See [Send the agents a message](../campaigns/steer-a-run.md#send-the-agents-a-message).
 
@@ -133,7 +174,7 @@ A change to the rig's settings on this page, such as a switch in section **1 · 
 
 ## Where each agent runs
 
-Each agent runs in one of four programs, its **harness**. The first program in each cell is the one this page gives; the others, the planner's and the advisors' too, can be chosen over MCP or REST.
+Each agent runs in one of four programs, its **harness**, chosen under **Runs in**. The first program in each cell is the one the page sets when you choose the model; the others can be chosen there, or over MCP or REST.
 
 | Model from | Workers | Planner, with a model of its own | Advisors |
 | --- | --- | --- | --- |
@@ -166,11 +207,11 @@ The list offers **default**, **low**, **medium**, **high**, **xhigh** and **max*
 Two cases take no effort from this page:
 
 - Agents that run in **OpenCode v2**: Thermite does not pass the effort to OpenCode. In **Codex**, the effort is Codex's reasoning effort, with **xhigh** and **max** sent as **high**.
-- Workers on **its own settings**: they use the rig's `THERMITE_MODEL_REASONING_EFFORT` setting instead.
+- Workers on **rig default**: they use the rig's `THERMITE_MODEL_REASONING_EFFORT` setting instead.
 
 ## Share a subscription
 
-When any agent uses a subscription, a note under the table counts the sessions: "One subscription, many agents: on this rig, of the agent sessions that run at once, up to N can use a Claude subscription…". Each worker is one session, the row **Teacher pair** two (its two teachers) and the review panel three. The same plan may serve other rigs too. When the plan is full, these agents wait; nothing pays for more.
+When any agent uses a subscription, a note under the table counts the agents on it, such as "Up to 3 agents on a Claude subscription and 1 agent on a ChatGPT subscription at once on this rig. When a plan is full, they wait." Each worker counts as one agent, each teacher and the merged by model as one each, and the review panel as three. The planner with no model of its own counts with the workers' subscription. The same plan may serve other rigs too. When the plan is full, these agents wait; nothing pays for more.
 
 ## Spending
 
@@ -187,14 +228,15 @@ For the rest, give each campaign a stop time (**Stop after (hours)** on the **Ne
 
 ## If something goes wrong
 
-A refused change shows on the rig's page, in a card that starts with **Not done.** Saving stops at the agent it refused: agents above it in the table may already have their new model, and nothing below it is saved, nor anything else on the page. Open **Edit rig** again to see what the rig has now.
+The page checks each line as you type, in control's words, and keeps **Save changes** off while a line is refused. Control checks the form again when you save. A refused change shows on the rig's page, in a card that starts with **Not done.** and the line's name, such as "Not done. Auditor: A Claude subscription runs only in Claude Code: …". Nothing on the page is saved then: not the other lines, nor the switches or the settings. Open **Edit rig** again, change the line, and save again.
 
 | You see | What to do |
 | --- | --- |
 | "That provider does not list that model." (or with a role in brackets) | Refresh the provider's models on **Providers**, or add the model by name there. |
-| "Claude Code runs only with a Claude subscription here: choose Pi or OpenCode v2 for this provider." (or "… Pi, OpenCode v2 or Codex …" for a ChatGPT subscription or an OpenAI-compatible provider) | Set the workers' **Runs in** to one of those. |
-| "OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig." | Set the workers' **Runs in** to **OpenCode v2**. |
-| "Codex runs only with a ChatGPT subscription or an OpenAI-compatible provider: choose Pi or OpenCode v2 for this provider." | Set the workers' **Runs in** to **Pi** or **OpenCode v2**, or give them a model from a ChatGPT subscription or an OpenAI-compatible provider. |
-| "A Claude subscription runs only in Claude Code: choose Claude Code for the auditor, or another model." (over MCP or REST, for any agent) | Leave out `harness`, or give `claude-code`. |
-| "OpenCode's free models run only in OpenCode: choose OpenCode v2 for the teachers, or another model." (over MCP or REST, for any agent) | Leave out `harness`, or give `opencode`. |
+| "A Claude subscription runs only in Claude Code: choose Claude Code for the auditor, or another model." | Set that line's **Runs in** to **Claude Code**. Over MCP or REST, leave out `harness`, or give `claude-code`. |
+| "Claude Code runs only with a Claude subscription here: choose Pi or OpenCode v2 for this provider." (or "… Pi, OpenCode v2 or Codex …" for a ChatGPT subscription or an OpenAI-compatible provider) | Set that line's **Runs in** to one of those. |
+| "Codex runs only with a ChatGPT subscription or an OpenAI-compatible provider: choose Pi or OpenCode v2 for this provider." | Set that line's **Runs in** to **Pi** or **OpenCode v2**, or give it a model from a ChatGPT subscription or an OpenAI-compatible provider. |
+| "OpenCode's free models run only in OpenCode: choose OpenCode v2 for the review panel, or another model." (for the workers: "… run only in the OpenCode harness: choose OpenCode v2 for this rig.") | Set that line's **Runs in** to **OpenCode v2**. Over MCP or REST, leave out `harness`, or give `opencode`. |
+| "my-model takes at most 204,800 tokens.", or another word on a window or a point | Change the line's **Context** numbers: see [Set an agent's context window and compaction](#set-an-agents-context-window-and-compaction). |
+| "Teacher 2: a second teacher needs a first. Choose the first teacher's model, or remove the second teacher." | Give the **Teachers** line a model, or press **×** beside the second teacher. |
 | "This rig's harness is older: it does not report its settings and cannot take them." | The rig's images are older than control. The workers' model still works. On the local stack, build the images again ([Stop, start and update](../install/one-machine.md#stop-start-and-update)). A rig that control set up on a cluster moves onto newer images from its page: see [Move a rig onto new images](../operate/rig-lifecycle.md#a-rig-on-a-cluster). A rig on a machine, or one you joined, can't move yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)): add a new rig from newer images ([Push the images to your own registry](../install/own-registry.md)). |

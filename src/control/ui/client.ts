@@ -178,6 +178,13 @@ export const CLIENT_JS = `
     }
     const close = ev.target.closest && ev.target.closest("[data-close]");
     if (close) { const w = close.closest(".drawer-wrap"); if (w) { ev.preventDefault(); w.hidden = true; } }
+    // A link out of a panel to a part of the same page: the panel closes, the part shows.
+    const to = ev.target.closest && ev.target.closest("[data-close-to]");
+    const part = to && $(to.dataset.closeTo);
+    if (part) {
+      const w = to.closest(".drawer-wrap");
+      if (w) { ev.preventDefault(); w.hidden = true; part.scrollIntoView({ block: "start" }); const f = part.querySelector("input:not([type=hidden])"); if (f) f.focus({ preventScroll: true }); }
+    }
   });
   document.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape") document.querySelectorAll(".drawer-wrap:not([hidden])").forEach((w) => (w.hidden = true));
@@ -205,6 +212,16 @@ export const CLIENT_JS = `
       if (line) line.textContent = has ? "The rig's agents, on " + has + "." : "This rig has no model for its agents yet: pick one below.";
       const past = start.querySelectorAll("input[name=past]:checked").length;
       if (sum) sum.textContent = rig ? "Starts a new run on " + rig.value + (agents ? ", with agents on " + (picked || has || "a model you pick") + "." + (past ? " It starts from " + past + " item" + (past === 1 ? "" : "s") + " of past research." : "") : ", as a try: the judge only.") : "Choose a rig.";
+      // The campaign's Agents' context (goal 070): the chosen rig's line, and a run that control
+      // refuses there is not sent.
+      start.querySelectorAll("[data-cc-line]").forEach((el) => { el.hidden = !rig || el.dataset.ccLine !== rig.value; });
+      const refused = !!rig && agents && rig.dataset.ccRefused !== undefined;
+      if (sum) {
+        sum.classList.toggle("bad", refused);
+        if (refused) sum.textContent = "Not on " + rig.value + ": choose another rig, or lower this campaign's window.";
+      }
+      const go = start.querySelector("footer button.primary");
+      if (go) go.disabled = refused;
     };
     start.addEventListener("change", update);
     update();

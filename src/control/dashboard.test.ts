@@ -351,7 +351,12 @@ describe("control dashboard", () => {
     assert.notEqual(codexRoute.route?.revision, a.route?.revision);
     edit = await (await s.get("/ui/rigs/rig-a/edit")).text();
     assert.match(edit, /<option value="codex" selected>Codex<\/option>/);
-    assert.match(edit, /data-runs="planner">as the workers: Codex</);
+    // The workers' Runs in says Codex; the planner, with no model of its own, follows them.
+    assert.match(
+      edit,
+      /name="harness" data-runs-in="workers"[^>]*>(?:(?!<\/select>)[\s\S])*<option value="codex" selected>Codex<\/option>/,
+    );
+    assert.match(edit, /data-ctx-sum="planner"><span class="muted">as the workers: [^<]+ · 80%</);
     page = await (await s.get("/ui/settings")).text();
     assert.match(page, /<option value="codex" selected>Codex<\/option>/);
     // Left to control, a ChatGPT sign-in keeps Pi.
@@ -434,9 +439,15 @@ describe("control dashboard", () => {
       api_key: "sk-ant-api-roles",
     });
     page = await (await s.get("/ui/rigs/rig-a/edit")).text();
-    // Each row by the role it sets (goal 074); the rows keep their names until the owner approves
-    // Edit rig's new ones: Teacher pair sets both teachers, Combiner their merged by model.
-    for (const role of ["planner", "teachers", "merged_by", "auditor", "review_panel"])
+    // Each line by the role it sets (goal 074): the first teacher, the second, the merged by model.
+    for (const role of [
+      "planner",
+      "teachers",
+      "second_teacher",
+      "merged_by",
+      "auditor",
+      "review_panel",
+    ])
       assert.match(page, new RegExp(`name="role_${role}" data-role="${role}"`));
     assert.match(page, /same as the workers/);
     assert.match(page, /data-kind="claude"[^>]*>claude-code:opus-5\.5/);
@@ -483,19 +494,18 @@ describe("control dashboard", () => {
       harness: "opencode",
     });
     page = await (await s.get("/ui/rigs/rig-a/edit")).text();
-    assert.match(
-      page,
-      /data-runs="teachers" data-saved="OpenCode v2 in the supervisor, past research and the kit's MCP tools only">OpenCode v2 in the supervisor/,
-    );
-    // The auditor on a Claude subscription: Claude Code, and no saved text to keep for a row
-    // with no model of its own.
-    assert.match(page, /data-runs="auditor" data-saved="Claude Code, past research/);
-    assert.match(page, /data-runs="merged_by">the advisors file, if the rig has one</);
+    const runsIn = (role: string) =>
+      new RegExp(`data-runs-in="${role}"[^>]*>(?:(?!</select>)[\\s\\S])*`).exec(page)?.[0] ?? "";
+    assert.match(runsIn("teachers"), /<option value="opencode" selected>OpenCode v2<\/option>/);
+    // The auditor on a Claude subscription: Claude Code. The merged by model, with no model of
+    // its own: the rig default.
+    assert.match(runsIn("auditor"), /<option value="claude-code" selected>Claude Code<\/option>/);
+    assert.match(runsIn("merged_by"), /<option value="" selected>rig default<\/option>/);
     // The Codex CLI speaks only OpenAI's Responses API: not with Anthropic's.
     const noCodex = await s.post("/ui/rigs/rig-a/edit", { ...form, harness: "codex" });
     assert.match(
       decodeURIComponent(String(noCodex.headers.get("location"))),
-      /error=Codex runs only with a ChatGPT subscription or an OpenAI-compatible provider: choose Pi or OpenCode v2 for this provider\./,
+      /error=Workers: Codex runs only with a ChatGPT subscription or an OpenAI-compatible provider: choose Pi or OpenCode v2 for this provider\./,
     );
     assert.equal(s.store.rigModels()["rig-a"]?.harness, "pi");
     const asRig = (path: string) =>
@@ -519,21 +529,18 @@ describe("control dashboard", () => {
     assert.equal(adv.teachers?.type, "anthropic");
     assert.equal(adv.combiner, null);
     assert.equal(adv.panel, null);
-    // The row Teacher pair gives both teachers its model and effort, as its words say.
-    const both = (adv as unknown as { teacher_models: { model: string; reasoning: string }[] })
+    // The line Teachers gives the first teacher its model and effort: one teacher.
+    const one = (adv as unknown as { teacher_models: { model: string; reasoning: string }[] })
       .teacher_models;
     assert.deepEqual(
-      both.map((t) => [t.model, t.reasoning]),
-      [
-        ["claude-test", "high"],
-        ["claude-test", "high"],
-      ],
+      one.map((t) => [t.model, t.reasoning]),
+      [["claude-test", "high"]],
     );
     assert.deepEqual(
-      [s.store.roleModels("rig-a").second_teacher?.harness, adv.merged_by, adv.review_panel],
-      ["opencode", null, null],
+      [s.store.roleModels("rig-a").second_teacher, adv.merged_by, adv.review_panel],
+      [undefined, null, null],
     );
-    // Its empty choice clears both; a form without a row's field keeps that row's model.
+    // Its empty choice clears the teachers; a form without a line's field keeps that line's model.
     await s.post("/ui/rigs/rig-a/edit", { ...form, role_teachers: "", effort_teachers: "" });
     assert.deepEqual(
       [s.store.roleModels("rig-a").teachers, s.store.roleModels("rig-a").second_teacher],

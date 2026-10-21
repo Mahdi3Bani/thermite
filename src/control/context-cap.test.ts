@@ -231,7 +231,7 @@ describe("a cap on a rig's model context window", () => {
       /Its agents run under Pi with wide-model from lab\. Its context window: 131,072 tokens \(capped; the provider allows 204,800\)\./,
     );
     const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(settings)?.[1] ?? "";
-    // Providers' Use with the same model (Edit rig's form has no field for the cap either).
+    // Providers' Use with the same model: its form has no field for the cap.
     await s.post("/ui/settings/rigs", {
       csrf,
       rig: "rig-a",
@@ -551,7 +551,7 @@ describe("every agent's own cap and compaction point (goal 070)", () => {
     const edit = await s.page("/ui/rigs/rig-a/edit");
     const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(edit)?.[1] ?? "";
     assert.ok(csrf);
-    // Another effort for the same model: Edit rig has no field for the cap or the point yet.
+    // Another effort for the same model, from a form without the line's Context fields.
     await s.post("/ui/rigs/rig-a/edit", {
       csrf,
       choice: "",

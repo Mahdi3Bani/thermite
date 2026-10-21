@@ -1,7 +1,10 @@
+import type { AgentsContext } from "../../core/compaction.ts";
 import { ID_PATTERN } from "../../core/contract.ts";
 import { AGENT_KINDS, type AgentKind, type McpUse, McpUses, sameUses } from "../../core/mcp.ts";
 import type { McpServer } from "../mcp-servers.ts";
+import { contextFields, fieldValues } from "./campaign-context.ts";
 import { esc } from "./components.ts";
+import { infoLabel } from "./new-campaign.ts";
 import { AGENT_WORDS, serverRow } from "./new-campaign-mcp.ts";
 
 /**
@@ -10,9 +13,11 @@ import { AGENT_WORDS, serverRow } from "./new-campaign-mcp.ts";
  * New campaign page's name rules, and for a research campaign the MCP servers its agents use, as
  * the source has them, in the New campaign page's rows (the workers and the advisors: a research
  * run has no planner). A hill-climb or goal campaign's servers are in its kit's kit.json, which a
- * copy does not change: the panel lists them, read only. Its form posts without the page's script
- * (/ui/assets/copy.js, copy-campaign-client.ts), which checks the name and keeps the summary, the
- * request over REST and the command line, and the Copy button in step.
+ * copy does not change: the panel lists them, read only. Then the copy's Agents' context (goal
+ * 070): its context window and compaction point, as the source has them. Its form posts without
+ * the page's script (/ui/assets/copy.js, copy-campaign-client.ts), which checks the name and the
+ * numbers and keeps the summary, the request over REST and the command line, and the Copy button
+ * in step.
  */
 
 /** A research run's kinds of agent, as the rows offer them: its research plan is code. */
@@ -40,6 +45,10 @@ export interface CopyPanel {
   picked?: readonly McpUse[] | undefined;
   /** Why control did not copy at the last try, in its words. */
   error?: string | undefined;
+  /** The source's Agents' context (goal 070): the copy's starts as it. */
+  context?: AgentsContext | undefined;
+  /** The copy's Agents' context as typed at the last try, to show again. */
+  typed?: { cw: string; ca: string } | undefined;
 }
 
 /**
@@ -66,6 +75,13 @@ function requestWords(from: string, name: string, servers: readonly McpUse[] | u
     json: `POST /v1/campaigns/${from}/copy\n${JSON.stringify(body, null, 2)}`,
     cli: `Command line: thermite campaign copy ${from} ${name || "NAME"}${servers ? " --mcp-servers-json servers.json" : ""}. MCP: copy_campaign, with from: ${from}.`,
   };
+}
+
+/** The copy's Agents' context (goal 070): the two fields, as the source has them. */
+function contextPart(p: CopyPanel): string {
+  const typed = p.typed;
+  const start = typed ? { cw: typed.cw, at: typed.ca } : fieldValues(p.context);
+  return `<div class="sfd">${infoLabel("Agents' context", "The copy's own context window and compaction point, for every agent of its runs. They start as the source has them. Empty: the rig's. Control refuses to start a run of the copy on a rig where the model of an agent takes less than its window.")}${contextFields("copy", start, typed ? "" : `<span class="ok">✓ As ${esc(p.campaign)}.</span>`)}</div>`;
 }
 
 /** A hill-climb or goal campaign's servers, read only: they are in its kit's kit.json. */
@@ -161,6 +177,7 @@ export function copyDrawer(p: CopyPanel): string {
     taken: p.taken,
     folderOnly: p.folderOnly,
     source: p.source,
+    context: { cw: p.context?.context_window ?? null, at: p.context?.compact_at ?? null },
   };
   return `<div class="drawer-wrap" id="copy"${p.open ? "" : " hidden"}><a class="drawer-bg" href="${href}" data-close aria-label="Close"></a>
 <aside class="drawer" aria-label="Copy the campaign"><form method="post" action="${href}/copy" class="drawer-form" data-copy="${esc(JSON.stringify(data))}" autocomplete="off">
@@ -177,6 +194,7 @@ ${p.error ? `<div class="card warn" data-c-error><b class="bad">Not copied.</b> 
         : `<span class="cp-say" data-c-name-say aria-live="polite">Write a name for the copy.</span>`
   }</label>
 ${p.research ? researchServers(p) : kitServers(p)}
+${contextPart(p)}
 <details class="adv"><summary>The same over REST, MCP and the command line</summary><div><pre class="json cp-req" data-c-json>${esc(req.json)}</pre><div class="muted small cp-req" data-c-cli>${esc(req.cli)}</div></div></details>
 </div>
 <footer><span class="grow small muted" data-c-sum>Copies ${esc(p.what)}: the same contract${p.research ? "" : " and kit"}, with the new name. No runs yet.</span><button class="primary" data-c-go>Copy</button></footer>

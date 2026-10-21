@@ -139,10 +139,23 @@ Choose the rig. Each card shows its hardware, whether it is idle, and its agents
 :::
 
 :::caution[How many agents work at once]
-The rig's **Workers at a time** decides it: on **Rigs**, open the rig, press **Edit rig**, and find it in the **Workers (agents)** row. It is 1 unless changed, so with the defaults the two lanes take turns, one trial at a time: the run's card shows one lane at work and the other with `next:` and its experiment. Raise it for agents to work side by side ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)). The summary at **5 Review and start** counts lanes as agents too, such as `2 agents work on rig-1.`
+The rig's **Workers at a time** decides it: on **Rigs**, open the rig, press **Edit rig**, and find it under the **Workers** switch. It is 1 unless changed, so with the defaults the two lanes take turns, one trial at a time: the run's card shows one lane at work and the other with `next:` and its experiment. Raise it for agents to work side by side ([goal 061](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/061-gaps-found-by-the-docs.goal)). The summary at **5 Review and start** counts lanes as agents too, such as `2 agents work on rig-1.`
 :::
 
-Under **Advanced**:
+### Agents' context
+
+Under the fields above, **Agents' context** sets the campaign's own context window and compaction point for every agent of its runs, on any rig. Leave both empty to keep each rig's, as its **Edit rig** page sets them for each agent: "Empty: the rig's. A number applies to every agent of its runs, on any rig."
+
+| Field | What it does |
+| --- | --- |
+| **Context window** | The most each agent reads in one request, in tokens, from 4,096. Each agent works with the lower of this and its own window, so an agent its rig caps lower keeps its own. Type `131072` to compare two models at the same window |
+| **Compact at** | When each agent's conversation is compacted: a percent of its window, from 50 to 95. It replaces the rig's point |
+
+A line under them says what the first run's workers get on the rig you chose, such as "On rig-1, the first run's workers get **131,072** tokens and compact at 80%." Bold numbers are this campaign's. The line says what is wrong instead, such as `The compaction point is a whole percent of the context window, from 50 to 95.`, or `narrow-model takes at most 131,072 tokens: a run on rig-1 can't start with this window.` when the window is above what a provider lists for a model of that rig's agents. The summary at **5 Review and start** ends with it, such as `Its agents get at most 131,072 tokens and compact at 70%.` Control keeps the numbers in the campaign's contract, as `agents_context`. You can change them later on the campaign's page: see [Set the agents' context](#set-the-agents-context).
+
+### Advanced
+
+Under **Advanced**, at the foot of step 4:
 
 | Field | What it does |
 | --- | --- |
@@ -178,6 +191,7 @@ The **Campaigns** list shows a campaign only once a rig reports a run of it. A c
   - `OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig.` Choose **OpenCode v2** or **what the model needs** under **The agents run in**.
   - `Codex runs only with a ChatGPT subscription or an OpenAI-compatible provider: choose Pi or OpenCode v2 for this provider.` Choose another harness under **The agents run in**, or a model from a ChatGPT subscription or an OpenAI-compatible provider.
   - For research, with one of OpenCode's free models and the agents in Pi: `… is one of OpenCode's free models, which work only inside OpenCode, and rig-1's agents would run in Pi: a research run there could not work. Set the agents' harness to OpenCode, or give the rig a model Pi can use.` Choose **OpenCode v2** under **The agents run in**, or another model.
+  - `The agents' context: The compaction point is a whole percent of the context window, from 50 to 95.`, or the same for a window out of range: correct **Agents' context** in step 4.
 - If the run never shows, open **Commands** in the sidebar. The newest **assign campaign** row is **failed**, with the reason.
 
 | The reason starts with | What to do |
@@ -206,6 +220,7 @@ Press **Start a run** at the top of the campaign's page. A panel opens, headed *
 | **Where it runs** | One card per rig, with its hardware, `free` or `busy`, and its agents' model, or `No model for its agents yet.` A rig with other hardware than the campaign's kit is greyed out. A busy rig's card says `Busy: sort-speed-1 is at work there, and pauses when this run starts (a rig runs one run at a time).` A [rig on RunPod](../install/runpod-rig.md) whose pod is stopped says `stopped` and `Its pod is stopped: this run starts it first.` You can choose it: control starts the pod, then the run. The panel chooses a free rig for you first, and a stopped pod only when no other rig fits |
 | **Agents** | **On**: the agents propose changes, and the judge measures each one. **Off: a try**: no agents, only the judge, which measures the starting point. A try needs no model |
 | **The agents' model** | Shows with **Agents** **On**, for a rig with no model: the model to give it, as on its **Edit rig** page. Control then gives the rig the model and starts nothing yet: see [When the rig doesn't have the model yet](#when-the-rig-doesnt-have-the-model-yet) |
+| **Agents' context** | Shows with **Agents** **On**: what the workers get on the chosen rig, such as "On rig-1, the workers get **131,072** tokens and compact at **70%**." Bold numbers are this campaign's, plain ones the rig's. The link **Set this campaign's context** (or **Change this campaign's context**) closes the panel and goes to [the campaign's own](#set-the-agents-context). Each rig's card also says `Workers' window: 131,072.`, or, in red, `Can't start: narrow-model takes at most 100,000 tokens.` when the campaign's window is above what a provider lists for a model of that rig's agents. On such a rig the line at the foot says `Not on rig-1: choose another rig, or lower this campaign's window.`, and **Start the run** is off |
 | **Experiments to start with** | **Copy the untried experiments of** and a run of this campaign, such as `sort-speed-1 (4 up next, 1 lane idea)`: the new run's [experiment queue](choose-what-runs-next.md) starts with that run's waiting experiments, in the same order, and its lanes' ideas, each with who added it and why, up to 500. Ticked by default. It shows only with **Agents** **On**, and only when a run of the campaign has experiments up next or ideas. Untick it for an empty queue, which the planner fills |
 | **From past research** | A search of the folders this campaign may read: its own and those you let it read. It lists the newest 40 experiments, findings, claims, notes and reports, and the box **Search past experiments, findings and notes** searches those folders. Ticked experiments join the new run's queue, after the copied ones; a ticked finding, claim, note or report becomes background in every agent's brief. It shows only with **Agents** **On**: with **Off: a try**, it hides, and nothing ticked in it is sent. See [Start a run from past research](use-past-research.md#start-a-run-from-past-research) |
 | **When a change is confirmed better** | Under **More options**: **the rig's default**, **always keep it** or **ask me every time** |
@@ -219,8 +234,11 @@ The campaign's page comes back, with a card at the top such as `Starting rig-1/s
 - `rig-1 has not taken my-model yet (it does within a minute of being given it; Settings › Providers shows it taking the model until then): start the run after that.`: see [When the rig doesn't have the model yet](#when-the-rig-doesnt-have-the-model-yet).
 - `An item from past research is not one this campaign may read and start from: search again.`: an item ticked under **From past research** is no longer in a folder the campaign may read, for example because its folder was removed after the panel opened. Search again, and tick the items again.
 - `rig-1 has no run sort-speed-1 of sort-speed: copy from a run of this campaign.`: the run chosen under **Copy the untried experiments of** is gone, for example after a full reset of its rig. Open the panel again and choose another run.
+- `This campaign sets a context window of 150,000 tokens. narrow-model, the model of the teachers on rig-1, takes at most 131,072 tokens. Set the campaign's window to 131,072 or less, or give that agent another model.`: lower the window under [Agents' context](#set-the-agents-context), choose another rig, or give that agent another model on the rig's **Edit rig** page.
 
 For a research campaign with agents, it refuses a rig whose agents would run OpenCode's free models in Pi, with the message above. If the run you chose to copy from has tried every experiment since the panel opened, the run starts with an empty queue, and the page says `sort-speed-1 on rig-1 has no untried experiments: the new run's queue starts empty.`
+
+With an agents' context set, the note at the top also says what applies to each agent on that rig, such as `This campaign sets a context window of 131,072 tokens, compaction at 70% of the window. The lower window wins on each agent. Workers: 131,072 tokens (wide-model), compacted at 70% of the window. …`
 
 **Start a run** also works for a campaign started from the command line, the REST API or MCP, even before a rig reports a run of it: see [Start a campaign from the command line](start-from-command-line.md#start-further-runs). For runs on other rigs, see [Run a campaign on several rigs](several-rigs.md).
 
@@ -257,6 +275,19 @@ It prints the new run and its command:
 - **Refusals** come back in the panel's words, such as `409` and `{"error":"rig-1 has no model for its agents, so they could not work: …"}` over REST. The command line writes the route, the status and that answer on standard error, and exits with 2.
 - **A try.** With `--agents off`, or `"agents": false`, the twins refuse a model, a run to copy from and past research, which the panel hides: `A try (agents off) takes no model, no experiments and no background: leave them out, or start the run with agents.`
 
+## Set the agents' context
+
+A campaign's page has a block **Agents' context**, "every run of" the campaign. It sets one context window and one compaction point for every agent of the campaign's runs, on any rig, as step 4 of **New campaign** does. Use it to run two models at the same window.
+
+1. Open **Campaigns** in the sidebar, then the campaign, and scroll to **Agents' context**.
+2. Type a **Context window** in tokens, such as `131072`, and a **Compact at** percent, such as `70`. Leave a field empty to keep each rig's.
+3. Read **What applies on each rig**: one row for each rig that can run the campaign, with its workers' window, **Compact at** and a **Status**. Bold numbers are this campaign's, plain ones the rig's: a rig that caps its workers lower keeps its own window. **Status** is `ok`, or `can't start: narrow-model takes at most 100,000` on a rig where a model of an agent takes less than the window. The rows change as you type.
+4. Read the line beside **Save**, such as `You set the window: 131,072 tokens. You set Compact at: 70%. New runs take it.`, and press **Save**.
+
+The block says, for example, `Saved as version 3: 131,072 tokens at 70%. New runs of sort-speed take it. sort-speed-2 keeps what it started with.` Control saved a new version of the campaign's contract, with the numbers as `agents_context`. A run at work keeps what it started with; runs started from now take the new numbers. Saving the same numbers again says `Nothing changed: version 3 has these numbers already.` Both fields empty remove the campaign's own: `Saved as version 4: the rig's, for each agent.`
+
+A number the block refuses shows under the help line as you type, and **Save** stays off: `Write the number of tokens in digits, such as 131072.`, `A context window is a whole number of tokens from 4,096 to 100,000,000.` or `The compaction point is a whole percent of the context window, from 50 to 95.` Control refuses the same with **Not saved.** and the reason, and keeps what you typed in the fields. Under **The same over REST, MCP and the command line**, the block shows the same request for a script or an agent: see [Set a campaign's own context window](../models/model-per-agent.md#set-a-campaigns-own-context-window).
+
 ## Compare two models from zero
 
 To compare two models on the same campaign, give each model a campaign of its own: a copy. Two runs of one campaign share its folder in [Thermite's knowledge base](../../reference/knowledge-base.md). Each new run starts with what the campaign's earlier runs recorded, and while both work, each reads the other's records every few minutes. So the second model would not start from zero. A copy has the same contract and kit under another name, its own empty folder, no [grants](../../reference/knowledge-base.md#grants) and no runs.
@@ -270,10 +301,11 @@ You need a campaign that control keeps (one saved on the **New campaign** page, 
    - **A hill-climb or goal campaign.** The panel shows its kit's servers, read only, such as `gbrain for the workers` and `All its 31 tools.`: they are in the kit's kit.json, which a copy does not change.
 
    Under **The same over REST, MCP and the command line**, the panel shows the same request for a script or an agent: see [Copy from a script or an agent](#copy-from-a-script-or-an-agent).
-4. Press **Copy**. The copy's page opens, with `Copied sort-speed version 2 as sort-speed-model-b.` at the top, then `Copied from sort-speed version 2 by you, just now. Its folder in the knowledge base started empty.` and `Saved on control, with no run yet.` A copy of a research campaign whose servers differ adds `Its agents use other MCP servers than its source's:` and the list.
-5. For the other model, go back to the campaign and copy it again, such as to `sort-speed-model-a`. If the campaign has no runs yet, you can also run it as it is for the first model.
-6. Give each rig its model, on its **Edit rig** page, or under **The agents' model** in the next step: see [When the rig doesn't have the model yet](#when-the-rig-doesnt-have-the-model-yet).
-7. On each copy's page, press **Start a run of sort-speed-model-b** (or **Start a run** at the top), choose the copy's own rig under **Where it runs**, and press **Start the run**, as [Start a run later](#start-a-run-later) says.
+4. Look at **Agents' context**: the copy's own context window and compaction point for every agent of its runs. They start as the campaign has them, and the line under them says `✓ As sort-speed.` To compare the two models at the same window, give both copies the same **Context window**, such as `131072`: models whose providers list different windows then work at that one. A number that differs from the campaign's makes the line say, for example, `Not as sort-speed: 131,072 tokens at 70%.`: the copy's contract then has its own `agents_context`. Empty fields give the copy none: each rig's applies.
+5. Press **Copy**. The copy's page opens, with `Copied sort-speed version 2 as sort-speed-model-b.` at the top (and, with its own agents' context, `Agents' context: 131,072 tokens at 70%.`), then `Copied from sort-speed version 2 by you, just now. Its folder in the knowledge base started empty.` and `Saved on control, with no run yet.` A copy of a research campaign whose servers differ adds `Its agents use other MCP servers than its source's:` and the list.
+6. For the other model, go back to the campaign and copy it again, such as to `sort-speed-model-a`. If the campaign has no runs yet, you can also run it as it is for the first model.
+7. Give each rig its model, on its **Edit rig** page, or under **The agents' model** in the next step: see [When the rig doesn't have the model yet](#when-the-rig-doesnt-have-the-model-yet).
+8. On each copy's page, press **Start a run of sort-speed-model-b** (or **Start a run** at the top), choose the copy's own rig under **Where it runs**, and press **Start the run**, as [Start a run later](#start-a-run-later) says.
 
 Don't let one copy read the other's folder: leave **Can read from** empty on each copy's page.
 
@@ -290,6 +322,7 @@ The panel says why under the name, or under the servers, and **Copy** stays off:
 | `A name that starts with rig-check- is for rig checks. Choose another name.` | Type another name: [rig checks](../../reference/rig-checks.md) use these names |
 | `Choose the agents that get paper-search, or untick it.` | A research copy: tick **Workers** or **Advisors** for the server, or untick the server |
 | `The workers get no tool of paper-search: give them one, or untick workers.` | A research copy: tick a tool for them under **Advanced**, or untick **Workers** for that server |
+| `The compaction point is a whole percent of the context window, from 50 to 95.`, or another word on the window under **Agents' context** | Correct the number, or empty the field |
 
 Control checks the copy again when you press **Copy**, with the same words. If it refuses, for example because another copy took the name after the panel opened, the panel opens again with **Not copied.** and the reason, and control saves nothing. Without the page's script, the panel posts all the same and shows control's answer the same way.
 
@@ -304,4 +337,4 @@ npx thermite run start sort-speed-model-a --rig rig-1 \
   --control http://127.0.0.1:8800 --token-file .dev/secrets/control-admin-token
 ```
 
-The first command prints the copy, such as `{"campaign":"sort-speed-model-a","version":1,"contract_sha":"<sha256>","from":{"campaign":"sort-speed","version":2}}`; the second starts a run of it. Over REST it is `POST /v1/campaigns/sort-speed/copy` with `{"name": "sort-speed-model-a"}`. Over MCP it is [`copy_campaign`](../../reference/mcp-tools.md#copy_campaign) with `{"from": "sort-speed", "name": "sort-speed-model-a"}`. A research copy's other servers are `mcp_servers` there, or `--mcp-servers-json` on the command line: see [`campaign copy`](../../reference/command-line.md#campaign-copy).
+The first command prints the copy, such as `{"campaign":"sort-speed-model-a","version":1,"contract_sha":"<sha256>","from":{"campaign":"sort-speed","version":2}}`; the second starts a run of it. Over REST it is `POST /v1/campaigns/sort-speed/copy` with `{"name": "sort-speed-model-a"}`. Over MCP it is [`copy_campaign`](../../reference/mcp-tools.md#copy_campaign) with `{"from": "sort-speed", "name": "sort-speed-model-a"}`. A research copy's other servers are `mcp_servers` there, or `--mcp-servers-json` on the command line: see [`campaign copy`](../../reference/command-line.md#campaign-copy). The copy's own agents' context is `agents_context` there, such as `{"context_window": 131072}` (`null`: none), or `--context-window` and `--compact-at` on the command line.
