@@ -287,14 +287,15 @@ describe("the compaction point of a rig's model (goal 070)", () => {
         error: "The compaction point is a whole percent of the context window, from 50 to 95.",
       });
     }
-    const planner = await s.give({
+    // The planner with its own model takes its own point (goal 070), out of range refused alike.
+    const badPlanner = await s.give({
       agent: "planner",
       provider: "lab",
       model: "wide-model",
-      compact_at: 70,
+      compact_at: 99,
     });
-    assert.equal(planner.status, 400);
-    assert.match(JSON.stringify(await planner.json()), /Only the workers take a compaction point/);
+    assert.equal(badPlanner.status, 400);
+    assert.match(JSON.stringify(await badPlanner.json()), /from 50 to 95/);
     const cleared = await s.give({ clear: true, compact_at: 70 });
     assert.equal(cleared.status, 400);
     assert.equal(s.store.rigModels()["rig-a"]?.compactAt, 70, "a refusal changes nothing");
@@ -370,5 +371,198 @@ describe("the compaction point of a rig's model (goal 070)", () => {
       choice: "lab|narrow-model",
     });
     assert.equal(s.store.rigModels()["rig-a"]?.compactAt, undefined, "set for the model before");
+  });
+});
+
+describe("every agent's own cap and compaction point (goal 070)", () => {
+  /** The rig's routes: its workers' and planner's, and its advisors'. */
+  const routes = async (s: Awaited<ReturnType<typeof stack>>) => {
+    const get = async (path: string) =>
+      (await (
+        await s.api.request(path, { headers: { authorization: "Bearer rig-token-abcdef" } })
+      ).json()) as Record<string, { context_window: number; compact_at?: number } | null>;
+    return {
+      model: await get("/v1/rigs/rig-a/model-route"),
+      advisors: await get("/v1/rigs/rig-a/advisor-routes"),
+    };
+  };
+
+  test("REST: the planner and each advisor keep their own, their routes carry them, and the cap is checked", async () => {
+    const s = await stack();
+    await s.give({ provider: "lab", model: "wide-model", context_window: 131_072, compact_at: 85 });
+    const planner = await s.give({
+      agent: "planner",
+      provider: "lab",
+      model: "wide-model",
+      context_window: 65_536,
+      compact_at: 70,
+    });
+    assert.equal(planner.status, 200);
+    const said = (await planner.json()) as Record<string, unknown>;
+    assert.equal(said.context_window, 65_536);
+    assert.equal(said.compact_at, 70);
+    assert.match(
+      String(said.said),
+      /^Control sent a model for the planner to rig-a\. The rig takes the change in less than one minute\. Its context window: 65,536 tokens \(capped; the provider allows 204,800\)\. Its conversations are compacted at 70% of the window\.$/,
+    );
+    for (const [agent, model, cap, at] of [
+      ["teachers", "narrow-model", 32_768, 60],
+      ["auditor", "open-model", 16_384, undefined],
+      ["panel", "wide-model", undefined, 90],
+    ] as const) {
+      const r = await s.give({
+        agent,
+        provider: "lab",
+        model,
+        ...(cap ? { context_window: cap } : {}),
+        ...(at ? { compact_at: at } : {}),
+      });
+      assert.equal(r.status, 200, agent);
+    }
+    const r = await routes(s);
+    // The workers' and the planner's own, each in its route.
+    assert.equal(r.model.route?.context_window, 131_072);
+    assert.equal(r.model.route?.compact_at, 85);
+    assert.equal(r.model.planner?.context_window, 65_536);
+    assert.equal(r.model.planner?.compact_at, 70);
+    // Each advisor's: a cap below the provider's, a cap with no provider window, a point alone.
+    assert.equal(r.advisors.teachers?.context_window, 32_768);
+    assert.equal(r.advisors.teachers?.compact_at, 60);
+    assert.equal(r.advisors.auditor?.context_window, 16_384);
+    assert.equal(r.advisors.auditor?.compact_at, undefined);
+    assert.equal(r.advisors.panel?.context_window, 204_800);
+    assert.equal(r.advisors.panel?.compact_at, 90);
+    assert.equal(r.advisors.combiner, null);
+    const read = (await (
+      await s.api.request("/v1/rigs/rig-a/model", {
+        headers: { authorization: `Bearer ${TOKENS.admin}` },
+      })
+    ).json()) as {
+      agents: Record<string, { context_cap: number | null; compact_at: number | null } | null>;
+    };
+    assert.deepEqual(
+      Object.fromEntries(
+        Object.entries(read.agents).map(([k, v]) => [k, v && [v.context_cap, v.compact_at]]),
+      ),
+      {
+        workers: [131_072, 85],
+        planner: [65_536, 70],
+        teachers: [32_768, 60],
+        combiner: null,
+        auditor: [16_384, null],
+        panel: [null, 90],
+      },
+    );
+
+    // Refused as the workers' are: above the provider's window, out of range; nothing changes.
+    const over = await s.give({
+      agent: "teachers",
+      provider: "lab",
+      model: "narrow-model",
+      context_window: 200_000,
+    });
+    assert.equal(over.status, 400);
+    assert.deepEqual(await over.json(), { error: "narrow-model takes at most 131,072 tokens." });
+    const low = await s.give({
+      agent: "auditor",
+      provider: "lab",
+      model: "open-model",
+      context_window: 100,
+    });
+    assert.equal(low.status, 400);
+    assert.match(JSON.stringify(await low.json()), /from 4,096 to 100,000,000/);
+    assert.equal(s.store.roleModels("rig-a").teachers?.contextCap, 32_768);
+
+    // Given again without them: none, as for the workers.
+    await s.give({ agent: "teachers", provider: "lab", model: "narrow-model" });
+    const again = await routes(s);
+    assert.equal(again.advisors.teachers?.context_window, 131_072);
+    assert.equal(again.advisors.teachers?.compact_at, undefined);
+    const audit = s.store
+      .listAudit(50, { action: "agent_model_given" })
+      .map((e) => e.body as { role: string; context_cap: number | null; compact_at: number | null })
+      .reverse();
+    assert.deepEqual(
+      audit.map((a) => [a.role, a.context_cap, a.compact_at]),
+      [
+        ["planner", 65_536, 70],
+        ["teachers", 32_768, 60],
+        ["auditor", 16_384, null],
+        ["panel", null, 90],
+        ["teachers", null, null],
+      ],
+    );
+  });
+
+  test("MCP: set_rig_model sets an advisor's own, and rig_models shows it", async () => {
+    const s = await stack();
+    const mcp = await connect(s.api, TOKENS.operator);
+    const r = text(
+      await mcp.callTool({
+        name: "set_rig_model",
+        arguments: {
+          rig: "rig-a",
+          agent: "auditor",
+          provider: "lab",
+          model: "wide-model",
+          context_window: 131_072,
+          compact_at: 75,
+        },
+      }),
+    );
+    assert.equal(r.context_window, 131_072);
+    assert.equal(r.compact_at, 75);
+    const read = text(await mcp.callTool({ name: "rig_models", arguments: { rig: "rig-a" } }));
+    assert.deepEqual((read.agents as Record<string, unknown>).auditor, {
+      provider: "lab",
+      model: "wide-model",
+      effort: null,
+      harness: "pi",
+      context_cap: 131_072,
+      compact_at: 75,
+    });
+    assert.equal((await routes(s)).advisors.auditor?.context_window, 131_072);
+    const description = String(
+      (await mcp.listTools()).tools.find((t) => t.name === "set_rig_model")?.description,
+    );
+    assert.match(description, /Every agent takes context_window and compact_at/);
+    await mcp.close();
+  });
+
+  test("Edit rig's form keeps an agent's own while it keeps the same model, and drops it with another", async () => {
+    const s = await stack();
+    await s.give({
+      agent: "auditor",
+      provider: "lab",
+      model: "wide-model",
+      effort: "low",
+      context_window: 131_072,
+      compact_at: 70,
+    });
+    const edit = await s.page("/ui/rigs/rig-a/edit");
+    const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(edit)?.[1] ?? "";
+    assert.ok(csrf);
+    // Another effort for the same model: Edit rig has no field for the cap or the point yet.
+    await s.post("/ui/rigs/rig-a/edit", {
+      csrf,
+      choice: "",
+      harness: "pi",
+      role_auditor: "lab|wide-model",
+      effort_auditor: "high",
+    });
+    const kept = s.store.roleModels("rig-a").auditor;
+    assert.deepEqual([kept?.effort, kept?.contextCap, kept?.compactAt], ["high", 131_072, 70]);
+    await s.post("/ui/rigs/rig-a/edit", {
+      csrf,
+      choice: "",
+      harness: "pi",
+      role_auditor: "lab|narrow-model",
+      effort_auditor: "high",
+    });
+    const other = s.store.roleModels("rig-a").auditor;
+    assert.deepEqual(
+      [other?.model, other?.contextCap, other?.compactAt],
+      ["narrow-model", undefined, undefined],
+    );
   });
 });

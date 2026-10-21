@@ -13,6 +13,7 @@ import { SecretBox } from "../control/secrets.ts";
 import { ControlStore } from "../control/store.ts";
 import { ControlTunnels } from "../control/tunnel.ts";
 import { generateSigningKeys } from "../core/commands.ts";
+import { parseContract } from "../core/contract.ts";
 import { FAKE_RUNPOD_KEY, fakeRunpod } from "../testing/fake-runpod.ts";
 
 const run = promisify(execFile);
@@ -281,6 +282,54 @@ describe("thermite assign --note (goal 066)", () => {
         [2, "--direction is the old name of --note: give only --note"],
         cmd[0],
       );
+    }
+  });
+});
+
+describe("thermite assign --context-window and --compact-at (goal 070)", () => {
+  const assign = [
+    "assign",
+    "--contract",
+    CONTRACT,
+    "--run",
+    "smoke-cpu-2",
+    "--seed-commit",
+    COMMIT,
+    "--print",
+  ];
+
+  test("they set the campaign's own context settings in the contract sent, with its new hash", async () => {
+    const plain = JSON.parse((await cli(...assign)).stdout) as {
+      contract: Record<string, unknown>;
+      contract_sha: string;
+    };
+    assert.equal("agents_context" in plain.contract, false);
+    const r = await cli(...assign, "--context-window", "131072", "--compact-at", "70");
+    assert.equal(r.code, 0, r.stderr);
+    const sent = JSON.parse(r.stdout) as {
+      contract: Record<string, unknown>;
+      contract_sha: string;
+    };
+    assert.deepEqual(sent.contract.agents_context, { context_window: 131_072, compact_at: 70 });
+    const check = parseContract(sent.contract);
+    assert.ok(check.ok);
+    assert.equal(sent.contract_sha, check.sha, "the hash of the contract sent");
+    assert.notEqual(sent.contract_sha, plain.contract_sha);
+    // One alone: the other is the file's (none here).
+    const point = JSON.parse((await cli(...assign, "--compact-at", "60")).stdout) as {
+      contract: { agents_context?: unknown };
+    };
+    assert.deepEqual(point.contract.agents_context, { compact_at: 60 });
+    // Out of range: refused in words, before anything is sent.
+    for (const [flag, value, words] of [
+      ["--context-window", "1000", /from 4,096 to 100,000,000/],
+      ["--context-window", "big", /from 4,096 to 100,000,000/],
+      ["--compact-at", "99", /from 50 to 95/],
+    ] as const) {
+      const bad = await cli(...assign, flag, value);
+      assert.equal(bad.code, 2, `${flag} ${value}`);
+      assert.match(bad.stderr, /^--context-window and --compact-at: /);
+      assert.match(bad.stderr, words);
     }
   });
 });

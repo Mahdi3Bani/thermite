@@ -1,3 +1,4 @@
+import { COMPACT_AT_MAX, COMPACT_AT_MIN } from "../core/compaction.ts";
 import { buildHeaders } from "../core/version.ts";
 import { type AdvisorRuntime, AdvisorsConfig } from "./advisors.ts";
 
@@ -16,7 +17,10 @@ export interface AdvisorRoute {
   type: string;
   base_url: string;
   model: string;
+  /** The route's window: the provider's, or the owner's cap on the role's model (goal 070). */
   context_window: number;
+  /** The role's compaction point, when the owner set one (goal 070). */
+  compact_at?: number | undefined;
   reasoning: string | null;
   effort?: string | null | undefined;
   /** The harness the role runs in (older controls: none, Pi or what the model needs). */
@@ -33,8 +37,21 @@ export interface ControlAdvisors {
 
 const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 
-/** One role's runtime from its route, or undefined when advisors can't run it. */
+/** A compaction point a route carries, when it is a whole percent in range. */
+const pointOf = (route: AdvisorRoute) =>
+  Number.isInteger(route.compact_at) &&
+  (route.compact_at as number) >= COMPACT_AT_MIN &&
+  (route.compact_at as number) <= COMPACT_AT_MAX
+    ? route.compact_at
+    : undefined;
+
+/**
+ * One role's runtime from its route, or undefined when advisors can't run it. The route's window
+ * and compaction point go with it (goal 070): Pi compacts the call's conversation with them, and
+ * Claude Code, OpenCode and Codex get them in their own settings.
+ */
 export function runtimeOf(route: AdvisorRoute, name: string): AdvisorRuntime | undefined {
+  const compactAt = pointOf(route);
   if (route.type === "claude")
     return {
       name,
@@ -42,6 +59,8 @@ export function runtimeOf(route: AdvisorRoute, name: string): AdvisorRuntime | u
       model: route.model,
       token: route.api_key,
       effort: EFFORTS.find((e) => e === route.effort),
+      ...(route.context_window > 0 ? { context_window: route.context_window } : {}),
+      ...(compactAt !== undefined ? { compact_at: compactAt } : {}),
       timeout_s: 1800,
     };
   const reasoning = route.reasoning;
@@ -56,6 +75,7 @@ export function runtimeOf(route: AdvisorRoute, name: string): AdvisorRuntime | u
         api: "opencode",
         model: route.model,
         context_window: route.context_window,
+        ...(compactAt !== undefined ? { compact_at: compactAt } : {}),
         timeout_s: 1800,
       };
     if (route.type !== "openai" && route.type !== "anthropic" && route.type !== "chatgpt")
@@ -68,6 +88,7 @@ export function runtimeOf(route: AdvisorRoute, name: string): AdvisorRuntime | u
       model: route.model,
       api_key: route.api_key,
       context_window: route.context_window,
+      ...(compactAt !== undefined ? { compact_at: compactAt } : {}),
       timeout_s: 1800,
     };
   }
@@ -83,6 +104,7 @@ export function runtimeOf(route: AdvisorRoute, name: string): AdvisorRuntime | u
       api_key: route.api_key,
       reasoning: effort,
       context_window: route.context_window,
+      ...(compactAt !== undefined ? { compact_at: compactAt } : {}),
       timeout_s: 1800,
     };
   }
@@ -97,6 +119,7 @@ export function runtimeOf(route: AdvisorRoute, name: string): AdvisorRuntime | u
     api_key: route.api_key,
     reasoning: effort,
     context_window: route.context_window || 200_000,
+    ...(compactAt !== undefined ? { compact_at: compactAt } : {}),
     max_tokens: 8192,
     max_turns: 24,
     timeout_s: 900,

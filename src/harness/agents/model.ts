@@ -2,7 +2,7 @@ import { createModels, createProvider, type Model } from "@earendil-works/pi-ai"
 import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
-import { compactAtRefusal } from "../../core/compaction.ts";
+import { type AgentsContext, compactAtRefusal, contextApplied } from "../../core/compaction.ts";
 
 /**
  * The harness's model route: an OpenAI-compatible endpoint (for example a LiteLLM or vLLM
@@ -74,6 +74,25 @@ export function reasoningFromEnv(raw: string | undefined): ReasoningEffort | und
   if (raw === "none" || raw === "off") return "off";
   if (raw === "low" || raw === "medium" || raw === "high") return raw;
   throw new Error(`THERMITE_MODEL_REASONING_EFFORT must be none, low, medium or high, not ${raw}`);
+}
+
+/**
+ * An agent's model in a run of a campaign with its own context settings (the contract's
+ * `agents_context`, goal 070): the lower of the route's window and the campaign's (the
+ * campaign's as given when the route lists none), and the campaign's compaction point over the
+ * route's. Without campaign settings, or without a model, the same as given.
+ */
+export function withAgentsContext(
+  m: ModelConfig | undefined,
+  campaign: AgentsContext | undefined,
+): ModelConfig | undefined {
+  if (!m || !campaign) return m;
+  const a = contextApplied(m, campaign);
+  return {
+    ...m,
+    contextWindow: a.contextWindow,
+    ...(a.compactAt !== undefined ? { compactAt: a.compactAt } : {}),
+  };
 }
 
 /** A compaction point from the environment: unset, or a whole percent in range. */

@@ -143,11 +143,20 @@ describe("each agent's model over REST and MCP", () => {
       rigModelShapeRefusal({ clear: true, agent: "auditor", harness: "codex" }),
       "Give clear alone, or a provider and a model.",
     );
-    assert.match(
-      String(
-        rigModelShapeRefusal({ agent: "panel", provider: "lab", model: "m", contextWindow: 8192 }),
-      ),
-      /^Only the workers take a context window cap\./,
+    // Every agent takes its own cap and compaction point (goal 070).
+    assert.equal(
+      rigModelShapeRefusal({
+        agent: "panel",
+        provider: "lab",
+        model: "m",
+        contextWindow: 8192,
+        compactAt: 70,
+      }),
+      undefined,
+    );
+    assert.equal(
+      rigModelShapeRefusal({ agent: "planner", provider: "lab", model: "m", compactAt: 99 }),
+      "The compaction point is a whole percent of the context window, from 50 to 95.",
     );
     assert.equal(
       rigModelShapeRefusal({ provider: "lab", model: "m", harness: "codex", contextWindow: 8192 }),
@@ -184,6 +193,15 @@ describe("each agent's model over REST and MCP", () => {
     }
     const read = await s.owner("GET");
     assert.equal(read.status, 200);
+    // Each agent's model with its harness, and its own cap and point (none set here: null).
+    const roleOf = (provider: string, model: string) => ({
+      provider,
+      model,
+      effort: "high",
+      harness: "pi",
+      context_cap: null,
+      compact_at: null,
+    });
     assert.deepEqual(await read.json(), {
       rig: "rig-a",
       agents: {
@@ -195,11 +213,11 @@ describe("each agent's model over REST and MCP", () => {
           context_cap: null,
           compact_at: null,
         },
-        planner: { provider: "lab", model: "strong-model", effort: "high", harness: "pi" },
-        teachers: { provider: "sub", model: "gpt-sol", effort: "high", harness: "pi" },
-        combiner: { provider: "lab", model: "strong-model", effort: "high", harness: "pi" },
-        auditor: { provider: "sub", model: "gpt-sol", effort: "high", harness: "pi" },
-        panel: { provider: "lab", model: "wide-model", effort: "high", harness: "pi" },
+        planner: roleOf("lab", "strong-model"),
+        teachers: roleOf("sub", "gpt-sol"),
+        combiner: roleOf("lab", "strong-model"),
+        auditor: roleOf("sub", "gpt-sol"),
+        panel: roleOf("lab", "wide-model"),
       },
     });
 
@@ -287,9 +305,10 @@ describe("each agent's model over REST and MCP", () => {
       { agent: "auditor", provider: "zen", model: "big-pickle", harness: "pi" },
       "OpenCode's free models run only in OpenCode: choose OpenCode v2 for the auditor, or another model.",
     );
+    // An advisor's own cap is checked as the workers' is (goal 070).
     await refused(
-      { agent: "auditor", provider: "lab", model: "strong-model", context_window: 8192 },
-      /^Only the workers take a context window cap\./,
+      { agent: "auditor", provider: "lab", model: "strong-model", context_window: 500_000 },
+      "strong-model takes at most 400,000 tokens.",
     );
     await refused(
       { agent: "planner", provider: "lab", model: "strong-model", harness: "claude-code" },
@@ -436,24 +455,44 @@ describe("each agent's model over REST and MCP", () => {
     const audit = s.store.listAudit(5, { action: "agent_model_given" })[0];
     assert.equal(audit?.actor, "owner:operator");
 
-    const capped = await operator.callTool({
+    // An advisor's own cap and point (goal 070); one above the provider's window is refused.
+    const capped = text(
+      await operator.callTool({
+        name: "set_rig_model",
+        arguments: {
+          rig: "rig-a",
+          agent: "combiner",
+          provider: "lab",
+          model: "strong-model",
+          context_window: 65_536,
+          compact_at: 75,
+        },
+      }),
+    );
+    assert.equal(capped.context_window, 65_536);
+    assert.equal(capped.compact_at, 75);
+    assert.match(
+      String(capped.said),
+      /Its context window: 65,536 tokens \(capped; the provider allows 400,000\)\. Its conversations are compacted at 75% of the window\./,
+    );
+    const over = await operator.callTool({
       name: "set_rig_model",
       arguments: {
         rig: "rig-a",
         agent: "combiner",
         provider: "lab",
         model: "strong-model",
-        context_window: 65_536,
+        context_window: 500_000,
       },
     });
-    assert.equal(capped.isError, true);
-    assert.match(JSON.stringify(capped), /Only the workers take a context window cap\./);
+    assert.equal(over.isError, true);
+    assert.match(JSON.stringify(over), /strong-model takes at most 400,000 tokens\./);
     const unknown = await operator.callTool({
       name: "set_rig_model",
       arguments: { rig: "rig-a", agent: "judge", provider: "lab", model: "wide-model" },
     });
     assert.equal(unknown.isError, true);
-    assert.equal(s.store.roleModels("rig-a").combiner, undefined);
+    assert.equal(s.store.roleModels("rig-a").combiner?.contextCap, 65_536, "kept, not refused");
 
     const cleared = text(
       await operator.callTool({

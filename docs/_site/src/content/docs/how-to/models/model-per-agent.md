@@ -41,7 +41,7 @@ You return to the rig's page, which says, for example, "Control sent a new model
 
 The workers and the planner take a new model within a minute. The advisors read their models from control each time they run, so an advisor uses its new model from its next round.
 
-This page has no field yet for a cap on the workers' context window, or for the share of it at which their conversations are compacted. A cap or a compaction point set over the REST API or MCP stays while the workers keep the same model, and goes when you choose another one here. See [Cap the model's context window](connect-a-provider.md#cap-the-models-context-window) and [Set when a conversation is compacted](connect-a-provider.md#set-when-a-conversation-is-compacted).
+This page has no field yet for an agent's context window cap, or for the share of the window at which its conversations are compacted. Set them [over MCP or REST](#over-mcp-or-rest), for any agent. A cap or a compaction point set there stays while the agent keeps the same model, and goes when you choose another one here. See [Cap the model's context window](connect-a-provider.md#cap-the-models-context-window) and [Set when a conversation is compacted](connect-a-provider.md#set-when-a-conversation-is-compacted).
 
 When the workers' or the planner's model changes, the rig runs its model check at once. The check tests only the workers' model. For the other agents, watch a run on the rig in **Live** (in the sidebar), the dashboard's view of one run's agents at work. Choose a filter above the stream:
 
@@ -57,7 +57,7 @@ An agent or a script can set the same models without this page:
 - **MCP**, with the owner's or an operator's token: [`set_rig_model`](../../reference/mcp-tools.md#set_rig_model), with `agent` set to `workers`, `planner`, `teachers` (the teacher pair), `combiner`, `auditor` or `panel` (the review panel). [`rig_models`](../../reference/mcp-tools.md#rig_models) reads each agent's model.
 - **REST**, with the owner's token: [`POST /v1/rigs/<rig>/model`](../../reference/rest-api.md#the-agents-model) takes the same fields, and `GET /v1/rigs/<rig>/model` reads each agent's model.
 
-Each call changes one agent, and the others keep their models. The checks and the refusals are this page's. `clear: true` sends the agent back to its default, as the first choice in its **Model** list does here: **its own settings**, **same as the workers** or **the rig's advisors file**. `context_window` and `compact_at` are for the workers only.
+Each call changes one agent, and the others keep their models. The checks and the refusals are this page's. `clear: true` sends the agent back to its default, as the first choice in its **Model** list does here: **its own settings**, **same as the workers** or **the rig's advisors file**. Every agent takes `harness`, `context_window` and `compact_at`: see below and [Set an agent's context window and compaction](#set-an-agents-context-window-and-compaction).
 
 `harness` chooses the program any agent runs in: `pi`, `opencode` (OpenCode v2), `claude-code` or `codex` (the Codex CLI). Without it, the agent gets the one its model needs, as on this page. A harness that can't run the model is refused, for example "A Claude subscription runs only in Claude Code: choose Claude Code for the auditor, or another model." [Where each agent runs](#where-each-agent-runs) says what each choice gives.
 
@@ -68,6 +68,35 @@ For example, to give the auditor a model from a ChatGPT subscription named `chat
 ```
 
 The answer says "Control sent a model for the auditor to rig-1. The rig takes the change in less than one minute.", and its `agents` lists each agent's model after the change, with its `harness`. The auditor's **Runs in** cell on this page then says "Codex in the supervisor, past research and the kit's MCP tools only". Saving this page keeps that harness while the auditor keeps the same model, and gives the one its model needs when you choose another model.
+
+## Set an agent's context window and compaction
+
+Every agent takes its own cap on its model's context window, `context_window` (from 4,096 tokens), and its own compaction point, `compact_at` (50 to 95 percent of the window; 80 when left out). Give them with the agent's model, in the same call. For example, to cap the planner's window and compact its conversations at 70%:
+
+```json
+{ "rig": "rig-1", "agent": "planner", "provider": "my-litellm", "model": "my-model", "context_window": 131072, "compact_at": 70 }
+```
+
+The answer adds "Its context window: 131,072 tokens (capped; the provider allows 204,800). Its conversations are compacted at 70% of the window." `rig_models` shows each agent's `context_cap` and `compact_at`.
+
+- **The planner** with its own model compacts its call's conversation as the workers do. A planner with no model of its own uses the workers' cap and point.
+- **An advisor in Pi** (in the supervisor) compacts its call's conversation, and the supervisor keeps the conversation with its own records. Every advisor's package, such as an audit's diff, is cut to fit its window, and the advisor is told so.
+- **An advisor in Claude Code, OpenCode v2 or Codex** gets the window and the point in that program's own settings, as the workers do.
+- **Each call sets them anew** for that agent: a call without them removes the cap and goes back to 80%. A cap above what the provider lists is refused: `my-model takes at most 204,800 tokens.`
+
+[Compaction](../../reference/limits-and-pacing.md#compaction) says how each agent compacts and where its conversation is kept.
+
+## Set a campaign's own context window
+
+The rig sets each agent's window and point. A campaign can set its own for all its runs, for example to run two rigs on different models at the same window. Each agent's window is then the lower of the campaign's and its own, and the campaign's point replaces the rig's.
+
+- **MCP**: [`set_campaign_context`](../../reference/mcp-tools.md#set_campaign_context) with `{ "campaign": "sort-speed", "context_window": 131072, "compact_at": 70 }`.
+- **REST**: [`POST /v1/campaigns/<campaign>/context`](../../reference/rest-api.md#a-campaigns-context-settings) with `{"context_window": 131072, "compact_at": 70}`.
+- **The command line**: `thermite campaign context sort-speed --context-window 131072 --compact-at 70 --control URL --token-file F`. See [`campaign context`](../../reference/command-line.md#campaign-context).
+
+Control saves a new version of the campaign, and runs started from then take it: `Version 3 of sort-speed is saved. Its runs' agents: a context window of 131,072 tokens, compaction at 70% of the window. Runs started from now take it.` A copy can take its own with `copy_campaign`'s `agents_context`, or `thermite campaign copy` with `--context-window` and `--compact-at`.
+
+When you then start a run, the answer of **Start a run** (over REST, MCP or `thermite run start`) says what applies to each agent on that rig, such as "Workers: 131,072 tokens (wide-model), compacted at 70% of the window. Planner: 65,536 tokens (wide-model), compacted at 70% of the window." A window above what a provider lists for one of the rig's agents' models is refused before the run starts: "This campaign sets a context window of 150,000 tokens. narrow-model, the model of the teacher pair on rig-1, takes at most 131,072 tokens. …" The campaign's page, **New campaign** and **Copy** have no field for it yet.
 
 ## An agent with no model
 

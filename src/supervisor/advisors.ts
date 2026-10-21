@@ -3,20 +3,29 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Writable } from "node:stream";
-import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
-import { type TSchema, Type } from "@earendil-works/pi-ai";
+import { Agent, type AgentMessage, type AgentTool } from "@earendil-works/pi-agent-core";
+import { type Message, type TSchema, Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
 import type { McpCallResult } from "../common/mcp-client.ts";
 import { ExperimentId, QueuePosition, StructuredDirective } from "../core/commands.ts";
+import {
+  type AgentsContext,
+  COMPACT_AT_DEFAULT,
+  COMPACT_AT_MAX,
+  COMPACT_AT_MIN,
+  contextApplied,
+} from "../core/compaction.ts";
 import { LenientNotes, NOTES_GUIDE, type NoteInput } from "../core/journal.ts";
 import type { McpToolInfo } from "../core/mcp.ts";
 import {
   CLAUDE_BASE_ENV,
   CLAUDE_TOKEN_FD,
   claudeBin,
+  claudeCompactionEnv,
   claudeExe,
 } from "../harness/agents/claude-code.ts";
 import { codexBin, codexExe } from "../harness/agents/codex.ts";
+import { Compactor, summarizer } from "../harness/agents/compaction.ts";
 import { mcpAgentTools, mcpLine } from "../harness/agents/mcp-tools.ts";
 import { buildModel, type ModelConfig } from "../harness/agents/model.ts";
 import { JOURNAL_FIELD } from "../harness/agents/notes-tool.ts";
@@ -70,6 +79,11 @@ const Runtime = z.discriminatedUnion("runtime", [
     /** Sent as reasoning_effort when set. */
     reasoning: z.enum(["low", "medium", "high"]).optional(),
     context_window: z.number().int().positive().default(200_000),
+    /**
+     * The share of the window, in percent, at which the call's conversation is compacted and goes
+     * on (goal 070). Unset: COMPACT_AT_DEFAULT.
+     */
+    compact_at: z.number().int().min(COMPACT_AT_MIN).max(COMPACT_AT_MAX).optional(),
     max_tokens: z.number().int().positive().default(8192),
     max_turns: z.number().int().positive().max(100).default(24),
     /** Wall-clock limit for one call. */
@@ -98,6 +112,12 @@ const Runtime = z.discriminatedUnion("runtime", [
     model: z.string().min(1),
     token: z.string().min(1),
     effort: z.enum(["low", "medium", "high", "xhigh", "max"]).optional(),
+    /**
+     * The window Claude Code compacts within, in tokens, and its compaction point in percent
+     * (goal 070): Claude Code's own settings. Unset: Claude Code's window, and COMPACT_AT_DEFAULT.
+     */
+    context_window: z.number().int().positive().optional(),
+    compact_at: z.number().int().min(COMPACT_AT_MIN).max(COMPACT_AT_MAX).optional(),
     timeout_s: z.number().int().positive().max(7200).default(1800),
   }),
   z.strictObject({
@@ -115,6 +135,11 @@ const Runtime = z.discriminatedUnion("runtime", [
     api_key: z.string().min(1).optional(),
     /** The model's window in tokens, for OpenCode's own compaction; 0: unknown. */
     context_window: z.number().int().nonnegative().default(0),
+    /**
+     * The compaction point in percent (goal 070), as the workers' OpenCode gets it
+     * (`compaction.buffer`: the window less the point). Unset: COMPACT_AT_DEFAULT.
+     */
+    compact_at: z.number().int().min(COMPACT_AT_MIN).max(COMPACT_AT_MAX).optional(),
     timeout_s: z.number().int().positive().max(7200).default(1800),
   }),
   z.strictObject({
@@ -133,6 +158,11 @@ const Runtime = z.discriminatedUnion("runtime", [
     reasoning: z.enum(["low", "medium", "high"]).optional(),
     /** The model's window in tokens, for Codex's own compaction; 0: unknown. */
     context_window: z.number().int().nonnegative().default(0),
+    /**
+     * The compaction point in percent (goal 070), as the workers' Codex gets it
+     * (`model_auto_compact_token_limit`). Unset: COMPACT_AT_DEFAULT.
+     */
+    compact_at: z.number().int().min(COMPACT_AT_MIN).max(COMPACT_AT_MAX).optional(),
     timeout_s: z.number().int().positive().max(7200).default(1800),
   }),
 ]);
@@ -173,6 +203,80 @@ export interface AdvisorResult<T> {
   tokensIn: number;
   tokensOut: number;
   usd: number;
+  /** The call's compactions (goal 070), as the supervisor records them with the round. */
+  compactions?: AdvisorCompaction[] | undefined;
+}
+
+/** One compaction of an advisor's call in Pi (goal 070). */
+export interface AdvisorCompaction {
+  advisor: string;
+  number: number;
+  /** The conversation before and after, in tokens (estimated). */
+  tokens_before: number;
+  tokens_after: number;
+  /** summary: the model summarized it; trimmed: the summary failed, old tool results were cut. */
+  how: "summary" | "trimmed";
+  /** Where the conversation before it is kept, in words; null: it could not be kept. */
+  kept: string | null;
+  error?: string | undefined;
+}
+
+/**
+ * Where an advisor's conversation is kept before each compaction of its call (goal 070), and who
+ * hears of each one. The supervisor keeps it with its records of the advisors' rounds, never
+ * where the run's agents read: an advisor's conversation may hold what an outside knowledge base
+ * or a fetched page said, which the workers must not read.
+ */
+export interface AdvisorKeeper {
+  /** Keeps the conversation before compaction `n` of call `call`; returns where, in words. */
+  keep(advisor: string, call: string, n: number, markdown: string): string;
+  /** A compaction is done (a line in the run's live view). */
+  done?(c: AdvisorCompaction): void;
+}
+
+/**
+ * An advisor's window in tokens, where Thermite knows it: an API route's, or the one control or
+ * the advisors file gives Claude Code, OpenCode or Codex; 0 when unknown, as for a command-line
+ * agent.
+ */
+export function advisorWindow(rt: AdvisorRuntime): number {
+  return rt.runtime === "cli" ? 0 : (rt.context_window ?? 0);
+}
+
+/**
+ * An advisor's runtime in a run of a campaign with its own context settings (the contract's
+ * `agents_context`): the lower window (the campaign's when the runtime has none) and the
+ * campaign's compaction point. A command-line agent has neither.
+ */
+export function withRunContext(
+  rt: AdvisorRuntime,
+  campaign: AgentsContext | undefined,
+): AdvisorRuntime {
+  if (!campaign || rt.runtime === "cli") return rt;
+  const a = contextApplied(
+    { contextWindow: advisorWindow(rt), compactAt: rt.compact_at },
+    campaign,
+  );
+  return {
+    ...rt,
+    ...(a.contextWindow > 0 ? { context_window: a.contextWindow } : {}),
+    ...(a.compactAt !== undefined ? { compact_at: a.compactAt } : {}),
+  };
+}
+
+/** Characters per token, as Pi estimates them. */
+const CHARS_PER_TOKEN = 3.5;
+
+/**
+ * The most characters of a one-call package (a brief, an audit's or a review's) that fit an
+ * advisor's window: the compaction point less 30% of the window (half the window at the default
+ * point), so the call has room to work before it compacts. Undefined when the window is unknown.
+ */
+export function packageFit(rt: AdvisorRuntime): number | undefined {
+  const window = advisorWindow(rt);
+  if (window <= 0) return undefined;
+  const at = rt.runtime === "cli" ? COMPACT_AT_DEFAULT : (rt.compact_at ?? COMPACT_AT_DEFAULT);
+  return Math.floor(window * Math.max(0.2, (at - 30) / 100) * CHARS_PER_TOKEN);
 }
 
 /** Tools an advisor may use: read only, no shell, no files. */
@@ -263,6 +367,8 @@ export async function runAdvisor<S extends z.ZodType>(input: {
   schema: S;
   answerSchema: TSchema;
   tools?: AdvisorTools | undefined;
+  /** Where the conversation is kept before each compaction (goal 070); none: not kept. */
+  keeper?: AdvisorKeeper | undefined;
 }): Promise<AdvisorResult<z.infer<S>>> {
   const rt = input.runtime;
   if (rt.runtime === "cli")
@@ -297,8 +403,15 @@ export async function runAdvisor<S extends z.ZodType>(input: {
           timeout_s: rt.timeout_s,
           // The token on file descriptor 3, as for the agents in the harness: in no environment
           // and no file. Claude Code's own sandbox stays off; with none of its tools, Claude Code
-          // runs no commands here.
-          env: { ...CLAUDE_BASE_ENV },
+          // runs no commands here. It compacts on its own, within the advisor's window and at its
+          // point, as the workers' Claude Code does (goal 070).
+          env: {
+            ...CLAUDE_BASE_ENV,
+            ...claudeCompactionEnv({
+              contextWindow: rt.context_window ?? 0,
+              compactAt: rt.compact_at,
+            }),
+          },
           token: rt.token,
         },
         t?.mcp?.servers.length ? `${input.system}\n\n${mcpLine(t.mcp.servers)}` : input.system,
@@ -403,7 +516,7 @@ export async function runAdvisor<S extends z.ZodType>(input: {
   const apiKey =
     rt.api_key ?? (rt.api_key_file ? readFileSync(rt.api_key_file, "utf8").trim() : "");
   if (!apiKey) return { ...result, error: `advisor ${rt.name} has no key` };
-  const { models, model, thinkingLevel } = buildModel({
+  const cfg: ModelConfig = {
     api: rt.api === "anthropic" || rt.api === "chatgpt" ? rt.api : undefined,
     baseUrl: rt.base_url.replace(/\/$/, ""),
     model: rt.model,
@@ -411,7 +524,8 @@ export async function runAdvisor<S extends z.ZodType>(input: {
     contextWindow: rt.context_window,
     maxTokens: rt.max_tokens,
     reasoning: rt.reasoning,
-  });
+  };
+  const { models, model, thinkingLevel } = buildModel(cfg);
   const agent = new Agent({
     // The effort chosen for this advisor; without it the agent would never think.
     initialState: {
@@ -425,6 +539,52 @@ export async function runAdvisor<S extends z.ZodType>(input: {
     streamFn: models.streamSimple.bind(models),
     toolExecution: "sequential",
   });
+  // Near the window the call's conversation is compacted and the advisor goes on (goal 070), as
+  // the planner's is: its tools' results (past research, MCP servers) can fill the window. It has
+  // no file tool, so its summary names where the supervisor keeps the conversation.
+  const call = new Date().toISOString().replace(/[:.]/g, "-");
+  const compactions: AdvisorCompaction[] = [];
+  let tooBig: string | undefined;
+  const compactor = new Compactor({
+    window: rt.context_window,
+    at: rt.compact_at,
+    convert: (messages: AgentMessage[]) =>
+      messages.filter(
+        (m) =>
+          m.role === "system" ||
+          m.role === "user" ||
+          m.role === "assistant" ||
+          m.role === "toolResult",
+      ) as Message[],
+    summarize: summarizer(cfg),
+    keep: async (n, markdown) => {
+      if (!input.keeper) throw new Error("this advisor's call has no place to keep it");
+      return {
+        path: input.keeper.keep(rt.name, call, n, markdown),
+        read: "You have no tool to read it: rely on this summary",
+      };
+    },
+    done: async (r) => {
+      const c: AdvisorCompaction = {
+        advisor: rt.name,
+        number: r.number,
+        tokens_before: r.tokensBefore,
+        tokens_after: r.tokensAfter,
+        how: r.how,
+        kept: r.path ?? null,
+        ...(r.error ? { error: r.error } : {}),
+      };
+      compactions.push(c);
+      input.keeper?.done?.(c);
+    },
+    stop: (reason) => {
+      tooBig = reason;
+      agent.abort();
+    },
+    title: `Advisor ${rt.name}`,
+    goesOn: "Your work goes on: call answer when your answer is ready.",
+  });
+  agent.prepareRequest = compactor.hook(agent);
   let turns = 0;
   const deadline = setTimeout(() => {
     result.error = `timed out after ${rt.timeout_s} s`;
@@ -446,6 +606,8 @@ export async function runAdvisor<S extends z.ZodType>(input: {
   } finally {
     clearTimeout(deadline);
   }
+  if (tooBig && !result.output) result.error ??= tooBig;
+  if (compactions.length) result.compactions = compactions;
   result.usd =
     (result.tokensIn * rt.usd_per_mtok_in + result.tokensOut * rt.usd_per_mtok_out) / 1e6;
   if (!result.output && !result.error) result.error = problems || "no answer";
@@ -481,7 +643,11 @@ async function runCliHarness<S extends z.ZodType>(
     model: rt.model,
     // The key stays in the supervisor: the proxy adds it.
     apiKey: "",
+    // The window and the point the CLI compacts with, in its own settings, as the workers' are
+    // (goal 070): OpenCode's limit.context and compaction.buffer, Codex's model_context_window and
+    // model_auto_compact_token_limit.
     contextWindow: rt.context_window,
+    ...(rt.compact_at !== undefined ? { compactAt: rt.compact_at } : {}),
     maxTokens: 0,
     reasoning: rt.runtime === "codex" ? rt.reasoning : undefined,
   };
@@ -951,17 +1117,22 @@ export interface TeacherRun {
   error?: string;
   tokens: { in: number; out: number };
   usd: number;
+  /** The teachers' and the combiner's compactions in this round (goal 070). */
+  compactions?: AdvisorCompaction[] | undefined;
 }
 
 /**
  * The teacher pair and the combiner for one run: two independent reviews, merged into one
  * directive set. Directives without a citation are dropped here (the harness refuses them too).
+ * Each advisor's brief is cut to fit its own window (packageFit).
  */
 export async function teacherRound(input: {
   config: AdvisorsConfig;
   run: string;
   brief: unknown;
   tools: AdvisorTools;
+  /** Where each call's conversation is kept before a compaction (goal 070). */
+  keeper?: AdvisorKeeper | undefined;
 }): Promise<TeacherRun> {
   const run: TeacherRun = {
     run: input.run,
@@ -978,17 +1149,19 @@ export async function teacherRound(input: {
     run.tokens.in += r.tokensIn;
     run.tokens.out += r.tokensOut;
     run.usd += r.usd;
+    if (r.compactions?.length) run.compactions = [...(run.compactions ?? []), ...r.compactions];
   };
-  const prompt = advisorPrompt(`Brief of run ${input.run}:`, input.brief, 120_000);
+  const head = `Brief of run ${input.run}:`;
   const results = await Promise.all(
     input.config.teachers.map((t) =>
       runAdvisor({
         runtime: t,
         system: TEACHER,
-        prompt,
+        prompt: advisorPrompt(head, input.brief, 120_000, packageFit(t)),
         schema: TeacherReview,
         answerSchema: TeacherAnswer,
         tools: input.tools,
+        keeper: input.keeper,
       }),
     ),
   );
@@ -1021,12 +1194,25 @@ export async function teacherRound(input: {
     });
   let directives: z.infer<typeof StructuredDirective>[];
   if (input.config.combiner) {
+    const combiner = input.config.combiner;
+    // The reviews whole; the brief cut to what the combiner's window leaves beside them.
+    const reviews = JSON.stringify(
+      good.map((g) => ({
+        reviewer: g.teacher,
+        summary: g.review?.summary,
+        recommendations: g.review?.recommendations,
+        experiments: g.review?.experiments,
+        moves: g.review?.moves,
+      })),
+    );
+    const fit = packageFit(combiner);
     const r = await runAdvisor({
-      runtime: input.config.combiner,
+      runtime: combiner,
       system: COMBINER,
-      prompt: `${prompt}\n\nReviews:\n${JSON.stringify(good.map((g) => ({ reviewer: g.teacher, summary: g.review?.summary, recommendations: g.review?.recommendations, experiments: g.review?.experiments, moves: g.review?.moves })))}`,
+      prompt: `${advisorPrompt(head, input.brief, 120_000, fit === undefined ? undefined : Math.max(0, fit - reviews.length))}\n\nReviews:\n${reviews}`,
       schema: DirectiveSet,
       answerSchema: DirectiveAnswer,
+      keeper: input.keeper,
     });
     count(r);
     if (!r.output) {
@@ -1061,30 +1247,52 @@ export async function teacherRound(input: {
 /**
  * An advisor's prompt: its brief or package as JSON, cut to `max` characters. The owner's
  * messages go first and are never cut, so a large diff cannot hide one the supervisor then
- * records as read.
+ * records as read. `fit`: the most characters that fit the advisor's window (packageFit, goal
+ * 070); when it is the lower and the package is longer, the package is cut to it, and the prompt
+ * says so in words: "cut to fit the window: N of M characters".
  */
-export function advisorPrompt(head: string, data: unknown, max: number): string {
-  if (!data || typeof data !== "object" || Array.isArray(data) || !("owner_messages" in data))
-    return `${head}\n${JSON.stringify(data).slice(0, max)}`;
-  const { owner_messages, ...rest } = data as Record<string, unknown>;
-  const json = JSON.stringify({ owner_messages, ...rest });
-  const keep = JSON.stringify({ owner_messages }).length;
-  return `${head}\n${json.slice(0, Math.max(max, keep + 1000))}`;
+export function advisorPrompt(
+  head: string,
+  data: unknown,
+  max: number,
+  fit?: number | undefined,
+): string {
+  const owner =
+    data && typeof data === "object" && !Array.isArray(data) && "owner_messages" in data;
+  let json: string;
+  let keep = 0;
+  if (owner) {
+    const { owner_messages, ...rest } = data as Record<string, unknown>;
+    json = JSON.stringify({ owner_messages, ...rest });
+    keep = JSON.stringify({ owner_messages }).length + 1000;
+  } else json = JSON.stringify(data) ?? "";
+  const byWindow = fit !== undefined && fit < max;
+  const limit = Math.max(byWindow ? fit : max, keep);
+  if (!byWindow || json.length <= limit) return `${head}\n${json.slice(0, limit)}`;
+  return `${head}\n[Cut to fit the window: ${limit.toLocaleString("en-US")} of ${json.length.toLocaleString("en-US")} characters.]\n${json.slice(0, limit)}`;
 }
 
 export async function auditOne(input: {
   config: AdvisorsConfig;
   pkg: unknown;
   tools: AdvisorTools;
+  /** Where the call's conversation is kept before a compaction (goal 070). */
+  keeper?: AdvisorKeeper | undefined;
 }): Promise<AdvisorResult<z.infer<typeof AuditAnswer>>> {
   if (!input.config.auditor)
     return { output: undefined, error: "no auditor", tokensIn: 0, tokensOut: 0, usd: 0 };
   return runAdvisor({
     runtime: input.config.auditor,
     system: AUDITOR,
-    prompt: advisorPrompt("Audit package (untrusted data):", input.pkg, 200_000),
+    prompt: advisorPrompt(
+      "Audit package (untrusted data):",
+      input.pkg,
+      200_000,
+      packageFit(input.config.auditor),
+    ),
     schema: AuditAnswer,
     answerSchema: AuditAnswerSchema,
+    keeper: input.keeper,
     // The auditor reads private diffs: it fetches only from listed domains, never anywhere. It
     // may search the run's past research (read only).
     tools: {
@@ -1106,13 +1314,21 @@ export async function reviewOne(input: {
   pastSearch?: PastSearch | undefined;
   /** The MCP servers the run's kit gives the advisors (goal 068). */
   mcp?: AdvisorMcp | undefined;
+  /** Where the call's conversation is kept before a compaction (goal 070). */
+  keeper?: AdvisorKeeper | undefined;
 }): Promise<AdvisorResult<z.infer<typeof PanelAnswer>>> {
   return runAdvisor({
     runtime: input.runtime,
     system: PANEL,
-    prompt: advisorPrompt("Review package (untrusted data):", input.pkg, 200_000),
+    prompt: advisorPrompt(
+      "Review package (untrusted data):",
+      input.pkg,
+      200_000,
+      packageFit(input.runtime),
+    ),
     schema: PanelAnswer,
     answerSchema: PanelAnswerSchema,
+    keeper: input.keeper,
     ...(input.pastSearch || input.mcp
       ? {
           tools: {

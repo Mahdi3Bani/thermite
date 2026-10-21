@@ -8,6 +8,7 @@ import {
 import { MAX_LANES } from "../core/contract.ts";
 import { RESEARCH_TASK_KINDS, researchDirectionRefusal } from "../core/directions.ts";
 import { McpUses, sameUses, usesWords } from "../core/mcp.ts";
+import { campaignContextRefusal } from "./campaign-context.ts";
 import { mcpRefusal } from "./mcp-servers.ts";
 import type { ControlStore } from "./store.ts";
 import { type RigView, type RunView, rigView } from "./views.ts";
@@ -272,6 +273,14 @@ export function prepareCommand(
   if (refused) throw new Error(`Control sends no commands to ${input.rig}. ${refused.reason}`);
   const unrunnable = input.kind === "assign_campaign" ? assignRefusal(input.payload) : "";
   if (unrunnable) throw new Error(unrunnable);
+  // A campaign's own context window above what a provider lists for one of the rig's agents'
+  // models (goal 070): refused before signing, on every path that starts a run. A try has no agents.
+  const assigned = input.payload as { contract?: unknown; agents?: unknown } | null;
+  const tooWide =
+    input.kind === "assign_campaign" && assigned?.agents !== false
+      ? campaignContextRefusal(store, input.rig, assigned?.contract)
+      : "";
+  if (tooWide) throw new Error(tooWide);
   const parsed = CommandPayloads[input.kind].safeParse(
     input.kind === "message_agent"
       ? checkedMessage(store, input.rig, input.payload)

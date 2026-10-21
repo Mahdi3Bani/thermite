@@ -51,7 +51,7 @@ None of these ends research. A trial that ends at its time is followed by the la
 | Lanes planned per epoch | 2 | The contract's `lanes.count` (1 to 16). A redirect's `lane_count` can lower it |
 | Trials per lane per epoch | 3 | The contract's `lanes.trials_per_epoch` |
 | Reminders to a Pi worker | When 85% of the trial's time is used, and 10 turns before a turn cap. None about the context window: a conversation that grows is compacted (below) | Fixed |
-| Compaction of an agent's conversation | At 80% of the model's [context window](glossary.md). The conversation is kept as a document, summarized, and the trial goes on. It never ends a trial and never asks for a submission | `compact_at` (50 to 95) with the workers' model, over [`set_rig_model`](mcp-tools.md#set_rig_model) or [`POST /v1/rigs/<rig>/model`](rest-api.md#the-agents-model), or `THERMITE_MODEL_COMPACT_AT`. See [Compaction](#compaction) |
+| Compaction of an agent's conversation | At 80% of the model's [context window](glossary.md). The conversation is kept as a document, summarized, and the agent goes on. It never ends a trial and never asks for a submission | `compact_at` (50 to 95) with each agent's model, over [`set_rig_model`](mcp-tools.md#set_rig_model) or [`POST /v1/rigs/<rig>/model`](rest-api.md#the-agents-model); the campaign's own `agents_context.compact_at`; or `THERMITE_MODEL_COMPACT_AT`. See [Compaction](#compaction) |
 | Nudges when a worker stops without submitting | 2. An OpenCode, Claude Code or Codex worker is continued again for as long as the owner's messages wait for its trial and its last run made progress | Fixed (Pi, OpenCode, Claude Code and Codex). Then the trial ends; the trial's time limit still applies |
 | Time to finish after a submission | 5 s after the submission is recorded, the lane's agent is stopped. Its closing reply is not waited for, and a note or idea it has not written by then is not recorded | Fixed (OpenCode, Claude Code and Codex; Pi stops at once: no tool call runs after its submission) |
 | Model call retries in a Pi trial | Waits of 5 s, doubling to 60 s. The trial ends after 6 failed calls in a row, or 5 cut-off replies in a row. A full context is compacted, and the trial goes on | Fixed |
@@ -61,23 +61,33 @@ None of these ends research. A trial that ends at its time is followed by the la
 
 ### Compaction
 
-Near the model's [context window](glossary.md), an agent's conversation is compacted, and the trial goes on. Compaction is pacing, not a cap: it never ends a trial, and no agent is told to submit because its conversation grew.
+Near the model's [context window](glossary.md), an agent's conversation is compacted, and the agent goes on. Compaction is pacing, not a cap: it never ends a trial, and no agent is told to submit because its conversation grew. It applies to every agent: the workers, the planner and the advisors.
 
 | What | Value |
 | --- | --- |
-| The compaction point | 80% of the window the rig's model route carries: the provider's window, or the owner's cap when that is lower. `compact_at` sets it, from 50 to 95 percent |
+| The window | The window the agent's route carries: the provider's window, or the owner's cap on that agent's model when that is lower. A campaign's own `agents_context.context_window` lowers it further: the lower wins |
+| The compaction point | 80% of the window. `compact_at` sets it, from 50 to 95 percent, for each agent with its model; a campaign's own `agents_context.compact_at` replaces it for the campaign's runs |
 | Why 80% | The summary is asked of the same model, with the conversation as its input. A fifth of the window is left for that call's answer and for the next reply |
-| Before each compaction | The whole conversation is kept as Markdown in the run's research folder: `compactions/<trial>-<n>.md` for a trial, `compactions/planner-<id>-<n>.md` for a planner call. Every agent of the run may read it, and none may change it |
-| What records it | A `context_compacted` event, in **History**; lines in the trial's **Live** view, with the summary; the trial's count of compactions in `trial_finished` |
+| Before each compaction | The whole conversation is kept as Markdown. A worker's and the planner's: in the run's research folder, `compactions/<trial>-<n>.md` for a trial, `compactions/planner-<id>-<n>.md` for a planner call; every agent of the run may read it, and none may change it. An advisor's: with the supervisor's records of the advisors' rounds, below |
+| What records it | A worker's or the planner's: a `context_compacted` event, in **History**; lines in the trial's **Live** view, with the summary; the trial's count of compactions in `trial_finished`. An advisor's: a line in the run's **Live** view and the round's record in the supervisor |
+
+Who sets each agent's window and point:
+
+| Agent | Its window and point | Where they come from |
+| --- | --- | --- |
+| Workers | The workers' model on **Edit rig**, or the rig's own settings | `context_window` and `compact_at` with the workers' model, or `THERMITE_MODEL_CONTEXT_WINDOW` and `THERMITE_MODEL_COMPACT_AT` |
+| Planner | Its own model, when it has one; else the workers' | `context_window` and `compact_at` with the planner's model |
+| Teacher pair, combiner, auditor, review panel | Each one's own model, when control gives it one; else the rig's [advisors file](advisors-file.md) | `context_window` and `compact_at` with the advisor's model, or the file's `context_window` and `compact_at` |
+| All of a campaign's runs | The campaign's own, over each agent's | The contract's [`agents_context`](contract.md#agents-context): `set_campaign_context`, `POST /v1/campaigns/<campaign>/context`, `thermite campaign context` |
 
 Each harness compacts in its own way. Thermite sets what each one takes:
 
 | Harness | Who compacts | The window Thermite sets | The point Thermite sets | Is a compaction recorded |
 | --- | --- | --- | --- | --- |
-| Pi (code and research workers, and the planner) | Thermite, before the next model call, once the conversation reaches the point, or when the provider says the context is full | None to set: Pi uses the route's window | The share, from `compact_at` | Yes, with the tokens before and after and the summary |
-| OpenCode v2 | OpenCode (`compaction.auto`) | `limit.context` of the rig's provider's model | `compaction.buffer`: the window less the point | No: OpenCode's JSON output does not report its compactions |
-| Codex CLI | Codex, always | `model_context_window`. Codex keeps it within what the model takes: 272,000 tokens for a model it does not know | `model_auto_compact_token_limit`. Codex compacts at the lower of it and 90% of the window | Yes, from the warning Codex gives after each compaction. Codex does not say the tokens |
-| Claude Code | Claude Code (on by default) | `CLAUDE_CODE_AUTO_COMPACT_WINDOW`. Claude Code takes 100,000 to 1,000,000 tokens: a smaller window counts as 100,000 | `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`: a percent of Claude Code's window less the room it keeps for a reply (up to 20,000 tokens). It can only make Claude Code compact earlier than its own point | Yes, with the tokens before and after |
+| Pi (code and research workers, the planner, and the advisors that run in Pi) | Thermite, before the next model call, once the conversation reaches the point, or (a worker) when the provider says the context is full | None to set: Pi uses the route's window | The share, from `compact_at` | Yes, with the tokens before and after and the summary |
+| OpenCode v2 (workers, the planner, and advisors) | OpenCode (`compaction.auto`) | `limit.context` of the rig's provider's model | `compaction.buffer`: the window less the point | No: OpenCode's JSON output does not report its compactions |
+| Codex CLI (workers, the planner, and advisors) | Codex, always | `model_context_window`. Codex keeps it within what the model takes: 272,000 tokens for a model it does not know | `model_auto_compact_token_limit`. Codex compacts at the lower of it and 90% of the window | A worker's, yes, from the warning Codex gives after each compaction. Codex does not say the tokens. An advisor's call, no |
+| Claude Code (workers, the planner, and advisors) | Claude Code (on by default) | `CLAUDE_CODE_AUTO_COMPACT_WINDOW`. Claude Code takes 100,000 to 1,000,000 tokens: a smaller window counts as 100,000 | `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`: a percent of Claude Code's window less the room it keeps for a reply (up to 20,000 tokens). It can only make Claude Code compact earlier than its own point | A worker's, yes, with the tokens before and after. An advisor's call, no |
 
 - **In Pi**, the conversation becomes the system prompt, the brief, one message with the summary and the kept conversation's path, and the most recent turns that fit: at most 6, within a quarter of the window. A tool call keeps its result. The summary is the same model's answer to a fixed prompt: the task, what was tried and measured, the state of the files, what failed and why, and what is next.
 - **If the summary call fails**, the bodies of the oldest tool results are left out instead, each with a one-line stub, until the conversation is at most half the window.
@@ -85,6 +95,8 @@ Each harness compacts in its own way. Thermite sets what each one takes:
 - **A model whose window is unknown** (`0`) is compacted only when the provider says the context is full.
 - **OpenCode's own models** keep the window and the compaction point OpenCode knows for them.
 - **A Pi planner call** has no file tool: its summary names where the run keeps the conversation, for the owner.
+- **An advisor's call in Pi** (a teacher's review, the combiner's set, an audit, a panelist's review) compacts as the planner's does: what its tools return, such as past research and the kit's MCP tools, can fill its window. The supervisor keeps the conversation before each compaction in its own home, beside its record of the round: `advisors/compactions/<run>/<call>-<advisor>-<n>.md`, and the round's record (`advisors/<time>-<kind>.json`) lists the compactions. It does not go in the run's research folder: an advisor's conversation can hold what an outside knowledge base or a fetched page said, which the run's workers must not read. The advisor's summary names where it is kept, and the run's **Live** view has a line: `advisor <name>: its conversation was compacted (compaction <n>) at about <tokens> tokens, down to about <tokens>. It goes on. …`
+- **An advisor's package** (the teachers' brief, an audit's package, a review's package) is cut to fit the advisor's window before the call: at most the compaction point less 30% of the window, at about 3.5 characters a token (half the window at the default point), and never more than before (120,000 characters for a brief, 200,000 for an audit or a review). The owner's messages are never cut. When the window cuts it, the advisor's input says so on the line after its heading: `[Cut to fit the window: <n> of <m> characters.]`. The combiner's brief is cut to what its window leaves beside the two reviews. A command-line advisor's window is unknown: its package is not cut to fit.
 
 ### Epochs and planning
 

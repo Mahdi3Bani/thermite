@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { type AgentsContext, agentsContextRefusal } from "../core/compaction.ts";
 import { IdSchema, parseContract } from "../core/contract.ts";
 import { type McpUse, McpUses, sameUses, usesWords } from "../core/mcp.ts";
 import { researchMcpRefusal } from "./mcp-servers.ts";
@@ -19,6 +20,9 @@ import { isRigCheck } from "./ui/campaigns.ts";
  * names those, and its hash changes with them. A hill-climb or goal campaign keeps them in its
  * kit's kit.json, which a copy does not change.
  *
+ * A copy may set its own context settings for its runs' agents (`agents_context`, goal 070), in
+ * place of its source's: its contract then holds them, and its hash changes with them.
+ *
  * REST's POST /v1/campaigns/<name>/copy, MCP's copy_campaign and `thermite campaign copy` call it
  * through ControlActions.copyCampaign, which dashboard.ts fills in with the campaigns it knows.
  */
@@ -33,10 +37,23 @@ export interface CopyCampaignRequest {
    * Left out: the source's, as they are.
    */
   mcp_servers?: McpUse[] | undefined;
+  /**
+   * The copy's own context settings for its runs' agents, in place of its source's; null or {}:
+   * none. Left out: the source's, as they are.
+   */
+  agents_context?: { context_window?: number | undefined; compact_at?: number | undefined } | null;
 }
 
 export type CopyCampaignOutcome =
-  | { state: "copied"; campaign: string; version: number; sha: string; from: CopiedFrom }
+  | {
+      state: "copied";
+      campaign: string;
+      version: number;
+      sha: string;
+      from: CopiedFrom;
+      /** The copy's own context settings for its runs' agents, when it has any. */
+      context?: AgentsContext | undefined;
+    }
   | { state: "refused"; error: string; status: 400 | 404 | 409 };
 
 /** The request's field over REST and MCP, besides the campaign to copy. */
@@ -49,13 +66,27 @@ export const copyCampaignFields = {
   mcp_servers: McpUses.optional().describe(
     'Research campaigns only: the MCP servers the copy\'s agents use, in place of the source\'s, as the New campaign page names them. Each is {name, agents, tools?}: a server\'s name in Settings; the kinds of agent that get it ("workers", "advisors": a research run has no planner); and, only to narrow it, the tools each kind may call, such as {"workers": ["search"]}. [] names none. Left out: the source\'s servers',
   ),
+  // Any numbers: values out of range are refused in words.
+  agents_context: z
+    .strictObject({
+      context_window: z.number().int().optional(),
+      compact_at: z.number().optional(),
+    })
+    .nullable()
+    .optional()
+    .describe(
+      "The copy's own context settings for its runs' agents, in place of the source's, as set_campaign_context takes them: {context_window, compact_at}. Each agent's window is the lower of context_window and its own model's; compact_at replaces the rig's point. null or {}: none. Left out: the source's",
+    ),
 };
 
-/** The REST body: the copy's name and, for a research campaign, its MCP servers. */
+/** The REST body: the copy's name, its MCP servers (research) and its context settings. */
 export const CopyCampaignBody = z.strictObject(copyCampaignFields);
 
-/** The fields of an assignment that belong to one run, not to the campaign: a copy leaves them out. */
-const RUN_FIELDS = new Set([
+/**
+ * The fields of an assignment that belong to one run, not to the campaign: a copy leaves them
+ * out, as does a new version saved for a campaign's own context settings (campaign-context.ts).
+ */
+export const RUN_FIELDS = new Set([
   "run",
   "contract",
   "contract_sha",
@@ -122,6 +153,20 @@ export function copyCampaign(
     contract = uses.length ? { ...rest, mcp_servers: uses } : rest;
     otherMcp = !sameUses(McpUses.safeParse(before ?? []).data ?? [], uses);
   }
+  // The copy's own context settings for its runs' agents (goal 070), in place of the source's.
+  const ctx = req.agents_context;
+  if (ctx !== undefined) {
+    const why = agentsContextRefusal(ctx ?? {});
+    if (why) return refuse(why, 400);
+    const { agents_context: _source, ...rest } = contract;
+    const own = ctx
+      ? {
+          ...(ctx.context_window !== undefined ? { context_window: ctx.context_window } : {}),
+          ...(ctx.compact_at !== undefined ? { compact_at: ctx.compact_at } : {}),
+        }
+      : {};
+    contract = Object.keys(own).length ? { ...rest, agents_context: own } : rest;
+  }
   const parsed = parseContract(contract);
   if (!parsed.ok)
     return refuse(
@@ -159,8 +204,16 @@ export function copyCampaign(
     from: copiedFrom,
     sha: parsed.sha,
     ...(otherMcp ? { mcp_servers: uses } : {}),
+    ...(ctx !== undefined ? { agents_context: parsed.contract.agents_context ?? null } : {}),
   });
-  return { state: "copied", campaign: name, version, sha: parsed.sha, from: copiedFrom };
+  return {
+    state: "copied",
+    campaign: name,
+    version,
+    sha: parsed.sha,
+    from: copiedFrom,
+    ...(parsed.contract.agents_context ? { context: parsed.contract.agents_context } : {}),
+  };
 }
 
 /** The answer REST and MCP give: the copy, its contract's hash and where it came from. */
@@ -172,6 +225,8 @@ export function copyCampaignAnswer(
     version: out.version,
     contract_sha: out.sha,
     from: out.from,
+    // The copy's own context settings for its runs' agents, when it has any (goal 070).
+    ...(out.context ? { agents_context: out.context } : {}),
   };
 }
 

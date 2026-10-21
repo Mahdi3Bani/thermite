@@ -4,11 +4,22 @@ import type { Hono } from "hono";
 import { z } from "zod";
 import { redact } from "../common/env.ts";
 import type { CommandKind } from "../core/commands.ts";
-import { COMPACT_AT_DEFAULT, COMPACT_AT_MAX, COMPACT_AT_MIN } from "../core/compaction.ts";
+import {
+  COMPACT_AT_DEFAULT,
+  COMPACT_AT_MAX,
+  COMPACT_AT_MIN,
+  CONTEXT_WINDOW_MAX,
+  CONTEXT_WINDOW_MIN,
+} from "../core/compaction.ts";
 import { KbKind as KbKindSchema } from "../core/kb.ts";
 import { POD_CONFIG_ENV } from "../core/tunnel.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import type { ControlActions } from "./actions.ts";
+import {
+  campaignContextAnswer,
+  campaignContextFields,
+  setCampaignContext,
+} from "./campaign-context.ts";
 import {
   type CopyCampaignRequest,
   copyCampaignAnswer,
@@ -737,7 +748,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
         "rig_models",
         {
           title: "Each agent's model on a rig",
-          description: `Each agent's model on a rig, as Edit rig's section The agents shows it: workers, planner, teachers (the teacher pair), combiner, auditor and panel (the review panel). Each is {provider, model, effort, harness} (harness: where it runs, pi, opencode, claude-code or codex), the workers' with context_cap and compact_at too (compact_at null: the default, ${COMPACT_AT_DEFAULT}% of the window), or null for its default: the workers use the rig's own settings, the planner the workers' model, an advisor the rig's advisors file. It is what control gives the rig; set it with set_rig_model.`,
+          description: `Each agent's model on a rig, as Edit rig's section The agents shows it: workers, planner, teachers (the teacher pair), combiner, auditor and panel (the review panel). Each is {provider, model, effort, harness, context_cap, compact_at} (harness: where it runs, pi, opencode, claude-code or codex; context_cap null: the provider's window; compact_at null: the default, ${COMPACT_AT_DEFAULT}% of the window), or null for its default: the workers use the rig's own settings, the planner the workers' model, an advisor the rig's advisors file. It is what control gives the rig; set it with set_rig_model.`,
           inputSchema: { rig: z.string().min(1) },
         },
         audited("rig_models", (a: { rig: string }) => {
@@ -753,7 +764,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
         "set_rig_model",
         {
           title: "Give a rig's agents a model",
-          description: `As a row of Edit rig's section The agents does: the model one of a rig's agents uses, from a model provider in Providers (see the providers tool for their models). agent: workers (default), planner, teachers (the teacher pair), combiner, auditor or panel (the review panel); the other agents keep their models. clear: true, with no provider or model, sends the agent back to its default: the workers to the rig's own settings, the planner to the workers' model, an advisor to the rig's advisors file. The workers and the planner take a new model within a minute, and the rig checks the workers' model; an advisor uses its new model from its next round. harness, for any agent: where it runs, pi, opencode (OpenCode v2), claude-code or codex (the Codex CLI); left out, what the model needs (Claude Code for a Claude subscription, OpenCode for OpenCode's free models, else Pi). A Claude subscription runs only in claude-code and claude-code only with one; codex only with a ChatGPT subscription or an OpenAI-compatible provider; OpenCode's free models only in opencode: another harness is refused in words. A planner with no model of its own follows the workers' (in Codex when the workers run in Codex). Advisors run in the supervisor: in pi with read-only tools; in claude-code, opencode or codex with none of the program's own tools, only the search of the run's past research and the kit's MCP tools. context_window and compact_at are for the workers only. context_window caps the workers' context window in tokens (from 4096), for example to compare two models at the same window; a cap above the provider's window is refused. Pi keeps to it; OpenCode, Codex and Claude Code get it in their own settings, as far as each takes one. compact_at is the share of the window, in percent (${COMPACT_AT_MIN} to ${COMPACT_AT_MAX}; default ${COMPACT_AT_DEFAULT}), at which a worker's conversation is compacted: the conversation is kept as a document, summarized, and the trial goes on. It never ends a trial. Each call for the workers sets the cap and compact_at anew: a call without them removes a cap and returns to the default point. Returns context_window, the window the agent's model route carries (null: the provider lists none, or the model was cleared), compact_at for the workers (null: the default), and agents, each agent's model after the change, as rig_models reads them.`,
+          description: `As a row of Edit rig's section The agents does: the model one of a rig's agents uses, from a model provider in Providers (see the providers tool for their models). agent: workers (default), planner, teachers (the teacher pair), combiner, auditor or panel (the review panel); the other agents keep their models. clear: true, with no provider or model, sends the agent back to its default: the workers to the rig's own settings, the planner to the workers' model, an advisor to the rig's advisors file. The workers and the planner take a new model within a minute, and the rig checks the workers' model; an advisor uses its new model from its next round. harness, for any agent: where it runs, pi, opencode (OpenCode v2), claude-code or codex (the Codex CLI); left out, what the model needs (Claude Code for a Claude subscription, OpenCode for OpenCode's free models, else Pi). A Claude subscription runs only in claude-code and claude-code only with one; codex only with a ChatGPT subscription or an OpenAI-compatible provider; OpenCode's free models only in opencode: another harness is refused in words. A planner with no model of its own follows the workers' (in Codex when the workers run in Codex). Advisors run in the supervisor: in pi with read-only tools; in claude-code, opencode or codex with none of the program's own tools, only the search of the run's past research and the kit's MCP tools. Every agent takes context_window and compact_at, kept with its model; a planner with no model of its own uses the workers'. context_window caps the agent's context window in tokens (from 4096), for example to compare two models at the same window; a cap above the provider's window is refused. Pi keeps to it; OpenCode, Codex and Claude Code get it in their own settings, as far as each takes one; an advisor's one-call package is cut to fit it. compact_at is the share of the window, in percent (${COMPACT_AT_MIN} to ${COMPACT_AT_MAX}; default ${COMPACT_AT_DEFAULT}), at which the agent's conversation is compacted: the conversation is kept as a document, summarized, and the agent goes on. It never ends a trial. Each call sets the agent's cap and compact_at anew: a call without them removes a cap and returns to the default point. A campaign may set its own (set_campaign_context): the lower window wins. Returns context_window, the window the agent's model route carries (null: the provider lists none, or the model was cleared), compact_at (null: the default), and agents, each agent's model after the change, as rig_models reads them.`,
           inputSchema: { rig: z.string().min(1), ...rigModelFields },
         },
         audited("set_rig_model", async (a: RigModelBody & { rig: string }) => {
@@ -773,7 +784,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
         "start_run",
         {
           title: "Start a run of a campaign",
-          description: `As a campaign page's Start a run does, with the same checks and refusals in words: a new run of a campaign control keeps (saved on the New campaign page, or assigned before; control then assigns it again with the same contract, starting point and imports) on a rig whose hardware the campaign's kit measures on. On a busy rig the run at work pauses, as a rig runs one run at a time. Returns the new run and its command id (follow it with command_status), with notes in words. A rig with no model for its agents is refused: give agents_model (control gives the rig that model first and answers started: false; start the run again once the rig has it), or use set_rig_model. On a rig launched on RunPod whose pod is stopped, control starts the pod first (the owner's token only; another token is refused), and woke says so.${role === "owner" ? "" : " judge_gpus is the owner's alone."}`,
+          description: `As a campaign page's Start a run does, with the same checks and refusals in words: a new run of a campaign control keeps (saved on the New campaign page, or assigned before; control then assigns it again with the same contract, starting point and imports) on a rig whose hardware the campaign's kit measures on. On a busy rig the run at work pauses, as a rig runs one run at a time. Returns the new run and its command id (follow it with command_status), with notes in words. When the campaign sets its own context settings (set_campaign_context), agents_context says what each agent works with: its model, its window (the lower of the campaign's and its own model's) and its compaction point; a campaign window above what a provider lists for one of the rig's agents' models is refused. A rig with no model for its agents is refused: give agents_model (control gives the rig that model first and answers started: false; start the run again once the rig has it), or use set_rig_model. On a rig launched on RunPod whose pod is stopped, control starts the pod first (the owner's token only; another token is refused), and woke says so.${role === "owner" ? "" : " judge_gpus is the owner's alone."}`,
           inputSchema: {
             campaign: z.string().min(1).describe("The campaign, as on its page"),
             ...startRunFields,
@@ -800,7 +811,7 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
         {
           title: "Copy a campaign",
           description:
-            "A new campaign with another name, from a campaign control keeps: the same contract and kit as its newest saved version (or, for a campaign only assigned before, as that assignment), with the new name in the contract, so its contract hash is its own. The copy has its own empty folder in Thermite's knowledge base; it reads no other folder, and no folder is granted to it. It has no runs: start one with start_run. Use it to compare two models on the same campaign, each from zero: two runs of one campaign share its folder, so each starts with what the other recorded. A research campaign's copy may name other MCP servers for its agents (mcp_servers), with the New campaign page's checks; a hill-climb or goal campaign's servers are in its kit, which a copy does not change. Returns {campaign, version, contract_sha, from}. Refused in words: a name that is taken or not valid, a campaign with no saved version and no assignment, a rig check's campaign, mcp_servers for a campaign with a kit, a server Settings lacks, a tool its server does not list, the planner (a research run has none).",
+            "A new campaign with another name, from a campaign control keeps: the same contract and kit as its newest saved version (or, for a campaign only assigned before, as that assignment), with the new name in the contract, so its contract hash is its own. The copy has its own empty folder in Thermite's knowledge base; it reads no other folder, and no folder is granted to it. It has no runs: start one with start_run. Use it to compare two models on the same campaign, each from zero: two runs of one campaign share its folder, so each starts with what the other recorded. A research campaign's copy may name other MCP servers for its agents (mcp_servers), with the New campaign page's checks; a hill-climb or goal campaign's servers are in its kit, which a copy does not change. A copy may set its own context settings for its runs' agents (agents_context, as set_campaign_context takes them), in place of the source's. Returns {campaign, version, contract_sha, from}, and agents_context when the copy has any. Refused in words: a name that is taken or not valid, a campaign with no saved version and no assignment, a rig check's campaign, mcp_servers for a campaign with a kit, a server Settings lacks, a tool its server does not list, the planner (a research run has none), a context window or compaction point out of range.",
           inputSchema: {
             from: z.string().min(1).describe("The campaign to copy, as on its page"),
             ...copyCampaignFields,
@@ -812,12 +823,44 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
               from: a.from,
               name: a.name,
               ...(a.mcp_servers !== undefined ? { mcp_servers: a.mcp_servers } : {}),
+              ...(a.agents_context !== undefined ? { agents_context: a.agents_context } : {}),
             },
             actor,
           );
           if (out.state === "refused") throw new Error(out.error);
           return copyCampaignAnswer(out);
         }),
+      );
+    }
+    // A campaign's own context settings for all its runs' agents (goal 070): the tokens that may
+    // copy a campaign may set them. A new version of its contract.
+    if (canCommand) {
+      server.registerTool(
+        "set_campaign_context",
+        {
+          title: "Set a campaign's context window and compaction point",
+          description: `Sets the context window and the compaction point that every agent of a campaign's runs works with: the workers, the planner and the advisors. The rig sets the defaults (each agent's model, its cap and its point: set_rig_model); a campaign may set its own. context_window (tokens, ${CONTEXT_WINDOW_MIN} to ${CONTEXT_WINDOW_MAX}): each agent's window is the lower of it and its own model's, never above the rig's or the provider's. compact_at (percent, ${COMPACT_AT_MIN} to ${COMPACT_AT_MAX}): replaces the rig's point. Each call sets them anew: a call without them removes them. Control saves a new version of the campaign's contract (its agents_context), as the New campaign page saves one; runs started from then take it, and a run keeps the settings it started with. Start a run says what applies to each agent, and refuses a window above what a provider lists for one of the rig's agents' models. A rig's harness older than this change refuses a contract with agents_context. Returns {campaign, version, contract_sha, agents_context, said}. Refused in words: a campaign with no saved version and no assignment, a rig check's campaign, a value out of range.`,
+          inputSchema: {
+            campaign: z.string().min(1).describe("The campaign, as on its page"),
+            ...campaignContextFields,
+          },
+        },
+        audited(
+          "set_campaign_context",
+          (a: { campaign: string; context_window?: number; compact_at?: number }) => {
+            const out = setCampaignContext(
+              store,
+              {
+                campaign: a.campaign,
+                contextWindow: a.context_window,
+                compactAt: a.compact_at,
+              },
+              actor,
+            );
+            if (out.state === "refused") throw new Error(out.error);
+            return campaignContextAnswer(out);
+          },
+        ),
       );
     }
     if (canCommand && actions?.clusterRigAction) {

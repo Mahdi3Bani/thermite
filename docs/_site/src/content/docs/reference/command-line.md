@@ -48,6 +48,7 @@ usage: thermite <command> [options]
   assign --contract F --run ID [--seed GIT_URL[@COMMIT] | --seed-commit C] [--kit GIT_URL]
          [--model NAME=URL ...] [--note TEXT] [--agents off] [--promotion auto|owner]
          [--queue-from [RIG/]RUN] [--mcp-servers JSON|@file]
+         [--context-window TOKENS] [--compact-at PERCENT]
          (--control URL --token-file F --rig R [--ttl MIN] | --print)
                                       start a run. The rig's supervisor fetches the project and
                                       kit commits from their repositories, and models from their
@@ -60,8 +61,13 @@ usage: thermite <command> [options]
                                       --mcp-servers gives the MCP servers the kit's kit.json
                                       names, as in kit.json; the rig refuses a run whose list
                                       differs. --note keeps a text with the run (--direction,
-                                      its old name, still works and says so). --print shows the
-                                      payload (for issue_command over MCP) instead of issuing it
+                                      its old name, still works and says so). --context-window
+                                      and --compact-at set the campaign's own context settings
+                                      in the contract sent (its agents_context, over the file's):
+                                      every agent's window is the lower of it and its own, and
+                                      the point replaces the rig's; the contract's hash changes
+                                      with them. --print shows the payload (for issue_command
+                                      over MCP) instead of issuing it
   assign-payload --contract F --run ID --seed-repo R --seed-commit C --bundle PATH
                  [--bundle-sha256 H] [--kit-repo R --kit-commit C --kit-bundle PATH
                  [--kit-bundle-sha256 H]] [--model NAME=SHA256:PATH ...] [--note TEXT] [--agents off]
@@ -126,14 +132,24 @@ usage: thermite <command> [options]
                                       experiments (on --rig unless RIG/ is given); --past adds
                                       items of Thermite's knowledge base by id. It prints the new
                                       run and its command id; a stopped RunPod pod starts first
-  campaign copy FROM NAME [--mcp-servers-json FILE] --control URL --token-file F
+  campaign copy FROM NAME [--mcp-servers-json FILE] [--context-window TOKENS]
+         [--compact-at PERCENT] --control URL --token-file F
                                       copy a campaign control keeps (owner's token): a new
                                       campaign NAME with FROM's contract and kit, its own empty
                                       folder in Thermite's knowledge base and no runs. Start a
                                       run of it with run start. It prints the copy.
                                       --mcp-servers-json: for a research campaign, the MCP
                                       servers the copy's agents use instead, as a JSON list
-                                      ([] for none)
+                                      ([] for none). --context-window and --compact-at give the
+                                      copy its own context settings, in place of FROM's
+  campaign context CAMPAIGN [--context-window TOKENS] [--compact-at PERCENT]
+         --control URL --token-file F
+                                      set a campaign's own context settings for all its runs'
+                                      agents (owner's token): every agent's window is the lower
+                                      of TOKENS and its own model's, and PERCENT replaces the
+                                      rig's compaction point. Control saves a new version of the
+                                      campaign; runs started from then take it. Without either
+                                      option, the settings are removed. It prints the version
   mcp list --control URL --token-file F [--json]
                                       the MCP servers in Settings (owner's token): each one's
                                       sign-in, state, last error, tools and the kits that name
@@ -175,9 +191,9 @@ usage: thermite <command> [options]
 
 ## Rules for every command
 
-- **Options.** Each option takes its value as the next word or after `=`. In `doctor`, `token new`, `assign`, `assign-payload`, `rig`, `run start`, `campaign copy`, `command`, `submit` and `status`, an option the command does not know, or a word it does not expect, ends the command with Node's own message and exit code 2. In `runpod` and `mcp`, an option it does not know does the same; a word after the name it takes is ignored.
+- **Options.** Each option takes its value as the next word or after `=`. In `doctor`, `token new`, `assign`, `assign-payload`, `rig`, `run start`, `campaign copy`, `campaign context`, `command`, `submit` and `status`, an option the command does not know, or a word it does not expect, ends the command with Node's own message and exit code 2. In `runpod` and `mcp`, an option it does not know does the same; a word after the name it takes is ignored.
 - **Older option names.** `--instance` is read as `--run`, and `--unit` as `--rig`. These are the names from before runs and rigs were renamed.
-- **Control's token.** The commands that talk to control (`assign`, `run start`, `campaign copy`, `mcp`, `command`, `rig add`, `rig token`, `rig retire`, `rig list`, and every `runpod` command) send the contents of `--token-file`, trimmed, as `Authorization: Bearer <token>`. Only the owner's token works on these routes; any other token gets `401 {"error":"unauthorized"}`. See [Tokens and roles](tokens.md).
+- **Control's token.** The commands that talk to control (`assign`, `run start`, `campaign copy`, `campaign context`, `mcp`, `command`, `rig add`, `rig token`, `rig retire`, `rig list`, and every `runpod` command) send the contents of `--token-file`, trimmed, as `Authorization: Bearer <token>`. Only the owner's token works on these routes; any other token gets `401 {"error":"unauthorized"}`. See [Tokens and roles](tokens.md).
 - **Control's address.** `--control` is control's base address, such as `https://control.example.com`. A trailing `/` is removed.
 - **Refusals.** When control or the harness refuses a request, the command prints `<url> -> <status> <body>` on standard error and exits 2. `status` is the exception: see [below](#status). A request body that does not match the route gives `400 {"error":"invalid request"}`; a command that control refuses before signing it gives `400` with the reason (for example a payload that does not fit its kind, or a message that nothing would read), or `404` for an unknown rig; another refusal from inside control gives `500` with the reason. The [REST API reference](rest-api.md) lists the routes.
 
@@ -290,11 +306,15 @@ The hash is what control's settings take; the token itself stays with you. See [
 | `--promotion auto\|owner` | No | The rig's own setting | The run's promotion rule. `owner` is sent as `owner_approval`: every confirmed win waits for the owner |
 | `--queue-from [RIG/]RUN` | No | Off: the new run's queue starts empty | A past run whose untried experiments start the new run's [experiment queue](../how-to/campaigns/choose-what-runs-next.md). `RUN` alone is a run on `--rig`; `RIG/RUN` names its rig. They are read from control, so it needs `--control` and `--token-file`, with `--print` too. See [below](#copy-a-past-runs-untried-experiments) |
 | `--mcp-servers JSON\|@file` | When the kit names MCP servers | None | The MCP servers the kit's `kit.json` names, as it names them ([`mcp_servers`](kit-manifest.md#mcp-servers)): the JSON list itself, or `@` and a file that holds it. Sent as the command's `mcp_servers`. Control refuses a server **Settings** lacks, and the rig refuses the run when the list differs from `kit.json`'s. A research contract's own `mcp_servers` are sent without it |
+| `--context-window TOKENS` | No | The contract's | The campaign's own context window for the run's agents: the contract's [`agents_context.context_window`](contract.md#agents-context), over the file's. 4,096 to 100,000,000. Each agent works with the lower of it and its own window. The contract sent, and its hash, change with it |
+| `--compact-at PERCENT` | No | The contract's | The campaign's own compaction point: the contract's `agents_context.compact_at`, over the file's. 50 to 95. It replaces the rig's point for every agent of the run |
 | `--control URL` | To send it | | Control's address |
 | `--token-file F` | To send it | | A file with the owner's token |
 | `--rig R` | To send it | | The rig that runs it |
 | `--ttl MIN` | No | `60` | Minutes before the command expires if the rig has not taken it: a whole number from 1 to 10080 (7 days) |
 | `--print` | Instead of the four above | | Print the payload as indented JSON and send nothing. The output is what the MCP tool `issue_command` takes as `payload` |
+
+A `--context-window` or `--compact-at` out of range ends the command before anything is sent, with exit code 2: `--context-window and --compact-at: A context window is a whole number of tokens from 4,096 to 100,000,000.` or `… The compaction point is a whole percent of the context window, from 50 to 95.` Control refuses a window above what a provider lists for one of the rig's agents' models: [Campaigns](rest-api.md#campaigns) has the words.
 
 `--seed` and `--seed-commit` together are refused. When the contract's project is one folder of its repository (`project.folder`), `--seed` and `--seed-commit` still name the whole repository and its commit: the harness starts the run from that folder of the commit. For a research contract, the run has no seed and no kit, and `--seed`, `--seed-commit` and `--kit` are not used.
 
@@ -529,6 +549,8 @@ It prints control's answer on one line, such as `{"campaign":"sort-speed-b","ver
 | `FROM` | Yes | | The campaign to copy, as on its page |
 | `NAME` | Yes | | The copy's name: lowercase letters, digits, dots, dashes and underscores, at most 64, starting with a letter or a digit. No campaign may have it yet |
 | `--mcp-servers-json FILE` | No | the source's | A research campaign only: a file with the MCP servers the copy's agents use instead of the source's, as a JSON list, sent as the request's `mcp_servers` ([Copy a campaign](rest-api.md#copy-a-campaign)). `[]` names none |
+| `--context-window TOKENS` | No | the source's | The copy's own context window for its runs' agents, 4,096 to 100,000,000, sent in the request's `agents_context`. With it or `--compact-at`, the copy's context settings are these, in place of the source's |
+| `--compact-at PERCENT` | No | the source's | The copy's own compaction point, 50 to 95, sent in the request's `agents_context` |
 | `--control URL` | Yes | | Control's address |
 | `--token-file F` | Yes | | A file with the owner's token |
 
@@ -543,6 +565,27 @@ npx thermite campaign copy survey survey-b --mcp-servers-json servers.json \
 `{"name": "web-search", "agents": ["workers", "advisors"], "tools": {"workers": ["search"]}}` gives it to the advisors too, and narrows the workers to its `search` tool.
 
 Without `--control` and `--token-file`, it ends with `give --control and --token-file: control copies the campaign` and exit code 2. A file that is not JSON ends it with `--mcp-servers-json: <file> is not a JSON list:` and the parser's message, and exit code 2. Control's refusals come back as `<url> -> <status> <body>`, such as `-> 409 {"error":"There is a campaign named sort-speed-b already. Choose another name."}`: [Copy a campaign](rest-api.md#copy-a-campaign) lists them. MCP's [`copy_campaign`](mcp-tools.md#copy_campaign) does the same with an operator's token too.
+
+### `campaign context`
+
+`thermite campaign context` sets a campaign's own context window and compaction point for all its runs' agents (`POST /v1/campaigns/<campaign>/context`). Control saves a new version of the campaign, with the settings in its contract's [`agents_context`](contract.md#agents-context); runs started from then take it.
+
+```sh
+npx thermite campaign context sort-speed --context-window 131072 --compact-at 70 \
+  --control https://control.example.com --token-file ~/thermite-owner-token
+```
+
+It prints control's answer on one line, such as `{"campaign":"sort-speed","version":3,"contract_sha":"<sha256>","agents_context":{"context_window":131072,"compact_at":70},"said":"…"}`, and its `said` on standard error: `Version 3 of sort-speed is saved. Its runs' agents: a context window of 131,072 tokens, compaction at 70% of the window. Runs started from now take it.`
+
+| Option | Required | Default | Meaning |
+| --- | --- | --- | --- |
+| `CAMPAIGN` | Yes | | The campaign, as on its page |
+| `--context-window TOKENS` | No | none | The most tokens of context window each agent works with, 4,096 to 100,000,000. Each agent's window is the lower of this and its own model's |
+| `--compact-at PERCENT` | No | none | The share of the window, 50 to 95, at which each agent's conversation is compacted, in place of the rig's point |
+| `--control URL` | Yes | | Control's address |
+| `--token-file F` | Yes | | A file with the owner's token |
+
+Each call sets the settings anew: without either option, they are removed. A value out of range ends the command before anything is sent, with exit code 2: `--context-window and --compact-at:` and why. Without `--control` and `--token-file`, it ends with `give --control and --token-file: control keeps the campaign` and exit code 2. Control's refusals come back as `<url> -> <status> <body>`: [A campaign's context settings](rest-api.md#a-campaigns-context-settings) lists them. MCP's [`set_campaign_context`](mcp-tools.md#set_campaign_context) does the same with an operator's token too.
 
 ### `mcp`
 

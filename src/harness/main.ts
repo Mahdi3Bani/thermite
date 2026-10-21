@@ -22,7 +22,7 @@ import { generateSigningKeys } from "../core/commands.ts";
 import { claudeModelCheck, claudeOnce, runClaudeTrial } from "./agents/claude-code.ts";
 import { codexModelCheck, codexOnce, runCodexTrial } from "./agents/codex.ts";
 import { DevRuns } from "./agents/devrun.ts";
-import { type ModelConfig, modelConfigFromEnv } from "./agents/model.ts";
+import { type ModelConfig, modelConfigFromEnv, withAgentsContext } from "./agents/model.ts";
 import { checkModel } from "./agents/model-check.ts";
 import { ModelSource } from "./agents/model-source.ts";
 import {
@@ -453,6 +453,10 @@ async function main(): Promise<void> {
   const models = new ModelSource(routeFile, modelConfigFromEnv(env));
   service.models = models;
   const model = () => models.current();
+  // A run's workers: the route, with the campaign's own context settings when its contract has
+  // them (goal 070): the lower window, and the campaign's compaction point.
+  const modelFor = (run: string) =>
+    withAgentsContext(model(), service.contractFor(run).agents_context);
   // Rig checks control can ask for: the model route, and the isolation selftest under the broker.
   // OpenCode and Codex (worker harnesses a rig may choose) reach the harness API on loopback.
   const apiUrl = `http://127.0.0.1:${port}`;
@@ -523,7 +527,7 @@ async function main(): Promise<void> {
     // Each trial runs in the harness the rig's route names: Pi (a worker process), OpenCode,
     // Claude Code or Codex.
     runTrial: (spec, signal) => {
-      const m = model();
+      const m = modelFor(spec.run);
       if (m?.harness === "codex")
         return runCodexTrial(spec, {
           runner,
@@ -624,7 +628,7 @@ async function main(): Promise<void> {
     // subscription runs only in Claude Code, and OpenCode's own (free) models only in OpenCode:
     // say so, in words.
     runResearchTrial: async (spec, signal) => {
-      const m = model();
+      const m = modelFor(spec.run);
       const cannot = !m
         ? "this rig has no model for its agents: give it one on its Edit rig page"
         : m.api === "claude"

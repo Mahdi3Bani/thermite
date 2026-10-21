@@ -995,6 +995,11 @@ export class ControlStore {
     );
     if (!roleModelCols.includes("harness"))
       this.db.exec("alter table rig_role_model add column harness text");
+    // Every agent's own cap and compaction point (goal 070), as the workers' are kept above.
+    if (!roleModelCols.includes("context_cap"))
+      this.db.exec("alter table rig_role_model add column context_cap integer");
+    if (!roleModelCols.includes("compact_at"))
+      this.db.exec("alter table rig_role_model add column compact_at integer");
     const machineRigCols = (this.db.prepare("pragma table_info(machine_rig)").all() as Row[]).map(
       (r) => r.name,
     );
@@ -1942,7 +1947,9 @@ export class ControlStore {
 
   /**
    * Gives one of a rig's other agents a model, or (null) has it follow the workers again.
-   * `harness`: the harness it runs in (goal 073); left out, what its model needs.
+   * `harness`: the harness it runs in (goal 073); left out, what its model needs. `contextCap` and
+   * `compactAt`: the agent's own cap on its model's window and its compaction point (goal 070), as
+   * for the workers' model; none when left out.
    */
   assignRoleModel(
     rig: string,
@@ -1952,6 +1959,8 @@ export class ControlStore {
       model: string;
       effort?: Effort | undefined;
       harness?: Harness | undefined;
+      contextCap?: number | undefined;
+      compactAt?: number | undefined;
     } | null,
   ): void {
     if (choice === null) {
@@ -1961,9 +1970,11 @@ export class ControlStore {
     if (!this.provider(choice.provider)) throw new Error(`no model provider ${choice.provider}`);
     this.db
       .prepare(
-        `insert into rig_role_model (rig, role, provider, model, effort, harness, assigned_at) values (?, ?, ?, ?, ?, ?, ?)
+        `insert into rig_role_model (rig, role, provider, model, effort, harness, context_cap, compact_at, assigned_at)
+           values (?, ?, ?, ?, ?, ?, ?, ?, ?)
          on conflict (rig, role) do update set provider = excluded.provider, model = excluded.model,
-           effort = excluded.effort, harness = excluded.harness, assigned_at = excluded.assigned_at`,
+           effort = excluded.effort, harness = excluded.harness, context_cap = excluded.context_cap,
+           compact_at = excluded.compact_at, assigned_at = excluded.assigned_at`,
       )
       .run(
         rig,
@@ -1972,24 +1983,34 @@ export class ControlStore {
         choice.model,
         choice.effort ?? null,
         choice.harness ?? null,
+        choice.contextCap ?? null,
+        choice.compactAt ?? null,
         new Date().toISOString(),
       );
   }
 
   /**
    * A rig's other agents' models, by role (roles with none are absent). `harness`: the one the
-   * owner chose (goal 073); null, what the model needs.
+   * owner chose (goal 073); null, what the model needs. Each with its own cap and compaction
+   * point (goal 070), when set.
    */
-  roleModels(
-    rig: string,
-  ): Partial<
+  roleModels(rig: string): Partial<
     Record<
       AgentRole,
-      { provider: string; model: string; effort: Effort | null; harness: Harness | null }
+      {
+        provider: string;
+        model: string;
+        effort: Effort | null;
+        harness: Harness | null;
+        contextCap?: number | undefined;
+        compactAt?: number | undefined;
+      }
     >
   > {
     const rows = this.db
-      .prepare("select role, provider, model, effort, harness from rig_role_model where rig = ?")
+      .prepare(
+        "select role, provider, model, effort, harness, context_cap, compact_at from rig_role_model where rig = ?",
+      )
       .all(rig) as Row[];
     return Object.fromEntries(
       rows.map((r) => [
@@ -2001,6 +2022,8 @@ export class ControlStore {
             ? (String(r.effort) as Effort)
             : null,
           harness: HARNESS_IDS.find((h) => h === r.harness) ?? null,
+          ...(Number(r.context_cap) > 0 ? { contextCap: Number(r.context_cap) } : {}),
+          ...(Number(r.compact_at) > 0 ? { compactAt: Number(r.compact_at) } : {}),
         },
       ]),
     );

@@ -5,6 +5,7 @@ import { parseArgs } from "node:util";
 import { newToken } from "../control/credential.ts";
 import type { RunpodRigView } from "../control/runpod-rig-view.ts";
 import { generateSigningKeys } from "../core/commands.ts";
+import { agentsContextRefusal } from "../core/compaction.ts";
 import { CommitSchema, parseContract } from "../core/contract.ts";
 import { doctor, doctorExit, formatReport, machineProbes } from "./doctor.ts";
 import { chooseOwner, localInit, parentOwner } from "./local-init.ts";
@@ -31,6 +32,7 @@ const USAGE = `usage: thermite <command> [options]
   assign --contract F --run ID [--seed GIT_URL[@COMMIT] | --seed-commit C] [--kit GIT_URL]
          [--model NAME=URL ...] [--note TEXT] [--agents off] [--promotion auto|owner]
          [--queue-from [RIG/]RUN] [--mcp-servers JSON|@file]
+         [--context-window TOKENS] [--compact-at PERCENT]
          (--control URL --token-file F --rig R [--ttl MIN] | --print)
                                       start a run. The rig's supervisor fetches the project and
                                       kit commits from their repositories, and models from their
@@ -43,8 +45,13 @@ const USAGE = `usage: thermite <command> [options]
                                       --mcp-servers gives the MCP servers the kit's kit.json
                                       names, as in kit.json; the rig refuses a run whose list
                                       differs. --note keeps a text with the run (--direction,
-                                      its old name, still works and says so). --print shows the
-                                      payload (for issue_command over MCP) instead of issuing it
+                                      its old name, still works and says so). --context-window
+                                      and --compact-at set the campaign's own context settings
+                                      in the contract sent (its agents_context, over the file's):
+                                      every agent's window is the lower of it and its own, and
+                                      the point replaces the rig's; the contract's hash changes
+                                      with them. --print shows the payload (for issue_command
+                                      over MCP) instead of issuing it
   assign-payload --contract F --run ID --seed-repo R --seed-commit C --bundle PATH
                  [--bundle-sha256 H] [--kit-repo R --kit-commit C --kit-bundle PATH
                  [--kit-bundle-sha256 H]] [--model NAME=SHA256:PATH ...] [--note TEXT] [--agents off]
@@ -109,14 +116,24 @@ const USAGE = `usage: thermite <command> [options]
                                       experiments (on --rig unless RIG/ is given); --past adds
                                       items of Thermite's knowledge base by id. It prints the new
                                       run and its command id; a stopped RunPod pod starts first
-  campaign copy FROM NAME [--mcp-servers-json FILE] --control URL --token-file F
+  campaign copy FROM NAME [--mcp-servers-json FILE] [--context-window TOKENS]
+         [--compact-at PERCENT] --control URL --token-file F
                                       copy a campaign control keeps (owner's token): a new
                                       campaign NAME with FROM's contract and kit, its own empty
                                       folder in Thermite's knowledge base and no runs. Start a
                                       run of it with run start. It prints the copy.
                                       --mcp-servers-json: for a research campaign, the MCP
                                       servers the copy's agents use instead, as a JSON list
-                                      ([] for none)
+                                      ([] for none). --context-window and --compact-at give the
+                                      copy its own context settings, in place of FROM's
+  campaign context CAMPAIGN [--context-window TOKENS] [--compact-at PERCENT]
+         --control URL --token-file F
+                                      set a campaign's own context settings for all its runs'
+                                      agents (owner's token): every agent's window is the lower
+                                      of TOKENS and its own model's, and PERCENT replaces the
+                                      rig's compaction point. Control saves a new version of the
+                                      campaign; runs started from then take it. Without either
+                                      option, the settings are removed. It prints the version
   mcp list --control URL --token-file F [--json]
                                       the MCP servers in Settings (owner's token): each one's
                                       sign-in, state, last error, tools and the kits that name
@@ -159,6 +176,26 @@ const USAGE = `usage: thermite <command> [options]
 function fail(msg: string): never {
   process.stderr.write(`${msg}\n`);
   process.exit(2);
+}
+
+/**
+ * A campaign's own context settings from --context-window and --compact-at (goal 070), refused in
+ * words when out of range; undefined when neither is given.
+ */
+function contextFromFlags(values: {
+  "context-window"?: string | undefined;
+  "compact-at"?: string | undefined;
+}): { context_window?: number; compact_at?: number } | undefined {
+  const window = values["context-window"];
+  const at = values["compact-at"];
+  if (window === undefined && at === undefined) return undefined;
+  const own = {
+    ...(window !== undefined ? { context_window: Number(window) } : {}),
+    ...(at !== undefined ? { compact_at: Number(at) } : {}),
+  };
+  const why = agentsContextRefusal(own);
+  if (why) fail(`--context-window and --compact-at: ${why}`);
+  return own;
 }
 
 /**
@@ -407,6 +444,8 @@ async function main(argv: string[]): Promise<void> {
           promotion: { type: "string" },
           "queue-from": { type: "string" },
           "mcp-servers": { type: "string" },
+          "context-window": { type: "string" },
+          "compact-at": { type: "string" },
           control: { type: "string" },
           "token-file": { type: "string" },
           rig: { type: "string" },
@@ -415,6 +454,7 @@ async function main(argv: string[]): Promise<void> {
         },
       });
       if (!values.contract || !values.run) fail(USAGE);
+      const ownContext = contextFromFlags(values);
       if (values.agents !== undefined && values.agents !== "on" && values.agents !== "off")
         fail("--agents is on or off");
       const note = runNote(values);
@@ -438,7 +478,15 @@ async function main(argv: string[]): Promise<void> {
         if (!rig) fail("--queue-from RUN is a run on --rig: give --rig, or RIG/RUN");
         past = { rig, run };
       }
-      const r = parseContract(JSON.parse(readFileSync(values.contract, "utf8")));
+      const fromFile = parseContract(JSON.parse(readFileSync(values.contract, "utf8")));
+      if (!fromFile.ok) fail(fromFile.errors.join("\n"));
+      // The campaign's own context settings over the file's (goal 070): a contract with another hash.
+      const r = ownContext
+        ? parseContract({
+            ...fromFile.contract,
+            agents_context: { ...fromFile.contract.agents_context, ...ownContext },
+          })
+        : fromFile;
       if (!r.ok) fail(r.errors.join("\n"));
       const contract = r.contract;
       const full = (c: string | undefined, what: string) => {
@@ -776,6 +824,30 @@ async function main(argv: string[]): Promise<void> {
       return;
     }
     case "campaign": {
+      // A campaign's own context settings (goal 070), through POST /v1/campaigns/<name>/context.
+      if (rest[0] === "context") {
+        const [, campaign, ...args] = rest;
+        if (!campaign || campaign.startsWith("-")) fail(USAGE);
+        const { values } = parseArgs({
+          args,
+          options: {
+            control: { type: "string" },
+            "token-file": { type: "string" },
+            "context-window": { type: "string" },
+            "compact-at": { type: "string" },
+          },
+        });
+        if (!values.control || !values["token-file"])
+          fail("give --control and --token-file: control keeps the campaign");
+        const out = (await post(
+          `${values.control.replace(/\/$/, "")}/v1/campaigns/${encodeURIComponent(campaign)}/context`,
+          readFileSync(values["token-file"], "utf8").trim(),
+          contextFromFlags(values) ?? {},
+        )) as { said?: string };
+        process.stdout.write(`${JSON.stringify(out)}\n`);
+        if (out.said) process.stderr.write(`${out.said}\n`);
+        return;
+      }
       // Copy a campaign control keeps (goal 069), through POST /v1/campaigns/<from>/copy.
       const [sub, from, name, ...args] = rest;
       if (sub !== "copy" || !from || !name || from.startsWith("-") || name.startsWith("-"))
@@ -786,10 +858,14 @@ async function main(argv: string[]): Promise<void> {
           control: { type: "string" },
           "token-file": { type: "string" },
           "mcp-servers-json": { type: "string" },
+          "context-window": { type: "string" },
+          "compact-at": { type: "string" },
         },
       });
       if (!values.control || !values["token-file"])
         fail("give --control and --token-file: control copies the campaign");
+      // The copy's own context settings, in place of its source's (goal 070).
+      const ownContext = contextFromFlags(values);
       // A research copy's MCP servers, as a JSON list in a file; control checks it.
       let mcpServers: unknown;
       const mcpFile = values["mcp-servers-json"];
@@ -805,7 +881,11 @@ async function main(argv: string[]): Promise<void> {
       const out = await post(
         `${values.control.replace(/\/$/, "")}/v1/campaigns/${encodeURIComponent(from)}/copy`,
         readFileSync(values["token-file"], "utf8").trim(),
-        { name, ...(mcpFile !== undefined ? { mcp_servers: mcpServers } : {}) },
+        {
+          name,
+          ...(mcpFile !== undefined ? { mcp_servers: mcpServers } : {}),
+          ...(ownContext ? { agents_context: ownContext } : {}),
+        },
       );
       process.stdout.write(`${JSON.stringify(out)}\n`);
       return;

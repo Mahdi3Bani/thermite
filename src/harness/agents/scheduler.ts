@@ -23,7 +23,7 @@ import type { Research } from "../research/research.ts";
 import type { HarnessService } from "../service.ts";
 import { Coordinator, focusOf, type Handout, PLANNER, resultOf } from "./coordinator.ts";
 import { mcpAgentTools } from "./mcp-tools.ts";
-import { type ModelConfig, usageLimitRetry } from "./model.ts";
+import { type ModelConfig, usageLimitRetry, withAgentsContext } from "./model.ts";
 import {
   type Ask,
   attribute,
@@ -689,9 +689,10 @@ export class Scheduler {
     this.watch();
     let p: Awaited<ReturnType<typeof plan>>;
     try {
-      // The planner's own model when control gave it one; else the workers'.
+      // The planner's own model when control gave it one; else the workers'. A campaign's own
+      // context settings apply to it too: the lower window, and the campaign's point (goal 070).
       const own = this.o.plannerModel?.();
-      const m = own ?? this.modelNow();
+      const m = withAgentsContext(own ?? this.modelNow(), contract.agents_context);
       // With a model of its own, the planner runs in the harness its route names (goal 073).
       // Following the workers: OpenCode's own models are reached only through OpenCode, a route
       // whose workers run in Codex plans in Codex too, and every other provider plans in Pi.

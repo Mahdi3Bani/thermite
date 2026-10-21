@@ -77,6 +77,22 @@ Every field this example leaves out takes its default. The repository has one ex
 | `max_duration` | duration | none | Research: when the campaign ends. It may not be shorter than `min_duration`. Other modes: accepted, not used yet |
 | `search_policy` | object | none | Rules for research search queries. See [Search policy](#search-policy) |
 | `notes` | text | none | Notes from the campaign's author. In hill climb and goal campaigns, the planner gets them, and every worker's brief has them under "Notes from the campaign's author". Research campaigns do not use them |
+| `agents_context` | object | none: each agent keeps the rig's settings | The campaign's own context window and compaction point for all its runs' agents. See [Agents' context](#agents-context) |
+
+### Agents' context
+
+The rig sets each agent's context window and compaction point with its model ([Give each agent its own model](../how-to/models/model-per-agent.md)). A campaign may set its own for all its runs: the workers, the planner and the advisors.
+
+```json title="contract.json (part)"
+{ "agents_context": { "context_window": 131072, "compact_at": 70 } }
+```
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `agents_context.context_window` | integer, 4,096 to 100,000,000 | none | The most tokens of [context window](glossary.md) each agent works with. Each agent's window is the lower of this and its own: its provider's window, or the rig's cap on it. With an agent whose window Thermite does not know, this one |
+| `agents_context.compact_at` | integer, 50 to 95 | none | The share of the window, in percent, at which each agent's conversation is [compacted](limits-and-pacing.md#compaction), in place of the rig's point |
+
+Both are optional and have no default, so a contract without them keeps its hash. A change is a new version: a run keeps the settings it started with. Control refuses to start a run of a campaign whose window is above what a provider lists for one of the rig's agents' models; [`POST /v1/campaigns/<campaign>/context`](rest-api.md#a-campaigns-context-settings), MCP's `set_campaign_context` and `thermite campaign context` save a new version with them, and Start a run's answer says what applies to each agent. A rig whose harness is older than this field refuses a contract that has it.
 
 ### Lanes
 
@@ -278,7 +294,7 @@ These fields pass validation and become part of the contract and its hash, but n
 
 ## When a run is assigned
 
-The `assign_campaign` [signed command](signed-commands.md) carries the contract and its hash. Control does not sign one whose contract asks for more than 16 lanes: it answers `This contract asks for <n> lanes. A rig runs 16 at most: it has users for lanes 1 to 16 only. Set lanes.count to 16 or fewer.` The rig's harness refuses the command with one of these, and creates no run:
+The `assign_campaign` [signed command](signed-commands.md) carries the contract and its hash. Control does not sign one whose contract asks for more than 16 lanes: it answers `This contract asks for <n> lanes. A rig runs 16 at most: it has users for lanes 1 to 16 only. Set lanes.count to 16 or fewer.` Nor, for a run with agents, one whose `agents_context.context_window` is above what a provider lists for the model control gives one of the rig's agents: `This campaign sets a context window of <n> tokens. <model>, the model of the <agent> on <rig>, takes at most <m> tokens. Set the campaign's window to <m> or less, or give that agent another model.` The rig's harness refuses the command with one of these, and creates no run:
 
 | Message | Cause |
 | --- | --- |

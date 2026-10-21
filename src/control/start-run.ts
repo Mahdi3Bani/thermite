@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ContextApplies } from "./campaign-context.ts";
 
 /**
  * Start a run of a campaign control keeps, from outside the dashboard (goal 029): REST's
@@ -39,6 +40,11 @@ export type StartRunOutcome =
       pauses?: string | undefined;
       /** What else to know, in words: for example, a run to copy from had nothing untried. */
       notes: string[];
+      /**
+       * The campaign's own context settings and what each agent works with on the rig (goal 070),
+       * when the campaign sets any; its words are one of the notes.
+       */
+      context?: ContextApplies | undefined;
     }
   | { state: "model_given"; said: string }
   | { state: "refused"; error: string; status: 400 | 404 | 409 };
@@ -133,5 +139,7 @@ export function startRunAnswer(
     status: "pending",
     ...(out.woke ? { woke: out.woke } : {}),
     ...(notes.length ? { notes } : {}),
+    // What applies to the run's agents, when the campaign sets its own context (goal 070).
+    ...(out.context ? { agents_context: out.context } : {}),
   };
 }

@@ -9,6 +9,11 @@ import { LiveBatch, LiveEntry, liveBody } from "../core/live.ts";
 import { POD_CONFIG_ENV } from "../core/tunnel.ts";
 import { type BuildInfo, buildFromHeaders, buildInfo, readBuild } from "../core/version.ts";
 import type { ControlActions } from "./actions.ts";
+import {
+  CampaignContextBody,
+  campaignContextAnswer,
+  setCampaignContext,
+} from "./campaign-context.ts";
 import { CHATGPT_API, ChatGPTLogins } from "./chatgpt.ts";
 import type { ClusterKubectl } from "./clusters/kubectl.ts";
 import { CopyCampaignBody, copyCampaignAnswer } from "./copy-campaign.ts";
@@ -752,7 +757,10 @@ export function createControlApi(
       api_key: key,
     };
   };
-  /** A rig's other agent's route (planner or an advisor), when the owner gave it a model. */
+  /**
+   * A rig's other agent's route (planner or an advisor), when the owner gave it a model, with the
+   * agent's own cap on its window and its compaction point (goal 070), as the workers' route has.
+   */
   const roleRouteOf = async (rig: string, role: AgentRole) => {
     const a = store.roleModels(rig)[role];
     const p = a ? store.provider(a.provider) : undefined;
@@ -760,7 +768,7 @@ export function createControlApi(
     // The harness the owner chose for the agent (goal 073), else what its model needs: Claude
     // Code for a subscription, OpenCode for OpenCode's own models, else Pi.
     const harness = a.harness ?? neededHarness(p, a.model);
-    return (await routeOf(p, a.model, harness, a.effort)) ?? null;
+    return (await routeOf(p, a.model, harness, a.effort, a.contextCap, a.compactAt)) ?? null;
   };
 
   app.get("/v1/rigs/:rig/model-route", rigAuth, async (c) => {
@@ -1174,10 +1182,43 @@ export function createControlApi(
     return c.json(copyCampaignAnswer(out), 201);
   });
 
+  // A campaign's own context window and compaction point for all its runs' agents (goal 070):
+  // the twin of MCP's set_campaign_context. A new version of its contract; an empty body removes
+  // them. 201 with a new version, 200 when the newest version has them already.
+  app.post(
+    "/v1/campaigns/:campaign/context",
+    admin,
+    bodyLimit({ maxSize: 16 * 1024 }),
+    async (c) => {
+      const campaign = c.req.param("campaign");
+      const raw: unknown = await c.req.json().catch(() => undefined);
+      const body = CampaignContextBody.safeParse(raw);
+      const out = body.success
+        ? setCampaignContext(
+            store,
+            {
+              campaign,
+              contextWindow: body.data.context_window,
+              compactAt: body.data.compact_at,
+            },
+            "owner:api",
+          )
+        : ({ state: "refused", error: bodyRefusal(body.error), status: 400 } as const);
+      if (out.state === "refused") {
+        store.audit("owner:api", "refused", {
+          path: `/v1/campaigns/${campaign}/context`,
+          why: redact(out.error),
+        });
+        return c.json({ error: out.error }, out.status);
+      }
+      return c.json(campaignContextAnswer(out), out.state === "saved" ? 201 : 200);
+    },
+  );
+
   // Give one of a rig's agents a model, or clear it (goals 029 and 070): the twin of MCP's
   // set_rig_model, through the dashboard's own code (actions.setRigModel), with Edit rig's
-  // refusals in words. Each call for the workers sets the context window cap anew: none given,
-  // none kept.
+  // refusals in words. Each call sets the agent's context window cap and compaction point anew:
+  // none given, none kept.
   app.post("/v1/rigs/:rig/model", admin, bodyLimit({ maxSize: 16 * 1024 }), async (c) => {
     const give = actions.setRigModel;
     if (!give) return c.json({ error: "this control gives no models" }, 404);

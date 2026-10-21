@@ -309,6 +309,43 @@ describe("advisors in OpenCode and the Codex CLI", () => {
     assert.equal((JSON.parse(f.config) as { providers?: unknown }).providers, undefined);
   });
 
+  test("each CLI compacts within the advisor's window, at its point, in its own settings (goal 070)", async (t) => {
+    const p = await provider(t);
+    const codex = await call("codex", {
+      name: "auditor",
+      runtime: "codex",
+      api: "openai",
+      base_url: p.url,
+      model: "gpt-test",
+      api_key: KEY,
+      context_window: 128_000,
+      compact_at: 70,
+      timeout_s: 60,
+    });
+    assert.equal(codex.error, undefined, codex.error);
+    const cf = (codex.output as z.infer<typeof Facts>).config;
+    assert.match(cf, /\nmodel_context_window = 128000\nmodel_auto_compact_token_limit = 89600\n/);
+    const opencode = await call("opencode", {
+      name: "teacher-1",
+      runtime: "opencode",
+      api: "openai",
+      base_url: p.url,
+      model: "open-test",
+      api_key: KEY,
+      context_window: 131_072,
+      compact_at: 75,
+      timeout_s: 60,
+    });
+    assert.equal(opencode.error, undefined, opencode.error);
+    const oc = JSON.parse((opencode.output as z.infer<typeof Facts>).config) as {
+      compaction: { auto: boolean; buffer?: number };
+      providers: { thermite: { models: Record<string, { limit?: { context: number } }> } };
+    };
+    // The point at 75% of 131,072: OpenCode keeps 32,768 tokens free below the window.
+    assert.deepEqual(oc.compaction, { auto: true, buffer: 32_768 });
+    assert.deepEqual(oc.providers.thermite.models["open-test"]?.limit, { context: 131_072 });
+  });
+
   test("an answer that is no valid object, a missing key and a missing program are errors in words", async (t) => {
     const p = await provider(t);
     const noKey = await runAdvisor({
