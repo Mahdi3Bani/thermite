@@ -1,0 +1,40 @@
+---
+id: "072"
+title: "Say why a running run has nothing at work"
+status: PROPOSED
+version: "0.2.0"
+depends_on: []
+created: 2026-10-21
+updated: 2026-10-21
+---
+
+# 072 · Say why a running run has nothing at work
+
+**Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020)
+
+## What
+
+When a run is running but no trial is at work, its page, the REST API and MCP say why, in words, with a time when that is known: the planner is planning the next round (since when, on which model), the scheduler waits after failed trials (until when), the rig has no model, the run waits for the judge, or the rig is restarting.
+
+## Why
+
+On 2026-10-21 a goal run had no trial at work for six minutes after its rig restarted on new images. Control's view showed `running` and nothing at work, with no reason. The cause, the planner's first call on a new model, was found only by reading the rig's own log. An owner can't tell a run that is about to go on from one that is stuck.
+
+## Done when
+
+- [ ] The harness reports, with each run, what its scheduler waits for and since when.
+- [ ] The run's page, `GET /v1/rigs/<rig>/runs/<run>` and MCP's `get_run` show it in words.
+- [ ] Tests for each reason.
+- [ ] The run page's reference says each reason.
+
+## Decisions
+
+## Open questions
+
+## Progress
+
+- 2026-10-21: Goal written from a run the lead session watched after a rig's update.
+
+---
+
+Run with `/goal Complete docs/plan/goals/072-why-nothing-at-work.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

@@ -1,0 +1,50 @@
+---
+id: "071"
+title: "MCP answers that fit an agent's context"
+status: PROPOSED
+version: "0.2.0"
+depends_on: ["029"]
+created: 2026-10-21
+updated: 2026-10-21
+---
+
+# 071 · MCP answers that fit an agent's context
+
+**Status:** `PROPOSED` · **Version:** [v0.2.0](../roadmap.md#v020)
+
+## What
+
+Every MCP tool answers within a size an agent can read, and says how to ask for more. A tool that lists or follows something long takes limits and cursors, and its default answer is a summary.
+
+## Why
+
+On 2026-10-21, while it steered the lab's campaigns over MCP, the lead session found three tools whose answers did not fit:
+
+- `get_run` answered about 280,000 characters for one goal run even with `attempts: 1`: it always carries 100 trials and a 400-line timeline.
+- `providers` answered every model of every provider, several hundred names for one OpenAI-compatible provider, with the GPU cloud's whole catalogue.
+- `recent_events` answered 81,000 characters for 15 events, because an isolation check's event carries every role's probes.
+
+An agent's client then saves the answer to a file, or drops it. The agent loses the one fact it asked for, such as a run's status or why it waits.
+
+## Done when
+
+- [ ] `get_run` takes limits for its trials and its timeline (and their cursors), with small defaults, and leads with the run's state.
+- [ ] `providers` lists models only when asked, by provider, with a filter.
+- [ ] `recent_events` gives each event's summary by default, and its whole body when asked.
+- [ ] Each tool's description says its limits and how to page.
+- [ ] Tests: each default answer stays under a stated size for a large run.
+- [ ] The MCP tools page says the limits.
+
+## Decisions
+
+## Open questions
+
+- One limit for every tool, or one per tool?
+
+## Progress
+
+- 2026-10-21: Goal written from what the lead session met while steering the lab's campaigns over MCP.
+
+---
+
+Run with `/goal Complete docs/plan/goals/071-bounded-mcp-answers.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

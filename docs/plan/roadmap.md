@@ -90,6 +90,8 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [027](goals/027-logs-page.goal) One Logs page · `PROPOSED`
 - [028](goals/028-log-store.goal) Search every log and session · `PROPOSED`
 - [029](goals/029-api-mcp-coverage.goal) Full API and MCP coverage · `IN_PROGRESS`
+- [071](goals/071-bounded-mcp-answers.goal) MCP answers that fit an agent's context · `PROPOSED`
+- [072](goals/072-why-nothing-at-work.goal) Say why a running run has nothing at work · `PROPOSED`
 - [030](goals/030-oauth-sign-in.goal) Sign in with OAuth or OIDC · `PROPOSED`
 - [031](goals/031-design-docs.goal) The design reasons, in public docs · `PROPOSED`
 - [061](goals/061-gaps-found-by-the-docs.goal) Gaps found by the docs work · `PROPOSED`
