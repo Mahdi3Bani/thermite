@@ -171,7 +171,7 @@ Each refusal is in the [audit log](#audit-log-actions) as `refused`, with the ro
 | --- | --- | --- | --- |
 | `rig` | string | | The rig the run starts on. A rig runs one run at a time: the run at work there pauses when this one starts |
 | `agents` | boolean | `true` | `false`: a try, with no agents. The judge measures the starting code on every case once. The run is named `<campaign>-try-<n>` |
-| `agents_model` | `{provider, model}` | none | For a rig with no model for its agents: a model from a provider in **Providers**. Control gives it to the rig, with the harness the model needs, and answers 202 without starting the run. Send the request again, without the field, once the rig runs the model |
+| `agents_model` | `{provider, model}` | none | For a rig with no model for its agents: a model from a provider in **Providers**. Control gives it to the rig, with the harness the model needs (the rig's own when control gave it this model already), and answers 202 without starting the run. Send the request again, without the field, once the rig runs the model |
 | `promotion` | `auto` or `owner_approval` | the rig's default | When a change is confirmed better: keep it at once, or wait for the owner |
 | `judge_gpus` | whole number | the rig's current split | For a rig with several GPUs: how many the judge measures on. Control sends the rig a `rig_settings` with the new split after the run's command, and the rig's harness restarts to apply it |
 | `queue_from` | `{rig, run}` | none | Another run of this campaign. Its untried experiments start the new run's queue: up next in their order, then its lanes' ideas, each with its words and author from control's records |

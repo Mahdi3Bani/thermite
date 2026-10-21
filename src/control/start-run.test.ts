@@ -164,12 +164,15 @@ async function stack() {
   ).text();
   const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(page)?.[1] ?? "";
   assert.ok(csrf);
-  const form = (campaign: string, fields: [string, string][]) =>
-    api.request(`/ui/campaigns/${campaign}/runs`, {
+  /** A dashboard form, sent as the browser sends it: to a path, with the page's token. */
+  const send = (path: string, fields: [string, string][]) =>
+    api.request(path, {
       method: "POST",
       body: new URLSearchParams([["csrf", csrf], ...fields]),
       headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
     });
+  const form = (campaign: string, fields: [string, string][]) =>
+    send(`/ui/campaigns/${campaign}/runs`, fields);
   /** Every assign_campaign control signed, oldest first: who issued it, and its payload. */
   const assigned = () =>
     (
@@ -184,7 +187,7 @@ async function stack() {
           }
         ).envelope,
     );
-  return { store, api, rest, form, assigned, exp, finding };
+  return { store, api, rest, send, form, assigned, exp, finding };
 }
 
 /** An MCP client talking to control in-process, with a token. */
@@ -391,6 +394,75 @@ describe("Start a run over REST (goal 029)", () => {
     const started = await s.rest("gemv-speed", { rig: "rig-b" });
     assert.equal(started.status, 201);
     assert.equal((await json<{ run: string }>(started)).run, "gemv-speed-1");
+  });
+
+  test("the model the rig has already keeps its harness; another model gets what it needs", async () => {
+    const s = await stack();
+    s.store.putProvider({
+      name: "oai",
+      type: "openai",
+      base_url: "https://models.example.com/v1",
+      key: { sealed: "sealed-for-the-tests", hint: "…test" },
+    });
+    s.store.setProviderModels("oai", [{ id: "gpt-x" }, { id: "gpt-y" }]);
+    // rig-a runs its agents in Codex with gpt-x, and reports so.
+    s.store.assignRigModel("rig-a", { provider: "oai", model: "gpt-x", harness: "codex" });
+    s.store.db
+      .prepare("update rig set summary = json_set(summary, '$.model', json(?)) where id = 'rig-a'")
+      .run(JSON.stringify({ source: "control", model: "gpt-x", harness: "codex" }));
+    // Start a run naming the same model, over REST and on the dashboard's panel: Codex stays.
+    const rest = await s.rest("gemv-speed", {
+      rig: "rig-a",
+      agents_model: { provider: "oai", model: "gpt-x" },
+    });
+    assert.equal(rest.status, 201);
+    assert.equal(s.store.rigModels()["rig-a"]?.harness, "codex");
+    const panel = await s.form("gemv-speed", [
+      ["rig", "rig-a"],
+      ["agents", "on"],
+      ["agents_model", "oai|gpt-x"],
+    ]);
+    assert.equal(panel.status, 303);
+    assert.equal(s.store.rigModels()["rig-a"]?.harness, "codex");
+    // Another model: the harness it needs (Pi for an OpenAI-compatible key).
+    const other = await s.rest("gemv-speed", {
+      rig: "rig-a",
+      agents_model: { provider: "oai", model: "gpt-y" },
+    });
+    assert.equal(other.status, 202);
+    assert.deepEqual(s.store.rigModels()["rig-a"], {
+      provider: "oai",
+      model: "gpt-y",
+      harness: "pi",
+    });
+    // Claude Code with another provider is refused, naming the harnesses that work with it.
+    const refused = async (choice: string) =>
+      decodeURIComponent(
+        String(
+          (
+            await s.send("/ui/settings/rigs", [
+              ["rig", "rig-a"],
+              ["harness", "claude-code"],
+              ["choice", choice],
+            ])
+          ).headers.get("location"),
+        ),
+      );
+    assert.match(
+      await refused("oai|gpt-x"),
+      /error=Claude Code runs only with a Claude subscription here: choose Pi, OpenCode v2 or Codex for this provider\./,
+    );
+    s.store.putProvider({
+      name: "keyed",
+      type: "anthropic",
+      base_url: "https://api.anthropic.com",
+      key: { sealed: "sealed-for-the-tests", hint: "…test" },
+    });
+    s.store.setProviderModels("keyed", [{ id: "claude-test" }]);
+    assert.match(
+      await refused("keyed|claude-test"),
+      /error=Claude Code runs only with a Claude subscription here: choose Pi or OpenCode v2 for this provider\./,
+    );
   });
 });
 

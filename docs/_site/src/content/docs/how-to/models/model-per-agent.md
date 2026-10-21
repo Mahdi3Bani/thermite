@@ -135,7 +135,7 @@ A refused change shows on the rig's page, in a card that starts with **Not done.
 | You see | What to do |
 | --- | --- |
 | "That provider does not list that model." (or with a role in brackets) | Refresh the provider's models on **Providers**, or add the model by name there. |
-| "Claude Code runs only with a Claude subscription here: choose Pi or OpenCode v2 for this provider." | Set the workers' **Runs in** to **Pi** or **OpenCode v2**. |
+| "Claude Code runs only with a Claude subscription here: choose Pi or OpenCode v2 for this provider." (or "… Pi, OpenCode v2 or Codex …" for a ChatGPT subscription or an OpenAI-compatible provider) | Set the workers' **Runs in** to one of those. |
 | "OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig." | Set the workers' **Runs in** to **OpenCode v2**. |
 | "Codex runs only with a ChatGPT subscription or an OpenAI-compatible provider: choose Pi or OpenCode v2 for this provider." | Set the workers' **Runs in** to **Pi** or **OpenCode v2**, or give them a model from a ChatGPT subscription or an OpenAI-compatible provider. |
 | "The auditor cannot use OpenCode's own models: they run only in OpenCode. Choose another model." (or another role) | Choose a model from another provider for that advisor. |

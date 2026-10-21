@@ -587,7 +587,7 @@ The operator's description ends with one more sentence: `judge_gpus is the owner
 | `campaign` | string | | The campaign, as on its page: one saved on control, or one assigned before over the API, MCP or the command line |
 | `rig` | string | | The rig the run starts on (**Where it runs**) |
 | `agents` | boolean, optional | `true` | `false`: a try, with no agents. The judge measures the starting code on every case once (**Agents** › **Off: a try**) |
-| `agents_model` | `{provider, model}`, optional | none | For a rig with no model for its agents: a model from a provider in **Providers** (**The agents' model**). Control gives the rig the model, with the harness the model needs, and does not start the run yet |
+| `agents_model` | `{provider, model}`, optional | none | For a rig with no model for its agents: a model from a provider in **Providers** (**The agents' model**). Control gives the rig the model, with the harness the model needs (the rig's own when control gave it this model already), and does not start the run yet |
 | `promotion` | `auto` or `owner_approval`, optional | the rig's default | When a change is confirmed better: keep it at once, or wait for the owner (**When a change is confirmed better**) |
 | `judge_gpus` | whole number, optional | the rig's current split | For a rig with several GPUs: how many the judge measures on (**GPUs for the judge**). The owner's token only. It changes the rig's split for every run on it, and the rig's harness restarts to apply it |
 | `queue_from` | `{rig, run}`, optional | none | Another run of this campaign: its untried experiments start the new run's queue, up next in their order, then its lanes' ideas (**Copy the untried experiments of**) |

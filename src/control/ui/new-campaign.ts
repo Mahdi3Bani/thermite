@@ -213,7 +213,7 @@ ${field(
     )
     .join("")}</select>`,
 )}
-${field("The agents run in", "The program that runs the agents. Empty: the one the model needs (OpenCode for OpenCode's free models, Claude Code for a Claude subscription, else Pi). Codex, OpenAI's own program, works with a ChatGPT subscription or an OpenAI-compatible key.", `<select name="agents_harness"><option value="">what the model needs</option><option value="opencode">OpenCode v2</option><option value="pi">Pi</option><option value="codex">Codex</option></select>`)}
+${field("The agents run in", "The program that runs the agents. Empty: the rig's own when control gave it this model already. Else the one the model needs (OpenCode for OpenCode's free models, Claude Code for a Claude subscription, else Pi). Codex, OpenAI's own program, works with a ChatGPT subscription or an OpenAI-compatible key.", `<select name="agents_harness"><option value="">what the model needs</option><option value="opencode">OpenCode v2</option><option value="pi">Pi</option><option value="codex">Codex</option></select>`)}
 ${field("When a change is confirmed better", "What happens when the judge confirms a change beats the current best: keep it at once as the new best, or wait for you. The rig's default is set where the rig is deployed.", `<select name="promotion"><option value="">the rig's default</option><option value="auto">always keep it</option><option value="owner_approval">ask me every time</option></select>`)}
 </div>
 <details class="adv"><summary>Advanced</summary><div class="g3">
