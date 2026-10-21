@@ -11,6 +11,7 @@ import {
   type CommandKind,
   CommandPayloads,
 } from "../core/commands.ts";
+import { compactAtRefusal, compactAtWords } from "../core/compaction.ts";
 import { FolderSchema, MAX_LANES } from "../core/contract.ts";
 import { type McpUse, McpUses, sameUses } from "../core/mcp.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
@@ -3544,10 +3545,15 @@ ${
                 want.contextCap,
               )
             : undefined;
+        // Its compaction point (goal 070), with the model it was set with.
+        const compacts =
+          want && m?.name === want.provider && m.model === want.model
+            ? ` Its conversations are compacted at ${compactAtWords(want.compactAt)}.`
+            : "";
         const uses = !m
           ? "Its harness does not report its model (it needs a newer image)."
           : m.source === "control"
-            ? `Its agents run under ${HARNESSES[m.harness]} with ${m.model} from ${m.name}.${capped ? ` Its context window: ${capped}.` : ""}`
+            ? `Its agents run under ${HARNESSES[m.harness]} with ${m.model} from ${m.name}.${capped ? ` Its context window: ${capped}.` : ""}${compacts}`
             : m.source === "environment"
               ? `Its agents use the rig's own settings (${m.model}, under ${HARNESSES[m.harness]}).`
               : "Its agents have no model: they wait.";
@@ -3899,7 +3905,8 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
             agents: agentModelsOf(store, rig),
           };
         }
-        // MCP and REST set what they are asked: no context_window removes a cap.
+        // MCP and REST set what they are asked: no context_window removes a cap, and no
+        // compact_at a compaction point (the default applies).
         const given = giveRigModel(
           rig,
           choice,
@@ -3907,11 +3914,13 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
           r.effort,
           by,
           r.contextWindow ?? null,
+          r.compactAt ?? null,
         );
         if ("error" in given) return given;
         return {
           ok: given.ok,
           contextWindow: given.contextWindow || null,
+          compactAt: given.compactAt ?? null,
           agents: agentModelsOf(store, rig),
         };
       }
@@ -6498,7 +6507,8 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     effort?: Effort | undefined,
     by = "owner:ui",
     cap?: number | null,
-  ): { ok: string; contextWindow: number } | { error: string } => {
+    at?: number | null,
+  ): { ok: string; contextWindow: number; compactAt: number | undefined } | { error: string } => {
     let harness = picked;
     const [pRaw, mRaw] = choice.split("|");
     let provider = "";
@@ -6547,7 +6557,18 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       const refused = contextCapRefusal(model, listed, cap);
       if (refused) return { error: refused };
     }
-    store.assignRigModel(rig, { provider, model, harness, effort, contextCap });
+    // The compaction point (goal 070), kept as the cap is.
+    const compactAt =
+      at === undefined
+        ? had?.provider === provider && had.model === model
+          ? had.compactAt
+          : undefined
+        : (at ?? undefined);
+    if (typeof at === "number") {
+      const refused = compactAtRefusal(at);
+      if (refused) return { error: refused };
+    }
+    store.assignRigModel(rig, { provider, model, harness, effort, contextCap, compactAt });
     store.audit(by, "rig_model_given", {
       rig,
       provider,
@@ -6555,11 +6576,13 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       harness,
       effort: effort ?? null,
       context_cap: contextCap ?? null,
+      compact_at: compactAt ?? null,
     });
     const capped = capWords(listed, contextCap);
     return {
-      ok: `${rig} takes ${model} from "${provider}" under ${HARNESSES[harness]} within a minute, and checks it.${capped ? ` Its context window: ${capped}.` : ""}`,
+      ok: `${rig} takes ${model} from "${provider}" under ${HARNESSES[harness]} within a minute, and checks it.${capped ? ` Its context window: ${capped}.` : ""}${compactAt ? ` Its conversations are compacted at ${compactAtWords(compactAt)}.` : ""}`,
       contextWindow: cappedWindow(listed, contextCap),
+      compactAt,
     };
   };
   /** Returns a rig's workers to the rig's own settings, as Providers and Edit rig both do. */

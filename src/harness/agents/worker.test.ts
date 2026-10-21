@@ -448,27 +448,69 @@ describe("worker trial", () => {
   });
 
   test("keepGoing ends a trial on a full context or a stuck model, never loops on it", async () => {
-    // A stand-in agent: each prompt appends the next scripted assistant message.
-    const fake = (
-      replies: { stopReason: string; output?: number; input?: number; errorMessage?: string }[],
-    ) => {
+    // A stand-in agent: each prompt appends the next scripted assistant message (or messages: a
+    // run of several turns).
+    type Reply = { stopReason: string; output?: number; input?: number; errorMessage?: string };
+    const fake = (replies: (Reply | Reply[])[]) => {
       const messages: unknown[] = [];
+      const listeners = new Set<(e: unknown) => void>();
       let i = 0;
       const next = () => {
-        const r = replies[Math.min(i++, replies.length - 1)] as (typeof replies)[number];
-        messages.push({
-          role: "assistant",
-          stopReason: r.stopReason,
-          errorMessage: r.errorMessage,
-          usage: { input: r.input ?? 1000, output: r.output ?? 2000 },
-        });
+        const step = replies[Math.min(i++, replies.length - 1)] as Reply | Reply[];
+        for (const r of Array.isArray(step) ? step : [step]) {
+          const message = {
+            role: "assistant",
+            stopReason: r.stopReason,
+            errorMessage: r.errorMessage,
+            usage: { input: r.input ?? 1000, output: r.output ?? 2000 },
+          };
+          messages.push(message);
+          for (const l of listeners) l({ type: "turn_end", message, toolResults: [] });
+        }
       };
       next();
       return {
-        agent: { state: { messages }, prompt: async () => next() } as never,
+        agent: {
+          state: { messages },
+          prompt: async () => next(),
+          subscribe: (l: (e: unknown) => void) => {
+            listeners.add(l);
+            return () => listeners.delete(l);
+          },
+        } as never,
         calls: () => i,
       };
     };
+    // A compactor: how many compactions keepGoing asked for.
+    const compactor = () => {
+      const c = { asked: 0, count: 0, force: () => void c.asked++ };
+      return c;
+    };
+    // With compaction (goal 070), a full context is compacted and the trial goes on.
+    const once = fake([{ stopReason: "length", output: 1, input: 31_900 }, { stopReason: "stop" }]);
+    const c1 = compactor();
+    assert.equal(await keepGoing(once.agent, () => false, 32_768, c1), undefined);
+    assert.equal(c1.asked, 1);
+    assert.equal(once.calls(), 2, "the trial went on after the compaction");
+    const error = fake([
+      { stopReason: "error", errorMessage: "400 maximum context length is 32768 tokens" },
+      // After the compaction: a turn with a tool call, then the context is full again.
+      [
+        { stopReason: "toolUse" },
+        { stopReason: "error", errorMessage: "400 maximum context length is 32768 tokens" },
+      ],
+      { stopReason: "stop" },
+    ]);
+    const c2 = compactor();
+    assert.equal(await keepGoing(error.agent, () => false, 32_768, c2), undefined);
+    assert.equal(c2.asked, 2, "a reply between two full contexts: each one is compacted");
+    // Full again right after each of two compactions: compaction cannot help, the trial ends.
+    const always = fake([{ stopReason: "length", output: 1, input: 31_900 }]);
+    const c3 = compactor();
+    const end = await keepGoing(always.agent, () => false, 32_768, c3);
+    assert.equal(end?.stopped, "context");
+    assert.match(String(end?.error), /again right after a compaction/);
+    assert.equal(c3.asked, 2);
     const never = () => false;
     // A one-token cut-off: the context is full.
     const full = fake([{ stopReason: "length", output: 1, input: 31_900 }]);

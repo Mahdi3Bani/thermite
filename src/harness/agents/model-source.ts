@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { z } from "zod";
+import { COMPACT_AT_MAX, COMPACT_AT_MIN } from "../../core/compaction.ts";
 import { codexReaches, type ModelConfig, reasoningFromEnv } from "./model.ts";
 
 /** A model route as control hands it to the rig (through its supervisor), key included. */
@@ -18,6 +19,11 @@ export const ControlRoute = z
       .refine((u) => /^https?:\/\//.test(u), "an http or https URL"),
     model: z.string().min(1).max(200),
     context_window: z.number().int().min(0).max(100_000_000),
+    /**
+     * The compaction point the owner set with the model (goal 070), in percent of the window;
+     * left out when none is set (the harness's default applies).
+     */
+    compact_at: z.number().int().min(COMPACT_AT_MIN).max(COMPACT_AT_MAX).optional(),
     max_tokens: z.number().int().min(0).max(10_000_000),
     reasoning: z.enum(["none", "low", "medium", "high"]).nullable(),
     /** Claude Code's effort level (a Claude subscription's route only). */
@@ -113,6 +119,7 @@ export class ModelSource {
       model: r.model,
       apiKey: r.api_key,
       contextWindow: r.context_window,
+      ...(r.compact_at !== undefined ? { compactAt: r.compact_at } : {}),
       maxTokens: r.max_tokens || 8192,
       reasoning: reasoningFromEnv(r.reasoning ?? undefined),
       effort: r.effort ?? undefined,

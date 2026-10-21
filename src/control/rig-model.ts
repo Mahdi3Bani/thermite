@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+  COMPACT_AT_DEFAULT,
+  COMPACT_AT_MAX,
+  COMPACT_AT_MIN,
+  compactAtRefusal,
+} from "../core/compaction.ts";
 import type { AgentRole, ControlStore, Effort, Harness } from "./store.ts";
 
 /**
@@ -34,6 +40,8 @@ export interface RigModelRequest {
   effort?: Effort | undefined;
   /** A cap on the workers' context window in tokens (goal 070). */
   contextWindow?: number | undefined;
+  /** The workers' compaction point, in percent of the window (goal 070). */
+  compactAt?: number | undefined;
 }
 
 /** One agent's model on control; the workers' has its harness and cap too. */
@@ -45,6 +53,8 @@ export interface AgentModel {
 export interface WorkersModel extends AgentModel {
   harness: Harness;
   context_cap: number | null;
+  /** The compaction point in percent of the window; null: the harness's default. */
+  compact_at: number | null;
 }
 /** Each agent's model on control; null: its default (Edit rig's first choice in its row). */
 export type AgentModels = { workers: WorkersModel | null } & Record<AgentRole, AgentModel | null>;
@@ -54,6 +64,8 @@ export interface RigModelOutcome {
   ok: string;
   /** The window the agent's model route carries, in tokens; null: unknown, or the model cleared. */
   contextWindow: number | null;
+  /** The workers' compaction point (percent); null: the default, or the model cleared. */
+  compactAt?: number | null | undefined;
   agents: AgentModels;
 }
 
@@ -93,6 +105,13 @@ export const rigModelFields = {
     .int()
     .optional()
     .describe("The workers only: a cap on the model's context window in tokens"),
+  // Any number: one that is not a whole percent in range is refused in words.
+  compact_at: z
+    .number()
+    .optional()
+    .describe(
+      `The workers only: the share of the context window, in percent (${COMPACT_AT_MIN} to ${COMPACT_AT_MAX}), at which a conversation is compacted; left out, ${COMPACT_AT_DEFAULT}`,
+    ),
 };
 
 export const RigModelBody = z.strictObject(rigModelFields);
@@ -106,6 +125,7 @@ export const rigModelRequest = (b: RigModelBody): RigModelRequest => ({
   harness: b.harness,
   effort: b.effort,
   contextWindow: b.context_window,
+  compactAt: b.compact_at,
 });
 
 /** Why a request has the wrong fields for its agent, in words; undefined when its shape is right. */
@@ -117,7 +137,8 @@ export function rigModelShapeRefusal(r: RigModelRequest): string | undefined {
       r.model !== undefined ||
       r.harness !== undefined ||
       r.effort !== undefined ||
-      r.contextWindow !== undefined
+      r.contextWindow !== undefined ||
+      r.compactAt !== undefined
     )
       return "Give clear alone, or a provider and a model.";
     return undefined;
@@ -127,6 +148,9 @@ export function rigModelShapeRefusal(r: RigModelRequest): string | undefined {
     return "Only the workers take a harness. The other agents run where their model needs, as Runs in on Edit rig says.";
   if (agent !== "workers" && r.contextWindow !== undefined)
     return "Only the workers take a context window cap. A planner with no model of its own uses the workers' cap.";
+  if (agent !== "workers" && r.compactAt !== undefined)
+    return "Only the workers take a compaction point. A planner with no model of its own uses the workers' point.";
+  if (r.compactAt !== undefined) return compactAtRefusal(r.compactAt);
   return undefined;
 }
 
@@ -146,6 +170,7 @@ export function agentModelsOf(store: ControlStore, rig: string): AgentModels {
           effort: w.effort ?? null,
           harness: w.harness,
           context_cap: w.contextCap ?? null,
+          compact_at: w.compactAt ?? null,
         }
       : null,
     planner: of("planner"),
@@ -162,6 +187,8 @@ export const rigModelAnswer = (rig: string, r: RigModelRequest, out: RigModelOut
   agent: r.agent ?? "workers",
   model: r.clear ? null : (r.model ?? null),
   context_window: out.contextWindow,
+  // The workers' compaction point (goal 070): null, the default.
+  ...((r.agent ?? "workers") === "workers" ? { compact_at: out.compactAt ?? null } : {}),
   said: out.ok,
   agents: out.agents,
 });

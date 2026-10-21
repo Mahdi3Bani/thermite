@@ -1,5 +1,5 @@
-import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
-import { Type } from "@earendil-works/pi-ai";
+import { Agent, type AgentMessage, type AgentTool } from "@earendil-works/pi-agent-core";
+import { type Message, Type } from "@earendil-works/pi-ai";
 import { z } from "zod";
 import { canonicalJson } from "../../core/canonical.ts";
 import { DIRECTIVE_KINDS, QueuePosition, type StoredRule } from "../../core/commands.ts";
@@ -25,6 +25,7 @@ import {
 } from "../knowledge.ts";
 import type { BriefingItem } from "../ledger.ts";
 import { directionOf, inFamily, type QueueBrief } from "../queue.ts";
+import { type CompactionReport, Compactor, summarizer } from "./compaction.ts";
 import { mcpLine } from "./mcp-tools.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
 import { JOURNAL_FIELD } from "./notes-tool.ts";
@@ -619,6 +620,16 @@ export interface PlannerMcp {
   tools: AgentTool[];
 }
 
+/**
+ * Where the planner's compactions go (goal 070): in Pi, a planner call's conversation grows with
+ * what its tools return (past research, MCP servers) and is compacted near the window as a
+ * worker's is. The harness keeps each conversation in the run's research folder and records it.
+ */
+export interface PlannerCompaction {
+  keep(n: number, markdown: string): { path: string; rel: string };
+  done(r: CompactionReport): void;
+}
+
 /** The planner's context, as JSON: what the planner reads (and the prompt carries) each round. */
 export function plannerContext(input: PlannerInput): string {
   return canonicalJson({
@@ -667,6 +678,7 @@ export async function plan(
   ask?: Ask,
   past?: PlannerPast,
   mcp?: PlannerMcp,
+  compaction?: PlannerCompaction,
 ): Promise<PlanResult> {
   const rawViolations: string[] = [];
   // The field notes of every answer, read leniently: a refused plan keeps its notes.
@@ -685,7 +697,14 @@ export async function plan(
       try {
         raw = ask
           ? await askPlanner(ask, `${context}${feedback}`, signal, past?.dir, mcp?.servers)
-          : await callPlanner(model, `${context}${feedback}`, signal, past?.search, mcp);
+          : await callPlanner(
+              model,
+              `${context}${feedback}`,
+              signal,
+              past?.search,
+              mcp,
+              compaction,
+            );
       } catch (err) {
         rawViolations.push(`try ${tries}: ${err instanceof Error ? err.message : String(err)}`);
         continue;
@@ -824,6 +843,7 @@ async function callPlanner(
   signal?: AbortSignal,
   search?: PlannerPast["search"],
   mcp?: PlannerMcp,
+  compaction?: PlannerCompaction,
 ): Promise<unknown> {
   // Only Claude Code may use a Claude subscription: the planner never calls it itself.
   if (cfg.api === "claude")
@@ -946,6 +966,38 @@ async function callPlanner(
     },
     streamFn: models.streamSimple.bind(models),
   });
+  // Near the window its conversation is compacted and the call goes on (goal 070). The planner
+  // has no file tool: the run keeps the conversation, and the summary says where.
+  let tooBig: string | undefined;
+  const compactor = new Compactor({
+    window: cfg.contextWindow,
+    at: cfg.compactAt,
+    convert: (messages: AgentMessage[]) =>
+      messages.filter(
+        (m) =>
+          m.role === "system" ||
+          m.role === "user" ||
+          m.role === "assistant" ||
+          m.role === "toolResult",
+      ) as Message[],
+    summarize: summarizer(cfg),
+    keep: async (n, markdown) => {
+      if (!compaction) throw new Error("this planner has no place to keep it");
+      const { rel } = compaction.keep(n, markdown);
+      return {
+        path: `the run's research folder, ${rel}`,
+        read: "You have no tool to read it here: rely on this summary",
+      };
+    },
+    done: async (r) => compaction?.done(r),
+    stop: (reason) => {
+      tooBig = reason;
+      agent.abort();
+    },
+    title: "The planner",
+    goesOn: "Your planning goes on: call submit_plan when your plan is ready.",
+  });
+  agent.prepareRequest = compactor.hook(agent);
   const timer = setTimeout(() => agent.abort(), 180_000);
   const cancel = () => agent.abort();
   signal?.addEventListener("abort", cancel, { once: true });
@@ -955,6 +1007,7 @@ async function callPlanner(
     clearTimeout(timer);
     signal?.removeEventListener("abort", cancel);
   }
+  if (tooBig) throw new Error(tooBig);
   if (captured === undefined) throw new Error("the planner did not call submit_plan");
   return captured;
 }

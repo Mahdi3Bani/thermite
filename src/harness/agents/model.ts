@@ -2,6 +2,7 @@ import { createModels, createProvider, type Model } from "@earendil-works/pi-ai"
 import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
+import { compactAtRefusal } from "../../core/compaction.ts";
 
 /**
  * The harness's model route: an OpenAI-compatible endpoint (for example a LiteLLM or vLLM
@@ -44,6 +45,11 @@ export interface ModelConfig {
   contextWindow: number;
   maxTokens: number;
   /**
+   * The compaction point (goal 070): the share of `contextWindow`, in percent, at which an agent's
+   * conversation is compacted and goes on. Unset: COMPACT_AT_DEFAULT. Never a cap.
+   */
+  compactAt?: number | undefined;
+  /**
    * Sent as `reasoning_effort` ("off" sends "none"). Unset: nothing is sent and the server's
    * default applies. Thinking tokens count toward `maxTokens` on servers that think by default.
    */
@@ -70,16 +76,26 @@ export function reasoningFromEnv(raw: string | undefined): ReasoningEffort | und
   throw new Error(`THERMITE_MODEL_REASONING_EFFORT must be none, low, medium or high, not ${raw}`);
 }
 
+/** A compaction point from the environment: unset, or a whole percent in range. */
+export function compactAtFromEnv(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw === "") return undefined;
+  const n = Number(raw);
+  const refused = compactAtRefusal(n);
+  if (refused) throw new Error(`THERMITE_MODEL_COMPACT_AT: ${refused} Not ${raw}.`);
+  return n;
+}
+
 /**
  * The model route's settings, by their names: THERMITE_MODEL_* (BASE_URL, the model's name as
- * THERMITE_MODEL, API_KEY, CONTEXT_WINDOW, MAX_TOKENS, REASONING_EFFORT, API) and the agents'
- * harness, THERMITE_AGENT_HARNESS.
+ * THERMITE_MODEL, API_KEY, CONTEXT_WINDOW, COMPACT_AT, MAX_TOKENS, REASONING_EFFORT, API) and the
+ * agents' harness, THERMITE_AGENT_HARNESS.
  */
 export const MODEL_SETTINGS = {
   baseUrl: "THERMITE_MODEL_BASE_URL",
   model: "THERMITE_MODEL",
   apiKey: "THERMITE_MODEL_API_KEY",
   contextWindow: "THERMITE_MODEL_CONTEXT_WINDOW",
+  compactAt: "THERMITE_MODEL_COMPACT_AT",
   maxTokens: "THERMITE_MODEL_MAX_TOKENS",
   reasoning: "THERMITE_MODEL_REASONING_EFFORT",
   api: "THERMITE_MODEL_API",
@@ -148,6 +164,7 @@ export function modelConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ModelC
     // estimate of the room left, because a wrong guess (it was 131072) shrinks every reply to one
     // token once a conversation nears it.
     contextWindow: Number(setting(env, MODEL_SETTINGS.contextWindow) ?? "0"),
+    compactAt: compactAtFromEnv(setting(env, MODEL_SETTINGS.compactAt)),
     maxTokens: Number(setting(env, MODEL_SETTINGS.maxTokens) ?? "8192"),
     reasoning: reasoningFromEnv(setting(env, MODEL_SETTINGS.reasoning)),
   };
@@ -164,6 +181,7 @@ export function modelEnv(cfg: ModelConfig): Record<string, string> {
     THERMITE_MODEL: cfg.model,
     THERMITE_MODEL_API_KEY: cfg.apiKey,
     THERMITE_MODEL_CONTEXT_WINDOW: String(cfg.contextWindow),
+    ...(cfg.compactAt !== undefined ? { THERMITE_MODEL_COMPACT_AT: String(cfg.compactAt) } : {}),
     THERMITE_MODEL_MAX_TOKENS: String(cfg.maxTokens),
     ...(cfg.reasoning !== undefined
       ? { THERMITE_MODEL_REASONING_EFFORT: cfg.reasoning === "off" ? "none" : cfg.reasoning }

@@ -98,7 +98,7 @@ curl -fsS -X POST -H "Authorization: Bearer $(cat .dev/secrets/control-admin-tok
 Control answers with the window the rig gets, and says so in words:
 
 ```json
-{"rig":"rig-1","model":"my-model","context_window":131072,"said":"rig-1 takes my-model from \"my-litellm\" under Pi within a minute, and checks it. Its context window: 131,072 tokens (capped; the provider allows 204,800)."}
+{"rig":"rig-1","agent":"workers","model":"my-model","context_window":131072,"compact_at":null,"said":"rig-1 takes my-model from \"my-litellm\" under Pi within a minute, and checks it. Its context window: 131,072 tokens (capped; the provider allows 204,800).","agents":{…}}
 ```
 
 An agent does the same with [`set_rig_model`](../../reference/mcp-tools.md#set_rig_model) and `context_window: 131072`. The token for each is in [Tokens](../../reference/tokens.md).
@@ -111,8 +111,30 @@ An agent does the same with [`set_rig_model`](../../reference/mcp-tools.md#set_r
 After a minute, the rig's row under **Harness and model for each rig** says "Its agents run under Pi with my-model from my-litellm. Its context window: 131,072 tokens (capped; the provider allows 204,800)." The model check's details record the window the rig runs with: see [Rig checks](../../reference/rig-checks.md#model-route-check).
 
 :::note
-Agents in Pi keep to the window. A worker is told to submit at 80% of it, each reply is limited to the room left, and the trial ends when the window is full. OpenCode v2, Claude Code and Codex do not read the window that control sends: they use their own. To compare models at one window, run both rigs in Pi.
+Agents in Pi keep to the window: each reply is limited to the room left, and near the window the conversation is compacted and the trial goes on (see the next section). OpenCode v2, Codex and Claude Code get the window in their own settings, with limits of their own: Claude Code takes no window below 100,000 tokens, Codex none above what the model takes (272,000 tokens for a model it does not know), and OpenCode's own models keep the window OpenCode knows. To compare models at exactly one window, run both rigs in Pi.
 :::
+
+## Set when a conversation is compacted
+
+A trial's conversation grows with every tool call and result. Near the model's context window, the conversation is **compacted**: the harness keeps the whole conversation as a document in the run's research folder, replaces the older turns with a summary that names that document, and the trial goes on. No trial ends, and no agent is told to submit, because its conversation grew.
+
+By default this happens at 80% of the window. To compact at another share, give the rig the model again with `compact_at`, a whole percent from 50 to 95:
+
+```sh
+curl -fsS -X POST -H "Authorization: Bearer $(cat .dev/secrets/control-admin-token)" \
+  -H 'content-type: application/json' \
+  -d '{"provider": "my-litellm", "model": "my-model", "context_window": 131072, "compact_at": 70}' \
+  http://127.0.0.1:8800/v1/rigs/rig-1/model
+```
+
+Control answers with the point it keeps, and says it in words: `"compact_at":70` and "Its conversations are compacted at 70% of the window." An agent does the same with [`set_rig_model`](../../reference/mcp-tools.md#set_rig_model) and `compact_at: 70`.
+
+- A point outside 50 to 95 is refused: `The compaction point is a whole percent of the context window, from 50 to 95.`
+- Each request sets the point anew, as it sets the cap. Give the model again without `compact_at` and the rig goes back to 80%.
+- **Use** on this page and **Edit rig** keep the point while the rig keeps the same model. Another model there removes it.
+- The point is for the workers' model, and for the planner when it follows the workers.
+
+After a minute, the rig's row under **Harness and model for each rig** ends with "Its conversations are compacted at 70% of the window." Each compaction shows in the run's **History** and in the trial's **Live** view, with the summary. [Limits and pacing](../../reference/limits-and-pacing.md#compaction) lists what each harness takes: Pi, OpenCode v2, Codex and Claude Code each compact in their own way.
 
 ## Add a model the list leaves out
 
@@ -154,6 +176,7 @@ A rig can also take its model from its own settings, the `THERMITE_MODEL_*` vari
 | `THERMITE_MODEL` | The model's name at the provider |
 | `THERMITE_MODEL_API_KEY_FILE` | A file holding the key. On the local stack: `.dev/secrets/model-api-key` |
 | `THERMITE_MODEL_CONTEXT_WINDOW` | The model's context per request. `0` means unknown |
+| `THERMITE_MODEL_COMPACT_AT` | The share of the window, in percent (50 to 95), at which an agent's conversation is compacted. Unset: 80 |
 | `THERMITE_MODEL_MAX_TOKENS` | The longest reply, thinking included. Default `8192` |
 | `THERMITE_MODEL_REASONING_EFFORT` | `none`, `low`, `medium` or `high`. Unset: nothing is sent |
 | `THERMITE_MODEL_API` | `openai` (the default), `anthropic`, `opencode`, `claude` or `chatgpt` |

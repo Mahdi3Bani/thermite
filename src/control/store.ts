@@ -987,6 +987,8 @@ export class ControlStore {
       this.db.exec("alter table rig_model add column effort text");
     if (!rigModelCols.includes("context_cap"))
       this.db.exec("alter table rig_model add column context_cap integer");
+    if (!rigModelCols.includes("compact_at"))
+      this.db.exec("alter table rig_model add column compact_at integer");
     const machineRigCols = (this.db.prepare("pragma table_info(machine_rig)").all() as Row[]).map(
       (r) => r.name,
     );
@@ -1894,7 +1896,8 @@ export class ControlStore {
   /**
    * Gives a rig's agents a harness and a provider's model, or (null) returns them to the rig's own
    * settings. `contextCap`: a cap on the model's context window in tokens (goal 070); none when
-   * left out, so a model given again without one loses it.
+   * left out, so a model given again without one loses it. `compactAt`: the compaction point, in
+   * percent of the window (goal 070); left out, the harness's default.
    */
   assignRigModel(
     rig: string,
@@ -1904,6 +1907,7 @@ export class ControlStore {
       harness?: Harness | undefined;
       effort?: Effort | undefined;
       contextCap?: number | undefined;
+      compactAt?: number | undefined;
     } | null,
   ): void {
     if (choice === null) {
@@ -1913,10 +1917,10 @@ export class ControlStore {
     if (!this.provider(choice.provider)) throw new Error(`no model provider ${choice.provider}`);
     this.db
       .prepare(
-        `insert into rig_model (rig, provider, model, harness, effort, context_cap, assigned_at) values (?, ?, ?, ?, ?, ?, ?)
+        `insert into rig_model (rig, provider, model, harness, effort, context_cap, compact_at, assigned_at) values (?, ?, ?, ?, ?, ?, ?, ?)
          on conflict (rig) do update set provider = excluded.provider, model = excluded.model,
            harness = excluded.harness, effort = excluded.effort, context_cap = excluded.context_cap,
-           assigned_at = excluded.assigned_at`,
+           compact_at = excluded.compact_at, assigned_at = excluded.assigned_at`,
       )
       .run(
         rig,
@@ -1925,6 +1929,7 @@ export class ControlStore {
         choice.harness ?? "pi",
         choice.effort ?? null,
         choice.contextCap ?? null,
+        choice.compactAt ?? null,
         new Date().toISOString(),
       );
   }
@@ -1977,7 +1982,7 @@ export class ControlStore {
     );
   }
 
-  /** Each rig's provider, model, harness, effort and context window cap (goal 070). */
+  /** Each rig's provider, model, harness, effort, context window cap and compaction point (goal 070). */
   rigModels(): Record<
     string,
     {
@@ -1986,10 +1991,13 @@ export class ControlStore {
       harness: Harness;
       effort?: Effort | undefined;
       contextCap?: number | undefined;
+      compactAt?: number | undefined;
     }
   > {
     const rows = this.db
-      .prepare("select rig, provider, model, harness, effort, context_cap from rig_model")
+      .prepare(
+        "select rig, provider, model, harness, effort, context_cap, compact_at from rig_model",
+      )
       .all() as Row[];
     return Object.fromEntries(
       rows.map((r) => [
@@ -2002,6 +2010,7 @@ export class ControlStore {
             ? { effort: String(r.effort) as Effort }
             : {}),
           ...(Number(r.context_cap) > 0 ? { contextCap: Number(r.context_cap) } : {}),
+          ...(Number(r.compact_at) > 0 ? { compactAt: Number(r.compact_at) } : {}),
         },
       ]),
     );
@@ -2014,6 +2023,7 @@ export class ControlStore {
         harness: Harness;
         effort?: Effort | undefined;
         contextCap?: number | undefined;
+        compactAt?: number | undefined;
       }
     | undefined {
     const c = this.rigModels()[rig];
@@ -2025,6 +2035,7 @@ export class ControlStore {
           harness: c.harness,
           effort: c.effort,
           contextCap: c.contextCap,
+          compactAt: c.compactAt,
         }
       : undefined;
   }
@@ -2042,7 +2053,7 @@ export class ControlStore {
   ): unknown[] {
     const byLedger = ledgerId ? " and ledger_id = ?" : "";
     const body = o.lean
-      ? "case when kind in ('source_fetched', 'research_doc') then json_remove(body, '$.text') else body end"
+      ? "case when kind in ('source_fetched', 'research_doc', 'context_compacted') then json_remove(body, '$.text') else body end"
       : "body";
     return (
       this.db

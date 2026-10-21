@@ -182,6 +182,7 @@ describe("each agent's model over REST and MCP", () => {
           effort: "low",
           harness: "pi",
           context_cap: null,
+          compact_at: null,
         },
         planner: { provider: "lab", model: "strong-model", effort: "high" },
         teachers: { provider: "sub", model: "gpt-sol", effort: "high" },

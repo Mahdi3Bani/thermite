@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { COMPACT_AT_DEFAULT } from "../../core/compaction.ts";
 import { laneLimits } from "../../core/contract.ts";
 import { type LiveKind, summarizeArgs } from "../../core/live.ts";
 import type { Role, Runner } from "../broker/runner.ts";
+import { CliCompactions, type FoundCompaction, type OnCompacted } from "./cli-compaction.ts";
 import type { MessageInbox, TrialProgress } from "./live-session.ts";
 import { claudeMcpConfig, type McpAccess, mcpLine } from "./mcp-tools.ts";
 import type { ModelConfig } from "./model.ts";
@@ -134,6 +136,8 @@ export interface ClaudeTally {
   /** Each turn's tokens by message id (a message comes in several events). */
   messages: Map<string, { input: number; output: number }>;
   toolNames: Map<string, string>;
+  /** Compactions it reported (compact_boundary) since they were last taken (goal 070). */
+  compactions: FoundCompaction[];
 }
 
 export const newClaudeTally = (): ClaudeTally => ({
@@ -147,6 +151,7 @@ export const newClaudeTally = (): ClaudeTally => ({
   notes: [],
   messages: new Map(),
   toolNames: new Map(),
+  compactions: [],
 });
 
 type Block = {
@@ -182,6 +187,8 @@ type Event = {
   num_turns?: number;
   usage?: Usage;
   errors?: string[];
+  /** A compaction's boundary (`system`, `compact_boundary`): its trigger and its tokens. */
+  compact_metadata?: { trigger?: string; pre_tokens?: number; post_tokens?: number };
 };
 
 const tokensIn = (u: Usage | undefined) =>
@@ -214,6 +221,18 @@ export function readClaudeEvents(
     }
     if (e.session_id) t.session = e.session_id;
     switch (e.type) {
+      // Claude Code compacted its conversation (goal 070): its own summary replaces the turns
+      // before this point, and the session goes on.
+      case "system": {
+        if (e.subtype !== "compact_boundary") break;
+        const c = e.compact_metadata ?? {};
+        t.compactions.push({
+          at: live.length,
+          tokensBefore: typeof c.pre_tokens === "number" ? c.pre_tokens : null,
+          tokensAfter: typeof c.post_tokens === "number" ? c.post_tokens : null,
+        });
+        break;
+      }
       case "assistant": {
         const m = e.message ?? {};
         const id = m.id ?? `m${t.messages.size}`;
@@ -298,6 +317,22 @@ export function readClaudeEvents(
     }
   }
   return live;
+}
+
+/**
+ * Claude Code's own compaction settings from the route (goal 070): the window it compacts within
+ * (CLAUDE_CODE_AUTO_COMPACT_WINDOW, the route's window, so the owner's cap; Claude Code takes
+ * 100,000 to 1,000,000 tokens and raises a smaller one to 100,000) and the compaction point
+ * (CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, a percent of its window less the room it keeps for a reply;
+ * it can only bring Claude Code's own point earlier). Its auto-compaction is on by default.
+ */
+export function claudeCompactionEnv(
+  m: Pick<ModelConfig, "contextWindow" | "compactAt">,
+): Record<string, string> {
+  return {
+    ...(m.contextWindow > 0 ? { CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(m.contextWindow) } : {}),
+    CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: String(m.compactAt ?? COMPACT_AT_DEFAULT),
+  };
 }
 
 /**
@@ -392,6 +427,8 @@ export interface ClaudeTrialDeps {
   pollMs?: number | undefined;
   /** How long the run goes on after a submission (AFTER_SUBMIT_MS; tests make it short). */
   afterSubmitMs?: number | undefined;
+  /** A compaction Claude Code reported (goal 070), for the harness to keep and record. */
+  compacted?: OnCompacted | undefined;
 }
 
 /**
@@ -424,10 +461,16 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
       maxCommandMs: spec.wallMs,
       extra: deps.env,
     }),
+    ...claudeCompactionEnv(deps.model),
     THERMITE_EDITABLE_PATHS: JSON.stringify(spec.editablePaths),
     THERMITE_WORKSPACE: spec.workspace,
     THERMITE_CLAUDE_EVENTS: events,
   };
+  const compactions = new CliCompactions({
+    title: `Trial ${spec.trialId} (${spec.lane})`,
+    harness: "Claude Code",
+    on: deps.compacted,
+  });
   // The MCP servers the run's kit gives its workers (goal 068), at the harness's gateway with
   // the trial's own token: in a file only the lane reads.
   const mcp = claudeMcpConfig(
@@ -466,6 +509,7 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
     offset = r.next;
     const live = readClaudeEvents(r.lines, tally);
     if (live.length) deps.live(live);
+    compactions.take(live, tally.compactions.splice(0));
     carried.check(tally);
     if (r.lines.length) {
       deps.progress({
@@ -596,6 +640,7 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
   result.toolCalls = tally.toolCalls;
   result.tokensIn = tally.tokensIn;
   result.tokensOut = tally.tokensOut;
+  if (compactions.count) result.compactions = compactions.count;
   return result;
 }
 
@@ -661,13 +706,17 @@ export async function claudeOnce(
         }),
       ]),
       cwd: dir,
-      env: claudeEnv({
-        home: join(dir, "home"),
-        apiUrl: deps.apiUrl,
-        auth: "",
-        tmp: join(dir, "tmp"),
-        maxCommandMs: o.timeoutMs,
-      }),
+      env: {
+        ...claudeEnv({
+          home: join(dir, "home"),
+          apiUrl: deps.apiUrl,
+          auth: "",
+          tmp: join(dir, "tmp"),
+          maxCommandMs: o.timeoutMs,
+        }),
+        // A planner's call compacts as the workers' trials do (goal 070).
+        ...claudeCompactionEnv(model),
+      },
       // The token, which the shell gives Claude Code on file descriptor 3.
       stdin: model.apiKey,
       timeoutMs: o.timeoutMs,

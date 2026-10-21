@@ -4,6 +4,12 @@ import { dirname, join } from "node:path";
 import { type LaneLimitValues, laneLimits } from "../../core/contract.ts";
 import { type LiveKind, summarizeArgs } from "../../core/live.ts";
 import type { Role, Runner } from "../broker/runner.ts";
+import {
+  CliCompactions,
+  compactionTokens,
+  type FoundCompaction,
+  type OnCompacted,
+} from "./cli-compaction.ts";
 import type { MessageInbox, TrialProgress } from "./live-session.ts";
 import { gatewayUrl, type McpAccess, mcpLine } from "./mcp-tools.ts";
 import { CHATGPT_LIMIT_CODE, type ModelConfig } from "./model.ts";
@@ -88,6 +94,8 @@ export interface CodexTally {
   notes: string[];
   /** Items already shown as started in the live view. */
   started: Set<string>;
+  /** Compactions it reported since they were last taken (goal 070). */
+  compactions: FoundCompaction[];
 }
 
 export const newCodexTally = (): CodexTally => ({
@@ -100,6 +108,7 @@ export const newCodexTally = (): CodexTally => ({
   tools: [],
   notes: [],
   started: new Set(),
+  compactions: [],
 });
 
 type Item = {
@@ -177,6 +186,14 @@ function resultOf(i: Item): { output: string; ok: boolean } {
   }
 }
 
+/**
+ * The warning the Codex CLI gives (as an error item in `codex exec --json`) once it has compacted
+ * its conversation on its own, as it does for a provider other than OpenAI's own: the only sign of
+ * a compaction in its JSON output.
+ */
+export const CODEX_COMPACTED =
+  /Long threads and multiple compactions can cause the model to be less accurate/;
+
 /** Reads lines of the Codex CLI's JSON output into the tally; returns them as live-view lines. */
 export function readCodexEvents(
   lines: string[],
@@ -220,6 +237,12 @@ export function readCodexEvents(
         }
         if (i.type === "error") {
           const message = String(i.message ?? "error").slice(0, 500);
+          // The warning Codex gives after each compaction of its own conversation (goal 070): no
+          // tokens are said. The compaction is recorded in words instead of the warning.
+          if (CODEX_COMPACTED.test(message)) {
+            t.compactions.push({ at: live.length, tokensBefore: null, tokensAfter: null });
+            break;
+          }
           t.notes = [...t.notes, message].slice(-5);
           live.push({ kind: "text", text: `(Codex: ${message})` });
           break;
@@ -289,10 +312,17 @@ export function codexConfig(
     "required = false",
     "",
   ]);
+  // The window (the route's, so the owner's cap) and the compaction point (goal 070). Codex
+  // compacts on its own, by default at 90% of the window; it keeps a window to the most the
+  // model takes (272,000 tokens for a model it does not know).
+  const point = compactionTokens(m);
   return [
     "# Written by Thermite's harness for one run.",
     'model_provider = "thermite"',
     ...(effort ? [`model_reasoning_effort = ${tomlString(effort)}`] : []),
+    ...(point !== undefined
+      ? [`model_context_window = ${m.contextWindow}`, `model_auto_compact_token_limit = ${point}`]
+      : []),
     'web_search = "disabled"',
     "check_for_update_on_startup = false",
     "",
@@ -399,6 +429,8 @@ export interface CodexTrialDeps {
   pollMs?: number | undefined;
   /** How long the run goes on after a submission (AFTER_SUBMIT_MS; tests make it short). */
   afterSubmitMs?: number | undefined;
+  /** A compaction Codex reported (goal 070), for the harness to keep and record. */
+  compacted?: OnCompacted | undefined;
 }
 
 /**
@@ -439,6 +471,11 @@ export async function runCodexTrial(spec: TrialSpec, deps: CodexTrialDeps): Prom
     THERMITE_WORKSPACE: spec.workspace,
     THERMITE_CODEX_EVENTS: events,
   };
+  const compactions = new CliCompactions({
+    title: `Trial ${spec.trialId} (${spec.lane})`,
+    harness: "Codex",
+    on: deps.compacted,
+  });
   const setup = await deps.runner.run({
     role: spec.lane,
     // Relative to its own area: the lane may not walk the harness's directories by name.
@@ -470,6 +507,7 @@ export async function runCodexTrial(spec: TrialSpec, deps: CodexTrialDeps): Prom
     offset = r.next;
     const live = readCodexEvents(r.lines, tally);
     if (live.length) deps.live(live);
+    compactions.take(live, tally.compactions.splice(0));
     carried.check(tally);
     if (r.lines.length)
       deps.progress({
@@ -601,6 +639,7 @@ export async function runCodexTrial(spec: TrialSpec, deps: CodexTrialDeps): Prom
   result.toolCalls = tally.toolCalls;
   result.tokensIn = tally.tokensIn;
   result.tokensOut = tally.tokensOut;
+  if (compactions.count) result.compactions = compactions.count;
   return result;
 }
 

@@ -164,6 +164,6 @@ A rig's exports carry its runs' records to its results repository, and the journ
 - **the research notes** since then, in `research-notes.jsonl`;
 - **the briefing** of each run created since then, in `briefing.jsonl`;
 - **the runs' part of their campaigns' folders:** each item added or changed since then, in `knowledge.jsonl`, read from the rig's own events the way control reads them, so an export holds what its runs put in the knowledge base;
-- **a finished run's research folder:** a research run's, with its final report, and a finished hill-climb or goal run's, when it recorded sources, claims or notes.
+- **a finished run's research folder:** a research run's, with its final report, and a finished hill-climb or goal run's, when it recorded sources, claims or notes, or compacted a conversation (its `compactions/`).
 
 The folder goes without `knowledge/`: those files are other runs' records, which those runs' own exports carry. [The export](../reference/knowledge-base.md#the-export) lists each file's fields, and [Set up the results repository](../how-to/operate/results-repository.md) says where each file lands.

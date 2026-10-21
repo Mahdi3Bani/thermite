@@ -46,6 +46,7 @@ import {
   runRole,
 } from "./broker/devices.ts";
 import { LocalRunner, type Role, type Runner } from "./broker/runner.ts";
+import { Compactions, compactionOf } from "./compactions.ts";
 import { collectHardware } from "./hardware.ts";
 import { Judge, type PromotionPolicy, serial } from "./judge/judge.ts";
 import { Ledger } from "./ledger.ts";
@@ -351,6 +352,8 @@ async function main(): Promise<void> {
     onChange: (run) => void researchFolder.sync(run),
   });
   service.researchFolder = (run) => researchFolder.exportFiles(run);
+  // Each compaction's conversation, kept in the run's research folder, and its record (goal 070).
+  service.compactions = new Compactions({ ledger, live: service.live, folder: researchFolder });
 
   // The route control sets for this rig: kept in the state directory, root only.
   const routeFile = join(paths.stateDir, "model-route.json");
@@ -494,6 +497,17 @@ async function main(): Promise<void> {
     run: spec.run,
     lane: spec.lane,
   });
+  // A compaction OpenCode, Codex or Claude Code reported (goal 070): kept and recorded as a Pi
+  // worker's are.
+  const compactedIn =
+    (spec: { trialId: string; run: string; lane: string }, harness: "codex" | "claude-code") =>
+    (c: {
+      number: number;
+      tokensBefore: number | null;
+      tokensAfter: number | null;
+      markdown: string;
+    }) =>
+      service.compactions?.fromHarness(compactionOf(trialOf(spec)), harness, c);
   // Agents wait while no route is set; one set later starts them without a restart.
   const scheduler = new Scheduler({
     service,
@@ -521,6 +535,7 @@ async function main(): Promise<void> {
           messages: service.trialInbox({ id: spec.trialId, run: spec.run, lane: spec.lane }),
           // A full ChatGPT plan, as the model proxy saw OpenAI say it.
           usageLimitSince: (since) => service.usageLimitSince(since),
+          compacted: compactedIn(spec, "codex"),
           env: laneCacheEnv(paths.scratchDir, spec.lane),
           signal,
         });
@@ -537,6 +552,7 @@ async function main(): Promise<void> {
           usage: (u) => {
             service.subscriptionUsage = { ...u, at: new Date().toISOString() };
           },
+          compacted: compactedIn(spec, "claude-code"),
           env: laneCacheEnv(paths.scratchDir, spec.lane),
           signal,
         });

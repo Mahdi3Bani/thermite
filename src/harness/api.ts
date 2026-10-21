@@ -14,6 +14,7 @@ import { Registry } from "./agents/registry.ts";
 import { laneCacheEnv } from "./agents/workspace.ts";
 import { type Role, type Runner, RunRequest } from "./broker/runner.ts";
 import { chatgptRequest, chatgptRouteAllowed } from "./chatgpt.ts";
+import { compactionOf, KEPT_MAX } from "./compactions.ts";
 import { SEARCH_MAX } from "./knowledge.ts";
 import { LedgerError } from "./ledger.ts";
 import type { McpCaller } from "./mcp-gateway.ts";
@@ -582,6 +583,47 @@ export function createHarnessApi(
   app.post("/v1/trial/note", bodyLimit({ maxSize: 64 * 1024 }), async (c) => {
     const { token } = trialOf(c.req.header("authorization"));
     return c.json(service.writeTrialNote(token, await c.req.json()), 201);
+  });
+
+  // A Pi worker compacts its conversation (goal 070): first the whole conversation, kept in the
+  // run's research folder (the trial decides the run, the lane and the file's name), then the
+  // record of the compaction. Both come from the worker's own code, never from its agent.
+  app.post("/v1/trial/snapshot", bodyLimit({ maxSize: 2 * KEPT_MAX + 64 * 1024 }), async (c) => {
+    const { trial } = trialOf(c.req.header("authorization"));
+    if (!service.compactions) return c.json({ error: "this harness keeps no compactions" }, 404);
+    const body = z
+      .strictObject({
+        number: z.number().int().min(1).max(10_000),
+        markdown: z.string().min(1).max(KEPT_MAX),
+      })
+      .parse(await c.req.json());
+    return c.json(service.compactions.keep(compactionOf(trial), body.number, body.markdown), 201);
+  });
+  app.post("/v1/trial/compacted", bodyLimit({ maxSize: 64 * 1024 }), async (c) => {
+    const { trial } = trialOf(c.req.header("authorization"));
+    if (!service.compactions) return c.json({ error: "this harness keeps no compactions" }, 404);
+    const b = z
+      .strictObject({
+        number: z.number().int().min(1).max(10_000),
+        tokens_before: z.number().int().min(0),
+        tokens_after: z.number().int().min(0),
+        how: z.enum(["summary", "trimmed"]),
+        kept: z.boolean(),
+        summary: z.string().max(32_000).optional(),
+        error: z.string().max(2000).optional(),
+      })
+      .parse(await c.req.json());
+    service.compactions.record(compactionOf(trial), {
+      number: b.number,
+      tokensBefore: b.tokens_before,
+      tokensAfter: b.tokens_after,
+      how: b.how,
+      harness: "pi",
+      summary: b.summary,
+      error: b.error,
+      kept: b.kept,
+    });
+    return c.json({ ok: true }, 201);
   });
 
   app.post("/v1/exports/done", supervisor, bodyLimit({ maxSize: 256 * 1024 }), async (c) => {

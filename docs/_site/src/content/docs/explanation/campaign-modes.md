@@ -31,7 +31,7 @@ A rig works on one run at a time. Starting or resuming a run on a rig pauses the
 
 Reading is not only for research campaigns. A change to code often rests on something read: a paper, upstream code, an issue or a specification. So workers in hill-climb and goal runs can fetch web pages through the rig's archiving fetcher, read and search what the run archived, and record a claim with its exact quotes or a research note with the sources it rests on. Code checks their claims as it checks a research run's ([Research](#research)). Findings, hypotheses and report sections stay with research runs: a hill-climb or goal run refuses them.
 
-Such a run's research folder holds `INDEX.md`, `sources/`, `claims/` and `notes/`, which the harness writes from the run's records and keeps current, and `knowledge/`, the past research described below. Once the run has recorded anything there, each worker's brief points to the folder, and tells the worker to search it before fetching a page again. The fetcher uses fixed values in these runs: it respects `robots.txt`, and fetches at most 6 pages a minute from each site and at most 5,000,000 bytes a page. In Pi, the worker has the tools `fetch`, `read_source`, `search_corpus`, `add_claim` and `add_note`; in OpenCode, Claude Code and Codex, the same five as `thermite-trial research` commands.
+Such a run's research folder holds `INDEX.md`, `sources/`, `claims/` and `notes/`, which the harness writes from the run's records and keeps current, `knowledge/`, the past research described below, and `compactions/` once a trial's conversation was [compacted](../reference/limits-and-pacing.md#compaction). Once the run has recorded anything there, each worker's brief points to the folder, and tells the worker to search it before fetching a page again. The fetcher uses fixed values in these runs: it respects `robots.txt`, and fetches at most 6 pages a minute from each site and at most 5,000,000 bytes a page. In Pi, the worker has the tools `fetch`, `read_source`, `search_corpus`, `add_claim` and `add_note`; in OpenCode, Claude Code and Codex, the same five as `thermite-trial research` commands.
 
 ### Field notes and past research
 
@@ -97,6 +97,7 @@ claims/ findings/ hypotheses/ notes/ report/
                   every claim (verified or draft), finding, hypothesis, note and report section
 lanes/<lane>/     each lane's files, as they were when its last trial ended
 work/<lane>/      the lane's working area: syntheses, outlines, drafts, lists of what to read next
+compactions/      each agent conversation the harness kept whole before it compacted it
 knowledge/        past research from the folders the campaign may read; its README.md says what is where
 ```
 
