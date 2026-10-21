@@ -7,7 +7,7 @@ import {
   type RunView,
   type StoredEvent,
 } from "../views.ts";
-import { ago, esc, icon, modeAvatar, runHref, sparkline } from "./components.ts";
+import { ago, esc, icon, modeAvatar, reportingTag, runHref, sparkline } from "./components.ts";
 import {
   attemptState,
   auditReason,
@@ -930,7 +930,7 @@ export function runRow(u: RigView, r: RunView, now: number, name: "campaign" | "
   const title =
     name === "campaign"
       ? `${esc(r.campaign || r.id)} › ${esc(r.id)}`
-      : `${esc(r.id)} <span class="muted small">on ${esc(u.id)}${u.stale ? ` <span class="bad">(not reporting)</span>` : ""}</span>`;
+      : `${esc(r.id)} <span class="muted small">on ${esc(u.id)}${reportingTag(u)}</span>`;
   return `<a class="rr" href="${runHref(u.id, r)}"><span class="chip ${tone}">${esc(word)}</span><span class="ar-main"><b>${title}</b><span class="muted small">${esc(sub)}</span></span><span class="brief-progress">${runProgress(r)}</span><span class="rr-need">${n ? `<span class="warn small">${n} need${n === 1 ? "s" : ""} you</span>` : ""}</span></a>`;
 }
 

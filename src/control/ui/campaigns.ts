@@ -124,6 +124,8 @@ export interface StartRig {
   /** The run at work there, if any. */
   busy?: string | undefined;
   stale: boolean;
+  /** A RunPod pod that is stopped: a run started there starts it first (issue.ts's wake). */
+  stopped?: boolean | undefined;
   /** The agents' model the rig has, if any. */
   model?: string | undefined;
 }
@@ -142,11 +144,15 @@ export function startDrawer(o: {
   /** "From past research" (goal 065): a search of the folders the campaign may read. */
   past?: string | undefined;
 }): string {
-  const first = o.rigs.find((r) => !r.off && !r.busy) ?? o.rigs.find((r) => !r.off);
+  // A stopped pod is chosen only by the owner: starting it costs money.
+  const first =
+    o.rigs.find((r) => !r.off && !r.busy && !r.stopped) ??
+    o.rigs.find((r) => !r.off && !r.busy) ??
+    o.rigs.find((r) => !r.off);
   const rigOpts = o.rigs
     .map(
       (r) =>
-        `<label class="sopt${r.off ? " dis" : ""}"><input type="radio" name="rig" value="${esc(r.id)}" data-model="${esc(r.model ?? "")}"${r.id === first?.id ? " checked" : ""}${r.off ? " disabled" : ""}><span><b>${esc(r.id)}</b> <span class="muted small">${esc(r.hardware)}</span><span class="sd">${r.off ? esc(r.off) : r.busy ? `Busy: ${esc(r.busy)} is at work there, and pauses when this run starts (a rig runs one run at a time).` : r.stale ? "Not reporting now." : "Free: no run at work."}${r.off ? "" : r.model ? ` Agents' model: ${esc(r.model)}.` : ` <span class="warn">No model for its agents yet.</span>`}</span></span><span class="sr">${r.off ? "" : r.busy ? `<span class="warn">busy</span>` : `<span class="ok">free</span>`}</span></label>`,
+        `<label class="sopt${r.off ? " dis" : ""}"><input type="radio" name="rig" value="${esc(r.id)}" data-model="${esc(r.model ?? "")}"${r.id === first?.id ? " checked" : ""}${r.off ? " disabled" : ""}><span><b>${esc(r.id)}</b> <span class="muted small">${esc(r.hardware)}</span><span class="sd">${r.off ? esc(r.off) : r.busy ? `Busy: ${esc(r.busy)} is at work there, and pauses when this run starts (a rig runs one run at a time).` : r.stopped ? "Its pod is stopped: this run starts it first." : r.stale ? "Not reporting now." : "Free: no run at work."}${r.off ? "" : r.model ? ` Agents' model: ${esc(r.model)}.` : ` <span class="warn">No model for its agents yet.</span>`}</span></span><span class="sr">${r.off ? "" : r.busy ? `<span class="warn">busy</span>` : r.stopped ? `<span class="muted">stopped</span>` : `<span class="ok">free</span>`}</span></label>`,
     )
     .join("");
   const models = o.models

@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, test } from "node:test";
 import { formatRunpodRigs } from "../cli/runpod.ts";
 import { generateSigningKeys } from "../core/commands.ts";
+import { assigned } from "../testing/assignments.ts";
 import { FAKE_GPUS, FAKE_RUNPOD_KEY, fakeRunpod } from "../testing/fake-runpod.ts";
 import {
   exportName,
@@ -12,6 +16,7 @@ import {
   supervisorReports,
 } from "../testing/rig-results.ts";
 import { createControlApi } from "./api.ts";
+import { KitRepos } from "./kit-repos.ts";
 import type { RunpodRigView } from "./runpod-rig-view.ts";
 import { DEFAULT_IDLE_STOP_MINUTES, RunpodRigs } from "./runpod-rigs.ts";
 import { SecretBox } from "./secrets.ts";
@@ -62,6 +67,8 @@ async function setup(o: Parameters<typeof fakeRunpod>[0] = {}) {
     tunnels,
     runpodRigs: rigs,
     cloudFetch: cloud.fetch,
+    // Kits kept on control: the New campaign page needs them.
+    kits: new KitRepos(mkdtempSync(join(tmpdir(), "thermite-kits-"))),
   });
   const login = await api.request("/ui/login", {
     method: "POST",
@@ -558,5 +565,142 @@ describe("a RunPod rig's page", () => {
       /The harness starts again: a trial that was in progress is planned again\./,
     );
     assert.doesNotMatch(String(card), /Resume the runs/);
+  });
+});
+
+describe("a stopped RunPod pod elsewhere on the dashboard", () => {
+  /** A rig whose pod the owner stopped an hour ago, with a run of `camp` that control assigned. */
+  async function stopped() {
+    const s = await setup();
+    await working(s);
+    assigned(s.store, "rp-test-1", "run-1", "camp");
+    await s.post("/ui/rigs/rp-test-1/runpod/stop");
+    harnessApplies(s.store, "rp-test-1", exportName(1));
+    // The harness reports the run the stop paused.
+    s.store.ingest({
+      rig: "rp-test-1",
+      ledger_id: "l1",
+      cursor: 1,
+      next: 2,
+      summary: {},
+      events: [
+        {
+          id: 2,
+          at: new Date().toISOString(),
+          actor: "t",
+          kind: "run_status",
+          subject: "run-1",
+          body: { status: "paused", reason: "the owner stops the rig's pod" },
+        },
+      ],
+    });
+    exportOnControl(s.store, "rp-test-1", exportName(1));
+    supervisorReports(s.store, "rp-test-1");
+    await s.advance();
+    await s.advance();
+    assert.deepEqual(s.cloud.stops(), [{ action: "stop" }]);
+    s.store.db
+      .prepare("update rig set last_seen = ? where id = ?")
+      .run(new Date(Date.now() - 3_600_000).toISOString(), "rp-test-1");
+    return s;
+  }
+
+  test("Overview, Live, a run's page and its brief call it stopped, not not reporting", async () => {
+    const s = await stopped();
+    const overview = await s.page("/ui");
+    assert.match(
+      overview,
+      /<div class="tally "><b>0\/0<\/b><span>rigs reporting, 1 stopped<\/span><\/div>/,
+    );
+    assert.match(overview, /0 of 0 rigs reporting · 1 stopped/);
+    assert.match(
+      await s.page("/ui/live"),
+      /<span class="t">rp-test-1<\/span><span class="s">no run at work · its pod is stopped<\/span>/,
+    );
+    const run = await s.page(`/ui/campaigns/camp?run=${encodeURIComponent("rp-test-1/run-1")}`);
+    assert.match(run, /rp-test-1<\/a> <span class="muted">\(its pod is stopped\)<\/span>/);
+    assert.doesNotMatch(run, /\(not reporting\)/);
+  });
+
+  test("New campaign and Start a run offer it, and say a run starts it", async () => {
+    const s = await stopped();
+    const nc = await s.page("/ui/campaigns/new");
+    const choice =
+      /<div class="ch[^"]*" data-group="rig" data-value="rp-test-1"[^>]*>.*?<\/div>/s.exec(nc)?.[0];
+    assert.ok(choice, "the rig is offered");
+    assert.doesNotMatch(choice, /class="ch[^"]* dis"/, "and may be chosen");
+    assert.match(choice, /its pod is stopped: the first run starts it/);
+    assert.doesNotMatch(choice, /not reporting now/);
+    const camp = await s.page("/ui/campaigns/camp");
+    const opt =
+      /<label class="sopt[^"]*"><input type="radio" name="rig" value="rp-test-1"[^>]*>.*?<\/label>/s.exec(
+        camp,
+      )?.[0];
+    assert.ok(opt, "Start a run offers it");
+    assert.doesNotMatch(opt, / disabled/);
+    assert.match(opt, /Its pod is stopped: this run starts it first\./);
+    assert.doesNotMatch(opt, /Not reporting now\./);
+  });
+
+  test("a new campaign started on it starts the pod first, and the page says so", async () => {
+    const s = await stopped();
+    // The rig's last report named its hardware, as a CPU rig's does.
+    s.store.ingest({
+      rig: "rp-test-1",
+      ledger_id: "l1",
+      cursor: 2,
+      next: 2,
+      summary: {
+        hardware: {
+          collected_at: new Date().toISOString(),
+          target: { type: "cpu", class: "generic-cpu", id: "cpu-a" },
+          device_mode: "none",
+          devices: [],
+          cpu: { model: "Example CPU", host: 8, usable: 8, quota: null },
+          memory: { host_mib: 16_000, limit_mib: null },
+          disks: [],
+          os: { kernel: "6.8", arch: "x64", node: "v22", image: null },
+          toolchain: { cc: "cc 12", nvcc: null },
+          errors: [],
+        },
+      },
+      events: [],
+    });
+    const draft = {
+      mode: "hill_climb",
+      campaign: "matmul-speed",
+      title: "Make the matrix multiply faster",
+      project: {
+        url: "https://git.example.com/team/fastmat.git",
+        ref: "main",
+        commit: "9a41c07e0d1f2a3b4c5d6e7f8091a2b3c4d5e6f7",
+        repo: "fastmat",
+        editable_paths: ["src/kernels/**"],
+      },
+      kit: {
+        source: "here",
+        build: "make bench",
+        outputs: ["bench"],
+        cases: [{ name: "small", params: { n: 64 }, work: 524288 }],
+        run: "{build}/bench --n {n} --out {out}/result.txt",
+        check: "test -s {out}/result.txt",
+      },
+      score: { name: "throughput", unit: "FLOP/s", direction: "max", min_effect: 0.05 },
+      lanes: 2,
+    };
+    const to = await s.post("/ui/campaigns/new", {
+      draft: JSON.stringify(draft),
+      rig: "rp-test-1",
+      promotion: "",
+      start_value: "start",
+    });
+    assert.match(
+      to,
+      /^\/ui\/campaigns\/matmul-speed\?run=rp-test-1\/matmul-speed-1&ok=rp-test-1's pod was stopped: control started it\. The run starts once the pod runs\.$/,
+    );
+    assert.deepEqual(
+      s.cloud.actions().filter((a) => a.action === "start"),
+      [{ action: "start" }],
+    );
   });
 });

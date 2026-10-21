@@ -125,7 +125,7 @@ For research, step 3 asks for **Topic** (a sentence), **Questions** (one per lin
 
 ## 4. Where it runs
 
-Choose the rig. Each card shows its hardware, whether it is idle, and its agents' model after `agents:`, followed by ` (OpenCode v2)` or ` (Codex)` when they run there, or `no model for its agents yet` in red. A rig that is not reporting can't be chosen.
+Choose the rig. Each card shows its hardware, whether it is idle, and its agents' model after `agents:`, followed by ` (OpenCode v2)` or ` (Codex)` when they run there, or `no model for its agents yet` in red. A rig that is not reporting can't be chosen. A [rig on RunPod](../install/runpod-rig.md) whose pod is stopped can: its card says `its pod is stopped: the first run starts it`, and control starts the pod before the first run. The campaign's page then says `rp-1a2b3c4d's pod was stopped: control started it. The run starts once the pod runs.`
 
 | Field | What it does |
 | --- | --- |
@@ -203,7 +203,7 @@ Press **Start a run** at the top of the campaign's page. A panel opens, headed *
 
 | Field | What it does |
 | --- | --- |
-| **Where it runs** | One card per rig, with its hardware, `free` or `busy`, and its agents' model, or `No model for its agents yet.` A rig with other hardware than the campaign's kit is greyed out. A busy rig's card says `Busy: sort-speed-1 is at work there, and pauses when this run starts (a rig runs one run at a time).` |
+| **Where it runs** | One card per rig, with its hardware, `free` or `busy`, and its agents' model, or `No model for its agents yet.` A rig with other hardware than the campaign's kit is greyed out. A busy rig's card says `Busy: sort-speed-1 is at work there, and pauses when this run starts (a rig runs one run at a time).` A [rig on RunPod](../install/runpod-rig.md) whose pod is stopped says `stopped` and `Its pod is stopped: this run starts it first.` You can choose it: control starts the pod, then the run. The panel chooses a free rig for you first, and a stopped pod only when no other rig fits |
 | **Agents** | **On**: the agents propose changes, and the judge measures each one. **Off: a try**: no agents, only the judge, which measures the starting point. A try needs no model |
 | **The agents' model** | Shows with **Agents** **On**, for a rig with no model: the model to give it, as on its **Edit rig** page. Control then gives the rig the model and starts nothing yet: see [When the rig doesn't have the model yet](#when-the-rig-doesnt-have-the-model-yet) |
 | **Experiments to start with** | **Copy the untried experiments of** and a run of this campaign, such as `sort-speed-1 (4 up next, 1 lane idea)`: the new run's [experiment queue](choose-what-runs-next.md) starts with that run's waiting experiments, in the same order, and its lanes' ideas, each with who added it and why, up to 500. Ticked by default. It shows only with **Agents** **On**, and only when a run of the campaign has experiments up next or ideas. Untick it for an empty queue, which the planner fills |

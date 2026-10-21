@@ -143,6 +143,16 @@ export function campaignState(k: CampaignView): { text: string; cls: string; ico
 }
 
 export const campaignHref = (name: string) => `/ui/campaigns/${encodeURIComponent(name)}`;
+/**
+ * After a rig's name, when it does not report: a RunPod pod that is stopped can't report, which
+ * is expected, so it says so; any other rig is not reporting.
+ */
+export const reportingTag = (u: Pick<RigView, "stale" | "runpod">): string =>
+  podStopped(u)
+    ? ` <span class="muted">(its pod is stopped)</span>`
+    : u.stale
+      ? ` <span class="bad">(not reporting)</span>`
+      : "";
 /** A run's key on its campaign's page (run ids are unique per rig only). */
 export const runKey = (rig: string, run: string) => `${rig}/${run}`;
 /** A run page's tabs. */

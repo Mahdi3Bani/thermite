@@ -1,6 +1,6 @@
 import type { McpServer } from "../mcp-servers.ts";
 import type { GitAccess } from "../store.ts";
-import type { RigView } from "../views.ts";
+import { podStopped, type RigView } from "../views.ts";
 import { esc } from "./components.ts";
 import { kitMcpSection } from "./new-campaign-mcp.ts";
 
@@ -77,18 +77,22 @@ export function newCampaignBody(p: NewCampaignPage): string {
     `<tr><td><input aria-label="the goal" value="${esc(g.description ?? "")}" placeholder="It builds and its tests pass"></td><td><select aria-label="checked by"><option value="check"${g.verify?.type === "check" ? " selected" : ""}>the check passes on cases</option><option value="metric"${g.verify?.type === "metric" ? " selected" : ""}>the score reaches</option><option value="verifier" data-kits="repo upload"${g.verify?.type === "verifier" ? " selected" : ""}>the kit's own check</option><option value="review"${g.verify?.type === "review" ? " selected" : ""}>people review it</option></select></td><td><input aria-label="detail" value="${esc(g.verify?.verifier ?? (g.verify?.cells ?? []).join(" "))}" placeholder="small large  ·  >= 4e13 on large  ·  clear names; no dead code"></td><td><button class="sm" data-del>×</button></td></tr>`;
 
   // Rigs that can run a campaign on the kit's target. A rig with no hardware report shows, and
-  // its target is whatever it reports later (control refuses a mismatch at assignment).
+  // its target is whatever it reports later (control refuses a mismatch at assignment). A stopped
+  // RunPod pod may be chosen: the first run starts it (new-campaign.ts, issue.ts's wake).
   const rigChoices = p.rigs
     .map((u, i) => {
       const t = u.hardware?.target;
       const running = u.runs.filter((r) => r.status === "running").length;
+      const stopped = podStopped(u);
       const what = [
         t ? `${t.type} · ${esc(t.class)}` : "has not reported its hardware",
-        u.stale
-          ? "not reporting now"
-          : running
-            ? `${running} run${running === 1 ? "" : "s"} running`
-            : "idle",
+        stopped
+          ? "its pod is stopped: the first run starts it"
+          : u.stale
+            ? "not reporting now"
+            : running
+              ? `${running} run${running === 1 ? "" : "s"} running`
+              : "idle",
         u.model?.model
           ? `agents: ${esc(u.model.model)}${u.model.harness === "opencode" ? " (OpenCode v2)" : u.model.harness === "codex" ? " (Codex)" : ""}`
           : u.model?.source === "none"
@@ -97,7 +101,7 @@ export function newCampaignBody(p: NewCampaignPage): string {
       ]
         .filter(Boolean)
         .join(" · ");
-      return choice("rig", u.id, u.id, what, i === 0, u.stale);
+      return choice("rig", u.id, u.id, what, i === 0, u.stale && !stopped);
     })
     .join("");
 
