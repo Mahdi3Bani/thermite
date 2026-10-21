@@ -29,6 +29,13 @@ export const CLAUDE_MODELS: { id: string; claude: string; context_window: number
 export const claudeModelName = (id: string) => CLAUDE_MODELS.find((m) => m.id === id)?.claude ?? id;
 
 /**
+ * Whether the model a rig reports is the one control gave it. Claude Code reports a subscription's
+ * model by its own name (`claude-sonnet-5-5` for `sonnet-5.5`), so either name counts.
+ */
+export const sameModel = (reported: string | null | undefined, given: string): boolean =>
+  reported != null && (reported === given || reported === claudeModelName(given));
+
+/**
  * A cap on the context window of a rig's model (goal 070): at least this many tokens, and at most
  * what a model route carries.
  */

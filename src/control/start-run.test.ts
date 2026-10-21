@@ -396,6 +396,34 @@ describe("Start a run over REST (goal 029)", () => {
     assert.equal((await json<{ run: string }>(started)).run, "gemv-speed-1");
   });
 
+  test("a Claude subscription's model counts as taken under Claude Code's own name for it", async () => {
+    const s = await stack();
+    s.store.putProvider({
+      name: "claude-sub",
+      type: "claude",
+      base_url: "https://api.anthropic.com",
+      key: { sealed: "sealed-for-the-tests", hint: "…test" },
+    });
+    s.store.assignRigModel("rig-b", {
+      provider: "claude-sub",
+      model: "sonnet-5.5",
+      harness: "claude-code",
+    });
+    // Claude Code reports the model by its own name, not the subscription's id for it.
+    s.store.db
+      .prepare("update rig set summary = json_set(summary, '$.model', json(?)) where id = 'rig-b'")
+      .run(
+        JSON.stringify({
+          source: "control",
+          name: "claude-sub",
+          model: "claude-sonnet-5-5",
+          harness: "claude-code",
+        }),
+      );
+    const started = await s.rest("gemv-speed", { rig: "rig-b" });
+    assert.equal(started.status, 201, await started.clone().text());
+  });
+
   test("the model the rig has already keeps its harness; another model gets what it needs", async () => {
     const s = await stack();
     s.store.putProvider({

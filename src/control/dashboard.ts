@@ -111,6 +111,7 @@ import {
   isOpencodeOwn,
   listModels,
   providerBase,
+  sameModel,
 } from "./providers.ts";
 import { untriedOf } from "./queue-copy.ts";
 import { probeRepository, readKitManifest } from "./repo-probe.ts";
@@ -1201,14 +1202,19 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       const [, mRaw] = chosen.split("|");
       const model = decodeURIComponent(mRaw ?? "");
       // Not on the rig yet: it arrives within a minute. Starting now would fail the first trials.
-      if (startValue === "start" && rig.model?.model !== model) {
+      if (startValue === "start" && !sameModel(rig.model?.model, model)) {
         startValue = "save";
         modelNote = `${rig.id} takes ${model} within a minute. Settings › Providers shows the rig taking it until then; then start the run here.`;
       }
     }
     // Control gave the rig a model it has not taken yet: saved now, started once it has.
     const pending = store.rigModels()[rig.id];
-    if (!chosen && startValue === "start" && pending && rig.model?.model !== pending.model) {
+    if (
+      !chosen &&
+      startValue === "start" &&
+      pending &&
+      !sameModel(rig.model?.model, pending.model)
+    ) {
       startValue = "save";
       modelNote = `${rig.id} has not taken ${pending.model} yet (it does within a minute of being given it; Settings › Providers shows it taking the model until then). Then start the run here.`;
     }
@@ -1491,7 +1497,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
       const given = giveRigModel(rig.id, chosen, harnessKept(rig.id, chosen, ""), undefined, by);
       if ("error" in given) return refuse(given.error, 400);
       const model = req.model.model;
-      if (rig.model?.model !== model)
+      if (!sameModel(rig.model?.model, model))
         return {
           state: "model_given",
           said: `${rig.id} takes ${model} within a minute; Settings › Providers shows it taking the model until then. Then start the run again.`,
@@ -1499,7 +1505,7 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
     }
     // Control gave the rig a model it has not taken yet: the agents would start with none.
     const given = store.rigModels()[rig.id];
-    if (agents && !req.model && given && rig.model?.model !== given.model)
+    if (agents && !req.model && given && !sameModel(rig.model?.model, given.model))
       return refuse(
         `${rig.id} has not taken ${given.model} yet (it does within a minute of being given it; Settings › Providers shows it taking the model until then): start the run after that.`,
       );
@@ -3551,7 +3557,7 @@ ${
           !(
             m.source === "control" &&
             m.name === want.provider &&
-            m.model === want.model &&
+            sameModel(m.model, want.model) &&
             m.harness === want.harness
           )
             ? ` <span class="chip info">taking ${esc(want.model)} under ${esc(HARNESSES[want.harness])}</span>`
