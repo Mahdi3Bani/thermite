@@ -46,7 +46,7 @@ None.
 - 2026-10-20: **The how-to.** [Run a rig on RunPod](../../_site/src/content/docs/how-to/install/runpod-rig.md), in the install how-tos and in Start here: the account in Providers, the image, the launch over the command line, REST and MCP (the dashboard has no form yet, as it says), limits, stop, start, restart, results, terminate and the full reset.
 - 2026-10-20: Left: the first CI run of the `runpod` job, and the paid run.
 - 2026-10-20: The `runpod` job passed on GitHub (CI run 39479049337 on `v1/build` (85b4de0)). Left: the paid run, with the owner's OK.
-- 2026-10-21: The test pod form's **Image** tip and `runpod_test_start`'s description name the one-container rig image beside the CUDA harness (`66a4230`; test in `src/control/runpod-tests.test.ts`).
+- 2026-10-21: The test pod form's **Image** tip and `runpod_test_start`'s description name the one-container rig image beside the CUDA harness (`659cf42`; test in `src/control/runpod-tests.test.ts`).
 
 ---
 
