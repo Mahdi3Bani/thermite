@@ -301,8 +301,26 @@ export interface MessageView {
   keep: boolean;
   unkept: boolean;
   at: string;
-  reads: { by: string; trial: string | null; at: string }[];
+  /** Each reader's first read; `round` is the planner's round that read it (goal 066). */
+  reads: { by: string; trial: string | null; at: string; round: number | null }[];
   answers: { role: string; text: string; at: string }[];
+  /**
+   * The rules the planner made from it (goal 066): each directive whose `from_message` is this
+   * message, in force or removed since, with its direction and why.
+   */
+  rules: {
+    id: number;
+    kind: string;
+    family: string | null;
+    rationale: string;
+    by: string;
+    at: string;
+  }[];
+  /**
+   * Rules the planner made from it that the harness left out: rules the owner removed, which
+   * only the owner's own `redirect` sets again (`directives_left_out`).
+   */
+  left_out: { kind: string; family: string | null; at: string }[];
 }
 
 /** The rig's own settings as its harness reports them. */
@@ -907,6 +925,33 @@ export function rigView(
           body,
           legacy: isLegacyRule(body),
         });
+        // A rule the planner made from one of the owner's messages: part of its answer.
+        const from = v.messages.find((m) => m.id === body.from_message);
+        if (from)
+          from.rules.push({
+            id: Number(b.id),
+            kind: String(body.kind ?? ""),
+            family: typeof body.family === "string" ? body.family : null,
+            rationale: String(body.rationale ?? ""),
+            by: e.actor,
+            at: e.at,
+          });
+        break;
+      }
+      // Rules a set named that the owner had removed: the harness left them out. One the planner
+      // made from the owner's message is part of its answer to it.
+      case "directives_left_out": {
+        const v = inst(String(e.subject));
+        for (const x of Array.isArray(b.rules) ? b.rules : []) {
+          const r = (x ?? {}) as Record<string, unknown>;
+          const from = v.messages.find((m) => m.id === r.from_message);
+          if (from)
+            from.left_out.push({
+              kind: String(r.kind ?? ""),
+              family: typeof r.family === "string" ? r.family : null,
+              at: e.at,
+            });
+        }
         break;
       }
       case "family_added": {
@@ -1020,6 +1065,8 @@ export function rigView(
           at: e.at,
           reads: [],
           answers: [],
+          rules: [],
+          left_out: [],
         });
         if (v.messages.length > 200) v.messages.shift();
         break;
@@ -1038,6 +1085,8 @@ export function rigView(
             by: String(b.by ?? ""),
             trial: typeof b.trial === "string" ? b.trial : null,
             at: e.at,
+            // A read from before reads named their round has none.
+            round: Number.isInteger(b.round) ? Number(b.round) : null,
           });
         break;
       }

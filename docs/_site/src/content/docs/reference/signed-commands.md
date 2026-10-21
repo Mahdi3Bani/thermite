@@ -111,7 +111,7 @@ The owner-only kinds are `approve_promotion`, `decline_promotion`, `accept_revie
 | `rig_check` | **Run it** in a rig's **Checks**; **Check** on **Settings** | Yes | Yes | Yes | Yes | |
 | `pause_run` | **Pause**, then **Pause the run** in its menu, in a run's header, in the header of the run's **Live**, and on the run's card under **At work now** | Yes | Yes | Yes | Yes | |
 | `resume_run` | **Resume** in a run's header, in the header of the run's **Live**, and on a paused run's row under **Earlier runs** | Yes | Yes | Yes | Yes | |
-| `redirect` | **Add the rule** on a run's **Planner** tab (one rule for each direction named, added to the earlier ones) | Yes | Yes | Yes | Yes | |
+| `redirect` | None: on the dashboard, rules come from **Tell the planner**, a `message_agent` to the planner, which makes them | Yes | Yes | Yes | Yes | |
 | `reset_workers` | **Restart the lanes**, under **⋯** in the header of a running run with agents, on its page and in Live | Yes | Yes | Yes | Yes | |
 | `export_now` | **Export now** on a rig's page | Yes | Yes | Yes | Yes | |
 | `message_agent` | **Send** in the message box of a run's **Live**; **Send to the planner** on a run's **Planner** tab, while the planner is on | Yes | Yes | Yes | No | Yes |
@@ -275,7 +275,7 @@ A rule in words (`match`) set before rules named directions stays in force: the 
 
 The owner's `redirect`, or an operator's for the owner, can set again a rule that was removed with [`drop_directive`](#drop_directive). An agent token's `redirect`, the teacher pair's set and the planner's cannot.
 
-The dashboard calls directives **rules**. **Add the rule** on a run's **Planner** tab sends one directive for each direction in **Direction**, `avoid`, `try` or `mandate`, with `replace: false`: it adds to the rules given from the dashboard before, and replaces none. **Direction** takes one direction in plain words, or one or more as `:name:`. [`drop_directive`](#drop_directive) removes one rule.
+The dashboard calls directives **rules**. It sends no `redirect`: on a run's **Planner** tab, **Tell the planner** sends a [`message_agent`](#message_agent) to the planner, and the planner adds the rules the message asks for at its next round, each with `from_message` set to the message. **Remove** sends [`drop_directive`](#drop_directive), which removes one rule. Control's own command form refuses a `redirect`: `this command is not available from the dashboard`.
 
 ### `reset_workers`
 
@@ -364,7 +364,7 @@ The run's **Live** shows the rig's refusal of the newest message to the run, fro
 
 The harness writes the live line `Owner to <to> (#<id>): <text>`, with `, kept in force` after the id for a kept message. A run's **Live** shows a signed line as **To** the recipient and the text. A line for everyone working, a lane, the planner or the advisors shows so at once, in its own words. A line for a trial shows as a plain line until the run's `agent_message` event, below, reaches control with the rig's report; **Live** then draws it again in place, with the event's words. Result: `{"message": <id>, "to", "keep", "readers", "note"}`. `readers` lists who will read it: lanes, `planner`, `teachers`, `auditor` or `panel`. `note` is there only for a trial that has ended: `trial t-… has ended; lane-<n>'s next trial reads this`.
 
-The run's ledger records the message with its text (`agent_message`), each reader's first read (`agent_message_read`) and each advisor's answer (`advisor_answer`). The run's **Live** shows the message, each read and each answer only from the harness's signed live lines; an unsigned line that looks like one shows as a plain line. A lane's read, like a message to a trial, shows plainly until the run's `agent_message` event reaches control.
+The run's ledger records the message with its text (`agent_message`), each reader's first read (`agent_message_read`, `{message, by}`, with `trial` for a lane's read and `round` for the planner's: the round whose plan read it) and each advisor's answer (`advisor_answer`). A rule the planner makes from the message is a `directive` whose body has `from_message`. The run's **Planner** tab shows a message to the planner, or to everyone working, under **Tell the planner**: waiting until the planner's round reads it, then with the planner's answer, made from these records: the rules it made from the message, the directions it designed for them, and the round's notes. The run's **Live** shows the message, each read and each answer only from the harness's signed live lines; an unsigned line that looks like one shows as a plain line. A lane's read, like a message to a trial, shows plainly until the run's `agent_message` event reaches control.
 
 ### `unkeep_message`
 
@@ -464,7 +464,7 @@ Removes one [directive](#redirect), a rule for the plan, whoever set it: the own
 
 The harness refuses: `no run <run>`, a closed run (`run <run> is closed: its queue and rules no longer change`), and `no rule <id> in force in run <run>`. The directive stays in the record with the status `dropped`, and the ledger records `directive_dropped`, `{id}`. Result: `{"run", "dropped": <id>}`.
 
-**A removed rule does not come back from the advisors, the planner or an agent's token.** The teacher pair's next set of directives replaces its earlier set, the planner adds rules when an owner's message asks for one, and an agent token may send a `redirect`. Before the harness records such a set, it leaves out each rule that matches a rule removed from the run with `drop_directive`: the same kind, and the same `family` or `match` words, ignoring case and spaces at the ends. A rule that names neither matches every removed rule of its kind that names neither. The harness records the left-out rules in one event, `directives_left_out`, `{rules, why: "the owner removed these rules"}`, whose actor is `supervisor`, `planner` or `control:agent:mcp`, and records the rest of the set. Only a `redirect` issued by the owner, or by an operator for the owner, sets a removed rule again: its author is `control:owner:…`, such as `control:owner:ui` for the owner's **Add the rule** or `control:owner:operator`.
+**A removed rule does not come back from the advisors, the planner or an agent's token.** The teacher pair's next set of directives replaces its earlier set, the planner adds rules when an owner's message asks for one, and an agent token may send a `redirect`. Before the harness records such a set, it leaves out each rule that matches a rule removed from the run with `drop_directive`: the same kind, and the same `family` or `match` words, ignoring case and spaces at the ends. A rule that names neither matches every removed rule of its kind that names neither. The harness records the left-out rules in one event, `directives_left_out`, `{rules, why: "the owner removed these rules"}`, whose actor is `supervisor`, `planner` or `control:agent:mcp`, and records the rest of the set. Only a `redirect` issued by the owner, or by an operator for the owner, sets a removed rule again: its author is `control:owner:…`, such as `control:owner:api` for the owner's REST API or `control:owner:operator`.
 
 ### `propagate`
 

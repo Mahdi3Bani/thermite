@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // M3 control acceptance under compose, with two local rigs (the "two-rigs" profile). It checks
 // the plan's M3 verify list:
-//   - assign a campaign to each rig; pause, resume, reset workers and redirect from the dashboard
-//     and from MCP, each taking effect in the harness and logged in control's audit;
+//   - assign a campaign to each rig; pause, resume and reset workers from the dashboard and from
+//     MCP, steer the planner from the dashboard (Tell the planner: rules come from a message to
+//     the planner) and redirect from MCP, each taking effect in the harness and logged in
+//     control's audit;
 //   - with control stopped, rigs keep researching, and their reports catch up when it returns;
 //   - with a supervisor stopped, its harness keeps running, the rig shows stale, then recovers;
 //   - control's view of a rig is the same before and after a control restart.
@@ -67,10 +69,10 @@ async function dashboard() {
   });
   const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0];
   const page = async (path) => (await fetch(`${control}${path}`, { headers: { cookie } })).text();
-  const post = async (form) => {
+  const send = async (route, form) => {
     const html = await page(`/ui/rigs/${form.rig}`);
     const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(html)?.[1] ?? "";
-    const r = await fetch(`${control}/ui/commands`, {
+    const r = await fetch(`${control}${route}`, {
       method: "POST",
       body: new URLSearchParams({ ...form, csrf }),
       headers: { cookie },
@@ -78,7 +80,11 @@ async function dashboard() {
     });
     return r.status;
   };
-  return { page, post };
+  /** A command form, such as Pause. */
+  const post = (form) => send("/ui/commands", form);
+  /** A message from a message box, such as Tell the planner on a run's Planner tab. */
+  const message = (form) => send("/ui/live/message", form);
+  return { page, post, message };
 }
 
 async function mcp() {
@@ -132,25 +138,30 @@ try {
   );
   check("resume from the dashboard took effect", true);
   await ui.post({ rig: "local-1", kind: "reset_workers", run: "smoke-1" });
-  await ui.post({
-    rig: "local-1",
-    kind: "redirect",
-    run: "smoke-1",
-    directive: "avoid",
-    direction: ":loop unrolling:",
-    rationale: "acceptance test",
-  });
+  // The dashboard steers the planner with Tell the planner (goal 066): its rules come from the
+  // message, at the planner's next round with a model.
+  check(
+    "dashboard message to the planner accepted",
+    (await ui.message({
+      rig: "local-1",
+      run: "smoke-1",
+      to: "planner",
+      text: "avoid :loop unrolling: for now (acceptance test)",
+      back: "/ui/campaigns",
+    })) === 303,
+  );
   await until(
-    "reset and redirect reached the harness",
+    "reset and the message to the planner reached the harness",
     async () => {
-      const kinds = (await api("/v1/rigs/local-1/events?after=0&limit=5000")).body.events.map(
-        (e) => e.kind,
+      const events = (await api("/v1/rigs/local-1/events?after=0&limit=5000")).body.events;
+      return (
+        events.some((e) => e.kind === "workers_reset") &&
+        events.some((e) => e.kind === "agent_message" && e.body?.to === "planner")
       );
-      return kinds.includes("workers_reset") && kinds.includes("directive");
     },
     60_000,
   );
-  check("reset workers and redirect from the dashboard took effect", true);
+  check("reset workers and a message to the planner from the dashboard took effect", true);
 
   // MCP commands on rig 2.
   const agent = await mcp();

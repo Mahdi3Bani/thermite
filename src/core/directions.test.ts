@@ -4,11 +4,11 @@ import { CommandPayloads, StructuredDirective } from "./commands.ts";
 import {
   directionName,
   directionOf,
+  directionParts,
   directionsToDesign,
   directionTokens,
   isLegacyRule,
   notADirection,
-  parseDirections,
   researchDirectionRefusal,
 } from "./directions.ts";
 
@@ -58,24 +58,29 @@ describe("directions, written as plain words or :name: (goal 066)", () => {
     assert.deepEqual(directionTokens("(see :split k:)"), ["split-k"]);
   });
 
-  test("the rule box: one direction in plain words, or several as :name:; other words are refused", () => {
-    assert.deepEqual(parseDirections("shared memory tiling"), {
-      names: ["shared-memory-tiling"],
-      rest: "",
-    });
-    assert.deepEqual(parseDirections(":gemv tiling: :vector loads:, and :gemv-tiling:"), {
-      names: ["gemv-tiling", "vector-loads"],
-      rest: "",
-    });
-    assert.deepEqual(parseDirections(":gemv tiling: because it was slow"), {
-      names: ["gemv-tiling"],
-      rest: "because it was slow",
-    });
-    assert.deepEqual(parseDirections("anything that uses $hared memory"), {
-      names: [],
-      rest: "anything that uses $hared memory",
-    });
-    assert.deepEqual(parseDirections("   "), { names: [], rest: "" });
+  test("a message to the planner, in parts: plain words, each :name: as a direction, and a :name: too long to be one", () => {
+    const long = ":a direction whose name is far too long to be one:";
+    const text = `stop :gemv tiling: at 10:30, put :Vector-Loads: first, and ${long} later`;
+    const parts = directionParts(text);
+    assert.equal(parts.map((p) => p.text).join(""), text);
+    assert.deepEqual(
+      parts.map((p) => (p.name ? `[${p.name}]` : p.bad ? `[bad ${p.text}]` : p.text)),
+      [
+        "stop ",
+        "[gemv-tiling]",
+        " at 10:30, put ",
+        "[vector-loads]",
+        " first, and ",
+        `[bad ${long}]`,
+        " later",
+      ],
+    );
+    assert.match(
+      parts.find((p) => p.bad)?.bad ?? "",
+      /is too long for a direction's name: use at most 41 letters, digits, spaces and dashes/,
+    );
+    assert.deepEqual(directionParts("plain words only"), [{ text: "plain words only" }]);
+    assert.deepEqual(directionParts(""), []);
   });
 
   test("a rule's direction is kept as its name; words (match) are no longer a rule", () => {

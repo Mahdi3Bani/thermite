@@ -6,14 +6,14 @@ sidebar:
   order: 8
 ---
 
-You can steer a running campaign without touching its judge: pause or resume it, start its lanes afresh, and send its agents a message. To choose what the lanes try next, and to give the planner rules, see [Choose what a run tries next](choose-what-runs-next.md). Nothing you do here changes a verdict.
+You can steer a running campaign without touching its judge: pause or resume it, start its lanes afresh, and send its agents a message. To choose what the lanes try next, and to make rules for the planner, see [Choose what a run tries next](choose-what-runs-next.md). Nothing you do here changes a verdict.
 
 | Action | Where on the dashboard | What it does |
 | --- | --- | --- |
 | **Pause** | The run's header, Live's header, or the run's card under **At work now** | The agents' running [trials](../../reference/glossary.md) stop, and no new ones start. A stopped trial's work that it had not submitted is thrown away; changes already submitted stay. Each stopped trial's experiment goes back to the top of the run's [queue](choose-what-runs-next.md). The judge finishes the job it is on; the run's other queued jobs wait until you resume |
 | **Resume** | The run's header; Live's header, where a paused run is listed under **Ended in the last day**, marked `paused`; or the run's row under **Earlier runs** | New trials start again, in the round the run was in: a trial that the pause stopped still counts in it. The planner plans the next round when this one's trials are done. Agents resting after six failed trials in a row ([limits and pacing](../../reference/limits-and-pacing.md#trials-and-lanes)) start again at once. Any other running run on that rig is paused: a rig runs one run at a time |
 | **Restart the lanes** | **⋯** in the run's header or in Live's header, while a run with agents is running | Ends the running trials and the current round at once, with no question first. Their experiments go back to the top of the queue. The planner plans the next round straight away, and every lane starts again from the champion. Nothing the judge decided is lost |
-| A message | The message box in **Live**, or **Tell the planner** on the **Planner** tab | Text for everyone working, one lane, the planner or the [advisors](../../reference/glossary.md). A message to everyone or to a lane can stay in force for every new trial |
+| A message | The message box in **Live**, or **Tell the planner** on the **Planner** tab | Text for everyone working, one lane, the planner or the [advisors](../../reference/glossary.md). A message to everyone or to a lane can stay in force for every new trial. The planner makes rules from what you tell it |
 | The experiment queue and the rules | The run's **Experiments** and **Planner** tabs | See [Choose what a run tries next](choose-what-runs-next.md) |
 
 A trial is one worker's session in a [lane](../../reference/glossary.md): it ends when it submits a change, when its time runs out, or when it stops. [Agents, lanes and the planner](../../explanation/agents-lanes-planner.md) explains lanes, trials and the planner.
@@ -64,7 +64,7 @@ Within half a minute, once the rig has taken it, the stream shows your message, 
 
 As they work, the agents keep [field notes](use-past-research.md#read-a-runs-journal): short notes of an observation, a decision and why, a surprise, a question or a lesson. A note can be about your message. **Live** shows each note as it is written, such as `noted (decision): …`, and the run's **Journal** tab lists them; there, a note about your message shows `your message “…”`.
 
-You can also write to the planner of a hill climb or goal run from its run's **Planner** tab: write in **Tell the planner** and press **Send to the planner**. The tab says `Sent to the rig. The planner reads it when it next gives out work; Commands shows whether the rig took it.` With the planner switched off on **Edit rig**, the tab has no form, only a note that the planner reads no messages. From what you say, the planner can change the run's experiment queue and add rules: see [Tell the planner](choose-what-runs-next.md#tell-the-planner).
+You can also write to the planner of a hill climb or goal run from its run's **Planner** tab: write in **Tell the planner** and press **Send to the planner**. There, typing `:` opens a list of the run's directions to name one exactly. The tab says `Sent to the rig. The planner reads it when it next gives out work; Commands shows whether the rig took it.`, and your message waits under the box until the planner's next round, when its answer shows: the rules it made and the directions they name. With the planner switched off on **Edit rig**, the tab has no form, only a note that the planner reads no messages. From what you say, the planner can change the run's experiment queue and make rules: see [Make a rule: tell the planner](choose-what-runs-next.md#make-a-rule-tell-the-planner).
 
 ### When each agent reads it
 
@@ -155,7 +155,7 @@ A `redirect` takes up to 40 directives, each with a `kind`, a `rationale`, and, 
 | `lane_count` | `value`: how many lanes to plan, up to the contract's `lanes.count` |
 | `note` | Free text for the planner |
 
-- Without `"replace": false`, a set replaces the rules sent earlier the same way, and only those. The command line and the REST API share one set. Over MCP, each token's role has its own: the owner's, the operator's and the agent's. The dashboard's **Add a rule** always adds. Rules from elsewhere stay: remove them with `drop_directive`.
+- Without `"replace": false`, a set replaces the rules sent earlier the same way, and only those. The command line and the REST API share one set. Over MCP, each token's role has its own: the owner's, the operator's and the agent's. The dashboard sends no `redirect`: its rules come from the planner, which adds them from your messages. Rules from elsewhere stay: remove them with `drop_directive`.
 - Control sends each `family` as the direction's name: `:Vector loads:` goes as `vector-loads`. A direction the run doesn't have yet is taken, and the planner designs it at its next round: see [Directions](choose-what-runs-next.md#directions). A research run takes only its task kinds.
 - A set that both avoids a direction and asks for it is refused: `the set both avoids and asks for <direction>`.
 - A rule in words is refused: `bad redirect payload: directives.0: a rule no longer takes match: name its direction in family, in plain words or as :name:`. So is a `family` that can't be a direction's name: `… is not a direction's name: write it in letters, digits, spaces and dashes, such as shared memory tiling or :shared memory tiling:`.
@@ -167,7 +167,7 @@ A `message_agent`'s `to` is `all` (everyone working), `planner`, `advisors` (all
 
 The rig numbers each message, and `unkeep_message` takes that number as `message`. Find it in the rig's answer to the `message_agent` command, such as `{"accepted":true,"result":{"keep":true,"message":3,"readers":["lane-1","planner"],"to":"all"},"status":"applied"}`: in the **Outcome** column on **Commands**, or in `outcome` from `GET /v1/commands/<id>`. `readers` says who will read it. After the rig's next report the same answer shows with `"kind"` and `"source"` in place of `"status"`.
 
-Over MCP, an agent sends the same kinds and payloads with the `issue_command` tool, then follows them with `command_status`; which kinds each token may send is in [Who may do what](#who-may-do-what). The tool `run_queue` reads a run's experiment queue, its rules, the planner's hand-outs, and your messages with who read each one and the advisors' answers. See [Let an agent run Thermite over MCP](../automate/agent-over-mcp.md).
+Over MCP, an agent sends the same kinds and payloads with the `issue_command` tool, then follows them with `command_status`; which kinds each token may send is in [Who may do what](#who-may-do-what). The tool `run_queue` reads a run's experiment queue, its rules, the planner's hand-outs, and your messages with who read each one, the planner's round that read it, the rules the planner made from it and the advisors' answers. See [Let an agent run Thermite over MCP](../automate/agent-over-mcp.md).
 
 ## Who may do what
 
