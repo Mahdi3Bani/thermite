@@ -141,6 +141,18 @@ After a minute, the rig's row under **Harness and model for each rig** ends with
 
 Some providers serve models that their list does not show. Open the provider's row and type the model's id in **A model it does not list**. Its ⓘ says: "Some providers serve models their list leaves out. Add one by its id at the provider; it shows as yours." Press **Add it**. The model shows in the row with "· yours".
 
+## Give a model its price
+
+[Model usage](../../reference/rest-api.md#model-usage) costs each call at its model's price. When the provider's list gives prices, as OpenRouter's and Nous Portal's do, control keeps them with the list and uses them. OpenAI's own list, Anthropic's and OpenCode Zen's give none, so their models' calls show no price until you set one, in US dollars per million tokens:
+
+```sh
+curl -sS -X POST https://control.example.com/v1/model-prices \
+  -H "Authorization: Bearer $(cat .dev/secrets/control-admin-token)" -H "Content-Type: application/json" \
+  -d '{"provider": "lab", "model": "small-model", "input": 1, "cached_input": 0.1, "output": 2}'
+```
+
+The answer says the price in words: "small-model of lab costs 1 USD per million tokens in, 0.1 USD cached and 2 USD out. Model usage prices all its calls at it." The MCP tool [`set_model_price`](../../reference/mcp-tools.md#set_model_price) does the same. A subscription's calls (a Claude or ChatGPT provider) are on its plan and take no price.
+
 ## Refresh, change or delete a provider
 
 Open the provider's row:

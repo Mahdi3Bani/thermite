@@ -37,6 +37,8 @@ describe("the agents' model source", () => {
     assert.deepEqual(cur, {
       api: undefined,
       harness: undefined,
+      // The provider's name, for the agents' model usage.
+      provider: "opencode",
       effort: undefined,
       baseUrl: "https://models.example/v1",
       model: "m-1",

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, test } from "node:test";
-import { listModels, providerBase } from "./providers.ts";
+import { listedPrice, listModels, providerBase } from "./providers.ts";
 import { ControlStore } from "./store.ts";
 
 const answer =
@@ -33,6 +33,38 @@ describe("a provider's model list", () => {
     ]);
     assert.equal(seen[0]?.url, "https://p.example/v1/models");
     assert.equal(seen[0]?.headers.get("authorization"), "Bearer sk-1");
+  });
+
+  test("a list's prices, as OpenRouter and Nous Portal give them: US dollars per token, kept per million tokens", async () => {
+    const models = await listModels(
+      "openai",
+      "https://p.example/v1",
+      "sk-1",
+      answer(200, {
+        data: [
+          {
+            id: "priced",
+            pricing: { prompt: "0.000003", completion: "0.000015", input_cache_read: "0.0000003" },
+          },
+          { id: "no-cache-price", pricing: { prompt: "0.0000000700", completion: "0.0000005" } },
+          // A router's price, -1: no price.
+          { id: "router", pricing: { prompt: "-1", completion: "-1" } },
+          { id: "half", pricing: { prompt: "0.000001" } },
+          { id: "plain" },
+        ],
+      }) as typeof fetch,
+    );
+    assert.deepEqual(
+      (models as { id: string; price?: unknown }[]).map((m) => [m.id, m.price]),
+      [
+        ["half", undefined],
+        ["no-cache-price", { input: 0.07, cached_input: null, output: 0.5 }],
+        ["plain", undefined],
+        ["priced", { input: 3, cached_input: 0.3, output: 15 }],
+        ["router", undefined],
+      ],
+    );
+    assert.equal(listedPrice({ pricing: { prompt: "free", completion: "0" } }), undefined);
   });
 
   test("Anthropic's /v1/models, paged, with its own key header", async () => {

@@ -45,13 +45,13 @@ Control checks a token against the owner's first, then the operator's, the agent
 
 | Tool | Owner | Operator | Agent | Reader |
 | --- | --- | --- | --- | --- |
-| `list_rigs`, `get_run`, `run_queue`, `recent_events`, `leaderboard`, `rig_reports`, `list_commands`, `command_status` | Yes | Yes | Yes | Yes |
+| `list_rigs`, `get_run`, `run_queue`, `recent_events`, `leaderboard`, `model_usage`, `rig_reports`, `list_commands`, `command_status` | Yes | Yes | Yes | Yes |
 | `issue_command` | Yes, the owner's kinds | Yes, the operator's kinds | Yes, the agent's kinds | No |
 | `propagate_champion` | Yes | Yes | Yes | No |
 | `kb_folders`, `kb_search`, `kb_grant`, `kb_revoke` | Yes | Yes | No | No |
 | `rig_setup` | Yes | Yes | No | Yes, without each step's `detail` |
 | `control_log`, `providers`, `rig_models`, `mcp_servers`, `runpod_tests`, `runpod_rigs` | Yes | Yes | No | Yes |
-| `add_cluster_rig`, `set_rig_model`, `start_run`, `copy_campaign`, `set_campaign_context`, `cluster_rig`, `update_rig_images`, `set_cluster_slots`, `runpod_test_start`, `runpod_test_end` | Yes | Yes | No | No |
+| `add_cluster_rig`, `set_rig_model`, `set_model_price`, `start_run`, `copy_campaign`, `set_campaign_context`, `cluster_rig`, `update_rig_images`, `set_cluster_slots`, `runpod_test_start`, `runpod_test_end` | Yes | Yes | No | No |
 | `retire_rig`, `bring_back_rig`, `runpod_launch`, `runpod_rig_limits`, `runpod_rig`, `mcp_server_add`, `mcp_server_change`, `mcp_server_check`, `mcp_server_sign_in`, `mcp_server_delete` | Yes | No | No | No |
 
 ### Command kinds for each role
@@ -171,7 +171,7 @@ Of the kinds the description names, the agent's token can issue only `redirect`.
 | `rig` | string | | The rig |
 | `limit` | whole number, 1 to 500 | 50 | How many events |
 
-Returns events `{seq, ledger_id, id, at, actor, kind, subject, body}`, newest first. It returns at most 50, whatever `limit` says. Error: `no rig <rig>`.
+Returns events `{seq, ledger_id, id, at, actor, kind, subject, body}`, newest first. It returns at most 50, whatever `limit` says. The agents' model calls (`model_call`) are left out: [`model_usage`](#model_usage) sums them. Error: `no rig <rig>`.
 
 ### leaderboard
 
@@ -180,6 +180,21 @@ Returns events `{seq, ledger_id, id, at, actor, kind, subject, body}`, newest fi
 > Per campaign: each run's champion and its gain over its own baseline (measured on its own rig), and which other rigs' judges cross-verified it.
 
 No inputs. Returns `{"<campaign>":[{rig, run, mode, status, champion_seq, gain, verified_by}]}`.
+
+### model_usage
+
+**Model usage.** All roles.
+
+> The agents' model usage, summed: for one run (run, and rig when the run's id is on more than one rig), for a campaign (all its runs on every rig), or, with neither, for the whole system; over a period: today (since midnight UTC), 7d (the last 7 days) or all (the default). Gives the total, by_agent (each agent by its id, with its name: workers, planner, teachers, `combiner` for the teachers' merged by model, auditor, and `panel` for the review panel), by_model (each harness, provider and model), and by_run for a campaign or by_campaign for the system, each with its share of the tokens. Each sum has records, calls (and calls_not_reported: records that do not say how many calls they cover, a Codex turn), tokens_in, cached_in and uncached_in, cached_share, tokens_out, reasoning, out_per_s (output tokens a second over each record's time in calls: median, p10, p90), call_ms (time in calls) and first_token_ms (the median time to the first token). A figure no record reports is null, never 0; not_reported counts the records without each one. cost, in US dollars: usd (null when nothing has a price and no pod spent), input_usd, cached_input_usd and output_usd (the tokens at each model's price: the provider's listed one, else the owner's, set_model_price), pod_usd (a RunPod rig's pod spend while its rig ran these runs; null: none), and the records priced, on_plan (a subscription's) and no_price (no price known).
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `run` | string, optional | | One run's usage |
+| `rig` | string, optional | every rig | With `run`: that run on this rig only |
+| `campaign` | string, optional | | One campaign's usage: all its runs on every rig |
+| `period` | `today`, `7d` or `all` | `all` | Since midnight UTC, the last 7 days, or all |
+
+The quote shows the ids `combiner` and `panel` in code; the tool's own description has them in plain words. With neither `run` nor `campaign`, the whole system's usage. It returns the same report as [`GET /v1/usage`](rest-api.md#model-usage), which describes each field. Errors: `Give a run or a campaign, not both.` and `A rig goes with a run: give the run too.` [The model usage records](../explanation/how-it-fits-together.md#the-model-usage-records) says what each program reports.
 
 ### rig_reports
 
@@ -386,6 +401,7 @@ No inputs. Returns:
 | Field | Each entry |
 | --- | --- |
 | `model_providers` | `{name, type, base_url, models, models_at, models_error}`. `models` is the model ids; `base_url` has any credentials removed |
+| `model_prices` | `{provider, model, price, source}`: each price [`model_usage`](#model_usage) costs calls at, as [`GET /v1/model-prices`](rest-api.md#model-usage) gives it |
 | `git_access` | `{name, kind, fingerprint, username}` |
 | `machines` | `{name, address, port, user, host_key_trusted, facts, checked_at, check_error}` |
 | `clusters` | `{name, context, placement, namespace_pattern, slots, facts, checked_at, check_error}` |
@@ -535,6 +551,23 @@ Returns `{rig, agents}`. `agents` has one key for each agent: the work, `workers
 On **Edit rig**, section **2 · The agents**, the line **Teachers** shows the first teacher's model, the line under it the second teacher's, and **merged by** the merged by model.
 
 These are the models control gives the rig. [Give each agent its own model](../how-to/models/model-per-agent.md) says when the rig takes each one. Errors: `no rig <rig>`. Its REST twin is [`GET /v1/rigs/<rig>/model`](rest-api.md#the-agents-model).
+
+### set_model_price
+
+**Set a model's price.** Owner and operator.
+
+> Sets the price of a provider's model in Providers, for the cost model_usage gives, when the provider's model list gives none: input, cached_input (optional; null or left out: the input price) and output, each in US dollars per million tokens. clear: true removes it. Every call of the model is costed at it, the earlier ones too. Refused in words: a subscription's provider (its calls are on its plan), a model the provider does not have, and a model whose list gives a price (that one is used). The providers tool lists the prices in use.
+
+| Input | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `provider` | string | | The provider's name in **Settings › Providers** |
+| `model` | string | | The model's id, as the provider lists it or as it was added |
+| `input` | number, 0 to 1,000,000 | | US dollars per million input tokens not read from the cache |
+| `cached_input` | number, 0 to 1,000,000, or null, optional | null | US dollars per million input tokens read from the cache; null: the input price |
+| `output` | number, 0 to 1,000,000 | | US dollars per million output tokens, the reasoning included |
+| `clear` | `true`, optional | | Removes the owner's price: the model's calls have no price again |
+
+Returns `{provider, model, price, said}`, as [`POST /v1/model-prices`](rest-api.md#model-usage) does, with its refusals as errors.
 
 ### set_rig_model
 

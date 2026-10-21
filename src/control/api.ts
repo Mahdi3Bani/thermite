@@ -59,6 +59,7 @@ import {
   RIG_ID,
 } from "./store.ts";
 import { ControlTunnels } from "./tunnel.ts";
+import { modelPrices, modelUsage, setModelPrice, usageQueryRefusal } from "./usage.ts";
 import { checkRig, recheckRefusals, rigVersions } from "./versions.ts";
 import { leaderboard, reportingState, rigView } from "./views.ts";
 
@@ -1081,6 +1082,22 @@ export function createControlApi(
       "content-type": "text/plain; version=0.0.4",
     }),
   );
+
+  // The agents' model usage (goal 075): a run's, a campaign's or the whole system's, for a period.
+  app.get("/v1/usage", reader, (c) => {
+    const q = Object.fromEntries(Object.entries(c.req.query()).filter(([, v]) => v !== ""));
+    const refused = usageQueryRefusal(q);
+    if (refused) return c.json({ error: refused }, 400);
+    return c.json(modelUsage(store, q));
+  });
+
+  // The models' prices that model usage costs calls at (goal 075): the providers' listed ones and
+  // the owner's. The owner sets or clears a price for a model whose list gives none.
+  app.get("/v1/model-prices", reader, (c) => c.json({ prices: modelPrices(store) }));
+  app.post("/v1/model-prices", admin, bodyLimit({ maxSize: 16 * 1024 }), async (c) => {
+    const out = setModelPrice(store, await c.req.json(), "owner:api");
+    return out.ok ? c.json(out.answer) : c.json({ error: out.error }, out.status);
+  });
 
   app.get("/v1/rigs/:rig/live", reader, (c) => {
     const after = Math.max(0, Math.trunc(Number(c.req.query("after") ?? "0")) || 0);

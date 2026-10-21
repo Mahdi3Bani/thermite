@@ -213,6 +213,43 @@ The planner's own changes, its hand-outs and each trial's result are written ins
 
 Control builds a run's **Experiments** and **Planner** tabs, and the MCP tool `run_queue`, from these events and the messages' events above. The run's **History** tab tells each change in words, such as "You dropped "…": why.", "The planner moved "…" to place 1." or "The planner's experiment "…" went back in the queue: its trial was interrupted." [Choose what a run tries next](../how-to/campaigns/choose-what-runs-next.md) shows how to change the queue.
 
+## The model usage records
+
+Every model call that a run's agents make is counted, so that you can see what a run, a campaign or the whole system used: the tokens in, how many of them the provider read from its cache, the tokens out with the reasoning among them, and how fast the model answered. Code records each call where it is made, never an agent: the harness for the workers and the planner, the supervisor for the advisors. Each record is one `model_call` event of its run, so it reaches control with the rig's other signed events, and an export keeps it with the run.
+
+How much each record can say depends on the program the agent runs in, because Thermite reads what that program reports and never guesses:
+
+| The agent runs in | One record is | What it reports |
+| --- | --- | --- |
+| Pi | One model call | Tokens in and out, from the call's usage. The cached tokens and the reasoning tokens only when the provider's answer names them. The time from the request to the first token, and to the last. A Pi worker's own process measures its trial's calls and hands them to the harness with the trial's token |
+| OpenCode v2 | One step, which is one model call | Tokens in, cached and out, with the reasoning, as OpenCode's step reports them (OpenCode gives 0 where the provider names none). The time to the step's first text, reasoning or tool call. A step's whole time only for a step that ran no tool, because OpenCode ends a step after its tools |
+| Codex | One turn of `codex exec`, which makes one or more model calls; Codex does not say how many | Tokens in, cached and out, with the reasoning: what the turn added to its thread's totals. No times |
+| Claude Code | One run of `claude -p`, with the calls its stream showed (the advisors' JSON output shows none) | Tokens in, the cache read and written included, the cached tokens and the tokens out; Claude Code names no reasoning tokens apart from the output. The run's time in API calls, and its first call's time to the first token. A run cut off before its result, as a submission does, keeps the tokens its stream showed, with no times |
+
+A command-line advisor (`cli`) says nothing about its calls, so it has no records. A model check is no run's work, and is not counted.
+
+| Field of `model_call` | What it records |
+| --- | --- |
+| The event's subject | The run |
+| `trial` | The worker's trial, or `null` |
+| `round` | The planner's round, such as `epoch 3`, or the advisors': `teachers <time>`, `audit <attempt>` or `review <id>`. `null` for a worker |
+| `agent` | `workers`, `planner`, `teachers`, `combiner` (the teachers' merged by model), `auditor` or `panel` (the review panel) |
+| `harness` | `pi`, `opencode`, `codex` or `claude-code` |
+| `provider` | The provider's name in **Settings › Providers**, or `null` for a rig's own model settings and an advisors file that names none |
+| `model` | The model's name |
+| `calls` | How many model calls the record covers, or `null` when the program does not say |
+| `at` | When the call, or the program's run, started |
+| `tokens_in` | Every input token, cached or not |
+| `cached_in`, `uncached_in` | The input tokens read from the provider's cache, and the rest |
+| `tokens_out` | Every output token, the reasoning included |
+| `reasoning` | The output tokens spent on reasoning |
+| `first_token_ms` | Milliseconds from the request to the first token |
+| `call_ms` | Milliseconds in calls: from the request to the last token, added up over the calls the record covers |
+
+A figure that the program does not report is `null`, never 0, and every sum says how many records lacked it. A Pi worker that could not hand some records to the harness says how many in its trial's `trial_finished` event (`usage_unrecorded`). Records the supervisor could not hand over are an error line in the run's **Live** view.
+
+Control keeps each record as a row, also after the rig leaves its ledger in a full reset: the calls were made. It sums them for a run, for a campaign (all its runs on every rig) and for the whole system, today, over the last 7 days or for all time: calls, tokens, the cached share, output tokens a second (the median, the 10th and the 90th percentile over the records with a time), the time in calls, and the cost. A call's cost is its tokens at its model's price, from the provider's model list when it gives one, else one the owner sets; a subscription's calls are on its plan, and a call whose model has no price known has none, never 0. A rig on RunPod adds its pod's spend: control counts it every 30 seconds while it follows the pod, and gives each count to the run the rig was running then. The REST route [`GET /v1/usage`](../reference/rest-api.md#model-usage) and the MCP tool [`model_usage`](../reference/mcp-tools.md#model_usage) give these sums. The dashboard's screens for them are planned in [goal 075](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/075-model-usage.goal). The views that control builds from every event, such as a run's **History** tab and a rig's newest events, leave the records out.
+
 ## The knowledge base
 
 The agents write down what they learn as they work: the lanes, the planner and the advisors keep short **field notes**, and workers in every mode can record the sources they read, claims with their quotes and research notes. Each run's ledger keeps them, with who wrote each and when, and they show on the run's **Journal** tab.

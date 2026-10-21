@@ -124,6 +124,28 @@ describe("advisors", () => {
     await fake.close();
     assert.equal(state.stats.teacher_runs, 1, JSON.stringify(state.stats));
     assert.equal(state.stats.directive_sets, 1);
+    // Each advisor's model calls are in the run's records, by role, with the round (goal 075).
+    const usage = env.ledger
+      .eventsAfter(0, 100_000)
+      .events.filter((e) => e.kind === "model_call")
+      .map(
+        (e): Record<string, unknown> => ({
+          run: e.subject,
+          actor: e.actor,
+          ...(e.body as Record<string, unknown>),
+        }),
+      );
+    assert.equal(usage.length, fake.requests);
+    assert.deepEqual(usage.map((u) => [u.run, u.actor, u.agent, u.harness, u.model]).sort(), [
+      ["js-1", "supervisor", "combiner", "pi", "merged-by"],
+      ["js-1", "supervisor", "teachers", "pi", "teacher-a"],
+      ["js-1", "supervisor", "teachers", "pi", "teacher-a"],
+      ["js-1", "supervisor", "teachers", "pi", "teacher-b"],
+      ["js-1", "supervisor", "teachers", "pi", "teacher-b"],
+    ]);
+    assert.equal(new Set(usage.map((u) => u.round)).size, 1);
+    assert.match(String(usage[0]?.round), /^teachers \d{4}-/);
+    assert.ok(usage.every((u) => u.provider === null && u.tokens_in === 100));
     const active = env.ledger
       .activeDirectives("js-1")
       .map((d) => d.body as { kind: string; family: string });
@@ -288,6 +310,11 @@ describe("advisors", () => {
     );
     assert.equal(state.stats.audits, 1, JSON.stringify(state.stats));
     assert.equal(String(env.ledger.getAttempt(id)?.lifecycle), "audit_blocked");
+    // A command-line agent says nothing of its model calls: none is recorded, none made up.
+    assert.equal(
+      env.ledger.eventsAfter(0, 100_000).events.filter((e) => e.kind === "model_call").length,
+      0,
+    );
   });
 
   test("the review panel passes a subjective goal, which still waits for the owner", async () => {
@@ -321,6 +348,18 @@ describe("advisors", () => {
     assert.equal(state.stats.reviews, 1, JSON.stringify(state.stats));
     const r = env.ledger.db.prepare("select panel_result, owner_decision from review").get();
     assert.deepEqual({ ...r }, { panel_result: "review_passed", owner_decision: null });
+    // Each panelist's call, as the review panel's, with the review it was for.
+    const usage = env.ledger
+      .eventsAfter(0, 100_000)
+      .events.filter((e) => e.kind === "model_call")
+      .map((e) => e.body as Record<string, unknown>);
+    assert.deepEqual(
+      usage.map((u) => [u.agent, u.model, u.round]),
+      [
+        ["panel", "reviewer-1", "review 1"],
+        ["panel", "reviewer-2", "review 1"],
+      ],
+    );
   });
 
   test("an advisor on an API key thinks at the effort chosen for it, and only then", async () => {
@@ -372,7 +411,7 @@ describe("advisors", () => {
       bin,
       `#!/usr/bin/env node
 process.stdin.resume();
-process.stdin.on("end", () => console.log(JSON.stringify({ type: "result", result: JSON.stringify({ tmp: process.env.TMPDIR ?? "", home: process.env.HOME ?? "", cwd: process.cwd() }) })));
+process.stdin.on("end", () => console.log(JSON.stringify({ type: "result", result: JSON.stringify({ tmp: process.env.TMPDIR ?? "", home: process.env.HOME ?? "", cwd: process.cwd() }), duration_api_ms: 4200, usage: { input_tokens: 10, cache_creation_input_tokens: 90, cache_read_input_tokens: 900, output_tokens: 60 } })));
 `,
     );
     chmodSync(bin, 0o755);
@@ -380,7 +419,14 @@ process.stdin.on("end", () => console.log(JSON.stringify({ type: "result", resul
     process.env.THERMITE_CLAUDE_BIN = bin;
     try {
       const r = await runAdvisor({
-        runtime: { name: "a", runtime: "claude-code", model: "m", token: "tok", timeout_s: 30 },
+        runtime: {
+          name: "a",
+          runtime: "claude-code",
+          model: "m",
+          token: "tok",
+          timeout_s: 30,
+          provider: "my-claude",
+        },
         system: "You audit.",
         prompt: "Audit this.",
         schema: z.object({ tmp: z.string(), home: z.string(), cwd: z.string() }),
@@ -391,6 +437,13 @@ process.stdin.on("end", () => console.log(JSON.stringify({ type: "result", resul
       assert.match(o.tmp, /thermite-advisor-/);
       assert.equal(o.tmp, o.home);
       assert.ok(o.cwd.endsWith(o.home.split("/").at(-1) ?? "-"), o.cwd);
+      // Its model usage, from its JSON result: no count of calls there (goal 075).
+      assert.equal(r.usage?.harness, "claude-code");
+      assert.equal(r.usage?.provider, "my-claude");
+      assert.deepEqual(
+        r.usage?.calls.map((u) => [u.calls, u.tokens_in, u.cached_in, u.tokens_out, u.call_ms]),
+        [[null, 1000, 900, 60, 4200]],
+      );
     } finally {
       if (before === undefined) delete process.env.THERMITE_CLAUDE_BIN;
       else process.env.THERMITE_CLAUDE_BIN = before;

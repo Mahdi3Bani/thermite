@@ -73,7 +73,7 @@ All of these take the owner's token, except where the table says otherwise. `<ri
 | Route | Token | What it does | Request | Answer |
 | --- | --- | --- | --- | --- |
 | `GET /v1/rigs` | Owner | Lists the rigs that have reported, or that control refuses, and are not retired; every rig enrolled through control; every rig in [pull mode](../explanation/trust.md#rigs-in-pull-mode); every rig launched on a GPU cloud; and control's own build | None | `{"control":{version, commit, protocol, oldest_protocol}, "rigs":[{id, last_seen, last_cursor, ledger_id, summary, state, version}], "enrolled":[{rig, created_at, created_by, rotated_at, retired_at}], "pull":[{rig, pod, url, port, box_public, code_expires_at, config, pod_sign_public, pod_box_public, enrolled_at, last_exchange_at, refused_total, error, created_at, created_by}], "runpod":[runpod rig]}`. `state` is `reporting`, `stale` or `offline`, and `version` is the rig's builds against control's: see [Rig versions](#rig-versions). A rig that never sent a report has `last_seen` `1970-01-01T00:00:00.000Z`. `enrolled` includes retired rigs. In `pull`, `pod` and `url` are `null` until the pod is launched, `code_expires_at` is `null` when the code does not expire, the pod's keys are `null` until it enrolls, `refused_total` counts the requests the pod refused, and `error` is what control's last connection to the pod found. No code, path or private key is in it. `runpod` is as in [Rigs on a GPU cloud](#rigs-on-a-gpu-cloud) |
-| `GET /v1/rigs/<rig>/view` | Owner | One rig as the dashboard sees it: hardware, judge, runs with their champions and attempts, goals, audits, checks, model and settings | None | `{id, last_seen, stale, state, version, ledger_id, summary, supervisor, hardware, jobs, runs, recent, judge, checks, model, settings, gpu_split}`, and `runpod` for a rig launched on a GPU cloud (a `runpod rig`, as in [Rigs on a GPU cloud](#rigs-on-a-gpu-cloud)). `stale` is true when `state` is `stale` or `offline`. `recent` is the newest 50 events, newest first. Each run has the fields the MCP tool [`get_run`](mcp-tools.md#get_run) returns, among them `queue` (every experiment of its experiment queue, with its state and place, as [`run_queue`](mcp-tools.md#run_queue) describes them), `rules` (the rules for its plan), `handouts` (the planner's newest 50 hand-outs, oldest first), `messages` (the owner's messages, with who read them and the rules the planner made from each) and `journal` (every note its agents wrote, oldest first: see [`get_run`](mcp-tools.md#get_run)). 404 `{"error":"not found"}` |
+| `GET /v1/rigs/<rig>/view` | Owner | One rig as the dashboard sees it: hardware, judge, runs with their champions and attempts, goals, audits, checks, model and settings | None | `{id, last_seen, stale, state, version, ledger_id, summary, supervisor, hardware, jobs, runs, recent, judge, checks, model, settings, gpu_split}`, and `runpod` for a rig launched on a GPU cloud (a `runpod rig`, as in [Rigs on a GPU cloud](#rigs-on-a-gpu-cloud)). `stale` is true when `state` is `stale` or `offline`. `recent` is the newest 50 events, newest first, without the agents' model calls ([Model usage](#model-usage) sums them). Each run has the fields the MCP tool [`get_run`](mcp-tools.md#get_run) returns, among them `queue` (every experiment of its experiment queue, with its state and place, as [`run_queue`](mcp-tools.md#run_queue) describes them), `rules` (the rules for its plan), `handouts` (the planner's newest 50 hand-outs, oldest first), `messages` (the owner's messages, with who read them and the rules the planner made from each) and `journal` (every note its agents wrote, oldest first: see [`get_run`](mcp-tools.md#get_run)). 404 `{"error":"not found"}` |
 | `GET /v1/rigs/<rig>/runs/<run>/directions` | Owner | One run's directions, what a rule may name, with the rules in force | none | `{rig, run, mode, directions, rules}`. `directions`: each `{name, description, tried, wins, queued, lanes, rules, to_design}`, by name, as MCP's [`run_queue`](mcp-tools.md#run_queue) gives them; `to_design` is `true` while only a rule names the direction and the planner has not designed it yet. `rules`: each `{id, author, at, body, legacy}`; `legacy` is `true` for an old rule in words, which the planner converts at its next round, and a converted rule's `body` has `converted_from`, `{rule, words}`. See [Directions](../how-to/campaigns/choose-what-runs-next.md#directions). 404 `{"error":"no rig <rig>"}` or `{"error":"no run <run> on <rig>"}` |
 | `GET /v1/rigs/<rig>/runs/<run>/untried` | Owner | One run's untried experiments, ready to start a new run's queue: what **Copy the untried experiments of** in **Start a run** copies, and what `thermite assign --queue-from` sends | `campaign`: the new run's campaign; the run's own when not given | `{rig, run, campaign, queue}`. `campaign` is the run's own. `queue` holds its experiments up next, in their order, then its lanes' ideas, at most 500, each as `assign_campaign`'s [`queue`](signed-commands.md#assign_campaign) takes it: `{title, details?, family?, why?, by, state, from: {run, id}}`. Control takes the words and the author from its own records of the run, as MCP's `issue_command` does, when the run's campaign is `campaign` or one whose folder `campaign` may read; otherwise the author is `copied`. 404 `{"error":"no rig <rig>"}` or `{"error":"no run <run> on <rig>"}` |
 | `GET /v1/rigs/<rig>/events` | Owner | The rig's events, in the order control received them | `after`: control's sequence number, default 0. `limit`, default 500 | `{"events":[{seq, ledger_id, id, at, actor, kind, subject, body}]}`, oldest first |
@@ -87,6 +87,60 @@ All of these take the owner's token, except where the table says otherwise. `<ri
 | `GET /v1/rigs/<rig>/results-left` | Owner | Whether all of the rig's results have left it: in its results repository, or on control | `?export=<name>`: also that export. Optional | `{left, why, to, waiting, champions_waiting, reported_at}`. [Have all results left the rig?](exports.md#have-all-results-left-the-rig) explains each field and answer |
 
 A live line's `kind` is `text`, `thinking`, `tool`, `result`, `message`, `status` or `log`. Control keeps the newest 20,000 live lines of each rig. [Take the result](../how-to/campaigns/take-the-result.md) uses the patch route.
+
+### Model usage
+
+| Route | Token | What it does | Request | Answer |
+| --- | --- | --- | --- | --- |
+| `GET /v1/usage` | Owner or reader | The agents' model usage, summed for one run, for a campaign (all its runs on every rig) or for the whole system, over a period | `run`: one run. `rig`: with `run`, that run on this rig only. `campaign`: one campaign. Neither `run` nor `campaign`: the whole system. `period`: `today` (since midnight UTC), `7d` (the last 7 days) or `all`, default `all`. An empty field counts as not given | `{scope, period, since, total, by_agent, by_model}`, with `by_run` for a campaign and `by_campaign` for the system, below. 400 `{"error":"<why>"}`: `Give a run or a campaign, not both.`, `The period is today, 7d or all.`, `A rig goes with a run: give the run too.`, `A run is 1 to 100 characters.` (a rig too; a campaign, 1 to 200), or `It takes run, rig, campaign and period, not <field>.` |
+
+It sums the [model usage records](../explanation/how-it-fits-together.md#the-model-usage-records) the rigs reported, by the time each call started. A run or a campaign with no records gives sums of 0 records. The MCP tool [`model_usage`](mcp-tools.md#model_usage) gives the same answer.
+
+| Field | Meaning |
+| --- | --- |
+| `scope` | `{kind: "run", run, rig}` (`rig` is `null` when not given), `{kind: "campaign", campaign}` or `{kind: "system"}` |
+| `period`, `since` | The period, and when it starts; `since` is `null` for `all` |
+| `total` | The sums of every record in the scope and period |
+| `by_agent` | The sums of each agent with records, in this order: `workers`, `planner`, `teachers`, `combiner` (the teachers' merged by model), `auditor`, `panel` (the review panel). Each has `agent` and its `name` in words, such as `Teachers (merged by)` or `Review panel` |
+| `by_model` | The sums of each model, with its `harness`, its `provider` (`null`: a rig's own settings, or an advisors file that names none) and its `model`, the most tokens first |
+| `by_run` | For a campaign: the sums of each run, with its `rig`, its `run` and its `share` of the campaign's tokens (in and out, from 0 to 1), the largest first |
+| `by_campaign` | For the system: the sums of each campaign, with its `campaign` (`null` for a run whose campaign control has no record of) and its `share` of the system's tokens, the largest first |
+
+Each set of sums has these fields. A figure that no record reports is `null`, never 0.
+
+| Field | Meaning |
+| --- | --- |
+| `records` | How many records it sums |
+| `calls` | The model calls the records cover, where they say |
+| `calls_not_reported` | Records that do not say how many calls they cover: a Codex turn, or a Claude Code advisor's call |
+| `tokens_in` | Every input token |
+| `cached_in`, `uncached_in` | The input tokens read from the provider's cache, and the others, over the records that report the cache |
+| `cached_share` | `cached_in` over the input of the records that report the cache, from 0 to 1 |
+| `tokens_out` | Every output token, the reasoning included |
+| `reasoning` | The reasoning tokens, over the records that report them |
+| `out_per_s` | Output tokens a second: each record's output over its time in calls, for the records with a time and some output. `{median, p10, p90}`: the median and the 10th and 90th percentiles, each interpolated between the two nearest records |
+| `call_ms` | The time in calls, in milliseconds, over the records that report it |
+| `first_token_ms` | The median time from a request to its first token, in milliseconds |
+| `not_reported` | `{cached, reasoning, time, first_token}`: how many records do not report each figure |
+| `cost` | What the calls and the pods cost, in US dollars, below |
+
+`cost` has these fields. A record's cost is its tokens at its model's price now: input not read from the cache, cached input (at the input price when the model has no cached price, and every input token at the input price when the record does not report its cache) and output.
+
+| Field | Meaning |
+| --- | --- |
+| `usd` | The priced records' cost and the pods' spend. `null` when no record has a price and no pod spent: never 0 for what is not known |
+| `input_usd`, `cached_input_usd`, `output_usd` | The priced records' cost, by part |
+| `pod_usd` | What a RunPod rig's pod cost while its rig ran these runs, as control counted it every 30 seconds: each count goes to the run its rig was running then, split evenly when it ran two, and to no run when it ran none. In `by_agent` and `by_model`, always `null`. `null`: no pod spend |
+| `priced` | Records with a price: the provider's list's, else the owner's |
+| `on_plan` | Records on a subscription's plan: a Claude or ChatGPT provider's, and every Claude Code call |
+| `no_price` | Records whose model has no price known |
+
+A model's price comes from the provider's model list when the list gives one, as OpenRouter's and Nous Portal's do (`pricing`, in US dollars per token). OpenAI's own list, Anthropic's and OpenCode Zen's give none: the owner sets one.
+
+| Route | Token | What it does | Request | Answer |
+| --- | --- | --- | --- | --- |
+| `GET /v1/model-prices` | Owner or reader | The prices model usage costs calls at | None | `{"prices":[{provider, model, price, source}]}`. `price` is `{input, cached_input, output}`, in US dollars per million tokens (`cached_input` `null`: the input price); `source` is `list` (the provider's list) or `owner` |
+| `POST /v1/model-prices` | Owner | Sets the owner's price for a provider's model whose list gives none, or removes it. Every call of the model is costed at it, the earlier ones too. Control writes `model_price_set` or `model_price_cleared` to its audit log | `{provider, model, input, output, cached_input?}`, in US dollars per million tokens, 0 to 1,000,000; or `{provider, model, clear: true}` | `{provider, model, price, said}`, such as `said`: `small-model of lab costs 1 USD per million tokens in and 2 USD out. Model usage prices all its calls at it.` 404 `Providers has no provider <name>.` or `<provider> has no model <model>: add it to the provider in Providers first.` 409 `<provider> is a subscription: its calls are on its plan, with no price per token.` or `<provider>'s model list gives <model> its price, and model usage uses that one.` 400 `Give input and output, in US dollars per million tokens, or clear: true.`, `Give clear: true alone, or a price.` or the field that does not read |
 
 ### The agents' model
 

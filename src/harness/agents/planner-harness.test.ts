@@ -5,6 +5,8 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, type TestContext, test } from "node:test";
+import { callUsage } from "../../core/usage.ts";
+import { startFakeModel } from "../../testing/fake-model.ts";
 import { makeJudgeEnv } from "../../testing/judge-env.ts";
 import { createHarnessApi } from "../api.ts";
 import { LocalRunner } from "../broker/runner.ts";
@@ -120,6 +122,75 @@ describe("the planner's own harness", () => {
     assert.deepEqual(opencode.asked, []);
     const own = await planWith(undefined, keyed({ api: "opencode", harness: "opencode" }));
     assert.deepEqual(own.asked, ["opencode"]);
+  });
+
+  test("each planner call's model usage is in the run's records, with its round, its harness and its provider", async () => {
+    // Through another harness: what its output reported, handed back with the answer.
+    const env = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
+    await env.service.applyCommand(env.assign);
+    const scheduler = new Scheduler({
+      service: env.service,
+      runner: new LocalRunner(env.paths.scratchDir),
+      model: keyed({ api: "chatgpt", harness: "codex", model: "workers-model", provider: "sub" }),
+      owner: "planner-usage-test",
+      askCodex: async (_m, _prompt, _signal, o) => {
+        o?.usage?.(callUsage({ at: 0, tokensIn: 900, cachedIn: 300, tokensOut: 40 }));
+        return PLAN;
+      },
+      runTrial: async () => ({
+        stopped: "error",
+        turns: 0,
+        toolCalls: 0,
+        tokensIn: 0,
+        tokensOut: 0,
+      }),
+    });
+    await scheduler.tick();
+    await scheduler.idle();
+    const calls = env.ledger.eventsAfter(0, 10_000).events.filter((e) => e.kind === "model_call");
+    assert.equal(calls.length, 1);
+    const b = calls[0]?.body as Record<string, unknown>;
+    assert.deepEqual(
+      [b.agent, b.round, b.trial, b.harness, b.provider, b.model, b.tokens_in, b.cached_in],
+      ["planner", "epoch 1", null, "codex", "sub", "workers-model", 900, 300],
+    );
+    // In Pi: each model call, as the meter reads it.
+    const fake = await startFakeModel(() => ({
+      toolCalls: [{ name: "submit_plan", args: JSON.parse(PLAN) }],
+      usage: { prompt: 1200, completion: 80 },
+    }));
+    try {
+      const pi = makeJudgeEnv({ lanes: { count: 1, trials_per_epoch: 1 } });
+      await pi.service.applyCommand(pi.assign);
+      const s = new Scheduler({
+        service: pi.service,
+        runner: new LocalRunner(pi.paths.scratchDir),
+        model: keyed({ baseUrl: fake.url, contextWindow: 32_000, maxTokens: 2000 }),
+        owner: "planner-usage-test",
+        runTrial: async () => ({
+          stopped: "error",
+          turns: 0,
+          toolCalls: 0,
+          tokensIn: 0,
+          tokensOut: 0,
+        }),
+      });
+      await s.tick();
+      await s.idle();
+      const piCalls = pi.ledger
+        .eventsAfter(0, 10_000)
+        .events.filter((e) => e.kind === "model_call")
+        .map((e) => e.body as Record<string, unknown>);
+      assert.equal(piCalls.length, fake.requests);
+      assert.ok(piCalls.length >= 1);
+      assert.deepEqual(
+        [piCalls[0]?.agent, piCalls[0]?.harness, piCalls[0]?.provider, piCalls[0]?.tokens_in],
+        ["planner", "pi", null, 1200],
+      );
+      assert.equal(piCalls[0]?.cached_in, null, "the fake provider names no cache");
+    } finally {
+      await fake.close();
+    }
   });
 
   test("the proxy takes a planner's call to the planner's own provider, with its key", async (t: TestContext) => {

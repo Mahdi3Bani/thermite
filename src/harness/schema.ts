@@ -769,4 +769,10 @@ export const MIGRATIONS: readonly (string | ((db: DatabaseSync) => void))[] = [
   create trigger journal_note_no_update before update on journal_note begin select raise(abort, 'field notes are append-only'); end;
   create trigger journal_note_no_delete before delete on journal_note begin select raise(abort, 'field notes are append-only'); end;
   `,
+  // 17: model usage (goal 075) is one model_call event for each call, many more events than
+  // before: the reads of one kind of event (a run's newest of a kind, the knowledge base's part)
+  // use an index instead of reading every event.
+  `
+  create index event_kind on event (kind, subject);
+  `,
 ];

@@ -11,6 +11,7 @@ import {
 import { asToken } from "../../core/directions.ts";
 import type { NoteInput } from "../../core/journal.ts";
 import type { LiveKind } from "../../core/live.ts";
+import type { CallUsage } from "../../core/usage.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { NOTES_ARE_DATA, notesData, notesText } from "../journal.ts";
 import { clipReason } from "../judge/reasons.ts";
@@ -21,6 +22,7 @@ import { messageText, type OwnerMessage } from "../messages.ts";
 import type { Experiment } from "../queue.ts";
 import type { Research } from "../research/research.ts";
 import type { HarnessService } from "../service.ts";
+import { routeOf } from "../usage.ts";
 import { Coordinator, focusOf, type Handout, PLANNER, resultOf } from "./coordinator.ts";
 import { mcpAgentTools } from "./mcp-tools.ts";
 import { type ModelConfig, usageLimitRetry, withAgentsContext } from "./model.ts";
@@ -69,12 +71,14 @@ const SETTLED = new Set([
 const KEEP = new Set(["win_screened", "win_confirmed"]);
 
 /**
- * A planner call through another harness: a folder it may read (its past research), and the MCP
- * servers it may call with the gateway's credential made for this call (goal 068).
+ * A planner call through another harness: a folder it may read (its past research), the MCP
+ * servers it may call with the gateway's credential made for this call (goal 068), and where its
+ * model usage goes, as the program's output reports it (goal 075).
  */
 export interface PlannerCallOptions {
   read?: string | undefined;
   mcp?: { auth: string; servers: string[] } | undefined;
+  usage?: ((u: CallUsage) => void) | undefined;
 }
 
 /**
@@ -701,16 +705,22 @@ export class Scheduler {
       // tools call it in this process; another harness gets a credential made for the call.
       const caller: McpCaller = { run, kind: "planner", source: "planner" };
       const mcpServers = this.o.service.mcp.given(run, "planner").map((g) => g.name);
-      const withMcp = (o: Parameters<Ask>[2]): PlannerCallOptions | undefined =>
-        o
-          ? {
-              read: o.read,
-              ...(o.mcp?.length
-                ? { mcp: { auth: this.o.service.mintMcpToken(caller), servers: o.mcp } }
-                : {}),
-            }
-          : undefined;
       const via = plannerHarness(m, own !== undefined);
+      // Each of the round's model calls, in the run's records (goal 075).
+      const usage = m
+        ? this.o.service.usage.recorder(
+            run,
+            { round: `epoch ${n}`, agent: "planner" },
+            routeOf(m, via),
+          )
+        : undefined;
+      const withMcp = (o: Parameters<Ask>[2]): PlannerCallOptions => ({
+        ...(o?.read !== undefined ? { read: o.read } : {}),
+        ...(o?.mcp?.length
+          ? { mcp: { auth: this.o.service.mintMcpToken(caller), servers: o.mcp } }
+          : {}),
+        usage,
+      });
       const ask: Ask | undefined =
         via === "opencode" && m && this.o.askOpencode
           ? (prompt, sig, o) =>
@@ -767,7 +777,8 @@ export class Scheduler {
           assignments: f.assignments,
           newFamilies: f.newFamilies,
         };
-      } else p = await plan(input, m, ctrl.signal, ask, past, mcp, this.plannerCompaction(run));
+      } else
+        p = await plan(input, m, ctrl.signal, ask, past, mcp, this.plannerCompaction(run), usage);
     } finally {
       this.planning = undefined;
     }

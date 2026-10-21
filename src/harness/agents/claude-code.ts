@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { COMPACT_AT_DEFAULT } from "../../core/compaction.ts";
 import { laneLimits } from "../../core/contract.ts";
 import { type LiveKind, summarizeArgs } from "../../core/live.ts";
+import { type CallUsage, callUsage } from "../../core/usage.ts";
 import type { Role, Runner } from "../broker/runner.ts";
 import { CliCompactions, type FoundCompaction, type OnCompacted } from "./cli-compaction.ts";
 import type { MessageInbox, TrialProgress } from "./live-session.ts";
@@ -21,6 +22,7 @@ import {
   ownerLines,
   readNew,
   SYSTEM,
+  takeUsage,
 } from "./opencode.ts";
 import type { SubmitOutcome, TrialResult, TrialSpec } from "./worker.ts";
 
@@ -138,6 +140,11 @@ export interface ClaudeTally {
   toolNames: Map<string, string>;
   /** Compactions it reported (compact_boundary) since they were last taken (goal 070). */
   compactions: FoundCompaction[];
+  /** Each run's model usage, since they were last taken (goal 075). */
+  calls: CallUsage[];
+  /** The run under way: each model call's usage by its message's id, and when the run began. */
+  run: Map<string, Usage>;
+  runAt?: number | undefined;
 }
 
 export const newClaudeTally = (): ClaudeTally => ({
@@ -152,6 +159,8 @@ export const newClaudeTally = (): ClaudeTally => ({
   messages: new Map(),
   toolNames: new Map(),
   compactions: [],
+  calls: [],
+  run: new Map(),
 });
 
 type Block = {
@@ -189,12 +198,75 @@ type Event = {
   errors?: string[];
   /** A compaction's boundary (`system`, `compact_boundary`): its trigger and its tokens. */
   compact_metadata?: { trigger?: string; pre_tokens?: number; post_tokens?: number };
+  /**
+   * The result's times (ms): the run's, its time in API calls, and from the run's start to its
+   * first token and to its first request.
+   */
+  duration_ms?: number;
+  duration_api_ms?: number;
+  ttft_ms?: number;
+  time_to_request_ms?: number;
 };
 
 const tokensIn = (u: Usage | undefined) =>
   (u?.input_tokens ?? 0) +
   (u?.cache_creation_input_tokens ?? 0) +
   (u?.cache_read_input_tokens ?? 0);
+
+const num = (x: unknown): number | undefined => (typeof x === "number" ? x : undefined);
+
+/**
+ * One run's usage from Claude Code's result (goal 075): every input token (Anthropic's input,
+ * cache written and cache read), the cache read as cached, the output, and its time in API calls.
+ * Claude Code gives a run's first token only from the run's start, so the time to its first
+ * request is taken off. It names no reasoning tokens apart from the output. `calls`: the model
+ * calls it made, where its stream showed them; null where it did not (its JSON output).
+ */
+export function claudeResultUsage(result: unknown, calls: number | null): CallUsage | undefined {
+  if (!result || typeof result !== "object") return undefined;
+  const e = result as Event;
+  if (e.type !== "result" || !e.usage) return undefined;
+  const ttft = num(e.ttft_ms);
+  const toRequest = num(e.time_to_request_ms);
+  const duration = num(e.duration_ms);
+  return callUsage({
+    at: Date.now() - (duration ?? 0),
+    calls,
+    tokensIn: tokensIn(e.usage),
+    cachedIn: num(e.usage.cache_read_input_tokens) ?? null,
+    tokensOut: e.usage.output_tokens ?? 0,
+    reasoning: null,
+    firstTokenMs:
+      ttft !== undefined && toRequest !== undefined && ttft >= toRequest ? ttft - toRequest : null,
+    callMs: num(e.duration_api_ms) ?? null,
+  });
+}
+
+/**
+ * A run of Claude Code that ended without its result (a submission or the trial's time ended it):
+ * its calls' usage as its stream showed it, with no times, which only the result gives (goal 075).
+ */
+export function closeClaudeRun(t: ClaudeTally): void {
+  if (t.run.size) {
+    const all = [...t.run.values()];
+    const has = all.every((u) => typeof u.cache_read_input_tokens === "number");
+    t.calls.push(
+      callUsage({
+        at: t.runAt ?? Date.now(),
+        calls: t.run.size,
+        tokensIn: all.reduce((n, u) => n + tokensIn(u), 0),
+        cachedIn: has ? all.reduce((n, u) => n + (u.cache_read_input_tokens ?? 0), 0) : null,
+        tokensOut: all.reduce((n, u) => n + (u.output_tokens ?? 0), 0),
+        reasoning: null,
+        firstTokenMs: null,
+        callMs: null,
+      }),
+    );
+  }
+  t.run.clear();
+  t.runAt = undefined;
+}
+
 const iso = (seconds: number | undefined) =>
   typeof seconds === "number" ? new Date(seconds * 1000).toISOString() : undefined;
 const text = (c: unknown): string =>
@@ -220,6 +292,7 @@ export function readClaudeEvents(
       continue;
     }
     if (e.session_id) t.session = e.session_id;
+    t.runAt ??= Date.now();
     switch (e.type) {
       // Claude Code compacted its conversation (goal 070): its own summary replaces the turns
       // before this point, and the session goes on.
@@ -238,6 +311,7 @@ export function readClaudeEvents(
         const id = m.id ?? `m${t.messages.size}`;
         if (!t.messages.has(id)) t.turns++;
         t.messages.set(id, { input: tokensIn(m.usage), output: m.usage?.output_tokens ?? 0 });
+        t.run.set(id, m.usage ?? {});
         for (const b of Array.isArray(m.content) ? m.content : []) {
           if (b.type === "text" && b.text) {
             t.lastText = b.text;
@@ -303,6 +377,13 @@ export function readClaudeEvents(
           t.tokensIn = Math.max(t.tokensIn, tokensIn(e.usage));
           t.tokensOut = Math.max(t.tokensOut, e.usage.output_tokens ?? 0);
         }
+        // The run's usage, from its result: its calls are the messages its stream showed.
+        const u = claudeResultUsage(e, t.run.size || null);
+        if (u) {
+          t.calls.push(u);
+          t.run.clear();
+          t.runAt = undefined;
+        } else closeClaudeRun(t);
         if (typeof e.result === "string") t.result = e.result;
         if (e.is_error) {
           const message = String(e.result ?? e.errors?.join("; ") ?? e.subtype ?? "error").slice(
@@ -429,6 +510,8 @@ export interface ClaudeTrialDeps {
   afterSubmitMs?: number | undefined;
   /** A compaction Claude Code reported (goal 070), for the harness to keep and record. */
   compacted?: OnCompacted | undefined;
+  /** Each run's model usage, as Claude Code's output reports it (goal 075). */
+  modelUsage?: ((u: CallUsage) => void) | undefined;
 }
 
 /**
@@ -510,6 +593,7 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
     const live = readClaudeEvents(r.lines, tally);
     if (live.length) deps.live(live);
     compactions.take(live, tally.compactions.splice(0));
+    takeUsage(tally, deps.modelUsage);
     carried.check(tally);
     if (r.lines.length) {
       deps.progress({
@@ -577,6 +661,9 @@ export async function runClaudeTrial(spec: TrialSpec, deps: ClaudeTrialDeps): Pr
     }
     const outcome = await running;
     pump();
+    // A run cut off before its result (a submission, the cap) keeps what its stream showed.
+    closeClaudeRun(tally);
+    takeUsage(tally, deps.modelUsage);
     carried.drop();
     if (deps.signal?.aborted) {
       result.stopped = "interrupted";
@@ -723,6 +810,8 @@ export async function claudeOnce(
       captureBytes: 8 * 1024 * 1024,
     });
     readClaudeEvents(r.stdout.split("\n"), tally);
+    // A run cut off before its result keeps the usage its stream showed (goal 075).
+    closeClaudeRun(tally);
     if (r.killedFor === "timeout")
       tally.errors.push(`no answer in ${Math.round(o.timeoutMs / 1000)} s`);
     else if (r.exitCode !== 0 && !tally.errors.length)

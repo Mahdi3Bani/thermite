@@ -54,6 +54,7 @@ import { type Experiment, ExperimentInput, ExperimentQueue } from "./queue.ts";
 import { folderRootOf } from "./research/folder.ts";
 import { type ReviewPackage, Reviews } from "./reviews.ts";
 import { RigSettingsStore } from "./rig-settings.ts";
+import { ModelUsage } from "./usage.ts";
 import { checkV0 } from "./v0.ts";
 
 /** A directive set may not both avoid a direction and ask for it. */
@@ -293,6 +294,8 @@ export class HarnessService {
   readonly queue: ExperimentQueue;
   /** Each run's field notes: what its workers, planner and advisors write down as they work. */
   readonly journal: Journal;
+  /** The model usage of each run's agents, one record for each call (goal 075). */
+  readonly usage: ModelUsage;
   /** Past research in each run's research folder (knowledge/), as the supervisor syncs it. */
   readonly knowledge: Knowledge;
   /**
@@ -396,6 +399,7 @@ export class HarnessService {
     });
     this.queue = new ExperimentQueue(this.ledger);
     this.journal = new Journal({ ledger: this.ledger, live: this.live, clock: this.clock });
+    this.usage = new ModelUsage(this.ledger);
     // The same folders as the research folder's (main.ts): scratch/research/<run>/knowledge.
     this.knowledge = new Knowledge({
       stateRoot: join(this.paths.stateDir, "knowledge"),

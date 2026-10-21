@@ -6,8 +6,10 @@ import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { laneLimits } from "../core/contract.ts";
 import { McpConnection, McpUnavailable } from "../core/mcp.ts";
+import { AdvisorAgent, CallUsage, UsageHarness } from "../core/usage.ts";
 import { ControlRoute } from "./agents/model-source.ts";
 import { Registry } from "./agents/registry.ts";
+import { USAGE_BATCH } from "./agents/usage-meter.ts";
 import { laneCacheEnv } from "./agents/workspace.ts";
 import { type Role, type Runner, RunRequest } from "./broker/runner.ts";
 import { compactionOf, KEPT_MAX } from "./compactions.ts";
@@ -545,6 +547,38 @@ export function createHarnessApi(
       kept: b.kept,
     });
     return c.json({ ok: true }, 201);
+  });
+
+  // A Pi worker's model usage (goal 075): what its own code measured of each model call, never
+  // its agent. The trial decides the run, the trial and the route; only a trial whose worker hands
+  // its usage over may (the harness reads the other programs' output itself).
+  app.post("/v1/trial/usage", bodyLimit({ maxSize: 256 * 1024 }), async (c) => {
+    const { trial } = trialOf(c.req.header("authorization"));
+    const body = z
+      .strictObject({ calls: z.array(CallUsage).min(1).max(USAGE_BATCH) })
+      .parse(await c.req.json());
+    return c.json({ recorded: service.usage.fromTrial(trial, body.calls) }, 201);
+  });
+
+  // The advisors' model usage (goal 075): one advisor's calls in a run, as the supervisor's code
+  // measured them. Only the advisors' own kinds; the workers' and the planner's are the harness's.
+  app.post("/v1/model-calls", supervisor, bodyLimit({ maxSize: 1024 * 1024 }), async (c) => {
+    const b = z
+      .strictObject({
+        run: z.string().min(1).max(100),
+        round: z.string().min(1).max(200).nullable(),
+        agent: AdvisorAgent,
+        harness: UsageHarness,
+        provider: z.string().min(1).max(100).nullable(),
+        model: z.string().min(1).max(200),
+        calls: z.array(CallUsage).min(1).max(500),
+      })
+      .parse(await c.req.json());
+    const { run, calls, ...ctx } = b;
+    return c.json(
+      { recorded: service.usage.fromSupervisor(run, { trial: null, ...ctx }, calls) },
+      201,
+    );
   });
 
   app.post("/v1/exports/done", supervisor, bodyLimit({ maxSize: 256 * 1024 }), async (c) => {

@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { type LaneLimitValues, laneLimits } from "../../core/contract.ts";
 import { notesInstruction } from "../../core/journal.ts";
 import { type LiveKind, summarizeArgs } from "../../core/live.ts";
+import { type CallUsage, callUsage } from "../../core/usage.ts";
 import type { Role, Runner, RunOutcome } from "../broker/runner.ts";
 import { compactionTokens } from "./cli-compaction.ts";
 import type { MessageInbox, TrialProgress } from "./live-session.ts";
@@ -114,6 +115,10 @@ export interface OpencodeTally {
   tools: { tool: string; output: string; ok: boolean }[];
   /** Its last lines that were not JSON (it prints startup errors that way). */
   notes: string[];
+  /** Each step's model usage, since they were last taken (goal 075). */
+  calls: CallUsage[];
+  /** The step under way: when it started, its first part's start, and whether it ran a tool. */
+  step?: { start: number | undefined; first: number | undefined; tools: boolean } | undefined;
 }
 
 export const newTally = (): OpencodeTally => ({
@@ -125,19 +130,75 @@ export const newTally = (): OpencodeTally => ({
   lastText: "",
   tools: [],
   notes: [],
+  calls: [],
 });
 
 type Event = {
   type?: string;
+  /** When OpenCode recorded the event (ms). */
+  timestamp?: number;
   sessionID?: string;
   part?: {
     text?: string;
     tool?: string;
-    state?: { status?: string; input?: unknown; output?: unknown; error?: unknown };
-    tokens?: { input?: number; output?: number; reasoning?: number };
+    /** A text's or reasoning's start and end (ms). */
+    time?: { start?: number; end?: number };
+    state?: {
+      status?: string;
+      input?: unknown;
+      output?: unknown;
+      error?: unknown;
+      time?: { start?: number; end?: number };
+    };
+    /** OpenCode's TokenUsage.Info: input not cached, visible output, reasoning, cache. */
+    tokens?: {
+      input?: number;
+      output?: number;
+      reasoning?: number;
+      cache?: { read?: number; write?: number };
+    };
   };
   error?: { message?: string; type?: string };
 };
+
+const num = (x: unknown): number | undefined => (typeof x === "number" ? x : undefined);
+
+/** A part of the step under way began at `at`: the step's first token is the earliest. */
+function partAt(t: OpencodeTally, at: unknown): void {
+  const n = num(at);
+  if (t.step && n !== undefined) t.step.first = Math.min(t.step.first ?? n, n);
+}
+
+/**
+ * A step's usage (goal 075), from OpenCode's step_finish and the lines before it. OpenCode's own
+ * tokens leave the cache out of `input` and the reasoning out of `output`, so they are added back:
+ * in counts every input token, out every output token. A step ends only after the tools it ran,
+ * so its time is a model call's only for a step that ran none; the first token is the earliest
+ * text, reasoning or tool call the step began.
+ */
+function stepUsage(t: OpencodeTally, e: Event): CallUsage | undefined {
+  const k = e.part?.tokens;
+  if (!k) return undefined;
+  const s = t.step;
+  const end = num(e.timestamp);
+  const start = s?.start ?? end ?? Date.now();
+  const read = num(k.cache?.read);
+  const write = num(k.cache?.write) ?? 0;
+  const reasoning = num(k.reasoning);
+  return callUsage({
+    at: start,
+    calls: 1,
+    tokensIn: (k.input ?? 0) + (read !== undefined ? read + write : 0),
+    cachedIn: read ?? null,
+    tokensOut: (k.output ?? 0) + (reasoning ?? 0),
+    reasoning: reasoning ?? null,
+    firstTokenMs:
+      s?.start !== undefined && s.first !== undefined && s.first >= s.start
+        ? s.first - s.start
+        : null,
+    callMs: s?.start !== undefined && end !== undefined && !s.tools ? end - s.start : null,
+  });
+}
 
 /** Reads lines of OpenCode's JSON output into the tally; returns them as live-view lines. */
 export function readOpencodeEvents(
@@ -157,14 +218,23 @@ export function readOpencodeEvents(
     if (e.sessionID) t.session = e.sessionID;
     const p = e.part ?? {};
     switch (e.type) {
+      case "step_start":
+        t.step = { start: num(e.timestamp), first: undefined, tools: false };
+        break;
       case "text":
+        partAt(t, p.time?.start);
         if (p.text) {
           t.lastText = p.text;
           live.push({ kind: "text", text: p.text.slice(0, 8000) });
         }
         break;
+      case "reasoning":
+        partAt(t, p.time?.start);
+        break;
       case "tool_use": {
         t.toolCalls++;
+        if (t.step) t.step.tools = true;
+        partAt(t, p.state?.time?.start);
         const tool = String(p.tool ?? "tool");
         const st = p.state ?? {};
         const ok = st.status === "completed";
@@ -177,11 +247,15 @@ export function readOpencodeEvents(
         });
         break;
       }
-      case "step_finish":
+      case "step_finish": {
         t.turns++;
         t.tokensIn += p.tokens?.input ?? 0;
         t.tokensOut += (p.tokens?.output ?? 0) + (p.tokens?.reasoning ?? 0);
+        const u = stepUsage(t, e);
+        if (u) t.calls.push(u);
+        t.step = undefined;
         break;
+      }
       case "error": {
         const message = String(e.error?.message ?? e.error?.type ?? "error").slice(0, 500);
         t.errors.push(message);
@@ -343,6 +417,16 @@ export interface OpencodeTrialDeps {
   pollMs?: number | undefined;
   /** How long the run goes on after a submission (AFTER_SUBMIT_MS; tests make it short). */
   afterSubmitMs?: number | undefined;
+  /** Each step's model usage, as OpenCode's output reports it (goal 075). */
+  modelUsage?: ((u: CallUsage) => void) | undefined;
+}
+
+/** Hands the usage the tally gathered to `usage`, once each (goal 075). */
+export function takeUsage(
+  t: { calls: CallUsage[] },
+  usage: ((u: CallUsage) => void) | undefined,
+): void {
+  for (const u of t.calls.splice(0)) usage?.(u);
 }
 
 /** CUDA's tools (nvcc and the rest), where a CUDA development base image puts them. */
@@ -484,6 +568,7 @@ export async function runOpencodeTrial(
     offset = r.next;
     const live = readOpencodeEvents(r.lines, tally);
     if (live.length) deps.live(live);
+    takeUsage(tally, deps.modelUsage);
     carried.check(tally);
     if (r.lines.length)
       deps.progress({
@@ -671,6 +756,7 @@ export async function runOpencodeResearchTrial(
     offset = r.next;
     const live = readOpencodeEvents(r.lines, tally);
     if (live.length) deps.live(live);
+    takeUsage(tally, deps.modelUsage);
     carried.check(tally);
     if (r.lines.length)
       deps.progress({

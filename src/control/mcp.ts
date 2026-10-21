@@ -13,6 +13,7 @@ import {
 } from "../core/compaction.ts";
 import { KbKind as KbKindSchema } from "../core/kb.ts";
 import { POD_CONFIG_ENV } from "../core/tunnel.ts";
+import { USAGE_PERIODS } from "../core/usage.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import type { ControlActions } from "./actions.ts";
 import {
@@ -51,6 +52,7 @@ import type { RunpodTests } from "./runpod-tests.ts";
 import { keyHint } from "./secrets.ts";
 import { type StartRunBody, startRunAnswer, startRunFields, startRunRequest } from "./start-run.ts";
 import type { ControlStore } from "./store.ts";
+import { modelPrices, modelUsage, setModelPrice } from "./usage.ts";
 import { campaignModes, leaderboard, rigView } from "./views.ts";
 
 /**
@@ -322,6 +324,24 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
       inputSchema: {},
     },
     audited("leaderboard", () => leaderboard(store, { staleAfterMs: opts.staleAfterMs })),
+  );
+
+  server.registerTool(
+    "model_usage",
+    {
+      title: "Model usage",
+      description:
+        "The agents' model usage, summed: for one run (run, and rig when the run's id is on more than one rig), for a campaign (all its runs on every rig), or, with neither, for the whole system; over a period: today (since midnight UTC), 7d (the last 7 days) or all (the default). Gives the total, by_agent (each agent by its id, with its name: workers, planner, teachers, combiner for the teachers' merged by model, auditor, and panel for the review panel), by_model (each harness, provider and model), and by_run for a campaign or by_campaign for the system, each with its share of the tokens. Each sum has records, calls (and calls_not_reported: records that do not say how many calls they cover, a Codex turn), tokens_in, cached_in and uncached_in, cached_share, tokens_out, reasoning, out_per_s (output tokens a second over each record's time in calls: median, p10, p90), call_ms (time in calls) and first_token_ms (the median time to the first token). A figure no record reports is null, never 0; not_reported counts the records without each one. cost, in US dollars: usd (null when nothing has a price and no pod spent), input_usd, cached_input_usd and output_usd (the tokens at each model's price: the provider's listed one, else the owner's, set_model_price), pod_usd (a RunPod rig's pod spend while its rig ran these runs; null: none), and the records priced, on_plan (a subscription's) and no_price (no price known).",
+      inputSchema: {
+        run: z.string().min(1).max(100).optional(),
+        rig: z.string().min(1).max(100).optional(),
+        campaign: z.string().min(1).max(200).optional(),
+        period: z.enum(USAGE_PERIODS).default("all"),
+      },
+    },
+    audited("model_usage", (a: { run?: string; rig?: string; campaign?: string; period: string }) =>
+      modelUsage(store, a),
+    ),
   );
 
   server.registerTool(
@@ -643,6 +663,8 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
           models_at: p.models_at,
           models_error: p.models_error,
         })),
+        // The prices model usage costs calls at: the providers' listed ones and the owner's.
+        model_prices: modelPrices(store),
         git_access: store.gitAccessList().map((g) => ({
           name: g.name,
           kind: g.kind,
@@ -773,6 +795,30 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
           const r = await give(rig, req, actor);
           if ("error" in r) throw new Error(r.error);
           return rigModelAnswer(rig, req, r);
+        }),
+      );
+    }
+    // A model's price for model usage's cost (goal 075): the owner's and an operator's.
+    if (role === "owner" || role === "operator") {
+      server.registerTool(
+        "set_model_price",
+        {
+          title: "Set a model's price",
+          description:
+            "Sets the price of a provider's model in Providers, for the cost model_usage gives, when the provider's model list gives none: input, cached_input (optional; null or left out: the input price) and output, each in US dollars per million tokens. clear: true removes it. Every call of the model is costed at it, the earlier ones too. Refused in words: a subscription's provider (its calls are on its plan), a model the provider does not have, and a model whose list gives a price (that one is used). The providers tool lists the prices in use.",
+          inputSchema: {
+            provider: z.string().min(1).max(100),
+            model: z.string().min(1).max(200),
+            input: z.number().min(0).max(1_000_000).optional(),
+            cached_input: z.number().min(0).max(1_000_000).nullable().optional(),
+            output: z.number().min(0).max(1_000_000).optional(),
+            clear: z.literal(true).optional(),
+          },
+        },
+        audited("set_model_price", (a: Record<string, unknown>) => {
+          const out = setModelPrice(store, a, actor);
+          if (!out.ok) throw new Error(out.error);
+          return out.answer;
         }),
       );
     }

@@ -15,6 +15,7 @@ import {
   rulesToConvert,
 } from "../../core/directions.ts";
 import { LenientNotes, NOTES_GUIDE, type NoteInput } from "../../core/journal.ts";
+import type { CallUsage } from "../../core/usage.ts";
 import { NOTES_ARE_DATA, type notesData } from "../journal.ts";
 import {
   briefingData,
@@ -30,6 +31,7 @@ import { mcpLine } from "./mcp-tools.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
 import { JOURNAL_FIELD } from "./notes-tool.ts";
 import type { Assignment, Evidence, FamilyView } from "./registry.ts";
+import { PiMeter } from "./usage-meter.ts";
 
 /**
  * The planner: the coordinator of a run's lanes. One stateless model call per round, with
@@ -679,6 +681,8 @@ export async function plan(
   past?: PlannerPast,
   mcp?: PlannerMcp,
   compaction?: PlannerCompaction,
+  /** Each model call's usage in Pi (goal 075); another harness's goes with `ask`. */
+  usage?: (u: CallUsage) => void,
 ): Promise<PlanResult> {
   const rawViolations: string[] = [];
   // The field notes of every answer, read leniently: a refused plan keeps its notes.
@@ -704,6 +708,7 @@ export async function plan(
               past?.search,
               mcp,
               compaction,
+              usage,
             );
       } catch (err) {
         rawViolations.push(`try ${tries}: ${err instanceof Error ? err.message : String(err)}`);
@@ -844,6 +849,7 @@ async function callPlanner(
   search?: PlannerPast["search"],
   mcp?: PlannerMcp,
   compaction?: PlannerCompaction,
+  usage?: (u: CallUsage) => void,
 ): Promise<unknown> {
   // Only Claude Code may use a Claude subscription: the planner never calls it itself.
   if (cfg.api === "claude")
@@ -851,6 +857,8 @@ async function callPlanner(
       "a Claude subscription runs only in Claude Code, and none is set up for the planner",
     );
   const { models, model, thinkingLevel } = buildModel(cfg);
+  // Each model call's usage, the compaction summaries' included (goal 075).
+  const meter = usage ? new PiMeter(usage) : undefined;
   let captured: unknown;
   const agent = new Agent({
     initialState: {
@@ -964,8 +972,9 @@ async function callPlanner(
         },
       ],
     },
-    streamFn: models.streamSimple.bind(models),
+    streamFn: meter ? meter.streamFn(models) : models.streamSimple.bind(models),
   });
+  meter?.watch(agent);
   // Near the window its conversation is compacted and the call goes on (goal 070). The planner
   // has no file tool: the run keeps the conversation, and the summary says where.
   let tooBig: string | undefined;
@@ -980,7 +989,7 @@ async function callPlanner(
           m.role === "assistant" ||
           m.role === "toolResult",
       ) as Message[],
-    summarize: summarizer(cfg),
+    summarize: summarizer(cfg, meter),
     keep: async (n, markdown) => {
       if (!compaction) throw new Error("this planner has no place to keep it");
       const { rel } = compaction.keep(n, markdown);

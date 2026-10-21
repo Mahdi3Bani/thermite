@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { laneLimits } from "../../core/contract.ts";
+import type { CallUsage } from "../../core/usage.ts";
 import type { Runner, RunOutcome, RunRequest } from "../broker/runner.ts";
 import { claudeEnv } from "./claude-code.ts";
 import { codexEnv } from "./codex.ts";
@@ -110,6 +111,75 @@ describe("the OpenCode harness", () => {
       errors,
     );
     assert.deepEqual(errors.errors, ["403: FreeTierError"]);
+  });
+
+  test("its model usage: one record for each step; times only where its output gives them", () => {
+    // The lines without times or cache (as some versions print them): those are not reported.
+    const t = newTally();
+    readOpencodeEvents(EVENTS, t);
+    assert.equal(t.calls.length, 2);
+    assert.deepEqual(
+      t.calls.map((u) => [u.calls, u.tokens_in, u.cached_in, u.tokens_out, u.reasoning]),
+      [
+        [1, 3211, null, 93, 38],
+        [1, 300, null, 20, 0],
+      ],
+    );
+    assert.ok(t.calls.every((u) => u.call_ms === null && u.first_token_ms === null));
+    // OpenCode 2.0.32's lines: each with its time, a step's tokens with the cache apart from the
+    // input and the reasoning apart from the output (TokenUsage.Info).
+    const timed = [
+      { type: "step_start", timestamp: 1000, sessionID: "s", part: { type: "step-start" } },
+      {
+        type: "tool_use",
+        timestamp: 4000,
+        sessionID: "s",
+        part: {
+          tool: "shell",
+          state: {
+            status: "completed",
+            input: { command: "make" },
+            output: "ok\n",
+            time: { start: 1800, end: 4000 },
+          },
+        },
+      },
+      {
+        type: "step_finish",
+        timestamp: 4100,
+        sessionID: "s",
+        part: {
+          tokens: { input: 200, output: 30, reasoning: 10, cache: { read: 3000, write: 100 } },
+        },
+      },
+      { type: "step_start", timestamp: 5000, sessionID: "s", part: { type: "step-start" } },
+      {
+        type: "text",
+        timestamp: 6500,
+        sessionID: "s",
+        part: { text: "Done.", time: { start: 5400, end: 6500 } },
+      },
+      {
+        type: "step_finish",
+        timestamp: 6600,
+        sessionID: "s",
+        part: { tokens: { input: 50, output: 12, reasoning: 0, cache: { read: 3300, write: 0 } } },
+      },
+    ].map((e) => JSON.stringify(e));
+    const u = newTally();
+    readOpencodeEvents(timed, u);
+    const [tool, text] = u.calls;
+    assert.equal(tool?.tokens_in, 3300);
+    assert.equal(tool?.cached_in, 3000);
+    assert.equal(tool?.uncached_in, 300);
+    assert.equal(tool?.tokens_out, 40);
+    assert.equal(tool?.reasoning, 10);
+    assert.equal(tool?.first_token_ms, 800);
+    // A step ends after its tools: its time is not a model call's.
+    assert.equal(tool?.call_ms, null);
+    assert.equal(tool?.at, new Date(1000).toISOString());
+    assert.equal(text?.first_token_ms, 400);
+    assert.equal(text?.call_ms, 1600);
   });
 
   test("its configuration reaches a provider only through the key-adding proxy", () => {
@@ -420,6 +490,7 @@ describe("the OpenCode harness", () => {
       },
       killRole: async () => 0,
     } as unknown as Runner;
+    const calls: CallUsage[] = [];
     const r = await runOpencodeTrial(
       {
         trialId: "t-2",
@@ -440,11 +511,14 @@ describe("the OpenCode harness", () => {
         progress: () => undefined,
         submitted: () => undefined,
         messages: owner.inbox,
+        modelUsage: (u) => calls.push(u),
         pollMs: 5,
       },
     );
     const opencodeRuns = runs.filter((x) => x.argv.includes("run"));
     assert.equal(opencodeRuns.length, 3);
+    // Each run's two steps, each recorded once.
+    assert.equal(calls.length, 6);
     assert.ok(opencodeRuns[1]?.argv.includes("ses_1"));
     // The message waiting when the first run ended went into the first continuation, once.
     assert.match(String(opencodeRuns[1]?.argv.at(-1)), /owner: try the other loop/);
