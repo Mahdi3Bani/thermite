@@ -30,6 +30,7 @@ Subscriptions are built, but they are tested only against stand-ins.
 
 - 2026-10-18, owner: Subscriptions come before the first release.
 - 2026-10-18, owner: A subscription serves only its owner's own Thermite. A Thermite that several people use takes API keys.
+- 2026-10-21, the lead session, from the build's evidence (see Progress): Claude Code's own sandbox stays off in a rig, and the rig's isolation holds its commands, as for OpenCode and Codex. The sandbox cannot start inside a rig, and its scrub refuses a headless agent's edits and commands. The token reaches Claude Code on a file descriptor, never in an environment or a file. Advisors keep the scrub until the open question below is decided. Shown to the owner with the build.
 - 2026-10-20, owner: The tests run before the tag, as recommended.
 
 ## Open questions
