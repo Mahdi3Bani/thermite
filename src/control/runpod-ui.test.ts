@@ -8,6 +8,7 @@ import {
   exportOnControl,
   harnessApplies,
   harnessRefusesExport,
+  pendingOf,
   supervisorReports,
 } from "../testing/rig-results.ts";
 import { createControlApi } from "./api.ts";
@@ -524,14 +525,38 @@ describe("a RunPod rig's page", () => {
     assert.equal(s.rigs.view("rp-test-1")?.op?.why, "idle_stop");
   });
 
-  test("restart from the page goes to RunPod", async () => {
+  test("restart from the page goes to RunPod, and its words say what it does to the runs", async () => {
     const s = await setup();
     await working(s);
+    // The box says what a restart does: it pauses no run, and a trial in progress stops.
+    const box =
+      /<form class="lcb" method="post" action="\/ui\/rigs\/rp-test-1\/runpod\/restart">.*?<\/form>/s.exec(
+        await s.page("/ui/rigs/rp-test-1"),
+      )?.[0];
+    assert.match(
+      String(box),
+      /Its runs are not paused: a trial in progress stops, and the harness plans it again\./,
+    );
+    assert.doesNotMatch(String(box), /pause and resume/);
     assert.match(
       await s.post("/ui/rigs/rp-test-1/runpod/restart"),
       /ok=Restarting: the pod stops, then starts again\./,
     );
     assert.deepEqual(s.cloud.stops(), [{ action: "stop" }]);
     assert.equal(s.rigs.view("rp-test-1")?.op?.kind, "restart");
+    assert.deepEqual(
+      pendingOf(s.store, "rp-test-1").map((c) => c.kind),
+      [],
+      "a restart sends no pause_run and no export",
+    );
+    // Its steps under way say the same.
+    const card = /<div class="card" style="margin-top:12px" id="op">.*?<\/div><\/div>/s.exec(
+      await s.page("/ui/rigs/rp-test-1"),
+    )?.[0];
+    assert.match(
+      String(card),
+      /The harness starts again: a trial that was in progress is planned again\./,
+    );
+    assert.doesNotMatch(String(card), /Resume the runs/);
   });
 });
