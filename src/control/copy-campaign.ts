@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { IdSchema, parseContract } from "../core/contract.ts";
+import { type McpUse, McpUses, sameUses, usesWords } from "../core/mcp.ts";
+import { researchMcpRefusal } from "./mcp-servers.ts";
 import type { CampaignSources, ControlStore, CopiedFrom } from "./store.ts";
 import { isRigCheck } from "./ui/campaigns.ts";
 
@@ -12,6 +14,11 @@ import { isRigCheck } from "./ui/campaigns.ts";
  * runs read nothing that the source's runs recorded. That is what two runs of one campaign can't
  * do: they share the campaign's folder.
  *
+ * A research campaign keeps its agents' MCP servers in its contract (it has no kit), so a copy may
+ * name others (`mcp_servers`), with the New campaign page's checks: the copy's contract then
+ * names those, and its hash changes with them. A hill-climb or goal campaign keeps them in its
+ * kit's kit.json, which a copy does not change.
+ *
  * REST's POST /v1/campaigns/<name>/copy, MCP's copy_campaign and `thermite campaign copy` call it
  * through ControlActions.copyCampaign, which dashboard.ts fills in with the campaigns it knows.
  */
@@ -21,6 +28,11 @@ export interface CopyCampaignRequest {
   from: string;
   /** The copy's name. */
   name: string;
+  /**
+   * A research campaign's MCP servers for the copy, in place of its source's; [] names none.
+   * Left out: the source's, as they are.
+   */
+  mcp_servers?: McpUse[] | undefined;
 }
 
 export type CopyCampaignOutcome =
@@ -34,9 +46,12 @@ export const copyCampaignFields = {
     .describe(
       "The copy's name, as on the New campaign page: lowercase letters, digits, dots, dashes and underscores, at most 64. No campaign may have it yet",
     ),
+  mcp_servers: McpUses.optional().describe(
+    'Research campaigns only: the MCP servers the copy\'s agents use, in place of the source\'s, as the New campaign page names them. Each is {name, agents, tools?}: a server\'s name in Settings; the kinds of agent that get it ("workers", "advisors": a research run has no planner); and, only to narrow it, the tools each kind may call, such as {"workers": ["search"]}. [] names none. Left out: the source\'s servers',
+  ),
 };
 
-/** The REST body: the copy's name, and nothing else. */
+/** The REST body: the copy's name and, for a research campaign, its MCP servers. */
 export const CopyCampaignBody = z.strictObject(copyCampaignFields);
 
 /** The fields of an assignment that belong to one run, not to the campaign: a copy leaves them out. */
@@ -92,7 +107,22 @@ export function copyCampaign(
   const version = store.nextCampaignVersion(name);
   const source = (saved?.contract ?? assigned?.payload.contract) as Record<string, unknown>;
   // The contract names its campaign once: the copy's name, and its first version, there.
-  const parsed = parseContract({ ...source, campaign: name, version });
+  let contract: Record<string, unknown> = { ...source, campaign: name, version };
+  let otherMcp = false;
+  const uses = req.mcp_servers;
+  if (uses !== undefined) {
+    if (source.mode !== "research")
+      return refuse(
+        "This campaign's MCP servers are in its kit's kit.json: change them on the New campaign page.",
+        400,
+      );
+    const why = researchMcpRefusal(store.db, uses);
+    if (why) return refuse(why, 400);
+    const { mcp_servers: before, ...rest } = contract;
+    contract = uses.length ? { ...rest, mcp_servers: uses } : rest;
+    otherMcp = !sameUses(McpUses.safeParse(before ?? []).data ?? [], uses);
+  }
+  const parsed = parseContract(contract);
   if (!parsed.ok)
     return refuse(
       `The contract of ${from} is not valid, so control cannot copy it: ${parsed.errors.join("; ")}`,
@@ -105,10 +135,16 @@ export function copyCampaign(
   } else {
     const a = assigned as NonNullable<typeof assigned>;
     sources = {
-      assignment: Object.fromEntries(Object.entries(a.payload).filter(([k]) => !RUN_FIELDS.has(k))),
+      assignment: Object.fromEntries(
+        Object.entries(a.payload).filter(
+          // A research copy's own servers: control fills them in from its contract.
+          ([k]) => !RUN_FIELDS.has(k) && !(uses !== undefined && k === "mcp_servers"),
+        ),
+      ),
     };
     copiedFrom = { campaign: from, rig: a.rig, run: a.run };
   }
+  if (otherMcp) copiedFrom.other_mcp_servers = true;
   store.putCampaign({
     campaign: name,
     version,
@@ -118,7 +154,12 @@ export function copyCampaign(
     copiedFrom,
     by,
   });
-  store.audit(by, "campaign_copied", { campaign: name, from: copiedFrom, sha: parsed.sha });
+  store.audit(by, "campaign_copied", {
+    campaign: name,
+    from: copiedFrom,
+    sha: parsed.sha,
+    ...(otherMcp ? { mcp_servers: uses } : {}),
+  });
   return { state: "copied", campaign: name, version, sha: parsed.sha, from: copiedFrom };
 }
 
@@ -132,6 +173,18 @@ export function copyCampaignAnswer(
     contract_sha: out.sha,
     from: out.from,
   };
+}
+
+/**
+ * What a copy's page says when its contract names other MCP servers than its source's: the
+ * servers its agents use now, from the copy's first contract.
+ */
+export function copiedMcpWords(contract: unknown): string {
+  const uses =
+    McpUses.safeParse((contract as { mcp_servers?: unknown } | null)?.mcp_servers ?? []).data ?? [];
+  return uses.length
+    ? `Its agents use other MCP servers than its source's: ${usesWords(uses)}.`
+    : "Its agents use no MCP server. Its source's agents use some.";
 }
 
 /** Where a copy came from, in words: "gemv-speed version 2", or the assignment it copied. */

@@ -1139,7 +1139,7 @@ export function createControlApi(
     const raw: unknown = await c.req.json().catch(() => undefined);
     const body = CopyCampaignBody.safeParse(raw);
     const out = body.success
-      ? copy({ from, name: body.data.name }, "owner:api")
+      ? copy({ from, ...body.data }, "owner:api")
       : ({ state: "refused", error: bodyRefusal(body.error), status: 400 } as const);
     if (out.state === "refused") {
       store.audit("owner:api", "refused", {

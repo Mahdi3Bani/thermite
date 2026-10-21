@@ -125,11 +125,14 @@ usage: thermite <command> [options]
                                       experiments (on --rig unless RIG/ is given); --past adds
                                       items of Thermite's knowledge base by id. It prints the new
                                       run and its command id; a stopped RunPod pod starts first
-  campaign copy FROM NAME --control URL --token-file F
+  campaign copy FROM NAME [--mcp-servers-json FILE] --control URL --token-file F
                                       copy a campaign control keeps (owner's token): a new
                                       campaign NAME with FROM's contract and kit, its own empty
                                       folder in Thermite's knowledge base and no runs. Start a
-                                      run of it with run start. It prints the copy
+                                      run of it with run start. It prints the copy.
+                                      --mcp-servers-json: for a research campaign, the MCP
+                                      servers the copy's agents use instead, as a JSON list
+                                      ([] for none)
   mcp list --control URL --token-file F [--json]
                                       the MCP servers in Settings (owner's token): each one's
                                       sign-in, state, last error, tools and the kits that name
@@ -522,10 +525,21 @@ It prints control's answer on one line, such as `{"campaign":"sort-speed-b","ver
 | --- | --- | --- | --- |
 | `FROM` | Yes | | The campaign to copy, as on its page |
 | `NAME` | Yes | | The copy's name: lowercase letters, digits, dots, dashes and underscores, at most 64, starting with a letter or a digit. No campaign may have it yet |
+| `--mcp-servers-json FILE` | No | the source's | A research campaign only: a file with the MCP servers the copy's agents use instead of the source's, as a JSON list, sent as the request's `mcp_servers` ([Copy a campaign](rest-api.md#copy-a-campaign)). `[]` names none |
 | `--control URL` | Yes | | Control's address |
 | `--token-file F` | Yes | | A file with the owner's token |
 
-Without `--control` and `--token-file`, it ends with `give --control and --token-file: control copies the campaign` and exit code 2. Control's refusals come back as `<url> -> <status> <body>`, such as `-> 409 {"error":"There is a campaign named sort-speed-b already. Choose another name."}`: [Copy a campaign](rest-api.md#copy-a-campaign) lists them. MCP's [`copy_campaign`](mcp-tools.md#copy_campaign) does the same with an operator's token too.
+To give a research copy's workers one server with all its tools, write the list to a file and pass it:
+
+```sh
+echo '[{"name": "web-search", "agents": ["workers"]}]' > servers.json
+npx thermite campaign copy survey survey-b --mcp-servers-json servers.json \
+  --control https://control.example.com --token-file ~/thermite-owner-token
+```
+
+`{"name": "web-search", "agents": ["workers", "advisors"], "tools": {"workers": ["search"]}}` gives it to the advisors too, and narrows the workers to its `search` tool.
+
+Without `--control` and `--token-file`, it ends with `give --control and --token-file: control copies the campaign` and exit code 2. A file that is not JSON ends it with `--mcp-servers-json: <file> is not a JSON list:` and the parser's message, and exit code 2. Control's refusals come back as `<url> -> <status> <body>`, such as `-> 409 {"error":"There is a campaign named sort-speed-b already. Choose another name."}`: [Copy a campaign](rest-api.md#copy-a-campaign) lists them. MCP's [`copy_campaign`](mcp-tools.md#copy_campaign) does the same with an operator's token too.
 
 ### `mcp`
 

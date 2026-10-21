@@ -582,6 +582,8 @@ export interface CopiedFrom {
   version?: number | undefined;
   rig?: string | undefined;
   run?: string | undefined;
+  /** True when the copy's contract names other MCP servers than its source's (a research copy). */
+  other_mcp_servers?: true | undefined;
 }
 
 /** A decision the owner sent to a rig, and the rig's answer once it came. */
