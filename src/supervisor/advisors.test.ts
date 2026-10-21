@@ -137,7 +137,7 @@ describe("advisors", () => {
       );
     assert.equal(usage.length, fake.requests);
     assert.deepEqual(usage.map((u) => [u.run, u.actor, u.agent, u.harness, u.model]).sort(), [
-      ["js-1", "supervisor", "combiner", "pi", "combiner"],
+      ["js-1", "supervisor", "combiner", "pi", "merged-by"],
       ["js-1", "supervisor", "teachers", "pi", "teacher-a"],
       ["js-1", "supervisor", "teachers", "pi", "teacher-a"],
       ["js-1", "supervisor", "teachers", "pi", "teacher-b"],

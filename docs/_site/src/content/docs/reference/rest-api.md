@@ -101,7 +101,7 @@ It sums the [model usage records](../explanation/how-it-fits-together.md#the-mod
 | `scope` | `{kind: "run", run, rig}` (`rig` is `null` when not given), `{kind: "campaign", campaign}` or `{kind: "system"}` |
 | `period`, `since` | The period, and when it starts; `since` is `null` for `all` |
 | `total` | The sums of every record in the scope and period |
-| `by_agent` | The sums of each agent with records, in this order: `workers`, `planner`, `teachers`, `combiner`, `auditor`, `panel`. Each has `agent` and its `name` in words, such as `Review panel` |
+| `by_agent` | The sums of each agent with records, in this order: `workers`, `planner`, `teachers`, `combiner` (the teachers' merged by model), `auditor`, `panel` (the review panel). Each has `agent` and its `name` in words, such as `Teachers (merged by)` or `Review panel` |
 | `by_model` | The sums of each model, with its `harness`, its `provider` (`null`: a rig's own settings, or an advisors file that names none) and its `model`, the most tokens first |
 | `by_run` | For a campaign: the sums of each run, with its `rig`, its `run` and its `share` of the campaign's tokens (in and out, from 0 to 1), the largest first |
 | `by_campaign` | For the system: the sums of each campaign, with its `campaign` (`null` for a run whose campaign control has no record of) and its `share` of the system's tokens, the largest first |

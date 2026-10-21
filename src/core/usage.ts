@@ -10,8 +10,9 @@ import { z } from "zod";
  */
 
 /**
- * The agents a record names, by the identifiers the rig's agents have now (control's Edit rig
- * rows). This list and AGENT_WORDS are the one place to change when an agent is renamed.
+ * The agents a record names, by their internal identifiers: `combiner` is the teachers' merged by
+ * model and `panel` the review panel (goal 074's names, in AGENT_WORDS). Records keep these
+ * values; this list and AGENT_WORDS are the one place that names them.
  */
 export const USAGE_AGENTS = [
   "workers",
@@ -29,12 +30,12 @@ export const ADVISOR_AGENTS = ["teachers", "combiner", "auditor", "panel"] as co
 export const AdvisorAgent = z.enum(ADVISOR_AGENTS);
 export type AdvisorAgent = z.infer<typeof AdvisorAgent>;
 
-/** Each agent in words. */
+/** Each agent in words, as the pages and screens name it (goal 074). */
 export const AGENT_WORDS: Record<UsageAgent, string> = {
   workers: "Workers",
   planner: "Planner",
   teachers: "Teachers",
-  combiner: "Combiner",
+  combiner: "Teachers (merged by)",
   auditor: "Auditor",
   panel: "Review panel",
 };

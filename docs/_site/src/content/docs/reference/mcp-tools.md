@@ -185,7 +185,7 @@ No inputs. Returns `{"<campaign>":[{rig, run, mode, status, champion_seq, gain, 
 
 **Model usage.** All roles.
 
-> The agents' model usage, summed: for one run (run, and rig when the run's id is on more than one rig), for a campaign (all its runs on every rig), or, with neither, for the whole system; over a period: today (since midnight UTC), 7d (the last 7 days) or all (the default). Gives the total, by_agent (workers, planner, teachers, combiner, auditor, panel), by_model (each harness, provider and model), and by_run for a campaign or by_campaign for the system, each with its share of the tokens. Each sum has records, calls (and calls_not_reported: records that do not say how many calls they cover, a Codex turn), tokens_in, cached_in and uncached_in, cached_share, tokens_out, reasoning, out_per_s (output tokens a second over each record's time in calls: median, p10, p90), call_ms (time in calls) and first_token_ms (the median time to the first token). A figure no record reports is null, never 0; not_reported counts the records without each one.
+> The agents' model usage, summed: for one run (run, and rig when the run's id is on more than one rig), for a campaign (all its runs on every rig), or, with neither, for the whole system; over a period: today (since midnight UTC), 7d (the last 7 days) or all (the default). Gives the total, by_agent (each agent by its id, with its name: workers, planner, teachers, `combiner` for the teachers' merged by model, auditor, and `panel` for the review panel), by_model (each harness, provider and model), and by_run for a campaign or by_campaign for the system, each with its share of the tokens. Each sum has records, calls (and calls_not_reported: records that do not say how many calls they cover, a Codex turn), tokens_in, cached_in and uncached_in, cached_share, tokens_out, reasoning, out_per_s (output tokens a second over each record's time in calls: median, p10, p90), call_ms (time in calls) and first_token_ms (the median time to the first token). A figure no record reports is null, never 0; not_reported counts the records without each one.
 
 | Input | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -194,7 +194,7 @@ No inputs. Returns `{"<campaign>":[{rig, run, mode, status, champion_seq, gain, 
 | `campaign` | string, optional | | One campaign's usage: all its runs on every rig |
 | `period` | `today`, `7d` or `all` | `all` | Since midnight UTC, the last 7 days, or all |
 
-With neither `run` nor `campaign`, the whole system's usage. It returns the same report as [`GET /v1/usage`](rest-api.md#model-usage), which describes each field. Errors: `Give a run or a campaign, not both.` and `A rig goes with a run: give the run too.` [The model usage records](../explanation/how-it-fits-together.md#the-model-usage-records) says what each program reports.
+The quote shows the ids `combiner` and `panel` in code; the tool's own description has them in plain words. With neither `run` nor `campaign`, the whole system's usage. It returns the same report as [`GET /v1/usage`](rest-api.md#model-usage), which describes each field. Errors: `Give a run or a campaign, not both.` and `A rig goes with a run: give the run too.` [The model usage records](../explanation/how-it-fits-together.md#the-model-usage-records) says what each program reports.
 
 ### rig_reports
 

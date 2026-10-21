@@ -233,7 +233,7 @@ A command-line advisor (`cli`) says nothing about its calls, so it has no record
 | The event's subject | The run |
 | `trial` | The worker's trial, or `null` |
 | `round` | The planner's round, such as `epoch 3`, or the advisors': `teachers <time>`, `audit <attempt>` or `review <id>`. `null` for a worker |
-| `agent` | `workers`, `planner`, `teachers`, `combiner`, `auditor` or `panel` |
+| `agent` | `workers`, `planner`, `teachers`, `combiner` (the teachers' merged by model), `auditor` or `panel` (the review panel) |
 | `harness` | `pi`, `opencode`, `codex` or `claude-code` |
 | `provider` | The provider's name in **Settings › Providers**, or `null` for a rig's own model settings and an advisors file that names none |
 | `model` | The model's name |
