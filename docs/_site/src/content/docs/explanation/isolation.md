@@ -63,6 +63,7 @@ A lane is one line of search ([Agents, lanes and the planner](agents-lanes-plann
 - **Limits on everything it runs.** The lane's memory and disk limits cover everything its commands start ([Per-process and per-trial limits](../reference/limits-and-pacing.md#per-process-and-per-trial-limits)).
 - **The agent apart from its lane.** In Pi, the built-in [worker harness](../reference/glossary.md), the worker agent runs as `agent-N`, which can read none of the lane's files: its tools act through the API, as the lane's user. Its folder, with its trial's details and token, belongs to it alone. Under OpenCode, Claude Code or Codex, the agent program runs as the lane's own user, with the lane's access and none of the judge's.
 - **Web pages through the harness.** A worker's research tools, such as `fetch` in Pi or `thermite-trial research fetch`, are calls to the harness API with the trial's token. The controller fetches the page itself, refuses private and local addresses, and archives the page in the run's research folder, where every lane can read it.
+- **MCP tools through the harness.** A worker's MCP tools are calls to the harness's gateway with the trial's token. The controller adds the server's sign-in, which it keeps in memory, and gives the worker only the servers and tools that the run's kit gives the workers ([Give agents MCP tools](../how-to/campaigns/give-agents-mcp-tools.md)).
 
 ## The judge's files
 

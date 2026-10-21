@@ -117,7 +117,7 @@ The **Knowledge** page in the dashboard's sidebar lists every folder, with its c
 
 ## Why a campaign reads only its own folder
 
-A campaign's agents read their own campaign's folder: what the campaign's other runs recorded, on any rig. Reading another campaign's folder takes a **grant** from the owner.
+A campaign's agents read their own campaign's folder: what the campaign's other runs recorded, on any rig. Reading another campaign's folder takes a **grant** from the owner. Runs of one campaign share its folder, so a second run starts with what the first recorded. To start from zero, as when comparing two models, [copy the campaign](../how-to/campaigns/start-from-dashboard.md#compare-two-models-from-zero): a copy has its own empty folder.
 
 Past research helps only when it fits. A lesson from another project, another kit or another device can mislead as easily as it helps, and another campaign's results were measured against another contract. Whether another campaign's work is relevant is a judgement about the research, so it is the owner's, not an agent's.
 

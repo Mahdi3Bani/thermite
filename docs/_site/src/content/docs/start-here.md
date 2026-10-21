@@ -10,7 +10,7 @@ Thermite lets AI agents work on a project for as long as it takes, while a judge
 
 ## What you need
 
-- A computer running Linux or macOS, with a few CPU cores, a few gigabytes of free memory, and several gigabytes of free disk. Thermite's three images take about 2 GB.
+- A computer running Linux or macOS, with a few CPU cores, a few gigabytes of free memory, and several gigabytes of free disk. Thermite's three images take about 2.5 GB.
 - Docker or Podman, which run Thermite's containers. You download Thermite's images ready-made, and build nothing.
 - For the command line, from the second tutorial on: Node.js 22.19 or later, and git.
 - About twenty minutes for the first run.

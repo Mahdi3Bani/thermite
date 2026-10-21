@@ -117,7 +117,7 @@ The last part of **How to measure** gives the campaign's agents tools from outsi
 1. Tick a server. The workers get it at once; choose the agents that get it: **Workers**, **Planner**, **Advisors**.
 2. Optional: open **Advanced: its tools for each kind of agent** under the server, and untick a tool for the agents that should not call it. Tools that change something on the server are marked **writes**.
 
-The line under the list says what each kind of agent gets, such as `The workers get 31 tools from gbrain; the planner gets none; the advisors get 31 tools from gbrain.`, and warns of a server that doesn't work now, of one with no agents, and of a kind of agent left with no tool. **What goes into kit.json** shows the list. A kit described here gets it in its `kit.json`. An uploaded kit's list starts as its `kit.json` has it, and a change is written into the kit control keeps. For **A kit in a repository**, the list is read from the kit's `kit.json` once you fill in **Kit repository** and **Kit commit**, each server marked `✓ found` or `✕ missing`, with **Add it in Settings** for a missing one; change it in the kit's repository. [Give agents MCP tools](give-agents-mcp-tools.md) says more.
+The line under the list says what each kind of agent gets, such as `The workers get 31 tools from gbrain; the planner gets none; the advisors get 31 tools from gbrain.`, and warns of a server that is not in **Settings**, of one that doesn't work now, of one with no agents, and of a kind of agent left with no tool. **What goes into kit.json** shows the list. A kit described here gets it in its `kit.json`. An uploaded kit's list starts as its `kit.json` has it, and a change is written into the kit control keeps. For **A kit in a repository**, the list is read from the kit's `kit.json` once you fill in **Kit repository** and **Kit commit**, each server marked `✓ found` or `✕ missing`, with **Add it in Settings** for a missing one; change it in the kit's repository. [Give agents MCP tools](give-agents-mcp-tools.md) says more.
 
 ### The question
 
@@ -125,7 +125,7 @@ For research, step 3 asks for **Topic** (a sentence), **Questions** (one per lin
 
 ## 4. Where it runs
 
-Choose the rig. Each card shows its hardware, whether it is idle, and its agents' model after `agents:`, or `no model for its agents yet` in red. A rig that is not reporting can't be chosen.
+Choose the rig. Each card shows its hardware, whether it is idle, and its agents' model after `agents:`, followed by ` (OpenCode v2)` or ` (Codex)` when they run there, or `no model for its agents yet` in red. A rig that is not reporting can't be chosen.
 
 | Field | What it does |
 | --- | --- |
@@ -255,12 +255,13 @@ It prints the new run and its command:
 - **A model given first.** With `--provider` and `--model` (or `agents_model`), control gives the rig the model and starts nothing yet, as the panel does. The answer is `{"started":false,"said":"rig-1 takes my-model within a minute; …"}`, and the command line exits with 1. Run it again without the model once the rig has taken it.
 - **Notes.** The answer's `notes` say what else to know, such as `sort-speed-1 is at work on rig-1, and pauses when this run starts (a rig runs one run at a time).` The command line writes them on standard error.
 - **Refusals** come back in the panel's words, such as `409` and `{"error":"rig-1 has no model for its agents, so they could not work: …"}` over REST. The command line writes the route, the status and that answer on standard error, and exits with 2.
+- **A try.** With `--agents off`, or `"agents": false`, the twins refuse a model, a run to copy from and past research, which the panel hides: `A try (agents off) takes no model, no experiments and no background: leave them out, or start the run with agents.`
 
 ## Compare two models from zero
 
 To compare two models on the same campaign, give each model a campaign of its own: a copy. Two runs of one campaign share its folder in [Thermite's knowledge base](../../reference/knowledge-base.md). Each new run starts with what the campaign's earlier runs recorded, and while both work, each reads the other's records every few minutes. So the second model would not start from zero. A copy has the same contract and kit under another name, its own empty folder, no [grants](../../reference/knowledge-base.md#grants) and no runs.
 
-You need a campaign that control keeps, a rig for each model (or one rig, with the runs one after the other), and the owner's token file. The dashboard has no copy button yet: copy over the command line, the REST API or MCP.
+You need a campaign that control keeps, a rig for each model (or one rig, with the runs one after the other), and the owner's token file. The dashboard has no copy button yet ([goal 069](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/069-copy-a-campaign.goal)): copy over the command line, the REST API or MCP.
 
 1. Copy the campaign once for each model. If the campaign has no runs yet, you can run it as it is for the first model, and copy it for the second.
 
@@ -286,4 +287,4 @@ You need a campaign that control keeps, a rig for each model (or one rig, with t
 
 Don't let one copy read the other's folder: leave **Can read from** empty on each copy's page.
 
-To tell it worked, open each copy's page under **Campaigns**. It says where the copy came from, such as `Copied from sort-speed version 2 by owner:api, 5m ago. Its folder in the knowledge base started empty.` Its **Knowledge** section counts only its own run's records, and **Can read from** says `None: its agents read only this campaign's folder.` Then compare the two runs' results on their pages.
+To tell it worked, open each copy's page under **Campaigns**. It says where the copy came from, such as `Copied from sort-speed version 2 by owner:api, 5m ago. Its folder in the knowledge base started empty.`, or `Copied from sort-speed as assigned for sort-speed-1 on rig-1 by …` for a campaign that was only assigned before. Its **Knowledge** section counts only its own run's records, and **Can read from** says `None: its agents read only this campaign's folder.` Then compare the two runs' results on their pages.

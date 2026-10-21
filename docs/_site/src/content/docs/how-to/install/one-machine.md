@@ -12,7 +12,7 @@ This guide sets Thermite up to stay on one computer: control and one rig run as 
 
 ## Before you start
 
-- A computer running Linux or macOS, with a few CPU cores, a few gigabytes of free memory, and disk space for the images (about 2 GB) and for what your projects build.
+- A computer running Linux or macOS, with a few CPU cores, a few gigabytes of free memory, and disk space for the images (about 2.5 GB) and for what your projects build.
 - **Docker** with Docker Compose, or **Podman** with `podman compose` or podman-compose. On a Mac, start Podman's virtual machine first (`podman machine start`).
 - `curl`, and access to `github.com` and `ghcr.io`, where the release and its images are.
 
@@ -206,7 +206,8 @@ The dashboard is then at `http://127.0.0.1:8801/ui`. Inside the stack, control k
 After an update, run the rig's **Judge smoke** check ([Check a rig](../operate/check-a-rig.md)). This updates only the local stack. Rigs elsewhere keep the images they run:
 
 - a rig that control set up, on a machine or a cluster, moves onto new images from its page, with **Update to** control's version. Control deploys the new release's images once it runs from the new `compose.yaml`, unless `.env` names other images ([Move a rig onto new images](../operate/rig-lifecycle.md#move-a-rig-onto-new-images));
-- a rig you joined yourself can't be moved from control yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal)).
+- a rig you joined yourself can't be moved from control yet ([goal 035](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/035-rig-upgrades.goal));
+- a rig on RunPod keeps its image: control can't move a pod onto another one. Terminate it and launch a new rig, which runs the new release's rig image ([Run a rig on RunPod](runpod-rig.md)).
 
 ## Let rigs on other machines reach control
 

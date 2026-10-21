@@ -58,6 +58,7 @@ Run `thermite assign` as in the example at the top. Control signs the command an
 | `--agents off` | A run with no agents: only the judge works. See [Test a kit with known candidates](test-a-kit.md) |
 | `--promotion auto` or `owner` | `auto`: a confirmed win becomes the champion at once. `owner`: it waits for you. Unset: the rig's default |
 | `--queue-from RUN` | Start the new run's queue with the untried experiments of an earlier run on the same rig, or `RIG/RUN` on another rig. Off unless you give it. See [Start further runs](#start-further-runs) |
+| `--mcp-servers JSON` or `@file` | The MCP servers the kit's `kit.json` names, as it names them. Needed when it names some: the rig refuses a run whose list differs. See [Give agents MCP tools](give-agents-mcp-tools.md#3-start-the-run) |
 | `--control URL`, `--token-file F`, `--rig R` | Control's address, the owner's token file and the rig |
 | `--ttl MIN` | How long the command may wait to be delivered, in minutes: 60 unless set, at most 10080 |
 | `--print` | Print the payload instead of sending it |
@@ -172,9 +173,11 @@ The command line itself prints a refusal from its own checks or from control. A 
 | `-> 404 {"error":"no run sort-speed-1 on local-1"}` | The terminal | Check the run's name and its rig on the campaign's page, and write `RIG/RUN` for a run on another rig |
 | `-> 401 {"error":"unauthorized"}` | The terminal | Use the owner's token |
 | `bad assign_campaign payload: seed.repo: lowercase id` | The terminal | Make the contract's `project.repo` a lowercase name, such as `my-project` |
+| `-> 400 {"error":"The kit names the MCP server paper-search, and Settings has no server of that name. …"}` | The terminal | Add the server in **Settings › Providers**, or take it out of the kit |
 | **failed**, `run <id> already exists` | **Commands** | Choose a new run name |
 | **failed**, `contract <campaign> v<n> exists with other content` | **Commands** | You changed the contract: raise its `version` |
 | **pending**, then **expired** | **Commands** | The rig's supervisor is down, or a large fetch took longer than the command may wait: send it again with a longer `--ttl` |
 | **failed**, `staging: <address> has no commit <commit>`, or git's own error after `staging:` | **Commands** | The rig could not fetch the project or the kit. Check that the address works from the rig and that the commit is pushed there. For a private repository, see [If the repository is private](#if-the-repository-is-private). Then send the same command again: the run was never made |
 | **failed**, `the kit does not fit the contract: …` | **Commands** | The kit lacks a cell, metric or verifier the contract names, or measures on another target: each problem is named, such as `cells names cell large, which the kit does not have`. Correct the contract, or commit the kit again and put its new commit in `project.kit`. Then send it again, with a new `version` if this version already ran on the rig |
+| **failed**, `the kit names the MCP servers …, and the assignment names none: …` | **Commands** | Send the kit's list with `--mcp-servers`, as `kit.json` has it |
 | **failed**, `kit <repo> at <commit> has no valid kit.json: …` | **Commands** | Fix `kit.json` as the message says, commit it, and put the new commit in `project.kit`. See [Write a kit for your project](write-a-kit.md) |

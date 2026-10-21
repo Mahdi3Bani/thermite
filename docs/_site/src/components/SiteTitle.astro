@@ -1,0 +1,44 @@
+---
+// The site's title, with the version of Thermite these pages describe beside it. The version is
+// the root package.json's, read when the site is built (astro.config.mjs), so the two never drift.
+import Default from "@astrojs/starlight/components/SiteTitle.astro";
+
+declare const __THERMITE_VERSION__: string;
+const version = __THERMITE_VERSION__;
+const roadmap = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/project/roadmap/`;
+---
+
+<div class="title sl-flex">
+  <Default />
+  <a
+    class="version"
+    href={roadmap}
+    title={`These pages describe Thermite ${version}. The roadmap says what it holds.`}
+    translate="no">v{version}</a
+  >
+</div>
+
+<style>
+  .title {
+    align-items: center;
+    gap: 0.6rem;
+    min-width: 0;
+  }
+  .version {
+    flex-shrink: 0;
+    padding: 0.1rem 0.5rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 999px;
+    color: var(--sl-color-gray-2);
+    font-size: var(--sl-text-xs);
+    font-weight: 500;
+    line-height: 1.4;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .version:hover,
+  .version:focus-visible {
+    border-color: var(--sl-color-accent);
+    color: var(--sl-color-text-accent);
+  }
+</style>

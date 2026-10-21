@@ -10,14 +10,14 @@ sidebar:
 A test pod is a real RunPod pod. RunPod bills it by the second from the moment it starts, until control removes it. Control removes it when the test is done, but sets no time limit of its own: set **End it after (minutes)** before you start one, so the pod ends even if something goes wrong.
 :::
 
-A test pod tells you whether a [rig](../../reference/glossary.md) could run on RunPod: whether Thermite's harness gets root and the capabilities it needs there, whether the agents can be kept off the judge's GPU, and whether Thermite's isolation self-test passes. Control starts one pod of the CUDA harness image, reads its report, and removes it.
+A test pod tells you whether a [rig](../../reference/glossary.md) could run on RunPod: whether Thermite's harness gets root and the capabilities it needs there, whether the agents can be kept off the judge's GPU, and whether Thermite's isolation self-test passes. Control starts one pod of the CUDA harness image, or of the one-container rig image, reads its report, and removes it.
 
 A test pod is no rig: it runs no campaign. To run one there, see [Run a rig on RunPod](runpod-rig.md).
 
 ## Before you start
 
 - **A RunPod API key** from RunPod's console (Settings, API Keys) that may write. A read-only key reads the account, but starting a pod fails with "RunPod refused the key for this: a read-only key can't start or stop pods".
-- **Thermite's CUDA harness image in a registry RunPod can pull from without a login.** Control passes RunPod no registry credentials. See [Push the images to your own registry](own-registry.md). RunPod places the pod only on hosts whose driver runs CUDA 12.6 or later.
+- **Thermite's CUDA harness image, or the one-container rig image, in a registry RunPod can pull from without a login.** Each release publishes both on `ghcr.io`, such as `ghcr.io/iammrduncan/thermite-harness:0.1.0-cuda` ([Published images](../../reference/harness-image.md#published-images)). Control passes RunPod no registry credentials. To build your own, see [Push the images to your own registry](own-registry.md). RunPod places the pod only on hosts whose driver runs CUDA 12.6 or later.
 - Optional: `THERMITE_RUNPOD_TEST_IMAGE` on control, which fills in the image for you. `compose.yaml` does not pass it to control, so with the compose stack you type the image into the form, or set it in an [override file](one-machine.md#settings-and-override-files).
 - Control needs no public address for a test, only a way to the internet: it reads the pod's report itself, through RunPod's HTTP proxy. The local compose stack is enough.
 
@@ -83,7 +83,7 @@ The card lists the findings in words. A good test reads like this:
 - The GPU device nodes can be given to a group, mode 0660.
 - Landlock ABI *n*: a fenced role's open of a card was refused.
 - /tmp and /dev/shm can be set to 1770.
-- RunPod sets *n* variables: *their names*. With the [one-container rig image](runpod-rig.md) instead: RunPod's variables reach no process, because the image's entry point took them out.
+- RunPod sets *n* variables: *their names*. With the [one-container rig image](runpod-rig.md) instead: RunPod's variables reach no process: the image's entry point took them out.
 - A role's user reads none of RunPod's variables.
 - Outbound HTTPS reached all 6 addresses tried.
 - The isolation self-test passed.

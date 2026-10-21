@@ -6,7 +6,7 @@ sidebar:
   order: 5
 ---
 
-`thermite` is Thermite's command line. It checks the machine it runs on, checks contracts, makes tokens, starts runs, copies campaigns and sends [signed commands](signed-commands.md) through control, enrolls rigs, and talks to a rig's harness. The harness image also holds `thermite-trial`, the command a worker agent uses from its own shell.
+`thermite` is Thermite's command line. It checks the machine it runs on, checks contracts, makes tokens, starts runs, copies campaigns, manages the MCP servers in **Settings**, sends [signed commands](signed-commands.md) through control, enrolls rigs, and talks to a rig's harness. The harness image also holds `thermite-trial`, the command a worker agent uses from its own shell.
 
 ```sh
 npx thermite contract validate contract.json
@@ -171,9 +171,9 @@ usage: thermite <command> [options]
 
 ## Rules for every command
 
-- **Options.** Each option takes its value as the next word or after `=`. In `doctor`, `token new`, `assign`, `assign-payload`, `rig`, `runpod`, `run start`, `campaign copy`, `command`, `submit` and `status`, an option the command does not know, or a word it does not expect, ends the command with Node's own message and exit code 2.
+- **Options.** Each option takes its value as the next word or after `=`. In `doctor`, `token new`, `assign`, `assign-payload`, `rig`, `run start`, `campaign copy`, `command`, `submit` and `status`, an option the command does not know, or a word it does not expect, ends the command with Node's own message and exit code 2. In `runpod` and `mcp`, an option it does not know does the same; a word after the name it takes is ignored.
 - **Older option names.** `--instance` is read as `--run`, and `--unit` as `--rig`. These are the names from before runs and rigs were renamed.
-- **Control's token.** The commands that talk to control (`assign`, `run start`, `campaign copy`, `command`, `rig add`, `rig token`, `rig retire`, `rig list`, and every `runpod` command) send the contents of `--token-file`, trimmed, as `Authorization: Bearer <token>`. Only the owner's token works on these routes; any other token gets `401 {"error":"unauthorized"}`. See [Tokens and roles](tokens.md).
+- **Control's token.** The commands that talk to control (`assign`, `run start`, `campaign copy`, `mcp`, `command`, `rig add`, `rig token`, `rig retire`, `rig list`, and every `runpod` command) send the contents of `--token-file`, trimmed, as `Authorization: Bearer <token>`. Only the owner's token works on these routes; any other token gets `401 {"error":"unauthorized"}`. See [Tokens and roles](tokens.md).
 - **Control's address.** `--control` is control's base address, such as `https://control.example.com`. A trailing `/` is removed.
 - **Refusals.** When control or the harness refuses a request, the command prints `<url> -> <status> <body>` on standard error and exits 2. `status` is the exception: see [below](#status). A request body that does not match the route gives `400 {"error":"invalid request"}`; a command that control refuses before signing it gives `400` with the reason (for example a payload that does not fit its kind, or a message that nothing would read), or `404` for an unknown rig; another refusal from inside control gives `500` with the reason. The [REST API reference](rest-api.md) lists the routes.
 
@@ -313,7 +313,7 @@ The imports it adds to the payload:
 | `--kit` | `kit_bundle` for the contract's `project.kit` repository and commit | `repos/kit-<repo>-<commit>.bundle` | `{"git": "<GIT_URL>"}` |
 | `--model` | `model` with the contract's SHA-256 for that model | `models/<sha256>` | `{"url": "<URL>"}` |
 
-Sent, it prints control's answer on one line, such as `{"id":"<command id>","status":"pending"}`. On a [rig launched on RunPod](rest-api.md#rigs-on-a-gpu-cloud) whose pod is stopped, control starts the pod first; the answer's `woke` says so, and the command also prints those words on standard error: `rp-1a2b3c4d's pod was stopped: control started it. The run starts once the pod runs.` When control can't start it, the command is not sent, and it ends with control's `409` and the reason, such as no GPU free at RunPod or the spend limit reached. [Signed commands](signed-commands.md) describes the `assign_campaign` payload and what the harness checks. The campaign's page on the dashboard can start further runs of it: **Start a run** signs the newest assignment again as a new run, with the same contract, seed and imports. A run on another rig works only if that rig already has what the imports leave out: the seed commit when `--seed` was not given, the kit's commit when `--kit` was not given, and each model the contract lists that no `--model` gave.
+Sent, it prints control's answer on one line, such as `{"id":"<command id>","status":"pending"}`. On a [rig launched on RunPod](rest-api.md#rigs-on-a-gpu-cloud) whose pod is stopped, control starts the pod first; the answer's `woke` says so, and the command also prints those words on standard error: `rp-1a2b3c4d's pod was stopped: control started it. The run starts once the pod runs.` When control can't start it, the command is not sent, and it ends with control's `409` and the reason, such as no GPU free at RunPod or the spend limit reached. [Signed commands](signed-commands.md) describes the `assign_campaign` payload and what the harness checks. The campaign's page on the dashboard can start further runs of it, and so can [`thermite run start`](#run-start): each signs the newest assignment again as a new run, with the same contract, seed and imports. A run on another rig works only if that rig already has what the imports leave out: the seed commit when `--seed` was not given, the kit's commit when `--kit` was not given, and each model the contract lists that no `--model` gave.
 
 | Message | Cause |
 | --- | --- |
@@ -483,7 +483,7 @@ With no reset of the rig under way, `confirm-wipe` and `cancel-reset` end with `
 
 ### `run start`
 
-`thermite run start` starts a run of a campaign control keeps, as **Start a run** on the campaign's page does (`POST /v1/campaigns/<campaign>/runs`). The campaign is one saved on the **New campaign** page, or one assigned before with `thermite assign`, the REST API or MCP; control then assigns it again with the same contract, starting point and imports. Control runs the dashboard's own code for it, with the same checks and refusals.
+`thermite run start` starts a run of a campaign control keeps, as **Start a run** on the campaign's page does (`POST /v1/campaigns/<campaign>/runs`). The campaign is one saved on the **New campaign** page, a copy made with [`campaign copy`](#campaign-copy), or one assigned before with `thermite assign`, the REST API or MCP; control then assigns it again with the same contract, starting point and imports. Control runs the dashboard's own code for it, with the same checks and refusals.
 
 ```sh
 npx thermite run start sort-speed --rig rig-1 --queue-from sort-speed-1 \
@@ -497,7 +497,7 @@ It prints control's answer on one line, such as `{"started":true,"campaign":"sor
 | `CAMPAIGN` | Yes | | The campaign, as on its page |
 | `--rig R` | Yes | | The rig the run starts on |
 | `--agents on\|off` | No | `on` | `off`: a try, with no agents. The judge measures the starting code on every case once |
-| `--provider P` and `--model M` | No | | For a rig with no model for its agents: give it model `M` of provider `P` in **Providers** first. The run does not start: the answer is `{"started":false,"said":"rig-1 takes M within a minute; …"}`, `said` goes to standard error, and the command exits 1. Run it again without them once the rig runs the model |
+| `--provider P` and `--model M` | No | | For a rig with no model for its agents: give it model `M` of provider `P` in **Providers** first, with the harness the model needs. When the rig does not run `M` yet, the run does not start: the answer is `{"started":false,"said":"rig-1 takes M within a minute; …"}`, `said` goes to standard error, and the command exits 1. Run it again without them once the rig runs the model. When the rig runs `M` already, the run starts |
 | `--promotion auto\|owner` | No | the rig's default | When a change is confirmed better: keep it at once, or wait for the owner |
 | `--judge-gpus N` | No | the rig's current split | For a rig with several GPUs: how many the judge measures on. The rig's harness restarts to apply a new split |
 | `--queue-from [RIG/]RUN` | No | | Another run of this campaign, on `--rig` unless `RIG/` is given: its untried experiments start the new run's queue |
@@ -505,7 +505,7 @@ It prints control's answer on one line, such as `{"started":true,"campaign":"sor
 | `--control URL` | Yes | | Control's address |
 | `--token-file F` | Yes | | A file with the owner's token |
 
-Before it sends anything, it ends with exit code 2 and one of these: `--rig names the rig the run starts on`, `--agents is on or off`, `--promotion is auto or owner`, `--provider and --model go together: the agents' model is one of a provider's models`, `--queue-from names a run: RUN or RIG/RUN`, `--judge-gpus takes a whole number, not "…"` or `--past takes a whole number, not "…"`. Control's refusals come back as `<url> -> <status> <body>` with the words of **Start a run**, such as `-> 409 {"error":"rig-1 has no model for its agents, so they could not work: …"}`: [Campaigns](rest-api.md#campaigns) lists them. MCP's [`start_run`](mcp-tools.md#start_run) does the same with an operator's token too.
+Before it sends anything, it ends with exit code 2 and one of these: `--rig names the rig the run starts on`, `--agents is on or off`, `--promotion is auto or owner`, `--provider and --model go together: the agents' model is one of a provider's models`, `--queue-from names a run: RUN or RIG/RUN`, `--judge-gpus takes a whole number, not "…"` or `--past takes a whole number, not "…"`. Control's refusals come back as `<url> -> <status> <body>` with the words of **Start a run**, such as `-> 409 {"error":"rig-1 has no model for its agents, so they could not work: …"}`: [Campaigns](rest-api.md#campaigns) lists them. MCP's [`start_run`](mcp-tools.md#start_run) does the same with an operator's token too. With `--agents off`, control refuses `--provider`, `--queue-from` and `--past`: `-> 400 {"error":"A try (agents off) takes no model, no experiments and no background: leave them out, or start the run with agents."}`.
 
 ### `campaign copy`
 
@@ -538,9 +538,9 @@ thermite mcp add gbrain --url https://brain.example.com/mcp --auth key --secret-
 
 | Command | Route | What it prints |
 | --- | --- | --- |
-| `thermite mcp list` | `GET /v1/mcp-servers` | One line for each server, `<name>  <auth> <secret's last four characters>  <status>  <n> tools  <url>  named by <kits>`, then its last error and its tools, a tool that may write marked `(writes)`. `no MCP server in Settings` when there is none. `--json` prints the route's answer |
-| `thermite mcp add NAME --url URL --auth KIND` | `POST /v1/mcp-servers` | The server's lines, then `its tools were not read: <why>` when they could not be read, or, for `--auth oauth`, `open this address within 15 minutes and allow Thermite:` and the address of its sign-in page |
-| `thermite mcp change NAME` | `PUT /v1/mcp-servers/NAME` | The server's lines, and `its tools were not read: <why>` when they could not be read |
+| `thermite mcp list` | `GET /v1/mcp-servers` | One line for each server, `<name>  <auth> <secret's last four characters>  <status>  <n> tools  <url>  named by <kits>` (`<status>` is `ok`, `failing`, `needs_sign_in` or `unchecked`), then its last error and its tools, a tool that may write marked `(writes)`. `no MCP server in Settings` when there is none. `--json` prints the route's answer |
+| `thermite mcp add NAME --url URL --auth KIND` | `POST /v1/mcp-servers` | The server's lines, then `its tools were not read: <why>` when they could not be read, or, for `--auth oauth`, `open this address within 15 minutes and allow Thermite:` and the address of its sign-in page, or the reason the sign-in could not start |
+| `thermite mcp change NAME` | `PUT /v1/mcp-servers/NAME` | The server's lines, and `its tools were not read: <why>` when they could not be read. For an OAuth server whose address or client changed, only its lines: sign in again with `thermite mcp sign-in NAME` |
 | `thermite mcp check NAME` | `POST /v1/mcp-servers/NAME/check` | The same |
 | `thermite mcp sign-in NAME` | `POST /v1/mcp-servers/NAME/sign-in` | `open this address within 15 minutes and allow Thermite:` and the address |
 | `thermite mcp delete NAME` | `DELETE /v1/mcp-servers/NAME` | `NAME is deleted: control keeps nothing of its secrets` |
@@ -549,7 +549,7 @@ The options of `add` and `change`:
 
 | Option | Meaning |
 | --- | --- |
-| `--url URL` | The server's MCP address: `https://`, or `http://` for `localhost` only |
+| `--url URL` | The server's MCP address: `https://`, or `http://` for `localhost`, `127.0.0.1` and `[::1]` only |
 | `--auth oauth\|key\|client\|none` | How it signs Thermite in. Required for `add` |
 | `--header H` | `key`: the header the key goes in. Default `Authorization` |
 | `--secret-file F` | `key`: a file with the header's whole value, such as `Bearer` and the token |

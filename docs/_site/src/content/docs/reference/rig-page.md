@@ -14,12 +14,12 @@ Other pages link to these places with the address and the anchor, for example `/
 
 | Anchor | What it is | When the page has it |
 | --- | --- | --- |
-| `#reporting` | The banner for a rig that does not report: stale or offline | The rig is stale or offline, and is not a stopped RunPod rig |
+| `#reporting` | The banner for a rig that does not report: stale or offline | The rig is stale or offline, is not a stopped RunPod rig, and control does not refuse it |
 | `#version` | The banner for the rig's version, or for its last update | Its version is behind or ahead of control's, control refuses it, or an update began in the last day |
 | `#pod` | The pod: its cost, its limits and its lifecycle | The rig was launched on RunPod |
 | `#limits` | The form that changes the spend limit and the idle stop | The same, while the pod exists |
-| `#results` | The results that must leave the pod before it ends | The same |
-| `#hist` | The history, with its filters | The same |
+| `#results` | The results that must leave the pod before it ends | The same, while the pod exists |
+| `#hist` | The history, with its filters | The rig was launched on RunPod |
 
 ## The top
 
@@ -44,7 +44,7 @@ The buttons at the right:
 
 A button that needs typed words stays off until the words are typed exactly. Control checks them again when the form arrives.
 
-The first lines under the title say, in a few sentences: for a RunPod rig, its pod and what it has cost; whether it reports; what runs on it; what its judge does; a check that failed; a key that waits for you.
+The first lines under the title say, in a few sentences: for a RunPod rig, its pod and what it has cost; whether it reports; what runs on it; what its judge does; a check that failed; a key that waits for you; for a RunPod rig, a connection to its pod that failed.
 
 A card after an action says what happened: its words in green, or **Not done.** and the reason.
 
@@ -77,7 +77,8 @@ Control compares the rig's version with its own ([Rig versions](rest-api.md#rig-
 | Ahead | `rig-1 runs Thermite 0.3.0, newer than control's 0.2.0.` | They work together. Update control when you can | None |
 | Refused, older | `Control refuses this rig: its version is too old.` | Both versions and the reason. Control takes none of its reports and sends it no commands. What the page shows is from its last report that control took. How many of its calls control refused, and when the last came. How to fix it | **Update to 0.2.0**, for a rig control can update; **Retire it** |
 | Refused, newer | `Control refuses this rig: its version is too new.` | The same, and to update control to the rig's version or later. The refusal then ends by itself | **Retire it** |
-| Updated | `Updated. It runs Thermite 0.2.0, as control does.` | The steps of the last update | None |
+| Updated | `Updated. It runs Thermite 0.2.0, as control does.`, or `The last update stopped, but it runs Thermite 0.2.0, as control does.` | The steps of the last update | None |
+| Update, version unknown | `The update to 0.2.0 is under way. Control does not know the rig's version.` (or `stopped`) | The notice, and the update's steps | None |
 
 When the update can't come from control, the banner says how to do it:
 
@@ -101,6 +102,8 @@ When the update can't come from control, the banner says how to do it:
 The rig's volumes, tokens, key, ledger, runs and results stay. A trial in progress stops, and the harness plans it again. On a machine the update writes only the two container units: the rig's secrets, keys, volumes and networks stay as they were. If a step fails, the banner shows **The update stopped**, and its steps say why.
 
 ## Blocks
+
+A key that waits for you has a card under the banners, with its fingerprint and **Accept this key**: see [Accept a rig's key](../how-to/operate/accept-a-rig-key.md).
 
 **At work** lists the runs at work now. **Checks** lists the rig's three [checks](rig-checks.md), each with **Run it**; for a refused rig it says `Control sends no command to a refused rig, so its checks can't run. Update it first.` **Runs on this rig** lists every run; for a rig that does not report, or that control refuses, its heading says `as of its last report`. **The judge's last jobs** lists its last 8 jobs.
 
@@ -149,9 +152,9 @@ Five boxes, each with what it does and its button. A box that does not apply now
 | Box | Button | Applies when | Typed words |
 | --- | --- | --- | --- |
 | **Stop** | **Stop the pod** | The pod runs, and no change or full reset is under way | |
-| **Start** | **Start the pod** | The pod is stopped, and no change is under way | |
-| **Restart** | **Restart the pod** | The pod runs, and no change is under way | |
-| **Full reset** | **Start the full reset** | The pod runs, and no change is under way | `reset <rig>` |
+| **Start** | **Start the pod** | The pod is stopped, and no change or full reset is under way | |
+| **Restart** | **Restart the pod** | The pod runs, and no change or full reset is under way | |
+| **Full reset** | **Start the full reset** | The pod runs, and no change or full reset is under way | `reset <rig>` |
 | **Terminate** | **Terminate** | No change or full reset is under way | `terminate <rig>` |
 
 After a button, the page says what began: `Stopping: its runs are paused and its results go out first, then the pod stops.`, `Starting: RunPod starts the pod, and its paused runs resume once it runs.`, `Restarting: the pod stops, then starts again.`, or `Terminating: its runs are paused, and the pod is removed only once every result has left it.` A refusal shows **Not done.** with RunPod's or control's reason, such as `RunPod has no free GPU for pod … now, so the pod stays stopped (…)`. The full reset goes on as for any rig: [Fully reset a rig](../how-to/operate/rig-lifecycle.md#fully-reset-a-rig).
@@ -163,7 +166,7 @@ While a change is under way, a card shows it in words, such as `stopping: waitin
 | Stop | Pause the runs at a safe point. Send the waiting results out of the pod. Wait until they have left the pod (15 minutes at most). Ask RunPod to stop the pod |
 | Start | Ask RunPod to start the pod. Wait for the pod to run. Resume the runs the stop paused |
 | Restart | Ask RunPod to stop the pod. Wait for the pod to stop. Ask RunPod to start it again, and wait for it to run. Resume the runs |
-| Terminate | Pause the runs at a safe point. Wait until no judge job and no command waits on the rig. Make a full export. Wait until every result has left the pod. Ask RunPod to delete the pod and its volume |
+| Terminate | Pause the runs at a safe point. Wait until no judge job and no command waits on the rig (1 hour at most). Make a full export (30 minutes at most). Wait until every result has left the pod (1 hour at most). Ask RunPod to delete the pod and its volume |
 
 What went wrong last, such as `Not terminated: …`, shows in red under them.
 

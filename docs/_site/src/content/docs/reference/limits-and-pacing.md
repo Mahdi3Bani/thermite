@@ -31,7 +31,7 @@ Thermite's limits are of four kinds. Only a cap can stop a run's work, and only 
 | `THERMITE_RESEARCH_MAX_MB` | The harness's settings | None | A run's fetches are refused, in any mode: `the corpus is full (<n> MiB archived)`. Its other tools go on |
 | Turns per trial (`max_turns`) | **Edit rig**, or `THERMITE_MAX_TURNS` | None | One trial ends after that many model replies. The Codex CLI does not report its replies, so in Codex each message and each tool call counts as one. The lane's next trial starts afresh |
 | A RunPod test's stop time (`stop_after_minutes`) | **End it after (minutes)** on the test pod form, REST or MCP | None | The test pod is removed. At least 5 minutes. A test spends money: see [Test a GPU on RunPod](../how-to/install/runpod-test.md) |
-| A RunPod rig's spend limit (`spend_limit_usd`) | The launch, or the rig's limits later, over REST, MCP or the command line | None | Control stops the pod, its results sent out first: its runs are paused, its GPU is no longer billed and its volume stays. A start is refused until the limit is raised or cleared. See [Rigs on a GPU cloud](rest-api.md#rigs-on-a-gpu-cloud) |
+| A RunPod rig's spend limit (`spend_limit_usd`) | **Launch on RunPod**, or **Change the spend limit or the idle stop** on the rig's page; or the launch and the rig's limits over REST, MCP or the command line | None | Control stops the pod, its results sent out first: its runs are paused, its GPU is no longer billed and its volume stays. A start is refused until the limit is raised or cleared. See [Rigs on a GPU cloud](rest-api.md#rigs-on-a-gpu-cloud) |
 | A RunPod rig's idle stop (`idle_stop_minutes`) | The same | None | When no run has been at work on the rig for that many minutes (no run running, or every run paused, blocked or finished), control stops the pod as for the spend limit. At least 5 minutes. Assigning or resuming a run starts the pod again. The dashboard's launch form fills in 30 minutes, which the owner can change or clear; the REST API, MCP and the command line have no default. See [When a rig is idle](rest-api.md#when-a-rig-is-idle) |
 
 - **A paused run waits.** The judge works only on running runs, so a paused run's queued judge jobs stay queued until it is resumed.
@@ -196,7 +196,8 @@ None of these ends research. Nothing limits how many experiments a run's [experi
 | The auditor's answer | One check |
 | The advisors' experiments in one request to the harness | Up to 20 experiments and 20 moves |
 | The queue in the planner's and the teachers' brief | The first 40 up next, the newest 20 ideas, every experiment in progress, and the newest 20 tried, with the judge's verdicts. Details are cut to 600 characters and whys to 400 |
-| The **Planner** tab's hand-outs | The newest 30. Control keeps the newest 50 for each run |
+| The **Planner** tab's **What the planner did** | The newest 30 entries: hand-outs, the planner's changes to the queue and the rules, and the messages it read. Control keeps the newest 50 hand-outs for each run |
+| The messages under **Tell the planner** | Your newest 10 to the planner or to everyone working. Control keeps the newest 200 messages for each run |
 
 ## Field notes and the knowledge base
 

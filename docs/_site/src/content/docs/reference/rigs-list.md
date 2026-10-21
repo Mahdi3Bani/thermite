@@ -10,7 +10,7 @@ sidebar:
 
 ## The top
 
-The line beside the title counts the rigs, then, when there are any, those that need an update, are stale, are offline or are stopped, then the runs at work. For example: `7 rigs · 2 need an update · 1 stale · 1 offline · 1 stopped · 4 runs at work`. The runs at work are the running runs on rigs that are live or stale: a stale rig may still be at work.
+The line beside the title counts the rigs, then, when there are any, those that need an update, are stale, are offline or are stopped, then the runs at work. For example: `7 rigs · 2 need an update · 1 stale · 1 offline · 1 stopped · 4 runs at work`. The runs at work are the running runs on rigs that are live, stale or have a key to accept: such a rig may still be at work.
 
 The buttons at the right:
 
@@ -31,18 +31,20 @@ The chips above the table narrow it. Each shows how many rigs it holds. They are
 | **On RunPod** | The rig was launched on RunPod |
 | **Stopped** | The state is **Stopped** |
 
+With no rig, the page says `No rig has reported yet.`; a chip with no rig shows `No rig here.`
+
 ## Columns
 
 | Column | What it shows |
 | --- | --- |
 | **State** | A chip: see [States](#states). Its **i** says what each one means |
 | **Rig** | The rig's name, a link to its page |
-| **Where it runs** | `Machine · gpu-host-1`, `Cluster · cluster-1`, `RunPod · EU-RO-1`, `Joined · a machine` or `Joined · a namespace`, or `Set up by you` for a rig in control's rig tokens file or added with `thermite rig add`. Under it, the rig's hardware as it reported it, or a pod's GPUs before its first report |
+| **Where it runs** | `Machine · gpu-host-1` (`gpu-host-1, removed` once the rig was removed there), `Cluster · cluster-1`, `RunPod · EU-RO-1`, `Joined · a machine` or `Joined · a namespace`, or `Set up by you` for a rig in control's rig tokens file or added with `thermite rig add`. Under it, the rig's hardware as it reported it, or a pod's GPUs before its first report |
 | **Version** | The Thermite version of the rig's harness and supervisor: see [Version](#version) |
-| **Run at work** | The running run, a link to its page, with its campaign and its last attempt, such as `q4-gemv · last attempt 4 min ago`. On a rig that does not report, it is grey and says `as of its last report`. With no run at work: `No run at work`, and why (see [A stopped pod](#a-stopped-pod)), how many runs are paused, or `no campaign assigned` |
-| **Progress** | The run at work's progress: `+9.1%` for a hill climb, `4/8 goals` for a goal run, `84 verified claims` for a research run. Grey on a rig that does not report |
+| **Run at work** | The running run, a link to its page, with its campaign and its last attempt, such as `q4-gemv · last attempt 4 min ago`, or `no attempt yet`, and `and 1 more` when more runs are running. On a rig that does not report, it is grey and says `as of its last report` (`as of 12 min ago` for a refused rig). With no run at work: `No run at work`, and why: a stopped pod's reason (see [A stopped pod](#a-stopped-pod)), `not reported yet`, how many runs are paused (`2 paused`), `no run running`, or `no campaign assigned` |
+| **Progress** | The run at work's progress: `+9.1%` for a hill climb, `4/8 goals` for a goal run (`goals not checked yet` before its first check), `84 verified claims` for a research run. Grey on a rig that does not report |
 | **Last report** | How long ago the rig last reported, such as `12 s ago`. Orange when the rig is stale, red when it is offline or refused, with `refused since` under it. `none yet` before the first report |
-| **Per hour** | Only for a rig on RunPod: what the pod costs per hour now, such as `$1.65/h`, and under it what it has cost so far, such as `$9.80 so far`. A stopped pod says `storage only`: RunPod bills only its volume, which control does not count. The column shows only when a rig runs on RunPod |
+| **Per hour** | Only for a rig on RunPod: what the pod costs per hour now, such as `$1.65/h`, and under it what it has cost so far, such as `$9.80 so far`. A stopped pod says `storage only`: RunPod bills only its volume, which control does not count. A pod that RunPod no longer has says `none`, with what it cost `in all`. The column shows only when a rig runs on RunPod |
 
 ## States
 
@@ -66,6 +68,7 @@ The chips above the table narrow it. Each shows how many rigs it holds. They are
 | **update control ›**, red, with `0.3.0 · refused, newer` | Control refuses the rig because its version is too new: control needs the update |
 | `0.2.0`, orange, with `newer than control` | The rig runs a newer version that works with control's |
 | `not reported` | The rig sends no version: control works with it as before |
+| `not reported yet` | A pod on RunPod before its first report |
 
 **needs update** and **update control** open the rig's page at its version banner (`/ui/rigs/<rig>#version`). The update and its steps run there: see [Update to control's version](../how-to/operate/rig-lifecycle.md#update-to-controls-version).
 
@@ -78,6 +81,7 @@ A RunPod rig whose pod is stopped shows `No run at work` and why it stopped:
 | `its idle stop stopped it 2 h ago · a new run wakes it` | The [idle stop](../how-to/install/runpod-rig.md#5-watch-its-cost-and-change-its-limits) stopped the pod. Starting or resuming a run on it starts the pod first |
 | `you stopped it 2 h ago · a new run wakes it` | The owner stopped it |
 | `its spend limit stopped it 2 h ago · raise the limit to start it` | It cost its spend limit. Control refuses to start it until the limit is raised or cleared |
+| `it is stopped · a new run wakes it` | It stopped another way, such as from RunPod's console |
 
 Its **Last report** says `then it stopped` under the time.
 

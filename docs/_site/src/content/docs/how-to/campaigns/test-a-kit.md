@@ -37,6 +37,7 @@ Use one of:
 
 - **Try the kit first** on the **New campaign** page;
 - **Start a run** on a campaign's page: in the panel, choose the rig under **Where it runs**, choose **Off: a try** under **Agents**, and press **Start the run**. A try needs no model, so the rig need not have one. This works for a campaign started from the command line too;
+- for a campaign control keeps, `--agents off` on `thermite run start`, such as `npx thermite run start sort-speed --rig local-1 --agents off --control http://127.0.0.1:8800 --token-file .dev/secrets/control-admin-token`, or `"agents": false` over REST or MCP's `start_run`;
 - `--agents off` on the command line. Run `npx thermite` in your Thermite folder, after `npm ci` and `npm run build` (see [the command line](../../reference/command-line.md)). The example uses the owner's token file of the local stack, `.dev/secrets/control-admin-token`. If you made an owner's token of your own, use its file instead.
 
   ```sh
