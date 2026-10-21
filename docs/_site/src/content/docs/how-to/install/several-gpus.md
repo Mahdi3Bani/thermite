@@ -37,14 +37,15 @@ On a machine, a GPU that another rig control set up there already uses shows "us
 
 ## Change the split later
 
-Once a rig has its GPU set, three places change the judge's share. When the share changes, the rig's harness restarts to regroup the GPUs, so running trials and judge jobs start again.
+Once a rig has its GPU set, four places change the judge's share. When the share changes, the rig's harness restarts to regroup the GPUs, so running trials and judge jobs start again.
 
 - **Edit rig**: on the rig's page press **Edit rig**, then under **4 · Where it runs** set **GPUs for the judge**. It says "Now: 2 for the judge, 2 for the agents." The box **What changes when you save** lists the restart. Press **Save changes**.
 - **New campaign**: under **Where it runs** › **Advanced**, **GPUs for the judge**.
 - **A campaign's page**: press **Start a run** at the top. The panel has **GPUs for the judge** under **More options**.
+- **From a script or an agent**: `--judge-gpus` on `thermite run start`, `judge_gpus` in `POST /v1/campaigns/<campaign>/runs`, or the owner's MCP `start_run` ([Start a run from a script or an agent](../campaigns/start-from-dashboard.md#start-a-run-from-a-script-or-an-agent)). An operator's `start_run` can't change it.
 
 :::caution[A campaign changes the whole rig]
-The last two change the rig's split for every run on it, not just the new one, and the restart ends the trials and judge jobs of the other runs there too; they start again. Leave **GPUs for the judge** empty to keep the rig's current split.
+The last three change the rig's split for every run on it, not just the new one, and the restart ends the trials and judge jobs of the other runs there too; they start again. Leave **GPUs for the judge** empty to keep the rig's current split.
 :::
 
 A rig without a GPU set of two or more has no such field on Edit rig. From a campaign it says "rig-1 has no GPU set to split: its GPUs are set where it is deployed."

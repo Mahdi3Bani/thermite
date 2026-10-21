@@ -317,7 +317,7 @@ The prompt adds: "You also have tools from outside Thermite, from the MCP server
 
 With `fetch_domains` holding `"*"`, no advisor gets an MCP server, so private tools and the open web never meet in one advisor. The run's live view says so once: `the advisors may fetch any web page (fetch_domains "*"), so they get no MCP server: <names>`.
 
-A server that fails gives the advisor a tool error, `The MCP server <name> failed: <why>. Go on without it.`, and the advisor goes on. The supervisor tells the harness, which records `mcp_server_failed` in the run's history once, with `"agents": "advisors"`, and `mcp_server_back` when a call works again.
+A server that fails gives the advisor a tool error, `The MCP server <name> failed: <why>. Go on without it.`, and the advisor goes on. The supervisor tells the harness, which records `mcp_server_failed` in the run's events once, with `"agents": "advisors"`, and `mcp_server_back` when a call works again.
 
 ## Spending
 

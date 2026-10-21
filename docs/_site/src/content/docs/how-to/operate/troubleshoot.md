@@ -329,23 +329,26 @@ A reason about one experiment names its state, then the rule: `only queued exper
 | --- | --- |
 | `the server answered 401: check the key` (or `the client secret`, `the sign-in`) | The server refused the sign-in. Paste the key again in **New value**, or the secret in **New client secret**, and press **Save and read its tools**. For OAuth, press **Sign in again ↗** |
 | `can't read its tools:` and the error | Control could not connect, or the server did not answer as an MCP server. Check the **MCP URL**: the server's streamable HTTP or SSE address, as control reaches it |
-| `its key cannot be opened: enter it again` | Control can't open the sealed key, for example after its secrets key changed. Paste the value in **New value** |
+| `its key cannot be opened: enter it again` or `it has no key: enter it again` | Control can't open the sealed key, for example after its secrets key changed. Paste the value in **New value** |
 | `Its token could not be opened at the update. Enter the key again.` | A server made from an outside knowledge base at the update to 0.1.0 whose token control could not open. Paste `Bearer` and the token in **New value** |
 | `the server gave no token for its client ID and secret:` and the server's error | Check **Client ID**, **New client secret** and **Scopes** against the server's settings |
 | `The sign-in ended. Sign in again.` | The server refused to renew the OAuth sign-in. Press **Sign in again ↗** |
+| `its sign-in could not be renewed:` and the error | Control could not reach the server's sign-in service to renew the OAuth sign-in. Press **Read tools again** once the server answers. If it goes on, open the row and press **Sign in again with another account ↗** |
 | `The server does not register clients by itself. Register Thermite on the server, then give its client ID here.` | Register Thermite as a client on the server, with the callback `/v1/mcp-oauth/callback` on control's address, and put its client ID in **Client ID** |
+| `Can't find the server's sign-in:` or `The server did not register Thermite:` and the error | The server gives no OAuth sign-in that control can find or use. Check the **MCP URL**, or give a **Client ID** that the server made for Thermite |
+| `The server did not sign Thermite in` or `The server did not take the sign-in:` and the reason | You said no on the server's page, or the server refused the sign-in. Press **Sign in ↗**, or **Sign in again ↗**, and allow Thermite |
 | `This sign-in is not known, or was used already. Start it again.` or `This sign-in took more than 15 minutes. Start it again.` | Press **Sign in again ↗**, and finish on the server's page within 15 minutes |
 
 ### An MCP server fails during a run
 
-- **You see:** in a run's **Live** view, `the MCP server gbrain failed: <why>. The workers go on without it.` (or the planner, or the advisors). The run's history has an `mcp_server_failed` event with the server, the kind of agent and the reason. An agent's call came back as a tool error, `The MCP server gbrain failed: <why>. Go on without it.`, or `The MCP server gbrain can't be used now: <why>. Go on without it.` when the rig never got the server.
+- **You see:** in a run's **Live** view, `the MCP server gbrain failed: <why>. The workers go on without it.` (or the planner, or the advisors). The rig's events (`GET /v1/rigs/<rig>/events`, or MCP's `recent_events`) have an `mcp_server_failed` event with the server, the kind of agent and the reason. The run's **History** tab does not show it. An agent's call came back as a tool error, `The MCP server gbrain failed: <why>. Go on without it.`, or `The MCP server gbrain can't be used now: <why>. Go on without it.` when the rig never got the server.
 - **Why:** the server did not answer, refused the call, or the rig has no sign-in for it: `control can't sign in to it: …` (its sign-in ended, its key can't be opened), or `Settings has no MCP server of that name now` (it was deleted after the run started). A rig gets a server's sign-in on the same beat as its model route, every 30 seconds.
 - **Do:** nothing stops: the run goes on, and the agents work without the server's tools. Fix the server on **Settings** (its row says why), and the next call that works records `mcp_server_back` and says `the MCP server gbrain works again.` in **Live**. An advisor with `fetch_domains` `"*"` gets no MCP server at all, by design: see [Advisors file](../../reference/advisors-file.md#mcp-servers).
 
 ### A run does not start: the kit names an MCP server
 
 - **You see:** `The kit names the MCP server paper-search, and Settings has no server of that name. Add an MCP server named paper-search in Settings › Providers, or take it out of the kit. Then start the campaign again.`; or, on **Commands**, a failed `assign_campaign` whose outcome says `the kit names the MCP servers …, and the assignment names …`.
-- **Do:** add the server in **Settings** with that exact name, or take it out of the kit. A run assigned with `thermite assign` or over MCP needs the kit's list in its `mcp_servers` ([Give agents MCP tools](../campaigns/give-agents-mcp-tools.md#3-start-the-run)).
+- **Do:** add the server in **Settings** with that exact name, or take it out of the kit. From **New campaign**, the campaign is saved all the same: then press **Start the campaign** again, or start the saved campaign with **Start a run** on its page. A run assigned with `thermite assign` or over MCP needs the kit's list in its `mcp_servers` ([Give agents MCP tools](../campaigns/give-agents-mcp-tools.md#3-start-the-run)).
 
 ## Something was refused
 

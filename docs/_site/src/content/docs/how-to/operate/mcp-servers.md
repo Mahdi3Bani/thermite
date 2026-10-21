@@ -17,19 +17,19 @@ This page is for an MCP server that is already in **Settings › Providers**: ho
 Press the cog icon, **Settings**, at the foot of the sidebar. The block **MCP servers** has one row for each server:
 
 - its name and how it signs in: `gbrain · key in a header`;
-- its state: `Connected · 31 tools · read 3m ago`, `Its tools are not read yet. Press Read tools again.`, or, in red, the last error, such as `the server answered 401: check the key`;
-- its address; the end of its secret (`Authorization · key …c41b`, `client thermite-control · secret …9d0e`), `signed in · the sign-in renews itself`, `OAuth sign-in ended`, or `no secret`;
+- its state: `Connected · 31 tools · read 3m ago`, `Its tools are not read yet. Press Read tools again.`, or, in red, `Not signed in yet. Sign in to read its tools.`, `The sign-in ended. Sign in again.` or the last error and when it came, such as `the server answered 401: check the key (3m ago)`;
+- its address; the end of its secret (`Authorization · key …c41b`, `client thermite-control · secret …9d0e`), `signed in · the sign-in renews itself`, `OAuth sign-in ended`, `not signed in yet`, or `no secret`, and `not HTTPS` for an `http://` address;
 - the kits that name it, `named by q4-gemv-kit`, or `no kit names it`.
 
 Open the row to see its tools, each with what it does and **reads** or **writes**, from the server's own hints. A server that fails and that a kit names also says `q4-gemv-kit names it. Runs that use that kit go on without its tools until it works again, and their history says so.`
 
 ## Read its tools again
 
-Press **Read tools again** on the row. Control reads the server's tools with its sign-in and calls none of them. The block says, for example, `gbrain answers. Control read 31 tools, and called none of them.`, or **Not done.** and the reason.
+Press **Read tools again** on the row. Control reads the server's tools with its sign-in and calls none of them. The block says, for example, `gbrain answers. Control read 31 tools, and called none of them. Next: name it in a kit, on a campaign's How to measure step.`, or **Not done.** and the reason.
 
 ## Sign in again
 
-An OAuth server shows **Sign in again ↗** when its sign-in ended (the server refused to renew it), and **Sign in again with another account ↗** inside its row when it works. Press it: a new tab opens the server's sign-in page. Allow Thermite there; the tab comes back to **Settings**. Control renews an OAuth sign-in by itself while the server lets it, when less than five minutes of its access token are left.
+An OAuth server shows **Sign in ↗** until it is first signed in, **Sign in again ↗** when its sign-in ended (the server refused to renew it), and **Sign in again with another account ↗** inside its row when it works. Press it: a new tab opens the server's sign-in page. Allow Thermite there; the tab comes back to **Settings**. Control renews an OAuth sign-in by itself while the server lets it, when less than five minutes of its access token are left.
 
 ## Change a server
 
