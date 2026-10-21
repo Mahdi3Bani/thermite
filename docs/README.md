@@ -6,7 +6,7 @@ Thermite is an autoresearch harness. Agents propose changes, and code they canno
 
 ## The documentation site
 
-The documentation is a website built from [`_site/`](_site/src/content/docs/index.mdx). Every page is a Markdown file, so you can also read it here on GitHub. It follows [Diátaxis](https://diataxis.fr/):
+The documentation is a website at [usethermite.com](https://usethermite.com), built from [`_site/`](_site/src/content/docs/index.mdx). Every page is a Markdown file, so you can also read it here on GitHub. It follows [Diátaxis](https://diataxis.fr/):
 
 | Section | Start with | For |
 | --- | --- | --- |

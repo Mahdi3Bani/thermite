@@ -116,7 +116,7 @@ The list below is where the work starts. Step 2 fixes it with the owner.
 - **The known-limits page and the security model:** goal 007 writes them into the site.
 - **SECURITY.md, CONTRIBUTING.md and the other community files:** goal 008.
 - **Reference generated from new code registries** (settings, events, OpenAPI): goals 029 and 050.
-- **Other things left out:** versioned docs, a custom domain, translations and video.
+- **Other things left out:** versioned docs, translations and video.
 - **Changes to Thermite itself.** A gap found while writing becomes a new goal.
 
 ## Why
@@ -140,7 +140,7 @@ The docs today are twelve dense pages, written for the people who built Thermite
 - [x] Each tutorial was followed end to end on a clean local stack, and each how-to guide that runs locally was followed once. Progress records what ran, and which pages need paid services or real hardware and were not run.
 - [x] A fresh reader that saw only the built site found no step that it could not follow, or each of its findings is fixed.
 - [x] The old user pages are moved, and no tracked file links to a moved page. `docs/README.md`, `README.md`, `AGENTS.md` and `CONVENTIONS.md` point to the site.
-- [x] CI builds and checks the docs. (A workflow deployed the site to GitHub Pages from `main` until 2026-10-20; the owner deploys it on Cloudflare instead.)
+- [x] CI builds and checks the docs. Cloudflare Pages builds the site from `main` and serves it at usethermite.com. (A workflow deployed it to GitHub Pages until 2026-10-20.)
 - [x] `npm run check` passes, and the public check passes over the new files.
 
 ## Decisions
@@ -161,6 +161,7 @@ The docs today are twelve dense pages, written for the people who built Thermite
 - 2026-10-19, owner: The contract reference lists fields that are accepted but not used yet, each marked so.
 - 2026-10-19, owner: To run tutorial 4 end to end, create a small public test repository on the owner's GitHub account; the owner deletes it afterwards.
 - 2026-10-20, owner: The site will be served from Cloudflare, under a domain the owner chooses, and the owner deploys it later. Until then the site is built and checked here and not published. The GitHub Pages workflow goes.
+- 2026-10-20, owner: The site is served at usethermite.com by Cloudflare Pages, built from `main`, with a Fathom Analytics site of its own. The code moves to `main` now, so the site can build from it. Work stays on the development branch.
 
 ## Open questions
 
@@ -220,6 +221,13 @@ The docs today are twelve dense pages, written for the people who built Thermite
 
   Code gaps found on the way went to the development session as they came up. Most are fixed on the branch; the rest wait for its next batch. Security items went to the maintainers' private notes only.
 - 2026-10-20: The GitHub Pages workflow (`.github/workflows/docs.yml`) is removed, by the owner's decision above. CI still builds and checks the site on every pull request and on `main`.
+- 2026-10-20: The site moves to usethermite.com:
+  - its address and base path are `https://usethermite.com/`;
+  - Fathom Analytics counts page views, without cookies;
+  - `public/_headers` gives Cloudflare a Content Security Policy and other security headers, with `noindex` on the `pages.dev` address;
+  - `public/robots.txt` points to the sitemap.
+
+  The policy was tested in headless Chrome against the built site, served with those headers. Diagrams, code copy buttons, the theme and search all work, with no policy errors. A stricter policy was refused, as it should be. `docs/writing-docs.md` says how Cloudflare builds the site. The first build follows the push of `main`.
 
 ---
 

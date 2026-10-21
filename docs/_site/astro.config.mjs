@@ -10,9 +10,12 @@ import starlightLlmsTxt from "starlight-llms-txt";
 import { pageIndex } from "./src/page-index.mjs";
 import { remarkRelativeLinks } from "./src/plugins/remark-relative-links.mjs";
 
-const site = "https://iammrduncan.github.io";
-const base = "/thermite";
+const site = "https://usethermite.com";
+const base = "/";
 const repo = "https://github.com/iammrduncan/thermite";
+// Fathom Analytics counts page views without cookies, only on the site's own domain (not on
+// pages.dev or a local preview).
+const fathom = { src: "https://cdn.usefathom.com/script.js", site: "RNENIVAD", domain: "usethermite.com" };
 
 export default defineConfig({
   site,
@@ -36,6 +39,17 @@ export default defineConfig({
         "Thermite runs research campaigns with AI agents. Agents propose changes; code they cannot touch measures them, judges them and keeps the best.",
       logo: { src: "./src/assets/logo.svg", alt: "Thermite" },
       favicon: "/favicon.svg",
+      head: [
+        {
+          tag: "script",
+          attrs: {
+            src: fathom.src,
+            "data-site": fathom.site,
+            "data-included-domains": fathom.domain,
+            defer: true,
+          },
+        },
+      ],
       social: [{ icon: "github", label: "GitHub", href: repo }],
       editLink: { baseUrl: `${repo}/edit/main/docs/_site/` },
       lastUpdated: true,

@@ -60,7 +60,7 @@ You want your own AI assistant to watch and steer campaigns for you.
 
 1. [Let an agent run Thermite over MCP](how-to/automate/agent-over-mcp.md).
 2. [Tokens and roles](reference/tokens.md): what an agent may and may not do. Only you approve what matters.
-3. Point your agent at [`llms.txt`](https://iammrduncan.github.io/thermite/llms.txt), which lists every page of this site.
+3. Point your agent at [`llms.txt`](https://usethermite.com/llms.txt), which lists every page of this site.
 
 ## Words you will meet
 

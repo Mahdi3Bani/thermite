@@ -77,3 +77,4 @@ Decisions that shape the whole product, newest last in each section. A decision 
 | 2026-10-19 | Advisors have no default spend limit. |
 | 2026-10-19 | The plans are public, in `docs/plan/`. Each roadmap item has a goal. A new idea becomes a new goal and goes into the roadmap by priority. |
 | 2026-10-19 | The documentation is a site built with Astro Starlight from `docs/_site/` and arranged by Diátaxis: tutorials, how-to guides, reference and explanation. It is written for an average person, and agents read it through `llms.txt` and `llms-full.txt`. Repository docs stay in `docs/`. |
+| 2026-10-20 | The documentation site is served at usethermite.com by Cloudflare Pages, built from `main`. The code moved to `main` early, for the site; work stays on the development branch, and `main` follows it. |

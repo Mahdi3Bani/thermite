@@ -6,7 +6,7 @@ Thermite's documentation is a website built with [Astro Starlight](https://starl
 
 ```sh
 npm run docs:install   # once: the site's own dependencies, from docs/_site/package-lock.json
-npm run docs:dev       # a live preview at http://localhost:4321/thermite/
+npm run docs:dev       # a live preview at http://localhost:4321/
 npm run docs:build     # the site, in .dev/site/
 npm run docs:check     # what the build cannot check; run it after docs:build
 ```
@@ -23,6 +23,13 @@ The site's dependencies are pinned to exact versions and kept apart from Thermit
 - a placeholder in angle brackets, such as `<campaign>`, outside a code span: the site reads it as an HTML tag and hides it, so write it in backticks;
 - a page missing from `llms.txt` or `llms-full.txt`, or without its Markdown copy;
 - a page that is still a stub.
+
+## Where the site is served
+
+The site is at [usethermite.com](https://usethermite.com), on Cloudflare Pages. Cloudflare builds it from `main` on every push: in `docs/_site/`, with `npm run build -- --outDir dist` on Node.js 22, and it serves `dist/`. Other branches and pull requests get no preview.
+
+- `docs/_site/public/_headers` sets the response headers, among them the Content Security Policy. A page that loads a script, style, image or font from another host needs that host added there, or the browser blocks it.
+- The pages count visits to usethermite.com with [Fathom Analytics](https://usefathom.com), which sets no cookies. Its script and site code are in `astro.config.mjs`.
 
 ## Where pages go
 

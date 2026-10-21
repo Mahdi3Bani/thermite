@@ -15,6 +15,7 @@ It has four parts, then the release itself. The parts can run at the same time. 
 - **2026-10-19:** The docs become a documentation site, built with Astro Starlight from `docs/_site/` and arranged by Diátaxis, with `llms.txt` and `llms-full.txt` for agents (goal 060).
 - **2026-10-20:** The owner took the recommended answer to each open decision, except the docs site's address: the site will be served from Cloudflare, under a domain the owner chooses, and the owner deploys it later. The answers are in the table below and in each goal.
 - **2026-10-20:** The owner merges the code into `main` and makes the tag, when the project is ready for one.
+- **2026-10-20:** The docs site is served at usethermite.com by Cloudflare Pages, built from `main`. So the code moved to `main` early, at the development branch's state that day. Work stays on the development branch, and `main` follows it.
 
 ## What a tester gets
 
@@ -127,6 +128,6 @@ The owner launches a GPU rig on RunPod from control, runs campaigns on it, and s
 | Terms in the community files | No contributor agreement, no sign-off rule, the Contributor Covenant (2026-10-20) | [008](goals/008-community-files.goal) |
 | Subscription sign-in tests | Before the tag (2026-10-20) | [009](goals/009-subscription-sign-in-tests.goal) |
 | How the code reaches `main` | A pull request merged as a fast-forward (2026-10-20) | [026](goals/026-ship-v0.1.0.goal) |
-| The docs site's address | Cloudflare, under the owner's domain; the owner deploys it after the release work (2026-10-20) | [060](goals/060-docs-site.goal) |
+| The docs site's address | usethermite.com, on Cloudflare Pages, built from `main` (2026-10-20) | [060](goals/060-docs-site.goal) |
 
 One step needs the owner's GitHub account: the repository settings ([002](goals/002-ci-and-repository-settings.goal)). The image packages are public ([010](goals/010-published-images.goal)).

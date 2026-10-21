@@ -1,0 +1,20 @@
+# Response headers for the site on Cloudflare Pages, which reads this file from the build output.
+# Starlight's pages carry small inline scripts, Pagefind's search runs WebAssembly, and Fathom
+# Analytics loads from its own host; the policy allows those and nothing else from outside.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.usefathom.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://cdn.usefathom.com; connect-src 'self' https://cdn.usefathom.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  Strict-Transport-Security: max-age=31536000
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+# Astro names these files by their content, so a browser can keep them.
+/_astro/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Only the custom domain is indexed.
+https://:project.pages.dev/*
+  X-Robots-Tag: noindex
+https://:version.:project.pages.dev/*
+  X-Robots-Tag: noindex
