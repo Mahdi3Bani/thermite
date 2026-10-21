@@ -524,7 +524,7 @@ test("a folder holds everything a run produces: the run, its trials, its documen
     assert.ok(x, kind);
     return x;
   };
-  // The run: its campaign and version, mode, seed, direction, agents and briefing, then status.
+  // The run: its campaign and version, mode, seed, note, agents and briefing, then status.
   const run = one("run");
   assert.equal(run.ref, "rs-1");
   assert.equal(run.title, "Run rs-1: research, kernel-survey");
@@ -535,7 +535,7 @@ test("a folder holds everything a run produces: the run, its trials, its documen
       "Campaign: kernel-survey, version 2",
       "Mode: research",
       `Seed: https://git.example.com/kernels.git at ${"c".repeat(12)}`,
-      "Direction: memory first",
+      "Note: memory first",
       "Agents: on",
       "Briefing: 2 items from past research",
       "Status: paused (the owner paused it)",

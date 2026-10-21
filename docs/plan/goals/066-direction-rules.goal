@@ -6,7 +6,7 @@ version: "0.1.0"
 part: "Running campaigns"
 depends_on: ["064"]
 created: 2026-10-20
-updated: 2026-10-20
+updated: 2026-10-21
 ---
 
 # 066 · Rules name directions, picked with `:direction:`
@@ -81,6 +81,7 @@ The owner, 2026-10-20: rules use direction names only. A rule in free words reac
   - **Pages:** Choose what a run tries next (Make a rule: tell the planner, Directions, Old rules in words, Remove a rule, What the planner did), Steer a run, the planner's explanation, the glossary, signed commands, MCP tools and the records table in How it fits together.
   - **Acceptance script changed:** `scripts/control-acceptance.mjs` steers from the dashboard with a message to the planner (Tell the planner) instead of the dashboard's `redirect`, and waits for its `agent_message` event.
   - **Not part of v0.1.0:** goal 064's **Lanes** rule in Add a rule and the contract's lane count shown as a rule. The revised mockup left them out. A `lane_count` rule still goes with `redirect` from the command line, and shows in the rules list when set.
+- 2026-10-21: Built the owner's answer on the flag. `thermite assign` and `assign-payload` take `--note TEXT`, the run's note. `--direction` still works in v0.1.0 as its old name, and prints one line on standard error: `--direction is now --note: a direction is now a named line of experiments`; both together are refused. The signed `assign_campaign` field and the ledger's column keep the name `direction`, so the signed command's contract, the ledger and runs already recorded do not change. Where the text shows, it is now the run's note: `Note: …` on the run's page in the knowledge base (`src/core/kb-index.ts`). No screen, MCP tool or REST route showed it. Tests: `src/cli/assign.test.ts`, `src/control/kb.test.ts`. Pages: the command-line reference, signed commands and the knowledge base reference; the changelog.
 
 ---
 
