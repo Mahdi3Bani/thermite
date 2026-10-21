@@ -1,0 +1,51 @@
+---
+id: "075"
+title: "Model usage for each run, campaign and the whole system"
+status: IN_PROGRESS
+version: "0.1.0"
+depends_on: []
+created: 2026-10-21
+updated: 2026-10-21
+---
+
+# 075 · Model usage for each run, campaign and the whole system
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+
+## What
+
+Every model call the agents make is counted, and control shows the totals:
+
+- **Per call** (code records it, never an agent): the agent kind (workers, planner, teachers, auditor, review panel), the harness, the provider and the model; tokens in, split into cached and not cached where the provider says; tokens out (and reasoning tokens where the provider says); the time to the first token and the whole call's time, so output tokens a second.
+- **A run's Overview:** the totals and the speed (tokens out a second, median and spread), for each agent kind and model.
+- **A campaign's page:** the same, summed over all its runs, with each run's share.
+- **The whole system** (Overview): the same over every campaign and rig, for a period (today, 7 days, all).
+- **REST and MCP:** the same numbers, so they can be read without the dashboard.
+- Where a harness does not report a figure (for example cached tokens), the screen says "not reported", never 0.
+
+## Why
+
+The owner, 2026-10-21: "overview on a capmaign run doesn't show total tokens used etc... Would love some model stats (tok/s, total tokens in / out / cache / not-cached, etc...)... And a roll up to campaign for all runs under it, and a roll up to entire system."
+
+## Done when
+
+- [ ] The harness and the supervisor record each model call's usage and time, for every harness (Pi, OpenCode, Codex, Claude Code), as far as each reports it; the rig sends it to control with its events.
+- [ ] Control sums it per run, per campaign and for the system; REST and MCP give the sums.
+- [ ] The run's Overview, the campaign's page and the system Overview show them, after a mockup the owner approved.
+- [ ] Tests for the records, the sums and the "not reported" case; pages updated.
+
+## Decisions
+
+None yet.
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-21: Goal written from the owner's words. Trials already record tokens in and out (`trial_finished`); cached tokens, the planner's and advisors' calls, and times are not recorded yet. A mockup comes first for the screens.
+
+---
+
+Run with `/goal Complete docs/plan/goals/075-model-usage.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
