@@ -7,7 +7,8 @@
 //   - a worker trial runs Claude Code as the lane's user, with the token on file descriptor 3
 //     (in no environment) and the safety flags, edits the code and submits with thermite-trial;
 //   - the auditor, given the subscription's model on Edit rig, audits a large gain in Claude
-//     Code in the supervisor, with no tools, no settings or MCP, and its effort;
+//     Code in the supervisor, with no tools, no settings or MCP, its effort, and the token on
+//     file descriptor 3 (in no environment), without the scrub;
 //   - the subscription's usage windows reach the Providers page;
 //   - the token shows in no page, event or record.
 // Usage: COMPOSE="podman compose" node scripts/claude-acceptance.mjs
@@ -216,14 +217,14 @@ try {
   );
   const why = String(audited.reasons ?? "");
   check(
-    "the auditor ran in Claude Code in the supervisor, with no tools, no settings or MCP, its effort and the token in its environment",
+    "the auditor ran in Claude Code in the supervisor, with no tools, no settings or MCP, its effort, the token on file descriptor 3 (in no environment) and its own sandbox off",
     audited.decision === "clear" &&
       /Claude Code stand-in/.test(why) &&
       /tools=none /.test(why) &&
       /effort=high /.test(why) &&
       /token=set /.test(why) &&
-      /token_on=env /.test(why) &&
-      /scrub=1 /.test(why) &&
+      /token_on=fd3 /.test(why) &&
+      /scrub=unset /.test(why) &&
       /strict_mcp=true /.test(why) &&
       /no_settings=true /.test(why) &&
       /model=claude-opus-5-5\)/.test(why),

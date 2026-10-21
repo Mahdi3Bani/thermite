@@ -89,8 +89,9 @@ describe("advisors from control", () => {
     assert.deepEqual(old, {});
   });
 
-  test("a Claude Code advisor gets the token only in its environment, no tools or settings, and its answer is read", async () => {
+  test("a Claude Code advisor gets the token on file descriptor 3 and in no environment, no tools, settings or scrub, and its answer is read", async () => {
     // A stand-in for Claude Code: it answers the audit with what it was given (never the token).
+    // It reads the token where Claude Code does, from the descriptor its variable names.
     const dir = mkdtempSync(join(tmpdir(), "thermite-cc-adv-"));
     const bin = join(dir, "claude");
     writeFileSync(
@@ -101,7 +102,10 @@ process.stdin.on("data", (d) => (s += d));
 process.stdin.on("end", () => {
   const a = process.argv.slice(2);
   const v = (f) => a[a.indexOf(f) + 1];
-  const said = ["token=" + (process.env.CLAUDE_CODE_OAUTH_TOKEN === "tok-advisor" ? "set" : "missing"), "tools=" + JSON.stringify(v("--tools")), "settings=" + JSON.stringify(v("--setting-sources")), "strict=" + a.includes("--strict-mcp-config"), "model=" + v("--model"), "effort=" + v("--effort"), "scrub=" + process.env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB, "prompt=" + s.includes("look at this change")].join(" ");
+  const fd = process.env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR;
+  const onFd = fd ? require("node:fs").readFileSync(Number(fd), "utf8") : "";
+  const inEnv = Object.values(process.env).some((x) => x.includes("tok-advisor"));
+  const said = ["token=" + (onFd === "tok-advisor" ? "fd" + fd : "missing"), "env=" + (inEnv ? "has-token" : "clean"), "tools=" + JSON.stringify(v("--tools")), "settings=" + JSON.stringify(v("--setting-sources")), "strict=" + a.includes("--strict-mcp-config"), "model=" + v("--model"), "effort=" + v("--effort"), "scrub=" + process.env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB, "prompt=" + (s.includes("look at this change") && s.length > 200000)].join(" ");
   console.log(JSON.stringify({ type: "result", subtype: "success", is_error: false, result: JSON.stringify({ decision: "clear", reasons: said, citations: [] }) }));
 });
 `,
@@ -121,7 +125,8 @@ process.stdin.on("end", () => {
         timeout_s: 30,
       },
       system: "You audit changes.",
-      prompt: "Please look at this change.",
+      // As large as an audit's package may be: more than one command-line argument may hold.
+      prompt: `Please look at this change.\n${"x".repeat(200_000)}`,
       schema: AuditAnswer,
       answerSchema: Type.Object({}),
     });
@@ -129,7 +134,7 @@ process.stdin.on("end", () => {
     assert.equal(r.output?.decision, "clear");
     assert.equal(
       r.output?.reasons,
-      'token=set tools="" settings="" strict=true model=claude-opus-5-5 effort=high scrub=1 prompt=true',
+      'token=fd3 env=clean tools="" settings="" strict=true model=claude-opus-5-5 effort=high scrub=undefined prompt=true',
     );
   });
 });

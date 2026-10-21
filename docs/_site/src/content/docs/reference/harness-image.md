@@ -73,12 +73,11 @@ The workflow builds control, the harness images and the supervisor with `THERMIT
 | `thermite` command | Thermite's command line | `/usr/local/bin/thermite`. See [Command line](command-line.md) |
 | `thermite-trial` | The tools an agent uses from its own shell under OpenCode, Claude Code or Codex: `submit`, `dev-run`, `status`, `idea` and `note` (a [field note](knowledge-base.md#field-notes)), and the `research` commands: all ten for a research worker under OpenCode, and `fetch`, `read_source`, `search_corpus`, `add_claim` and `add_note` in a hill-climb or goal trial. See [Command line](command-line.md#thermite-trial) | `/usr/local/bin/thermite-trial` |
 | OpenCode | `OPENCODE_VERSION`, 2.0.32 by default. Always installed. One of the [worker harnesses](glossary.md); Pi, the default one, is a library built into Thermite. Pi gives its workers Thermite's tools directly: in a code trial `note`, `fetch`, `read_source`, `search_corpus`, `add_claim` and `add_note` beside its others, and in a research trial `note` beside the research tools. OpenCode is under the MIT license; its release's `LICENSE` is kept beside it | `/usr/local/bin/opencode`, with its `LICENSE` in `/usr/local/share/doc/opencode` |
-| Claude Code | `CLAUDE_CODE_VERSION`. Installed only when that argument names a version. It brings its own `ripgrep` for its Grep and Glob tools. The harness runs it with its own sandbox off, so the agent's commands run inside the rig's isolation, as OpenCode's do | `/usr/local/bin/claude` |
+| Claude Code | `CLAUDE_CODE_VERSION`. Installed only when that argument names a version. It brings its own `ripgrep` for its Grep and Glob tools. The harness runs it with its own sandbox off, so the agent's commands run inside the rig's isolation, as OpenCode's do. An advisor's Claude Code, which has none of its own tools, also runs with its sandbox off, so the image has no `bubblewrap` | `/usr/local/bin/claude` |
 | Codex CLI | `CODEX_VERSION`, 0.162.1 by default. Installed unless that argument is empty. OpenAI's coding agent, under the Apache License 2.0; one of the [worker harnesses](glossary.md), for a ChatGPT subscription or an OpenAI-compatible provider. Its release's whole Linux package is kept, with its `LICENSE` and `NOTICE` | `/opt/codex`, with `/usr/local/bin/codex` linked to `/opt/codex/bin/codex` |
 | `thermite-devfence` | Built from `containers/harness/devfence.c` | `/usr/local/bin/thermite-devfence`. The GPU fence: it starts each role's command with the GPU device nodes it may not open left out, using the kernel's Landlock |
 | C and C++ toolchain | From the base image's apt repository; not pinned | `gcc`, `g++`, `libc6-dev`, `make`, `cmake`, `ninja-build`, `ccache` |
 | Python | From the base's apt repository; not pinned | `python3`, `python3-numpy` |
-| `bubblewrap` | From the base's apt repository; not pinned | An advisor on a Claude subscription runs Claude Code with `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`, and Claude Code then will not start without `bubblewrap`, although an advisor runs no commands. The [one-container rig image](#the-one-container-rig-image) runs its supervisor on this image. `bubblewrap` uses unprivileged user namespaces, not a setuid bit |
 | Other packages | From the base's apt repository; not pinned | `git`, `tini`, `ca-certificates`. The build fails unless `setpriv`, `prlimit` and `taskset` exist |
 | Smoke kits and projects | This repository's `kits/` and `examples/` | `/opt/thermite/checks/kits`, `/opt/thermite/checks/examples`. The [smoke check](rig-checks.md#smoke-check) uses them |
 
@@ -149,7 +148,7 @@ At start the broker also closes `/tmp`, `/var/tmp` and `/dev/shm` to the roles (
 | Part | Detail |
 | --- | --- |
 | Base | `NODE_IMAGE` |
-| Packages | `git`, `openssh-client`, `tini`, `ca-certificates`, `python3`, `bubblewrap` (Claude Code will not start an advisor's call without it, although an advisor runs no commands) |
+| Packages | `git`, `openssh-client`, `tini`, `ca-certificates`, `python3` |
 | Thermite | `/opt/thermite`, and the `thermite` command at `/usr/local/bin/thermite` |
 | Claude Code | `/usr/local/bin/claude`, only when built with `CLAUDE_CODE_VERSION`. Advisors on a Claude subscription need it |
 | User | `supervisor`, uid and gid 10001, home `/var/lib/thermite-supervisor/home`, where `ssh` keeps `~/.ssh` |
