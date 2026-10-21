@@ -122,6 +122,25 @@ Each set of sums has these fields. A figure that no record reports is `null`, ne
 | `call_ms` | The time in calls, in milliseconds, over the records that report it |
 | `first_token_ms` | The median time from a request to its first token, in milliseconds |
 | `not_reported` | `{cached, reasoning, time, first_token}`: how many records do not report each figure |
+| `cost` | What the calls and the pods cost, in US dollars, below |
+
+`cost` has these fields. A record's cost is its tokens at its model's price now: input not read from the cache, cached input (at the input price when the model has no cached price, and every input token at the input price when the record does not report its cache) and output.
+
+| Field | Meaning |
+| --- | --- |
+| `usd` | The priced records' cost and the pods' spend. `null` when no record has a price and no pod spent: never 0 for what is not known |
+| `input_usd`, `cached_input_usd`, `output_usd` | The priced records' cost, by part |
+| `pod_usd` | What a RunPod rig's pod cost while its rig ran these runs, as control counted it every 30 seconds: each count goes to the run its rig was running then, split evenly when it ran two, and to no run when it ran none. In `by_agent` and `by_model`, always `null`. `null`: no pod spend |
+| `priced` | Records with a price: the provider's list's, else the owner's |
+| `on_plan` | Records on a subscription's plan: a Claude or ChatGPT provider's, and every Claude Code call |
+| `no_price` | Records whose model has no price known |
+
+A model's price comes from the provider's model list when the list gives one, as OpenRouter's and Nous Portal's do (`pricing`, in US dollars per token). OpenAI's own list, Anthropic's and OpenCode Zen's give none: the owner sets one.
+
+| Route | Token | What it does | Request | Answer |
+| --- | --- | --- | --- | --- |
+| `GET /v1/model-prices` | Owner or reader | The prices model usage costs calls at | None | `{"prices":[{provider, model, price, source}]}`. `price` is `{input, cached_input, output}`, in US dollars per million tokens (`cached_input` `null`: the input price); `source` is `list` (the provider's list) or `owner` |
+| `POST /v1/model-prices` | Owner | Sets the owner's price for a provider's model whose list gives none, or removes it. Every call of the model is costed at it, the earlier ones too. Control writes `model_price_set` or `model_price_cleared` to its audit log | `{provider, model, input, output, cached_input?}`, in US dollars per million tokens, 0 to 1,000,000; or `{provider, model, clear: true}` | `{provider, model, price, said}`, such as `said`: `small-model of lab costs 1 USD per million tokens in and 2 USD out. Model usage prices all its calls at it.` 404 `Providers has no provider <name>.` or `<provider> has no model <model>: add it to the provider in Providers first.` 409 `<provider> is a subscription: its calls are on its plan, with no price per token.` or `<provider>'s model list gives <model> its price, and model usage uses that one.` 400 `Give input and output, in US dollars per million tokens, or clear: true.`, `Give clear: true alone, or a price.` or the field that does not read |
 
 ### The agents' model
 

@@ -196,6 +196,49 @@ export function usageSince(period: UsagePeriod, now = new Date()): string | null
   return d.toISOString();
 }
 
+/** A model's price in US dollars per million tokens: input, cached input and output. */
+export const ModelPrice = z.strictObject({
+  input: z.number().min(0).max(1_000_000),
+  /** The price of input read from the cache; null: the input price. */
+  cached_input: z.number().min(0).max(1_000_000).nullable(),
+  output: z.number().min(0).max(1_000_000),
+});
+export type ModelPrice = z.infer<typeof ModelPrice>;
+
+/**
+ * How a record is priced: at its model's price (from the provider's model list, or set by the
+ * owner), on a subscription's plan, or with no price known. Never 0 for what is not known.
+ */
+export type Pricing =
+  | { kind: "priced"; price: ModelPrice; source: "list" | "owner" }
+  | { kind: "plan" }
+  | { kind: "none" };
+
+/** What a record's tokens cost at a price, in US dollars, by part. */
+export function costOf(
+  r: Pick<UsageRow, "tokens_in" | "cached_in" | "tokens_out">,
+  p: ModelPrice,
+): { input: number; cached_input: number; output: number } {
+  const cached = r.cached_in ?? 0;
+  return {
+    input: ((r.tokens_in - cached) * p.input) / 1e6,
+    cached_input: (cached * (p.cached_input ?? p.input)) / 1e6,
+    output: (r.tokens_out * p.output) / 1e6,
+  };
+}
+
+/**
+ * A GPU cloud pod's spend, in US dollars, as control counted it while it followed the pod: the
+ * spend since its last count, with the run its rig was running then (null: none), and its time.
+ */
+export interface PodSpendRow {
+  rig: string;
+  run: string | null;
+  campaign: string | null;
+  at: string;
+  usd: number;
+}
+
 /** One record as the sums read it: the record, with its rig and its run's campaign. */
 export interface UsageRow {
   rig: string;
@@ -213,6 +256,24 @@ export interface UsageRow {
   reasoning: number | null;
   first_token_ms: number | null;
   call_ms: number | null;
+  /** How it is priced (control resolves it); none given: no price known. */
+  pricing?: Pricing | undefined;
+}
+
+/** The cost of some records, and of the pods their runs ran on, in US dollars. */
+export interface UsageCost {
+  /** The priced records' cost and the pods' spend; null when there is neither. */
+  usd: number | null;
+  /** The priced records' cost, by part: input not cached, cached input, output. */
+  input_usd: number;
+  cached_input_usd: number;
+  output_usd: number;
+  /** The GPU cloud pods' spend for these runs; null: none. */
+  pod_usd: number | null;
+  /** Records with a price, on a subscription's plan, and with no price known. */
+  priced: number;
+  on_plan: number;
+  no_price: number;
 }
 
 /** The sums of some records. Each figure a record may not report says how many did not. */
@@ -244,6 +305,7 @@ export interface UsageSums {
   first_token_ms: number | null;
   /** How many records do not report each figure. */
   not_reported: { cached: number; reasoning: number; time: number; first_token: number };
+  cost: UsageCost;
 }
 
 /**
@@ -264,7 +326,38 @@ const round = (n: number, places: number) => {
   return Math.round(n * f) / f;
 };
 
-export function sumUsage(rows: readonly UsageRow[]): UsageSums {
+/** The cost of some records at their prices, with the pods' spend. */
+export function sumCost(rows: readonly UsageRow[], pods: readonly PodSpendRow[] = []): UsageCost {
+  let input = 0;
+  let cachedInput = 0;
+  let output = 0;
+  let priced = 0;
+  let onPlan = 0;
+  for (const r of rows) {
+    const p = r.pricing;
+    if (p?.kind === "plan") onPlan++;
+    if (p?.kind !== "priced") continue;
+    priced++;
+    const c = costOf(r, p.price);
+    input += c.input;
+    cachedInput += c.cached_input;
+    output += c.output;
+  }
+  const pod = pods.reduce((n, x) => n + x.usd, 0);
+  const usd = (n: number) => round(n, 6);
+  return {
+    usd: priced || pods.length ? usd(input + cachedInput + output + pod) : null,
+    input_usd: usd(input),
+    cached_input_usd: usd(cachedInput),
+    output_usd: usd(output),
+    pod_usd: pods.length ? usd(pod) : null,
+    priced,
+    on_plan: onPlan,
+    no_price: rows.length - priced - onPlan,
+  };
+}
+
+export function sumUsage(rows: readonly UsageRow[], pods: readonly PodSpendRow[] = []): UsageSums {
   let calls = 0;
   let callsNotReported = 0;
   let tokensIn = 0;
@@ -321,6 +414,7 @@ export function sumUsage(rows: readonly UsageRow[]): UsageSums {
       time: rows.length - timed,
       first_token: rows.length - firsts.length,
     },
+    cost: sumCost(rows, pods),
   };
 }
 
@@ -363,14 +457,18 @@ function groups<K>(
 
 const tokensOf = (s: UsageSums) => s.tokens_in + s.tokens_out;
 
-/** The sums of some records, in total and by agent, model, run (a campaign) or campaign (all). */
+/**
+ * The sums of some records, and of the pods their runs ran on, in total and by agent, model, run
+ * (a campaign) or campaign (all). A pod's spend belongs to no agent or model.
+ */
 export function usageReport(
   rows: readonly UsageRow[],
   scope: UsageScope,
   period: UsagePeriod,
   since: string | null,
+  pods: readonly PodSpendRow[] = [],
 ): UsageReport {
-  const total = sumUsage(rows);
+  const total = sumUsage(rows, pods);
   const share = (s: UsageSums) =>
     tokensOf(total) > 0 ? round(tokensOf(s) / tokensOf(total), 4) : 0;
   const order = (a: string) => {
@@ -403,29 +501,36 @@ export function usageReport(
     by_agent: byAgent,
     by_model: byModel,
   };
-  if (scope.kind === "campaign")
-    report.by_run = groups(
-      rows,
-      (r) => JSON.stringify([r.rig, r.run]),
-      (r) => ({ rig: r.rig, run: r.run }),
-    )
-      .map((g) => {
-        const s = sumUsage(g.rows);
-        return { ...g.key, share: share(s), ...s };
+  if (scope.kind === "campaign") {
+    const runKey = (x: { rig: string; run: string | null }) => JSON.stringify([x.rig, x.run]);
+    const runs = new Map<string, { rig: string; run: string }>();
+    for (const x of [...rows, ...pods])
+      if (x.run !== null) runs.set(runKey(x), { rig: x.rig, run: x.run });
+    report.by_run = [...runs.entries()]
+      .map(([k, key]) => {
+        const s = sumUsage(
+          rows.filter((r) => runKey(r) === k),
+          pods.filter((x) => runKey(x) === k),
+        );
+        return { ...key, share: share(s), ...s };
       })
       .sort((a, b) => tokensOf(b) - tokensOf(a) || a.run.localeCompare(b.run));
-  if (scope.kind === "system")
-    report.by_campaign = groups(
-      rows,
-      (r) => String(r.campaign),
-      (r) => r.campaign,
-    )
-      .map((g) => {
-        const s = sumUsage(g.rows);
-        return { campaign: g.key, share: share(s), ...s };
+  }
+  if (scope.kind === "system") {
+    const campaigns = new Map<string, string | null>();
+    for (const x of [...rows, ...pods])
+      if (x.run !== null) campaigns.set(String(x.campaign), x.campaign);
+    report.by_campaign = [...campaigns.entries()]
+      .map(([k, campaign]) => {
+        const s = sumUsage(
+          rows.filter((r) => String(r.campaign) === k),
+          pods.filter((x) => x.run !== null && String(x.campaign) === k),
+        );
+        return { campaign, share: share(s), ...s };
       })
       .sort(
         (a, b) => tokensOf(b) - tokensOf(a) || String(a.campaign).localeCompare(String(b.campaign)),
       );
+  }
   return report;
 }

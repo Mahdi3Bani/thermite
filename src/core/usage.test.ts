@@ -3,6 +3,8 @@ import { describe, test } from "node:test";
 import {
   CallUsage,
   callUsage,
+  costOf,
+  type PodSpendRow,
   quantile,
   sumUsage,
   type UsageRow,
@@ -176,5 +178,89 @@ describe("model usage sums", () => {
     );
     assert.equal(all.by_run, undefined);
     assert.equal(all.since, "2026-10-21T00:00:00.000Z");
+  });
+});
+
+describe("model usage cost", () => {
+  const price = { input: 3, cached_input: 0.3, output: 15 };
+  const priced = (o: Partial<UsageRow> = {}): UsageRow =>
+    row({ pricing: { kind: "priced", price, source: "list" }, ...o });
+
+  test("a record's tokens at its price, by part; cached input at the input price when it has none", () => {
+    assert.deepEqual(
+      costOf({ tokens_in: 1_000_000, cached_in: 600_000, tokens_out: 100_000 }, price),
+      { input: 1.2, cached_input: 0.18, output: 1.5 },
+    );
+    const c = costOf(
+      { tokens_in: 1_000_000, cached_in: 600_000, tokens_out: 0 },
+      { ...price, cached_input: null },
+    );
+    assert.equal(c.cached_input, 1.8);
+    // Cache not reported: every input token at the input price.
+    assert.equal(costOf({ tokens_in: 1_000_000, cached_in: null, tokens_out: 0 }, price).input, 3);
+  });
+
+  test("the sums cost the priced records, count those on a plan or with no price, and add the pods' spend", () => {
+    const pods: PodSpendRow[] = [
+      { rig: "rig-1", run: "run-1", campaign: "matmul", at: "2026-10-21T10:00:00Z", usd: 0.25 },
+    ];
+    const s = sumUsage(
+      [
+        priced({ tokens_in: 1_000_000, cached_in: 600_000, tokens_out: 100_000 }),
+        row({ pricing: { kind: "plan" } }),
+        row({ pricing: { kind: "none" } }),
+        row(),
+      ],
+      pods,
+    );
+    assert.deepEqual(s.cost, {
+      usd: 3.13,
+      input_usd: 1.2,
+      cached_input_usd: 0.18,
+      output_usd: 1.5,
+      pod_usd: 0.25,
+      priced: 1,
+      on_plan: 1,
+      no_price: 2,
+    });
+    // Nothing priced and no pod: no cost, never 0.
+    const none = sumUsage([row({ pricing: { kind: "plan" } }), row()]);
+    assert.equal(none.cost.usd, null);
+    assert.equal(none.cost.pod_usd, null);
+    assert.equal(none.cost.on_plan, 1);
+    assert.equal(none.cost.no_price, 1);
+    // A pod alone is a cost.
+    assert.equal(sumUsage([], pods).cost.usd, 0.25);
+  });
+
+  test("a pod's spend goes to its run and campaign, not to an agent or a model; idle spend only to the total", () => {
+    const pods: PodSpendRow[] = [
+      { rig: "rig-1", run: "run-1", campaign: "matmul", at: "2026-10-21T10:00:00Z", usd: 1 },
+      { rig: "rig-2", run: "run-2", campaign: "matmul", at: "2026-10-21T10:00:00Z", usd: 2 },
+      { rig: "rig-2", run: null, campaign: null, at: "2026-10-21T10:00:00Z", usd: 4 },
+    ];
+    const c = usageReport(
+      [priced({ tokens_in: 1_000_000, cached_in: 0, tokens_out: 0 })],
+      { kind: "campaign", campaign: "matmul" },
+      "all",
+      null,
+      pods.slice(0, 2),
+    );
+    assert.equal(c.total.cost.usd, 6);
+    assert.deepEqual(
+      c.by_run?.map((r) => [r.run, r.records, r.cost.usd, r.cost.pod_usd]),
+      [
+        ["run-1", 1, 4, 1],
+        ["run-2", 0, 2, 2],
+      ],
+    );
+    assert.equal(c.by_agent[0]?.cost.pod_usd, null);
+    assert.equal(c.by_model[0]?.cost.usd, 3);
+    const all = usageReport([], { kind: "system" }, "all", null, pods);
+    assert.equal(all.total.cost.pod_usd, 7);
+    assert.deepEqual(
+      all.by_campaign?.map((x) => [x.campaign, x.cost.pod_usd]),
+      [["matmul", 3]],
+    );
   });
 });

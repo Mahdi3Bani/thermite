@@ -6,7 +6,14 @@ import type { SignedCommand } from "../core/commands.ts";
 import type { LiveEntry } from "../core/live.ts";
 import { currentEvent } from "../core/names.ts";
 import { PodConfig } from "../core/tunnel.ts";
-import { MODEL_CALL_EVENT, ModelCallBody, type UsageRow, type UsageScope } from "../core/usage.ts";
+import {
+  MODEL_CALL_EVENT,
+  ModelCallBody,
+  type ModelPrice,
+  type PodSpendRow,
+  type UsageRow,
+  type UsageScope,
+} from "../core/usage.ts";
 import type { ReportedBuild } from "../core/version.ts";
 import { Credential } from "./credential.ts";
 import type { JoinedSpec, JoinForm } from "./join.ts";
@@ -424,6 +431,31 @@ create table if not exists model_call (
   call_ms integer,
   primary key (rig, ledger_id, event_id)
 );
+-- A model's price the owner set (goal 075), in US dollars per million tokens, for a provider's
+-- model whose list gives none. cached_input null: the input price.
+create table if not exists model_price (
+  provider text not null,
+  model text not null,
+  input real not null,
+  cached_input real,
+  output real not null,
+  set_by text not null,
+  set_at text not null,
+  primary key (provider, model)
+);
+-- A GPU cloud pod's spend as control counts it while it follows the pod (goal 075): each count's
+-- spend since the one before, with the run its rig was running then (null: none) and that run's
+-- campaign. A spend counted while the rig ran two runs is split evenly between them.
+create table if not exists pod_spend (
+  id integer primary key autoincrement,
+  rig text not null,
+  run text,
+  campaign text,
+  at text not null,
+  usd real not null
+);
+create index if not exists pod_spend_run on pod_spend (run, at);
+create index if not exists pod_spend_campaign on pod_spend (campaign, at);
 create index if not exists model_call_run on model_call (run, at);
 create index if not exists model_call_campaign on model_call (campaign, at);
 create index if not exists model_call_at on model_call (at);
@@ -603,6 +635,8 @@ export interface ProviderModel {
   context_window?: number | undefined;
   /** Added by the owner by its name (the provider does not list it). */
   added?: boolean | undefined;
+  /** Its price as the provider's list gives it, per million tokens (goal 075); none: not listed. */
+  price?: ModelPrice | undefined;
 }
 
 /** A model provider as stored: its key only sealed, and a hint of it for the dashboard. */
@@ -3032,9 +3066,160 @@ export class ControlStore {
   }
 
   saveRunpodRig(rig: string, state: unknown, active: boolean): void {
+    const spent = (s: unknown) => {
+      const n = (s as { spent_usd?: unknown } | null)?.spent_usd;
+      return typeof n === "number" && Number.isFinite(n) ? n : 0;
+    };
+    this.tx(() => {
+      const before = this.runpodRig(rig);
+      this.db
+        .prepare("update runpod_rig set state = ?, active = ? where rig = ?")
+        .run(JSON.stringify(state), active ? 1 : 0, rig);
+      // What the pod cost since control last counted it goes to the run its rig runs now.
+      if (before) this.notePodSpend(rig, spent(state) - spent(before.state));
+    });
+  }
+
+  /**
+   * A pod's spend since control last counted it (goal 075), for the runs its rig is running now,
+   * split evenly when it runs more than one; for no run when it runs none.
+   */
+  private notePodSpend(rig: string, usd: number): void {
+    if (!(usd > 1e-9)) return;
+    const runs = this.runningRuns(rig);
+    const at = new Date().toISOString();
+    const insert = this.db.prepare(
+      "insert into pod_spend (rig, run, campaign, at, usd) values (?, ?, ?, ?, ?)",
+    );
+    if (!runs.length) insert.run(rig, null, null, at, usd);
+    for (const r of runs) insert.run(rig, r.run, r.campaign, at, usd / runs.length);
+  }
+
+  /** The runs a rig is running now, on its current ledger, from its events. */
+  runningRuns(rig: string): { run: string; campaign: string | null }[] {
+    const ledger = (
+      this.db.prepare("select ledger_id from rig where id = ?").get(rig) as Row | undefined
+    )?.ledger_id;
+    if (!ledger) return [];
+    const runs = new Map<string, { campaign: string | null; running: boolean }>();
+    for (const e of this.db
+      .prepare(
+        `select kind, subject, body from rig_event where rig = ? and ledger_id = ?
+           and kind in ('run_created', 'instance_created', 'run_status', 'instance_status')
+         order by seq`,
+      )
+      .all(rig, String(ledger)) as Row[]) {
+      let b: Record<string, unknown> = {};
+      try {
+        b = JSON.parse(String(e.body)) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      const id = String(e.subject);
+      if (e.kind === "run_created" || e.kind === "instance_created")
+        runs.set(id, {
+          campaign: typeof b.campaign === "string" ? b.campaign : null,
+          running: true,
+        });
+      else {
+        const r = runs.get(id);
+        if (r) r.running = b.status === "running";
+      }
+    }
+    return [...runs.entries()]
+      .filter(([, r]) => r.running)
+      .map(([run, r]) => ({ run, campaign: r.campaign }));
+  }
+
+  /**
+   * GPU cloud pods' spend (goal 075): one run's (on one rig, or on any), one campaign's runs', or
+   * every pod's, idle time included, since a time (ISO; null: all).
+   */
+  podSpend(scope: UsageScope, since: string | null): PodSpendRow[] {
+    const where: string[] = [];
+    const args: SQLInputValue[] = [];
+    if (since) {
+      where.push("at >= ?");
+      args.push(since);
+    }
+    if (scope.kind === "run") {
+      where.push("run = ?");
+      args.push(scope.run);
+      if (scope.rig) {
+        where.push("rig = ?");
+        args.push(scope.rig);
+      }
+    }
+    if (scope.kind === "campaign") {
+      where.push("campaign = ?");
+      args.push(scope.campaign);
+    }
+    return (
+      this.db
+        .prepare(
+          `select rig, run, campaign, at, usd from pod_spend
+           ${where.length ? `where ${where.join(" and ")}` : ""} order by id`,
+        )
+        .all(...args) as Row[]
+    ).map((r) => ({
+      rig: String(r.rig),
+      run: r.run === null ? null : String(r.run),
+      campaign: r.campaign === null ? null : String(r.campaign),
+      at: String(r.at),
+      usd: Number(r.usd),
+    }));
+  }
+
+  /** The prices the owner set for providers' models (goal 075). */
+  modelPrices(): {
+    provider: string;
+    model: string;
+    price: ModelPrice;
+    set_by: string;
+    set_at: string;
+  }[] {
+    return (
+      this.db.prepare("select * from model_price order by provider, model").all() as Row[]
+    ).map((r) => ({
+      provider: String(r.provider),
+      model: String(r.model),
+      price: {
+        input: Number(r.input),
+        cached_input: r.cached_input === null ? null : Number(r.cached_input),
+        output: Number(r.output),
+      },
+      set_by: String(r.set_by),
+      set_at: String(r.set_at),
+    }));
+  }
+
+  /** Sets (or, with null, removes) the owner's price for a provider's model. */
+  setModelPrice(provider: string, model: string, price: ModelPrice | null, by: string): void {
+    if (!price) {
+      this.db
+        .prepare("delete from model_price where provider = ? and model = ?")
+        .run(provider, model);
+      this.audit(by, "model_price_cleared", { provider, model });
+      return;
+    }
     this.db
-      .prepare("update runpod_rig set state = ?, active = ? where rig = ?")
-      .run(JSON.stringify(state), active ? 1 : 0, rig);
+      .prepare(
+        `insert into model_price (provider, model, input, cached_input, output, set_by, set_at)
+         values (?, ?, ?, ?, ?, ?, ?)
+         on conflict (provider, model) do update set input = excluded.input,
+           cached_input = excluded.cached_input, output = excluded.output,
+           set_by = excluded.set_by, set_at = excluded.set_at`,
+      )
+      .run(
+        provider,
+        model,
+        price.input,
+        price.cached_input,
+        price.output,
+        by,
+        new Date().toISOString(),
+      );
+    this.audit(by, "model_price_set", { provider, model, ...price });
   }
 
   runpodRig(rig: string): StoredRunpodRig | undefined {

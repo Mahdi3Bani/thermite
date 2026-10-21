@@ -1,4 +1,5 @@
 import { CONTEXT_WINDOW_MAX, CONTEXT_WINDOW_MIN } from "../core/compaction.ts";
+import type { ModelPrice } from "../core/usage.ts";
 import type { ProviderModel, ProviderType } from "./store.ts";
 
 /**
@@ -116,6 +117,26 @@ function contextOf(m: Record<string, unknown>): number | undefined {
   return typeof v === "number" && Number.isInteger(v) && v > 0 ? v : undefined;
 }
 
+/**
+ * A model's price from its list entry (goal 075), in US dollars per million tokens: the `pricing`
+ * object OpenRouter's list gives, as Nous Portal's does too, in US dollars per token, as text
+ * (`prompt`, `completion`, `input_cache_read`). OpenAI's own list, Anthropic's and OpenCode Zen's
+ * give none. A price that is not a number of 0 or more (OpenRouter's -1 for a router) is none.
+ */
+export function listedPrice(m: Record<string, unknown>): ModelPrice | undefined {
+  const p = m.pricing as Record<string, unknown> | undefined;
+  if (!p || typeof p !== "object") return undefined;
+  const perMillion = (v: unknown) => {
+    const n =
+      typeof v === "string" && v.trim() ? Number(v) : typeof v === "number" ? v : Number.NaN;
+    return Number.isFinite(n) && n >= 0 && n < 1 ? Math.round(n * 1e12) / 1e6 : undefined;
+  };
+  const input = perMillion(p.prompt);
+  const output = perMillion(p.completion);
+  if (input === undefined || output === undefined) return undefined;
+  return { input, cached_input: perMillion(p.input_cache_read) ?? null, output };
+}
+
 export async function listModels(
   type: ProviderType,
   base: string,
@@ -169,7 +190,8 @@ export async function listModels(
       return { error: "could not list its models: the answer had no model list" };
     for (const m of body.data as Record<string, unknown>[]) {
       if (typeof m?.id !== "string" || !m.id || m.id.length > 200) continue;
-      out.push({ id: m.id, context_window: contextOf(m) });
+      const price = listedPrice(m);
+      out.push({ id: m.id, context_window: contextOf(m), ...(price ? { price } : {}) });
     }
     if (type !== "anthropic" || body.has_more !== true || typeof body.last_id !== "string") break;
     after = body.last_id;

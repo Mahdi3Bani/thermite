@@ -59,15 +59,16 @@ function ingest(
   rig: string,
   ledger: string,
   events: [string, string, Record<string, unknown>][],
+  first = 1,
 ) {
   store.ingest({
     rig,
     ledger_id: ledger,
-    cursor: 0,
-    next: events.length,
+    cursor: first - 1,
+    next: first - 1 + events.length,
     generated_at: new Date().toISOString(),
     events: events.map(([kind, subject, body], i) => ({
-      id: i + 1,
+      id: first + i,
       at: new Date(NOW).toISOString(),
       actor: "harness",
       kind,
@@ -279,6 +280,203 @@ describe("model usage on control (goal 075)", () => {
     })) as { content: { text: string }[]; isError?: boolean };
     assert.equal(bad.isError, true);
     assert.match(bad.content[0]?.text ?? "", /Give a run or a campaign, not both/);
+    await client.close();
+  });
+});
+
+describe("model usage cost on control (goal 075)", () => {
+  /** lab lists wide-model's price and not small-model's; sub is a Claude subscription. */
+  function priced() {
+    const s = stack();
+    for (const [name, type] of [
+      ["lab", "openai"],
+      ["sub", "claude"],
+    ] as const)
+      s.store.putProvider({
+        name,
+        type,
+        base_url: "https://models.example.com/v1",
+        key: { sealed: "sealed-for-tests", hint: "…ests" },
+      });
+    s.store.setProviderModels("lab", [
+      { id: "wide-model", price: { input: 3, cached_input: 0.3, output: 15 } },
+      { id: "small-model" },
+    ]);
+    s.store.setProviderModels("sub", [{ id: "opus-5.5" }]);
+    const post = (body: unknown, token = TOKENS.admin) =>
+      s.api.request("/v1/model-prices", {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    return { ...s, post };
+  }
+
+  test("each call at its model's price: the provider's list's, else the owner's; a subscription's on its plan; else no price", async () => {
+    const s = priced();
+    const r1 = modelUsage(s.store, { run: "r-1" });
+    // wide-model: 400 in, 600 cached, 100 out; then 1000 in and 100 out. small-model: no price.
+    assert.deepEqual(r1.total.cost, {
+      usd: 0.00738,
+      input_usd: 0.0042,
+      cached_input_usd: 0.00018,
+      output_usd: 0.003,
+      pod_usd: null,
+      priced: 2,
+      on_plan: 0,
+      no_price: 1,
+    });
+    // The owner prices small-model: every one of its calls, the earlier ones too.
+    const set = await s.post({ provider: "lab", model: "small-model", input: 1, output: 2 });
+    assert.equal(set.status, 200, await set.clone().text());
+    assert.match(
+      String(((await set.json()) as { said: string }).said),
+      /^small-model of lab costs 1 USD per million tokens in and 2 USD out\./,
+    );
+    const again = modelUsage(s.store, { run: "r-1" }).total.cost;
+    assert.equal(again.usd, 0.00798);
+    assert.equal(again.no_price, 0);
+    // Claude Code's calls are on a subscription's plan: no price, counted apart.
+    const gemv = modelUsage(s.store, { campaign: "gemv" }).total.cost;
+    assert.deepEqual([gemv.usd, gemv.on_plan, gemv.no_price], [null, 1, 0]);
+    const prices = (await (
+      await s.api.request("/v1/model-prices", {
+        headers: { authorization: `Bearer ${TOKENS.read}` },
+      })
+    ).json()) as { prices: { model: string; source: string }[] };
+    assert.deepEqual(
+      prices.prices.map((p) => [p.model, p.source]),
+      [
+        ["wide-model", "list"],
+        ["small-model", "owner"],
+      ],
+    );
+    // Refused in words.
+    const refused = async (body: unknown, status: number, words: RegExp) => {
+      const r = await s.post(body);
+      assert.equal(r.status, status, JSON.stringify(body));
+      assert.match(String(((await r.json()) as { error: string }).error), words);
+    };
+    await refused(
+      { provider: "lab", model: "wide-model", input: 1, output: 1 },
+      409,
+      /^lab's model list gives wide-model its price, and model usage uses that one\.$/,
+    );
+    await refused(
+      { provider: "sub", model: "opus-5.5", input: 1, output: 1 },
+      409,
+      /^sub is a subscription: its calls are on its plan/,
+    );
+    await refused({ provider: "nope", model: "m", input: 1, output: 1 }, 404, /no provider nope/);
+    await refused(
+      { provider: "lab", model: "other", input: 1, output: 1 },
+      404,
+      /^lab has no model other: add it/,
+    );
+    await refused(
+      { provider: "lab", model: "small-model", input: 1 },
+      400,
+      /^Give input and output/,
+    );
+    await refused(
+      { provider: "lab", model: "small-model", input: -1, output: 1 },
+      400,
+      /^input: a number of US dollars per million tokens/,
+    );
+    // Only the owner's token sets a price over REST.
+    assert.equal(
+      (await s.post({ provider: "lab", model: "small-model", clear: true }, TOKENS.read)).status,
+      401,
+    );
+    const cleared = await s.post({ provider: "lab", model: "small-model", clear: true });
+    assert.equal(cleared.status, 200);
+    assert.equal(modelUsage(s.store, { run: "r-1" }).total.cost.no_price, 1);
+  });
+
+  test("a pod's spend goes to the run its rig was running when control counted it; idle spend to the system only", () => {
+    const s = priced();
+    s.store.addRunpodRig({
+      rig: "rig-a",
+      cloud: "rp",
+      pod: "p-1",
+      state: { spent_usd: 0 },
+      by: "t",
+    });
+    // r-1 is the run at work on rig-a.
+    s.store.saveRunpodRig("rig-a", { spent_usd: 0.5 }, true);
+    // Paused (the stack gave rig-a five events): the pod's spend belongs to no run.
+    ingest(s.store, "rig-a", "ledger-a", [["run_status", "r-1", { status: "paused" }]], 6);
+    s.store.saveRunpodRig("rig-a", { spent_usd: 0.8 }, true);
+    // Two runs running: the spend is split between them.
+    ingest(
+      s.store,
+      "rig-a",
+      "ledger-a",
+      [
+        ["run_status", "r-1", { status: "running" }],
+        ["run_created", "r-4", { campaign: "matmul", mode: "hill_climb", version: 1 }],
+      ],
+      7,
+    );
+    s.store.saveRunpodRig("rig-a", { spent_usd: 1.0 }, true);
+    // A save that adds nothing counts nothing.
+    s.store.saveRunpodRig("rig-a", { spent_usd: 1.0 }, true);
+    assert.equal(modelUsage(s.store, { run: "r-1" }).total.cost.pod_usd, 0.6);
+    const c = modelUsage(s.store, { campaign: "matmul" });
+    assert.equal(c.total.cost.pod_usd, 0.7);
+    assert.deepEqual(
+      c.by_run?.map((x) => [x.run, x.cost.pod_usd]),
+      [
+        ["r-2", null],
+        ["r-1", 0.6],
+        ["r-4", 0.1],
+      ],
+    );
+    assert.equal(modelUsage(s.store, {}).total.cost.pod_usd, 1);
+  });
+
+  test("MCP: an operator sets a price with set_model_price; providers lists the prices in use", async () => {
+    const s = priced();
+    const client = new Client({ name: "test", version: "1.0.0" });
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url = new URL(String(input));
+      const headers = new Headers(init?.headers);
+      headers.set("authorization", `Bearer ${TOKENS.operator}`);
+      return s.api.request(`${url.pathname}${url.search}`, { ...init, headers } as RequestInit);
+    };
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL("http://control/mcp"), { fetch: fetchImpl }),
+    );
+    const out = (await client.callTool({
+      name: "set_model_price",
+      arguments: { provider: "lab", model: "small-model", input: 1, cached_input: 0.1, output: 2 },
+    })) as { content: { text: string }[]; isError?: boolean };
+    assert.equal(out.isError, undefined, out.content[0]?.text);
+    assert.deepEqual(JSON.parse(out.content[0]?.text ?? "{}").price, {
+      input: 1,
+      cached_input: 0.1,
+      output: 2,
+    });
+    const providers = (await client.callTool({ name: "providers", arguments: {} })) as {
+      content: { text: string }[];
+    };
+    assert.deepEqual(
+      (
+        JSON.parse(providers.content[0]?.text ?? "{}") as {
+          model_prices: { model: string; source: string }[];
+        }
+      ).model_prices.map((p) => [p.model, p.source]),
+      [
+        ["wide-model", "list"],
+        ["small-model", "owner"],
+      ],
+    );
+    const refused = (await client.callTool({
+      name: "set_model_price",
+      arguments: { provider: "sub", model: "opus-5.5", input: 1, output: 1 },
+    })) as { content: { text: string }[]; isError?: boolean };
+    assert.equal(refused.isError, true);
+    assert.match(refused.content[0]?.text ?? "", /is a subscription/);
     await client.close();
   });
 });
