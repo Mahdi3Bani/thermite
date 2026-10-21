@@ -52,6 +52,12 @@ export interface Need {
   at?: string | undefined;
   /** Its row in a list of decisions. */
   html: string;
+  /**
+   * The owner's choice is sent and the rig has not refused it: the lists leave the item out at
+   * once, and only the change's own page still shows it. A refused choice, or a new wait, brings
+   * it back.
+   */
+  decided?: boolean | undefined;
   /** The same decision as a box on its attempt's page: the buttons, each choice and why. */
   box: string;
 }
@@ -178,7 +184,7 @@ function card(o: {
   more?: string | undefined;
   /** The owner's choice already sent for this item, and the rig's answer (see decidedState). */
   decided?: { sent: boolean; html: string } | undefined;
-}): { html: string; box: string } {
+}): { html: string; box: string; decided: boolean } {
   const where = o.r
     ? `<a href="${runHref(o.u.id, o.r)}">${esc(o.r.campaign || o.r.id)} › ${esc(o.r.id)}</a> · ${esc(o.u.id)}${o.lane ? ` · ${esc(o.lane)}` : ""}`
     : `rig <a href="/ui/rigs/${encodeURIComponent(o.u.id)}">${esc(o.u.id)}</a>`;
@@ -196,7 +202,7 @@ function card(o: {
 <span class="dq-side">${o.since ? `<span class="dq-age">waiting ${esc(span(o.since, o.now))}</span>` : ""}<span class="dq-btns">${buttons}</span></span>
 </summary><div class="dq-body"><p class="dq-q">${esc(o.question)}</p><dl class="dc-facts">${o.facts}</dl>
 <dl class="dq-choices">${choices}</dl>${o.more ? `<div class="dq-foot">${o.more}</div>` : ""}</div></details>`;
-  return { html, box };
+  return { html, box, decided: o.decided?.sent === true };
 }
 
 /**
@@ -277,8 +283,10 @@ const promoteDoes = (r: RunView, a: AttemptView | undefined, expected: number | 
 
 /**
  * The owner's latest choice on one waiting item, made since it began waiting, and what the rig
- * answered. The rig's report removes the item only up to a minute later, so without this the
- * row looks untouched and a second click is refused.
+ * answered. A choice sent and not refused takes the item out of the lists at once (the owner,
+ * 2026-10-21: "once a decision has been made, lets clear it off the screen"); the change's own
+ * page still says what was chosen and what the rig did. A refused choice brings the item back,
+ * with the cause and the buttons.
  */
 export function decidedState(
   ds: Decision[],
@@ -333,7 +341,7 @@ export function decidedState(
         : "The rig recorded your decision.";
   return {
     sent: true,
-    html: `${chose} ${did} This item goes away after the next report from the rig, in about one minute.`,
+    html: `${chose} ${did}`,
   };
 }
 

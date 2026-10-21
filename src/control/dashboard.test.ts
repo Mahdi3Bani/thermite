@@ -1103,12 +1103,17 @@ describe("control dashboard", () => {
       sent,
       /Control sent the command to rig-a\. The rig does it in less than 10 seconds/,
     );
+    // The decision leaves Needs you at once, before the rig has done it; the change's own page
+    // still says what was chosen.
     const home2 = await (await s.get("/ui")).text();
+    assert.doesNotMatch(home2, /Make this change the new champion\?/);
+    assert.doesNotMatch(home2, /name="kind" value="approve_promotion"/);
+    assert.doesNotMatch(home2, /class="item warn" href="\/ui">[^<]*<\/svg>Needs you/);
+    const own = await (await s.get(`/ui/rigs/rig-a/attempts/${encodeURIComponent(id)}`)).text();
     assert.match(
-      home2,
+      own,
       /You selected <b>Make it the champion<\/b> [^<]* ago\. Control sent it to the rig\./,
     );
-    assert.doesNotMatch(home2, /name="kind" value="approve_promotion"/);
     await s.relay(); // delivers the signed command to the harness
     assert.equal(s.env.ledger.currentChampion("js-1").seq, 2);
     await s.relay(); // reports the promotion back

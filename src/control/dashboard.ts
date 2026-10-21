@@ -536,9 +536,13 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
     cmd: (f) => cmdForm(c, f),
     csrf: csrf(c),
   });
-  /** Everything that waits for the owner, across rigs: the "Needs you" feed, with its evidence. */
+  /**
+   * Everything that waits for the owner, across rigs: the "Needs you" feed, with its evidence.
+   * A decision already sent, and not refused, is left out at once; it comes back only if the
+   * rig refuses it or the item needs the owner again.
+   */
   const needs = (c: Ctx, vs: RigView[], now: number, back = "/ui"): Need[] =>
-    operatorNeeds(store, vs, forms(c), now, back);
+    operatorNeeds(store, vs, forms(c), now, back).filter((n) => !n.decided);
   /** The page shell with the sidebar's rigs and campaigns. */
   const page = (c: Ctx, s: Omit<Shell, "rigs" | "needs" | "now">, body: string, vs = views()) => {
     const now = Date.now();
@@ -2636,7 +2640,8 @@ ${rp ? "" : events}
         vs,
       );
     const back = attemptHref(u.id, a.id);
-    const decision = needs(c, [u], now, back).find((n) => n.attempt === a.id);
+    // The change's own page keeps its decision after the owner chose: it says what the rig did.
+    const decision = operatorNeeds(store, [u], forms(c), now, back).find((n) => n.attempt === a.id);
     // A champion's patch, once the rig has published it.
     const champ = r.champion.find((x) => x.attempt === a.id && !x.reopened);
     const patch =

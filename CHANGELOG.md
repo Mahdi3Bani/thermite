@@ -4,6 +4,7 @@ Each release of Thermite, newest first. Versions 0.x make no upgrade promise: re
 
 ## [Unreleased]: v0.1.0, the first public release
 
+- A decision you make leaves **Needs you** at once, with its count; the change's own page still says what you chose and what the rig did. It comes back only if the rig refuses it or the item needs you again.
 ### Install and run
 
 - Install from published images, with no build. Each release attaches a compose file that pins the images by digest, and `thermite local init` makes the stack's secret files. Building from source stays for contributors.

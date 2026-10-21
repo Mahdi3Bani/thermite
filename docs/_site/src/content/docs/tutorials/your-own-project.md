@@ -209,7 +209,7 @@ The **Overview** item in the sidebar shows a count too.
 2. Read **Problems that the agent wrote**, if the item has them. Agents often note limits that don't matter here: when we ran this tutorial, the agent wrote that its new method uses some memory (`Basic sieve uses O(n) memory`). That is no reason to refuse a faster program. If a problem says that the answers can be wrong, or that the change works only for the test cases, press **Reject it** instead, as in [Hand the work to agents](agents-with-a-free-model.md#if-a-change-waits-for-you).
 3. Press **Make it the champion**.
 
-The item says `You selected Make it the champion`. Press **refresh** after a few seconds: it says `The rig made the change champion #2.`, and it goes away after the rig's next report, in about a minute. The **champion** is the run's best version so far. Champion #1 was your project as you pushed it.
+The item leaves **Needs you** at once. The change's own page says `You selected Make it the champion`; press **refresh** after a few seconds and it says `The rig made the change champion #2.` The **champion** is the run's best version so far. Champion #1 was your project as you pushed it.
 
 The agent goes on working while you decide, so another change may wait for you by then, and the top line still ends **Audit**. Its item says that the champion changed after the judge measured it, so **Make it the champion** would have the judge test it again against champion #2. You can leave it: this tutorial takes champion #2 home, and step 12 pauses the run.
 

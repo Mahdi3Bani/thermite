@@ -213,7 +213,7 @@ An **auditor**, a model that gives such second looks, isn't set up on this rig, 
 1. Open it. It shows what the agent says it did, the problems it wrote, and what the judge measured. Read the problems: they are why the change waits. Some matter, such as a change that only wins because of how the benchmark calls it; some don't, such as a little more memory.
 2. For this tutorial, press **Reject it**, to see what happens to a change you decline. In [Your own project](your-own-project.md) you make a change the champion instead. [Decide what waits for you](../how-to/campaigns/decide-what-waits.md) explains each choice.
 
-The item says `You selected Reject it`. After a **refresh**, **What happened** says `You declined` the change: `it will not become the champion.` The attempt now shows **Declined**.
+The item leaves **Needs you** at once. On the change's own page, **Your decision** says `You selected Reject it`. After a **refresh**, **What happened** says `You declined` the change: `it will not become the champion.` The attempt now shows **Declined**.
 
 ## 11. Pause the campaign
 

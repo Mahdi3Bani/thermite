@@ -21,8 +21,8 @@ The count also shows beside **Overview** in the sidebar, and as **Needs you** in
 1. Open a row. It says what is asked, why it waits, and where: the campaign, run, rig and lane. For a change, **What the judge found** has the judge's evidence and **Problems that the agent wrote** lists flaws the agent declared.
 2. Read what each choice does, then press its button.
 
-   The row says `You selected …` and `Control sent it to the rig. The rig does it in less than 10 seconds.`
-3. Press **refresh** in the status bar. Once the rig has done it, the row says what happened and `This item goes away after the next report from the rig, in about one minute.` If the rig refused, the row gives the cause, and the buttons come back.
+   The item leaves **Needs you** at once, and the count drops. The top of the page says `Control sent the command to …`. The change's own page keeps a **Your decision** box that says `You selected …` and, once the rig has done it (in less than 10 seconds), what the rig did.
+3. If the rig refuses your choice, the item comes back to **Needs you** with the cause, and its buttons. It also comes back if it needs you again, for example when the champion changed and the judge measured the change again.
 
 ## What each decision asks
 
