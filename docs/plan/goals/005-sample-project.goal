@@ -1,7 +1,7 @@
 ---
 id: "005"
 title: "A sample project in `examples/`"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 part: "Tester basics"
 depends_on: []
@@ -11,7 +11,7 @@ updated: 2026-10-20
 
 # 005 · A sample project in `examples/`
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
 
 ## What
 
@@ -26,7 +26,7 @@ Today a project must be a whole repository at an https or ssh git URL. A tester 
 - [x] `examples/` holds at least one project with its kit and a short README.
 - [x] A contract's project can name a folder in a repository. The rig fetches the repository and uses that folder as the project's root.
 - [x] New campaign offers the folder field, with a description.
-- [ ] The quick start runs a first agent campaign on the sample, with a free model, to a first verdict.
+- [x] The quick start runs a first agent campaign on the sample, with a free model, to a first verdict.
 - [x] The campaign acceptance covers a project in a folder.
 
 ## Decisions
@@ -48,6 +48,7 @@ None.
 - 2026-10-20: Rebased onto the release bundle's quick start. The tutorial installs from the release's `compose.yaml` as before; its step 4 clones the release's source (`git clone --branch v0.1.0 … thermite-source`) to pack the sample's kit, and the New campaign page starts from the same tag. "Your first goal campaign" builds the command line in that folder.
 - 2026-10-20: Left: run the quick start on a clean stack with a free model to a first verdict, once a release tag holds the sample; run the new-campaign acceptance with its folder part. Neither has run yet.
 - 2026-10-20: The campaign acceptance passed: control took a campaign whose project is `examples/matmul-cpu/project` in a repository, the rig fetched the whole repository and started from the folder, and the sample's kit built and measured every case. Left: the quick start on the sample with a free model, after the release tag.
+- 2026-10-21: A real free model on the sample, to a first verdict: a campaign made on the New campaign page from `examples/matmul-cpu` (the project folder at the development branch's commit, the kit uploaded as the tutorial packs it), run on a lab CPU rig whose agents use OpenCode's own free model (`deepseek-v4.1-flash-free`, no key) in OpenCode v2. The planner's first answer was valid; the first trial's change was judged a confirmed win, +1,514% flops/s against the starting code (95% interval 1,347% to 1,700%, n=5), correctness checked. The page steps themselves are covered by the quick-start acceptance (a scripted model), which passed today with Podman and with Docker Desktop. Every box is ticked.
 
 ---
 
