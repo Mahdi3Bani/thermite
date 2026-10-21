@@ -500,7 +500,7 @@ It prints control's answer on one line, such as `{"started":true,"campaign":"sor
 | `CAMPAIGN` | Yes | | The campaign, as on its page |
 | `--rig R` | Yes | | The rig the run starts on |
 | `--agents on\|off` | No | `on` | `off`: a try, with no agents. The judge measures the starting code on every case once |
-| `--provider P` and `--model M` | No | | For a rig with no model for its agents: give it model `M` of provider `P` in **Providers** first, with the harness the model needs. When the rig does not run `M` yet, the run does not start: the answer is `{"started":false,"said":"rig-1 takes M within a minute; …"}`, `said` goes to standard error, and the command exits 1. Run it again without them once the rig runs the model. When the rig runs `M` already, the run starts |
+| `--provider P` and `--model M` | No | | For a rig with no model for its agents: give it model `M` of provider `P` in **Providers** first, with the harness the model needs (the rig's own when control gave it this model already). When the rig does not run `M` yet, the run does not start: the answer is `{"started":false,"said":"rig-1 takes M within a minute; …"}`, `said` goes to standard error, and the command exits 1. Run it again without them once the rig runs the model. When the rig runs `M` already, the run starts |
 | `--promotion auto\|owner` | No | the rig's default | When a change is confirmed better: keep it at once, or wait for the owner |
 | `--judge-gpus N` | No | the rig's current split | For a rig with several GPUs: how many the judge measures on. The rig's harness restarts to apply a new split |
 | `--queue-from [RIG/]RUN` | No | | Another run of this campaign, on `--rig` unless `RIG/` is given: its untried experiments start the new run's queue |

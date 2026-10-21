@@ -271,7 +271,10 @@ describe("the OpenCode harness", () => {
     const here = agentPath();
     assert.equal(runEnv("/h", "http://api", "a", { PATH: "/elsewhere" }).PATH, here);
     const at = { home: "/h", apiUrl: "http://api", auth: "a", tmp: "/t" };
-    assert.equal(claudeEnv({ ...at, token: "t", maxCommandMs: 1000 }).PATH, here);
+    assert.equal(
+      claudeEnv({ ...at, maxCommandMs: 1000, extra: { PATH: "/elsewhere" } }).PATH,
+      here,
+    );
     assert.equal(codexEnv({ ...at, proxyAuth: "a", extra: { PATH: "/elsewhere" } }).PATH, here);
   });
 
