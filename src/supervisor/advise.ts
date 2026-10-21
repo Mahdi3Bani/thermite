@@ -23,7 +23,7 @@ import {
 import type { PastSearch } from "./past-mcp.ts";
 
 /**
- * The supervisor's advisor loop: the teacher pair reviews each running run on its cadence, and at
+ * The supervisor's advisor loop: the teachers review each running run on their cadence, and at
  * once when the owner has written to it; the auditor answers open audits, and the review panel
  * answers open reviews. Everything goes through the harness API with the supervisor's token,
  * which cannot write verdicts, champions or contracts. Each run is kept in the supervisor's
@@ -33,7 +33,7 @@ import type { PastSearch } from "./past-mcp.ts";
  * advisor has run with them, the supervisor tells the harness which it was given and what it
  * answered, and the harness records the reads and the answers.
  *
- * The teacher pair, the auditor and the review panel may search the run's past research (the
+ * The teachers, the auditor and the review panel may search the run's past research (the
  * folders its campaign may read in Thermite's knowledge base), read only, through the harness's
  * copy of the run's knowledge/: the same items the workers search. A teacher that may fetch any
  * web page gets no past research at all.
@@ -65,7 +65,7 @@ export interface AdviseState {
   tried: Record<string, string>;
   tries: Record<string, number>;
   spend?: { day: string; usd: number } | undefined;
-  /** Per run, the newest owner's message to the teacher pair that already started a round. */
+  /** Per run, the newest owner's message to the teachers that already started a round. */
   ownerSeen?: Record<string, number> | undefined;
   /** Per run, the newest owner's message already told it waits for the spending limit. */
   limitSaid?: Record<string, number> | undefined;
@@ -203,11 +203,11 @@ function harnessApi(cfg: Pick<AdviseConfig, "harnessUrl" | "harnessToken" | "fet
   };
 }
 
-/** The newest owner's message to the teacher pair a run has waiting (0: none). */
+/** The newest owner's message to the teachers a run has waiting (0: none). */
 const newestForTeachers = (r: RunRow) => Math.max(0, ...(r.owner_messages_waiting?.teachers ?? []));
 
 /**
- * Whether the owner has written to the teacher pair of a running run since its last round: the
+ * Whether the owner has written to the teachers of a running run since its last round: the
  * loop then starts the next round at once instead of waiting out its pause.
  */
 export async function teachersCalled(
@@ -292,9 +292,9 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
     return {
       ...a,
       teachers: a.teachers.map((t) => withRunContext(t, ctx)),
-      combiner: a.combiner ? withRunContext(a.combiner, ctx) : undefined,
+      merged_by: a.merged_by ? withRunContext(a.merged_by, ctx) : undefined,
       auditor: a.auditor ? withRunContext(a.auditor, ctx) : undefined,
-      panel: a.panel.map((p) => withRunContext(p, ctx)),
+      review_panel: a.review_panel.map((p) => withRunContext(p, ctx)),
     };
   };
   // Each call's conversation before a compaction, kept with the supervisor's records (goal 070).
@@ -402,7 +402,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         moved: string[];
         refused: string[];
       };
-      const who = role === "teacher" ? "the teacher pair" : "the auditor";
+      const who = role === "teacher" ? "the teachers" : "the auditor";
       say(
         run,
         "text",
@@ -449,8 +449,8 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
     }
   };
 
-  // The teacher pair, per running run, on its cadence, and at once for a new owner's message.
-  // At the limit, an owner's message to the teacher pair waits for the next day: said once.
+  // The teachers, per running run, on their cadence, and at once for a new owner's message.
+  // At the limit, an owner's message to the teachers waits for the next day: said once.
   if (cfg.advisors.teachers.length && overBudget()) {
     next.limitSaid ??= {};
     const { runs } = (await api("GET", "/v1/runs")) as { runs: RunRow[] };
@@ -461,7 +461,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
       say(
         inst.id,
         "status",
-        `the advisors reached the day's spending limit (${limit} USD): the teacher pair reads your message after midnight UTC`,
+        `the advisors reached the day's spending limit (${limit} USD): the teachers read your message after midnight UTC`,
       );
     }
   }
@@ -480,8 +480,8 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         inst.id,
         "status",
         called
-          ? `the teacher pair reviews ${inst.id} now: the owner wrote to it`
-          : `the teacher pair reviews ${inst.id}`,
+          ? `the teachers review ${inst.id} now: the owner wrote to them`
+          : `the teachers review ${inst.id}`,
       );
       try {
         const brief = (await api("GET", `/v1/brief?run=${encodeURIComponent(inst.id)}`)) as {
@@ -566,9 +566,9 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         } else if (run.error) {
           fail(`teachers for ${inst.id}`, run.error, inst.id);
         } else {
-          say(inst.id, "status", "the teacher pair set no directives");
+          say(inst.id, "status", "the teachers set no directives");
         }
-        // Then each teacher's (and the combiner's) field notes, once the round's work is posted.
+        // Then each teacher's (and the merged by model's) field notes, once the round's work is posted.
         const noted: unknown[] = [];
         for (const j of run.journal) noted.push(await notesOut(inst.id, "teachers", j.by, j.notes));
         record(`teachers-${inst.id}`, { ...run, posted, queued, noted });
@@ -663,8 +663,8 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
     }
   }
 
-  // The review panel: every panelist reviews blind; the harness needs at least two.
-  if (cfg.advisors.panel.length && !overBudget()) {
+  // The review panel: every reviewer reviews blind; the harness needs at least two.
+  if (cfg.advisors.review_panel.length && !overBudget()) {
     const { reviews } = (await api("GET", "/v1/reviews/pending")) as {
       reviews: {
         id: number;
@@ -686,7 +686,7 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         const journal: { by: string; notes: NoteInput[] }[] = [];
         const mcp = await mcpFor(pkg.run);
         // With the campaign's own context settings, when it sets any (goal 070).
-        const panel = (await configFor(pkg.run)).panel;
+        const panel = (await configFor(pkg.run)).review_panel;
         const compactions: AdvisorCompaction[] = [];
         for (const runtime of panel) {
           const r = await reviewOne({
@@ -708,12 +708,12 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
             `review ${pkg.id}${pkg.goal ? ` of goal ${pkg.goal}` : ""}, ${runtime.name}: ${r.output.pass ? "pass" : "fail"}. ${clip(r.output.reasons, 300)}`,
           );
         }
-        // Every panelist must answer: a crashed dissenter must not lose its veto. The owner's
+        // Every reviewer must answer: a crashed dissenter must not lose its veto. The owner's
         // messages count as read only with the posted review, so a retry gives them again.
-        if (results.length < cfg.advisors.panel.length) {
+        if (results.length < cfg.advisors.review_panel.length) {
           fail(
             `review ${pkg.id}`,
-            `${results.length} of ${cfg.advisors.panel.length} panelists answered`,
+            `${results.length} of ${cfg.advisors.review_panel.length} reviewers of the review panel answered`,
             pkg.run,
           );
           continue;
@@ -734,9 +734,9 @@ export async function adviseOnce(cfg: AdviseConfig, state: AdviseState): Promise
         say(
           pkg.run,
           "status",
-          `review ${pkg.id}: ${posted?.result === "review_passed" ? "the panel passed it; it waits for the owner's acceptance" : "the panel did not pass it"}`,
+          `review ${pkg.id}: ${posted?.result === "review_passed" ? "the review panel passed it; it waits for the owner's acceptance" : "the review panel did not pass it"}`,
         );
-        // Each panelist's field notes, once the review is posted.
+        // Each reviewer's field notes, once the review is posted.
         const noted: unknown[] = [];
         if (pkg.run)
           for (const j of journal) noted.push(await notesOut(pkg.run, "panel", j.by, j.notes));

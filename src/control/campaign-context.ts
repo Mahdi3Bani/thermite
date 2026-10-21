@@ -13,8 +13,8 @@ import {
 import { parseContract } from "../core/contract.ts";
 import { RUN_FIELDS } from "./copy-campaign.ts";
 import { cappedWindow } from "./providers.ts";
-import { MODEL_AGENTS, type ModelAgent } from "./rig-model.ts";
-import type { CampaignSources, ControlStore } from "./store.ts";
+
+import type { AgentRole, CampaignSources, ControlStore } from "./store.ts";
 import { isRigCheck } from "./ui/campaigns.ts";
 
 /**
@@ -211,24 +211,37 @@ export function campaignContextAnswer(
   };
 }
 
-/** The agents a campaign's runs have, by mode: a research run has no planner, auditor or panel. */
-export function agentsOfMode(mode: unknown): ModelAgent[] {
-  return mode === "research" ? ["workers", "teachers", "combiner"] : [...MODEL_AGENTS];
+/**
+ * Each model a run's agents work with (goal 074): the workers', and each one control keeps for the
+ * other agents, the teachers' second and merged by models among them.
+ */
+export type AgentPlace = "workers" | AgentRole;
+
+/**
+ * The places of a campaign's runs' agents, by mode: a research run has no planner, auditor or
+ * review panel.
+ */
+export function agentsOfMode(mode: unknown): AgentPlace[] {
+  const teachers: AgentPlace[] = ["teachers", "second_teacher", "merged_by"];
+  return mode === "research"
+    ? ["workers", ...teachers]
+    : ["workers", "planner", ...teachers, "auditor", "review_panel"];
 }
 
-/** How each agent is named in words. */
-export const AGENT_NAMES: Record<ModelAgent, string> = {
+/** How each agent's model is named in words. */
+export const AGENT_NAMES: Record<AgentPlace, string> = {
   workers: "Workers",
   planner: "Planner",
-  teachers: "Teacher pair",
-  combiner: "Combiner",
+  teachers: "Teachers",
+  second_teacher: "Teachers (second model)",
+  merged_by: "Teachers (merged by)",
   auditor: "Auditor",
-  panel: "Review panel",
+  review_panel: "Review panel",
 };
 
 /** What one agent of a run works with: its model, window and compaction point. */
 export interface AgentContext {
-  /** The model control gives it; null: the rig's own settings, or the rig's advisors file. */
+  /** The model control gives it; null: the rig's own settings, or the rig default. */
   model: string | null;
   /**
    * Its window in tokens: the lower of the campaign's and its model's (the provider's, or the
@@ -242,14 +255,14 @@ export interface AgentContext {
 /** What applies to a run's agents on a rig: the campaign's settings, and each agent's. */
 export interface ContextApplies {
   campaign: AgentsContext;
-  agents: Partial<Record<ModelAgent, AgentContext>>;
+  agents: Partial<Record<AgentPlace, AgentContext>>;
 }
 
 /** One agent's own model on control, with the provider's window and its cap and point. */
 function ownModel(
   store: ControlStore,
   rig: string,
-  agent: ModelAgent,
+  agent: AgentPlace,
 ):
   | { model: string; listed: number; cap?: number | undefined; at?: number | undefined }
   | undefined {
@@ -271,7 +284,7 @@ export function contextApplies(
 ): ContextApplies | undefined {
   const campaign = contractContext(contract);
   if (!campaign) return undefined;
-  const agents: Partial<Record<ModelAgent, AgentContext>> = {};
+  const agents: Partial<Record<AgentPlace, AgentContext>> = {};
   const workers = (): AgentContext => {
     const own = ownModel(store, rig, "workers");
     if (!own)
@@ -292,6 +305,8 @@ export function contextApplies(
   };
   for (const agent of agentsOfMode((contract as { mode?: unknown } | null)?.mode)) {
     const own = agent === "workers" ? undefined : ownModel(store, rig, agent);
+    // A second teacher only when control gives both teachers a model: else there is one.
+    if (agent === "second_teacher" && (!own || !ownModel(store, rig, "teachers"))) continue;
     if (agent === "workers" || (agent === "planner" && !own)) {
       agents[agent] = workers();
       continue;
@@ -321,12 +336,12 @@ const tokens = (n: number) => n.toLocaleString("en-US");
 
 /** What applies, in words: the campaign's settings, then a sentence for each agent. */
 export function contextAppliesWords(c: ContextApplies, rig: string): string {
-  const lines = (Object.entries(c.agents) as [ModelAgent, AgentContext][]).map(([agent, a]) => {
+  const lines = (Object.entries(c.agents) as [AgentPlace, AgentContext][]).map(([agent, a]) => {
     const from =
       a.model ??
       (agent === "workers" || agent === "planner"
         ? `the rig's own settings on ${rig}`
-        : "the rig's advisors file");
+        : "rig default");
     const window =
       a.context_window === null
         ? "the window of its model"
@@ -351,6 +366,7 @@ export function campaignContextRefusal(
   if (!window) return "";
   for (const agent of agentsOfMode((contract as { mode?: unknown } | null)?.mode)) {
     const own = ownModel(store, rig, agent);
+    if (agent === "second_teacher" && !ownModel(store, rig, "teachers")) continue;
     if (own && own.listed > 0 && window > own.listed)
       return `This campaign sets a context window of ${tokens(window)} tokens. ${own.model}, the model of the ${AGENT_NAMES[agent].toLowerCase()} on ${rig}, takes at most ${tokens(own.listed)} tokens. Set the campaign's window to ${tokens(own.listed)} or less, or give that agent another model.`;
   }

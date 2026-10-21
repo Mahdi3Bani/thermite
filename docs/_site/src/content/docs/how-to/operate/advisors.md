@@ -1,15 +1,14 @@
 ---
 title: "Configure advisors"
-description: "Turn on the teachers, the combiner, the auditor and the review panel that watch over a rig's research, and write to them."
+description: "Turn on the advisors that watch over a rig's research (the teachers, the auditor and the review panel), and write to them."
 type: how-to
 sidebar:
   order: 4
 ---
 
-A rig's supervisor can run **advisors**: models that watch the research but never judge it. Give them models on **Edit rig**, or in an advisors file, then check that they work.
+A rig's supervisor can run **the advisors**: models that watch the research but never judge it. Give them models on **Edit rig**, or in an advisors file, then check that they work.
 
-- The **teacher pair** reviews each running run, every hour by default, and suggests directions for the planner and experiments for the run's [experiment queue](../campaigns/choose-what-runs-next.md).
-- The **combiner** joins the two teachers' advice into one.
+- The **teachers**, one or two, review each running run, every hour by default, and suggest directions for the planner and experiments for the run's [experiment queue](../campaigns/choose-what-runs-next.md). With two teachers, a **merged by** model joins their advice into one set.
 - The **auditor** answers the judge's audits: it can block a change before it becomes the champion, never pass one.
 - The **review panel** grades goals that code cannot check. A pass still needs your acceptance.
 
@@ -26,7 +25,7 @@ There are two ways to give them models, and you can mix them:
 | MCP servers that the run's kit gives the advisors | Yes, in the supervisor and in Claude Code | Yes, for `openai` and `claude-code` runtimes; not for `cli` |
 | Counted toward a spending limit | No: these models count as $0 | Yes, with prices set ([Spending](#spending)) |
 
-A role given a model on **Edit rig** uses it, and the other roles keep what the file says.
+A role given a model on **Edit rig** uses it, and the other roles keep the rig default: what the file says.
 
 :::caution[What limits the advisors' spending]
 Advisors with a paid key spend money for as long as runs are running. Thermite sets no spending limit of its own.
@@ -40,8 +39,8 @@ Advisors with a paid key spend money for as long as runs are running. Thermite s
 You need a provider on control. See [Connect a model provider](../models/connect-a-provider.md).
 
 1. Open **Rigs** in the sidebar, choose the rig, then press **Edit rig**.
-2. In **1 · Parts of the rig**, check that the switches **Teacher pair**, **Auditor** and **Review panel** are **on**. They are on by default, but a part with no model does nothing. **Teacher pair** also covers the combiner.
-3. In **2 · The agents**, choose a **Model** and an **Effort** for **Teacher pair**, **Combiner**, **Auditor** and **Review panel**. **Runs in** then shows where each will run. This page gives each advisor the program its model needs:
+2. In **1 · Parts of the rig**, check that the switches **Teachers**, **Auditor** and **Review panel** are **on**. They are on by default, but a part with no model does nothing. **Teachers** also covers their merged by model.
+3. In **2 · The agents**, choose a **Model** and an **Effort** for **Teacher pair**, **Combiner**, **Auditor** and **Review panel**. The row **Teacher pair** gives the teachers' model: two teachers, both on it. The row **Combiner** gives the teachers' merged by model. **Runs in** then shows where each will run. This page gives each advisor the program its model needs:
    - `the supervisor, read-only tools`: a model with an API key, or a ChatGPT subscription, run in Pi;
    - `Claude Code, past research and the kit's MCP tools only`: a Claude subscription. Claude Code gets none of its own tools: only a read-only search of the run's past research, and the MCP servers the run's kit gives the advisors, which the supervisor serves on localhost for the call. The supervisor's image must be built with `CLAUDE_CODE_VERSION` for this (see [Use a Claude subscription](../models/claude-subscription.md));
    - `OpenCode v2 in the supervisor, past research and the kit's MCP tools only`: OpenCode's own models, which run only in OpenCode. OpenCode gets the same tools as Claude Code, and none of its own.
@@ -49,7 +48,7 @@ You need a provider on control. See [Connect a model provider](../models/connect
 
 To run an advisor in another program, give it its model over MCP or the REST API with `harness`: `opencode` (OpenCode v2) or `codex` (the Codex CLI, for a ChatGPT subscription or an OpenAI-compatible provider) runs it in the supervisor with the same tools as Claude Code, and none of its own ([Give each agent its own model](../models/model-per-agent.md#over-mcp-or-rest)). **Runs in** then says, for example, `Codex in the supervisor, past research and the kit's MCP tools only`, and keeps saying so while you leave that row's model as it is. The published supervisor image carries OpenCode and the Codex CLI.
 
-The page says, for example, "Control sent a model for the teachers to rig-1. The rig takes the change in less than one minute." Both teachers use the model you chose. A review panel from **Edit rig** is always three reviewers with the same model; in the file, it is two or more. To go back to the file for a role, choose `the rig's advisors file`.
+The page says, for example, "Control sent a model for the teachers to rig-1. The rig takes the change in less than one minute." Both teachers use the model you chose; to give the teachers two different models, or only one teacher, use MCP or the REST API ([Give each agent its own model](../models/model-per-agent.md#over-mcp-or-rest)). A review panel from **Edit rig** is always three reviewers with the same model; in the file, it is two or more. To go back to the rig default (the file) for a role, choose `the rig's advisors file`.
 
 ## In the advisors file
 
@@ -64,13 +63,13 @@ The page says, for example, "Control sent a model for the teachers to rig-1. The
          "model": "model-b", "api_key_file": "/etc/thermite/advisors/llm-key",
          "usd_per_mtok_in": 1, "usd_per_mtok_out": 5 }
      ],
-     "combiner": { "name": "combiner", "runtime": "openai", "base_url": "https://llm.example.com/v1",
+     "merged_by": { "name": "merged-by", "runtime": "openai", "base_url": "https://llm.example.com/v1",
        "model": "model-a", "api_key_file": "/etc/thermite/advisors/llm-key",
        "usd_per_mtok_in": 3, "usd_per_mtok_out": 15 },
      "auditor": { "name": "auditor", "runtime": "openai", "base_url": "https://llm.example.com/v1",
        "model": "model-a", "api_key_file": "/etc/thermite/advisors/llm-key", "reasoning": "high",
        "usd_per_mtok_in": 3, "usd_per_mtok_out": 15 },
-     "panel": [
+     "review_panel": [
        { "name": "reviewer-a", "runtime": "openai", "base_url": "https://llm.example.com/v1",
          "model": "model-a", "api_key_file": "/etc/thermite/advisors/llm-key",
          "usd_per_mtok_in": 3, "usd_per_mtok_out": 15 },
@@ -84,7 +83,7 @@ The page says, for example, "Control sent a model for the teachers to rig-1. The
    }
    ```
 
-   Leave out a role to turn it off. A review panel needs at least two reviewers with different names: the file loads with one, but then each review fails with an `advisor error`. OpenCode's free models don't work in the file either, since they answer only OpenCode itself. The [advisors file reference](../../reference/advisors-file.md) has every field.
+   Leave out a role to turn it off. One teacher works alone, with no merge. Two teachers without `merged_by` give the set of the first review that comes back. A review panel needs at least two reviewers with different names: the file loads with one, but then each review fails with an `advisor error`. OpenCode's free models don't work in the file either, since they answer only OpenCode itself. A file written before 0.1.0 may still say `combiner` for `merged_by` and `panel` for `review_panel`; a file that gives both names of one field is refused. The [advisors file reference](../../reference/advisors-file.md) has every field.
 
 2. Put the file and its key files in `.dev/advisors/`, which the local stack's supervisor sees as `/etc/thermite/advisors/`:
 
@@ -117,16 +116,16 @@ The example uses the `openai` runtime: a model API that the supervisor calls its
 
 `fetch_domains` lists the sites that the teachers and the auditor may read, for papers and upstream code; leave it out for no web fetch. The optional `kb` field connects a knowledge base of your own: a search service over your notes or documents, reached over MCP, which the teachers may search but not change. With `"*"` (any public site) in `fetch_domains`, the teachers get no knowledge-base search at all, and their brief leaves out the background and the past-research line described in [What they read](#what-they-read-and-their-field-notes), both in their prompt and from their `brief` tool. The [advisors file reference](../../reference/advisors-file.md#runtimes) has every runtime's fields, and what each role may read and fetch.
 
-On any rig, without the file, a campaign's kit can give its advisors **MCP servers**, such as a knowledge base you run: add the server in **Settings › Providers › MCP servers**, then tick **Advisors** for it in the kit's **MCP servers for the agents** ([Give agents MCP tools](../campaigns/give-agents-mcp-tools.md)). The teacher pair, the auditor and the review panel then get its tools; the combiner gets none. The supervisor makes each call with the sign-in control gives it, and the advisor sees the tools and their answers, never the secret. With `"*"` in `fetch_domains`, the advisors get no MCP server, and the run's live view says so once ([MCP servers](../../reference/advisors-file.md#mcp-servers)).
+On any rig, without the file, a campaign's kit can give its advisors **MCP servers**, such as a knowledge base you run: add the server in **Settings › Providers › MCP servers**, then tick **Advisors** for it in the kit's **MCP servers for the agents** ([Give agents MCP tools](../campaigns/give-agents-mcp-tools.md)). The teachers, the auditor and the review panel then get its tools; the teachers' merged by model gets none. The supervisor makes each call with the sign-in control gives it, and the advisor sees the tools and their answers, never the secret. With `"*"` in `fetch_domains`, the advisors get no MCP server, and the run's live view says so once ([MCP servers](../../reference/advisors-file.md#mcp-servers)).
 
 ## What they read, and their field notes
 
 Besides the run's own records, the advisors read what the run's agents noted and what you picked from past research. All of it reaches them marked as data, not instructions:
 
-- **The teacher pair's brief** holds the run's 20 newest [field notes](../../explanation/journals-and-knowledge.md), by every writer: the short notes the workers, the planner and the advisors keep as they work. It also holds the run's **background**: the findings, claims, notes and reports from earlier runs that you picked when you started the run ([Use past research in a new run](../campaigns/use-past-research.md)). When the run's `knowledge/` folder holds past research from the folders its campaign may read, the brief has one line that says what it holds; the teachers read no files, and the workers search that folder. For teachers that may fetch any web page (`"*"` in the advisors file's `fetch_domains`), the supervisor leaves the background and that line out of their brief: out of their prompt, and out of what their `brief` tool returns. Their brief keeps the field notes.
+- **The teachers' brief** holds the run's 20 newest [field notes](../../explanation/journals-and-knowledge.md), by every writer: the short notes the workers, the planner and the advisors keep as they work. It also holds the run's **background**: the findings, claims, notes and reports from earlier runs that you picked when you started the run ([Use past research in a new run](../campaigns/use-past-research.md)). When the run's `knowledge/` folder holds past research from the folders its campaign may read, the brief has one line that says what it holds; the teachers read no files, and the workers search that folder. For teachers that may fetch any web page (`"*"` in the advisors file's `fetch_domains`), the supervisor leaves the background and that line out of their brief: out of their prompt, and out of what their `brief` tool returns. Their brief keeps the field notes.
 - **The auditor's and each reviewer's package** hold the background, and neither the field notes nor that line.
 
-Every advisor may also write field notes: each teacher, the combiner, the auditor and each reviewer. A note is an observation, a decision and why, a surprise, an open question or a lesson. The supervisor posts an advisor's notes after its review, audit or verdict, and the rig records each one as written by `<role>:<name>`, such as `teachers:teacher-1`, `auditor:auditor` or `panel:reviewer-2`. They show:
+Every advisor may also write field notes: each teacher, the teachers' merged by model, the auditor and each reviewer of the review panel. A note is an observation, a decision and why, a surprise, an open question or a lesson. The supervisor posts an advisor's notes after its review, audit or verdict, and the rig records each one as written by `<role>:<name>`, such as `teachers:teacher-1`, `teachers:merged-by`, `auditor:auditor` or `panel:reviewer-2` (the review panel's role keeps the name `panel` in these records). They show:
 
 - on the run's **Journal** tab, under the writers **Teachers**, **Auditor** and **Review panel**;
 - in the run's **Live**, under **Advisors**, such as `teachers:teacher-1 noted (lesson): …`;
@@ -141,7 +140,7 @@ A note the rig can't keep never costs the advisor's work: its review, audit or v
 - The limit counts only `openai` runtimes in the file, from their `usd_per_mtok_in` and `usd_per_mtok_out` prices. Without prices, they count as free.
 - `cli` and `claude-code` advisors, and every model given on **Edit rig**, count as $0: they add nothing to the total.
 - When the day's total reaches the limit, every advisor of the rig skips its turns until the next UTC day, wherever its model comes from. The research itself goes on.
-- At the limit, a message you write to the teachers starts no round. The run's **Live** says so once for each new message, under **Advisors**: `the advisors reached the day's spending limit (20 USD): the teacher pair reads your message after midnight UTC`.
+- At the limit, a message you write to the teachers starts no round. The run's **Live** says so once for each new message, under **Advisors**: `the advisors reached the day's spending limit (20 USD): the teachers read your message after midnight UTC`.
 - The check comes before each role's turn, so a round can go a little past the limit.
 
 ## Check that they work
@@ -150,17 +149,17 @@ Wait a minute, then press **refresh** in the status bar, the line along the bott
 
 - The **Advisors** row of the **The rig** block shows `N teacher rounds · N directive sets · N audits · N errors · $N.NN` instead of `none configured`.
 - A run's **Live** page shows each step of the advisors' rounds for that run when you choose **Advisors**. Open it with **Live** on the run's page, or **Live** in the sidebar, which opens a run at work. The lines read, for example:
-  - `the teacher pair reviews run-1`;
+  - `the teachers review run-1`;
   - `teacher teacher-a: …`, with what it suggests, or `teacher teacher-b gave no review: …`;
-  - `directives for the planner: …`, each with its reason, or `the teacher pair set no directives`;
-  - `the teacher pair added to the queue: …`, with the titles of the experiments it added, and `the teacher pair moved …`, with their ids;
+  - `directives for the planner: …`, each with its reason, or `the teachers set no directives`;
+  - `the teachers added to the queue: …`, with the titles of the experiments they added, and `the teachers moved …`, with their ids;
   - `audit of …`, with the attempt, which try of that audit it is (`(try 1)`), the auditor's decision, what it did to the result and why;
   - `the auditor added to the queue: …`, with the title of its check;
-  - `review …`, with each reviewer's pass or fail and why, then the panel's outcome;
+  - `review …`, with each reviewer's pass or fail and why, then the review panel's outcome;
   - `advisor round done: …`, the round's counts, when the round did something.
 
   The rig's own live view (the **Live** button on the rig's page) shows the same lines when you choose **Supervisor** in its list.
-- When the teachers' advice reaches a run, its **History** tab has a line for each rule they set, such as `The teacher pair set a rule for the plan: avoid :loop-tiling:.`, and for each experiment they add, such as `The teacher pair added "Unroll the loop by 4" to the queue.` A rule they set for a direction the run doesn't have yet is designed by the planner at its next round. Advisors can't bring back a rule you removed: History then says, for example, `The teacher pair named a rule you removed (avoid :loop-tiling:): left out.` ([Remove a rule](../campaigns/choose-what-runs-next.md#remove-a-rule)). In a research run, a rule for a direction that is not one of its task kinds is left out too: History says, for example, `The teacher pair named a direction this research run doesn't have (try :blog-posts:): left out.`, and why.
+- When the teachers' advice reaches a run, its **History** tab has a line for each rule they set, such as `The teachers set a rule for the plan: avoid :loop-tiling:.`, and for each experiment they add, such as `The teachers added "Unroll the loop by 4" to the queue.` A rule they set for a direction the run doesn't have yet is designed by the planner at its next round. Advisors can't bring back a rule you removed: History then says, for example, `The teachers named a rule you removed (avoid :loop-tiling:): left out.` ([Remove a rule](../campaigns/choose-what-runs-next.md#remove-a-rule)). In a research run, a rule for a direction that is not one of its task kinds is left out too: History says, for example, `The teachers named a direction this research run doesn't have (try :blog-posts:): left out.`, and why.
 - The run's **Experiments** tab shows the experiments the advisors added, with **teachers** or **auditor** as who added each one.
 
 A count of errors that grows means a role keeps failing. Each error is a line in **Live** with its reason, such as `audit of …: advisor auditor has no key`, and the supervisor's log has an `advisor error` line with the same reason. When the rig can't record an advisor's experiments and moves at all, the error line starts with `the queue for run-1:`. A move that the rig refuses, for example of an experiment a lane has taken since, shows after `refused:` in the advisor's own line, and the other changes still apply.
@@ -169,4 +168,4 @@ A count of errors that grows means a role keeps failing. Each error is a line in
 
 You write to a run's advisors as you write to its agents: on the run's **Live** page, choose **To the teachers**, **To the auditor**, **To the review panel** or **To all advisors** under **To**, write, and press **Send**. See [Send the agents a message](../campaigns/steer-a-run.md#send-the-agents-a-message).
 
-The teachers read it in a round that starts at once; the auditor and the panel only with their next audit or review. Each advisor that reads it answers in one or two sentences in **Live**, such as "the teacher pair (teacher-a) answered you: …". [When each agent reads it](../campaigns/steer-a-run.md#when-each-agent-reads-it) gives each reader's timing, and [`message_agent`](../../reference/signed-commands.md#message_agent) lists the reasons a message is refused. A role with no model is greyed out under **To**, once the rig's supervisor has reported its advisors, and control refuses a message to it however it is sent, such as `This rig's supervisor has no teacher pair set up, so nothing would read it.` Before the supervisor has reported, control can't tell: a message to such a role goes to the rig, and nothing reads it until you give the role a model.
+The teachers read it in a round that starts at once; the auditor and the review panel only with their next audit or review. Each advisor that reads it answers in one or two sentences in **Live**, such as "the teachers (teacher-a) answered you: …". [When each agent reads it](../campaigns/steer-a-run.md#when-each-agent-reads-it) gives each reader's timing, and [`message_agent`](../../reference/signed-commands.md#message_agent) lists the reasons a message is refused. A role with no model is greyed out under **To**, once the rig's supervisor has reported its advisors, and control refuses a message to it however it is sent, such as `This rig's supervisor has no teachers set up, so nothing would read it.` Before the supervisor has reported, control can't tell: a message to such a role goes to the rig, and nothing reads it until you give the role a model.

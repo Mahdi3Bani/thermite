@@ -50,7 +50,7 @@ When **Pause**, **Restart the lanes** or a restart of the rig's harness ends a t
 Others write to the queue too, and **Added by** names them:
 
 - `planner`: the planner adds, moves and drops experiments, and queues or drops ideas, each with its reason.
-- `teachers`: the teacher pair, an [advisor](../../reference/glossary.md), adds and moves experiments.
+- `teachers`: the teachers, [advisors](../../reference/glossary.md) of the run, add and move experiments.
 - `auditor`: when the auditor doubts a result that it can't settle, it puts one check at the top. The check is an ordinary experiment: a lane's worker takes it like any other, and nothing measures the doubted attempt again because of it.
 - `lane-2's idea`: a lane's worker proposed it.
 
@@ -105,7 +105,7 @@ What each rule does:
 | **Try** | Its experiments go first when a lane is free | `Its experiments go first when a lane is free.`, then how many are up next |
 | **Always** | One lane works on it at every hand-out | `One lane works on it at every hand-out.`, then the lanes on it now |
 
-Rules come from elsewhere too: the teacher pair's advice, and `redirect` from the [command line](steer-a-run.md#steer-from-the-command-line), the REST API or MCP. They show in the same list, with who set them. The planner makes only **Avoid**, **Try** and **Always** rules. The other kinds, `priority`, `lane_count` and `note`, come from the teacher pair or from `redirect`.
+Rules come from elsewhere too: the teachers' advice, and `redirect` from the [command line](steer-a-run.md#steer-from-the-command-line), the REST API or MCP. They show in the same list, with who set them. The planner makes only **Avoid**, **Try** and **Always** rules. The other kinds, `priority`, `lane_count` and `note`, come from the teachers or from `redirect`.
 
 ### Directions
 
@@ -146,7 +146,7 @@ The conversion replaces the old rule with a new rule on that direction. The new 
 
 Press **Remove** beside the rule. It works on any rule, whoever set it. Once the rig has reported, the rule leaves **Rules**, and **History** says `You removed rule 7.`
 
-A rule you removed stays removed. When the advisors, the planner or the agent's token send the same rule again, of the same kind and with the same direction, the rig leaves it out of their set, and records an event `directives_left_out` with the rule and `"why": "the owner removed these rules"`. **History** says, for example, `The teacher pair named a rule you removed (avoid :loop-tiling:): left out.` Only you bring it back, with a `redirect` sent with the owner's or an operator's token: see [Steer from the command line](steer-a-run.md#steer-from-the-command-line).
+A rule you removed stays removed. When the advisors, the planner or the agent's token send the same rule again, of the same kind and with the same direction, the rig leaves it out of their set, and records an event `directives_left_out` with the rule and `"why": "the owner removed these rules"`. **History** says, for example, `The teachers named a rule you removed (avoid :loop-tiling:): left out.` Only you bring it back, with a `redirect` sent with the owner's or an operator's token: see [Steer from the command line](steer-a-run.md#steer-from-the-command-line).
 
 ### When the planner can't take a message
 
@@ -255,5 +255,5 @@ Over MCP, the owner's and an operator's tokens send the same kinds and payloads 
 
 - On **Commands**, the row, such as **queue add**, is **delivered** within seconds. Its **Outcome** holds the rig's answer, such as `{"accepted":true,"result":{"experiment":"x-0123456789ab","position":0,"state":"queued"},"status":"applied"}`. After the rig's next report, the same answer shows with `"kind"` and `"source"` in place of `"status"`.
 - After the rig's next report, within a minute, and a **refresh**, **Up next** shows the experiment at its place, and **Rules** shows the rules in force.
-- The run's **History** has a line for each change, such as `You added "unroll the inner loop by 4" to the queue.`, `You moved "unroll the inner loop by 4" to place 3.`, `You edited "unroll the inner loop by 4".` or `You dropped "unroll the inner loop by 4": measured slower twice.` The planner's, the advisors' and the lanes' changes show there too, such as `The teacher pair added "…" to the queue.` or `lane-2 proposed "…" as an idea for the queue.`
+- The run's **History** has a line for each change, such as `You added "unroll the inner loop by 4" to the queue.`, `You moved "unroll the inner loop by 4" to place 3.`, `You edited "unroll the inner loop by 4".` or `You dropped "unroll the inner loop by 4": measured slower twice.` The planner's, the advisors' and the lanes' changes show there too, such as `The teachers added "…" to the queue.` or `lane-2 proposed "…" as an idea for the queue.`
 - When a lane takes the experiment, it moves to **In progress**, and **What the planner did** on the **Planner** tab shows the hand-out and why. When the trial ends, **Tried** shows its result.

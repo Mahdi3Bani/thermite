@@ -1294,7 +1294,7 @@ export class HarnessService {
   }
 
   /**
-   * The deterministic snapshot the supervisor's teacher pair reviews: the campaign, the champion,
+   * The deterministic snapshot the teachers review: the campaign, the champion,
    * the direction registry, recent evidence, epochs and the directives in force. Nothing from
    * held-out cells, and no worker text beyond hypotheses.
    */
@@ -1359,8 +1359,8 @@ export class HarnessService {
         device_hours_used: this.ledger.deviceHours(run),
         tokens: registry.tokensUsed(run),
       },
-      // The owner's messages to the teacher pair (to it, or to all the advisors): those it has not
-      // read, to answer, and those it read in the last day.
+      // The owner's messages to the teachers (to them, or to all the advisors): those they have not
+      // read, to answer, and those they read in the last day.
       owner_messages: this.messages
         .forTeachers(run)
         .map((m) => ({ id: m.id, at: m.at, text: m.text, read: m.read })),
@@ -1473,7 +1473,7 @@ export class HarnessService {
   }
 
   /**
-   * Low-power steering from the supervisor's teacher pair: one structured directive set, which
+   * Low-power steering from the teachers: one structured directive set, which
    * replaces the supervisor's previous set. Every directive needs a citation, and free-text notes
    * (planner only) are limited. Nothing here can touch a verdict, a contract or a worker's brief.
    */
@@ -1525,7 +1525,7 @@ export class HarnessService {
   }
 
   /**
-   * An advisor's additions and moves for a run's queue (the supervisor, for the teacher pair or
+   * An advisor's additions and moves for a run's queue (the supervisor, for the teachers or
    * the auditor; the review panel judges goals and has no way into the queue): each recorded
    * with the role as who made it. Each move is
    * applied on its own; one that is refused (an unknown id, an experiment no longer queued) is

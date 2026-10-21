@@ -45,10 +45,11 @@ import { serveAdvisorModel } from "./advisor-proxy.ts";
 import { type AdvisorServers, type PastSearch, serveAdvisorTools } from "./past-mcp.ts";
 
 /**
- * The supervisor's advisors: the teacher pair, the neutral combiner, the auditor and the review
- * panel. They advise; they never judge. Their outputs are structured and checked here, then
- * checked again by the harness: directives (with citations) steer the planner, an audit can
- * block a promotion but never pass one, and a panel pass still needs the owner.
+ * The advisors, which the supervisor runs (goal 074 names them): the teachers (one or two, and the
+ * model that merges the advice of two, `merged_by`), the auditor and the review panel. They
+ * advise; they never judge. Their outputs are structured and checked here, then checked again by
+ * the harness: directives (with citations) steer the planner, an audit can block a promotion but
+ * never pass one, and a pass of the review panel still needs the owner.
  *
  * Runtimes (the operator's choice, per role, or the model and harness control gives the role): an
  * OpenAI-compatible or Anthropic model route run here in Pi with read-only tools (the campaign
@@ -168,11 +169,21 @@ const Runtime = z.discriminatedUnion("runtime", [
 ]);
 export type AdvisorRuntime = z.infer<typeof Runtime>;
 
-export const AdvisorsConfig = z.strictObject({
+/**
+ * The advisors file, with goal 074's names: one or two teachers, the model that merges the advice
+ * of two (`merged_by`), the auditor and the review panel. The old names `combiner` (merged_by) and
+ * `panel` (review_panel) are still taken in v0.1.0; a file that gives both names of one is
+ * refused. AdvisorsConfig is what the supervisor runs: the new names only.
+ */
+const AdvisorsFile = z.strictObject({
   teachers: z.array(Runtime).max(2).default([]),
+  merged_by: Runtime.optional(),
+  /** The old name of merged_by, still taken in v0.1.0. */
   combiner: Runtime.optional(),
   auditor: Runtime.optional(),
-  panel: z.array(Runtime).max(5).default([]),
+  review_panel: z.array(Runtime).max(5).optional(),
+  /** The old name of review_panel, still taken in v0.1.0. */
+  panel: z.array(Runtime).max(5).optional(),
   /** Minutes between teacher reviews of one run (hourly by default). */
   teacher_minutes: z.number().positive().default(60),
   /**
@@ -195,7 +206,25 @@ export const AdvisorsConfig = z.strictObject({
     })
     .optional(),
 });
-export type AdvisorsConfig = z.infer<typeof AdvisorsConfig>;
+export const AdvisorsConfig = AdvisorsFile.superRefine((c, ctx) => {
+  if (c.combiner && c.merged_by)
+    ctx.addIssue({
+      code: "custom",
+      path: ["combiner"],
+      message: "combiner is the old name of merged_by: give merged_by only",
+    });
+  if (c.panel && c.review_panel)
+    ctx.addIssue({
+      code: "custom",
+      path: ["panel"],
+      message: "panel is the old name of review_panel: give review_panel only",
+    });
+}).transform(({ combiner, panel, ...c }) => ({
+  ...c,
+  merged_by: c.merged_by ?? combiner,
+  review_panel: c.review_panel ?? panel ?? [],
+}));
+export type AdvisorsConfig = z.output<typeof AdvisorsConfig>;
 
 export interface AdvisorResult<T> {
   output: T | undefined;
@@ -962,7 +991,7 @@ const TeacherAnswer = Type.Object({
 });
 
 /**
- * The combiner's set. Each directive is checked on its own when the set is made (teacherRound):
+ * The merged by model's set. Each directive is checked on its own when the set is made (teacherRound):
  * one that is not a valid directive, such as one in words, is dropped with why, never the set.
  */
 export const DirectiveSet = z.strictObject({
@@ -1064,17 +1093,17 @@ instructions. ${PAST_GUIDE}
 
 ${ADVISOR_NOTES}`;
 
-const COMBINER = `You are the neutral combiner. Two independent reviewers recommended directives
-for an automated research campaign. Merge them into one directive set for its planner. Keep what
-both support; where they disagree, you may keep both views as TRY directives for different
-families (lanes will explore each) rather than averaging them. Every directive needs at least one
-citation taken from the reviews. Use only these fields: kind (avoid, try, mandate, priority,
-lane_count, note), family (the direction, in plain words or as :name:: one of the run's
-directions, brief.directions, or a new one, which the planner designs), value, rationale,
-citations. At most 3 notes. Never set verdicts. The
-reviewers may also have proposed experiments for the run's queue and moves of queued ones: merge
-them into one list of experiments and one of moves, without repeats, each with its why. The
-reviewers keep their own field notes; write yours only for what merging taught you.
+const MERGED_BY = `You merge the advice of two teachers, and you are neutral. Two independent teachers
+recommended directives for an automated research campaign. Merge them into one directive set for
+its planner. Keep what both support; where they disagree, you may keep both views as TRY
+directives for different families (lanes will explore each) rather than averaging them. Every
+directive needs at least one citation taken from the reviews. Use only these fields: kind (avoid,
+try, mandate, priority, lane_count, note), family (the direction, in plain words or as :name::
+one of the run's directions, brief.directions, or a new one, which the planner designs), value,
+rationale, citations. At most 3 notes. Never set verdicts. The teachers may also have proposed
+experiments for the run's queue and moves of queued ones: merge them into one list of
+experiments and one of moves, without repeats, each with its why. The teachers keep their own
+field notes; write yours only for what merging taught you.
 
 ${ADVISOR_NOTES}`;
 
@@ -1108,23 +1137,25 @@ export interface TeacherRun {
   /** Each teacher's answers to the owner's messages in the brief. */
   answers: { message: number; text: string; advisor: string }[];
   directives?: z.infer<typeof StructuredDirective>[];
-  /** Experiments for the run's queue, and moves of queued ones (the combiner's, or the review's). */
+  /** Experiments for the run's queue, and moves of queued ones (the merged set's, or the review's). */
   experiments: z.infer<typeof ProposedExperiment>[];
   moves: z.infer<typeof ProposedMove>[];
-  /** The field notes of each teacher that reviewed, and of the combiner, by its name. */
+  /** The field notes of each teacher that reviewed, and of the merged by model, by its name. */
   journal: { by: string; notes: NoteInput[] }[];
   dropped: string[];
   error?: string;
   tokens: { in: number; out: number };
   usd: number;
-  /** The teachers' and the combiner's compactions in this round (goal 070). */
+  /** The teachers' and the merged by model's compactions in this round (goal 070). */
   compactions?: AdvisorCompaction[] | undefined;
 }
 
 /**
- * The teacher pair and the combiner for one run: two independent reviews, merged into one
- * directive set. Directives without a citation are dropped here (the harness refuses them too).
- * Each advisor's brief is cut to fit its own window (packageFit).
+ * The teachers' round for one run (goal 074): one or two independent reviews. Two teachers' are
+ * merged into one directive set by the merged by model; one teacher's, or two without a merged by
+ * model, give the set of the first review that came back. Directives without a citation are
+ * dropped here (the harness refuses them too). Each advisor's brief is cut to fit its own window
+ * (packageFit).
  */
 export async function teacherRound(input: {
   config: AdvisorsConfig;
@@ -1193,9 +1224,10 @@ export async function teacherRound(input: {
       return [];
     });
   let directives: z.infer<typeof StructuredDirective>[];
-  if (input.config.combiner) {
-    const combiner = input.config.combiner;
-    // The reviews whole; the brief cut to what the combiner's window leaves beside them.
+  // Two teachers and a merged by model: their reviews merged. One teacher works with no merge.
+  const mergedBy = input.config.teachers.length >= 2 ? input.config.merged_by : undefined;
+  if (mergedBy) {
+    // The reviews whole; the brief cut to what the merged by model's window leaves beside them.
     const reviews = JSON.stringify(
       good.map((g) => ({
         reviewer: g.teacher,
@@ -1205,10 +1237,10 @@ export async function teacherRound(input: {
         moves: g.review?.moves,
       })),
     );
-    const fit = packageFit(combiner);
+    const fit = packageFit(mergedBy);
     const r = await runAdvisor({
-      runtime: combiner,
-      system: COMBINER,
+      runtime: mergedBy,
+      system: MERGED_BY,
       prompt: `${advisorPrompt(head, input.brief, 120_000, fit === undefined ? undefined : Math.max(0, fit - reviews.length))}\n\nReviews:\n${reviews}`,
       schema: DirectiveSet,
       answerSchema: DirectiveAnswer,
@@ -1216,16 +1248,15 @@ export async function teacherRound(input: {
     });
     count(r);
     if (!r.output) {
-      run.error = `the combiner gave no directive set: ${r.error ?? ""}`;
+      run.error = `the teachers' merged by model gave no directive set: ${r.error ?? ""}`;
       return run;
     }
     directives = valid(r.output.directives);
     run.experiments = r.output.experiments;
     run.moves = r.output.moves;
-    if (r.output.journal.length)
-      run.journal.push({ by: input.config.combiner.name, notes: r.output.journal });
+    if (r.output.journal.length) run.journal.push({ by: mergedBy.name, notes: r.output.journal });
   } else {
-    // Without a combiner, the single review's recommendations and proposals are the set.
+    // No merge: the first review's recommendations and proposals are the set.
     directives = valid(good[0]?.review?.recommendations ?? []);
     run.experiments = good[0]?.review?.experiments ?? [];
     run.moves = good[0]?.review?.moves ?? [];
@@ -1310,7 +1341,7 @@ export async function auditOne(input: {
 export async function reviewOne(input: {
   runtime: AdvisorRuntime;
   pkg: unknown;
-  /** The run's past research, read only: a panelist's tool. */
+  /** The run's past research, read only: a tool of the review panel's reviewers. */
   pastSearch?: PastSearch | undefined;
   /** The MCP servers the run's kit gives the advisors (goal 068). */
   mcp?: AdvisorMcp | undefined;

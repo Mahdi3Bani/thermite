@@ -226,7 +226,7 @@ test("History tells the queue's changes, the hand-outs and the rules in words", 
       title: "vector loads",
       by: "teacher",
     }),
-    'The teacher pair added "vector loads" to the queue.',
+    'The teachers added "vector loads" to the queue.',
   );
   assert.equal(
     say("experiment_dropped", "control:owner:ui", { id: "x-1", by: "owner", why: "slower" }),
@@ -305,7 +305,7 @@ test("History tells the queue's changes, the hand-outs and the rules in words", 
       why: "A research run's directions are its task kinds.",
       reason: "unknown_direction",
     }),
-    "The teacher pair named a direction this research run doesn't have (avoid :blogs:): left out. A research run's directions are its task kinds.",
+    "The teachers named a direction this research run doesn't have (avoid :blogs:): left out. A research run's directions are its task kinds.",
   );
   // An experiment back in the queue after its trial was interrupted: not its author's act.
   const back = {

@@ -15,10 +15,11 @@ import { type RigView, type RunView, rigView } from "./views.ts";
 
 type AdvisorRole = "teachers" | "auditor" | "panel";
 const ADVISOR_ROLES: readonly AdvisorRole[] = ["teachers", "auditor", "panel"];
-const ROLE_NAME: Record<AdvisorRole, string> = {
-  teachers: "teacher pair",
-  auditor: "auditor",
-  panel: "review panel",
+/** Each advisor's name in a sentence (goal 074), and its verb. */
+const ROLE_NAME: Record<AdvisorRole, { name: string; is: string }> = {
+  teachers: { name: "teachers", is: "are" },
+  auditor: { name: "auditor", is: "is" },
+  panel: { name: "review panel", is: "is" },
 };
 
 /**
@@ -61,9 +62,9 @@ export function nobodyReads(
     if (research && x === "auditor") return "A research run has no attempts to audit.";
     if (research && x === "panel") return "A research run has no conclusions to review.";
     if (u.settings?.[x === "panel" ? "review" : x] === false)
-      return `The ${ROLE_NAME[x]} is off on this rig (Edit rig), so nothing would read it.`;
+      return `The ${ROLE_NAME[x].name} ${ROLE_NAME[x].is} off on this rig (Edit rig), so nothing would read it.`;
     return unset(x)
-      ? `This rig's supervisor has no ${ROLE_NAME[x]} set up, so nothing would read it.`
+      ? `This rig's supervisor has no ${ROLE_NAME[x].name} set up, so nothing would read it.`
       : "";
   };
   if (to === "teachers" || to === "auditor" || to === "panel") return role(to);
@@ -82,19 +83,21 @@ export function nobodyReads(
 function checkedMessage(store: ControlStore, rig: string, payload: unknown): unknown {
   if (!payload || typeof payload !== "object") return payload;
   const p = payload as { run?: unknown; to?: unknown; text?: unknown };
+  // The review panel by its name (goal 074): the rig takes it as panel, as every version does.
+  const to = p.to === "review_panel" ? "panel" : p.to;
   const text = typeof p.text === "string" ? p.text.trim() : p.text;
   if (text === "") throw new Error("Write a message first.");
-  const u = typeof p.run === "string" && typeof p.to === "string" ? rigView(store, rig) : undefined;
+  const u = typeof p.run === "string" && typeof to === "string" ? rigView(store, rig) : undefined;
   const r = u?.runs.find((x) => x.id === p.run);
-  const why = u && r ? nobodyReads(u, String(p.to), r) : "";
+  const why = u && r ? nobodyReads(u, String(to), r) : "";
   if (why) throw new Error(why);
   // The run's campaign: as the rig reported it, or as control assigned it (before its report).
   const campaign =
     r?.campaign ||
     (typeof p.run === "string" ? store.assignedCampaigns(rig).get(p.run) : undefined);
-  if (p.to === "panel" && campaign && !reviewsAGoal(store, campaign))
+  if (to === "panel" && campaign && !reviewsAGoal(store, campaign))
     throw new Error("This run has no goal the review panel reviews, so nothing would read it.");
-  return { ...p, text };
+  return { ...p, to, text };
 }
 
 /**

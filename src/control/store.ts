@@ -148,11 +148,12 @@ create table if not exists rig_model (
   model text not null,
   assigned_at text not null
 );
--- The model of each of a rig's other agents (planner, teacher pair, combiner, auditor, review
--- panel), when the owner gave one; a role with none follows the workers, or the rig's own settings.
+-- The model of each of a rig's other agents (the planner; the teachers' first and second model and
+-- their merged by model; the auditor; the review panel), when the owner gave one; a role with none
+-- follows the workers, or the rig default.
 create table if not exists rig_role_model (
   rig text not null,
-  role text not null check (role in ('planner', 'teachers', 'combiner', 'auditor', 'panel')),
+  role text not null check (role in ('planner', 'teachers', 'second_teacher', 'merged_by', 'auditor', 'review_panel')),
   provider text not null,
   model text not null,
   effort text,
@@ -435,6 +436,47 @@ function renameUnitsToRigs(db: DatabaseSync): void {
   }
 }
 
+/**
+ * A store written before goal 074 (2026-10-21) named the agents' roles `combiner` and `panel`, and
+ * gave the teachers one model, which ran as two teachers. Its table is made again with the new
+ * names: `merged_by` and `review_panel`, and a `second_teacher` with the teachers' model, so a rig
+ * keeps its two teachers.
+ */
+function renameAgentRoles(db: DatabaseSync): void {
+  const table = db
+    .prepare("select sql from sqlite_master where type = 'table' and name = 'rig_role_model'")
+    .get() as { sql?: string } | undefined;
+  if (!table?.sql?.includes("'combiner'")) return;
+  const cols = "rig, role, provider, model, effort, assigned_at, harness, context_cap, compact_at";
+  db.exec("begin immediate");
+  try {
+    db.exec(`create table rig_role_model_074 (
+  rig text not null,
+  role text not null check (role in ('planner', 'teachers', 'second_teacher', 'merged_by', 'auditor', 'review_panel')),
+  provider text not null,
+  model text not null,
+  effort text,
+  assigned_at text not null,
+  harness text,
+  context_cap integer,
+  compact_at integer,
+  primary key (rig, role)
+)`);
+    db.exec(`insert into rig_role_model_074 (${cols})
+  select rig, case role when 'combiner' then 'merged_by' when 'panel' then 'review_panel' else role end,
+    provider, model, effort, assigned_at, harness, context_cap, compact_at from rig_role_model`);
+    db.exec(`insert into rig_role_model_074 (${cols})
+  select rig, 'second_teacher', provider, model, effort, assigned_at, harness, context_cap, compact_at
+    from rig_role_model where role = 'teachers'`);
+    db.exec("drop table rig_role_model");
+    db.exec("alter table rig_role_model_074 rename to rig_role_model");
+    db.exec("commit");
+  } catch (err) {
+    db.exec("rollback");
+    throw err;
+  }
+}
+
 /** An export a rig sent to control (its files are on disk: exports.ts). */
 export interface RigExport {
   rig: string;
@@ -504,9 +546,27 @@ export const codexTakes = (type: ProviderType): boolean => type === "chatgpt" ||
 /** How hard an agent's model thinks: Claude Code's levels (other providers take up to high). */
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 export const EFFORTS: Effort[] = ["low", "medium", "high", "xhigh", "max"];
-/** A rig's agents other than its workers, each of which may have its own model. */
-export type AgentRole = "planner" | "teachers" | "combiner" | "auditor" | "panel";
-export const AGENT_ROLES: AgentRole[] = ["planner", "teachers", "combiner", "auditor", "panel"];
+/**
+ * A rig's agents other than its workers, each of which may have its own model (goal 074): the
+ * planner; the teachers' first model (`teachers`), their second (`second_teacher`: a second
+ * teacher) and the model that merges two teachers' advice (`merged_by`); the auditor; the review
+ * panel.
+ */
+export type AgentRole =
+  | "planner"
+  | "teachers"
+  | "second_teacher"
+  | "merged_by"
+  | "auditor"
+  | "review_panel";
+export const AGENT_ROLES: AgentRole[] = [
+  "planner",
+  "teachers",
+  "second_teacher",
+  "merged_by",
+  "auditor",
+  "review_panel",
+];
 
 /** A model in a provider's list: its id, and its context window when the provider says it. */
 export interface ProviderModel {
@@ -1000,6 +1060,7 @@ export class ControlStore {
       this.db.exec("alter table rig_role_model add column context_cap integer");
     if (!roleModelCols.includes("compact_at"))
       this.db.exec("alter table rig_role_model add column compact_at integer");
+    renameAgentRoles(this.db);
     const machineRigCols = (this.db.prepare("pragma table_info(machine_rig)").all() as Row[]).map(
       (r) => r.name,
     );

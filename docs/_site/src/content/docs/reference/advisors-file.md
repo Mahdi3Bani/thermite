@@ -1,12 +1,12 @@
 ---
 title: "Advisors file"
-description: "Every field of the advisors file that configures a rig's teacher pair, combiner, auditor and review panel, and how Edit rig's models replace it."
+description: "Every field of the advisors file that configures a rig's teachers, their merged by model, the auditor and the review panel, and how Edit rig's models replace it."
 type: reference
 sidebar:
   order: 4
 ---
 
-A rig's [supervisor](glossary.md) runs four kinds of **advisors**: models that advise but never judge. The **teacher pair** reviews a running run, recommends directions for its [planner](glossary.md) and may propose experiments for the run's [experiment queue](glossary.md); the **combiner** merges the two reviews into one; the **auditor** reads a change before it may become the champion, and may put a check in the queue when it can't settle a doubt; and the **review panel** grades goals that code cannot check. The advisors file is a JSON file that gives each of them a model and sets how they work. The owner can also write to the teacher pair, the auditor and the review panel from a run's **Live**: each reads the messages meant for it and answers there. [Supervision](../explanation/supervision.md) explains why they exist; [Configure advisors](../how-to/operate/advisors.md) gives the steps.
+A rig's [supervisor](glossary.md) runs the **advisors**: models that advise but never judge. The **teachers**, one or two, review a running run, recommend directions for its [planner](glossary.md) and may propose experiments for the run's [experiment queue](glossary.md); with two teachers, a **merged by** model merges their two reviews into one; the **auditor** reads a change before it may become the champion, and may put a check in the queue when it can't settle a doubt; and the **review panel** grades goals that code cannot check. The advisors file is a JSON file that gives each of them a model and sets how they work. It is the rig default: a model from **Edit rig** replaces it for its role. The owner can also write to the teachers, the auditor and the review panel from a run's **Live**: each reads the messages meant for it and answers there. [Supervision](../explanation/supervision.md) explains why they exist; [Configure advisors](../how-to/operate/advisors.md) gives the steps.
 
 ```json title="advisors.json"
 {
@@ -28,8 +28,8 @@ A rig's [supervisor](glossary.md) runs four kinds of **advisors**: models that a
       "restricted": true
     }
   ],
-  "combiner": {
-    "name": "combiner",
+  "merged_by": {
+    "name": "merged-by",
     "runtime": "openai",
     "base_url": "https://llm.example.com/v1",
     "model": "model-a",
@@ -47,7 +47,7 @@ A rig's [supervisor](glossary.md) runs four kinds of **advisors**: models that a
     "usd_per_mtok_in": 3,
     "usd_per_mtok_out": 15
   },
-  "panel": [
+  "review_panel": [
     {
       "name": "reviewer-a",
       "runtime": "openai",
@@ -73,7 +73,7 @@ A rig's [supervisor](glossary.md) runs four kinds of **advisors**: models that a
 }
 ```
 
-This file gives the rig two teachers (one through an API, one a command-line agent), a combiner, an auditor and a panel of two. The teachers review each running run every hour, may fetch pages from two sites and search a knowledge base. Once the advisors' counted spending for the day reaches USD 20, the supervisor skips them until the next day (UTC).
+This file gives the rig two teachers (one through an API, one a command-line agent), a merged by model for them, an auditor and a review panel of two reviewers. The teachers review each running run every hour, may fetch pages from two sites and search a knowledge base. Once the advisors' counted spending for the day reaches USD 20, the supervisor skips them until the next day (UTC).
 
 ## How the file is read
 
@@ -82,21 +82,23 @@ This file gives the rig two teachers (one through an API, one a command-line age
 - **Checks.** The file is parsed with a strict schema. A file that is missing, is not JSON, has a field the schema does not know, or lacks a required field stops the supervisor at start: it logs a `fatal` line and exits with code 1.
 - **Edit rig comes first.** A role given a model on the rig's **Edit rig** page uses that model instead of the file's runtimes for that role. See [Models from Edit rig](#models-from-edit-rig).
 - **Rigs control sets up.** Rigs that control sets up on a machine, on a cluster or with a join command have no advisors file. Their advisors are the ones **Edit rig** gives.
-- **Switches.** The switches **Teacher pair**, **Auditor** and **Review panel** under **Edit rig** › **1 · Parts of the rig** decide whether each role runs at all. **Teacher pair** covers the combiner too. A role that is switched on but has no model, from the file or from **Edit rig**, does nothing.
-- **Messages.** The supervisor tells control which roles it has: switched on, with a model. Control refuses an owner's message to a role the rig lacks before it signs it, from **Live**, the REST API and MCP alike: `This rig's supervisor has no teacher pair set up, so nothing would read it.` (or `auditor`, `review panel`), and, to all the advisors when it has none of them, `This rig's supervisor has no advisors set up, so nothing would read it.` A role switched off on **Edit rig** gives `The teacher pair is off on this rig (Edit rig), so nothing would read it.` instead. A run's **Live** greys out those recipients (**To the teachers**, **To the auditor**, **To the review panel**, **To all advisors**) with the same words. Until the supervisor has reported its roles, control refuses nothing for this. [`message_agent`](signed-commands.md#message_agent) lists every refusal.
+- **Switches.** The switches **Teachers**, **Auditor** and **Review panel** under **Edit rig** › **1 · Parts of the rig** decide whether each role runs at all. **Teachers** covers their merged by model too. A role that is switched on but has no model, from the file or from **Edit rig**, does nothing.
+- **Messages.** The supervisor tells control which roles it has: switched on, with a model. Control refuses an owner's message to a role the rig lacks before it signs it, from **Live**, the REST API and MCP alike: `This rig's supervisor has no teachers set up, so nothing would read it.` (or `auditor`, `review panel`), and, to all the advisors when it has none of them, `This rig's supervisor has no advisors set up, so nothing would read it.` A role switched off on **Edit rig** gives `The teachers are off on this rig (Edit rig), so nothing would read it.` (or `The auditor is off`, `The review panel is off`) instead. A run's **Live** greys out those recipients (**To the teachers**, **To the auditor**, **To the review panel**, **To all advisors**) with the same words. Until the supervisor has reported its roles, control refuses nothing for this. [`message_agent`](signed-commands.md#message_agent) lists every refusal.
 
 ## Top level
 
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `teachers` | list of [runtimes](#runtimes), at most 2 | `[]` | The teacher pair: zero, one or two teachers |
-| `combiner` | [runtime](#runtimes) | none | Merges the teachers' reviews into one directive set, and their experiments and moves into one list each. Without it, the first teacher that gave a review is used: its recommendations that are valid directives, and its experiments and moves |
+| `teachers` | list of [runtimes](#runtimes), at most 2 | `[]` | The teachers: zero, one or two |
+| `merged_by` | [runtime](#runtimes) | none | The teachers' merged by model. With two teachers, it merges their reviews into one directive set, and their experiments and moves into one list each. One teacher works with no merge, and this model is not called. Without it, the first teacher that gave a review is used: its recommendations that are valid directives, and its experiments and moves. The old name `combiner` is still taken in v0.1.0 |
 | `auditor` | [runtime](#runtimes) | none | Answers open audits |
-| `panel` | list of [runtimes](#runtimes), at most 5 | `[]` | The review panel. The harness counts a panel only with at least 2 reviewers with different `name`s |
+| `review_panel` | list of [runtimes](#runtimes), at most 5 | `[]` | The review panel. The harness counts it only with at least 2 reviewers with different `name`s. The old name `panel` is still taken in v0.1.0 |
 | `teacher_minutes` | number above 0; fractions allowed | `60` | Minutes between two teacher reviews of the same run |
 | `fetch_domains` | list of texts | `[]` | The sites advisors may fetch pages from. A site covers its subdomains. Empty: no fetching. `"*"`: any public site; then no advisor gets a knowledge-base search (`kb`) or an [MCP server](#mcp-servers), the teachers' brief has no `background` and no `past_research`, in their prompt or from their `brief` tool (it keeps the rest, `field_notes` included), and the auditor gets no fetching at all |
 | `max_usd_per_day` | number, 0 or more | none: no limit | A limit on what all the rig's advisors spend in one day (UTC), counted from the `openai` runtimes' prices. See [Spending](#spending) |
 | `kb` | object | none | A search service the teachers may use, read only: an MCP server of your own that searches your notes or documents. It is not [Thermite's knowledge base](knowledge-base.md), which control keeps. On any rig, a campaign's kit can give its advisors an [MCP server](#mcp-servers) from control instead |
+
+A file that gives both names of one field stops the supervisor at start, with `combiner is the old name of merged_by: give merged_by only` or `panel is the old name of review_panel: give review_panel only`.
 
 `kb` has these fields:
 
@@ -157,7 +159,7 @@ The supervisor runs the command in a new empty folder that is also its home and 
 | `compact_at` | whole number, 50 to 95 | none: 80 | Claude Code's compaction point, as `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`. A campaign's own point replaces it for that campaign's runs |
 | `timeout_s` | whole number, 1 to 7200 | `1800` | Seconds before the call is ended |
 
-The supervisor runs `claude -p --output-format json --model <model> --tools "" --setting-sources "" --strict-mcp-config`, with `--effort` when set: none of Claude Code's own tools, no settings files and no MCP servers of its own. When the advisor may search the run's past research (the run has some, and the advisor is a teacher on a rig without `fetch_domains` `"*"`, the auditor or a panelist), the supervisor adds `--mcp-config` with one MCP server it serves for that call alone, on `127.0.0.1` behind a token made for the call, and `--allowedTools mcp__thermite__search_past_research`: the server's one tool, the read-only `search_past_research`. When the run's kit gives the advisors MCP servers, the same local server serves each of them too, at `/mcp/<server>`, and `--allowedTools` adds `mcp__<server>` for each ([MCP servers](#mcp-servers)). The server stops when the call ends. Its input, its folder and its answer work as for a `cli` advisor, the answer's JSON Schema included. The token reaches Claude Code on file descriptor 3, never in an environment variable, a file or the command line. Its environment holds `PATH`, `HOME`, `TMPDIR`, `CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR=3` (where Claude Code reads the token), `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, `DISABLE_AUTOUPDATER=1`, `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` (the compaction point) and, with a `context_window`, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`. Claude Code's own sandbox stays off: with none of its own tools, it runs no commands. The supervisor finds Claude Code through `THERMITE_CLAUDE_BIN`, or else `claude` on its `PATH`; the supervisor image holds Claude Code only when it was built with `CLAUDE_CODE_VERSION`. Its spending counts as USD 0. **Edit rig** can also give a role a Claude subscription: see [Use a Claude subscription](../how-to/models/claude-subscription.md).
+The supervisor runs `claude -p --output-format json --model <model> --tools "" --setting-sources "" --strict-mcp-config`, with `--effort` when set: none of Claude Code's own tools, no settings files and no MCP servers of its own. When the advisor may search the run's past research (the run has some, and the advisor is a teacher on a rig without `fetch_domains` `"*"`, the auditor or a reviewer of the review panel), the supervisor adds `--mcp-config` with one MCP server it serves for that call alone, on `127.0.0.1` behind a token made for the call, and `--allowedTools mcp__thermite__search_past_research`: the server's one tool, the read-only `search_past_research`. When the run's kit gives the advisors MCP servers, the same local server serves each of them too, at `/mcp/<server>`, and `--allowedTools` adds `mcp__<server>` for each ([MCP servers](#mcp-servers)). The server stops when the call ends. Its input, its folder and its answer work as for a `cli` advisor, the answer's JSON Schema included. The token reaches Claude Code on file descriptor 3, never in an environment variable, a file or the command line. Its environment holds `PATH`, `HOME`, `TMPDIR`, `CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR=3` (where Claude Code reads the token), `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, `DISABLE_AUTOUPDATER=1`, `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` (the compaction point) and, with a `context_window`, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`. Claude Code's own sandbox stays off: with none of its own tools, it runs no commands. The supervisor finds Claude Code through `THERMITE_CLAUDE_BIN`, or else `claude` on its `PATH`; the supervisor image holds Claude Code only when it was built with `CLAUDE_CODE_VERSION`. Its spending counts as USD 0. **Edit rig** can also give a role a Claude subscription: see [Use a Claude subscription](../how-to/models/claude-subscription.md).
 
 ### `opencode`: OpenCode v2 in the supervisor
 
@@ -219,14 +221,14 @@ Codex may still offer the model its `apply_patch` tool. Under the read-only sand
 
 | Role | When it runs | What it reads | Tools (`openai` runtimes only) |
 | --- | --- | --- | --- |
-| Teachers | For each running run, once every `teacher_minutes`, and at once when the owner has written to the teacher pair, or to all the advisors, since the run's last teacher round started, unless the day's [spending](#spending) has reached its limit. A round that fails waits the full time too, even one that a message started | The run's brief: the campaign, its champion, the direction families, recent evidence, epochs, the directives in force, the run's experiment queue (`queue`: the first 40 up next, the newest 20 ideas, what each lane is on, and the newest 20 tried with the judge's verdicts), and `owner_messages`: the owner's messages to the teacher pair or to all the advisors, each `{id, at, text, read}`. Up to 5 that the teachers read in the last 24 hours come first, with `"read": true`; then up to 20 they have not read, with `"read": false`. Also `field_notes`: the run's newest 20 [field notes](knowledge-base.md#field-notes), by every writer; `background`: the run's [briefing](knowledge-base.md#briefings), when it has one; and `past_research`: one line on what the run's [`knowledge/` folder](knowledge-base.md#a-runs-knowledge-folder) holds and that `search_past_research` searches it, when it holds something. With `fetch_domains` `"*"`, the brief has no `background` and no `past_research`, in their prompt or from their `brief` tool, and keeps the rest, `field_notes` included | `brief`; `fetch_url` when `fetch_domains` is not empty; `search_past_research` when the run has past research and `fetch_domains` has no `"*"`; `kb_search` when `fetch_domains` has no `"*"` and `kb` is set; the [MCP tools](#mcp-servers) the run's kit gives the advisors, when `fetch_domains` has no `"*"`; `answer` |
-| Combiner | After the teachers, when at least one gave a review | The brief as the teachers' prompt has it, the owner's messages, the queue and the field notes included, and each teacher's summary, recommendations, experiments and moves. It does not answer the owner | `answer` only |
+| Teachers | For each running run, once every `teacher_minutes`, and at once when the owner has written to the teachers, or to all the advisors, since the run's last teacher round started, unless the day's [spending](#spending) has reached its limit. A round that fails waits the full time too, even one that a message started | The run's brief: the campaign, its champion, the direction families, recent evidence, epochs, the directives in force, the run's experiment queue (`queue`: the first 40 up next, the newest 20 ideas, what each lane is on, and the newest 20 tried with the judge's verdicts), and `owner_messages`: the owner's messages to the teachers or to all the advisors, each `{id, at, text, read}`. Up to 5 that the teachers read in the last 24 hours come first, with `"read": true`; then up to 20 they have not read, with `"read": false`. Also `field_notes`: the run's newest 20 [field notes](knowledge-base.md#field-notes), by every writer; `background`: the run's [briefing](knowledge-base.md#briefings), when it has one; and `past_research`: one line on what the run's [`knowledge/` folder](knowledge-base.md#a-runs-knowledge-folder) holds and that `search_past_research` searches it, when it holds something. With `fetch_domains` `"*"`, the brief has no `background` and no `past_research`, in their prompt or from their `brief` tool, and keeps the rest, `field_notes` included | `brief`; `fetch_url` when `fetch_domains` is not empty; `search_past_research` when the run has past research and `fetch_domains` has no `"*"`; `kb_search` when `fetch_domains` has no `"*"` and `kb` is set; the [MCP tools](#mcp-servers) the run's kit gives the advisors, when `fetch_domains` has no `"*"`; `answer` |
+| Merged by | After two teachers, when at least one gave a review. Not with one teacher | The brief as the teachers' prompt has it, the owner's messages, the queue and the field notes included, and each teacher's summary, recommendations, experiments and moves. It does not answer the owner | `answer` only |
 | Auditor | For each open audit. A failed audit is tried again every 30 minutes, at most 5 times, then left to the owner | The audit's package: the change, its hypothesis and declared flaws, the judge's verdict, why the audit was asked for, and the contract's title, objective, editable paths, `insufficient` and `adversarial_checklist`. Also `owner_messages`: up to 20 of the owner's messages to the auditor or to all the advisors that it has not read, each `{id, at, text}`, and `background`: the run's [briefing](knowledge-base.md#briefings), when it has one, and `past_research`, as for the teachers. No field notes. In one round, they go with each of the run's audits in turn, until the auditor's answer to one of them is posted to the harness | `fetch_url` only when `fetch_domains` is not empty and has no `"*"`; `search_past_research` when the run has past research; the [MCP tools](#mcp-servers) the run's kit gives the advisors, when `fetch_domains` has no `"*"`; `answer` |
-| Review panel | For each open review, every panelist in turn. Retried as for audits | The goal, its criteria, the contract's `deliverable` and `insufficient`, and the change, without who made it. Also `owner_messages`, as for the auditor: the messages to the review panel or to all the advisors that the panel has not read, and `background` and `past_research`, as for the auditor. Every panelist gets the same ones, and in one round they go with each of the run's reviews in turn, until the panel's results for one of them are posted to the harness: every panelist must answer | `search_past_research` when the run has past research; the [MCP tools](#mcp-servers) the run's kit gives the advisors, when `fetch_domains` has no `"*"`; `answer` |
+| Review panel | For each open review, every reviewer in turn. Retried as for audits | The goal, its criteria, the contract's `deliverable` and `insufficient`, and the change, without who made it. Also `owner_messages`, as for the auditor: the messages to the review panel or to all the advisors that the review panel has not read, and `background` and `past_research`, as for the auditor. Every reviewer gets the same ones, and in one round they go with each of the run's reviews in turn, until the review panel's results for one of them are posted to the harness: every reviewer must answer | `search_past_research` when the run has past research; the [MCP tools](#mcp-servers) the run's kit gives the advisors, when `fetch_domains` has no `"*"`; `answer` |
 
-Each advisor's prompt holds its brief or package as JSON, cut to 120,000 characters for the teachers and the combiner, and to 200,000 for the auditor and each panelist. With a window Thermite knows (an `openai` runtime's, or the `context_window` of a `claude-code`, `opencode` or `codex` runtime), it is cut further to fit that window: at most the compaction point less 30% of the window, at about 3.5 characters a token. The prompt then says so on the line after its heading: `[Cut to fit the window: <n> of <m> characters.]`. The combiner's brief is cut to what its window leaves beside the two reviews. The owner's messages come first in it and are never cut. [Compaction](limits-and-pacing.md#compaction) says how a call's conversation is compacted and where the supervisor keeps it.
+Each advisor's prompt holds its brief or package as JSON, cut to 120,000 characters for the teachers and their merged by model, and to 200,000 for the auditor and each reviewer of the review panel. With a window Thermite knows (an `openai` runtime's, or the `context_window` of a `claude-code`, `opencode` or `codex` runtime), it is cut further to fit that window: at most the compaction point less 30% of the window, at about 3.5 characters a token. The prompt then says so on the line after its heading: `[Cut to fit the window: <n> of <m> characters.]`. The merged by model's brief is cut to what its window leaves beside the two reviews. The owner's messages come first in it and are never cut. [Compaction](limits-and-pacing.md#compaction) says how a call's conversation is compacted and where the supervisor keeps it.
 
-The supervisor starts a round of advisors every `THERMITE_POLL_SECONDS` seconds (60 by default, at least 30) after the last round ends. Between rounds, it looks every 5 seconds for a new message from the owner to the teacher pair, or to all the advisors, in a running run. When it finds one, the rig has teachers, its **Teacher pair** switch is on and the day's [spending](#spending) is under `max_usd_per_day`, the next round starts at once. That round gives the run its teacher round, even before `teacher_minutes` have passed. A round under way finishes first. One message starts one teacher round: if that round fails, the message waits for the next teacher round on the schedule.
+The supervisor starts a round of advisors every `THERMITE_POLL_SECONDS` seconds (60 by default, at least 30) after the last round ends. Between rounds, it looks every 5 seconds for a new message from the owner to the teachers, or to all the advisors, in a running run. When it finds one, the rig has teachers, its **Teachers** switch is on and the day's [spending](#spending) is under `max_usd_per_day`, the next round starts at once. That round gives the run its teacher round, even before `teacher_minutes` have passed. A round under way finishes first. One message starts one teacher round: if that round fails, the message waits for the next teacher round on the schedule.
 
 | Tool | What it does |
 | --- | --- |
@@ -246,13 +248,13 @@ Every answer is one JSON object with exactly these fields. A `cli` or `claude-co
 | Role | Answer |
 | --- | --- |
 | Teacher | `summary`: text, 1 to 4000 characters. `recommendations`: up to 20 directives. `answers`: optional, its [answers to the owner's messages](#answers-to-the-owners-messages). `experiments` and `moves`: optional, its [proposals for the queue](#experiments-and-moves-for-the-queue) |
-| Combiner | `directives`: up to 20 directives. `experiments` and `moves`: optional, the teachers' proposals merged |
+| Merged by | `directives`: up to 20 directives. `experiments` and `moves`: optional, the teachers' proposals merged |
 | Auditor | `decision`: `"clear"`, `"block"` or `"needs_owner"`. `reasons`: text, 1 to 8000 characters. `citations`: up to 20 texts of 1 to 500 characters, default `[]`. `answers`: optional, as for a teacher. `check`: optional, [one check for the queue](#experiments-and-moves-for-the-queue) |
-| Review panelist | `pass`: `true` or `false`. `reasons`: text, 1 to 8000 characters. `answers`: optional, as for a teacher |
+| Reviewer of the review panel | `pass`: `true` or `false`. `reasons`: text, 1 to 8000 characters. `answers`: optional, as for a teacher |
 
-Every role, the combiner included, may also add `journal`: its [field notes](#field-notes).
+Every role, the merged by model included, may also add `journal`: its [field notes](#field-notes).
 
-A directive, in a teacher's recommendations and the combiner's set, has these fields:
+A directive, in a teacher's recommendations and the merged by model's set, has these fields:
 
 | Field | Type | Meaning |
 | --- | --- | --- |
@@ -264,11 +266,11 @@ A directive, in a teacher's recommendations and the combiner's set, has these fi
 
 The brief's `directions` lists the run's directions. The teachers' instructions say a rule names "one of the run's directions (brief.directions), or a new one, which the planner designs at its next round". In the answer's schema, `family` reads "The rule's direction, in plain words or as :name:: one of the run's directions (brief.directions), or a new one, which the planner designs". The supervisor sends the advisors' experiments to the queue before their rules.
 
-Each directive is checked on its own. One that is not valid, such as one that gives words in `match` or a `family` that can't be a direction's name, is dropped, with why, in the teachers' record (`a rule no longer takes match: …`); it costs neither the review nor the combiner's set. In a research run, which has no planner to design a direction, the harness leaves out a rule for any direction but a task kind, records `directives_left_out` with why, and the supervisor's line in **Live** says `Left out by the rig: …`.
+Each directive is checked on its own. One that is not valid, such as one that gives words in `match` or a `family` that can't be a direction's name, is dropped, with why, in the teachers' record (`a rule no longer takes match: …`); it costs neither the review nor the merged set. In a research run, which has no planner to design a direction, the harness leaves out a rule for any direction but a task kind, records `directives_left_out` with why, and the supervisor's line in **Live** says `Left out by the rig: …`.
 
 ### Experiments and moves for the queue
 
-A teacher's review and the combiner's set may propose work for the run's [experiment queue](glossary.md): experiments to add, and moves of experiments already queued.
+A teacher's review and the merged by model's set may propose work for the run's [experiment queue](glossary.md): experiments to add, and moves of experiments already queued.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
@@ -303,7 +305,7 @@ An auditor's answer, with one answer to the owner:
 }
 ```
 
-A teacher, the auditor and each panelist may add `answers`: one answer to each of the owner's messages it was given in `owner_messages`, by the message's `id`. Their instructions ask for one or two sentences each. A teacher is asked to answer only the messages marked `"read": false`, and to keep those marked `"read": true` as the owner's standing wishes. The supervisor drops answers to any other message. The combiner answers none.
+A teacher, the auditor and each reviewer of the review panel may add `answers`: one answer to each of the owner's messages it was given in `owner_messages`, by the message's `id`. Their instructions ask for one or two sentences each. A teacher is asked to answer only the messages marked `"read": false`, and to keep those marked `"read": true` as the owner's standing wishes. The supervisor drops answers to any other message. The merged by model answers none.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
@@ -315,7 +317,7 @@ A teacher, the auditor and each panelist may add `answers`: one answer to each o
 
 ### Field notes
 
-Each advisor's instructions end with what a field note is, and: "Put yours in journal; they are not NOTE directives for the planner." The combiner's say: "The reviewers keep their own field notes; write yours only for what merging taught you."
+Each advisor's instructions end with what a field note is, and: "Put yours in journal; they are not NOTE directives for the planner." The merged by model's say: "The teachers keep their own field notes; write yours only for what merging taught you."
 
 | Field | Type | Meaning |
 | --- | --- | --- |
@@ -332,23 +334,23 @@ The supervisor sends every answer to the harness, which checks it again. Nothing
 
 | Role | The supervisor | The harness |
 | --- | --- | --- |
-| Teachers and combiner | Drops each directive that is not valid, with or without a combiner, each one without a citation, and every note after the third. Sends the rest as one set, which replaces the advisors' previous set for that run | Refuses a set with 0 or more than 20 directives, with a directive without a citation (`<n> directive(s) without a citation`), with more than 3 notes (`at most 3 notes per directive set`), or that both avoids a direction and asks for it (`the set both avoids and asks for <directions>`). Leaves out each rule that the owner removed from the run, and records them in the event `directives_left_out`, `{rules, why: "the owner removed these rules"}` (see [`drop_directive`](signed-commands.md#drop_directive)). Only the owner's [`redirect`](signed-commands.md#redirect), or an operator's for the owner, sets such a rule again |
-| Experiments and moves | Sends the teachers' experiments and moves after their round, as the teacher pair's, and the auditor's check after its audit, as the auditor's: one request to the harness (`POST /v1/queue`) with the run, the role, the experiments to add and the moves. The route takes the role `teacher` or `auditor` only. It sends the combiner's lists, or the first review's without a combiner. The review panel proposes nothing | Records each experiment as added by `teacher` or `auditor` (the dashboard shows **teachers** or **auditor**), at the end of the queue unless the request gives a place. Applies each move on its own: a refused move is named (`move <id>: <reason>`) and the others still apply. Refuses the whole request when it carries more than 20 of either, or when the run is closed. Advisors only add and move: they never drop experiments, accept ideas or give out work |
+| Teachers and merged by | Drops each directive that is not valid, merged or not, each one without a citation, and every note after the third. Sends the rest as one set, which replaces the advisors' previous set for that run | Refuses a set with 0 or more than 20 directives, with a directive without a citation (`<n> directive(s) without a citation`), with more than 3 notes (`at most 3 notes per directive set`), or that both avoids a direction and asks for it (`the set both avoids and asks for <directions>`). Leaves out each rule that the owner removed from the run, and records them in the event `directives_left_out`, `{rules, why: "the owner removed these rules"}` (see [`drop_directive`](signed-commands.md#drop_directive)). Only the owner's [`redirect`](signed-commands.md#redirect), or an operator's for the owner, sets such a rule again |
+| Experiments and moves | Sends the teachers' experiments and moves after their round, as the teachers', and the auditor's check after its audit, as the auditor's: one request to the harness (`POST /v1/queue`) with the run, the role, the experiments to add and the moves. The route takes the role `teacher` or `auditor` only. It sends the merged by model's lists, or the first review's without a merge. The review panel proposes nothing | Records each experiment as added by `teacher` or `auditor` (the dashboard shows **teachers** or **auditor**), at the end of the queue unless the request gives a place. Applies each move on its own: a refused move is named (`move <id>: <reason>`) and the others still apply. Refuses the whole request when it carries more than 20 of either, or when the run is closed. Advisors only add and move: they never drop experiments, accept ideas or give out work |
 | Auditor | Sends the decision with the auditor's `name` | `block`: the change is held, and only the owner can overrule it. `needs_owner`: the change waits for the owner. `clear`: the change goes on as the promotion rule says, but it still waits for the owner if it has declared flaws, if its gain is above the contract's absolute trigger, or if the rule is owner approval |
-| Review panel | Sends the panel's results only when every panelist answered | Refuses a panel of fewer than 2 (`a panel needs at least 2 reviewers`), a name twice (`each reviewer counts once`), a review of a commit that is no longer the champion, and a run that is not running. The panel passes a goal only if every panelist passes it, and the goal is met only when the owner accepts it |
-| Field notes | After the role's review, audit or panel results are posted, sends each advisor's notes to the harness (`POST /v1/journal`) with its role and name. The combiner's go with the teachers'. If this fails, it counts as an error; the review, audit or verdict stands | Records each note on its own, as written by `teachers:<name>`, `auditor:<name>` or `panel:<name>`. A note about a record the run does not have is kept without what it is about; one that cannot be kept is left out. Each problem is named, and the others still count |
-| The owner's messages | Once a teacher gave a review, once the auditor's answer is posted to the harness, or once the panel's results are posted, sends which messages the role was given, with the answers to those messages only. Each teacher's and each panelist's answers are kept under its own name. The audit and the panel's results are sent without the answers. If this call fails, it counts as an error, and the messages stay unread, to be given again | Records that the role read each message, and each answer as an `advisor_answer` event of up to 2,000 characters, with a line in **Live**. Refuses a message that is not in the run (`no message <id> in run <run>`) or not for the role (`message <id> is not for the auditor`). An answer cannot set a verdict, pause a run or reach a worker |
+| Review panel | Sends the review panel's results only when every reviewer answered | Refuses fewer than 2 reviewers (`the review panel needs at least 2 reviewers`), a name twice (`each reviewer counts once`), a review of a commit that is no longer the champion, and a run that is not running. The review panel passes a goal only if every reviewer passes it, and the goal is met only when the owner accepts it |
+| Field notes | After the role's review, audit or review panel results are posted, sends each advisor's notes to the harness (`POST /v1/journal`) with its role and name. The merged by model's go with the teachers'. If this fails, it counts as an error; the review, audit or verdict stands | Records each note on its own, as written by `teachers:<name>`, `auditor:<name>` or, for a reviewer of the review panel, `panel:<name>`. A note about a record the run does not have is kept without what it is about; one that cannot be kept is left out. Each problem is named, and the others still count |
+| The owner's messages | Once a teacher gave a review, once the auditor's answer is posted to the harness, or once the review panel's results are posted, sends which messages the role was given, with the answers to those messages only. Each teacher's and each reviewer's answers are kept under its own name. The audit and the review panel's results are sent without the answers. If this call fails, it counts as an error, and the messages stay unread, to be given again | Records that the role read each message, and each answer as an `advisor_answer` event of up to 2,000 characters, with a line in **Live**. Refuses a message that is not in the run (`no message <id> in run <run>`) or not for the role (`message <id> is not for the auditor`). An answer cannot set a verdict, pause a run or reach a worker |
 
 ## Models from Edit rig
 
-On a rig's **Edit rig** page, section **2 · The agents**, the owner can choose a model and an effort for the **Teacher pair**, the **Combiner**, the **Auditor** and the **Review panel**. Each choice replaces the file's runtimes for that role only. The empty choice, **the rig's advisors file**, leaves the role to the file. See [Give each agent its own model](../how-to/models/model-per-agent.md).
+On a rig's **Edit rig** page, section **2 · The agents**, the owner can choose a model and an effort for the advisors, in the rows **Teacher pair**, **Combiner**, **Auditor** and **Review panel**. The row **Teacher pair** gives both teachers its model, and the row **Combiner** gives the teachers' merged by model. Over MCP or the REST API ([`set_rig_model`](mcp-tools.md#set_rig_model)), the teachers can also take one model, or two different ones. Each model control gives replaces the file's runtimes for its role only: control's teachers replace all the file's teachers. A role with none keeps the rig default, the file's. On **Edit rig**, the empty choice **the rig's advisors file** leaves the role to the file. See [Give each agent its own model](../how-to/models/model-per-agent.md).
 
-| Role on Edit rig | Becomes |
+| What control gives | Becomes |
 | --- | --- |
-| **Teacher pair** | Two runtimes, `teacher-1` and `teacher-2`, with the same model |
-| **Combiner** | One runtime, `combiner` |
-| **Auditor** | One runtime, `auditor` |
-| **Review panel** | Three runtimes, `reviewer-1`, `reviewer-2` and `reviewer-3`, with the same model |
+| The teachers' models: one, or two (the row **Teacher pair** gives both teachers one model) | One runtime for each model: `teacher-1`, and `teacher-2` for the second |
+| The teachers' merged by model (the row **Combiner**) | One runtime, `merged-by`. It merges only the reviews of two teachers, the file's or control's |
+| The auditor | One runtime, `auditor` |
+| The review panel | Three runtimes, `reviewer-1`, `reviewer-2` and `reviewer-3`, with the same model |
 
 Each role runs in the harness that control keeps for it. **Edit rig** gives the one the model needs: Claude Code for a Claude subscription, OpenCode v2 for OpenCode's own models, and Pi for the others. Over MCP or the REST API, a role can be given another, among those its model can run in ([`set_rig_model`](mcp-tools.md#set_rig_model)).
 
@@ -369,7 +371,7 @@ The **Runs in** column says where each role runs: `Claude Code, past research an
 
 ## MCP servers
 
-A campaign's kit names the [MCP servers](../how-to/campaigns/give-agents-mcp-tools.md) its agents use; a server given to `advisors` goes to the run's teacher pair, auditor and review panel. The combiner gets none. The advisors file has no field for them: control gives the rig's supervisor the servers that the runs it assigned the rig name, with their sign-in, on the same beat as the model route, and the supervisor keeps them in memory. For each run, it reads which servers the run's kit gives the advisors, and which of their tools, from the harness's list of runs.
+A campaign's kit names the [MCP servers](../how-to/campaigns/give-agents-mcp-tools.md) its agents use; a server given to `advisors` goes to the run's teachers, auditor and review panel. The teachers' merged by model gets none. The advisors file has no field for them: control gives the rig's supervisor the servers that the runs it assigned the rig name, with their sign-in, on the same beat as the model route, and the supervisor keeps them in memory. For each run, it reads which servers the run's kit gives the advisors, and which of their tools, from the harness's list of runs.
 
 | Runtime | What the advisor gets |
 | --- | --- |
@@ -390,7 +392,7 @@ A server that fails gives the advisor a tool error, `The MCP server <name> faile
 - Each call of an `openai` runtime costs `(input tokens × usd_per_mtok_in + output tokens × usd_per_mtok_out) ÷ 1,000,000` US dollars. `cli`, `claude-code`, `opencode` and `codex` calls count USD 0, and so do models from **Edit rig**, whose prices are 0.
 - The supervisor adds up the day's spending (UTC) in `advise-state.json` in its home, so the total survives a restart.
 - With `max_usd_per_day` set, the supervisor checks the total before each role's turn in a round, and skips the role once the total has reached the limit, until the next day. A round that has started can go past the limit.
-- At the limit, a message to the teacher pair, or to all the advisors, starts no round. The run's **Live** says so once for each new message: `the advisors reached the day's spending limit (<limit> USD): the teacher pair reads your message after midnight UTC`. The first round of the next day gives the run its teacher round.
+- At the limit, a message to the teachers, or to all the advisors, starts no round. The run's **Live** says so once for each new message: `the advisors reached the day's spending limit (<limit> USD): the teachers read your message after midnight UTC`. The first round of the next day gives the run its teacher round.
 - Without `max_usd_per_day`, there is no limit.
 
 The rig's page on the dashboard shows, in its **Advisors** row, the teacher rounds, directive sets, audits, errors and US dollars spent.
@@ -401,20 +403,20 @@ Each step of a round is a line in the run's **Live**, under **Advisors**, and in
 
 | Line | When |
 | --- | --- |
-| `the teacher pair reviews <run>` | A teacher round of the run starts |
-| `the teacher pair reviews <run> now: the owner wrote to it` | A teacher round that a message from the owner started |
+| `the teachers review <run>` | A teacher round of the run starts |
+| `the teachers review <run> now: the owner wrote to them` | A teacher round that a message from the owner started |
 | `teacher <name>: <summary> Suggests: <kind> <family>, ….` | A teacher's review: its summary, cut to 400 characters, and the kind and family of each recommendation |
 | `teacher <name> gave no review: <error>` | A teacher failed |
-| `the teacher pair read the owner's message #<id>: <text>` | The harness recorded that the teachers read one of the owner's messages, once a teacher gave a review with it in the brief. The text is cut to 300 characters. Live shows "✓ the teacher pair read your message: “…”". The auditor and the review panel have the same line, once the auditor's answer or the panel's results are posted |
-| `the teacher pair (<name>) answered the owner's message #<id>: <text>` | An answer. Live shows "**the teacher pair (teacher-a) answered you:** …". The auditor's and the panelists' answers read the same way |
-| `directives for the planner: <kind> <family> <value> (why: <rationale>); …` | The directive set sent to the harness. `. Dropped: …` names the directives dropped for having no citation, the notes after the third and, without a combiner, the recommendations that are not valid directives (`<kind> <family>: <problem>`) |
-| `the teacher pair set no directives` | The round gave no directive |
-| `the advisors reached the day's spending limit (<limit> USD): the teacher pair reads your message after midnight UTC` | The owner wrote to the teacher pair after the day's [spending](#spending) reached `max_usd_per_day`. Said once for each new message |
-| `the teacher pair added to the queue: <title>; …` | The teachers' experiments, sent to the harness. `. the teacher pair moved <id>, …` follows for the moves it applied, and `. refused: move <id>: <reason>; …` for those it refused. A round without experiments leaves out the first part |
+| `the teachers read the owner's message #<id>: <text>` | The harness recorded that the teachers read one of the owner's messages, once a teacher gave a review with it in the brief. The text is cut to 300 characters. Live shows "✓ the teachers read your message: “…”". The auditor and the review panel have the same line, once the auditor's answer or the review panel's results are posted. A rig of an earlier version writes `the teacher pair`: Live shows it as the teachers |
+| `the teachers (<name>) answered the owner's message #<id>: <text>` | An answer. Live shows "**the teachers (teacher-a) answered you:** …". The auditor's and the review panel's answers read the same way |
+| `directives for the planner: <kind> <family> <value> (why: <rationale>); …` | The directive set sent to the harness. `. Dropped: …` names the directives dropped for having no citation, the notes after the third and, without a merge, the recommendations that are not valid directives (`<kind> <family>: <problem>`) |
+| `the teachers set no directives` | The round gave no directive |
+| `the advisors reached the day's spending limit (<limit> USD): the teachers read your message after midnight UTC` | The owner wrote to the teachers after the day's [spending](#spending) reached `max_usd_per_day`. Said once for each new message |
+| `the teachers added to the queue: <title>; …` | The teachers' experiments, sent to the harness. `. the teachers moved <id>, …` follows for the moves they applied, and `. refused: move <id>: <reason>; …` for those refused. A round without experiments leaves out the first part |
 | `the auditor added to the queue: <title>` | The auditor's check, sent to the harness |
 | `audit of <attempt> (try <n>): <decision>, <effect>. <reasons>` | The auditor answered. `<effect>` is what the harness did, such as `promoted`, `blocked`, `waiting for the owner` or `none: the attempt is <state>` |
-| `review <id> of goal <goal>, <name>: pass. <reasons>` | One panelist's answer: `pass` or `fail` |
-| `review <id>: the panel passed it; it waits for the owner's acceptance` | Every panelist answered, and the panel passed the goal. Otherwise the line is `review <id>: the panel did not pass it` |
+| `review <id> of goal <goal>, <name>: pass. <reasons>` | One reviewer's answer: `pass` or `fail` |
+| `review <id>: the review panel passed it; it waits for the owner's acceptance` | Every reviewer answered, and the review panel passed the goal. Otherwise the line is `review <id>: the review panel did not pass it` |
 | `<what failed>: <error>` | An error, such as `teachers for <run>: no teacher produced a review`. See [Error messages](#error-messages) |
 | `advisor round done: <n> teacher runs, <n> directive sets, <n> audits, <n> reviews, <n> errors` | The end of a round that did at least one of these. A count of 1 takes the singular, as in `1 teacher run, 0 directive sets, 1 audit, 0 reviews, 0 errors`. It names no run, so the Live of every run on the rig shows it |
 | `advisor round failed: <error>` | The round itself failed |
@@ -432,8 +434,8 @@ Each failed teacher round, audit and review, each failed report of the owner's m
 | `no answer` | An `openai` advisor ended without calling `answer` |
 | `no valid answer: <output>` | A `cli`, `claude-code`, `opencode` or `codex` advisor printed no object that fits its role's answer. For `opencode` and `codex`, `<output>` is the end of its last message, or else of its last error |
 | `no teacher produced a review` | Every teacher failed in this round |
-| `the combiner gave no directive set: <why>` | The combiner failed |
-| `<k> of <n> panelists answered` | A panelist failed, so the review is tried again later |
-| `the owner's messages to the <role> for <run>: <error>` | The supervisor could not tell the harness which of the owner's messages the `teachers`, the `auditor` or the `panel` read, or their answers. The messages stay unread and are given again |
+| `the teachers' merged by model gave no directive set: <why>` | The merged by model failed |
+| `<k> of <n> reviewers of the review panel answered` | A reviewer failed, so the review is tried again later |
+| `the owner's messages to the <role> for <run>: <error>` | The supervisor could not tell the harness which of the owner's messages the role read, or their answers: `teachers`, `auditor` or, for the review panel, `panel`. The messages stay unread and are given again |
 | `the queue for <run>: <error>` | The harness did not take the advisor's experiments and moves, for example because the run is closed (`run <run> is closed: its queue and rules no longer change`). The advisor's review or audit still stands |
 | `the field notes of <name> for <run>: <error>` | The harness did not take the advisor's field notes. Its review, audit or verdict still stands |

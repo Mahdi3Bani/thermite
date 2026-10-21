@@ -550,7 +550,7 @@ describe("the planner as the queue's coordinator", () => {
     };
     let x = "";
     let ids: number[] = [];
-    // The model converts both, one to a direction it designs; the teacher pair's next set
+    // The model converts both, one to a direction it designs; the teachers' next set
     // replaces only its own rules.
     const s = await setup(t, {
       planner: () => ({

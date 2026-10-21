@@ -13,7 +13,7 @@ import { type Ledger, LedgerError } from "./ledger.ts";
 
 type Row = Record<string, unknown>;
 
-/** At least this many panelists, all passing, for review_passed. */
+/** At least this many reviewers on the review panel, all passing, for review_passed. */
 export const MIN_PANEL = 2;
 
 export interface ReviewPackage {
@@ -113,14 +113,14 @@ export class Reviews {
     });
   }
 
-  /** The panel's results, written once: review_passed only if every panelist passes it. */
+  /** The panel's results, written once: review_passed only if every reviewer passes it. */
   recordPanel(
     id: number,
     results: { reviewer: string; pass: boolean; reasons: string }[],
     by: string,
   ): "review_passed" | "review_failed" {
     if (results.length < MIN_PANEL) {
-      throw new LedgerError("invalid", `a panel needs at least ${MIN_PANEL} reviewers`);
+      throw new LedgerError("invalid", `the review panel needs at least ${MIN_PANEL} reviewers`);
     }
     if (new Set(results.map((r) => r.reviewer)).size !== results.length) {
       throw new LedgerError("invalid", "each reviewer counts once");
@@ -175,7 +175,7 @@ export class Reviews {
       if (!row || String(row.run) !== run)
         throw new LedgerError("not_found", `no review ${id} in ${run}`);
       if (row.panel_result !== "review_passed")
-        throw new LedgerError("invalid", `review ${id} has not passed the panel`);
+        throw new LedgerError("invalid", `review ${id} has not passed the review panel`);
       if (row.owner_decision !== null)
         throw new LedgerError("conflict", `review ${id} is already decided`);
       const decision = accept ? "accepted" : "rejected";
@@ -200,7 +200,7 @@ export class Reviews {
     const r = this.get(run, goal, commit);
     if (!r) return { status: "not_runnable", reasons: "no review requested for this commit" };
     if (r.owner_decision === "accepted")
-      return { status: "met", reasons: "the panel passed it and the owner accepted it" };
+      return { status: "met", reasons: "the review panel passed it and the owner accepted it" };
     if (r.owner_decision === "rejected")
       return { status: "unmet", reasons: "the owner did not accept it" };
     if (r.panel_result === "review_failed")

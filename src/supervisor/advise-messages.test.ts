@@ -140,7 +140,7 @@ describe("the owner's messages to the advisors", () => {
     assert.equal(advisorPrompt("B:", { a: 1 }, 3), 'B:\n{"a');
   });
 
-  test("at the day's spending limit, a message to the teacher pair starts no round, and says so once", async () => {
+  test("at the day's spending limit, a message to the teachers starts no round, and says so once", async () => {
     const env = makeJudgeEnv();
     await env.service.applyCommand(env.assign);
     await ownerSays(env, "teachers", "look at the paper");
@@ -164,17 +164,17 @@ describe("the owner's messages to the advisors", () => {
     next = await adviseOnce(config(env, advisors, lines), next);
     assert.equal(next.stats.teacher_runs, 0);
     assert.deepEqual(lines, [
-      "js-1 status: the advisors reached the day's spending limit (1 USD): the teacher pair reads your message after midnight UTC",
+      "js-1 status: the advisors reached the day's spending limit (1 USD): the teachers read your message after midnight UTC",
     ]);
     assert.deepEqual(bodies(env, "agent_message_read"), [], "not read: it waits");
   });
 
-  test("a new message to the teacher pair starts its round at once; each teacher answers it, the harness records the reads and answers, and every step is a live line", async (t: TestContext) => {
+  test("a new message to the teachers starts their round at once; each teacher answers it, the harness records the reads and answers, and every step is a live line", async (t: TestContext) => {
     const env = makeJudgeEnv();
     await env.service.applyCommand(env.assign);
     const fake = await startFakeModel(({ messages }) => {
       const all = JSON.stringify(messages);
-      if (all.includes("neutral combiner"))
+      if (all.includes("You merge the advice of two teachers"))
         return {
           toolCalls: [
             {
@@ -212,7 +212,7 @@ describe("the owner's messages to the advisors", () => {
     t.after(() => fake.close());
     const advisors = AdvisorsConfig.parse({
       teachers: [runtime(fake.url, "teacher-a"), runtime(fake.url, "teacher-b")],
-      combiner: runtime(fake.url, "combiner"),
+      merged_by: runtime(fake.url, "merged-by"),
     });
     const lines: string[] = [];
     const cfg = config(env, advisors, lines);
@@ -238,7 +238,7 @@ describe("the owner's messages to the advisors", () => {
       { message: 1, role: "teachers", text: "We will weigh the paper.", advisor: "teacher-b" },
     ]);
     const text = lines.join("\n");
-    assert.match(text, /js-1 status: the teacher pair reviews js-1 now: the owner wrote to it/);
+    assert.match(text, /js-1 status: the teachers review js-1 now: the owner wrote to them/);
     assert.match(
       text,
       /js-1 text: teacher teacher-a: tiling looks promising Suggests: try tiling\./,
@@ -253,7 +253,7 @@ describe("the owner's messages to the advisors", () => {
         .entries.some(
           (e) =>
             e.text ===
-            "the teacher pair (teacher-b) answered the owner's message #1: We will weigh the paper.",
+            "the teachers (teacher-b) answered the owner's message #1: We will weigh the paper.",
         ),
     );
   });
@@ -316,7 +316,7 @@ describe("the owner's messages to the advisors", () => {
     assert.deepEqual(pending?.owner_messages ?? [], []);
   });
 
-  test("each panelist answers the owner's message; the panel's results are posted without the answers", async (t: TestContext) => {
+  test("each reviewer of the review panel answers the owner's message; its results are posted without the answers", async (t: TestContext) => {
     const env = makeJudgeEnv({ goal: { opsPerSecond: 1e12 } });
     await env.service.applyCommand(env.assign);
     await env.drain();
@@ -337,7 +337,7 @@ describe("the owner's messages to the advisors", () => {
     }));
     t.after(() => fake.close());
     const advisors = AdvisorsConfig.parse({
-      panel: [runtime(fake.url, "reviewer-1"), runtime(fake.url, "reviewer-2")],
+      review_panel: [runtime(fake.url, "reviewer-1"), runtime(fake.url, "reviewer-2")],
     });
     const lines: string[] = [];
     const state = await adviseOnce(config(env, advisors, lines), emptyAdviseState());
@@ -354,7 +354,7 @@ describe("the owner's messages to the advisors", () => {
     assert.match(lines.join("\n"), /review 1 of goal readable, reviewer-1: pass\. clear and small/);
     assert.match(
       lines.join("\n"),
-      /review 1: the panel passed it; it waits for the owner's acceptance/,
+      /review 1: the review panel passed it; it waits for the owner's acceptance/,
     );
   });
 
@@ -383,11 +383,11 @@ describe("the owner's messages to the advisors", () => {
     t.after(() => one.close());
     t.after(() => two.close());
     const advisors = AdvisorsConfig.parse({
-      panel: [runtime(one.url, "reviewer-1"), runtime(two.url, "reviewer-2")],
+      review_panel: [runtime(one.url, "reviewer-1"), runtime(two.url, "reviewer-2")],
     });
     const cfg = { ...config(env, advisors, []), retryMs: 0 };
     let state = await adviseOnce(cfg, emptyAdviseState());
-    assert.equal(state.stats.reviews, 0, "one panelist did not answer");
+    assert.equal(state.stats.reviews, 0, "one reviewer did not answer");
     assert.deepEqual(bodies(env, "agent_message_read"), [], "not read without a posted review");
     down = false;
     state = await adviseOnce(cfg, state);
@@ -395,7 +395,7 @@ describe("the owner's messages to the advisors", () => {
     assert.deepEqual(
       bodies(env, "advisor_answer").map((b) => b.advisor),
       ["reviewer-1", "reviewer-2"],
-      "both panelists of the retry had the message",
+      "both reviewers of the retry had the message",
     );
     assert.deepEqual(
       bodies(env, "agent_message_read").map((b) => b.by),

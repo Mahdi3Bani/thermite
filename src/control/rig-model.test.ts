@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { describe, test } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -146,7 +150,7 @@ describe("each agent's model over REST and MCP", () => {
     // Every agent takes its own cap and compaction point (goal 070).
     assert.equal(
       rigModelShapeRefusal({
-        agent: "panel",
+        agent: "review_panel",
         provider: "lab",
         model: "m",
         contextWindow: 8192,
@@ -174,9 +178,8 @@ describe("each agent's model over REST and MCP", () => {
     const kinds = [
       ["planner", "lab", "strong-model", 400_000],
       ["teachers", "sub", "gpt-sol", 272_000],
-      ["combiner", "lab", "strong-model", 400_000],
       ["auditor", "sub", "gpt-sol", 272_000],
-      ["panel", "lab", "wide-model", 204_800],
+      ["review_panel", "lab", "wide-model", 204_800],
     ] as const;
     for (const [agent, provider, model, window] of kinds) {
       const r = await s.give({ agent, provider, model, effort: "high" });
@@ -188,9 +191,21 @@ describe("each agent's model over REST and MCP", () => {
       // Edit rig's words for the row.
       assert.equal(
         r.body.said,
-        `Control sent a model for the ${agent} to rig-a. The rig takes the change in less than one minute.`,
+        `Control sent a model for the ${agent.replace("_", " ")} to rig-a. The rig takes the change in less than one minute.`,
       );
     }
+    // The teachers' merged by model, alone: the first teacher keeps its model.
+    const merged = await s.give({
+      agent: "teachers",
+      merged_by: { provider: "lab", model: "strong-model", effort: "high" },
+    });
+    assert.equal(merged.status, 200, JSON.stringify(merged.body));
+    assert.equal(
+      merged.body.said,
+      "Control sent a merged by model for the teachers to rig-a. The rig takes the change in less than one minute.",
+    );
+    assert.equal(merged.body.model, null, "the call gave the first teacher no model");
+    assert.equal(merged.body.context_window, null);
     const read = await s.owner("GET");
     assert.equal(read.status, 200);
     // Each agent's model with its harness, and its own cap and point (none set here: null).
@@ -214,10 +229,12 @@ describe("each agent's model over REST and MCP", () => {
           compact_at: null,
         },
         planner: roleOf("lab", "strong-model"),
-        teachers: roleOf("sub", "gpt-sol"),
-        combiner: roleOf("lab", "strong-model"),
+        teachers: {
+          models: [roleOf("sub", "gpt-sol")],
+          merged_by: roleOf("lab", "strong-model"),
+        },
         auditor: roleOf("sub", "gpt-sol"),
-        panel: roleOf("lab", "wide-model"),
+        review_panel: roleOf("lab", "wide-model"),
       },
     });
 
@@ -227,13 +244,21 @@ describe("each agent's model over REST and MCP", () => {
     assert.equal(mr.route?.model, "wide-model");
     assert.equal(mr.planner?.model, "strong-model");
     assert.equal(mr.planner?.reasoning, "high");
-    const adv = await s.asRig("/v1/rigs/rig-a/advisor-routes");
-    assert.equal(adv.teachers?.type, "chatgpt");
-    assert.equal(adv.teachers?.model, "gpt-sol");
-    assert.equal(adv.teachers?.api_key, "chatgpt-access-for-tests");
-    assert.equal(adv.auditor?.type, "chatgpt");
-    assert.equal(adv.combiner?.type, "openai");
-    assert.equal(adv.panel?.model, "wide-model");
+    const adv = (await s.asRig("/v1/rigs/rig-a/advisor-routes")) as Record<string, unknown>;
+    const route = (k: string) => adv[k] as Record<string, unknown> | null;
+    // One teacher: one model in teacher_models.
+    const teachers = adv.teacher_models as Record<string, unknown>[];
+    assert.deepEqual(
+      teachers.map((t) => [t.type, t.model, t.api_key]),
+      [["chatgpt", "gpt-sol", "chatgpt-access-for-tests"]],
+    );
+    assert.equal(route("auditor")?.type, "chatgpt");
+    assert.equal(route("merged_by")?.type, "openai");
+    assert.equal(route("review_panel")?.model, "wide-model");
+    // A supervisor of an earlier version reads the old names: the first teacher, combiner, panel.
+    assert.equal(route("teachers")?.model, "gpt-sol");
+    assert.equal(route("combiner")?.model, "strong-model");
+    assert.equal(route("panel")?.model, "wide-model");
 
     // Cleared one at a time: that agent goes back to its default, the others keep theirs.
     const planner = await s.give({ agent: "planner", clear: true });
@@ -247,12 +272,17 @@ describe("each agent's model over REST and MCP", () => {
     assert.equal((planner.body.agents as Record<string, unknown>).planner, null);
     assert.equal((await s.asRig("/v1/rigs/rig-a/model-route")).planner, null);
     const auditor = await s.give({ agent: "auditor", clear: true });
-    assert.match(String(auditor.body.said), /the auditor back to the rig's advisors file/);
-    const after = auditor.body.agents as Record<string, { model: string } | null>;
+    assert.match(String(auditor.body.said), /the auditor back to the rig default/);
+    const after = auditor.body.agents as {
+      auditor: unknown;
+      teachers: { models: { model: string }[]; merged_by: { model: string } | null };
+      review_panel: { model: string } | null;
+      workers: { model: string } | null;
+    };
     assert.equal(after.auditor, null);
-    assert.equal(after.teachers?.model, "gpt-sol");
-    assert.equal(after.combiner?.model, "strong-model");
-    assert.equal(after.panel?.model, "wide-model");
+    assert.equal(after.teachers.models[0]?.model, "gpt-sol");
+    assert.equal(after.teachers.merged_by?.model, "strong-model");
+    assert.equal(after.review_panel?.model, "wide-model");
     assert.equal(after.workers?.model, "wide-model");
     assert.equal((await s.asRig("/v1/rigs/rig-a/advisor-routes")).auditor, null);
 
@@ -272,9 +302,9 @@ describe("each agent's model over REST and MCP", () => {
       [
         ["owner:api", "planner"],
         ["owner:api", "teachers"],
-        ["owner:api", "combiner"],
         ["owner:api", "auditor"],
-        ["owner:api", "panel"],
+        ["owner:api", "review_panel"],
+        ["owner:api", "merged_by"],
         ["owner:api", "planner"],
         ["owner:api", "auditor"],
       ],
@@ -287,6 +317,193 @@ describe("each agent's model over REST and MCP", () => {
     });
   });
 
+  test("REST: the teachers take one or two models and a merged by model, all checked first", async () => {
+    const s = await stack();
+    const teachers = () =>
+      agentModelsOf(s.store, "rig-a").teachers as {
+        models: { provider: string; model: string; harness: string; context_cap: number | null }[];
+        merged_by: { model: string; compact_at: number | null } | null;
+      };
+    // Two teachers on two providers, merged by a third model, in one call: each model with its
+    // own harness, cap and point.
+    const both = await s.give({
+      agent: "teachers",
+      provider: "claude-sub",
+      model: "opus-5.5",
+      second_model: { provider: "sub", model: "gpt-sol", harness: "codex", context_window: 65_536 },
+      merged_by: { provider: "lab", model: "strong-model", compact_at: 70 },
+    });
+    assert.equal(both.status, 200, JSON.stringify(both.body));
+    assert.equal(both.body.model, "opus-5.5");
+    assert.equal(both.body.context_window, 200_000, "the first teacher's window");
+    assert.equal(
+      both.body.said,
+      "Control sent a model for the teachers, a model for a second teacher and a merged by model for the teachers to rig-a. The rig takes the change in less than one minute. The second teacher's context window: 65,536 tokens (capped; the provider allows 272,000). The merged by model's conversations are compacted at 70% of the window.",
+    );
+    assert.deepEqual(
+      teachers().models.map((m) => [m.provider, m.model, m.harness, m.context_cap]),
+      [
+        ["claude-sub", "opus-5.5", "claude-code", null],
+        ["sub", "gpt-sol", "codex", 65_536],
+      ],
+    );
+    assert.equal(teachers().merged_by?.compact_at, 70);
+    const adv = (await s.asRig("/v1/rigs/rig-a/advisor-routes")) as Record<string, unknown>;
+    assert.deepEqual(
+      (adv.teacher_models as { type: string; harness: string }[]).map((t) => [t.type, t.harness]),
+      [
+        ["claude", "claude-code"],
+        ["chatgpt", "codex"],
+      ],
+    );
+    assert.equal((adv.merged_by as { model: string } | null)?.model, "strong-model");
+
+    // A refusal of any model in the call changes nothing, the others included.
+    const refused = await s.give({
+      agent: "teachers",
+      provider: "lab",
+      model: "wide-model",
+      merged_by: { provider: "zen", model: "big-pickle", harness: "pi" },
+    });
+    assert.equal(refused.status, 400);
+    assert.equal(
+      refused.body.error,
+      "OpenCode's free models run only in OpenCode: choose OpenCode v2 for the teachers' merged by model, or another model.",
+    );
+    assert.equal(teachers().models[0]?.model, "opus-5.5", "the first teacher kept");
+    const badSecond = await s.give({
+      agent: "teachers",
+      second_model: { provider: "lab", model: "no-such" },
+    });
+    assert.equal(badSecond.body.error, "That provider does not list that model (second teacher).");
+
+    // One teacher only: the second model goes, the merged by model stays (for the rig default's
+    // two teachers, or the next second one).
+    const one = await s.give({ agent: "teachers", second_model: null });
+    assert.equal(one.status, 200);
+    assert.match(
+      String(one.body.said),
+      /^Control sent the teachers back to one teacher to rig-a\./,
+    );
+    assert.deepEqual(
+      teachers().models.map((m) => m.model),
+      ["opus-5.5"],
+    );
+    assert.equal(teachers().merged_by?.model, "strong-model");
+    const oneRoute = (await s.asRig("/v1/rigs/rig-a/advisor-routes")) as Record<string, unknown>;
+    assert.equal((oneRoute.teacher_models as unknown[]).length, 1);
+
+    // Clearing the teachers clears all three; a second teacher then needs a first.
+    const cleared = await s.give({ agent: "teachers", clear: true });
+    assert.equal(
+      cleared.body.said,
+      "Control sent the teachers back to the rig default to rig-a. The rig takes the change in less than one minute.",
+    );
+    assert.deepEqual(teachers(), { models: [], merged_by: null });
+    const noFirst = await s.give({
+      agent: "teachers",
+      second_model: { provider: "lab", model: "wide-model" },
+    });
+    assert.equal(noFirst.status, 400);
+    assert.equal(
+      noFirst.body.error,
+      "The teachers have no model of their own yet: give a provider and a model for the first teacher too.",
+    );
+    const empty = (await s.asRig("/v1/rigs/rig-a/advisor-routes")) as Record<string, unknown>;
+    assert.deepEqual(
+      [empty.teacher_models, empty.merged_by, empty.teachers, empty.combiner],
+      [[], null, null, null],
+    );
+
+    // The shape: second_model and merged_by only for the teachers, and never with clear.
+    for (const [body, error] of [
+      [
+        { agent: "auditor", provider: "lab", model: "wide-model", merged_by: null },
+        "second_model and merged_by are for the teachers only: give agent teachers.",
+      ],
+      [
+        { agent: "teachers", clear: true, merged_by: null },
+        "Give clear alone, or a provider and a model.",
+      ],
+      [
+        { agent: "teachers" },
+        "Give a provider and a model, second_model or merged_by, or clear: true.",
+      ],
+      [
+        {
+          agent: "teachers",
+          effort: "high",
+          second_model: { provider: "lab", model: "wide-model" },
+        },
+        "Give a provider and a model, second_model or merged_by, or clear: true.",
+      ],
+      [
+        { agent: "teachers", merged_by: { provider: "lab", model: "wide-model", compact_at: 99 } },
+        "The compaction point is a whole percent of the context window, from 50 to 95.",
+      ],
+    ] as const) {
+      const r = await s.give(body);
+      assert.equal(r.status, 400, JSON.stringify(body));
+      assert.equal(r.body.error, error);
+    }
+    const unknownField = await s.give({
+      agent: "teachers",
+      merged_by: { provider: "lab", model: "wide-model", role: "x" },
+    });
+    assert.equal(unknownField.status, 400);
+    assert.match(String(unknownField.body.error), /^bad request: merged_by/);
+  });
+
+  test("REST: the old names combiner and panel are still taken, and say what they are now", async () => {
+    const s = await stack();
+    await s.give({ agent: "teachers", provider: "sub", model: "gpt-sol" });
+    const combiner = await s.give({ agent: "combiner", provider: "lab", model: "strong-model" });
+    assert.equal(combiner.status, 200, JSON.stringify(combiner.body));
+    assert.equal(combiner.body.agent, "combiner");
+    assert.equal(combiner.body.model, "strong-model");
+    assert.equal(combiner.body.context_window, 400_000);
+    assert.equal(
+      combiner.body.said,
+      "The name combiner is now the teachers' merged by model: agent teachers, with merged_by. Control sent a merged by model for the teachers to rig-a. The rig takes the change in less than one minute.",
+    );
+    const panel = await s.give({ agent: "panel", provider: "lab", model: "wide-model" });
+    assert.equal(
+      panel.body.said,
+      "The name panel is now review_panel. Control sent a model for the review panel to rig-a. The rig takes the change in less than one minute.",
+    );
+    const agents = panel.body.agents as {
+      teachers: { models: { model: string }[]; merged_by: { model: string } | null };
+      review_panel: { model: string } | null;
+    };
+    assert.equal(agents.teachers.merged_by?.model, "strong-model");
+    assert.deepEqual(
+      agents.teachers.models.map((m) => m.model),
+      ["gpt-sol"],
+      "the first teacher kept",
+    );
+    assert.equal(agents.review_panel?.model, "wide-model");
+    assert.equal(Object.hasOwn(agents, "combiner"), false, "rig_models shows the new shape");
+    // Cleared by an old name: its place goes back to the rig default.
+    const cleared = await s.give({ agent: "combiner", clear: true });
+    assert.match(
+      String(cleared.body.said),
+      /^The name combiner is now .*Control sent the teachers' merged by model back to the rig default to rig-a\./,
+    );
+    assert.equal(s.store.roleModels("rig-a").merged_by, undefined);
+    assert.equal(s.store.roleModels("rig-a").teachers?.model, "gpt-sol");
+    // An old name takes no second_model or merged_by.
+    const mixed = await s.give({
+      agent: "combiner",
+      provider: "lab",
+      model: "wide-model",
+      merged_by: { provider: "lab", model: "wide-model" },
+    });
+    assert.equal(mixed.status, 400);
+    assert.equal(
+      mixed.body.error,
+      "second_model and merged_by are for the teachers only: give agent teachers.",
+    );
+  });
   test("REST: Edit rig's refusals in its words, and a refusal changes nothing", async () => {
     const s = await stack();
     await s.give({ agent: "auditor", provider: "lab", model: "wide-model" });
@@ -349,18 +566,38 @@ describe("each agent's model over REST and MCP", () => {
       // [agent, provider, model, harness asked, harness kept]
       ["planner", "lab", "strong-model", "opencode", "opencode"],
       ["teachers", "sub", "gpt-sol", "codex", "codex"],
-      ["combiner", "lab", "strong-model", "codex", "codex"],
       ["auditor", "zen", "big-pickle", undefined, "opencode"],
-      ["panel", "claude-sub", "opus-5.5", undefined, "claude-code"],
+      ["review_panel", "claude-sub", "opus-5.5", undefined, "claude-code"],
     ] as const;
     for (const [agent, provider, model, harness, kept] of given) {
       const r = await s.give({ agent, provider, model, ...(harness ? { harness } : {}) });
       assert.equal(r.status, 200, `${agent}: ${JSON.stringify(r.body)}`);
-      const agents = r.body.agents as Record<string, { harness: string } | null>;
-      assert.equal(agents[agent]?.harness, kept, agent);
+      const agents = r.body.agents as Record<string, { harness: string } | null> & {
+        teachers: { models: { harness: string }[] };
+      };
+      assert.equal(
+        agent === "teachers" ? agents.teachers.models[0]?.harness : agents[agent]?.harness,
+        kept,
+        agent,
+      );
     }
+    // The teachers' merged by model in its own harness.
+    const merged = await s.give({
+      agent: "teachers",
+      merged_by: { provider: "lab", model: "strong-model", harness: "codex" },
+    });
+    assert.equal(merged.status, 200, JSON.stringify(merged.body));
     const audit = s.store.listAudit(10, { action: "agent_model_given" });
-    assert.equal((audit[0]?.body as { harness?: string } | undefined)?.harness, "claude-code");
+    assert.deepEqual(
+      audit.slice(0, 2).map((e) => {
+        const b = e.body as { role?: string; harness?: string };
+        return [b.role, b.harness];
+      }),
+      [
+        ["merged_by", "codex"],
+        ["review_panel", "claude-code"],
+      ],
+    );
     // The rig's routes carry each agent's harness: the planner's in its model route, the
     // advisors' in their advisor routes. OpenCode's own models go with no key.
     const mr = await s.asRig("/v1/rigs/rig-a/model-route");
@@ -372,12 +609,15 @@ describe("each agent's model over REST and MCP", () => {
       ["codex", "chatgpt"],
       "a ChatGPT sign-in in Codex",
     );
-    assert.deepEqual([adv.combiner?.harness, adv.combiner?.type], ["codex", "openai"]);
+    assert.deepEqual([adv.merged_by?.harness, adv.merged_by?.type], ["codex", "openai"]);
     assert.deepEqual(
       [adv.auditor?.harness, adv.auditor?.type, adv.auditor?.api_key],
       ["opencode", "opencode", ""],
     );
-    assert.deepEqual([adv.panel?.harness, adv.panel?.type], ["claude-code", "claude"]);
+    assert.deepEqual(
+      [adv.review_panel?.harness, adv.review_panel?.type],
+      ["claude-code", "claude"],
+    );
 
     // Refused in words, for every kind of agent, and nothing changes.
     const refusals = [
@@ -394,8 +634,18 @@ describe("each agent's model over REST and MCP", () => {
         "OpenCode's free models run only in OpenCode: choose OpenCode v2 for the teachers, or another model.",
       ],
       [
-        { agent: "combiner", provider: "sub", model: "gpt-sol", harness: "claude-code" },
+        {
+          agent: "teachers",
+          merged_by: { provider: "sub", model: "gpt-sol", harness: "claude-code" },
+        },
         "Claude Code runs only with a Claude subscription here: choose Pi, OpenCode v2 or Codex for this provider.",
+      ],
+      [
+        {
+          agent: "teachers",
+          second_model: { provider: "claude-sub", model: "opus-5.5", harness: "opencode" },
+        },
+        "A Claude subscription runs only in Claude Code: choose Claude Code for the second teacher, or another model.",
       ],
       [
         { provider: "claude-sub", model: "opus-5.5", harness: "codex" },
@@ -416,16 +666,23 @@ describe("each agent's model over REST and MCP", () => {
       [
         after.workers?.harness,
         after.planner?.harness,
-        after.teachers?.harness,
-        after.combiner?.harness,
+        after.teachers.models[0]?.harness,
+        after.teachers.merged_by?.harness,
         after.auditor?.harness,
       ],
       ["pi", "opencode", "codex", "codex", "opencode"],
     );
     // Without a harness, the same model again goes back to what it needs: MCP and REST set what
     // they are asked.
-    const back = await s.give({ agent: "combiner", provider: "lab", model: "strong-model" });
-    assert.equal((back.body.agents as Record<string, { harness: string }>).combiner?.harness, "pi");
+    const back = await s.give({
+      agent: "teachers",
+      merged_by: { provider: "lab", model: "strong-model" },
+    });
+    assert.equal(
+      (back.body.agents as { teachers: { merged_by: { harness: string } } }).teachers.merged_by
+        .harness,
+      "pi",
+    );
     // A Claude subscription named with claude-code for the workers runs there.
     const w = await s.give({ provider: "claude-sub", model: "opus-5.5", harness: "claude-code" });
     assert.equal(w.status, 200, JSON.stringify(w.body));
@@ -448,8 +705,10 @@ describe("each agent's model over REST and MCP", () => {
     assert.equal(teachers.agent, "teachers");
     assert.equal(teachers.context_window, 272_000);
     assert.match(String(teachers.said), /^Control sent a model for the teachers to rig-a\./);
-    const agents = teachers.agents as Record<string, { model: string } | null>;
-    assert.equal(agents.teachers?.model, "gpt-sol");
+    const agents = teachers.agents as Record<string, { model: string } | null> & {
+      teachers: { models: { model: string }[] };
+    };
+    assert.equal(agents.teachers.models[0]?.model, "gpt-sol");
     assert.equal(agents.workers?.model, "wide-model", "the workers keep theirs");
     assert.equal(agents.planner, null);
     const audit = s.store.listAudit(5, { action: "agent_model_given" })[0];
@@ -461,7 +720,7 @@ describe("each agent's model over REST and MCP", () => {
         name: "set_rig_model",
         arguments: {
           rig: "rig-a",
-          agent: "combiner",
+          agent: "teachers",
           provider: "lab",
           model: "strong-model",
           context_window: 65_536,
@@ -479,10 +738,8 @@ describe("each agent's model over REST and MCP", () => {
       name: "set_rig_model",
       arguments: {
         rig: "rig-a",
-        agent: "combiner",
-        provider: "lab",
-        model: "strong-model",
-        context_window: 500_000,
+        agent: "teachers",
+        second_model: { provider: "lab", model: "strong-model", context_window: 500_000 },
       },
     });
     assert.equal(over.isError, true);
@@ -492,7 +749,28 @@ describe("each agent's model over REST and MCP", () => {
       arguments: { rig: "rig-a", agent: "judge", provider: "lab", model: "wide-model" },
     });
     assert.equal(unknown.isError, true);
-    assert.equal(s.store.roleModels("rig-a").combiner?.contextCap, 65_536, "kept, not refused");
+    assert.equal(s.store.roleModels("rig-a").teachers?.contextCap, 65_536, "kept, not refused");
+    assert.equal(s.store.roleModels("rig-a").second_teacher, undefined);
+    // Two teachers and a merged by model over MCP, as over REST.
+    const two = text(
+      await operator.callTool({
+        name: "set_rig_model",
+        arguments: {
+          rig: "rig-a",
+          agent: "teachers",
+          second_model: { provider: "sub", model: "gpt-sol" },
+          merged_by: { provider: "lab", model: "wide-model" },
+        },
+      }),
+    );
+    const twoAgents = two.agents as {
+      teachers: { models: { model: string }[]; merged_by: { model: string } | null };
+    };
+    assert.deepEqual(
+      twoAgents.teachers.models.map((m) => m.model),
+      ["strong-model", "gpt-sol"],
+    );
+    assert.equal(twoAgents.teachers.merged_by?.model, "wide-model");
 
     const cleared = text(
       await operator.callTool({
@@ -501,9 +779,12 @@ describe("each agent's model over REST and MCP", () => {
       }),
     );
     assert.equal(cleared.model, null);
-    assert.match(String(cleared.said), /the teachers back to the rig's advisors file/);
+    assert.match(String(cleared.said), /the teachers back to the rig default/);
     const read = text(await operator.callTool({ name: "rig_models", arguments: { rig: "rig-a" } }));
-    assert.equal((read.agents as Record<string, unknown>).teachers, null);
+    assert.deepEqual((read.agents as Record<string, unknown>).teachers, {
+      models: [],
+      merged_by: null,
+    });
     assert.equal((read.agents as Record<string, { model: string }>).workers?.model, "wide-model");
     await operator.close();
 
@@ -517,5 +798,72 @@ describe("each agent's model over REST and MCP", () => {
     assert.equal(none.isError, true);
     assert.match(JSON.stringify(none), /no rig rig-z/);
     await reader.close();
+  });
+});
+
+describe("a store from before goal 074", () => {
+  test("its combiner and panel take their new names, and its teachers' model stays two teachers", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "thermite-roles-")), "control.db");
+    const old = new DatabaseSync(path);
+    old.exec(`create table rig_role_model (
+        rig text not null,
+        role text not null check (role in ('planner', 'teachers', 'combiner', 'auditor', 'panel')),
+        provider text not null, model text not null, effort text, assigned_at text not null,
+        primary key (rig, role));
+      insert into rig_role_model values ('rig-a', 'teachers', 'lab', 'wide-model', 'high', '2026-10-20');
+      insert into rig_role_model values ('rig-a', 'combiner', 'lab', 'strong-model', null, '2026-10-20');
+      insert into rig_role_model values ('rig-a', 'panel', 'lab', 'wide-model', null, '2026-10-20');
+      insert into rig_role_model values ('rig-a', 'auditor', 'lab', 'strong-model', null, '2026-10-20');
+      insert into rig_role_model values ('rig-b', 'combiner', 'lab', 'strong-model', null, '2026-10-20');`);
+    old.close();
+    const store = new ControlStore(path);
+    const roles = store.roleModels("rig-a");
+    assert.deepEqual(Object.keys(roles).sort(), [
+      "auditor",
+      "merged_by",
+      "review_panel",
+      "second_teacher",
+      "teachers",
+    ]);
+    assert.deepEqual(
+      [roles.teachers?.model, roles.second_teacher?.model, roles.second_teacher?.effort],
+      ["wide-model", "wide-model", "high"],
+    );
+    assert.equal(roles.merged_by?.model, "strong-model");
+    assert.equal(roles.review_panel?.model, "wide-model");
+    assert.deepEqual(Object.keys(store.roleModels("rig-b")), ["merged_by"]);
+    // The new roles are taken, the old ones refused, and the columns of goals 070 and 073 kept.
+    store.putProvider({
+      name: "lab",
+      type: "openai",
+      base_url: "https://models.example.com/v1",
+      key: { sealed: "sealed-for-tests", hint: "…ests" },
+    });
+    store.assignRoleModel("rig-b", "second_teacher", {
+      provider: "lab",
+      model: "wide-model",
+      harness: "codex",
+      contextCap: 8192,
+      compactAt: 70,
+    });
+    assert.deepEqual(store.roleModels("rig-b").second_teacher, {
+      provider: "lab",
+      model: "wide-model",
+      effort: null,
+      harness: "codex",
+      contextCap: 8192,
+      compactAt: 70,
+    });
+    assert.throws(() =>
+      store.db
+        .prepare(
+          "insert into rig_role_model (rig, role, provider, model, assigned_at) values ('rig-c', 'combiner', 'lab', 'm', 'now')",
+        )
+        .run(),
+    );
+    // Opened again: nothing changes twice.
+    store.db.close();
+    const again = new ControlStore(path);
+    assert.deepEqual(again.roleModels("rig-a"), roles);
   });
 });

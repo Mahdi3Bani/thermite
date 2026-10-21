@@ -155,7 +155,7 @@ export class ExperimentQueue {
   }
 
   /**
-   * The queue as an agent reads it (the planner, the teacher pair): up next in order, the
+   * The queue as an agent reads it (the planner, the teachers): up next in order, the
    * lanes' ideas, what each lane is on, and the newest tried with their results (the judge's
    * verdict and change for an attempt). Long texts are shortened.
    */

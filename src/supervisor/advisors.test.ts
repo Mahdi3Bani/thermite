@@ -19,7 +19,7 @@ import { createHarnessApi } from "../harness/api.ts";
 import { startFakeModel } from "../testing/fake-model.ts";
 import { FAST_KERNEL, makeJudgeEnv } from "../testing/judge-env.ts";
 import { adviseOnce, emptyAdviseState } from "./advise.ts";
-import { AdvisorsConfig, lastJsonObject, runAdvisor } from "./advisors.ts";
+import { AdvisorsConfig, lastJsonObject, runAdvisor, teacherRound } from "./advisors.ts";
 import { stageCommand } from "./staging.ts";
 
 const tokens = { supervisor: "sup-token", proposer: "prop-token" };
@@ -48,7 +48,7 @@ describe("advisors", () => {
     const fake = await startFakeModel(({ messages }) => {
       const system = systemOf(messages);
       const tools = messages.filter((m) => m.role === "tool").length;
-      if (system.includes("neutral combiner")) {
+      if (system.includes("You merge the advice of two teachers")) {
         return {
           toolCalls: [
             {
@@ -108,7 +108,7 @@ describe("advisors", () => {
     });
     const advisors = AdvisorsConfig.parse({
       teachers: [runtime("teacher-a"), runtime("teacher-b")],
-      combiner: runtime("combiner"),
+      merged_by: runtime("merged-by"),
     });
     const home = mkdtempSync(join(tmpdir(), "thermite-sup-"));
     const state = await adviseOnce(
@@ -158,6 +158,83 @@ describe("advisors", () => {
       state,
     );
     assert.equal(again.stats.teacher_runs, 1);
+  });
+
+  test("one teacher works with no merge; two are merged only by a merged by model, else the first review is the set", async () => {
+    // Each model on its own fake: each teacher recommends its own family, the merged by model a
+    // third, and each counts its calls.
+    const called: Record<string, number> = { first: 0, second: 0, merger: 0 };
+    const teacher = (name: string) =>
+      startFakeModel(() => {
+        called[name] = (called[name] ?? 0) + 1;
+        return {
+          toolCalls: [
+            {
+              name: "answer",
+              args: {
+                summary: `${name} reviewed`,
+                recommendations: [
+                  { kind: "try", family: name, rationale: "r", citations: ["arxiv:1"] },
+                ],
+              },
+            },
+          ],
+        };
+      });
+    const fakes = {
+      first: await teacher("first"),
+      second: await teacher("second"),
+      merger: await startFakeModel(({ messages }) => {
+        called.merger = (called.merger ?? 0) + 1;
+        assert.match(systemOf(messages), /You merge the advice of two teachers/);
+        return {
+          toolCalls: [
+            {
+              name: "answer",
+              args: {
+                directives: [
+                  { kind: "try", family: "merged", rationale: "both", citations: ["arxiv:3"] },
+                ],
+              },
+            },
+          ],
+        };
+      }),
+    };
+    const runtime = (name: keyof typeof fakes) => ({
+      name,
+      runtime: "openai",
+      base_url: fakes[name].url,
+      model: name,
+      api_key_file: keyFile(),
+    });
+    const round = async (config: Record<string, unknown>) => {
+      for (const k of Object.keys(called)) called[k] = 0;
+      const r = await teacherRound({
+        config: AdvisorsConfig.parse(config),
+        run: "js-1",
+        brief: { campaign: "c" },
+        tools: {},
+      });
+      return { families: r.directives?.map((d) => d.family), called: { ...called } };
+    };
+    // One teacher and a merged by model: the teacher's set; the merged by model is not called.
+    assert.deepEqual(await round({ teachers: [runtime("first")], merged_by: runtime("merger") }), {
+      families: ["first"],
+      called: { first: 1, second: 0, merger: 0 },
+    });
+    // Two teachers without one: the first review's set, as before goal 074.
+    assert.deepEqual(await round({ teachers: [runtime("first"), runtime("second")] }), {
+      families: ["first"],
+      called: { first: 1, second: 1, merger: 0 },
+    });
+    // Two teachers and a merged by model (by its old name too): the merged set.
+    for (const merger of [{ merged_by: runtime("merger") }, { combiner: runtime("merger") }])
+      assert.deepEqual(
+        await round({ teachers: [runtime("first"), runtime("second")], ...merger }),
+        { families: ["merged"], called: { first: 1, second: 1, merger: 1 } },
+      );
+    for (const f of Object.values(fakes)) await f.close();
   });
 
   test("a command-line auditor can block a large win; the harness holds it", async () => {
@@ -228,7 +305,7 @@ describe("advisors", () => {
       api_key_file: keyFile(),
     });
     const advisors = AdvisorsConfig.parse({
-      panel: [runtime("reviewer-1"), runtime("reviewer-2")],
+      review_panel: [runtime("reviewer-1"), runtime("reviewer-2")],
     });
     const state = await adviseOnce(
       {

@@ -36,7 +36,7 @@ import type { SubmitOutcome, TrialResult, TrialSpec } from "./worker.ts";
  * credentials; they run as the same user, which could still reach the token: the owner accepted
  * that (decision 51).
  *
- * Claude Code's own sandbox stays off, here and in the supervisor's advisors (whose Claude Code has
+ * Claude Code's own sandbox stays off, here and in the advisors (whose Claude Code has
  * none of its own tools), so the images carry no bubblewrap. CLAUDE_CODE_SUBPROCESS_ENV_SCRUB
  * would make the sandbox mandatory, and it cannot start in a rig: its bubblewrap mounts, which the
  * GPU fence (Landlock) refuses, as do a container's own confinement and masked /proc; its network

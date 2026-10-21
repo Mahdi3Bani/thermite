@@ -281,7 +281,7 @@ export function createHarnessApi(
     return c.json(service.setAdvisorRules(body.run, body.directives, "supervisor"));
   });
 
-  // The supervisor's deterministic inputs for its teacher pair, auditor and review panel, and
+  // The supervisor's deterministic inputs for its teachers, auditor and review panel, and
   // where their outputs go. None of these can set a verdict, a contract or a champion.
   app.get("/v1/runs", supervisor, (c) =>
     c.json({
@@ -291,7 +291,7 @@ export function createHarnessApi(
         mode: i.mode,
         status: i.status,
         // The owner's messages each advisor role has not read yet (their ids): a new one for the
-        // teacher pair starts its round at once, not at the next hour.
+        // teachers starts their round at once, not at the next hour.
         owner_messages_waiting: service.messages.waitingIds(i.id),
         // The MCP servers its kit names, with the agents that get each: the advisors' share is
         // the supervisor's to call (goal 068).

@@ -68,7 +68,7 @@ describe("the advisors and the run's queue", () => {
     );
   });
 
-  test("the teacher pair's experiments and moves reach the queue, by the teachers; their brief has the queue", async (t: TestContext) => {
+  test("the teachers' experiments and moves reach the queue, by the teachers; their brief has the queue", async (t: TestContext) => {
     const env = makeJudgeEnv();
     await env.service.applyCommand(env.assign);
     const first = env.service.queue.add("js-1", { title: "first", by: "owner" }, "o");
@@ -77,7 +77,7 @@ describe("the advisors and the run's queue", () => {
     const fake = await startFakeModel(({ messages }) => {
       const all = JSON.stringify(messages);
       seen.push(all);
-      if (all.includes("neutral combiner"))
+      if (all.includes("You merge the advice of two teachers"))
         return {
           toolCalls: [
             {
@@ -108,7 +108,7 @@ describe("the advisors and the run's queue", () => {
     t.after(() => fake.close());
     const advisors = AdvisorsConfig.parse({
       teachers: [runtime(fake.url, "teacher-a"), runtime(fake.url, "teacher-b")],
-      combiner: runtime(fake.url, "combiner"),
+      merged_by: runtime(fake.url, "merged-by"),
     });
     const lines: string[] = [];
     await adviseOnce(config(env, advisors, lines), emptyAdviseState());
@@ -136,7 +136,7 @@ describe("the advisors and the run's queue", () => {
     assert.match(
       lines.join("\n"),
       new RegExp(
-        `js-1 text: the teacher pair added to the queue: wider loads\\. the teacher pair moved ${first.id}`,
+        `js-1 text: the teachers added to the queue: wider loads\\. the teachers moved ${first.id}`,
       ),
     );
   });

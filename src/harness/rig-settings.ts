@@ -22,7 +22,7 @@ export function lanesFromEnv(raw: string | undefined): number {
  * The rig's own settings, changed from its Edit page through a signed owner command
  * (rig_settings): which parts run, how many workers at once, a trial's length and turns, and the
  * promotion policy. The harness keeps them in its private state, applies them to its loops at
- * once, and reports them; the supervisor applies its own parts (auditor, teacher pair, review
+ * once, and reports them; the supervisor applies its own parts (auditor, teachers, review
  * panel) from that report. A part turned off keeps all its data. The GPU split is applied by the
  * broker when the harness starts, so changing it restarts the harness.
  */
@@ -35,7 +35,7 @@ export interface RigSettings {
   lanes: number;
   /** The planner gives each worker its direction; off: the fixed fallback plan. */
   planner: boolean;
-  /** The supervisor's advisors, used only where configured. */
+  /** The advisors (in the supervisor), used only where configured. */
   auditor: boolean;
   teachers: boolean;
   review: boolean;

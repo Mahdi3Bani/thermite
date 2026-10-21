@@ -29,7 +29,7 @@ export const EDIT_RIG_JS = `
     if (harness && wKind === "chatgpt" && harness.value === "claude-code") harness.value = "pi";
     const asWorkers = harness && harness.value === "codex" && wKind !== "claude" ? "Codex" : text("planner", wKind);
     const lanes = Number((form.querySelector('[name="lanes"]') || {}).value) || 1;
-    const sessions = { workers: lanes, teachers: 2, panel: 3 };
+    const sessions = { workers: lanes, teachers: 2, review_panel: 3 };
     let claude = 0;
     let chatgpt = 0;
     for (const sel of form.querySelectorAll("[data-role]")) {

@@ -307,16 +307,35 @@ describe("a campaign's own context settings (goal 070)", () => {
         workers: { model: "wide-model", context_window: 100_000, compact_at: 70 },
         planner: { model: "wide-model", context_window: 65_536, compact_at: 70 },
         teachers: { model: null, context_window: 100_000, compact_at: 70 },
-        combiner: { model: null, context_window: 100_000, compact_at: 70 },
+        merged_by: { model: null, context_window: 100_000, compact_at: 70 },
         auditor: { model: "narrow-model", context_window: 100_000, compact_at: 70 },
-        panel: { model: null, context_window: 100_000, compact_at: 70 },
+        review_panel: { model: null, context_window: 100_000, compact_at: 70 },
       },
     });
     const words = (out.notes as string[]).join(" ");
     assert.match(
       words,
-      /^This campaign sets a context window of 100,000 tokens, compaction at 70% of the window\. The lower window wins on each agent\. Workers: 100,000 tokens \(wide-model\), compacted at 70% of the window\. Planner: 65,536 tokens \(wide-model\), compacted at 70% of the window\. Teacher pair: at most 100,000 tokens \(the rig's advisors file\), compacted at 70% of the window\./,
+      /^This campaign sets a context window of 100,000 tokens, compaction at 70% of the window\. The lower window wins on each agent\. Workers: 100,000 tokens \(wide-model\), compacted at 70% of the window\. Planner: 65,536 tokens \(wide-model\), compacted at 70% of the window\. Teachers: at most 100,000 tokens \(rig default\), compacted at 70% of the window\. Teachers \(merged by\): at most 100,000 tokens \(rig default\), compacted at 70% of the window\./,
     );
+    // Two teachers with their own models: the second one shows too.
+    await s.give({
+      agent: "teachers",
+      provider: "lab",
+      model: "wide-model",
+      second_model: { provider: "lab", model: "narrow-model" },
+    });
+    const two = await json(await s.post("/v1/campaigns/matmul-speed/runs", { rig: "rig-a" }));
+    const twoAgents = (two.agents_context as { agents: Record<string, { model: string | null }> })
+      .agents;
+    assert.deepEqual(
+      [twoAgents.teachers?.model, twoAgents.second_teacher?.model, twoAgents.merged_by?.model],
+      ["wide-model", "narrow-model", null],
+    );
+    assert.match(
+      (two.notes as string[]).join(" "),
+      /Teachers \(second model\): 100,000 tokens \(narrow-model\), compacted at 70% of the window\./,
+    );
+    await s.give({ agent: "teachers", clear: true });
     // The run's contract carries them to the rig, signed.
     const sent = s.assigned().at(-1) as { contract: { agents_context?: unknown } };
     assert.deepEqual(sent.contract.agents_context, { context_window: 100_000, compact_at: 70 });
@@ -356,7 +375,7 @@ describe("a campaign's own context settings (goal 070)", () => {
     assert.equal(r.status, 409);
     assert.equal(
       (await json(r)).error,
-      "This campaign sets a context window of 150,000 tokens. narrow-model, the model of the teacher pair on rig-a, takes at most 131,072 tokens. Set the campaign's window to 131,072 or less, or give that agent another model.",
+      "This campaign sets a context window of 150,000 tokens. narrow-model, the model of the teachers on rig-a, takes at most 131,072 tokens. Set the campaign's window to 131,072 or less, or give that agent another model.",
     );
     // The same over issue_command, with the campaign's contract: nothing signed.
     const v = newest(s, "matmul-speed");

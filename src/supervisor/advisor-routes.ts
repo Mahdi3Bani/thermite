@@ -9,6 +9,10 @@ import { type AdvisorRuntime, AdvisorsConfig } from "./advisors.ts";
  * runs in the harness its route names (goal 073): Pi here with read-only tools, Claude Code (a
  * Claude subscription, and only it), OpenCode v2 (OpenCode's own models too) or the Codex CLI.
  * A ChatGPT sign-in's access token lasts an hour; control's routes are read each round.
+ *
+ * The roles (goal 074): the teachers (one or two models), their merged by model, the auditor and
+ * the review panel. A control of an earlier version gives the teachers one model, run here as two
+ * teachers, and names the others combiner and panel.
  */
 
 /** A route as control hands it (see the harness's ControlRoute); its key stays in memory. */
@@ -30,9 +34,9 @@ export interface AdvisorRoute {
 
 export interface ControlAdvisors {
   teachers?: AdvisorRuntime[] | undefined;
-  combiner?: AdvisorRuntime | undefined;
+  merged_by?: AdvisorRuntime | undefined;
   auditor?: AdvisorRuntime | undefined;
-  panel?: AdvisorRuntime[] | undefined;
+  review_panel?: AdvisorRuntime[] | undefined;
 }
 
 const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
@@ -128,7 +132,12 @@ export function runtimeOf(route: AdvisorRoute, name: string): AdvisorRuntime | u
   };
 }
 
-/** The advisors' routes from control, as runtimes by role (the teacher pair twice, the panel three times). */
+/**
+ * The advisors' routes from control, as runtimes by role: each teacher's model (teacher-1 and
+ * teacher-2), the merged by model, the auditor, and the review panel three times (reviewer-1 to
+ * reviewer-3). From a control of an earlier version: its one teachers' model twice, and its
+ * combiner and panel as the merged by model and the review panel.
+ */
 export async function fetchControlAdvisors(o: {
   rig: string;
   controlUrl: string;
@@ -151,11 +160,18 @@ export async function fetchControlAdvisors(o: {
     );
     return list.length ? list : undefined;
   };
+  const listed = Array.isArray(body.teacher_models)
+    ? (body.teacher_models as AdvisorRoute[])
+        .slice(0, 2)
+        .map((route, i) => runtimeOf(route, `teacher-${i + 1}`))
+        .filter((x): x is AdvisorRuntime => x !== undefined)
+    : undefined;
+  const mergedBy = "merged_by" in body ? r.merged_by : r.combiner;
   return {
-    teachers: many(r.teachers, "teacher", 2),
-    combiner: r.combiner ? runtimeOf(r.combiner, "combiner") : undefined,
+    teachers: listed ? (listed.length ? listed : undefined) : many(r.teachers, "teacher", 2),
+    merged_by: mergedBy ? runtimeOf(mergedBy, "merged-by") : undefined,
     auditor: r.auditor ? runtimeOf(r.auditor, "auditor") : undefined,
-    panel: many(r.panel, "reviewer", 3),
+    review_panel: many("review_panel" in body ? r.review_panel : r.panel, "reviewer", 3),
   };
 }
 
@@ -168,11 +184,11 @@ export function mergeAdvisors(
   const merged: AdvisorsConfig = {
     ...base,
     teachers: control.teachers ?? base.teachers,
-    combiner: control.combiner ?? base.combiner,
+    merged_by: control.merged_by ?? base.merged_by,
     auditor: control.auditor ?? base.auditor,
-    panel: control.panel ?? base.panel,
+    review_panel: control.review_panel ?? base.review_panel,
   };
-  return merged.teachers.length || merged.combiner || merged.auditor || merged.panel.length
+  return merged.teachers.length || merged.merged_by || merged.auditor || merged.review_panel.length
     ? merged
     : undefined;
 }

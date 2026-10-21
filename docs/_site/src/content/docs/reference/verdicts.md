@@ -59,7 +59,7 @@ Reasons name the metric with its estimate and interval, for example `flops_per_s
 
 ### Goal campaigns
 
-The judge checks the change against each goal and compares the result with what the champion meets. Goals checked by a review panel are left out here: the panel reviews only champions.
+The judge checks the change against each goal and compares the result with what the champion meets. Goals checked by the review panel are left out here: the review panel reviews only champions.
 
 | Verdict | Given at | Meaning | Dashboard says |
 | --- | --- | --- | --- |
@@ -189,7 +189,7 @@ A campaign appears on the **Campaigns** page once a rig reports a run of it. A c
 
 ## Experiment states
 
-An **experiment** is one thing for a lane to try, in a run's [experiment queue](glossary.md). The harness keeps each run's experiments in its ledger, and records every change as an event that names who made it. The run page's **History** tab has a sentence when an experiment is added, proposed, queued, moved, edited or dropped, and for each hand-out, such as "The teacher pair added "…" to the queue." or "The planner gave out round 4: lane-1 on "…".". The **Experiments** tab shows the experiments themselves; [Choose what a run tries next](../how-to/campaigns/choose-what-runs-next.md) shows how to change them.
+An **experiment** is one thing for a lane to try, in a run's [experiment queue](glossary.md). The harness keeps each run's experiments in its ledger, and records every change as an event that names who made it. The run page's **History** tab has a sentence when an experiment is added, proposed, queued, moved, edited or dropped, and for each hand-out, such as "The teachers added "…" to the queue." or "The planner gave out round 4: lane-1 on "…".". The **Experiments** tab shows the experiments themselves; [Choose what a run tries next](../how-to/campaigns/choose-what-runs-next.md) shows how to change them.
 
 | State | Meaning | On the **Experiments** tab |
 | --- | --- | --- |
@@ -241,7 +241,7 @@ Beside the chips, two lists narrow the rows further: **Every direction** (the **
 | Goal check | `met`, `unmet`, `inconclusive`, `not_runnable` | One check of one goal. A threshold goal is `met` only when every case's interval is on the passing side |
 | Goal (on the champion) | `untouched`, `verified`, `unmet`, `attempted`, `not_runnable` | The champion's goals: not checked yet, met, unmet, unclear, cannot be checked. The dashboard shows each goal's latest check: "met", "unmet", "inconclusive", "not runnable" or "waiting on another goal" |
 | Audit decision | `clear`, `block`, `needs_owner` | The auditor's answer. The dashboard shows "waiting for the auditor", "waiting for you (no auditor configured)", "blocked by the auditor", "cleared by the auditor" or "passed to you" |
-| Review | panel `review_passed` or `review_failed`; owner `accepted` or `rejected` | A goal checked by a review panel counts as met only when the owner accepts it |
+| Review | review panel `review_passed` or `review_failed`; owner `accepted` or `rejected` | A goal checked by the review panel counts as met only when the owner accepts it |
 | "Not possible" proposal | `accepted`, `rejected` | Accepting closes the run. Rejecting reopens the approach families it used |
 | Approach family | `live`, `exhausted` | A family becomes `exhausted` when a "not possible" proposal counts it as refuted |
 | Research claim | verified, draft | Verified when every quote is found word for word in its archived source and every number in the claim is in its quotes. A draft lists its problems. Workers in every mode may record claims |

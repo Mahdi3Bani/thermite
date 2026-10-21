@@ -434,7 +434,9 @@ describe("control dashboard", () => {
       api_key: "sk-ant-api-roles",
     });
     page = await (await s.get("/ui/rigs/rig-a/edit")).text();
-    for (const role of ["planner", "teachers", "combiner", "auditor", "panel"])
+    // Each row by the role it sets (goal 074); the rows keep their names until the owner approves
+    // Edit rig's new ones: Teacher pair sets both teachers, Combiner their merged by model.
+    for (const role of ["planner", "teachers", "merged_by", "auditor", "review_panel"])
       assert.match(page, new RegExp(`name="role_${role}" data-role="${role}"`));
     assert.match(page, /same as the workers/);
     assert.match(page, /data-kind="claude"[^>]*>claude-code:opus-5\.5/);
@@ -488,7 +490,7 @@ describe("control dashboard", () => {
     // The auditor on a Claude subscription: Claude Code, and no saved text to keep for a row
     // with no model of its own.
     assert.match(page, /data-runs="auditor" data-saved="Claude Code, past research/);
-    assert.match(page, /data-runs="combiner">the advisors file, if the rig has one</);
+    assert.match(page, /data-runs="merged_by">the advisors file, if the rig has one</);
     // The Codex CLI speaks only OpenAI's Responses API: not with Anthropic's.
     const noCodex = await s.post("/ui/rigs/rig-a/edit", { ...form, harness: "codex" });
     assert.match(
@@ -517,6 +519,27 @@ describe("control dashboard", () => {
     assert.equal(adv.teachers?.type, "anthropic");
     assert.equal(adv.combiner, null);
     assert.equal(adv.panel, null);
+    // The row Teacher pair gives both teachers its model and effort, as its words say.
+    const both = (adv as unknown as { teacher_models: { model: string; reasoning: string }[] })
+      .teacher_models;
+    assert.deepEqual(
+      both.map((t) => [t.model, t.reasoning]),
+      [
+        ["claude-test", "high"],
+        ["claude-test", "high"],
+      ],
+    );
+    assert.deepEqual(
+      [s.store.roleModels("rig-a").second_teacher?.harness, adv.merged_by, adv.review_panel],
+      ["opencode", null, null],
+    );
+    // Its empty choice clears both; a form without a row's field keeps that row's model.
+    await s.post("/ui/rigs/rig-a/edit", { ...form, role_teachers: "", effort_teachers: "" });
+    assert.deepEqual(
+      [s.store.roleModels("rig-a").teachers, s.store.roleModels("rig-a").second_teacher],
+      [undefined, undefined],
+    );
+    assert.equal(s.store.roleModels("rig-a").planner?.model, "opus-5.5");
     // A role set back to "same as the workers" loses its own model.
     await s.post("/ui/rigs/rig-a/edit", { ...form, role_auditor: "", effort_auditor: "" });
     assert.equal(s.store.roleModels("rig-a").auditor, undefined);
@@ -1496,6 +1519,8 @@ describe("control dashboard", () => {
           lane: "lane-1",
           run: "other-1",
         },
+        // A rig's harness of an earlier version names the teachers "the teacher pair": Live shows
+        // them by their name now (goal 074).
         {
           seq: 10,
           at,
@@ -1565,7 +1590,7 @@ describe("control dashboard", () => {
     // An advisor's answer, under the advisors and under you.
     assert.match(
       html,
-      /data-who="advisors you"[^>]*>[\s\S]*?<b>the teacher pair \(teacher-a\) answered you:<\/b> <p>Understood, question 2 first\.<\/p>/,
+      /data-who="advisors you"[^>]*>[\s\S]*?<b>the teachers \(teacher-a\) answered you:<\/b> <p>Understood, question 2 first\.<\/p>/,
     );
     // Filters: everyone, each lane, planner, judge, advisors, you; the box writes to the lane watched.
     assert.match(html, /<a class="lchip on" data-w="lane-1"/);
@@ -1589,7 +1614,7 @@ describe("control dashboard", () => {
     await s.env.service.applyCommand(s.env.assign);
     s.env.service.settings.set({ planner: false });
     await s.relay();
-    // The supervisor reports it has no advisors set up: no teacher pair, auditor or panel.
+    // The supervisor reports it has no advisors set up: no teachers, auditor or review panel.
     const sup = await s.control.request("/v1/rigs/rig-a/supervisor", {
       method: "POST",
       headers: { authorization: "Bearer rig-token-abcdef", "content-type": "application/json" },
@@ -1605,7 +1630,7 @@ describe("control dashboard", () => {
     // Live greys them with the words control refuses with.
     assert.match(
       live,
-      /<option value="teachers" [^>]*disabled title="This rig's supervisor has no teacher pair set up, so nothing would read it\.">/,
+      /<option value="teachers" [^>]*disabled title="This rig's supervisor has no teachers set up, so nothing would read it\.">/,
     );
     assert.match(
       live,
@@ -1626,7 +1651,7 @@ describe("control dashboard", () => {
       decodeURIComponent((await r).headers.get("location") ?? "");
     assert.match(
       await where(send("teachers", "cite the paper")),
-      /msgerror=This rig's supervisor has no teacher pair set up, so nothing would read it\./,
+      /msgerror=This rig's supervisor has no teachers set up, so nothing would read it\./,
     );
     assert.match(
       await where(send("advisors", "cite the paper")),

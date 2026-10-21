@@ -121,8 +121,8 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
       ? "You"
       : by === "planner" || by.startsWith("planner:")
         ? "The planner"
-        : /teacher|combiner/.test(by) || by === "supervisor"
-          ? "The teacher pair"
+        : /teacher|combiner|merged/.test(by) || by === "supervisor"
+          ? "The teachers"
           : /auditor/.test(by)
             ? "The auditor"
             : by.startsWith("control:")
@@ -414,7 +414,7 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
         const back = b.requeued_from as { result?: unknown } | undefined;
         const failed = again?.[1] === "failed" || back?.result === "error";
         return s(
-          `${by === "You" ? "Your" : `${by}'s`} experiment "${clip(String(b.title ?? ""), 120)}" went back in the queue: its trial ${failed ? "failed" : "was interrupted"}.`,
+          `${by === "You" ? "Your" : by.endsWith("s") ? `${by}'` : `${by}'s`} experiment "${clip(String(b.title ?? ""), 120)}" went back in the queue: its trial ${failed ? "failed" : "was interrupted"}.`,
           "",
           { run: String(e.subject) },
         );
@@ -555,7 +555,7 @@ const SETTING_PART: Record<string, string> = {
   workers: "the workers",
   planner: "the planner",
   auditor: "the auditor",
-  teachers: "the teacher pair",
+  teachers: "the teachers",
   review: "the review panel",
   exports: "exports",
 };

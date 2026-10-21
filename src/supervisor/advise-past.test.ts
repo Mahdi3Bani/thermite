@@ -176,7 +176,7 @@ describe("the planner's and the advisors' search of past research", () => {
     assert.deepEqual(snapshot(env.service.knowledge.dir(RUN)), before);
   });
 
-  test("the teacher pair searches it and finds it marked as data; a teacher that may fetch any page gets no search", async (t: TestContext) => {
+  test("the teachers search it and find it marked as data; a teacher that may fetch any page gets no search", async (t: TestContext) => {
     const { env } = await setup();
     const { model, offered, seen } = await searcher(t, { summary: "fine", recommendations: [] });
     const round = async (fetch_domains: string[] = []) => {
@@ -216,7 +216,7 @@ describe("the planner's and the advisors' search of past research", () => {
     assert.ok(!seen.join("\n").includes("searches it, read only"));
   });
 
-  test("the auditor and each panelist may search it too, read only", async (t: TestContext) => {
+  test("the auditor and each reviewer of the review panel may search it too, read only", async (t: TestContext) => {
     const { env } = await setup();
     const advisors = (url: string) =>
       AdvisorsConfig.parse({
@@ -235,7 +235,8 @@ describe("the planner's and the advisors' search of past research", () => {
     assert.ok(a.seen.join("\n").includes("16-byte aligned"));
     const p = await searcher(t, { pass: true, reasons: "meets the criteria" });
     const review = await reviewOne({
-      runtime: AdvisorsConfig.parse({ panel: [runtime(p.model.url, "p1")] }).panel[0] as never,
+      runtime: AdvisorsConfig.parse({ review_panel: [runtime(p.model.url, "p1")] })
+        .review_panel[0] as never,
       pkg: { id: 1, run: RUN },
       pastSearch: search,
     });
@@ -289,7 +290,7 @@ describe("the planner's and the advisors' search of past research", () => {
     }
   });
 
-  test("a panelist in Claude Code is given the server and calls the search through it", async () => {
+  test("a reviewer of the review panel in Claude Code is given the server and calls the search through it", async () => {
     const { env } = await setup();
     const dir = mkdtempSync(join(tmpdir(), "thermite-fake-claude-"));
     const bin = join(dir, "claude");

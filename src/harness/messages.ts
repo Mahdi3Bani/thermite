@@ -12,8 +12,8 @@ import type { RigSettings } from "./rig-settings.ts";
  * - `lane-N`: that lane; `trial:ID`: that trial, or, if it ended before reading it, its lane's
  *   next trial, which is told so;
  * - `planner`: the planner, at its next plan;
- * - `advisors`: the teacher pair, the auditor and the review panel, each once; `teachers`,
- *   `auditor` and `panel`: that role.
+ * - `advisors`: the teachers, the auditor and the review panel, each once; `teachers`,
+ *   `auditor` and `panel` (the review panel): that role.
  *
  * A message is waiting for a reader until that reader has received it: a read is recorded only
  * when the text was given to an agent (in its brief, at its next step, in a continued session or
@@ -44,7 +44,7 @@ export function messageText(m: Pick<OwnerMessage, "text" | "note">): string {
 }
 
 const ROLE_NAME: Record<AdvisorRole, string> = {
-  teachers: "the teacher pair",
+  teachers: "the teachers",
   auditor: "the auditor",
   panel: "the review panel",
 };
@@ -151,7 +151,7 @@ export class OwnerMessages {
       if (role === "teachers")
         return s.teachers
           ? undefined
-          : "the teacher pair is off on this rig (Edit rig), so nothing would read this message";
+          : "the teachers are off on this rig (Edit rig), so nothing would read this message";
       if (role === "auditor") {
         if (!s.auditor)
           return "the auditor is off on this rig (Edit rig), so nothing would read this message";
@@ -163,7 +163,7 @@ export class OwnerMessages {
         return "the review panel is off on this rig (Edit rig), so nothing would read this message";
       return contract.mode === "goal" && contract.goals.some((g) => g.verify.type === "review")
         ? undefined
-        : "this run has no goal the review panel reviews, so the panel would never read this message";
+        : "this run has no goal the review panel reviews, so the review panel would never read this message";
     };
     if (to === "all") {
       const readers = Array.from({ length: working }, (_, i) => `lane-${i + 1}`);
@@ -334,7 +334,7 @@ export class OwnerMessages {
   }
 
   /**
-   * The teacher pair's view: the messages it has not read (to answer), then the five it read in
+   * The teachers' view: the messages it has not read (to answer), then the five it read in
    * the last day, as the owner's standing wishes (read before; whether it answered them is in
    * the advisor_answer events).
    */
