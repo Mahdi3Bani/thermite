@@ -26,6 +26,7 @@ flowchart LR
   H -- key in its environment --> W["Pi worker<br/>(agent-N)"]
   H -- key added by the proxy --> P[Model provider]
   H -- sign-in added by the gateway --> X[MCP server]
+  S -- sign-in, for the advisors' calls --> X
   C -. SSH key, kubeconfig .-> M[Machines and clusters]
 ```
 
@@ -53,7 +54,7 @@ Who then uses the key depends on the worker harness:
 
 A subscription serves one person's own Thermite. A Thermite that several people use takes API keys.
 
-**A Claude subscription.** You get a token with `claude setup-token` on your own computer and paste it on **Providers**. Control seals it and makes no call to Anthropic with it, because Anthropic allows a subscription only in its own program, Claude Code. A rig gets the token only while one of its agents uses a Claude model. The harness keeps it with the model route in its private state, and passes it only to Claude Code. Claude Code starts with a home of its own, no setting sources and no MCP servers. An advisor on a Claude subscription runs in Claude Code with no tools at all.
+**A Claude subscription.** You get a token with `claude setup-token` on your own computer and paste it on **Providers**. Control seals it and makes no call to Anthropic with it, because Anthropic allows a subscription only in its own program, Claude Code. A rig gets the token only while one of its agents uses a Claude model. The harness keeps it with the model route in its private state, and passes it only to Claude Code. Claude Code starts with a home of its own and no setting sources. Its only MCP servers are those the run's kit gives it, at the harness's gateway. An advisor on a Claude subscription runs in Claude Code with none of Claude Code's own tools: only a read-only search of the run's past research and the MCP servers the run's kit gives the advisors, which the supervisor serves on `127.0.0.1` for the call.
 
 **A ChatGPT subscription.** Control runs the sign-in with OpenAI and seals the login. It is the only one that renews it, because OpenAI replaces the refresh token at each renewal: the refresh token never leaves control. A rig gets a one-hour access token with its route, renewed while it uses it. Workers in OpenCode v2 or Codex reach OpenAI through the harness's proxy with their trial's token, so the hourly token itself stays in the harness, and the proxy lets it reach only OpenAI's `POST /responses` and `GET /models`. When OpenAI answers there that the plan's usage is full, the proxy notes it, so the agents wait even when their program keeps only the error's message. Deleting the provider signs Thermite out at OpenAI.
 
@@ -67,7 +68,7 @@ These secrets let control set rigs up. They never go to a rig.
 - **A kubeconfig** for a cluster is given to kubectl the same way, in a file that exists only for the call. Control takes only a kubeconfig that holds everything inline: no login plugins and no references to other files.
 - **The rig's own tokens** reach a machine inside the setup script, on standard input, never on a command line. On the machine they sit in a folder that only its user can open. On a cluster they are a Kubernetes secret in the rig's namespace, which moving the rig onto new images leaves as it is.
 
-A **RunPod key** is sealed too. Control uses it to read the account and to start and stop the test pods you ask for. It never goes to a pod. RunPod puts a key of its own in every pod's environment; a rig in [pull mode](trust.md#rigs-in-pull-mode) takes it out of its supervisor's environment at start and never uses it.
+A **RunPod key** is sealed too. Control uses it to read the account, to start and stop the test pods you ask for, and to launch, stop, start, restart and terminate rigs on RunPod. It never goes to a pod. RunPod puts a key of its own in every pod's environment; a rig in [pull mode](trust.md#rigs-in-pull-mode) takes it out of its supervisor's environment at start and never uses it.
 
 A rig in pull mode holds no token for control. Its pod makes its own keys at its first start and keeps them where only the supervisor's user can read them; control pins their public halves when the pod enrolls with its one-time code. Everything with a secret in it, such as a model route with its key or a Git access, reaches the pod sealed to the pod's key, so RunPod's proxy never sees it in plain text ([Enrollment](trust.md#enrollment)).
 
@@ -85,7 +86,7 @@ An **MCP server** gives a campaign's agents tools from outside Thermite, such as
 
 - **Control** opens the secret to read the server's tools when you add it or press **Read tools again**, and to sign in. For OAuth it keeps the refresh token and renews the access token itself; for a client ID and secret it gets an access token from the server. A refresh token or a client secret never leaves control.
 - **A rig** gets a server only when a run that control assigned it names that server in its kit. Control hands it to the supervisor as the headers each call carries (the key, or an access token), on the same beat as the model route, and its audit log records each change in what a rig is handed (`mcp_servers_handed`, names only). The supervisor keeps the advisors' servers in memory and calls them for the advisors. It hands the workers' and the planner's servers to the harness, which keeps them in memory, never on disk, and calls them for those agents.
-- **No agent holds a secret.** A worker or the planner calls the harness's gateway with its trial's token, or a token made for one planner call; an advisor in Claude Code calls a server the supervisor serves on `127.0.0.1` for that call. The gateway adds the headers and passes the server's answer back. OpenCode's and Claude Code's MCP configuration name the gateway and that token, nothing else.
+- **No agent holds a secret.** A worker or the planner calls the harness's gateway with its trial's token, or a token made for one planner call; an advisor in Claude Code calls a server the supervisor serves on `127.0.0.1` for that call. The gateway adds the headers and passes the server's answer back. OpenCode's and Claude Code's MCP configuration name the gateway and that token, nothing else. Codex's names only the gateway: Codex reads the token from its environment.
 - **On the wire**, a secret goes in a request header, never in the address: control refuses an address with a user, a password, a fragment or a secret-like query parameter, and one that is not https, except for localhost.
 - **It stays with its server.** Another address on another server, or another way to sign in, needs the secret again, so a sealed secret never goes to a server it was not given for. Deleting the server deletes its secrets and its sign-in.
 

@@ -41,10 +41,10 @@ Keep these as they are, or the rig won't start or won't be safe to judge on:
 
 ## 2. Put tools where every user finds them
 
-Builds, timed runs and the agents' commands run as Thermite's own users, not as root. They don't get the image's environment: only `PATH` (the image's), `LANG`, their own `HOME`, `TMPDIR` and `USER`, and a few settings Thermite gives them itself.
+Builds, timed runs and the agents' commands run as Thermite's own users, not as root. They don't get the image's environment: only `PATH` (the image's, or a fixed one for agents in OpenCode v2, Claude Code and Codex), `LANG`, their own `HOME`, `TMPDIR` and `USER`, and a few settings Thermite gives them itself.
 
 - Install tools where every user can run them, such as `/usr/bin` or `/usr/local/bin`, not under `/root`.
-- `ENV PATH=…` in your Containerfile reaches them. Other `ENV` lines, such as `LD_LIBRARY_PATH`, do not: register library folders with the system's linker (`ldconfig`) instead.
+- `ENV PATH=…` in your Containerfile reaches builds, timed runs and the commands of agents in Pi. Agents in OpenCode v2, Claude Code and Codex run their commands with a fixed `PATH`, `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`: for them, install your tools in `/usr/local/bin` or `/usr/bin`, or link them there. Other `ENV` lines, such as `LD_LIBRARY_PATH`, reach none of them: register library folders with the system's linker (`ldconfig`) instead.
 - Don't rely on files in a home folder: each process's home is its own working folder.
 
 ## 3. Build and push it

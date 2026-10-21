@@ -14,7 +14,7 @@ Try the options in this order. Each one costs more, or needs more set-up, than t
 | --- | --- | --- | --- |
 | [OpenCode's free models](#1-opencodes-free-models) | Nothing | Nothing | OpenCode v2 only |
 | [A model server on your computer](#2-a-model-server-on-your-own-computer) | Nothing but your hardware | A server such as Ollama, vLLM or LiteLLM | Pi or OpenCode v2; Codex when the server answers `/responses` |
-| [An API key](#3-an-api-key-from-a-provider) | The provider's prices | A key from an OpenAI-compatible provider or from Anthropic | Pi or OpenCode v2; Codex for OpenAI's own API |
+| [An API key](#3-an-api-key-from-a-provider) | The provider's prices | A key from an OpenAI-compatible provider or from Anthropic | Pi or OpenCode v2; Codex when the provider answers `/responses`, as OpenAI's own API does |
 | [A subscription](#4-a-claude-or-chatgpt-subscription) | Your plan, nothing more | A Claude Pro or Max plan, or a ChatGPT Plus or Pro plan | Claude: Claude Code only. ChatGPT: Pi, OpenCode v2 or Codex |
 
 You connect every option on one dashboard page, **Settings › Providers**, and then give a [rig](../../reference/glossary.md) one of its models. [Connect a model provider](connect-a-provider.md) shows how.

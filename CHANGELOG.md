@@ -16,11 +16,12 @@ Each release of Thermite, newest first. Versions 0.x make no upgrade promise: re
 ### Rigs
 
 - Rigs on your own machines over SSH, and on Kubernetes clusters, in a namespace that control creates or in a slot that your operators made.
-- Rigs on RunPod GPUs, on Secure cloud, launched by the owner over REST, MCP or the command line:
+- Rigs on RunPod GPUs, on Secure cloud, launched by the owner from the dashboard's **Launch on RunPod** or over REST, MCP or the command line:
   - control connects to the pod through RunPod's proxy, and enrolls it with a one-time code;
   - the pod runs one container that holds the harness and the supervisor;
-  - control tracks each rig's hourly price and spend, and applies a spend limit or an idle stop only when you set one;
+  - control tracks each rig's hourly price and spend, and applies a spend limit or an idle stop only when you set one. The dashboard's launch form fills in an idle stop of 30 minutes, which you can change or clear, and a new run wakes a pod its idle stop stopped;
   - stop, start, restart, full reset and terminate, where terminate waits until every result has left the pod.
+- The Rigs list is a table: each rig's state, where it runs, its version, the run at work and, on RunPod, its price.
 - A rig takes model files by URL and checksum, with progress. It sends its exports to control when the project has no results repository.
 
 ### Campaigns
@@ -28,7 +29,10 @@ Each release of Thermite, newest first. Versions 0.x make no upgrade promise: re
 - Three campaign modes: hill climb, goal and research.
 - The New campaign page and Start a run. Start a run also works without the browser: `POST /v1/campaigns/<campaign>/runs`, the MCP tool `start_run` and `thermite run start` take the same fields and give the same refusals. A campaign's project can be a folder inside a repository. A sample project and its kit are in `examples/matmul-cpu`.
 - Campaigns, runs and Live per run, built for scanning. The owner messages the agents and the advisors from one message box, and sees who read each message.
+- Copy a campaign under a new name, with the same contract and kit and its own empty folder, to compare two models from zero: `POST /v1/campaigns/<campaign>/copy`, the MCP tool `copy_campaign` and `thermite campaign copy`.
 - One experiment queue for each run. The planner coordinates it. The owner, the advisors and the lanes add to it, and `thermite assign --queue-from` copies another run's untried experiments.
+- Rules for the planner name the run's directions. The owner writes them in plain words on the run's **Planner** tab, under **Tell the planner**, where `:` picks one of the run's directions, and the planner makes the rules at its next round.
+- Agents run in Pi, OpenCode v2, Claude Code or the Codex CLI, chosen for each rig. The harness images carry OpenCode and the Codex CLI, each with its license, and bubblewrap and socat, which Claude Code's sandbox needs.
 - Field notes from the workers, the planner and the advisors. Thermite keeps its own knowledge base, with a folder for each campaign, and the owner grants which campaigns may read which folders. Workers, the planner and the advisors can search what they may read.
 - MCP servers for the agents. The owner adds a server once in Settings, with an OAuth sign-in, a key, a client ID and secret, or none; control seals the secret and reads the server's tools. A campaign's kit names its servers, the agents that get each, and, when narrowed, their tools. Workers and the planner call them through the rig's harness, the advisors through its supervisor; no agent sees a secret, and a server that fails does not stop a run.
 
