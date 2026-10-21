@@ -1,5 +1,11 @@
 import type { Hardware } from "../../core/hardware.ts";
-import { type CampaignView, campaignViews, type RigView, type RunView } from "../views.ts";
+import {
+  type CampaignView,
+  campaignViews,
+  podStopped,
+  type RigView,
+  type RunView,
+} from "../views.ts";
 import { STYLE } from "./style.ts";
 
 /** Everything the dashboard writes into HTML goes through esc (rig data is never markup). */
@@ -317,8 +323,9 @@ export interface Shell {
 }
 
 export function shell(s: Shell, body: string): string {
-  const live = s.rigs.filter((u) => !u.stale).length;
-  const stale = s.rigs.length - live;
+  // A stopped RunPod pod can't report: it counts as stopped, not stale.
+  const stopped = s.rigs.filter(podStopped).length;
+  const stale = s.rigs.filter((u) => u.stale && !podStopped(u)).length;
   const runs = s.rigs.flatMap((u) => u.runs.map((i) => ({ u, i })));
   const running = runs.filter(({ i }) => i.status === "running").length;
   const jobs = s.rigs.reduce(
@@ -333,7 +340,7 @@ export function shell(s: Shell, body: string): string {
   const rigRows = s.rigs
     .map(
       (u) =>
-        `<a class="side-row" href="/ui/rigs/${encodeURIComponent(u.id)}"><span class="dot ${u.stale ? "bad" : "ok"}"></span><span class="name">${esc(u.id)}</span><span class="right">${u.stale ? "stale" : u.runs.filter((i) => i.status === "running").length || ""}</span></a>`,
+        `<a class="side-row" href="/ui/rigs/${encodeURIComponent(u.id)}"><span class="dot ${podStopped(u) ? "" : u.stale ? "bad" : "ok"}"></span><span class="name">${esc(u.id)}</span><span class="right">${podStopped(u) ? "stopped" : u.stale ? "stale" : u.runs.filter((i) => i.status === "running").length || ""}</span></a>`,
     )
     .join("");
   const camps = campaignViews(s.rigs);
@@ -374,7 +381,7 @@ export function shell(s: Shell, body: string): string {
   <div class="content${s.flush ? " flush" : ""}" id="content">${body}</div>
 </div>
 <footer class="statusbar">
-  <span class="item ${stale ? "warn" : ""}"><span class="dot ${stale ? "warn" : "ok"}"></span>${s.rigs.length} rigs${stale ? ` · ${stale} stale` : ""}</span>
+  <span class="item ${stale ? "warn" : ""}"><span class="dot ${stale ? "warn" : "ok"}"></span>${s.rigs.length} rigs${stale ? ` · ${stale} stale` : ""}${stopped ? ` · ${stopped} stopped` : ""}</span>
   ${s.needs ? `<a class="item warn" href="/ui">${icon.warn}Needs you ${s.needs}</a>` : ""}
   <span class="spacer"></span>
   <span class="item">${running} running <span class="sub">runs</span></span>

@@ -419,6 +419,10 @@ export interface RigView {
   runpod?: RunpodRigView | undefined;
 }
 
+/** A RunPod rig whose pod is stopped: it can't report, and that is expected, not stale. */
+export const podStopped = (u: Pick<RigView, "runpod">): boolean =>
+  Boolean(u.runpod?.active && u.runpod.status === "EXITED");
+
 export interface RigModelView {
   source: "control" | "environment" | "none";
   name: string | null;

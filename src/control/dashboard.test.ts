@@ -2301,6 +2301,18 @@ describe("the Rigs list", () => {
     );
     assert.match(stopped, /<span class="rsub">then it stopped<\/span>/);
     assert.match(stopped, /storage only<span class="rsub">\$\d+\.\d\d so far<\/span>/);
+    // The sidebar and the status bar call it stopped, not stale, and Needs you has no card for it.
+    assert.match(
+      list,
+      new RegExp(
+        `<span class="dot "></span><span class="name">${s.idle}</span><span class="right">stopped</span>`,
+      ),
+    );
+    assert.match(list, /\d+ rigs(?: · \d+ stale)? · 1 stopped<\/span>/);
+    assert.doesNotMatch(
+      await s.get("/ui"),
+      new RegExp(`${s.idle} (stopped reporting|has not reported yet)`),
+    );
     assert.match(await s.get(`/ui/rigs/${s.idle}`), /<div class="block" id="pod">/);
     // A pod launched but not reported yet costs already: it is listed with its price.
     const fresh = rowOf(list, s.fresh);

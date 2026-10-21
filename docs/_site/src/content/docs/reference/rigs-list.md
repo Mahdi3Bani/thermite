@@ -52,7 +52,7 @@ The chips above the table narrow it. Each shows how many rigs it holds. They are
 | **Stale** | No report for longer than the stale window. A stale rig may still be at work |
 | **Offline** | No report for longer than the offline window (`THERMITE_CONTROL_OFFLINE_SECONDS`, 900 s by default) |
 | **Refused** | Control refuses the rig's reports: their versions do not work together |
-| **Stopped** | A rig on RunPod whose pod is stopped. It is not called stale or offline |
+| **Stopped** | A rig on RunPod whose pod is stopped. It is not called stale or offline, here or in the sidebar and the status bar, and **Needs you** shows no card for it |
 | **Key to accept** | A new key from the rig waits for you: see [Accept a rig's key](../how-to/operate/accept-a-rig-key.md) |
 | **Getting ready** | A pod launched on RunPod that has not reported yet. It costs money from its launch, so it is listed with its price |
 

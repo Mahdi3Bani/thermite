@@ -1,5 +1,12 @@
 import { type ControlStore, type Decision, fingerprint } from "../store.ts";
-import type { AttemptView, JudgeJob, RigView, RunView, StoredEvent } from "../views.ts";
+import {
+  type AttemptView,
+  type JudgeJob,
+  podStopped,
+  type RigView,
+  type RunView,
+  type StoredEvent,
+} from "../views.ts";
 import { ago, esc, icon, modeAvatar, runHref, sparkline } from "./components.ts";
 import {
   attemptState,
@@ -637,8 +644,9 @@ export function needs(
       }
     }
     // A rig whose first key waits for the owner has its own card above: not reporting is why.
+    // A stopped RunPod pod can't report, and nothing waits for the owner there.
     const never = !(Date.parse(u.last_seen) > 0);
-    if (u.stale && !(never && key.pending)) {
+    if (u.stale && !(never && key.pending) && !podStopped(u)) {
       out.push({
         kind: "stale",
         rig: u.id,
