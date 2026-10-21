@@ -94,7 +94,9 @@ async function runpodCall(
     let why = "";
     try {
       const p = (await r.json()) as Json;
-      why = [str(p.title), str(p.detail)].filter(Boolean).join(": ");
+      // A refused request names the fields at fault in `errors`: kept, so the words say which.
+      const fields = p.errors === undefined ? "" : JSON.stringify(p.errors);
+      why = [str(p.title), str(p.detail), fields].filter(Boolean).join(": ");
     } catch {}
     throw new RunpodRefused(
       r.status,
@@ -136,7 +138,7 @@ export interface RunpodPodSpec {
   minCudaVersion?: string | undefined;
   /** A data center's id; not given: RunPod chooses. */
   datacenter?: string | undefined;
-  /** The pod's volume, kept when it stops, mounted at volumeMountPath; not given: none. */
+  /** The pod's volume, kept when it stops, mounted at volumeMountPath (`/workspace` if not given); not given: none. */
   volumeGb?: number | undefined;
   volumeMountPath?: string | undefined;
   ports: string[];
@@ -146,9 +148,10 @@ export interface RunpodPodSpec {
 }
 
 /**
- * Starts a pod (it is billed from now). The data center and the volume use the names of the
- * pod's own record (`dataCenterId`) and of RunPod's pods (`volume`, its `size` and `mountPath`);
- * the first launch of a rig on RunPod confirms them (goal 022).
+ * Starts a pod (it is billed from now). RunPod's v2 create-a-pod body takes the data center as a
+ * list (`dataCenterIds`; a pod's own record says `dataCenterId`) and the pod's volume as
+ * `mounts.persistent` (`size` in GB, at least 10, and `path`). The first launch of a rig on
+ * RunPod was refused with other names (goal 022).
  */
 export async function createPod(
   key: string,
@@ -165,9 +168,13 @@ export async function createPod(
     },
     cloud: spec.cloud,
     disk: spec.diskGb,
-    ...(spec.datacenter ? { dataCenterId: spec.datacenter } : {}),
+    ...(spec.datacenter ? { dataCenterIds: [spec.datacenter] } : {}),
     ...(spec.volumeGb
-      ? { volume: { size: spec.volumeGb, mountPath: spec.volumeMountPath ?? "/workspace" } }
+      ? {
+          mounts: {
+            persistent: { size: spec.volumeGb, path: spec.volumeMountPath ?? "/workspace" },
+          },
+        }
       : {}),
     ports: spec.ports,
     env: spec.env,

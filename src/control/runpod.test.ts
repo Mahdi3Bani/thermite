@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { generateSigningKeys } from "../core/commands.ts";
+import { FAKE_RUNPOD_KEY, fakeRunpod as runpodFake } from "../testing/fake-runpod.ts";
 import { createControlApi } from "./api.ts";
-import { readRunpod, runpodLine } from "./runpod.ts";
+import { createPod, readRunpod, runpodLine } from "./runpod.ts";
 import { SecretBox } from "./secrets.ts";
 import { ControlStore } from "./store.ts";
 
@@ -109,6 +110,34 @@ describe("RunPod reader", () => {
     assert.equal(
       runpodLine(facts),
       "2 GPU types · from $0.25/h (RTX A4000, Secure) · 1 data centers · 1 pod running, $0.69/h · $12.34 spent this month",
+    );
+  });
+
+  test("a pod's volume and data center use the names of RunPod's create-a-pod body (v2)", async () => {
+    const cloud = runpodFake();
+    const spec = {
+      name: "thermite-rig-1",
+      image: "registry.example.com/rig:1",
+      gpu: "NVIDIA RTX A4000",
+      gpuCount: 1,
+      cloud: "SECURE" as const,
+      diskGb: 40,
+      datacenter: "EU-RO-1",
+      volumeGb: 40,
+      volumeMountPath: "/workspace",
+      ports: ["8700/http"],
+      env: {},
+    };
+    const pod = await createPod(FAKE_RUNPOD_KEY, spec, cloud.fetch);
+    assert.equal(pod.datacenter, "EU-RO-1");
+    const body = cloud.calls.find((c) => c.method === "POST")?.body as Record<string, unknown>;
+    assert.deepEqual(body.mounts, { persistent: { size: 40, path: "/workspace" } });
+    assert.deepEqual(body.dataCenterIds, ["EU-RO-1"]);
+    assert.equal(body.volume, undefined);
+    // RunPod refuses a body it cannot take, and names the field: the words keep it.
+    await assert.rejects(
+      createPod(FAKE_RUNPOD_KEY, { ...spec, volumeGb: 5 }, cloud.fetch),
+      /RunPod answered 422 for POST \/v2\/pods \(Unprocessable Entity: Request validation failed\.: \[\{"field":"mounts"\}\]\)/,
     );
   });
 

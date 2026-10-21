@@ -244,13 +244,13 @@ describe("Launch on RunPod", () => {
       image: string;
       gpu: { count: number };
       cloud: string;
-      volume: { size: number };
+      mounts: { persistent: { size: number } };
       env: Record<string, string>;
     };
     assert.equal(body.image, IMAGE);
     assert.equal(body.gpu.count, 2);
     assert.equal(body.cloud, "SECURE");
-    assert.equal(body.volume.size, 60);
+    assert.equal(body.mounts.persistent.size, 60);
     assert.equal(s.store.tunnelRig("rp-test-1")?.config.env.THERMITE_JUDGE_GPUS, "1");
     const v = s.rigs.view("rp-test-1");
     assert.equal(v?.spend_limit_usd, 20);

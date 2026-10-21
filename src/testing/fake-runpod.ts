@@ -11,6 +11,28 @@
  * starts a container of the rig image for each pod and points the pod's proxy address at it.
  */
 
+/** The fields of RunPod's create-a-pod body (v2); any other is refused, as RunPod does. */
+const CREATE_POD_FIELDS = new Set([
+  "name",
+  "image",
+  "args",
+  "cmd",
+  "entrypoint",
+  "disk",
+  "env",
+  "ports",
+  "registry",
+  "cloud",
+  "gpu",
+  "cpu",
+  "dataCenterIds",
+  "globalNetworking",
+  "mounts",
+  "startJupyter",
+  "startSsh",
+  "templateId",
+]);
+
 export const FAKE_RUNPOD_KEY = "rpa_test-key-0123456789abcdef";
 
 /** A GPU type as RunPod's catalog lists it. */
@@ -170,9 +192,28 @@ export function fakeRunpod(o: FakeRunpodOptions = {}): FakeRunpod {
       const b = body as {
         gpu: { id: string; count: number };
         cloud: "SECURE" | "COMMUNITY";
-        dataCenterId?: string;
+        dataCenterIds?: string[];
         env?: Record<string, string>;
       };
+      // RunPod refuses a body with a field its create-a-pod schema (v2) does not have.
+      const unknown = Object.keys(body as object).filter((k) => !CREATE_POD_FIELDS.has(k));
+      const mounts = (body as { mounts?: Record<string, unknown> }).mounts;
+      const persistent = mounts?.persistent as Record<string, unknown> | undefined;
+      if (
+        unknown.length ||
+        (mounts && Object.keys(mounts).some((k) => k !== "persistent" && k !== "network")) ||
+        (persistent &&
+          (Object.keys(persistent).some((k) => k !== "size" && k !== "path") ||
+            Number(persistent.size) < 10))
+      )
+        return json(
+          {
+            title: "Unprocessable Entity",
+            detail: "Request validation failed.",
+            errors: unknown.length ? unknown.map((k) => ({ field: k })) : [{ field: "mounts" }],
+          },
+          422,
+        );
       if (o.noCapacity)
         return json({ title: "Bad Request", detail: "no capacity for that GPU" }, 400);
       const p: FakePod = {
@@ -182,7 +223,7 @@ export function fakeRunpod(o: FakeRunpodOptions = {}): FakeRunpod {
         count: b.gpu.count,
         gpus: b.gpu.count,
         cloud: b.cloud,
-        datacenter: b.dataCenterId ?? "EU-RO-1",
+        datacenter: b.dataCenterIds?.[0] ?? "EU-RO-1",
         body: body as Record<string, unknown>,
         env: b.env ?? {},
       };

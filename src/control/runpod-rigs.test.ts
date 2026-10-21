@@ -50,8 +50,8 @@ function setup(o: { noCapacity?: boolean; image?: string | undefined } = {}) {
       gpu: { id: string; count: number; minCudaVersion: string };
       cloud: string;
       disk: number;
-      dataCenterId?: string;
-      volume: { size: number; mountPath: string };
+      dataCenterIds?: string[];
+      mounts: { persistent: { size: number; path: string } };
       ports: string[];
       env: Record<string, string>;
       cmd?: unknown;
@@ -100,8 +100,8 @@ describe("rigs on RunPod: the launch", () => {
     assert.deepEqual(body.gpu, { id: "NVIDIA RTX A4000", count: 1, minCudaVersion: "12.6" });
     assert.equal(body.cloud, "SECURE", "Secure cloud on demand unless the owner asks otherwise");
     assert.equal(body.disk, 40);
-    assert.deepEqual(body.volume, { size: 100, mountPath: "/workspace" });
-    assert.equal(body.dataCenterId, undefined, "RunPod chooses when none is given");
+    assert.deepEqual(body.mounts, { persistent: { size: 100, path: "/workspace" } });
+    assert.equal(body.dataCenterIds, undefined, "RunPod chooses when none is given");
     assert.deepEqual(body.ports, ["8790/http"]);
     assert.equal(body.cmd, undefined, "the image's own entry point runs");
     // Only pull mode's launch values: public material and the one-time code.
@@ -158,9 +158,9 @@ describe("rigs on RunPod: the launch", () => {
     const [body] = s.created();
     assert.equal(body?.cloud, "SECURE");
     assert.equal(body?.gpu.count, 2);
-    assert.equal(body?.dataCenterId, "EU-RO-1");
+    assert.deepEqual(body?.dataCenterIds, ["EU-RO-1"]);
     assert.equal(body?.disk, 60);
-    assert.deepEqual(body?.volume, { size: 300, mountPath: "/workspace" });
+    assert.deepEqual(body?.mounts, { persistent: { size: 300, path: "/workspace" } });
     assert.equal(v.rig, "big-rig");
     assert.ok(body?.env.THERMITE_TUNNEL_ENROLL_UNTIL);
     assert.deepEqual(s.store.tunnelRig("big-rig")?.config.env, {
