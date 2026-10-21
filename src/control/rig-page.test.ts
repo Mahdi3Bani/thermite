@@ -10,6 +10,7 @@ import { RigUpdates } from "./rig-update.ts";
 import { checkQuietRigs } from "./rig-watch.ts";
 import { SecretBox } from "./secrets.ts";
 import { ControlStore } from "./store.ts";
+import { rigView } from "./views.ts";
 
 const ADMIN = "admin-token-abcdef";
 const RIG_TOKEN = "rig-token-abcdef";
@@ -518,5 +519,47 @@ describe("control looks where a quiet rig runs", () => {
     );
     s.lastSeen("gpu-1", 2 * 60 * MIN);
     assert.deepEqual(await quiet(), []);
+  });
+});
+
+describe("a rig's page: its checks", () => {
+  test("a smoke check that passed with a note shows passed with the note, and the rig's view keeps it", async () => {
+    const s = await control();
+    machineRig(s, "gpu-1");
+    s.builds("gpu-1", CONTROL);
+    const note = "The timing on this machine is noisy. Results here need more repeats.";
+    s.report("gpu-1", [
+      { kind: "rig_check_started", subject: "smoke", body: { id: "chk-1", check: "smoke" } },
+      {
+        kind: "rig_check_finished",
+        subject: "smoke",
+        body: {
+          id: "chk-1",
+          check: "smoke",
+          ok: true,
+          summary: `smoke on smoke-cpu: 11 of 12 candidates were judged as expected; the no-op came out inconclusive, not neutral (run check-smoke-1). Note: ${note}`,
+          note,
+        },
+      },
+      { kind: "rig_check_started", subject: "model", body: { id: "chk-2", check: "model" } },
+      {
+        kind: "rig_check_finished",
+        subject: "model",
+        body: { id: "chk-2", check: "model", ok: true, summary: "a correct tool call" },
+      },
+    ]);
+    const v = rigView(s.store, "gpu-1");
+    assert.equal(v?.checks.smoke?.ok, true);
+    assert.equal(v?.checks.smoke?.note, note);
+    assert.equal(v?.checks.model?.note, null);
+    const page = await s.page("/ui/rigs/gpu-1");
+    assert.match(
+      page,
+      /<span class="ck-res"><span class="chip ok">passed<\/span><\/span><span class="ck-main"><span><b>Judge smoke<\/b>/,
+    );
+    assert.match(
+      page,
+      /the no-op came out inconclusive, not neutral \(run check-smoke-1\)\. Note: The timing on this machine is noisy\. Results here need more repeats\./,
+    );
   });
 });

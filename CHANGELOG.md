@@ -10,6 +10,7 @@ Each release of Thermite, newest first. Versions 0.x make no upgrade promise: re
 - The images:
   - control, the CPU harness and the supervisor, for amd64 and arm64;
   - the CUDA harness, and the one-container rig image for RunPod built on it, for amd64. The release's compose file gives control the rig image, so a launch on RunPod needs no image.
+- Control's image carries kubectl, for rigs on Kubernetes clusters, with its license (Apache-2.0) as a file. The image's license label stays `MIT`.
 - `thermite doctor` checks the machine. It covers the container engine, the compose tool, ports, disk, the clock, the GPU toolkit, and whether control and the model can be reached, and it says how to fix each problem.
 - Control and every rig report their versions. Control marks a rig that is behind it, refuses a rig it cannot work with, and shows a rig that stopped reporting as stale or offline.
 
@@ -31,6 +32,7 @@ Each release of Thermite, newest first. Versions 0.x make no upgrade promise: re
 - Campaigns, runs and Live per run, built for scanning. The owner messages the agents and the advisors from one message box, and sees who read each message.
 - Copy a campaign under a new name, with the same contract and kit and its own empty folder, to compare two models from zero: `POST /v1/campaigns/<campaign>/copy`, the MCP tool `copy_campaign` and `thermite campaign copy`. A research campaign's copy can name other MCP servers for its agents, such as a web search service.
 - One experiment queue for each run. The planner coordinates it. The owner, the advisors and the lanes add to it, and `thermite assign --queue-from` copies another run's untried experiments.
+- `thermite assign --note` and `thermite assign-payload --note` keep a text with the run, shown as `Note: …` on the run's page in the knowledge base. `--direction`, the flag's old name, still works in v0.1.0 and says on standard error that it is now `--note`: a direction is now a named line of experiments. The signed command keeps the field's name, `direction`.
 - Rules for the planner name the run's directions. The owner writes them in plain words on the run's **Planner** tab, under **Tell the planner**, where `:` picks one of the run's directions, and the planner makes the rules at its next round.
 - Agents run in Pi, OpenCode v2, Claude Code or the Codex CLI, chosen for each rig. The harness images carry OpenCode and the Codex CLI, each with its license. Claude Code runs under the rig's own isolation, as the other harnesses do, with its own sandbox off, and gets its sign-in on a file descriptor, never in an environment or a file. An advisor on a Claude subscription runs Claude Code the same way, with none of Claude Code's own tools, so the images carry no bubblewrap.
 - Each kind of agent can have its own model and effort: the workers, the planner, the teacher pair, the combiner, the auditor and the review panel, on Edit rig and over REST and MCP (`set_rig_model` with `agent`, and `rig_models` to read them). The workers' model can take a cap on its context window, to compare two models at the same window.
@@ -41,6 +43,7 @@ Each release of Thermite, newest first. Versions 0.x make no upgrade promise: re
 ### Operate
 
 - Control's log pages through every entry, in the dashboard, over REST and in the `control_log` MCP tool.
+- The judge's smoke check passes on a machine with noisy timing when the only wrong result is the no-op's `inconclusive` in place of `neutral`. It then says so in a note: the timing on this machine is noisy, and results there need more repeats. Any other wrong result still fails it.
 - The documentation site has tutorials, how-to guides, reference and explanation. Agents read it through `llms.txt`. It includes the known limits and the security model.
 - `SECURITY.md`, `CONTRIBUTING.md` and a code of conduct (the Contributor Covenant 2.1). CI runs on every push to the development branch: the checks, the docs site, a secret scan, the compose smoke test, the rig image, RunPod against a fake API, and the quick start from the release bundle.
 

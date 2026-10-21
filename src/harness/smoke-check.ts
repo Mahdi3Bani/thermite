@@ -230,17 +230,62 @@ export async function smokeCheck(o: {
       return [n, { expect: c.accept ? c.accept.join("|") : c.expect, got, ok, attempt: id }];
     }),
   );
+  return smokeReport(kitName, runId, results);
+}
+
+/** One candidate's expected and actual result. */
+export interface SmokeResult {
+  expect: string;
+  got: string;
+  ok: boolean;
+  attempt: string;
+}
+
+/** The note of a smoke check that passed although its no-op's timing was unclear. */
+export const NOISY_TIMING_NOTE =
+  "The timing on this machine is noisy. Results here need more repeats.";
+
+/**
+ * The check's report from each candidate's result. Every candidate must get its expected
+ * result, with one exception (the owner, 2026-10-21): when the only wrong result is the no-op's
+ * `inconclusive` instead of `neutral`, the check passes with a note that the machine's timing
+ * is noisy. The judge works there; it could not tell a change that does nothing from the noise.
+ * Any other wrong result, alone or beside that one, fails the check.
+ */
+export function smokeReport(
+  kit: string,
+  run: string,
+  results: Record<string, SmokeResult>,
+): RigCheckReport {
+  const n = Object.keys(results).length;
   const wrong = Object.entries(results).filter(([, r]) => !r.ok);
-  const detail = { kit: kitName, run: runId, candidates: results };
+  const noisy =
+    wrong.length === 1 &&
+    wrong[0]?.[0] === "noop" &&
+    wrong[0][1].expect === "neutral" &&
+    wrong[0][1].got === "inconclusive";
+  const detail = {
+    kit,
+    run,
+    candidates: results,
+    ...(noisy ? { noisy_timing: true, note: NOISY_TIMING_NOTE } : {}),
+  };
+  if (noisy)
+    return {
+      ok: true,
+      summary: `smoke on ${kit}: ${n - 1} of ${n} candidates were judged as expected; the no-op came out inconclusive, not neutral (run ${run}). Note: ${NOISY_TIMING_NOTE}`,
+      note: NOISY_TIMING_NOTE,
+      detail,
+    };
   return wrong.length
     ? {
         ok: false,
-        summary: `smoke on ${kitName}: ${wrong.length} of ${names.length} candidates were judged otherwise: ${wrong.map(([n, r]) => `${n} expected ${r.expect}, got ${r.got || "nothing"}`).join("; ")}`,
+        summary: `smoke on ${kit}: ${wrong.length} of ${n} candidates were judged otherwise: ${wrong.map(([name, r]) => `${name} expected ${r.expect}, got ${r.got || "nothing"}`).join("; ")}`,
         detail,
       }
     : {
         ok: true,
-        summary: `smoke on ${kitName}: all ${names.length} candidates were judged as expected (run ${runId})`,
+        summary: `smoke on ${kit}: all ${n} candidates were judged as expected (run ${run})`,
         detail,
       };
 }

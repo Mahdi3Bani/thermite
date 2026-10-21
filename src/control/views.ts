@@ -461,6 +461,8 @@ export interface RigCheckView {
   finished_at: string | null;
   ok: boolean | null;
   summary: string | null;
+  /** A check that passed with a caveat says it here (the smoke check on noisy timing). */
+  note: string | null;
 }
 
 export function rigEvents(
@@ -577,7 +579,14 @@ export function rigView(
     switch (e.kind) {
       case "rig_check_started": {
         const check = String(b.check ?? "");
-        checks[check] = { check, started_at: e.at, finished_at: null, ok: null, summary: null };
+        checks[check] = {
+          check,
+          started_at: e.at,
+          finished_at: null,
+          ok: null,
+          summary: null,
+          note: null,
+        };
         break;
       }
       case "rig_check_finished": {
@@ -588,6 +597,7 @@ export function rigView(
           finished_at: e.at,
           ok: b.ok === true,
           summary: typeof b.summary === "string" ? b.summary : null,
+          note: typeof b.note === "string" ? b.note : null,
         };
         break;
       }

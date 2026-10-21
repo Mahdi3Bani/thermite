@@ -242,6 +242,49 @@ describe("thermite assign --queue-from (goal 067)", () => {
   });
 });
 
+describe("thermite assign --note (goal 066)", () => {
+  const base = ["--contract", CONTRACT, "--run", "smoke-cpu-2"];
+  const assign = ["assign", ...base, "--seed-commit", COMMIT, "--print"];
+  const assignPayload = [
+    "assign-payload",
+    ...base,
+    "--seed-repo",
+    "smoke-kernels",
+    "--seed-commit",
+    COMMIT,
+    "--bundle",
+    "repos/smoke.bundle",
+  ];
+  const OLD_NAME = "--direction is now --note: a direction is now a named line of experiments";
+
+  test("--note keeps a text with the run, in the signed field direction; without it there is none", async () => {
+    for (const cmd of [assign, assignPayload]) {
+      const r = await cli(...cmd, "--note", "memory first");
+      assert.equal(r.code, 0, r.stderr);
+      assert.equal(r.stderr, "", `${cmd[0]} says nothing more`);
+      assert.equal(JSON.parse(r.stdout).direction, "memory first", cmd[0]);
+      const none = await cli(...cmd);
+      assert.equal(none.code, 0, none.stderr);
+      assert.equal(JSON.parse(none.stdout).direction, undefined, cmd[0]);
+    }
+  });
+
+  test("--direction, the old name, still works and says on standard error that it is now --note", async () => {
+    for (const cmd of [assign, assignPayload]) {
+      const r = await cli(...cmd, "--direction", "memory first");
+      assert.equal(r.code, 0, r.stderr);
+      assert.equal(r.stderr.trim(), OLD_NAME, cmd[0]);
+      assert.equal(JSON.parse(r.stdout).direction, "memory first", cmd[0]);
+      const both = await cli(...cmd, "--note", "a", "--direction", "b");
+      assert.deepEqual(
+        [both.code, both.stderr.trim()],
+        [2, "--direction is the old name of --note: give only --note"],
+        cmd[0],
+      );
+    }
+  });
+});
+
 describe("thermite command on a RunPod rig whose pod is stopped (goal 022)", () => {
   test("a resume starts the pod first: the answer on standard output, its words on standard error", async () => {
     const keys = generateSigningKeys();

@@ -29,7 +29,7 @@ const USAGE = `usage: thermite <command> [options]
                                       for example in a password manager) and print its SHA-256,
                                       the only part control's deployment needs
   assign --contract F --run ID [--seed GIT_URL[@COMMIT] | --seed-commit C] [--kit GIT_URL]
-         [--model NAME=URL ...] [--direction D] [--agents off] [--promotion auto|owner]
+         [--model NAME=URL ...] [--note TEXT] [--agents off] [--promotion auto|owner]
          [--queue-from [RIG/]RUN] [--mcp-servers JSON|@file]
          (--control URL --token-file F --rig R [--ttl MIN] | --print)
                                       start a run. The rig's supervisor fetches the project and
@@ -42,11 +42,12 @@ const USAGE = `usage: thermite <command> [options]
                                       --control and --token-file, with --print too).
                                       --mcp-servers gives the MCP servers the kit's kit.json
                                       names, as in kit.json; the rig refuses a run whose list
-                                      differs. --print shows the payload (for issue_command over
-                                      MCP) instead of issuing it
+                                      differs. --note keeps a text with the run (--direction,
+                                      its old name, still works and says so). --print shows the
+                                      payload (for issue_command over MCP) instead of issuing it
   assign-payload --contract F --run ID --seed-repo R --seed-commit C --bundle PATH
                  [--bundle-sha256 H] [--kit-repo R --kit-commit C --kit-bundle PATH
-                 [--kit-bundle-sha256 H]] [--model NAME=SHA256:PATH ...] [--direction D] [--agents off]
+                 [--kit-bundle-sha256 H]] [--model NAME=SHA256:PATH ...] [--note TEXT] [--agents off]
                                       print an assign_campaign payload (bundle and model
                                       paths are relative to the rig's inbox)
   rig add RIG --control URL --token-file F --out DIR
@@ -158,6 +159,20 @@ const USAGE = `usage: thermite <command> [options]
 function fail(msg: string): never {
   process.stderr.write(`${msg}\n`);
   process.exit(2);
+}
+
+/**
+ * The run's note, from --note TEXT (sent as the signed field `direction`, which the ledger keeps
+ * with the run). --direction is its old name: a direction is now a named line of experiments
+ * (goal 066). It still works in v0.1.0, and says so on standard error.
+ */
+function runNote(values: { note?: string | undefined; direction?: string | undefined }) {
+  if (values.direction === undefined) return values.note;
+  if (values.note !== undefined) fail("--direction is the old name of --note: give only --note");
+  process.stderr.write(
+    "--direction is now --note: a direction is now a named line of experiments\n",
+  );
+  return values.direction;
 }
 
 function readJsonArg(value: string): unknown {
@@ -318,12 +333,14 @@ async function main(argv: string[]): Promise<void> {
           "kit-bundle": { type: "string" },
           "kit-bundle-sha256": { type: "string" },
           model: { type: "string", multiple: true },
+          note: { type: "string" },
           direction: { type: "string" },
           agents: { type: "string" },
         },
       });
       if (values.agents !== undefined && values.agents !== "on" && values.agents !== "off")
         fail("--agents is on or off");
+      const note = runNote(values);
       if (
         !values.contract ||
         !values.run ||
@@ -347,7 +364,7 @@ async function main(argv: string[]): Promise<void> {
         contract: r.contract,
         contract_sha: r.sha,
         seed: { repo: values["seed-repo"], commit: values["seed-commit"] },
-        ...(values.direction ? { direction: values.direction } : {}),
+        ...(note ? { direction: note } : {}),
         ...(values.agents === "off" ? { agents: false } : {}),
         imports: [
           {
@@ -384,6 +401,7 @@ async function main(argv: string[]): Promise<void> {
           "seed-commit": { type: "string" },
           kit: { type: "string" },
           model: { type: "string", multiple: true },
+          note: { type: "string" },
           direction: { type: "string" },
           agents: { type: "string" },
           promotion: { type: "string" },
@@ -399,6 +417,7 @@ async function main(argv: string[]): Promise<void> {
       if (!values.contract || !values.run) fail(USAGE);
       if (values.agents !== undefined && values.agents !== "on" && values.agents !== "off")
         fail("--agents is on or off");
+      const note = runNote(values);
       if (values.promotion !== undefined && !["auto", "owner"].includes(values.promotion))
         fail("--promotion is auto or owner");
       if (!values.print && (!values.control || !values["token-file"] || !values.rig))
@@ -503,7 +522,7 @@ async function main(argv: string[]): Promise<void> {
         contract,
         contract_sha: r.sha,
         ...(seed ? { seed } : {}),
-        ...(values.direction ? { direction: values.direction } : {}),
+        ...(note ? { direction: note } : {}),
         ...(values.agents === "off" ? { agents: false } : {}),
         // The run's own promotion policy; unset, the rig's default applies.
         ...(values.promotion

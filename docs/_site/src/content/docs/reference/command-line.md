@@ -46,7 +46,7 @@ usage: thermite <command> [options]
                                       for example in a password manager) and print its SHA-256,
                                       the only part control's deployment needs
   assign --contract F --run ID [--seed GIT_URL[@COMMIT] | --seed-commit C] [--kit GIT_URL]
-         [--model NAME=URL ...] [--direction D] [--agents off] [--promotion auto|owner]
+         [--model NAME=URL ...] [--note TEXT] [--agents off] [--promotion auto|owner]
          [--queue-from [RIG/]RUN] [--mcp-servers JSON|@file]
          (--control URL --token-file F --rig R [--ttl MIN] | --print)
                                       start a run. The rig's supervisor fetches the project and
@@ -59,11 +59,12 @@ usage: thermite <command> [options]
                                       --control and --token-file, with --print too).
                                       --mcp-servers gives the MCP servers the kit's kit.json
                                       names, as in kit.json; the rig refuses a run whose list
-                                      differs. --print shows the payload (for issue_command over
-                                      MCP) instead of issuing it
+                                      differs. --note keeps a text with the run (--direction,
+                                      its old name, still works and says so). --print shows the
+                                      payload (for issue_command over MCP) instead of issuing it
   assign-payload --contract F --run ID --seed-repo R --seed-commit C --bundle PATH
                  [--bundle-sha256 H] [--kit-repo R --kit-commit C --kit-bundle PATH
-                 [--kit-bundle-sha256 H]] [--model NAME=SHA256:PATH ...] [--direction D] [--agents off]
+                 [--kit-bundle-sha256 H]] [--model NAME=SHA256:PATH ...] [--note TEXT] [--agents off]
                                       print an assign_campaign payload (bundle and model
                                       paths are relative to the rig's inbox)
   rig add RIG --control URL --token-file F --out DIR
@@ -283,7 +284,8 @@ The hash is what control's settings take; the token itself stays with you. See [
 | `--seed-commit C` | No | The contract's `project.commit` | A full commit id that is already on the rig, such as an earlier run's result. Nothing is fetched |
 | `--kit GIT_URL` | No | | The [kit](glossary.md)'s repository. The kit's commit comes from the contract's `project.kit`. Without `--kit`, the kit's commit must already be on the rig |
 | `--model NAME=URL` | No, repeatable | | A [model file](glossary.md) the contract lists under `models` (a data file the project loads, such as a model's weights), and an `http` or `https` address to fetch it from |
-| `--direction D` | No | | Text kept with the run as `direction`. Thermite does not act on it |
+| `--note TEXT` | No | | The run's note: a text kept with the run, and shown as `Note: …` on the run's page in the [knowledge base](knowledge-base.md). Thermite does not act on it. It is sent as the command's `direction` field, a name from before a direction meant a named line of experiments |
+| `--direction D` | No | | The old name of `--note`. It still works in v0.1.0, and prints `--direction is now --note: a direction is now a named line of experiments` on standard error. With `--note` as well, the command stops: `--direction is the old name of --note: give only --note` (exit 2) |
 | `--agents on\|off` | No | `on` | `off` starts a judge-only run: no worker agents, the judge still works |
 | `--promotion auto\|owner` | No | The rig's own setting | The run's promotion rule. `owner` is sent as `owner_approval`: every confirmed win waits for the owner |
 | `--queue-from [RIG/]RUN` | No | Off: the new run's queue starts empty | A past run whose untried experiments start the new run's [experiment queue](../how-to/campaigns/choose-what-runs-next.md). `RUN` alone is a run on `--rig`; `RIG/RUN` names its rig. They are read from control, so it needs `--control` and `--token-file`, with `--print` too. See [below](#copy-a-past-runs-untried-experiments) |
@@ -349,7 +351,8 @@ Sent, it prints control's answer on one line, such as `{"id":"<command id>","sta
 | `--kit-repo R`, `--kit-commit C`, `--kit-bundle PATH` | No, together | The kit's bundle in the inbox (a `kit_bundle` import) |
 | `--kit-bundle-sha256 H` | No | The kit bundle's SHA-256 |
 | `--model NAME=SHA256:PATH` | No, repeatable | A model file in the inbox, with its SHA-256: `bad --model <arg>; expected NAME=SHA256:PATH` otherwise |
-| `--direction D` | No | As for `assign` |
+| `--note TEXT` | No | As for `assign` |
+| `--direction D` | No | As for `assign`: the old name of `--note` |
 | `--agents on\|off` | No | As for `assign` |
 
 It has no `--promotion`; the run takes the rig's own promotion rule.

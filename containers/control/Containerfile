@@ -8,6 +8,8 @@ RUN npm ci --no-fund --no-audit
 COPY src ./src
 RUN npm run build && npm prune --omit=dev --no-fund --no-audit
 # kubectl, for rigs control sets up on Kubernetes clusters: a pinned release, checked by sha256.
+# The final stage carries its Apache License 2.0, the LICENSE of kubernetes/kubernetes at this
+# tag (containers/control/kubectl/; update it with the version).
 ARG TARGETARCH
 ARG KUBECTL_VERSION=v1.37.1
 RUN set -eu; arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
@@ -30,6 +32,7 @@ COPY --from=build /src/node_modules ./node_modules
 COPY --from=build /src/dist ./dist
 COPY containers/thermite /usr/local/bin/thermite
 COPY --from=build /kubectl /usr/local/bin/kubectl
+COPY containers/control/kubectl/LICENSE /usr/local/share/doc/kubectl/LICENSE
 # The runtime user, with a passwd entry: OpenSSH (machines, git over SSH) refuses a uid without one.
 # Podman adds the entry by itself; Kubernetes doesn't. Its home is on the state volume.
 RUN groupadd -g 10001 thermite \

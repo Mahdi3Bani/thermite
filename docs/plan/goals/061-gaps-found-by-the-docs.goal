@@ -213,7 +213,7 @@ The writers and verifiers of the documentation site (goal [060](060-docs-site.go
 - [ ] `thermite submit` cannot send `claim`, `lane` or `parent`, which the harness's proposer route takes (`src/cli/thermite.ts`).
 - [ ] `thermite assign` ignores `--seed`, `--seed-commit` and `--kit` for a research contract, with no warning (`src/cli/thermite.ts`).
 - [ ] `thermite assign` has no option to name a Git access for a private repository (`src/cli/thermite.ts`).
-- [ ] `--direction` is stored with the run and never read (`src/harness/service.ts`).
+- [ ] `--note` (`--direction` before 2026-10-21) is stored with the run and never read (`src/harness/service.ts`).
 - [ ] `thermite assign-payload` has no `--promotion`, which `thermite assign` has (`src/cli/thermite.ts`).
 - [ ] `thermite rig add` writes a rig's files, but Thermite ships no deployment that reads them; only Add a rig on the dashboard sets rigs up (`src/cli/rig.ts`).
 - [ ] `thermite keys generate` has no use: control makes its own key pair at first start, and nothing says how a generated pair would reach control (`src/cli/thermite.ts`).

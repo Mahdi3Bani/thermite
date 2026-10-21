@@ -183,6 +183,17 @@ Two causes are common on a laptop:
 - `not now: …`: the rig has open trials or judge jobs. Make it idle as [Check a rig](check-a-rig.md#before-you-start) says, then run the check again.
 - **Judge smoke** fails with some candidates "judged otherwise", and the harness's log has `job failed` lines that say `target not ready for timing: load … above 75% of … cores`. The computer was too busy for fair timing. Close other heavy programs and run the check again.
 
+### Judge smoke passed with a note
+
+- **You see:** **Judge smoke** shows **passed**, with `the no-op came out inconclusive, not neutral` and `Note: The timing on this machine is noisy. Results here need more repeats.`
+- **Why:** the no-op is a change that does nothing. The judge could not tell it from the noise in this machine's timing, so it said `inconclusive`, not `neutral`. Every other known change got its right verdict, so the judge works here. This is common on a virtual machine that shares its host, and on a busy laptop.
+- **Do:**
+  1. Nothing is broken: the rig can run campaigns.
+  2. For campaigns on this rig, give the judge more repeats. On the **New campaign** page, raise **Runs per case**; in a contract, raise `acceptance.runs_per_cell` (see [the contract reference](../../reference/contract.md)). More repeats make each verdict take longer.
+  3. To get a clean pass, close other heavy programs, or use a machine that doesn't share its CPU, and run the check again.
+
+  See [Noisy timing](../../reference/rig-checks.md#noisy-timing) in the rig checks reference.
+
 ### The isolation check failed
 
 - **You see:** **Isolation** shows **failed**, with `isolation does NOT hold (devices: …):` and up to 12 items such as `agent-1 ledger: ALLOWED`.

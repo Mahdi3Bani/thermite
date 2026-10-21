@@ -67,4 +67,4 @@ The compose file pins each image by its digest. The same images also have the ta
 
 The compose file runs the CPU harness. Control sets rigs up on other machines and clusters from the CPU harness, the CUDA harness (for GPU rigs) and the supervisor. It launches rigs on RunPod from the rig image: the CUDA harness and the supervisor in one container. The images do not contain Claude Code.
 
-The source code is at <@@REPO_URL@@>, under the MIT license. The harness images also carry OpenCode (MIT) and the Codex CLI (Apache-2.0), each with its license.
+The source code is at <@@REPO_URL@@>, under the MIT license. The harness images also carry OpenCode (MIT) and the Codex CLI (Apache-2.0), and the control image carries kubectl (Apache-2.0), each with its license.

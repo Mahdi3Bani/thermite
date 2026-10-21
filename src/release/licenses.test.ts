@@ -35,3 +35,21 @@ test("the published images' licence labels name every licence they carry", () =>
   );
   assert.deepEqual(cuda, ["harness-cuda"]);
 });
+
+test("control's image carries kubectl's licence file, the Apache License 2.0, while its label stays MIT", () => {
+  const root = join(import.meta.dirname, "..", "..");
+  const containerfile = readFileSync(join(root, "containers", "control", "Containerfile"), "utf8");
+  // The final stage, after the last FROM: what the published image holds.
+  const final = containerfile.slice(containerfile.lastIndexOf("\nFROM "));
+  assert.match(
+    final,
+    /\nCOPY containers\/control\/kubectl\/LICENSE \/usr\/local\/share\/doc\/kubectl\/LICENSE\n/,
+  );
+  assert.match(final, /\nCOPY --from=build \/kubectl \/usr\/local\/bin\/kubectl\n/);
+  // The LICENSE of kubernetes/kubernetes at the pinned tag: the Apache License 2.0, whole.
+  const license = readFileSync(join(root, "containers", "control", "kubectl", "LICENSE"), "utf8");
+  assert.match(license, /^\n +Apache License\n +Version 2\.0, January 2004\n/);
+  assert.match(license, /END OF TERMS AND CONDITIONS/);
+  assert.equal(license.length, 11358);
+  assert.match(entry("control"), / {12}licenses: MIT\n/);
+});

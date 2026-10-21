@@ -43,7 +43,7 @@ The workflow builds the one-container rig image on the CUDA harness it built in 
 | `org.opencontainers.image.version` | The release's version, such as `0.1.0` |
 | `org.opencontainers.image.revision` | The full commit the image was built from |
 | `org.opencontainers.image.title`, `org.opencontainers.image.description` | The image's name and what it is |
-| `org.opencontainers.image.licenses` | `MIT AND Apache-2.0` for the harness images and the rig image: they carry the Codex CLI, under the Apache License 2.0 with its `NOTICE`, and OpenCode, under MIT, beside Thermite. `MIT` for control and the supervisor |
+| `org.opencontainers.image.licenses` | `MIT AND Apache-2.0` for the harness images and the rig image: they carry the Codex CLI, under the Apache License 2.0 with its `NOTICE`, and OpenCode, under MIT, beside Thermite. `MIT` for control and the supervisor. Control's image also carries kubectl, under the Apache License 2.0, with its license file; its label stays `MIT` |
 
 The workflow builds control, the harness images and the supervisor with `THERMITE_COMMIT` set to the full commit, so each service reports that commit with the version in its `package.json` ([Rig versions](rest-api.md#rig-versions)). It builds the harness images with `THERMITE_IMAGE_ID` too, set to the image's tag and short commit, such as `0.1.0-cuda+1a2b3c4d5e6f`: the harness reports it as its image in the rig's hardware report, which the rig's page shows, and puts it in every build's key ([Build cache](kit-manifest.md#build-cache)). In an image built from a checkout without these arguments, both are empty, which counts as not set. The rig image's build passes neither: it keeps the CUDA harness's values, such as `0.1.0-cuda+1a2b3c4d5e6f`, so a rig on RunPod reports the CUDA harness it is built on.
 
@@ -253,7 +253,7 @@ The [isolation check](rig-checks.md#the-one-container-image) checks the supervis
 | --- | --- |
 | Base | `NODE_IMAGE` |
 | Packages | `tini`, `ca-certificates`, `git`, `openssh-client` (for machines over SSH and Git over SSH), `unzip` |
-| kubectl | `KUBECTL_VERSION`, v1.37.1 by default, checked against a pinned sha256, at `/usr/local/bin/kubectl`. The build stops with `no pinned kubectl for <arch>` on any architecture but amd64 and arm64 |
+| kubectl | `KUBECTL_VERSION`, v1.37.1 by default, checked against a pinned sha256, at `/usr/local/bin/kubectl`. The build stops with `no pinned kubectl for <arch>` on any architecture but amd64 and arm64. kubectl is under the Apache License 2.0: the `LICENSE` of the Kubernetes repository at that tag is kept in `/usr/local/share/doc/kubectl`, from `containers/control/kubectl/LICENSE` |
 | Thermite | `/opt/thermite`, and the `thermite` command at `/usr/local/bin/thermite` |
 | User | `thermite`, uid and gid 10001, home `/var/lib/thermite-control`. It has a passwd entry because OpenSSH refuses a user without one |
 | Paths it owns | `/var/lib/thermite-control` (its state, `THERMITE_CONTROL_DIR`), `/keys` |

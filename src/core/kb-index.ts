@@ -150,7 +150,8 @@ export function indexEvent(t: KbIndexTarget, e: KbEvent): void {
             str(seed.repo) || str(seed.commit)
               ? `Seed: ${str(seed.repo)}${str(seed.commit) ? ` at ${str(seed.commit).slice(0, 12)}` : ""}`
               : "",
-            str(b.direction) ? `Direction: ${str(b.direction)}` : "",
+            // The run's note (--note; the signed field keeps its old name, direction).
+            str(b.direction) ? `Note: ${str(b.direction)}` : "",
             b.agents === false ? "Agents: none (a try: the judge only)" : "Agents: on",
             briefing
               ? `Briefing: ${briefing} item${briefing === 1 ? "" : "s"} from past research`

@@ -118,6 +118,8 @@ Now give the judge something to judge. The **Judge smoke** check submits twelve 
 
    **Judge smoke** shows **passed**, with `smoke on smoke-cpu: all 12 candidates were judged as expected (run check-smoke-…)`. Until then, it shows **running**. The rig reports to control about once a minute, so the result can show a minute after the check ended, as `passed 1m ago`.
 
+   On a machine whose timing is noisy, such as a virtual machine that shares its host, it can show **passed** with `smoke on smoke-cpu: 11 of 12 candidates were judged as expected; the no-op came out inconclusive, not neutral` and the note `The timing on this machine is noisy. Results here need more repeats.` The judge works; the note means campaigns here need more repeats to tell small changes apart. Go on with the tutorial. In step 7, the no-op then counts as inconclusive, not neutral. See [Judge smoke passed with a note](../how-to/operate/troubleshoot.md#judge-smoke-passed-with-a-note).
+
    If it shows **failed**, the sentence beside it says why. The usual reason on a laptop is a computer too busy for fair timing: close other heavy programs and press **Run it** again. See [A check failed](../how-to/operate/troubleshoot.md#a-check-failed).
 
 ## 7. See what the judge decided
