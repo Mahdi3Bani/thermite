@@ -10,7 +10,7 @@ updated: 2026-10-21
 
 # 073 · A harness for each agent
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns · **Depends on:** [029](029-model-per-agent.goal), [056](056-codex-harness.goal)
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns · **Depends on:** [029](029-api-mcp-coverage.goal), [056](056-codex-harness.goal)
 
 ## What
 

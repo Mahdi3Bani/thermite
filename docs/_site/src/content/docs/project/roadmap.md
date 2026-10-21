@@ -38,7 +38,8 @@ Also built:
 
 In progress:
 
-- a cap on the context window of a rig's model, and compaction near it: a trial's conversation is kept, summarized and goes on, in every harness. Both work over REST and MCP; fields for them on **Edit rig** are still to come ([goal 070](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/070-model-context-cap.goal)).
+- a cap on the context window of a rig's model, and compaction near it: a trial's conversation is kept, summarized and goes on, in every harness. Both work over REST and MCP; fields for them on **Edit rig** are still to come. Next, every kind of agent gets them, and a campaign can set its own for its runs ([goal 070](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/070-model-context-cap.goal)).
+- a harness of the owner's choice for every kind of agent, not only the workers: Pi, OpenCode v2, Claude Code or the Codex CLI for the planner and each advisor too ([goal 073](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/073-harness-for-each-agent.goal)).
 
 Still to come in v0.1.0:
 
