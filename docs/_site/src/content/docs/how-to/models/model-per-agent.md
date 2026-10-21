@@ -50,6 +50,23 @@ When the workers' or the planner's model changes, the rig runs its model check a
 
 A run's **Planner** tab also shows the planner's model, in the card **The planner**: for example "my-model, its own model (from my-litellm)", or "my-model, the agents' model (Edit rig can give the planner its own)". Under **What the planner did**, it shows each hand-out: which experiment went to which lane, and why. See [Check the planner's model](../campaigns/choose-what-runs-next.md#check-the-planners-model).
 
+## Over MCP or REST
+
+An agent or a script can set the same models without this page:
+
+- **MCP**, with the owner's or an operator's token: [`set_rig_model`](../../reference/mcp-tools.md#set_rig_model), with `agent` set to `workers`, `planner`, `teachers` (the teacher pair), `combiner`, `auditor` or `panel` (the review panel). [`rig_models`](../../reference/mcp-tools.md#rig_models) reads each agent's model.
+- **REST**, with the owner's token: [`POST /v1/rigs/<rig>/model`](../../reference/rest-api.md#the-agents-model) takes the same fields, and `GET /v1/rigs/<rig>/model` reads each agent's model.
+
+Each call changes one agent, and the others keep their models. The checks and the refusals are this page's. `clear: true` sends the agent back to its default, as the first choice in its **Model** list does here: **its own settings**, **same as the workers** or **the rig's advisors file**. `harness` and `context_window` are for the workers only.
+
+For example, to give the auditor a model from a ChatGPT subscription named `chatgpt-pro`, call `set_rig_model` with:
+
+```json
+{ "rig": "rig-1", "agent": "auditor", "provider": "chatgpt-pro", "model": "gpt-pro", "effort": "high" }
+```
+
+The answer says "Control sent a model for the auditor to rig-1. The rig takes the change in less than one minute.", and its `agents` lists each agent's model after the change.
+
 ## An agent with no model
 
 - **Workers** with no model use the rig's own settings. See [Use the rig's own settings instead](connect-a-provider.md#use-the-rigs-own-settings-instead).

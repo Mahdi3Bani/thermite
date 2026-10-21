@@ -34,6 +34,7 @@ import { cappedWindow, claudeModelName, isOpencodeOwn, providerBase } from "./pr
 import { copiedFromRecords, untriedOf } from "./queue-copy.ts";
 import type { probeRepository, readKitManifest } from "./repo-probe.ts";
 import { resultsLeft } from "./results-left.ts";
+import { RigModelBody, rigModelAnswer, rigModelRequest } from "./rig-model.ts";
 import type { RigUpdates } from "./rig-update.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
 import { type LaunchRequest, type LimitsChange, RunpodRigs } from "./runpod-rigs.ts";
@@ -140,15 +141,6 @@ const IssueBody = z.object({
     .positive()
     .max(7 * 24 * 60)
     .default(60),
-});
-
-/** POST /v1/rigs/<rig>/model: set_rig_model's fields (goal 070). Edit rig's code checks the rest. */
-const RigModelBody = z.strictObject({
-  provider: z.string().min(1).max(200),
-  model: z.string().min(1).max(200),
-  harness: z.enum(["pi", "opencode", "codex"]).optional(),
-  effort: z.enum(["low", "medium", "high", "xhigh", "max"]).optional(),
-  context_window: z.number().int().optional(),
 });
 
 /**
@@ -1159,39 +1151,35 @@ export function createControlApi(
     return c.json(copyCampaignAnswer(out), 201);
   });
 
-  // Give a rig's agents a model (goal 070): the twin of MCP's set_rig_model, through the
-  // dashboard's own code (actions.setRigModel), with Edit rig's refusals in words. Each call sets
-  // the context window cap anew: none given, none kept.
+  // Give one of a rig's agents a model, or clear it (goals 029 and 070): the twin of MCP's
+  // set_rig_model, through the dashboard's own code (actions.setRigModel), with Edit rig's
+  // refusals in words. Each call for the workers sets the context window cap anew: none given,
+  // none kept.
   app.post("/v1/rigs/:rig/model", admin, bodyLimit({ maxSize: 16 * 1024 }), async (c) => {
     const give = actions.setRigModel;
     if (!give) return c.json({ error: "this control gives no models" }, 404);
     const rig = c.req.param("rig");
     const raw: unknown = await c.req.json().catch(() => undefined);
+    const refuse = (error: string) => {
+      store.audit("owner:api", "refused", { path: `/v1/rigs/${rig}/model`, why: redact(error) });
+      return c.json({ error }, error === `no rig ${rig}` ? 404 : 400);
+    };
     const body = RigModelBody.safeParse(raw);
-    const out = body.success
-      ? await give(
-          rig,
-          body.data.provider,
-          body.data.model,
-          body.data.harness,
-          body.data.effort,
-          body.data.context_window,
-          "owner:api",
-        )
-      : { error: bodyRefusal(body.error) };
-    if ("error" in out) {
-      store.audit("owner:api", "refused", {
-        path: `/v1/rigs/${rig}/model`,
-        why: redact(out.error),
-      });
-      return c.json({ error: out.error }, out.error === `no rig ${rig}` ? 404 : 400);
-    }
-    return c.json({
-      rig,
-      model: body.data?.model,
-      context_window: out.contextWindow || null,
-      said: out.ok,
-    });
+    if (!body.success) return refuse(bodyRefusal(body.error));
+    const req = rigModelRequest(body.data);
+    const out = await give(rig, req, "owner:api");
+    if ("error" in out) return refuse(out.error);
+    return c.json(rigModelAnswer(rig, req, out));
+  });
+
+  // Each of a rig's agents' models on control: the twin of MCP's rig_models.
+  app.get("/v1/rigs/:rig/model", admin, (c) => {
+    const read = actions.rigModels;
+    if (!read) return c.json({ error: "this control gives no models" }, 404);
+    const rig = c.req.param("rig");
+    const agents = read(rig);
+    if ("error" in agents) return c.json({ error: agents.error }, 404);
+    return c.json({ rig, agents });
   });
 
   // A page of the audit log, newest first; older and newer are the cursors for the next pages.

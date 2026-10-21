@@ -5,7 +5,7 @@ status: IN_PROGRESS
 version: "0.2.0"
 depends_on: []
 created: 2026-10-19
-updated: 2026-10-20
+updated: 2026-10-21
 ---
 
 # 029 · Full API and MCP coverage
@@ -32,6 +32,10 @@ Other agents must be able to run Thermite through control without the dashboard.
   - **Fields:** the ones the panel offers: the rig, agents on or off, the agents' model, promotion, GPUs for the judge, a run of the campaign to copy untried experiments from, and past research by knowledge-base id. The panel offers no lanes and no harness, so the twins don't either.
   - **Tokens:** REST and the command line take the owner's token, as every REST route does. MCP takes the owner's and an operator's: an operator may already start runs with `issue_command`'s `assign_campaign`, and may give a rig's agents a model with `set_rig_model`. An operator's `start_run` can't set the GPU split, because `issue_command` sends no `rig_settings`. It can't start a stopped RunPod pod either, as for `assign_campaign`. The agent's token may issue `assign_campaign` too, but it has no `start_run`: the panel is the owner's, and it reads the knowledge base, which the agent's token can't.
   - **Differences from the panel:** for a try (agents off), the twins refuse a model, a run to copy from and past research, where the panel leaves them out. The run to copy from must be a run of the campaign, as the panel lists them; the panel's form now refuses another one too.
+- 2026-10-21, owner: "yeah add the MCP/REST endpoints": each agent's model on **Edit rig** gets its twin, so a goal campaign's advisors can use a ChatGPT subscription's model while the workers and the planner use another.
+  - **Builder, 2026-10-21:** `set_rig_model` and `POST /v1/rigs/<rig>/model` take `agent` (`workers`, the default, `planner`, `teachers`, `combiner`, `auditor` or `panel`, as Edit rig and control's records name them) and `clear: true`, which sends the agent back to its default as the first choice in its row does. `clear` reads better than an empty model, and it is refused with any other field but `agent`. Both call Edit rig's own code for the row (`ControlActions.setRigModel`; the shared fields and answer are in `src/control/rig-model.ts`), so they check, refuse and audit alike. No signed command carries these models: the rig reads them from control with its model route (the planner) and its advisor routes, as after Edit rig.
+  - **Builder, 2026-10-21:** `harness` and `context_window` stay the workers' alone, and are refused in words with another agent: Edit rig has no harness choice and no cap for the other rows.
+  - **Builder, 2026-10-21:** each agent's model is read with MCP's `rig_models` (the owner's, an operator's and a reader's token, as `providers`) and `GET /v1/rigs/<rig>/model` (the owner's), and the answer of a change lists them too.
 
 ## Open questions
 
@@ -41,6 +45,7 @@ None.
 
 - 2026-10-19: Goal written from the roadmap.
 - 2026-10-20: **Start a run**'s twin is built: `POST /v1/campaigns/<campaign>/runs`, MCP `start_run` and `thermite run start`, with the panel's refusals in words and a stopped RunPod pod started first (the owner's token only). Tests: `src/control/start-run.test.ts` (REST against the panel's own assignment, every refusal, a model given first, MCP tokens), `src/control/runpod-lifecycle.test.ts` (the pod started first; an operator refused), `src/cli/run.test.ts`. Pages: the REST, MCP and command-line references, **Start a run later** in Start a campaign from the dashboard, and the pages that listed the ways to start or copy a run. The rest of the goal is not started: the other dashboard actions, the OpenAPI file and the twin test.
+- 2026-10-21: Each agent's model on **Edit rig** has its twin: `set_rig_model` and `POST /v1/rigs/<rig>/model` take `agent` and `clear`, and `rig_models` and `GET /v1/rigs/<rig>/model` read each agent's model. An advisor can take a ChatGPT subscription's model; it already could on Edit rig, and the supervisor runs it with read-only tools on the subscription's access token. Tests: `src/control/rig-model.test.ts` (each agent set and cleared over REST and MCP, the routes the rig then reads, every refusal, the tokens), with `context-cap`, `mcp` and `dashboard` tests still passing. Pages: the MCP and REST references, Tokens, Give each agent its own model (**Over MCP or REST**), Script Thermite with the REST API and Let an agent run Thermite over MCP. The rest of Edit rig (its parts, limits, promotion rule and GPU split) still has no twin.
 
 ---
 

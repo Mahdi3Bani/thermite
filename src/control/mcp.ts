@@ -22,6 +22,7 @@ import {
 import { redirectUriOf, ServerBody, serverJson } from "./mcp-server-routes.ts";
 import type { McpServers } from "./mcp-servers.ts";
 import { copiedFromRecords } from "./queue-copy.ts";
+import { type RigModelBody, rigModelAnswer, rigModelFields, rigModelRequest } from "./rig-model.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
 import {
   DEFAULT_IDLE_STOP_MINUTES,
@@ -723,6 +724,25 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
         ),
       );
     }
+    // Each agent's model, as Edit rig's section "2 · The agents" (goal 029): read by every
+    // token but the agent's, as Providers is; set by the owner's and an operator's.
+    if (actions?.rigModels) {
+      const read = actions.rigModels;
+      server.registerTool(
+        "rig_models",
+        {
+          title: "Each agent's model on a rig",
+          description:
+            "Each agent's model on a rig, as Edit rig's section The agents shows it: workers, planner, teachers (the teacher pair), combiner, auditor and panel (the review panel). Each is {provider, model, effort}, the workers' with harness and context_cap too, or null for its default: the workers use the rig's own settings, the planner the workers' model, an advisor the rig's advisors file. It is what control gives the rig; set it with set_rig_model.",
+          inputSchema: { rig: z.string().min(1) },
+        },
+        audited("rig_models", (a: { rig: string }) => {
+          const agents = read(a.rig);
+          if ("error" in agents) throw new Error(agents.error);
+          return { rig: a.rig, agents };
+        }),
+      );
+    }
     if (canCommand && actions?.setRigModel) {
       const give = actions.setRigModel;
       server.registerTool(
@@ -730,44 +750,16 @@ function buildServer(store: ControlStore, opts: McpOptions, actor: string, role:
         {
           title: "Give a rig's agents a model",
           description:
-            "As Edit rig does: the model a rig's agents use, from a model provider in Providers (see the providers tool for their models). The rig takes it within a minute and checks it. Harness default: what the model needs (Claude Code for a Claude subscription, OpenCode for OpenCode's free models, else Pi). codex runs the workers and the planner in the Codex CLI: only with a ChatGPT subscription or an OpenAI-compatible provider. context_window caps the model's context window in tokens (from 4096), for example to compare two models at the same window; a cap above the provider's window is refused. Agents in Pi keep to it; OpenCode, Claude Code and Codex do not read it. Each call sets the cap anew: a call without context_window removes a cap the rig had. Returns context_window, the window the rig's model route carries (null: the provider lists none).",
-          inputSchema: {
-            rig: z.string().min(1),
-            provider: z.string().min(1),
-            model: z.string().min(1),
-            harness: z.enum(["pi", "opencode", "codex"]).optional(),
-            effort: z.enum(["low", "medium", "high", "xhigh", "max"]).optional(),
-            context_window: z.number().int().optional(),
-          },
+            "As a row of Edit rig's section The agents does: the model one of a rig's agents uses, from a model provider in Providers (see the providers tool for their models). agent: workers (default), planner, teachers (the teacher pair), combiner, auditor or panel (the review panel); the other agents keep their models. clear: true, with no provider or model, sends the agent back to its default: the workers to the rig's own settings, the planner to the workers' model, an advisor to the rig's advisors file. The workers and the planner take a new model within a minute, and the rig checks the workers' model; an advisor uses its new model from its next round. An advisor takes a model from an API key or a ChatGPT subscription (it runs in the supervisor, with read-only tools) or from a Claude subscription (it runs in Claude Code), never OpenCode's own models. harness and context_window are for the workers only. Harness default: what the model needs (Claude Code for a Claude subscription, OpenCode for OpenCode's free models, else Pi). codex runs the workers, and a planner with no model of its own, in the Codex CLI: only with a ChatGPT subscription or an OpenAI-compatible provider. context_window caps the workers' context window in tokens (from 4096), for example to compare two models at the same window; a cap above the provider's window is refused. Agents in Pi keep to it; OpenCode, Claude Code and Codex do not read it. Each call for the workers sets the cap anew: a call without context_window removes a cap the rig had. Returns context_window, the window the agent's model route carries (null: the provider lists none, or the model was cleared), and agents, each agent's model after the change, as rig_models reads them.",
+          inputSchema: { rig: z.string().min(1), ...rigModelFields },
         },
-        audited(
-          "set_rig_model",
-          async (a: {
-            rig: string;
-            provider: string;
-            model: string;
-            harness?: "pi" | "opencode" | "codex";
-            effort?: "low" | "medium" | "high" | "xhigh" | "max";
-            context_window?: number;
-          }) => {
-            const r = await give(
-              a.rig,
-              a.provider,
-              a.model,
-              a.harness,
-              a.effort,
-              a.context_window,
-              actor,
-            );
-            if ("error" in r) throw new Error(r.error);
-            return {
-              rig: a.rig,
-              model: a.model,
-              context_window: r.contextWindow || null,
-              said: r.ok,
-            };
-          },
-        ),
+        audited("set_rig_model", async (a: RigModelBody & { rig: string }) => {
+          const { rig, ...body } = a;
+          const req = rigModelRequest(body);
+          const r = await give(rig, req, actor);
+          if ("error" in r) throw new Error(r.error);
+          return rigModelAnswer(rig, req, r);
+        }),
       );
     }
     // Start a run, as a campaign page's Start a run does, through the dashboard's own code: the

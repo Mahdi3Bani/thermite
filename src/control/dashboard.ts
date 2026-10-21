@@ -109,6 +109,7 @@ import {
 import { untriedOf } from "./queue-copy.ts";
 import { probeRepository, readKitManifest } from "./repo-probe.ts";
 import { exportLeft, resultsLeft } from "./results-left.ts";
+import { agentModelsOf, rigModelShapeRefusal } from "./rig-model.ts";
 import { RigUpdates, UPDATE_STEP_WORDS } from "./rig-update.ts";
 import { type RunpodFacts, readRunpod, runpodLine } from "./runpod.ts";
 import { runpodResetRefusal } from "./runpod-lifecycle.ts";
@@ -3712,20 +3713,56 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
     return await checkClusterNow(name);
   };
   if (opts.actions) opts.actions.setClusterSlots = setClusterSlots;
-  if (opts.actions)
-    opts.actions.setRigModel = async (rig, provider, model, harness, effort, contextWindow, by) => {
+  if (opts.actions) {
+    // One agent's model over MCP and REST (goal 029), through Edit rig's own code for its row.
+    opts.actions.setRigModel = async (rig, r, by) => {
       if (!views().some((u) => u.id === rig)) return { error: `no rig ${rig}` };
-      const choice = `${encodeURIComponent(provider)}|${encodeURIComponent(model)}`;
-      // MCP and REST set what they are asked: no context_window removes a cap.
-      return giveRigModel(
-        rig,
-        choice,
-        harnessFor(choice, harness ?? ""),
-        effort,
-        by,
-        contextWindow ?? null,
-      );
+      const shape = rigModelShapeRefusal(r);
+      if (shape) return { error: shape };
+      const agent = r.agent ?? "workers";
+      const choice = r.clear
+        ? ""
+        : `${encodeURIComponent(r.provider ?? "")}|${encodeURIComponent(r.model ?? "")}`;
+      if (agent === "workers") {
+        if (!choice) {
+          clearRigModel(rig, by);
+          return {
+            ok: `${rig} goes back to its own settings within a minute.`,
+            contextWindow: null,
+            agents: agentModelsOf(store, rig),
+          };
+        }
+        // MCP and REST set what they are asked: no context_window removes a cap.
+        const given = giveRigModel(
+          rig,
+          choice,
+          harnessFor(choice, r.harness ?? ""),
+          r.effort,
+          by,
+          r.contextWindow ?? null,
+        );
+        if ("error" in given) return given;
+        return {
+          ok: given.ok,
+          contextWindow: given.contextWindow || null,
+          agents: agentModelsOf(store, rig),
+        };
+      }
+      const given = giveAgentModel(rig, agent, choice, r.effort, by);
+      if ("error" in given) return given;
+      // The agent's route carries the provider's window (a cap is the workers' alone).
+      const listed = choice
+        ? store.provider(r.provider ?? "")?.models.find((m) => m.id === r.model)?.context_window
+        : undefined;
+      return {
+        ok: `Control sent ${given.ok} to ${rig}. The rig takes the change in less than one minute.`,
+        contextWindow: listed || null,
+        agents: agentModelsOf(store, rig),
+      };
     };
+    opts.actions.rigModels = (rig) =>
+      views().some((u) => u.id === rig) ? agentModelsOf(store, rig) : { error: `no rig ${rig}` };
+  }
   app.post("/ui/settings/clusters/:name/slots", async (c) => {
     const name = c.req.param("name");
     const f = await c.req.parseBody();
@@ -6270,8 +6307,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     if (!store.rigs().some((x) => x.id === rig))
       return c.redirect(settingsUrl("error", "No such rig."), 303);
     if (!choice) {
-      store.assignRigModel(rig, null);
-      store.audit("owner:ui", "rig_model_given", { rig, provider: null, model: null });
+      clearRigModel(rig);
       return c.redirect(
         settingsUrl("ok", `${rig} goes back to its own settings within a minute.`),
         303,
@@ -6358,6 +6394,54 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       ok: `${rig} takes ${model} from "${provider}" under ${HARNESSES[harness]} within a minute, and checks it.${capped ? ` Its context window: ${capped}.` : ""}`,
       contextWindow: cappedWindow(listed, contextCap),
     };
+  };
+  /** Returns a rig's workers to the rig's own settings, as Providers and Edit rig both do. */
+  const clearRigModel = (rig: string, by = "owner:ui") => {
+    store.assignRigModel(rig, null);
+    store.audit(by, "rig_model_given", { rig, provider: null, model: null });
+  };
+  /**
+   * Gives one of a rig's other agents a provider's model, as its row on Edit rig does, or (an
+   * empty choice) its default again: the workers' model for the planner, the rig's advisors file
+   * for an advisor. `ok` is Edit rig's words for the change.
+   */
+  const giveAgentModel = (
+    rig: string,
+    role: AgentRole,
+    choice: string,
+    effort: Effort | undefined,
+    by = "owner:ui",
+  ): { ok: string } | { error: string } => {
+    if (!choice) {
+      store.assignRoleModel(rig, role, null);
+      store.audit(by, "agent_model_given", { rig, role, provider: null, model: null });
+      return {
+        ok:
+          role === "planner"
+            ? "the planner back to the workers' model"
+            : `the ${role} back to the rig's advisors file`,
+      };
+    }
+    const [pRaw, mRaw] = choice.split("|");
+    let provider = "";
+    let model = "";
+    try {
+      provider = decodeURIComponent(pRaw ?? "");
+      model = decodeURIComponent(mRaw ?? "");
+    } catch {
+      // A malformed choice lists no model.
+    }
+    const p = store.provider(provider);
+    if (!p?.models.some((m) => m.id === model))
+      return { error: `That provider does not list that model (${role}).` };
+    // Advisors make single calls here; OpenCode's own models need OpenCode, which they don't run.
+    if (role !== "planner" && isOpencodeOwn(p) && (p.type === "opencode" || !p.key_sealed))
+      return {
+        error: `The ${role} cannot use OpenCode's own models: they run only in OpenCode. Choose another model.`,
+      };
+    store.assignRoleModel(rig, role, { provider, model, effort });
+    store.audit(by, "agent_model_given", { rig, role, provider, model, effort: effort ?? null });
+    return { ok: `a model for the ${role}` };
   };
 
   // ---------------------------------------------------------------- Edit rig
@@ -6588,8 +6672,7 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       (choice && (harness !== want?.harness || (effort ?? null) !== (want?.effort ?? null)))
     ) {
       if (!choice) {
-        store.assignRigModel(rig, null);
-        store.audit("owner:ui", "rig_model_given", { rig, provider: null, model: null });
+        clearRigModel(rig);
         said.push("its own model settings");
       } else {
         const given = giveRigModel(rig, choice, harness, effort);
@@ -6607,41 +6690,9 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
         ? `${encodeURIComponent(cur.provider)}|${encodeURIComponent(cur.model)}`
         : "";
       if (raw === curValue && (roleEffort ?? null) === (cur?.effort ?? null)) continue;
-      if (!raw) {
-        store.assignRoleModel(rig, role, null);
-        store.audit("owner:ui", "agent_model_given", { rig, role, provider: null, model: null });
-        said.push(
-          role === "planner"
-            ? "the planner back to the workers' model"
-            : `the ${role} back to the rig's advisors file`,
-        );
-        continue;
-      }
-      const [pRaw, mRaw] = raw.split("|");
-      let provider = "";
-      let model = "";
-      try {
-        provider = decodeURIComponent(pRaw ?? "");
-        model = decodeURIComponent(mRaw ?? "");
-      } catch {}
-      const p = store.provider(provider);
-      if (!p?.models.some((m) => m.id === model))
-        return back("error", `That provider does not list that model (${role}).`);
-      // Advisors make single calls here; OpenCode's own models need OpenCode, which they don't run.
-      if (role !== "planner" && isOpencodeOwn(p) && (p.type === "opencode" || !p.key_sealed))
-        return back(
-          "error",
-          `The ${role} cannot use OpenCode's own models: they run only in OpenCode. Choose another model.`,
-        );
-      store.assignRoleModel(rig, role, { provider, model, effort: roleEffort });
-      store.audit("owner:ui", "agent_model_given", {
-        rig,
-        role,
-        provider,
-        model,
-        effort: roleEffort ?? null,
-      });
-      said.push(`a model for the ${role}`);
+      const given = giveAgentModel(rig, role, raw, roleEffort);
+      if ("error" in given) return back("error", given.error);
+      said.push(given.ok);
     }
     // The harness's settings: only what changed, as one signed command.
     const s = u.settings;
