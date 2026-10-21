@@ -22,7 +22,7 @@ Control sets [rigs](../../reference/glossary.md) up from images it does not buil
 | Harness | `containers/harness/Containerfile` | CPU rigs |
 | Harness, CUDA | The same file, with `BASE_IMAGE` set to a CUDA image | GPU rigs, and RunPod test pods |
 | Supervisor | `containers/supervisor/Containerfile` | Every rig |
-| One-container rig | `containers/rig/Containerfile`, on the CUDA harness | Rigs on RunPod. [Use a rig image of your own](runpod-rig.md#use-a-rig-image-of-your-own) builds it |
+| One-container rig | `containers/rig/Containerfile`, on the CUDA harness | Rigs on RunPod, and RunPod test pods. [Use a rig image of your own](runpod-rig.md#use-a-rig-image-of-your-own) builds it |
 
 Name them as you like; control takes any full image reference. The examples use `registry.example.com/thermite/` and the first 12 characters of the commit as the tag.
 
@@ -54,7 +54,7 @@ The release workflow builds the published CUDA harness on `docker.io/nvidia/cuda
 
 - **CUDA 12.** The Containerfile notes that CUDA 13 dropped older GPU architectures. RunPod test pods ask for hosts that run CUDA 12.6 or later.
 - **A development image**, with `nvcc`: the GPU smoke check compiles CUDA code on the rig.
-- **Debian or Ubuntu based**, because the build installs its packages with `apt-get` from the base's own package lists: git, tini (the image's entry point), a C and C++ toolchain, CMake, Ninja, ccache, and Python 3 with numpy. Node.js and OpenCode are copied in, so the base needn't have them.
+- **Debian or Ubuntu based**, because the build installs its packages with `apt-get` from the base's own package lists: git, tini (the image's entry point), a C and C++ toolchain, CMake, Ninja, ccache, Python 3 with numpy, and bubblewrap and socat for Claude Code's sandbox. Node.js, OpenCode and the Codex CLI are copied in, so the base needn't have them.
 
 ### Build arguments
 
@@ -64,7 +64,7 @@ The release workflow builds the published CUDA harness on `docker.io/nvidia/cuda
 | `NODE_IMAGE` | All three | Node.js 22 on Debian bookworm, pinned by digest | Where Node.js comes from |
 | `OPENCODE_VERSION` | Harness | `2.0.32` | The OpenCode release the image carries |
 | `CLAUDE_CODE_VERSION` | Harness, supervisor | Empty: no Claude Code | Downloads that Claude Code release into the image, for a [Claude subscription](../models/claude-subscription.md) |
-| `CODEX_VERSION` | Harness | `0.162.1` | The Codex CLI release the image carries, for [agents in Codex](../models/chatgpt-subscription.md#run-the-agents-in-codex). Empty: no Codex CLI, and an image about 450 MB smaller |
+| `CODEX_VERSION` | Harness | `0.162.1` | The Codex CLI release the image carries, for [agents in Codex](../models/chatgpt-subscription.md#run-the-agents-in-codex). Empty: no Codex CLI, and an image about 400 MB smaller |
 | `KUBECTL_VERSION` | Control | `v1.37.1` | The kubectl control uses for clusters. It is checked against a pinned hash, so a different version fails the build |
 | `THERMITE_COMMIT` | All three | Empty: no commit | The source commit the image is built from, which the service reports with its version |
 | `THERMITE_IMAGE_ID` | Harness | Empty | A name for this build, which the harness reports as its image and puts in each build's key, for example `--build-arg THERMITE_IMAGE_ID=$tag` |
@@ -99,7 +99,7 @@ Set these on control, then restart it. With the compose stack, put the first fou
 | `THERMITE_RIG_SUPERVISOR_IMAGE` | The supervisor. Control needs both of these to set rigs up |
 | `THERMITE_RIG_HARNESS_CUDA_IMAGE` | The CUDA harness, for GPU rigs |
 | `THERMITE_RUNPOD_RIG_IMAGE` | The one-container rig image, for rigs on RunPod |
-| `THERMITE_RUNPOD_TEST_IMAGE` | The CUDA harness, as RunPod test pods' default. `compose.yaml` does not pass this one to control: with the compose stack, set it in an override file ([example](one-machine.md#settings-and-override-files)) or type the image into the test form |
+| `THERMITE_RUNPOD_TEST_IMAGE` | The CUDA harness or the one-container rig image, as RunPod test pods' default. `compose.yaml` does not pass this one to control: with the compose stack, set it in an override file ([example](one-machine.md#settings-and-override-files)) or type the image into the test form |
 
 ```sh title=".env (part)"
 THERMITE_RIG_HARNESS_IMAGE=registry.example.com/thermite/thermite-harness:1a2b3c4d5e6f

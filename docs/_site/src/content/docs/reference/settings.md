@@ -35,7 +35,7 @@ The "Secret" column says whether a value is secret: **no**; a **path to a secret
 | `THERMITE_CONTROL_DIR` | path | `/var/lib/thermite-control` | directory with secrets | Control's state: its store (`control.db`, which also holds [Thermite's knowledge base](knowledge-base.md)), its command-signing key pair (`control-signing.key` and `.pub`, made at first start), the secrets key when `THERMITE_CONTROL_SECRETS_KEY_FILE` is not set, the kits written on the **New campaign** page (`kits/`), and the [exports](exports.md#where-control-keeps-them) rigs without a results repository send it (`exports/`) |
 | `THERMITE_CONTROL_PUBKEY_EXPORT` | path | not set | no | A second place to write control's command-signing public key, so that rigs can verify [signed commands](signed-commands.md). The local compose file writes it to a volume the harness reads |
 | `THERMITE_CONTROL_SECRETS_KEY_FILE` | path | `secrets.key` in `THERMITE_CONTROL_DIR`, made on first use | path to a secret | The key that encrypts what control keeps for you: model providers' keys and sign-ins, Git access, GPU cloud keys, machines' SSH keys, cluster kubeconfigs, and MCP servers' keys, client secrets and sign-ins. It must hold a 32-byte key in base64. Without the same key, the stored secrets cannot be read |
-| `THERMITE_CONTROL_STALE_SECONDS` | seconds | `180` | no | A rig that has sent no report for this long shows as stale: **Stale** on **Rigs**, `stale` in the [rig lists](rest-api.md#reporting-stale-and-offline) |
+| `THERMITE_CONTROL_STALE_SECONDS` | seconds | `180` | no | A rig that has sent no report for this long shows as stale: **Stale** on **Rigs**, `stale` in the [rig lists](rest-api.md#reporting-stale-and-offline). A stopped RunPod pod shows **Stopped** on **Rigs** instead |
 | `THERMITE_CONTROL_OFFLINE_SECONDS` | seconds | `900` | no | A rig that has sent no report for this long is `offline` in the rig lists of the REST API, MCP and `thermite rig list`, and on its page, and **Offline** on **Rigs**. A value below `THERMITE_CONTROL_STALE_SECONDS` counts as that value |
 | `THERMITE_CONTROL_SESSION_DAYS` | days | `30` | no | How long an unused dashboard sign-in lasts |
 
@@ -332,6 +332,7 @@ The smoke and acceptance scripts in `scripts/` read these. They are not settings
 | `MINUTES`, `PACE_SECONDS`, `SEEDS` | `125`, `120`, two built-in pages | The research long run (`scripts/research-longrun.mjs`): its length in minutes, the wait at the start of each trial in seconds, and its seed pages as comma-separated URLs |
 | `THERMITE_FAKE_CLAUDE` | not set | `1`: lets the stand-in for Claude Code in the Claude Code acceptance's test image run. Without it, or a marker file in that image, the stand-in refuses to run |
 | `THERMITE_FAKE_CODEX` | not set | `1`: lets the stand-in for the Codex CLI in the Codex acceptance's test image run. Without it, or a marker file in that image, the stand-in refuses to run |
+
 ## Build arguments
 
 The images take these build arguments. [Harness image](harness-image.md) says what each image holds.

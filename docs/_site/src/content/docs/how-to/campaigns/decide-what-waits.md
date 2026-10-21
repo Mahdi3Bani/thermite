@@ -34,7 +34,7 @@ The count also shows beside **Overview** in the sidebar, and as **Needs you** in
 | **Not possible?** | End this campaign as not possible? | The [harness](../../reference/glossary.md), the rig's container that holds the judge, proposes that a goal campaign's goals can't be reached | **End it: not possible**, **Keep going** |
 | **New key** | Accept this rig's new report key? | A rig reports with a key control has not pinned | **Accept this key** |
 | **Wipe** | Wipe this rig's state? | A full reset you started is ready for its last step | **Confirm the wipe**, **Cancel the reset** |
-| **Not reporting** | This rig stopped reporting, or, for a rig that never reported, This rig has not reported yet | A rig has sent no report for a while. A new rig whose first key waits for you shows under **New key** instead | **Open the rig** |
+| **Not reporting** | This rig stopped reporting, or, for a rig that never reported, This rig has not reported yet | A rig has sent no report for a while. A new rig whose first key waits for you shows under **New key** instead. A rig on RunPod whose pod is stopped shows no card: it can't report while stopped | **Open the rig** |
 
 ### Promotions
 
@@ -44,7 +44,7 @@ When the judge confirms that a change is better, the run's rule decides what hap
 - **ask me every time** (`owner_approval`): it waits for you as **Your decision**.
 - **the rig's default**: the rule on the rig's **Edit rig** page, under **3 · When a change becomes the champion**: **Automatically** unless changed, or **Ask me for each change**.
 
-You choose a run's rule with **When a change is confirmed better**, on the **New campaign** page or under **More options** in a campaign's **Start a run** panel, or with `--promotion` on `thermite assign`. The run's **Overview** tab shows the rule in force, in the block **The run**, as **Promotion**: `Automatic when the judge confirms; audits and big gains still wait for you`, `Only with your approval`, or `The rig's default (set where the rig is deployed)`.
+You choose a run's rule with **When a change is confirmed better**, on the **New campaign** page or under **More options** in a campaign's **Start a run** panel, or with `--promotion` on `thermite assign` or `thermite run start` (`promotion` over REST and MCP's `start_run`). The run's **Overview** tab shows the rule in force, in the block **The run**, as **Promotion**: `Automatic when the judge confirms; audits and big gains still wait for you`, `Only with your approval`, or `The rig's default (set where the rig is deployed)`.
 
 **Make it the champion** makes the change the next champion: agents start their next work from it. If the champion changed while the change waited, the judge first tests it again against the new champion. If the agent declared flaws, approving accepts them, and the record shows your name. **Reject it** keeps the change from becoming the champion, and the record shows that you rejected it.
 
