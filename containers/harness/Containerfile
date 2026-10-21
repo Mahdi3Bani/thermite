@@ -13,10 +13,12 @@ RUN npm run build && npm prune --omit=dev --no-fund --no-audit
 FROM ${NODE_IMAGE} AS node
 
 # OpenCode v2, the worker harness a rig may choose instead of Pi: one pinned release's binary
-# (npm checks the package against the registry's hash).
+# (npm checks the package against the registry's hash), with the release's MIT LICENSE, which the
+# npm package leaves out (containers/harness/opencode/; update it with the version).
 FROM ${NODE_IMAGE} AS opencode
 ARG OPENCODE_VERSION=2.0.32
 ARG TARGETARCH
+COPY containers/harness/opencode/LICENSE /usr/local/share/doc/opencode/LICENSE
 RUN cd /tmp \
  && npm pack --silent "@opencode/cli-linux-$([ "$TARGETARCH" = arm64 ] && echo arm64 || echo x64)@${OPENCODE_VERSION}" \
  && tar -xzf opencode-cli-linux-*.tgz package/bin/opencode \
@@ -119,6 +121,7 @@ COPY --from=build /src/dist ./dist
 COPY --chmod=0755 containers/thermite /usr/local/bin/thermite
 # The OpenCode harness: its binary, and Thermite's tools for an agent's own shell.
 COPY --from=opencode /usr/local/bin/opencode /usr/local/bin/opencode
+COPY --from=opencode /usr/local/share/doc/opencode/ /usr/local/share/doc/opencode/
 # Claude Code, when the build asked for it (CLAUDE_CODE_VERSION); otherwise this copies nothing.
 COPY --from=claude /out/ /usr/local/bin/
 # The Codex harness, unless the build left it out (CODEX_VERSION empty): on the PATH as a link, so
