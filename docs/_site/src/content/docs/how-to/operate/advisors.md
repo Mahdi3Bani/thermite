@@ -102,7 +102,7 @@ The page says, for example, "Control sent a model for the teachers to rig-1. The
 The supervisor reads the file only when it starts, so after each change run `docker compose restart supervisor`.
 
 :::caution[A mistake in the file stops the rig's reports]
-A file with a mistake stops the supervisor: its log has a `fatal` line with the reason, and it starts again and stops again until you fix the file. The supervisor is also the rig's link to control, so meanwhile the rig shows **Not reporting**. There is no command that checks the file first. At least check that it is valid JSON before you restart, for example with `node -e 'JSON.parse(require("fs").readFileSync(".dev/advisors/advisors.json", "utf8"))'`, then watch `docker compose logs supervisor`.
+A file with a mistake stops the supervisor: its log has a `fatal` line with the reason, and it starts again and stops again until you fix the file. The supervisor is also the rig's link to control, so meanwhile the rig shows **Stale**, then **Offline**, on **Rigs**. There is no command that checks the file first. At least check that it is valid JSON before you restart, for example with `node -e 'JSON.parse(require("fs").readFileSync(".dev/advisors/advisors.json", "utf8"))'`, then watch `docker compose logs supervisor`.
 :::
 
 ### Other runtimes and options

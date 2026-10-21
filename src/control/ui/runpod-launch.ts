@@ -57,8 +57,11 @@ export function launchBody(o: {
   cloud: LaunchCloud;
   /** Control's THERMITE_RUNPOD_RIG_IMAGE; none: the owner names one. */
   image: string | undefined;
-  /** The idle stop a launch gets unless the owner changes it (null: none). */
-  idleDefault: number | null;
+  /**
+   * The idle stop the form fills in when it opens (null: none). After a refusal the form keeps
+   * what the owner typed, an empty field too.
+   */
+  idleFill: number | null;
   minIdle: number;
   volumeGb: number;
   csrf: string;
@@ -75,7 +78,7 @@ export function launchBody(o: {
   const price = pick ? (pick.price_secure ?? 0) * count : 0;
   const own = f.image_choice === "own" || !o.image;
   const running = facts?.pods.filter((p) => p.cost_per_hr > 0) ?? [];
-  const idle = f.idle_stop_minutes ?? (o.idleDefault === null ? "" : String(o.idleDefault));
+  const idle = f.idle_stop_minutes ?? (o.idleFill === null ? "" : String(o.idleFill));
   const cloudLine = `<div class="card" style="margin-bottom:18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="kind g">GPU cloud</span>${
     o.clouds.length > 1
       ? `<form method="get" action="/ui/rigs/add/runpod" class="inline"><select name="cloud" aria-label="RunPod account" data-submit-on-change>${o.clouds.map((c) => `<option value="${esc(c.name)}"${c.name === g.name ? " selected" : ""}>${esc(c.name)}</option>`).join("")}</select> <button class="sm">Use this account</button></form>`
@@ -114,9 +117,9 @@ ${table}
 <label class="fd" style="grid-column:span 2">${infoLabel("Image", "The rig's container image. Thermite's rig image has the harness and the supervisor in one container, for CUDA. Your own image must be built on it, and RunPod must pull it without a login.")}<select name="image_choice" id="img">${o.image ? `<option value="control"${own ? "" : " selected"}>Thermite's rig image, as control names it: ${esc(o.image)}</option>` : ""}<option value="own"${own ? " selected" : ""}>Your own image, built on Thermite's</option></select></label>
 <label class="fd" id="own-f"${own ? "" : " hidden"}>${infoLabel("Your image", "The image's full name and tag, at a registry RunPod can pull from without a login.")}<input name="image" id="own" placeholder="registry.example.com/you/thermite-rig:1" value="${esc(f.image ?? "")}"></label>
 </div></div>
-<div class="sec"><h2>5 · Spend, idle and name</h2><p class="lead">The spend limit is empty unless you fill it in.${o.idleDefault === null ? " So is the idle stop." : ` The idle stop starts at ${o.idleDefault} minutes; clear it for none.`} Control shows the spend on the rig's page either way.</p><div class="g3">
+<div class="sec"><h2>5 · Spend, idle and name</h2><p class="lead">The spend limit is empty unless you fill it in.${o.idleFill === null ? " So is the idle stop." : ` The idle stop starts at ${o.idleFill} minutes. Change it, or clear it so that the pod never stops by itself.`} Control shows the spend on the rig's page either way.</p><div class="g3">
 <label class="fd">${infoLabel("Spend limit (USD)", "Control stops the pod when it has cost this much in total, since launch. A stopped pod still pays for its volume. Empty: no limit.")}<input name="spend_limit_usd" id="lim" inputmode="decimal" placeholder="none" value="${esc(f.spend_limit_usd ?? "")}"></label>
-<label class="fd">${infoLabel("Stop when idle for (minutes)", `Control stops the pod when no run has been at work on it for this long: no campaign runs, or every run is paused, blocked or finished. GPU billing then ends; the volume stays. Starting or resuming a run starts the pod again. ${o.minIdle} minutes or more. Empty: it never stops by itself.`)}<input name="idle_stop_minutes" id="idle" inputmode="numeric" placeholder="never" value="${esc(idle)}"></label>
+<label class="fd">${infoLabel("Stop when idle for (minutes)", `Control stops the pod when no run has been at work on it for this long: no campaign runs, or every run is paused, blocked or finished. GPU billing then ends; the volume stays. Starting or resuming a run starts the pod again. ${o.minIdle} minutes or more. ${o.idleFill === null ? "" : `This form fills in ${o.idleFill} minutes. `}Empty: it never stops by itself. A launch over the REST API, MCP or the command line has no idle stop unless it names one.`)}<input name="idle_stop_minutes" id="idle" inputmode="numeric" placeholder="never" value="${esc(idle)}"></label>
 <label class="fd">${infoLabel("Rig name", "The rig's name in Thermite: 2 to 40 lowercase letters, digits and dashes. It names the rig's runs, history and files, so it can't change later. Empty: control names it rp- and 8 letters or digits.")}<input name="rig" id="nm" placeholder="rp- and 8 characters" value="${esc(f.rig ?? "")}"></label>
 </div></div>
 <div class="card hl"><div style="display:flex;gap:18px;align-items:baseline;flex-wrap:wrap"><span class="price" id="price">${pick ? `${money(price)} an hour` : "–"}</span><span class="muted" id="price-s">${pick ? `for ${count} × ${esc(pick.name)} at RunPod's list price on Secure cloud. RunPod also bills the container disk and the volume by the GB.` : ""}</span></div><p class="sum" id="sum" style="margin-top:8px"></p>

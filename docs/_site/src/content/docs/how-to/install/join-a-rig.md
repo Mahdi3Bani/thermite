@@ -159,6 +159,6 @@ kubectl delete deployment,service,persistentvolumeclaim,secret,networkpolicy,res
 
 **Remove** deletes the rig's units, files and volumes, or its objects in the namespace, and with them its results; control keeps only the rig's events, its champions' patches and what its runs added to Thermite's [knowledge base](../../explanation/journals-and-knowledge.md), so [take the result](../campaigns/take-the-result.md) you need first.
 
-**Retire it** (type `retire rig-1`, then **Retire the rig**) ends the rig's token at once, so it can't report or take commands, and ends any join command. Its files stay where they are until you run **Remove** there. The rig stays in **Rigs**, as not reporting. To take it off the rig lists too, use the other **Retire it**, at the top of the rig's page: type `retire rig-1` and press **Retire it**.
+**Retire it** (type `retire rig-1`, then **Retire the rig**) ends the rig's token at once, so it can't report or take commands, and ends any join command. Its files stay where they are until you run **Remove** there. The rig stays in **Rigs**, **Stale** and then **Offline**. To take it off the rig lists too, use the other **Retire it**, at the top of the rig's page: type `retire rig-1` and press **Retire it**.
 
 Next, [check the rig](../operate/check-a-rig.md).

@@ -25,7 +25,7 @@ The buttons below are on the rig's page: open **Rigs** in the dashboard's sideba
 
 ## Stop and start
 
-**A rig set up by control** has a **Set up by control** block on its page. Press **Stop its services** (a machine) or **Stop its pods** (a cluster). The block shows `stopped`, and the button becomes **Start its services** or **Start its pods**. Its runs keep their status and their records. A stop ends the trials at work, as a [restart](#restart) does: when the rig starts again, the harness closes them as interrupted, their experiments go back to the top of the queue, and the judge's jobs start again. After three minutes without a report, the rig shows **Not reporting** until you start it again.
+**A rig set up by control** has a **Set up by control** block on its page. Press **Stop its services** (a machine) or **Stop its pods** (a cluster). The block shows `stopped`, and the button becomes **Start its services** or **Start its pods**. Its runs keep their status and their records. A stop ends the trials at work, as a [restart](#restart) does: when the rig starts again, the harness closes them as interrupted, their experiments go back to the top of the queue, and the judge's jobs start again. After three minutes without a report, the rig shows **Stale** on **Rigs**, and **Offline** after 15 minutes, until you start it again.
 
 **On a cluster, a start takes a few minutes.** After **Start its pods**, the page says `Started.`, and the block's status, at the right of its heading, says `starting`. Control waits up to 15 minutes for the rig's pods to run, then up to 10 minutes for a report from the rig. Press **refresh** in the status bar, the line along the bottom of the page, to follow it:
 
@@ -83,7 +83,7 @@ A rig keeps the images it was set up with until you move it. What you can do dep
 
 ### Update to control's version
 
-When a rig runs an older Thermite than control, its page shows a banner: "rig-1 runs Thermite 0.1.0. Control runs 0.2.0." For a rig control set up on a machine or a cluster, the banner has **Update to 0.2.0**. When control refuses a rig because its version is too old, that banner has the button too.
+When a rig runs an older Thermite than control, **Rigs** shows **needs update** in its **Version**, and its page shows a banner: "rig-1 runs Thermite 0.1.0. Control runs 0.2.0." For a rig control set up on a machine or a cluster, the banner has **Update to 0.2.0**. When control refuses a rig because its version is too old, that banner has the button too.
 
 Before you start:
 
@@ -93,7 +93,7 @@ Before you start:
 
 Steps:
 
-1. Open the rig's page, and press **Update to 0.2.0** in the banner. The page says `The update of rig-1 to 0.2.0 began. Its steps show below: press refresh to follow them.`
+1. Open the rig's page (on **Rigs**, **needs update** opens it at the banner), and press **Update to 0.2.0** in the banner. The page says `The update of rig-1 to 0.2.0 began. Its steps show below: press refresh to follow them.`
 2. Press **refresh** in the status bar to follow the steps in the banner:
    - "Its runs paused at a safe point": control pauses the running runs, and waits up to 5 minutes for the rig to take the pause.
    - "Its containers moved onto control's images": on a machine, over SSH, control pulls both images while the rig still runs, writes its two container units again, and restarts both services. On a cluster, it applies the rig's two deployments again.

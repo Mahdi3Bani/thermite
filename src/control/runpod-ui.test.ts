@@ -9,7 +9,7 @@ import {
   supervisorReports,
 } from "../testing/rig-results.ts";
 import { createControlApi } from "./api.ts";
-import { RunpodRigs } from "./runpod-rigs.ts";
+import { DEFAULT_IDLE_STOP_MINUTES, RunpodRigs } from "./runpod-rigs.ts";
 import { SecretBox } from "./secrets.ts";
 import { ControlStore } from "./store.ts";
 import { ControlTunnels } from "./tunnel.ts";
@@ -141,10 +141,25 @@ describe("Launch on RunPod", () => {
     assert.match(page, /Launch · \$0\.25\/h/);
     assert.match(page, /Secure cloud, on demand/);
     assert.match(page, /Community cloud and spot pods come later\./);
-    // The default idle stop is the one constant's: none, so the field is empty.
+    // The form opens with the idle stop at 30 minutes; the owner changes or clears it. Its tip
+    // says so, and that a launch over REST, MCP or the command line has no default.
     assert.match(
       page,
-      /name="idle_stop_minutes" id="idle" inputmode="numeric" placeholder="never" value=""/,
+      /name="idle_stop_minutes" id="idle" inputmode="numeric" placeholder="never" value="30"/,
+    );
+    assert.match(
+      page,
+      /The idle stop starts at 30 minutes\. Change it, or clear it so that the pod never stops by itself\./,
+    );
+    assert.match(
+      page,
+      /5 minutes or more\. This form fills in 30 minutes\. Empty: it never stops by itself\. A launch over the REST API, MCP or the command line has no idle stop unless it names one\./,
+    );
+    assert.equal(DEFAULT_IDLE_STOP_MINUTES, null, "REST, MCP and the CLI keep no default");
+    // Read again opens the form afresh: 30 again.
+    assert.match(
+      await s.page("/ui/rigs/add/runpod?cloud=runpod"),
+      /name="idle_stop_minutes" id="idle" inputmode="numeric" placeholder="never" value="30"/,
     );
     // Only public values in the pod's settings: the hash of control's key, not the key.
     assert.match(
@@ -227,6 +242,19 @@ describe("Launch on RunPod", () => {
       /Not launched\.<\/b> An idle stop is a whole number of minutes, 5 or more\./,
     );
     assert.match(page, /name="rig" id="nm" placeholder="[^"]*" value="rp-test-1"/);
+    assert.match(
+      page,
+      /name="idle_stop_minutes" id="idle" inputmode="numeric" placeholder="never" value="2"/,
+    );
+    // A refusal after the owner cleared the idle stop keeps it cleared: no 30 comes back.
+    const cleared = await (
+      await s.send("/ui/rigs/add/runpod", { ...LAUNCH, idle_stop_minutes: "", volume_gb: "5" })
+    ).text();
+    assert.match(cleared, /Not launched\.<\/b> The volume is 10 to 10000 GB\./);
+    assert.match(
+      cleared,
+      /name="idle_stop_minutes" id="idle" inputmode="numeric" placeholder="never" value=""/,
+    );
     const own = await (
       await s.send("/ui/rigs/add/runpod", { ...LAUNCH, image_choice: "own" })
     ).text();

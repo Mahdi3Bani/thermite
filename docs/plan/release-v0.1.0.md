@@ -72,7 +72,7 @@ A tester pulls images in place of building them, and every remote rig has images
 | --- | --- | --- |
 | [010 · Published images and a release workflow](goals/010-published-images.goal) | `IN_PROGRESS` | — |
 | [011 · A release bundle](goals/011-release-bundle.goal) | `IN_PROGRESS` | [010](goals/010-published-images.goal) |
-| [012 · Version checks between control and rigs](goals/012-version-checks.goal) | `IN_PROGRESS` | [010](goals/010-published-images.goal) |
+| [012 · Version checks between control and rigs](goals/012-version-checks.goal) | `VERIFIED` | [010](goals/010-published-images.goal) |
 | [013 · `thermite doctor`](goals/013-thermite-doctor.goal) | `VERIFIED` | — |
 | [014 · The quick start, tested in CI](goals/014-quick-start-in-ci.goal) | `VERIFIED` | [005](goals/005-sample-project.goal), [011](goals/011-release-bundle.goal) |
 | [015 · Log paging](goals/015-log-paging.goal) | `VERIFIED` | — |

@@ -3,14 +3,14 @@ title: "A rig's page"
 description: "Every part of a rig's page on the dashboard: its state and version banners, Update to control's version, Check again, its facts, and a RunPod rig's pod, limits, lifecycle and history."
 type: reference
 sidebar:
-  order: 20
+  order: 21
 ---
 
-A [rig](glossary.md)'s page shows one rig: whether it reports, its version against control's, what runs on it, its checks, and what you can do to it. Open it from **Rigs** or from the rig's name in the sidebar. Its address is `/ui/rigs/<rig>`. This page describes each part, from the top down. [Stop, restart, remove or reset a rig](../how-to/operate/rig-lifecycle.md) and [Run a rig on RunPod](../how-to/install/runpod-rig.md) give the steps.
+A [rig](glossary.md)'s page shows one rig: whether it reports, its version against control's, what runs on it, its checks, and what you can do to it. Open it from [**Rigs**](rigs-list.md) or from the rig's name in the sidebar. Its address is `/ui/rigs/<rig>`. This page describes each part, from the top down. [Stop, restart, remove or reset a rig](../how-to/operate/rig-lifecycle.md) and [Run a rig on RunPod](../how-to/install/runpod-rig.md) give the steps.
 
 ## Places on the page
 
-Other pages link to these places with the address and the anchor, for example `/ui/rigs/rig-1#version`.
+Other pages link to these places with the address and the anchor, for example `/ui/rigs/rig-1#version`. The Rigs list's **needs update** opens `#version`, and its rows open the place of the rig's state ([Where a row leads](rigs-list.md#where-a-row-leads)).
 
 | Anchor | What it is | When the page has it |
 | --- | --- | --- |

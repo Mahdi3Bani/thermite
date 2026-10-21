@@ -115,7 +115,7 @@ A sign-in also ends when the owner's token changes, or after 30 days without use
 
 ### A rig is quiet
 
-- **You see:** the rig shows **Not reporting**, or never appears on **Rigs**. Its page says `stale` or `offline`, with a banner.
+- **You see:** the rig shows **Stale** or **Offline** on **Rigs**, or never appears there. Its page says `stale` or `offline`, with a banner.
 - **Why and do:** for a rig control set up on a machine or a cluster, the banner says what control found when it checked where the rig runs, which it does by itself when the rig turns stale and again when it turns offline: whether its containers run, and, on a machine, the supervisor's last log lines. **Check again** (**Check the cluster**) checks now. Otherwise read the supervisor's log. Most causes show in a `relay error` line:
 
 | In the supervisor's log | Why | Do |

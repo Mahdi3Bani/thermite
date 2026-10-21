@@ -7,7 +7,7 @@ sidebar:
 ---
 
 :::caution[This spends money]
-A rig on RunPod is a real RunPod pod. RunPod bills its GPU by the hour from the launch until the pod is stopped or removed, and its volume while the pod exists. Thermite sets no limit of its own: give each launch a **spend limit**, an **idle stop**, or both, as in step 2.
+A rig on RunPod is a real RunPod pod. RunPod bills its GPU by the hour from the launch until the pod is stopped or removed, and its volume while the pod exists. Thermite sets no limit of its own: give each launch a **spend limit**, an **idle stop**, or both, as in step 2. The launch form fills in an idle stop of 30 minutes, which you can change or clear. A launch from the command line, the REST API or MCP has none unless it names one.
 :::
 
 A [rig](../../reference/glossary.md) on RunPod runs on a GPU you rent by the hour. Control launches the pod, connects to it through RunPod's proxy, follows its price and what it has cost, and stops it at the limits you set. This page launches one from the dashboard, runs it, and terminates it with every result kept on control. The command line, the REST API and MCP do each step too; each step gives the command.
@@ -27,7 +27,7 @@ c="--control http://127.0.0.1:8800 --token-file .dev/secrets/control-admin-token
 
 ## 1. Open Launch on RunPod
 
-Open **Rigs** in the sidebar, press **Add a rig**, and choose your RunPod account under "Or launch it on a GPU you rent by the hour". **Launch a rig** on the account's row in **Settings › Providers** opens the same page.
+Open **Rigs** in the sidebar, press **Add a rig**, and choose your RunPod account under "Or launch it on a GPU you rent by the hour". **Launch on RunPod** at the top of **Rigs**, and **Launch a rig** on the account's row in **Settings › Providers**, open the same page.
 
 **Launch on RunPod** shows the account, its pods running now, and when control last read RunPod's prices and stock. Press **Read again** to read them now.
 
@@ -45,7 +45,7 @@ The form lists RunPod's GPU types on Secure cloud, cheapest first, with their me
 | **Volume size (GB)** | `100` | The pod volume at `/workspace`, which keeps the rig's state while the pod is stopped. 10 to 10000 GB |
 | **Image** | Thermite's rig image, as control names it | Or **Your own image**, with its name and tag in **Your image** |
 | **Spend limit (USD)** | none | Control stops the pod once it has cost this much since launch |
-| **Stop when idle for (minutes)** | none | Control stops the pod once no run has been at work on it for this long: 5 minutes or more. See [step 5](#5-watch-its-cost-and-change-its-limits) |
+| **Stop when idle for (minutes)** | `30` | Control stops the pod once no run has been at work on it for this long: 5 minutes or more. Clear the field and the pod never stops by itself. A refused launch keeps what you typed, an empty field too. See [step 5](#5-watch-its-cost-and-change-its-limits) |
 | **Rig name** | `rp-` and 8 characters | The rig's name: 2 to 40 lowercase letters, digits and dashes. It can't change later |
 
 Every label has an **i**: hover it for what the field means. The price under the form follows each choice: the GPU's price on Secure cloud times the GPUs, such as `$0.50 an hour`. RunPod also bills the container disk and the volume by the GB. The sentence under the price says what the launch starts and what stops it, and what to fix while a field is wrong.
@@ -54,7 +54,7 @@ Press **Launch · $0.50/h**. The rig's page opens and says `Launched: RunPod bil
 
 The pod's settings, which RunPod's console shows, hold only what the pod needs to enroll: the rig's name, a random path, a public key for what the pod sends to control, the SHA-256 of control's command-signing key (not the key) and a one-time enrollment code. Control's RunPod key and every other secret stay on control ([Rigs in pull mode](../../explanation/trust.md#rigs-in-pull-mode)).
 
-The same launch from the command line:
+The same launch from the command line has no idle stop unless you give `--idle-stop`; this one stops after 60 minutes with no run at work:
 
 ```sh
 thermite runpod launch runpod --gpu "RTX A4000" --gpus 2 --spend-limit 20 --idle-stop 60 $c
@@ -73,7 +73,7 @@ curl -sS -X POST http://127.0.0.1:8800/v1/gpu-clouds/runpod/rigs \
 
 The rig's page shows **Getting it ready**, with each step as it happens: the pod pulls the image and runs, which takes a few minutes; control enrolls it through RunPod's proxy with its one-time code and pins its keys; the rig's first report reaches control. Press **refresh** in the status bar to follow it. **The pod** under it shows RunPod's status and the cost, and **Pull mode** shows control's last connection to the pod.
 
-Once the rig reports, its page is a normal rig page, with **The pod** at the top. Check that its **Isolation** check at start passed ([Check a rig](../operate/check-a-rig.md)). `thermite runpod list $c` shows the same: the line ends with `enrolled`, and the status is `RUNNING`.
+Meanwhile **Rigs** lists it as **Getting ready**, with its price under **Per hour**: the pod costs money from its launch. Once the rig reports, it shows **Live** there, and its page is a normal rig page, with **The pod** at the top. Check that its **Isolation** check at start passed ([Check a rig](../operate/check-a-rig.md)). `thermite runpod list $c` shows the same: the line ends with `enrolled`, and the status is `RUNNING`.
 
 If it never enrolls, **Pull mode** shows the last error, and `thermite runpod list` shows `last error:` for control's last read of the pod.
 
@@ -85,7 +85,7 @@ When its pod is stopped, starting or resuming a run on it starts the pod first: 
 
 ## 5. Watch its cost and change its limits
 
-**The pod** shows four facts: **Cost now** (its price per hour while it runs, `storage only` while it is stopped), **Spent so far** (what it cost while it ran, since launch, with a bar when a spend limit is set), **Spend limit** and **Idle stop**. Under **Idle stop** it says how long no run has been at work.
+**The pod** shows four facts: **Cost now** (its price per hour while it runs, `storage only` while it is stopped), **Spent so far** (what it cost while it ran, since launch, with a bar when a spend limit is set), **Spend limit** and **Idle stop**. Under **Idle stop** it says how long no run has been at work. **Rigs** shows the cost now and the spend so far under **Per hour**, and a pod its idle stop stopped as **Stopped**, with `its idle stop stopped it` and `a new run wakes it` ([The Rigs list](../../reference/rigs-list.md#a-stopped-pod)).
 
 To change them, open **Change the spend limit or the idle stop**, fill in or clear the fields, and press **Save**. The page says, for example, `Saved. No spend limit. It stops after 30 minutes with no run at work.` An empty field clears that limit. From the command line:
 
