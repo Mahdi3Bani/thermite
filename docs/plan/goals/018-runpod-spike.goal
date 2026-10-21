@@ -68,6 +68,7 @@ The RunPod rig's design depends on these answers.
   - **Start time:** the pod ran 10 s after it was asked for, and its first report came 5.5 minutes later, the image pull included. After the restart it reported again within seconds, with its GPU.
   - **A/A noise:** still not measured. It needs a working rig on a pod: the owner's launch, with the paid acceptance (goal 025).
 - 2026-10-21: Third run, a test pod of the one-container rig image for `728bf8d`, with the probe that runs the self-test without pull mode's values (no restart; about 0.01 USD). The self-test now runs on RunPod: every role was refused what it must not reach, the Landlock fence kept the roles and the supervisor's user off the card, and RunPod's variables reached no process the entry point started. One check failed: `runpod-variables` found them in PID 1. RunPod runs an init of its own as PID 1, with the image's entry point as its child; that init keeps the environment RunPod gave the container, and no role can read it (`pid1-environ` refused). The check now leaves out a PID 1 that is not the image's own `tini`, and says so. A rig on RunPod would have failed its start isolation check the same way before this.
+- 2026-10-21: A fourth test pod, of the rig image for `5e3dabc` (an RTX 3090 on Secure cloud, the RTX 2000 Ada being out of stock; 0.03 USD): every step passed, the isolation self-test included. RunPod spend for the spike so far: about 0.08 USD.
 
 ---
 

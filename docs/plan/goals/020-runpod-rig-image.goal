@@ -1,7 +1,7 @@
 ---
 id: "020"
 title: "A one-container rig image"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 part: "Rigs on RunPod"
 depends_on: ["018"]
@@ -11,7 +11,7 @@ updated: 2026-10-20
 
 # 020 · A one-container rig image
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Rigs on RunPod · **Depends on:** [018](018-runpod-spike.goal)
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Rigs on RunPod · **Depends on:** [018](018-runpod-spike.goal)
 
 ## What
 
@@ -23,7 +23,7 @@ The harness and the supervisor normally run in two containers. RunPod allows one
 
 ## Done when
 
-- [ ] The combined image passes the isolation self-test on RunPod and in CI.
+- [x] The combined image passes the isolation self-test on RunPod and in CI.
 
 ## Decisions
 
@@ -45,6 +45,7 @@ None.
 - 2026-10-20: The `rig-image` job passes in CI with Docker (CI run 39479049337 on `v1/build` (85b4de0)), the self-test included. Left for the box: the self-test on RunPod.
 - 2026-10-21: On RunPod (goal 018's second spike run, a test pod of the image for `5211e60`): the entry point took RunPod's variables out (none reached any process, and a role read none), and the GPU fence refused a fenced lane's open of the card. The self-test did not run there: the test pod's probe started the broker in pull mode, which needs the launch's values. The probe now starts it without them. Left: the self-test on RunPod, from the next test pod or the owner's launch.
 - 2026-10-21: The self-test ran on RunPod (goal 018's third run). It passed but for one check: RunPod's own init at PID 1 keeps RunPod's variables, which no role can read. The check now leaves out a PID 1 that is not the image's own tini, and says so; a rig on RunPod passes its start check once its image has this. Left: a rig image with the change, and the owner's launch.
+- 2026-10-21: The self-test passed on RunPod with the change (a test pod of the rig image for `5e3dabc`, an RTX 3090 on Secure cloud, 0.03 USD): no role reads RunPod's variables, PID 1 is RunPod's own init (`/usr/sbin/docker-init`) and the check says so, the fence refused every role's open of the card (Landlock ABI 4) and kept the supervisor off it, and no set-id files are left. With CI's pass (above), the box is ticked. A launched rig's own start check comes with goal 025's paid acceptance.
 
 ---
 
