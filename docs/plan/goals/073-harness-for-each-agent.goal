@@ -1,0 +1,51 @@
+---
+id: "073"
+title: "A harness for each agent"
+status: IN_PROGRESS
+version: "0.1.0"
+depends_on: ["029", "056"]
+created: 2026-10-21
+updated: 2026-10-21
+---
+
+# 073 · A harness for each agent
+
+**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns · **Depends on:** [029](029-model-per-agent.goal), [056](056-codex-harness.goal)
+
+## What
+
+Each kind of agent runs in the harness the owner chooses: Pi, OpenCode v2, Claude Code or the Codex CLI. Today only the workers have the choice. The planner runs in the workers' harness when it uses their model, else in Pi (Claude Code for a Claude subscription). The advisors (the teacher pair, the combiner, the auditor and the review panel) run in Pi in the supervisor, or in Claude Code for a Claude subscription.
+
+- **Where:** Edit rig's agents table gets **Runs in** on every row, after a mockup the owner approves. `set_rig_model` and `POST /v1/rigs/<rig>/model` take `harness` for every `agent`, and `rig_models` shows it.
+- **The planner** in OpenCode, Codex or Claude Code answers with its plan as JSON, as it already does when it follows the workers' harness.
+- **The advisors** in OpenCode or Codex run in the supervisor, in their own folder, with no project to change and no commands of their own: only Thermite's tools for advisors (past research, the kit's MCP tools) and their structured answer. The supervisor's image carries OpenCode and the Codex CLI, with their licences, as the harness image does.
+- **Refusals in words:** a model a harness cannot run (a Claude subscription outside Claude Code; OpenCode's own free models outside OpenCode).
+
+## Why
+
+The owner, 2026-10-21, on the Edit rig mockup: "Why can't I select different harnesses for the other agents?" Then, offered to keep the harness following the model, to add OpenCode only where a model needs it, or a full choice: "Full choice for every agent".
+
+## Done when
+
+- [ ] `set_rig_model` and its REST twin take `harness` for every kind of agent, refuse a harness the model cannot run in words, and `rig_models` shows each agent's harness.
+- [ ] The planner runs in each of the four harnesses with its own model, and its plan is checked as before.
+- [ ] Each advisor runs in each of the four harnesses in the supervisor, with only its tools, and its answer is checked as before.
+- [ ] The supervisor's image carries OpenCode and the Codex CLI with their licences; the image labels say so.
+- [ ] Edit rig has **Runs in** on every row, after a mockup the owner approved.
+- [ ] Tests for each harness and each kind of agent; the Codex and Claude Code acceptances cover an advisor; pages updated.
+
+## Decisions
+
+- 2026-10-21, owner: "Full choice for every agent" (over keeping the harness tied to the model).
+
+## Open questions
+
+None.
+
+## Progress
+
+- 2026-10-21: Goal written from the owner's decision. A mockup of Edit rig comes first for the screen; the rest is built behind it.
+
+---
+
+Run with `/goal Complete docs/plan/goals/073-harness-for-each-agent.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).

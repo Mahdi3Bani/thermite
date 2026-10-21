@@ -40,7 +40,9 @@ The owner compares two models on the same research campaign: one rig on a model 
 - [x] Near the window, a trial compacts its conversation and goes on: in Pi (code and research trials) Thermite compacts; in OpenCode, Codex and Claude Code their own compaction is set from the rig's settings. No trial ends, and none is told to submit, because its conversation grew.
 - [ ] Before each compaction the whole conversation is kept as a document the agent can read and the run keeps; the summary names it. Each compaction is an event, in History and Live.
 - [x] The compaction rule (the share of the window at which it compacts) is set with the model over MCP and REST, and shown with it (`rig_models`, the answer of `set_rig_model`, Settings › Providers). No command sets a rig's model (see Decisions), so the command line has none.
-- [ ] Edit rig shows the cap and the compaction rule, after a revised mockup the owner approved.
+- [ ] Edit rig shows the cap and the compaction rule on every agent row, after a revised mockup the owner approved.
+- [ ] The planner with its own model and each advisor take a cap and a compaction rule, over MCP and REST too; Pi advisors compact, CLI harnesses get their own settings, and a one-call package is cut to fit.
+- [ ] A campaign can set the window and the compaction point for its runs (New campaign, Copy, its page, REST, MCP and the command line); its window is never above the rig's or the provider's; Start a run shows what applies.
 
 ## Decisions
 
@@ -69,6 +71,9 @@ The owner compares two models on the same research campaign: one rig on a model 
   - **The route** carries `compact_at` only when the owner set one, so routes without it keep their revisions. A harness older than this change refuses a route with `compact_at` (its route schema is strict): set it only on rigs on these images.
   - **The count:** a trial's compactions are in its `trial_finished` event (`compactions`), not in a new ledger column, so the ledger's schema does not change.
   - **No command-line option:** kept as decided for the cap. No `thermite` command sets a rig's model; `thermite run start --provider --model` gives one only to a rig with none, which then compacts at the default. The command line is the only part of the last box not built: the owner may decide otherwise.
+- 2026-10-21, owner, on the revised Edit rig mockup: "the workers aren't the only ones that need the settings", and "is this a rig setting or a kit setting for a campaign? Would we want different settings for differrent campaigns/kits?" Offered choices, the owner chose:
+  - **Every agent row** gets **Context window** and **Compact at**: the workers, the planner with its own model, and each advisor. Pi agents compact as the workers do; Claude Code, Codex and OpenCode get their own settings; an advisor's one-call package is cut to fit its window.
+  - **The rig sets the defaults, and a campaign can set its own** for all its runs (on New campaign, Copy and its page). A campaign's window is never above the rig's or the provider's. Start a run shows what applies. Not the kit: the kit is the judge's recipe, and agents never see it.
 
 ## Open questions
 

@@ -66,6 +66,7 @@ A tester sees what each run is doing, gives it work through one queue of experim
 | [069 · Copy a campaign](goals/069-copy-a-campaign.goal) | `VERIFIED` | 065 |
 | [056 · A Codex CLI harness](goals/056-codex-harness.goal) | `VERIFIED` | — |
 | [070 · Cap the context window of a rig's model](goals/070-model-context-cap.goal) | `IN_PROGRESS` | — |
+| [073 · A harness for each agent](goals/073-harness-for-each-agent.goal) | `IN_PROGRESS` | [029](goals/029-model-per-agent.goal), [056](goals/056-codex-harness.goal) |
 
 ### Install from images
 

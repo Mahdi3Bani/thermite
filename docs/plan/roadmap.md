@@ -63,6 +63,7 @@ The plan: [release-v0.1.0.md](release-v0.1.0.md).
 - [069](goals/069-copy-a-campaign.goal) Copy a campaign · `VERIFIED`
 - [056](goals/056-codex-harness.goal) A Codex CLI harness · `VERIFIED`
 - [070](goals/070-model-context-cap.goal) Cap the context window of a rig's model · `IN_PROGRESS`
+- [073](goals/073-harness-for-each-agent.goal) A harness for each agent · `IN_PROGRESS`
 
 ### Research mode
 
