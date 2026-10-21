@@ -5,7 +5,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { generateSigningKeys } from "../core/commands.ts";
 import { createControlApi } from "./api.ts";
 import { PROBE_CMD, PROBE_JS } from "./runpod-probe.ts";
-import { RunpodTests } from "./runpod-tests.ts";
+import { findings, RunpodTests } from "./runpod-tests.ts";
 import { SecretBox } from "./secrets.ts";
 import { ControlStore } from "./store.ts";
 
@@ -325,6 +325,36 @@ describe("RunPod test pods", () => {
     });
     assert.equal(((await json.json()) as { id: string }).id, started.id);
     await Promise.all([operator.close(), reader.close(), agent.close()]);
+  });
+
+  test("on the one-container rig image, RunPod's variables are said to be taken out, not missing", () => {
+    const state = (removed: boolean) =>
+      ({
+        report: {
+          ...report("2026-10-21T03:00:00Z"),
+          steps: {
+            ...report("2026-10-21T03:00:00Z").steps,
+            runpod_variables: {
+              ok: true,
+              value: { in_environment: [], in_files: {}, removed_by_entry_point: removed },
+            },
+          },
+        },
+      }) as unknown as Parameters<typeof findings>[0];
+    assert.ok(
+      findings(state(true)).includes(
+        "RunPod's variables reach no process: the image's entry point took them out.",
+      ),
+    );
+    assert.ok(
+      findings(state(false)).includes(
+        "RunPod sets no RUNPOD_ variables in the container's environment.",
+      ),
+    );
+  });
+
+  test("the probe starts its self-test's broker without pull mode's variables", () => {
+    assert.match(PROBE_JS, /startsWith\("THERMITE_TUNNEL_"\)\) delete env\[k\]/);
   });
 
   test("the probe is a script node can run", async () => {

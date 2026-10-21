@@ -158,9 +158,13 @@ const LANE = 10101; // lane-1, as the image creates it
         inFiles[f] = errText(e);
       }
     }
+    const names = Object.keys(process.env).filter((k) => k.startsWith("RUNPOD_")).sort();
     return {
-      in_environment: Object.keys(process.env).filter((k) => k.startsWith("RUNPOD_")).sort(),
+      in_environment: names,
       in_files: inFiles,
+      // The one-container rig image's entry point takes them out before anything starts, and
+      // passes the pod's ID on as THERMITE_TUNNEL_POD: that variable shows RunPod did set them.
+      removed_by_entry_point: names.length === 0 && Boolean(process.env.THERMITE_TUNNEL_POD),
     };
   });
   // What a role's user (lane-1, with an empty environment, as the broker starts roles) can read
@@ -204,6 +208,10 @@ const LANE = 10101; // lane-1, as the image creates it
     });
     delete env.THERMITE_PROBE_JS;
     delete env.THERMITE_PROBE_TOKEN;
+    // The one-container rig image runs in pull mode, whose broker waits for an enrollment a test
+    // pod never has. Without pull mode's variables it starts as such a rig's broker otherwise
+    // does, the supervisor's places included.
+    for (const k of Object.keys(env)) if (k.startsWith("THERMITE_TUNNEL_")) delete env[k];
     let log = "";
     const keep = (b) => {
       log = (log + b.toString()).slice(-20000);

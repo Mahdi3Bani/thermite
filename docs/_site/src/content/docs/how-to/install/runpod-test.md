@@ -37,7 +37,7 @@ Open the account's row. Under **Test pods**, fill in:
 | --- | --- |
 | **GPU** | The cheapest in stock is enough: the test checks the platform, not speed |
 | **Cloud** | **Secure** runs in RunPod's own data centers. **Community** is cheaper and less predictable. Rigs whose judge times code belong on Secure |
-| **Image** | Thermite's CUDA harness image |
+| **Image** | Thermite's CUDA harness image. Or the one-container rig image, to test the image a [rig on RunPod](runpod-rig.md) starts from: its isolation self-test then also checks the supervisor's places |
 | **Disk (GB)** | 40 by default. The image needs about 15 GB |
 | **End it after (minutes)** | Set it, for example `30`. Control removes the pod after that many minutes, whatever it is doing. The least is 5 |
 | **Stop and start it again** | On by default: after the first report, control stops the pod and starts it again, to see that it gets its GPU back |
@@ -83,7 +83,7 @@ The card lists the findings in words. A good test reads like this:
 - The GPU device nodes can be given to a group, mode 0660.
 - Landlock ABI *n*: a fenced role's open of a card was refused.
 - /tmp and /dev/shm can be set to 1770.
-- RunPod sets *n* variables: *their names*.
+- RunPod sets *n* variables: *their names*. With the [one-container rig image](runpod-rig.md) instead: RunPod's variables reach no process, because the image's entry point took them out.
 - A role's user reads none of RunPod's variables.
 - Outbound HTTPS reached all 6 addresses tried.
 - The isolation self-test passed.

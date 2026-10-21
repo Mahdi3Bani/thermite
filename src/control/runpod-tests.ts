@@ -176,7 +176,9 @@ export function findings(s: TestState): string[] {
   out.push(
     names.length
       ? `RunPod sets ${names.length} variables: ${names.join(", ")}.`
-      : "RunPod sets no RUNPOD_ variables in the container's environment.",
+      : vars.removed_by_entry_point === true
+        ? "RunPod's variables reach no process: the image's entry point took them out."
+        : "RunPod sets no RUNPOD_ variables in the container's environment.",
   );
   const role = stepOf(r, "role_reads_runpod_variables");
   const rv = obj(role.value);
