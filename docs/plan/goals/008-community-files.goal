@@ -1,7 +1,7 @@
 ---
 id: "008"
 title: "Community files and contributor docs"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 part: "Tester basics"
 depends_on: []
@@ -11,7 +11,7 @@ updated: 2026-10-20
 
 # 008 · Community files and contributor docs
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Tester basics
 
 ## What
 
@@ -23,7 +23,7 @@ Outside testers need a place to report problems and a way to send changes. Today
 
 ## Done when
 
-- [ ] Each file exists, and GitHub shows the security policy and the templates.
+- [x] Each file exists, and GitHub shows the security policy and the templates.
 - [x] No public document tells a contributor to read a private file.
 - [x] The contributor guide is in `docs/`, and the docs index links it.
 
@@ -44,6 +44,7 @@ None.
 - 2026-10-20: `AGENTS.md` says that outside contributors don't need the maintainers' private overlay, that deployment-specific logs stay in `.internal/` in your own checkout, and that security problems are reported privately; its push rule covers a contributor's fork. `CONVENTIONS.md` names `CONTRIBUTING.md` as the contributor's entry point. No public document tells a contributor to read a private file.
 - 2026-10-20: `docs/local-development.md` is now the contributor guide; the docs index, the README and the site's Contributing page link it under that name. The site's Contributing and Getting help pages point to the new files.
 - 2026-10-20: Left: GitHub shows the security policy and the templates only from the default branch, which gets the code in goal [026](026-ship-v0.1.0.goal), and the private reporting form needs private vulnerability reporting on, in goal [002](002-ci-and-repository-settings.goal). The first box is ticked when both are done.
+- 2026-10-21: The files are on `main`. GitHub shows them: the community profile is at 100% (README, license, code of conduct, contributing guide, pull request template); the security policy is enabled and linked (`/security/policy`); the new-issue page offers the Bug report and Feature request forms, Report a security vulnerability, and the contact links (a security problem, privately; questions on Discord). Every box is ticked.
 
 ---
 
