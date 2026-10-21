@@ -405,14 +405,16 @@ function runCli<S extends z.ZodType>(
   schema: S,
   answerSchema?: TSchema | undefined,
 ): Promise<AdvisorResult<z.infer<S>>> {
-  // Its own empty home and working directory, and its own process group (killed as a whole).
+  // Its own empty home, working directory and temporary folder, and its own process group (killed
+  // as a whole). Without TMPDIR, Claude Code would make its folder in /tmp, which the one-container
+  // rig image closes to the supervisor's user.
   const home = mkdtempSync(join(tmpdir(), "thermite-advisor-"));
   return new Promise((resolve) => {
     const child = spawn(rt.argv[0] as string, rt.argv.slice(1), {
       stdio: ["pipe", "pipe", "pipe"],
       cwd: home,
       detached: true,
-      env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: home, ...rt.env },
+      env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: home, TMPDIR: home, ...rt.env },
     });
     const killGroup = () => {
       try {

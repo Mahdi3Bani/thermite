@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
@@ -278,6 +285,39 @@ describe("advisors", () => {
   test("advisors have no spending limit unless the owner sets one", () => {
     assert.equal(AdvisorsConfig.parse({}).max_usd_per_day, undefined);
     assert.equal(AdvisorsConfig.parse({ max_usd_per_day: 5 }).max_usd_per_day, 5);
+  });
+
+  test("an advisor in Claude Code has its own folder as its home and its temporary folder, never /tmp", async () => {
+    // A stand-in for Claude Code: it answers with its temporary folder, home and working folder.
+    const dir = mkdtempSync(join(tmpdir(), "thermite-fake-claude-"));
+    const bin = join(dir, "claude");
+    writeFileSync(
+      bin,
+      `#!/usr/bin/env node
+process.stdin.resume();
+process.stdin.on("end", () => console.log(JSON.stringify({ type: "result", result: JSON.stringify({ tmp: process.env.TMPDIR ?? "", home: process.env.HOME ?? "", cwd: process.cwd() }) })));
+`,
+    );
+    chmodSync(bin, 0o755);
+    const before = process.env.THERMITE_CLAUDE_BIN;
+    process.env.THERMITE_CLAUDE_BIN = bin;
+    try {
+      const r = await runAdvisor({
+        runtime: { name: "a", runtime: "claude-code", model: "m", token: "tok", timeout_s: 30 },
+        system: "You audit.",
+        prompt: "Audit this.",
+        schema: z.object({ tmp: z.string(), home: z.string(), cwd: z.string() }),
+        answerSchema: Type.Object({}),
+      });
+      assert.equal(r.error, undefined, r.error);
+      const o = r.output as { tmp: string; home: string; cwd: string };
+      assert.match(o.tmp, /thermite-advisor-/);
+      assert.equal(o.tmp, o.home);
+      assert.ok(o.cwd.endsWith(o.home.split("/").at(-1) ?? "-"), o.cwd);
+    } finally {
+      if (before === undefined) delete process.env.THERMITE_CLAUDE_BIN;
+      else process.env.THERMITE_CLAUDE_BIN = before;
+    }
   });
 
   test("a CLI agent's answer is found after its logs", () => {
