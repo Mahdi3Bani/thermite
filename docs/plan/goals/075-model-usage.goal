@@ -36,7 +36,7 @@ The owner, 2026-10-21: "overview on a capmaign run doesn't show total tokens use
 
 ## Decisions
 
-None yet.
+- 2026-10-21, owner, on the mockup (`v010-usage`): "top of run page, side bar of campaign page, stats page for top level across the system (metrics tab)." So: a run's model use at the top of its page; a campaign's in its page's sidebar; the system's on a new **Metrics** page in the main navigation. The mockup's other choices are built as shown: no cost column, the median time to the first token, and "today" in the viewer's own time zone.
 
 ## Open questions
 
