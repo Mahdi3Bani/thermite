@@ -71,3 +71,4 @@ None.
 ---
 
 Run with `/goal Complete docs/plan/goals/026-ship-v0.1.0.goal`. Follow the [rules for every goal](../README.md#rules-for-every-goal).
+- 2026-10-21: The quick start on macOS with Docker Desktop (4.64, Docker Engine 29.2.1, on a maintainer's Mac) passed: the quick-start acceptance built the images and a release bundle from the development branch and followed Your first run and Hand the work to agents to the sample campaign's verdicts, 43 checks, 7.7 minutes. The judge's smoke check judged all 12 candidates as expected. A test from the published bundle comes after the tag (step 7 above).
