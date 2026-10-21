@@ -344,8 +344,24 @@ export class Research {
     for (const num of numbersIn(c.text)) {
       if (!quoted.includes(num)) problems.push(`the number ${num} is not in the claim's quotes`);
     }
-    const id = `c-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
     const verified = problems.length === 0;
+    // The same claim with the same quotes, refused before: answered again, not recorded again, so
+    // a worker that resubmits it in a loop learns what to change and fills no records.
+    if (!verified) {
+      const quotes = canonicalJson(c.quotes);
+      const before = this.all(
+        "select id, text, quotes from claim where run = ? and verified = 0 order by created_at",
+        run,
+      ).find((r) => claimKey(String(r.text)) === key && String(r.quotes) === quotes);
+      if (before)
+        return {
+          claim: String(before.id),
+          verified: false,
+          problems,
+          note: "this same claim, with the same quotes, was refused before for the same reasons: read_source the passage and copy its words exactly into the quote, or record what you learned as a note (add_note) instead",
+        };
+    }
+    const id = `c-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
     this.ledger.tx(() => {
       this.ledger.db
         .prepare(

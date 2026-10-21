@@ -256,7 +256,7 @@ describe("research frontier", () => {
 describe("research integrity", () => {
   test("claims must quote their numbers; duplicates are folded; fragments are the same URL", async () => {
     const w = await web();
-    const { research } = await researchEnv();
+    const { env, research } = await researchEnv();
     const a = (await research.fetch("r-1", "lane-1", `${w.base}/a.html`)) as { source: string };
     const again = (await research.fetch("r-1", "lane-1", `${w.base}/a.html#part`)) as {
       source: string;
@@ -280,6 +280,28 @@ describe("research integrity", () => {
     });
     assert.equal(dup.claim, first.claim);
     assert.equal(research.stats("r-1").verified, 1);
+    // A refused claim sent again as it was is answered again, not recorded again.
+    const wrong = {
+      text: "Workers keep their state.",
+      quotes: [{ source: a.source, quote: "workers always keep their whole state on disk" }],
+    };
+    const refused = research.addClaim("r-1", "lane-1", wrong);
+    assert.equal(refused.verified, false);
+    const claims = () =>
+      Number(env.service.ledger.db.prepare("select count(*) as n from claim").get()?.n);
+    const before = claims();
+    const again2 = research.addClaim("r-1", "lane-1", wrong) as typeof refused & { note?: string };
+    assert.equal(again2.claim, refused.claim);
+    assert.equal(again2.verified, false);
+    assert.match(again2.problems.join(";"), /quote not found verbatim/);
+    assert.match(again2.note ?? "", /refused before/);
+    assert.equal(claims(), before, "no second record");
+    // With other quotes it is a new attempt, and recorded.
+    research.addClaim("r-1", "lane-1", {
+      ...wrong,
+      quotes: [{ source: a.source, quote: "workers keep all of their state in memory" }],
+    });
+    assert.equal(claims(), before + 1);
     await w.close();
   });
 
