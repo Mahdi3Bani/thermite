@@ -2,6 +2,7 @@
 // Thermite's documentation site. Pages live in src/content/docs/, one Diátaxis type each
 // (src/content.config.ts). `npm run docs:build` at the repository root builds it into
 // .dev/site/, and `npm run docs:check` checks what the build cannot.
+import { readFileSync } from "node:fs";
 import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
 import mermaid from "astro-mermaid";
@@ -13,6 +14,8 @@ import { remarkRelativeLinks } from "./src/plugins/remark-relative-links.mjs";
 const site = "https://usethermite.com";
 const base = "/";
 const repo = "https://github.com/iammrduncan/thermite";
+// The version of Thermite the pages describe, shown beside the title: the root package.json's.
+const version = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")).version;
 // Fathom Analytics counts page views without cookies, only on the site's own domain (not on
 // pages.dev or a local preview).
 const fathom = { src: "https://cdn.usefathom.com/script.js", site: "RNENIVAD", domain: "usethermite.com" };
@@ -24,6 +27,7 @@ export default defineConfig({
   vite: {
     // Mermaid is one large script, loaded only on pages with a diagram.
     build: { chunkSizeWarningLimit: 4096 },
+    define: { __THERMITE_VERSION__: JSON.stringify(version) },
   },
   markdown: {
     // Pages link to each other with relative `.md` paths, so the links also work on GitHub and
@@ -39,6 +43,7 @@ export default defineConfig({
         "Thermite runs research campaigns with AI agents. Agents propose changes; code they cannot touch measures them, judges them and keeps the best.",
       logo: { src: "./src/assets/logo.svg", alt: "Thermite" },
       favicon: "/favicon.svg",
+      components: { SiteTitle: "./src/components/SiteTitle.astro" },
       head: [
         {
           tag: "script",

@@ -30,6 +30,7 @@ The site is at [usethermite.com](https://usethermite.com), on Cloudflare Pages. 
 
 - `docs/_site/public/_headers` sets the response headers, among them the Content Security Policy. A page that loads a script, style, image or font from another host needs that host added there, or the browser blocks it.
 - The pages count visits to usethermite.com with [Fathom Analytics](https://usefathom.com), which sets no cookies. Its script and site code are in `astro.config.mjs`.
+- The header shows the version of Thermite the pages describe, beside the title, linked to the roadmap page. The build reads it from the root `package.json`, so a new version needs no change to the site (`src/components/SiteTitle.astro`).
 
 ## Where pages go
 
