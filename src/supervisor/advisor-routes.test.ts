@@ -115,7 +115,85 @@ describe("advisors from control", () => {
       assert.deepEqual(AdvisorsConfig.parse({ auditor: r }).auditor, r);
   });
 
-  test("control's roles replace the file's; roles control leaves keep the file's", async () => {
+  test("control's roles replace the file's: one or two teachers, the merged by model, the review panel", async () => {
+    const file = AdvisorsConfig.parse({
+      teachers: [{ name: "t", runtime: "cli", argv: ["x"], restricted: true }],
+      merged_by: { name: "m", runtime: "cli", argv: ["z"], restricted: true },
+      teacher_minutes: 15,
+    });
+    const answering = (body: Record<string, unknown>) => async (): Promise<Response> =>
+      Response.json(body);
+    const from = (body: Record<string, unknown>) =>
+      fetchControlAdvisors({
+        rig: "rig-a",
+        controlUrl: "http://control",
+        controlToken: "t",
+        fetchImpl: answering(body) as typeof fetch,
+      });
+    // Two teachers on two models, merged by a third: each teacher once, by its own model.
+    const two = await from({
+      teacher_models: [route({ model: "model-a" }), route({ type: "openai", model: "model-b" })],
+      merged_by: route({ model: "model-c" }),
+      auditor: null,
+      review_panel: route({ model: "model-d" }),
+      // What a supervisor of an earlier version reads: never used when the new names are there.
+      teachers: route({ model: "model-a" }),
+      combiner: route({ model: "model-old" }),
+      panel: null,
+    });
+    assert.deepEqual(
+      two.teachers?.map((t) => [t.name, t.runtime === "openai" ? t.model : ""]),
+      [
+        ["teacher-1", "model-a"],
+        ["teacher-2", "model-b"],
+      ],
+    );
+    assert.equal(two.merged_by?.name, "merged-by");
+    assert.equal(two.merged_by?.runtime === "openai" && two.merged_by.model, "model-c");
+    assert.equal(two.review_panel?.length, 3);
+    // One teacher: one runtime. No teacher models from control: the file's teachers stay, and
+    // control's merged by model (none here) leaves the file's.
+    const one = await from({ teacher_models: [route()], merged_by: null, review_panel: null });
+    assert.deepEqual(
+      one.teachers?.map((t) => t.name),
+      ["teacher-1"],
+    );
+    const none = await from({ teacher_models: [], merged_by: null, review_panel: null });
+    assert.equal(none.teachers, undefined);
+    const merged = mergeAdvisors(file, none);
+    assert.equal(merged?.teachers[0]?.name, "t");
+    assert.equal(merged?.merged_by?.name, "m");
+  });
+
+  test("the advisors file takes merged_by and review_panel, and still the old names combiner and panel", () => {
+    const cli = (name: string) => ({ name, runtime: "cli", argv: ["x"], restricted: true });
+    const old = AdvisorsConfig.parse({
+      teachers: [cli("a"), cli("b")],
+      combiner: cli("c"),
+      panel: [cli("p1"), cli("p2")],
+    });
+    assert.equal(old.merged_by?.name, "c");
+    assert.deepEqual(
+      old.review_panel.map((p) => p.name),
+      ["p1", "p2"],
+    );
+    assert.equal(Object.hasOwn(old, "combiner"), false, "the supervisor runs the new names only");
+    const now = AdvisorsConfig.parse({ merged_by: cli("m"), review_panel: [cli("r1")] });
+    assert.deepEqual([now.merged_by?.name, now.review_panel.length], ["m", 1]);
+    assert.deepEqual(AdvisorsConfig.parse({}).review_panel, []);
+    // Both names of one advisor: refused, in words.
+    const both = AdvisorsConfig.safeParse({ merged_by: cli("m"), combiner: cli("c") });
+    assert.equal(both.success, false);
+    assert.match(
+      String(both.error?.issues[0]?.message),
+      /combiner is the old name of merged_by: give merged_by only/,
+    );
+    const panels = AdvisorsConfig.safeParse({ review_panel: [cli("r")], panel: [cli("p")] });
+    assert.equal(panels.success, false);
+    assert.equal(AdvisorsConfig.safeParse({ teachers: [], mergedby: cli("m") }).success, false);
+  });
+
+  test("a control of an earlier version: its one teachers' model runs as two teachers; its combiner and panel are the merged by model and the review panel", async () => {
     const file = AdvisorsConfig.parse({
       teachers: [{ name: "t", runtime: "cli", argv: ["x"], restricted: true }],
       auditor: { name: "a", runtime: "cli", argv: ["y"], restricted: true },
@@ -140,7 +218,21 @@ describe("advisors from control", () => {
       control.teachers?.map((t) => t.name),
       ["teacher-1", "teacher-2"],
     );
-    assert.equal(control.panel?.length, 3);
+    assert.equal(control.review_panel?.length, 3);
+    assert.equal(control.merged_by, undefined);
+    const combined = await fetchControlAdvisors({
+      rig: "rig-a",
+      controlUrl: "http://control",
+      controlToken: "t",
+      fetchImpl: (async () =>
+        Response.json({
+          teachers: null,
+          combiner: route(),
+          auditor: null,
+          panel: null,
+        })) as typeof fetch,
+    });
+    assert.equal(combined.merged_by?.name, "merged-by");
     const merged = mergeAdvisors(file, control);
     assert.equal(merged?.teachers[0]?.runtime, "claude-code");
     assert.equal(merged?.auditor?.name, "a", "the file's auditor stays");

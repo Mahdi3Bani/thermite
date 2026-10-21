@@ -246,7 +246,7 @@ g1.ev(
 experiment(
   3,
   "x-03",
-  "teacher-pair",
+  "teachers",
   "smem-activations",
   "keep the activation vector in shared memory",
   "every row tile reads the same vector from global memory",

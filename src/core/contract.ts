@@ -217,7 +217,7 @@ const Verify = z.discriminatedUnion("type", [
     value: z.number(),
     cells: z.array(z.string().min(1)).optional(),
   }),
-  /** Subjective goals: a blind model panel reviews, the owner gives final acceptance. */
+  /** Subjective goals: the review panel reviews them blind, the owner gives final acceptance. */
   z.strictObject({ type: z.literal("review"), criteria: z.array(z.string().min(1)).min(1) }),
 ]);
 

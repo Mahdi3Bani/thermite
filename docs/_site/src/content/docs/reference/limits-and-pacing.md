@@ -27,7 +27,7 @@ Thermite's limits are of four kinds. Only a cap can stop a run's work, and only 
 | `budget.device_hours` | The contract | None | The same, when the judge's time on the run reaches it: `the device-hours budget is spent` |
 | `budget.llm_usd` | The contract | None | The same, when the agents' token spending reaches it: `the model budget is spent ($<amount>)`. It counts only when the rig sets both `THERMITE_LLM_USD_PER_MTOK_IN` and `THERMITE_LLM_USD_PER_MTOK_OUT` (prices per million tokens) |
 | `min_duration`, `max_duration` | A research contract | `min_duration` is required | The research campaign closes after `max_duration` of running time (paused time does not count), or after `min_duration` when `max_duration` is not set: `the research window is over`. Other modes ignore both |
-| `max_usd_per_day` | The [advisors file](advisors-file.md) | None | The advisors skip their work until the next day (UTC), and a message to the teacher pair starts no round until then. Research goes on. It counts only advisors with prices set |
+| `max_usd_per_day` | The [advisors file](advisors-file.md) | None | The advisors skip their work until the next day (UTC), and a message to the teachers starts no round until then. Research goes on. It counts only advisors with prices set |
 | `THERMITE_RESEARCH_MAX_MB` | The harness's settings | None | A run's fetches are refused, in any mode: `the corpus is full (<n> MiB archived)`. Its other tools go on |
 | Turns per trial (`max_turns`) | **Edit rig**, or `THERMITE_MAX_TURNS` | None | One trial ends after that many model replies. The Codex CLI does not report its replies, so in Codex each message and each tool call counts as one. The lane's next trial starts afresh |
 | A RunPod test's stop time (`stop_after_minutes`) | **End it after (minutes)** on the test pod form, REST or MCP | None | The test pod is removed. At least 5 minutes. A test spends money: see [Test a GPU on RunPod](../how-to/install/runpod-test.md) |
@@ -77,7 +77,7 @@ Who sets each agent's window and point:
 | --- | --- | --- |
 | Workers | The workers' model on **Edit rig**, or the rig's own settings | `context_window` and `compact_at` with the workers' model, or `THERMITE_MODEL_CONTEXT_WINDOW` and `THERMITE_MODEL_COMPACT_AT` |
 | Planner | Its own model, when it has one; else the workers' | `context_window` and `compact_at` with the planner's model |
-| Teacher pair, combiner, auditor, review panel | Each one's own model, when control gives it one; else the rig's [advisors file](advisors-file.md) | `context_window` and `compact_at` with the advisor's model, or the file's `context_window` and `compact_at` |
+| Teachers (each of their one or two models, and their merged by model), auditor, review panel | Each one's own model, when control gives it one; else the rig default, the [advisors file](advisors-file.md) | `context_window` and `compact_at` with the advisor's model, or the file's `context_window` and `compact_at` |
 | All of a campaign's runs | The campaign's own, over each agent's | The contract's [`agents_context`](contract.md#agents-context): `set_campaign_context`, `POST /v1/campaigns/<campaign>/context`, `thermite campaign context` |
 
 Each harness compacts in its own way. Thermite sets what each one takes:
@@ -95,8 +95,8 @@ Each harness compacts in its own way. Thermite sets what each one takes:
 - **A model whose window is unknown** (`0`) is compacted only when the provider says the context is full.
 - **OpenCode's own models** keep the window and the compaction point OpenCode knows for them.
 - **A Pi planner call** has no file tool: its summary names where the run keeps the conversation, for the owner.
-- **An advisor's call in Pi** (a teacher's review, the combiner's set, an audit, a panelist's review) compacts as the planner's does: what its tools return, such as past research and the kit's MCP tools, can fill its window. The supervisor keeps the conversation before each compaction in its own home, beside its record of the round: `advisors/compactions/<run>/<call>-<advisor>-<n>.md`, and the round's record (`advisors/<time>-<kind>.json`) lists the compactions. It does not go in the run's research folder: an advisor's conversation can hold what an outside knowledge base or a fetched page said, which the run's workers must not read. The advisor's summary names where it is kept, and the run's **Live** view has a line: `advisor <name>: its conversation was compacted (compaction <n>) at about <tokens> tokens, down to about <tokens>. It goes on. …`
-- **An advisor's package** (the teachers' brief, an audit's package, a review's package) is cut to fit the advisor's window before the call: at most the compaction point less 30% of the window, at about 3.5 characters a token (half the window at the default point), and never more than before (120,000 characters for a brief, 200,000 for an audit or a review). The owner's messages are never cut. When the window cuts it, the advisor's input says so on the line after its heading: `[Cut to fit the window: <n> of <m> characters.]`. The combiner's brief is cut to what its window leaves beside the two reviews. A command-line advisor's window is unknown: its package is not cut to fit.
+- **An advisor's call in Pi** (a teacher's review, the merged by model's set, an audit, a review by a reviewer of the review panel) compacts as the planner's does: what its tools return, such as past research and the kit's MCP tools, can fill its window. The supervisor keeps the conversation before each compaction in its own home, beside its record of the round: `advisors/compactions/<run>/<call>-<advisor>-<n>.md`, and the round's record (`advisors/<time>-<kind>.json`) lists the compactions. It does not go in the run's research folder: an advisor's conversation can hold what an outside knowledge base or a fetched page said, which the run's workers must not read. The advisor's summary names where it is kept, and the run's **Live** view has a line: `advisor <name>: its conversation was compacted (compaction <n>) at about <tokens> tokens, down to about <tokens>. It goes on. …`
+- **An advisor's package** (the teachers' brief, an audit's package, a review's package) is cut to fit the advisor's window before the call: at most the compaction point less 30% of the window, at about 3.5 characters a token (half the window at the default point), and never more than before (120,000 characters for a brief, 200,000 for an audit or a review). The owner's messages are never cut. When the window cuts it, the advisor's input says so on the line after its heading: `[Cut to fit the window: <n> of <m> characters.]`. The merged by model's brief is cut to what its window leaves beside the two reviews. A command-line advisor's window is unknown: its package is not cut to fit.
 
 ### Epochs and planning
 
@@ -133,9 +133,9 @@ The dashboard calls an epoch a **round**.
 | A rig shown as stale | After 180 s without a report | `THERMITE_CONTROL_STALE_SECONDS` |
 | A rig shown as offline on **Rigs**, in the REST API, MCP and `thermite rig list` | After 900 s without a report, never before it is stale | `THERMITE_CONTROL_OFFLINE_SECONDS` |
 | A GPU cloud in **Providers** read again: prices, pods and spend | Every 15 minutes, and on **Read again** | Fixed |
-| Advisor rounds | 60 s after the last round ended, never less than 30 s, unless a new owner's message to the teacher pair ends the wait (below) | `THERMITE_POLL_SECONDS` |
-| Teacher reviews of a run | Every 60 minutes, and soon after the owner writes to the teacher pair, or to all the advisors, of a running run | `teacher_minutes` in the advisors file |
-| A new owner's message to the teacher pair, or to all the advisors, looked for between advisor rounds | Every 5 s, when the rig has teachers and its **Teacher pair** switch is on. Finding one ends the wait, and the next round starts, unless the advisors' spending for the day has reached `max_usd_per_day`; a round under way finishes first | Fixed |
+| Advisor rounds | 60 s after the last round ended, never less than 30 s, unless a new owner's message to the teachers ends the wait (below) | `THERMITE_POLL_SECONDS` |
+| Teacher reviews of a run | Every 60 minutes, and soon after the owner writes to the teachers, or to all the advisors, of a running run | `teacher_minutes` in the advisors file |
+| A new owner's message to the teachers, or to all the advisors, looked for between advisor rounds | Every 5 s, when the rig has teachers and its **Teachers** switch is on. Finding one ends the wait, and the next round starts, unless the advisors' spending for the day has reached `max_usd_per_day`; a round under way finishes first | Fixed |
 | An audit or review that failed | Tried again every 30 minutes, at most 5 times, then left to the owner | Fixed |
 | Past research synced into each running run's `knowledge/` folder | Every 180 s. A run that control says it did not assign, such as a rig check's run, is asked about again 1 hour later, or once it has stopped running and runs again | `THERMITE_KB_SYNC_SECONDS`. `0` turns it off. The hour is fixed |
 | A rig's MCP servers, from control to its supervisor and harness | Every 30 s, with the model route. Control renews an OAuth or client sign-in when less than 5 minutes of its access token are left | `THERMITE_MODEL_ROUTE_POLL_SECONDS` |
@@ -214,9 +214,9 @@ None of these ends anything. A message itself is 1 to 4,000 characters (see [Con
 | What | Limit |
 | --- | --- |
 | Messages kept in force | No limit: each one stays in every new trial's brief until the owner removes it |
-| The owner's messages in an advisor's brief or package | Up to 20 that the role has not read. The teachers' brief also shows up to 5 that they read in the last 24 hours. The brief or package in an advisor's prompt is cut to 120,000 characters for the teachers and the combiner, and 200,000 for the auditor and each panelist; the owner's messages come first in it and are never cut |
+| The owner's messages in an advisor's brief or package | Up to 20 that the role has not read. The teachers' brief also shows up to 5 that they read in the last 24 hours. The brief or package in an advisor's prompt is cut to 120,000 characters for the teachers and their merged by model, and 200,000 for the auditor and each reviewer of the review panel; the owner's messages come first in it and are never cut |
 | An advisor's answers to the owner's messages | The first 50 in one answer, each cut to 1,000 characters. An answer longer than 20,000 characters, empty, or otherwise not fitting is left out; the others still count, and so does the advisor's review, audit or verdict. See [Advisors file](advisors-file.md#answers-to-the-owners-messages) |
-| How soon the teacher pair reads a new message | In the next teacher round. While the run is running and no round is under way, that round starts within about 5 s. When the advisors' spending for the day has reached `max_usd_per_day`, it waits for the first round after midnight UTC, and the run's **Live** says so. See [The rig and control](#the-rig-and-control) |
+| How soon the teachers read a new message | In the next teacher round. While the run is running and no round is under way, that round starts within about 5 s. When the advisors' spending for the day has reached `max_usd_per_day`, it waits for the first round after midnight UTC, and the run's **Live** says so. See [The rig and control](#the-rig-and-control) |
 
 ## The experiment queue
 
@@ -233,7 +233,7 @@ None of these ends research. Nothing limits how many experiments a run's [experi
 | Experiments copied into a new run by **Start a run**, its twins (`thermite run start`, `POST /v1/campaigns/<campaign>/runs`, MCP's `start_run`) or `thermite assign --queue-from` (`assign_campaign`'s `queue`) | 500. Each copies at most the first 500: the run's experiments up next, in order, then its lanes' ideas. A command with more is refused. With **Agents** off, **Start a run** copies none, and its twins and `thermite assign` refuse a run to copy from |
 | The planner's answer | At most 20 experiments added, 40 moves, 40 drops, 40 ideas accepted, 5 rules, 5 old rules in words converted and 13 new directions |
 | Old rules in words converted in one planner's round | 5, the oldest first. The rest convert at the next rounds |
-| A teacher's or the combiner's answer | Up to 10 experiments and 10 moves, each with a why. One that doesn't fit is left out; a list of more than 50 is ignored. Its review still counts |
+| A teacher's or the merged by model's answer | Up to 10 experiments and 10 moves, each with a why. One that doesn't fit is left out; a list of more than 50 is ignored. Its review still counts |
 | The auditor's answer | One check |
 | The advisors' experiments in one request to the harness | Up to 20 experiments and 20 moves |
 | The queue in the planner's and the teachers' brief | The first 40 up next, the newest 20 ideas, every experiment in progress, and the newest 20 tried, with the judge's verdicts. Details are cut to 600 characters and whys to 400 |
@@ -251,7 +251,7 @@ None of these ends anything. Nothing limits how many [field notes](knowledge-bas
 | An advisor's notes, posted to the harness | One request of at most 2 MiB for each advisor |
 | A research note (`add_note`) | Cut to 4,000 characters, with at most 20 sources |
 | Field notes in a worker's brief | Its lane's newest 10, and the run's newest 5 decisions and lessons by other writers |
-| Field notes in the planner's and the teacher pair's brief | The run's newest 20 |
+| Field notes in the planner's and the teachers' brief | The run's newest 20 |
 | The run page's **Journal** tab | The newest 500 field notes; the rest are in the campaign's folder and the run's export |
 | A briefing (`assign_campaign`'s `briefing`) | Up to 200 items, each 1 to 4,000 characters |
 | An item of the knowledge base | Title 300 characters, text 20,000 |

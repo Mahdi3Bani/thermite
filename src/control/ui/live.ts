@@ -261,7 +261,15 @@ const RECIPIENT: Record<string, string> = {
   teachers: "the teachers",
   auditor: "the auditor",
   panel: "the review panel",
+  review_panel: "the review panel",
 };
+
+/**
+ * An advisor as a read receipt or an answer names it: a rig's harness of an earlier version wrote
+ * "the teacher pair", which Live shows by its name now, the teachers (goal 074).
+ */
+const advisorName = (said: string | undefined) =>
+  said === "the teacher pair" ? "the teachers" : said;
 
 /** The run's owner messages, by id, from its signed events: what message lines are checked against. */
 export type RunMessages = ReadonlyMap<number, { to: string; text: string; keep: boolean }>;
@@ -318,7 +326,7 @@ export function runEntryHtml(
     return line && e.signed === true && trial ? waits() : plain();
   }
   const read =
-    /^(?:(the teacher pair|the auditor|the review panel) )?read the owner's message #(\d+)( \(in force\))?: ([\s\S]*)$/.exec(
+    /^(?:(the teachers|the teacher pair|the auditor|the review panel) )?read the owner's message #(\d+)( \(in force\))?: ([\s\S]*)$/.exec(
       e.text,
     );
   if (e.kind === "status" && read) {
@@ -327,15 +335,15 @@ export function runEntryHtml(
       (!trial ? { to: "", text: read[4] ?? "", keep: read[3] !== undefined } : undefined);
     if (!m && e.signed === true) return waits();
     if (m && e.signed === true && (read[1] !== undefined) === (e.source === "supervisor"))
-      return `<div class="lv-row lv-read" data-who="${esc(`${whoTags(e)} you`)}" data-src="${esc(e.source)}" data-id="${e.id}">${liveTime(e.at, now)}<div class="lv-body"><span class="muted">✓ ${esc(read[1] ?? runSourceName(e.source, e.lane))} read your message${m.keep ? " (in force)" : ""}: “${esc(clip(m.text, 120))}”</span></div></div>`;
+      return `<div class="lv-row lv-read" data-who="${esc(`${whoTags(e)} you`)}" data-src="${esc(e.source)}" data-id="${e.id}">${liveTime(e.at, now)}<div class="lv-body"><span class="muted">✓ ${esc(advisorName(read[1]) ?? runSourceName(e.source, e.lane))} read your message${m.keep ? " (in force)" : ""}: “${esc(clip(m.text, 120))}”</span></div></div>`;
     return plain();
   }
   const ans =
-    /^(the teacher pair|the auditor|the review panel)(?: \(([^)]*)\))? answered the owner's message #(\d+): ([\s\S]*)$/.exec(
+    /^(the teachers|the teacher pair|the auditor|the review panel)(?: \(([^)]*)\))? answered the owner's message #(\d+): ([\s\S]*)$/.exec(
       e.text,
     );
   if (ans && e.kind === "text" && e.source === "supervisor" && e.signed === true)
-    return `<div class="lv-row lv-answer" data-who="advisors you" data-src="${esc(e.source)}" data-id="${e.id}">${liveTime(e.at, now)}<div class="lv-body"><div class="answer"><b>${esc(ans[1] ?? "")}${ans[2] ? ` (${esc(ans[2])})` : ""} answered you:</b> ${mdLite(ans[4] ?? "")}</div></div></div>`;
+    return `<div class="lv-row lv-answer" data-who="advisors you" data-src="${esc(e.source)}" data-id="${e.id}">${liveTime(e.at, now)}<div class="lv-body"><div class="answer"><b>${esc(advisorName(ans[1]) ?? "")}${ans[2] ? ` (${esc(ans[2])})` : ""} answered you:</b> ${mdLite(ans[4] ?? "")}</div></div></div>`;
   return plain();
 }
 

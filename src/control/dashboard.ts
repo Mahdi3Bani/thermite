@@ -123,6 +123,9 @@ import {
   HARNESS_NAMES,
   harnessRefusal,
   neededHarness,
+  OLD_AGENT_NAMES,
+  ROLE_WORDS,
+  rigModelChanges,
   rigModelShapeRefusal,
 } from "./rig-model.ts";
 import { RigUpdates, UPDATE_STEP_WORDS } from "./rig-update.ts";
@@ -141,7 +144,6 @@ import { cheapestGpu, DEFAULT_DISK_GB, type RunpodTests, type TestView } from ".
 import { keyHint, type SecretBox } from "./secrets.ts";
 import type { StartRunOutcome, StartRunRequest } from "./start-run.ts";
 import {
-  AGENT_ROLES,
   type AgentRole,
   type Cluster,
   type ClusterRig,
@@ -251,7 +253,7 @@ import { type LaunchForm, launchBody } from "./ui/runpod-launch.ts";
 import { RUNPOD_LAUNCH_JS } from "./ui/runpod-launch-client.ts";
 import { HISTORY_FILTERS, podBlock, podRows, podRuns, readySteps } from "./ui/runpod-rig.ts";
 import { STYLE } from "./ui/style.ts";
-import { auditReason, clip, jobText, runStatusText, signed, span } from "./ui/words.ts";
+import { auditReason, clip, jobText, listText, runStatusText, signed, span } from "./ui/words.ts";
 import {
   type CampaignView,
   campaignModes,
@@ -662,7 +664,7 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
             .join("")}</tbody></table></div></div>`
         : "",
       i.reviews.length
-        ? `<div class="block"><div class="head"><h2>Reviews of subjective goals</h2></div><div class="card flat"><table><thead><tr><th>Goal</th><th>Commit</th><th>Panel</th><th>You</th></tr></thead><tbody>${i.reviews
+        ? `<div class="block"><div class="head"><h2>Reviews of subjective goals</h2></div><div class="card flat"><table><thead><tr><th>Goal</th><th>Commit</th><th>Review panel</th><th>You</th></tr></thead><tbody>${i.reviews
             .slice(-8)
             .reverse()
             .map(
@@ -3936,25 +3938,54 @@ ${form("delete", "Delete this machine", false).replace('class="sm"', 'class="sm 
           agents: agentModelsOf(store, rig),
         };
       }
-      // The harness named, else what the model needs (goal 073): MCP and REST set what they
-      // are asked. So are the agent's own cap and point, set anew by each call as the workers'
-      // are (goal 070).
-      const rp = choice ? store.provider(r.provider ?? "") : undefined;
-      const given = giveAgentModel(
-        rig,
-        agent,
-        choice,
-        r.effort,
-        by,
-        r.harness ?? (rp ? neededHarness(rp, r.model ?? "") : undefined),
-        r.contextWindow ?? null,
-        r.compactAt ?? null,
+      // The other agents (goal 074): each place the request changes, the teachers' second and
+      // merged by models too, all checked before any is saved. The harness named, else what the
+      // model needs (goal 073): MCP and REST set what they are asked. So are each model's own cap
+      // and point, set anew by each call as the workers' are (goal 070).
+      const plans: AgentModelPlan[] = [];
+      for (const change of rigModelChanges(r)) {
+        if (change.role === "workers") continue;
+        const c = change.choice;
+        const cp = c ? store.provider(c.provider) : undefined;
+        const plan = c
+          ? checkAgentModel(
+              rig,
+              change.role,
+              `${encodeURIComponent(c.provider)}|${encodeURIComponent(c.model)}`,
+              c.effort,
+              c.harness ?? (cp ? neededHarness(cp, c.model) : undefined),
+              c.contextWindow ?? null,
+              c.compactAt ?? null,
+            )
+          : checkAgentModel(rig, change.role, "", undefined);
+        if ("error" in plan) return plan;
+        plans.push(plan);
+      }
+      // A second teacher needs a first one: given in this call, or one the teachers have.
+      if (
+        plans.some((p) => p.role === "second_teacher" && !p.clear) &&
+        !plans.some((p) => p.role === "teachers" && !p.clear) &&
+        !store.roleModels(rig).teachers
+      )
+        return {
+          error:
+            "The teachers have no model of their own yet: give a provider and a model for the first teacher too.",
+        };
+      // Several models in one call: the words say whose window and point each one is.
+      const several = plans.filter((p) => !p.clear).length > 1;
+      const given = plans.map((p) =>
+        applyAgentModel(rig, p, by, several ? ROLE_WORDS[p.role].whose : "Its"),
       );
-      if ("error" in given) return given;
+      // The model the call gave the agent itself (the first teacher's, for the teachers).
+      const own = r.clear || !r.provider ? undefined : given[0];
+      const said =
+        r.agent === "teachers" && r.clear ? [ROLE_WORDS.teachers.cleared] : given.map((g) => g.ok);
+      const old =
+        r.agent === "combiner" || r.agent === "panel" ? `${OLD_AGENT_NAMES[r.agent]} ` : "";
       return {
-        ok: `Control sent ${given.ok} to ${rig}. The rig takes the change in less than one minute.${given.words}`,
-        contextWindow: given.contextWindow || null,
-        compactAt: given.compactAt ?? null,
+        ok: `${old}Control sent ${listText(said)} to ${rig}. The rig takes the change in less than one minute.${given.map((g) => g.words).join("")}`,
+        contextWindow: own?.contextWindow || null,
+        compactAt: own?.compactAt ?? null,
         agents: agentModelsOf(store, rig),
       };
     };
@@ -6613,40 +6644,38 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     store.audit(by, "rig_model_given", { rig, provider: null, model: null });
   };
   /**
-   * Gives one of a rig's other agents a provider's model, as its row on Edit rig does, or (an
-   * empty choice) its default again: the workers' model for the planner, the rig's advisors file
-   * for an advisor. `ok` is Edit rig's words for the change. `harness` (goal 073): where it runs;
-   * left out (Edit rig, which has no harness on these rows yet), the one it has while it keeps
-   * the same model, else what the model needs. `cap` and `at`: the agent's own cap on its
-   * model's window and its compaction point (goal 070), or null for none; left out (Edit rig's
-   * form, which has no field for them), the agent keeps its own while it keeps the same model, as
-   * giveRigModel does for the workers. `words` say the window and point in sentences.
+   * Checks a model for one of a rig's other agents (or one of the teachers' models), as its row on
+   * Edit rig does, or (an empty choice) its default again: the workers' model for the planner,
+   * the rig default for an advisor. Nothing changes here: applyAgentModel saves what this
+   * allows. `harness` (goal 073): where it runs; left out (Edit rig, which has no harness on these
+   * rows yet), the one it has while it keeps the same model, else what the model needs. `cap` and
+   * `at`: the agent's own cap on its model's window and its compaction point (goal 070), or null
+   * for none; left out (Edit rig's form, which has no field for them), the agent keeps its own
+   * while it keeps the same model, as giveRigModel does for the workers.
    */
-  const giveAgentModel = (
+  type AgentModelPlan =
+    | { role: AgentRole; clear: true }
+    | {
+        role: AgentRole;
+        clear: false;
+        provider: string;
+        model: string;
+        effort: Effort | undefined;
+        harness: Harness;
+        contextCap: number | undefined;
+        compactAt: number | undefined;
+        listed: number;
+      };
+  const checkAgentModel = (
     rig: string,
     role: AgentRole,
     choice: string,
     effort: Effort | undefined,
-    by = "owner:ui",
     picked?: Harness | undefined,
     cap?: number | null,
     at?: number | null,
-  ):
-    | { ok: string; contextWindow: number; compactAt: number | undefined; words: string }
-    | { error: string } => {
-    if (!choice) {
-      store.assignRoleModel(rig, role, null);
-      store.audit(by, "agent_model_given", { rig, role, provider: null, model: null });
-      return {
-        ok:
-          role === "planner"
-            ? "the planner back to the workers' model"
-            : `the ${role} back to the rig's advisors file`,
-        contextWindow: 0,
-        compactAt: undefined,
-        words: "",
-      };
-    }
+  ): AgentModelPlan | { error: string } => {
+    if (!choice) return { role, clear: true };
     const [pRaw, mRaw] = choice.split("|");
     let provider = "";
     let model = "";
@@ -6658,11 +6687,11 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     }
     const p = store.provider(provider);
     if (!p?.models.some((m) => m.id === model))
-      return { error: `That provider does not list that model (${role}).` };
+      return { error: `That provider does not list that model (${ROLE_WORDS[role].label}).` };
     const had = store.roleModels(rig)[role];
     const same = had?.provider === provider && had.model === model;
     const harness = picked ?? (had?.harness && same ? had.harness : neededHarness(p, model));
-    const refusedHarness = harnessRefusal(p, model, harness, `the ${role}`);
+    const refusedHarness = harnessRefusal(p, model, harness, ROLE_WORDS[role].who);
     if (refusedHarness) return { error: refusedHarness };
     // The agent's own cap and compaction point (goal 070), checked and kept as the workers' are.
     const listed = p.models.find((m) => m.id === model)?.context_window ?? 0;
@@ -6676,6 +6705,35 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
       const refused = compactAtRefusal(at);
       if (refused) return { error: refused };
     }
+    return {
+      role,
+      clear: false,
+      provider,
+      model,
+      effort,
+      harness,
+      contextCap,
+      compactAt,
+      listed,
+    };
+  };
+  /**
+   * Saves what checkAgentModel allowed, with its record in the audit log. `ok` is Edit rig's words
+   * for the change; `words` say the window and point in sentences, of `whose` model ("Its").
+   */
+  const applyAgentModel = (
+    rig: string,
+    plan: AgentModelPlan,
+    by = "owner:ui",
+    whose = "Its",
+  ): { ok: string; contextWindow: number; compactAt: number | undefined; words: string } => {
+    const role = plan.role;
+    if (plan.clear) {
+      store.assignRoleModel(rig, role, null);
+      store.audit(by, "agent_model_given", { rig, role, provider: null, model: null });
+      return { ok: ROLE_WORDS[role].cleared, contextWindow: 0, compactAt: undefined, words: "" };
+    }
+    const { provider, model, effort, harness, contextCap, compactAt, listed } = plan;
     store.assignRoleModel(rig, role, { provider, model, effort, harness, contextCap, compactAt });
     store.audit(by, "agent_model_given", {
       rig,
@@ -6689,12 +6747,25 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     });
     const capped = capWords(listed, contextCap);
     return {
-      ok: `a model for the ${role}`,
+      ok: ROLE_WORDS[role].given,
       contextWindow: cappedWindow(listed, contextCap),
       compactAt,
-      words: `${capped ? ` Its context window: ${capped}.` : ""}${compactAt ? ` Its conversations are compacted at ${compactAtWords(compactAt)}.` : ""}`,
+      words: `${capped ? ` ${whose} context window: ${capped}.` : ""}${compactAt ? ` ${whose} conversations are compacted at ${compactAtWords(compactAt)}.` : ""}`,
     };
   };
+  /**
+   * The rows of Edit rig's section "2 · The agents" after the workers', by the role each one
+   * sets: the row Teacher pair sets the teachers (and their second model with it), the row
+   * Combiner their merged by model (goal 074; the rows keep their names until the owner approves
+   * Edit rig's new ones).
+   */
+  const EDIT_RIG_ROLES = [
+    "planner",
+    "teachers",
+    "merged_by",
+    "auditor",
+    "review_panel",
+  ] as const satisfies readonly AgentRole[];
 
   // ---------------------------------------------------------------- Edit rig
   // What runs on a rig and how, from its page: parts on or off, workers at once, limits, the
@@ -6727,15 +6798,15 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
     },
     {
       id: "teachers",
-      name: "Teacher pair",
-      does: "Two strong models review the work of the agents and give advice to the planner. Used only if the rig has them configured.",
+      name: "Teachers",
+      does: "One or two strong models review the work of the agents and give advice to the planner. Used only if the rig has them configured.",
       off: "The planner works without their advice.",
     },
     {
       id: "review",
       name: "Review panel",
       does: "It decides goals that code cannot check. Used only if the rig has one configured.",
-      off: "Those goals stay open: a goal that needs judgement is met only when the panel passes it and you accept it.",
+      off: "Those goals stay open: a goal that needs judgement is met only when the review panel passes it and you accept it.",
     },
     {
       id: "exports",
@@ -6850,7 +6921,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         tip: "Two advisors that read the recent work every hour and suggest directions, each with a source. Both use this model.",
       },
       {
-        id: "combiner",
+        id: "merged_by",
         name: "Combiner",
         tip: "Joins the two teachers' advice into one set of directions.",
       },
@@ -6860,7 +6931,7 @@ ${error ? `<div class="card warn" style="margin-bottom:16px"><b class="bad">Not 
         tip: "Looks for a hidden flaw in a change before it can become the champion.",
       },
       {
-        id: "panel",
+        id: "review_panel",
         name: "Review panel",
         tip: "Three reviewers that grade goals that need judgement. The judge's numbers never come from them. All three use this model.",
       },
@@ -6944,9 +7015,12 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
         said.push("a new model");
       }
     }
-    // The other agents' models: each role follows the workers unless it has its own.
+    // The other agents' models: each role follows the workers unless it has its own. Only the
+    // rows the form has: a row it lacks keeps its model. The row Teacher pair gives both teachers
+    // its model, as its words say, until Edit rig's agents are named anew (goal 074).
     const roles = store.roleModels(rig);
-    for (const role of AGENT_ROLES) {
+    for (const role of EDIT_RIG_ROLES) {
+      if (!(`role_${role}` in f)) continue;
       const raw = String(f[`role_${role}`] ?? "");
       const roleEffort = effortOf(`effort_${role}`);
       const cur = roles[role];
@@ -6954,9 +7028,25 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
         ? `${encodeURIComponent(cur.provider)}|${encodeURIComponent(cur.model)}`
         : "";
       if (raw === curValue && (roleEffort ?? null) === (cur?.effort ?? null)) continue;
-      const given = giveAgentModel(rig, role, raw, roleEffort);
-      if ("error" in given) return back("error", given.error);
-      said.push(given.ok);
+      const plan = checkAgentModel(rig, role, raw, roleEffort);
+      if ("error" in plan) return back("error", plan.error);
+      const second =
+        role !== "teachers"
+          ? undefined
+          : plan.clear
+            ? checkAgentModel(rig, "second_teacher", "", undefined)
+            : checkAgentModel(
+                rig,
+                "second_teacher",
+                raw,
+                roleEffort,
+                plan.harness,
+                plan.contextCap ?? null,
+                plan.compactAt ?? null,
+              );
+      if (second && "error" in second) return back("error", second.error);
+      said.push(applyAgentModel(rig, plan).ok);
+      if (second) applyAgentModel(rig, second);
     }
     // The harness's settings: only what changed, as one signed command.
     const s = u.settings;

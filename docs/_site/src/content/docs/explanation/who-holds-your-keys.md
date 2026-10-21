@@ -109,4 +109,4 @@ Inside the harness, the broker reads the rig's secret files when it starts. It h
 
 ## The advisors file
 
-Advisors you configure in the supervisor's advisors file read their API keys from the files it names, at each call, so a new key takes effect without a restart. A role you give a model on **Edit rig** instead keeps its key or token sealed in control, which hands it to the supervisor in memory. The [advisors file reference](../reference/advisors-file.md) lists every field.
+Advisors you configure in the advisors file on the supervisor, the rig default, read their API keys from the files it names, at each call, so a new key takes effect without a restart. An advisor you give a model from control (**Edit rig**, MCP or the REST API) instead keeps its key or token sealed in control, which hands it to the supervisor in memory. The [advisors file reference](../reference/advisors-file.md) lists every field.

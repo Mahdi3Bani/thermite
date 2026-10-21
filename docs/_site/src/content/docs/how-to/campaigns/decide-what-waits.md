@@ -71,10 +71,10 @@ The row says either `The auditor of this rig will make the decision if you do no
 
 ### Reviews
 
-A goal checked by `review` counts as met only with your word. It reaches you only after the rig's review panel passes it. A panel chosen on **Edit rig** is three reviewers with the same model; one in the rig's advisors file has two to five. A rig with no review panel leaves such goals unmet.
+A goal checked by `review` counts as met only with your word. It reaches you only after the rig's review panel passes it. A review panel chosen on **Edit rig** is three reviewers with the same model; one in the rig's advisors file has two to five. A rig with no review panel leaves such goals unmet.
 
 :::note[A switch that is on is not an advisor]
-On **Edit rig**, the **Auditor**, **Teacher pair** and **Review panel** switches are on by default, also on a rig that has no such advisor. A switch only lets an advisor work once it has a model. The rig's page shows what it has: its **Advisors** row says `none configured` when it has none. See [Configure advisors](../operate/advisors.md).
+On **Edit rig**, the **Auditor**, **Teachers** and **Review panel** switches are on by default, also on a rig that has no such advisor. A switch only lets an advisor work once it has a model. The rig's page shows what it has: its **Advisors** row says `none configured` when it has none. See [Configure advisors](../operate/advisors.md).
 :::
 
 **Accept** makes the goal met; the judge then checks the champion's goals again, and if every required goal is met, the campaign completes. **Reject** keeps the goal unmet.

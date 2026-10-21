@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // M5 acceptance under compose with two rigs and a scripted model on the host (planner and
 // advisors; frontier keys are not needed to check the machinery):
-//   - the teacher pair and combiner post a cited directive set; after a reset, the next epoch
+//   - the two teachers and their merged by model post a cited directive set; after a reset, the next epoch
 //     records it and the assignments it steered;
 //   - an audit block holds a confirmed win; a cleared audit lets the next one promote;
 //   - rig 1's champion is propagated to rig 2, judged there, and shown cross-verified;
@@ -28,9 +28,9 @@ import {
 } from "./lib/smoke-env.mjs";
 
 let requests = 0;
-const seen = { teacher: 0, combiner: 0, auditor: 0, planner: 0 };
+const seen = { teacher: 0, merged_by: 0, auditor: 0, planner: 0 };
 
-/** The scripted model: planner (falls back), teachers, combiner, auditor. */
+/** The scripted model: planner (falls back), teachers, their merged by model, auditor. */
 function script(messages, tools) {
   const system = JSON.stringify(messages.find((m) => m.role === "system")?.content ?? "");
   const prompt = JSON.stringify(messages.filter((m) => m.role === "user"));
@@ -39,8 +39,8 @@ function script(messages, tools) {
     seen.planner++;
     return { text: "no plan from this model" }; // the deterministic fallback plans
   }
-  if (system.includes("neutral combiner")) {
-    seen.combiner++;
+  if (system.includes("You merge the advice of two teachers")) {
+    seen.merged_by++;
     return answer({
       directives: [
         {
@@ -190,7 +190,7 @@ writeFileSync(
   join(".dev", "advisors", "advisors.json"),
   JSON.stringify({
     teachers: [runtime("teacher-a"), runtime("teacher-b")],
-    combiner: runtime("combiner"),
+    merged_by: runtime("merged-by"),
     auditor: runtime("auditor"),
     teacher_minutes: 0.5,
   }),
@@ -203,7 +203,7 @@ try {
   await assign(env, "smoke-1", "local-1");
   await assign(env, "smoke-1", "local-2");
 
-  // 1. Directives from the teacher pair, attributed in the next epoch.
+  // 1. Directives from the teachers, attributed in the next epoch.
   await until(
     "the supervisor's directive set",
     async () =>
@@ -212,8 +212,8 @@ try {
     3000,
   );
   check(
-    "the teacher pair and combiner posted a cited directive set",
-    seen.teacher >= 2 && seen.combiner >= 1,
+    "the teachers and their merged by model posted a cited directive set",
+    seen.teacher >= 2 && seen.merged_by >= 1,
     seen,
   );
   await command("reset_workers", { run: "smoke-1" }, "local-1");

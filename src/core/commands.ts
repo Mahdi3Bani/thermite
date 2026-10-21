@@ -217,7 +217,7 @@ export type BriefingSeed = z.infer<typeof BriefingSeed>;
 
 /**
  * Who an owner's message (message_agent) may go to: everyone working, the planner, the advisors
- * (all of them, the teacher pair, the auditor or the review panel), a lane or a worker's trial.
+ * (all of them, the teachers, the auditor or the review panel), a lane or a worker's trial.
  * The lanes stop at MAX_LANES (lanes.test.ts checks it).
  */
 export const MESSAGE_TARGET =

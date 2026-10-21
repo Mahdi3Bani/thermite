@@ -626,7 +626,7 @@ export const MIGRATIONS: readonly (string | ((db: DatabaseSync) => void))[] = [
   create index research_file_run on research_file (run, lane, path);
   `,
   // 13: the owner's messages get read receipts and can be kept in force. A message can be read by
-  // several readers (each lane, the planner, the teacher pair, the auditor, the review panel); a
+  // several readers (each lane, the planner, the teachers, the auditor, the review panel); a
   // message kept in force goes into every new trial's brief until it is unkept. Deliveries made
   // before this version become reads by the trial's lane (or the planner) at the time they
   // were made, and messages to the advisors become reads by each advisor role; nothing else is

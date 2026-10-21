@@ -234,10 +234,17 @@ describe("control over MCP", () => {
       await refusal({ to: "auditor", text: "check the timer" }),
       "This rig's supervisor has no auditor set up, so nothing would read it.",
     );
+    // The review panel by its name (goal 074), and by panel, the name every rig takes.
+    for (const to of ["review_panel", "panel"])
+      assert.equal(
+        await refusal({ to, text: "be strict" }),
+        "This rig's supervisor has no review panel set up, so nothing would read it.",
+        to,
+      );
     assert.equal(await refusal({ to: "planner", text: "  \n " }), "Write a message first.");
     assert.ok(
       await issue(operator, "message_agent", { run: "js-1", to: "teachers", text: "cite it" }),
-      "the teacher pair is set up: that one goes",
+      "the teachers are set up: that one goes",
     );
     assert.equal(
       await issue(operator, "approve_promotion", { run: "js-1", attempt: "a-1" }),

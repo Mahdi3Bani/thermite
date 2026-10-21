@@ -17,29 +17,103 @@ import {
 } from "./store.ts";
 
 /**
- * Each agent's model on a rig, from outside the dashboard (goals 029 and 070): REST's
+ * Each agent's model on a rig, from outside the dashboard (goals 029, 070 and 074): REST's
  * `POST /v1/rigs/<rig>/model` and MCP's `set_rig_model` set one agent's model, or clear it, as a
  * row of Edit rig's section "2 · The agents" does; `GET /v1/rigs/<rig>/model` and MCP's
  * `rig_models` read them all. Both call the dashboard's own code (ControlActions.setRigModel and
  * rigModels, filled in by dashboard.ts), so Edit rig and its twins check and refuse alike. This
  * module holds what the twins share: the request's fields, its checks of shape, and the answer.
+ *
+ * The agents (goal 074): the work, the workers and the planner; the advisors, the teachers, the
+ * auditor and the review panel. The teachers take one or two models (`model`, and `second_model`
+ * for a second teacher), and with two a `merged_by` model that merges their advice. The old names
+ * `combiner` (now the teachers' merged by model) and `panel` (now `review_panel`) are still taken
+ * in v0.1.0, and the answer says in words what each is now.
  */
 
-/** The agents, as Edit rig's rows and control's records name them. */
-export const MODEL_AGENTS = [
-  "workers",
-  "planner",
-  "teachers",
-  "combiner",
-  "auditor",
-  "panel",
-] as const satisfies readonly ("workers" | AgentRole)[];
+/** The agents, as REST, MCP and the pages name them (goal 074). */
+export const MODEL_AGENTS = ["workers", "planner", "teachers", "auditor", "review_panel"] as const;
 export type ModelAgent = (typeof MODEL_AGENTS)[number];
+
+/** The old names still taken in v0.1.0, and what each one is now, in words (goal 074). */
+export const OLD_AGENT_NAMES = {
+  combiner:
+    "The name combiner is now the teachers' merged by model: agent teachers, with merged_by.",
+  panel: "The name panel is now review_panel.",
+} as const;
+export type OldAgent = keyof typeof OLD_AGENT_NAMES;
+const AGENT_VALUES = [...MODEL_AGENTS, "combiner", "panel"] as const;
+
+/**
+ * Each model control keeps for a rig's agents but the workers (AgentRole: the planner, each of
+ * the teachers' models, the auditor, the review panel), with the words Edit rig and its twins say
+ * for it.
+ */
+export const ROLE_WORDS: Record<
+  AgentRole,
+  { label: string; who: string; given: string; cleared: string; whose: string }
+> = {
+  planner: {
+    label: "planner",
+    who: "the planner",
+    given: "a model for the planner",
+    cleared: "the planner back to the workers' model",
+    whose: "The planner's",
+  },
+  teachers: {
+    label: "teachers",
+    who: "the teachers",
+    given: "a model for the teachers",
+    cleared: "the teachers back to the rig default",
+    whose: "The first teacher's",
+  },
+  second_teacher: {
+    label: "second teacher",
+    who: "the second teacher",
+    given: "a model for a second teacher",
+    cleared: "the teachers back to one teacher",
+    whose: "The second teacher's",
+  },
+  merged_by: {
+    label: "merged by",
+    who: "the teachers' merged by model",
+    given: "a merged by model for the teachers",
+    cleared: "the teachers' merged by model back to the rig default",
+    whose: "The merged by model's",
+  },
+  auditor: {
+    label: "auditor",
+    who: "the auditor",
+    given: "a model for the auditor",
+    cleared: "the auditor back to the rig default",
+    whose: "The auditor's",
+  },
+  review_panel: {
+    label: "review panel",
+    who: "the review panel",
+    given: "a model for the review panel",
+    cleared: "the review panel back to the rig default",
+    whose: "The review panel's",
+  },
+};
+
+/** A model for one of an agent's places, in the dashboard's terms. */
+export interface ModelChoice {
+  provider: string;
+  model: string;
+  /** Left out: what its model needs. */
+  harness?: Harness | undefined;
+  effort?: Effort | undefined;
+  /** A cap on the model's context window in tokens (goal 070). */
+  contextWindow?: number | undefined;
+  /** The model's compaction point, in percent of the window (goal 070). */
+  compactAt?: number | undefined;
+}
 
 /** One agent's model request, in the dashboard's terms. */
 export interface RigModelRequest {
-  /** Default: the workers. */
-  agent?: ModelAgent | undefined;
+  /** Default: the workers. The old names are still taken in v0.1.0. */
+  agent?: ModelAgent | OldAgent | undefined;
   provider?: string | undefined;
   model?: string | undefined;
   /** True: the agent's default again, as Edit rig's first choice in its row. */
@@ -54,6 +128,10 @@ export interface RigModelRequest {
   contextWindow?: number | undefined;
   /** The agent's compaction point, in percent of the window (goal 070). */
   compactAt?: number | undefined;
+  /** The teachers only: a second teacher's model; null, one teacher only (goal 074). */
+  secondModel?: ModelChoice | null | undefined;
+  /** The teachers only: the model that merges two teachers' advice; null, the rig default. */
+  mergedBy?: ModelChoice | null | undefined;
 }
 
 /**
@@ -73,8 +151,22 @@ export interface AgentModel {
 }
 /** The workers' model: as every agent's. */
 export type WorkersModel = AgentModel;
+/**
+ * The teachers' models on control (goal 074): one or two teachers, and the model that merges the
+ * advice of two. No models: the rig default; merged_by null: the rig default.
+ */
+export interface TeachersModels {
+  models: AgentModel[];
+  merged_by: AgentModel | null;
+}
 /** Each agent's model on control; null: its default (Edit rig's first choice in its row). */
-export type AgentModels = { workers: WorkersModel | null } & Record<AgentRole, AgentModel | null>;
+export interface AgentModels {
+  workers: WorkersModel | null;
+  planner: AgentModel | null;
+  teachers: TeachersModels;
+  auditor: AgentModel | null;
+  review_panel: AgentModel | null;
+}
 
 /** What a call did: Edit rig's words, the window the agent's route carries, and every agent's model. */
 export interface RigModelOutcome {
@@ -86,58 +178,88 @@ export interface RigModelOutcome {
   agents: AgentModels;
 }
 
+const providerField = z.string().min(1).max(200).describe("The model provider's name in Providers");
+const modelField = z
+  .string()
+  .min(1)
+  .max(200)
+  .describe("A model id, as the providers tool lists it");
+const harnessField = z
+  .enum(HARNESS_IDS as [Harness, ...Harness[]])
+  .describe(
+    "Where the agent runs: pi, opencode (OpenCode v2), claude-code or codex; left out, what its model needs",
+  );
+const effortField = z
+  .enum(["low", "medium", "high", "xhigh", "max"])
+  .describe("How long the model thinks, as Effort on Edit rig");
+const windowField = z
+  .number()
+  .int()
+  .describe("Any agent: a cap on its model's context window in tokens");
+// Any number: one that is not a whole percent in range is refused in words.
+const pointField = z
+  .number()
+  .describe(
+    `Any agent: the share of the context window, in percent (${COMPACT_AT_MIN} to ${COMPACT_AT_MAX}), at which its conversation is compacted; left out, ${COMPACT_AT_DEFAULT}`,
+  );
+
+/** Another model of the teachers': the request's own fields, in an object. */
+const TeacherModelBody = z.strictObject({
+  provider: providerField,
+  model: modelField,
+  harness: harnessField.optional(),
+  effort: effortField.optional(),
+  context_window: windowField.optional(),
+  compact_at: pointField.optional(),
+});
+type TeacherModelBody = z.infer<typeof TeacherModelBody>;
+
 /** The request's fields over REST and MCP, in snake case (MCP adds the rig). */
 export const rigModelFields = {
   agent: z
-    .enum(MODEL_AGENTS)
+    .enum(AGENT_VALUES)
     .optional()
     .describe(
-      "Whose model: workers (default), planner, teachers (the teacher pair), combiner, auditor or panel (the review panel)",
+      "Whose model: workers (default), planner, teachers, auditor or review_panel. The old names are still taken in v0.1.0: combiner is the teachers' merged_by, panel is review_panel",
     ),
-  provider: z
-    .string()
-    .min(1)
-    .max(200)
-    .optional()
-    .describe("The model provider's name in Providers"),
-  model: z
-    .string()
-    .min(1)
-    .max(200)
-    .optional()
-    .describe("A model id, as the providers tool lists it"),
+  provider: providerField.optional(),
+  model: modelField.optional(),
   clear: z
     .boolean()
     .optional()
     .describe(
-      "true: the agent goes back to its default, with no provider or model: the workers to the rig's own settings, the planner to the workers' model, an advisor to the rig's advisors file",
+      "true: the agent goes back to its default, with no provider or model: the workers to the rig's own settings, the planner to the workers' model, an advisor to the rig default (the rig's advisors file); the teachers with their second and merged by models",
     ),
-  harness: z
-    .enum(HARNESS_IDS as [Harness, ...Harness[]])
+  harness: harnessField.optional(),
+  effort: effortField.optional(),
+  context_window: windowField.optional(),
+  compact_at: pointField.optional(),
+  second_model: TeacherModelBody.nullable()
     .optional()
     .describe(
-      "Where the agent runs: pi, opencode (OpenCode v2), claude-code or codex; left out, what its model needs",
+      "The teachers only: a second teacher, with its own model: {provider, model, harness?, effort?, context_window?, compact_at?}, each field as for the first teacher. null: one teacher only. Left out: as it is",
     ),
-  effort: z
-    .enum(["low", "medium", "high", "xhigh", "max"])
-    .optional()
-    .describe("How long the model thinks, as Effort on Edit rig"),
-  context_window: z
-    .number()
-    .int()
-    .optional()
-    .describe("Any agent: a cap on its model's context window in tokens"),
-  // Any number: one that is not a whole percent in range is refused in words.
-  compact_at: z
-    .number()
+  merged_by: TeacherModelBody.nullable()
     .optional()
     .describe(
-      `Any agent: the share of the context window, in percent (${COMPACT_AT_MIN} to ${COMPACT_AT_MAX}), at which its conversation is compacted; left out, ${COMPACT_AT_DEFAULT}`,
+      "The teachers only: the model that merges the advice of two teachers into one set: {provider, model, harness?, effort?, context_window?, compact_at?}. null: the rig default. Left out: as it is. Two teachers without a merged by model: the first review that comes back is the set",
     ),
 };
 
 export const RigModelBody = z.strictObject(rigModelFields);
 export type RigModelBody = z.infer<typeof RigModelBody>;
+
+const choiceOf = (b: TeacherModelBody | null | undefined): ModelChoice | null | undefined =>
+  b
+    ? {
+        provider: b.provider,
+        model: b.model,
+        harness: b.harness,
+        effort: b.effort,
+        contextWindow: b.context_window,
+        compactAt: b.compact_at,
+      }
+    : b;
 
 export const rigModelRequest = (b: RigModelBody): RigModelRequest => ({
   agent: b.agent,
@@ -148,27 +270,87 @@ export const rigModelRequest = (b: RigModelBody): RigModelRequest => ({
   effort: b.effort,
   contextWindow: b.context_window,
   compactAt: b.compact_at,
+  secondModel: choiceOf(b.second_model),
+  mergedBy: choiceOf(b.merged_by),
 });
 
 /** Why a request has the wrong fields for its agent, in words; undefined when its shape is right. */
 export function rigModelShapeRefusal(r: RigModelRequest): string | undefined {
+  const others = r.secondModel !== undefined || r.mergedBy !== undefined;
+  if (others && r.agent !== "teachers")
+    return "second_model and merged_by are for the teachers only: give agent teachers.";
+  const own =
+    r.provider !== undefined ||
+    r.model !== undefined ||
+    r.harness !== undefined ||
+    r.effort !== undefined ||
+    r.contextWindow !== undefined ||
+    r.compactAt !== undefined;
   if (r.clear) {
-    if (
-      r.provider !== undefined ||
-      r.model !== undefined ||
-      r.harness !== undefined ||
-      r.effort !== undefined ||
-      r.contextWindow !== undefined ||
-      r.compactAt !== undefined
-    )
-      return "Give clear alone, or a provider and a model.";
+    if (own || others) return "Give clear alone, or a provider and a model.";
     return undefined;
   }
-  if (!r.provider || !r.model) return "Give a provider and a model, or clear: true.";
-  // Every agent takes its own harness (goal 073), cap and point (goal 070); a planner with no
-  // model of its own has none to set, and uses the workers'.
-  if (r.compactAt !== undefined) return compactAtRefusal(r.compactAt);
+  // The teachers' second or merged by model alone: the first teacher keeps its model.
+  if (own || !others) {
+    if (!r.provider || !r.model)
+      return r.agent === "teachers"
+        ? "Give a provider and a model, second_model or merged_by, or clear: true."
+        : "Give a provider and a model, or clear: true.";
+    // Every agent takes its own harness (goal 073), cap and point (goal 070); a planner with no
+    // model of its own has none to set, and uses the workers'.
+    if (r.compactAt !== undefined) {
+      const point = compactAtRefusal(r.compactAt);
+      if (point) return point;
+    }
+  }
+  for (const c of [r.secondModel, r.mergedBy])
+    if (c?.compactAt !== undefined) {
+      const point = compactAtRefusal(c.compactAt);
+      if (point) return point;
+    }
   return undefined;
+}
+
+/** One place's new model (null: its default), as a request asks for it. */
+export interface RoleChange {
+  role: "workers" | AgentRole;
+  choice: ModelChoice | null;
+}
+
+/**
+ * What a request changes, in order (after rigModelShapeRefusal): the agent's own model, and for
+ * the teachers their second and merged by models. Clearing the teachers clears all three. The old
+ * names go to their places now: combiner to merged_by, panel to review_panel.
+ */
+export function rigModelChanges(r: RigModelRequest): RoleChange[] {
+  const agent = r.agent ?? "workers";
+  const own: ModelChoice | null =
+    r.clear || !r.provider || !r.model
+      ? null
+      : {
+          provider: r.provider,
+          model: r.model,
+          harness: r.harness,
+          effort: r.effort,
+          contextWindow: r.contextWindow,
+          compactAt: r.compactAt,
+        };
+  if (agent === "combiner") return [{ role: "merged_by", choice: own }];
+  if (agent === "panel") return [{ role: "review_panel", choice: own }];
+  if (agent !== "teachers") return [{ role: agent, choice: own }];
+  if (r.clear)
+    return [
+      { role: "teachers", choice: null },
+      { role: "second_teacher", choice: null },
+      { role: "merged_by", choice: null },
+    ];
+  return [
+    ...(own ? [{ role: "teachers" as const, choice: own }] : []),
+    ...(r.secondModel !== undefined
+      ? [{ role: "second_teacher" as const, choice: r.secondModel }]
+      : []),
+    ...(r.mergedBy !== undefined ? [{ role: "merged_by" as const, choice: r.mergedBy }] : []),
+  ];
 }
 
 /** Whether a provider's model runs only in OpenCode: OpenCode's own (free) models. */
@@ -229,6 +411,9 @@ export function agentModelsOf(store: ControlStore, rig: string): AgentModels {
       compact_at: r.compactAt ?? null,
     };
   };
+  // A second teacher only with a first: without one, the teachers are the rig default's.
+  const first = of("teachers");
+  const second = first ? of("second_teacher") : null;
   return {
     workers: w
       ? {
@@ -241,14 +426,19 @@ export function agentModelsOf(store: ControlStore, rig: string): AgentModels {
         }
       : null,
     planner: of("planner"),
-    teachers: of("teachers"),
-    combiner: of("combiner"),
+    teachers: {
+      models: [...(first ? [first] : []), ...(second ? [second] : [])],
+      merged_by: of("merged_by"),
+    },
     auditor: of("auditor"),
-    panel: of("panel"),
+    review_panel: of("review_panel"),
   };
 }
 
-/** The answer over REST and MCP. */
+/**
+ * The answer over REST and MCP: the agent as asked (an old name too), and the window and point
+ * of the model the call gave it (for the teachers, the first teacher's; null when it gave none).
+ */
 export const rigModelAnswer = (rig: string, r: RigModelRequest, out: RigModelOutcome) => ({
   rig,
   agent: r.agent ?? "workers",

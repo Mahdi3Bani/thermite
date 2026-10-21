@@ -231,7 +231,7 @@ Each goal:
 | --- | --- |
 | `{"type": "code", "verifier": "<name>"}` | A verifier in the kit: the goal is met when the kit's check passes on every run of the verifier's cells. A verifier can require others to pass first. See [the kit's verifiers](kit-manifest.md#verifiers) |
 | `{"type": "metric_threshold", "metric": "<m>", "op": ">=", "value": <number>, "cells": ["<cell>"]}` | `<m>` must be a metric in the kit. On each cell, the judge runs the build `threshold_reps` times and works out a 95% interval of the mean. The goal is met when every cell's whole interval passes, unmet when any cell's whole interval fails, and `inconclusive` otherwise. `op` is `>=`, `<=`, `>` or `<`. Without `cells`, every cell of the kit that is not held out is used |
-| `{"type": "review", "criteria": ["<criterion>", ...]}` | A subjective goal, with at least one criterion. A blind panel of models reviews each new champion, and the goal is met only when the owner accepts |
+| `{"type": "review", "criteria": ["<criterion>", ...]}` | A subjective goal, with at least one criterion. The review panel, models that do not see who made the change, reviews each new champion, and the goal is met only when the owner accepts |
 
 A goal campaign ends when the success policy is met on two validations of the champion, or when the owner accepts a "not possible" proposal. Its budgets pause it, as in every mode; `min_duration` and `max_duration` have no effect.
 

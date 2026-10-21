@@ -24,10 +24,10 @@ The planner coordinates each run's experiment queue, the run's ordered list of t
    | --- | --- | --- |
    | **Workers** | "The agents that change the code, one per lane. They run for many turns, so they use the most of a subscription." | **its own settings**: the rig's `THERMITE_MODEL_*` settings. Without those, the agents have no model and wait |
    | **Planner** | "Gives each worker its direction at the start of each round. A few calls per round." | **same as the workers** |
-   | **Teacher pair** | "Two advisors that read the recent work every hour and suggest directions, each with a source. Both use this model." | **the rig's advisors file** |
-   | **Combiner** | "Joins the two teachers' advice into one set of directions." | **the rig's advisors file** |
-   | **Auditor** | "Looks for a hidden flaw in a change before it can become the champion." | **the rig's advisors file** |
-   | **Review panel** | "Three reviewers that grade goals that need judgement. The judge's numbers never come from them. All three use this model." Set here, the panel is three reviewers on one model; the advisors file can set two to five. | **the rig's advisors file** |
+   | **Teacher pair** | "Two advisors that read the recent work every hour and suggest directions, each with a source. Both use this model." This row sets the teachers: two teachers, both on its model. [Over MCP or REST](#over-mcp-or-rest), the teachers can have one model, or two different ones. | **the rig's advisors file**: the rig default |
+   | **Combiner** | "Joins the two teachers' advice into one set of directions." This row sets the teachers' merged by model. | **the rig's advisors file**: the rig default |
+   | **Auditor** | "Looks for a hidden flaw in a change before it can become the champion." | **the rig's advisors file**: the rig default |
+   | **Review panel** | "Three reviewers that grade goals that need judgement. The judge's numbers never come from them. All three use this model." Set here, the review panel is three reviewers on one model; the advisors file can set two to five. | **the rig's advisors file**: the rig default |
 
 3. For each agent you want to change, choose a model in its **Model** list, and an **Effort** (see below).
 4. For the workers, also choose where they run, in the **Runs in** column: **Pi**, **OpenCode v2**, **Claude Code** or **Codex**. When you choose a Claude subscription's model, the page sets **Claude Code** for you. **Codex**, the Codex CLI, takes a ChatGPT subscription's model or one from an OpenAI-compatible provider: see [Run the agents in Codex](chatgpt-subscription.md#run-the-agents-in-codex).
@@ -54,10 +54,12 @@ A run's **Planner** tab also shows the planner's model, in the card **The planne
 
 An agent or a script can set the same models without this page:
 
-- **MCP**, with the owner's or an operator's token: [`set_rig_model`](../../reference/mcp-tools.md#set_rig_model), with `agent` set to `workers`, `planner`, `teachers` (the teacher pair), `combiner`, `auditor` or `panel` (the review panel). [`rig_models`](../../reference/mcp-tools.md#rig_models) reads each agent's model.
+- **MCP**, with the owner's or an operator's token: [`set_rig_model`](../../reference/mcp-tools.md#set_rig_model), with `agent` set to `workers`, `planner`, `teachers`, `auditor` or `review_panel`. [`rig_models`](../../reference/mcp-tools.md#rig_models) reads each agent's model.
 - **REST**, with the owner's token: [`POST /v1/rigs/<rig>/model`](../../reference/rest-api.md#the-agents-model) takes the same fields, and `GET /v1/rigs/<rig>/model` reads each agent's model.
 
-Each call changes one agent, and the others keep their models. The checks and the refusals are this page's. `clear: true` sends the agent back to its default, as the first choice in its **Model** list does here: **its own settings**, **same as the workers** or **the rig's advisors file**. Every agent takes `harness`, `context_window` and `compact_at`: see below and [Set an agent's context window and compaction](#set-an-agents-context-window-and-compaction).
+Each call changes one agent, and the others keep their models. The checks and the refusals are this page's. `clear: true` sends the agent back to its default, as the first choice in its **Model** list does here: **its own settings**, **same as the workers** or, for an advisor, the rig default (**the rig's advisors file**). Every agent takes `harness`, `context_window` and `compact_at`: see below and [Set an agent's context window and compaction](#set-an-agents-context-window-and-compaction).
+
+The old names `combiner` and `panel` are still taken in 0.1.0: `combiner` sets the teachers' merged by model, and `panel` the review panel. The answer then starts with what the name is now, such as "The name panel is now review_panel."
 
 `harness` chooses the program any agent runs in: `pi`, `opencode` (OpenCode v2), `claude-code` or `codex` (the Codex CLI). Without it, the agent gets the one its model needs, as on this page. A harness that can't run the model is refused, for example "A Claude subscription runs only in Claude Code: choose Claude Code for the auditor, or another model." [Where each agent runs](#where-each-agent-runs) says what each choice gives.
 
@@ -68,6 +70,25 @@ For example, to give the auditor a model from a ChatGPT subscription named `chat
 ```
 
 The answer says "Control sent a model for the auditor to rig-1. The rig takes the change in less than one minute.", and its `agents` lists each agent's model after the change, with its `harness`. The auditor's **Runs in** cell on this page then says "Codex in the supervisor, past research and the kit's MCP tools only". Saving this page keeps that harness while the auditor keeps the same model, and gives the one its model needs when you choose another model.
+
+### One teacher, or two on different models
+
+The teachers take one model or two. `provider` and `model` give the first teacher's model. `second_model` gives a second teacher, and `merged_by` the model that merges the advice of two teachers into one set. Each of those two is an object with `provider` and `model`, and may have its own `harness`, `effort`, `context_window` and `compact_at`. For example, to give the teachers a Claude subscription's model and a ChatGPT subscription's, merged by a third model:
+
+```json
+{ "rig": "rig-1", "agent": "teachers", "provider": "claude-max", "model": "opus-5.5",
+  "second_model": { "provider": "chatgpt-pro", "model": "gpt-pro", "harness": "codex" },
+  "merged_by": { "provider": "my-litellm", "model": "my-model" } }
+```
+
+The answer says "Control sent a model for the teachers, a model for a second teacher and a merged by model for the teachers to rig-1. The rig takes the change in less than one minute." Control checks every model in the call before it saves any: if one is refused, nothing changes.
+
+- **One teacher**: give `"second_model": null`. The answer says "Control sent the teachers back to one teacher to rig-1. …" One teacher works alone: its review gives the set, and no merged by model runs.
+- **Two teachers without a merged by model**: the first review that comes back gives the set. `"merged_by": null` sends the merged by model back to the rig default.
+- **A call without `provider` and `model`** may give `second_model` or `merged_by` alone; the first teacher keeps its model. A second teacher needs a first one, in the call or from before: else `The teachers have no model of their own yet: give a provider and a model for the first teacher too.`
+- **`clear: true`** sends all three back to the rig default: "the teachers back to the rig default".
+
+`rig_models` shows the teachers as `{"models": [...], "merged_by": ...}`: one model or two in `models` (none: the rig default), and the merged by model or `null`.
 
 ## Set an agent's context window and compaction
 
@@ -96,15 +117,15 @@ The rig sets each agent's window and point. A campaign can set its own for all i
 
 Control saves a new version of the campaign, and runs started from then take it: `Version 3 of sort-speed is saved. Its runs' agents: a context window of 131,072 tokens, compaction at 70% of the window. Runs started from now take it.` A copy can take its own with `copy_campaign`'s `agents_context`, or `thermite campaign copy` with `--context-window` and `--compact-at`.
 
-When you then start a run, the answer of **Start a run** (over REST, MCP or `thermite run start`) says what applies to each agent on that rig, such as "Workers: 131,072 tokens (wide-model), compacted at 70% of the window. Planner: 65,536 tokens (wide-model), compacted at 70% of the window." A window above what a provider lists for one of the rig's agents' models is refused before the run starts: "This campaign sets a context window of 150,000 tokens. narrow-model, the model of the teacher pair on rig-1, takes at most 131,072 tokens. …" The campaign's page, **New campaign** and **Copy** have no field for it yet.
+When you then start a run, the answer of **Start a run** (over REST, MCP or `thermite run start`) says what applies to each agent on that rig, such as "Workers: 131,072 tokens (wide-model), compacted at 70% of the window. Planner: 65,536 tokens (wide-model), compacted at 70% of the window." A window above what a provider lists for one of the rig's agents' models is refused before the run starts: "This campaign sets a context window of 150,000 tokens. narrow-model, the model of the teachers on rig-1, takes at most 131,072 tokens. …" The campaign's page, **New campaign** and **Copy** have no field for it yet.
 
 ## An agent with no model
 
 - **Workers** with no model use the rig's own settings. See [Use the rig's own settings instead](connect-a-provider.md#use-the-rigs-own-settings-instead).
 - **The planner** with no model of its own uses the workers' model. Its **Runs in** cell says where it then runs. When neither has a model, when the **Planner** switch in section **1 · Parts of the rig** is off, or when the model gives no valid plan in two tries, the lanes take queued experiments in order, by fixed rules. That order skips the directions an **Avoid** rule names and puts **Always** and **Try** directions first. It applies only rules that name a direction the run has used; rules in other words are applied only by the planner's model. The switch's own text says the same: "When it is off: Lanes take queued experiments in order, by the fixed rules. Rules that name a direction (one word with hyphens) still apply; free-word rules need the planner's model."
-- **An advisor** with no model uses the role from the rig's advisors file. If the file has none, or the rig has no file, that advisor does not run. See [Configure advisors](../operate/advisors.md).
+- **An advisor** with no model uses the rig default: the role from the rig's advisors file. If the file has none, or the rig has no file, that advisor does not run. See [Configure advisors](../operate/advisors.md).
 
-An advisor also runs only while its switch is on in section **1 · Parts of the rig**: **Auditor**, **Teacher pair** or **Review panel**. The combiner follows the **Teacher pair** switch. The switches are on by default, but a switch that is on runs nothing until its advisor also has a model, here or in the advisors file. Why each advisor exists is in [Supervision](../../explanation/supervision.md).
+An advisor also runs only while its switch is on in section **1 · Parts of the rig**: **Auditor**, **Teachers** or **Review panel**. The teachers' merged by model follows the **Teachers** switch. The switches are on by default, but a switch that is on runs nothing until its advisor also has a model, here or in the advisors file. Why each advisor exists is in [Supervision](../../explanation/supervision.md).
 
 The switches also decide who can get your messages. In **Live**'s message box, the **To** list greys out the planner and each advisor whose switch is off, and says why, such as "The planner is off on this rig (Edit rig), so nothing would read it." Once the rig's supervisor has reported, the list also greys out an advisor it hasn't set up, such as one whose switch is on but which has no model: "This rig's supervisor has no auditor set up, so nothing would read it." Control refuses a message to any of them with those words, from **Live**, MCP, the REST API or the command line. With the planner off, a run's **Planner** tab shows no **Tell the planner** form, only a note and a link back here. See [Send the agents a message](../campaigns/steer-a-run.md#send-the-agents-a-message).
 
@@ -129,7 +150,7 @@ Where the workers run also sets when they read a message you send them from **Li
 
 The advisors' read-only tools are the campaign's brief and a search of the run's past research, plus a guarded web fetch and a knowledge base where the rig's advisors file sets them up. A knowledge base is a search service of your own, reached over MCP, that the teachers may search but not change: see the `kb` field in the [advisors file reference](../../reference/advisors-file.md#top-level).
 
-The advisors can also call the tools of the [MCP servers](../campaigns/give-agents-mcp-tools.md) that a run's kit gives them: the teacher pair, the auditor and the review panel, given a model on this page or in the advisors file. In Pi each tool is one of theirs, and in Claude Code, OpenCode v2 or Codex the program reaches each server through the supervisor. On a rig whose advisors file lets advisors fetch any web page (`fetch_domains` `"*"`), no advisor gets them.
+The advisors can also call the tools of the [MCP servers](../campaigns/give-agents-mcp-tools.md) that a run's kit gives them: the teachers, the auditor and the review panel, given a model on this page or in the advisors file. In Pi each tool is one of theirs, and in Claude Code, OpenCode v2 or Codex the program reaches each server through the supervisor. On a rig whose advisors file lets advisors fetch any web page (`fetch_domains` `"*"`), no advisor gets them.
 
 ## Effort
 
@@ -149,7 +170,7 @@ Two cases take no effort from this page:
 
 ## Share a subscription
 
-When any agent uses a subscription, a note under the table counts the sessions: "One subscription, many agents: on this rig, of the agent sessions that run at once, up to N can use a Claude subscription…". Each worker is one session, the teacher pair two and the review panel three. The same plan may serve other rigs too. When the plan is full, these agents wait; nothing pays for more.
+When any agent uses a subscription, a note under the table counts the sessions: "One subscription, many agents: on this rig, of the agent sessions that run at once, up to N can use a Claude subscription…". Each worker is one session, the row **Teacher pair** two (its two teachers) and the review panel three. The same plan may serve other rigs too. When the plan is full, these agents wait; nothing pays for more.
 
 ## Spending
 

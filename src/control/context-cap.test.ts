@@ -408,7 +408,7 @@ describe("every agent's own cap and compaction point (goal 070)", () => {
     for (const [agent, model, cap, at] of [
       ["teachers", "narrow-model", 32_768, 60],
       ["auditor", "open-model", 16_384, undefined],
-      ["panel", "wide-model", undefined, 90],
+      ["review_panel", "wide-model", undefined, 90],
     ] as const) {
       const r = await s.give({
         agent,
@@ -430,29 +430,38 @@ describe("every agent's own cap and compaction point (goal 070)", () => {
     assert.equal(r.advisors.teachers?.compact_at, 60);
     assert.equal(r.advisors.auditor?.context_window, 16_384);
     assert.equal(r.advisors.auditor?.compact_at, undefined);
-    assert.equal(r.advisors.panel?.context_window, 204_800);
-    assert.equal(r.advisors.panel?.compact_at, 90);
-    assert.equal(r.advisors.combiner, null);
+    assert.equal(r.advisors.review_panel?.context_window, 204_800);
+    assert.equal(r.advisors.review_panel?.compact_at, 90);
+    assert.equal(r.advisors.merged_by, null);
     const read = (await (
       await s.api.request("/v1/rigs/rig-a/model", {
         headers: { authorization: `Bearer ${TOKENS.admin}` },
       })
     ).json()) as {
-      agents: Record<string, { context_cap: number | null; compact_at: number | null } | null>;
+      agents: Record<string, { context_cap: number | null; compact_at: number | null } | null> & {
+        teachers: {
+          models: { context_cap: number | null; compact_at: number | null }[];
+          merged_by: unknown;
+        };
+      };
     };
+    const { teachers, ...others } = read.agents;
     assert.deepEqual(
       Object.fromEntries(
-        Object.entries(read.agents).map(([k, v]) => [k, v && [v.context_cap, v.compact_at]]),
+        Object.entries(others).map(([k, v]) => [k, v && [v.context_cap, v.compact_at]]),
       ),
       {
         workers: [131_072, 85],
         planner: [65_536, 70],
-        teachers: [32_768, 60],
-        combiner: null,
         auditor: [16_384, null],
-        panel: [null, 90],
+        review_panel: [null, 90],
       },
     );
+    assert.deepEqual(
+      teachers.models.map((m) => [m.context_cap, m.compact_at]),
+      [[32_768, 60]],
+    );
+    assert.equal(teachers.merged_by, null);
 
     // Refused as the workers' are: above the provider's window, out of range; nothing changes.
     const over = await s.give({
@@ -488,7 +497,7 @@ describe("every agent's own cap and compaction point (goal 070)", () => {
         ["planner", 65_536, 70],
         ["teachers", 32_768, 60],
         ["auditor", 16_384, null],
-        ["panel", null, 90],
+        ["review_panel", null, 90],
         ["teachers", null, null],
       ],
     );

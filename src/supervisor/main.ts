@@ -50,7 +50,7 @@ function notYetExported(outboxDir: string, state: ExportState): number {
  * Supervisor entry point: the 60-second report and command relay loop (with content staging,
  * model downloads among it), exports (pushed to the results repository, or, without one, sent to
  * control), supervisor figures and a daily report to control, and, when advisors are configured,
- * the teacher pair, auditor and review panel in a loop of their own.
+ * the teachers, auditor and review panel in a loop of their own.
  */
 async function main(): Promise<void> {
   const env = process.env;
@@ -188,9 +188,9 @@ async function main(): Promise<void> {
     advisors: advisors
       ? {
           teachers: advisors.teachers.length,
-          combiner: Boolean(advisors.combiner),
+          merged_by: Boolean(advisors.merged_by),
           auditor: Boolean(advisors.auditor),
-          panel: advisors.panel.length,
+          review_panel: advisors.review_panel.length,
         }
       : null,
   });
@@ -258,9 +258,9 @@ async function main(): Promise<void> {
         const active = {
           ...advisors,
           teachers: on.teachers ? advisors.teachers : [],
-          combiner: on.teachers ? advisors.combiner : undefined,
+          merged_by: on.teachers ? advisors.merged_by : undefined,
           auditor: on.auditor ? advisors.auditor : undefined,
-          panel: on.review ? advisors.panel : [],
+          review_panel: on.review ? advisors.review_panel : [],
         };
         adviseState = await adviseOnce(
           {
@@ -300,7 +300,7 @@ async function main(): Promise<void> {
           text: `advisor round failed: ${String(err).slice(0, 300)}`,
         });
       }
-      // The pause between rounds ends early when the owner writes to the teacher pair: its
+      // The pause between rounds ends early when the owner writes to the teachers: its
       // round starts at once (checked every few seconds), not at the next hour.
       const until = Date.now() + Math.max(intervalMs, 30_000);
       let checked = Date.now();
@@ -567,12 +567,13 @@ async function main(): Promise<void> {
           ? {
               ...adviseState.stats,
               // Which roles are configured and on, so control can say whether an audit will be
-              // decided.
+              // decided. Control reads these keys from every version of the supervisor: the
+              // merged by model is `combiner` and the review panel `panel` here (goal 074).
               roles: {
                 teachers: lastSettings.teachers ? advisors.teachers.length : 0,
-                combiner: lastSettings.teachers && Boolean(advisors.combiner),
+                combiner: lastSettings.teachers && Boolean(advisors.merged_by),
                 auditor: lastSettings.auditor && Boolean(advisors.auditor),
-                panel: lastSettings.review ? advisors.panel.length : 0,
+                panel: lastSettings.review ? advisors.review_panel.length : 0,
               },
             }
           : null,

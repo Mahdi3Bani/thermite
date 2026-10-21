@@ -798,16 +798,26 @@ export function createControlApi(
     return c.json({ route, planner });
   });
 
-  // The supervisor's advisors, by role, when the owner gave them models (each with its key or
-  // a subscription's token). A role with none keeps the supervisor's own configuration.
+  // The advisors' routes, by role, when the owner gave them models (each with its key or a
+  // subscription's token). A role with none keeps the rig default: the supervisor's own
+  // configuration. Goal 074: the teachers' one or two models (a second only with a first), their
+  // merged by model, the auditor and the review panel. A supervisor of an earlier version reads
+  // teachers (the first teacher's model, which it runs as two teachers), combiner and panel.
   app.get("/v1/rigs/:rig/advisor-routes", rigAuth, async (c) => {
     c.header("cache-control", "no-store");
     const rig = c.req.param("rig");
+    const first = await roleRouteOf(rig, "teachers");
+    const second = first ? await roleRouteOf(rig, "second_teacher") : null;
+    const mergedBy = await roleRouteOf(rig, "merged_by");
+    const reviewPanel = await roleRouteOf(rig, "review_panel");
     return c.json({
-      teachers: await roleRouteOf(rig, "teachers"),
-      combiner: await roleRouteOf(rig, "combiner"),
+      teacher_models: first ? [first, ...(second ? [second] : [])] : [],
+      merged_by: mergedBy,
       auditor: await roleRouteOf(rig, "auditor"),
-      panel: await roleRouteOf(rig, "panel"),
+      review_panel: reviewPanel,
+      teachers: first,
+      combiner: mergedBy,
+      panel: reviewPanel,
     });
   });
 

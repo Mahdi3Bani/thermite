@@ -6,7 +6,7 @@ sidebar:
   order: 15
 ---
 
-An **MCP server** gives agents tools from outside Thermite: a knowledge base such as GBrain, a code host, a search for papers or for a library's documentation. You add a server once, in **Settings › Providers**, with how it signs Thermite in. Then a campaign's [kit](../../reference/glossary.md) names the servers its agents use, and which kinds of agent get each one: the **workers** (the agents that change the code), the **planner** (which gives each lane its next experiment) and the **advisors** (the teacher pair, the auditor and the review panel). The judge never uses them.
+An **MCP server** gives agents tools from outside Thermite: a knowledge base such as GBrain, a code host, a search for papers or for a library's documentation. You add a server once, in **Settings › Providers**, with how it signs Thermite in. Then a campaign's [kit](../../reference/glossary.md) names the servers its agents use, and which kinds of agent get each one: the **workers** (the agents that change the code), the **planner** (which gives each lane its next experiment) and the **advisors** (the teachers, the auditor and the review panel). The judge never uses them.
 
 ```json title="kit.json (part)"
 {

@@ -134,7 +134,7 @@ The device's driver also refuses values it cannot believe. The `cpu` driver refu
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `name` | text matching `^[a-z0-9][a-z0-9-]{0,63}$` | required | The server's name in **Settings** |
-| `agents` | list of `workers`, `planner` and `advisors`, at least one, each once | required | The kinds of agent that get the server: the workers (every lane), the planner, and the advisors (the teacher pair, the auditor and the review panel) |
+| `agents` | list of `workers`, `planner` and `advisors`, at least one, each once | required | The kinds of agent that get the server: the workers (every lane), the planner, and the advisors (the teachers, the auditor and the review panel) |
 | `tools` | object | none | Only when narrowed: for a kind of agent in `agents`, the tools it may call, as a list of 1 to 500 tool names, each once. A kind left out gets every tool the server lists. A kind not in `agents` is refused: `the <kind> do not get this server: add <kind> to agents, or take out its tools` |
 
 The harness calls the servers for the workers and the planner, and the supervisor for the advisors; each caller gets only the tools given to its kind, and a call to another is refused as a tool error. When a run is assigned:

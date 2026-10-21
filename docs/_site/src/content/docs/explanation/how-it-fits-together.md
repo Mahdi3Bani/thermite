@@ -57,6 +57,8 @@ The two containers are split by what they are trusted with. The harness runs cod
 
 ### The harness: where the research happens
 
+The rig's agents form two groups. **The work**, the workers and the planner, runs in the harness. **The advisors** run in the supervisor ([below](#the-supervisor-the-rigs-link-to-everything-else)).
+
 - **The ledger:** the rig's own database, and the authority on everything that happened: campaigns, runs, attempts, measurements, verdicts, champions, each run's experiment queue, the agents' field notes, each run's briefing from past research, and steering.
 - **The judge:** it builds each submitted change, measures it against the champion, gives the verdict and promotes winners.
 - **The scheduler and the planner:** they split each run into **lanes**, give each lane its next **experiment** from the run's queue, never the same one to two lanes, and start **trials**. A research run has no planner: a fixed method, the research plan, adds research tasks to the queue, and the record of each round says so (`plan: "research"`).
@@ -76,7 +78,7 @@ The supervisor connects the rig to the outside. It runs six loops side by side, 
 - **Live view:** every few seconds, it sends the harness's newest live lines to control, with lines of its own, for **Live** on the dashboard.
 - **Model route and MCP servers:** it hands the harness the agents' model and key chosen on control, by the owner or an operator's agent. On the same beat, it hands the harness the [MCP servers](../how-to/campaigns/give-agents-mcp-tools.md) that its runs' kits give the workers and the planner, and keeps the advisors' for itself.
 - **Past research:** every three minutes by default, it fetches from control the new items of the folders that each running run's campaign may read, and hands them to the harness, which writes them into the run's `knowledge/` folder.
-- **Advisors:** it runs the teachers, the auditor and the review panel, but only those the rig is given, in an advisors file or as models on the rig's **Edit rig** page. The teachers set directives for the planner and add experiments to the run's queue; the auditor can add a check to it. Each advisor may also keep field notes, which the supervisor passes to the harness. The teachers can search a knowledge base in the advisors file, and the advisors get the tools of the MCP servers that the run's kit gives them, which the supervisor calls for them. Each step of an advisor round is a line in the run's Live view: what each teacher suggested, the directives set and why, the experiments added, each audit and each review. A message from the owner to the teachers starts their round at once. [Supervision](supervision.md) explains them.
+- **Advisors:** it runs **the advisors**: the teachers (one or two, and with two a merged by model that merges their advice), the auditor and the review panel, but only those the rig is given, in an advisors file (the rig default) or as models from control (the rig's **Edit rig** page, MCP or the REST API). The teachers set directives for the planner and add experiments to the run's queue; the auditor can add a check to it. Each advisor may also keep field notes, which the supervisor passes to the harness. The teachers can search a knowledge base in the advisors file, and the advisors get the tools of the MCP servers that the run's kit gives them, which the supervisor calls for them. Each step of an advisor round is a line in the run's Live view: what each teacher suggested, the directives set and why, the experiments added, each audit and each review. A message from the owner to the teachers starts their round at once. [Supervision](supervision.md) explains them.
 
 The supervisor does all of the rig's git work. It holds no signing key: it carries commands in and reports out, but it cannot write either one. [Trust between control and rigs](trust.md) explains how that is checked, and [the settings reference](../reference/settings.md#how-often-it-talks-to-control) lists each loop's interval.
 
@@ -140,7 +142,7 @@ sequenceDiagram
 - **everyone working** (`all`): every lane at work, and the planner of a hill-climb or goal run when the planner is on. The lanes at work are the contract's lanes, or fewer when a rule for the number of lanes says so;
 - one **lane** (`lane-N`), or one **trial** of a lane (`trial:ID`). A message to a trial that ends before it reads it goes to the lane's next trial, which is told so;
 - **the planner**;
-- **the advisors**: all of them (`advisors`), or only the teacher pair (`teachers`), the auditor (`auditor`) or the review panel (`panel`).
+- **the advisors**: all of them (`advisors`), or only the teachers (`teachers`), the auditor (`auditor`) or the review panel (`review_panel`; `panel`, its old name, is still taken, and is what control sends the rig).
 
 Live's box offers all of them but a single trial, which only the REST API, MCP and the command line can reach.
 
@@ -164,7 +166,7 @@ Such a message never reaches the rig. Its sender gets control's reason at once (
 | An OpenCode, Claude Code or Codex worker | When its current run of `opencode run`, `claude -p` or `codex exec` ends without a submission. The harness then continues the session with the message. These programs take no message into a run that is under way, and a run goes on until the model stops by itself, the agent submits or the trial's time is up |
 | Any worker, after it submits | It doesn't. A submission ends the trial, and the lane's next trial reads the message in its brief, where it can act on it |
 | The planner | In its next plan, if the model's plan is used. While the planner is off, its model can't be reached, or both its answers are refused, the message waits |
-| The teacher pair | In a round that starts at once, for a running run. Between rounds, the supervisor looks for new messages to the teachers every few seconds; a round already under way finishes first |
+| The teachers | In a round that starts at once, for a running run. Between rounds, the supervisor looks for new messages to the teachers every few seconds; a round already under way finishes first |
 | The auditor and the review panel | In the package of their next audit or review. One comes only when the judge holds a result for an audit, or a goal needs a review |
 
 **Answers.** Each advisor that reads a message is asked to answer it in one or two sentences, as part of the answer it gives anyway. The supervisor passes the reads and the answers to the harness, which records them. An answer is for the owner only: it can't change a verdict, pause a run or reach a worker. [Supervision](supervision.md#the-owners-messages) says more.
@@ -185,7 +187,7 @@ Live shows the message, a ✓ line as each reader reads it, and each advisor's a
 Each run has one **experiment queue**: what its lanes will try next, in order, and everything they tried. It is research state, so it lives in the harness's ledger, and the planner gives its experiments out to the lanes ([Agents, lanes and the planner](agents-lanes-planner.md#the-experiment-queue) explains how). Three kinds of writer reach it, each in its own way:
 
 - **The owner** changes it with signed commands, like any other steering: `queue_add`, `queue_move`, `queue_edit`, `queue_drop` and `queue_accept`, plus `drop_directive` to remove a rule. They are the owner's alone: an operator's token may send them in the owner's name, and an agent's token can't.
-- **The teacher pair and the auditor** add experiments through the supervisor, and the teachers move them too. The harness records each with the advisor's role as its author. The review panel has no way into the queue.
+- **The teachers and the auditor** add experiments through the supervisor, and the teachers move them too. The harness records each with the advisor's role as its author. The review panel has no way into the queue.
 - **A lane's worker** proposes an idea with its own trial's token, only while its trial is open.
 
 A new run's queue can also start with another run's untried experiments, at most 500, which come in its `assign_campaign` command. **Start a run** offers this only for a run with agents, and takes each one from control's records of the earlier run. So does `thermite assign --queue-from`, which asks control for them first, and so do Start a run's twins on the REST API, MCP (`start_run`) and the command line (`thermite run start`), which run the same code as the panel. Over MCP, control does the same whatever the caller wrote, for an experiment from a run of the new run's campaign or of a campaign whose folder that campaign may read: its title, details, direction, why and author come from control's own record of it, with every edit, and its details end with what became of it there, such as "In run-3 (matmul) it was …", when the campaign's folder has that. Any other keeps the caller's words, and its author is `copied`: one that control has no record of, and one from any other run.

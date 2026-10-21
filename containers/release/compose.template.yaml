@@ -132,7 +132,7 @@ services:
       THERMITE_CONTROL_TOKEN_FILE: /run/secrets/control-rig-token
       # Locally, both rigs' supervisors push to one results repository on a shared volume.
       THERMITE_RESULTS_REMOTE: "${THERMITE_RESULTS_REMOTE:-file:///results/results.git}"
-      # Teacher pair, combiner, auditor and review panel (off unless a config file is given).
+      # The advisors: teachers, their merged by model, auditor and review panel (off unless a config file is given).
       THERMITE_ADVISORS_FILE: "${THERMITE_ADVISORS_FILE:-}"
     volumes:
       - supervisor-home:/var/lib/thermite-supervisor

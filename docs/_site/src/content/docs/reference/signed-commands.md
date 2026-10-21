@@ -271,9 +271,9 @@ A set that both avoids a direction and tries or mandates it is refused: `the set
 
 A rule in words (`match`) set before rules named directions stays in force, marked legacy, until the planner's next round with its model converts it. No command converts it: the rig does, at the planner's round, with new records, and no signed command or earlier record changes. The new directive has the old one's author, `kind`, `rationale`, `citations` and `from_message`, the `family` the planner named, and `"converted_from": {"rule": <id>, "words": "<the old words>"}`; its `directive` event is its author's. The old directive leaves force as converted, with the event `directive_converted` by the planner: `{"id": <old id>, "to": <new id>, "kind", "family", "words"}`. Until then, only the planner's model reads it. The fixed rules that give out work without the model (no model, a model answer that code refused, the planner switched off, and every research run) keep only the directives that name a `family`; a research run has no planner, so a rule in words there is never converted ([Old rules in words](../how-to/campaigns/choose-what-runs-next.md#old-rules-in-words)).
 
-`redirect` is not the only source of rules. The teacher pair's set (each teacher's recommendations, and the combiner's directives: see [What each role must answer](advisors-file.md#what-each-role-must-answer)) and a rule that the planner adds because an owner's message asked for it name a direction the same way.
+`redirect` is not the only source of rules. The teachers' set (a teacher's recommendations, or the merged by model's directives: see [What each role must answer](advisors-file.md#what-each-role-must-answer)) and a rule that the planner adds because an owner's message asked for it name a direction the same way.
 
-The owner's `redirect`, or an operator's for the owner, can set again a rule that was removed with [`drop_directive`](#drop_directive). An agent token's `redirect`, the teacher pair's set and the planner's cannot.
+The owner's `redirect`, or an operator's for the owner, can set again a rule that was removed with [`drop_directive`](#drop_directive). An agent token's `redirect`, the teachers' set and the planner's cannot.
 
 The dashboard calls directives **rules**. It sends no `redirect`: on a run's **Planner** tab, **Tell the planner** sends a [`message_agent`](#message_agent) to the planner, and the planner adds the rules the message asks for at its next round, each with `from_message` set to the message. **Remove** sends [`drop_directive`](#drop_directive), which removes one rule. Control's own command form refuses a `redirect`: `this command is not available from the dashboard`.
 
@@ -305,10 +305,10 @@ The owner's message to the run's agents. The judge is code and takes no messages
 | `lane-1` to `lane-16` | That [lane](glossary.md) |
 | `trial:t-` and 8 to 32 hexadecimal characters | That trial. If it ends before it reads the message, its lane's next trial reads it, with a note that it was sent to an earlier trial |
 | `planner` | The planner. A research run has none |
-| `advisors` | The teacher pair, the auditor and the review panel, each once, except those that a refusal below names |
-| `teachers` | The teacher pair |
+| `advisors` | The teachers, the auditor and the review panel, each once, except those that a refusal below names |
+| `teachers` | The teachers |
 | `auditor` | The auditor |
-| `panel` | The review panel |
+| `review_panel` | The review panel. Its old name, `panel`, is still taken in v0.1.0: control signs the command with `panel`, the name every rig takes |
 
 Each reader reads a message once: each lane, the planner and each advisor role. Only a message kept in force is given again, to each new trial. A read is recorded when the reader works with the message, not when the text is only fetched or put in a brief. When each one reads it:
 
@@ -319,11 +319,11 @@ Each reader reads a message once: each lane, the planner and each advisor role. 
 | A worker in OpenCode, Claude Code or Codex | When its current run ends without a submission. The harness then continues the session with the message |
 | A worker that has submitted | It does not read it: a submission ends the trial, and the lane's next trial reads the message in its brief |
 | The planner | At its next plan whose model's plan is used. While the planner is off, its model can't be reached, or code refuses its plan on both tries (the fixed rules give out the round's work), the message waits for the next plan |
-| The teacher pair | In its next round, once at least one teacher has given its review. For a running run, a message starts that round: between rounds the supervisor looks for one every 5 seconds, and a round under way finishes first. When the advisors have reached the day's [spending limit](advisors-file.md#spending), a message starts no round; the run's live view says once `the advisors reached the day's spending limit (<limit> USD): the teacher pair reads your message after midnight UTC` |
+| The teachers | In their next round, once at least one teacher has given its review. For a running run, a message starts that round: between rounds the supervisor looks for one every 5 seconds, and a round under way finishes first. When the advisors have reached the day's [spending limit](advisors-file.md#spending), a message starts no round; the run's live view says once `the advisors reached the day's spending limit (<limit> USD): the teachers read your message after midnight UTC` |
 | The auditor | With its next audit, once the audit is posted to the harness |
-| The review panel | With its next review, once the review is posted. If a panelist gives no answer, the review is not posted, and its next try gives every panelist the message again |
+| The review panel | With its next review, once the review is posted. If a reviewer gives no answer, the review is not posted, and its next try gives every reviewer the message again |
 
-An advisor's brief or package puts the owner's messages first, and they are never cut when it is shortened. The teacher pair, the auditor and the review panel are asked to answer each message they are given, in one or two sentences, and the harness records each answer. An answer with no text is left out, and one malformed answer does not lose the advisor's others. A message kept in force goes into every new trial's brief under `# Messages from the campaign's owner, in force`; the others go under `# Messages from the campaign's owner`.
+An advisor's brief or package puts the owner's messages first, and they are never cut when it is shortened. The teachers, the auditor and the review panel are asked to answer each message they are given, in one or two sentences, and the harness records each answer. An answer with no text is left out, and one malformed answer does not lose the advisor's others. A message kept in force goes into every new trial's brief under `# Messages from the campaign's owner, in force`; the others go under `# Messages from the campaign's owner`.
 
 Control checks every message before it signs it, wherever it comes from: a run's **Live** or **Planner** tab, the REST API, `thermite command` or MCP. It trims the text, and refuses a message with no words in it, or one that nothing on the rig would read. It judges that from what the rig last reported: the run, the rig's settings (**Edit rig**) and the advisor roles its supervisor has set up. While the rig has not reported the run, or its supervisor has not reported its roles, control does not refuse for that reason, and the harness decides, as below. Control refuses with these messages:
 
@@ -334,12 +334,14 @@ Control checks every message before it signs it, wherever it comes from: a run's
 | `A research run plans its rounds with a fixed method: it has no planner to message.` | `planner`, in a research run |
 | `The planner is off on this rig (Edit rig), so nothing would read it.` | `planner`, with the planner switched off on **Edit rig** |
 | `A research run has no attempts to audit.` | `auditor`, in a research run |
-| `A research run has no conclusions to review.` | `panel`, in a research run |
-| `The teacher pair is off on this rig (Edit rig), so nothing would read it.`, and the same with `auditor` or `review panel` | `teachers`, `auditor` or `panel`, with that role switched off on **Edit rig** |
-| `This rig's supervisor has no teacher pair set up, so nothing would read it.`, and the same with `auditor` or `review panel` | `teachers`, `auditor` or `panel`, when the rig's supervisor reports that it has no such role |
-| `This run has no goal the review panel reviews, so nothing would read it.` | `panel`, when the run's contract has no goal checked by review |
+| `A research run has no conclusions to review.` | `review_panel`, in a research run |
+| `The teachers are off on this rig (Edit rig), so nothing would read it.`, and `The auditor is off …` or `The review panel is off …` | `teachers`, `auditor` or `review_panel`, with that role switched off on **Edit rig** |
+| `This rig's supervisor has no teachers set up, so nothing would read it.`, and the same with `auditor` or `review panel` | `teachers`, `auditor` or `review_panel`, when the rig's supervisor reports that it has no such role |
+| `This run has no goal the review panel reviews, so nothing would read it.` | `review_panel`, when the run's contract has no goal checked by review |
 | `This rig's supervisor has no advisors set up, so nothing would read it.` | `advisors`, when the supervisor reports none of the three roles |
-| `No advisor would read it.`, followed by the reason for each role, in the order teacher pair, auditor, review panel | `advisors`, when each of the three roles has one of the reasons above |
+| `No advisor would read it.`, followed by the reason for each role, in the order teachers, auditor, review panel | `advisors`, when each of the three roles has one of the reasons above |
+
+`panel`, the review panel's old name, is refused for the same reasons.
 
 Over the REST API and `thermite command`, a refusal is `400 {"error":"<message>"}`, written as `refused`. Over MCP, `issue_command` answers `{"error":"<message>"}` with `isError: true`, written as `refused`. On the dashboard it shows as **Not sent.** and the message (below), written as `refused`. A run's **Live** also greys out each recipient that control would refuse, with the same words when you point at it (on a run without agents that includes everyone working and the lanes, and the box starts on the advisors), and its message box asks for words before it sends: "Write a message first."
 
@@ -351,18 +353,18 @@ Control refuses `keep` with any other `to` before signing: `bad message_agent pa
 | `run <run> has no agents (the judge alone tries the kit): nothing would read this message` | `all`, `planner`, a lane or a trial, in a run started without agents |
 | `a research run plans its rounds with a fixed method; it has no planner to message` | `planner`, in a research run |
 | `the planner is off on this rig (Edit rig), so nothing would read this message` | `planner`, with the planner switched off on **Edit rig** |
-| `the teacher pair is off on this rig (Edit rig), so nothing would read this message` | `teachers`, with the teacher pair switched off |
+| `the teachers are off on this rig (Edit rig), so nothing would read this message` | `teachers`, with the teachers switched off |
 | `the auditor is off on this rig (Edit rig), so nothing would read this message` | `auditor`, with the auditor switched off |
 | `a research run has no audits, so the auditor would never read this message` | `auditor`, in a research run |
 | `the review panel is off on this rig (Edit rig), so nothing would read this message` | `panel`, with the review panel switched off |
-| `this run has no goal the review panel reviews, so the panel would never read this message` | `panel`, in a run with no goal checked by review |
+| `this run has no goal the review panel reviews, so the review panel would never read this message` | `panel`, in a run with no goal checked by review |
 | `none of the advisors would read this message: <each reason, joined by "; ">` | `advisors`, when no role would read it |
 | `run <run> has <n> lanes`, or `… has 1 lane` | A lane beyond the contract's number of lanes. A lane within it, but above the number a `lane_count` rule leaves at work, is accepted |
 | `no trial t-… in run <run>` | A trial the run does not have |
 
 The run's **Live** shows the rig's refusal of the newest message to the run, from wherever it was sent, as **Not sent.** `The rig refused your last message: <reason>` above its message box, the next time the page loads. The run's **Planner** tab does the same for the newest message to the planner, above **Tell the planner**: **Not sent.** `The rig refused your last message to the planner: <reason>`. A message from the dashboard that control refuses before it signs it shows in the same place at once, as **Not sent.** and control's reason. Control's audit log records that refusal as `refused`, with the page's path and the reason ([Audit log actions](rest-api.md#audit-log-actions)). While the planner is off on **Edit rig**, the **Planner** tab has no form under **Tell the planner**, only "The planner is off on this rig, so it reads no messages. The lanes take the queue in order and keep to the rules. Switch it on in Edit rig to tell it something.", with **Switch it on in Edit rig** as a link to the rig's **Edit rig** page.
 
-The harness writes the live line `Owner to <to> (#<id>): <text>`, with `, kept in force` after the id for a kept message. A run's **Live** shows a signed line as **To** the recipient and the text. A line for everyone working, a lane, the planner or the advisors shows so at once, in its own words. A line for a trial shows as a plain line until the run's `agent_message` event, below, reaches control with the rig's report; **Live** then draws it again in place, with the event's words. Result: `{"message": <id>, "to", "keep", "readers", "note"}`. `readers` lists who will read it: lanes, `planner`, `teachers`, `auditor` or `panel`. `note` is there only for a trial that has ended: `trial t-… has ended; lane-<n>'s next trial reads this`.
+The harness writes the live line `Owner to <to> (#<id>): <text>`, with `, kept in force` after the id for a kept message. A run's **Live** shows a signed line as **To** the recipient and the text. A line for everyone working, a lane, the planner or the advisors shows so at once, in its own words. A line for a trial shows as a plain line until the run's `agent_message` event, below, reaches control with the rig's report; **Live** then draws it again in place, with the event's words. Result: `{"message": <id>, "to", "keep", "readers", "note"}`. `readers` lists who will read it: lanes, `planner`, `teachers`, `auditor` or `panel` (the review panel, by the name the rig takes). `note` is there only for a trial that has ended: `trial t-… has ended; lane-<n>'s next trial reads this`.
 
 The run's ledger records the message with its text (`agent_message`), each reader's first read (`agent_message_read`, `{message, by}`, with `trial` for a lane's read and `round` for the planner's: the round whose plan read it) and each advisor's answer (`advisor_answer`). A rule the planner makes from the message is a `directive` whose body has `from_message`. The run's **Planner** tab shows a message to the planner, or to everyone working, under **Tell the planner**: waiting until the planner's round reads it, then with the planner's answer, made from these records: the rules it made from the message, the directions it designed for them, any rules it left out because the owner had removed them, and the round's notes. The run's **Live** shows the message, each read and each answer only from the harness's signed live lines; an unsigned line that looks like one shows as a plain line. A lane's read, like a message to a trial, shows plainly until the run's `agent_message` event reaches control.
 
@@ -455,7 +457,7 @@ Queues a lane's idea: an experiment a worker proposed (with `thermite-trial idea
 
 ### `drop_directive`
 
-Removes one [directive](#redirect), a rule for the plan, whoever set it: the owner, the teacher pair or the planner.
+Removes one [directive](#redirect), a rule for the plan, whoever set it: the owner, the teachers or the planner.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
@@ -464,7 +466,7 @@ Removes one [directive](#redirect), a rule for the plan, whoever set it: the own
 
 The harness refuses: `no run <run>`, a closed run (`run <run> is closed: its queue and rules no longer change`), and `no rule <id> in force in run <run>`. The directive stays in the record with the status `dropped`, and the ledger records `directive_dropped`, `{id}`. Result: `{"run", "dropped": <id>}`.
 
-**A removed rule does not come back from the advisors, the planner or an agent's token.** The teacher pair's next set of directives replaces its earlier set, the planner adds rules when an owner's message asks for one, and an agent token may send a `redirect`. Before the harness records such a set, it leaves out each rule that matches a rule removed from the run with `drop_directive`: the same kind, and the same `family` or `match` words, ignoring case and spaces at the ends. A rule that names neither matches every removed rule of its kind that names neither. The harness records the left-out rules in one event, `directives_left_out`, `{rules, why: "the owner removed these rules"}`, whose actor is `supervisor`, `planner` or `control:agent:mcp`, and records the rest of the set. Only a `redirect` issued by the owner, or by an operator for the owner, sets a removed rule again: its author is `control:owner:…`, such as `control:owner:api` for the owner's REST API or `control:owner:operator`.
+**A removed rule does not come back from the advisors, the planner or an agent's token.** The teachers' next set of directives replaces their earlier set, the planner adds rules when an owner's message asks for one, and an agent token may send a `redirect`. Before the harness records such a set, it leaves out each rule that matches a rule removed from the run with `drop_directive`: the same kind, and the same `family` or `match` words, ignoring case and spaces at the ends. A rule that names neither matches every removed rule of its kind that names neither. The harness records the left-out rules in one event, `directives_left_out`, `{rules, why: "the owner removed these rules"}`, whose actor is `supervisor`, `planner` or `control:agent:mcp`, and records the rest of the set. Only a `redirect` issued by the owner, or by an operator for the owner, sets a removed rule again: its author is `control:owner:…`, such as `control:owner:api` for the owner's REST API or `control:owner:operator`.
 
 ### `propagate`
 
@@ -531,9 +533,9 @@ The rig's own settings, as on its **Edit rig** page. Only the fields that change
 | `workers` | boolean | Workers start trials. Off: no new trial starts |
 | `lanes` | 1 to 16 | Trials at the same time. More is refused with `at most 16: a rig has users for lanes 1 to 16 only` |
 | `planner` | boolean | The planner's model gives each lane its experiment at the start of each round. Off: lanes take the queued experiments in order, by fixed rules, with no model |
-| `auditor` | boolean | The supervisor's auditor runs, where configured |
-| `teachers` | boolean | The supervisor's teacher pair and combiner run, where configured |
-| `review` | boolean | The supervisor's review panel runs, where configured |
+| `auditor` | boolean | The auditor runs in the supervisor, where configured |
+| `teachers` | boolean | The teachers, and their merged by model, run in the supervisor, where configured |
+| `review` | boolean | The review panel runs in the supervisor, where configured |
 | `exports` | boolean | Hourly exports for the supervisor to push |
 | `trial_minutes` | 1 to 10080 | A trial's length when its contract sets none |
 | `max_turns` | 1 to 100000, or `null` | A limit on each trial's model turns. `null`: no limit |
@@ -542,7 +544,7 @@ The rig's own settings, as on its **Edit rig** page. Only the fields that change
 
 The harness keeps the settings, applies them at once and reports them, with a `rig_settings_changed` event that holds the change and the settings after it. Result: `{"settings": <all the rig's settings>}`.
 
-The **History** of the run at work at the time says what changed, such as "You changed the rig's settings: the planner off, 3 lanes, no turn limit." Each field reads as `the judge`, `the workers`, `the planner`, `the auditor`, `the teacher pair`, `the review panel` or `exports` with `on` or `off`; `<n> lanes` (`1 lane`); `trials of <n> min`; `at most <n> turns a trial` or `no turn limit`; `confirmed wins kept at once` or `confirmed wins wait for you`; and `<n> GPUs for the judge` (`1 GPU for the judge`) or `the judge's usual share of GPUs`.
+The **History** of the run at work at the time says what changed, such as "You changed the rig's settings: the planner off, 3 lanes, no turn limit." Each field reads as `the judge`, `the workers`, `the planner`, `the auditor`, `the teachers`, `the review panel` or `exports` with `on` or `off`; `<n> lanes` (`1 lane`); `trials of <n> min`; `at most <n> turns a trial` or `no turn limit`; `confirmed wins kept at once` or `confirmed wins wait for you`; and `<n> GPUs for the judge` (`1 GPU for the judge`) or `the judge's usual share of GPUs`.
 
 ### `accept_review`
 

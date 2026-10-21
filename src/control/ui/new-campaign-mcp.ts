@@ -24,7 +24,7 @@ const AUTH_WORDS: Record<McpServer["auth"], string> = {
 export const AGENT_WORDS = [
   ["workers", "Workers", "The agents that change the code, one per lane."],
   ["planner", "Planner", "Gives each lane its next experiment."],
-  ["advisors", "Advisors", "The teacher pair, the auditor and the review panel."],
+  ["advisors", "Advisors", "The teachers, the auditor and the review panel."],
 ] as const;
 
 /** The kinds of agent a row offers, as AGENT_WORDS lists them. */

@@ -212,7 +212,18 @@ describe("a run's Live lines", () => {
         signed: true,
       }),
     );
-    assert.match(receipt, /✓ the teacher pair read your message: “cite the paper”/);
+    // A harness of an earlier version names the teachers "the teacher pair": shown by the name
+    // now (goal 074), as a line of this version's harness is.
+    assert.match(receipt, /✓ the teachers read your message: “cite the paper”/);
+    const now = runEntryHtml(
+      line({
+        source: "supervisor",
+        kind: "text",
+        text: "the teachers (teacher-b) answered the owner's message #4: done",
+        signed: true,
+      }),
+    );
+    assert.match(now, /<b>the teachers \(teacher-b\) answered you:<\/b>/);
     // Filed under a trial: plain and marked until the run's event has the message.
     const early = line({
       source: "trial:t-1",

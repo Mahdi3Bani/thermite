@@ -565,7 +565,7 @@ export function needs(
             u,
             r,
             now,
-            facts: `<dt>What</dt><dd>"${esc(rv.goal)}" is a subjective goal: code cannot check it, so a review panel did. The panel passed it on commit <code>${esc(short(rv.commit))}</code>.</dd>
+            facts: `<dt>What</dt><dd>"${esc(rv.goal)}" is a subjective goal: code cannot check it, so the review panel did. The review panel passed it on commit <code>${esc(short(rv.commit))}</code>.</dd>
 <dt>Why it waits</dt><dd>A subjective goal counts as met only with your word.</dd>`,
             choices: [
               {

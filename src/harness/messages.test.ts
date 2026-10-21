@@ -252,7 +252,7 @@ describe("the owner's messages", () => {
       "auditor",
     ]);
     await command(env, "rig_settings", { teachers: false, planner: false });
-    await refused({ to: "teachers" }, /the teacher pair is off on this rig/);
+    await refused({ to: "teachers" }, /the teachers are off on this rig/);
     await refused({ to: "planner" }, /the planner is off on this rig/);
     assert.deepEqual((await send(env, { to: "all", text: "x" })).result.readers, [
       "lane-1",
@@ -377,7 +377,7 @@ describe("the owner's messages", () => {
           e.source === "supervisor" &&
           e.kind === "text" &&
           e.text ===
-            "the teacher pair (teacher-a) answered the owner's message #1: We will cite it next round.",
+            "the teachers (teacher-a) answered the owner's message #1: We will cite it next round.",
       ),
     );
     // The auditor still has message 2 waiting; the teachers have nothing.

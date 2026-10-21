@@ -194,7 +194,7 @@ export function mcpRefusal(db: DatabaseSync, uses: readonly McpUse[] | undefined
 }
 
 /**
- * The kinds of agent a research run has: its workers and its advisors (the teacher pair). It has
+ * The kinds of agent a research run has: its workers and its advisors (the teachers). It has
  * no planner: the research plan is code.
  */
 export const RESEARCH_AGENT_KINDS: readonly AgentKind[] = ["workers", "advisors"];

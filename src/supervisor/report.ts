@@ -68,7 +68,7 @@ export async function dailyReport(input: {
     "## Supervisor",
     "",
     `- Exports: ${e.done.length} committed; ${u ? `${u.uploaded.length ? `last sent to control ${u.lastUploadAt ?? "?"}` : "none sent to control yet"}; ${u.queue.length} waiting to go` : `last push ${e.lastPushAt ?? "never"}`}${error ? `; last error: ${error}` : ""}.`,
-    `- Advisors: ${a.teacher_runs} teacher rounds, ${a.directive_sets} directive sets (${a.directives} directives), ${a.audits} audits, ${a.reviews} panel reviews, ${a.errors} errors; $${a.usd.toFixed(2)}.`,
+    `- Advisors: ${a.teacher_runs} teacher rounds, ${a.directive_sets} directive sets (${a.directives} directives), ${a.audits} audits, ${a.reviews} reviews by the review panel, ${a.errors} errors; $${a.usd.toFixed(2)}.`,
   );
   return lines.join("\n");
 }

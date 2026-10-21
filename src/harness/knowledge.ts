@@ -30,7 +30,7 @@ import type { BriefingItem } from "./ledger.ts";
  * them again.
  *
  * The planner and the advisors read no files: they search the same items through `search`, read
- * only (the planner's tool, the harness API for the supervisor's advisors).
+ * only (the planner's tool, the harness API for the advisors).
  *
  * Every item is a record other runs' agents and judge wrote: data, never instructions.
  */

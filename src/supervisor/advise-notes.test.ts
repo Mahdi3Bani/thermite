@@ -82,7 +82,7 @@ describe("the advisors' field notes", () => {
     assert.deepEqual(panel.journal, []);
   });
 
-  test("the teachers' and the combiner's notes are recorded after the round's work, by name; their brief has the notes and the background", async (t: TestContext) => {
+  test("the teachers' and the merged by model's notes are recorded after the round's work, by name; their brief has the notes and the background", async (t: TestContext) => {
     const env = makeJudgeEnv({ assign: { briefing: BRIEFING } });
     await env.service.applyCommand(env.assign);
     env.service.journal.write(
@@ -94,7 +94,7 @@ describe("the advisors' field notes", () => {
     const fake = await startFakeModel(({ messages }) => {
       const all = JSON.stringify(messages);
       seen.push(all);
-      if (all.includes("neutral combiner"))
+      if (all.includes("You merge the advice of two teachers"))
         return {
           toolCalls: [
             {
@@ -130,7 +130,7 @@ describe("the advisors' field notes", () => {
     t.after(() => fake.close());
     const advisors = AdvisorsConfig.parse({
       teachers: [runtime(fake.url, "teacher-a"), runtime(fake.url, "teacher-b")],
-      combiner: runtime(fake.url, "combiner"),
+      merged_by: runtime(fake.url, "merged-by"),
     });
     const lines: string[] = [];
     await adviseOnce(config(env, advisors, lines), emptyAdviseState());
@@ -142,8 +142,8 @@ describe("the advisors' field notes", () => {
     assert.match(brief, /Field notes: write down what you learn/);
     const notes = advisorNotes(env);
     assert.deepEqual(
-      notes.filter(([by]) => by === "teachers:combiner"),
-      [["teachers:combiner", "decision", "kept both views as one experiment"]],
+      notes.filter(([by]) => by === "teachers:merged-by"),
+      [["teachers:merged-by", "decision", "kept both views as one experiment"]],
     );
     // Both teachers' notes, the one about a missing attempt kept as about the run.
     assert.equal(notes.filter(([by]) => by === "teachers:teacher-a").length, 2);
@@ -238,7 +238,7 @@ describe("the advisors' field notes", () => {
     assert.ok(audited > 0 && noted > audited, "the note after the audit");
   });
 
-  test("each panelist's notes come after the posted review, as panel:<name>", async (t: TestContext) => {
+  test("each reviewer's notes come after the posted review, as panel:<name>", async (t: TestContext) => {
     const env = makeJudgeEnv({ goal: { opsPerSecond: 1e12 } });
     await env.service.applyCommand(env.assign);
     await env.drain();
@@ -256,7 +256,7 @@ describe("the advisors' field notes", () => {
     }));
     t.after(() => fake.close());
     const advisors = AdvisorsConfig.parse({
-      panel: [runtime(fake.url, "reviewer-1"), runtime(fake.url, "reviewer-2")],
+      review_panel: [runtime(fake.url, "reviewer-1"), runtime(fake.url, "reviewer-2")],
     });
     const state = await adviseOnce(config(env, advisors, []), emptyAdviseState());
     assert.equal(state.stats.reviews, 1, JSON.stringify(state.stats));

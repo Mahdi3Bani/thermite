@@ -134,7 +134,7 @@ Each goal has an `id`, a `description` and one way to `verify` it:
 | --- | --- | --- |
 | `code` | The kit's check passes on every cell of the named verifier | `verifier`: a verifier in the kit's `kit.json` |
 | `metric_threshold` | In every cell, the metric's 95% interval over `threshold_reps` runs (5) is wholly on the passing side of `op` and `value` | `metric`: a kit metric. `cells`: leave it out for every cell |
-| `review` | The rig's review panel passes it, and then you accept it. A panel chosen on **Edit rig** is three reviewers with one model; one in the advisors file has two to five | `criteria`. See [Configure advisors](../operate/advisors.md) |
+| `review` | The rig's review panel passes it, and then you accept it. A review panel chosen on **Edit rig** is three reviewers with one model; one in the advisors file has two to five | `criteria`. See [Configure advisors](../operate/advisors.md) |
 
 The rest of a goal contract:
 
