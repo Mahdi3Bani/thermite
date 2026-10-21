@@ -757,10 +757,13 @@ export class Scheduler {
     }
     // Read only when the model's plan was valid and used: a planner that is off, a model that
     // could not be reached, or plans refused on both tries leave them waiting for the next plan.
+    // The read names this round, whose rules and notes answer them.
     if (owner.length && p.source === "planner")
       this.o.service.messages.read(
         owner.map((m) => m.id),
         "planner",
+        undefined,
+        n,
       );
     // New directions, with the rules that named them before the run had them (goal 066).
     const waiting = toDesign(input);

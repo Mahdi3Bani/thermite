@@ -428,10 +428,9 @@ export function createControlApi(
     }
     if (!path.startsWith("/ui/") || c.req.method !== "POST") return;
     const to = c.res.headers.get("location");
-    // Pages send a refusal back as error, as msgerror for a message to agents, or as ruleerror
-    // for a rule from the Planner tab.
+    // Pages send a refusal back as error, or as msgerror for a message to agents.
     const back = to ? new URL(to, "http://control").searchParams : undefined;
-    const why = back?.get("error") ?? back?.get("msgerror") ?? back?.get("ruleerror") ?? null;
+    const why = back?.get("error") ?? back?.get("msgerror") ?? null;
     if (why || status >= 400) {
       const reason = redact(why ?? `status ${status}`);
       log("control", "refused", { path, why: reason });

@@ -369,12 +369,14 @@ export class OwnerMessages {
   /**
    * Records that a reader received messages (a lane in a trial, the planner, an advisor role):
    * the first read by each reader is an event, and every read a line on the reader's live
-   * source. Reading the same message twice in one trial records it once.
+   * source. Reading the same message twice in one trial records it once. `round`: the planner's
+   * round that read them, so control can show its answer (the rules it made, its notes) with them.
    */
   read(
     ids: number[],
     reader: string,
     trial?: { id: string; run: string; lane: string } | undefined,
+    round?: number | undefined,
   ): void {
     const at = this.now();
     const done: Row[] = [];
@@ -401,7 +403,12 @@ export class OwnerMessages {
             trial ? `trial:${trial.id}` : reader === "planner" ? "planner" : "supervisor",
             "agent_message_read",
             m.run,
-            { message: id, by: reader, ...(trial ? { trial: trial.id } : {}) },
+            {
+              message: id,
+              by: reader,
+              ...(trial ? { trial: trial.id } : {}),
+              ...(round !== undefined ? { round } : {}),
+            },
           );
         done.push(m);
       }

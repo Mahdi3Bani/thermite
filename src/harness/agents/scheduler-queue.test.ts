@@ -363,11 +363,12 @@ describe("the planner as the queue's coordinator", () => {
     assert.equal(body(made).description, "any change to the timing code");
     assert.ok(s.q.directions(RUN).includes("timer-code"));
     assert.equal(body(events(s.env, "epoch_started")[0]).source, "planner");
-    // The message was read by the planner that answered it.
+    // The message was read by the planner that answered it, in the round of its hand-out.
     assert.deepEqual(
-      events(s.env, "agent_message_read").map((e) => body(e).by),
-      ["planner"],
+      events(s.env, "agent_message_read").map((e) => body(e)),
+      [{ message: 1, by: "planner", round: h.round }],
     );
+    assert.equal(h.round, 1);
   });
 
   test("a rule from a message the planner was not given, or a dropped experiment given out, is refused", async (t) => {

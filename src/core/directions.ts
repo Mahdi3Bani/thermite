@@ -2,9 +2,9 @@ import { z } from "zod";
 
 /**
  * A run's directions (goal 066): the approach families its experiments belong to. A rule for the
- * plan names one, wherever a rule is made or named: the dashboard's rule box, the owner's commands
- * over REST, MCP and the command line, a message to the planner, and the planner's and the
- * advisors' answers.
+ * plan names one, wherever a rule is made or named: a message to the planner (the Planner tab's
+ * Tell the planner, with its picker of the run's directions), the owner's commands over REST, MCP
+ * and the command line, and the planner's and the advisors' answers.
  *
  * A direction is written in plain words (`shared memory tiling`) or as `:shared memory tiling:`;
  * the colons are optional around one direction, and mark each one in a longer text. Case, spaces
@@ -66,9 +66,13 @@ export function notADirection(text: string): string {
     : `"${t}" is not a direction's name: write it in letters, digits, spaces and dashes, such as shared memory tiling or :shared memory tiling:`;
 }
 
-// A `:name:` in a longer text: it stands on its own (`10:30:45` names nothing), and starts and
-// ends with a letter or a digit.
-const TOKEN = /(?<![A-Za-z0-9:]):([A-Za-z0-9](?:[A-Za-z0-9 -]{0,58}[A-Za-z0-9])?):(?![A-Za-z0-9])/g;
+/**
+ * A `:name:` in a longer text: it stands on its own (`10:30:45` names nothing), and starts and
+ * ends with a letter or a digit. The Planner tab's script reads messages with the same pattern.
+ */
+export const DIRECTION_TOKEN_SOURCE =
+  "(?<![A-Za-z0-9:]):([A-Za-z0-9](?:[A-Za-z0-9 -]{0,58}[A-Za-z0-9])?):(?![A-Za-z0-9])";
+const TOKEN = new RegExp(DIRECTION_TOKEN_SOURCE, "g");
 
 /** Every direction a text names as `:name:`, such as an owner's message, in order, once each. */
 export function directionTokens(text: string): string[] {
@@ -81,24 +85,23 @@ export function directionTokens(text: string): string[] {
 }
 
 /**
- * A rule box's text: one direction in plain words (`shared memory tiling`), or one or more as
- * `:name:`, apart by spaces, commas or "and". `rest` is the text left beside `:name:` directions,
- * which a rule box refuses: reasons go in Why.
+ * A text such as a message to the planner, in parts, to show each `:name:` as a direction: plain
+ * text, a direction (`name`), or a `:name:` that makes no direction's name (`bad`, with why). The
+ * parts' `text` joined is the whole text.
  */
-export function parseDirections(text: string): { names: string[]; rest: string } {
-  const t = text.trim();
-  if (!t) return { names: [], rest: "" };
-  const tokens = [...t.matchAll(TOKEN)];
-  if (!tokens.length) {
-    const one = directionName(t);
-    return one ? { names: [one], rest: "" } : { names: [], rest: t };
+export function directionParts(
+  text: string,
+): { text: string; name?: string | undefined; bad?: string | undefined }[] {
+  const out: { text: string; name?: string | undefined; bad?: string | undefined }[] = [];
+  let at = 0;
+  for (const m of text.matchAll(TOKEN)) {
+    if (m.index > at) out.push({ text: text.slice(at, m.index) });
+    const name = directionName(m[0]);
+    out.push(name ? { text: m[0], name } : { text: m[0], bad: notADirection(m[0]) });
+    at = m.index + m[0].length;
   }
-  const names = directionTokens(t);
-  const rest = t
-    .replace(TOKEN, " ")
-    .replace(/[\s,]+|\band\b/gi, " ")
-    .trim();
-  return { names, rest };
+  if (at < text.length) out.push({ text: text.slice(at) });
+  return out;
 }
 
 /** A direction as a rule shows it. */

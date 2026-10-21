@@ -762,23 +762,33 @@ describe("the run page's Experiments and Planner tabs", () => {
       exp,
       /Nothing queued\. The planner adds experiments as it plans; you can add one above\./,
     );
-    assert.match(plan, /No rules\. The planner follows the queue and its own judgment\./);
+    // Rules come from Tell the planner (goal 066): the tab has no Add a rule form.
     assert.match(
       plan,
-      /<details class="adv" style="margin-top:10px" open><summary>Add a rule<\/summary>/,
+      /No rules\. The planner follows the queue and its own judgment\. To make one, tell the planner below\./,
     );
+    assert.doesNotMatch(plan, /Add a rule|Add the rule/);
     assert.match(plan, /No hand-out yet\./);
+    assert.match(
+      plan,
+      /<h3>The run's directions <span class="muted small">0<\/span><\/h3>[\s\S]*?None yet\. Each experiment adds its own\./,
+    );
+    // The box takes the picker of the run's directions, and the page loads its script.
+    assert.match(
+      plan,
+      /<textarea name="text" rows="3" required data-words data-dpick data-dirs="\[\]"/,
+    );
+    assert.match(plan, /<script src="\/ui\/assets\/planner\.js" defer><\/script>/);
     // Every field of the forms has its description.
     for (const label of ["Add an experiment", "Direction", "Where", "Why", "Details"])
       assert.match(
         exp,
         new RegExp(`<span class="lb">${label}<i class="ii" tabindex="0" data-tip="[^"]+">i</i>`),
       );
-    for (const label of ["Rule", "Direction", "Why"])
-      assert.match(
-        plan,
-        new RegExp(`<span class="lb">${label}<i class="ii" tabindex="0" data-tip="[^"]+">i</i>`),
-      );
+    assert.match(
+      plan,
+      /<span class="lb">Your message<i class="ii" tabindex="0" data-tip="[^"]+">i<\/i>/,
+    );
 
     /** Up next, in order: each experiment's id and title, as the page lists them. */
     const upNext = (html: string) =>
@@ -892,72 +902,103 @@ describe("the run page's Experiments and Planner tabs", () => {
       /<tr data-r="none"[^>]*><td><b>unroll the loop by 4<\/b>[\s\S]*?dropped by you: measured slower last run/,
     );
 
-    // Rules from Add a rule (goal 066): a direction as :name:, or in plain words with spaces. A
-    // direction the run doesn't have yet is new: the planner designs it.
-    await s.submit(form(plan, "Add the rule"), {
-      directive: "avoid",
-      direction: ":loop tiling:",
-      rationale: "three trials regressed",
+    // Rules set elsewhere show here too (goal 066): the owner's over the REST API, a direction
+    // as :name: or in plain words with spaces. A direction the run doesn't have yet is new: the
+    // planner designs it. An old rule in words, as an older harness wrote it, stays in force.
+    const redirect = await s.api("POST", "/v1/commands", {
+      rig: "rig-a",
+      kind: "redirect",
+      payload: {
+        run: "js-1",
+        directives: [
+          { kind: "avoid", family: ":loop tiling:", rationale: "three trials regressed" },
+          { kind: "try", family: "Vector loads", rationale: "the guide says twice the bandwidth" },
+        ],
+        replace: false,
+      },
     });
-    await s.sync();
-    plan = await s.get(PLAN);
-    await s.submit(form(plan, "Add the rule"), {
-      directive: "try",
-      direction: "Vector loads",
-      rationale: "the guide says twice the bandwidth",
-    });
-    await s.sync();
-    // Text that is not a direction, or words beside :name:, are refused, back on the tab.
-    for (const [direction, refusal] of [
-      [
-        "anything with $hared memory!",
-        /^"anything with \$hared memory!" is not a direction's name: write it in letters, digits, spaces and dashes/,
-      ],
-      [
-        ":loop tiling: because it is slow",
-        /^Only directions go in Direction: "because it is slow" is not one\. Write each direction as :name:, or one direction in plain words\./,
-      ],
-    ] as const) {
-      const back = await s.submit(form(plan, "Add the rule"), {
-        directive: "avoid",
-        direction,
-        rationale: "x",
-      });
-      const why = back.split("&ruleerror=")[1] ?? "";
-      assert.ok(back.startsWith(decodeURIComponent(PLAN)), back);
-      assert.match(why, refusal);
-      const shown = await s.get(`${PLAN}&ruleerror=${encodeURIComponent(why)}`);
-      assert.match(
-        shown,
-        /<details class="adv" style="margin-top:10px" open><summary>Add a rule<\/summary><div><div class="lnotice">[\s\S]*?<b>Not added\.<\/b>/,
-      );
-      assert.ok(unesc(shown).includes(why));
-    }
-    assert.deepEqual(
-      s.signed("redirect").map((p) => (p.directives as Record<string, unknown>[])[0]),
+    assert.equal(redirect.status, 201, await redirect.clone().text());
+    const [legacy] = env.service.ledger.addDirectiveSet(
+      "js-1",
+      "control:owner:ui",
       [
         {
           kind: "avoid",
-          family: "loop-tiling",
-          rationale: "three trials regressed",
-          citations: [],
-        },
-        {
-          kind: "try",
-          family: "vector-loads",
-          rationale: "the guide says twice the bandwidth",
+          match: "anything that uses shared memory",
+          rationale: "slow on this GPU",
           citations: [],
         },
       ],
+      false,
     );
+    await s.sync();
     plan = await s.get(PLAN);
+    /** The page's words, without markup. */
+    const words = (html: string) => unesc(html.replace(/<[^>]+>/g, ""));
+    const tok = (name: string, fresh = false) =>
+      `<span class="dtok${fresh ? " new" : ""}"><i>:</i>${name}<i>:</i></span>`;
+    assert.ok(
+      plan.includes(
+        `<b>Avoid ${tok("loop-tiling", true)}</b> <span class="muted small">· set by</span> <span class="qsrc you">you</span>`,
+      ),
+    );
     assert.match(
       plan,
-      /<b>Avoid :loop-tiling:<\/b> <span class="muted small">· set by<\/span> <span class="qsrc you">you<\/span>[\s\S]*?three trials regressed<\/div><div class="xs" style="margin-top:3px">A new direction\. The planner designs it at its next round, then adds it to the run's directions\.<\/div>/,
+      /three trials regressed<\/div><div class="xs" style="margin-top:3px">A new direction\. The planner designs it at its next round, then adds it to the run's directions\.<\/div>/,
     );
-    assert.match(plan, /<b>Try :vector-loads:<\/b>/);
+    assert.ok(plan.includes(`<b>Try ${tok("vector-loads", true)}</b>`));
+    assert.match(
+      plan,
+      /<div class="qrule legacy"><span class="qkind words">words<\/span><div><b>Avoid “anything that uses shared memory”<\/b>/,
+    );
+    // The run's directions: its experiments', then those its rules name, which wait for the planner.
+    const dirRows = (html: string) =>
+      [...html.matchAll(/<div class="dlrow[^"]*"[^>]*>([\s\S]*?)<\/span><\/div>/g)].map((m) =>
+        words(m[1] ?? ""),
+      );
+    assert.deepEqual(dirRows(plan), [
+      ":memory-layout:not tried yet · 1 up next",
+      ":loop-unrolling:not tried yet",
+      ":loop-tiling:new: the planner designs it at its next round · avoid",
+      ":vector-loads:new: the planner designs it at its next round · try",
+    ]);
+    const picked = JSON.parse(unesc(/data-dirs="([^"]*)"/.exec(plan)?.[1] ?? "")) as {
+      name: string;
+      new: boolean;
+    }[];
+    assert.deepEqual(
+      picked.map((d) => [d.name, d.new]),
+      [
+        ["memory-layout", false],
+        ["loop-unrolling", false],
+        ["loop-tiling", true],
+        ["vector-loads", true],
+      ],
+    );
 
-    // Tell the planner: back on the tab, which says the message went.
+    // Name a direction, on the old rule, fills in a message to the planner (the script does it
+    // in place; without it, the link draws the tab with the box filled in).
+    const fix = /<a class="btn sm" href="([^"]+)" data-fill="([^"]+)">Name a direction<\/a>/.exec(
+      plan,
+    );
+    assert.ok(fix);
+    assert.equal(unesc(fix[2] ?? ""), "avoid anything that uses shared memory: slow on this GPU");
+    assert.equal(unesc(fix[1] ?? ""), `${PLAN}&fix=${legacy}#tell`);
+    const fixing = await s.get(`${PLAN}&fix=${legacy}`);
+    assert.equal(
+      form(fixing, "Send to the planner").fields.text,
+      "avoid anything that uses shared memory: slow on this GPU",
+    );
+
+    // Tell the planner refuses a message of only spaces, on the tab.
+    const blank = await s.submit(form(plan, "Send to the planner"), { text: "  \n " });
+    assert.ok(blank.endsWith("&msgerror=Write a message first."), blank);
+    assert.match(
+      await s.get(`${PLAN}&msgerror=${encodeURIComponent("Write a message first.")}`),
+      /<h3>Tell the planner<\/h3><div class="lnotice">[\s\S]*?<b>Not sent\.<\/b> Write a message first\./,
+    );
+    // Plain words, then the old rule's message as Name a direction filled it in: back on the
+    // tab, which says the message went.
     const told = await s.submit(form(plan, "Send to the planner"), {
       text: "Never touch the timer code.",
     });
@@ -968,10 +1009,24 @@ describe("the run page's Experiments and Planner tabs", () => {
       /Sent to the rig\. The planner reads it when it next gives out work; Commands shows whether the rig took it\./,
     );
     await s.sync();
-    const message = [...s.store.runMessages("rig-a", "js-1")].find(
-      ([, m]) => m.to === "planner",
-    )?.[0];
-    assert.ok(message);
+    await s.submit(form(fixing, "Send to the planner"));
+    await s.sync();
+    const sent = [...s.store.runMessages("rig-a", "js-1")].filter(([, m]) => m.to === "planner");
+    const message = sent.find(([, m]) => m.text === "Never touch the timer code.")?.[0];
+    const named = sent.find(([, m]) => m.text.startsWith("avoid anything"))?.[0];
+    assert.ok(message && named);
+    // Each waits on the tab, newest first, until the planner's next round reads it.
+    plan = await s.get(PLAN);
+    assert.deepEqual(
+      [...plan.matchAll(/<div class="qturn" data-msg="(\d+)">/g)].map((m) => Number(m[1])),
+      [named, message],
+    );
+    assert.equal(
+      plan.match(
+        /Sent\. The planner reads it when it next gives out work: round 1\. Its answer shows here\./g,
+      )?.length,
+      2,
+    );
 
     // A round: the planner's model gives out the queue's top two and sets the rule the owner's
     // message asked for; lane-1's worker proposes two ideas as it works.
@@ -986,12 +1041,16 @@ describe("the run page's Experiments and Planner tabs", () => {
                     { lane: "lane-1", experiment: prefetch, why: "the top of the queue" },
                     { lane: "lane-2", experiment: vector, why: "the rule: vector loads first" },
                   ],
-                  // It designs the new directions the owner's rules name, and one for the rule
-                  // the owner's plain words ask for.
+                  // It designs the new directions the owner's rules name, one for the rule the
+                  // owner's plain words ask for, and one for the old rule in words.
                   new_families: [
                     { id: "loop-tiling", description: "tile the loops for the cache" },
                     { id: "vector loads", description: "wider loads, such as half2" },
                     { id: ":timer code:", description: "any change to the timing code" },
+                    {
+                      id: "shared memory",
+                      description: "kernels that stage data in shared memory",
+                    },
                   ],
                   rules: [
                     {
@@ -999,6 +1058,12 @@ describe("the run page's Experiments and Planner tabs", () => {
                       family: "timer code",
                       rationale: "the owner asked for it",
                       from_message: message,
+                    },
+                    {
+                      kind: "avoid",
+                      family: ":shared memory:",
+                      rationale: "the owner's old rule, by name",
+                      from_message: named,
                     },
                   ],
                   notes: "loads first",
@@ -1041,28 +1106,65 @@ describe("the run page's Experiments and Planner tabs", () => {
       /<b>Round 1<\/b>: <ul><li><b>lane-1<\/b>: prefetch the next block <span class="muted">· the top of the queue<\/span><\/li><li><b>lane-2<\/b>: vector loads \(half2\) <span class="muted">· the rule: vector loads first<\/span><\/li><\/ul><div class="muted small">loads first<\/div>/,
     );
     assert.match(
-      plan,
-      /<b>Avoid :timer-code:<\/b> <span class="muted small">· set by<\/span> <span class="qsrc planner">planner<\/span>[\s\S]*?the owner asked for it <span class="muted">\(from your message: “Never touch the timer code\.”\)<\/span>/,
+      words(plan),
+      /Avoid :timer-code: · set by planner \d+[smh] ago\s*the owner asked for it \(from your message: “Never touch the timer code\.”\)\s*Code keeps it at every hand-out\. No lane gets it\./,
     );
     // The directions it designed for your rules, in its words; they are the run's now.
-    assert.match(
-      plan,
-      /<div>Designed the direction :loop-tiling: for rule \d+ <span class="muted">· tile the loops for the cache<\/span><\/div>/,
+    const tiling = (await s.run("js-1")).rules.find((x) => x.body.family === "loop-tiling")?.id;
+    assert.ok(tiling);
+    assert.ok(
+      plan.includes(
+        `<div>Designed the direction ${tok("loop-tiling")} for rule ${tiling} <span class="muted">· tile the loops for the cache</span></div>`,
+      ),
     );
     assert.doesNotMatch(plan, /A new direction\. The planner designs it/);
-    assert.match(
-      plan,
-      /This run's directions: [^<]*:loop-tiling:[^<]*:timer-code:[^<]*:vector-loads:/,
-    );
+    // (general: the direction of the trial that took the experiment with none.)
+    assert.deepEqual(dirRows(plan), [
+      ":memory-layout:1 tried",
+      ":general:not tried yet",
+      ":loop-tiling:not tried yet · avoid",
+      ":loop-unrolling:not tried yet",
+      ":shared-memory:not tried yet · avoid",
+      ":timer-code:not tried yet · avoid",
+      ":vector-loads:not tried yet · try",
+    ]);
     assert.match(
       plan,
       /1 round so far: 1 planned by the model, 0 in queue order by the fixed rules/,
     );
-    // Its log has the rule it set too, with why and the message it came from.
-    assert.match(
-      plan,
-      /<div class="qhand"><span class="tm">\d\d:\d\d<\/span><div>Set the rule avoid :timer-code: <span class="muted">· the owner asked for it<\/span> <span class="muted">\(from your message: “Never touch the timer code\.”\)<\/span><\/div><\/div>/,
+    // Its log has the rule it set too, with why and the message it came from, and the read.
+    assert.ok(
+      plan.includes(
+        `<div>Set the rule avoid ${tok("timer-code")} <span class="muted">· the owner asked for it</span> <span class="muted">(from your message: “Never touch the timer code.”)</span></div>`,
+      ),
     );
+    assert.match(
+      words(plan),
+      /Read your message “Never touch the timer code\.” in round 1: made 1 rule from it/,
+    );
+    // Tell the planner shows its answer to each message: the rule it made, the direction it
+    // designed for it, and what the rule does now.
+    const answers = Object.fromEntries(
+      [
+        ...plan.matchAll(
+          /<div class="qturn" data-msg="(\d+)">([\s\S]*?)<\/div><\/div>(?=<div class="qturn"|<\/div>)/g,
+        ),
+      ].map((m) => [Number(m[1]), words(m[2] ?? "").replace(/\s+/g, " ")]),
+    ) as Record<number, string>;
+    assert.match(
+      answers[message] ?? "",
+      /^you \d\d:\d\dNever touch the timer code\.planner round 1 · \d\d:\d\dRead your message\. Made 1 rule:Avoid :timer-code: new direction · the owner asked for itThe run had none for it, so the planner designed it: any change to the timing code\. No lane gets it\.Its notes for the round: loads first$/,
+    );
+    assert.match(
+      answers[named] ?? "",
+      /Read your message\. Made 1 rule:Avoid :shared-memory: new direction · the owner's old rule, by nameThe run had none for it, so the planner designed it: kernels that stage data in shared memory\. No lane gets it\./,
+    );
+    assert.doesNotMatch(plan, /Sent\. The planner reads it when it next gives out work/);
+    // Its rule names a direction now: remove the old rule in words.
+    await s.submit(form(plan, "Remove", "Avoid “anything that uses shared memory”"));
+    await s.sync();
+    plan = await s.get(PLAN);
+    assert.doesNotMatch(plan, /class="qrule legacy"/);
     assert.ok(
       yours(await s.get("/ui/live?run=rig-a%2Fjs-1")).includes(
         "✓ planner read your message: “Never touch the timer code.”",
@@ -1131,12 +1233,12 @@ describe("the run page's Experiments and Planner tabs", () => {
     );
 
     // Remove one of your rules; the planner's stays.
-    await s.submit(form(plan, "Remove", "Try :vector-loads:"));
+    await s.submit(form(plan, "Remove", `<b>Try ${tok("vector-loads")}</b>`));
     await s.sync();
     plan = await s.get(PLAN);
-    assert.doesNotMatch(plan, /Try :vector-loads:/);
-    assert.match(plan, /<b>Avoid :loop-tiling:<\/b>/);
-    assert.match(plan, /<b>Avoid :timer-code:<\/b>/);
+    assert.doesNotMatch(words(plan), /Try :vector-loads:/);
+    assert.ok(plan.includes(`<b>Avoid ${tok("loop-tiling")}</b>`));
+    assert.ok(plan.includes(`<b>Avoid ${tok("timer-code")}</b>`));
 
     // History tells each change, who made it and why.
     const history = await s.get(HISTORY);

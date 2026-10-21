@@ -174,7 +174,7 @@ Such a message never reaches the rig. Its sender gets control's reason at once (
 | Event | What it records |
 | --- | --- |
 | `agent_message` | The message: its text, who it is for, and whether it is kept in force |
-| `agent_message_read` | Each reader's first read: a lane (with its trial), the planner or an advisor role |
+| `agent_message_read` | Each reader's first read: a lane (with its trial), the planner (with its round) or an advisor role |
 | `agent_message_unkept` | The owner took a message out of force |
 | `advisor_answer` | An advisor's answer |
 

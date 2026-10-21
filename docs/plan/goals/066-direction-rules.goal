@@ -1,7 +1,7 @@
 ---
 id: "066"
 title: "Rules name directions, picked with :direction:"
-status: IN_PROGRESS
+status: VERIFIED
 version: "0.1.0"
 part: "Running campaigns"
 depends_on: ["064"]
@@ -11,7 +11,7 @@ updated: 2026-10-20
 
 # 066 · Rules name directions, picked with `:direction:`
 
-**Status:** `IN_PROGRESS` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
+**Status:** `VERIFIED` · **Version:** [v0.1.0](../roadmap.md#v010) · **Part:** Running campaigns
 
 ## What
 
@@ -30,10 +30,10 @@ The owner, 2026-10-20: rules use direction names only. A rule in free words reac
 ## Done when
 
 - [x] Every rule names a direction, and `match` is gone from the commands, the planner, the advisors and the dashboard.
-- [ ] The Planner tab's rule box takes `:direction:`, with a picker of the run's directions on `:`, as in the approved mockup.
+- [x] The Planner tab's rule box takes `:direction:`, with a picker of the run's directions on `:`, as in the approved mockup.
 - [x] A rule naming an unknown direction is refused in plain words, or makes the direction (decided with the mockup).
 - [x] Rules already in force with `match` words keep working or are shown as such until removed (decided with the mockup).
-- [ ] Tests cover the syntax, the picker's list, and the refusals.
+- [x] Tests cover the syntax, the picker's list, and the refusals.
 - [x] The docs pages that describe rules follow.
 
 ## Decisions
@@ -44,6 +44,10 @@ The owner, 2026-10-20: rules use direction names only. A rule in free words reac
   - **Unknown directions:** taken, never refused. Code keeps the rule by name from the start. At its next round the planner's model must design the direction (its name and what it means, in its own words); an answer that leaves it undesigned is refused. The new direction is recorded as `family_added` with the rules it was designed for, shown in **What the planner did** and in History. Without the model, an **Always** rule's new direction gets the fixed rules' description. A research run has no planner, so it takes only its task kinds.
   - **`::` is optional:** plain words in a message to the planner still make rules; the planner turns them into a direction, existing or new. A `:name:` names one exactly. The rule box takes one direction in plain words, or one or more as `:name:`.
 - 2026-10-20, built this way until the owner chooses: **old rules in free words** stay in force, marked legacy, and are shown as not kept by code (only the planner's model reads them). They are never dropped silently; the owner removes them. No ledger migration: a rule in words is told by its body (`match` and no family), in the ledger and in control's view alike.
+- 2026-10-20, the revised mockup's open choices, built as the lead recommended until the owner says otherwise:
+  - **The Add a rule form is gone** (our reading of "remove the second add rule"). Rules come from **Tell the planner**, which sits under the rules list. Each rule keeps its source and its **Remove**. The dashboard sends no `redirect` of its own; the REST API, MCP and the command line still do.
+  - **Old rules in words** stay in force, marked (as built). **Name a direction** on one fills in a message to the planner, from the rule's words and why; the owner removes the old rule once the planner's rule shows.
+  - **No lane-count rule** in the rules list: the revised mockup has none.
 
 ## Open questions
 
@@ -63,6 +67,16 @@ The owner, 2026-10-20: rules use direction names only. A rule in free words reac
   - **Pages:** rules, directions and old rules (Choose what a run tries next), Steer a run, the planner, supervision, the glossary, signed commands, the advisors file, MCP tools, the REST API, limits, compatibility and troubleshooting.
   - **Acceptance script changed:** `scripts/control-acceptance.mjs` sends the dashboard's rule as `direction`.
   - **Left, waits for the revised mockup:** the Planner tab's screen: the `:` picker of the run's directions, the rule box's new form (the owner asked to remove the second Add a rule), a **Lanes** rule and the contract's lane count as a rule, and the run's directions list on the tab. The tests of the picker come with it.
+- 2026-10-20: Built the Planner tab's screen from the revised mockup (`v010-planner-rules`), with the decisions above. Goal verified.
+  - **Tell the planner**, under the rules: typing `:` opens a picker of the run's directions (letters filter it, spaces and dashes are the same, Up and Down move, Enter or Tab picks, Esc closes), each with its figures and rules; a name the run doesn't have comes last as **new**. A line below the box says what the message names, exactly or in plain words. Examples come from the run's own directions. Without the script it is a plain text area that posts the same message. The script (`/ui/assets/planner.js`, `src/control/ui/planner-client.ts`) reads `:name:` with the core's own pattern.
+  - **The planner's answer:** each message to the planner (or to everyone working) waits under the box, with the round that will read it, until the planner's round reads it; then the tab shows the rules it made from it, the directions it designed for them, what each rule does now, and the round's notes. Nothing is faked: the answer comes from the planner's records. Behind it, the planner's read now names its round (`agent_message_read`, `round`), and control's view keeps each message's rules (`messages[].rules`), the rules from it that the rig left out because the owner had removed them (`messages[].left_out`), and the round of each read. **What the planner did** lists each message the planner read.
+  - **Rules:** each says what code does with it now (Avoid, Try, Always), from its direction's figures. An old rule in words has **Name a direction**, which fills in the message (in place with the script, or with `&fix=` without it).
+  - **The run's directions** card: each direction with tried, wins, up next, the lanes on it now and its rules; one the planner has yet to design shows dashed.
+  - **Removed:** the Add a rule form, its `redirect` from control's command form (now refused there: `this command is not available from the dashboard`), its `ruleerror` notice, and the rule box's parser (`parseDirections`), which nothing else used.
+  - **Tests:** the picker's context, list, filter, `new` entry and pick, and its reading of names and `:name:` against the core's (`src/control/ui/planner-client.test.ts`); message parts with `:name:` and too-long names (`src/core/directions.test.ts`); the planner's read with its round (`scheduler-queue.test.ts`); control's view of each message's rules, left-out rules and rounds, and the tab with directions, rules in force, an old rule in words, waiting messages and the planner's answers (`queue-view.test.ts`); the whole tab through a real harness: rules from REST, an old rule's Name a direction with and without the script's fill, the refusal of an empty message, two messages waiting, then the planner's answers with the directions it designed (`steering-ui.test.ts`); the command form's refusal of `redirect` and the script's route (`dashboard.test.ts`).
+  - **Pages:** Choose what a run tries next (Make a rule: tell the planner, Directions, Old rules in words, Remove a rule, What the planner did), Steer a run, the planner's explanation, the glossary, signed commands, MCP tools and the records table in How it fits together.
+  - **Acceptance script changed:** `scripts/control-acceptance.mjs` steers from the dashboard with a message to the planner (Tell the planner) instead of the dashboard's `redirect`, and waits for its `agent_message` event.
+  - **Not part of v0.1.0:** goal 064's **Lanes** rule in Add a rule and the contract's lane count shown as a rule. The revised mockup left them out. A `lane_count` rule still goes with `redirect` from the command line, and shows in the rules list when set.
 
 ---
 

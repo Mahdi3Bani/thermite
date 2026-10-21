@@ -12,7 +12,6 @@ import {
   CommandPayloads,
 } from "../core/commands.ts";
 import { FolderSchema, MAX_LANES } from "../core/contract.ts";
-import { notADirection, parseDirections } from "../core/directions.ts";
 import { McpUses } from "../core/mcp.ts";
 import { type BuildInfo, buildInfo } from "../core/version.ts";
 import type { ClusterRigRequest, ControlActions } from "./actions.ts";
@@ -207,6 +206,7 @@ import {
   timeline,
   waitingOn,
 } from "./ui/operator.ts";
+import { PLANNER_JS } from "./ui/planner-client.ts";
 import { PROVIDERS_JS } from "./ui/providers-client.ts";
 import { experimentsTab, plannerTab } from "./ui/queue.ts";
 import {
@@ -778,8 +778,10 @@ export function createDashboard(store: ControlStore, opts: DashboardOptions): Ho
                 })(),
                 figures: diagnostics,
                 propagate,
-                // A rule from Add a rule that control refused.
-                ruleRefused: c.req.query("ruleerror") ?? "",
+                // Name a direction on an old rule in words: its message fills Tell the planner.
+                fix: Number.isInteger(Number(c.req.query("fix")))
+                  ? Number(c.req.query("fix"))
+                  : undefined,
                 // A message to the planner that control or the rig refused.
                 refused:
                   c.req.query("msgerror") ||
@@ -953,6 +955,13 @@ ${live.length ? live.join("") : `<div class="card"><div class="empty">${camps.le
   );
   app.get("/ui/assets/providers.js", (c) =>
     c.body(PROVIDERS_JS, 200, {
+      "content-type": "text/javascript; charset=utf-8",
+      "cache-control": "no-cache",
+    }),
+  );
+  // The Planner tab's script: the `:` picker of the run's directions in Tell the planner.
+  app.get("/ui/assets/planner.js", (c) =>
+    c.body(PLANNER_JS, 200, {
       "content-type": "text/javascript; charset=utf-8",
       "cache-control": "no-cache",
     }),
@@ -6643,10 +6652,8 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
     const kind = String(f.kind) as CommandKind;
     if (!COMMAND_KINDS.includes(kind)) return c.text("unknown command", 400);
     const run = String(f.run ?? "");
-    // The rule box (goal 066): one direction in plain words, or one or more as :name:. Each
-    // direction gets its own rule; one the run doesn't have yet is designed by the planner.
-    const ruled = parseDirections(String(f.direction ?? ""));
-    // Kinds the rig's harness doesn't know yet are refused above (COMMAND_KINDS).
+    // Kinds the rig's harness doesn't know yet are refused above (COMMAND_KINDS). Rules come
+    // from Tell the planner (goal 066): the dashboard sends no redirect of its own.
     const payloads: Partial<Record<string, unknown>> = {
       pause_run: { run, reason: String(f.reason || "paused from the dashboard") },
       resume_run: { run },
@@ -6657,16 +6664,6 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       decline_promotion: { run, attempt: String(f.attempt ?? "") },
       accept_review: { run, review: Number(f.review), accept: f.accept === "true" },
       conclude: { run, proposal: Number(f.proposal), accept: f.accept === "true" },
-      redirect: {
-        run,
-        directives: ruled.names.map((family) => ({
-          kind: String(f.directive ?? "avoid"),
-          family,
-          rationale: String(f.rationale ?? ""),
-          citations: [],
-        })),
-        replace: f.add !== "1",
-      },
       // The experiment queue (goal 064).
       queue_add: {
         run,
@@ -6704,22 +6701,6 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       unkeep_message: { run, message: Number(f.message) },
     };
     if (!(kind in payloads)) return c.text("this command is not available from the dashboard", 400);
-    // A rule from the Planner tab that can't be sent goes back there, with why (ruleerror).
-    const ruleBack = (why: string) => {
-      const [path, hash] = backTo(f, `/ui/rigs/${encodeURIComponent(String(f.rig))}`).split("#");
-      return c.redirect(
-        `${path}${path?.includes("?") ? "&" : "?"}ruleerror=${encodeURIComponent(why)}${hash ? `#${hash}` : ""}`,
-        303,
-      );
-    };
-    if (kind === "redirect" && (ruled.rest || !ruled.names.length))
-      return ruleBack(
-        ruled.rest
-          ? ruled.names.length
-            ? `Only directions go in Direction: "${clip(ruled.rest, 80)}" is not one. Write each direction as :name:, or one direction in plain words. Put your reasons in Why.`
-            : `${notADirection(ruled.rest)}.`
-          : "Name a direction: plain words, such as shared memory tiling, or :name:.",
-      );
     let woke: string | null;
     try {
       // A run resumed on a stopped RunPod pod starts the pod first.
@@ -6732,7 +6713,6 @@ ${s ? "" : `<div class="card warn" style="margin-bottom:16px">This rig's harness
       }));
     } catch (err) {
       const why = err instanceof Error ? err.message : String(err);
-      if (kind === "redirect") return ruleBack(why);
       return c.text(`refused: ${why}`, 400);
     }
     // The page says the command went; the rig's answer shows where the command was given.

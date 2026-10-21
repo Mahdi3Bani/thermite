@@ -201,18 +201,32 @@ test("the queue view keeps the order the events give it, and where each experime
     figures: "",
     propagate: "",
   });
-  // An old rule in words shows as such, with Remove; a rule names its direction as :name:.
+  // An old rule in words shows as such, with Remove, and Name a direction, which fills in a
+  // message to the planner; a rule names its direction as :name:, which code keeps.
   assert.match(
     plan,
-    /<span class="qkind words">words<\/span><div><b>Try “anything with vector loads”<\/b>/,
+    /<div class="qrule legacy"><span class="qkind words">words<\/span><div><b>Try “anything with vector loads”<\/b>/,
   );
   assert.match(
     plan,
-    /An old rule in words, from before rules named directions\. Code doesn't keep it\./,
+    /An old rule in words, from before rules named directions\. Code can't keep it\. Only the planner's model reads it, and a round planned without the model ignores it\. Tell the planner to name a direction for it, then remove this one\./,
   );
-  assert.match(plan, /<b>Always give :split-k: a lane<\/b>/);
+  assert.match(
+    plan,
+    /<a class="btn sm" href="\/b&amp;fix=8#tell" data-fill="try anything with vector loads: the guide says so">Name a direction<\/a><form data-kind="drop_directive">Remove<\/form>/,
+  );
+  assert.match(
+    plan,
+    /<b>Always <span class="dtok"><i>:<\/i>split-k<i>:<\/i><\/span><\/b>[\s\S]*?Code keeps it at every hand-out\. One lane works on it at every hand-out\.<\/div>/,
+  );
   assert.doesNotMatch(plan, /gemv-tiling/);
-  assert.match(plan, /This run's directions: :dequant-fusion:, :memory-layout:, :split-k:\./);
+  // The run's directions, each with its figures and the rules that name it.
+  assert.deepEqual(
+    [...plan.matchAll(/<div class="dlrow[^"]*"[^>]*>([\s\S]*?)<\/span><\/div>/g)].map((m) =>
+      (m[1] ?? "").replace(/<[^>]+>/g, ""),
+    ),
+    [":memory-layout:1 tried", ":dequant-fusion:not tried yet", ":split-k:not tried yet · always"],
+  );
   assert.match(
     plan,
     /<b>Round 9<\/b>: <ul><li><b>lane-1<\/b>: vector loads <span class="muted">· it has the fusion code in context/,
@@ -234,7 +248,156 @@ test("the queue view keeps the order the events give it, and where each experime
       "Added “fuse the dequantize step” to the queue · it won on long",
     ],
   );
-  assert.match(plan, /<input name="direction" required/);
-  assert.doesNotMatch(plan, /name="match"/);
-  assert.match(plan, /Tell the planner/);
+  // No Add a rule: rules come from Tell the planner, whose box offers the run's directions.
+  assert.doesNotMatch(plan, /Add a rule|Add the rule|name="direction"|name="match"/);
+  assert.match(plan, /<h3>Tell the planner<\/h3>/);
+  const dirs = JSON.parse(
+    (/data-dirs="([^"]*)"/.exec(plan)?.[1] ?? "").replace(/&quot;/g, '"').replace(/&amp;/g, "&"),
+  ) as { name: string; rules: string[] }[];
+  assert.deepEqual(
+    dirs.map((d) => [d.name, d.rules]),
+    [
+      ["memory-layout", []],
+      ["dequant-fusion", []],
+      ["split-k", ["always"]],
+    ],
+  );
+});
+
+test("a message to the planner waits for its round, then shows its answer: the rules it made and the directions it designed", () => {
+  const { u, r } = rigWith([
+    [
+      "planner",
+      "experiment_added",
+      { id: "x-1", title: "wider loads", family: "vector-loads", by: "planner" },
+    ],
+    ["control:owner:ui", "agent_message", { id: 1, to: "planner", text: "stop :vector loads:" }],
+    ["control:owner:ui", "agent_message", { id: 2, to: "planner", text: "never touch the timer" }],
+    ["control:owner:ui", "agent_message", { id: 3, to: "all", text: "keep it simple" }],
+    [
+      "control:owner:ui",
+      "agent_message",
+      {
+        id: 4,
+        to: "planner",
+        text: "try :split k: first, then :a direction whose name is far too long to be one:",
+      },
+    ],
+    // Round 3 reads messages 1 to 3. A read from an older harness names no round.
+    ["planner", "agent_message_read", { message: 1, by: "planner", round: 3 }],
+    ["planner", "agent_message_read", { message: 2, by: "planner", round: 3 }],
+    ["planner", "agent_message_read", { message: 3, by: "planner" }],
+    ["planner", "agent_message_read", { message: 3, by: "lane-1", trial: "t-1" }],
+    [
+      "planner:planner",
+      "family_added",
+      { family: "timer-code", description: "any change to the timing code" },
+    ],
+    [
+      "planner",
+      "directive",
+      {
+        id: 5,
+        body: { kind: "avoid", family: "vector-loads", rationale: "you asked", from_message: 1 },
+      },
+    ],
+    [
+      "planner",
+      "directive",
+      {
+        id: 6,
+        body: { kind: "avoid", family: "timer-code", rationale: "you asked", from_message: 2 },
+      },
+    ],
+    // A rule the planner made from message 3 that the owner had removed: left out.
+    [
+      "planner",
+      "directives_left_out",
+      {
+        rules: [{ kind: "avoid", family: "gemv-tiling", rationale: "r", from_message: 3 }],
+        why: "the owner removed these rules",
+      },
+    ],
+    ["planner", "planner_handout", { round: 3, assignments: [], notes: "kept the loads off" }],
+    ["control:owner:ui", "directive_dropped", { id: 5 }],
+  ]);
+  // The view: each message's rules (in force or not), those left out, and the round that read it.
+  assert.deepEqual(
+    r.messages.map((m) => [
+      m.id,
+      m.rules.map((x) => [x.id, x.kind, x.family, x.by]),
+      m.left_out.map((x) => [x.kind, x.family]),
+      m.reads.map((x) => [x.by, x.round]),
+    ]),
+    [
+      [1, [[5, "avoid", "vector-loads", "planner"]], [], [["planner", 3]]],
+      [2, [[6, "avoid", "timer-code", "planner"]], [], [["planner", 3]]],
+      [
+        3,
+        [],
+        [["avoid", "gemv-tiling"]],
+        [
+          ["planner", null],
+          ["lane-1", null],
+        ],
+      ],
+      [4, [], [], []],
+    ],
+  );
+  const plan = plannerTab({
+    u,
+    r,
+    now: Date.parse("2026-10-20T02:00:00Z"),
+    csrf: "x",
+    back: "/b",
+    cmd: (f: { kind: string; label: string }) => `<form data-kind="${f.kind}">${f.label}</form>`,
+    model: "m",
+    figures: "",
+    propagate: "",
+  });
+  /** Each message in Tell the planner, newest first, and what follows it, without markup. */
+  const turns = [
+    ...plan.matchAll(
+      /<div class="qturn" data-msg="(\d+)">([\s\S]*?)<\/div><\/div>(?=<div class="qturn"|<\/div>)/g,
+    ),
+  ].map((m) => [
+    Number(m[1]),
+    (m[2] ?? "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim(),
+  ]);
+  assert.deepEqual(
+    turns.map(([id]) => id),
+    [4, 3, 2, 1],
+  );
+  const said = Object.fromEntries(turns) as Record<number, string>;
+  // Not read yet: it waits for the next round.
+  assert.match(
+    said[4] ?? "",
+    /try : split-k : first, then :a direction whose name is far too long to be one: Sent\. The planner reads it when it next gives out work: round 4\. Its answer shows here\./,
+  );
+  // A direction the run doesn't have is dashed; a :name: too long to be one is marked, with why.
+  assert.match(plan, /<span class="dtok new"><i>:<\/i>split-k<i>:<\/i><\/span>/);
+  assert.match(
+    plan,
+    /<span class="dtok bad" title="[^"]*is too long for a direction[^"]*">:a direction whose name is far too long to be one:<\/span>/,
+  );
+  // To everyone working, read without a round: the hand-out after the read gives it.
+  assert.match(
+    said[3] ?? "",
+    /to everyone working keep it simple planner round 3 · \d\d:\d\d Read your message\. Left out a rule you removed: Avoid : gemv-tiling : You removed this rule\. Only your own redirect sets it again\. Its notes for the round: kept the loads off/,
+  );
+  // A rule for a direction the model designed in that round, and one removed since.
+  assert.match(
+    said[2] ?? "",
+    /Read your message\. Made 1 rule: Avoid : timer-code : new direction · you asked The run had none for it, so the planner designed it: any change to the timing code\. No lane gets it\./,
+  );
+  assert.match(
+    said[1] ?? "",
+    /Read your message\. Made 1 rule: Avoid : vector-loads : · you asked It is no longer in force\./,
+  );
+  // What the planner did lists the reads too.
+  assert.match(plan, /Read your message “stop :vector loads:” in round 3: made 1 rule from it/);
+  assert.match(plan, /It reads your message when it next gives out work: round 4\./);
 });

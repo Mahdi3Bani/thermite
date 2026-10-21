@@ -1293,23 +1293,65 @@ describe("control dashboard", () => {
     );
     assert.doesNotMatch(html, /<div class="qt">vector loads/);
     assert.match(html, /dropped by you: measured slower last run/);
-    // A rule naming a direction in plain words, added to the rules in force, then removed.
-    await send({
+    // Rules come from Tell the planner (goal 066): the dashboard sends no redirect of its own.
+    const direct = await s.post("/ui/commands", {
+      rig: "rig-a",
+      run: "js-1",
+      csrf: s.csrfFrom(await (await s.get(plan)).text()),
+      back: plan,
       kind: "redirect",
       directive: "try",
       direction: "vector loads",
-      rationale: "the guide says twice the bandwidth",
-      add: "1",
     });
+    assert.equal(direct.status, 400);
+    assert.equal(await direct.text(), "this command is not available from the dashboard");
+    // A rule from elsewhere (the owner's REST API), naming a direction in plain words, shows on
+    // the tab with its Remove, which takes it out of force.
+    const viaApi = await s.control.request("/v1/commands", {
+      method: "POST",
+      headers: { authorization: "Bearer admin-token-abcdef", "content-type": "application/json" },
+      body: JSON.stringify({
+        rig: "rig-a",
+        kind: "redirect",
+        payload: {
+          run: "js-1",
+          directives: [
+            {
+              kind: "try",
+              family: "vector loads",
+              rationale: "the guide says twice the bandwidth",
+            },
+          ],
+          replace: false,
+        },
+      }),
+    });
+    assert.equal(viaApi.status, 201, await viaApi.clone().text());
+    await s.relay();
+    await s.relay();
     let planner = await (await s.get(plan)).text();
-    assert.match(planner, /Try :vector-loads:/);
+    assert.match(
+      planner,
+      /<b>Try <span class="dtok new"><i>:<\/i>vector-loads<i>:<\/i><\/span><\/b>/,
+    );
     const rule = /name="kind" value="drop_directive"[\s\S]*?name="id" value="(\d+)"/.exec(
       planner,
     )?.[1];
     assert.ok(rule, "the rule has a Remove button");
     await send({ kind: "drop_directive", id: rule });
     planner = await (await s.get(plan)).text();
-    assert.doesNotMatch(planner, /Try :vector-loads:/);
+    assert.doesNotMatch(planner, /<b>Try /);
+    assert.match(planner, /No rules\. The planner follows the queue and its own judgment\./);
+  });
+
+  test("the Planner tab's script is served from control, and parses", async () => {
+    const s = await stack();
+    const r = await s.get("/ui/assets/planner.js");
+    assert.equal(r.status, 200);
+    assert.match(r.headers.get("content-type") ?? "", /^text\/javascript/);
+    const js = await r.text();
+    assert.match(js, /textarea\[data-dpick\]/);
+    assert.doesNotThrow(() => new Function(js));
   });
 
   test("Live for one run: filters for each lane, the judge and you; one message box", async () => {
