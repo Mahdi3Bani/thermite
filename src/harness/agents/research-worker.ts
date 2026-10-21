@@ -2,6 +2,7 @@ import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type TSchema, Type } from "@earendil-works/pi-ai";
 import type { LaneLimitValues } from "../../core/contract.ts";
 import { notesInstruction } from "../../core/journal.ts";
+import { Compactor, summarizer } from "./compaction.ts";
 import { linkSession, type SessionLink } from "./live-session.ts";
 import { mcpAgentTools, mcpLine } from "./mcp-tools.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
@@ -15,7 +16,7 @@ import {
   researchFolderNote,
   researchOutput,
 } from "./research-tools.ts";
-import type { IdeaInput, McpForAgent, TrialResult } from "./worker.ts";
+import type { CompactionLink, IdeaInput, McpForAgent, TrialResult } from "./worker.ts";
 import { IDEA_TOOL, keepGoing, proposeIdea, withoutPastThinking } from "./worker.ts";
 
 /**
@@ -55,6 +56,8 @@ export interface ResearchDeps {
   note?: ((req: NoteRequest) => Promise<{ note: number }>) | undefined;
   /** The MCP tools the run's kit gives its workers (goal 068), through the harness's gateway. */
   mcp?: McpForAgent | undefined;
+  /** Where a compaction keeps the conversation, and where it is said (goal 070). */
+  compaction?: CompactionLink | undefined;
 }
 
 /** A research worker's field notes, told apart from its research notes. */
@@ -148,6 +151,29 @@ export async function runResearchTrial(
     // One tool call at a time: each is a request to the harness, in the order the model chose.
     toolExecution: "sequential",
   });
+  // Near the model's window the conversation is compacted and the trial goes on (goal 070).
+  const compactor = new Compactor({
+    window: deps.model.contextWindow,
+    at: deps.model.compactAt,
+    convert: withoutPastThinking,
+    summarize: summarizer(deps.model),
+    keep: async (n, markdown) => {
+      if (!deps.compaction) throw new Error("this trial has no place to keep it");
+      const { rel } = await deps.compaction.keep(n, markdown);
+      return {
+        path: rel,
+        read: `It is in your research folder: read it with read_file (path ${rel}), or search it with search_files, when you need a detail`,
+      };
+    },
+    done: async (r) => deps.compaction?.done(r),
+    stop: (reason) => {
+      result.stopped = "context";
+      result.error = reason;
+      agent.abort();
+    },
+    title: `Research trial ${spec.trialId} (${spec.lane})`,
+  });
+  agent.prepareRequest = compactor.hook(agent);
   agent.subscribe((event) => {
     if (event.type === "turn_end") {
       result.turns++;
@@ -170,14 +196,16 @@ export async function runResearchTrial(
     // With the note tool, the brief says how to keep field notes, and how they differ from
     // research notes.
     await agent.prompt(deps.note ? `${spec.brief}\n\n${RESEARCH_NOTES}` : spec.brief);
-    // A cut-off reply or a failed call does not end a research trial before its time.
+    // A cut-off reply, a failed call or a full context (compacted) does not end a research trial
+    // before its time; only a conversation that does not fit even compacted does.
     const end = await keepGoing(
       agent,
       () => result.stopped !== "no_submission",
       deps.model.contextWindow,
+      compactor,
     );
     if (end) {
-      result.stopped = end.stopped === "context" ? "finished" : "error";
+      result.stopped = end.stopped;
       result.error = end.error;
     }
     if (result.stopped === "no_submission") result.stopped = "finished";
@@ -189,6 +217,7 @@ export async function runResearchTrial(
   } finally {
     clearTimeout(wall);
   }
+  if (compactor.count) result.compactions = compactor.count;
   return result;
 }
 

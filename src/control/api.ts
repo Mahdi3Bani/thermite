@@ -634,7 +634,12 @@ export function createControlApi(
     harness: Harness,
     effort: Effort | null | undefined,
     cap?: number | undefined,
+    compactAt?: number | undefined,
   ): Promise<Record<string, unknown> | undefined> => {
+    // The compaction point (goal 070), only when the owner set one: a route without it keeps its
+    // revision, and the harness applies its default.
+    const compact = compactAt ? { compact_at: compactAt } : {};
+    const compactRev = compactAt ? [`compact_at ${compactAt}`] : [];
     // Other providers take a reasoning effort up to high.
     const reasoning = effort ? (effort === "xhigh" || effort === "max" ? "high" : effort) : null;
     const contextWindow = cappedWindow(
@@ -652,6 +657,7 @@ export function createControlApi(
         base_url: CHATGPT_API,
         model,
         context_window: contextWindow,
+        ...compact,
         max_tokens: 0,
         reasoning,
         key_hint: p.key_hint,
@@ -666,6 +672,7 @@ export function createControlApi(
             reasoning ?? "",
             access,
             ...(cap ? [contextWindow] : []),
+            ...compactRev,
           ].join("\n"),
         ).slice(0, 16),
         api_key: access,
@@ -689,14 +696,22 @@ export function createControlApi(
         base_url: base,
         model: claudeModelName(model),
         context_window: contextWindow,
+        ...compact,
         max_tokens: 0,
         reasoning: null,
         effort: effort ?? null,
         key_hint: p.key_hint,
         revision: sha256Hex(
-          [p.name, "claude", p.version, model, contextWindow, effort ?? "", p.key_sealed].join(
-            "\n",
-          ),
+          [
+            p.name,
+            "claude",
+            p.version,
+            model,
+            contextWindow,
+            effort ?? "",
+            p.key_sealed,
+            ...compactRev,
+          ].join("\n"),
         ).slice(0, 16),
         api_key: key,
       };
@@ -714,6 +729,7 @@ export function createControlApi(
       base_url: base,
       model,
       context_window: contextWindow,
+      ...compact,
       max_tokens: 0,
       reasoning,
       key_hint: p.key_hint,
@@ -730,6 +746,7 @@ export function createControlApi(
           contextWindow,
           reasoning ?? "",
           p.key_sealed,
+          ...compactRev,
         ].join("\n"),
       ).slice(0, 16),
       api_key: key,
@@ -753,7 +770,14 @@ export function createControlApi(
     const r = store.rigModelFor(rig);
     const planner = await roleRouteOf(rig, "planner");
     if (!r) return c.json({ route: null, planner });
-    const route = await routeOf(r.provider, r.model, r.harness, r.effort, r.contextCap);
+    const route = await routeOf(
+      r.provider,
+      r.model,
+      r.harness,
+      r.effort,
+      r.contextCap,
+      r.compactAt,
+    );
     if (!route)
       return c.json(
         {

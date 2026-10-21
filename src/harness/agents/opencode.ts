@@ -5,6 +5,7 @@ import { type LaneLimitValues, laneLimits } from "../../core/contract.ts";
 import { notesInstruction } from "../../core/journal.ts";
 import { type LiveKind, summarizeArgs } from "../../core/live.ts";
 import type { Role, Runner, RunOutcome } from "../broker/runner.ts";
+import { compactionTokens } from "./cli-compaction.ts";
 import type { MessageInbox, TrialProgress } from "./live-session.ts";
 import { type McpAccess, mcpLine, opencodeMcp } from "./mcp-tools.ts";
 import type { ModelConfig } from "./model.ts";
@@ -46,6 +47,12 @@ export function opencodeModelId(m: ModelConfig): string {
  * OpenCode's configuration for a run. Nobody answers a question in a headless run, so OpenCode's
  * question tool is denied. A provider other than OpenCode's own is reached through the harness's
  * key-adding proxy (`proxyRoot`), with the run's proxy credential from THERMITE_PROXY_AUTH.
+ *
+ * Compaction (goal 070): OpenCode compacts its conversation on its own (`compaction.auto`), but
+ * only for a model whose window it knows. For the rig's provider, the model's `limit.context` is
+ * the route's window (so the owner's cap), and `compaction.buffer`, the tokens it keeps free
+ * below that window, puts its compaction point at the route's share. OpenCode's own models keep
+ * the windows and the compaction point OpenCode knows for them.
  */
 export function opencodeConfig(
   m: ModelConfig,
@@ -59,6 +66,11 @@ export function opencodeConfig(
   // The MCP servers the run's kit gives this agent (goal 068), each at the harness's gateway.
   const servers = opencodeMcp(mcp);
   if (servers) config.mcp = servers;
+  const point = m.api !== "opencode" ? compactionTokens(m) : undefined;
+  config.compaction = {
+    auto: true,
+    ...(point !== undefined ? { buffer: m.contextWindow - point } : {}),
+  };
   if (m.api !== "opencode") {
     const anthropic = m.api === "anthropic";
     config.providers = {
@@ -75,7 +87,12 @@ export function opencodeConfig(
             : "@opencode/ai/providers/openai-compatible",
         // Anthropic's client posts to {base}/messages; its API is at /v1/messages.
         settings: { baseURL: anthropic ? `${proxyRoot}/v1` : proxyRoot },
-        models: { [m.model]: { name: m.model } },
+        models: {
+          [m.model]: {
+            name: m.model,
+            ...(point !== undefined ? { limit: { context: m.contextWindow } } : {}),
+          },
+        },
       },
     };
   }

@@ -376,6 +376,8 @@ export class Registry {
       toolCalls: number;
       tokensIn: number;
       tokensOut: number;
+      /** How many times its conversation was compacted (goal 070): in the event only. */
+      compactions?: number | undefined;
       error?: string | undefined;
     },
     by: string,
@@ -408,6 +410,7 @@ export class Registry {
         turns: r.turns,
         tokens_in: r.tokensIn,
         tokens_out: r.tokensOut,
+        ...(r.compactions ? { compactions: r.compactions } : {}),
         // Why a trial failed reaches control too (the ledger keeps the longer text).
         error: r.error?.slice(0, 300) ?? null,
       });

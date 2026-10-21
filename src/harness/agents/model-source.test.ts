@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { modelEnv } from "./model.ts";
+import { modelConfigFromEnv, modelEnv } from "./model.ts";
 import { type ControlRoute, ModelSource } from "./model-source.ts";
 
 const route: ControlRoute = {
@@ -52,6 +52,27 @@ describe("the agents' model source", () => {
     m.clear();
     assert.equal(m.current()?.model, "local-model");
     assert.equal(new ModelSource(file, undefined).info().source, "none");
+  });
+
+  test("the compaction point a route carries reaches the agents, and a worker's environment (goal 070)", () => {
+    const file = join(mkdtempSync(join(tmpdir(), "thermite-ms-")), "model-route.json");
+    const m = new ModelSource(file, env);
+    m.set({ ...route, compact_at: 70 });
+    const cur = m.current() as NonNullable<ReturnType<ModelSource["current"]>>;
+    assert.equal(cur.compactAt, 70);
+    const vars = modelEnv(cur);
+    assert.equal(vars.THERMITE_MODEL_COMPACT_AT, "70");
+    assert.equal(modelConfigFromEnv(vars)?.compactAt, 70);
+    // None set: the harness's default, and no variable.
+    m.set(route);
+    assert.equal(m.current()?.compactAt, undefined);
+    assert.equal(modelEnv(m.current() as typeof cur).THERMITE_MODEL_COMPACT_AT, undefined);
+    // Out of range: refused, from control and from the rig's own settings alike.
+    assert.throws(() => m.set({ ...route, compact_at: 99 }));
+    assert.throws(
+      () => modelConfigFromEnv({ ...vars, THERMITE_MODEL_COMPACT_AT: "40" }),
+      /THERMITE_MODEL_COMPACT_AT: The compaction point is a whole percent of the context window, from 50 to 95\. Not 40\./,
+    );
   });
 
   test("a broken route file is dropped, not trusted", () => {

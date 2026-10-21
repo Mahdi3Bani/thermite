@@ -153,7 +153,7 @@ Each experiment in `up_next`, `proposed`, `in_progress` and `tried` has these fi
 | `position` | Its place among the queued experiments, 0 first. `null` once it is not queued |
 | `lane`, `trial` | The lane and the trial that took it |
 | `attempt` | The attempt its trial submitted, if any |
-| `result` | For a `done` experiment: `submitted`, `no_attempt`, or how its trial ended without one: `interrupted`, `error`, `wall`, `turns`, `context`, or `finished` for a research trial |
+| `result` | For a `done` experiment: `submitted`, `no_attempt`, or how its trial ended without one: `interrupted`, `error`, `wall`, `turns`, `context` (its conversation did not fit the model's window even compacted), or `finished` for a research trial |
 | `dropped_by`, `dropped_why` | Who dropped it and why |
 | `from_run` | The run it was copied from, when a new run started with another run's experiments |
 | `at`, `updated_at` | When it was added, and when it last changed |
@@ -505,13 +505,13 @@ It refuses with the same words as **Add a rig**:
 
 **Each agent's model on a rig.** Owner, operator and reader.
 
-> Each agent's model on a rig, as Edit rig's section The agents shows it: workers, planner, teachers (the teacher pair), combiner, auditor and panel (the review panel). Each is {provider, model, effort}, the workers' with harness and context_cap too, or null for its default: the workers use the rig's own settings, the planner the workers' model, an advisor the rig's advisors file. It is what control gives the rig; set it with set_rig_model.
+> Each agent's model on a rig, as Edit rig's section The agents shows it: workers, planner, teachers (the teacher pair), combiner, auditor and panel (the review panel). Each is {provider, model, effort}, the workers' with harness, context_cap and compact_at too (compact_at null: the default, 80% of the window), or null for its default: the workers use the rig's own settings, the planner the workers' model, an advisor the rig's advisors file. It is what control gives the rig; set it with set_rig_model.
 
 | Input | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `rig` | string | | The rig |
 
-Returns `{rig, agents}`. `agents` has one key for each row of section **2 · The agents** on **Edit rig**: `workers`, `planner`, `teachers` (the teacher pair), `combiner`, `auditor` and `panel` (the review panel). Each is `{provider, model, effort}`, or `null` when the agent has no model of its own on control. The workers' also has `harness` and `context_cap` (the [cap](#set_rig_model) on their context window, or `null`). `effort` is `null` for the model's own default. `null` means the agent's default:
+Returns `{rig, agents}`. `agents` has one key for each row of section **2 · The agents** on **Edit rig**: `workers`, `planner`, `teachers` (the teacher pair), `combiner`, `auditor` and `panel` (the review panel). Each is `{provider, model, effort}`, or `null` when the agent has no model of its own on control. The workers' also has `harness`, `context_cap` (the [cap](#set_rig_model) on their context window, or `null`) and `compact_at` (the share of the window, in percent, at which their conversations are [compacted](limits-and-pacing.md#compaction), or `null` for the default, 80). `effort` is `null` for the model's own default. `null` means the agent's default:
 
 | Agent | Its default |
 | --- | --- |
@@ -525,7 +525,7 @@ These are the models control gives the rig. [Give each agent its own model](../h
 
 **Give a rig's agents a model.** Owner and operator.
 
-> As a row of Edit rig's section The agents does: the model one of a rig's agents uses, from a model provider in Providers (see the providers tool for their models). agent: workers (default), planner, teachers (the teacher pair), combiner, auditor or panel (the review panel); the other agents keep their models. clear: true, with no provider or model, sends the agent back to its default: the workers to the rig's own settings, the planner to the workers' model, an advisor to the rig's advisors file. The workers and the planner take a new model within a minute, and the rig checks the workers' model; an advisor uses its new model from its next round. An advisor takes a model from an API key or a ChatGPT subscription (it runs in the supervisor, with read-only tools) or from a Claude subscription (it runs in Claude Code), never OpenCode's own models. harness and context_window are for the workers only. Harness default: what the model needs (Claude Code for a Claude subscription, OpenCode for OpenCode's free models, else Pi). codex runs the workers, and a planner with no model of its own, in the Codex CLI: only with a ChatGPT subscription or an OpenAI-compatible provider. context_window caps the workers' context window in tokens (from 4096), for example to compare two models at the same window; a cap above the provider's window is refused. Agents in Pi keep to it; OpenCode, Claude Code and Codex do not read it. Each call for the workers sets the cap anew: a call without context_window removes a cap the rig had. Returns context_window, the window the agent's model route carries (null: the provider lists none, or the model was cleared), and agents, each agent's model after the change, as rig_models reads them.
+> As a row of Edit rig's section The agents does: the model one of a rig's agents uses, from a model provider in Providers (see the providers tool for their models). agent: workers (default), planner, teachers (the teacher pair), combiner, auditor or panel (the review panel); the other agents keep their models. clear: true, with no provider or model, sends the agent back to its default: the workers to the rig's own settings, the planner to the workers' model, an advisor to the rig's advisors file. The workers and the planner take a new model within a minute, and the rig checks the workers' model; an advisor uses its new model from its next round. An advisor takes a model from an API key or a ChatGPT subscription (it runs in the supervisor, with read-only tools) or from a Claude subscription (it runs in Claude Code), never OpenCode's own models. harness, context_window and compact_at are for the workers only. Harness default: what the model needs (Claude Code for a Claude subscription, OpenCode for OpenCode's free models, else Pi). codex runs the workers, and a planner with no model of its own, in the Codex CLI: only with a ChatGPT subscription or an OpenAI-compatible provider. context_window caps the workers' context window in tokens (from 4096), for example to compare two models at the same window; a cap above the provider's window is refused. Pi keeps to it; OpenCode, Codex and Claude Code get it in their own settings, as far as each takes one. compact_at is the share of the window, in percent (50 to 95; default 80), at which a worker's conversation is compacted: the conversation is kept as a document, summarized, and the trial goes on. It never ends a trial. Each call for the workers sets the cap and compact_at anew: a call without them removes a cap and returns to the default point. Returns context_window, the window the agent's model route carries (null: the provider lists none, or the model was cleared), compact_at for the workers (null: the default), and agents, each agent's model after the change, as rig_models reads them.
 
 | Input | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -537,19 +537,21 @@ These are the models control gives the rig. [Give each agent its own model](../h
 | `harness` | `pi`, `opencode` or `codex`, optional | what the model needs: Claude Code for a Claude subscription, OpenCode v2 for OpenCode's free models, else Pi (a ChatGPT subscription too) | The workers only. The [worker harness](glossary.md). `codex`: the Codex CLI, for a ChatGPT subscription or an OpenAI-compatible provider; the planner then runs in it too, unless it has a model of its own |
 | `effort` | `low`, `medium`, `high`, `xhigh` or `max`, optional | none | How long the model thinks, as **Effort** on **Edit rig** |
 | `context_window` | whole number, optional | none: the provider's window | The workers only. A cap on the model's [context window](glossary.md), in tokens, from 4,096 to the window the provider lists (to 100,000,000 when it lists none). Each call for the workers sets it anew: a call without it removes a cap the rig had. A planner with no model of its own uses the workers' route, so the cap too |
+| `compact_at` | whole number, optional | none: 80 | The workers only. The share of the context window, in percent, from 50 to 95, at which an agent's conversation is [compacted](limits-and-pacing.md#compaction): kept as a document, summarized, and the trial goes on. It never ends a trial. Each call for the workers sets it anew: a call without it goes back to 80. A planner with no model of its own uses the workers' route, so the point too |
 
 It sets one agent's model for every run on the rig, as that agent's row on **Edit rig** does, and the other agents keep theirs. Where each agent then runs is in [Where each agent runs](../how-to/models/model-per-agent.md#where-each-agent-runs). An advisor can use a ChatGPT subscription's model: it runs in the supervisor with read-only tools, on the subscription's access token, which control renews.
 
-Returns `{rig, agent, model, context_window, said, agents}`:
+Returns `{rig, agent, model, context_window, compact_at, said, agents}` (`compact_at` for the workers only):
 
 - `model` is the model given, or `null` after `clear`.
 - `context_window` is the window the agent's model route carries. For the workers it is the cap when that is lower than the provider's window, else the provider's window. For the other agents it is the provider's window. It is `null` when the provider lists none, or after `clear`.
+- `compact_at` is the workers' compaction point, in percent, or `null` for the default (80), or after `clear`.
 - `agents` is each agent's model after the change, as [`rig_models`](#rig_models) returns it.
 - `said` is the dashboard's words:
 
 | Call | `said` |
 | --- | --- |
-| A model for the workers | `<rig> takes <model> from "<provider>" under <harness> within a minute, and checks it.`, followed by `Its context window: 131,072 tokens (capped; the provider allows 204,800).` (with the rig's numbers) when a cap is lower than the provider's window |
+| A model for the workers | `<rig> takes <model> from "<provider>" under <harness> within a minute, and checks it.`, followed by `Its context window: 131,072 tokens (capped; the provider allows 204,800).` (with the rig's numbers) when a cap is lower than the provider's window, and by `Its conversations are compacted at 70% of the window.` (with its point) when `compact_at` is given |
 | `clear` for the workers | `<rig> goes back to its own settings within a minute.` |
 | A model for another agent | `Control sent a model for the <agent> to <rig>. The rig takes the change in less than one minute.` |
 | `clear` for the planner | `Control sent the planner back to the workers' model to <rig>. The rig takes the change in less than one minute.` |
@@ -557,7 +559,7 @@ Returns `{rig, agent, model, context_window, said, agents}`:
 
 The workers and the planner take a new model within a minute. An advisor reads its model from control each time it runs, so it uses a new one from its next round.
 
-Besides `mcp:set_rig_model`, the audit log records the change with the caller's actor: `rig_model_given` for the workers, with `context_cap`, and `agent_model_given` for another agent, with `role`, `provider`, `model` and `effort` (`provider` and `model` are `null` after `clear`).
+Besides `mcp:set_rig_model`, the audit log records the change with the caller's actor: `rig_model_given` for the workers, with `context_cap` and `compact_at`, and `agent_model_given` for another agent, with `role`, `provider`, `model` and `effort` (`provider` and `model` are `null` after `clear`).
 
 Errors:
 
@@ -566,13 +568,15 @@ Errors:
 - `Give clear alone, or a provider and a model.`
 - `Only the workers take a harness. The other agents run where their model needs, as Runs in on Edit rig says.`
 - `Only the workers take a context window cap. A planner with no model of its own uses the workers' cap.`
+- `Only the workers take a compaction point. A planner with no model of its own uses the workers' point.`
 - `That provider does not list that model.` (the workers), or `That provider does not list that model (<agent>).` (another agent)
 - `The <agent> cannot use OpenCode's own models: they run only in OpenCode. Choose another model.` (an advisor)
 - `<model> takes at most <n> tokens.` (a cap above the provider's window) and `A context window is a whole number of tokens from 4,096 to 100,000,000.`
+- `The compaction point is a whole percent of the context window, from 50 to 95.`
 - `OpenCode's free models run only in the OpenCode harness: choose OpenCode v2 for this rig.` (the workers, with `harness: "pi"` or `"codex"`)
 - `Codex runs only with a ChatGPT subscription or an OpenAI-compatible provider: choose Pi or OpenCode v2 for this provider.` (the workers, with `harness: "codex"` and an Anthropic or OpenCode provider)
 
-A Claude subscription's model runs in Claude Code whatever `harness` says. Its REST twin is [`POST /v1/rigs/<rig>/model`](rest-api.md#the-agents-model), and [Cap the model's context window](../how-to/models/connect-a-provider.md#cap-the-models-context-window) says how the cap works.
+A Claude subscription's model runs in Claude Code whatever `harness` says. Its REST twin is [`POST /v1/rigs/<rig>/model`](rest-api.md#the-agents-model), and [Cap the model's context window](../how-to/models/connect-a-provider.md#cap-the-models-context-window) and [Set when a conversation is compacted](../how-to/models/connect-a-provider.md#set-when-a-conversation-is-compacted) say how the cap and the compaction point work.
 
 ### start_run
 

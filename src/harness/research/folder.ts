@@ -13,6 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { COMPACTIONS_DIR } from "../../core/compaction.ts";
 import { KB_BODY_MAX } from "../../core/kb-index.ts";
 import type { ResearchFolderPaths } from "../agents/research-tools.ts";
 import type { Role, Runner } from "../broker/runner.ts";
@@ -28,6 +29,7 @@ import type { Ledger } from "../ledger.ts";
  *   hypotheses/ notes/ report/
  *   lanes/LANE/                         each lane's files, as they were when its last trial ended
  *   work/LANE/                          the lane's working area: its own while its trial runs
+ *   compactions/                        each agent conversation, as kept before a compaction
  *
  * The harness owns all of it but the working areas, so workers read everything and change only
  * their own area; the records stay the source of truth (the files are rebuilt from them). A
@@ -194,6 +196,7 @@ export class ResearchFolder {
       ? ["sources", "claims", "findings", "hypotheses", "notes", "report", "lanes", "work"]
       : ["sources", "claims", "notes"])
       mkdirSync(join(root, d), { recursive: true });
+    this.showCompactions(run);
     this.knowledge?.show(run);
     const knowledge = this.knowledge?.summary(run);
     const knowledgeLine = knowledge
@@ -412,6 +415,35 @@ export class ResearchFolder {
 
   private saved(run: string, lane: string): string {
     return join(this.stateRoot, run, lane);
+  }
+
+  /**
+   * An agent's conversation before one of its compactions (goal 070): kept whole in the harness's
+   * state, and shown under compactions/, where every agent of the run may read it and none may
+   * change it. Returns its path as the agents see it.
+   */
+  keepCompaction(run: string, name: string, markdown: string): string {
+    if (!SAFE.test(name)) throw new Error(`not a file name for a compaction: ${name}`);
+    writeAtomic(join(this.stateRoot, run, COMPACTIONS_DIR, name), markdown);
+    const shown = join(this.root(run), COMPACTIONS_DIR, name);
+    writeAtomic(shown, markdown);
+    return shown;
+  }
+
+  /** A kept conversation's text (the harness's own copy), for its event. */
+  readCompaction(run: string, name: string): string {
+    if (!SAFE.test(name)) throw new Error(`not a file name for a compaction: ${name}`);
+    return readFileSync(join(this.stateRoot, run, COMPACTIONS_DIR, name), "utf8");
+  }
+
+  /** The kept conversations under compactions/, where scratch lost them (after a restart). */
+  private showCompactions(run: string): void {
+    const kept = join(this.stateRoot, run, COMPACTIONS_DIR);
+    if (!existsSync(kept)) return;
+    for (const name of readdirSync(kept)) {
+      const shown = join(this.root(run), COMPACTIONS_DIR, name);
+      if (SAFE.test(name) && !existsSync(shown)) writeAtomic(shown, readNoFollow(join(kept, name)));
+    }
   }
 
   /**

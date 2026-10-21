@@ -30,6 +30,7 @@ import {
   fallbackPlan,
   type GoalReport,
   lanesOf,
+  type PlannerCompaction,
   type PlannerInput,
   type PlannerMcp,
   type PlannerPast,
@@ -744,7 +745,7 @@ export class Scheduler {
           assignments: f.assignments,
           newFamilies: f.newFamilies,
         };
-      } else p = await plan(input, m, ctrl.signal, ask, past, mcp);
+      } else p = await plan(input, m, ctrl.signal, ask, past, mcp, this.plannerCompaction(run));
     } finally {
       this.planning = undefined;
     }
@@ -1615,6 +1616,37 @@ export class Scheduler {
       toolCalls: Math.max(r.toolCalls, p.tool_calls),
       tokensIn: Math.max(r.tokensIn, p.tokens_in),
       tokensOut: Math.max(r.tokensOut, p.tokens_out),
+    };
+  }
+
+  /**
+   * Where a planner call's compactions go in Pi (goal 070): the run's research folder keeps each
+   * conversation, numbered within the call, and each is recorded as a worker's is.
+   */
+  private plannerCompaction(run: string): PlannerCompaction | undefined {
+    const store = this.o.service.compactions;
+    if (!store) return undefined;
+    const of = {
+      run,
+      lane: "planner",
+      trial: null,
+      who: `planner-${randomUUID().replace(/-/g, "").slice(0, 12)}`,
+      source: "planner",
+    };
+    let n = 0;
+    return {
+      keep: (_n, markdown) => store.keep(of, ++n, markdown),
+      done: (r) =>
+        store.record(of, {
+          number: n,
+          tokensBefore: r.tokensBefore,
+          tokensAfter: r.tokensAfter,
+          how: r.how,
+          harness: "pi",
+          summary: r.summary,
+          error: r.error,
+          kept: r.path !== undefined,
+        }),
     };
   }
 

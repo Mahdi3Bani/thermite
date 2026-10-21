@@ -41,7 +41,7 @@ You return to the rig's page, which says, for example, "Control sent a new model
 
 The workers and the planner take a new model within a minute. The advisors read their models from control each time they run, so an advisor uses its new model from its next round.
 
-This page has no field for a cap on the workers' context window yet. A cap set over the REST API or MCP stays while the workers keep the same model, and goes when you choose another one here. See [Cap the model's context window](connect-a-provider.md#cap-the-models-context-window).
+This page has no field yet for a cap on the workers' context window, or for the share of it at which their conversations are compacted. A cap or a compaction point set over the REST API or MCP stays while the workers keep the same model, and goes when you choose another one here. See [Cap the model's context window](connect-a-provider.md#cap-the-models-context-window) and [Set when a conversation is compacted](connect-a-provider.md#set-when-a-conversation-is-compacted).
 
 When the workers' or the planner's model changes, the rig runs its model check at once. The check tests only the workers' model. For the other agents, watch a run on the rig in **Live** (in the sidebar), the dashboard's view of one run's agents at work. Choose a filter above the stream:
 
@@ -57,7 +57,7 @@ An agent or a script can set the same models without this page:
 - **MCP**, with the owner's or an operator's token: [`set_rig_model`](../../reference/mcp-tools.md#set_rig_model), with `agent` set to `workers`, `planner`, `teachers` (the teacher pair), `combiner`, `auditor` or `panel` (the review panel). [`rig_models`](../../reference/mcp-tools.md#rig_models) reads each agent's model.
 - **REST**, with the owner's token: [`POST /v1/rigs/<rig>/model`](../../reference/rest-api.md#the-agents-model) takes the same fields, and `GET /v1/rigs/<rig>/model` reads each agent's model.
 
-Each call changes one agent, and the others keep their models. The checks and the refusals are this page's. `clear: true` sends the agent back to its default, as the first choice in its **Model** list does here: **its own settings**, **same as the workers** or **the rig's advisors file**. `harness` and `context_window` are for the workers only.
+Each call changes one agent, and the others keep their models. The checks and the refusals are this page's. `clear: true` sends the agent back to its default, as the first choice in its **Model** list does here: **its own settings**, **same as the workers** or **the rig's advisors file**. `harness`, `context_window` and `compact_at` are for the workers only.
 
 For example, to give the auditor a model from a ChatGPT subscription named `chatgpt-pro`, call `set_rig_model` with:
 

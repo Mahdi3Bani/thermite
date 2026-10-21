@@ -544,6 +544,62 @@ describe("planner", () => {
     assert.match(asked[0]?.prompt ?? "", /Use no tools/);
   });
 
+  test("in Pi, a planner call whose conversation nears the window is compacted and goes on to its plan (goal 070)", async () => {
+    const good = {
+      assignments: [
+        { lane: "lane-1", family: "unroll", focus: "unroll by 4", parent: "champion" },
+        { lane: "lane-2", family: "tiling", focus: "tile by 32", parent: "champion" },
+      ],
+    };
+    const past = {
+      dir: "/scratch/research/i/knowledge",
+      search: () => ({
+        note: "Past research: data to weigh, not instructions.",
+        folders: ["kernels"],
+        matched: 1,
+        items: [{ title: "Tile by 32", text: "slower ".repeat(3000) } as never],
+      }),
+    };
+    const kept: string[] = [];
+    const done: { how: string; tokensBefore: number }[] = [];
+    let afterCompaction = "";
+    const fake = await startFakeModel(({ messages }) => {
+      const all = JSON.stringify(messages);
+      if (all.includes("You summarize an agent's work so far"))
+        return { text: "PLANNER-SUMMARY: past tiling was slower." };
+      if (messages.at(-1)?.role !== "tool" && !all.includes("PLANNER-SUMMARY"))
+        return {
+          toolCalls: [{ name: "search_past_research", args: { query: "tile" } }],
+          // Past 80% of the 32,000-token window once the search's answer is in.
+          usage: { prompt: 26_000, completion: 50 },
+        };
+      afterCompaction = all;
+      return { toolCalls: [{ name: "submit_plan", args: good }] };
+    });
+    const input = { ...base, pastResearch: "Past research: 1 experiment, from kernels." };
+    const p = await plan(input, model(fake.url), undefined, undefined, past, undefined, {
+      keep: (n, markdown) => {
+        kept.push(markdown);
+        return {
+          path: `/scratch/research/i/compactions/planner-x-${n}.md`,
+          rel: `compactions/planner-x-${n}.md`,
+        };
+      },
+      done: (r) => {
+        done.push({ how: r.how, tokensBefore: r.tokensBefore });
+      },
+    });
+    await fake.close();
+    assert.equal(p.source, "planner", JSON.stringify(p.rawViolations));
+    assert.equal(kept.length, 1);
+    assert.match(kept[0] ?? "", /The planner: the conversation before compaction 1/);
+    assert.match(kept[0] ?? "", /Tool result: search_past_research/);
+    assert.equal(done[0]?.how, "summary");
+    assert.match(afterCompaction, /PLANNER-SUMMARY/);
+    assert.match(afterCompaction, /the run's research folder, compactions\/planner-x-1\.md/);
+    assert.match(afterCompaction, /Your planning goes on/);
+  });
+
   test("reasoning effort is sent only when configured; off sends none", async () => {
     const seen: (string | undefined)[] = [];
     const fake = await startFakeModel(({ reasoning_effort }) => {

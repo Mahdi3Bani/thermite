@@ -2,12 +2,13 @@ import { readFileSync } from "node:fs";
 import type { McpCallResult } from "../../common/mcp-client.ts";
 import type { McpToolInfo } from "../../core/mcp.ts";
 import type { Runner, RunOutcome, RunRequest } from "../broker/runner.ts";
+import { KEPT_MAX } from "../compactions.ts";
 import { apiCall } from "./api-call.ts";
 import type { TrialProgress } from "./live-session.ts";
 import { modelConfigFromEnv } from "./model.ts";
 import { runResearchTrial } from "./research-worker.ts";
 import type { AnyTrial } from "./spawn.ts";
-import { type McpForAgent, runTrial, type TrialSpec } from "./worker.ts";
+import { type CompactionLink, type McpForAgent, runTrial, type TrialSpec } from "./worker.ts";
 
 /**
  * A worker trial in its own process (one per trial), run as its lane's agent user. It reaches
@@ -96,9 +97,29 @@ async function main(): Promise<void> {
         .catch(() => undefined);
     }
   }
+  // Compactions (goal 070): the harness keeps the conversation in the run's research folder and
+  // records each compaction; the trial's token decides the run, the lane and the file's name.
+  const compaction: CompactionLink = {
+    keep: async (n, markdown) =>
+      (await call("POST", "/v1/trial/snapshot", {
+        number: n,
+        markdown: markdown.slice(0, KEPT_MAX),
+      })) as { path: string; rel: string },
+    done: (r) =>
+      call("POST", "/v1/trial/compacted", {
+        number: r.number,
+        tokens_before: r.tokensBefore,
+        tokens_after: r.tokensAfter,
+        how: r.how,
+        kept: r.path !== undefined,
+        ...(r.summary ? { summary: r.summary.slice(0, 32_000) } : {}),
+        ...(r.error ? { error: r.error.slice(0, 2000) } : {}),
+      }),
+  };
   if (trial.kind === "research") {
     const result = await runResearchTrial(trial.spec, {
       mcp,
+      compaction,
       model,
       call: (op, args) => call("POST", `/v1/research/${op}`, args),
       link,
@@ -137,6 +158,7 @@ async function main(): Promise<void> {
     research: (op, args) => call("POST", `/v1/research/${op}`, args),
     link,
     mcp,
+    compaction,
   });
   process.stdout.write(`\n${JSON.stringify(result)}\n`);
 }

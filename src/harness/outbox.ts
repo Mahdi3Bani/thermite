@@ -166,8 +166,9 @@ export async function writeExport(input: {
     }
 
     // A research campaign's output is its report and its whole folder: claims, findings, notes,
-    // sources and the lanes' files, exported once its final report is written. A hill-climb or
-    // goal run that recorded sources, claims or notes exports its folder when it is closed.
+    // sources, the lanes' files and the conversations kept before compactions, exported once its
+    // final report is written. A hill-climb or goal run that recorded sources, claims or notes,
+    // or compacted a conversation, exports its folder when it is closed.
     if (input.researchFolder) {
       const recorded = (run: string) =>
         Number(
@@ -175,9 +176,10 @@ export async function writeExport(input: {
             ledger.db
               .prepare(
                 `select (select count(*) from source where run = ?) + (select count(*) from claim where run = ?)
-                   + (select count(*) from note where run = ?) as n`,
+                   + (select count(*) from note where run = ?)
+                   + (select count(*) from event where kind = 'context_compacted' and subject = ?) as n`,
               )
-              .get(run, run, run) as { n: number }
+              .get(run, run, run, run) as { n: number }
           ).n,
         ) > 0;
       const finished = new Set([

@@ -38,7 +38,7 @@ In progress:
 
 - copying a campaign, to give a second model the same campaign from zero ([goal 069](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/069-copy-a-campaign.goal); [Compare two models from zero](../how-to/campaigns/start-from-dashboard.md#compare-two-models-from-zero)). It works over REST, MCP and the command line; a **Copy** button on the campaign's page is still to come;
 - a research folder that research-mode workers search with ordinary tools and write to. It is built, and its first real research runs are under way ([goal 062](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/062-research-folder.goal));
-- a cap on the context window of a rig's model. It works over REST and MCP; a field for it on **Edit rig** is still to come ([goal 070](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/070-model-context-cap.goal)).
+- a cap on the context window of a rig's model, and compaction near it: a trial's conversation is kept, summarized and goes on, in every harness. Both work over REST and MCP; fields for them on **Edit rig** are still to come ([goal 070](https://github.com/iammrduncan/thermite/blob/main/docs/plan/goals/070-model-context-cap.goal)).
 
 Still to come in v0.1.0:
 

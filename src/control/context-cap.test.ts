@@ -252,3 +252,123 @@ describe("a cap on a rig's model context window", () => {
     assert.doesNotMatch(await s.page("/ui/settings"), /capped/);
   });
 });
+
+describe("the compaction point of a rig's model (goal 070)", () => {
+  const routeOf = async (s: Awaited<ReturnType<typeof stack>>) =>
+    (await s.route()) as unknown as { compact_at?: number; revision: string };
+
+  test("REST: compact_at is kept with the model, carried in the route, shown, and refused out of range in words", async () => {
+    const s = await stack();
+    const plain = await s.give({ provider: "lab", model: "wide-model" });
+    assert.equal(((await plain.json()) as { compact_at: unknown }).compact_at, null);
+    const before = await routeOf(s);
+    assert.equal(before.compact_at, undefined, "no point set: the harness's default");
+
+    const set = await s.give({ provider: "lab", model: "wide-model", compact_at: 70 });
+    assert.equal(set.status, 200);
+    const body = (await set.json()) as Record<string, unknown>;
+    assert.equal(body.compact_at, 70);
+    assert.match(String(body.said), /Its conversations are compacted at 70% of the window\./);
+    assert.equal(s.store.rigModels()["rig-a"]?.compactAt, 70);
+    const route = await routeOf(s);
+    assert.equal(route.compact_at, 70);
+    assert.notEqual(route.revision, before.revision, "the rig takes the new point");
+    const read = (await (
+      await s.api.request("/v1/rigs/rig-a/model", {
+        headers: { authorization: `Bearer ${TOKENS.admin}` },
+      })
+    ).json()) as { agents: { workers: { compact_at: number | null } } };
+    assert.equal(read.agents.workers.compact_at, 70);
+
+    for (const bad of [49, 96, 80.5, 0]) {
+      const r = await s.give({ provider: "lab", model: "wide-model", compact_at: bad });
+      assert.equal(r.status, 400, String(bad));
+      assert.deepEqual(await r.json(), {
+        error: "The compaction point is a whole percent of the context window, from 50 to 95.",
+      });
+    }
+    const planner = await s.give({
+      agent: "planner",
+      provider: "lab",
+      model: "wide-model",
+      compact_at: 70,
+    });
+    assert.equal(planner.status, 400);
+    assert.match(JSON.stringify(await planner.json()), /Only the workers take a compaction point/);
+    const cleared = await s.give({ clear: true, compact_at: 70 });
+    assert.equal(cleared.status, 400);
+    assert.equal(s.store.rigModels()["rig-a"]?.compactAt, 70, "a refusal changes nothing");
+
+    // Given again without it: back to the default, and the route as it was.
+    await s.give({ provider: "lab", model: "wide-model" });
+    assert.equal(s.store.rigModels()["rig-a"]?.compactAt, undefined);
+    const again = await routeOf(s);
+    assert.equal(again.compact_at, undefined);
+    assert.equal(again.revision, before.revision, "a route without a point keeps its revision");
+    const given = s.store
+      .listAudit(50, { action: "rig_model_given" })
+      .map((e) => (e.body as { compact_at: number | null }).compact_at);
+    assert.deepEqual(given.reverse(), [null, 70, null]);
+  });
+
+  test("MCP: set_rig_model takes compact_at, and rig_models shows it", async () => {
+    const s = await stack();
+    const mcp = await connect(s.api, TOKENS.operator);
+    const r = text(
+      await mcp.callTool({
+        name: "set_rig_model",
+        arguments: {
+          rig: "rig-a",
+          provider: "lab",
+          model: "wide-model",
+          context_window: 131_072,
+          compact_at: 85,
+        },
+      }),
+    );
+    assert.equal(r.compact_at, 85);
+    assert.equal(r.context_window, 131_072);
+    assert.equal((await routeOf(s)).compact_at, 85);
+    const read = text(await mcp.callTool({ name: "rig_models", arguments: { rig: "rig-a" } }));
+    assert.equal((read.agents as { workers: { compact_at: number } }).workers.compact_at, 85);
+    const bad = await mcp.callTool({
+      name: "set_rig_model",
+      arguments: { rig: "rig-a", provider: "lab", model: "wide-model", compact_at: 99 },
+    });
+    assert.equal(bad.isError, true);
+    assert.match(JSON.stringify(bad), /from 50 to 95/);
+    const tools = await mcp.listTools();
+    assert.match(
+      String(tools.tools.find((t) => t.name === "set_rig_model")?.description),
+      /compact_at is the share of the window, in percent \(50 to 95; default 80\)/,
+    );
+    await mcp.close();
+  });
+
+  test("Settings › Providers shows the point with the model, and its forms keep it with the same model", async () => {
+    const s = await stack();
+    await s.give({ provider: "lab", model: "wide-model" });
+    assert.match(
+      await s.page("/ui/settings"),
+      /Its agents run under Pi with wide-model from lab\. Its conversations are compacted at 80% of the window \(the default\)\./,
+    );
+    await s.give({ provider: "lab", model: "wide-model", compact_at: 75 });
+    const settings = await s.page("/ui/settings");
+    assert.match(settings, /Its conversations are compacted at 75% of the window\./);
+    const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(settings)?.[1] ?? "";
+    await s.post("/ui/settings/rigs", {
+      csrf,
+      rig: "rig-a",
+      harness: "opencode",
+      choice: "lab|wide-model",
+    });
+    assert.equal(s.store.rigModels()["rig-a"]?.compactAt, 75, "kept with the same model");
+    await s.post("/ui/settings/rigs", {
+      csrf,
+      rig: "rig-a",
+      harness: "pi",
+      choice: "lab|narrow-model",
+    });
+    assert.equal(s.store.rigModels()["rig-a"]?.compactAt, undefined, "set for the model before");
+  });
+});

@@ -50,13 +50,41 @@ None of these ends research. A trial that ends at its time is followed by the la
 | Trials at the same time on a rig | 1 | **Edit rig** › **Workers at a time** (1 to 16), or `THERMITE_MAX_TRIALS` (1 to 16) |
 | Lanes planned per epoch | 2 | The contract's `lanes.count` (1 to 16). A redirect's `lane_count` can lower it |
 | Trials per lane per epoch | 3 | The contract's `lanes.trials_per_epoch` |
-| Reminders to a Pi worker | When 85% of the trial's time is used, 10 turns before a turn cap, and at 80% of the model's context window | Fixed |
+| Reminders to a Pi worker | When 85% of the trial's time is used, and 10 turns before a turn cap. None about the context window: a conversation that grows is compacted (below) | Fixed |
+| Compaction of an agent's conversation | At 80% of the model's [context window](glossary.md). The conversation is kept as a document, summarized, and the trial goes on. It never ends a trial and never asks for a submission | `compact_at` (50 to 95) with the workers' model, over [`set_rig_model`](mcp-tools.md#set_rig_model) or [`POST /v1/rigs/<rig>/model`](rest-api.md#the-agents-model), or `THERMITE_MODEL_COMPACT_AT`. See [Compaction](#compaction) |
 | Nudges when a worker stops without submitting | 2. An OpenCode, Claude Code or Codex worker is continued again for as long as the owner's messages wait for its trial and its last run made progress | Fixed (Pi, OpenCode, Claude Code and Codex). Then the trial ends; the trial's time limit still applies |
 | Time to finish after a submission | 5 s after the submission is recorded, the lane's agent is stopped. Its closing reply is not waited for, and a note or idea it has not written by then is not recorded | Fixed (OpenCode, Claude Code and Codex; Pi stops at once: no tool call runs after its submission) |
-| Model call retries in a Pi trial | Waits of 5 s, doubling to 60 s. The trial ends after 6 failed calls in a row, 5 cut-off replies in a row, or a full context | Fixed |
+| Model call retries in a Pi trial | Waits of 5 s, doubling to 60 s. The trial ends after 6 failed calls in a row, or 5 cut-off replies in a row. A full context is compacted, and the trial goes on | Fixed |
 | A lane's wait after unproductive trials | 15 s, doubling for each one in a row, at most 10 minutes. Unproductive: an error, no submission, or an attempt that is `rejected_v0` or `duplicate` (research: an error) | Fixed |
 | A run's cool-down after 6 trials in a row end in errors | 30 minutes, with an `agents_cooldown` event. A new model given to the rig, or the run resumed, after the last of those errors ends it at once | Fixed |
 | A full subscription usage window | Claude: no new trial or plan on the rig until the window resets. ChatGPT: 15 minutes, then try again | Fixed. Nothing buys more usage |
+
+### Compaction
+
+Near the model's [context window](glossary.md), an agent's conversation is compacted, and the trial goes on. Compaction is pacing, not a cap: it never ends a trial, and no agent is told to submit because its conversation grew.
+
+| What | Value |
+| --- | --- |
+| The compaction point | 80% of the window the rig's model route carries: the provider's window, or the owner's cap when that is lower. `compact_at` sets it, from 50 to 95 percent |
+| Why 80% | The summary is asked of the same model, with the conversation as its input. A fifth of the window is left for that call's answer and for the next reply |
+| Before each compaction | The whole conversation is kept as Markdown in the run's research folder: `compactions/<trial>-<n>.md` for a trial, `compactions/planner-<id>-<n>.md` for a planner call. Every agent of the run may read it, and none may change it |
+| What records it | A `context_compacted` event, in **History**; lines in the trial's **Live** view, with the summary; the trial's count of compactions in `trial_finished` |
+
+Each harness compacts in its own way. Thermite sets what each one takes:
+
+| Harness | Who compacts | The window Thermite sets | The point Thermite sets | Is a compaction recorded |
+| --- | --- | --- | --- | --- |
+| Pi (code and research workers, and the planner) | Thermite, before the next model call, once the conversation reaches the point, or when the provider says the context is full | None to set: Pi uses the route's window | The share, from `compact_at` | Yes, with the tokens before and after and the summary |
+| OpenCode v2 | OpenCode (`compaction.auto`) | `limit.context` of the rig's provider's model | `compaction.buffer`: the window less the point | No: OpenCode's JSON output does not report its compactions |
+| Codex CLI | Codex, always | `model_context_window`. Codex keeps it within what the model takes: 272,000 tokens for a model it does not know | `model_auto_compact_token_limit`. Codex compacts at the lower of it and 90% of the window | Yes, from the warning Codex gives after each compaction. Codex does not say the tokens |
+| Claude Code | Claude Code (on by default) | `CLAUDE_CODE_AUTO_COMPACT_WINDOW`. Claude Code takes 100,000 to 1,000,000 tokens: a smaller window counts as 100,000 | `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`: a percent of Claude Code's window less the room it keeps for a reply (up to 20,000 tokens). It can only make Claude Code compact earlier than its own point | Yes, with the tokens before and after |
+
+- **In Pi**, the conversation becomes the system prompt, the brief, one message with the summary and the kept conversation's path, and the most recent turns that fit: at most 6, within a quarter of the window. A tool call keeps its result. The summary is the same model's answer to a fixed prompt: the task, what was tried and measured, the state of the files, what failed and why, and what is next.
+- **If the summary call fails**, the bodies of the oldest tool results are left out instead, each with a one-line stub, until the conversation is at most half the window.
+- **Only a conversation that the provider says is full, and that cannot fit the window even compacted,** ends a trial, as `context`, with the reason in words: for example, a brief larger than the window. So does a context the provider calls full again right after two compactions in a row. Thermite's own token counts are estimates: they alone never end a trial.
+- **A model whose window is unknown** (`0`) is compacted only when the provider says the context is full.
+- **OpenCode's own models** keep the window and the compaction point OpenCode knows for them.
+- **A Pi planner call** has no file tool: its summary names where the run keeps the conversation, for the owner.
 
 ### Epochs and planning
 

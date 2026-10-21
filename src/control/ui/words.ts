@@ -307,10 +307,34 @@ export function sentence(u: RigView, e: StoredEvent): Sentence | null {
         b.attempt !== null && b.attempt !== undefined
           ? `submitted ${String(b.attempt)}`
           : `without a submission (${String(b.stopped).replace(/_/g, " ")}${b.error ? `: ${clip(String(b.error), 140)}` : ""})`;
+      const compactions = Number(b.compactions) || 0;
       return s(
-        `${b.lane ? String(b.lane) : "A lane"}'s trial${b.family ? ` on ${String(b.family)}` : ""} ended ${why}.`,
+        `${b.lane ? String(b.lane) : "A lane"}'s trial${b.family ? ` on ${String(b.family)}` : ""} ended ${why}.${compactions ? ` Its conversation was compacted ${compactions === 1 ? "once" : `${compactions} times`}.` : ""}`,
         b.attempt ? "" : b.stopped === "error" ? "bad" : "",
         { attempt: b.attempt ? String(b.attempt) : undefined, run: String(e.subject) },
+      );
+    }
+    // A conversation compacted near the model's window (goal 070): the trial went on.
+    case "context_compacted": {
+      const by =
+        b.harness === "opencode"
+          ? "OpenCode"
+          : b.harness === "codex"
+            ? "Codex"
+            : b.harness === "claude-code"
+              ? "Claude Code"
+              : "The harness";
+      const whose = b.trial
+        ? `${b.lane ? `${String(b.lane)}'s` : "a"} trial ${String(b.trial)}`
+        : `the ${String(b.lane ?? "planner")}`;
+      const num = (v: unknown) => (typeof v === "number" ? v.toLocaleString("en-US") : "");
+      const tokens = num(b.tokens_before)
+        ? ` at about ${num(b.tokens_before)} tokens${num(b.tokens_after) ? `, down to about ${num(b.tokens_after)}` : ""}`
+        : "";
+      return s(
+        `${by} compacted the conversation of ${whose} (compaction ${String(b.number)})${tokens}, and it went on.${b.how === "trimmed" ? " The summary failed, so older tool results were left out." : ""}${b.snapshot ? ` The conversation before it is kept in the run's research folder, ${String(b.snapshot)}.` : ""}`,
+        "",
+        { run: String(e.subject) },
       );
     }
     case "directive": {

@@ -5,6 +5,7 @@ import { type LaneLimitValues, laneLimits, SHARED_DEV_RUN_S } from "../../core/c
 import { notesInstruction } from "../../core/journal.ts";
 import type { McpToolInfo } from "../../core/mcp.ts";
 import type { Role, Runner } from "../broker/runner.ts";
+import { type CompactionReport, Compactor, summarizer } from "./compaction.ts";
 import { linkSession, type SessionLink } from "./live-session.ts";
 import { mcpAgentTools, mcpLine } from "./mcp-tools.ts";
 import { buildModel, type ModelConfig } from "./model.ts";
@@ -130,6 +131,19 @@ export interface TrialDeps {
   link?: SessionLink | undefined;
   /** The MCP tools the run's kit gives its workers, and how to call one (the harness's gateway). */
   mcp?: McpForAgent | undefined;
+  /** Where a compaction keeps the conversation, and where it is said (goal 070). */
+  compaction?: CompactionLink | undefined;
+}
+
+/**
+ * A trial's compactions through the harness (goal 070): the harness keeps each conversation in
+ * the run's research folder, where the agent can read it, and records each compaction.
+ */
+export interface CompactionLink {
+  /** Keeps the conversation before compaction `n`: its path on disk and in the run's folder. */
+  keep(n: number, markdown: string): Promise<{ path: string; rel: string }>;
+  /** Records the compaction: the event, and the live view's lines with the summary. */
+  done(r: CompactionReport): Promise<unknown>;
 }
 
 /** An agent's MCP tools in Pi: what the gateway listed for it, and a call through the gateway. */
@@ -153,6 +167,8 @@ export interface TrialResult {
   toolCalls: number;
   tokensIn: number;
   tokensOut: number;
+  /** How many times the trial's conversation was compacted (goal 070). */
+  compactions?: number | undefined;
   error?: string | undefined;
   /** The model's provider refused for now (a subscription's full usage window): not before this (ISO). */
   retryAfter?: string | undefined;
@@ -458,12 +474,36 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
     // else runs.
     toolExecution: "sequential",
   });
+  // Near the model's window the conversation is compacted and the trial goes on (goal 070): a
+  // conversation that grows never ends a trial nor asks for an early submission.
+  const compactor = new Compactor({
+    window: deps.model.contextWindow,
+    at: deps.model.compactAt,
+    convert: withoutPastThinking,
+    summarize: summarizer(deps.model),
+    keep: async (n, markdown) => {
+      if (!deps.compaction) throw new Error("this trial has no place to keep it");
+      const { path } = await deps.compaction.keep(n, markdown);
+      return {
+        path,
+        read: `Read it with the run tool when you need a detail, for example grep -n 'a word' ${path} or sed -n '1,200p' ${path}`,
+      };
+    },
+    done: async (r) => deps.compaction?.done(r),
+    stop: (reason) => {
+      if (result.submitted) return;
+      result.stopped = "context";
+      result.error = reason;
+      agent.abort();
+    },
+    title: `Trial ${spec.trialId} (${spec.lane})`,
+  });
+  agent.prepareRequest = compactor.hook(agent);
   // The budget is stated up front, and the worker is told once when it is nearly spent, so a
   // trial ends with its best change submitted rather than cut off with nothing.
   const started = Date.now();
   const minutes = Math.round(spec.wallMs / 60_000);
   let warned = false;
-  let warnedContext = false;
   const warn = (why: string) => {
     if (warned || result.submitted) return;
     warned = true;
@@ -486,19 +526,6 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
         agent.abort();
       } else if (maxTurns !== undefined && warnTurns !== undefined && result.turns >= warnTurns) {
         warn(`${maxTurns - result.turns} turns are left in this trial.`);
-      } else if (
-        !warnedContext &&
-        deps.model.contextWindow > 0 &&
-        (usage?.input ?? 0) >= 0.8 * deps.model.contextWindow &&
-        !result.submitted
-      ) {
-        warnedContext = true;
-        agent.steer({
-          role: "user",
-          content:
-            "This conversation is close to the model's context limit, and the trial ends when it is full. Build and test what you have, then submit your best working change now, listing anything unfinished in known_flaws.",
-          timestamp: Date.now(),
-        });
       } else if (Date.now() - started >= spec.wallMs * 0.85) {
         warn(
           `About ${Math.max(1, Math.round((spec.wallMs - (Date.now() - started)) / 60_000))} minutes are left in this trial.`,
@@ -533,6 +560,7 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
         agent,
         () => result.submitted !== undefined || result.stopped !== "no_submission",
         deps.model.contextWindow,
+        compactor,
       );
       if (end && !result.submitted) {
         result.stopped = end.stopped;
@@ -550,8 +578,10 @@ export async function runTrial(spec: TrialSpec, deps: TrialDeps): Promise<TrialR
   } finally {
     clearTimeout(wall);
   }
+  if (compactor.count) result.compactions = compactor.count;
   // Why the model stopped, for a trial that ended without a submission. A trial stopped at its
-  // own turn or time limit says so; the call the limit aborted is not the model's error.
+  // own turn or time limit says so, and one whose conversation does not fit even compacted has
+  // its reason already; the call the stop aborted is not the model's error.
   const last = lastAssistant(agent);
   if (!result.submitted && (result.stopped === "turns" || result.stopped === "wall")) {
     result.error =
@@ -594,7 +624,7 @@ export function withoutPastThinking(messages: AgentMessage[]): Message[] {
     ) as Message[];
 }
 
-/** Why keepGoing ended a trial early: its context is full, or the model is stuck or down. */
+/** Why keepGoing ended a trial early: its context is full even compacted, or the model is stuck or down. */
 export interface TrialEnd {
   stopped: "context" | "error";
   error: string;
@@ -603,63 +633,95 @@ export interface TrialEnd {
 /** Errors a provider gives for a request longer than the model's context. */
 const CONTEXT_ERROR = /context|too long|maximum (context )?length|exceed/i;
 
+/** Said to the agent after the harness compacted a full conversation. */
+const COMPACTED =
+  "The model's context was full, so the harness compacted the conversation. Continue where you left off.";
+
 /**
  * Until `done()`, a reply cut off at the output limit is told to think less and act, and a
- * failed model call is retried after a growing pause. Returns undefined when the model stops of
- * its own accord (or once `done()`), or why the trial must end: a full context (a cut-off
- * reply with almost no output, or a context-length error) cannot be continued, and a model
- * cut off 5 times running or failing 6 times running is left to the scheduler's backoff rather
- * than retried against a shared endpoint for the rest of the trial. The lane's next trial
- * starts afresh either way, so none of this ends research.
+ * failed model call is retried after a growing pause. A full context (a cut-off reply with almost
+ * no output, a prompt at the window, or a context-length error) is compacted and the trial goes
+ * on (goal 070); only a conversation that the compactor cannot make fit, twice running, ends it.
+ * Returns undefined when the model stops of its own accord (or once `done()`), or why the trial
+ * must end: a full context that compaction cannot help, or a model cut off 5 times running or
+ * failing 6 times running, which is left to the scheduler's backoff rather than retried against
+ * a shared endpoint for the rest of the trial. The lane's next trial starts afresh either way, so
+ * none of this ends research.
  */
 export async function keepGoing(
   agent: Agent,
   done: () => boolean,
   contextWindow?: number | undefined,
+  compactor?: Pick<Compactor, "force" | "count"> | undefined,
 ): Promise<TrialEnd | undefined> {
   let failures = 0;
   let cutoffs = 0;
-  while (!done()) {
-    const last = lastAssistant(agent);
-    if (last?.stopReason === "length") {
-      failures = 0;
-      const full = (contextWindow ?? 0) > 0 && last.input >= 0.95 * (contextWindow as number);
-      if (last.output < 64 || full) {
-        return {
-          stopped: "context",
-          error: `the conversation filled the model's context (${last.input} tokens in, ${last.output} out)`,
-        };
+  // Compactions forced in a row by a full context, with no finished reply between them.
+  let forced = 0;
+  let replies = 0;
+  let repliesAtForce = -1;
+  const unsubscribe = agent.subscribe((e) => {
+    if (e.type !== "turn_end") return;
+    const stop = (e.message as { stopReason?: string }).stopReason;
+    if (stop === "stop" || stop === "toolUse") replies++;
+  });
+  /** A full context: compacted and continued, or the trial's end when that cannot help. */
+  const full = async (why: string): Promise<TrialEnd | undefined> => {
+    if (replies !== repliesAtForce) forced = 0;
+    if (!compactor || forced >= 2)
+      return {
+        stopped: "context",
+        error: `the conversation filled the model's context${compactor ? " again right after a compaction" : ""} (${why})`,
+      };
+    forced++;
+    repliesAtForce = replies;
+    compactor.force();
+    await agent.prompt(COMPACTED);
+    return undefined;
+  };
+  try {
+    while (!done()) {
+      const last = lastAssistant(agent);
+      if (last?.stopReason === "length") {
+        failures = 0;
+        const atWindow = (contextWindow ?? 0) > 0 && last.input >= 0.95 * (contextWindow as number);
+        if (last.output < 64 || atWindow) {
+          const end = await full(`${last.input} tokens in, ${last.output} out`);
+          if (end) return end;
+          continue;
+        }
+        if (++cutoffs >= 5) {
+          return {
+            stopped: "error",
+            error: "the model's replies were cut off 5 times in a row without a tool call",
+          };
+        }
+        await agent.prompt(CUT_OFF);
+      } else if (last?.stopReason === "error") {
+        cutoffs = 0;
+        const message = (last.errorMessage ?? "no detail").slice(0, 200);
+        if (CONTEXT_ERROR.test(message)) {
+          const end = await full(message);
+          if (end) return end;
+          continue;
+        }
+        if (++failures > 5) {
+          return {
+            stopped: "error",
+            error: `the model call failed ${failures} times in a row: ${message}`,
+          };
+        }
+        await sleepUnlessDone(Math.min(60_000, 5_000 * 2 ** (failures - 1)), done);
+        if (done()) return undefined;
+        await agent.prompt(`The model call failed (${message}). Continue where you left off.`);
+      } else {
+        return undefined;
       }
-      if (++cutoffs >= 5) {
-        return {
-          stopped: "error",
-          error: "the model's replies were cut off 5 times in a row without a tool call",
-        };
-      }
-      await agent.prompt(CUT_OFF);
-    } else if (last?.stopReason === "error") {
-      cutoffs = 0;
-      const message = (last.errorMessage ?? "no detail").slice(0, 200);
-      if (CONTEXT_ERROR.test(message)) {
-        return {
-          stopped: "context",
-          error: `the conversation filled the model's context: ${message}`,
-        };
-      }
-      if (++failures > 5) {
-        return {
-          stopped: "error",
-          error: `the model call failed ${failures} times in a row: ${message}`,
-        };
-      }
-      await sleepUnlessDone(Math.min(60_000, 5_000 * 2 ** (failures - 1)), done);
-      if (done()) return undefined;
-      await agent.prompt(`The model call failed (${message}). Continue where you left off.`);
-    } else {
-      return undefined;
     }
+    return undefined;
+  } finally {
+    unsubscribe();
   }
-  return undefined;
 }
 
 /** Waits `ms`, or less once `done()` turns true (the trial's time ran out meanwhile). */

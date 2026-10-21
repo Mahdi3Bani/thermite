@@ -29,6 +29,7 @@ import type { RigCheckReport } from "./agents/model-check.ts";
 import type { ControlRoute, ModelInfo, ModelSource } from "./agents/model-source.ts";
 import { Registry } from "./agents/registry.ts";
 import { type AuditDecision, type AuditPackage, Audits } from "./audits.ts";
+import type { Compactions } from "./compactions.ts";
 import { Conclusions } from "./conclusions.ts";
 import {
   createAttemptCommit,
@@ -336,6 +337,11 @@ export class HarnessService {
 
   /** A research run's folder as files, for its export (main.ts sets it). */
   researchFolder?: ((run: string) => { root: string; files: string[] }) | undefined;
+  /**
+   * Each compaction of an agent's conversation (goal 070): the conversation kept in the run's
+   * research folder, and the record of it (main.ts sets it, with the research folder).
+   */
+  compactions?: Compactions | undefined;
   /** The promotion policy: what happens to a confirmed win (and to one an audit cleared). */
   get promotion(): "auto" | "owner_approval" {
     return this.settings.get().promotion;

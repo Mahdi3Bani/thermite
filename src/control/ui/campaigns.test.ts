@@ -409,3 +409,61 @@ test("Start a run lists each rig as free, busy or other hardware; a rig of other
     },
   ]);
 });
+
+test("History tells a compacted conversation, and how often a trial's was, in words (goal 070)", async () => {
+  const { sentence } = await import("./words.ts");
+  const u = { judge: { jobs: [] }, runs: [] } as never;
+  const say = (kind: string, body: Record<string, unknown>) => {
+    const x = sentence(u, {
+      kind,
+      subject: "r-1",
+      actor: "harness",
+      at: "2026-10-21T00:00:00Z",
+      body,
+    } as never);
+    return [x?.text, x?.tone, x?.run];
+  };
+  assert.deepEqual(
+    say("context_compacted", {
+      trial: "t-1",
+      lane: "lane-2",
+      harness: "pi",
+      number: 1,
+      tokens_before: 104_000,
+      tokens_after: 9_100,
+      how: "summary",
+      snapshot: "compactions/t-1-1.md",
+    }),
+    [
+      "The harness compacted the conversation of lane-2's trial t-1 (compaction 1) at about 104,000 tokens, down to about 9,100, and it went on. The conversation before it is kept in the run's research folder, compactions/t-1-1.md.",
+      "",
+      "r-1",
+    ],
+  );
+  assert.match(
+    String(
+      say("context_compacted", {
+        trial: "t-2",
+        lane: "lane-1",
+        harness: "codex",
+        number: 2,
+        tokens_before: null,
+        tokens_after: null,
+        how: "harness",
+        snapshot: null,
+      })[0],
+    ),
+    /^Codex compacted the conversation of lane-1's trial t-2 \(compaction 2\), and it went on\.$/,
+  );
+  assert.match(
+    String(
+      say("trial_finished", {
+        lane: "lane-1",
+        attempt: "a-1",
+        stopped: "submitted",
+        compactions: 2,
+      })[0],
+    ),
+    /ended submitted a-1\. Its conversation was compacted 2 times\.$/,
+  );
+});

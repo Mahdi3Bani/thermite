@@ -97,6 +97,7 @@ export const KB_EVENT_KINDS = [
   "journal_note",
   "research_note",
   "research_doc",
+  "context_compacted",
   "experiment_added",
   "experiment_finished",
   "experiment_dropped",
@@ -229,6 +230,8 @@ export function indexEvent(t: KbIndexTarget, e: KbEvent): void {
         `Ended: ${str(b.stopped).replace(/_/g, " ")}; ${n(b.turns)} turns; ${n(b.tokens_in)} tokens in, ${n(b.tokens_out)} out`,
       );
       if (str(b.attempt)) body = setLine(body, "Attempt", `Attempt: ${str(b.attempt)}`);
+      if (Number(b.compactions) > 0)
+        body = setLine(body, "Compactions", `Compactions: ${n(b.compactions)}`);
       if (str(b.error)) body = setLine(body, "Error", `Error: ${str(b.error)}`);
       t.put(
         e.subject,
@@ -315,6 +318,30 @@ export function indexEvent(t: KbIndexTarget, e: KbEvent): void {
             b.clipped === true ? `(Cut: the file has ${n(b.bytes)} bytes.)` : "",
           ]),
           by: lane || e.actor,
+        },
+        e.at,
+      );
+      return;
+    }
+    // An agent's conversation as the harness kept it before a compaction (goal 070): a document
+    // of the run, as a lane's own files are. The run's research folder keeps it whole.
+    case "context_compacted": {
+      if (!str(b.snapshot) || !str(b.text)) return;
+      const who = str(b.trial) ? `trial ${str(b.trial)}` : str(b.lane) || "an agent";
+      t.put(
+        run,
+        "doc",
+        ref(str(b.snapshot)),
+        {
+          title: `${who}: the conversation before compaction ${str(b.number)}`,
+          // A long conversation's cut is said first: the item keeps only its beginning.
+          body: lines([
+            b.clipped === true
+              ? `(Cut: the file has ${n(b.bytes)} bytes; the run's research folder keeps it whole, ${str(b.snapshot)}.)`
+              : "",
+            str(b.text),
+          ]),
+          by: str(b.lane) || e.actor,
         },
         e.at,
       );
