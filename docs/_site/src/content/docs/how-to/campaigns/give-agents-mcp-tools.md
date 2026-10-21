@@ -17,7 +17,7 @@ An **MCP server** gives agents tools from outside Thermite: a knowledge base suc
 }
 ```
 
-The server's secret never reaches an agent. Control keeps it sealed and hands each rig only the servers its runs name. On the rig, the harness makes the calls for the workers and the planner, and the supervisor makes them for the advisors ([Who holds your keys](../../explanation/who-holds-your-keys.md#mcp-servers)).
+The server's secret never reaches an agent. Control keeps it sealed and hands each rig only the servers its runs name. A [rig on RunPod](../install/runpod-rig.md) gets them the same way, through control's own connection to it, sealed like the rest of its traffic. On the rig, the harness makes the calls for the workers and the planner, and the supervisor makes them for the advisors ([Who holds your keys](../../explanation/who-holds-your-keys.md#mcp-servers)).
 
 ## Before you start
 
