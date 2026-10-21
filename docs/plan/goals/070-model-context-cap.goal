@@ -36,6 +36,9 @@ The owner compares two models on the same research campaign: one rig on a model 
 - [x] Tests: a cap below the provider's window goes into the route; a cap above it is refused; no cap means the provider's window; setting the model again without a cap removes it; MCP and REST.
 - [x] Pages: the MCP tools and REST API references, Connect a model provider, Give each agent its own model, Rig checks and the glossary.
 - [ ] Edit rig has a field for the cap, after a mockup the owner approved.
+- [ ] Near the window, a trial compacts its conversation and goes on: in Pi (code and research trials) Thermite compacts; in OpenCode, Codex and Claude Code their own compaction is set from the rig's settings. No trial ends, and none is told to submit, because its conversation grew.
+- [ ] Before each compaction the whole conversation is kept as a document the agent can read and the run keeps; the summary names it. Each compaction is an event, in History and Live.
+- [ ] The compaction rule (the share of the window at which it compacts) is set with the model over MCP, REST and the command line, and shown with it. Edit rig shows it after a revised mockup the owner approved.
 
 ## Decisions
 
@@ -48,6 +51,10 @@ The owner compares two models on the same research campaign: one rig on a model 
   - **The route's revision** changes with the cap, so the rig takes it within a minute. A ChatGPT route's revision includes the window only when a cap is set, so routes with no cap keep their revisions.
   - **No command-line option:** no `thermite` command sets a rig's model. `thermite run start --provider --model` gives one only to a rig with none, so there is no cap to keep or set there.
   - **No harness change:** the harness already takes the route's `context_window`. In Pi, the workers and the planner limit each reply to the room left in it, a worker is told to submit at 80% of it, and a trial ends when it is full. OpenCode v2, Claude Code and Codex do not read the route's window, neither the provider's nor a cap.
+- 2026-10-21, owner, on the Edit rig mockup: "It shouldn't ever prevent a trial, or cause early submissions... It should set a compaction event and compact the context when it grows beyond a certain point. Compaction should snapshot the conversation to docs, then compact, and continue... So yes, set context limit but also set compaction rules that the harness supports." So:
+  - A trial never ends, and is never told to submit early, because its conversation grows. Near the window, the harness compacts the conversation and the trial goes on.
+  - Compaction first keeps the whole conversation as a document, then replaces the older turns with a summary that names that document, and continues.
+  - The cap stays. With it go compaction rules for each harness, as far as the harness supports them.
 
 ## Open questions
 
