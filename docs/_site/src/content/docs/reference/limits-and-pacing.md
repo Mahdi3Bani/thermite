@@ -196,7 +196,8 @@ None of these ends research. Nothing limits how many experiments a run's [experi
 | The auditor's answer | One check |
 | The advisors' experiments in one request to the harness | Up to 20 experiments and 20 moves |
 | The queue in the planner's and the teachers' brief | The first 40 up next, the newest 20 ideas, every experiment in progress, and the newest 20 tried, with the judge's verdicts. Details are cut to 600 characters and whys to 400 |
-| The **Planner** tab's hand-outs | The newest 30. Control keeps the newest 50 for each run |
+| The **Planner** tab's **What the planner did** | The newest 30 entries: hand-outs, the planner's changes to the queue and the rules, and the messages it read. Control keeps the newest 50 hand-outs for each run |
+| The messages under **Tell the planner** | Your newest 10 to the planner or to everyone working. Control keeps the newest 200 messages for each run |
 
 ## Field notes and the knowledge base
 

@@ -51,7 +51,7 @@ To check the connection, ask the agent to list Thermite's rigs. It calls the `li
 
 The [MCP tools reference](../../reference/mcp-tools.md) lists every tool, its inputs, its answers and which tokens may call it. In short:
 
-- **Look:** `list_rigs`, `get_run` (a run's champions and attempts, and in `journal` all its agents' field notes and research notes, oldest first), `run_queue` (a run's [experiment queue](../campaigns/choose-what-runs-next.md), its rules and your messages), `recent_events`, `leaderboard`, `rig_reports`, `list_commands` and `command_status`.
+- **Look:** `list_rigs`, `get_run` (a run's champions and attempts, and in `journal` all its agents' field notes and research notes, oldest first), `run_queue` (a run's [experiment queue](../campaigns/choose-what-runs-next.md), its rules, its directions and your messages), `recent_events`, `leaderboard`, `rig_reports`, `list_commands` and `command_status`.
 - **Search past research,** with the operator's or the owner's token: `kb_folders` lists the folders of Thermite's [knowledge base](../../reference/knowledge-base.md), one for each campaign, with what each holds and which campaigns read it; `kb_search` finds their items by words, such as experiments with their results, attempts with their verdicts, field notes, sources, claims, findings and reports.
 - **Act:** `issue_command` sends a [signed command](../../reference/signed-commands.md) to a rig, of a kind the token allows ([who may issue each kind](../../reference/signed-commands.md#who-may-issue-each-kind)), and `propagate_champion` sends a champion to another rig.
 - **Let a campaign read another's folder,** with the operator's or the owner's token: `kb_grant` and `kb_revoke`, as **Can read from** does on a campaign's page.
